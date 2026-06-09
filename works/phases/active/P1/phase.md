@@ -32,6 +32,30 @@ Order: P1.DECOMP (0) → P1.S1 (10) → P1.S2 (20) → P1.REVIEW (9999).
 
 **Caveats (heed when writing P1.S2):** star counts are a 2026-06-09/10 snapshot — cite cautiously or omit; use the new name "oh-my-openagent" (oh-my-opencode URL redirects); do NOT repeat refuted claims (OMC isn't a persisted phase/slice system; oh-my-customcode isn't genuinely cross-tool — name lineage only; don't cite exact bundle inventories for dotclaude/centminmod); "closest/distinct" are editorial positioning, not verified facts.
 
+## Cross-Slice Notes
+
+**From P1.S1 (Core README) → for P1.S2.** The root `README.md` core is written; structure is locked.
+P1.S2 only needs to insert two sections and two TOC entries:
+
+- **Insertion anchor for the two sections:** the HTML comment
+  `<!-- P1.S2 inserts "How I work with coding agents" + "Related / inspired by" here -->`, which sits
+  between the "Project structure" section and the "Contributing" section. Replace that comment with
+  the two sections (methodology first, then related).
+- **Use these exact headings** so the TOC anchors resolve:
+  `## ⭐ How I work with coding agents` and `## Related / inspired by`.
+- **Add two TOC entries** between the `Project structure` and `Contributing` lines in the Contents
+  list:
+  `- [How I work with coding agents](#-how-i-work-with-coding-agents)` (leading hyphen in the anchor
+  is correct — GitHub drops the ⭐ but keeps the space) and
+  `- [Related / inspired by](#related--inspired-by)` (double hyphen from " / ").
+- **Methodology:** first-person operator voice, ~5–7 punchy principles (each 2–3 sentences), link to
+  `CLAUDE.md` for mechanics. Seed principles are in `slices/P1.S1`'s sibling plan / the approved
+  workflow plan.
+- **Related:** omit star counts; use the name **oh-my-openagent**; group the links; label the
+  positioning lead-in as editorial; do **not** repeat the refuted claims noted above.
+- README facts already verified by P1.S1: bootstrap flags match `--help`; `origin/HEAD` is `main`
+  (raw `curl` URL is valid); all internal relative links resolve. P1.S2 should keep new links valid.
+
 ## Constraints
 
 - Keep `works/backlog.md` lean.
