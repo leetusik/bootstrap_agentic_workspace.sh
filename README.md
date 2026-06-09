@@ -16,6 +16,8 @@ One shell script scaffolds a complete workspace: a compact agent **contract**, a
 - [Quickstart](#quickstart)
 - [How it works](#how-it-works)
 - [Project structure](#project-structure)
+- [How I work with coding agents](#-how-i-work-with-coding-agents)
+- [Related / inspired by](#related--inspired-by)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -203,7 +205,65 @@ Archived phases and old doc versions are history; they're not read by default.
 └── .codex/config.toml             # Codex project config
 ```
 
-<!-- P1.S2 inserts "How I work with coding agents" + "Related / inspired by" here -->
+## ⭐ How I work with coding agents
+
+I don't hand an agent a vague task and hope. The whole reason this workspace exists is to force a
+few habits that make agents reliable on long, real work — not just impressive in a demo. These are
+the ones I lean on; the [contract in `CLAUDE.md`](CLAUDE.md) is how they're actually enforced.
+
+1. **Decompose before you build.** The first move on any phase is a decomposition slice, not code.
+   I make the agent break the work into small, ordered slices and write the plan down — planning is
+   its own step with its own artifact. A task you can't slice is a task you don't understand yet.
+
+2. **Give agents durable, shared memory.** Conversations compact and agents forget, so I never keep
+   important context only in the chat. Every phase has a notebook (`phase.md`) that each slice reads
+   on the way in and appends to on the way out, and decisions land in versioned docs. The next
+   slice — or the next *tool* — starts from what the last one learned.
+
+3. **Make every slice prove itself.** A slice writes its `plan.md` before it touches anything and a
+   `result.md` when it's done, and the phase doesn't close until a read-only reviewer checks it
+   against the objective. "It runs" isn't the bar; "it was reviewed and matches what we set out to
+   do" is.
+
+4. **Version decisions; never overwrite them.** Docs are append-only versions, not files you edit in
+   place — each new version carries the slice that produced it. So the history of *what we decided
+   and why* is always recoverable, and the generated snapshots stay read-only on purpose.
+
+5. **Park distractions; don't chase them.** Mid-slice, every shiny idea is a threat to the slice.
+   Instead of following it, I drop it into a deferred job that sits outside the backlog and changes
+   nothing until I promote it on purpose. Focus becomes a property of the system, not of my
+   willpower.
+
+6. **Commit at every clean boundary.** One slice is one reviewable, conventional commit. A small,
+   legible history means the next agent — or future me — can actually read what happened and bisect
+   when something breaks.
+
+None of this is tool-specific: one manager (`scripts/workflow.py`) plus skills mirrored into
+`.claude/` and `.agents/` mean Claude Code, Codex, or a plain CLI agent all follow the same
+contract — so switching tools never means switching conventions.
+
+## Related / inspired by
+
+A quick map of the neighborhood. The combination this workspace bundles — a persisted
+phase/slice/deferred state machine, versioned durable docs, parallel cross-tool `.claude/` +
+`.agents/` skills, and a single bootstrap script — shows up *piece by piece* across the projects
+below, but I wanted them together in one place. (That framing is my own editorial positioning, not a
+scorecard, and star counts move too fast to quote.)
+
+- **Workflow / spec-driven development**
+  - [GitHub Spec Kit](https://github.com/github/spec-kit) — spec-driven scaffolding for agent workflows.
+- **Cross-tool skills**
+  - [wshobson/agents](https://github.com/wshobson/agents) — a collection of reusable agent subagents/skills.
+- **The `oh-my-X` lineage** (config/framework kits in the oh-my-zsh tradition)
+  - [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode)
+  - [claude-forge](https://github.com/sangrokjung/claude-forge)
+  - [oh-my-openagent](https://github.com/code-yeongyu/oh-my-opencode)
+  - [oh-my-customcode](https://github.com/baekenough/oh-my-customcode) — name-lineage kin.
+  - [oh-my-zsh](https://github.com/ohmyzsh/ohmyzsh) — the shell-framework original the naming riffs on.
+- **Subagent & config kits**
+  - [VoltAgent/awesome-claude-code-subagents](https://github.com/VoltAgent/awesome-claude-code-subagents) — a curated catalog of Claude Code subagents.
+  - [dotclaude](https://github.com/poshan0126/dotclaude) — a personal Claude Code config kit.
+  - [centminmod/my-claude-code-setup](https://github.com/centminmod/my-claude-code-setup) — a personal Claude Code setup.
 
 ## Contributing
 

@@ -56,6 +56,12 @@ P1.S2 only needs to insert two sections and two TOC entries:
 - README facts already verified by P1.S1: bootstrap flags match `--help`; `origin/HEAD` is `main`
   (raw `curl` URL is valid); all internal relative links resolve. P1.S2 should keep new links valid.
 
+**From P1.S2 (Methodology & related projects) → README content-complete.** Inserted the two featured
+sections + TOC entries at P1.S1's anchor. Methodology = 6 first-person principles closing on the
+cross-tool property, linking to `CLAUDE.md`. Related = editorial lead-in + the verified grouped
+shortlist, star counts omitted, **oh-my-openagent** name used, refuted claims avoided. Validation
+green; anchors/links verified. Remaining: P1.REVIEW only.
+
 ## Constraints
 
 - Keep `works/backlog.md` lean.
