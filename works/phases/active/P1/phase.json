@@ -2,16 +2,16 @@
   "id": "P1",
   "name": "User-Facing README & Onboarding Guide",
   "objective": "Create a user-friendly root README.md that makes this workspace approachable to newcomers. It should: (1) explain what the project is and the problem it solves; (2) show how to bootstrap a workspace by running bootstrap_agentic_workspace.sh, with prerequisites and what gets created; (3) cover how to get started and use it day-to-day — the phase/slice workflow, scripts/workflow.py, and the Claude Code / Codex skills; (4) explain how to contribute; (5) include a FEATURED, opinionated 'how to work with coding agents' methodology section sharing the operator's approach; and (6) add a 'Related / inspired by' see-also section linking similar projects such as oh-my-claude-code, oh-my-zsh-style frameworks, and Claude Code skills/plugins. Keep docs/current/*.md and CLAUDE.md as the source of truth and link to them rather than duplicating.",
-  "status": "in_progress",
+  "status": "done",
   "order": 1,
   "created_at": "2026-06-09T23:41:20+09:00",
   "started_at": "2026-06-10T02:02:48+09:00",
-  "completed_at": null,
+  "completed_at": "2026-06-10T02:12:01+09:00",
   "review": {
-    "status": "pending",
-    "reviewed_at": null,
-    "reviewer": null,
-    "note": null
+    "status": "pass",
+    "reviewed_at": "2026-06-10T02:12:01+09:00",
+    "reviewer": "phase-reviewer",
+    "note": "README ships all six objectives; bootstrap flags, 10 skills, workflow.py cheat-sheet, 11 doc categories, structure tree, and clone/curl URLs (main) verified accurate; all internal links/TOC anchors resolve; methodology is featured/first-person; Related honors phase.md caveats; workflow integrity clean and validate passes."
   },
   "paths": {
     "phase_md": "phase.md",

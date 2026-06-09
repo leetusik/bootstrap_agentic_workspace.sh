@@ -62,6 +62,11 @@ cross-tool property, linking to `CLAUDE.md`. Related = editorial lead-in + the v
 shortlist, star counts omitted, **oh-my-openagent** name used, refuted claims avoided. Validation
 green; anchors/links verified. Remaining: P1.REVIEW only.
 
+**From P1.REVIEW → phase done.** `phase-reviewer` verdict `pass` (objective coverage, factual
+accuracy, workflow integrity, and the methodology/Related caveats all checked). Recorded via
+`review-phase P1 --verdict pass`, which set P1 → `done`. No fix slices needed. P1 stays in
+`active/`; batch `archive-all` is left as an explicit operator step.
+
 ## Constraints
 
 - Keep `works/backlog.md` lean.
