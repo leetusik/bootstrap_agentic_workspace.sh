@@ -13,3 +13,9 @@
 {"ts": "2026-06-10T02:12:01+09:00", "type": "phase_reviewed", "phase": "P1", "verdict": "pass", "reviewer": "phase-reviewer"}
 {"ts": "2026-06-10T02:12:58+09:00", "type": "slice_status_changed", "slice": "P1.REVIEW", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-06-10T12:34:05+09:00", "type": "phase_created", "phase": "P2"}
+{"ts": "2026-06-10T12:47:50+09:00", "type": "slice_status_changed", "slice": "P2.DECOMP", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-06-10T12:51:40+09:00", "type": "slice_created", "phase": "P2", "slice": "P2.S1"}
+{"ts": "2026-06-10T12:51:40+09:00", "type": "slice_created", "phase": "P2", "slice": "P2.S2"}
+{"ts": "2026-06-10T12:51:40+09:00", "type": "slice_created", "phase": "P2", "slice": "P2.S3"}
+{"ts": "2026-06-10T12:51:40+09:00", "type": "slice_created", "phase": "P2", "slice": "P2.S4"}
+{"ts": "2026-06-10T12:52:13+09:00", "type": "slice_status_changed", "slice": "P2.DECOMP", "old_status": "in_progress", "new_status": "done"}
