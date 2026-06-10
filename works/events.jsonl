@@ -53,3 +53,4 @@
 {"ts": "2026-06-10T14:32:47+09:00", "type": "slice_status_changed", "slice": "P3.REVIEW", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-06-10T14:35:23+09:00", "type": "phase_reviewed", "phase": "P3", "verdict": "pass", "reviewer": "phase-reviewer"}
 {"ts": "2026-06-10T14:35:47+09:00", "type": "slice_status_changed", "slice": "P3.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-06-10T14:42:00+09:00", "type": "phase_archived", "phase": "P3", "archive_path": "works/phases/archived/20260610_144200_P3_retrofit_guide_skill_adopting_the_agentic_workspace_into_an_existing_project"}
