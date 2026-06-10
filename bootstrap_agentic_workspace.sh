@@ -154,7 +154,7 @@ When the selected slice is a phase review (`kind: review`), step 3 ("implement")
 
 - Invoke the read-only `phase-reviewer` subagent for the phase; record its verdict and the review outcome in `result.md` (the machine verdict is also persisted to `phase.json` by `review-phase`). (In Codex, follow the `review-phase` skill checklist instead.)
 - Record the verdict: `python3 scripts/workflow.py review-phase <P> --verdict pass|changes_requested|blocked --reviewer phase-reviewer --note "..."`.
-- On `pass`: run `finish-slice <slice_id>`. A passing review marks the phase `done` but it **stays in `active/`** — do **not** archive now. Only when `python3 scripts/workflow.py next` reports no remaining active slice in any phase (every active phase is done) run `python3 scripts/workflow.py archive-all` to sweep them all to archived.
+- On `pass`: run `finish-slice <slice_id>`. A passing review marks the phase `done` but it **stays in `active/`** — archiving is a separate, manual step, so do **not** archive now. Archive later when you choose: `archive-all` once every active phase is done, `rotate-backlog` to archive just the done phases while others continue, or `archive-phase <P>` for one phase.
 - On `changes_requested`: create fix slices (`python3 scripts/workflow.py new-slice --phase <P> --slice <P>.F<n> --name "..." --kind fix`) and leave the review slice open for re-review; do not finish or archive.
 - On `blocked`: record the blocker; do not finish or archive.
 
@@ -181,7 +181,7 @@ Rules:
 - Record the verdict: `python3 scripts/workflow.py review-phase <P> --verdict pass|changes_requested|blocked --reviewer <name> --note "..."`.
 - If the verdict is `changes_requested`, create concrete fix slices with `python3 scripts/workflow.py new-slice --phase <P> --slice <P.Fn> --name "..." --kind fix`, complete them, then re-review.
 - Only a `pass` verdict marks the phase `done` (review-phase does this for you).
-- A passing review leaves the phase `done` in `active/`; do **not** archive it here. Archiving is batched: only when every active phase is done (the last review slice complete) run `python3 scripts/workflow.py archive-all` to archive them all at once.
+- A passing review leaves the phase `done` in `active/`; do **not** archive it here. Archiving is a separate manual step — later, use `archive-all` once every active phase is done, `rotate-backlog` to archive just the done phases while others continue, or `archive-phase <P>` for one phase.
 - Do not continue into the next phase.
 """,
     },
@@ -217,7 +217,7 @@ python3 scripts/workflow.py review-phase <P> --verdict changes_requested --revie
 python3 scripts/workflow.py review-phase <P> --verdict blocked --reviewer phase-reviewer --note "the blocker and needed input"
 ```
 
-`pass` also marks the phase `done`. `changes_requested` returns it to `in_progress`. `blocked` sets it `blocked`.
+`pass` also marks the phase `done` — it stays in `active/`; archiving is a separate, manual step (`archive-all`, `rotate-backlog`, or `archive-phase`). `changes_requested` returns it to `in_progress`. `blocked` sets it `blocked`.
 """,
     },
     {
@@ -263,19 +263,46 @@ This moves the job from `works/deferred/open/` to `works/deferred/promoted/`, cr
     },
     {
         "name": "archive-phase",
-        "desc": "Archive review-passed phases — batched at the end via archive-all (single-phase is a manual escape hatch).",
+        "desc": "Archive review-passed phases: archive-all (full sweep), rotate-backlog (partial), or archive-phase (single).",
         "tools": "Bash(python3 scripts/workflow.py:*)",
-        "body": """Archiving is **batched** and happens at the very end, never right after a single review. A passing review marks a phase `done` but leaves it in `active/`.
+        "body": """Archiving is **manual and explicit** — never automatic. A passing review marks a phase `done` but leaves it in `active/`; you archive when you choose. Archive whole phases only, never individual slices. Three first-class options:
 
-Default path — when every active phase is done (the last review slice across all active phases is complete), sweep them all to archived at once:
+**Archive everything — end-of-batch sweep.** When every active phase is done (the last review slice across all phases is complete), sweep them all to archived at once:
 
 ```sh
 python3 scripts/workflow.py archive-all
 ```
 
-`archive-all` refuses until every active phase is `done` with a passing review (use `--force` only for exceptional cleanup).
+`archive-all` refuses unless every active phase is `done` with a passing review.
 
-`python3 scripts/workflow.py archive-phase <P>` remains a manual escape hatch for archiving a single phase in exceptional cases. Archive only whole phases. Never archive one slice at a time.
+**Rotate the done phases — partial sweep.** When only some phases are done, archive exactly those and leave the in-progress ones active:
+
+```sh
+python3 scripts/workflow.py rotate-backlog
+```
+
+**Archive one phase.** Archive a single review-passed phase by id:
+
+```sh
+python3 scripts/workflow.py archive-phase <P>
+```
+
+All three gate on the same rule: a phase must be `done` with a passing review to archive. Use `--force` (on `archive-all`/`archive-phase`) only for exceptional cleanup of an unfinished phase.
+""",
+    },
+    {
+        "name": "rotate-backlog",
+        "desc": "Archive every currently-done phase and leave in-progress phases active (partial archive-all).",
+        "tools": "Bash(python3 scripts/workflow.py:*)",
+        "body": """Archive every phase that is **currently done** (all slices complete with a passing review) and leave in-progress phases active, then rebuild the dashboards:
+
+```sh
+python3 scripts/workflow.py rotate-backlog
+```
+
+This is the **partial** rotation `archive-all` cannot do: `archive-all` refuses unless *every* active phase is done, while `rotate-backlog` sweeps just the done phases and leaves the rest. Use it when several phases are active and only some have passed review.
+
+Archives whole phases only; unfinished, blocked, or unreviewed phases are left untouched. There is no `--force` — to archive an unfinished phase, use `archive-phase <P> --force`.
 """,
     },
     {

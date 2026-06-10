@@ -78,6 +78,13 @@ After implementing `rotate-backlog` in live workflow.py:
 - **Embed-sync method that works:** edit live `workflow.py`, then regenerate the bootstrap `WORKFLOW_PY` heredoc body by slicing between `WORKFLOW_PY = r'''` and the next `'''` and substituting the live file (assert live has no `'''`). Re-diff to confirm identical. The full temp-dir bootstrap run is the strongest check.
 - Added a live-only `.gitignore` (`__pycache__/`, `*.pyc`) — repo hygiene, not mirrored to bootstrap.
 
+### S2 DONE — skills landed (note for S3)
+
+- New `rotate-backlog` skill exists (3 live files + `COMMAND_SKILLS` entry). `archive-phase` skill rewritten to present three first-class options. `do-next-slice`/`do-whole-phase`/`review-phase` now say archiving is a separate manual step listing all three ops.
+- **Sync method confirmed and reusable:** edit the bootstrap generator (`COMMAND_SKILLS` for skills; `WORKFLOW_DOC` for the contract), regenerate the live artifacts by bootstrapping into a temp dir and copying, then `diff -rq` live vs a fresh bootstrap to prove identity. For S3, `CLAUDE.md`/`AGENTS.md` are generated from `WORKFLOW_DOC` (written to both at bootstrap), so the same approach applies — and it auto-keeps CLAUDE.md ≡ AGENTS.md.
+- **Phrasing to reuse in the contract (S3) for consistency:** "Archiving is a separate, manual step." The three ops: `archive-all` (full sweep, needs every phase done), `rotate-backlog` (partial — archive the done ones, leave the rest), `archive-phase <P>` (single review-passed phase).
+- Standing invariants to re-check after S3: `diff -rq` live skills == fresh bootstrap; `diff -q` live workflow.py == fresh bootstrap; `diff` CLAUDE.md vs AGENTS.md (only title + cross-ref line differ); `validate`.
+
 ### SEQUENCING CAUTION (important)
 
 P1 is currently `done`+`pass` and sits in `active/`. `rotate-backlog` and `archive-all` would archive P1 the moment they run. **Do NOT run a real `rotate-backlog`/`archive-all`/`archive-phase` during this phase** — it would archive P1 and disrupt the working tree mid-flight. Verify the new command non-destructively (help text, arg parsing, code review, embedded==live diff). Real archiving is an operator action for later. This phase only *adds and documents* the capability.
