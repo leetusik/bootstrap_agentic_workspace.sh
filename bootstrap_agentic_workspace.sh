@@ -143,7 +143,7 @@ Work exactly one slice:
 5. Record validation commands, created doc versions, and outcome in `result.md`, and append any durable cross-slice notes (decisions, findings, gotchas) to the phase's `phase.md` so later slices can build on them.
 6. Mark the slice done with `python3 scripts/workflow.py finish-slice <slice_id>` only when complete.
 7. Run `python3 scripts/workflow.py validate`.
-8. Commit by default: group the slice's pending changes into focused `type(scope): summary` commit(s) following the Commit Convention. Branch first if on `main`; never push.
+8. Commit by default: group the slice's pending changes into focused `type(scope): summary` commit(s) following the Commit Convention. Do not branch unless the operator asks; never push.
 
 When the selected slice is a decomposition (`kind: decomposition`), step 3 ("implement") means decomposing the phase, not writing code:
 
@@ -174,7 +174,7 @@ Rules:
 - When the slice is a decomposition (`kind: decomposition`), create the middle slices with `new-slice` (folders only — do not pre-fill their `plan.md`) and record the breakdown, findings, and notes in `phase.md`.
 - When a slice finishes, write its `result.md` and append durable cross-slice notes to `phase.md` so later slices can build on them.
 - Use `doc-new-version` for durable doc changes; never patch old doc versions or `docs/current/*.md` directly.
-- Commit at every clean slice boundary by default, following the Commit Convention (branch first if on `main`; never push).
+- Commit at every clean slice boundary by default, following the Commit Convention (do not branch unless the operator asks; never push).
 - When you reach the phase review slice, run the review:
   - In Claude Code, invoke the `phase-reviewer` subagent (read-only) and take its verdict.
   - In Codex, follow the `review-phase` skill checklist yourself.
@@ -506,7 +506,7 @@ Use `python3 scripts/workflow.py <command>`:
 
 Use `type(scope): summary`, imperative voice, no trailing period. Types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `build`, `perf`, `revert`.
 
-By default, commit after each completed slice — at the end of `do-next-slice`, and at every clean slice boundary inside `do-whole-phase`. Outside the slice workflow, commit only when asked. Branch first if on `main`. Never push without being asked.
+By default, commit after each completed slice — at the end of `do-next-slice`, and at every clean slice boundary inside `do-whole-phase`. Outside the slice workflow, commit only when asked. Do not create branches unless the operator asks — work on the current branch, including `main`. Never push without being asked.
 """
 write_text("CLAUDE.md", f"# CLAUDE.md\n\n> Equivalent to `AGENTS.md`. If you change workflow rules, update both.\n\n{WORKFLOW_DOC}")
 write_text("AGENTS.md", f"# AGENTS.md\n\n> Equivalent to `CLAUDE.md`. If you change workflow rules, update both.\n\n{WORKFLOW_DOC}")

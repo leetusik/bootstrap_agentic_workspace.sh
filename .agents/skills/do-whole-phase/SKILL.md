@@ -14,7 +14,7 @@ Rules:
 - When the slice is a decomposition (`kind: decomposition`), create the middle slices with `new-slice` (folders only — do not pre-fill their `plan.md`) and record the breakdown, findings, and notes in `phase.md`.
 - When a slice finishes, write its `result.md` and append durable cross-slice notes to `phase.md` so later slices can build on them.
 - Use `doc-new-version` for durable doc changes; never patch old doc versions or `docs/current/*.md` directly.
-- Commit at every clean slice boundary by default, following the Commit Convention (branch first if on `main`; never push).
+- Commit at every clean slice boundary by default, following the Commit Convention (do not branch unless the operator asks; never push).
 - When you reach the phase review slice, run the review:
   - In Claude Code, invoke the `phase-reviewer` subagent (read-only) and take its verdict.
   - In Codex, follow the `review-phase` skill checklist yourself.

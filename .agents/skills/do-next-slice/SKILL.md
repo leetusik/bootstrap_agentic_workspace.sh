@@ -16,7 +16,7 @@ Work exactly one slice:
 5. Record validation commands, created doc versions, and outcome in `result.md`, and append any durable cross-slice notes (decisions, findings, gotchas) to the phase's `phase.md` so later slices can build on them.
 6. Mark the slice done with `python3 scripts/workflow.py finish-slice <slice_id>` only when complete.
 7. Run `python3 scripts/workflow.py validate`.
-8. Commit by default: group the slice's pending changes into focused `type(scope): summary` commit(s) following the Commit Convention. Branch first if on `main`; never push.
+8. Commit by default: group the slice's pending changes into focused `type(scope): summary` commit(s) following the Commit Convention. Do not branch unless the operator asks; never push.
 
 When the selected slice is a decomposition (`kind: decomposition`), step 3 ("implement") means decomposing the phase, not writing code:
 

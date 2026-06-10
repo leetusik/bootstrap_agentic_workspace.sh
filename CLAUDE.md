@@ -81,4 +81,4 @@ Use `python3 scripts/workflow.py <command>`:
 
 Use `type(scope): summary`, imperative voice, no trailing period. Types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `build`, `perf`, `revert`.
 
-By default, commit after each completed slice — at the end of `do-next-slice`, and at every clean slice boundary inside `do-whole-phase`. Outside the slice workflow, commit only when asked. Branch first if on `main`. Never push without being asked.
+By default, commit after each completed slice — at the end of `do-next-slice`, and at every clean slice boundary inside `do-whole-phase`. Outside the slice workflow, commit only when asked. Do not create branches unless the operator asks — work on the current branch, including `main`. Never push without being asked.
