@@ -25,3 +25,6 @@
 {"ts": "2026-06-10T13:01:46+09:00", "type": "slice_status_changed", "slice": "P2.S2", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-06-10T13:02:14+09:00", "type": "slice_status_changed", "slice": "P2.S3", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-06-10T13:03:45+09:00", "type": "slice_status_changed", "slice": "P2.S3", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-06-10T13:03:52+09:00", "type": "slice_status_changed", "slice": "P2.S4", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-06-10T13:04:06+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0002_archiving_workflow_manual_archiving_first-class_archive-phase_rotate-backlog", "source": "P2.S4"}
+{"ts": "2026-06-10T13:05:02+09:00", "type": "slice_status_changed", "slice": "P2.S4", "old_status": "in_progress", "new_status": "done"}

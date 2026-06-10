@@ -141,7 +141,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0001_bootstrap",
+      "latest": "v0002_archiving_workflow_manual_archiving_first-class_archive-phase_rotate-backlog",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -151,9 +151,17 @@
           "source": "bootstrap",
           "summary": "Initial decisions doc",
           "previous": null
+        },
+        {
+          "id": "v0002_archiving_workflow_manual_archiving_first-class_archive-phase_rotate-backlog",
+          "path": "docs/versions/decisions/v0002_archiving_workflow_manual_archiving_first-class_archive-phase_rotate-backlog.md",
+          "created_at": "2026-06-10T13:04:06+09:00",
+          "source": "P2.S4",
+          "summary": "Archiving workflow: manual archiving, first-class archive-phase, rotate-backlog",
+          "previous": "v0001_bootstrap"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-06-10T00:28:05+09:00"
+  "last_rebuilt_at": "2026-06-10T13:04:35+09:00"
 }

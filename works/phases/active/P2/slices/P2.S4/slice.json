@@ -3,14 +3,14 @@
   "phase_id": "P2",
   "name": "Decision record: decisions.md doc version",
   "kind": "docs",
-  "status": "todo",
+  "status": "done",
   "order": 40,
   "depends_on": [
     "P2.S1"
   ],
   "created_at": "2026-06-10T12:51:40+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-06-10T13:03:52+09:00",
+  "completed_at": "2026-06-10T13:05:02+09:00",
   "risk": "low",
   "source": {
     "type": "manual",

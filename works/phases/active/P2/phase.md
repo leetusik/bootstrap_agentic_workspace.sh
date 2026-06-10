@@ -92,6 +92,11 @@ After implementing `rotate-backlog` in live workflow.py:
 - **All standing invariants pass:** `CLAUDE.md` body ≡ `AGENTS.md` body; live `CLAUDE.md`/`AGENTS.md`/skills/`workflow.py` all == fresh bootstrap output; `validate` passes. The only remaining work is S4 (decisions doc) and the REVIEW.
 - For S4: `decisions.md` is an empty template; fill the Decision Log entry with this archiving-workflow decision (manual archiving; archive-all default; first-class archive-phase; new rotate-backlog) via `doc-new-version --doc decisions --source P2.S4`, then `rebuild-docs` + `validate`. Doc content versions are NOT embedded in the bootstrap, so S4 has no bootstrap twin.
 
+### S4 DONE — decision recorded (note for REVIEW)
+
+- `decisions` doc `v0002` records the archiving-workflow decision (manual archiving; archive-all default; first-class archive-phase; new rotate-backlog) with alternatives, consequences, source P2. `docs/current/decisions.md` regenerated; `validate` passes.
+- **All four middle slices complete.** Phase deliverables: rotate-backlog command (S1), rotate-backlog skill + archive-phase repositioning (S2), contract sync (S3), decision record (S4). The REVIEW should re-check the standing invariants (CLAUDE≡AGENTS; live==fresh-bootstrap for contract/skills/engine; validate) and confirm the objective's dual-apply constraint was honored everywhere.
+
 ### SEQUENCING CAUTION (important)
 
 P1 is currently `done`+`pass` and sits in `active/`. `rotate-backlog` and `archive-all` would archive P1 the moment they run. **Do NOT run a real `rotate-backlog`/`archive-all`/`archive-phase` during this phase** — it would archive P1 and disrupt the working tree mid-flight. Verify the new command non-destructively (help text, arg parsing, code review, embedded==live diff). Real archiving is an operator action for later. This phase only *adds and documents* the capability.
