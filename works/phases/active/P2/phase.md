@@ -67,6 +67,17 @@ After implementing `rotate-backlog` in live workflow.py:
 2. Safer: write a throwaway check, or reason via a temp copy. The reviewer/operator can exercise it for real once P2 itself is done. Record the intended behavior and any non-destructive verification (e.g. `--help` shows the subcommand, `argparse` parses, embedded==live re-diff) in `result.md`.
 3. Always re-run the embedded-vs-live diff (the one used in DECOMP) and `python3 scripts/workflow.py validate` after editing.
 
+### S1 DONE — engine landed (note for S2/S3)
+
+- `rotate-backlog` is implemented in live `scripts/workflow.py` and the embedded twin (byte-identical, 39707 chars). It reuses `_phase_blockers` + `_archive_one`; no `--force`.
+- **Canonical command help strings** (reuse these verbatim in skills + contract so everything matches):
+  - `archive-phase` → "Archive a single review-passed phase (first-class; use when only some phases are done)"
+  - `archive-all` → "Batch-archive ALL active phases at once; only when every phase is done (last review slice complete)"
+  - `rotate-backlog` → "Archive every currently-done phase and leave in-progress phases active, then rebuild (partial archive-all)"
+- **Output strings** (for anyone documenting behavior): success → "rotated N done phase(s) to archived:" + per-phase lines + "left N phase(s) active: ..."; nothing-ready → "no done phases to rotate; N phase(s) still active: ...".
+- **Embed-sync method that works:** edit live `workflow.py`, then regenerate the bootstrap `WORKFLOW_PY` heredoc body by slicing between `WORKFLOW_PY = r'''` and the next `'''` and substituting the live file (assert live has no `'''`). Re-diff to confirm identical. The full temp-dir bootstrap run is the strongest check.
+- Added a live-only `.gitignore` (`__pycache__/`, `*.pyc`) — repo hygiene, not mirrored to bootstrap.
+
 ### SEQUENCING CAUTION (important)
 
 P1 is currently `done`+`pass` and sits in `active/`. `rotate-backlog` and `archive-all` would archive P1 the moment they run. **Do NOT run a real `rotate-backlog`/`archive-all`/`archive-phase` during this phase** — it would archive P1 and disrupt the working tree mid-flight. Verify the new command non-destructively (help text, arg parsing, code review, embedded==live diff). Real archiving is an operator action for later. This phase only *adds and documents* the capability.

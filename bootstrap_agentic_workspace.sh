@@ -1810,8 +1810,10 @@ def _archive_one(pdir: Path, forced: bool) -> Path:
 
 
 def archive_phase(args: argparse.Namespace) -> None:
-    # Single-phase escape hatch for exceptional cleanup. The normal end-of-batch
-    # path is archive-all; do not archive a phase right after its review passes.
+    # First-class single-phase archive: archive one review-passed phase on request.
+    # Useful when only some phases are done. For the partial sweep of every done
+    # phase use rotate-backlog; for the end-of-batch sweep of everything use
+    # archive-all. --force is for exceptional cleanup of an unfinished phase only.
     pdir = require_phase(args.phase)
     if not args.force:
         reasons = _phase_blockers(pdir)
@@ -1849,6 +1851,35 @@ def archive_all(args: argparse.Namespace) -> None:
     print(f"archived {len(archived)} phase(s):")
     for phase_id, dest in archived:
         print(f"- {phase_id}: {dest.relative_to(ROOT)}")
+
+
+def rotate_backlog(args: argparse.Namespace) -> None:
+    # Partial rotation: archive every phase that is cleanly archivable right now
+    # (all slices done with a passing review) and leave the rest active, then
+    # rebuild the dashboards. This is the partial sweep archive-all cannot do,
+    # since archive-all refuses unless EVERY active phase is done.
+    pdirs = phase_dirs()
+    if not pdirs:
+        print("no active phases to rotate")
+        return
+    ready, blocked = [], []
+    for pdir in pdirs:
+        phase_id = read_json(pdir / "phase.json")["id"]
+        (blocked if _phase_blockers(pdir) else ready).append((phase_id, pdir))
+    if not ready:
+        rebuild_index_and_state()
+        print(f"no done phases to rotate; {len(blocked)} phase(s) still active: {', '.join(p for p, _ in blocked)}")
+        return
+    archived = []
+    for phase_id, pdir in ready:
+        dest = _archive_one(pdir, forced=False)
+        archived.append((phase_id, dest))
+    rebuild_index_and_state()
+    print(f"rotated {len(archived)} done phase(s) to archived:")
+    for phase_id, dest in archived:
+        print(f"- {phase_id}: {dest.relative_to(ROOT)}")
+    if blocked:
+        print(f"left {len(blocked)} phase(s) active: {', '.join(p for p, _ in blocked)}")
 
 
 def main(argv=None) -> int:
@@ -1948,7 +1979,7 @@ def main(argv=None) -> int:
     p.add_argument("--reason", required=True)
     p.set_defaults(func=drop_deferred)
 
-    p = sub.add_parser("archive-phase", help="Move a single review-passed phase to archived (manual/exceptional; normal path is archive-all)")
+    p = sub.add_parser("archive-phase", help="Archive a single review-passed phase (first-class; use when only some phases are done)")
     p.add_argument("phase")
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=archive_phase)
@@ -1956,6 +1987,9 @@ def main(argv=None) -> int:
     p = sub.add_parser("archive-all", help="Batch-archive ALL active phases at once; only when every phase is done (last review slice complete)")
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=archive_all)
+
+    p = sub.add_parser("rotate-backlog", help="Archive every currently-done phase and leave in-progress phases active, then rebuild (partial archive-all)")
+    p.set_defaults(func=rotate_backlog)
 
     args = parser.parse_args(argv)
     result = args.func(args)
