@@ -33,3 +33,10 @@
 {"ts": "2026-06-10T13:09:12+09:00", "type": "slice_status_changed", "slice": "P2.REVIEW", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-06-10T13:16:06+09:00", "type": "phase_archived", "phase": "P1", "archive_path": "works/phases/archived/20260610_131606_P1_user-facing_readme_onboarding_guide"}
 {"ts": "2026-06-10T13:16:06+09:00", "type": "phase_archived", "phase": "P2", "archive_path": "works/phases/archived/20260610_131606_P2_archiving_workflow_explicit_archiving_first-class_partial_archive_and_rotate-backlog"}
+{"ts": "2026-06-10T13:44:03+09:00", "type": "phase_created", "phase": "P3"}
+{"ts": "2026-06-10T14:04:18+09:00", "type": "slice_status_changed", "slice": "P3.DECOMP", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-06-10T14:04:40+09:00", "type": "slice_created", "phase": "P3", "slice": "P3.S1"}
+{"ts": "2026-06-10T14:04:40+09:00", "type": "slice_created", "phase": "P3", "slice": "P3.S2"}
+{"ts": "2026-06-10T14:04:40+09:00", "type": "slice_created", "phase": "P3", "slice": "P3.S3"}
+{"ts": "2026-06-10T14:04:40+09:00", "type": "slice_created", "phase": "P3", "slice": "P3.S4"}
+{"ts": "2026-06-10T14:05:57+09:00", "type": "slice_status_changed", "slice": "P3.DECOMP", "old_status": "in_progress", "new_status": "done"}
