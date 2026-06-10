@@ -2,16 +2,16 @@
   "id": "P3",
   "name": "Retrofit Guide & Skill: Adopting the Agentic Workspace into an Existing Project",
   "objective": "Enable developers to adopt this agentic workspace into a repository that is already under active development — not just a fresh/empty directory. Today bootstrap_agentic_workspace.sh assumes an empty target (it refuses non-empty dirs without --force-empty-ok and aborts if managed files already exist), and there is no documentation for retrofitting onto a project with existing code, README, scripts/, docs, or git history. This phase closes that gap.\n\nDeliverables (the DECOMP slice sets the final slice breakdown; the form is fixed as guide + skill):\n1. A retrofit guide (markdown) that walks an operator/agent through adding the workspace — contracts (CLAUDE.md/AGENTS.md), the works/ state machine, scripts/workflow.py, docs/ versioning, and skills — to an existing repo, including how to handle collisions with existing files, preserve git history, and seed the first phase from the project's current state instead of from scratch.\n2. A delivered Skill, mirrored in .claude/skills and .agents/skills (with the Codex agents/openai.yaml) per project convention, that drives an agent through the retrofit; explicit-invocation only, consistent with the other workflow skills.\n3. End-to-end verification that the guide + skill actually work on a representative existing repo (e.g., a dry-run adoption into a sample project).\n\nConstraints:\n- Treat docs/current/*.md and CLAUDE.md as source of truth; if guide content becomes durable doc truth, add it via doc-new-version — never hand-edit generated snapshots under docs/current/.\n- Whether to extend bootstrap_agentic_workspace.sh with a non-empty/existing-repo retrofit mode is for DECOMP to evaluate; IF the script is changed, the live script and the copy embedded in the bootstrap script must stay in sync (dual-apply), matching the constraint established in P2.\n- Adoption must be safe and non-destructive — never clobber a target repo's existing files.\n- Per the contract, this phase is created with DECOMP + REVIEW only; the DECOMP slice creates the middle slices (bare folders) and records the breakdown, findings, and notes in phase.md.",
-  "status": "planned",
+  "status": "done",
   "order": 1,
   "created_at": "2026-06-10T13:44:03+09:00",
   "started_at": null,
-  "completed_at": null,
+  "completed_at": "2026-06-10T14:35:23+09:00",
   "review": {
-    "status": "pending",
-    "reviewed_at": null,
-    "reviewer": null,
-    "note": null
+    "status": "pass",
+    "reviewed_at": "2026-06-10T14:35:23+09:00",
+    "reviewer": "phase-reviewer",
+    "note": "All three deliverables met (retrofit guide+docs, dual-applied retrofit skill, committed E2E smoke test 31/31). Non-destructive verified by sha256; fresh path unchanged; workflow.py byte-unchanged; durable docs via operations v0002 + decisions v0003; dual-apply (live==embedded) asserted by the smoke test."
   },
   "paths": {
     "phase_md": "phase.md",

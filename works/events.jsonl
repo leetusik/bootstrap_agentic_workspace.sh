@@ -50,3 +50,6 @@
 {"ts": "2026-06-10T14:28:53+09:00", "type": "slice_status_changed", "slice": "P3.S3", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-06-10T14:30:33+09:00", "type": "slice_status_changed", "slice": "P3.S4", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-06-10T14:32:37+09:00", "type": "slice_status_changed", "slice": "P3.S4", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-06-10T14:32:47+09:00", "type": "slice_status_changed", "slice": "P3.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-06-10T14:35:23+09:00", "type": "phase_reviewed", "phase": "P3", "verdict": "pass", "reviewer": "phase-reviewer"}
+{"ts": "2026-06-10T14:35:47+09:00", "type": "slice_status_changed", "slice": "P3.REVIEW", "old_status": "in_progress", "new_status": "done"}
