@@ -101,6 +101,16 @@ generated from the bootstrap so they match byte-for-byte. Facts for S4's smoke t
   file set now includes the 3 retrofit files (the only intended delta — S4 fresh-install regression should expect it).
 - No `settings.json`/`workflow.py` change. The skill body does **not** auto-commit.
 
+### S4 done — committed smoke test, all green (note for REVIEW)
+
+`tests/retrofit_smoke.sh` (non-managed) runs 31 checks across 6 tests — all PASS,
+exit 0: non-destructive retrofit (sha256), idempotent re-run, atomic abort on a
+foreign `workflow.py`, foreign-docs gate, fresh-install regression (ships the
+retrofit skill), and the dual-apply invariant (live `workflow.py` == embedded
+`WORKFLOW_PY`; live retrofit skill files == `COMMAND_SKILLS`). No CI wired (no
+`.github/`); runnable via `bash tests/retrofit_smoke.sh`. All three deliverables
+(guide, skill, verification) are complete and the phase constraints held.
+
 ## Constraints
 
 - Fresh-install (no-flag) path must stay byte-for-byte unchanged and still `validate`. Gate all new behavior behind `if RETROFIT:`.
