@@ -12,3 +12,4 @@
 {"ts": "2026-06-10T02:09:39+09:00", "type": "slice_status_changed", "slice": "P1.REVIEW", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-06-10T02:12:01+09:00", "type": "phase_reviewed", "phase": "P1", "verdict": "pass", "reviewer": "phase-reviewer"}
 {"ts": "2026-06-10T02:12:58+09:00", "type": "slice_status_changed", "slice": "P1.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-06-10T12:34:05+09:00", "type": "phase_created", "phase": "P2"}
