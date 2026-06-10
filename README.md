@@ -80,6 +80,26 @@ mkdir my-project && cd my-project
 curl -fsSL https://raw.githubusercontent.com/leetusik/bootstrap_agentic_workspace.sh/main/bootstrap_agentic_workspace.sh | sh -s -- .
 ```
 
+### Already have a project? Retrofit it
+
+The plain bootstrap is for an **empty** directory. To add the workspace to a repo
+that already has code, docs, or git history, use the **non-destructive retrofit**
+path — it only adds the workspace's files, skips anything you already have, and
+never clobbers your work:
+
+```sh
+# from the root of your existing repo
+sh /path/to/bootstrap_agentic_workspace.sh . --into-existing \
+  --name "My Project" --summary "One sentence." \
+  --phase-name "Adopt workspace + capture current state" \
+  --phase-objective "Install the workspace and decompose the first real change, building on the existing code."
+```
+
+or drive it with an agent via the `/retrofit` skill (`$retrofit` in Codex). See
+the **[Retrofit Guide](docs/retrofit-guide.md)** for the full procedure,
+collision policy, and how the first phase is seeded from your project's current
+state.
+
 ### Options
 
 | Option | Default | Purpose |
@@ -108,7 +128,9 @@ Both `--flag value` and `--flag=value` forms work.
 **Safety.** The script refuses to scaffold into a non-empty directory unless you pass
 `--force-empty-ok` (a few harmless files like `.git`, `README`, and `LICENSE` are tolerated), and
 it refuses to overwrite managed workflow files that already exist. It is safe to re-run only into a
-fresh workspace.
+fresh workspace. To add the workspace to a repo that *already* has content, use the
+non-destructive `--into-existing` retrofit instead — see the
+[Retrofit Guide](docs/retrofit-guide.md).
 
 ## How it works
 

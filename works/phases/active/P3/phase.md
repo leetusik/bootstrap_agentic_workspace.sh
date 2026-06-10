@@ -61,6 +61,23 @@ Order: guide → installer → skill → verify. Guide first because it is where
 
 **Membership gotchas.** Retrofit-only artifacts (`CLAUDE.workspace.md`, `AGENTS.workspace.md`) must **not** be added to `MANAGED_FILES` (else the fresh-install guard false-trips). The new `retrofit` skill's 3 files **must** be added to `MANAGED_DIRS`/`MANAGED_FILES` so fresh installs ship them (S4 fresh-install regression must re-bless this delta). Never write `.gitignore`; the guide tells adopters to add `__pycache__/` (created the moment `workflow.py` runs). Run the smoke test with `PYTHONDONTWRITEBYTECODE=1` and/or tolerate `__pycache__` in the "only-added" assertion.
 
+### S1 done — guide is the locked spec (note for S2/S3/S4)
+
+`docs/retrofit-guide.md` now specifies the retrofit behavior; **S2 must implement
+to it and S4 verifies against it.** Concrete contract points S2/S3 must match:
+- Flag is **`--into-existing`**. It prints a **summary** of created/skipped/merged
+  paths and per-subsystem installed-vs-skipped at the end.
+- Tier-4 abort message theme: "target already has scripts/workflow.py" → exit
+  non-zero, no writes. "already contains an agentic workspace" when `works/state.json` present.
+- Contract handling: keep their `CLAUDE.md`/`AGENTS.md`; append a block between
+  `<!-- BEGIN agentic-workspace -->` / `<!-- END agentic-workspace -->`; write the
+  full contract to sidecars **`CLAUDE.workspace.md`** / **`AGENTS.workspace.md`**.
+- `.claude/settings.json`: **union** workspace permission entries into existing
+  `permissions.allow`/`deny`; never touch `settings.local.json`.
+- Seed P1 via `--phase-name`/`--phase-objective`; the `/retrofit` skill (S3)
+  synthesizes them from README/manifest/language/HEAD.
+- Durable docs landed: `operations` v0002 (procedure) + `decisions` v0003 (the decision).
+
 ## Constraints
 
 - Fresh-install (no-flag) path must stay byte-for-byte unchanged and still `validate`. Gate all new behavior behind `if RETROFIT:`.

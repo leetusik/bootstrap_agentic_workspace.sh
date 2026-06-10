@@ -99,7 +99,7 @@
       ]
     },
     "operations": {
-      "latest": "v0001_bootstrap",
+      "latest": "v0002_adopting_the_workspace_into_an_existing_repo_retrofit_--into-existing_four-tier_collision_policy_seed_p1_from_state",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -109,6 +109,14 @@
           "source": "bootstrap",
           "summary": "Initial operations doc",
           "previous": null
+        },
+        {
+          "id": "v0002_adopting_the_workspace_into_an_existing_repo_retrofit_--into-existing_four-tier_collision_policy_seed_p1_from_state",
+          "path": "docs/versions/operations/v0002_adopting_the_workspace_into_an_existing_repo_retrofit_--into-existing_four-tier_collision_policy_seed_p1_from_state.md",
+          "created_at": "2026-06-10T14:09:08+09:00",
+          "source": "P3.S1",
+          "summary": "Adopting the workspace into an existing repo (retrofit): --into-existing, four-tier collision policy, seed P1 from state",
+          "previous": "v0001_bootstrap"
         }
       ]
     },
@@ -141,7 +149,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0002_archiving_workflow_manual_archiving_first-class_archive-phase_rotate-backlog",
+      "latest": "v0003_support_non-destructive_retrofit_into_existing_repos_via_--into-existing_extend_installer_additive_merges",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -159,9 +167,17 @@
           "source": "P2.S4",
           "summary": "Archiving workflow: manual archiving, first-class archive-phase, rotate-backlog",
           "previous": "v0001_bootstrap"
+        },
+        {
+          "id": "v0003_support_non-destructive_retrofit_into_existing_repos_via_--into-existing_extend_installer_additive_merges",
+          "path": "docs/versions/decisions/v0003_support_non-destructive_retrofit_into_existing_repos_via_--into-existing_extend_installer_additive_merges.md",
+          "created_at": "2026-06-10T14:09:08+09:00",
+          "source": "P3.S1",
+          "summary": "Support non-destructive retrofit into existing repos via --into-existing (extend installer, additive merges)",
+          "previous": "v0002_archiving_workflow_manual_archiving_first-class_archive-phase_rotate-backlog"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-06-10T13:04:35+09:00"
+  "last_rebuilt_at": "2026-06-10T14:10:15+09:00"
 }

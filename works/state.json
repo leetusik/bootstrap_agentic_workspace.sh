@@ -1,7 +1,7 @@
 {
   "current_phase": "P3",
-  "current_slice": "P3.S1",
-  "next_slice": "P3.S2",
+  "current_slice": "P3.S2",
+  "next_slice": "P3.S3",
   "mode": "phase",
-  "updated_at": "2026-06-10T14:05:58+09:00"
+  "updated_at": "2026-06-10T14:11:29+09:00"
 }
