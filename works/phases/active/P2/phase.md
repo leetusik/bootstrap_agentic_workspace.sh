@@ -85,6 +85,13 @@ After implementing `rotate-backlog` in live workflow.py:
 - **Phrasing to reuse in the contract (S3) for consistency:** "Archiving is a separate, manual step." The three ops: `archive-all` (full sweep, needs every phase done), `rotate-backlog` (partial — archive the done ones, leave the rest), `archive-phase <P>` (single review-passed phase).
 - Standing invariants to re-check after S3: `diff -rq` live skills == fresh bootstrap; `diff -q` live workflow.py == fresh bootstrap; `diff` CLAUDE.md vs AGENTS.md (only title + cross-ref line differ); `validate`.
 
+### S3 DONE — contract landed (note for S4/REVIEW)
+
+- `CLAUDE.md`, `AGENTS.md`, and the bootstrap `WORKFLOW_DOC` now describe archiving as a separate manual step with all three ops; Workflow Commands list includes `rotate-backlog`. The bootstrap P1 `phase.md` template line was updated for future workspaces.
+- **Decision:** live `works/phases/active/P1/phase.md` archiving lines (L68, L75) left unchanged — P1 is historical; its notebook records what P1 did and should not be rewritten.
+- **All standing invariants pass:** `CLAUDE.md` body ≡ `AGENTS.md` body; live `CLAUDE.md`/`AGENTS.md`/skills/`workflow.py` all == fresh bootstrap output; `validate` passes. The only remaining work is S4 (decisions doc) and the REVIEW.
+- For S4: `decisions.md` is an empty template; fill the Decision Log entry with this archiving-workflow decision (manual archiving; archive-all default; first-class archive-phase; new rotate-backlog) via `doc-new-version --doc decisions --source P2.S4`, then `rebuild-docs` + `validate`. Doc content versions are NOT embedded in the bootstrap, so S4 has no bootstrap twin.
+
 ### SEQUENCING CAUTION (important)
 
 P1 is currently `done`+`pass` and sits in `active/`. `rotate-backlog` and `archive-all` would archive P1 the moment they run. **Do NOT run a real `rotate-backlog`/`archive-all`/`archive-phase` during this phase** — it would archive P1 and disrupt the working tree mid-flight. Verify the new command non-destructively (help text, arg parsing, code review, embedded==live diff). Real archiving is an operator action for later. This phase only *adds and documents* the capability.

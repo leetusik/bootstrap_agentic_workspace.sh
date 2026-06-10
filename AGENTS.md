@@ -51,7 +51,7 @@ Do not read every historical slice or old doc version by default. Archived phase
 - `phase.md` is the phase notebook: the `DECOMP` slice seeds it (breakdown, findings, notes), and every slice reads it for accumulated context at start and appends durable cross-slice notes back to it when it finishes — so later slices build on what earlier ones learned.
 - Slice selection is by `order`; `depends_on` is advisory and only checked for existence by `validate`.
 - Deferred jobs never affect next-slice selection until promoted.
-- Record the phase review with `review-phase`. A passing review marks a phase `done` but does **not** archive it — the phase stays in `active/`. Archive only when every active phase is done (the last review slice is complete), then archive them all at once with `archive-all`. Archive whole phases only, never individual slices.
+- Record the phase review with `review-phase`. A passing review marks a phase `done` but does **not** archive it — the phase stays in `active/`. Archiving is a separate, manual step: `archive-all` once every active phase is done (the last review slice complete), `rotate-backlog` to archive just the done phases while others continue, or `archive-phase <P>` for a single review-passed phase. Archive whole phases only, never individual slices.
 
 ## IDs and Status
 
@@ -74,7 +74,7 @@ Use `python3 scripts/workflow.py <command>`:
 - `doc-new-version --doc frontend --summary "..." --source P1.S1` / `docs` / `rebuild-docs`
 - `deferred` / `defer-job --title "..." --reason "..." --trigger "..." --source P1.S1`
 - `promote-deferred D1 --phase P1 --slice P1.S2 --name "..."` / `drop-deferred D1 --reason "..."`
-- `archive-all` (batch-archive every active phase once all are done) / `archive-phase P1` (manual single-phase escape hatch)
+- `archive-all` (batch-archive every active phase once all are done) / `rotate-backlog` (archive just the done phases, leave the rest) / `archive-phase P1` (archive a single review-passed phase)
 - `rebuild` / `validate`
 
 ## Commit Convention
