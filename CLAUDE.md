@@ -50,13 +50,14 @@ Do not read every historical slice or old doc version by default. Archived phase
 - Each slice owns exactly two context files: `plan.md` (the slice fills its **own** plan when it runs, before implementing; record any operator note passed with `do-next-slice`/`do-whole-phase` verbatim under `## Operator Input (verbatim)`) and `result.md` (write when done). A slice never pre-fills another slice's `plan.md`. There are no per-slice brief or review files.
 - `phase.md` is the phase notebook: the `DECOMP` slice seeds it (breakdown, findings, notes), and every slice reads it for accumulated context at start and appends durable cross-slice notes back to it when it finishes — so later slices build on what earlier ones learned.
 - Slice selection is by `order`; `depends_on` is advisory and only checked for existence by `validate`.
+- Operator co-work (`pending`, shown `[~]`): when a slice or phase needs the operator — to validate something, or to run an action only the operator can perform — set it `pending` (`set-slice-status <id> pending` or `set-phase-status <P> pending`), report exactly what you need, and STOP. A `pending` item halts selection: `next` prints `WAITING ON OPERATOR`, and neither `do-next-slice` nor `do-whole-phase` may start, finish, or advance past it. Work resumes only after the operator approves — they (or you, on their explicit say-so) clear it with `set-slice-status <id> in_progress` (or `set-phase-status <P> in_progress`). `pending` means "waiting on the operator" and is distinct from `blocked` (an impediment or unmet dependency you cannot resolve yourself).
 - Deferred jobs never affect next-slice selection until promoted.
 - Record the phase review with `review-phase`. A passing review marks a phase `done` but does **not** archive it — the phase stays in `active/`. Archiving is a separate, manual step: `archive-all` once every active phase is done (the last review slice complete), `rotate-backlog` to archive just the done phases while others continue, or `archive-phase <P>` for a single review-passed phase. Archive whole phases only, never individual slices.
 
 ## IDs and Status
 
-- Phase IDs: `P1`, `P2`, ... with status `planned | in_progress | in_review | blocked | done`
-- Slice IDs: `P1.DECOMP`, `P1.S1`, `P1.F1`, `P1.REVIEW`, ... with status `todo | in_progress | in_review | changes_requested | blocked | done`
+- Phase IDs: `P1`, `P2`, ... with status `planned | in_progress | in_review | pending | blocked | done`
+- Slice IDs: `P1.DECOMP`, `P1.S1`, `P1.F1`, `P1.REVIEW`, ... with status `todo | in_progress | in_review | changes_requested | pending | blocked | done`
 - Deferred IDs: `D1`, `D2`, ... with status `deferred | ready | promoted | done | dropped`
 - Doc versions: `v0001_bootstrap.md`, `v0002_<slug>.md`, ...
 - Phase review verdicts: `pass | changes_requested | blocked`
@@ -70,6 +71,7 @@ Use `python3 scripts/workflow.py <command>`:
 - `new-slice --phase P1 --slice P1.S1 --name "..."` (`--kind`, `--risk`, `--order`, `--depends-on`)
 - `start-slice P1.S1` / `finish-slice P1.S1` / `set-slice-status P1.S1 <status>`
 - `set-phase-status P1 <status>`
+- `set-slice-status P1.S1 pending` / `set-phase-status P1 pending` — hand off for operator co-work (validation or operator-run action); clear with `... in_progress` after approval
 - `review-phase P1 --verdict pass|changes_requested|blocked [--reviewer NAME] [--note "..."]`
 - `doc-new-version --doc frontend --summary "..." --source P1.S1` / `docs` / `rebuild-docs`
 - `deferred` / `defer-job --title "..." --reason "..." --trigger "..." --source P1.S1`

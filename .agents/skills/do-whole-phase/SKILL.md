@@ -9,6 +9,7 @@ Read `AGENTS.md` and the phase's `phase.md`, run `python3 scripts/workflow.py ne
 
 Rules:
 
+- If a slice or the phase is `pending` (shown `[~]`; `next` prints `WAITING ON OPERATOR`), STOP the loop: it needs operator co-work (validation or an operator-run action). Report what you need and do not start, finish, or advance past it. Resume only after the operator clears `pending` back to `in_progress`. If you hit such a point mid-slice, set it `pending` with `set-slice-status <slice_id> pending` and STOP.
 - Re-read `works/state.json`, `works/backlog.md`, and the phase's `phase.md` after each slice.
 - For each slice, fill its **own** `plan.md` before implementing (pull context from `phase.md`); if the operator passed a note with the command, record it verbatim under a `## Operator Input (verbatim)` heading in that slice's `plan.md`. Never pre-fill another slice's `plan.md`.
 - When the slice is a decomposition (`kind: decomposition`), create the middle slices with `new-slice` (folders only — do not pre-fill their `plan.md`) and record the breakdown, findings, and notes in `phase.md`.

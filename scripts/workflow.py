@@ -21,8 +21,8 @@ DEFERRED_OPEN = WORKS / "deferred" / "open"
 DEFERRED_PROMOTED = WORKS / "deferred" / "promoted"
 DEFERRED_DROPPED = WORKS / "deferred" / "dropped"
 DOC_TYPES = {"product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"}
-PHASE_STATUSES = {"planned", "in_progress", "in_review", "blocked", "done"}
-SLICE_STATUSES = {"todo", "in_progress", "in_review", "changes_requested", "blocked", "done"}
+PHASE_STATUSES = {"planned", "in_progress", "in_review", "pending", "blocked", "done"}
+SLICE_STATUSES = {"todo", "in_progress", "in_review", "changes_requested", "pending", "blocked", "done"}
 DEFERRED_STATUSES = {"deferred", "ready", "promoted", "done", "dropped"}
 REVIEW_VERDICTS = {"pass", "changes_requested", "blocked"}
 
@@ -238,6 +238,11 @@ def clean_cell(value: object) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
 
 
+def status_box(status: object) -> str:
+    """Dashboard checkbox glyph: done -> x, pending (waiting on operator) -> ~, else blank."""
+    return "x" if status == "done" else "~" if status == "pending" else " "
+
+
 def rebuild_deferred_dashboard(groups=None, rebuilt_at=None) -> None:
     groups = groups or deferred_jobs()
     rebuilt_at = rebuilt_at or now_iso()
@@ -273,7 +278,7 @@ def resolve_current(phases: list) -> tuple:
         if phase.get("status") == "done":
             continue
         current_phase = phase["id"]
-        if phase.get("status") == "blocked":
+        if phase.get("status") in ("blocked", "pending"):
             return current_phase, None, None
         open_slices = [s for s in phase["slices"] if s.get("status") != "done"]
         if open_slices:
@@ -282,9 +287,26 @@ def resolve_current(phases: list) -> tuple:
     return None, None, None
 
 
+def operator_wait_target(phases: list, current_phase, current_slice):
+    """The phase or slice id awaiting operator co-work (status `pending`), else None.
+    `pending` means the operator must validate or run something; selection halts
+    until it is cleared back to `in_progress`. Distinct from `blocked`."""
+    for phase in phases:
+        if phase["id"] != current_phase:
+            continue
+        if phase.get("status") == "pending":
+            return phase["id"]
+        cur = next((s for s in phase["slices"] if s["id"] == current_slice), None)
+        if cur and cur.get("status") == "pending":
+            return current_slice
+        break
+    return None
+
+
 def rebuild_index_and_state() -> None:
     phases = all_active_phases()
     current_phase, current_slice, next_slice = resolve_current(phases)
+    waiting_on = operator_wait_target(phases, current_phase, current_slice)
     deferred = deferred_jobs()
     rebuilt_at = now_iso()
     index = {
@@ -304,7 +326,8 @@ def rebuild_index_and_state() -> None:
         "last_rebuilt_at": rebuilt_at,
     }
     write_json(WORKS / "index.json", index)
-    state = {"current_phase": current_phase, "current_slice": current_slice, "next_slice": next_slice, "mode": "phase" if current_phase else "idle", "updated_at": rebuilt_at}
+    mode = "waiting" if waiting_on else ("phase" if current_phase else "idle")
+    state = {"current_phase": current_phase, "current_slice": current_slice, "next_slice": next_slice, "waiting_on_operator": waiting_on, "mode": mode, "updated_at": rebuilt_at}
     write_json(WORKS / "state.json", state)
     rebuild_backlog(phases, state, index)
     rebuild_deferred_dashboard(deferred, rebuilt_at)
@@ -312,11 +335,13 @@ def rebuild_index_and_state() -> None:
 
 def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
     lines = [
-        "# Backlog", "", "> Generated dashboard. Do not put detailed task context here; edit phase/slice/deferred folders instead.", "",
+        "# Backlog", "", "> Generated dashboard. Do not put detailed task context here; edit phase/slice/deferred folders instead.",
+        "> Status box: `[x]` done · `[~]` pending — waiting on operator · `[ ]` open/in progress.", "",
         "## Pointer", "",
         f"- Current phase: `{state.get('current_phase') or 'none'}`",
         f"- Current slice: `{state.get('current_slice') or 'none'}`",
         f"- Next slice: `{state.get('next_slice') or 'none'}`",
+        f"- Waiting on operator: `{state.get('waiting_on_operator') or 'none'}`",
         f"- Open deferred jobs: `{index.get('deferred_open_count', 0)}`",
         f"- Rebuilt at: `{index.get('last_rebuilt_at')}`", "",
         "## Active Phases", "", "| Phase | Status | Review | Objective | Current Slice | Path |", "|---|---|---|---|---|---|",
@@ -327,11 +352,11 @@ def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
         current = next((s["id"] for s in p["slices"] if s.get("status") != "done"), "none")
         objective = clean_cell(p.get("objective", ""))
         review = clean_cell(p.get("review", {}).get("status"))
-        lines.append(f"| `{p['id']}` | `{p['status']}` | `{review}` | {objective} | `{current}` | `{p['path']}` |")
+        lines.append(f"| [{status_box(p['status'])}] `{p['id']}` | `{p['status']}` | `{review}` | {objective} | `{current}` | `{p['path']}` |")
     for p in phases:
         lines.extend(["", f"## Phase {p['id']}: {p['name']}", "", "| Slice | Status | Name | Kind | Path |", "|---|---|---|---|---|"])
         for s in p["slices"]:
-            checkbox = "x" if s.get("status") == "done" else " "
+            checkbox = status_box(s.get("status"))
             name = clean_cell(s.get("name", ""))
             lines.append(f"| [{checkbox}] `{s['id']}` | `{s['status']}` | {name} | `{clean_cell(s.get('kind', ''))}` | `{s['path']}` |")
     lines.append("")
@@ -554,6 +579,16 @@ def review_phase(args: argparse.Namespace) -> None:
 def cmd_next(args: argparse.Namespace) -> None:
     rebuild_index_and_state()
     state = read_json(WORKS / "state.json")
+    waiting = state.get("waiting_on_operator")
+    if waiting:
+        kind = "slice" if "." in waiting else "phase"
+        clear = f"set-slice-status {waiting} in_progress" if kind == "slice" else f"set-phase-status {waiting} in_progress"
+        print(f"current_phase={state.get('current_phase')}")
+        print(f"waiting_on_operator={waiting}")
+        print(f"WAITING ON OPERATOR: {kind} {waiting} is pending [~] -- operator co-work needed (validation or an operator-run action).")
+        print("Do not start, finish, or advance past it. Report what you need, then wait for the operator.")
+        print(f"After the operator approves, clear it: python3 scripts/workflow.py {clear}")
+        return
     current_slice = state.get("current_slice")
     if not current_slice:
         if state.get("current_phase"):

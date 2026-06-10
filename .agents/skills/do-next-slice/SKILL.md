@@ -7,11 +7,13 @@ description: Continue the active phase by completing exactly one slice, then sto
 
 Run `python3 scripts/workflow.py next`, then read `AGENTS.md` (or `CLAUDE.md`), `docs/current/*.md` as needed, `docs/index.json`, `works/state.json`, `works/backlog.md`, the selected slice folder, and the phase's `phase.md` (the phase notebook — accumulated decomposition, findings, and cross-slice notes).
 
+If `next` prints `WAITING ON OPERATOR` (the current slice or phase is `pending`, shown `[~]`), STOP: the work is waiting on operator co-work. Report what is needed and do not start, finish, or advance it. Resume only after the operator approves and clears the `pending` status back to `in_progress`.
+
 Work exactly one slice:
 
 1. If the selected slice is `todo`, run `python3 scripts/workflow.py start-slice <slice_id>`.
 2. Fill this slice's own `plan.md` before implementing — Goal, Scope, Milestones, and Validation are required, not optional; pull relevant context from `phase.md`. If the operator passed any note or extra instructions with the command, record it verbatim in `plan.md` under a `## Operator Input (verbatim)` heading. Never pre-fill another slice's `plan.md`.
-3. Implement the slice.
+3. Implement the slice. If you hit a point that needs operator co-work — validation, or an action only the operator can run — set the slice `pending` (`python3 scripts/workflow.py set-slice-status <slice_id> pending`), record exactly what you need in `result.md`, and STOP without finishing the slice. The operator clears it back to `in_progress` when ready.
 4. For durable doc changes, run `python3 scripts/workflow.py doc-new-version --doc <doc> --summary "..." --source <slice_id>`, edit only the returned `edit_path`, then run `python3 scripts/workflow.py rebuild-docs`.
 5. Record validation commands, created doc versions, and outcome in `result.md`, and append any durable cross-slice notes (decisions, findings, gotchas) to the phase's `phase.md` so later slices can build on them.
 6. Mark the slice done with `python3 scripts/workflow.py finish-slice <slice_id>` only when complete.

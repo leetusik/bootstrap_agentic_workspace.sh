@@ -143,11 +143,13 @@ COMMAND_SKILLS = [
         "tools": "Bash(python3 scripts/workflow.py:*), Read, Edit, Write, Glob, Grep, Bash",
         "body": """Run `python3 scripts/workflow.py next`, then read `AGENTS.md` (or `CLAUDE.md`), `docs/current/*.md` as needed, `docs/index.json`, `works/state.json`, `works/backlog.md`, the selected slice folder, and the phase's `phase.md` (the phase notebook — accumulated decomposition, findings, and cross-slice notes).
 
+If `next` prints `WAITING ON OPERATOR` (the current slice or phase is `pending`, shown `[~]`), STOP: the work is waiting on operator co-work. Report what is needed and do not start, finish, or advance it. Resume only after the operator approves and clears the `pending` status back to `in_progress`.
+
 Work exactly one slice:
 
 1. If the selected slice is `todo`, run `python3 scripts/workflow.py start-slice <slice_id>`.
 2. Fill this slice's own `plan.md` before implementing — Goal, Scope, Milestones, and Validation are required, not optional; pull relevant context from `phase.md`. If the operator passed any note or extra instructions with the command, record it verbatim in `plan.md` under a `## Operator Input (verbatim)` heading. Never pre-fill another slice's `plan.md`.
-3. Implement the slice.
+3. Implement the slice. If you hit a point that needs operator co-work — validation, or an action only the operator can run — set the slice `pending` (`python3 scripts/workflow.py set-slice-status <slice_id> pending`), record exactly what you need in `result.md`, and STOP without finishing the slice. The operator clears it back to `in_progress` when ready.
 4. For durable doc changes, run `python3 scripts/workflow.py doc-new-version --doc <doc> --summary "..." --source <slice_id>`, edit only the returned `edit_path`, then run `python3 scripts/workflow.py rebuild-docs`.
 5. Record validation commands, created doc versions, and outcome in `result.md`, and append any durable cross-slice notes (decisions, findings, gotchas) to the phase's `phase.md` so later slices can build on them.
 6. Mark the slice done with `python3 scripts/workflow.py finish-slice <slice_id>` only when complete.
@@ -178,6 +180,7 @@ Stop after one slice. Do not advance to the next slice in the same turn.
 
 Rules:
 
+- If a slice or the phase is `pending` (shown `[~]`; `next` prints `WAITING ON OPERATOR`), STOP the loop: it needs operator co-work (validation or an operator-run action). Report what you need and do not start, finish, or advance past it. Resume only after the operator clears `pending` back to `in_progress`. If you hit such a point mid-slice, set it `pending` with `set-slice-status <slice_id> pending` and STOP.
 - Re-read `works/state.json`, `works/backlog.md`, and the phase's `phase.md` after each slice.
 - For each slice, fill its **own** `plan.md` before implementing (pull context from `phase.md`); if the operator passed a note with the command, record it verbatim under a `## Operator Input (verbatim)` heading in that slice's `plan.md`. Never pre-fill another slice's `plan.md`.
 - When the slice is a decomposition (`kind: decomposition`), create the middle slices with `new-slice` (folders only — do not pre-fill their `plan.md`) and record the breakdown, findings, and notes in `phase.md`.
@@ -631,13 +634,14 @@ Do not read every historical slice or old doc version by default. Archived phase
 - Each slice owns exactly two context files: `plan.md` (the slice fills its **own** plan when it runs, before implementing; record any operator note passed with `do-next-slice`/`do-whole-phase` verbatim under `## Operator Input (verbatim)`) and `result.md` (write when done). A slice never pre-fills another slice's `plan.md`. There are no per-slice brief or review files.
 - `phase.md` is the phase notebook: the `DECOMP` slice seeds it (breakdown, findings, notes), and every slice reads it for accumulated context at start and appends durable cross-slice notes back to it when it finishes — so later slices build on what earlier ones learned.
 - Slice selection is by `order`; `depends_on` is advisory and only checked for existence by `validate`.
+- Operator co-work (`pending`, shown `[~]`): when a slice or phase needs the operator — to validate something, or to run an action only the operator can perform — set it `pending` (`set-slice-status <id> pending` or `set-phase-status <P> pending`), report exactly what you need, and STOP. A `pending` item halts selection: `next` prints `WAITING ON OPERATOR`, and neither `do-next-slice` nor `do-whole-phase` may start, finish, or advance past it. Work resumes only after the operator approves — they (or you, on their explicit say-so) clear it with `set-slice-status <id> in_progress` (or `set-phase-status <P> in_progress`). `pending` means "waiting on the operator" and is distinct from `blocked` (an impediment or unmet dependency you cannot resolve yourself).
 - Deferred jobs never affect next-slice selection until promoted.
 - Record the phase review with `review-phase`. A passing review marks a phase `done` but does **not** archive it — the phase stays in `active/`. Archiving is a separate, manual step: `archive-all` once every active phase is done (the last review slice complete), `rotate-backlog` to archive just the done phases while others continue, or `archive-phase <P>` for a single review-passed phase. Archive whole phases only, never individual slices.
 
 ## IDs and Status
 
-- Phase IDs: `P1`, `P2`, ... with status `planned | in_progress | in_review | blocked | done`
-- Slice IDs: `P1.DECOMP`, `P1.S1`, `P1.F1`, `P1.REVIEW`, ... with status `todo | in_progress | in_review | changes_requested | blocked | done`
+- Phase IDs: `P1`, `P2`, ... with status `planned | in_progress | in_review | pending | blocked | done`
+- Slice IDs: `P1.DECOMP`, `P1.S1`, `P1.F1`, `P1.REVIEW`, ... with status `todo | in_progress | in_review | changes_requested | pending | blocked | done`
 - Deferred IDs: `D1`, `D2`, ... with status `deferred | ready | promoted | done | dropped`
 - Doc versions: `v0001_bootstrap.md`, `v0002_<slug>.md`, ...
 - Phase review verdicts: `pass | changes_requested | blocked`
@@ -651,6 +655,7 @@ Use `python3 scripts/workflow.py <command>`:
 - `new-slice --phase P1 --slice P1.S1 --name "..."` (`--kind`, `--risk`, `--order`, `--depends-on`)
 - `start-slice P1.S1` / `finish-slice P1.S1` / `set-slice-status P1.S1 <status>`
 - `set-phase-status P1 <status>`
+- `set-slice-status P1.S1 pending` / `set-phase-status P1 pending` — hand off for operator co-work (validation or operator-run action); clear with `... in_progress` after approval
 - `review-phase P1 --verdict pass|changes_requested|blocked [--reviewer NAME] [--note "..."]`
 - `doc-new-version --doc frontend --summary "..." --source P1.S1` / `docs` / `rebuild-docs`
 - `deferred` / `defer-job --title "..." --reason "..." --trigger "..." --source P1.S1`
@@ -1319,8 +1324,8 @@ DEFERRED_OPEN = WORKS / "deferred" / "open"
 DEFERRED_PROMOTED = WORKS / "deferred" / "promoted"
 DEFERRED_DROPPED = WORKS / "deferred" / "dropped"
 DOC_TYPES = {"product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"}
-PHASE_STATUSES = {"planned", "in_progress", "in_review", "blocked", "done"}
-SLICE_STATUSES = {"todo", "in_progress", "in_review", "changes_requested", "blocked", "done"}
+PHASE_STATUSES = {"planned", "in_progress", "in_review", "pending", "blocked", "done"}
+SLICE_STATUSES = {"todo", "in_progress", "in_review", "changes_requested", "pending", "blocked", "done"}
 DEFERRED_STATUSES = {"deferred", "ready", "promoted", "done", "dropped"}
 REVIEW_VERDICTS = {"pass", "changes_requested", "blocked"}
 
@@ -1536,6 +1541,11 @@ def clean_cell(value: object) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
 
 
+def status_box(status: object) -> str:
+    """Dashboard checkbox glyph: done -> x, pending (waiting on operator) -> ~, else blank."""
+    return "x" if status == "done" else "~" if status == "pending" else " "
+
+
 def rebuild_deferred_dashboard(groups=None, rebuilt_at=None) -> None:
     groups = groups or deferred_jobs()
     rebuilt_at = rebuilt_at or now_iso()
@@ -1571,7 +1581,7 @@ def resolve_current(phases: list) -> tuple:
         if phase.get("status") == "done":
             continue
         current_phase = phase["id"]
-        if phase.get("status") == "blocked":
+        if phase.get("status") in ("blocked", "pending"):
             return current_phase, None, None
         open_slices = [s for s in phase["slices"] if s.get("status") != "done"]
         if open_slices:
@@ -1580,9 +1590,26 @@ def resolve_current(phases: list) -> tuple:
     return None, None, None
 
 
+def operator_wait_target(phases: list, current_phase, current_slice):
+    """The phase or slice id awaiting operator co-work (status `pending`), else None.
+    `pending` means the operator must validate or run something; selection halts
+    until it is cleared back to `in_progress`. Distinct from `blocked`."""
+    for phase in phases:
+        if phase["id"] != current_phase:
+            continue
+        if phase.get("status") == "pending":
+            return phase["id"]
+        cur = next((s for s in phase["slices"] if s["id"] == current_slice), None)
+        if cur and cur.get("status") == "pending":
+            return current_slice
+        break
+    return None
+
+
 def rebuild_index_and_state() -> None:
     phases = all_active_phases()
     current_phase, current_slice, next_slice = resolve_current(phases)
+    waiting_on = operator_wait_target(phases, current_phase, current_slice)
     deferred = deferred_jobs()
     rebuilt_at = now_iso()
     index = {
@@ -1602,7 +1629,8 @@ def rebuild_index_and_state() -> None:
         "last_rebuilt_at": rebuilt_at,
     }
     write_json(WORKS / "index.json", index)
-    state = {"current_phase": current_phase, "current_slice": current_slice, "next_slice": next_slice, "mode": "phase" if current_phase else "idle", "updated_at": rebuilt_at}
+    mode = "waiting" if waiting_on else ("phase" if current_phase else "idle")
+    state = {"current_phase": current_phase, "current_slice": current_slice, "next_slice": next_slice, "waiting_on_operator": waiting_on, "mode": mode, "updated_at": rebuilt_at}
     write_json(WORKS / "state.json", state)
     rebuild_backlog(phases, state, index)
     rebuild_deferred_dashboard(deferred, rebuilt_at)
@@ -1610,11 +1638,13 @@ def rebuild_index_and_state() -> None:
 
 def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
     lines = [
-        "# Backlog", "", "> Generated dashboard. Do not put detailed task context here; edit phase/slice/deferred folders instead.", "",
+        "# Backlog", "", "> Generated dashboard. Do not put detailed task context here; edit phase/slice/deferred folders instead.",
+        "> Status box: `[x]` done · `[~]` pending — waiting on operator · `[ ]` open/in progress.", "",
         "## Pointer", "",
         f"- Current phase: `{state.get('current_phase') or 'none'}`",
         f"- Current slice: `{state.get('current_slice') or 'none'}`",
         f"- Next slice: `{state.get('next_slice') or 'none'}`",
+        f"- Waiting on operator: `{state.get('waiting_on_operator') or 'none'}`",
         f"- Open deferred jobs: `{index.get('deferred_open_count', 0)}`",
         f"- Rebuilt at: `{index.get('last_rebuilt_at')}`", "",
         "## Active Phases", "", "| Phase | Status | Review | Objective | Current Slice | Path |", "|---|---|---|---|---|---|",
@@ -1625,11 +1655,11 @@ def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
         current = next((s["id"] for s in p["slices"] if s.get("status") != "done"), "none")
         objective = clean_cell(p.get("objective", ""))
         review = clean_cell(p.get("review", {}).get("status"))
-        lines.append(f"| `{p['id']}` | `{p['status']}` | `{review}` | {objective} | `{current}` | `{p['path']}` |")
+        lines.append(f"| [{status_box(p['status'])}] `{p['id']}` | `{p['status']}` | `{review}` | {objective} | `{current}` | `{p['path']}` |")
     for p in phases:
         lines.extend(["", f"## Phase {p['id']}: {p['name']}", "", "| Slice | Status | Name | Kind | Path |", "|---|---|---|---|---|"])
         for s in p["slices"]:
-            checkbox = "x" if s.get("status") == "done" else " "
+            checkbox = status_box(s.get("status"))
             name = clean_cell(s.get("name", ""))
             lines.append(f"| [{checkbox}] `{s['id']}` | `{s['status']}` | {name} | `{clean_cell(s.get('kind', ''))}` | `{s['path']}` |")
     lines.append("")
@@ -1852,6 +1882,16 @@ def review_phase(args: argparse.Namespace) -> None:
 def cmd_next(args: argparse.Namespace) -> None:
     rebuild_index_and_state()
     state = read_json(WORKS / "state.json")
+    waiting = state.get("waiting_on_operator")
+    if waiting:
+        kind = "slice" if "." in waiting else "phase"
+        clear = f"set-slice-status {waiting} in_progress" if kind == "slice" else f"set-phase-status {waiting} in_progress"
+        print(f"current_phase={state.get('current_phase')}")
+        print(f"waiting_on_operator={waiting}")
+        print(f"WAITING ON OPERATOR: {kind} {waiting} is pending [~] -- operator co-work needed (validation or an operator-run action).")
+        print("Do not start, finish, or advance past it. Report what you need, then wait for the operator.")
+        print(f"After the operator approves, clear it: python3 scripts/workflow.py {clear}")
+        return
     current_slice = state.get("current_slice")
     if not current_slice:
         if state.get("current_phase"):
