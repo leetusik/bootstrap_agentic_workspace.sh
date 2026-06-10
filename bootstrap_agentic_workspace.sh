@@ -12,6 +12,7 @@ Options:
   --phase-name NAME           Optional initial P1 phase name override
   --phase-objective TEXT      Optional initial P1 phase objective override
   --force-empty-ok            Allow bootstrapping into a repo with extra non-managed files
+  --into-existing             Non-destructively retrofit into an existing repo (see docs/retrofit-guide.md)
   -h, --help                  Show this help
 
 TARGET_DIR defaults to the current directory.
@@ -46,6 +47,7 @@ project_summary=
 phase_name=
 phase_objective=
 force_empty_ok=0
+into_existing=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -59,6 +61,7 @@ while [ $# -gt 0 ]; do
     --phase-objective) need_value "$1" "${2-}"; phase_objective=$2; shift 2 ;;
     --phase-objective=*) phase_objective=${1#--phase-objective=}; [ -n "$phase_objective" ] || die "--phase-objective requires a non-empty value"; shift ;;
     --force-empty-ok) force_empty_ok=1; shift ;;
+    --into-existing) into_existing=1; shift ;;
     --) shift; while [ $# -gt 0 ]; do [ -z "$target_dir" ] || die "only one TARGET_DIR may be provided"; target_dir=$1; shift; done ;;
     -*) die "unknown option $1" ;;
     *) [ -z "$target_dir" ] || die "only one TARGET_DIR may be provided"; target_dir=$1; shift ;;
@@ -82,6 +85,7 @@ export PROJECT_SUMMARY="$project_summary"
 export PHASE_NAME="$phase_name"
 export PHASE_OBJECTIVE="$phase_objective"
 export FORCE_EMPTY_OK="$force_empty_ok"
+export INTO_EXISTING="$into_existing"
 
 python3 - <<'PY'
 from __future__ import annotations
@@ -105,6 +109,11 @@ PROJECT_SUMMARY = os.environ["PROJECT_SUMMARY"]
 PHASE_NAME = os.environ["PHASE_NAME"]
 PHASE_OBJECTIVE = os.environ["PHASE_OBJECTIVE"]
 FORCE_EMPTY_OK = os.environ.get("FORCE_EMPTY_OK") == "1"
+# Retrofit: non-destructively add the workspace to an EXISTING repo. Gated
+# strictly behind --into-existing; the fresh-install path is unchanged.
+RETROFIT = os.environ.get("INTO_EXISTING") == "1"
+INSTALL_DOCS = True  # recomputed in the guards for retrofit (skip if target already has docs/)
+RETROFIT_SUMMARY = {"created": [], "skipped": [], "merged": []}
 ROOT = TARGET.resolve()
 
 DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
@@ -372,8 +381,7 @@ def slugify(value: str, fallback: str = "item") -> str:
     return slug or fallback
 
 
-def write_text(path, text: str, executable: bool = False) -> None:
-    p = ROOT / path
+def _atomic_write(p, text: str, executable: bool = False) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     # Atomic write: temp file in the same dir, then replace.
     fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=".tmp_", suffix=p.name)
@@ -392,6 +400,85 @@ def write_text(path, text: str, executable: bool = False) -> None:
         raise
 
 
+# ---- Retrofit (--into-existing) write policy --------------------------------
+# In retrofit mode the workspace is added non-destructively: an existing file is
+# never overwritten. A small, known set is additively, idempotently merged.
+def _merge_settings_json(text: str) -> None:
+    """Union our permission entries into an existing .claude/settings.json,
+    preserving every key the target already has. Idempotent."""
+    p = ROOT / ".claude/settings.json"
+    ours = json.loads(text)
+    try:
+        theirs = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(theirs, dict):
+            raise ValueError("settings.json is not a JSON object")
+    except Exception:
+        # Never clobber an unparseable file — drop a sidecar instead.
+        _atomic_write(ROOT / ".claude/settings.workspace.json", text)
+        RETROFIT_SUMMARY["skipped"].append(".claude/settings.json (unparseable; wrote .claude/settings.workspace.json)")
+        return
+    perms = theirs.setdefault("permissions", {})
+    for key in ("allow", "deny"):
+        current = perms.get(key) or []
+        additions = (ours.get("permissions") or {}).get(key) or []
+        perms[key] = list(current) + [x for x in additions if x not in current]
+    _atomic_write(p, json.dumps(theirs, ensure_ascii=False, indent=2) + "\n")
+    RETROFIT_SUMMARY["merged"].append(".claude/settings.json")
+
+
+def _merge_contract(path: str, full_text: str) -> None:
+    """Keep the target's existing CLAUDE.md/AGENTS.md; write the full workspace
+    contract to a *.workspace.md sidecar and append a marked, idempotent pointer
+    block (re-running replaces just the marked block, never duplicates)."""
+    p = ROOT / path
+    sidecar = path[:-3] + ".workspace.md"  # CLAUDE.md -> CLAUDE.workspace.md
+    _atomic_write(ROOT / sidecar, full_text)
+    begin, end = "<!-- BEGIN agentic-workspace -->", "<!-- END agentic-workspace -->"
+    block = (
+        f"{begin}\n"
+        f"> This repo uses the agentic workspace (`scripts/workflow.py` + skills under `.claude/`/`.agents/`).\n"
+        f"> Full operating contract: [`{sidecar}`]({sidecar}) — reconcile it with this file's own rules as needed.\n"
+        f"{end}"
+    )
+    existing = p.read_text(encoding="utf-8")
+    if begin in existing and end in existing:
+        i = existing.index(begin)
+        j = existing.index(end) + len(end)
+        new = existing[:i] + block + existing[j:]
+    else:
+        sep = "" if existing.endswith("\n") else "\n"
+        new = existing + sep + "\n" + block + "\n"
+    _atomic_write(p, new)
+    RETROFIT_SUMMARY["merged"].append(path)
+    RETROFIT_SUMMARY["created"].append(sidecar)
+
+
+def _retrofit_handle(path: str, text: str) -> bool:
+    """Return True if retrofit policy fully handled this write (kept theirs or
+    merged); False to proceed with a normal create."""
+    if not (ROOT / path).exists():
+        return False  # absent -> create normally
+    if path == ".claude/settings.json":
+        _merge_settings_json(text)
+        return True
+    if path in ("CLAUDE.md", "AGENTS.md"):
+        _merge_contract(path, text)
+        return True
+    RETROFIT_SUMMARY["skipped"].append(path)  # keep theirs
+    return True
+
+
+def write_text(path, text: str, executable: bool = False) -> None:
+    if RETROFIT:
+        if not INSTALL_DOCS and (path == "docs" or path.startswith("docs/")):
+            return  # target already has a docs/ system — don't scaffold ours
+        if _retrofit_handle(path, text):
+            return
+    _atomic_write(ROOT / path, text, executable)
+    if RETROFIT:
+        RETROFIT_SUMMARY["created"].append(path)
+
+
 def write_json(path, data) -> None:
     write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
 
@@ -403,25 +490,58 @@ for rel in MANAGED_DIRS:
     if p.exists() and not p.is_dir():
         sys.exit(f"Error: managed directory path exists but is not a directory: {rel}")
 
-conflicts = [rel for rel in MANAGED_FILES if (ROOT / rel).exists()]
-if conflicts:
-    print("Error: target already contains managed workflow files:", file=sys.stderr)
-    for rel in conflicts:
-        print(f"  - {rel}", file=sys.stderr)
-    print("Refusing to overwrite. Use this bootstrap only for a fresh agentic workspace.", file=sys.stderr)
-    sys.exit(1)
-
-if not FORCE_EMPTY_OK:
-    extra = sorted(p.name for p in ROOT.iterdir() if p.name not in EMPTY_OK_ALLOWLIST)
-    if extra:
-        print("Error: target is not empty (beyond common repo metadata).", file=sys.stderr)
-        print("Unexpected entries:", file=sys.stderr)
-        for name in extra:
-            print(f"  - {name}", file=sys.stderr)
-        print("Re-run with --force-empty-ok if these are intentional and no managed files conflict.", file=sys.stderr)
+if RETROFIT:
+    # PLAN pass: classify before writing anything, and abort up front on a
+    # load-bearing collision so a retrofit can never half-install.
+    # Idempotent: a repo that already has the workspace is a clean no-op. Check
+    # this BEFORE the workflow.py guard so re-running --into-existing (which sees
+    # the workflow.py we installed) exits cleanly instead of aborting.
+    works_present = (ROOT / "works/state.json").exists() or any(
+        (ROOT / "works/phases/active").glob("*/phase.json")
+    )
+    if works_present:
+        print("This repo already contains an agentic workspace (works/ present) — nothing to retrofit.")
+        print("Drive it directly with python3 scripts/workflow.py.")
+        sys.exit(0)
+    # A foreign scripts/workflow.py would break the runtime — abort before writing.
+    if (ROOT / "scripts/workflow.py").exists():
+        print("Error: target already has scripts/workflow.py.", file=sys.stderr)
+        print("The workspace runtime shells out to it, so it cannot be installed over a", file=sys.stderr)
+        print("foreign copy. Rename/relocate the existing file, or adopt the workspace", file=sys.stderr)
+        print("manually (see docs/retrofit-guide.md), then re-run.", file=sys.stderr)
+        sys.exit(1)
+    # Install the docs versioning subsystem only when the target has no docs
+    # system of its own; otherwise leave docs/ untouched and skip its rebuild.
+    docs_present = (
+        (ROOT / "docs/index.json").exists()
+        or ((ROOT / "docs/current").is_dir() and any((ROOT / "docs/current").glob("*.md")))
+        or ((ROOT / "docs/versions").is_dir() and any((ROOT / "docs/versions").iterdir()))
+    )
+    INSTALL_DOCS = not docs_present
+else:
+    conflicts = [rel for rel in MANAGED_FILES if (ROOT / rel).exists()]
+    if conflicts:
+        print("Error: target already contains managed workflow files:", file=sys.stderr)
+        for rel in conflicts:
+            print(f"  - {rel}", file=sys.stderr)
+        print("Refusing to overwrite. Use this bootstrap only for a fresh agentic workspace.", file=sys.stderr)
+        print("To add the workspace to an existing repo, re-run with --into-existing.", file=sys.stderr)
         sys.exit(1)
 
+    if not FORCE_EMPTY_OK:
+        extra = sorted(p.name for p in ROOT.iterdir() if p.name not in EMPTY_OK_ALLOWLIST)
+        if extra:
+            print("Error: target is not empty (beyond common repo metadata).", file=sys.stderr)
+            print("Unexpected entries:", file=sys.stderr)
+            for name in extra:
+                print(f"  - {name}", file=sys.stderr)
+            print("Re-run with --force-empty-ok if these are intentional and no managed files conflict.", file=sys.stderr)
+            print("Or use --into-existing to non-destructively retrofit into an existing repo.", file=sys.stderr)
+            sys.exit(1)
+
 for rel in MANAGED_DIRS:
+    if RETROFIT and not INSTALL_DOCS and (rel == "docs" or rel.startswith("docs/")):
+        continue  # don't scaffold our docs/ tree into a target that already has one
     (ROOT / rel).mkdir(parents=True, exist_ok=True)
 
 created_at = now_iso()
@@ -2133,16 +2253,36 @@ def run_workflow(*workflow_args: str) -> None:
     subprocess.run([sys.executable, str(ROOT / "scripts" / "workflow.py"), *workflow_args], cwd=str(ROOT), check=True)
 
 
-run_workflow("rebuild")
-run_workflow("validate")
+if RETROFIT and not INSTALL_DOCS:
+    # The target owns docs/ — rebuild only the works side; do not run our docs
+    # rebuild/validate against a foreign doc system.
+    run_workflow("next")
+else:
+    run_workflow("rebuild")
+    run_workflow("validate")
 
-print(f"Bootstrapped cross-tool agentic workspace at {TARGET}")
-print("Contracts: CLAUDE.md and AGENTS.md (equivalent)")
-print("Claude Code: skills in .claude/skills/ (e.g. /do-next-slice), subagent .claude/agents/phase-reviewer.md, settings .claude/settings.json")
-print("Codex: skills in .agents/skills/ (e.g. $do-next-slice), instructions AGENTS.md")
-print("Any agent / CI: python3 scripts/workflow.py <command>")
-print("Canonical state: phase.json / slice.json / deferred.json; generated: works/backlog.md, works/deferred.md")
-print("Versioned docs: docs/versions/<doc>/vNNNN_*.md with generated docs/current/*.md")
-print(f"Created initial phase: P1 - {PHASE_NAME}")
-print("Next: python3 scripts/workflow.py next   (or /do-next-slice in Claude Code)")
+if RETROFIT:
+    created, skipped, merged = (RETROFIT_SUMMARY["created"], RETROFIT_SUMMARY["skipped"], RETROFIT_SUMMARY["merged"])
+    print(f"Retrofit complete (--into-existing) at {TARGET}")
+    print(f"  created: {len(created)} new file(s)")
+    print(f"  skipped (kept yours): {len(skipped)} file(s)")
+    if merged:
+        print(f"  merged (additive): {', '.join(merged)}")
+    print(f"  docs subsystem: {'installed' if INSTALL_DOCS else 'skipped (target already has a docs/ system)'}")
+    print(f"  works subsystem: installed; seeded phase P1 - {PHASE_NAME}")
+    if not INSTALL_DOCS:
+        print("  note: docs versioning not installed; skipped docs rebuild/validate")
+    print("The installer made no git changes. Review the diff (git status) and commit yourself.")
+    print("If CLAUDE.md/AGENTS.md already existed, reconcile the *.workspace.md sidecar(s); add __pycache__/ to .gitignore.")
+    print("Next: python3 scripts/workflow.py validate && python3 scripts/workflow.py next")
+else:
+    print(f"Bootstrapped cross-tool agentic workspace at {TARGET}")
+    print("Contracts: CLAUDE.md and AGENTS.md (equivalent)")
+    print("Claude Code: skills in .claude/skills/ (e.g. /do-next-slice), subagent .claude/agents/phase-reviewer.md, settings .claude/settings.json")
+    print("Codex: skills in .agents/skills/ (e.g. $do-next-slice), instructions AGENTS.md")
+    print("Any agent / CI: python3 scripts/workflow.py <command>")
+    print("Canonical state: phase.json / slice.json / deferred.json; generated: works/backlog.md, works/deferred.md")
+    print("Versioned docs: docs/versions/<doc>/vNNNN_*.md with generated docs/current/*.md")
+    print(f"Created initial phase: P1 - {PHASE_NAME}")
+    print("Next: python3 scripts/workflow.py next   (or /do-next-slice in Claude Code)")
 PY

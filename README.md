@@ -110,6 +110,7 @@ state.
 | `--phase-name NAME` | `Bootstrap Intake` | Name of the seeded `P1` phase |
 | `--phase-objective TEXT` | placeholder | Objective of the seeded `P1` phase |
 | `--force-empty-ok` | off | Allow scaffolding into a directory that has extra, non-managed files |
+| `--into-existing` | off | Non-destructively retrofit into an existing repo (see the [Retrofit Guide](docs/retrofit-guide.md)) |
 | `-h`, `--help` | — | Show help and exit |
 
 Both `--flag value` and `--flag=value` forms work.

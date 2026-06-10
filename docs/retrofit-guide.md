@@ -200,9 +200,10 @@ carries the name/objective you seeded (not the placeholder). You're ready to run
 
 ## Re-running is safe
 
-Retrofit is idempotent. A second `--into-existing` run over an
-already-retrofitted repo skips everything it added, re-applies the additive
-merges with no change, and reports a clean no-op.
+Retrofit is idempotent. A second `--into-existing` run over an already-adopted
+repo detects the existing workspace (`works/` is present), makes no changes, and
+exits cleanly (exit 0) — a safe no-op. (To re-apply the workspace after deleting
+parts of it, remove `works/` first.)
 
 ---
 

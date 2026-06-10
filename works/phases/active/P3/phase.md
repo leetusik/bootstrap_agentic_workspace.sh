@@ -78,6 +78,16 @@ to it and S4 verifies against it.** Concrete contract points S2/S3 must match:
   synthesizes them from README/manifest/language/HEAD.
 - Durable docs landed: `operations` v0002 (procedure) + `decisions` v0003 (the decision).
 
+### S2 done — `--into-existing` works as specified (note for S3/S4)
+
+The installer mode is implemented and E2E-verified (non-destructive, atomic
+abort, idempotent no-op, subsystem gate, merges). Concrete facts S3/S4 rely on:
+- **Invocation:** `sh bootstrap_agentic_workspace.sh <dir> --into-existing [--phase-name … --phase-objective …]`.
+- **Summary lines** S4 can assert against (stdout): `Retrofit complete (--into-existing) at …`, `  created: N new file(s)`, `  skipped (kept yours): N file(s)`, `  merged (additive): …`, `  docs subsystem: installed|skipped …`, `  works subsystem: installed; seeded phase P1 - <name>`.
+- **Exit codes:** already-adopted repo (works/ present) → **exit 0** "nothing to retrofit"; foreign `scripts/workflow.py` → **exit 1**, zero writes.
+- **S3 nuance:** a freshly-bootstrapped workspace ships the `retrofit` skill but **not** the bootstrap script (the installer isn't a managed file). So the skill must locate/obtain the installer (operator-provided path or the README curl one-liner) before invoking `--into-existing` — the skill orchestrates, it doesn't embed the installer.
+- **S4 nuance:** `__pycache__/` appears once `workflow.py` runs; run the smoke test with `PYTHONDONTWRITEBYTECODE=1`. The dual-apply check covers `scripts/workflow.py` ↔ `WORKFLOW_PY` (unchanged this phase) and the new `retrofit` skill files ↔ `COMMAND_SKILLS` (added in S3).
+
 ## Constraints
 
 - Fresh-install (no-flag) path must stay byte-for-byte unchanged and still `validate`. Gate all new behavior behind `if RETROFIT:`.

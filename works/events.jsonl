@@ -44,3 +44,5 @@
 {"ts": "2026-06-10T14:09:08+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0002_adopting_the_workspace_into_an_existing_repo_retrofit_--into-existing_four-tier_collision_policy_seed_p1_from_state", "source": "P3.S1"}
 {"ts": "2026-06-10T14:09:08+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0003_support_non-destructive_retrofit_into_existing_repos_via_--into-existing_extend_installer_additive_merges", "source": "P3.S1"}
 {"ts": "2026-06-10T14:11:29+09:00", "type": "slice_status_changed", "slice": "P3.S1", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-06-10T14:12:46+09:00", "type": "slice_status_changed", "slice": "P3.S2", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-06-10T14:24:23+09:00", "type": "slice_status_changed", "slice": "P3.S2", "old_status": "in_progress", "new_status": "done"}
