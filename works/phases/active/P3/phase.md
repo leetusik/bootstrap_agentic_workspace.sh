@@ -88,6 +88,19 @@ abort, idempotent no-op, subsystem gate, merges). Concrete facts S3/S4 rely on:
 - **S3 nuance:** a freshly-bootstrapped workspace ships the `retrofit` skill but **not** the bootstrap script (the installer isn't a managed file). So the skill must locate/obtain the installer (operator-provided path or the README curl one-liner) before invoking `--into-existing` — the skill orchestrates, it doesn't embed the installer.
 - **S4 nuance:** `__pycache__/` appears once `workflow.py` runs; run the smoke test with `PYTHONDONTWRITEBYTECODE=1`. The dual-apply check covers `scripts/workflow.py` ↔ `WORKFLOW_PY` (unchanged this phase) and the new `retrofit` skill files ↔ `COMMAND_SKILLS` (added in S3).
 
+### S3 done — `retrofit` skill shipped + dual-applied (note for S4)
+
+The `retrofit` skill exists in `COMMAND_SKILLS` and as the three live files,
+generated from the bootstrap so they match byte-for-byte. Facts for S4's smoke test:
+- **Dual-apply assertion to encode:** run a fresh bootstrap into a temp dir, then
+  `diff` the temp's `.claude/skills/retrofit/SKILL.md`, `.agents/skills/retrofit/SKILL.md`,
+  `.agents/skills/retrofit/agents/openai.yaml` against the live repo's — must be identical.
+  (Generalize to all skills if cheap.) Also assert live `scripts/workflow.py` ==
+  the bootstrap's embedded `WORKFLOW_PY` block (unchanged this phase, but the check guards future drift).
+- Skill membership in `MANAGED_*` is auto-derived from `COMMAND_SKILLS`; the fresh-install
+  file set now includes the 3 retrofit files (the only intended delta — S4 fresh-install regression should expect it).
+- No `settings.json`/`workflow.py` change. The skill body does **not** auto-commit.
+
 ## Constraints
 
 - Fresh-install (no-flag) path must stay byte-for-byte unchanged and still `validate`. Gate all new behavior behind `if RETROFIT:`.

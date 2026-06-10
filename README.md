@@ -119,7 +119,7 @@ Both `--flag value` and `--flag=value` forms work.
 
 - [`CLAUDE.md`](CLAUDE.md) + [`AGENTS.md`](AGENTS.md) — the equivalent per-tool routing contracts.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` + `.agents/` — the 10 Agent Skills, mirrored for both tools (plus a read-only
+- `.claude/` + `.agents/` — the 12 Agent Skills, mirrored for both tools (plus a read-only
   `phase-reviewer` subagent for Claude Code), and `.codex/config.toml`.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
@@ -169,7 +169,7 @@ The full command list lives in [`CLAUDE.md`](CLAUDE.md).
 
 ### The same operations as Agent Skills
 
-The common workflows also ship as **10 Agent Skills**, mirrored in `.claude/skills/` (Claude Code:
+The common workflows also ship as **12 Agent Skills**, mirrored in `.claude/skills/` (Claude Code:
 `/slash` commands) and `.agents/skills/` (Codex: `$skill`), so the same step works natively in
 either tool:
 
@@ -183,8 +183,10 @@ either tool:
 | `deferred` | Rebuild and show the deferred-jobs dashboard |
 | `promote-deferred` | Promote a deferred job into an active phase or slice |
 | `archive-phase` | Archive review-passed phases (normally batched via `archive-all`) |
+| `rotate-backlog` | Archive every currently-done phase, leaving in-progress phases active |
 | `rebuild-workflow` | Rebuild generated dashboards, indexes, and doc snapshots, then validate |
 | `commit` | Group pending changes into focused conventional commits |
+| `retrofit` | Non-destructively adopt this workspace into an existing repo |
 
 In Claude Code, a read-only **`phase-reviewer`** subagent performs phase reviews. Skills are
 **explicit-invocation only** — agents don't fire them on their own.
@@ -221,7 +223,7 @@ Archived phases and old doc versions are history; they're not read by default.
 │   │   └── archived/             # finished phases
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
-│   ├── skills/                    # 10 Agent Skills (Claude Code)
+│   ├── skills/                    # 12 Agent Skills (Claude Code)
 │   ├── agents/phase-reviewer.md   # read-only review subagent
 │   └── settings.json              # pre-approves workflow.py; denies push & rm -rf
 ├── .agents/skills/                # the same 10 skills, mirrored for Codex
