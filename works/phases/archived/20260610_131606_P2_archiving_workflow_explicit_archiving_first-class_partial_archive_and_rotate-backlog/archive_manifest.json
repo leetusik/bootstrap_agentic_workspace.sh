@@ -1,0 +1,16 @@
+{
+  "phase_id": "P2",
+  "archived_at": "2026-06-10T13:16:06+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P2",
+  "archive_path": "works/phases/archived/20260610_131606_P2_archiving_workflow_explicit_archiving_first-class_partial_archive_and_rotate-backlog",
+  "slices": [
+    "P2.DECOMP",
+    "P2.S1",
+    "P2.S2",
+    "P2.S3",
+    "P2.S4",
+    "P2.REVIEW"
+  ]
+}
