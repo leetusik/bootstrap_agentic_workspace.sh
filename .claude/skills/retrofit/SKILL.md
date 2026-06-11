@@ -36,4 +36,4 @@ Reconcile + verify:
 
 Report:
 
-9. Summarize what the installer created / skipped / merged (from its printed summary) and show `git status`. Do NOT commit automatically — adoption is the operator's to review and commit. Point them at `docs/retrofit-guide.md` for the full policy and troubleshooting.
+9. Summarize what the installer created / skipped / merged (from its printed summary) and show `git status`. Do NOT commit automatically — the operator reviews the diff and tells you when to commit. Point them at `docs/retrofit-guide.md` for the full policy and troubleshooting.

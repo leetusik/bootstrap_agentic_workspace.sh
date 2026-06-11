@@ -165,7 +165,7 @@ When the selected slice is a phase review (`kind: review`), step 3 ("implement")
 
 - Invoke the read-only `phase-reviewer` subagent for the phase; record its verdict and the review outcome in `result.md` (the machine verdict is also persisted to `phase.json` by `review-phase`). (In Codex, follow the `review-phase` skill checklist instead.)
 - Record the verdict: `python3 scripts/workflow.py review-phase <P> --verdict pass|changes_requested|blocked --reviewer phase-reviewer --note "..."`.
-- On `pass`: run `finish-slice <slice_id>`. A passing review marks the phase `done` but it **stays in `active/`** — archiving is a separate, manual step, so do **not** archive now. Archive later when you choose: `archive-all` once every active phase is done, `rotate-backlog` to archive just the done phases while others continue, or `archive-phase <P>` for one phase.
+- On `pass`: run `finish-slice <slice_id>`. A passing review marks the phase `done` but it **stays in `active/`** — archiving is a separate, manual step, so do **not** archive now. Archive later, when the operator asks: `archive-all` once every active phase is done, `rotate-backlog` to archive just the done phases while others continue, or `archive-phase <P>` for one phase.
 - On `changes_requested`: create fix slices (`python3 scripts/workflow.py new-slice --phase <P> --slice <P>.F<n> --name "..." --kind fix`) and leave the review slice open for re-review; do not finish or archive.
 - On `blocked`: record the blocker; do not finish or archive.
 
@@ -193,7 +193,7 @@ Rules:
 - Record the verdict: `python3 scripts/workflow.py review-phase <P> --verdict pass|changes_requested|blocked --reviewer <name> --note "..."`.
 - If the verdict is `changes_requested`, create concrete fix slices with `python3 scripts/workflow.py new-slice --phase <P> --slice <P.Fn> --name "..." --kind fix`, complete them, then re-review.
 - Only a `pass` verdict marks the phase `done` (review-phase does this for you).
-- A passing review leaves the phase `done` in `active/`; do **not** archive it here. Archiving is a separate manual step — later, use `archive-all` once every active phase is done, `rotate-backlog` to archive just the done phases while others continue, or `archive-phase <P>` for one phase.
+- A passing review leaves the phase `done` in `active/`; do **not** archive it here. Archiving is a separate manual step — later, when the operator asks, use `archive-all` once every active phase is done, `rotate-backlog` to archive just the done phases while others continue, or `archive-phase <P>` for one phase.
 - Do not continue into the next phase.
 """,
     },
@@ -277,7 +277,7 @@ This moves the job from `works/deferred/open/` to `works/deferred/promoted/`, cr
         "name": "archive-phase",
         "desc": "Archive review-passed phases: archive-all (full sweep), rotate-backlog (partial), or archive-phase (single).",
         "tools": "Bash(python3 scripts/workflow.py:*)",
-        "body": """Archiving is **manual and explicit** — never automatic. A passing review marks a phase `done` but leaves it in `active/`; you archive when you choose. Archive whole phases only, never individual slices. Three first-class options:
+        "body": """Archiving is **manual and explicit** — never automatic. A passing review marks a phase `done` but leaves it in `active/`; the **operator** decides when to archive (invoking this skill is that decision — never archive unasked). Archive whole phases only, never individual slices. Three first-class options:
 
 **Archive everything — end-of-batch sweep.** When every active phase is done (the last review slice across all phases is complete), sweep them all to archived at once:
 
@@ -371,7 +371,7 @@ Reconcile + verify:
 
 Report:
 
-9. Summarize what the installer created / skipped / merged (from its printed summary) and show `git status`. Do NOT commit automatically — adoption is the operator's to review and commit. Point them at `docs/retrofit-guide.md` for the full policy and troubleshooting.
+9. Summarize what the installer created / skipped / merged (from its printed summary) and show `git status`. Do NOT commit automatically — the operator reviews the diff and tells you when to commit. Point them at `docs/retrofit-guide.md` for the full policy and troubleshooting.
 """,
     },
 ]
