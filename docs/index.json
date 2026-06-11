@@ -99,7 +99,7 @@
       ]
     },
     "operations": {
-      "latest": "v0002_adopting_the_workspace_into_an_existing_repo_retrofit_--into-existing_four-tier_collision_policy_seed_p1_from_state",
+      "latest": "v0003_retrofit_git_step_operator_reviews_and_approves_agent_commits",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -117,6 +117,14 @@
           "source": "P3.S1",
           "summary": "Adopting the workspace into an existing repo (retrofit): --into-existing, four-tier collision policy, seed P1 from state",
           "previous": "v0001_bootstrap"
+        },
+        {
+          "id": "v0003_retrofit_git_step_operator_reviews_and_approves_agent_commits",
+          "path": "docs/versions/operations/v0003_retrofit_git_step_operator_reviews_and_approves_agent_commits.md",
+          "created_at": "2026-06-11T11:48:45+09:00",
+          "source": "operator-request",
+          "summary": "Retrofit git step: operator reviews and approves, agent commits",
+          "previous": "v0002_adopting_the_workspace_into_an_existing_repo_retrofit_--into-existing_four-tier_collision_policy_seed_p1_from_state"
         }
       ]
     },
@@ -179,5 +187,5 @@
       ]
     }
   },
-  "last_rebuilt_at": "2026-06-10T16:01:04+09:00"
+  "last_rebuilt_at": "2026-06-11T11:49:10+09:00"
 }
