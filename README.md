@@ -46,6 +46,14 @@ three sessions of the same agent) at one repo and you get three different conven
 It is **cross-tool by design**: the same commands and skills work natively in Claude Code and in
 Codex, with a plain `python3 scripts/workflow.py …` fallback that works anywhere (including CI).
 
+**Who runs what.** You — the **operator** — drive everything by talking to your agent: slash
+commands like `/do-next-slice` (`$do-next-slice` in Codex), or plain requests like *"make a phase
+for X"*. The **agent** types every actual command — `python3 scripts/workflow.py …`, the git
+commits, the validation runs (`.claude/settings.json` pre-approves the workflow script, so none of
+it prompts). Your job is judgment: review results, clear `pending` hand-offs, decide when to
+archive. Every shell block in this README is something the agent runs on your behalf — except the
+one-time bootstrap below, the only command you might ever type yourself.
+
 > This repo runs on its own workflow. The [`works/`](works/) and [`docs/`](docs/) trees you see
 > here are it dogfooding the very system it scaffolds — this README was itself written as a phase.
 
@@ -100,6 +108,20 @@ the **[Retrofit Guide](docs/retrofit-guide.md)** for the full procedure,
 collision policy, and how the first phase is seeded from your project's current
 state.
 
+### 2. Hand it to your agent
+
+Setup was the last time you needed a terminal. Open the directory in Claude Code or Codex and
+drive by talking:
+
+```
+/do-next-slice      # Claude Code — complete exactly one slice, then stop
+$do-next-slice      # Codex — the same skill
+```
+
+— or just ask in plain language: *"make a phase for X"*, *"archive the done phases"*. The agent
+runs the workflow commands, commits at slice boundaries, and stops at `pending` hand-offs for your
+review.
+
 ### Options
 
 | Option | Default | Purpose |
@@ -151,7 +173,9 @@ The contract boils down to one line:
 
 ### One manager
 
-Every operation runs through [`scripts/workflow.py`](scripts/workflow.py):
+Every operation runs through [`scripts/workflow.py`](scripts/workflow.py) — typed by the
+**agent**, not by you. The bare CLI is the universal fallback: anything that can run a shell —
+another agent, CI — drives the workspace with the exact same commands:
 
 | Command | What it does |
 |---|---|
@@ -189,7 +213,8 @@ either tool:
 | `retrofit` | Non-destructively adopt this workspace into an existing repo |
 
 In Claude Code, a read-only **`phase-reviewer`** subagent performs phase reviews. Skills are
-**explicit-invocation only** — agents don't fire them on their own.
+**explicit-invocation only** — agents don't fire them on their own. They are the **operator's
+interface**: you type the slash command; the agent does everything it implies.
 
 ### Read order
 
@@ -226,7 +251,7 @@ Archived phases and old doc versions are history; they're not read by default.
 │   ├── skills/                    # 12 Agent Skills (Claude Code)
 │   ├── agents/phase-reviewer.md   # read-only review subagent
 │   └── settings.json              # pre-approves workflow.py; denies push & rm -rf
-├── .agents/skills/                # the same 10 skills, mirrored for Codex
+├── .agents/skills/                # the same 12 skills, mirrored for Codex
 └── .codex/config.toml             # Codex project config
 ```
 
@@ -292,13 +317,15 @@ scorecard, and star counts move too fast to quote.)
 
 ## Contributing
 
-This repo dogfoods its own workflow, so contributing means *using* it:
+This repo dogfoods its own workflow, so contributing means *using* it — through your agent:
 
-1. Open a phase: `python3 scripts/workflow.py new-phase --phase P2 --name "…" --objective "…"`
-   (this seeds only `DECOMP` + `REVIEW` — stop there).
-2. Execute it: run `/do-next-slice` or `/do-whole-phase` (Claude Code), the matching `$skill`
-   (Codex), or the `workflow.py` commands directly. The `DECOMP` slice breaks the phase into slices.
-3. Review it: `python3 scripts/workflow.py review-phase P2 --verdict pass`.
+1. Open a phase: ask your agent — *"make a phase for \<your change\>"*. It runs
+   `python3 scripts/workflow.py new-phase …`, which seeds only `DECOMP` + `REVIEW`, and stops there.
+2. Execute it: type `/do-next-slice` or `/do-whole-phase` (Claude Code), the matching `$skill`
+   (Codex), or let any agent run the `workflow.py` commands directly. The `DECOMP` slice breaks the
+   phase into slices.
+3. Review it: the phase closes only on a passing review — the agent records it with
+   `python3 scripts/workflow.py review-phase P2 --verdict …`; you read the result and approve.
 
 A few house rules:
 
