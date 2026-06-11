@@ -58,6 +58,9 @@ explicit-invocation only — it never fires on its own.
 
 ### Option B — the installer directly
 
+This is the command the `/retrofit` skill wraps — normally **your agent runs
+it** (Option A). Paste it yourself only if you are working without an agent:
+
 ```sh
 # from the root of your existing repo
 sh /path/to/bootstrap_agentic_workspace.sh . --into-existing \
@@ -165,17 +168,23 @@ text*, not a different structure. Your first real work gets decomposed by
 
 ## After retrofit — finishing the adoption
 
-1. **Review the diff.** `git status` should show only **added** files (plus the
-   additive merge into `.claude/settings.json`, where your custom entries
-   survive and only workspace entries were added). Nothing you had is deleted or
-   rewritten.
-2. **Reconcile the contract.** If you had a `CLAUDE.md`, read
-   `CLAUDE.workspace.md` and fold whatever you want into your own contract (or
-   keep the sidecar + marker pointer). Resolve any conflicts between your
-   existing conventions and the workspace's (e.g. branching/commit rules)
-   deliberately — your project's rules win where they disagree.
-3. **Ignore Python bytecode.** Running `workflow.py` creates
-   `scripts/__pycache__/`. Add it to your `.gitignore`:
+If you adopted via the `/retrofit` skill, the agent has already reconciled the
+contract, checked `.gitignore`, validated, and reported — your job is to review
+the diff and say "commit". If the installer was run bare, ask your agent to
+finish these steps (or do them by hand):
+
+1. **Review the diff** *(operator)*. `git status` should show only **added**
+   files (plus the additive merge into `.claude/settings.json`, where your
+   custom entries survive and only workspace entries were added). Nothing you
+   had is deleted or rewritten.
+2. **Reconcile the contract** *(agent — you decide the calls)*. If you had a
+   `CLAUDE.md`, have the agent read `CLAUDE.workspace.md` and fold what you want
+   into your own contract (or keep the sidecar + marker pointer). Conflicts
+   between your conventions and the workspace's (e.g. branching/commit rules)
+   are yours to resolve deliberately — your project's rules win where they
+   disagree.
+3. **Ignore Python bytecode** *(agent)*. Running `workflow.py` creates
+   `scripts/__pycache__/`; the agent adds it to your `.gitignore`:
 
    ```
    __pycache__/
@@ -183,11 +192,14 @@ text*, not a different structure. Your first real work gets decomposed by
    ```
 
    (Retrofit never edits your `.gitignore` for you.)
-4. **Verify** (see below).
-5. **Commit** the adoption yourself — e.g.
-   `chore: adopt agentic workspace`. The installer never commits.
+4. **Verify** *(agent — see below)*.
+5. **Commit the adoption** *(agent, on your say-so)* — e.g.
+   `chore: adopt agentic workspace`. The installer never commits, and the agent
+   won't either until you've reviewed the diff.
 
 ## Verifying the adoption
+
+The agent runs (the `/retrofit` skill already did):
 
 ```sh
 python3 scripts/workflow.py validate   # -> "Workflow validation passed."
@@ -195,8 +207,9 @@ python3 scripts/workflow.py next       # -> current_phase=P1, current_slice=P1.D
 ```
 
 Then confirm `works/state.json` exists and `works/phases/active/P1/phase.json`
-carries the name/objective you seeded (not the placeholder). You're ready to run
-`/do-next-slice` (or `python3 scripts/workflow.py` directly).
+carries the name/objective you seeded (not the placeholder). From here you drive
+with `/do-next-slice` (`$do-next-slice` in Codex) — or any agent can call
+`python3 scripts/workflow.py` directly.
 
 ## Re-running is safe
 
@@ -209,7 +222,8 @@ parts of it, remove `works/` first.)
 
 ## Manual fallback (no flag)
 
-If you can't or don't want to use `--into-existing`, you can retrofit by hand
+This is the **no-agent escape hatch** — the one genuinely by-hand path. If you
+can't or don't want to use `--into-existing` (or an agent), retrofit by hand
 using a throwaway staging copy — the same idea the flag automates:
 
 1. Bootstrap a fresh workspace into an **empty temp dir**:

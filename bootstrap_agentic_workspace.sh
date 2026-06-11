@@ -2348,7 +2348,7 @@ if RETROFIT:
     print(f"  works subsystem: installed; seeded phase P1 - {PHASE_NAME}")
     if not INSTALL_DOCS:
         print("  note: docs versioning not installed; skipped docs rebuild/validate")
-    print("The installer made no git changes. Review the diff (git status) and commit yourself.")
+    print("The installer made no git changes. Review the diff (git status); commit the adoption once the operator approves.")
     print("If CLAUDE.md/AGENTS.md already existed, reconcile the *.workspace.md sidecar(s); add __pycache__/ to .gitignore.")
     print("Next: python3 scripts/workflow.py validate && python3 scripts/workflow.py next")
 else:
