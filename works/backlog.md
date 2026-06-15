@@ -10,10 +10,10 @@
 - Next slice: `none`
 - Waiting on operator: `none`
 - Open deferred jobs: `0`
-- Rebuilt at: `2026-06-10T16:01:04+09:00`
+- Rebuilt at: `2026-06-15T10:08:45+09:00`
 
 ## Active Phases
 
-| Phase | Status | Review | Objective | Current Slice | Path |
+| Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
 | - | - | - | - | - | - |

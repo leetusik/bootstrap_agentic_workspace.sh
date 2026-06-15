@@ -141,14 +141,14 @@ COMMAND_SKILLS = [
         "name": "do-next-slice",
         "desc": "Continue the active phase by completing exactly one slice, then stop.",
         "tools": "Bash(python3 scripts/workflow.py:*), Read, Edit, Write, Glob, Grep, Bash",
-        "body": """Run `python3 scripts/workflow.py next`, then read `AGENTS.md` (or `CLAUDE.md`), `docs/current/*.md` as needed, `docs/index.json`, `works/state.json`, `works/backlog.md`, the selected slice folder, and the phase's `phase.md` (the phase notebook — accumulated decomposition, findings, and cross-slice notes).
+        "body": """Run `python3 scripts/workflow.py next`, then read `AGENTS.md` (or `CLAUDE.md`), `docs/current/*.md` as needed, `docs/index.json`, `works/state.json`, `works/backlog.md`, the selected slice folder, and the phase's `phase.md` (the phase notebook — accumulated decomposition, findings, and cross-slice notes). If you are ever unsure of the operator's intent, consult the phase's `intent.md` (linked from `phase.md`) — the confirmed record of what was asked.
 
 If `next` prints `WAITING ON OPERATOR` (the current slice or phase is `pending`, shown `[~]`), STOP: the work is waiting on operator co-work. Report what is needed and do not start, finish, or advance it. Resume only after the operator approves and clears the `pending` status back to `in_progress`.
 
 Work exactly one slice:
 
 1. If the selected slice is `todo`, run `python3 scripts/workflow.py start-slice <slice_id>`.
-2. Fill this slice's own `plan.md` before implementing — Goal, Scope, Milestones, and Validation are required, not optional; pull relevant context from `phase.md`. If the operator passed any note or extra instructions with the command, record it verbatim in `plan.md` under a `## Operator Input (verbatim)` heading. Never pre-fill another slice's `plan.md`.
+2. Fill this slice's own `plan.md` before implementing — Goal, Scope, Milestones, and Validation are required, not optional; pull relevant context from `phase.md`. If the operator passed any note or extra instructions with the command, record it verbatim in `plan.md` under a `## Operator Input (verbatim)` heading; when that note is ambiguous or easy to misread, also refine and clarify it (ask the operator) and record the confirmed reading under `## Operator Intent (refined)`. Never pre-fill another slice's `plan.md`.
 3. Implement the slice. If you hit a point that needs operator co-work — validation, or an action only the operator can run — set the slice `pending` (`python3 scripts/workflow.py set-slice-status <slice_id> pending`), record exactly what you need in `result.md`, and STOP without finishing the slice. The operator clears it back to `in_progress` when ready.
 4. For durable doc changes, run `python3 scripts/workflow.py doc-new-version --doc <doc> --summary "..." --source <slice_id>`, edit only the returned `edit_path`, then run `python3 scripts/workflow.py rebuild-docs`.
 5. Record validation commands, created doc versions, and outcome in `result.md`, and append any durable cross-slice notes (decisions, findings, gotchas) to the phase's `phase.md` so later slices can build on them.
@@ -176,13 +176,13 @@ Stop after one slice. Do not advance to the next slice in the same turn.
         "name": "do-whole-phase",
         "desc": "Finish the active phase end-to-end, including the review and any fix slices.",
         "tools": "Bash(python3 scripts/workflow.py:*), Read, Edit, Write, Glob, Grep, Bash",
-        "body": """Read `AGENTS.md` and the phase's `phase.md`, run `python3 scripts/workflow.py next`, then finish every remaining slice in the current phase only.
+        "body": """Read `AGENTS.md` and the phase's `phase.md` (and its `intent.md` when present), run `python3 scripts/workflow.py next`, then finish every remaining slice in the current phase only. If you are ever unsure of the operator's intent, consult `intent.md` — the confirmed record of what was asked.
 
 Rules:
 
 - If a slice or the phase is `pending` (shown `[~]`; `next` prints `WAITING ON OPERATOR`), STOP the loop: it needs operator co-work (validation or an operator-run action). Report what you need and do not start, finish, or advance past it. Resume only after the operator clears `pending` back to `in_progress`. If you hit such a point mid-slice, set it `pending` with `set-slice-status <slice_id> pending` and STOP.
 - Re-read `works/state.json`, `works/backlog.md`, and the phase's `phase.md` after each slice.
-- For each slice, fill its **own** `plan.md` before implementing (pull context from `phase.md`); if the operator passed a note with the command, record it verbatim under a `## Operator Input (verbatim)` heading in that slice's `plan.md`. Never pre-fill another slice's `plan.md`.
+- For each slice, fill its **own** `plan.md` before implementing (pull context from `phase.md`); if the operator passed a note with the command, record it verbatim under a `## Operator Input (verbatim)` heading in that slice's `plan.md`; when that note is ambiguous, also record your refined, operator-confirmed reading under `## Operator Intent (refined)`. Never pre-fill another slice's `plan.md`.
 - When the slice is a decomposition (`kind: decomposition`), create the middle slices with `new-slice` (folders only — do not pre-fill their `plan.md`) and record the breakdown, findings, and notes in `phase.md`.
 - When a slice finishes, write its `result.md` and append durable cross-slice notes to `phase.md` so later slices can build on them.
 - Use `doc-new-version` for durable doc changes; never patch old doc versions or `docs/current/*.md` directly.
@@ -366,12 +366,13 @@ Apply:
 Reconcile + verify:
 
 6. If the repo already had `CLAUDE.md`/`AGENTS.md`, the installer kept them and wrote `CLAUDE.workspace.md`/`AGENTS.workspace.md` plus a marked pointer block. Read the sidecar and fold the workspace contract into the project's own contract as appropriate — the project's existing rules win where they disagree.
-7. Ensure `__pycache__/` and `*.pyc` are git-ignored (the installer never edits `.gitignore`).
-8. Run `python3 scripts/workflow.py validate`, then `python3 scripts/workflow.py next`.
+7. Replace P1's placeholder `intent.md` with the synthesized intent: set Origin to `synthesized-from-repo`, record the README / manifest / `git log` basis you used under "Original Input (verbatim)", and the synthesized objective under "Confirmed Intent (refined + clarified)". Keep it linked near the top of P1's `phase.md`.
+8. Ensure `__pycache__/` and `*.pyc` are git-ignored (the installer never edits `.gitignore`).
+9. Run `python3 scripts/workflow.py validate`, then `python3 scripts/workflow.py next`.
 
 Report:
 
-9. Summarize what the installer created / skipped / merged (from its printed summary) and show `git status`. Do NOT commit automatically — the operator reviews the diff and tells you when to commit. Point them at `docs/retrofit-guide.md` for the full policy and troubleshooting.
+10. Summarize what the installer created / skipped / merged (from its printed summary) and show `git status`. Do NOT commit automatically — the operator reviews the diff and tells you when to commit. Point them at `docs/retrofit-guide.md` for the full policy and troubleshooting.
 """,
     },
 ]
@@ -393,10 +394,10 @@ MANAGED_FILES = [
     *[f"docs/current/{doc_id}.md" for doc_id in DOC_TYPES],
     *[f"docs/versions/{doc_id}/v0001_bootstrap.md" for doc_id in DOC_TYPES],
     "works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/events.jsonl",
-    "works/phases/active/P1/phase.json", "works/phases/active/P1/phase.md",
+    "works/phases/active/P1/phase.json", "works/phases/active/P1/phase.md", "works/phases/active/P1/intent.md",
     *[f"works/phases/active/P1/slices/P1.DECOMP/{n}" for n in ("slice.json", "plan.md", "result.md")],
     *[f"works/phases/active/P1/slices/P1.REVIEW/{n}" for n in ("slice.json", "plan.md", "result.md")],
-    *[f"works/templates/{n}" for n in ("plan.md", "result.md", "deferred_brief.md")],
+    *[f"works/templates/{n}" for n in ("plan.md", "result.md", "deferred_brief.md", "intent.md")],
     "scripts/workflow.py",
     ".claude/agents/phase-reviewer.md", ".claude/settings.json",
     ".codex/config.toml",
@@ -602,14 +603,16 @@ Everything runs through one manager: `python3 scripts/workflow.py <command>`. Th
 
 Workflow command-skills are explicit-invocation only; agents should not fire them autonomously.
 
-**Making a phase ≠ executing it.** When the operator asks you to make, create, suggest, or plan a phase, the job is to run `new-phase` — which creates only `P<N>.DECOMP` and `P<N>.REVIEW` — and then STOP and report. Do **not** decompose the phase into middle slices, do **not** write slice plans, and do **not** implement any code. Decomposition is the `DECOMP` slice's own job and happens later, when the operator executes the phase (`/do-next-slice`, `/do-whole-phase`) or explicitly tells you to. Creating several phases at once is fine; decomposing or executing any of them is a separate, explicit step.
+**Capture intent first.** When an operator request arrives, before acting: **refine** it into clear language, **clarify** anything ambiguous by asking the operator, and **confirm** your understanding. Only after the operator confirms do you act. This applies wherever operator intent first enters a unit of work — always at the phase level, and at the slice level when an operator note is ambiguous.
+
+**Making a phase ≠ executing it.** When the operator asks you to make, create, suggest, or plan a phase, the job is to run `new-phase` — which creates only `P<N>.DECOMP` and `P<N>.REVIEW` — then write the confirmed intent to `intent.md` in the phase folder and link it near the top of `phase.md`, and then STOP and report. Do **not** decompose the phase into middle slices, do **not** write slice plans, and do **not** implement any code. Decomposition is the `DECOMP` slice's own job and happens later, when the operator executes the phase (`/do-next-slice`, `/do-whole-phase`) or explicitly tells you to. Creating several phases at once is fine; decomposing or executing any of them is a separate, explicit step.
 
 ## Read Order
 
 1. `docs/current/*.md` for the fullstack doc set
 2. `docs/index.json`
 3. `works/state.json`, `works/backlog.md`, and `works/deferred.md`
-4. The active phase folder and active slice folder only
+4. The active phase folder (including its `intent.md`) and active slice folder only
 
 Do not read every historical slice or old doc version by default. Archived phases and old doc versions are history.
 
@@ -619,8 +622,9 @@ Do not read every historical slice or old doc version by default. Archived phase
 - Generated dashboards/index: `works/backlog.md`, `works/deferred.md`, `works/index.json`
 - Phase state: `works/phases/active/<phase_id>/phase.json`
 - Phase notebook: `works/phases/active/<phase_id>/phase.md` — objective plus the accumulating decomposition, findings, and cross-slice notes; the shared context across a phase's slices
+- Phase intent: `works/phases/active/<phase_id>/intent.md` — the operator's verbatim original request plus the confirmed refined intent (and resolved clarifications); linked from `phase.md`. The source of truth for what the operator asked when intent is unclear.
 - Slice state: `works/phases/active/<phase_id>/slices/<slice_id>/slice.json`
-- Slice context: `plan.md` (filled at slice start, incl. verbatim operator notes) and `result.md` (written at slice end), beside `slice.json`
+- Slice context: `plan.md` (filled at slice start, incl. the verbatim operator note and, when ambiguous, the confirmed `## Operator Intent (refined)`) and `result.md` (written at slice end), beside `slice.json`
 - Deferred state: `works/deferred/open/<DID>/deferred.json`
 - Doc index: `docs/index.json`; latest docs: `docs/current/*.md` generated from `docs/versions/<doc>/vNNNN_*.md`
 
@@ -631,7 +635,9 @@ Do not read every historical slice or old doc version by default. Archived phase
 - Treat `docs/current/*.md` as generated snapshots; never hand-edit them.
 - New phases start with only `P<N>.DECOMP` and `P<N>.REVIEW`. Decomposition (the `DECOMP` slice) creates the middle slices **only** — bare folders — and records the slice breakdown, findings, and notes in `phase.md`; it does **not** pre-fill the new slices' `plan.md`.
 - "Make/create/suggest a phase" = run `new-phase` (creates `DECOMP` + `REVIEW` only), then stop — do not decompose, write slice plans, or implement until the operator executes the phase or says to. See *Driving This Workspace*.
-- Each slice owns exactly two context files: `plan.md` (the slice fills its **own** plan when it runs, before implementing; record any operator note passed with `do-next-slice`/`do-whole-phase` verbatim under `## Operator Input (verbatim)`) and `result.md` (write when done). A slice never pre-fills another slice's `plan.md`. There are no per-slice brief or review files.
+- Capture operator intent at phase creation: **refine → clarify (ask the operator) → confirm**, then write `intent.md` in the phase folder (verbatim original + confirmed refined intent + any resolved clarifications) and link it near the top of `phase.md`. Do **not** run `new-phase` until the operator confirms your understanding. The verbatim original is immutable; only the confirmed wording is refined.
+- When unsure of the operator's intent, consult the phase's `intent.md` (linked from `phase.md`) — the confirmed source of truth for what was asked. For slice-specific intent, read that slice's `plan.md`.
+- Each slice owns exactly two context files: `plan.md` (the slice fills its **own** plan when it runs, before implementing; record any operator note passed with `do-next-slice`/`do-whole-phase` verbatim under `## Operator Input (verbatim)`, and when that note is ambiguous also record your refined, operator-confirmed reading under `## Operator Intent (refined)`) and `result.md` (write when done). A slice never pre-fills another slice's `plan.md`. There are no per-slice brief or review files.
 - `phase.md` is the phase notebook: the `DECOMP` slice seeds it (breakdown, findings, notes), and every slice reads it for accumulated context at start and appends durable cross-slice notes back to it when it finishes — so later slices build on what earlier ones learned.
 - Slice selection is by `order`; `depends_on` is advisory and only checked for existence by `validate`.
 - Operator co-work (`pending`, shown `[~]`): when a slice or phase needs the operator — to validate something, or to run an action only the operator can perform — set it `pending` (`set-slice-status <id> pending` or `set-phase-status <P> pending`), report exactly what you need, and STOP. A `pending` item halts selection: `next` prints `WAITING ON OPERATOR`, and neither `do-next-slice` nor `do-whole-phase` may start, finish, or advance past it. Work resumes only after the operator approves — they (or you, on their explicit say-so) clear it with `set-slice-status <id> in_progress` (or `set-phase-status <P> in_progress`). `pending` means "waiting on the operator" and is distinct from `blocked` (an impediment or unmet dependency you cannot resolve yourself).
@@ -1238,6 +1244,27 @@ write_text("works/templates/deferred_brief.md", """# Deferred: __DEFERRED_ID__ _
 ## Notes
 
 """)
+write_text("works/templates/intent.md", """# Intent — <phase id, e.g. P2>
+
+- Captured at: <ISO 8601 timestamp>
+- Origin: operator | synthesized-from-repo | bootstrap-placeholder
+
+## Original Input (verbatim)
+
+> <the operator's raw request, word-for-word — preserve grammar and wording exactly; do not fix it here>
+
+## Confirmed Intent (refined + clarified)
+
+<a clear restatement of what the operator wants, as confirmed by the operator>
+
+## Clarifications Resolved
+
+- Q: <clarifying question asked> — A: <operator's answer>
+
+## Notes
+
+-
+""")
 
 # ---- Initial phase P1 -------------------------------------------------------
 p1_path = "works/phases/active/P1"
@@ -1250,6 +1277,8 @@ phase_json = {
 }
 write_json(f"{p1_path}/phase.json", phase_json)
 write_text(f"{p1_path}/phase.md", f"""# Phase P1: {PHASE_NAME}
+
+_Intent: see [intent.md](intent.md)._
 
 ## Objective
 
@@ -1277,6 +1306,29 @@ _Durable findings and cross-slice notes; `DECOMP` seeds this, and each slice app
 ## Open Questions
 
 -
+""")
+intent_origin = "synthesized-from-repo" if RETROFIT else "bootstrap-placeholder"
+intent_original = "(Synthesized by the adopting agent from the repo's README, manifest, and git history — not a verbatim operator request.)" if RETROFIT else "(Bootstrap placeholder — no operator request captured yet.)"
+write_text(f"{p1_path}/intent.md", f"""# Intent — P1
+
+- Captured at: {created_at}
+- Origin: {intent_origin}
+
+## Original Input (verbatim)
+
+> {intent_original}
+
+## Confirmed Intent (refined + clarified)
+
+{PHASE_OBJECTIVE}
+
+## Clarifications Resolved
+
+-
+
+## Notes
+
+- Seeded by the installer; refine and confirm with the operator when the first real task arrives.
 """)
 
 
@@ -1649,15 +1701,15 @@ def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
         f"- Waiting on operator: `{state.get('waiting_on_operator') or 'none'}`",
         f"- Open deferred jobs: `{index.get('deferred_open_count', 0)}`",
         f"- Rebuilt at: `{index.get('last_rebuilt_at')}`", "",
-        "## Active Phases", "", "| Phase | Status | Review | Objective | Current Slice | Path |", "|---|---|---|---|---|---|",
+        "## Active Phases", "", "| Phase | Status | Review | Name | Current Slice | Path |", "|---|---|---|---|---|---|",
     ]
     if not phases:
         lines.append("| - | - | - | - | - | - |")
     for p in phases:
         current = next((s["id"] for s in p["slices"] if s.get("status") != "done"), "none")
-        objective = clean_cell(p.get("objective", ""))
+        name = clean_cell(p.get("name", ""))
         review = clean_cell(p.get("review", {}).get("status"))
-        lines.append(f"| [{status_box(p['status'])}] `{p['id']}` | `{p['status']}` | `{review}` | {objective} | `{current}` | `{p['path']}` |")
+        lines.append(f"| [{status_box(p['status'])}] `{p['id']}` | `{p['status']}` | `{review}` | {name} | `{current}` | `{p['path']}` |")
     for p in phases:
         lines.extend(["", f"## Phase {p['id']}: {p['name']}", "", "| Slice | Status | Name | Kind | Path |", "|---|---|---|---|---|"])
         for s in p["slices"]:

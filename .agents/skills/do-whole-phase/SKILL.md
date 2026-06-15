@@ -5,13 +5,13 @@ description: Finish the active phase end-to-end, including the review and any fi
 
 # do-whole-phase
 
-Read `AGENTS.md` and the phase's `phase.md`, run `python3 scripts/workflow.py next`, then finish every remaining slice in the current phase only.
+Read `AGENTS.md` and the phase's `phase.md` (and its `intent.md` when present), run `python3 scripts/workflow.py next`, then finish every remaining slice in the current phase only. If you are ever unsure of the operator's intent, consult `intent.md` — the confirmed record of what was asked.
 
 Rules:
 
 - If a slice or the phase is `pending` (shown `[~]`; `next` prints `WAITING ON OPERATOR`), STOP the loop: it needs operator co-work (validation or an operator-run action). Report what you need and do not start, finish, or advance past it. Resume only after the operator clears `pending` back to `in_progress`. If you hit such a point mid-slice, set it `pending` with `set-slice-status <slice_id> pending` and STOP.
 - Re-read `works/state.json`, `works/backlog.md`, and the phase's `phase.md` after each slice.
-- For each slice, fill its **own** `plan.md` before implementing (pull context from `phase.md`); if the operator passed a note with the command, record it verbatim under a `## Operator Input (verbatim)` heading in that slice's `plan.md`. Never pre-fill another slice's `plan.md`.
+- For each slice, fill its **own** `plan.md` before implementing (pull context from `phase.md`); if the operator passed a note with the command, record it verbatim under a `## Operator Input (verbatim)` heading in that slice's `plan.md`; when that note is ambiguous, also record your refined, operator-confirmed reading under `## Operator Intent (refined)`. Never pre-fill another slice's `plan.md`.
 - When the slice is a decomposition (`kind: decomposition`), create the middle slices with `new-slice` (folders only — do not pre-fill their `plan.md`) and record the breakdown, findings, and notes in `phase.md`.
 - When a slice finishes, write its `result.md` and append durable cross-slice notes to `phase.md` so later slices can build on them.
 - Use `doc-new-version` for durable doc changes; never patch old doc versions or `docs/current/*.md` directly.

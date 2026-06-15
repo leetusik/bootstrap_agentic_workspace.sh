@@ -29,9 +29,10 @@ Apply:
 Reconcile + verify:
 
 6. If the repo already had `CLAUDE.md`/`AGENTS.md`, the installer kept them and wrote `CLAUDE.workspace.md`/`AGENTS.workspace.md` plus a marked pointer block. Read the sidecar and fold the workspace contract into the project's own contract as appropriate — the project's existing rules win where they disagree.
-7. Ensure `__pycache__/` and `*.pyc` are git-ignored (the installer never edits `.gitignore`).
-8. Run `python3 scripts/workflow.py validate`, then `python3 scripts/workflow.py next`.
+7. Replace P1's placeholder `intent.md` with the synthesized intent: set Origin to `synthesized-from-repo`, record the README / manifest / `git log` basis you used under "Original Input (verbatim)", and the synthesized objective under "Confirmed Intent (refined + clarified)". Keep it linked near the top of P1's `phase.md`.
+8. Ensure `__pycache__/` and `*.pyc` are git-ignored (the installer never edits `.gitignore`).
+9. Run `python3 scripts/workflow.py validate`, then `python3 scripts/workflow.py next`.
 
 Report:
 
-9. Summarize what the installer created / skipped / merged (from its printed summary) and show `git status`. Do NOT commit automatically — the operator reviews the diff and tells you when to commit. Point them at `docs/retrofit-guide.md` for the full policy and troubleshooting.
+10. Summarize what the installer created / skipped / merged (from its printed summary) and show `git status`. Do NOT commit automatically — the operator reviews the diff and tells you when to commit. Point them at `docs/retrofit-guide.md` for the full policy and troubleshooting.

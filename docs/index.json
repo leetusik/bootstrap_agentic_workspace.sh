@@ -99,7 +99,7 @@
       ]
     },
     "operations": {
-      "latest": "v0003_retrofit_git_step_operator_reviews_and_approves_agent_commits",
+      "latest": "v0004_intent_intake_refine_clarify_confirm_operator_input_persist_intent.md_linked_from_phase.md",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -125,6 +125,14 @@
           "source": "operator-request",
           "summary": "Retrofit git step: operator reviews and approves, agent commits",
           "previous": "v0002_adopting_the_workspace_into_an_existing_repo_retrofit_--into-existing_four-tier_collision_policy_seed_p1_from_state"
+        },
+        {
+          "id": "v0004_intent_intake_refine_clarify_confirm_operator_input_persist_intent.md_linked_from_phase.md",
+          "path": "docs/versions/operations/v0004_intent_intake_refine_clarify_confirm_operator_input_persist_intent.md_linked_from_phase.md.md",
+          "created_at": "2026-06-15T09:40:29+09:00",
+          "source": "operator-request",
+          "summary": "Intent intake: refine, clarify, confirm operator input; persist intent.md linked from phase.md",
+          "previous": "v0003_retrofit_git_step_operator_reviews_and_approves_agent_commits"
         }
       ]
     },
@@ -157,7 +165,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0003_support_non-destructive_retrofit_into_existing_repos_via_--into-existing_extend_installer_additive_merges",
+      "latest": "v0004_capture_operator_intent_at_intake_refine_clarify_confirm_persist_verbatim_refined_to_intent.md_linked_from_phase.md_convention-driven_phase_slice_level",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -183,9 +191,17 @@
           "source": "P3.S1",
           "summary": "Support non-destructive retrofit into existing repos via --into-existing (extend installer, additive merges)",
           "previous": "v0002_archiving_workflow_manual_archiving_first-class_archive-phase_rotate-backlog"
+        },
+        {
+          "id": "v0004_capture_operator_intent_at_intake_refine_clarify_confirm_persist_verbatim_refined_to_intent.md_linked_from_phase.md_convention-driven_phase_slice_level",
+          "path": "docs/versions/decisions/v0004_capture_operator_intent_at_intake_refine_clarify_confirm_persist_verbatim_refined_to_intent.md_linked_from_phase.md_convention-driven_phase_slice_level.md",
+          "created_at": "2026-06-15T09:41:16+09:00",
+          "source": "operator-request",
+          "summary": "Capture operator intent at intake: refine, clarify, confirm; persist verbatim+refined to intent.md linked from phase.md (convention-driven, phase + slice level)",
+          "previous": "v0003_support_non-destructive_retrofit_into_existing_repos_via_--into-existing_extend_installer_additive_merges"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-06-11T11:49:10+09:00"
+  "last_rebuilt_at": "2026-06-15T10:08:45+09:00"
 }

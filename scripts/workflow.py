@@ -344,15 +344,15 @@ def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
         f"- Waiting on operator: `{state.get('waiting_on_operator') or 'none'}`",
         f"- Open deferred jobs: `{index.get('deferred_open_count', 0)}`",
         f"- Rebuilt at: `{index.get('last_rebuilt_at')}`", "",
-        "## Active Phases", "", "| Phase | Status | Review | Objective | Current Slice | Path |", "|---|---|---|---|---|---|",
+        "## Active Phases", "", "| Phase | Status | Review | Name | Current Slice | Path |", "|---|---|---|---|---|---|",
     ]
     if not phases:
         lines.append("| - | - | - | - | - | - |")
     for p in phases:
         current = next((s["id"] for s in p["slices"] if s.get("status") != "done"), "none")
-        objective = clean_cell(p.get("objective", ""))
+        name = clean_cell(p.get("name", ""))
         review = clean_cell(p.get("review", {}).get("status"))
-        lines.append(f"| [{status_box(p['status'])}] `{p['id']}` | `{p['status']}` | `{review}` | {objective} | `{current}` | `{p['path']}` |")
+        lines.append(f"| [{status_box(p['status'])}] `{p['id']}` | `{p['status']}` | `{review}` | {name} | `{current}` | `{p['path']}` |")
     for p in phases:
         lines.extend(["", f"## Phase {p['id']}: {p['name']}", "", "| Slice | Status | Name | Kind | Path |", "|---|---|---|---|---|"])
         for s in p["slices"]:

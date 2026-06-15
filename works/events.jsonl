@@ -55,3 +55,5 @@
 {"ts": "2026-06-10T14:35:47+09:00", "type": "slice_status_changed", "slice": "P3.REVIEW", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-06-10T14:42:00+09:00", "type": "phase_archived", "phase": "P3", "archive_path": "works/phases/archived/20260610_144200_P3_retrofit_guide_skill_adopting_the_agentic_workspace_into_an_existing_project"}
 {"ts": "2026-06-11T11:48:45+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0003_retrofit_git_step_operator_reviews_and_approves_agent_commits", "source": "operator-request"}
+{"ts": "2026-06-15T09:40:29+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0004_intent_intake_refine_clarify_confirm_operator_input_persist_intent.md_linked_from_phase.md", "source": "operator-request"}
+{"ts": "2026-06-15T09:41:16+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0004_capture_operator_intent_at_intake_refine_clarify_confirm_persist_verbatim_refined_to_intent.md_linked_from_phase.md_convention-driven_phase_slice_level", "source": "operator-request"}
