@@ -1,7 +1,7 @@
 ---
 name: do-whole-phase
 description: Finish the active phase end-to-end, including the review and any fix slices.
-allowed-tools: Bash(python3 scripts/workflow.py:*), Read, Edit, Write, Glob, Grep, Bash
+allowed-tools: Bash(python3 scripts/workflow.py:*), Read, Edit, Write, Glob, Grep, Bash, Agent
 disable-model-invocation: true
 ---
 
@@ -9,20 +9,23 @@ disable-model-invocation: true
 
 Read `AGENTS.md` and the phase's `phase.md` (and its `intent.md` when present), run `python3 scripts/workflow.py next`, then finish every remaining slice in the current phase only. If you are ever unsure of the operator's intent, consult `intent.md` — the confirmed record of what was asked.
 
+You are the ORCHESTRATOR (main thread): you plan each slice, verify, commit, move workflow state, and talk to the operator. Implementation and `fix` slices are delegated to the `slice-executor` subagent, one at a time and sequentially; decomposition stays with you; the review goes to `phase-reviewer`. Same contract as `do-next-slice`, looped over the phase.
+
 Rules:
 
 - If a slice or the phase is `pending` (shown `[~]`; `next` prints `WAITING ON OPERATOR`), STOP the loop: it needs operator co-work (validation or an operator-run action). Report what you need and do not start, finish, or advance past it. Resume only after the operator clears `pending` back to `in_progress`. If you hit such a point mid-slice, set it `pending` with `set-slice-status <slice_id> pending` and STOP.
 - Re-read `works/state.json`, `works/backlog.md`, and the phase's `phase.md` after each slice.
-- For each slice, fill its **own** `plan.md` before implementing (pull context from `phase.md`); if the operator passed a note with the command, record it verbatim under a `## Operator Input (verbatim)` heading in that slice's `plan.md`; when that note is ambiguous, also record your refined, operator-confirmed reading under `## Operator Intent (refined)`. Never pre-fill another slice's `plan.md`.
-- When the slice is a decomposition (`kind: decomposition`), create the middle slices with `new-slice` (folders only — do not pre-fill their `plan.md`) and record the breakdown, findings, and notes in `phase.md`.
-- When a slice finishes, write its `result.md` and append durable cross-slice notes to `phase.md` so later slices can build on them.
-- Use `doc-new-version` for durable doc changes; never patch old doc versions or `docs/current/*.md` directly.
-- Commit at every clean slice boundary by default, following the Commit Convention (do not branch unless the operator asks; never push).
+- For each slice, plan first at the operator's gate: research read-only, surface any clarifying questions, present the plan, and get approval (in Claude Code, use plan mode) — then fill that slice's **own** `plan.md` (Goal, Scope, Milestones, Validation required), pulling context from `phase.md`. Record any operator note verbatim under `## Operator Input (verbatim)`; when ambiguous, also record the confirmed reading under `## Operator Intent (refined)`. Never pre-fill another slice's `plan.md`. The gate pauses the run at every slice; the operator can waive it for the whole run (e.g. "run unattended"), in which case skip the approval pauses but still write each `plan.md`.
+- Implementation and `fix` slices: dispatch the `slice-executor` subagent (one at a time — wait for it to return before the next) to implement against `plan.md`; it writes `result.md`, appends notes to `phase.md`, and returns a structured verdict. (In Codex, execute each slice inline yourself by the same procedure.) Then verify before you trust: read the verdict and `result.md`, re-run `python3 scripts/workflow.py validate`, and re-run the executor's critical checks. On `needs_operator`, set the slice `pending`, report, and STOP; on `blocked`, record the blocker and STOP; on a failed/empty/unverifiable return, treat the slice as not done and STOP. Only a verified `done` proceeds.
+- When the slice is a decomposition (`kind: decomposition`), it stays with you (no executor): create the middle slices with `new-slice` (folders only — do not pre-fill their `plan.md`) and record the breakdown, findings, and notes in `phase.md`.
+- When a slice finishes (its `result.md` and `phase.md` notes written — by the executor, or by you for decomposition), run `finish-slice <slice_id>`, then `python3 scripts/workflow.py validate`.
+- Durable doc changes: the executor runs `doc-new-version` + `rebuild-docs` for its slice and reports the versions (you confirm via `validate`); if you make one yourself, use the same commands and never patch old doc versions or `docs/current/*.md` directly.
+- Commit at every clean slice boundary by default, following the Commit Convention (do not branch unless the operator asks; never push). Commits are the orchestrator's job — the executor never commits.
 - When you reach the phase review slice, run the review:
   - In Claude Code, invoke the `phase-reviewer` subagent (read-only) and take its verdict.
   - In Codex, follow the `review-phase` skill checklist yourself.
 - Record the verdict: `python3 scripts/workflow.py review-phase <P> --verdict pass|changes_requested|blocked --reviewer <name> --note "..."`.
-- If the verdict is `changes_requested`, create concrete fix slices with `python3 scripts/workflow.py new-slice --phase <P> --slice <P.Fn> --name "..." --kind fix`, complete them, then re-review.
+- If the verdict is `changes_requested`, create concrete fix slices with `python3 scripts/workflow.py new-slice --phase <P> --slice <P.Fn> --name "..." --kind fix`, complete them (via the executor), then re-review.
 - Only a `pass` verdict marks the phase `done` (review-phase does this for you).
 - A passing review leaves the phase `done` in `active/`; do **not** archive it here. Archiving is a separate manual step — later, when the operator asks, use `archive-all` once every active phase is done, `rotate-backlog` to archive just the done phases while others continue, or `archive-phase <P>` for one phase.
 - Do not continue into the next phase.
