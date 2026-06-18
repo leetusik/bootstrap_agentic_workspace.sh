@@ -443,7 +443,7 @@ def render_template(text: str, **values: str) -> str:
     return text
 
 
-def create_slice(phase_id: str, slice_id: str, name: str, kind: str, order: int, risk: str, source: dict, depends_on=None) -> Path:
+def create_slice(phase_id: str, slice_id: str, name: str, kind: str, order, risk: str, source: dict, depends_on=None) -> Path:
     require_phase(phase_id)
     if not slice_id.startswith(f"{phase_id}."):
         raise SystemExit(f"slice id must start with {phase_id}.")
@@ -472,7 +472,7 @@ def new_phase(args: argparse.Namespace) -> None:
     pdir = ACTIVE / phase_id
     if pdir.exists():
         raise SystemExit(f"phase already exists: {phase_id}")
-    order = args.order if args.order is not None else max([read_json(p / "phase.json").get("order", 0) for p in phase_dirs()], default=0) + 1
+    order = _clean_order(args.order) if args.order is not None else max([read_json(p / "phase.json").get("order", 0) for p in phase_dirs()], default=0) + 1
     phase_data = {
         "id": phase_id, "name": args.name, "objective": args.objective, "status": "planned", "order": order,
         "created_at": now_iso(), "started_at": None, "completed_at": None,
@@ -489,9 +489,15 @@ def new_phase(args: argparse.Namespace) -> None:
     print(f"created phase {phase_id}: {pdir.relative_to(ROOT)}")
 
 
-def _auto_order(pdir: Path, explicit) -> int:
+def _clean_order(value):
+    """Normalize an explicit order: whole numbers stay ints, fractions stay floats so a
+    slice/phase can be inserted between two neighbors (e.g. --order 4.5 sorts between 4 and 5)."""
+    return int(value) if float(value).is_integer() else float(value)
+
+
+def _auto_order(pdir: Path, explicit):
     if explicit is not None:
-        return explicit
+        return _clean_order(explicit)
     orders = [read_json(s / "slice.json").get("order", 0) for s in slice_dirs(pdir) if read_json(s / "slice.json").get("kind") != "review"]
     return max(orders, default=0) + 10
 
@@ -834,7 +840,7 @@ def main(argv=None) -> int:
     p.add_argument("--phase", required=True)
     p.add_argument("--name", required=True)
     p.add_argument("--objective", required=True)
-    p.add_argument("--order", type=int)
+    p.add_argument("--order", type=float)
     p.set_defaults(func=new_phase)
 
     p = sub.add_parser("new-slice", help="Create a new slice folder with slice.json + markdown files")
@@ -843,7 +849,7 @@ def main(argv=None) -> int:
     p.add_argument("--name", required=True)
     p.add_argument("--kind", default="implementation")
     p.add_argument("--risk", default="medium")
-    p.add_argument("--order", type=int)
+    p.add_argument("--order", type=float)
     p.add_argument("--depends-on", action="append")
     p.set_defaults(func=new_slice)
 
@@ -887,7 +893,7 @@ def main(argv=None) -> int:
     p.add_argument("--name")
     p.add_argument("--kind", default="implementation")
     p.add_argument("--risk", default="medium")
-    p.add_argument("--order", type=int)
+    p.add_argument("--order", type=float)
     p.add_argument("--depends-on", action="append")
     p.add_argument("--create-phase", action="store_true")
     p.add_argument("--phase-name")
