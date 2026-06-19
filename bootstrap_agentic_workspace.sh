@@ -138,6 +138,46 @@ EMPTY_OK_ALLOWLIST = {
 # allow_implicit_invocation=false (Codex).
 COMMAND_SKILLS = [
     {
+        "name": "create-phase",
+        "desc": "Capture operator intent (refine → clarify → confirm), then create one or more phases (intent.md + DECOMP/REVIEW only) or route to defer-job. Stops before decomposition.",
+        "tools": "Bash(python3 scripts/workflow.py:*), Read, Edit, Write, Glob, Grep",
+        "body": """Turn an operator request for new work into one or more phases — or a deferred job — with the operator's intent captured first. Explicit invocation only. **This skill creates phases; it never decomposes or implements them** (see *Making a phase ≠ executing it* in the contract — `AGENTS.md`/`CLAUDE.md`).
+
+## Procedure
+
+1. **Refine.** Restate the operator's request in clear language. Read `docs/current/*.md` and `works/backlog.md` for context if useful. Preserve the operator's exact words — you will record them verbatim later.
+
+2. **Clarify.** Ask the operator about anything ambiguous before acting: scope and boundaries, whether this is one phase or several, a sensible name and objective for each, and whether the work should start now (a phase) or be parked for later (a deferred job). Wait for answers. Do not run any `workflow.py` command yet.
+
+3. **Confirm.** Present your refined understanding back to the operator — for each phase, the proposed **name** and **objective**; for deferred work, the title, reason, and trigger. Get explicit confirmation. Per the contract, do **not** run `new-phase` until the operator confirms.
+
+4. **Route on the operator's choice:**
+
+   **Defer for later** → fold the confirmed intent into the arguments and run:
+   ```
+   python3 scripts/workflow.py defer-job --title "..." --reason "..." --trigger "..." [--source ...]
+   ```
+   This parks the job under `works/deferred/open/<DID>/` and never affects next-slice selection until promoted (the same command the `defer-job` skill wraps). Report and STOP.
+
+   **Make a phase (or several)** → for each phase, in operator-confirmed order:
+   1. Create it:
+      ```
+      python3 scripts/workflow.py new-phase --phase P<N> --name "..." --objective "..."
+      ```
+      `new-phase` creates only `P<N>.DECOMP` and `P<N>.REVIEW`, scaffolds `intent.md`, and links it near the top of `phase.md`.
+   2. Fill `works/phases/active/P<N>/intent.md`:
+      - leave **Origin** as `operator`;
+      - paste the operator's request **word-for-word** under *Original Input (verbatim)* — do not fix grammar or wording;
+      - write the confirmed, refined wording under *Confirmed Intent (refined + clarified)*;
+      - record any clarifying Q/A under *Clarifications Resolved*.
+
+      (`new-phase` already filled the phase id and captured-at timestamp.)
+   3. Confirm `phase.md` links `intent.md` near the top (the engine added `_Intent: see [intent.md](intent.md)._`).
+
+5. **STOP and report.** List the phases created — IDs, names, and `intent.md` paths — or the deferred job created. Do **not** decompose into middle slices, write any slice's `plan.md`, or implement code. Decomposition is the `DECOMP` slice's own job, later, when the operator executes the phase (`/do-next-slice`, `/do-whole-phase`) or explicitly tells you to.
+""",
+    },
+    {
         "name": "do-next-slice",
         "desc": "Continue the active phase by completing exactly one slice, then stop.",
         "tools": "Bash(python3 scripts/workflow.py:*), Read, Edit, Write, Glob, Grep, Bash, Agent",
@@ -607,7 +647,7 @@ Core rule: **Backlog routes. Slice folder explains. Result summarizes. Docs are 
 
 Everything runs through one manager: `python3 scripts/workflow.py <command>`. The same operations are also packaged as Agent Skills so they work natively in either tool:
 
-- **Claude Code:** slash commands like `/do-next-slice`, `/do-whole-phase`, `/review-phase` (from `.claude/skills/`), plus two subagents — the read-only `phase-reviewer` and the `slice-executor` that implements delegated slices. `.claude/settings.json` pre-approves the workflow script so it runs without prompts.
+- **Claude Code:** slash commands like `/create-phase`, `/do-next-slice`, `/do-whole-phase`, `/review-phase` (from `.claude/skills/`), plus two subagents — the read-only `phase-reviewer` and the `slice-executor` that implements delegated slices. `.claude/settings.json` pre-approves the workflow script so it runs without prompts.
 - **Codex:** the same skills under `.agents/skills/` via `$skill` or `/skills`. Codex reads this file as `AGENTS.md`.
 - **Any agent / CI:** call `python3 scripts/workflow.py ...` directly. This always works, even where skills are unavailable.
 
@@ -617,7 +657,7 @@ Workflow command-skills are explicit-invocation only; agents should not fire the
 
 **Capture intent first.** When an operator request arrives, before acting: **refine** it into clear language, **clarify** anything ambiguous by asking the operator, and **confirm** your understanding. Only after the operator confirms do you act. This applies wherever operator intent first enters a unit of work — always at the phase level, and at the slice level when an operator note is ambiguous.
 
-**Making a phase ≠ executing it.** When the operator asks you to make, create, suggest, or plan a phase, the job is to run `new-phase` — which creates only `P<N>.DECOMP` and `P<N>.REVIEW` — then write the confirmed intent to `intent.md` in the phase folder and link it near the top of `phase.md`, and then STOP and report. Do **not** decompose the phase into middle slices, do **not** write slice plans, and do **not** implement any code. Decomposition is the `DECOMP` slice's own job and happens later, when the operator executes the phase (`/do-next-slice`, `/do-whole-phase`) or explicitly tells you to. Creating several phases at once is fine; decomposing or executing any of them is a separate, explicit step.
+**Making a phase ≠ executing it.** When the operator asks you to make, create, suggest, or plan a phase, use the `/create-phase` skill: capture intent, then run `new-phase` — which creates only `P<N>.DECOMP` and `P<N>.REVIEW` and scaffolds the phase-root `intent.md` (linked from `phase.md`) — then fill that `intent.md` with the confirmed intent, and then STOP and report. Do **not** decompose the phase into middle slices, do **not** write slice plans, and do **not** implement any code. Decomposition is the `DECOMP` slice's own job and happens later, when the operator executes the phase (`/do-next-slice`, `/do-whole-phase`) or explicitly tells you to. Creating several phases at once is fine; decomposing or executing any of them is a separate, explicit step.
 
 ## Read Order
 
@@ -634,7 +674,7 @@ Do not read every historical slice or old doc version by default. Archived phase
 - Generated dashboards/index: `works/backlog.md`, `works/deferred.md`, `works/index.json`
 - Phase state: `works/phases/active/<phase_id>/phase.json`
 - Phase notebook: `works/phases/active/<phase_id>/phase.md` — objective plus the accumulating decomposition, findings, and cross-slice notes; the shared context across a phase's slices
-- Phase intent: `works/phases/active/<phase_id>/intent.md` — the operator's verbatim original request plus the confirmed refined intent (and resolved clarifications); linked from `phase.md`. The source of truth for what the operator asked when intent is unclear.
+- Phase intent: `works/phases/active/<phase_id>/intent.md` — scaffolded by `new-phase` and linked from `phase.md`; holds the operator's verbatim original request plus the confirmed refined intent (and resolved clarifications), filled by the `/create-phase` skill. The source of truth for what the operator asked when intent is unclear.
 - Slice state: `works/phases/active/<phase_id>/slices/<slice_id>/slice.json`
 - Slice context: `plan.md` (filled at slice start, incl. the verbatim operator note and, when ambiguous, the confirmed `## Operator Intent (refined)`) and `result.md` (written at slice end), beside `slice.json`
 - Deferred state: `works/deferred/open/<DID>/deferred.json`
@@ -643,11 +683,12 @@ Do not read every historical slice or old doc version by default. Archived phase
 ## Hard Rules
 
 - Keep `works/backlog.md` and `works/deferred.md` lean: IDs, names, statuses, pointers, paths only. Detail goes in the folders.
+- Keep test files small by default: tests are welcome, but keep each test file or suite terse — minimal high-value cases, no fixture or scaffolding sprawl. Prefer lightweight verification (run the code, `validate`, a small smoke check); grow a suite only when the operator asks or the risk clearly warrants it.
 - Never patch old files under `docs/versions/`; create a new version with `doc-new-version`.
 - Treat `docs/current/*.md` as generated snapshots; never hand-edit them.
-- New phases start with only `P<N>.DECOMP` and `P<N>.REVIEW`. Decomposition (the `DECOMP` slice) creates the middle slices **only** — bare folders — and records the slice breakdown, findings, and notes in `phase.md`; it does **not** pre-fill the new slices' `plan.md`.
-- "Make/create/suggest a phase" = run `new-phase` (creates `DECOMP` + `REVIEW` only), then stop — do not decompose, write slice plans, or implement until the operator executes the phase or says to. See *Driving This Workspace*.
-- Capture operator intent at phase creation: **refine → clarify (ask the operator) → confirm**, then write `intent.md` in the phase folder (verbatim original + confirmed refined intent + any resolved clarifications) and link it near the top of `phase.md`. Do **not** run `new-phase` until the operator confirms your understanding. The verbatim original is immutable; only the confirmed wording is refined.
+- New phases start with only `P<N>.DECOMP` and `P<N>.REVIEW`, plus a scaffolded phase-root `intent.md` (linked from `phase.md`). Decomposition (the `DECOMP` slice) creates the middle slices **only** — bare folders — and records the slice breakdown, findings, and notes in `phase.md`; it does **not** pre-fill the new slices' `plan.md`.
+- "Make/create/suggest a phase" = use the `/create-phase` skill (captures intent, then runs `new-phase`, which creates `DECOMP` + `REVIEW` and scaffolds `intent.md`), then stop — do not decompose, write slice plans, or implement until the operator executes the phase or says to. See *Driving This Workspace*.
+- Capture operator intent at phase creation: **refine → clarify (ask the operator) → confirm**, then fill the `intent.md` that `new-phase` scaffolds in the phase folder (verbatim original + confirmed refined intent + any resolved clarifications); the engine links it near the top of `phase.md`. Do **not** run `new-phase` until the operator confirms your understanding. The verbatim original is immutable; only the confirmed wording is refined.
 - When unsure of the operator's intent, consult the phase's `intent.md` (linked from `phase.md`) — the confirmed source of truth for what was asked. For slice-specific intent, read that slice's `plan.md`.
 - Each slice owns exactly two context files: `plan.md` (the slice fills its **own** plan when it runs, before implementing; record any operator note passed with `do-next-slice`/`do-whole-phase` verbatim under `## Operator Input (verbatim)`, and when that note is ambiguous also record your refined, operator-confirmed reading under `## Operator Intent (refined)`) and `result.md` (write when done). A slice never pre-fills another slice's `plan.md`. There are no per-slice brief or review files.
 - `phase.md` is the phase notebook: the `DECOMP` slice seeds it (breakdown, findings, notes), and every slice reads it for accumulated context at start and appends durable cross-slice notes back to it when it finishes — so later slices build on what earlier ones learned.
@@ -670,7 +711,7 @@ Do not read every historical slice or old doc version by default. Archived phase
 Use `python3 scripts/workflow.py <command>`:
 
 - `next` — show current/next active slice
-- `new-phase --phase P2 --name "..." --objective "..."`
+- `new-phase --phase P2 --name "..." --objective "..."` — also creates `DECOMP` + `REVIEW` and scaffolds the phase-root `intent.md`; the `/create-phase` skill captures intent and fills it
 - `new-slice --phase P1 --slice P1.S1 --name "..."` (`--kind`, `--risk`, `--order`, `--depends-on`)
 - `start-slice P1.S1` / `finish-slice P1.S1` / `set-slice-status P1.S1 <status>`
 - `set-phase-status P1 <status>`
@@ -1257,10 +1298,10 @@ write_text("works/templates/deferred_brief.md", """# Deferred: __DEFERRED_ID__ _
 ## Notes
 
 """)
-write_text("works/templates/intent.md", """# Intent — <phase id, e.g. P2>
+write_text("works/templates/intent.md", """# Intent — __PHASE_ID__
 
-- Captured at: <ISO 8601 timestamp>
-- Origin: operator | synthesized-from-repo | bootstrap-placeholder
+- Captured at: __CAPTURED_AT__
+- Origin: __ORIGIN__
 
 ## Original Input (verbatim)
 
@@ -1735,6 +1776,7 @@ def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
 
 def validate() -> int:
     errors: list = []
+    warnings: list = []
     phases = all_active_phases()
     seen_phases, seen_slices = set(), set()
     all_slice_ids = {s["id"] for p in phases for s in p["slices"]}
@@ -1747,6 +1789,8 @@ def validate() -> int:
         review_status = p.get("review", {}).get("status")
         if p["status"] == "done" and review_status != "pass":
             errors.append(f"phase {p['id']} is done but review status is {review_status!r}; record a passing review with review-phase")
+        if not (ACTIVE / p["id"] / "intent.md").exists():
+            warnings.append(f"phase {p['id']} has no intent.md (expected {p['id']}/intent.md); capture operator intent via the create-phase skill")
         for s in p["slices"]:
             if s["id"] in seen_slices:
                 errors.append(f"duplicate slice id: {s['id']}")
@@ -1779,6 +1823,8 @@ def validate() -> int:
             if data.get("status") not in allowed:
                 errors.append(f"deferred job in wrong folder: {data.get('id')} status {data.get('status')} under {base.relative_to(ROOT)}")
     validate_docs(errors)
+    for w in warnings:
+        print(f"warning: {w}")
     if errors:
         print("Workflow validation failed:")
         for e in errors:
@@ -1847,11 +1893,12 @@ def new_phase(args: argparse.Namespace) -> None:
         "id": phase_id, "name": args.name, "objective": args.objective, "status": "planned", "order": order,
         "created_at": now_iso(), "started_at": None, "completed_at": None,
         "review": {"status": "pending", "reviewed_at": None, "reviewer": None, "note": None},
-        "paths": {"phase_md": "phase.md", "slices_dir": "slices"},
+        "paths": {"phase_md": "phase.md", "intent_md": "intent.md", "slices_dir": "slices"},
         "archive": {"archived": False, "archived_at": None, "archive_path": None},
     }
     write_json(pdir / "phase.json", phase_data)
-    write_text(pdir / "phase.md", f"# Phase {phase_id}: {args.name}\n\n## Objective\n\n{args.objective}\n\n## Context\n\n## Decomposition\n\n_Slice breakdown and rationale — filled by the `{phase_id}.DECOMP` slice._\n\n## Findings & Notes\n\n_Durable findings and cross-slice notes; `DECOMP` seeds this, and each slice appends when it finishes._\n\n## Constraints\n\n## Open Questions\n\n-\n")
+    write_text(pdir / "phase.md", f"# Phase {phase_id}: {args.name}\n\n_Intent: see [intent.md](intent.md)._\n\n## Objective\n\n{args.objective}\n\n## Context\n\n## Decomposition\n\n_Slice breakdown and rationale — filled by the `{phase_id}.DECOMP` slice._\n\n## Findings & Notes\n\n_Durable findings and cross-slice notes; `DECOMP` seeds this, and each slice appends when it finishes._\n\n## Constraints\n\n## Open Questions\n\n-\n")
+    write_text(pdir / "intent.md", render_template(load_template("intent.md"), PHASE_ID=phase_id, CAPTURED_AT=now_iso(), ORIGIN="operator"))
     create_slice(phase_id, f"{phase_id}.DECOMP", "decompose phase", "decomposition", 0, "low", source={"type": "new_phase", "id": phase_id})
     create_slice(phase_id, f"{phase_id}.REVIEW", "phase review", "review", 9999, "medium", source={"type": "new_phase", "id": phase_id})
     append_event("phase_created", phase=phase_id)
