@@ -365,6 +365,7 @@ def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
 
 def validate() -> int:
     errors: list = []
+    warnings: list = []
     phases = all_active_phases()
     seen_phases, seen_slices = set(), set()
     all_slice_ids = {s["id"] for p in phases for s in p["slices"]}
@@ -377,6 +378,8 @@ def validate() -> int:
         review_status = p.get("review", {}).get("status")
         if p["status"] == "done" and review_status != "pass":
             errors.append(f"phase {p['id']} is done but review status is {review_status!r}; record a passing review with review-phase")
+        if not (ACTIVE / p["id"] / "intent.md").exists():
+            warnings.append(f"phase {p['id']} has no intent.md (expected {p['id']}/intent.md); capture operator intent via the create-phase skill")
         for s in p["slices"]:
             if s["id"] in seen_slices:
                 errors.append(f"duplicate slice id: {s['id']}")
@@ -409,6 +412,8 @@ def validate() -> int:
             if data.get("status") not in allowed:
                 errors.append(f"deferred job in wrong folder: {data.get('id')} status {data.get('status')} under {base.relative_to(ROOT)}")
     validate_docs(errors)
+    for w in warnings:
+        print(f"warning: {w}")
     if errors:
         print("Workflow validation failed:")
         for e in errors:
@@ -477,11 +482,12 @@ def new_phase(args: argparse.Namespace) -> None:
         "id": phase_id, "name": args.name, "objective": args.objective, "status": "planned", "order": order,
         "created_at": now_iso(), "started_at": None, "completed_at": None,
         "review": {"status": "pending", "reviewed_at": None, "reviewer": None, "note": None},
-        "paths": {"phase_md": "phase.md", "slices_dir": "slices"},
+        "paths": {"phase_md": "phase.md", "intent_md": "intent.md", "slices_dir": "slices"},
         "archive": {"archived": False, "archived_at": None, "archive_path": None},
     }
     write_json(pdir / "phase.json", phase_data)
-    write_text(pdir / "phase.md", f"# Phase {phase_id}: {args.name}\n\n## Objective\n\n{args.objective}\n\n## Context\n\n## Decomposition\n\n_Slice breakdown and rationale — filled by the `{phase_id}.DECOMP` slice._\n\n## Findings & Notes\n\n_Durable findings and cross-slice notes; `DECOMP` seeds this, and each slice appends when it finishes._\n\n## Constraints\n\n## Open Questions\n\n-\n")
+    write_text(pdir / "phase.md", f"# Phase {phase_id}: {args.name}\n\n_Intent: see [intent.md](intent.md)._\n\n## Objective\n\n{args.objective}\n\n## Context\n\n## Decomposition\n\n_Slice breakdown and rationale — filled by the `{phase_id}.DECOMP` slice._\n\n## Findings & Notes\n\n_Durable findings and cross-slice notes; `DECOMP` seeds this, and each slice appends when it finishes._\n\n## Constraints\n\n## Open Questions\n\n-\n")
+    write_text(pdir / "intent.md", render_template(load_template("intent.md"), PHASE_ID=phase_id, CAPTURED_AT=now_iso(), ORIGIN="operator"))
     create_slice(phase_id, f"{phase_id}.DECOMP", "decompose phase", "decomposition", 0, "low", source={"type": "new_phase", "id": phase_id})
     create_slice(phase_id, f"{phase_id}.REVIEW", "phase review", "review", 9999, "medium", source={"type": "new_phase", "id": phase_id})
     append_event("phase_created", phase=phase_id)

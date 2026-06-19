@@ -1,7 +1,7 @@
-# Intent — <phase id, e.g. P2>
+# Intent — __PHASE_ID__
 
-- Captured at: <ISO 8601 timestamp>
-- Origin: operator | synthesized-from-repo | bootstrap-placeholder
+- Captured at: __CAPTURED_AT__
+- Origin: __ORIGIN__
 
 ## Original Input (verbatim)
 
