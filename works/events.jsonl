@@ -63,3 +63,4 @@
 {"ts": "2026-06-19T10:36:13+09:00", "type": "doc_version_created", "doc": "qa", "version": "v0002_keep_test_files_small_by_default_prefer_lightweight_verification", "source": "create-phase"}
 {"ts": "2026-06-20T20:02:07+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0007_clarify_do-whole-phase_loop_add_auto_waiver_drop_plan.md_template", "source": "operator-request"}
 {"ts": "2026-06-20T20:02:45+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0006_slice-level_operator_intent_lands_in_the_native_plan_plan.md_is_template-free", "source": "operator-request"}
+{"ts": "2026-06-20T20:58:25+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0008_do-whole-phase_auto-advances_into_planning_the_default_pause_is_approval_of_the_readied_plan_not_permission_to_plan", "source": "operator-request"}

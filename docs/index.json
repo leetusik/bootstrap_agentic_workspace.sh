@@ -189,7 +189,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0007_clarify_do-whole-phase_loop_add_auto_waiver_drop_plan.md_template",
+      "latest": "v0008_do-whole-phase_auto-advances_into_planning_the_default_pause_is_approval_of_the_readied_plan_not_permission_to_plan",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -247,9 +247,17 @@
           "source": "operator-request",
           "summary": "clarify do-whole-phase loop, add auto waiver, drop plan.md template",
           "previous": "v0006_engine_scaffolds_phase_intent.md_plus_a_create-phase_intake_skill_supersedes_convention-only_intent_persistence"
+        },
+        {
+          "id": "v0008_do-whole-phase_auto-advances_into_planning_the_default_pause_is_approval_of_the_readied_plan_not_permission_to_plan",
+          "path": "docs/versions/decisions/v0008_do-whole-phase_auto-advances_into_planning_the_default_pause_is_approval_of_the_readied_plan_not_permission_to_plan.md",
+          "created_at": "2026-06-20T20:58:25+09:00",
+          "source": "operator-request",
+          "summary": "do-whole-phase auto-advances into planning; the default pause is approval of the readied plan, not permission to plan",
+          "previous": "v0007_clarify_do-whole-phase_loop_add_auto_waiver_drop_plan.md_template"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-06-20T20:03:21+09:00"
+  "last_rebuilt_at": "2026-06-20T20:59:14+09:00"
 }
