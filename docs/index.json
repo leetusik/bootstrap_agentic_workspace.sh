@@ -189,7 +189,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0009_do-_skills_enter_plan_mode_explicitly_via_enterplanmode_exitplanmode_auto_skips_it",
+      "latest": "v0010_delegate_decomp_execution_to_the_slice-executor_trust_the_executor_verdict_and_validate_all_slices_at_the_phase_review",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -263,9 +263,17 @@
           "source": "operator-request",
           "summary": "do-* skills enter plan mode explicitly via EnterPlanMode/ExitPlanMode; auto skips it",
           "previous": "v0008_do-whole-phase_auto-advances_into_planning_the_default_pause_is_approval_of_the_readied_plan_not_permission_to_plan"
+        },
+        {
+          "id": "v0010_delegate_decomp_execution_to_the_slice-executor_trust_the_executor_verdict_and_validate_all_slices_at_the_phase_review",
+          "path": "docs/versions/decisions/v0010_delegate_decomp_execution_to_the_slice-executor_trust_the_executor_verdict_and_validate_all_slices_at_the_phase_review.md",
+          "created_at": "2026-06-20T23:29:54+09:00",
+          "source": "operator-request",
+          "summary": "Delegate DECOMP execution to the slice-executor; trust the executor verdict and validate all slices at the phase review",
+          "previous": "v0009_do-_skills_enter_plan_mode_explicitly_via_enterplanmode_exitplanmode_auto_skips_it"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-06-20T21:44:17+09:00"
+  "last_rebuilt_at": "2026-06-20T23:31:31+09:00"
 }

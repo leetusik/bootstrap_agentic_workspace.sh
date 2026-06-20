@@ -134,10 +134,16 @@ echo "== Test 6: dual-apply -- live files match the bootstrap-embedded copies ==
 diff -q "$REPO_ROOT/scripts/workflow.py" "$F/scripts/workflow.py" >/dev/null \
   && ok "scripts/workflow.py == bootstrap-embedded WORKFLOW_PY" \
   || bad "DRIFT: scripts/workflow.py differs from the bootstrap-embedded copy"
-for rel in .claude/skills/retrofit/SKILL.md .agents/skills/retrofit/SKILL.md .agents/skills/retrofit/agents/openai.yaml; do
+for rel in \
+  .claude/skills/retrofit/SKILL.md .agents/skills/retrofit/SKILL.md .agents/skills/retrofit/agents/openai.yaml \
+  .claude/skills/do-next-slice/SKILL.md .agents/skills/do-next-slice/SKILL.md \
+  .claude/skills/do-whole-phase/SKILL.md .agents/skills/do-whole-phase/SKILL.md \
+  .claude/skills/review-phase/SKILL.md .agents/skills/review-phase/SKILL.md \
+  .claude/agents/slice-executor.md .claude/agents/phase-reviewer.md \
+  CLAUDE.md AGENTS.md ; do
   diff -q "$REPO_ROOT/$rel" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
-    || bad "DRIFT: $rel differs from COMMAND_SKILLS output"
+    || bad "DRIFT: $rel differs from the bootstrap-embedded copy"
 done
 
 # ---------------------------------------------------------------------------

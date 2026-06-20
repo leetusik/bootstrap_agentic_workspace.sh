@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # review-phase
 
-Review the target phase read-only, then record the verdict. Do not implement fixes here; that is done by fix slices.
+Review the target phase read-only, then record the verdict. This is where the phase's slices are **validated together** — the orchestrator trusted each executor's `done` and did not re-run per-slice validation, so re-run it here across the whole phase. Do not implement fixes here; that is done by fix slices.
 
 Read:
 
@@ -20,9 +20,9 @@ Check:
 
 - Did the phase objective actually ship?
 - Did each slice meet its brief and plan? Are deviations explained in `result.md`?
+- **Validate all slices together** (the orchestrator no longer re-runs per-slice validation): re-run each slice's validation commands from its `plan.md` / `result.md`, plus `python3 scripts/workflow.py validate`. Do they pass across the finished phase?
 - When product, architecture, or API truth changed, were new doc versions created (not in-place edits)?
 - Do `docs/current/*.md` match the latest versions in `docs/index.json`? (`python3 scripts/workflow.py validate` checks this.)
-- Were validation commands recorded?
 - Are any issues serious enough to require fix slices?
 
 Record exactly one verdict:
