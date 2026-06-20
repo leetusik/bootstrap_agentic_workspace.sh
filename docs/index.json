@@ -99,7 +99,7 @@
       ]
     },
     "operations": {
-      "latest": "v0005_create-phase_intake_skill_new-phase_scaffolds_intent.md_linked_from_phase.md",
+      "latest": "v0006_slice-level_operator_intent_lands_in_the_native_plan_plan.md_is_template-free",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -141,6 +141,14 @@
           "source": "create-phase",
           "summary": "create-phase intake skill; new-phase scaffolds intent.md linked from phase.md",
           "previous": "v0004_intent_intake_refine_clarify_confirm_operator_input_persist_intent.md_linked_from_phase.md"
+        },
+        {
+          "id": "v0006_slice-level_operator_intent_lands_in_the_native_plan_plan.md_is_template-free",
+          "path": "docs/versions/operations/v0006_slice-level_operator_intent_lands_in_the_native_plan_plan.md_is_template-free.md",
+          "created_at": "2026-06-20T20:02:45+09:00",
+          "source": "operator-request",
+          "summary": "slice-level operator intent lands in the native plan; plan.md is template-free",
+          "previous": "v0005_create-phase_intake_skill_new-phase_scaffolds_intent.md_linked_from_phase.md"
         }
       ]
     },
@@ -181,7 +189,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0006_engine_scaffolds_phase_intent.md_plus_a_create-phase_intake_skill_supersedes_convention-only_intent_persistence",
+      "latest": "v0007_clarify_do-whole-phase_loop_add_auto_waiver_drop_plan.md_template",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -231,9 +239,17 @@
           "source": "create-phase",
           "summary": "engine scaffolds phase intent.md plus a create-phase intake skill; supersedes convention-only intent persistence",
           "previous": "v0005_route_slice_execution_through_a_slice-executor_subagent_orchestrator_plans_verifies_commits_executor_implements_plan-mode_gate_per_slice"
+        },
+        {
+          "id": "v0007_clarify_do-whole-phase_loop_add_auto_waiver_drop_plan.md_template",
+          "path": "docs/versions/decisions/v0007_clarify_do-whole-phase_loop_add_auto_waiver_drop_plan.md_template.md",
+          "created_at": "2026-06-20T20:02:07+09:00",
+          "source": "operator-request",
+          "summary": "clarify do-whole-phase loop, add auto waiver, drop plan.md template",
+          "previous": "v0006_engine_scaffolds_phase_intent.md_plus_a_create-phase_intake_skill_supersedes_convention-only_intent_persistence"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-06-19T10:36:52+09:00"
+  "last_rebuilt_at": "2026-06-20T20:03:21+09:00"
 }

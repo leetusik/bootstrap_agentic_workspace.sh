@@ -465,7 +465,9 @@ def create_slice(phase_id: str, slice_id: str, name: str, kind: str, order, risk
     }
     write_json(sdir / "slice.json", data)
     common = {"PHASE_ID": phase_id, "SLICE_ID": slice_id, "SLICE_NAME": name, "CREATED_AT": created}
-    for name_in in ("plan.md", "result.md"):
+    # Only result.md is scaffolded. plan.md has no template: the orchestrator writes its
+    # own free-form native plan there at the slice's turn, so a fresh slice has no plan.md.
+    for name_in in ("result.md",):
         write_text(sdir / name_in, render_template(load_template(name_in), **common))
     return sdir
 
@@ -668,8 +670,11 @@ def promote_deferred(args: argparse.Namespace) -> None:
     pdir = require_phase(args.phase)
     order = _auto_order(pdir, args.order)
     sdir = create_slice(args.phase, args.slice, args.name or data["title"], args.kind, order, args.risk, source={"type": "deferred", "id": did, "path": str(ddir.relative_to(ROOT))}, depends_on=args.depends_on or [])
-    with (sdir / "plan.md").open("a", encoding="utf-8") as f:
-        f.write("\n---\n\n## Promoted Deferred Context\n\n")
+    plan_path = sdir / "plan.md"
+    # plan.md has no template, so it may not exist yet; only prepend a separator when it does.
+    sep = "\n---\n\n" if plan_path.exists() and plan_path.read_text(encoding="utf-8").strip() else ""
+    with plan_path.open("a", encoding="utf-8") as f:
+        f.write(f"{sep}## Promoted Deferred Context\n\n")
         f.write((ddir / "brief.md").read_text(encoding="utf-8"))
     data["status"] = "promoted"
     data["promoted_to"] = {"phase_id": args.phase, "slice_id": args.slice, "path": str(sdir.relative_to(ROOT))}

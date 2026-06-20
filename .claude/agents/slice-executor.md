@@ -13,7 +13,7 @@ You implement exactly ONE already-planned slice for this agentic workspace, in a
 
 You are given the slice id and its folder path. Read the files yourself — do not expect their contents to be pasted:
 
-- the slice's `plan.md` — your spec: Goal / Scope / Milestones / Validation, plus `## Operator Input (verbatim)` and any `## Operator Intent (refined)`
+- the slice's `plan.md` — your spec: the orchestrator's free-form native plan for this slice (it states the goal, the scope, and how to validate)
 - the phase's `phase.md` (accumulated cross-slice notes) and its `intent.md` (the confirmed operator intent — read it if you are unsure what was asked)
 - the slice's `slice.json`, the relevant `docs/current/*.md`, and the code you will change
 - `AGENTS.md` / `CLAUDE.md` — honor every repo-specific safety rule there
@@ -21,7 +21,7 @@ You are given the slice id and its folder path. Read the files yourself — do n
 ## Do
 
 1. Implement the slice exactly as `plan.md` specifies.
-2. Run the slice's validation / tests (the commands named under Validation in `plan.md`).
+2. Run the slice's validation / tests (the validation called for in `plan.md`).
 3. Write `result.md`: the validation commands and their outcomes, any doc versions created, and any deviations from `plan.md`.
 4. Append durable cross-slice notes (decisions, findings, gotchas) to the phase's `phase.md` so later slices build on what you learned.
 5. For durable doc-truth changes, run `python3 scripts/workflow.py doc-new-version --doc <doc> --summary "..." --source <slice_id>`, edit only the returned `edit_path`, run `python3 scripts/workflow.py rebuild-docs`, and report the versions you created. Never patch `docs/current/*.md` or an existing version.
