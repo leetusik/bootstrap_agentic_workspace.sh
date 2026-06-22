@@ -13,6 +13,8 @@ Options:
   --phase-objective TEXT      Optional initial P1 phase objective override
   --force-empty-ok            Allow bootstrapping into a repo with extra non-managed files
   --into-existing             Non-destructively retrofit into an existing repo (see docs/retrofit-guide.md)
+  --update                    Update an already-installed workspace's machinery to this version
+  --dry-run                   With --update, preview the change-list without writing anything
   -h, --help                  Show this help
 
 TARGET_DIR defaults to the current directory.
@@ -48,6 +50,8 @@ phase_name=
 phase_objective=
 force_empty_ok=0
 into_existing=0
+update=0
+dry_run=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -62,6 +66,8 @@ while [ $# -gt 0 ]; do
     --phase-objective=*) phase_objective=${1#--phase-objective=}; [ -n "$phase_objective" ] || die "--phase-objective requires a non-empty value"; shift ;;
     --force-empty-ok) force_empty_ok=1; shift ;;
     --into-existing) into_existing=1; shift ;;
+    --update) update=1; shift ;;
+    --dry-run) dry_run=1; shift ;;
     --) shift; while [ $# -gt 0 ]; do [ -z "$target_dir" ] || die "only one TARGET_DIR may be provided"; target_dir=$1; shift; done ;;
     -*) die "unknown option $1" ;;
     *) [ -z "$target_dir" ] || die "only one TARGET_DIR may be provided"; target_dir=$1; shift ;;
@@ -70,6 +76,8 @@ done
 
 [ -n "$target_dir" ] || target_dir=.
 [ -e "$target_dir" ] && [ ! -d "$target_dir" ] && die "target exists but is not a directory: $target_dir"
+[ "$update" = 1 ] && [ "$into_existing" = 1 ] && die "--update and --into-existing are mutually exclusive"
+[ "$dry_run" = 1 ] && [ "$update" = 0 ] && die "--dry-run is only valid with --update"
 
 # Fixed non-interactive defaults. The first real task should replace this bootstrap intake context.
 [ -n "$project_name" ] || project_name="New Project"
@@ -86,10 +94,13 @@ export PHASE_NAME="$phase_name"
 export PHASE_OBJECTIVE="$phase_objective"
 export FORCE_EMPTY_OK="$force_empty_ok"
 export INTO_EXISTING="$into_existing"
+export UPDATE="$update"
+export DRY_RUN="$dry_run"
 
 python3 - <<'PY'
 from __future__ import annotations
 
+import difflib
 import json
 import os
 import re
@@ -114,6 +125,15 @@ FORCE_EMPTY_OK = os.environ.get("FORCE_EMPTY_OK") == "1"
 RETROFIT = os.environ.get("INTO_EXISTING") == "1"
 INSTALL_DOCS = True  # recomputed in the guards for retrofit (skip if target already has docs/)
 RETROFIT_SUMMARY = {"created": [], "skipped": [], "merged": []}
+# Update: refresh an already-installed workspace's machinery to THIS version,
+# preserving the downstream's own work (everything under works/ except templates)
+# and all of docs/. Gated behind --update; mutually exclusive with --into-existing.
+# --dry-run previews the change-list and writes nothing.
+UPDATE = os.environ.get("UPDATE") == "1"
+DRY_RUN = os.environ.get("DRY_RUN") == "1"
+UPDATE_DOCS = True  # recomputed in the guards for update (skip docs rebuild if no docs subsystem)
+UPDATE_SUMMARY = {"updated": [], "added": [], "merged": [], "preserved": [], "unchanged": [], "stale": []}
+UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 ROOT = TARGET.resolve()
 
 DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
@@ -423,6 +443,59 @@ Report:
 10. Summarize what the installer created / skipped / merged (from its printed summary) and show `git status`. Do NOT commit automatically — the operator reviews the diff and tells you when to commit. Point them at `docs/retrofit-guide.md` for the full policy and troubleshooting.
 """,
     },
+    {
+        "name": "update-workspace",
+        "desc": "Update the current repo's agentic-workspace machinery to the latest upstream cornerstone, preserving your phases, slices, and docs.",
+        "tools": "Bash(python3 scripts/workflow.py:*), Read, Edit, Write, Glob, Grep, Bash",
+        "body": """Update the CURRENT repo's agentic-workspace machinery to the latest upstream cornerstone, preserving your own work. Explicit-invocation only. Run this when the cornerstone has changed since you adopted or last synced and you want this repo to match the current version. (For first-time adoption use `/retrofit` instead.)
+
+What it changes: it OVERWRITES machinery (`scripts/workflow.py`, the `.claude/agents/` subagents, every skill under `.claude/skills/` and `.agents/skills/`, `.codex/config.toml`, `works/templates/*`), additively MERGES `.claude/settings.json`, and refreshes the `CLAUDE.md`/`AGENTS.md` contract. It PRESERVES everything under `works/` except templates (your state, phases, slices, deferred jobs) and all of `docs/` (your versioned docs). It never commits.
+
+Preflight (read-only):
+
+1. Confirm a git repo: `git rev-parse --is-inside-work-tree`. If the working tree is dirty (`git status --porcelain` is non-empty), tell the operator and recommend committing or stashing first, so the update lands as a clean, reviewable diff.
+2. Confirm this repo already has the workspace: `works/state.json` (or any `works/phases/active/*/phase.json`) AND `scripts/workflow.py` must exist. If not, STOP — this repo has not adopted the workspace; use `/retrofit` instead.
+3. If `works/.workspace-version.json` exists, read it and report the last-synced commit and time so the operator knows the starting point.
+
+Fetch upstream:
+
+4. Shallow-clone the cornerstone to a temp dir and capture its HEAD commit:
+
+   ```sh
+   tmp="$(mktemp -d)"
+   git clone --depth 1 https://github.com/leetusik/bootstrap_agentic_workspace.sh.git "$tmp"
+   ref="$(git -C "$tmp" rev-parse HEAD)"
+   ```
+
+Preview the diff (this is the "check what is different" step):
+
+5. Run the freshly-cloned installer in dry-run update mode from the repo root — it writes nothing and prints the change-list:
+
+   ```sh
+   sh "$tmp/bootstrap_agentic_workspace.sh" . --update --dry-run
+   ```
+
+   Show the operator the change-list: machinery files that would be updated (with +added/-removed counts) or added, settings merged, how many files are preserved and unchanged, and any stale workspace skills upstream has dropped.
+
+6. STOP and let the operator review and approve. Do not apply without approval.
+
+Apply (after the operator approves):
+
+7. Run the same installer in update mode, recording the upstream commit so provenance is tracked:
+
+   ```sh
+   SYNCED_COMMIT="$ref" sh "$tmp/bootstrap_agentic_workspace.sh" . --update
+   ```
+
+Verify:
+
+8. The installer's update already ran `validate` / `rebuild` (or `next` for a repo without the docs subsystem) and printed the result. Run `python3 scripts/workflow.py next` to confirm the current state under the refreshed engine.
+
+Report and clean up:
+
+9. Summarize what was updated / added / merged / preserved and any flagged stale skills (from the installer's printed summary), and show `git status`. Do NOT commit automatically — the operator reviews the diff and tells you when to commit. Remove the temp clone: `rm -rf "$tmp"`.
+""",
+    },
 ]
 
 MANAGED_DIRS = [
@@ -556,7 +629,100 @@ def _retrofit_handle(path: str, text: str) -> bool:
     return True
 
 
+# ---- Update (--update) write policy -----------------------------------------
+# Refresh machinery in place while preserving the downstream's own work and docs:
+#   OVERWRITE (machinery, upstream-owned): scripts/workflow.py, the .claude
+#     subagents, every skill, .codex/config.toml, works/templates/*.
+#   MERGE (additive): .claude/settings.json.
+#   CONTRACT (sidecar-aware): CLAUDE.md / AGENTS.md.
+#   PRESERVE (never touch): everything under works/ except templates, and all of
+#     docs/ (the append-only version chain plus generated snapshots).
+# In --dry-run nothing is written; changes are only recorded for the report.
+def _is_machinery(path: str) -> bool:
+    if path in ("scripts/workflow.py", ".codex/config.toml"):
+        return True
+    return path.startswith((".claude/agents/", ".claude/skills/", ".agents/skills/", "works/templates/"))
+
+
+def _difflines(old: str, new: str):
+    """(added, removed) line counts between two texts, via difflib opcodes."""
+    a, b = old.splitlines(), new.splitlines()
+    added = removed = 0
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b).get_opcodes():
+        if tag in ("replace", "delete"):
+            removed += i2 - i1
+        if tag in ("replace", "insert"):
+            added += j2 - j1
+    return added, removed
+
+
+def _record_change(path: str, text: str) -> bool:
+    """Record whether `text` changes the file at `path`; return True if it does."""
+    target = ROOT / path
+    if target.is_file():
+        old = target.read_text(encoding="utf-8")
+        if old == text:
+            UPDATE_SUMMARY["unchanged"].append(path)
+            return False
+        added, removed = _difflines(old, text)
+        UPDATE_SUMMARY["updated"].append((path, added, removed))
+        return True
+    UPDATE_SUMMARY["added"].append(path)
+    return True
+
+
+def _update_write(path: str, text: str, executable: bool) -> None:
+    if _record_change(path, text) and not DRY_RUN:
+        _atomic_write(ROOT / path, text, executable)
+
+
+def _update_handle(path: str, text: str, executable: bool) -> None:
+    # Preserve all downstream work and docs.
+    if path.startswith("works/") and not path.startswith("works/templates/"):
+        UPDATE_SUMMARY["preserved"].append(path)
+        return
+    if path.startswith("docs/") and path != "docs/README.md":
+        UPDATE_SUMMARY["preserved"].append(path)
+        return
+    if path == "docs/README.md":
+        # Machinery doc, but only refresh where the docs subsystem exists.
+        if UPDATE_DOCS:
+            _update_write(path, text, executable)
+        else:
+            UPDATE_SUMMARY["preserved"].append(path)
+        return
+    # Additive merge: never clobber the operator's settings.
+    if path == ".claude/settings.json":
+        if (ROOT / path).exists():
+            UPDATE_SUMMARY["merged"].append(path)
+            if not DRY_RUN:
+                _merge_settings_json(text)
+        else:
+            _update_write(path, text, executable)
+        return
+    # Contract: a retrofitted repo keeps its own CLAUDE.md/AGENTS.md and we
+    # refresh the workspace sidecar; a fresh-installed repo's contract IS
+    # machinery, so overwrite it in place (operator previews via --dry-run).
+    if path in ("CLAUDE.md", "AGENTS.md"):
+        sidecar = path[:-3] + ".workspace.md"
+        if (ROOT / sidecar).exists():
+            _record_change(sidecar, text)
+            if not DRY_RUN:
+                _merge_contract(path, text)
+        else:
+            _update_write(path, text, executable)
+        return
+    if _is_machinery(path):
+        _update_write(path, text, executable)
+        return
+    # Any other managed file is content/state — preserve.
+    UPDATE_SUMMARY["preserved"].append(path)
+
+
 def write_text(path, text: str, executable: bool = False) -> None:
+    if UPDATE:
+        _update_handle(path, text, executable)
+        return
     if RETROFIT:
         if not INSTALL_DOCS and (path == "docs" or path.startswith("docs/")):
             return  # target already has a docs/ system — don't scaffold ours
@@ -578,7 +744,25 @@ for rel in MANAGED_DIRS:
     if p.exists() and not p.is_dir():
         sys.exit(f"Error: managed directory path exists but is not a directory: {rel}")
 
-if RETROFIT:
+if UPDATE:
+    # Require an already-installed workspace; refuse on a bare or foreign repo.
+    works_present = (ROOT / "works/state.json").exists() or any(
+        (ROOT / "works/phases/active").glob("*/phase.json")
+    )
+    if not ((ROOT / "scripts/workflow.py").exists() and works_present):
+        print("Error: no agentic workspace found here to update.", file=sys.stderr)
+        print("Install fresh into an empty dir, or adopt an existing repo with --into-existing.", file=sys.stderr)
+        sys.exit(1)
+    # Rebuild docs only when THIS repo uses the workspace's OWN docs system —
+    # index.json plus our versioned doc-type dirs. A repo adopted over its own
+    # (foreign or absent) docs/ never received ours, so running our docs rebuild
+    # there would crash or corrupt; skip it and rebuild only the works side.
+    UPDATE_DOCS = (
+        (ROOT / "docs/index.json").exists()
+        and (ROOT / "docs/versions").is_dir()
+        and any((ROOT / "docs/versions" / d).is_dir() for d in DOC_TYPES)
+    )
+elif RETROFIT:
     # PLAN pass: classify before writing anything, and abort up front on a
     # load-bearing collision so a retrofit can never half-install.
     # Idempotent: a repo that already has the workspace is a clean no-op. Check
@@ -628,8 +812,10 @@ else:
             sys.exit(1)
 
 for rel in MANAGED_DIRS:
-    if RETROFIT and not INSTALL_DOCS and (rel == "docs" or rel.startswith("docs/")):
-        continue  # don't scaffold our docs/ tree into a target that already has one
+    if DRY_RUN:
+        continue  # dry-run writes nothing, not even directories
+    if ((RETROFIT and not INSTALL_DOCS) or (UPDATE and not UPDATE_DOCS)) and (rel == "docs" or rel.startswith("docs/")):
+        continue  # don't scaffold a docs/ tree the target opted out of
     (ROOT / rel).mkdir(parents=True, exist_ok=True)
 
 created_at = now_iso()
@@ -2483,15 +2669,92 @@ def run_workflow(*workflow_args: str) -> None:
     subprocess.run([sys.executable, str(ROOT / "scripts" / "workflow.py"), *workflow_args], cwd=str(ROOT), check=True)
 
 
-if RETROFIT and not INSTALL_DOCS:
+def write_version_marker() -> None:
+    """Record provenance: which upstream commit this workspace is synced to.
+    Informational only (the diff itself is always file-based); kept out of
+    MANAGED_FILES so it never trips the fresh-install conflict guard."""
+    marker = {
+        "upstream_url": UPSTREAM_URL,
+        "synced_commit": os.environ.get("SYNCED_COMMIT") or "bootstrap",
+        "synced_at": now_iso(),
+    }
+    _atomic_write(ROOT / "works/.workspace-version.json", json.dumps(marker, ensure_ascii=False, indent=2) + "\n")
+
+
+def flag_stale_skills() -> None:
+    """Surface workspace-managed skill dirs that this version no longer ships, so
+    the operator can remove them. Heuristic: a dir is ours only if its SKILL.md
+    sets `disable-model-invocation: true` — so the operator's own skills are not
+    mislabeled. Never deletes anything."""
+    current = {s["name"] for s in COMMAND_SKILLS}
+    for base in (".claude/skills", ".agents/skills"):
+        d = ROOT / base
+        if not d.is_dir():
+            continue
+        for sub in sorted(d.iterdir()):
+            if not sub.is_dir() or sub.name in current:
+                continue
+            try:
+                head = (sub / "SKILL.md").read_text(encoding="utf-8")[:400]
+            except OSError:
+                continue
+            if "disable-model-invocation: true" in head:
+                UPDATE_SUMMARY["stale"].append(f"{base}/{sub.name}")
+
+
+def print_change_list() -> None:
+    upd, add, mrg = UPDATE_SUMMARY["updated"], UPDATE_SUMMARY["added"], UPDATE_SUMMARY["merged"]
+    print(f"  machinery updated: {len(upd)} file(s)")
+    for path, added, removed in upd:
+        print(f"    ~ {path}  (+{added}/-{removed})")
+    if add:
+        print(f"  added: {len(add)} file(s)")
+        for path in add:
+            print(f"    + {path}")
+    if mrg:
+        print(f"  merged (additive): {', '.join(mrg)}")
+    print(f"  preserved (your work + docs, untouched): {len(UPDATE_SUMMARY['preserved'])} file(s)")
+    print(f"  unchanged: {len(UPDATE_SUMMARY['unchanged'])} file(s)")
+    if UPDATE_SUMMARY["stale"]:
+        print(f"  stale workspace skills dropped upstream (remove manually?): {', '.join(UPDATE_SUMMARY['stale'])}")
+
+
+if UPDATE:
+    flag_stale_skills()
+
+if DRY_RUN:
+    pass  # previewed only — no rebuild/validate, no marker
+elif UPDATE:
+    if UPDATE_DOCS:
+        run_workflow("rebuild")
+        run_workflow("validate")
+    else:
+        # No docs subsystem here (retrofitted repo) — the docs rebuild would crash.
+        run_workflow("next")
+    write_version_marker()
+elif RETROFIT and not INSTALL_DOCS:
     # The target owns docs/ — rebuild only the works side; do not run our docs
     # rebuild/validate against a foreign doc system.
     run_workflow("next")
+    write_version_marker()
 else:
     run_workflow("rebuild")
     run_workflow("validate")
+    write_version_marker()
 
-if RETROFIT:
+if DRY_RUN:
+    print(f"DRY RUN (--update --dry-run) at {TARGET} — nothing written.")
+    print_change_list()
+    print("Re-run without --dry-run to apply.")
+elif UPDATE:
+    print(f"Update complete (--update) at {TARGET}")
+    print_change_list()
+    if not UPDATE_DOCS:
+        print("  note: no docs subsystem here; skipped docs rebuild (ran 'next' only)")
+    print(f"  provenance recorded: works/.workspace-version.json (synced_commit {os.environ.get('SYNCED_COMMIT') or 'bootstrap'})")
+    print("The installer made no git changes. Review the diff (git status); commit once the operator approves.")
+    print("Next: python3 scripts/workflow.py next")
+elif RETROFIT:
     created, skipped, merged = (RETROFIT_SUMMARY["created"], RETROFIT_SUMMARY["skipped"], RETROFIT_SUMMARY["merged"])
     print(f"Retrofit complete (--into-existing) at {TARGET}")
     print(f"  created: {len(created)} new file(s)")
