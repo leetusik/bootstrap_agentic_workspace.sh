@@ -108,6 +108,28 @@ the **[Retrofit Guide](docs/retrofit-guide.md)** for the full procedure,
 collision policy, and how the first phase is seeded from your project's current
 state.
 
+### Keeping an adopted workspace up to date
+
+The workspace machinery — the engine, skills, subagents, contract, and templates —
+keeps evolving upstream. To pull the latest into a repo that already has it, use the
+**update** path. It overwrites only the machinery and **preserves your own work**:
+everything under `works/` except templates (your phases, slices, deferred jobs, and
+state) and all of `docs/`.
+
+```sh
+# preview exactly what would change — writes nothing
+sh /path/to/bootstrap_agentic_workspace.sh . --update --dry-run
+
+# apply it
+sh /path/to/bootstrap_agentic_workspace.sh . --update
+```
+
+Or drive it with an agent via the `/update-workspace` skill (`$update-workspace` in
+Codex): it clones the latest upstream, shows you the dry-run change-list, applies on
+your approval, runs `validate`, and records the synced commit in
+`works/.workspace-version.json`. It never commits — you review the diff and commit
+when ready. (For *first-time* adoption use `--into-existing` / `/retrofit` instead.)
+
 ### 2. Hand it to your agent
 
 Setup was the last time you needed a terminal. Open the directory in Claude Code or Codex and
@@ -133,6 +155,8 @@ review.
 | `--phase-objective TEXT` | placeholder | Objective of the seeded `P1` phase |
 | `--force-empty-ok` | off | Allow scaffolding into a directory that has extra, non-managed files |
 | `--into-existing` | off | Non-destructively retrofit into an existing repo (see the [Retrofit Guide](docs/retrofit-guide.md)) |
+| `--update` | off | Update an already-installed workspace's machinery to this version (preserves your `works/` and `docs/`) |
+| `--dry-run` | off | With `--update`, preview the change-list without writing anything |
 | `-h`, `--help` | — | Show help and exit |
 
 Both `--flag value` and `--flag=value` forms work.
@@ -141,8 +165,8 @@ Both `--flag value` and `--flag=value` forms work.
 
 - [`CLAUDE.md`](CLAUDE.md) + [`AGENTS.md`](AGENTS.md) — the equivalent per-tool routing contracts.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` + `.agents/` — the 12 Agent Skills, mirrored for both tools (plus a read-only
-  `phase-reviewer` subagent for Claude Code), and `.codex/config.toml`.
+- `.claude/` + `.agents/` — the 14 Agent Skills, mirrored for both tools (plus the
+  `phase-reviewer` and `slice-executor` subagents for Claude Code), and `.codex/config.toml`.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - [`works/`](works/) — the state machine: phase **`P1`** seeded with a `DECOMP` and a `REVIEW`
@@ -193,12 +217,13 @@ The full command list lives in [`CLAUDE.md`](CLAUDE.md).
 
 ### The same operations as Agent Skills
 
-The common workflows also ship as **12 Agent Skills**, mirrored in `.claude/skills/` (Claude Code:
+The common workflows also ship as **14 Agent Skills**, mirrored in `.claude/skills/` (Claude Code:
 `/slash` commands) and `.agents/skills/` (Codex: `$skill`), so the same step works natively in
 either tool:
 
 | Skill | What it does |
 |---|---|
+| `create-phase` | Capture intent, then create a phase (seeds `DECOMP` + `REVIEW`); stops before decomposition |
 | `do-next-slice` | Complete exactly one slice, then stop |
 | `do-whole-phase` | Finish the active phase end-to-end, including its review |
 | `review-phase` | Review a phase and record a `pass` / `changes_requested` / `blocked` verdict |
@@ -211,8 +236,10 @@ either tool:
 | `rebuild-workflow` | Rebuild generated dashboards, indexes, and doc snapshots, then validate |
 | `commit` | Group pending changes into focused conventional commits |
 | `retrofit` | Non-destructively adopt this workspace into an existing repo |
+| `update-workspace` | Update an adopted workspace's machinery to the latest upstream, preserving your work |
 
-In Claude Code, a read-only **`phase-reviewer`** subagent performs phase reviews. Skills are
+In Claude Code, a read-only **`phase-reviewer`** subagent performs phase reviews, and a
+**`slice-executor`** subagent implements delegated slices. Skills are
 **explicit-invocation only** — agents don't fire them on their own. They are the **operator's
 interface**: you type the slash command; the agent does everything it implies.
 
@@ -248,10 +275,10 @@ Archived phases and old doc versions are history; they're not read by default.
 │   │   └── archived/             # finished phases
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
-│   ├── skills/                    # 12 Agent Skills (Claude Code)
-│   ├── agents/phase-reviewer.md   # read-only review subagent
+│   ├── skills/                    # 14 Agent Skills (Claude Code)
+│   ├── agents/                    # phase-reviewer (review) + slice-executor (impl) subagents
 │   └── settings.json              # pre-approves workflow.py; denies push & rm -rf
-├── .agents/skills/                # the same 12 skills, mirrored for Codex
+├── .agents/skills/                # the same 14 skills, mirrored for Codex
 └── .codex/config.toml             # Codex project config
 ```
 

@@ -99,7 +99,7 @@
       ]
     },
     "operations": {
-      "latest": "v0006_slice-level_operator_intent_lands_in_the_native_plan_plan.md_is_template-free",
+      "latest": "v0007_updating_an_adopted_workspace_to_upstream_--update_installer_mode_machinery_overwrite_work_docs_preserved_update-workspace_skill",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -149,6 +149,14 @@
           "source": "operator-request",
           "summary": "slice-level operator intent lands in the native plan; plan.md is template-free",
           "previous": "v0005_create-phase_intake_skill_new-phase_scaffolds_intent.md_linked_from_phase.md"
+        },
+        {
+          "id": "v0007_updating_an_adopted_workspace_to_upstream_--update_installer_mode_machinery_overwrite_work_docs_preserved_update-workspace_skill",
+          "path": "docs/versions/operations/v0007_updating_an_adopted_workspace_to_upstream_--update_installer_mode_machinery_overwrite_work_docs_preserved_update-workspace_skill.md",
+          "created_at": "2026-06-22T15:16:05+09:00",
+          "source": "update-workspace",
+          "summary": "Updating an adopted workspace to upstream: --update installer mode (machinery overwrite, work/docs preserved) + /update-workspace skill",
+          "previous": "v0006_slice-level_operator_intent_lands_in_the_native_plan_plan.md_is_template-free"
         }
       ]
     },
@@ -275,5 +283,5 @@
       ]
     }
   },
-  "last_rebuilt_at": "2026-06-20T23:31:31+09:00"
+  "last_rebuilt_at": "2026-06-22T15:16:57+09:00"
 }
