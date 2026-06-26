@@ -197,7 +197,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0010_delegate_decomp_execution_to_the_slice-executor_trust_the_executor_verdict_and_validate_all_slices_at_the_phase_review",
+      "latest": "v0011_codex_orchestrator_executor_split_gpt-5.5_slice-executor_and_read-only_phase-reviewer_subagents_do-whole-phase_claude-only_codex_commits_attributed_to_gpt-5.5",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -279,9 +279,17 @@
           "source": "operator-request",
           "summary": "Delegate DECOMP execution to the slice-executor; trust the executor verdict and validate all slices at the phase review",
           "previous": "v0009_do-_skills_enter_plan_mode_explicitly_via_enterplanmode_exitplanmode_auto_skips_it"
+        },
+        {
+          "id": "v0011_codex_orchestrator_executor_split_gpt-5.5_slice-executor_and_read-only_phase-reviewer_subagents_do-whole-phase_claude-only_codex_commits_attributed_to_gpt-5.5",
+          "path": "docs/versions/decisions/v0011_codex_orchestrator_executor_split_gpt-5.5_slice-executor_and_read-only_phase-reviewer_subagents_do-whole-phase_claude-only_codex_commits_attributed_to_gpt-5.5.md",
+          "created_at": "2026-06-26T12:56:31+09:00",
+          "source": "operator-request",
+          "summary": "Codex orchestrator/executor split: gpt-5.5 slice-executor and read-only phase-reviewer subagents, do-whole-phase Claude-only, Codex commits attributed to GPT-5.5",
+          "previous": "v0010_delegate_decomp_execution_to_the_slice-executor_trust_the_executor_verdict_and_validate_all_slices_at_the_phase_review"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-06-22T15:16:57+09:00"
+  "last_rebuilt_at": "2026-06-26T12:58:18+09:00"
 }

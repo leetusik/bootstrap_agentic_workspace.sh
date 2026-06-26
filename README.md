@@ -165,8 +165,9 @@ Both `--flag value` and `--flag=value` forms work.
 
 - [`CLAUDE.md`](CLAUDE.md) + [`AGENTS.md`](AGENTS.md) — the equivalent per-tool routing contracts.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` + `.agents/` — the 14 Agent Skills, mirrored for both tools (plus the
-  `phase-reviewer` and `slice-executor` subagents for Claude Code), and `.codex/config.toml`.
+- `.claude/` + `.agents/` — the 14 Agent Skills, mirrored for both tools (`do-whole-phase` is
+  Claude Code only), plus the `phase-reviewer` and `slice-executor` subagents for each tool
+  (`.claude/agents/` on `opus`, `.codex/agents/` on `gpt-5.5`), and `.codex/config.toml`.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - [`works/`](works/) — the state machine: phase **`P1`** seeded with a `DECOMP` and a `REVIEW`
@@ -217,15 +218,15 @@ The full command list lives in [`CLAUDE.md`](CLAUDE.md).
 
 ### The same operations as Agent Skills
 
-The common workflows also ship as **14 Agent Skills**, mirrored in `.claude/skills/` (Claude Code:
-`/slash` commands) and `.agents/skills/` (Codex: `$skill`), so the same step works natively in
-either tool:
+The common workflows also ship as **14 Agent Skills** in `.claude/skills/` (Claude Code:
+`/slash` commands), all but one mirrored in `.agents/skills/` (Codex: `$skill`) — `do-whole-phase`
+is Claude Code only — so the same step works natively in either tool:
 
 | Skill | What it does |
 |---|---|
 | `create-phase` | Capture intent, then create a phase (seeds `DECOMP` + `REVIEW`); stops before decomposition |
 | `do-next-slice` | Complete exactly one slice, then stop |
-| `do-whole-phase` | Finish the active phase end-to-end, including its review |
+| `do-whole-phase` | Finish the active phase end-to-end, including its review _(Claude Code only — needs plan mode)_ |
 | `review-phase` | Review a phase and record a `pass` / `changes_requested` / `blocked` verdict |
 | `doc-new-version` | Create a new versioned durable doc instead of patching the current one |
 | `defer-job` | Park work as a deferred job, outside active selection |
@@ -238,8 +239,9 @@ either tool:
 | `retrofit` | Non-destructively adopt this workspace into an existing repo |
 | `update-workspace` | Update an adopted workspace's machinery to the latest upstream, preserving your work |
 
-In Claude Code, a read-only **`phase-reviewer`** subagent performs phase reviews, and a
-**`slice-executor`** subagent implements delegated slices. Skills are
+Both tools delegate the heavy lifting to subagents: a read-only **`phase-reviewer`** performs phase
+reviews and a **`slice-executor`** implements delegated slices (Claude Code under `.claude/agents/`
+on `opus`; Codex under `.codex/agents/` on `gpt-5.5`). Skills are
 **explicit-invocation only** — agents don't fire them on their own. They are the **operator's
 interface**: you type the slash command; the agent does everything it implies.
 
@@ -278,8 +280,10 @@ Archived phases and old doc versions are history; they're not read by default.
 │   ├── skills/                    # 14 Agent Skills (Claude Code)
 │   ├── agents/                    # phase-reviewer (review) + slice-executor (impl) subagents
 │   └── settings.json              # pre-approves workflow.py; denies push & rm -rf
-├── .agents/skills/                # the same 14 skills, mirrored for Codex
-└── .codex/config.toml             # Codex project config
+├── .agents/skills/                # the same skills, mirrored for Codex (minus do-whole-phase)
+└── .codex/
+    ├── agents/                    # phase-reviewer + slice-executor subagents (Codex, gpt-5.5)
+    └── config.toml                # Codex project config
 ```
 
 ## ⭐ How I work with coding agents
@@ -348,7 +352,7 @@ This repo dogfoods its own workflow, so contributing means *using* it — throug
 
 1. Open a phase: ask your agent — *"make a phase for \<your change\>"*. It runs
    `python3 scripts/workflow.py new-phase …`, which seeds only `DECOMP` + `REVIEW`, and stops there.
-2. Execute it: type `/do-next-slice` or `/do-whole-phase` (Claude Code), the matching `$skill`
+2. Execute it: type `/do-next-slice` or `/do-whole-phase` (Claude Code), `$do-next-slice`
    (Codex), or let any agent run the `workflow.py` commands directly. The `DECOMP` slice breaks the
    phase into slices.
 3. Review it: the phase closes only on a passing review — the agent records it with
