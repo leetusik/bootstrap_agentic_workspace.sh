@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 Read `AGENTS.md` and the phase's `phase.md` (and its `intent.md` when present), run `python3 scripts/workflow.py next`, then finish every remaining slice in the current phase only. If you are ever unsure of the operator's intent, consult `intent.md` — the confirmed record of what was asked.
 
-You are the ORCHESTRATOR (main thread): you plan each slice, verify, commit, move workflow state, and talk to the operator. Every middle slice — decomposition, implementation, and `fix` — is delegated to the `slice-executor` subagent, one at a time and sequentially; only the review goes to `phase-reviewer`. Same contract as `do-next-slice`, looped over the phase.
+You are the ORCHESTRATOR (main thread): you plan each slice, verify, commit, move workflow state, and talk to the operator. Every slice — decomposition, implementation, `fix`, and the phase **review** — is delegated to the `slice-executor` subagent, one at a time and sequentially. Same contract as `do-next-slice`, looped over the phase.
 
 Rules:
 
@@ -20,11 +20,11 @@ Rules:
 - Delegated slices (decomposition, implementation, `fix`): dispatch the `slice-executor` subagent (one at a time — wait for it to return before the next) to do the slice's job against `plan.md`; it writes `result.md`, appends notes to `phase.md`, and returns a structured verdict. Then trust the verdict: read it and `result.md`, and run `python3 scripts/workflow.py validate` (state integrity only — do **not** re-run the slice's tests; the phase review validates all slices together). On `needs_operator`, set the slice `pending`, report, and STOP; on `blocked`, record the blocker and STOP; on a failed or empty return, treat the slice as not done and STOP. A `done` verdict proceeds.
 - When the slice is a decomposition (`kind: decomposition`), it runs the same path as any slice: you plan it, then dispatch the `slice-executor`, whose job is to create the phase's middle slices with `new-slice` (bare folders — never pre-filling their `plan.md`) and record the breakdown, findings, and notes in `phase.md`.
 - When a slice finishes (its `result.md` and `phase.md` notes written by the executor), run `finish-slice <slice_id>`, then `python3 scripts/workflow.py validate`.
-- Durable doc changes: the executor runs `doc-new-version` + `rebuild-docs` for its slice and reports the versions (you confirm via `validate`); if you make one yourself, use the same commands and never patch old doc versions or `docs/current/*.md` directly.
+- Durable-doc versioning happens **only** at the phase review (see below): implementation, `fix`, and decomposition slices never run `doc-new-version` — when they change durable truth they append a one-line "Doc impact" note to `phase.md` for the review to consolidate.
 - Commit at every clean slice boundary by default, following the Commit Convention (do not branch unless the operator asks; never push). Commits are the orchestrator's job — the executor never commits.
-- When you reach the phase review slice, run the review by invoking the read-only `phase-reviewer` subagent and taking its verdict.
-- Record the verdict: `python3 scripts/workflow.py review-phase <P> --verdict pass|changes_requested|blocked --reviewer phase-reviewer --note "..."`.
-- If the verdict is `changes_requested`, create concrete fix slices with `python3 scripts/workflow.py new-slice --phase <P> --slice <P.Fn> --name "..." --kind fix`, complete them (via the executor), then re-review.
+- When you reach the phase review slice, delegate it to the `slice-executor` like any slice. Plan it so the executor validates all of the phase's slices together (each slice's validation commands plus `python3 scripts/workflow.py validate`), reviews against the objective / `intent.md` / docs, and — **only on a passing review** — consolidates the phase's "Doc impact" notes from `phase.md` into new doc versions (writing only docs, never source). It returns a `review_verdict`.
+- Record the verdict: `python3 scripts/workflow.py review-phase <P> --verdict pass|changes_requested|blocked --reviewer slice-executor --note "..."`, then `python3 scripts/workflow.py validate`.
+- If the verdict is `changes_requested`, create the executor's proposed fix slices with `python3 scripts/workflow.py new-slice --phase <P> --slice <P.Fn> --name "..." --kind fix`, complete them (via the executor), then re-review (which consolidates the docs once it passes).
 - Only a `pass` verdict marks the phase `done` (review-phase does this for you).
 - A passing review leaves the phase `done` in `active/`; do **not** archive it here. Archiving is a separate manual step — later, when the operator asks, use `archive-all` once every active phase is done, `rotate-backlog` to archive just the done phases while others continue, or `archive-phase <P>` for one phase.
 - Do not continue into the next phase.

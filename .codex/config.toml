@@ -4,11 +4,10 @@
 # .agents/skills/ automatically. The primary Codex config lives in your user
 # home (~/.codex/config.toml); keep machine/account settings there.
 #
-# Subagents ship under .codex/agents/ (https://developers.openai.com/codex/subagents):
-#   - slice-executor.toml  — gpt-5.5 / xhigh, implements one already-planned slice
-#   - phase-reviewer.toml  — gpt-5.5, read-only phase review
-# The orchestrator (main Codex thread) spawns the slice-executor to do each slice and
-# the phase-reviewer at the review slice; it never implements a slice inline.
+# Subagent ships under .codex/agents/ (https://developers.openai.com/codex/subagents):
+#   - slice-executor.toml  — gpt-5.5 / xhigh, implements one already-planned slice (and runs the phase review)
+# The orchestrator (main Codex thread) spawns the slice-executor to do each slice — including
+# the phase review, where it also consolidates the phase's doc versions; it never implements a slice inline.
 #
 # Recommended user-level settings to pair with this workspace:
 #

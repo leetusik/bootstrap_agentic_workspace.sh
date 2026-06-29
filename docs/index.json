@@ -99,7 +99,7 @@
       ]
     },
     "operations": {
-      "latest": "v0007_updating_an_adopted_workspace_to_upstream_--update_installer_mode_machinery_overwrite_work_docs_preserved_update-workspace_skill",
+      "latest": "v0008_phase_review_runs_through_the_slice-executor_and_consolidates_the_phase_s_doc_versions_phase-reviewer_retired",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -157,6 +157,14 @@
           "source": "update-workspace",
           "summary": "Updating an adopted workspace to upstream: --update installer mode (machinery overwrite, work/docs preserved) + /update-workspace skill",
           "previous": "v0006_slice-level_operator_intent_lands_in_the_native_plan_plan.md_is_template-free"
+        },
+        {
+          "id": "v0008_phase_review_runs_through_the_slice-executor_and_consolidates_the_phase_s_doc_versions_phase-reviewer_retired",
+          "path": "docs/versions/operations/v0008_phase_review_runs_through_the_slice-executor_and_consolidates_the_phase_s_doc_versions_phase-reviewer_retired.md",
+          "created_at": "2026-06-29T17:28:03+09:00",
+          "source": "operator-request",
+          "summary": "Phase review runs through the slice-executor and consolidates the phase's doc versions; phase-reviewer retired",
+          "previous": "v0007_updating_an_adopted_workspace_to_upstream_--update_installer_mode_machinery_overwrite_work_docs_preserved_update-workspace_skill"
         }
       ]
     },
@@ -197,7 +205,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0011_codex_orchestrator_executor_split_gpt-5.5_slice-executor_and_read-only_phase-reviewer_subagents_do-whole-phase_claude-only_codex_commits_attributed_to_gpt-5.5",
+      "latest": "v0012_consolidate_durable-doc_versioning_at_the_phase_review_slice-executor_runs_the_review_retiring_the_read-only_phase-reviewer",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -287,9 +295,17 @@
           "source": "operator-request",
           "summary": "Codex orchestrator/executor split: gpt-5.5 slice-executor and read-only phase-reviewer subagents, do-whole-phase Claude-only, Codex commits attributed to GPT-5.5",
           "previous": "v0010_delegate_decomp_execution_to_the_slice-executor_trust_the_executor_verdict_and_validate_all_slices_at_the_phase_review"
+        },
+        {
+          "id": "v0012_consolidate_durable-doc_versioning_at_the_phase_review_slice-executor_runs_the_review_retiring_the_read-only_phase-reviewer",
+          "path": "docs/versions/decisions/v0012_consolidate_durable-doc_versioning_at_the_phase_review_slice-executor_runs_the_review_retiring_the_read-only_phase-reviewer.md",
+          "created_at": "2026-06-29T17:25:54+09:00",
+          "source": "operator-request",
+          "summary": "Consolidate durable-doc versioning at the phase review; slice-executor runs the review, retiring the read-only phase-reviewer",
+          "previous": "v0011_codex_orchestrator_executor_split_gpt-5.5_slice-executor_and_read-only_phase-reviewer_subagents_do-whole-phase_claude-only_codex_commits_attributed_to_gpt-5.5"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-06-26T12:58:18+09:00"
+  "last_rebuilt_at": "2026-06-29T17:28:43+09:00"
 }

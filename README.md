@@ -40,8 +40,8 @@ three sessions of the same agent) at one repo and you get three different conven
   ([`works/state.json`](works/) and the generated backlog).
 - **Durable, shared memory** — a per-phase notebook plus append-only versioned docs carry what each
   step learned forward to the next, so knowledge survives compaction and hand-offs between tools.
-- **Review gates** — work isn't "done" until a read-only reviewer checks it against the phase's
-  objective.
+- **Review gates** — work isn't "done" until a phase review (run by the executor in a fresh,
+  isolated context that never edits source) checks it against the phase's objective.
 
 It is **cross-tool by design**: the same commands and skills work natively in Claude Code and in
 Codex, with a plain `python3 scripts/workflow.py …` fallback that works anywhere (including CI).
@@ -166,7 +166,7 @@ Both `--flag value` and `--flag=value` forms work.
 - [`CLAUDE.md`](CLAUDE.md) + [`AGENTS.md`](AGENTS.md) — the equivalent per-tool routing contracts.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
 - `.claude/` + `.agents/` — the 14 Agent Skills, mirrored for both tools (`do-whole-phase` is
-  Claude Code only), plus the `phase-reviewer` and `slice-executor` subagents for each tool
+  Claude Code only), plus the `slice-executor` subagent for each tool
   (`.claude/agents/` on `opus`, `.codex/agents/` on `gpt-5.5`), and `.codex/config.toml`.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
@@ -239,8 +239,9 @@ is Claude Code only — so the same step works natively in either tool:
 | `retrofit` | Non-destructively adopt this workspace into an existing repo |
 | `update-workspace` | Update an adopted workspace's machinery to the latest upstream, preserving your work |
 
-Both tools delegate the heavy lifting to subagents: a read-only **`phase-reviewer`** performs phase
-reviews and a **`slice-executor`** implements delegated slices (Claude Code under `.claude/agents/`
+Both tools delegate the heavy lifting to a **`slice-executor`** subagent: it implements each delegated
+slice and also runs the phase review — validating the phase and consolidating its doc versions, in a
+fresh context that never edits source (Claude Code under `.claude/agents/`
 on `opus`; Codex under `.codex/agents/` on `gpt-5.5`). Skills are
 **explicit-invocation only** — agents don't fire them on their own. They are the **operator's
 interface**: you type the slash command; the agent does everything it implies.
@@ -278,11 +279,11 @@ Archived phases and old doc versions are history; they're not read by default.
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
 │   ├── skills/                    # 14 Agent Skills (Claude Code)
-│   ├── agents/                    # phase-reviewer (review) + slice-executor (impl) subagents
+│   ├── agents/                    # slice-executor subagent (implements slices + runs the review)
 │   └── settings.json              # pre-approves workflow.py; denies push & rm -rf
 ├── .agents/skills/                # the same skills, mirrored for Codex (minus do-whole-phase)
 └── .codex/
-    ├── agents/                    # phase-reviewer + slice-executor subagents (Codex, gpt-5.5)
+    ├── agents/                    # slice-executor subagent (Codex, gpt-5.5)
     └── config.toml                # Codex project config
 ```
 
@@ -302,7 +303,7 @@ the ones I lean on; the [contract in `CLAUDE.md`](CLAUDE.md) is how they're actu
    slice — or the next *tool* — starts from what the last one learned.
 
 3. **Make every slice prove itself.** A slice writes its `plan.md` before it touches anything and a
-   `result.md` when it's done, and the phase doesn't close until a read-only reviewer checks it
+   `result.md` when it's done, and the phase doesn't close until a fresh-context review checks it
    against the objective. "It runs" isn't the bar; "it was reviewed and matches what we set out to
    do" is.
 
