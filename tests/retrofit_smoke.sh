@@ -127,6 +127,8 @@ out=$(sh "$BOOT" "$F" --name "Fresh" --summary "fresh" 2>&1); rc=$?
 ( cd "$F" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) && ok "fresh workspace validates" || bad "fresh workspace failed validate"
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
 [ -f "$F/.codex/agents/slice-executor.toml" ] && ok "fresh install ships the Codex slice-executor" || bad "fresh install missing Codex slice-executor"
+[ -f "$F/.claude/agents/slice-executor-high.md" ] && [ -f "$F/.codex/agents/slice-executor-high.toml" ] && ok "fresh install ships the slice-executor-high (low-risk) variant" || bad "fresh install missing slice-executor-high variant"
+grep -q '^effort: high$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor.md" && ok "executor effort split: base xhigh, -high high" || bad "executor effort split wrong"
 [ ! -f "$F/.codex/agents/phase-reviewer.toml" ] && [ ! -f "$F/.claude/agents/phase-reviewer.md" ] && ok "phase-reviewer retired (absent on fresh install)" || bad "phase-reviewer should be retired but is present"
 [ ! -d "$F/.agents/skills/do-whole-phase" ] && ok "fresh install drops Codex do-whole-phase (Claude-only)" || bad "Codex do-whole-phase should not be generated"
 [ -d "$F/.claude/skills/do-whole-phase" ] && ok "fresh install keeps Claude do-whole-phase" || bad "Claude do-whole-phase missing"
@@ -143,8 +145,8 @@ for rel in \
   .claude/skills/do-next-slice/SKILL.md .agents/skills/do-next-slice/SKILL.md \
   .claude/skills/do-whole-phase/SKILL.md \
   .claude/skills/review-phase/SKILL.md .agents/skills/review-phase/SKILL.md \
-  .claude/agents/slice-executor.md \
-  .codex/agents/slice-executor.toml \
+  .claude/agents/slice-executor.md .claude/agents/slice-executor-high.md \
+  .codex/agents/slice-executor.toml .codex/agents/slice-executor-high.toml \
   CLAUDE.md AGENTS.md ; do
   diff -q "$REPO_ROOT/$rel" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
