@@ -2576,7 +2576,7 @@ name: slice-executor
 description: Executes exactly one already-planned slice in an isolated context; returns a structured verdict. Never commits and never transitions slice/phase status.
 tools: Read, Edit, Write, Glob, Grep, Bash
 model: opus
-effort: max
+effort: xhigh
 permissionMode: bypassPermissions
 ---
 
