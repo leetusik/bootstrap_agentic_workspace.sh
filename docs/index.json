@@ -205,7 +205,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0012_consolidate_durable-doc_versioning_at_the_phase_review_slice-executor_runs_the_review_retiring_the_read-only_phase-reviewer",
+      "latest": "v0013_risk-based_slice-executor_effort_xhigh_default_high_for_low-risk_impl_fix_decomposition_and_review_xhigh_orchestrator_max",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -303,9 +303,17 @@
           "source": "operator-request",
           "summary": "Consolidate durable-doc versioning at the phase review; slice-executor runs the review, retiring the read-only phase-reviewer",
           "previous": "v0011_codex_orchestrator_executor_split_gpt-5.5_slice-executor_and_read-only_phase-reviewer_subagents_do-whole-phase_claude-only_codex_commits_attributed_to_gpt-5.5"
+        },
+        {
+          "id": "v0013_risk-based_slice-executor_effort_xhigh_default_high_for_low-risk_impl_fix_decomposition_and_review_xhigh_orchestrator_max",
+          "path": "docs/versions/decisions/v0013_risk-based_slice-executor_effort_xhigh_default_high_for_low-risk_impl_fix_decomposition_and_review_xhigh_orchestrator_max.md",
+          "created_at": "2026-07-01T13:34:26+09:00",
+          "source": "manual",
+          "summary": "Risk-based slice-executor effort: xhigh default, high for low-risk impl/fix; decomposition and review xhigh; orchestrator max",
+          "previous": "v0012_consolidate_durable-doc_versioning_at_the_phase_review_slice-executor_runs_the_review_retiring_the_read-only_phase-reviewer"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-06-29T17:28:43+09:00"
+  "last_rebuilt_at": "2026-07-01T13:37:21+09:00"
 }
