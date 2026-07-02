@@ -149,6 +149,39 @@ stamped at 2735; Codex toml `gpt-5.5` at 2852/2856); settings + codex config
 - The distributable is currently 209306 bytes after this rebuild — S3's CHANGELOG
   + `WORKSPACE_VERSION` work will change it again; just rebuild after S3's edits.
 
+**P4.S3 — CHANGELOG + integer workspace versioning done (2026-07-02).**
+
+- **Version plumbing:** `WORKSPACE_VERSION = 1` (int) lives in `installer/main.py`
+  near the config constants (right after `UPSTREAM_URL`); `write_version_marker()`
+  now stamps `"workspace_version": WORKSPACE_VERSION` into
+  `works/.workspace-version.json` (key order: `upstream_url`, `workspace_version`,
+  `synced_commit`, `synced_at`). The constant rides inside the built artifact, so
+  adopting repos get it on install/update without needing `installer/`. **When you
+  ship a machinery change to targets, bump this int AND add a `## v<N>` entry to
+  root `CHANGELOG.md` in the same commit** (release rule now in `installer/README.md`).
+- **`CHANGELOG.md` is repo-only — NOT emitted to targets.** `build.py` embeds only
+  `FIXED_LIVE_FILES` + skills + contract + `payloads/`, so nothing extra was needed
+  to keep it out (verified it is absent from the artifact). `/update-workspace` reads
+  it from the **fresh upstream clone** (`$tmp/CHANGELOG.md`, a full checkout), never
+  from the installed target — the target never has it. Anyone adding version-diff
+  features should read upstream's CHANGELOG from the clone, not the target.
+- **`/update-workspace` mirrors** now do a version-aware preview: preflight reads
+  local `workspace_version` (absent ⇒ pre-versioning); after clone reads upstream M
+  from the top `## v<M>` in the clone's CHANGELOG; preview reports vN→vM and prints
+  the entries between, folded into the existing step 5 (no renumbering). Bodies kept
+  byte-identical across both mirrors (diff-verified); the `.claude` copy keeps its 2
+  extra frontmatter lines.
+- **Update-mode diff sanity:** running the NEW artifact `--update` over the PREVIOUS
+  (HEAD) artifact touches exactly the two `update-workspace/SKILL.md` files — because
+  `main.py` and `CHANGELOG.md` are not emitted target files. The version constant
+  still reaches the target (stamped into the marker), confirming the "constant rides
+  the artifact, changelog is read from the clone" split works end to end.
+- This repo's own `works/.workspace-version.json` was hand-updated to
+  `"workspace_version": 1` (it's workspace state, only rewritten by install/update).
+- Smoke test Test 5 (fresh block) gained a one-line grep asserting the fresh marker
+  carries `workspace_version`. Artifact rebuilt (212202 bytes); drift check + all 7
+  smoke blocks + `validate` green.
+
 ## Doc impact
 
 Running list of durable-truth changes for the review slice to consolidate into new
@@ -171,6 +204,17 @@ S2/S3/REVIEW append here as they change durable truth.
   (`build.py` + `wrapper.sh` + `main.py` + `payloads/`) that assembles the
   single committed distributable at repo root; source of truth for emitted
   machinery = the live repo files (no more heredoc mirroring). Record at review.
+- (S3) `operations`: workspaces are now **versioned** — an integer
+  `WORKSPACE_VERSION` (starts at v1) is stamped as `workspace_version` into each
+  target's `works/.workspace-version.json`, and a root `CHANGELOG.md` (repo-only,
+  one `## v<N>` section per version, newest-first) records what each version brings.
+  New **release rule** (in `installer/README.md`): when a machinery change ships to
+  targets, bump `WORKSPACE_VERSION` in `installer/main.py` AND add the matching
+  `CHANGELOG.md` entry in the same commit as the rebuilt artifact. `/update-workspace`
+  now previews the sync as "you're on vN → upstream vM" plus the changelog entries in
+  between (read from the fresh upstream clone), alongside the existing `--dry-run`
+  change-list; a missing local `workspace_version` is treated as pre-versioning.
+  Record at review (same `operations` doc as S1's build/release note).
 
 ## Constraints
 

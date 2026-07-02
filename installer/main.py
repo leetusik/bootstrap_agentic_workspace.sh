@@ -34,6 +34,10 @@ DRY_RUN = os.environ.get("DRY_RUN") == "1"
 UPDATE_DOCS = True  # recomputed in the guards for update (skip docs rebuild if no docs subsystem)
 UPDATE_SUMMARY = {"updated": [], "added": [], "merged": [], "preserved": [], "unchanged": [], "stale": []}
 UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
+# Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
+# machinery change ships to targets. Rides inside this built artifact, so adopting
+# repos — which have no installer/ — still get it stamped into their marker below.
+WORKSPACE_VERSION = 1
 ROOT = TARGET.resolve()
 
 DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
@@ -521,6 +525,7 @@ def write_version_marker() -> None:
     MANAGED_FILES so it never trips the fresh-install conflict guard."""
     marker = {
         "upstream_url": UPSTREAM_URL,
+        "workspace_version": WORKSPACE_VERSION,
         "synced_commit": os.environ.get("SYNCED_COMMIT") or "bootstrap",
         "synced_at": now_iso(),
     }

@@ -17,6 +17,16 @@ To change anything the installer emits:
 That is the whole loop. There is no longer a second copy to mirror by hand — the
 old double-maintenance (edit a skill *and* mirror it into a heredoc) is gone.
 
+**Release rule (version + changelog).** When the edit ships a machinery change to
+targets — anything an adopting repo receives via `curl … | sh` or `/update-workspace`
+(a skill, agent def, `scripts/workflow.py`, the contract, settings, templates, …) —
+bump `WORKSPACE_VERSION` in `installer/main.py` **and** add the matching
+`## v<N> — <date>` entry to the root `CHANGELOG.md`, in the **same commit** as the
+change and the rebuilt artifact. `/update-workspace` reads that changelog from the
+upstream clone to tell adopters what a sync brings, so a version bump without a
+changelog entry (or vice versa) leaves them blind. Repo-only edits that never reach a
+target (this README, `tests/`, `LICENSE`) do not need a bump.
+
 `python3 installer/build.py --check` fails (non-zero) if the committed artifact has
 drifted from source; it runs in `tests/retrofit_smoke.sh` (Test 7) so CI catches a
 stale artifact.

@@ -125,6 +125,7 @@ newtmp F
 out=$(sh "$BOOT" "$F" --name "Fresh" --summary "fresh" 2>&1); rc=$?
 [ "$rc" -eq 0 ] && ok "fresh install exits 0" || bad "fresh install exit=$rc"
 ( cd "$F" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) && ok "fresh workspace validates" || bad "fresh workspace failed validate"
+grep -q '"workspace_version"' "$F/works/.workspace-version.json" && ok "fresh marker carries workspace_version" || bad "fresh marker missing workspace_version"
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
 [ -f "$F/.codex/agents/slice-executor.toml" ] && ok "fresh install ships the Codex slice-executor" || bad "fresh install missing Codex slice-executor"
 [ -f "$F/.claude/agents/slice-executor-high.md" ] && [ -f "$F/.codex/agents/slice-executor-high.toml" ] && ok "fresh install ships the slice-executor-high (low-risk) variant" || bad "fresh install missing slice-executor-high variant"
