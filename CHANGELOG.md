@@ -9,6 +9,23 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v3 — 2026-07-02
+
+- **A passing phase review now closes the `REVIEW` slice.** `review-phase` drives the
+  phase's `REVIEW` slice from the verdict (`pass` → `done`, `changes_requested` →
+  `changes_requested`, `blocked` → `blocked`), so a passing review no longer strands the
+  review slice `in_progress` — previously `do-whole-phase` left it open, showing a `done`
+  phase whose "Current Slice" still pointed at an unfinished `REVIEW` slice. Both
+  `do-next-slice` and `do-whole-phase` now behave identically; no separate `finish-slice`
+  for the review slice is needed.
+- **`validate` catches the inconsistency.** It now flags a `done` phase that still has any
+  unfinished slice, mirroring the archive guard, so a stranded slice is surfaced immediately
+  instead of only at archive time.
+
+Migration notes: if a pre-v3 phase was left `done` with an open `REVIEW` slice, run
+`python3 scripts/workflow.py finish-slice <P>.REVIEW` once — the new `validate` guard will
+name any such slice.
+
 ## v2 — 2026-07-02
 
 - **`/explain` is now opt-in.** The `explain` skill is no longer installed by default. Pass

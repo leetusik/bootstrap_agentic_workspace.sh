@@ -62,7 +62,7 @@ Do not read every historical slice or old doc version by default. Archived phase
 - Slice selection is by `order`; `--order` accepts fractional values (e.g. `--order 4.5`) so a slice (or phase) can be inserted between two existing neighbors without renumbering. `depends_on` is advisory and only checked for existence by `validate`.
 - Operator co-work (`pending`, shown `[~]`): when a slice or phase needs the operator — to validate something, or to run an action only the operator can perform — set it `pending` (`set-slice-status <id> pending` or `set-phase-status <P> pending`), report exactly what you need, and STOP. A `pending` item halts selection: `next` prints `WAITING ON OPERATOR`, and neither `do-next-slice` nor `do-whole-phase` may start, finish, or advance past it. Work resumes only after the operator approves — they (or you, on their explicit say-so) clear it with `set-slice-status <id> in_progress` (or `set-phase-status <P> in_progress`). `pending` means "waiting on the operator" and is distinct from `blocked` (an impediment or unmet dependency you cannot resolve yourself).
 - Deferred jobs never affect next-slice selection until promoted.
-- Record the phase review with `review-phase`. A passing review marks a phase `done` but does **not** archive it — the phase stays in `active/`. Archiving is a separate, manual step: `archive-all` once every active phase is done (the last review slice complete), `rotate-backlog` to archive just the done phases while others continue, or `archive-phase <P>` for a single review-passed phase. Archive whole phases only, never individual slices.
+- Record the phase review with `review-phase` — the verdict drives both the phase and its `REVIEW` slice: `pass` → phase `done` + `REVIEW` slice `done`; `changes_requested` → phase `in_progress` + `REVIEW` slice `changes_requested` (reopened for re-review); `blocked` → both `blocked`. A passing review marks a phase `done` but does **not** archive it — the phase stays in `active/`. Archiving is a separate, manual step: `archive-all` once every active phase is done (the last review slice complete), `rotate-backlog` to archive just the done phases while others continue, or `archive-phase <P>` for a single review-passed phase. Archive whole phases only, never individual slices.
 
 ## IDs and Status
 
@@ -82,7 +82,7 @@ Use `python3 scripts/workflow.py <command>`:
 - `start-slice P1.S1` / `finish-slice P1.S1` / `set-slice-status P1.S1 <status>`
 - `set-phase-status P1 <status>`
 - `set-slice-status P1.S1 pending` / `set-phase-status P1 pending` — hand off for operator co-work (validation or operator-run action); clear with `... in_progress` after approval
-- `review-phase P1 --verdict pass|changes_requested|blocked [--reviewer NAME] [--note "..."]`
+- `review-phase P1 --verdict pass|changes_requested|blocked [--reviewer NAME] [--note "..."]` (also transitions the phase's `REVIEW` slice per the verdict)
 - `doc-new-version --doc frontend --summary "..." --source P1.REVIEW` / `docs` / `rebuild-docs` — durable-doc versioning; run at the phase review to consolidate, not per slice
 - `deferred` / `defer-job --title "..." --reason "..." --trigger "..." --source P1.S1`
 - `promote-deferred D1 --phase P1 --slice P1.S2 --name "..."` / `drop-deferred D1 --reason "..."`

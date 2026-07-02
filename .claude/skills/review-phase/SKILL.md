@@ -37,4 +37,4 @@ python3 scripts/workflow.py review-phase <P> --verdict changes_requested --revie
 python3 scripts/workflow.py review-phase <P> --verdict blocked --reviewer slice-executor --note "the blocker and needed input"
 ```
 
-`pass` also marks the phase `done` — it stays in `active/`; archiving is a separate, manual step (`archive-all`, `rotate-backlog`, or `archive-phase`). `changes_requested` returns it to `in_progress`. `blocked` sets it `blocked`.
+`pass` also marks the phase `done` **and closes the `REVIEW` slice** — the phase stays in `active/`; archiving is a separate, manual step (`archive-all`, `rotate-backlog`, or `archive-phase`). `changes_requested` returns the phase to `in_progress` and sets the `REVIEW` slice to `changes_requested` (reopened for re-review). `blocked` sets **both the phase and the `REVIEW` slice** `blocked`.

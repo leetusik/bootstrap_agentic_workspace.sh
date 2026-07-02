@@ -378,6 +378,10 @@ def validate() -> int:
         review_status = p.get("review", {}).get("status")
         if p["status"] == "done" and review_status != "pass":
             errors.append(f"phase {p['id']} is done but review status is {review_status!r}; record a passing review with review-phase")
+        if p["status"] == "done":
+            unfinished = [s["id"] for s in p["slices"] if s.get("status") != "done"]
+            if unfinished:
+                errors.append(f"phase {p['id']} is done but has unfinished slices: {', '.join(unfinished)}; a passing review closes the REVIEW slice")
         if not (ACTIVE / p["id"] / "intent.md").exists():
             warnings.append(f"phase {p['id']} has no intent.md (expected {p['id']}/intent.md); capture operator intent via the create-phase skill")
         for s in p["slices"]:
@@ -519,10 +523,7 @@ def new_slice(args: argparse.Namespace) -> None:
     print(f"created slice {args.slice}: {sdir.relative_to(ROOT)}")
 
 
-def set_slice_status(slice_id: str, status: str) -> None:
-    if status not in SLICE_STATUSES:
-        raise SystemExit(f"invalid slice status: {status}")
-    sdir = require_slice(slice_id)
+def _set_slice_status(sdir: Path, status: str) -> str:
     data = read_json(sdir / "slice.json")
     old = data.get("status")
     data["status"] = status
@@ -531,6 +532,14 @@ def set_slice_status(slice_id: str, status: str) -> None:
     if status == "done":
         data["completed_at"] = now_iso()
     write_json(sdir / "slice.json", data)
+    return old
+
+
+def set_slice_status(slice_id: str, status: str) -> None:
+    if status not in SLICE_STATUSES:
+        raise SystemExit(f"invalid slice status: {status}")
+    sdir = require_slice(slice_id)
+    old = _set_slice_status(sdir, status)
     append_event("slice_status_changed", slice=slice_id, old_status=old, new_status=status)
     rebuild_index_and_state()
 
@@ -580,6 +589,14 @@ def review_phase(args: argparse.Namespace) -> None:
         data["completed_at"] = now_iso()
     data["status"] = new_status
     write_json(pdir / "phase.json", data)
+    # Drive the phase's REVIEW slice from the same verdict so the phase and its
+    # review slice never diverge (a pass no longer leaves REVIEW stuck in_progress).
+    slice_verdict = {"pass": "done", "changes_requested": "changes_requested", "blocked": "blocked"}[args.verdict]
+    for sdir in slice_dirs(pdir):
+        sdata = read_json(sdir / "slice.json")
+        if sdata.get("kind") == "review":
+            old = _set_slice_status(sdir, slice_verdict)
+            append_event("slice_status_changed", slice=sdata["id"], old_status=old, new_status=slice_verdict)
     append_event("phase_reviewed", phase=args.phase, verdict=args.verdict, reviewer=args.reviewer)
     rebuild_index_and_state()
     print(f"phase {args.phase} review: {args.verdict} (status -> {new_status})")
