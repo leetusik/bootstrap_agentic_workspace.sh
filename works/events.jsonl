@@ -71,3 +71,4 @@
 {"ts": "2026-06-29T17:25:54+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0012_consolidate_durable-doc_versioning_at_the_phase_review_slice-executor_runs_the_review_retiring_the_read-only_phase-reviewer", "source": "operator-request"}
 {"ts": "2026-06-29T17:28:03+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0008_phase_review_runs_through_the_slice-executor_and_consolidates_the_phase_s_doc_versions_phase-reviewer_retired", "source": "operator-request"}
 {"ts": "2026-07-01T13:34:26+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0013_risk-based_slice-executor_effort_xhigh_default_high_for_low-risk_impl_fix_decomposition_and_review_xhigh_orchestrator_max", "source": "manual"}
+{"ts": "2026-07-02T11:30:25+09:00", "type": "phase_created", "phase": "P4"}
