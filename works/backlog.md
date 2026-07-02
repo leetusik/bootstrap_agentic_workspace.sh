@@ -5,12 +5,12 @@
 
 ## Pointer
 
-- Current phase: `none`
-- Current slice: `none`
-- Next slice: `none`
+- Current phase: `P6`
+- Current slice: `P6.DECOMP`
+- Next slice: `P6.REVIEW`
 - Waiting on operator: `none`
 - Open deferred jobs: `1`
-- Rebuilt at: `2026-07-02T14:53:15+09:00`
+- Rebuilt at: `2026-07-02T16:45:33+09:00`
 
 ## Active Phases
 
@@ -18,6 +18,7 @@
 |---|---|---|---|---|---|
 | [x] `P4` | `done` | `pass` | Model-flexible attribution, installer split, versioned workspace updates | `none` | `works/phases/active/P4` |
 | [x] `P5` | `done` | `pass` | Optional /explain install (--with-explain) | `none` | `works/phases/active/P5` |
+| [ ] `P6` | `planned` | `pending` | Wire /explain to the KB document API | `P6.DECOMP` | `works/phases/active/P6` |
 
 ## Phase P4: Model-flexible attribution, installer split, versioned workspace updates
 
@@ -36,3 +37,10 @@
 | [x] `P5.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P5/slices/P5.DECOMP` |
 | [x] `P5.S1` | `done` | Make /explain opt-in at install (--with-explain) | `implementation` | `works/phases/active/P5/slices/P5.S1` |
 | [x] `P5.REVIEW` | `done` | phase review | `review` | `works/phases/active/P5/slices/P5.REVIEW` |
+
+## Phase P6: Wire /explain to the KB document API
+
+| Slice | Status | Name | Kind | Path |
+|---|---|---|---|---|
+| [ ] `P6.DECOMP` | `todo` | decompose phase | `decomposition` | `works/phases/active/P6/slices/P6.DECOMP` |
+| [ ] `P6.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P6/slices/P6.REVIEW` |

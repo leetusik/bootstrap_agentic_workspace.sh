@@ -23,10 +23,22 @@
       "current_slice": null,
       "slice_count": 3,
       "done_slice_count": 3
+    },
+    {
+      "id": "P6",
+      "name": "Wire /explain to the KB document API",
+      "objective": "Replace /explain steps 5–7 (manual file write, Recent bullet, KB git commit) with one POST to the KB document API at localhost:8766 — the API-owned write path — keeping today's manual flow only as a transport-failure fallback and handling HTTP errors per the API contract; steps 1–4 and 8 unchanged. Edit both live skill copies (byte-consistent apart from the sanctioned frontmatter difference), rebuild the distributable with installer/build.py (--check passing), bump WORKSPACE_VERSION 2→3 + CHANGELOG v3 per the release rule, and finish with the operator-authorized sync of the updated skill to ~/.claude/skills/explain/SKILL.md. D1 stays deferred — KB path and ports stay hardcoded.",
+      "status": "planned",
+      "order": 3,
+      "path": "works/phases/active/P6",
+      "review_status": "pending",
+      "current_slice": "P6.DECOMP",
+      "slice_count": 2,
+      "done_slice_count": 0
     }
   ],
   "deferred_open_count": 1,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 0,
-  "last_rebuilt_at": "2026-07-02T14:53:15+09:00"
+  "last_rebuilt_at": "2026-07-02T16:45:33+09:00"
 }
