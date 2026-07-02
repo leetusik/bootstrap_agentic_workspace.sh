@@ -92,3 +92,6 @@
 {"ts": "2026-07-02T13:55:47+09:00", "type": "slice_status_changed", "slice": "P4.REVIEW", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-07-02T14:17:59+09:00", "type": "phase_created", "phase": "P5"}
 {"ts": "2026-07-02T14:18:49+09:00", "type": "deferred_created", "deferred": "D1", "source": "P5"}
+{"ts": "2026-07-02T14:20:21+09:00", "type": "slice_status_changed", "slice": "P5.DECOMP", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-07-02T14:21:02+09:00", "type": "slice_created", "phase": "P5", "slice": "P5.S1"}
+{"ts": "2026-07-02T14:22:31+09:00", "type": "slice_status_changed", "slice": "P5.DECOMP", "old_status": "in_progress", "new_status": "done"}
