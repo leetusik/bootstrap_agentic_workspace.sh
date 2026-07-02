@@ -168,7 +168,7 @@ Both `--flag value` and `--flag=value` forms work.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
 - `.claude/` + `.agents/` — the 14 core Agent Skills, mirrored for both tools (`do-whole-phase` is
   Claude Code only; the optional `explain` skill installs only with `--with-explain`), plus the `slice-executor` subagent for each tool
-  (`.claude/agents/` runs the session's model via `model: inherit`, `.codex/agents/` on its configured model), and `.codex/config.toml`.
+  (`.claude/agents/` pinned to Claude Opus via `model: opus`, `.codex/agents/` on its configured model), and `.codex/config.toml`.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - [`works/`](works/) — the state machine: phase **`P1`** seeded with a `DECOMP` and a `REVIEW`
@@ -244,7 +244,7 @@ is Claude Code only — so the same step works natively in either tool:
 Both tools delegate the heavy lifting to a **`slice-executor`** subagent: it implements each delegated
 slice and also runs the phase review — validating the phase and consolidating its doc versions, in a
 fresh context that never edits source (Claude Code under `.claude/agents/`,
-running the session's model via `model: inherit`; Codex under `.codex/agents/`
+pinned to Claude Opus via `model: opus`; Codex under `.codex/agents/`
 on its configured model). Workflow skills are
 **explicit-invocation only** — agents don't fire them on their own. They are the **operator's
 interface**: you type the slash command; the agent does everything it implies. (`explain` is the
