@@ -9,6 +9,23 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v4 — 2026-07-02
+
+- **`/explain` saves through the KB document API.** The old steps 5–7 (manual file
+  write, Recent bullet in `docs/index.md`, KB git commit) are replaced by one
+  `POST http://localhost:8766/api/documents` — the API writes the convention file with
+  frontmatter, inserts the Recent bullet, upserts the DB row, and makes the scoped
+  commit in a single locked call.
+- **The manual flow is now fallback-only.** It runs only when the API is unreachable
+  (curl transport failure: connection refused / timeout). HTTP errors (409 duplicate,
+  422 validation, 401 auth) are handled per the API contract and **never** trigger a
+  file fallback.
+
+Migration notes: the primary path needs the KB API compose service running
+(`docker compose up -d` in `~/projects/personal/knowledge`); the skill still works via
+the fallback when it is down. Applies to `--with-explain` installs; delivered by
+`/update-workspace` force-refresh.
+
 ## v3 — 2026-07-02
 
 - **A passing phase review now closes the `REVIEW` slice.** `review-phase` drives the

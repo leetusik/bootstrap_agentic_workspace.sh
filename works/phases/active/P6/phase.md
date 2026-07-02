@@ -30,6 +30,11 @@ _Durable findings and cross-slice notes; `DECOMP` seeds this, and each slice app
 - **build.py reads the live skill copies from disk** (`.claude/skills/*/SKILL.md`, `.agents/skills/*/SKILL.md` globs) — editing the two live files + `python3 installer/build.py` is sufficient; no payload duplication. `--check` passes today.
 - **The two copies differ only by frontmatter lines 4–5** (`argument-hint`, `allowed-tools`) — the sanctioned difference, confirmed by diff.
 - **KB API is live and matches contract v0002** (`~/projects/personal/knowledge/docs/current/api.md`): `GET /healthz` → `{status:"ok", db:"ok", documents:1}`. Contract points the rewrite depends on: 201 body (`url`, `committed`, `commit_error`, `recent_updated`), 409 body (`existing_title`, `rel_path`), 422 validation, 401 only when `KB_API_TOKEN` set, `commit:false` → `committed:false` with no `commit_error`, overwrite suppresses the duplicate Recent bullet.
+- **Doc impact (P6.S1):** `operations.md` — /explain save path is now API-first with manual fallback.
+- **Doc impact (P6.S1):** `decisions.md` — decision: /explain adopts the API-owned write path (`POST /api/documents`); manual flow demoted to unreachable-only fallback.
+- **P6.S1 smoke confirmed the contract live** (skill's own spelled commands, `commit:false`, project `p6-smoke`): 201 → `recent_updated:true`, `committed:false`, `commit_sha:null`, `commit_error` omitted; identical re-POST → 409 with the duplicate fields nested under `detail` (`detail.existing_title`, `detail.rel_path`). Cleanup (rm doc + empty dir, `git restore docs/index.md`, `POST /api/reindex` → `removed:1`) left the KB tree clean, `documents:1`.
+- **For P6.S2:** the file to sync outside the repo is the updated Claude copy `.claude/skills/explain/SKILL.md` (v4 body; `allowed-tools` now includes `Bash(curl -sS --max-time 5:*)` and `Bash(python3 -c:*)` alongside the KB git allowance). Verify byte-identical after copy.
+- **Renumber ripple:** step 1's PROJECT_COPY pointer now reads "(step 7)" (project copy moved 8→7); the only edit inside steps 1–4.
 
 ## Constraints
 
