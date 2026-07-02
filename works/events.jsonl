@@ -111,3 +111,8 @@
 {"ts": "2026-07-02T17:12:38+09:00", "type": "slice_status_changed", "slice": "P6.S1", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-07-02T17:14:57+09:00", "type": "slice_status_changed", "slice": "P6.S2", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-07-02T17:17:08+09:00", "type": "slice_status_changed", "slice": "P6.S2", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-07-02T17:21:23+09:00", "type": "slice_status_changed", "slice": "P6.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-07-02T17:24:38+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0011_explain_saves_via_the_kb_document_api_localhost_8766_manual_flow_is_fallback-only_ships_as_workspace_v4", "source": "P6.REVIEW"}
+{"ts": "2026-07-02T17:24:44+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0016_decision_explain_adopts_the_api-owned_write_path_manual_flow_demoted_to_unreachable-only_fallback", "source": "P6.REVIEW"}
+{"ts": "2026-07-02T17:33:30+09:00", "type": "slice_status_changed", "slice": "P6.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-07-02T17:33:30+09:00", "type": "phase_reviewed", "phase": "P6", "verdict": "pass", "reviewer": "slice-executor"}

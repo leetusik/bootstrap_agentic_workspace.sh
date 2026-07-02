@@ -107,7 +107,7 @@
       ]
     },
     "operations": {
-      "latest": "v0010_installer_explain_is_opt-in_via_--with-explain_--update_preserves_an_installed_copy",
+      "latest": "v0011_explain_saves_via_the_kb_document_api_localhost_8766_manual_flow_is_fallback-only_ships_as_workspace_v4",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -189,6 +189,14 @@
           "source": "P5.REVIEW",
           "summary": "Installer: /explain is opt-in via --with-explain; --update preserves an installed copy",
           "previous": "v0009_installer_is_a_build_product_version-aware_update_flow_release_rule"
+        },
+        {
+          "id": "v0011_explain_saves_via_the_kb_document_api_localhost_8766_manual_flow_is_fallback-only_ships_as_workspace_v4",
+          "path": "docs/versions/operations/v0011_explain_saves_via_the_kb_document_api_localhost_8766_manual_flow_is_fallback-only_ships_as_workspace_v4.md",
+          "created_at": "2026-07-02T17:24:38+09:00",
+          "source": "P6.REVIEW",
+          "summary": "/explain saves via the KB document API (localhost:8766); manual flow is fallback-only; ships as workspace v4",
+          "previous": "v0010_installer_explain_is_opt-in_via_--with-explain_--update_preserves_an_installed_copy"
         }
       ]
     },
@@ -229,7 +237,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0015_decision_explain_gated_opt-in_at_install_time_default_off_source_kept_live",
+      "latest": "v0016_decision_explain_adopts_the_api-owned_write_path_manual_flow_demoted_to_unreachable-only_fallback",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -351,9 +359,17 @@
           "source": "P5.REVIEW",
           "summary": "Decision: /explain gated opt-in at install time (default off), source kept live",
           "previous": "v0014_installer_split_into_installer_committed_build_product_drift_guard_executor_model_inherit_rule-based_commit_attribution_supersedes_v0013_opus-alias_rationale_integer_workspace_versioning_root_changelog_release_policy"
+        },
+        {
+          "id": "v0016_decision_explain_adopts_the_api-owned_write_path_manual_flow_demoted_to_unreachable-only_fallback",
+          "path": "docs/versions/decisions/v0016_decision_explain_adopts_the_api-owned_write_path_manual_flow_demoted_to_unreachable-only_fallback.md",
+          "created_at": "2026-07-02T17:24:44+09:00",
+          "source": "P6.REVIEW",
+          "summary": "Decision: /explain adopts the API-owned write path; manual flow demoted to unreachable-only fallback",
+          "previous": "v0015_decision_explain_gated_opt-in_at_install_time_default_off_source_kept_live"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-07-02T14:51:37+09:00"
+  "last_rebuilt_at": "2026-07-02T17:30:44+09:00"
 }
