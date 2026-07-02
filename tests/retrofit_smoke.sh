@@ -154,6 +154,17 @@ for rel in \
 done
 
 # ---------------------------------------------------------------------------
+echo "== Test 7: the committed installer is in sync with installer/ source =="
+# The distributable bootstrap_agentic_workspace.sh is a build product assembled by
+# installer/build.py from installer/ (live files + payloads). --check fails if the
+# committed artifact drifts from source, closing the loop: live files <-> artifact.
+if ( cd "$REPO_ROOT" && python3 installer/build.py --check >/dev/null 2>&1 ); then
+  ok "installer/build.py --check: artifact matches installer/ source"
+else
+  bad "DRIFT: bootstrap_agentic_workspace.sh is stale -- run: python3 installer/build.py"
+fi
+
+# ---------------------------------------------------------------------------
 echo
 if [ "$FAILS" -eq 0 ]; then
   echo "ALL RETROFIT SMOKE TESTS PASSED"

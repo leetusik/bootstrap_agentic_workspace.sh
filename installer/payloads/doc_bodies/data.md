@@ -1,0 +1,41 @@
+# Data
+
+## Status
+
+No data model is finalized yet.
+
+## Purpose
+
+Use this doc for database schema truth, entities, migrations, indexes, storage, retention, and seed/test data.
+
+## Storage
+
+- Primary DB:
+- Cache:
+- Object/file storage:
+
+## Entities
+
+### Entity Name
+
+- Purpose:
+- Key fields:
+- Relationships:
+- Indexes:
+
+## Migrations
+
+- Tooling:
+- Rules:
+
+## Retention / Deletion
+
+- <policy>
+
+## Seed and Test Data
+
+- <approach>
+
+## Open Questions
+
+-

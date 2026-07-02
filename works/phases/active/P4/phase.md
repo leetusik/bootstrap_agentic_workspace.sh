@@ -103,6 +103,38 @@ stamped at 2735; Codex toml `gpt-5.5` at 2852/2856); settings + codex config
 - No `CHANGELOG.md`, no version constant, and no build/packaging script exists
   anywhere in the repo today.
 
+**P4.S1 — installer split done (2026-07-02).** The monolith is now a build product.
+
+- **How to change what the installer emits (S2/S3, read this):** edit the **live
+  repo file** — a skill (`.claude/skills/*` / `.agents/skills/*`), agent def
+  (`.claude/agents/*.md`, `.codex/agents/*.toml`), `scripts/workflow.py`,
+  `.claude/settings.json`, `.codex/config.toml`, `works/templates/*`, or the
+  contract (`CLAUDE.md`; keep `AGENTS.md` byte-equal in the body — build asserts
+  it) — or, for **fresh-install-only seeds with no live counterpart**, edit
+  `installer/payloads/doc_bodies/<doc>.md` or `installer/payloads/p1_seed/{phase,intent}.md`.
+  Then run **`python3 installer/build.py`** and commit the rebuilt
+  `bootstrap_agentic_workspace.sh` with your edit. No more heredoc mirroring.
+- **Where the P4 model/version edits land:** Job-1 attribution/model wording lives
+  in live files — `.claude/agents/slice-executor{,-high}.md` (`model:` line),
+  `CLAUDE.md`/`AGENTS.md` (Commit Convention + prose), `.claude/skills/explain/SKILL.md`
+  + `.agents/skills/explain/SKILL.md`, `README.md`, `.codex/config.toml` prose.
+  Job-3's `WORKSPACE_VERSION` constant + `write_version_marker()` live in
+  `installer/main.py` (search `write_version_marker`, ~unchanged from the old
+  finalizers); `CHANGELOG.md` is a new root file (repo-only, not emitted).
+- **Drift guard:** `python3 installer/build.py --check` (also `tests/retrofit_smoke.sh`
+  Test 7) fails if the committed artifact ≠ rebuilt-from-source. After any edit to a
+  live file or payload, rebuild or CI/the smoke test will flag it.
+- **`installer/main.py` gotchas:** `COMMAND_SKILLS`, the builder functions, and the
+  `WORKFLOW_DOC`/`WORKFLOW_PY` heredocs are **gone**. Skill sets are derived at
+  runtime (`CLAUDE_SKILLS`/`CODEX_SKILLS`) from the `PAYLOADS` manifest keys — a
+  skill is Claude-only when it has no `.agents/skills/<name>/` mirror on disk (so
+  adding/removing a skill needs no installer code change, just the live files +
+  rebuild). Generated constants (`PAYLOADS`, `CONTRACT_BODY`, `DOC_BODIES`,
+  `P1_PHASE_MD`, `P1_INTENT_MD`) are spliced at the `#@@GENERATED_PAYLOADS@@` marker.
+- **Verified byte-identical** for all three modes (fresh / `--into-existing` /
+  `--update`) via full `diff -r` of installed trees + update `--dry-run` reporting
+  0 machinery files updated. Pure refactor confirmed.
+
 ## Doc impact
 
 Running list of durable-truth changes for the review slice to consolidate into new
@@ -112,6 +144,14 @@ S2/S3/REVIEW append here as they change durable truth.
 - (S2, anticipated) `decisions`: v0013 "`opus` alias auto-tracks the top model"
   rationale is superseded by the Fable/Mythos tier above Opus — executor pins
   become `model: inherit`. Record at review.
+- (S1) `operations`: the installer is now a **build product** — new build/release
+  procedure: edit live files or `installer/payloads/`, run `python3 installer/build.py`,
+  commit the rebuilt `bootstrap_agentic_workspace.sh`; `installer/build.py --check`
+  (also `tests/retrofit_smoke.sh` Test 7) guards drift. Record at review.
+- (S1) `architecture`: repo shape gains an `installer/` source tree
+  (`build.py` + `wrapper.sh` + `main.py` + `payloads/`) that assembles the
+  single committed distributable at repo root; source of truth for emitted
+  machinery = the live repo files (no more heredoc mirroring). Record at review.
 
 ## Constraints
 
