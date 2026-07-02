@@ -16,17 +16,17 @@
       "id": "P5",
       "name": "Optional /explain install (--with-explain)",
       "objective": "Make the /explain skill opt-in at install: default off, included only via a new --with-explain flag. It stays live in the repo and embedded in the built artifact; gating happens at install time in installer/main.py, keeping the derived skill inventories, conflict guard, dir creation, and stale-skill flagging consistent from one filter point. --update preserves an already-installed copy (never drops or flags it). Bump WORKSPACE_VERSION and add a CHANGELOG entry per the release rule, then rebuild the root artifact.",
-      "status": "planned",
+      "status": "done",
       "order": 2,
       "path": "works/phases/active/P5",
-      "review_status": "pending",
-      "current_slice": "P5.REVIEW",
+      "review_status": "pass",
+      "current_slice": null,
       "slice_count": 3,
-      "done_slice_count": 2
+      "done_slice_count": 3
     }
   ],
   "deferred_open_count": 1,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 0,
-  "last_rebuilt_at": "2026-07-02T14:45:21+09:00"
+  "last_rebuilt_at": "2026-07-02T14:53:15+09:00"
 }

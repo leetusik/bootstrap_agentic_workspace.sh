@@ -97,3 +97,8 @@
 {"ts": "2026-07-02T14:22:31+09:00", "type": "slice_status_changed", "slice": "P5.DECOMP", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-07-02T14:23:47+09:00", "type": "slice_status_changed", "slice": "P5.S1", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-07-02T14:45:21+09:00", "type": "slice_status_changed", "slice": "P5.S1", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-07-02T14:46:11+09:00", "type": "slice_status_changed", "slice": "P5.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-07-02T14:49:28+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0010_installer_explain_is_opt-in_via_--with-explain_--update_preserves_an_installed_copy", "source": "P5.REVIEW"}
+{"ts": "2026-07-02T14:50:11+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0015_decision_explain_gated_opt-in_at_install_time_default_off_source_kept_live", "source": "P5.REVIEW"}
+{"ts": "2026-07-02T14:53:15+09:00", "type": "phase_reviewed", "phase": "P5", "verdict": "pass", "reviewer": "slice-executor"}
+{"ts": "2026-07-02T14:53:15+09:00", "type": "slice_status_changed", "slice": "P5.REVIEW", "old_status": "in_progress", "new_status": "done"}

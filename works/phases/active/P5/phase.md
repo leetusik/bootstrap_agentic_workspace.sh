@@ -104,6 +104,19 @@ _Durable findings and cross-slice notes; `DECOMP` seeds this, and each slice app
 - No new "Doc impact" entries: the two already listed below (operations, decisions) fully cover
   what S1 shipped.
 
+### REVIEW outcome (P5.REVIEW)
+
+- **Verdict: pass.** All checklist items held: intent match against the S1 commit (`7cb0850`,
+  exactly the expected file set, one commit), the gate reviewed in place (L62–70 of
+  `installer/main.py`, no `explain` special-cases downstream), wrapper wiring at all four touch
+  points, release rule (`WORKSPACE_VERSION = 2` + `## v2 — 2026-07-02` in the same commit),
+  `installer/build.py --check` OK, `retrofit_smoke.sh` ALL PASS (incl. new Test 5 asserts +
+  Test 8), `workflow.py validate` pass, live explain skill files untouched by any P5 commit.
+  The optional `--update` preservation re-check (throwaway dir) also passed.
+- **Docs consolidated:** operations **v0010** (new *Optional skills at install* section) and
+  decisions **v0015** (P5 decision entry: opt-in gating at install time, source kept live,
+  update preservation, v2 release, D1 deferral); `rebuild-docs` run, `validate` re-passed.
+
 ## Constraints
 
 - **One commit for S1** — source edits + rebuilt artifact + CHANGELOG + version bump + tests land

@@ -107,7 +107,7 @@
       ]
     },
     "operations": {
-      "latest": "v0009_installer_is_a_build_product_version-aware_update_flow_release_rule",
+      "latest": "v0010_installer_explain_is_opt-in_via_--with-explain_--update_preserves_an_installed_copy",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -181,6 +181,14 @@
           "source": "P4.REVIEW",
           "summary": "installer is a build product; version-aware update flow + release rule",
           "previous": "v0008_phase_review_runs_through_the_slice-executor_and_consolidates_the_phase_s_doc_versions_phase-reviewer_retired"
+        },
+        {
+          "id": "v0010_installer_explain_is_opt-in_via_--with-explain_--update_preserves_an_installed_copy",
+          "path": "docs/versions/operations/v0010_installer_explain_is_opt-in_via_--with-explain_--update_preserves_an_installed_copy.md",
+          "created_at": "2026-07-02T14:49:28+09:00",
+          "source": "P5.REVIEW",
+          "summary": "Installer: /explain is opt-in via --with-explain; --update preserves an installed copy",
+          "previous": "v0009_installer_is_a_build_product_version-aware_update_flow_release_rule"
         }
       ]
     },
@@ -221,7 +229,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0014_installer_split_into_installer_committed_build_product_drift_guard_executor_model_inherit_rule-based_commit_attribution_supersedes_v0013_opus-alias_rationale_integer_workspace_versioning_root_changelog_release_policy",
+      "latest": "v0015_decision_explain_gated_opt-in_at_install_time_default_off_source_kept_live",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -335,9 +343,17 @@
           "source": "P4.REVIEW",
           "summary": "installer split into installer/ (committed build product + drift guard); executor model: inherit + rule-based commit attribution (supersedes v0013 opus-alias rationale); integer workspace versioning + root CHANGELOG release policy",
           "previous": "v0013_risk-based_slice-executor_effort_xhigh_default_high_for_low-risk_impl_fix_decomposition_and_review_xhigh_orchestrator_max"
+        },
+        {
+          "id": "v0015_decision_explain_gated_opt-in_at_install_time_default_off_source_kept_live",
+          "path": "docs/versions/decisions/v0015_decision_explain_gated_opt-in_at_install_time_default_off_source_kept_live.md",
+          "created_at": "2026-07-02T14:50:11+09:00",
+          "source": "P5.REVIEW",
+          "summary": "Decision: /explain gated opt-in at install time (default off), source kept live",
+          "previous": "v0014_installer_split_into_installer_committed_build_product_drift_guard_executor_model_inherit_rule-based_commit_attribution_supersedes_v0013_opus-alias_rationale_integer_workspace_versioning_root_changelog_release_policy"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-07-02T13:52:16+09:00"
+  "last_rebuilt_at": "2026-07-02T14:51:37+09:00"
 }
