@@ -133,6 +133,8 @@ grep -q '^effort: high$' "$F/.claude/agents/slice-executor-high.md" && grep -q '
 [ ! -f "$F/.codex/agents/phase-reviewer.toml" ] && [ ! -f "$F/.claude/agents/phase-reviewer.md" ] && ok "phase-reviewer retired (absent on fresh install)" || bad "phase-reviewer should be retired but is present"
 [ ! -d "$F/.agents/skills/do-whole-phase" ] && ok "fresh install drops Codex do-whole-phase (Claude-only)" || bad "Codex do-whole-phase should not be generated"
 [ -d "$F/.claude/skills/do-whole-phase" ] && ok "fresh install keeps Claude do-whole-phase" || bad "Claude do-whole-phase missing"
+[ ! -d "$F/.claude/skills/explain" ] && ok "default install omits Claude explain (opt-in)" || bad "Claude explain installed without --with-explain"
+[ ! -d "$F/.agents/skills/explain" ] && ok "default install omits Codex explain (opt-in)" || bad "Codex explain installed without --with-explain"
 
 # ---------------------------------------------------------------------------
 echo "== Test 6: dual-apply -- live files match the bootstrap-embedded copies =="
@@ -164,6 +166,22 @@ if ( cd "$REPO_ROOT" && python3 installer/build.py --check >/dev/null 2>&1 ); th
 else
   bad "DRIFT: bootstrap_agentic_workspace.sh is stale -- run: python3 installer/build.py"
 fi
+
+# ---------------------------------------------------------------------------
+echo "== Test 8: /explain is opt-in (--with-explain installs it) =="
+newtmp G
+out=$(sh "$BOOT" "$G" --with-explain --name "Fresh" --summary "fresh" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && ok "--with-explain install exits 0" || bad "--with-explain install exit=$rc -- $out"
+( cd "$G" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) && ok "--with-explain workspace validates" || bad "--with-explain workspace failed validate"
+for rel in \
+  .claude/skills/explain/SKILL.md \
+  .agents/skills/explain/SKILL.md \
+  .agents/skills/explain/agents/openai.yaml ; do
+  [ -f "$G/$rel" ] && ok "--with-explain installs $rel" || bad "--with-explain missing $rel"
+  diff -q "$REPO_ROOT/$rel" "$G/$rel" >/dev/null \
+    && ok "dual-apply: $rel" \
+    || bad "DRIFT: $rel differs from the bootstrap-embedded copy"
+done
 
 # ---------------------------------------------------------------------------
 echo

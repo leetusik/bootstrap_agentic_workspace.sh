@@ -9,6 +9,17 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v2 — 2026-07-02
+
+- **`/explain` is now opt-in.** The `explain` skill is no longer installed by default. Pass
+  `--with-explain` to include it on a fresh install or an `--into-existing` retrofit. The skill
+  still ships inside the built artifact — it is only gated at install time.
+- **Update preserves your choice.** `/update-workspace` keeps refreshing an already-installed
+  `explain` (it is never dropped or flagged stale on update). A repo without it stays without it
+  unless you re-run update with `--with-explain`.
+
+Migration notes: none. Repos that installed `explain` under v1 keep it and keep receiving refreshes.
+
 ## v1 — 2026-07-02
 
 First versioned release. Workspace versioning starts here.

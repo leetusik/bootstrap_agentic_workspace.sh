@@ -85,6 +85,25 @@ _Durable findings and cross-slice notes; `DECOMP` seeds this, and each slice app
   an installed `explain` stays in the expected sets and is never flagged; an absent one is never
   added (unless `--update --with-explain`).
 
+### S1 implementation notes (for REVIEW)
+
+- Landed exactly per the DECOMP design above: wrapper flag (4 touch points), the single gating
+  block after the skill-inventory derivation in `installer/main.py`, `WORKSPACE_VERSION` 1 → 2,
+  the `## v2 — 2026-07-02` CHANGELOG entry, artifact rebuilt via `installer/build.py`
+  (`--check` OK), and additive tests (2 new Test 5 absence asserts + new Test 8 opt-in
+  presence/byte-match). `bash tests/retrofit_smoke.sh` → ALL PASS;
+  `python3 scripts/workflow.py validate` → pass.
+- REVIEW re-validation commands: `python3 installer/build.py --check`,
+  `bash tests/retrofit_smoke.sh`, `python3 scripts/workflow.py validate`.
+- The `--update` preservation path has **no smoke-suite coverage** (kept the suite lean per the
+  test-size rule); S1 sanity-checked it manually against throwaway dirs — all three cases pass:
+  installed-with → update preserves and never stale-flags; installed-without → update does not
+  add; `--update --with-explain` adds. If REVIEW wants to re-verify cheaply: fresh install a tmp
+  dir with `--with-explain`, run `--update` on it without the flag, assert the three explain
+  files still exist and the update output has no `stale`+`explain` line.
+- No new "Doc impact" entries: the two already listed below (operations, decisions) fully cover
+  what S1 shipped.
+
 ## Constraints
 
 - **One commit for S1** — source edits + rebuilt artifact + CHANGELOG + version bump + tests land

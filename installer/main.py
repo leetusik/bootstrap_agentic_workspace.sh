@@ -37,7 +37,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 1
+WORKSPACE_VERSION = 2
 ROOT = TARGET.resolve()
 
 DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
@@ -58,6 +58,16 @@ EMPTY_OK_ALLOWLIST = {
 # (e.g. do-whole-phase) when it has no Codex mirror under .agents/skills/.
 CLAUDE_SKILLS = sorted({k.split("/")[2] for k in PAYLOADS if k.startswith(".claude/skills/") and k.endswith("/SKILL.md")})
 CODEX_SKILLS = sorted({k.split("/")[2] for k in PAYLOADS if k.startswith(".agents/skills/") and k.endswith("/SKILL.md")})
+
+WITH_EXPLAIN = os.environ.get("WITH_EXPLAIN") == "1"
+# On --update, keep refreshing an already-installed explain (never drop it, never let
+# flag_stale_skills asymmetrically flag its Codex copy) regardless of the flag.
+if UPDATE and (ROOT / ".claude/skills/explain/SKILL.md").exists():
+    WITH_EXPLAIN = True
+OPTIONAL_SKILLS = {"explain": WITH_EXPLAIN}
+_excluded = {n for n, on in OPTIONAL_SKILLS.items() if not on}
+CLAUDE_SKILLS = [s for s in CLAUDE_SKILLS if s not in _excluded]
+CODEX_SKILLS = [s for s in CODEX_SKILLS if s not in _excluded]
 
 MANAGED_DIRS = [
     "docs", "docs/current", "docs/versions",
