@@ -167,7 +167,7 @@ Both `--flag value` and `--flag=value` forms work.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
 - `.claude/` + `.agents/` — the 15 Agent Skills, mirrored for both tools (`do-whole-phase` is
   Claude Code only), plus the `slice-executor` subagent for each tool
-  (`.claude/agents/` on `opus`, `.codex/agents/` on `gpt-5.5`), and `.codex/config.toml`.
+  (`.claude/agents/` runs the session's model via `model: inherit`, `.codex/agents/` on its configured model), and `.codex/config.toml`.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - [`works/`](works/) — the state machine: phase **`P1`** seeded with a `DECOMP` and a `REVIEW`
@@ -242,8 +242,9 @@ is Claude Code only — so the same step works natively in either tool:
 
 Both tools delegate the heavy lifting to a **`slice-executor`** subagent: it implements each delegated
 slice and also runs the phase review — validating the phase and consolidating its doc versions, in a
-fresh context that never edits source (Claude Code under `.claude/agents/`
-on `opus`; Codex under `.codex/agents/` on `gpt-5.5`). Workflow skills are
+fresh context that never edits source (Claude Code under `.claude/agents/`,
+running the session's model via `model: inherit`; Codex under `.codex/agents/`
+on its configured model). Workflow skills are
 **explicit-invocation only** — agents don't fire them on their own. They are the **operator's
 interface**: you type the slash command; the agent does everything it implies. (`explain` is the
 one exception: a general-purpose, non-workflow skill agents may fire when you ask for an
@@ -286,7 +287,7 @@ Archived phases and old doc versions are history; they're not read by default.
 │   └── settings.json              # pre-approves workflow.py; denies push & rm -rf
 ├── .agents/skills/                # the same skills, mirrored for Codex (minus do-whole-phase)
 └── .codex/
-    ├── agents/                    # slice-executor subagent (Codex, gpt-5.5)
+    ├── agents/                    # slice-executor subagent (Codex, its configured model)
     └── config.toml                # Codex project config
 ```
 

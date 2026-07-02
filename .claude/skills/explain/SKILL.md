@@ -113,8 +113,8 @@ Devices (use each where it earns its place):
 
 The KB has an auto-commit convention (see its README). Run exactly these two
 commands, spelled exactly this way, adding your own tool's standard
-Co-Authored-By trailer as a second `-m` (in Codex that is
-`Co-Authored-By: GPT-5.5 <noreply@openai.com>`):
+Co-Authored-By trailer — naming the model that actually did the work — as a
+second `-m` (e.g. in Codex, `Co-Authored-By: GPT-5.5 <noreply@openai.com>`):
 
     git -C ~/projects/personal/knowledge add -A
     git -C ~/projects/personal/knowledge commit -m "docs(<project>): add <slug>"

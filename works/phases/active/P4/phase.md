@@ -135,15 +135,34 @@ stamped at 2735; Codex toml `gpt-5.5` at 2852/2856); settings + codex config
   `--update`) via full `diff -r` of installed trees + update `--dry-run` reporting
   0 machinery files updated. Pure refactor confirmed.
 
+**P4.S2 — model-flexible attribution sweep done (2026-07-02).**
+
+- Edited **live files only**, then `python3 installer/build.py` — the S1 workflow
+  held perfectly, no heredoc mirroring needed. Drift check + retrofit smoke (all 7
+  blocks) + `validate` all green.
+- **For S3:** the `Co-Authored-By: GPT-5.5 …` string in `CLAUDE.md`/`AGENTS.md`:96
+  and the two explain `SKILL.md` mirrors is now an intentional **example inside
+  rule text** — leave it. The only genuine model pin left in live machinery is the
+  Codex `model = "gpt-5.5"` in `.codex/agents/*.toml:3` (scoped out by intent).
+- `tests/retrofit_smoke.sh` greps `effort:` (not `model:`), so the `model: inherit`
+  change didn't touch it; if S3 adds tests, keep them terse per the contract.
+- The distributable is currently 209306 bytes after this rebuild — S3's CHANGELOG
+  + `WORKSPACE_VERSION` work will change it again; just rebuild after S3's edits.
+
 ## Doc impact
 
 Running list of durable-truth changes for the review slice to consolidate into new
 doc versions (one version per affected doc, at `P4.REVIEW`, on a passing review).
 S2/S3/REVIEW append here as they change durable truth.
 
-- (S2, anticipated) `decisions`: v0013 "`opus` alias auto-tracks the top model"
-  rationale is superseded by the Fable/Mythos tier above Opus — executor pins
-  become `model: inherit`. Record at review.
+- (S2, confirmed) `decisions`: v0013 "`opus` alias auto-tracks the top model"
+  rationale is **superseded** by the Fable/Mythos tier above Opus — executor defs
+  are now `model: inherit` (`.claude/agents/slice-executor{,-high}.md`), so the
+  executor runs the session's model. Commit attribution is now **rule-based** —
+  "attribute each commit to the model that actually did the work" — with model
+  names (`GPT-5.5`) appearing only as examples in the Commit Convention
+  (`CLAUDE.md`/`AGENTS.md`) and the explain skill; the Codex tomls keep their
+  explicit `model = "gpt-5.5"` pin (Codex needs an explicit model). Record at review.
 - (S1) `operations`: the installer is now a **build product** — new build/release
   procedure: edit live files or `installer/payloads/`, run `python3 installer/build.py`,
   commit the rebuilt `bootstrap_agentic_workspace.sh`; `installer/build.py --check`

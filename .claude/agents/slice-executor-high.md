@@ -2,7 +2,7 @@
 name: slice-executor-high
 description: Executes exactly one already-planned slice in an isolated context; returns a structured verdict. Never commits and never transitions slice/phase status. Lower-effort variant for low-risk slices.
 tools: Read, Edit, Write, Glob, Grep, Bash
-model: opus
+model: inherit
 effort: high
 permissionMode: bypassPermissions
 ---
