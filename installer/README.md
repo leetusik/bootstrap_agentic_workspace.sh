@@ -29,7 +29,9 @@ target (this README, `tests/`, `LICENSE`) do not need a bump.
 
 `python3 installer/build.py --check` fails (non-zero) if the committed artifact has
 drifted from source; it runs in `tests/retrofit_smoke.sh` (Test 7) so CI catches a
-stale artifact.
+stale artifact. The tracked `.githooks/pre-commit` hook runs the same check whenever
+staged files touch machinery, blocking a commit that would ship a stale artifact —
+register it once per clone: `git config core.hooksPath .githooks`.
 
 ## What lives where
 

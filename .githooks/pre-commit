@@ -1,0 +1,17 @@
+#!/bin/sh
+# Block commits that stage embedded machinery without a matching distributable rebuild.
+# Register once per clone: git config core.hooksPath .githooks
+# Skipped entirely when no staged path touches machinery. `installer/build.py --check`
+# is read-only (assembles in memory, compares bytes); it reads the worktree, so it is
+# exact only when machinery edits are staged together — the normal flow here.
+
+if ! git diff --cached --name-only | grep -qE '^(installer/|scripts/workflow\.py$|CLAUDE\.md$|AGENTS\.md$|\.claude/|\.agents/|\.codex/|works/templates/|bootstrap_agentic_workspace\.sh$)'; then
+    exit 0
+fi
+
+if ! python3 installer/build.py --check; then
+    echo "" >&2
+    echo "pre-commit: staged machinery drifts from the committed distributable." >&2
+    echo "Run: python3 installer/build.py   then stage bootstrap_agentic_workspace.sh and retry." >&2
+    exit 1
+fi

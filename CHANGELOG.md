@@ -9,6 +9,26 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v5 — 2026-07-03
+
+- **Slice-executor dispatch pinned to a background task.** The `do-next-slice` /
+  `do-whole-phase` orchestrator always launches the executor via the Agent tool as a
+  background task (never `run_in_background: false`) and waits for its completion
+  notification. (Shipped in machinery at `d1767f9`; versioned here — that commit
+  skipped the release rule.)
+- **Both slice-executors pinned to `model: opus`.** `.claude/agents/slice-executor.md`
+  and `slice-executor-high.md` now carry `model: opus` instead of inheriting the
+  session model. (Shipped in machinery at `1950902`; versioned here — that commit
+  skipped the release rule.)
+- **Upstream rebuild guard in the contract.** New Hard Rule, self-scoped to the
+  upstream bootstrap repo (inert in adopting repos, which have no `installer/`):
+  editing embedded machinery requires rebuilding and committing the distributable in
+  the same commit; upstream, the tracked `.githooks/pre-commit` hook enforces the
+  drift check. Prompted by a downstream report that `--update` at `d1767f9` emitted
+  stale machinery (that commit edited machinery without rebuilding the artifact).
+
+Migration notes: none.
+
 ## v4 — 2026-07-02
 
 - **`/explain` saves through the KB document API.** The old steps 5–7 (manual file
