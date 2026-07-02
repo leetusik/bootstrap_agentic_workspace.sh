@@ -1,0 +1,11 @@
+{
+  "id": "D1",
+  "title": "Make /explain portable so public users can use it",
+  "status": "deferred",
+  "source": "P5",
+  "reason": "/explain hardcodes the operator's personal Mac KB (~/projects/personal/knowledge, viewer localhost:8765, docker/mkdocs). Even when installed via --with-explain, public users can't use it as-is.",
+  "trigger": "When shipping /explain to public users: parameterize the KB location and viewer (configurable path + port via env or a setting, or drop the docker/mkdocs assumption) so any adopter can point it at their own knowledge base.",
+  "created_at": "2026-07-02T14:18:49+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

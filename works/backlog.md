@@ -5,18 +5,19 @@
 
 ## Pointer
 
-- Current phase: `none`
-- Current slice: `none`
-- Next slice: `none`
+- Current phase: `P5`
+- Current slice: `P5.DECOMP`
+- Next slice: `P5.REVIEW`
 - Waiting on operator: `none`
-- Open deferred jobs: `0`
-- Rebuilt at: `2026-07-02T13:55:47+09:00`
+- Open deferred jobs: `1`
+- Rebuilt at: `2026-07-02T14:18:49+09:00`
 
 ## Active Phases
 
 | Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
 | [x] `P4` | `done` | `pass` | Model-flexible attribution, installer split, versioned workspace updates | `none` | `works/phases/active/P4` |
+| [ ] `P5` | `planned` | `pending` | Optional /explain install (--with-explain) | `P5.DECOMP` | `works/phases/active/P5` |
 
 ## Phase P4: Model-flexible attribution, installer split, versioned workspace updates
 
@@ -27,3 +28,10 @@
 | [x] `P4.S2` | `done` | Model-flexible attribution sweep | `implementation` | `works/phases/active/P4/slices/P4.S2` |
 | [x] `P4.S3` | `done` | CHANGELOG + integer workspace versioning in /update-workspace | `implementation` | `works/phases/active/P4/slices/P4.S3` |
 | [x] `P4.REVIEW` | `done` | phase review | `review` | `works/phases/active/P4/slices/P4.REVIEW` |
+
+## Phase P5: Optional /explain install (--with-explain)
+
+| Slice | Status | Name | Kind | Path |
+|---|---|---|---|---|
+| [ ] `P5.DECOMP` | `todo` | decompose phase | `decomposition` | `works/phases/active/P5/slices/P5.DECOMP` |
+| [ ] `P5.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P5/slices/P5.REVIEW` |
