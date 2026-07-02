@@ -182,7 +182,30 @@ stamped at 2735; Codex toml `gpt-5.5` at 2852/2856); settings + codex config
   carries `workspace_version`. Artifact rebuilt (212202 bytes); drift check + all 7
   smoke blocks + `validate` green.
 
+**P4.REVIEW — phase review PASSED (2026-07-02).**
+
+- Validated all slices together: build determinism (byte-identical), `build.py
+  --check` + `tests/retrofit_smoke.sh` (all 7 blocks) green, model-pin grep sweep
+  clean (no `model: opus`/`opus`, no "on `opus`"/"on `gpt-5.5`" prose; all
+  `gpt-5.5` are the Codex toml pins, the config comment, or examples-in-rule),
+  end-to-end current-artifact check (fresh install stamps `workspace_version: 1`,
+  target `validate` passes, `--update --dry-run` = 0 machinery), CHANGELOG present
+  with `## v1` and absent from the artifact, `/update-workspace` mirror bodies
+  byte-identical, repo `validate` green. Details in `P4.REVIEW/result.md`.
+- **Verdict: pass.** All three intent jobs delivered; slice `result.md`s consistent
+  with plans; hard rules honored (no per-slice doc versions; tests terse).
+- **Consolidated docs** (`--source P4.REVIEW`): `decisions` → **v0014**,
+  `operations` → **v0009**, `architecture` → **v0002**; `rebuild-docs` run. The
+  three Doc impact items below are now consolidated.
+- Note for future doc consolidations: keep `doc-new-version --summary` terse — the
+  slug becomes the version filename, and an over-long one overflows the 255-byte
+  filename limit during the editor's atomic temp-rename (hit once here on
+  `operations`, recovered by recreating with a short summary).
+
 ## Doc impact
+
+**All items below CONSOLIDATED at P4.REVIEW** → `decisions` v0014, `operations`
+v0009, `architecture` v0002 (on the passing review).
 
 Running list of durable-truth changes for the review slice to consolidate into new
 doc versions (one version per affected doc, at `P4.REVIEW`, on a passing review).

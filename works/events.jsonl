@@ -83,3 +83,10 @@
 {"ts": "2026-07-02T13:36:51+09:00", "type": "slice_status_changed", "slice": "P4.S2", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-07-02T13:38:02+09:00", "type": "slice_status_changed", "slice": "P4.S3", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-07-02T13:44:17+09:00", "type": "slice_status_changed", "slice": "P4.S3", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-07-02T13:45:16+09:00", "type": "slice_status_changed", "slice": "P4.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-07-02T13:48:19+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0014_installer_split_into_installer_committed_build_product_drift_guard_executor_model_inherit_rule-based_commit_attribution_supersedes_v0013_opus-alias_rationale_integer_workspace_versioning_root_changelog_release_policy", "source": "P4.REVIEW"}
+{"ts": "2026-07-02T13:50:07+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0009_installer_is_a_build_product_edit_live_files_payloads_build.py_commit_artifact_drift_guards_version-aware_update-workspace_flow_vn_-_vm_from_upstream_changelog_release_rule_bump_workspace_version_changelog_entry_per_machinery_release", "source": "P4.REVIEW"}
+{"ts": "2026-07-02T13:51:03+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0009_installer_is_a_build_product_version-aware_update_flow_release_rule", "source": "P4.REVIEW"}
+{"ts": "2026-07-02T13:51:53+09:00", "type": "doc_version_created", "doc": "architecture", "version": "v0002_installer_source_tree_assembles_the_committed_single-file_distributable", "source": "P4.REVIEW"}
+{"ts": "2026-07-02T13:55:22+09:00", "type": "phase_reviewed", "phase": "P4", "verdict": "pass", "reviewer": "slice-executor"}
+{"ts": "2026-07-02T13:55:47+09:00", "type": "slice_status_changed", "slice": "P4.REVIEW", "old_status": "in_progress", "new_status": "done"}
