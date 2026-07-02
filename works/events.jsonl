@@ -72,3 +72,8 @@
 {"ts": "2026-06-29T17:28:03+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0008_phase_review_runs_through_the_slice-executor_and_consolidates_the_phase_s_doc_versions_phase-reviewer_retired", "source": "operator-request"}
 {"ts": "2026-07-01T13:34:26+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0013_risk-based_slice-executor_effort_xhigh_default_high_for_low-risk_impl_fix_decomposition_and_review_xhigh_orchestrator_max", "source": "manual"}
 {"ts": "2026-07-02T11:30:25+09:00", "type": "phase_created", "phase": "P4"}
+{"ts": "2026-07-02T13:06:02+09:00", "type": "slice_status_changed", "slice": "P4.DECOMP", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-07-02T13:06:56+09:00", "type": "slice_created", "phase": "P4", "slice": "P4.S1"}
+{"ts": "2026-07-02T13:06:56+09:00", "type": "slice_created", "phase": "P4", "slice": "P4.S2"}
+{"ts": "2026-07-02T13:06:56+09:00", "type": "slice_created", "phase": "P4", "slice": "P4.S3"}
+{"ts": "2026-07-02T13:08:36+09:00", "type": "slice_status_changed", "slice": "P4.DECOMP", "old_status": "in_progress", "new_status": "done"}

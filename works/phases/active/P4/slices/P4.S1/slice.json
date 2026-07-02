@@ -1,18 +1,18 @@
 {
-  "id": "P4.DECOMP",
+  "id": "P4.S1",
   "phase_id": "P4",
-  "name": "decompose phase",
-  "kind": "decomposition",
-  "status": "done",
-  "order": 0,
+  "name": "Split installer into installer/ with build + drift check",
+  "kind": "implementation",
+  "status": "todo",
+  "order": 2,
   "depends_on": [],
-  "created_at": "2026-07-02T11:30:25+09:00",
-  "started_at": "2026-07-02T13:06:02+09:00",
-  "completed_at": "2026-07-02T13:08:36+09:00",
-  "risk": "low",
+  "created_at": "2026-07-02T13:06:56+09:00",
+  "started_at": null,
+  "completed_at": null,
+  "risk": "high",
   "source": {
-    "type": "new_phase",
-    "id": "P4"
+    "type": "manual",
+    "id": null
   },
   "paths": {
     "plan": "plan.md",
