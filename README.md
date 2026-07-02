@@ -157,6 +157,7 @@ review.
 | `--into-existing` | off | Non-destructively retrofit into an existing repo (see the [Retrofit Guide](docs/retrofit-guide.md)) |
 | `--update` | off | Update an already-installed workspace's machinery to this version (preserves your `works/` and `docs/`) |
 | `--dry-run` | off | With `--update`, preview the change-list without writing anything |
+| `--with-explain` | off | Also install the optional `explain` skill (assumes a personal knowledge base — see [Skills](#the-skills)) |
 | `-h`, `--help` | — | Show help and exit |
 
 Both `--flag value` and `--flag=value` forms work.
@@ -165,8 +166,8 @@ Both `--flag value` and `--flag=value` forms work.
 
 - [`CLAUDE.md`](CLAUDE.md) + [`AGENTS.md`](AGENTS.md) — the equivalent per-tool routing contracts.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` + `.agents/` — the 15 Agent Skills, mirrored for both tools (`do-whole-phase` is
-  Claude Code only), plus the `slice-executor` subagent for each tool
+- `.claude/` + `.agents/` — the 14 core Agent Skills, mirrored for both tools (`do-whole-phase` is
+  Claude Code only; the optional `explain` skill installs only with `--with-explain`), plus the `slice-executor` subagent for each tool
   (`.claude/agents/` runs the session's model via `model: inherit`, `.codex/agents/` on its configured model), and `.codex/config.toml`.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
@@ -238,7 +239,7 @@ is Claude Code only — so the same step works natively in either tool:
 | `commit` | Group pending changes into focused conventional commits |
 | `retrofit` | Non-destructively adopt this workspace into an existing repo |
 | `update-workspace` | Update an adopted workspace's machinery to the latest upstream, preserving your work |
-| `explain` | Write a novice-friendly educational explainer of a topic and file it in the personal knowledge base (`~/projects/personal/knowledge`) |
+| `explain` _(optional — installs only with `--with-explain`)_ | Write a novice-friendly educational explainer of a topic and file it in the personal knowledge base (`~/projects/personal/knowledge`) |
 
 Both tools delegate the heavy lifting to a **`slice-executor`** subagent: it implements each delegated
 slice and also runs the phase review — validating the phase and consolidating its doc versions, in a
