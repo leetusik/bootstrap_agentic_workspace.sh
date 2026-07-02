@@ -103,3 +103,7 @@
 {"ts": "2026-07-02T14:53:15+09:00", "type": "phase_reviewed", "phase": "P5", "verdict": "pass", "reviewer": "slice-executor"}
 {"ts": "2026-07-02T14:53:15+09:00", "type": "slice_status_changed", "slice": "P5.REVIEW", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-07-02T16:45:33+09:00", "type": "phase_created", "phase": "P6"}
+{"ts": "2026-07-02T16:54:36+09:00", "type": "slice_status_changed", "slice": "P6.DECOMP", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-07-02T16:55:07+09:00", "type": "slice_created", "phase": "P6", "slice": "P6.S1"}
+{"ts": "2026-07-02T16:55:13+09:00", "type": "slice_created", "phase": "P6", "slice": "P6.S2"}
+{"ts": "2026-07-02T16:57:14+09:00", "type": "slice_status_changed", "slice": "P6.DECOMP", "old_status": "in_progress", "new_status": "done"}
