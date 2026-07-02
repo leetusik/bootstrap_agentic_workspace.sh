@@ -35,6 +35,7 @@ _Durable findings and cross-slice notes; `DECOMP` seeds this, and each slice app
 - **P6.S1 smoke confirmed the contract live** (skill's own spelled commands, `commit:false`, project `p6-smoke`): 201 → `recent_updated:true`, `committed:false`, `commit_sha:null`, `commit_error` omitted; identical re-POST → 409 with the duplicate fields nested under `detail` (`detail.existing_title`, `detail.rel_path`). Cleanup (rm doc + empty dir, `git restore docs/index.md`, `POST /api/reindex` → `removed:1`) left the KB tree clean, `documents:1`.
 - **For P6.S2:** the file to sync outside the repo is the updated Claude copy `.claude/skills/explain/SKILL.md` (v4 body; `allowed-tools` now includes `Bash(curl -sS --max-time 5:*)` and `Bash(python3 -c:*)` alongside the KB git allowance). Verify byte-identical after copy.
 - **Renumber ripple:** step 1's PROJECT_COPY pointer now reads "(step 7)" (project copy moved 8→7); the only edit inside steps 1–4.
+- **P6.S2 sync done:** `~/.claude/skills/explain/SKILL.md` overwritten with the repo v4 Claude copy, `cmp` byte-identical (8957 bytes); the user-level `description` drift was normalized to the repo wording. No Doc-impact lines (outside durable repo truth).
 
 ## Constraints
 

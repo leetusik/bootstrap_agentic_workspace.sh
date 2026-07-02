@@ -6,11 +6,11 @@
 ## Pointer
 
 - Current phase: `P6`
-- Current slice: `P6.S2`
-- Next slice: `P6.REVIEW`
+- Current slice: `P6.REVIEW`
+- Next slice: `none`
 - Waiting on operator: `none`
 - Open deferred jobs: `1`
-- Rebuilt at: `2026-07-02T17:12:38+09:00`
+- Rebuilt at: `2026-07-02T17:17:08+09:00`
 
 ## Active Phases
 
@@ -18,7 +18,7 @@
 |---|---|---|---|---|---|
 | [x] `P4` | `done` | `pass` | Model-flexible attribution, installer split, versioned workspace updates | `none` | `works/phases/active/P4` |
 | [x] `P5` | `done` | `pass` | Optional /explain install (--with-explain) | `none` | `works/phases/active/P5` |
-| [ ] `P6` | `planned` | `pending` | Wire /explain to the KB document API | `P6.S2` | `works/phases/active/P6` |
+| [ ] `P6` | `planned` | `pending` | Wire /explain to the KB document API | `P6.REVIEW` | `works/phases/active/P6` |
 
 ## Phase P4: Model-flexible attribution, installer split, versioned workspace updates
 
@@ -44,5 +44,5 @@
 |---|---|---|---|---|
 | [x] `P6.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P6/slices/P6.DECOMP` |
 | [x] `P6.S1` | `done` | Rewire /explain steps 5–7 to POST /api/documents (API-first, manual fallback) | `implementation` | `works/phases/active/P6/slices/P6.S1` |
-| [ ] `P6.S2` | `todo` | Sync updated /explain skill to ~/.claude/skills/explain (operator-authorized) | `implementation` | `works/phases/active/P6/slices/P6.S2` |
+| [x] `P6.S2` | `done` | Sync updated /explain skill to ~/.claude/skills/explain (operator-authorized) | `implementation` | `works/phases/active/P6/slices/P6.S2` |
 | [ ] `P6.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P6/slices/P6.REVIEW` |
