@@ -165,7 +165,7 @@ Both `--flag value` and `--flag=value` forms work.
 
 - [`CLAUDE.md`](CLAUDE.md) + [`AGENTS.md`](AGENTS.md) — the equivalent per-tool routing contracts.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` + `.agents/` — the 14 Agent Skills, mirrored for both tools (`do-whole-phase` is
+- `.claude/` + `.agents/` — the 15 Agent Skills, mirrored for both tools (`do-whole-phase` is
   Claude Code only), plus the `slice-executor` subagent for each tool
   (`.claude/agents/` on `opus`, `.codex/agents/` on `gpt-5.5`), and `.codex/config.toml`.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
@@ -218,7 +218,7 @@ The full command list lives in [`CLAUDE.md`](CLAUDE.md).
 
 ### The same operations as Agent Skills
 
-The common workflows also ship as **14 Agent Skills** in `.claude/skills/` (Claude Code:
+The common workflows also ship as **15 Agent Skills** in `.claude/skills/` (Claude Code:
 `/slash` commands), all but one mirrored in `.agents/skills/` (Codex: `$skill`) — `do-whole-phase`
 is Claude Code only — so the same step works natively in either tool:
 
@@ -238,13 +238,16 @@ is Claude Code only — so the same step works natively in either tool:
 | `commit` | Group pending changes into focused conventional commits |
 | `retrofit` | Non-destructively adopt this workspace into an existing repo |
 | `update-workspace` | Update an adopted workspace's machinery to the latest upstream, preserving your work |
+| `explain` | Write a novice-friendly educational explainer of a topic and file it in the personal knowledge base (`~/projects/personal/knowledge`) |
 
 Both tools delegate the heavy lifting to a **`slice-executor`** subagent: it implements each delegated
 slice and also runs the phase review — validating the phase and consolidating its doc versions, in a
 fresh context that never edits source (Claude Code under `.claude/agents/`
-on `opus`; Codex under `.codex/agents/` on `gpt-5.5`). Skills are
+on `opus`; Codex under `.codex/agents/` on `gpt-5.5`). Workflow skills are
 **explicit-invocation only** — agents don't fire them on their own. They are the **operator's
-interface**: you type the slash command; the agent does everything it implies.
+interface**: you type the slash command; the agent does everything it implies. (`explain` is the
+one exception: a general-purpose, non-workflow skill agents may fire when you ask for an
+explainer in plain words.)
 
 ### Read order
 
@@ -278,7 +281,7 @@ Archived phases and old doc versions are history; they're not read by default.
 │   │   └── archived/             # finished phases
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
-│   ├── skills/                    # 14 Agent Skills (Claude Code)
+│   ├── skills/                    # 15 Agent Skills (Claude Code)
 │   ├── agents/                    # slice-executor subagent (implements slices + runs the review)
 │   └── settings.json              # pre-approves workflow.py; denies push & rm -rf
 ├── .agents/skills/                # the same skills, mirrored for Codex (minus do-whole-phase)
