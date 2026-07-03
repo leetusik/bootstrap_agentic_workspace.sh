@@ -22,7 +22,7 @@ DEFERRED_PROMOTED = WORKS / "deferred" / "promoted"
 DEFERRED_DROPPED = WORKS / "deferred" / "dropped"
 DOC_TYPES = {"product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"}
 PHASE_STATUSES = {"planned", "in_progress", "in_review", "pending", "blocked", "done"}
-SLICE_STATUSES = {"todo", "in_progress", "in_review", "changes_requested", "pending", "blocked", "done"}
+SLICE_STATUSES = {"todo", "ready", "in_progress", "in_review", "changes_requested", "pending", "blocked", "done"}
 DEFERRED_STATUSES = {"deferred", "ready", "promoted", "done", "dropped"}
 REVIEW_VERDICTS = {"pass", "changes_requested", "blocked"}
 CLAUDE_AGENTS = ROOT / ".claude" / "agents"
@@ -364,8 +364,8 @@ def clean_cell(value: object) -> str:
 
 
 def status_box(status: object) -> str:
-    """Dashboard checkbox glyph: done -> x, pending (waiting on operator) -> ~, else blank."""
-    return "x" if status == "done" else "~" if status == "pending" else " "
+    """Dashboard checkbox glyph: done -> x, pending (waiting on operator) -> ~, ready (plan approved) -> r, else blank."""
+    return "x" if status == "done" else "~" if status == "pending" else "r" if status == "ready" else " "
 
 
 def rebuild_deferred_dashboard(groups=None, rebuilt_at=None) -> None:
@@ -461,7 +461,7 @@ def rebuild_index_and_state() -> None:
 def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
     lines = [
         "# Backlog", "", "> Generated dashboard. Do not put detailed task context here; edit phase/slice/deferred folders instead.",
-        "> Status box: `[x]` done · `[~]` pending — waiting on operator · `[ ]` open/in progress.", "",
+        "> Status box: `[x]` done · `[~]` pending — waiting on operator · `[r]` ready — plan approved, awaiting execution · `[ ]` open/in progress.", "",
         "## Pointer", "",
         f"- Current phase: `{state.get('current_phase') or 'none'}`",
         f"- Current slice: `{state.get('current_slice') or 'none'}`",
@@ -517,6 +517,8 @@ def validate() -> int:
                 errors.append(f"slice phase mismatch: {s['id']} says {s['phase_id']}, folder phase is {p['id']}")
             if s["status"] not in SLICE_STATUSES:
                 errors.append(f"invalid slice status {s['id']}: {s['status']}")
+            if s["status"] == "ready" and not (ROOT / s["path"] / "plan.md").exists():
+                errors.append(f"slice {s['id']} is ready but has no plan.md; ready asserts an operator-approved plan exists")
             for dep in s.get("depends_on", []):
                 if dep not in all_slice_ids:
                     errors.append(f"missing dependency for {s['id']}: {dep}")
