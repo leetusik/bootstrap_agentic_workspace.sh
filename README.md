@@ -16,6 +16,10 @@ Claude Code와 Codex 양쪽에서 **Agent Skill**로 노출됩니다.
 
 **요구사항:** `python3 >= 3.8` + POSIX 셸(`sh`/`bash`/`zsh`). `git`은 clone할 때만 필요합니다.
 
+> **python 명령을 직접 칠 일은 없습니다.** 여러분이 직접 실행하는 건 아래 최초 부트스트랩
+> 한 번뿐입니다. 이후 `python3 scripts/workflow.py …` 같은 워크플로우 명령은 전부
+> **에이전트가** 실행합니다 — 여러분은 자연어로 말만 하면 됩니다.
+
 ### 1. 새 프로젝트에 스캐폴딩
 
 ```sh

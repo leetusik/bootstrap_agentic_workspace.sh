@@ -64,6 +64,10 @@ one-time bootstrap below, the only command you might ever type yourself.
 **Prerequisites:** `python3 >= 3.8` and a POSIX shell (`sh`, `bash`, or `zsh`). `git` is optional
 (only needed to clone). No other dependencies.
 
+> **You never type a `python3` command yourself.** The one-time bootstrap below is the only
+> command you ever run; every workflow command (`python3 scripts/workflow.py …`) is typed and
+> run by the **agent**. You drive everything in plain natural language.
+
 ### 1. Get the script and scaffold a workspace (recommended)
 
 ```sh
