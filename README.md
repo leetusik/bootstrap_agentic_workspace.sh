@@ -79,6 +79,31 @@ $do-next-slice      # Codex — 같은 스킬
 워크플로우 명령·커밋·검증은 전부 에이전트가 타이핑합니다. 여러분(operator)의 일은 판단입니다:
 결과를 리뷰하고, `pending` 핸드오프를 풀어주고, 아카이브 시점을 결정하는 것.
 
+## 예시 워크플로우
+
+전형적인 흐름 — 전부 에이전트와의 대화입니다:
+
+```
+/create-phase 결제 모듈에 환불 기능 추가
+```
+
+에이전트가 의도를 다듬고, 애매한 부분을 되묻고, 확인을 받은 뒤 phase를 만듭니다
+(`DECOMP` + `REVIEW`만 시딩). 그리고 멈춥니다 — 분해도 구현도 아직입니다.
+
+실행은 원하는 페이스로:
+
+```
+/do-next-slice          # slice 하나만 — 계획 승인 → 실행 → 멈춤
+/do-whole-phase         # phase 끝까지 — 매 slice의 계획 승인에서만 멈춤
+/do-whole-phase auto    # phase 끝까지 논스톱 — 계획 승인 생략 (안전 정지는 그대로 동작)
+```
+
+(`do-whole-phase`는 Claude Code 전용 — Codex에선 `$do-next-slice`를 반복하면 됩니다.)
+
+진행 상황은 [`works/backlog.md`](works/backlog.md)(생성되는 대시보드)와
+`works/phases/active/<P>/`(phase 노트와 slice 폴더)에서 확인하세요 — 아니면 그냥 에이전트에게
+*"지금 어디까지 했어?"*라고 물어봐도 됩니다.
+
 ## 이게 뭔가요?
 
 코딩 에이전트는 유능하지만 잘 잊습니다. 긴 작업에서 대화가 압축되면 컨텍스트를 잃고, 이미 한

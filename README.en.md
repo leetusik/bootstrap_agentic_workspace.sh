@@ -16,6 +16,7 @@ One shell script scaffolds a complete workspace: a compact agent **contract**, a
 
 - [What is this?](#what-is-this)
 - [Quickstart](#quickstart)
+- [Example workflow](#example-workflow)
 - [How it works](#how-it-works)
 - [Project structure](#project-structure)
 - [How I work with coding agents](#-how-i-work-with-coding-agents)
@@ -186,6 +187,31 @@ it refuses to overwrite managed workflow files that already exist. It is safe to
 fresh workspace. To add the workspace to a repo that *already* has content, use the
 non-destructive `--into-existing` retrofit instead — see the
 [Retrofit Guide](docs/retrofit-guide.md).
+
+## Example workflow
+
+A typical flow — all of it in conversation with your agent:
+
+```
+/create-phase Add refund support to the billing module
+```
+
+The agent refines your intent, asks about anything ambiguous, gets your confirmation, and creates
+the phase (seeding only `DECOMP` + `REVIEW`) — then stops. No decomposition, no code yet.
+
+Then execute it at whichever pace you prefer:
+
+```
+/do-next-slice          # one slice only — approve its plan, it runs, then stop
+/do-whole-phase         # the whole phase — pauses only for your approval of each slice's plan
+/do-whole-phase auto    # the whole phase non-stop — skips plan approvals (safety halts still stop it)
+```
+
+(`do-whole-phase` is Claude Code only — in Codex, repeat `$do-next-slice`.)
+
+Track progress in [`works/backlog.md`](works/backlog.md) (the generated dashboard) and the active
+phase folder under `works/phases/active/` (the phase notebook and slice folders) — or just ask the
+agent, *"where are we?"*.
 
 ## How it works
 
