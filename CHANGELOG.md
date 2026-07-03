@@ -9,6 +9,39 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v7 — 2026-07-03
+
+- **Three slice-executor tiers.** The two executor variants are replaced by
+  `slice-executor-low` / `-mid` / `-high` for both tools, risk-routed by the
+  orchestrator: `risk == low` → low (haiku by default, no effort line — a literal
+  plan-follower: no judgment, no improvisation; it stops and escalates on any
+  surprise), `risk == medium` → mid (sonnet @ xhigh), and everything else —
+  decomposition, the phase review, high/unknown risk — → high (opus @ xhigh,
+  unchanged behavior). Codex tiers run gpt-5.5 at medium / high / xhigh. The
+  untiered `slice-executor.md` / `slice-executor.toml` are retired; phase reviews
+  now record `--reviewer slice-executor-high`.
+- **`.env`-configurable executor models and efforts.** New `sync-agents` workflow
+  command applies a repo-root `.env` (see the shipped `.env.example`) to the six
+  agent files. Values pass through verbatim (aliases, full model IDs, `inherit`);
+  an empty `*_EFFORT` omits the effort line (needed for models that reject the
+  effort parameter, e.g. haiku); `validate` warns while the agent files drift
+  from `.env`/defaults.
+- **Failure escalation.** Executors gain an `escalate` verdict with an
+  `escalation` findings field. When a low/mid executor can't safely complete a
+  slice, the orchestrator appends the findings to the slice's `plan.md` as an
+  `## Escalation` section and re-dispatches one tier up (a failed/empty low/mid
+  return is treated the same; at most 2 escalations per slice; the top tier never
+  escalates — there, unresolvable means `blocked` or `needs_operator`).
+  `needs_operator` / `blocked` semantics are unchanged, and in `auto` runs an
+  escalation re-dispatches without a pause while the other safety halts still stop
+  the loop.
+
+Migration notes: after `--update`, remove the two retired files the updater flags
+(`git rm .claude/agents/slice-executor.md .codex/agents/slice-executor.toml`) —
+updates never delete files. If you tune tiers via `.env`, re-run
+`python3 scripts/workflow.py sync-agents` after every update (updates reset the
+agent files to upstream defaults), and add `.env` to your `.gitignore`.
+
 ## v6 — 2026-07-03
 
 - **The workspace bootstraps with no phases.** The installer no longer seeds a

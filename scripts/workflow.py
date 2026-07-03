@@ -25,6 +25,18 @@ PHASE_STATUSES = {"planned", "in_progress", "in_review", "pending", "blocked", "
 SLICE_STATUSES = {"todo", "in_progress", "in_review", "changes_requested", "pending", "blocked", "done"}
 DEFERRED_STATUSES = {"deferred", "ready", "promoted", "done", "dropped"}
 REVIEW_VERDICTS = {"pass", "changes_requested", "blocked"}
+CLAUDE_AGENTS = ROOT / ".claude" / "agents"
+CODEX_AGENTS = ROOT / ".codex" / "agents"
+EXECUTOR_TIERS = ("low", "mid", "high")
+# Shipped defaults for the slice-executor tiers. A repo-root .env overrides them via
+# SLICE_EXECUTOR_<TIER>_MODEL/_EFFORT (Claude) and CODEX_SLICE_EXECUTOR_<TIER>_MODEL/_EFFORT
+# (Codex); apply with `sync-agents`. An empty effort means "write no effort line" — the
+# escape hatch for models that reject the effort parameter (e.g. haiku). Models may not be empty.
+EXECUTOR_DEFAULTS = {
+    "low": {"model": "haiku", "effort": "", "codex_model": "gpt-5.5", "codex_effort": "medium"},
+    "mid": {"model": "sonnet", "effort": "xhigh", "codex_model": "gpt-5.5", "codex_effort": "high"},
+    "high": {"model": "opus", "effort": "xhigh", "codex_model": "gpt-5.5", "codex_effort": "xhigh"},
+}
 
 
 def now_iso() -> str:
@@ -78,6 +90,119 @@ def strip_frontmatter(text: str) -> str:
         if end != -1:
             return text[end + len("\n---\n"):].lstrip("\n")
     return text
+
+
+def read_env_file() -> dict:
+    """KEY=VALUE lines from the repo-root .env; '#' comments and blanks ignored."""
+    env_path = ROOT / ".env"
+    values: dict = {}
+    if not env_path.exists():
+        return values
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip()
+    return values
+
+
+def executor_config() -> dict:
+    """EXECUTOR_DEFAULTS overlaid with any .env overrides; values pass through verbatim."""
+    config = {tier: dict(EXECUTOR_DEFAULTS[tier]) for tier in EXECUTOR_TIERS}
+    env = read_env_file()
+    for tier in EXECUTOR_TIERS:
+        upper = tier.upper()
+        for env_key, field in (
+            (f"SLICE_EXECUTOR_{upper}_MODEL", "model"),
+            (f"SLICE_EXECUTOR_{upper}_EFFORT", "effort"),
+            (f"CODEX_SLICE_EXECUTOR_{upper}_MODEL", "codex_model"),
+            (f"CODEX_SLICE_EXECUTOR_{upper}_EFFORT", "codex_effort"),
+        ):
+            if env_key in env:
+                config[tier][field] = env[env_key]
+        for field, env_key in (("model", f"SLICE_EXECUTOR_{upper}_MODEL"), ("codex_model", f"CODEX_SLICE_EXECUTOR_{upper}_MODEL")):
+            if not config[tier][field]:
+                raise SystemExit(f"{env_key} must not be empty (efforts may be empty; models may not)")
+    return config
+
+
+def _patched_agent_md(text: str, model: str, effort: str) -> str:
+    """Rewrite only the model:/effort: frontmatter lines of a .claude agent file."""
+    if not text.startswith("---\n"):
+        raise SystemExit("agent file has no frontmatter")
+    end = text.find("\n---\n", 4)
+    if end == -1:
+        raise SystemExit("agent file frontmatter is unterminated")
+    lines = [l for l in text[4:end].split("\n") if not l.startswith("model:") and not l.startswith("effort:")]
+    insert_at = next((i for i, l in enumerate(lines) if l.startswith("permissionMode:")), len(lines))
+    lines[insert_at:insert_at] = [f"model: {model}"] + ([f"effort: {effort}"] if effort else [])
+    return "---\n" + "\n".join(lines) + text[end:]
+
+
+def _patched_agent_toml(text: str, model: str, effort: str) -> str:
+    """Rewrite only the model/model_reasoning_effort keys of a .codex agent file."""
+    head, sep, tail = text.partition('developer_instructions = """')
+    out = []
+    for line in head.split("\n"):
+        if line.startswith("model = "):
+            out.append(f'model = "{model}"')
+            if effort:
+                out.append(f'model_reasoning_effort = "{effort}"')
+            continue
+        if line.startswith("model_reasoning_effort = "):
+            continue
+        out.append(line)
+    return "\n".join(out) + sep + tail
+
+
+def executor_agent_files(config: dict) -> list:
+    """(tier, path, kind, model, effort) for the 6 tier agent files."""
+    entries = []
+    for tier in EXECUTOR_TIERS:
+        cfg = config[tier]
+        entries.append((tier, CLAUDE_AGENTS / f"slice-executor-{tier}.md", "md", cfg["model"], cfg["effort"]))
+        entries.append((tier, CODEX_AGENTS / f"slice-executor-{tier}.toml", "toml", cfg["codex_model"], cfg["codex_effort"]))
+    return entries
+
+
+def sync_agents(args: argparse.Namespace) -> None:
+    config = executor_config()
+    env_present = (ROOT / ".env").exists()
+    changed, missing = [], []
+    for tier, path, kind, model, effort in executor_agent_files(config):
+        if not path.exists():
+            missing.append(str(path.relative_to(ROOT)))
+            continue
+        current = path.read_text(encoding="utf-8")
+        desired = _patched_agent_md(current, model, effort) if kind == "md" else _patched_agent_toml(current, model, effort)
+        if desired != current:
+            changed.append(str(path.relative_to(ROOT)))
+            if not args.check:
+                write_text(path, desired)
+    for tier in EXECUTOR_TIERS:
+        cfg = config[tier]
+        print(f"{tier:<5} claude={cfg['model']} @ {cfg['effort'] or '(no effort line)'}  codex={cfg['codex_model']} @ {cfg['codex_effort']}")
+    print(f"config source: {'defaults + .env overrides' if env_present else 'defaults (no .env)'}")
+    for m in missing:
+        print(f"missing agent file: {m}")
+    if args.check:
+        if changed or missing:
+            print("out of sync with .env/defaults:")
+            for c in changed:
+                print(f"- {c}")
+            raise SystemExit(1)
+        print("agent files in sync with .env/defaults")
+        return
+    if changed:
+        append_event("agents_synced", changed=changed, env_present=env_present)
+        print("updated:")
+        for c in changed:
+            print(f"- {c}")
+    else:
+        print("already in sync; nothing written")
+    if missing:
+        raise SystemExit(1)
 
 
 def doc_index() -> dict:
@@ -415,6 +540,19 @@ def validate() -> int:
                 errors.append(f"invalid deferred status {data.get('id')}: {data.get('status')}")
             if data.get("status") not in allowed:
                 errors.append(f"deferred job in wrong folder: {data.get('id')} status {data.get('status')} under {base.relative_to(ROOT)}")
+    # Executor-tier drift is advisory only: warn (never error, never crash) when the
+    # agent files disagree with .env/defaults, so a foreign or partial workspace still validates.
+    try:
+        for tier, path, kind, model, effort in executor_agent_files(executor_config()):
+            if not path.exists():
+                warnings.append(f"missing executor agent file: {path.relative_to(ROOT)} (run: python3 scripts/workflow.py sync-agents)")
+                continue
+            current = path.read_text(encoding="utf-8")
+            desired = _patched_agent_md(current, model, effort) if kind == "md" else _patched_agent_toml(current, model, effort)
+            if desired != current:
+                warnings.append(f"executor agent file out of sync with .env/defaults: {path.relative_to(ROOT)} (run: python3 scripts/workflow.py sync-agents)")
+    except (SystemExit, Exception) as exc:  # noqa: BLE001 - advisory check must not fail validate
+        warnings.append(f"executor tier config check failed: {exc}")
     validate_docs(errors)
     for w in warnings:
         print(f"warning: {w}")
@@ -857,6 +995,10 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("validate", help="Validate workflow and docs structure")
     p.set_defaults(func=lambda args: sys.exit(validate()))
+
+    p = sub.add_parser("sync-agents", help="Apply the repo-root .env executor-tier config (models/efforts) to the slice-executor agent files")
+    p.add_argument("--check", action="store_true", help="Report drift without writing; exit 1 if out of sync")
+    p.set_defaults(func=sync_agents)
 
     p = sub.add_parser("next", help="Print the current phase/slice selection")
     p.set_defaults(func=cmd_next)

@@ -35,7 +35,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 6
+WORKSPACE_VERSION = 7
 ROOT = TARGET.resolve()
 
 DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
@@ -86,8 +86,10 @@ MANAGED_FILES = [
     "works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/events.jsonl",
     *[f"works/templates/{n}" for n in ("result.md", "deferred_brief.md", "intent.md")],
     "scripts/workflow.py",
-    ".claude/agents/slice-executor.md", ".claude/agents/slice-executor-high.md", ".claude/settings.json",
-    ".codex/config.toml", ".codex/agents/slice-executor.toml", ".codex/agents/slice-executor-high.toml",
+    ".claude/agents/slice-executor-low.md", ".claude/agents/slice-executor-mid.md", ".claude/agents/slice-executor-high.md",
+    ".claude/settings.json",
+    ".codex/config.toml", ".codex/agents/slice-executor-low.toml", ".codex/agents/slice-executor-mid.toml", ".codex/agents/slice-executor-high.toml",
+    ".env.example",
 ]
 for name in CLAUDE_SKILLS:
     MANAGED_DIRS.append(f".claude/skills/{name}")
@@ -208,7 +210,7 @@ def _retrofit_handle(path: str, text: str) -> bool:
 #     docs/ (the append-only version chain plus generated snapshots).
 # In --dry-run nothing is written; changes are only recorded for the report.
 def _is_machinery(path: str) -> bool:
-    if path in ("scripts/workflow.py", ".codex/config.toml"):
+    if path in ("scripts/workflow.py", ".codex/config.toml", ".env.example"):
         return True
     return path.startswith((".claude/agents/", ".codex/agents/", ".claude/skills/", ".agents/skills/", "works/templates/"))
 
@@ -473,11 +475,14 @@ for name in CLAUDE_SKILLS:
     write_text(f".agents/skills/{name}/SKILL.md", PAYLOADS[f".agents/skills/{name}/SKILL.md"])
     write_text(f".agents/skills/{name}/agents/openai.yaml", PAYLOADS[f".agents/skills/{name}/agents/openai.yaml"])
 
-# Subagents: full-permission workers that implement one already-planned slice (embedded verbatim from the live repo).
-write_text(".claude/agents/slice-executor.md", PAYLOADS[".claude/agents/slice-executor.md"])
-write_text(".claude/agents/slice-executor-high.md", PAYLOADS[".claude/agents/slice-executor-high.md"])
-write_text(".codex/agents/slice-executor.toml", PAYLOADS[".codex/agents/slice-executor.toml"])
-write_text(".codex/agents/slice-executor-high.toml", PAYLOADS[".codex/agents/slice-executor-high.toml"])
+# Subagents: full-permission workers that implement one already-planned slice, in three
+# capability tiers picked by the slice's risk (embedded verbatim from the live repo).
+for tier in ("low", "mid", "high"):
+    write_text(f".claude/agents/slice-executor-{tier}.md", PAYLOADS[f".claude/agents/slice-executor-{tier}.md"])
+    write_text(f".codex/agents/slice-executor-{tier}.toml", PAYLOADS[f".codex/agents/slice-executor-{tier}.toml"])
+
+# ---- Executor-tier config example (the real .env is operator-local, gitignored) ----
+write_text(".env.example", PAYLOADS[".env.example"])
 
 # ---- Claude Code project settings: pre-approve the workflow manager ----------
 write_text(".claude/settings.json", PAYLOADS[".claude/settings.json"])
@@ -501,6 +506,20 @@ def write_version_marker() -> None:
         "synced_at": now_iso(),
     }
     _atomic_write(ROOT / "works/.workspace-version.json", json.dumps(marker, ensure_ascii=False, indent=2) + "\n")
+
+
+# Machinery files older workspace versions shipped that this version has retired.
+# --update never deletes; flag them so the operator removes them manually.
+OBSOLETE_MACHINERY = [
+    ".claude/agents/slice-executor.md",   # replaced by slice-executor-{low,mid,high}.md in v7
+    ".codex/agents/slice-executor.toml",  # replaced by slice-executor-{low,mid,high}.toml in v7
+]
+
+
+def flag_obsolete_machinery() -> None:
+    for rel in OBSOLETE_MACHINERY:
+        if (ROOT / rel).is_file():
+            UPDATE_SUMMARY["stale"].append(rel)
 
 
 def flag_stale_skills() -> None:
@@ -545,11 +564,12 @@ def print_change_list() -> None:
     print(f"  preserved (your work + docs, untouched): {len(UPDATE_SUMMARY['preserved'])} file(s)")
     print(f"  unchanged: {len(UPDATE_SUMMARY['unchanged'])} file(s)")
     if UPDATE_SUMMARY["stale"]:
-        print(f"  stale workspace skills dropped upstream (remove manually?): {', '.join(UPDATE_SUMMARY['stale'])}")
+        print(f"  stale workspace skills/machinery dropped upstream (remove manually?): {', '.join(UPDATE_SUMMARY['stale'])}")
 
 
 if UPDATE:
     flag_stale_skills()
+    flag_obsolete_machinery()
 
 if DRY_RUN:
     pass  # previewed only — no rebuild/validate, no marker
@@ -595,13 +615,14 @@ elif RETROFIT:
     if not INSTALL_DOCS:
         print("  note: docs versioning not installed; skipped docs rebuild/validate")
     print("The installer made no git changes. Review the diff (git status); commit the adoption once the operator approves.")
-    print("If CLAUDE.md/AGENTS.md already existed, reconcile the *.workspace.md sidecar(s); add __pycache__/ to .gitignore.")
+    print("If CLAUDE.md/AGENTS.md already existed, reconcile the *.workspace.md sidecar(s); add __pycache__/ and .env to .gitignore.")
     print("Next: python3 scripts/workflow.py validate, then create the first phase (/create-phase in Claude Code, $create-phase in Codex)")
 else:
     print(f"Bootstrapped cross-tool agentic workspace at {TARGET}")
     print("Contracts: CLAUDE.md and AGENTS.md (equivalent)")
-    print("Claude Code: skills in .claude/skills/ (e.g. /do-next-slice), subagent .claude/agents/slice-executor.md, settings .claude/settings.json")
-    print("Codex: skills in .agents/skills/ (e.g. $do-next-slice), subagent .codex/agents/slice-executor.toml, instructions AGENTS.md")
+    print("Claude Code: skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{low,mid,high}.md, settings .claude/settings.json")
+    print("Codex: skills in .agents/skills/ (e.g. $do-next-slice), subagent tiers .codex/agents/slice-executor-{low,mid,high}.toml, instructions AGENTS.md")
+    print("Executor tiers are risk-routed (low/mid/high); tune models/efforts via .env (see .env.example) + python3 scripts/workflow.py sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
     print("Canonical state: phase.json / slice.json / deferred.json; generated: works/backlog.md, works/deferred.md")
     print("Versioned docs: docs/versions/<doc>/vNNNN_*.md with generated docs/current/*.md")

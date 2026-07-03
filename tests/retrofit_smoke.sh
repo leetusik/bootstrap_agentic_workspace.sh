@@ -130,9 +130,19 @@ nphf=$(find "$F/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null
 [ "$nphf" = "0" ] && ok "fresh install seeds no phases (empty start)" || bad "fresh install seeded $nphf phase(s)"
 grep -q '"workspace_version"' "$F/works/.workspace-version.json" && ok "fresh marker carries workspace_version" || bad "fresh marker missing workspace_version"
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
-[ -f "$F/.codex/agents/slice-executor.toml" ] && ok "fresh install ships the Codex slice-executor" || bad "fresh install missing Codex slice-executor"
-[ -f "$F/.claude/agents/slice-executor-high.md" ] && [ -f "$F/.codex/agents/slice-executor-high.toml" ] && ok "fresh install ships the slice-executor-high (low-risk) variant" || bad "fresh install missing slice-executor-high variant"
-grep -q '^effort: high$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor.md" && ok "executor effort split: base xhigh, -high high" || bad "executor effort split wrong"
+[ -f "$F/.claude/agents/slice-executor-low.md" ] && [ -f "$F/.claude/agents/slice-executor-mid.md" ] && [ -f "$F/.claude/agents/slice-executor-high.md" ] && ok "fresh install ships the 3 Claude slice-executor tiers" || bad "fresh install missing Claude slice-executor tier(s)"
+[ -f "$F/.codex/agents/slice-executor-low.toml" ] && [ -f "$F/.codex/agents/slice-executor-mid.toml" ] && [ -f "$F/.codex/agents/slice-executor-high.toml" ] && ok "fresh install ships the 3 Codex slice-executor tiers" || bad "fresh install missing Codex slice-executor tier(s)"
+grep -q '^model: haiku$' "$F/.claude/agents/slice-executor-low.md" && ! grep -q '^effort:' "$F/.claude/agents/slice-executor-low.md" \
+  && grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-mid.md" \
+  && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-high.md" \
+  && ok "Claude tier defaults: haiku (no effort line) / sonnet@xhigh / opus@xhigh" || bad "Claude executor tier defaults wrong"
+grep -q '^model_reasoning_effort = "medium"$' "$F/.codex/agents/slice-executor-low.toml" \
+  && grep -q '^model_reasoning_effort = "high"$' "$F/.codex/agents/slice-executor-mid.toml" \
+  && grep -q '^model_reasoning_effort = "xhigh"$' "$F/.codex/agents/slice-executor-high.toml" \
+  && ok "Codex tier efforts: medium / high / xhigh" || bad "Codex executor tier efforts wrong"
+[ ! -f "$F/.claude/agents/slice-executor.md" ] && [ ! -f "$F/.codex/agents/slice-executor.toml" ] && ok "legacy untiered slice-executor retired (absent on fresh install)" || bad "legacy untiered slice-executor should be retired but is present"
+[ -f "$F/.env.example" ] && ok "fresh install ships .env.example" || bad "fresh install missing .env.example"
+( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && ok "sync-agents --check: shipped tier files match built-in defaults" || bad "sync-agents --check failed on a fresh install"
 [ ! -f "$F/.codex/agents/phase-reviewer.toml" ] && [ ! -f "$F/.claude/agents/phase-reviewer.md" ] && ok "phase-reviewer retired (absent on fresh install)" || bad "phase-reviewer should be retired but is present"
 [ ! -d "$F/.agents/skills/do-whole-phase" ] && ok "fresh install drops Codex do-whole-phase (Claude-only)" || bad "Codex do-whole-phase should not be generated"
 [ -d "$F/.claude/skills/do-whole-phase" ] && ok "fresh install keeps Claude do-whole-phase" || bad "Claude do-whole-phase missing"
@@ -151,8 +161,9 @@ for rel in \
   .claude/skills/do-next-slice/SKILL.md .agents/skills/do-next-slice/SKILL.md \
   .claude/skills/do-whole-phase/SKILL.md \
   .claude/skills/review-phase/SKILL.md .agents/skills/review-phase/SKILL.md \
-  .claude/agents/slice-executor.md .claude/agents/slice-executor-high.md \
-  .codex/agents/slice-executor.toml .codex/agents/slice-executor-high.toml \
+  .claude/agents/slice-executor-low.md .claude/agents/slice-executor-mid.md .claude/agents/slice-executor-high.md \
+  .codex/agents/slice-executor-low.toml .codex/agents/slice-executor-mid.toml .codex/agents/slice-executor-high.toml \
+  .env.example \
   CLAUDE.md AGENTS.md ; do
   diff -q "$REPO_ROOT/$rel" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \

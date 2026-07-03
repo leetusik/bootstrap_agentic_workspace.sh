@@ -66,7 +66,8 @@ path), so editing them and rebuilding is all that is needed:
 - `.claude/skills/*/SKILL.md`, `.agents/skills/*/SKILL.md`,
   `.agents/skills/*/agents/openai.yaml` (skills are discovered from disk — a skill
   is Claude-only, e.g. `do-whole-phase`, when it has no `.agents/skills/` mirror)
-- `.claude/agents/slice-executor{,-high}.md`, `.codex/agents/slice-executor{,-high}.toml`
+- `.claude/agents/slice-executor-{low,mid,high}.md`, `.codex/agents/slice-executor-{low,mid,high}.toml`
+- `.env.example` (executor-tier model/effort overrides, applied via `sync-agents`)
 - `.claude/settings.json`, `.codex/config.toml`
 - `works/templates/{result,deferred_brief,intent}.md`
 - the `CLAUDE.md` == `AGENTS.md` contract body (asserted byte-equal, embedded once)

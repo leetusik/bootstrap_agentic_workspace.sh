@@ -169,8 +169,10 @@ Both `--flag value` and `--flag=value` forms work.
 - [`CLAUDE.md`](CLAUDE.md) + [`AGENTS.md`](AGENTS.md) — the equivalent per-tool routing contracts.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
 - `.claude/` + `.agents/` — the 14 core Agent Skills, mirrored for both tools (`do-whole-phase` is
-  Claude Code only; the optional `explain` skill installs only with `--with-explain`), plus the `slice-executor` subagent for each tool
-  (`.claude/agents/` pinned to Claude Opus via `model: opus`, `.codex/agents/` on its configured model), and `.codex/config.toml`.
+  Claude Code only; the optional `explain` skill installs only with `--with-explain`), plus the three risk-routed `slice-executor`
+  tier subagents for each tool (`.claude/agents/slice-executor-{low,mid,high}.md` — haiku / sonnet / opus by default;
+  `.codex/agents/` on gpt-5.5 at tiered efforts), `.env.example` (tier model/effort overrides, applied with
+  `sync-agents`), and `.codex/config.toml`.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - [`works/`](works/) — the state machine, starting with **no phases**: a `deferred/` area,
@@ -241,6 +243,7 @@ another agent, CI — drives the workspace with the exact same commands:
 | `doc-new-version --doc backend --summary … --source P1.S1` | Cut a new durable doc version |
 | `defer-job --title … --reason … --trigger …` | Park a deferred job |
 | `promote-deferred D1 --phase P1 --slice P1.S2` | Promote a deferred job into a slice |
+| `sync-agents` | Apply the `.env` executor-tier model/effort config to the agent files |
 | `validate` | Check workspace integrity |
 
 The full command list lives in [`CLAUDE.md`](CLAUDE.md).
@@ -269,11 +272,15 @@ is Claude Code only — so the same step works natively in either tool:
 | `update-workspace` | Update an adopted workspace's machinery to the latest upstream, preserving your work |
 | `explain` _(optional — installs only with `--with-explain`)_ | Write a novice-friendly educational explainer of a topic and file it in the personal knowledge base (`~/projects/personal/knowledge`) |
 
-Both tools delegate the heavy lifting to a **`slice-executor`** subagent: it implements each delegated
-slice and also runs the phase review — validating the phase and consolidating its doc versions, in a
-fresh context that never edits source (Claude Code under `.claude/agents/`,
-pinned to Claude Opus via `model: opus`; Codex under `.codex/agents/`
-on its configured model). Workflow skills are
+Both tools delegate the heavy lifting to a **`slice-executor`** subagent in one of three capability
+tiers, picked by each slice's risk: `slice-executor-low` (haiku by default — a literal plan-follower
+for mechanical low-risk slices), `slice-executor-mid` (sonnet — medium-risk, the default), and
+`slice-executor-high` (opus — decomposition, high-risk slices, and the phase review, which it runs in
+a fresh context that never edits source, validating the phase and consolidating its doc versions).
+When a low/mid executor hits something beyond its depth it returns an `escalate` verdict; the
+orchestrator folds the findings into the plan and re-dispatches one tier up — so routine slices run
+cheap and fast without capping quality. Tier models and efforts are configurable via a repo-root
+`.env` (see `.env.example`) applied with `python3 scripts/workflow.py sync-agents`. Workflow skills are
 **explicit-invocation only** — agents don't fire them on their own. They are the **operator's
 interface**: you type the slash command; the agent does everything it implies. (`explain` is the
 one exception: a general-purpose, non-workflow skill agents may fire when you ask for an
@@ -312,11 +319,11 @@ Archived phases and old doc versions are history; they're not read by default.
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
 │   ├── skills/                    # 15 Agent Skills (Claude Code)
-│   ├── agents/                    # slice-executor subagent (implements slices + runs the review)
+│   ├── agents/                    # slice-executor tiers low/mid/high (implement slices + run the review)
 │   └── settings.json              # pre-approves workflow.py; denies push & rm -rf
 ├── .agents/skills/                # the same skills, mirrored for Codex (minus do-whole-phase)
 └── .codex/
-    ├── agents/                    # slice-executor subagent (Codex, its configured model)
+    ├── agents/                    # slice-executor tiers (Codex, gpt-5.5 at tiered efforts)
     └── config.toml                # Codex project config
 ```
 

@@ -56,8 +56,8 @@ Apply (after the operator approves):
 
 Verify:
 
-8. The installer's update already ran `validate` / `rebuild` (or `next` for a repo without the docs subsystem) and printed the result. Run `python3 scripts/workflow.py next` to confirm the current state under the refreshed engine.
+8. The installer's update already ran `validate` / `rebuild` (or `next` for a repo without the docs subsystem) and printed the result. Run `python3 scripts/workflow.py next` to confirm the current state under the refreshed engine. If this repo tunes the executor tiers via a repo-root `.env`, re-run `python3 scripts/workflow.py sync-agents` — the update resets the `slice-executor-*` agent files to upstream defaults (`validate` warns while they drift).
 
 Report and clean up:
 
-9. Summarize what was updated / added / merged / preserved and any flagged stale skills (from the installer's printed summary), and show `git status`. Do NOT commit automatically — the operator reviews the diff and tells you when to commit. Remove the temp clone: `rm -rf "$tmp"`.
+9. Summarize what was updated / added / merged / preserved and any flagged stale skills or machinery (from the installer's printed summary — e.g. agent files upstream has retired, which you remove manually), and show `git status`. Do NOT commit automatically — the operator reviews the diff and tells you when to commit. Remove the temp clone: `rm -rf "$tmp"`.

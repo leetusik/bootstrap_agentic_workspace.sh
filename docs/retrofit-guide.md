@@ -84,8 +84,8 @@ four tiers:
 ### Tier 1 — Skip if you already have it (keep yours)
 
 Pure content files are written only if absent; if present, **yours is kept
-untouched**. This covers the skills, the `slice-executor` subagent,
-`.codex/config.toml`, the `works/templates/*`, and `docs/README.md`.
+untouched**. This covers the skills, the `slice-executor` tier subagents,
+`.env.example`, `.codex/config.toml`, the `works/templates/*`, and `docs/README.md`.
 
 ### Tier 2 — Whole subsystem, only if entirely absent
 

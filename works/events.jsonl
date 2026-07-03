@@ -116,3 +116,9 @@
 {"ts": "2026-07-02T17:24:44+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0016_decision_explain_adopts_the_api-owned_write_path_manual_flow_demoted_to_unreachable-only_fallback", "source": "P6.REVIEW"}
 {"ts": "2026-07-02T17:33:30+09:00", "type": "slice_status_changed", "slice": "P6.REVIEW", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-07-02T17:33:30+09:00", "type": "phase_reviewed", "phase": "P6", "verdict": "pass", "reviewer": "slice-executor"}
+{"ts": "2026-07-03T23:36:16+09:00", "type": "agents_synced", "changed": [".claude/agents/slice-executor-low.md", ".codex/agents/slice-executor-high.toml"], "env_present": true}
+{"ts": "2026-07-03T23:36:16+09:00", "type": "agents_synced", "changed": [".claude/agents/slice-executor-low.md", ".codex/agents/slice-executor-high.toml"], "env_present": false}
+{"ts": "2026-07-03T23:46:52+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0017_three_slice-executor_tiers_low_mid_high_with_.env_sync-agents_config_and_an_escalation_ladder", "source": "operator-request 2026-07-03"}
+{"ts": "2026-07-03T23:46:52+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0012_executor_tier_operations_risk_routing_.env_sync-agents_escalation_update_flow", "source": "operator-request 2026-07-03"}
+{"ts": "2026-07-03T23:52:30+09:00", "type": "agents_synced", "changed": [".claude/agents/slice-executor-low.md"], "env_present": true}
+{"ts": "2026-07-03T23:52:44+09:00", "type": "agents_synced", "changed": [".claude/agents/slice-executor-low.md"], "env_present": false}
