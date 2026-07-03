@@ -4,9 +4,10 @@
 #
 # This file lives in tests/ on purpose: tests/ is NOT a managed directory, so
 # the test is never installed into an adopter's repo. It builds throwaway sample
-# repos under $TMPDIR, runs the retrofit, and asserts non-destructiveness,
-# correct seeding, the collision tiers, the fresh-install regression, and the
-# live<->bootstrap-embedded dual-apply invariants. Re-runnable; self-cleaning.
+# repos under $TMPDIR, runs the retrofit, and asserts non-destructiveness, the
+# empty-start invariant (no phases seeded), the collision tiers, the
+# fresh-install regression, and the live<->bootstrap-embedded dual-apply
+# invariants. Re-runnable; self-cleaning.
 #
 # Usage:  bash tests/retrofit_smoke.sh
 # Exit 0 if every check passes; non-zero otherwise.
@@ -49,9 +50,7 @@ git -C "$R" -c user.email=t@t -c user.name=t commit -qm "initial existing repo"
 HEAD0=$(git -C "$R" rev-parse HEAD)
 RM=$(sha "$R/README.md"); AP=$(sha "$R/src/app.py"); UT=$(sha "$R/scripts/util.py")
 
-out=$(sh "$BOOT" "$R" --into-existing --name "Existing Project" --summary "An existing project." \
-        --phase-name "Adopt workspace + capture current state" \
-        --phase-objective "Install the workspace and decompose the first real change." 2>&1)
+out=$(sh "$BOOT" "$R" --into-existing --name "Existing Project" --summary "An existing project." 2>&1)
 rc=$?
 [ "$rc" -eq 0 ] && ok "retrofit exits 0" || bad "retrofit exit=$rc -- $out"
 
@@ -80,13 +79,15 @@ PY
 then ok "settings.json additively merged (custom perm + env survive)"; else bad "settings.json merge incorrect"; fi
 
 ( cd "$R" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) && ok "validate passes in target" || bad "validate failed in target"
-pn=$(python3 -c "import json;print(json.load(open('$R/works/phases/active/P1/phase.json'))['name'])" 2>/dev/null)
-[ "$pn" = "Adopt workspace + capture current state" ] && ok "P1 seeded from project state" || bad "P1 name wrong: '$pn'"
-[ "$pn" != "Bootstrap Intake" ] && ok "P1 is not the default placeholder" || bad "P1 is the default placeholder"
+nph=$(find "$R/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+[ "$nph" = "0" ] && ok "no phases seeded (workspace starts empty)" || bad "expected 0 seeded phases, found $nph"
+cp_state=$(python3 -c "import json;print(json.load(open('$R/works/state.json'))['current_phase'])" 2>/dev/null)
+[ "$cp_state" = "None" ] && ok "state.json has no current phase" || bad "state.json current_phase: '$cp_state'"
+( cd "$R" && python3 scripts/workflow.py next 2>&1 | grep -q "no active slice" ) && ok "next reports the empty-start state" || bad "next does not report empty start"
 
 # ---------------------------------------------------------------------------
 echo "== Test 2: re-running retrofit is an idempotent no-op =="
-out=$(sh "$BOOT" "$R" --into-existing --phase-name x --phase-objective y 2>&1); rc=$?
+out=$(sh "$BOOT" "$R" --into-existing 2>&1); rc=$?
 [ "$rc" -eq 0 ] && ok "re-run exits 0" || bad "re-run exit=$rc"
 printf '%s\n' "$out" | grep -q "already contains an agentic workspace" && ok "re-run reports nothing to do" || bad "re-run not a no-op"
 [ "$(grep -c 'BEGIN agentic-workspace' "$R/CLAUDE.md")" -eq 1 ] && ok "re-run does not duplicate the marker block" || bad "marker block duplicated on re-run"
@@ -111,7 +112,7 @@ mkdir -p "$E/docs"
 printf 'README\n' > "$E/README.md"
 printf '{"my":"docs"}\n' > "$E/docs/index.json"
 ED=$(sha "$E/docs/index.json")
-out=$(sh "$BOOT" "$E" --into-existing --phase-name a --phase-objective b 2>&1); rc=$?
+out=$(sh "$BOOT" "$E" --into-existing 2>&1); rc=$?
 [ "$rc" -eq 0 ] && ok "foreign-docs retrofit exits 0" || bad "foreign-docs exit=$rc"
 printf '%s\n' "$out" | grep -q "docs subsystem: skipped" && ok "docs subsystem skipped" || bad "docs subsystem not skipped"
 [ "$(sha "$E/docs/index.json")" = "$ED" ] && ok "their docs/index.json untouched" || bad "their docs/index.json changed"
@@ -125,6 +126,8 @@ newtmp F
 out=$(sh "$BOOT" "$F" --name "Fresh" --summary "fresh" 2>&1); rc=$?
 [ "$rc" -eq 0 ] && ok "fresh install exits 0" || bad "fresh install exit=$rc"
 ( cd "$F" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) && ok "fresh workspace validates" || bad "fresh workspace failed validate"
+nphf=$(find "$F/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+[ "$nphf" = "0" ] && ok "fresh install seeds no phases (empty start)" || bad "fresh install seeded $nphf phase(s)"
 grep -q '"workspace_version"' "$F/works/.workspace-version.json" && ok "fresh marker carries workspace_version" || bad "fresh marker missing workspace_version"
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
 [ -f "$F/.codex/agents/slice-executor.toml" ] && ok "fresh install ships the Codex slice-executor" || bad "fresh install missing Codex slice-executor"

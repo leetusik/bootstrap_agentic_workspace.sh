@@ -9,6 +9,25 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v6 — 2026-07-03
+
+- **The workspace bootstraps with no phases.** The installer no longer seeds a
+  placeholder `P1` ("Bootstrap Intake") — fresh installs and retrofits both start
+  with an empty `works/phases/active/`, and `next` reports the empty-start state
+  ("no active slice; create a phase or promote deferred work"). The first phase is
+  created by the operator through the create-phase intake flow (`/create-phase` /
+  `$create-phase` / `new-phase`), so intent is always captured and confirmed rather
+  than pre-filled at install time.
+- **`--phase-name` / `--phase-objective` removed.** With nothing to seed, the flags
+  are gone from the installer; passing them now fails as unknown options.
+- **`/retrofit` no longer synthesizes a first phase.** The skill installs, reconciles,
+  and verifies — then points the operator at `/create-phase` for their first task.
+  The `installer/payloads/p1_seed/` scaffolds are deleted.
+
+Migration notes: already-installed workspaces are unaffected (`--update` never
+touches your phases). Any script that passed `--phase-name` / `--phase-objective`
+to the installer must drop those flags.
+
 ## v5 — 2026-07-03
 
 - **Slice-executor dispatch pinned to a background task.** The `do-next-slice` /

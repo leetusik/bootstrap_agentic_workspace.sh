@@ -17,8 +17,6 @@ if sys.version_info < (3, 8):
 TARGET = Path(os.environ["TARGET_DIR"]).expanduser()
 PROJECT_NAME = os.environ["PROJECT_NAME"]
 PROJECT_SUMMARY = os.environ["PROJECT_SUMMARY"]
-PHASE_NAME = os.environ["PHASE_NAME"]
-PHASE_OBJECTIVE = os.environ["PHASE_OBJECTIVE"]
 FORCE_EMPTY_OK = os.environ.get("FORCE_EMPTY_OK") == "1"
 # Retrofit: non-destructively add the workspace to an EXISTING repo. Gated
 # strictly behind --into-existing; the fresh-install path is unchanged.
@@ -37,7 +35,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 5
+WORKSPACE_VERSION = 6
 ROOT = TARGET.resolve()
 
 DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
@@ -86,9 +84,6 @@ MANAGED_FILES = [
     *[f"docs/current/{doc_id}.md" for doc_id in DOC_TYPES],
     *[f"docs/versions/{doc_id}/v0001_bootstrap.md" for doc_id in DOC_TYPES],
     "works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/events.jsonl",
-    "works/phases/active/P1/phase.json", "works/phases/active/P1/phase.md", "works/phases/active/P1/intent.md",
-    *[f"works/phases/active/P1/slices/P1.DECOMP/{n}" for n in ("slice.json", "result.md")],
-    *[f"works/phases/active/P1/slices/P1.REVIEW/{n}" for n in ("slice.json", "result.md")],
     *[f"works/templates/{n}" for n in ("result.md", "deferred_brief.md", "intent.md")],
     "scripts/workflow.py",
     ".claude/agents/slice-executor.md", ".claude/agents/slice-executor-high.md", ".claude/settings.json",
@@ -461,45 +456,11 @@ write_text("works/templates/result.md", PAYLOADS["works/templates/result.md"])
 write_text("works/templates/deferred_brief.md", PAYLOADS["works/templates/deferred_brief.md"])
 write_text("works/templates/intent.md", PAYLOADS["works/templates/intent.md"])
 
-# ---- Initial phase P1 -------------------------------------------------------
-p1_path = "works/phases/active/P1"
-phase_json = {
-    "id": "P1", "name": PHASE_NAME, "objective": PHASE_OBJECTIVE, "status": "planned", "order": 1,
-    "created_at": created_at, "started_at": None, "completed_at": None,
-    "review": {"status": "pending", "reviewed_at": None, "reviewer": None, "note": None},
-    "paths": {"phase_md": "phase.md", "slices_dir": "slices"},
-    "archive": {"archived": False, "archived_at": None, "archive_path": None},
-}
-write_json(f"{p1_path}/phase.json", phase_json)
-write_text(f"{p1_path}/phase.md", P1_PHASE_MD.replace("__PHASE_NAME__", PHASE_NAME).replace("__PHASE_OBJECTIVE__", PHASE_OBJECTIVE))
-intent_origin = "synthesized-from-repo" if RETROFIT else "bootstrap-placeholder"
-intent_original = "(Synthesized by the adopting agent from the repo's README, manifest, and git history — not a verbatim operator request.)" if RETROFIT else "(Bootstrap placeholder — no operator request captured yet.)"
-write_text(f"{p1_path}/intent.md", P1_INTENT_MD.replace("__CREATED_AT__", created_at).replace("__INTENT_ORIGIN__", intent_origin).replace("__INTENT_ORIGINAL__", intent_original).replace("__PHASE_OBJECTIVE__", PHASE_OBJECTIVE))
-
-
-def new_slice_files(phase_id: str, slice_id: str, name: str, kind: str, status: str, order: int, risk: str, source: dict) -> None:
-    folder = f"works/phases/active/{phase_id}/slices/{slice_id}"
-    slice_data = {
-        "id": slice_id, "phase_id": phase_id, "name": name, "kind": kind, "status": status, "order": order,
-        "depends_on": [], "created_at": created_at, "started_at": None, "completed_at": None, "risk": risk, "source": source,
-        "paths": {"plan": "plan.md", "result": "result.md"},
-        "validation": {"required": [], "last_run": None, "last_status": "pending"},
-        "archive": {"archived": False, "archived_at": None, "archive_path": None},
-    }
-    write_json(f"{folder}/slice.json", slice_data)
-    replacements = {"__PHASE_ID__": phase_id, "__SLICE_ID__": slice_id, "__SLICE_NAME__": name, "__CREATED_AT__": created_at}
-    # Only result.md is scaffolded; plan.md has no template (the orchestrator writes its
-    # free-form native plan there at the slice's turn), matching create_slice in workflow.py.
-    for tmpl_name in ("result.md",):
-        text = (ROOT / "works/templates" / tmpl_name).read_text(encoding="utf-8")
-        for k, v in replacements.items():
-            text = text.replace(k, v)
-        write_text(f"{folder}/{tmpl_name}", text)
-
-
-new_slice_files("P1", "P1.DECOMP", "decompose phase", "decomposition", "todo", 0, "low", {"type": "bootstrap", "id": None})
-new_slice_files("P1", "P1.REVIEW", "phase review", "review", "todo", 9999, "medium", {"type": "bootstrap", "id": None})
-write_text("works/events.jsonl", json.dumps({"ts": created_at, "type": "bootstrap", "project": PROJECT_NAME, "phase": "P1"}, ensure_ascii=False) + "\n")
+# ---- Works state: starts with NO phases --------------------------------------
+# The workspace intentionally bootstraps empty: the operator's first real task is
+# captured via the create-phase intake flow (/create-phase → new-phase), never a
+# pre-seeded placeholder phase.
+write_text("works/events.jsonl", json.dumps({"ts": created_at, "type": "bootstrap", "project": PROJECT_NAME}, ensure_ascii=False) + "\n")
 
 # ---- Workflow engine (scripts/workflow.py) ----------------------------------
 write_text("scripts/workflow.py", PAYLOADS["scripts/workflow.py"], executable=True)
@@ -630,12 +591,12 @@ elif RETROFIT:
     if merged:
         print(f"  merged (additive): {', '.join(merged)}")
     print(f"  docs subsystem: {'installed' if INSTALL_DOCS else 'skipped (target already has a docs/ system)'}")
-    print(f"  works subsystem: installed; seeded phase P1 - {PHASE_NAME}")
+    print("  works subsystem: installed (no phases yet — the first phase is created by the operator)")
     if not INSTALL_DOCS:
         print("  note: docs versioning not installed; skipped docs rebuild/validate")
     print("The installer made no git changes. Review the diff (git status); commit the adoption once the operator approves.")
     print("If CLAUDE.md/AGENTS.md already existed, reconcile the *.workspace.md sidecar(s); add __pycache__/ to .gitignore.")
-    print("Next: python3 scripts/workflow.py validate && python3 scripts/workflow.py next")
+    print("Next: python3 scripts/workflow.py validate, then create the first phase (/create-phase in Claude Code, $create-phase in Codex)")
 else:
     print(f"Bootstrapped cross-tool agentic workspace at {TARGET}")
     print("Contracts: CLAUDE.md and AGENTS.md (equivalent)")
@@ -644,5 +605,5 @@ else:
     print("Any agent / CI: python3 scripts/workflow.py <command>")
     print("Canonical state: phase.json / slice.json / deferred.json; generated: works/backlog.md, works/deferred.md")
     print("Versioned docs: docs/versions/<doc>/vNNNN_*.md with generated docs/current/*.md")
-    print(f"Created initial phase: P1 - {PHASE_NAME}")
-    print("Next: python3 scripts/workflow.py next   (or /do-next-slice in Claude Code)")
+    print("No phases yet — the workspace starts empty on purpose.")
+    print("Next: create the first phase with /create-phase (Claude Code), $create-phase (Codex), or python3 scripts/workflow.py new-phase ...")

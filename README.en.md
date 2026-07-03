@@ -105,15 +105,12 @@ never clobbers your work:
 ```sh
 # from the root of your existing repo
 sh /path/to/bootstrap_agentic_workspace.sh . --into-existing \
-  --name "My Project" --summary "One sentence." \
-  --phase-name "Adopt workspace + capture current state" \
-  --phase-objective "Install the workspace and decompose the first real change, building on the existing code."
+  --name "My Project" --summary "One sentence."
 ```
 
 or drive it with an agent via the `/retrofit` skill (`$retrofit` in Codex). See
-the **[Retrofit Guide](docs/retrofit-guide.md)** for the full procedure,
-collision policy, and how the first phase is seeded from your project's current
-state.
+the **[Retrofit Guide](docs/retrofit-guide.md)** for the full procedure and
+collision policy.
 
 ### Keeping an adopted workspace up to date
 
@@ -139,17 +136,17 @@ when ready. (For *first-time* adoption use `--into-existing` / `/retrofit` inste
 
 ### 2. Hand it to your agent
 
-Setup was the last time you needed a terminal. Open the directory in Claude Code or Codex and
-drive by talking:
+Setup was the last time you needed a terminal. The workspace starts with **no phases** — open the
+directory in Claude Code or Codex and create your first one:
 
 ```
-/do-next-slice      # Claude Code — complete exactly one slice, then stop
-$do-next-slice      # Codex — the same skill
+/create-phase <your first task>      # Claude Code
+$create-phase <your first task>      # Codex — the same skill
 ```
 
-— or just ask in plain language: *"make a phase for X"*, *"archive the done phases"*. The agent
-runs the workflow commands, commits at slice boundaries, and stops at `pending` hand-offs for your
-review.
+— or just ask in plain language: *"make a phase for X"*. The agent runs the workflow commands,
+commits at slice boundaries, and stops at `pending` hand-offs for your review. See
+[Example workflow](#example-workflow) for the full loop.
 
 ### Options
 
@@ -158,8 +155,6 @@ review.
 | `[TARGET_DIR]` | current directory | Where to scaffold the workspace |
 | `--name NAME` | `New Project` | Project name |
 | `--summary TEXT` | placeholder | One-sentence project summary |
-| `--phase-name NAME` | `Bootstrap Intake` | Name of the seeded `P1` phase |
-| `--phase-objective TEXT` | placeholder | Objective of the seeded `P1` phase |
 | `--force-empty-ok` | off | Allow scaffolding into a directory that has extra, non-managed files |
 | `--into-existing` | off | Non-destructively retrofit into an existing repo (see the [Retrofit Guide](docs/retrofit-guide.md)) |
 | `--update` | off | Update an already-installed workspace's machinery to this version (preserves your `works/` and `docs/`) |
@@ -178,8 +173,9 @@ Both `--flag value` and `--flag=value` forms work.
   (`.claude/agents/` pinned to Claude Opus via `model: opus`, `.codex/agents/` on its configured model), and `.codex/config.toml`.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
-- [`works/`](works/) — the state machine: phase **`P1`** seeded with a `DECOMP` and a `REVIEW`
-  slice, a `deferred/` area, generated dashboards, and `state.json`.
+- [`works/`](works/) — the state machine, starting with **no phases**: a `deferred/` area,
+  generated dashboards, and `state.json`. You create the first phase by talking to your agent
+  (`/create-phase`).
 
 **Safety.** The script refuses to scaffold into a non-empty directory unless you pass
 `--force-empty-ok` (a few harmless files like `.git`, `README`, and `LICENSE` are tolerated), and

@@ -70,17 +70,8 @@ sh /path/to/bootstrap_agentic_workspace.sh . --update             # 실제 적�
 ### 2. 에이전트에게 맡기기
 
 터미널이 필요한 일은 여기까지입니다. 이제 Claude Code나 Codex로 이 디렉터리를 열고,
-말로 지시하세요.
-
-```
-/do-next-slice      # Claude Code
-$do-next-slice      # Codex — 같은 기능
-```
-
-평범한 문장으로 말해도 됩니다. "X 기능을 위한 phase 만들어 줘", "끝난 phase 정리해 줘"처럼요.
-워크플로우 명령, 커밋, 검증은 전부 에이전트가 실행합니다. 여러분의 일은 판단입니다.
-결과를 확인하고, 에이전트가 확인을 요청하며 멈췄을 때(`pending` 상태) 답을 주고,
-언제 마무리할지 결정하면 됩니다.
+`/create-phase`로 첫 phase를 만드는 것부터 시작하세요. 전체 흐름은 바로 아래
+사용 예시에 있습니다.
 
 ## 사용 예시
 

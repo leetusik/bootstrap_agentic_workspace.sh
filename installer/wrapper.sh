@@ -9,8 +9,6 @@ Usage:
 Options:
   --name NAME                 Optional project name override
   --summary TEXT              Optional one-sentence summary override
-  --phase-name NAME           Optional initial P1 phase name override
-  --phase-objective TEXT      Optional initial P1 phase objective override
   --force-empty-ok            Allow bootstrapping into a repo with extra non-managed files
   --into-existing             Non-destructively retrofit into an existing repo (see docs/retrofit-guide.md)
   --update                    Update an already-installed workspace's machinery to this version
@@ -47,8 +45,6 @@ need_value() { [ $# -ge 2 ] || die "$1 requires a value"; [ -n "$2" ] || die "$1
 target_dir=
 project_name=
 project_summary=
-phase_name=
-phase_objective=
 force_empty_ok=0
 into_existing=0
 update=0
@@ -62,10 +58,6 @@ while [ $# -gt 0 ]; do
     --name=*) project_name=${1#--name=}; [ -n "$project_name" ] || die "--name requires a non-empty value"; shift ;;
     --summary) need_value "$1" "${2-}"; project_summary=$2; shift 2 ;;
     --summary=*) project_summary=${1#--summary=}; [ -n "$project_summary" ] || die "--summary requires a non-empty value"; shift ;;
-    --phase-name) need_value "$1" "${2-}"; phase_name=$2; shift 2 ;;
-    --phase-name=*) phase_name=${1#--phase-name=}; [ -n "$phase_name" ] || die "--phase-name requires a non-empty value"; shift ;;
-    --phase-objective) need_value "$1" "${2-}"; phase_objective=$2; shift 2 ;;
-    --phase-objective=*) phase_objective=${1#--phase-objective=}; [ -n "$phase_objective" ] || die "--phase-objective requires a non-empty value"; shift ;;
     --force-empty-ok) force_empty_ok=1; shift ;;
     --into-existing) into_existing=1; shift ;;
     --update) update=1; shift ;;
@@ -82,19 +74,15 @@ done
 [ "$update" = 1 ] && [ "$into_existing" = 1 ] && die "--update and --into-existing are mutually exclusive"
 [ "$dry_run" = 1 ] && [ "$update" = 0 ] && die "--dry-run is only valid with --update"
 
-# Fixed non-interactive defaults. The first real task should replace this bootstrap intake context.
+# Fixed non-interactive defaults.
 [ -n "$project_name" ] || project_name="New Project"
 [ -n "$project_summary" ] || project_summary="Fresh agentic workspace. Replace this summary during the first real task."
-[ -n "$phase_name" ] || phase_name="Bootstrap Intake"
-[ -n "$phase_objective" ] || phase_objective="Capture the first real task, create versioned durable docs, and replace this placeholder phase with concrete work."
 
 command -v python3 >/dev/null 2>&1 || die "python3 is required for this bootstrap"
 
 export TARGET_DIR="$target_dir"
 export PROJECT_NAME="$project_name"
 export PROJECT_SUMMARY="$project_summary"
-export PHASE_NAME="$phase_name"
-export PHASE_OBJECTIVE="$phase_objective"
 export FORCE_EMPTY_OK="$force_empty_ok"
 export INTO_EXISTING="$into_existing"
 export UPDATE="$update"

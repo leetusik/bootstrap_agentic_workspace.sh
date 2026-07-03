@@ -47,16 +47,15 @@ register it once per clone: `git config core.hooksPath .githooks`.
   `python3 - <<'INSTALLER_PY'` heredoc with a `#@@PYTHON_BODY@@` marker where the
   python driver is spliced.
 - **`main.py`** — the python driver: config/env, write engine, retrofit/update
-  policies, guards, docs + P1 seeding logic, finalizers, dispatch. It carries a
+  policies, guards, docs seeding logic, finalizers, dispatch. It carries a
   `#@@GENERATED_PAYLOADS@@` marker where `build.py` splices the generated constants
-  (`PAYLOADS`, `CONTRACT_BODY`, `DOC_BODIES`, `P1_PHASE_MD`, `P1_INTENT_MD`).
+  (`PAYLOADS`, `CONTRACT_BODY`, `DOC_BODIES`). The workspace bootstraps with **no
+  phases** — the operator's first task is captured via the create-phase flow, so
+  there is no phase scaffold to seed.
 - **`payloads/`** — fresh-install-only seeds that have **no live counterpart** in
   the repo (so there is nothing to mirror):
   - `doc_bodies/<doc>.md` — the 11 initial `docs/current/*.md` bodies. Runtime
     tokens `__PROJECT_NAME__` / `__PROJECT_SUMMARY__` are substituted by `main.py`.
-  - `p1_seed/phase.md`, `p1_seed/intent.md` — the initial P1 phase scaffold.
-    Tokens `__PHASE_NAME__` / `__PHASE_OBJECTIVE__` / `__CREATED_AT__` /
-    `__INTENT_ORIGIN__` / `__INTENT_ORIGINAL__` are substituted by `main.py`.
 
 ## Source of truth = live repo files
 
@@ -72,6 +71,6 @@ path), so editing them and rebuilding is all that is needed:
 - `works/templates/{result,deferred_brief,intent}.md`
 - the `CLAUDE.md` == `AGENTS.md` contract body (asserted byte-equal, embedded once)
 
-Interpolation that depends on install-time values (project name, phase name, doc
-frontmatter dates, the P1 scaffold) stays as code in `main.py`; the payloads carry
-only static text plus the `__…__` sentinels above.
+Interpolation that depends on install-time values (project name, doc frontmatter
+dates) stays as code in `main.py`; the payloads carry only static text plus the
+`__…__` sentinels above.

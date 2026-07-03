@@ -13,8 +13,8 @@ Source of truth:
       subagents, .claude/settings.json, .codex/config.toml, works/templates/*, and
       the CLAUDE.md == AGENTS.md contract body (asserted byte-equal, embedded once).
   * installer/payloads/  (fresh-install-only seeds, no live counterpart):
-      doc_bodies/<doc>.md and p1_seed/{phase,intent}.md, sentinel-templated
-      (__PROJECT_NAME__ / __PHASE_NAME__ / … substituted by main.py at install time).
+      doc_bodies/<doc>.md, sentinel-templated (__PROJECT_NAME__ / __PROJECT_SUMMARY__
+      substituted by main.py at install time).
 
 Determinism: sorted directory walks, sorted dict keys, repr() literals (no
 timestamps or randomness) => same inputs produce a byte-identical artifact.
@@ -97,15 +97,13 @@ def collect_contract_body() -> str:
     return body
 
 
-def collect_seed_payloads() -> "tuple":
+def collect_seed_payloads() -> "dict":
     doc_bodies: dict = {}
     for md in sorted((HERE / "payloads/doc_bodies").glob("*.md")):
         doc_bodies[md.stem] = md.read_text(encoding="utf-8")
     if not doc_bodies:
         die("no doc bodies under installer/payloads/doc_bodies/")
-    p1_phase = read("payloads/p1_seed/phase.md", base=HERE)
-    p1_intent = read("payloads/p1_seed/intent.md", base=HERE)
-    return doc_bodies, p1_phase, p1_intent
+    return doc_bodies
 
 
 def _dict_literal(name: str, d: "dict") -> str:
@@ -116,25 +114,23 @@ def _dict_literal(name: str, d: "dict") -> str:
     return "\n".join(out)
 
 
-def generate_constants(payloads, contract_body, doc_bodies, p1_phase, p1_intent) -> str:
+def generate_constants(payloads, contract_body, doc_bodies) -> str:
     return "\n\n".join([
         _dict_literal("PAYLOADS", payloads),
         f"CONTRACT_BODY = {contract_body!r}",
         _dict_literal("DOC_BODIES", doc_bodies),
-        f"P1_PHASE_MD = {p1_phase!r}",
-        f"P1_INTENT_MD = {p1_intent!r}",
     ])
 
 
 def assemble() -> str:
     payloads = collect_live_payloads()
     contract_body = collect_contract_body()
-    doc_bodies, p1_phase, p1_intent = collect_seed_payloads()
+    doc_bodies = collect_seed_payloads()
 
     main_py = read("main.py", base=HERE)
     if PAYLOAD_MARKER not in main_py:
         die(f"{PAYLOAD_MARKER} marker missing from installer/main.py")
-    constants = generate_constants(payloads, contract_body, doc_bodies, p1_phase, p1_intent)
+    constants = generate_constants(payloads, contract_body, doc_bodies)
     body = main_py.replace(PAYLOAD_MARKER, constants)
 
     # Safety: the python body must compile, and no line may collide with the heredoc delimiter.

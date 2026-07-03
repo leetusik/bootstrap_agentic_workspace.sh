@@ -49,12 +49,10 @@ $retrofit            # Codex
 ```
 
 The skill runs a preflight (confirms you're in a git repo, warns on a dirty
-tree, and confirms the repo doesn't already have a workspace), **reads your
-project** (README, package manifest, primary language, latest commit) to
-synthesize a first-phase name and objective that reflect *your* code, runs the
-installer in retrofit mode with those values, reconciles the contract files, runs
-`validate`, and reports what it added, skipped, and merged. It is
-explicit-invocation only — it never fires on its own.
+tree, and confirms the repo doesn't already have a workspace), runs the
+installer in retrofit mode, reconciles the contract files, runs `validate`, and
+reports what it added, skipped, and merged. It is explicit-invocation only — it
+never fires on its own.
 
 ### Option B — the installer directly
 
@@ -65,16 +63,13 @@ it** (Option A). Paste it yourself only if you are working without an agent:
 # from the root of your existing repo
 sh /path/to/bootstrap_agentic_workspace.sh . --into-existing \
   --name "My Existing Project" \
-  --summary "What this project is, in one sentence." \
-  --phase-name "Adopt workspace + capture current state" \
-  --phase-objective "Install the workspace and decompose the first real change to <project>, building on the code that already exists."
+  --summary "What this project is, in one sentence."
 ```
 
 `--into-existing` switches the installer from "refuse if non-empty / overwrite
-everything" to the non-destructive policy below. The `--phase-name` /
-`--phase-objective` flags seed your first phase **P1** from your project's
-current state instead of from a generic placeholder (see *Seeding the first
-phase*).
+everything" to the non-destructive policy below. Either way the workspace is
+installed **with no phases** — your first phase comes afterwards (see *Your
+first phase*).
 
 ---
 
@@ -149,20 +144,14 @@ and which subsystems it installed vs. left alone.
 
 ---
 
-## Seeding the first phase from your project's current state
+## Your first phase
 
-A fresh bootstrap seeds a generic placeholder phase ("Bootstrap Intake"). For an
-existing project, you want P1 to reflect what's already there. Pass real values:
-
-- `--phase-name` — e.g. *"Adopt workspace + capture current architecture"*.
-- `--phase-objective` — describe the existing code and the first real change you
-  intend, so the `P1.DECOMP` slice has real context to decompose.
-
-The `/retrofit` skill does this for you by reading your README, package manifest,
-language, and latest commit. Either way, P1 still starts as `DECOMP` + `REVIEW`
-only (the contract is unchanged) — "seeded from state" means *better starting
-text*, not a different structure. Your first real work gets decomposed by
-`P1.DECOMP`, exactly as on a fresh install.
+The installer seeds **no phases** — a freshly adopted workspace starts empty, on
+purpose. Your first real task enters through the normal intake flow: tell your
+agent what you want (or type `/create-phase <your task>`), and it refines your
+intent, asks about anything ambiguous, confirms, and creates `P1` with its
+`DECOMP` + `REVIEW` slices. That way the first phase reflects a task *you*
+chose and confirmed — not a placeholder synthesized at install time.
 
 ---
 
@@ -203,13 +192,14 @@ The agent runs (the `/retrofit` skill already did):
 
 ```sh
 python3 scripts/workflow.py validate   # -> "Workflow validation passed."
-python3 scripts/workflow.py next       # -> current_phase=P1, current_slice=P1.DECOMP
+python3 scripts/workflow.py next       # -> "no active slice; create a phase or promote deferred work"
 ```
 
-Then confirm `works/state.json` exists and `works/phases/active/P1/phase.json`
-carries the name/objective you seeded (not the placeholder). From here you drive
-with `/do-next-slice` (`$do-next-slice` in Codex) — or any agent can call
-`python3 scripts/workflow.py` directly.
+That `next` message is the expected empty-start state, not an error: the
+workspace has no phases until you create the first one. Confirm
+`works/state.json` exists, then create your first phase with `/create-phase`
+(`$create-phase` in Codex) and drive it with `/do-next-slice` — or any agent can
+call `python3 scripts/workflow.py` directly.
 
 ## Re-running is safe
 
@@ -227,7 +217,7 @@ can't or don't want to use `--into-existing` (or an agent), retrofit by hand
 using a throwaway staging copy — the same idea the flag automates:
 
 1. Bootstrap a fresh workspace into an **empty temp dir**:
-   `sh bootstrap_agentic_workspace.sh /tmp/ws-stage --name "…" --phase-name "…" --phase-objective "…"`.
+   `sh bootstrap_agentic_workspace.sh /tmp/ws-stage --name "…" --summary "…"`.
 2. Copy the workspace files that you **don't already have** into your repo —
    never overwriting: `scripts/workflow.py`, `.claude/`, `.agents/`, `.codex/`,
    `docs/` (only if you have no `docs/index.json`), `works/`, and the contract as
