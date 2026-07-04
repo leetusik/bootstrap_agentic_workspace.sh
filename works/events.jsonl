@@ -122,3 +122,9 @@
 {"ts": "2026-07-03T23:46:52+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0012_executor_tier_operations_risk_routing_.env_sync-agents_escalation_update_flow", "source": "operator-request 2026-07-03"}
 {"ts": "2026-07-03T23:52:30+09:00", "type": "agents_synced", "changed": [".claude/agents/slice-executor-low.md"], "env_present": true}
 {"ts": "2026-07-03T23:52:44+09:00", "type": "agents_synced", "changed": [".claude/agents/slice-executor-low.md"], "env_present": false}
+{"ts": "2026-07-04T01:03:28+09:00", "type": "agents_synced", "changed": [".claude/agents/slice-executor-high.md"], "env_present": true}
+{"ts": "2026-07-04T01:03:41+09:00", "type": "agents_synced", "changed": [".claude/agents/slice-executor-high.md"], "env_present": false}
+{"ts": "2026-07-04T10:27:43+09:00", "type": "agents_synced", "changed": [".claude/agents/slice-executor-high.md"], "config_present": true}
+{"ts": "2026-07-04T10:27:43+09:00", "type": "agents_synced", "changed": [".claude/agents/slice-executor-high.md"], "config_present": false}
+{"ts": "2026-07-04T10:28:45+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0018_executor-tier_config_moves_from_repo-root_.env_to_executors.toml", "source": "operator-request 2026-07-04"}
+{"ts": "2026-07-04T10:28:45+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0013_executor_tier_config_via_executors.toml_.env_retired_workspace_v8", "source": "operator-request 2026-07-04"}

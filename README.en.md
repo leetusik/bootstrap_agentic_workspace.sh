@@ -171,7 +171,7 @@ Both `--flag value` and `--flag=value` forms work.
 - `.claude/` + `.agents/` — the 14 core Agent Skills, mirrored for both tools (`do-whole-phase` is
   Claude Code only; the optional `explain` skill installs only with `--with-explain`), plus the three risk-routed `slice-executor`
   tier subagents for each tool (`.claude/agents/slice-executor-{low,mid,high}.md` — haiku / sonnet / opus by default;
-  `.codex/agents/` on gpt-5.5 at tiered efforts), `.env.example` (tier model/effort overrides, applied with
+  `.codex/agents/` on gpt-5.5 at tiered efforts), `executors.toml.example` (tier model/effort overrides, applied with
   `sync-agents`), and `.codex/config.toml`.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
@@ -243,7 +243,7 @@ another agent, CI — drives the workspace with the exact same commands:
 | `doc-new-version --doc backend --summary … --source P1.S1` | Cut a new durable doc version |
 | `defer-job --title … --reason … --trigger …` | Park a deferred job |
 | `promote-deferred D1 --phase P1 --slice P1.S2` | Promote a deferred job into a slice |
-| `sync-agents` | Apply the `.env` executor-tier model/effort config to the agent files |
+| `sync-agents` | Apply the `executors.toml` executor-tier model/effort config to the agent files |
 | `validate` | Check workspace integrity |
 
 The full command list lives in [`CLAUDE.md`](CLAUDE.md).
@@ -280,7 +280,7 @@ a fresh context that never edits source, validating the phase and consolidating 
 When a low/mid executor hits something beyond its depth it returns an `escalate` verdict; the
 orchestrator folds the findings into the plan and re-dispatches one tier up — so routine slices run
 cheap and fast without capping quality. Tier models and efforts are configurable via a repo-root
-`.env` (see `.env.example`) applied with `python3 scripts/workflow.py sync-agents`. Workflow skills are
+`executors.toml` (see `executors.toml.example`) applied with `python3 scripts/workflow.py sync-agents`. Workflow skills are
 **explicit-invocation only** — agents don't fire them on their own. They are the **operator's
 interface**: you type the slash command; the agent does everything it implies. (`explain` is the
 one exception: a general-purpose, non-workflow skill agents may fire when you ask for an

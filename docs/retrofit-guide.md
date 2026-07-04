@@ -85,7 +85,7 @@ four tiers:
 
 Pure content files are written only if absent; if present, **yours is kept
 untouched**. This covers the skills, the `slice-executor` tier subagents,
-`.env.example`, `.codex/config.toml`, the `works/templates/*`, and `docs/README.md`.
+`executors.toml.example`, `.codex/config.toml`, the `works/templates/*`, and `docs/README.md`.
 
 ### Tier 2 — Whole subsystem, only if entirely absent
 

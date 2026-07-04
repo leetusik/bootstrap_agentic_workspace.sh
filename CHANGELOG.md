@@ -9,6 +9,31 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v8 — 2026-07-04
+
+- **Executor-tier config moved from `.env` to `executors.toml`.** `sync-agents` now
+  reads a repo-root `executors.toml` (see the shipped `executors.toml.example`):
+  `[claude.low|mid|high]` / `[codex.low|mid|high]` tables holding `model` / `effort`
+  keys. Semantics are unchanged — values pass through verbatim (aliases, full model
+  IDs, `inherit`), `effort = ""` omits the effort line, models may not be empty.
+  Unlike `.env`, the file is not gitignored: it holds no secrets, committing it
+  shares the tier config with the team, and it no longer mingles workspace tooling
+  keys into an app-level `.env`. A leftover `.env` with `SLICE_EXECUTOR_*` keys is
+  no longer read; `sync-agents` warns when it sees one.
+- **`plan only` mode and the `ready` (`[r]`) slice status.** `/do-next-slice plan
+  only` and `/do-whole-phase plan only` walk slices through the plan-approval gate
+  without dispatching executors: each approved plan is written to the slice's
+  `plan.md` and the slice is set `ready`. A later execution run dispatches a
+  `ready` slice straight from its approved plan without re-entering plan mode.
+  `do-whole-phase plan only` ships `DECOMP` first when needed and stops before
+  `REVIEW` (never pre-planned); `plan only` never combines with `auto`; `validate`
+  errors on a `ready` slice that has no `plan.md`.
+
+Migration notes: move any `SLICE_EXECUTOR_*` / `CODEX_SLICE_EXECUTOR_*` values from
+`.env` into `executors.toml` tables and re-run `sync-agents`; after `--update`,
+remove the flagged retired example (`git rm .env.example`) and drop the `.env` line
+v7 added to `.gitignore` if nothing else in the repo uses a `.env`.
+
 ## v7 — 2026-07-03
 
 - **Three slice-executor tiers.** The two executor variants are replaced by

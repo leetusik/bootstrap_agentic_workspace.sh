@@ -107,7 +107,7 @@
       ]
     },
     "operations": {
-      "latest": "v0012_executor_tier_operations_risk_routing_.env_sync-agents_escalation_update_flow",
+      "latest": "v0013_executor_tier_config_via_executors.toml_.env_retired_workspace_v8",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -205,6 +205,14 @@
           "source": "operator-request 2026-07-03",
           "summary": "Executor tier operations: risk routing, .env + sync-agents, escalation, update flow",
           "previous": "v0011_explain_saves_via_the_kb_document_api_localhost_8766_manual_flow_is_fallback-only_ships_as_workspace_v4"
+        },
+        {
+          "id": "v0013_executor_tier_config_via_executors.toml_.env_retired_workspace_v8",
+          "path": "docs/versions/operations/v0013_executor_tier_config_via_executors.toml_.env_retired_workspace_v8.md",
+          "created_at": "2026-07-04T10:28:45+09:00",
+          "source": "operator-request 2026-07-04",
+          "summary": "Executor tier config via executors.toml; .env retired; workspace v8",
+          "previous": "v0012_executor_tier_operations_risk_routing_.env_sync-agents_escalation_update_flow"
         }
       ]
     },
@@ -245,7 +253,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0017_three_slice-executor_tiers_low_mid_high_with_.env_sync-agents_config_and_an_escalation_ladder",
+      "latest": "v0018_executor-tier_config_moves_from_repo-root_.env_to_executors.toml",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -383,9 +391,17 @@
           "source": "operator-request 2026-07-03",
           "summary": "Three slice-executor tiers (low/mid/high) with .env sync-agents config and an escalation ladder",
           "previous": "v0016_decision_explain_adopts_the_api-owned_write_path_manual_flow_demoted_to_unreachable-only_fallback"
+        },
+        {
+          "id": "v0018_executor-tier_config_moves_from_repo-root_.env_to_executors.toml",
+          "path": "docs/versions/decisions/v0018_executor-tier_config_moves_from_repo-root_.env_to_executors.toml.md",
+          "created_at": "2026-07-04T10:28:45+09:00",
+          "source": "operator-request 2026-07-04",
+          "summary": "Executor-tier config moves from repo-root .env to executors.toml",
+          "previous": "v0017_three_slice-executor_tiers_low_mid_high_with_.env_sync-agents_config_and_an_escalation_ladder"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-07-03T23:53:22+09:00"
+  "last_rebuilt_at": "2026-07-04T10:31:52+09:00"
 }

@@ -58,7 +58,7 @@ Apply (after the operator approves):
 
 Verify:
 
-8. The installer's update already ran `validate` / `rebuild` (or `next` for a repo without the docs subsystem) and printed the result. Run `python3 scripts/workflow.py next` to confirm the current state under the refreshed engine. If this repo tunes the executor tiers via a repo-root `.env`, re-run `python3 scripts/workflow.py sync-agents` — the update resets the `slice-executor-*` agent files to upstream defaults (`validate` warns while they drift).
+8. The installer's update already ran `validate` / `rebuild` (or `next` for a repo without the docs subsystem) and printed the result. Run `python3 scripts/workflow.py next` to confirm the current state under the refreshed engine. If this repo tunes the executor tiers via a repo-root `executors.toml`, re-run `python3 scripts/workflow.py sync-agents` — the update resets the `slice-executor-*` agent files to upstream defaults (`validate` warns while they drift).
 
 Report and clean up:
 
