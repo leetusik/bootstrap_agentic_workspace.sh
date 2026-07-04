@@ -9,6 +9,22 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v10 — 2026-07-04
+
+- **`result.md` is free-form; the template is gone.** `new-slice` no longer
+  scaffolds `result.md` from `works/templates/result.md` — the executor writes it
+  from scratch at slice end, shaped to the slice, just as the orchestrator already
+  writes `plan.md` with no template. A fresh slice folder now holds only
+  `slice.json`. The old template's fixed sections were mostly vestigial (per-slice
+  review status, roadmap updates) and nothing in the engine ever read them; what a
+  result must cover (validation commands + outcomes, doc impact, deviations from
+  plan) stays specified in the executor agents. The full-result vs. cross-slice-note
+  split is unchanged: details in `result.md`, durable one-liners in `phase.md`.
+
+Migration notes: after `--update`, remove the flagged `works/templates/result.md`
+(`git rm works/templates/result.md`). Existing slices' already-written `result.md`
+files are untouched.
+
 ## v9 — 2026-07-04
 
 - **`executors.toml` ships seeded; the `.example` file is gone.** The installer now

@@ -35,7 +35,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 9
+WORKSPACE_VERSION = 10
 ROOT = TARGET.resolve()
 
 DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
@@ -84,7 +84,7 @@ MANAGED_FILES = [
     *[f"docs/current/{doc_id}.md" for doc_id in DOC_TYPES],
     *[f"docs/versions/{doc_id}/v0001_bootstrap.md" for doc_id in DOC_TYPES],
     "works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/events.jsonl",
-    *[f"works/templates/{n}" for n in ("result.md", "deferred_brief.md", "intent.md")],
+    *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md")],
     "scripts/workflow.py",
     ".claude/agents/slice-executor-low.md", ".claude/agents/slice-executor-mid.md", ".claude/agents/slice-executor-high.md",
     ".claude/settings.json",
@@ -462,9 +462,9 @@ Doc updates are the agent's job, normally as part of a slice — the operator as
 """)
 
 # ---- Templates --------------------------------------------------------------
-# No plan.md template: the orchestrator writes its own free-form native plan into
-# each slice's plan.md at the slice's turn. Only result.md (and intent.md) are scaffolded.
-write_text("works/templates/result.md", PAYLOADS["works/templates/result.md"])
+# No plan.md or result.md template: the orchestrator writes its free-form native plan
+# into plan.md at the slice's turn, and the executor writes a free-form result.md at
+# slice end. Only intent.md (and the deferred brief) are scaffolded.
 write_text("works/templates/deferred_brief.md", PAYLOADS["works/templates/deferred_brief.md"])
 write_text("works/templates/intent.md", PAYLOADS["works/templates/intent.md"])
 
@@ -525,6 +525,7 @@ OBSOLETE_MACHINERY = [
     ".codex/agents/slice-executor.toml",  # replaced by slice-executor-{low,mid,high}.toml in v7
     ".env.example",                       # tier config moved to executors.toml(.example) in v8
     "executors.toml.example",             # example dropped in v9 — executors.toml itself is seeded
+    "works/templates/result.md",          # template dropped in v10 — result.md is free-form, written by the executor
 ]
 
 

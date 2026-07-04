@@ -50,7 +50,6 @@ FIXED_LIVE_FILES = [
     ".codex/agents/slice-executor-mid.toml",
     ".codex/agents/slice-executor-high.toml",
     "executors.toml",
-    "works/templates/result.md",
     "works/templates/deferred_brief.md",
     "works/templates/intent.md",
 ]

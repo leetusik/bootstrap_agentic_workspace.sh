@@ -261,7 +261,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0019_executors.toml_ships_seeded_with_commented_defaults_the_example_file_is_dropped",
+      "latest": "v0020_result.md_template_dropped_the_executor_writes_a_free-form_result",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -415,9 +415,17 @@
           "source": "operator-request 2026-07-04",
           "summary": "executors.toml ships seeded with commented defaults; the example file is dropped",
           "previous": "v0018_executor-tier_config_moves_from_repo-root_.env_to_executors.toml"
+        },
+        {
+          "id": "v0020_result.md_template_dropped_the_executor_writes_a_free-form_result",
+          "path": "docs/versions/decisions/v0020_result.md_template_dropped_the_executor_writes_a_free-form_result.md",
+          "created_at": "2026-07-04T11:43:19+09:00",
+          "source": "operator-request 2026-07-04",
+          "summary": "result.md template dropped; the executor writes a free-form result",
+          "previous": "v0019_executors.toml_ships_seeded_with_commented_defaults_the_example_file_is_dropped"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-07-04T10:44:31+09:00"
+  "last_rebuilt_at": "2026-07-04T11:44:02+09:00"
 }

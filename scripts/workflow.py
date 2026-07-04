@@ -626,11 +626,9 @@ def create_slice(phase_id: str, slice_id: str, name: str, kind: str, order, risk
         "archive": {"archived": False, "archived_at": None, "archive_path": None},
     }
     write_json(sdir / "slice.json", data)
-    common = {"PHASE_ID": phase_id, "SLICE_ID": slice_id, "SLICE_NAME": name, "CREATED_AT": created}
-    # Only result.md is scaffolded. plan.md has no template: the orchestrator writes its
-    # own free-form native plan there at the slice's turn, so a fresh slice has no plan.md.
-    for name_in in ("result.md",):
-        write_text(sdir / name_in, render_template(load_template(name_in), **common))
+    # Neither context file is scaffolded: the orchestrator writes its free-form native
+    # plan to plan.md at the slice's turn, and the executor writes its free-form
+    # result.md at slice end — a fresh slice folder holds only slice.json.
     return sdir
 
 

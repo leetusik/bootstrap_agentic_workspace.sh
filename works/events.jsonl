@@ -130,3 +130,4 @@
 {"ts": "2026-07-04T10:28:45+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0013_executor_tier_config_via_executors.toml_.env_retired_workspace_v8", "source": "operator-request 2026-07-04"}
 {"ts": "2026-07-04T10:42:11+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0019_executors.toml_ships_seeded_with_commented_defaults_the_example_file_is_dropped", "source": "operator-request 2026-07-04"}
 {"ts": "2026-07-04T10:42:11+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0014_seed-once_executors.toml_example_file_retired_workspace_v9", "source": "operator-request 2026-07-04"}
+{"ts": "2026-07-04T11:43:19+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0020_result.md_template_dropped_the_executor_writes_a_free-form_result", "source": "operator-request 2026-07-04"}
