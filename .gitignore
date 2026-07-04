@@ -2,7 +2,7 @@
 __pycache__/
 *.pyc
 
-# Executor-tier config (executors.toml, documented by the tracked
-# executors.toml.example) is deliberately NOT ignored — it holds no secrets and
-# committing it shares the tier setup. In this upstream repo keep it absent or
-# at defaults: a non-default sync-agents run mutates the committed agent files.
+# Executor-tier config (executors.toml, seeded with commented defaults) is
+# deliberately tracked, not ignored — it holds no secrets and committing it
+# shares the tier setup. In this upstream repo keep it at the commented
+# defaults: a non-default sync-agents run mutates the committed agent files.

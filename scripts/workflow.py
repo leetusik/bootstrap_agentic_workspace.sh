@@ -183,6 +183,7 @@ def executor_agent_files(config: dict) -> list:
 def sync_agents(args: argparse.Namespace) -> None:
     config = executor_config()
     config_present = (ROOT / "executors.toml").exists()
+    override_count = len(read_executors_toml())
     legacy_env = ROOT / ".env"
     if legacy_env.exists() and "SLICE_EXECUTOR" in legacy_env.read_text(encoding="utf-8"):
         print("warning: .env holds SLICE_EXECUTOR_* keys, but tier config moved to executors.toml in v8 — .env is no longer read")
@@ -200,7 +201,7 @@ def sync_agents(args: argparse.Namespace) -> None:
     for tier in EXECUTOR_TIERS:
         cfg = config[tier]
         print(f"{tier:<5} claude={cfg['model']} @ {cfg['effort'] or '(no effort line)'}  codex={cfg['codex_model']} @ {cfg['codex_effort']}")
-    print(f"config source: {'defaults + executors.toml overrides' if config_present else 'defaults (no executors.toml)'}")
+    print(f"config source: {f'executors.toml ({override_count} override(s)) + defaults' if config_present else 'defaults (no executors.toml)'}")
     for m in missing:
         print(f"missing agent file: {m}")
     if args.check:

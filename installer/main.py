@@ -35,7 +35,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 8
+WORKSPACE_VERSION = 9
 ROOT = TARGET.resolve()
 
 DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
@@ -89,7 +89,7 @@ MANAGED_FILES = [
     ".claude/agents/slice-executor-low.md", ".claude/agents/slice-executor-mid.md", ".claude/agents/slice-executor-high.md",
     ".claude/settings.json",
     ".codex/config.toml", ".codex/agents/slice-executor-low.toml", ".codex/agents/slice-executor-mid.toml", ".codex/agents/slice-executor-high.toml",
-    "executors.toml.example",
+    "executors.toml",
 ]
 for name in CLAUDE_SKILLS:
     MANAGED_DIRS.append(f".claude/skills/{name}")
@@ -206,11 +206,13 @@ def _retrofit_handle(path: str, text: str) -> bool:
 #     subagents, every skill, .codex/config.toml, works/templates/*.
 #   MERGE (additive): .claude/settings.json.
 #   CONTRACT (sidecar-aware): CLAUDE.md / AGENTS.md.
+#   SEED-ONCE: executors.toml (operator tier config — created if absent, never
+#     overwritten).
 #   PRESERVE (never touch): everything under works/ except templates, and all of
 #     docs/ (the append-only version chain plus generated snapshots).
 # In --dry-run nothing is written; changes are only recorded for the report.
 def _is_machinery(path: str) -> bool:
-    if path in ("scripts/workflow.py", ".codex/config.toml", "executors.toml.example"):
+    if path in ("scripts/workflow.py", ".codex/config.toml"):
         return True
     return path.startswith((".claude/agents/", ".codex/agents/", ".claude/skills/", ".agents/skills/", "works/templates/"))
 
@@ -280,6 +282,14 @@ def _update_handle(path: str, text: str, executable: bool) -> None:
             _record_change(sidecar, text)
             if not DRY_RUN:
                 _merge_contract(path, text)
+        else:
+            _update_write(path, text, executable)
+        return
+    # Seed-once: executors.toml is the operator's tier config — create it when
+    # absent (a pre-v9 workspace) and never overwrite an existing one.
+    if path == "executors.toml":
+        if (ROOT / path).exists():
+            UPDATE_SUMMARY["preserved"].append(path)
         else:
             _update_write(path, text, executable)
         return
@@ -481,8 +491,8 @@ for tier in ("low", "mid", "high"):
     write_text(f".claude/agents/slice-executor-{tier}.md", PAYLOADS[f".claude/agents/slice-executor-{tier}.md"])
     write_text(f".codex/agents/slice-executor-{tier}.toml", PAYLOADS[f".codex/agents/slice-executor-{tier}.toml"])
 
-# ---- Executor-tier config example (the real executors.toml is operator-owned) ----
-write_text("executors.toml.example", PAYLOADS["executors.toml.example"])
+# ---- Executor-tier config (seeded once — commented defaults; operator-owned) ----
+write_text("executors.toml", PAYLOADS["executors.toml"])
 
 # ---- Claude Code project settings: pre-approve the workflow manager ----------
 write_text(".claude/settings.json", PAYLOADS[".claude/settings.json"])
@@ -514,6 +524,7 @@ OBSOLETE_MACHINERY = [
     ".claude/agents/slice-executor.md",   # replaced by slice-executor-{low,mid,high}.md in v7
     ".codex/agents/slice-executor.toml",  # replaced by slice-executor-{low,mid,high}.toml in v7
     ".env.example",                       # tier config moved to executors.toml(.example) in v8
+    "executors.toml.example",             # example dropped in v9 — executors.toml itself is seeded
 ]
 
 
@@ -623,7 +634,7 @@ else:
     print("Contracts: CLAUDE.md and AGENTS.md (equivalent)")
     print("Claude Code: skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{low,mid,high}.md, settings .claude/settings.json")
     print("Codex: skills in .agents/skills/ (e.g. $do-next-slice), subagent tiers .codex/agents/slice-executor-{low,mid,high}.toml, instructions AGENTS.md")
-    print("Executor tiers are risk-routed (low/mid/high); tune models/efforts via executors.toml (see executors.toml.example) + python3 scripts/workflow.py sync-agents")
+    print("Executor tiers are risk-routed (low/mid/high); tune models/efforts in executors.toml (seeded with commented defaults) + python3 scripts/workflow.py sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
     print("Canonical state: phase.json / slice.json / deferred.json; generated: works/backlog.md, works/deferred.md")
     print("Versioned docs: docs/versions/<doc>/vNNNN_*.md with generated docs/current/*.md")

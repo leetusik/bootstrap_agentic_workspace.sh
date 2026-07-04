@@ -141,15 +141,20 @@ grep -q '^model_reasoning_effort = "medium"$' "$F/.codex/agents/slice-executor-l
   && grep -q '^model_reasoning_effort = "xhigh"$' "$F/.codex/agents/slice-executor-high.toml" \
   && ok "Codex tier efforts: medium / high / xhigh" || bad "Codex executor tier efforts wrong"
 [ ! -f "$F/.claude/agents/slice-executor.md" ] && [ ! -f "$F/.codex/agents/slice-executor.toml" ] && ok "legacy untiered slice-executor retired (absent on fresh install)" || bad "legacy untiered slice-executor should be retired but is present"
-[ -f "$F/executors.toml.example" ] && ok "fresh install ships executors.toml.example" || bad "fresh install missing executors.toml.example"
-[ ! -f "$F/.env.example" ] && ok "legacy .env.example retired (absent on fresh install)" || bad ".env.example should be retired but is present"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && ok "sync-agents --check: shipped tier files match built-in defaults" || bad "sync-agents --check failed on a fresh install"
+[ -f "$F/executors.toml" ] && ok "fresh install seeds executors.toml (commented defaults)" || bad "fresh install missing executors.toml"
+[ ! -f "$F/.env.example" ] && [ ! -f "$F/executors.toml.example" ] && ok "legacy .env.example / executors.toml.example retired (absent on fresh install)" || bad "a legacy tier-config example should be retired but is present"
+( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && ok "sync-agents --check: seeded config parses to the built-in defaults" || bad "sync-agents --check failed on a fresh install"
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: fable$' "$F/.claude/agents/slice-executor-high.md" \
   && ok "executors.toml override patches the high-tier model" || bad "executors.toml override did not patch the high tier"
+sh "$BOOT" "$F" --update >/dev/null 2>&1 && grep -q 'fable' "$F/executors.toml" \
+  && ok "--update preserves an edited executors.toml (seed-once)" || bad "--update clobbered or failed on an edited executors.toml"
+grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" \
+  && ok "--update resets agent files to upstream defaults (re-run sync-agents after updates)" || bad "--update did not reset the agent files"
 rm -f "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" \
-  && ok "removing executors.toml restores tier defaults on sync" || bad "tier defaults not restored after removing executors.toml"
+sh "$BOOT" "$F" --update >/dev/null 2>&1 && [ -f "$F/executors.toml" ] \
+  && ok "--update seeds a missing executors.toml (pre-v9 workspace)" || bad "--update did not seed a missing executors.toml"
+( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && ok "re-seeded executors.toml parses to defaults" || bad "re-seeded executors.toml drifts from defaults"
 [ ! -f "$F/.codex/agents/phase-reviewer.toml" ] && [ ! -f "$F/.claude/agents/phase-reviewer.md" ] && ok "phase-reviewer retired (absent on fresh install)" || bad "phase-reviewer should be retired but is present"
 [ ! -d "$F/.agents/skills/do-whole-phase" ] && ok "fresh install drops Codex do-whole-phase (Claude-only)" || bad "Codex do-whole-phase should not be generated"
 [ -d "$F/.claude/skills/do-whole-phase" ] && ok "fresh install keeps Claude do-whole-phase" || bad "Claude do-whole-phase missing"
@@ -170,7 +175,7 @@ for rel in \
   .claude/skills/review-phase/SKILL.md .agents/skills/review-phase/SKILL.md \
   .claude/agents/slice-executor-low.md .claude/agents/slice-executor-mid.md .claude/agents/slice-executor-high.md \
   .codex/agents/slice-executor-low.toml .codex/agents/slice-executor-mid.toml .codex/agents/slice-executor-high.toml \
-  executors.toml.example \
+  executors.toml \
   CLAUDE.md AGENTS.md ; do
   diff -q "$REPO_ROOT/$rel" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \

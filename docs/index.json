@@ -107,7 +107,7 @@
       ]
     },
     "operations": {
-      "latest": "v0013_executor_tier_config_via_executors.toml_.env_retired_workspace_v8",
+      "latest": "v0014_seed-once_executors.toml_example_file_retired_workspace_v9",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -213,6 +213,14 @@
           "source": "operator-request 2026-07-04",
           "summary": "Executor tier config via executors.toml; .env retired; workspace v8",
           "previous": "v0012_executor_tier_operations_risk_routing_.env_sync-agents_escalation_update_flow"
+        },
+        {
+          "id": "v0014_seed-once_executors.toml_example_file_retired_workspace_v9",
+          "path": "docs/versions/operations/v0014_seed-once_executors.toml_example_file_retired_workspace_v9.md",
+          "created_at": "2026-07-04T10:42:11+09:00",
+          "source": "operator-request 2026-07-04",
+          "summary": "Seed-once executors.toml; example file retired; workspace v9",
+          "previous": "v0013_executor_tier_config_via_executors.toml_.env_retired_workspace_v8"
         }
       ]
     },
@@ -253,7 +261,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0018_executor-tier_config_moves_from_repo-root_.env_to_executors.toml",
+      "latest": "v0019_executors.toml_ships_seeded_with_commented_defaults_the_example_file_is_dropped",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -399,9 +407,17 @@
           "source": "operator-request 2026-07-04",
           "summary": "Executor-tier config moves from repo-root .env to executors.toml",
           "previous": "v0017_three_slice-executor_tiers_low_mid_high_with_.env_sync-agents_config_and_an_escalation_ladder"
+        },
+        {
+          "id": "v0019_executors.toml_ships_seeded_with_commented_defaults_the_example_file_is_dropped",
+          "path": "docs/versions/decisions/v0019_executors.toml_ships_seeded_with_commented_defaults_the_example_file_is_dropped.md",
+          "created_at": "2026-07-04T10:42:11+09:00",
+          "source": "operator-request 2026-07-04",
+          "summary": "executors.toml ships seeded with commented defaults; the example file is dropped",
+          "previous": "v0018_executor-tier_config_moves_from_repo-root_.env_to_executors.toml"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-07-04T10:31:52+09:00"
+  "last_rebuilt_at": "2026-07-04T10:44:31+09:00"
 }

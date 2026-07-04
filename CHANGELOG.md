@@ -9,6 +9,21 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v9 — 2026-07-04
+
+- **`executors.toml` ships seeded; the `.example` file is gone.** The installer now
+  writes `executors.toml` itself — all defaults shown, commented out — instead of an
+  `executors.toml.example` to copy. The file is **seed-once**: created when absent
+  (fresh install, retrofit, or an update onto an older workspace) and never
+  overwritten by `--update`, so operator edits survive updates. The values ship
+  commented out so the engine's built-in defaults stay authoritative — a workspace
+  that hasn't opted into an override keeps tracking upstream default changes.
+  Deleting the file is also fine (absent = defaults).
+
+Migration notes: after `--update`, remove the flagged `executors.toml.example`
+(`git rm executors.toml.example`). A previously created `executors.toml` is
+preserved as-is — the update only seeds the file where it is missing.
+
 ## v8 — 2026-07-04
 
 - **Executor-tier config moved from `.env` to `executors.toml`.** `sync-agents` now
