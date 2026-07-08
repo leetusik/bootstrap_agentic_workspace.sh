@@ -1,16 +1,16 @@
 # Backlog
 
 > Generated dashboard. Do not put detailed task context here; edit phase/slice/deferred folders instead.
-> Status box: `[x]` done · `[~]` pending — waiting on operator · `[ ]` open/in progress.
+> Status box: `[x]` done · `[~]` pending — waiting on operator · `[r]` ready — plan approved, awaiting execution · `[ ]` open/in progress.
 
 ## Pointer
 
-- Current phase: `none`
-- Current slice: `none`
-- Next slice: `none`
+- Current phase: `P7`
+- Current slice: `P7.DECOMP`
+- Next slice: `P7.REVIEW`
 - Waiting on operator: `none`
 - Open deferred jobs: `1`
-- Rebuilt at: `2026-07-02T17:33:30+09:00`
+- Rebuilt at: `2026-07-08T16:35:47+09:00`
 
 ## Active Phases
 
@@ -19,6 +19,7 @@
 | [x] `P4` | `done` | `pass` | Model-flexible attribution, installer split, versioned workspace updates | `none` | `works/phases/active/P4` |
 | [x] `P5` | `done` | `pass` | Optional /explain install (--with-explain) | `none` | `works/phases/active/P5` |
 | [x] `P6` | `done` | `pass` | Wire /explain to the KB document API | `none` | `works/phases/active/P6` |
+| [ ] `P7` | `planned` | `pending` | Retire embedded /explain | `P7.DECOMP` | `works/phases/active/P7` |
 
 ## Phase P4: Model-flexible attribution, installer split, versioned workspace updates
 
@@ -46,3 +47,10 @@
 | [x] `P6.S1` | `done` | Rewire /explain steps 5–7 to POST /api/documents (API-first, manual fallback) | `implementation` | `works/phases/active/P6/slices/P6.S1` |
 | [x] `P6.S2` | `done` | Sync updated /explain skill to ~/.claude/skills/explain (operator-authorized) | `implementation` | `works/phases/active/P6/slices/P6.S2` |
 | [x] `P6.REVIEW` | `done` | phase review | `review` | `works/phases/active/P6/slices/P6.REVIEW` |
+
+## Phase P7: Retire embedded /explain
+
+| Slice | Status | Name | Kind | Path |
+|---|---|---|---|---|
+| [ ] `P7.DECOMP` | `todo` | decompose phase | `decomposition` | `works/phases/active/P7/slices/P7.DECOMP` |
+| [ ] `P7.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P7/slices/P7.REVIEW` |
