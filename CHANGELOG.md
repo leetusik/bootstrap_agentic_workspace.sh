@@ -9,6 +9,24 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v11 — 2026-07-13
+
+- **Executor-tier `mode` presets; `flex` is the new default.** The repo-root
+  `executors.toml` gains a top-level `mode` key (set before any table) selecting a
+  named preset for the Claude slice-executor tiers: `flex` — the default, applied
+  even when the file is absent or has no `mode` key — runs low = sonnet@xhigh,
+  mid = opus@xhigh, high = opus@xhigh; `economy` restores the old
+  haiku / sonnet@xhigh / opus@xhigh mapping. The Codex tiers are identical in both
+  presets (gpt-5.5 @ medium/high/xhigh). Per-tier `[claude.<tier>]` /
+  `[codex.<tier>]` tables still override the active preset field by field, and
+  `sync-agents` now prints the active mode.
+
+Migration notes: after `--update`, re-run `python3 scripts/workflow.py sync-agents`
+— workspaces without explicit tier overrides move to the flex mapping (add
+`mode = "economy"` to `executors.toml` to keep the old tiers; uncommented old
+tables keep overriding as before). A previously seeded `executors.toml` keeps its
+old comment block — documentation only; delete it and re-run `--update` to reseed.
+
 ## v10 — 2026-07-04
 
 - **`result.md` is free-form; the template is gone.** `new-slice` no longer

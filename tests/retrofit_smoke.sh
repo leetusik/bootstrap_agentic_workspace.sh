@@ -132,10 +132,10 @@ grep -q '"workspace_version"' "$F/works/.workspace-version.json" && ok "fresh ma
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
 [ -f "$F/.claude/agents/slice-executor-low.md" ] && [ -f "$F/.claude/agents/slice-executor-mid.md" ] && [ -f "$F/.claude/agents/slice-executor-high.md" ] && ok "fresh install ships the 3 Claude slice-executor tiers" || bad "fresh install missing Claude slice-executor tier(s)"
 [ -f "$F/.codex/agents/slice-executor-low.toml" ] && [ -f "$F/.codex/agents/slice-executor-mid.toml" ] && [ -f "$F/.codex/agents/slice-executor-high.toml" ] && ok "fresh install ships the 3 Codex slice-executor tiers" || bad "fresh install missing Codex slice-executor tier(s)"
-grep -q '^model: haiku$' "$F/.claude/agents/slice-executor-low.md" && ! grep -q '^effort:' "$F/.claude/agents/slice-executor-low.md" \
-  && grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-mid.md" \
+grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-low.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-low.md" \
+  && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-mid.md" \
   && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-high.md" \
-  && ok "Claude tier defaults: haiku (no effort line) / sonnet@xhigh / opus@xhigh" || bad "Claude executor tier defaults wrong"
+  && ok "Claude tier defaults (flex): sonnet@xhigh / opus@xhigh / opus@xhigh" || bad "Claude executor tier defaults wrong"
 grep -q '^model_reasoning_effort = "medium"$' "$F/.codex/agents/slice-executor-low.toml" \
   && grep -q '^model_reasoning_effort = "high"$' "$F/.codex/agents/slice-executor-mid.toml" \
   && grep -q '^model_reasoning_effort = "xhigh"$' "$F/.codex/agents/slice-executor-high.toml" \
@@ -147,6 +147,18 @@ grep -q '^model_reasoning_effort = "medium"$' "$F/.codex/agents/slice-executor-l
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: fable$' "$F/.claude/agents/slice-executor-high.md" \
   && ok "executors.toml override patches the high-tier model" || bad "executors.toml override did not patch the high tier"
+printf 'mode = "economy"\n' > "$F/executors.toml"
+( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: haiku$' "$F/.claude/agents/slice-executor-low.md" \
+  && ! grep -q '^effort:' "$F/.claude/agents/slice-executor-low.md" && grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" \
+  && ok "mode = economy restores haiku (no effort line) / sonnet@xhigh / opus@xhigh" || bad "economy mode did not restore the legacy tiers"
+printf 'mode = "cheap"\n' > "$F/executors.toml"
+( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && bad "unknown mode should fail sync-agents" || ok "unknown mode rejected"
+printf 'mode = "flex"\nmode = "economy"\n' > "$F/executors.toml"
+( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && bad "duplicate mode should fail sync-agents" || ok "duplicate mode rejected"
+printf '[claude.high]\nmodel = "opus"\nmode = "flex"\n' > "$F/executors.toml"
+( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && bad "mode after a section should fail sync-agents" || ok "mode after a section rejected"
+printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
+( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed re-applying the fable override"
 sh "$BOOT" "$F" --update >/dev/null 2>&1 && grep -q 'fable' "$F/executors.toml" \
   && ok "--update preserves an edited executors.toml (seed-once)" || bad "--update clobbered or failed on an edited executors.toml"
 grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" \

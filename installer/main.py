@@ -35,7 +35,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 10
+WORKSPACE_VERSION = 11
 ROOT = TARGET.resolve()
 
 DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
@@ -635,7 +635,7 @@ else:
     print("Contracts: CLAUDE.md and AGENTS.md (equivalent)")
     print("Claude Code: skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{low,mid,high}.md, settings .claude/settings.json")
     print("Codex: skills in .agents/skills/ (e.g. $do-next-slice), subagent tiers .codex/agents/slice-executor-{low,mid,high}.toml, instructions AGENTS.md")
-    print("Executor tiers are risk-routed (low/mid/high); tune models/efforts in executors.toml (seeded with commented defaults) + python3 scripts/workflow.py sync-agents")
+    print("Executor tiers are risk-routed (low/mid/high); pick a mode preset (flex default / economy) and tune models/efforts in executors.toml (seeded with commented defaults) + python3 scripts/workflow.py sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
     print("Canonical state: phase.json / slice.json / deferred.json; generated: works/backlog.md, works/deferred.md")
     print("Versioned docs: docs/versions/<doc>/vNNNN_*.md with generated docs/current/*.md")
