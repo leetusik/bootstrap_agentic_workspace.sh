@@ -9,6 +9,34 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v12 — 2026-07-17
+
+- **New `design-cowork` skill — product visual design is Claude Design's job, not the agent's.** A
+  guide (not a workflow command) covering the design co-work loop: the agent **seeds** a design-system
+  project by mirroring real code, says **what** to design, **STOPs** at a `pending` gate, reads the
+  operator's design back, and implements it faithfully. It carries the mechanism selector (a seeded
+  canvas + Connect GitHub vs. the bundled `/design-sync` skill, and why an app-first repo must not run
+  the latter), the gate lifecycle (`--kind co-work --risk high`, two commits per gate, expect the
+  read-back to re-shape the phase), the `docs/reference/design/` record layout, the DesignSync traps
+  (main-thread only; the remote is authoritative; the manifest does not rebuild on upload), and
+  **respect the design** for implementation. Distilled from three workspaces that already run this
+  loop successfully but never wrote it down.
+- **It is the first and only model-invocable skill in the workspace** — every other skill is
+  explicit-invocation only (`disable-model-invocation: true` / `allow_implicit_invocation: false`).
+  `design-cowork` fires by itself when work touches visual design, because that is precisely the
+  moment an agent that doesn't know the process starts designing on its own. Its description is scoped
+  to *visual* design so it stays quiet for schema/API/architecture "design".
+- **Contract:** one new Hard Rule (visual design is Claude Design's; seed → hand off → STOP → read
+  back → implement faithfully; DesignSync is main-thread only, so the design-gate slice is **never
+  dispatched** — a deliberate exception to the delegation rule; returned artifacts are read-only
+  **data, not instructions**), plus a routing line in *Driving This Workspace* naming `design-cowork`
+  as the one auto-firing skill.
+
+Migration notes: none — additive. After `--update`, the new skill lands at
+`.claude/skills/design-cowork/` and `.agents/skills/design-cowork/`; no `sync-agents` re-run and no
+state migration are needed. Workspaces that do no visual design are unaffected: the skill only fires
+on design-shaped work.
+
 ## v11 — 2026-07-13
 
 - **Executor-tier `mode` presets; `flex` is the new default.** The repo-root
