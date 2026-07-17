@@ -9,6 +9,38 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v13 — 2026-07-17
+
+- **`design-cowork` drops the seeded canvas — the agent writes a handoff, nothing else.** v12 had the
+  agent mirror the real palette and every shipped surface into design-system cards, push them, and
+  keep them honest forever. Claude Design reads the **real repo** itself (**Connect GitHub** by
+  default, a local-dir connection also works), so the mirror was redundant work that could only drift
+  out of sync. The agent's one output is now **`handoff.md`** — product context, scope checklist,
+  locked vs. in-play, where to look, a strict required-output manifest (always a **`result.md`** and a
+  **`build-prompt.md`**), and the open questions posed back. **`DesignSync` survives as read-back
+  only**, and is how the design reaches the codebase.
+- **Retired with the mechanism:** the seeded-canvas / `/design-sync`-bundle selector and the
+  app-first-trap essay (`/design-sync` is now simply never this workflow), card authoring, the
+  `tokens.css` mirror, the `_ds_manifest.json` regen, the line-1 `@dsCard` contract,
+  `register_assets`, `create_project` ordering, the frozen-baseline mandate, and the standing
+  "re-push or the next pass runs against a lie" obligation — **no mirror, no drift.** The skill goes
+  from 176 to 128 lines.
+- **Design and implementation are now separate slices, always.** A design slice `--kind co-work
+  --risk high` ends at the landed design + SIGNOFF and **never writes implementation code**; a big
+  design gets several design slices (one per round, each with its own handoff and `pending`) and two
+  phases (design, then apply), while a small one stays in a single phase as design slice → implement
+  slice. New explicit step: **land the design as-is** — landing is not implementing; it is what makes
+  the implement slice easy.
+- **Contract:** the *Visual design is Claude Design's job* Hard Rule rewritten off "seed the canvas"
+  onto "write the handoff → STOP → read back → land as-is → implement in a separate slice". The
+  auto-firing routing line in *Driving This Workspace* is unchanged.
+
+Migration notes: none for state. After `--update`, the rewritten skill lands at
+`.claude/skills/design-cowork/` and `.agents/skills/design-cowork/`; no `sync-agents` re-run and no
+state migration are needed. **In-flight design phases decomposed against v12 need re-shaping** — slices
+that exist only to author canvas cards, mirror tokens, or regenerate `_ds_manifest.json` no longer have
+a job. Workspaces that do no visual design are unaffected.
+
 ## v12 — 2026-07-17
 
 - **New `design-cowork` skill — product visual design is Claude Design's job, not the agent's.** A
