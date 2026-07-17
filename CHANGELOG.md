@@ -9,6 +9,39 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v14 — 2026-07-17
+
+- **The design round returns a card set — the operator has to see the design to design it.** v13 was
+  right that the agent must not mirror a canvas, but it retired the line-1 `@dsCard` contract *as part
+  of the mirror*, reasoning that **Connect GitHub** makes mirroring unnecessary. That holds for
+  **input** — and the manifest was never only input. It is also **the render index for the Design
+  System pane**, and Connect GitHub does not populate that pane. So v13 dropped the card medium along
+  with the mirror, and a round degraded from "design on the cards" to "describe in prose, get loose
+  HTML back" — a complete `build-prompt.md` the operator could not see, review, or fix.
+- **The card set is now a required output of the session, authored by Claude Design.** Cards were never
+  the agent's to *author* — they are Claude Design's to *deliver*. The handoff's required-output
+  manifest is now three things: **the card set**, **`result.md`**, and **`build-prompt.md`**. **Markdown
+  alone is not a round.** Requiring a card is not drawing one: the agent says what must be reviewable
+  (**one card per reviewable unit** — never one monolithic "design system" page — and the `group`s that
+  become the pane's headings); Claude Design decides what it looks like. **The mirror ban is unchanged
+  and unweakened.**
+- **The line-1 `@dsCard` marker returns as a handoff requirement, not as mirror work.**
+  `<!-- @dsCard group="…" name="…" subtitle="…" viewport="…" -->` on line 1, exactly; the app compiles
+  it into `_ds_manifest.json` on its self-check. **No marker → no card → an empty pane.**
+- **`tokens.css` is Claude Design's deliverable now.** Under v12 it was the agent's mirror and it
+  drifted four versions behind; v13 deleted it. **The palette *is* the design**, so the design session
+  authors it and the pane compiles the foundations from it — no mirror, no drift, and the foundations
+  render.
+- **Read-back verifies the pane, not the files.** `list_files` first: no `_ds_manifest.json`, an empty
+  `cards[]`, or one monolith → **`needs_operator`** with the card contract restated. Explicitly **not**
+  fixable by editing the artifacts, writing the cards yourself, or hand-compiling the manifest —
+  `register_assets` and the write path stay closed. The definition of done is *"the cards appear in the
+  pane."*
+- **Migration notes:** a round already handed off under v13 comes back with no cards — it is not lost,
+  just invisible. Re-hand-off for the card set against the existing `result.md`/`build-prompt.md`
+  (a visibility pass: it decides nothing new, and supersedes any monolith so there is no second source
+  of truth). Nothing on disk migrates; no `sync-agents` re-run; skill text only.
+
 ## v13 — 2026-07-17
 
 - **`design-cowork` drops the seeded canvas — the agent writes a handoff, nothing else.** v12 had the
