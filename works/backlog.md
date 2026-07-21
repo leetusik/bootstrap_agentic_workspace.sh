@@ -10,7 +10,7 @@
 - Next slice: `P7.REVIEW`
 - Waiting on operator: `none`
 - Open deferred jobs: `1`
-- Rebuilt at: `2026-07-08T16:35:47+09:00`
+- Rebuilt at: `2026-07-21T13:17:18+09:00`
 
 ## Active Phases
 
@@ -20,6 +20,7 @@
 | [x] `P5` | `done` | `pass` | Optional /explain install (--with-explain) | `none` | `works/phases/active/P5` |
 | [x] `P6` | `done` | `pass` | Wire /explain to the KB document API | `none` | `works/phases/active/P6` |
 | [ ] `P7` | `planned` | `pending` | Retire embedded /explain | `P7.DECOMP` | `works/phases/active/P7` |
+| [ ] `P8` | `planned` | `pending` | Auto-explain at phase review | `P8.DECOMP` | `works/phases/active/P8` |
 
 ## Phase P4: Model-flexible attribution, installer split, versioned workspace updates
 
@@ -54,3 +55,10 @@
 |---|---|---|---|---|
 | [ ] `P7.DECOMP` | `todo` | decompose phase | `decomposition` | `works/phases/active/P7/slices/P7.DECOMP` |
 | [ ] `P7.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P7/slices/P7.REVIEW` |
+
+## Phase P8: Auto-explain at phase review
+
+| Slice | Status | Name | Kind | Path |
+|---|---|---|---|---|
+| [ ] `P8.DECOMP` | `todo` | decompose phase | `decomposition` | `works/phases/active/P8/slices/P8.DECOMP` |
+| [ ] `P8.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P8/slices/P8.REVIEW` |

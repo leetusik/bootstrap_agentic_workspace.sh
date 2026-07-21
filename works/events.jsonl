@@ -133,3 +133,4 @@
 {"ts": "2026-07-04T11:43:19+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0020_result.md_template_dropped_the_executor_writes_a_free-form_result", "source": "operator-request 2026-07-04"}
 {"ts": "2026-07-08T16:35:47+09:00", "type": "phase_created", "phase": "P7"}
 {"ts": "2026-07-13T15:18:52+09:00", "type": "agents_synced", "changed": [".claude/agents/slice-executor-low.md", ".claude/agents/slice-executor-mid.md"], "config_present": true}
+{"ts": "2026-07-21T13:17:18+09:00", "type": "phase_created", "phase": "P8"}
