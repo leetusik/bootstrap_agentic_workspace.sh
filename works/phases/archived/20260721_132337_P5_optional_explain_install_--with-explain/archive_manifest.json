@@ -1,0 +1,13 @@
+{
+  "phase_id": "P5",
+  "archived_at": "2026-07-21T13:23:37+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P5",
+  "archive_path": "works/phases/archived/20260721_132337_P5_optional_explain_install_--with-explain",
+  "slices": [
+    "P5.DECOMP",
+    "P5.S1",
+    "P5.REVIEW"
+  ]
+}

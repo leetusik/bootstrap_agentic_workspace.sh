@@ -1,0 +1,14 @@
+{
+  "phase_id": "P6",
+  "archived_at": "2026-07-21T13:23:37+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P6",
+  "archive_path": "works/phases/archived/20260721_132337_P6_wire_explain_to_the_kb_document_api",
+  "slices": [
+    "P6.DECOMP",
+    "P6.S1",
+    "P6.S2",
+    "P6.REVIEW"
+  ]
+}
