@@ -107,7 +107,7 @@
       ]
     },
     "operations": {
-      "latest": "v0014_seed-once_executors.toml_example_file_retired_workspace_v9",
+      "latest": "v0015_embedded_explain_retired_no_longer_ships_--with-explain_removed_workspace_v15_install_the_knowledge_plugin_plugin_marketplace_add_leetusik_knowledge_-_plugin_install_knowledge_knowledge_knowledge_setup_knowledge_explain",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -221,6 +221,14 @@
           "source": "operator-request 2026-07-04",
           "summary": "Seed-once executors.toml; example file retired; workspace v9",
           "previous": "v0013_executor_tier_config_via_executors.toml_.env_retired_workspace_v8"
+        },
+        {
+          "id": "v0015_embedded_explain_retired_no_longer_ships_--with-explain_removed_workspace_v15_install_the_knowledge_plugin_plugin_marketplace_add_leetusik_knowledge_-_plugin_install_knowledge_knowledge_knowledge_setup_knowledge_explain",
+          "path": "docs/versions/operations/v0015_embedded_explain_retired_no_longer_ships_--with-explain_removed_workspace_v15_install_the_knowledge_plugin_plugin_marketplace_add_leetusik_knowledge_-_plugin_install_knowledge_knowledge_knowledge_setup_knowledge_explain.md",
+          "created_at": "2026-07-21T13:45:41+09:00",
+          "source": "P7.REVIEW",
+          "summary": "Embedded /explain retired — no longer ships, --with-explain removed, workspace v15; install the knowledge plugin (/plugin marketplace add leetusik/knowledge -> /plugin install knowledge@knowledge; /knowledge:setup, /knowledge:explain)",
+          "previous": "v0014_seed-once_executors.toml_example_file_retired_workspace_v9"
         }
       ]
     },
@@ -261,7 +269,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0020_result.md_template_dropped_the_executor_writes_a_free-form_result",
+      "latest": "v0021_embedded_explain_retired_in_favor_of_the_knowledge_repo_s_claude_code_plugin_manual_migration_stale-flag_asymmetry_accepted_workspace_v15",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -423,9 +431,17 @@
           "source": "operator-request 2026-07-04",
           "summary": "result.md template dropped; the executor writes a free-form result",
           "previous": "v0019_executors.toml_ships_seeded_with_commented_defaults_the_example_file_is_dropped"
+        },
+        {
+          "id": "v0021_embedded_explain_retired_in_favor_of_the_knowledge_repo_s_claude_code_plugin_manual_migration_stale-flag_asymmetry_accepted_workspace_v15",
+          "path": "docs/versions/decisions/v0021_embedded_explain_retired_in_favor_of_the_knowledge_repo_s_claude_code_plugin_manual_migration_stale-flag_asymmetry_accepted_workspace_v15.md",
+          "created_at": "2026-07-21T13:46:29+09:00",
+          "source": "P7.REVIEW",
+          "summary": "Embedded /explain retired in favor of the knowledge repo's Claude Code plugin; manual migration, stale-flag asymmetry accepted (workspace v15)",
+          "previous": "v0020_result.md_template_dropped_the_executor_writes_a_free-form_result"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-07-04T11:44:02+09:00"
+  "last_rebuilt_at": "2026-07-21T13:47:27+09:00"
 }

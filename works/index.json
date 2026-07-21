@@ -4,13 +4,13 @@
       "id": "P7",
       "name": "Retire embedded /explain",
       "objective": "Remove the explain feature from the bootstrap distribution — embedded skill copies (.claude/skills/explain, .agents/skills/explain), the --with-explain installer path, and KB API wiring — and point users at the knowledge repo's Claude Code plugin instead. Gated: starts only after the knowledge repo's P7 (Claude Code plugin) review passes; leave everything as-is until then. Rebuild the installer (python3 installer/build.py) as part of the work; likely resolves deferred D1 (hardcoded KB path/ports) by deletion.",
-      "status": "planned",
+      "status": "done",
       "order": 4,
       "path": "works/phases/active/P7",
-      "review_status": "pending",
-      "current_slice": "P7.REVIEW",
+      "review_status": "pass",
+      "current_slice": null,
       "slice_count": 3,
-      "done_slice_count": 2
+      "done_slice_count": 3
     },
     {
       "id": "P8",
@@ -28,5 +28,5 @@
   "deferred_open_count": 0,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 1,
-  "last_rebuilt_at": "2026-07-21T13:41:54+09:00"
+  "last_rebuilt_at": "2026-07-21T13:49:14+09:00"
 }

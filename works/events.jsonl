@@ -143,3 +143,8 @@
 {"ts": "2026-07-21T13:34:43+09:00", "type": "slice_status_changed", "slice": "P7.S1", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-07-21T13:41:54+09:00", "type": "slice_status_changed", "slice": "P7.S1", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-07-21T13:41:54+09:00", "type": "deferred_dropped", "deferred": "D1", "reason": "Resolved by P7.S1: embedded /explain retired; portability shipped for real by the knowledge repo's Claude Code plugin (/knowledge:explain)"}
+{"ts": "2026-07-21T13:42:58+09:00", "type": "slice_status_changed", "slice": "P7.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-07-21T13:45:41+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0015_embedded_explain_retired_no_longer_ships_--with-explain_removed_workspace_v15_install_the_knowledge_plugin_plugin_marketplace_add_leetusik_knowledge_-_plugin_install_knowledge_knowledge_knowledge_setup_knowledge_explain", "source": "P7.REVIEW"}
+{"ts": "2026-07-21T13:46:29+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0021_embedded_explain_retired_in_favor_of_the_knowledge_repo_s_claude_code_plugin_manual_migration_stale-flag_asymmetry_accepted_workspace_v15", "source": "P7.REVIEW"}
+{"ts": "2026-07-21T13:49:14+09:00", "type": "slice_status_changed", "slice": "P7.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-07-21T13:49:14+09:00", "type": "phase_reviewed", "phase": "P7", "verdict": "pass", "reviewer": "slice-executor-high"}
