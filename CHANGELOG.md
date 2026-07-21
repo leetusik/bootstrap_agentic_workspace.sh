@@ -9,6 +9,42 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v16 — 2026-07-22
+
+- **A passing phase review now auto-produces a phase explainer.** Phase review used to be
+  *validate + consolidate docs*; it is now *validate + consolidate docs + **explain***. On a passing
+  review only (never on `changes_requested` / `blocked`, exactly like doc versions), the review
+  executor locates the knowledge plugin's installed `explain` skill — first hit wins: project
+  `.claude/skills/explain/SKILL.md` → user `~/.claude/skills/explain/SKILL.md` → plugin installs under
+  `~/.claude/plugins` (`cache/` and `marketplaces/`) — and follows it in change mode with the phase as
+  the change-ref, writing a self-contained interactive HTML phase explainer into the operator's KB.
+- **Verdict-neutral, gracefully skipped.** The explainer is best-effort: if the skill is not installed,
+  the KB is unconfigured, web research tools are unavailable, or the KB API is unreachable, the step
+  degrades to a reported skip (`skipped (skill not installed)` / `skipped (KB unconfigured)` /
+  `skipped-offline` / `failed (<reason>)`) and its outcome **never** changes the `review_verdict`. The
+  review executor now returns a one-line `explain:` outcome alongside its verdict.
+- **`WebSearch` / `WebFetch` added to the Claude high executor.** `.claude/agents/slice-executor-high.md`
+  gains those two read-only research tools so the explain skill's cited "Best practices & next steps"
+  section can run at review; `sync-agents` patches only `model:` / `effort:`, so the new `tools:` line
+  survives sync and `sync-agents --check` stays green. Only the high tier gets them (reviews always run
+  there); mid/low and the Codex executors are unchanged. The Codex high executor has no per-agent tools
+  list (Codex governs tools via `sandbox_mode`), so its review degrades the research section to
+  `skipped-offline` by design.
+- **Scoped KB-repo commit carve-out.** The explain skill's API-unreachable offline fallback commits the
+  explainer with `git -C <KB_ROOT>` in the **separate** knowledge-base repo. The executor's "never
+  commit" invariant gains one narrow exception for exactly this: the review slice's auto-explain
+  fallback may commit **only** in that KB repo — never in this workspace's repo, never any `git push`.
+  Under a Codex `workspace-write` sandbox (which cannot write outside the workspace) the fallback is an
+  automatic skip.
+- **Migration notes:** no action required — the step self-skips wherever the knowledge plugin or a KB
+  is absent, and the review verdict is unaffected. Adopters who want auto-explain at their own KB
+  install the knowledge plugin (`/plugin marketplace add leetusik/knowledge`,
+  `/plugin install knowledge@knowledge`) and run `/knowledge:setup` once. On `--update` the
+  `slice-executor-high` agent payload changed (new review step, `explain` verdict field, and — Claude
+  only — the `WebSearch` / `WebFetch` `tools:` line); no `sync-agents` re-run is required, since
+  `sync-agents` only rewrites `model:` / `effort:` and the update ships the new agent-file bodies
+  directly.
+
 ## v15 — 2026-07-21
 
 - **Embedded `/explain` is retired — the feature ships as a Claude Code plugin now.** The bootstrap

@@ -44,7 +44,8 @@ three sessions of the same agent) at one repo and you get three different conven
 - **Durable, shared memory** — a per-phase notebook plus append-only versioned docs carry what each
   step learned forward to the next, so knowledge survives compaction and hand-offs between tools.
 - **Review gates** — work isn't "done" until a phase review (run by the executor in a fresh,
-  isolated context that never edits source) checks it against the phase's objective.
+  isolated context that never edits source) checks it against the phase's objective, consolidates its
+  doc versions, and — with the knowledge plugin installed — files a phase explainer into your KB.
 
 It is **cross-tool by design**: the same commands and skills work natively in Claude Code and in
 Codex, with a plain `python3 scripts/workflow.py …` fallback that works anywhere (including CI).
@@ -274,12 +275,16 @@ is Claude Code only — so the same step works natively in either tool:
 > into a standalone Claude Code plugin in the [knowledge repo](https://github.com/leetusik/knowledge).
 > Install it inside Claude Code with `/plugin marketplace add leetusik/knowledge` then
 > `/plugin install knowledge@knowledge`, run `/knowledge:setup` once, and use `/knowledge:explain <topic>`.
+> With the plugin installed, a passing phase review also files a phase explainer into your KB
+> automatically (auto-explain — gracefully skipped when the plugin or KB is absent).
 
 Both tools delegate the heavy lifting to a **`slice-executor`** subagent in one of three capability
 tiers, picked by each slice's risk: `slice-executor-low` (sonnet by default — a literal plan-follower
 for mechanical low-risk slices), `slice-executor-mid` (opus — medium-risk, the default), and
 `slice-executor-high` (opus — decomposition, high-risk slices, and the phase review, which it runs in
-a fresh context that never edits source, validating the phase and consolidating its doc versions).
+a fresh context that never edits source, validating the phase and consolidating its doc versions, and,
+on a pass, producing the phase explainer via the knowledge plugin's explain skill — gracefully skipped
+when the plugin/KB is absent).
 When a low/mid executor hits something beyond its depth it returns an `escalate` verdict; the
 orchestrator folds the findings into the plan and re-dispatches one tier up — so routine slices run
 cheap and fast without capping quality. Tier models and efforts are configurable via the repo-root
