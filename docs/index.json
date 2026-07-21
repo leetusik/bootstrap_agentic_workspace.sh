@@ -107,7 +107,7 @@
       ]
     },
     "operations": {
-      "latest": "v0015_embedded_explain_retired_no_longer_ships_--with-explain_removed_workspace_v15_install_the_knowledge_plugin_plugin_marketplace_add_leetusik_knowledge_-_plugin_install_knowledge_knowledge_knowledge_setup_knowledge_explain",
+      "latest": "v0016_phase_review_now_also_produces_a_phase_explainer_on_a_passing_review_review_validate_consolidate_docs_explain_via_the_knowledge_plugin_s_explain_skill_gracefully_skipped_when_absent_workspace_v16",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -229,6 +229,14 @@
           "source": "P7.REVIEW",
           "summary": "Embedded /explain retired — no longer ships, --with-explain removed, workspace v15; install the knowledge plugin (/plugin marketplace add leetusik/knowledge -> /plugin install knowledge@knowledge; /knowledge:setup, /knowledge:explain)",
           "previous": "v0014_seed-once_executors.toml_example_file_retired_workspace_v9"
+        },
+        {
+          "id": "v0016_phase_review_now_also_produces_a_phase_explainer_on_a_passing_review_review_validate_consolidate_docs_explain_via_the_knowledge_plugin_s_explain_skill_gracefully_skipped_when_absent_workspace_v16",
+          "path": "docs/versions/operations/v0016_phase_review_now_also_produces_a_phase_explainer_on_a_passing_review_review_validate_consolidate_docs_explain_via_the_knowledge_plugin_s_explain_skill_gracefully_skipped_when_absent_workspace_v16.md",
+          "created_at": "2026-07-22T00:37:34+09:00",
+          "source": "P8.REVIEW",
+          "summary": "Phase review now also produces a phase explainer on a passing review (review = validate + consolidate docs + explain) via the knowledge plugin's explain skill; gracefully skipped when absent; workspace v16",
+          "previous": "v0015_embedded_explain_retired_no_longer_ships_--with-explain_removed_workspace_v15_install_the_knowledge_plugin_plugin_marketplace_add_leetusik_knowledge_-_plugin_install_knowledge_knowledge_knowledge_setup_knowledge_explain"
         }
       ]
     },
@@ -269,7 +277,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0021_embedded_explain_retired_in_favor_of_the_knowledge_repo_s_claude_code_plugin_manual_migration_stale-flag_asymmetry_accepted_workspace_v15",
+      "latest": "v0022_auto-explain_the_phase_at_a_passing_review_via_the_external_explain_skill_pass-gated_verdict-neutral_ordered_detection_websearch_webfetch_on_claude_high_only_scoped_kb-repo_commit_carve-out_workspace_v16",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -439,9 +447,17 @@
           "source": "P7.REVIEW",
           "summary": "Embedded /explain retired in favor of the knowledge repo's Claude Code plugin; manual migration, stale-flag asymmetry accepted (workspace v15)",
           "previous": "v0020_result.md_template_dropped_the_executor_writes_a_free-form_result"
+        },
+        {
+          "id": "v0022_auto-explain_the_phase_at_a_passing_review_via_the_external_explain_skill_pass-gated_verdict-neutral_ordered_detection_websearch_webfetch_on_claude_high_only_scoped_kb-repo_commit_carve-out_workspace_v16",
+          "path": "docs/versions/decisions/v0022_auto-explain_the_phase_at_a_passing_review_via_the_external_explain_skill_pass-gated_verdict-neutral_ordered_detection_websearch_webfetch_on_claude_high_only_scoped_kb-repo_commit_carve-out_workspace_v16.md",
+          "created_at": "2026-07-22T00:38:40+09:00",
+          "source": "P8.REVIEW",
+          "summary": "Auto-explain the phase at a passing review via the external explain skill (pass-gated, verdict-neutral, ordered detection, WebSearch/WebFetch on Claude high only, scoped KB-repo commit carve-out); workspace v16",
+          "previous": "v0021_embedded_explain_retired_in_favor_of_the_knowledge_repo_s_claude_code_plugin_manual_migration_stale-flag_asymmetry_accepted_workspace_v15"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-07-21T13:47:27+09:00"
+  "last_rebuilt_at": "2026-07-22T00:39:38+09:00"
 }

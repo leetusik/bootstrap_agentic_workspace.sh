@@ -82,6 +82,31 @@ _Running list; REVIEW consolidates into doc versions. Slices append one-liners h
 - **operations** (CONFIRMED by S1): the phase-review procedure now also produces a phase explainer on a passing review — review = validate + consolidate docs + **explain** — via the knowledge plugin's explain skill, gracefully skipped when the skill/KB is absent or unreachable; workspace bumped to v16. Adopters who want auto-explain at their own KB install the knowledge plugin + `/knowledge:setup`. (Supersedes/extends operations v0015's explain-retired truth: explain is gone from the *distribution* but is now *invoked* by the review from the external plugin.)
 - **decisions** (CONFIRMED by S1): decision that a passing phase review auto-produces a phase explainer via the external explain skill — review executor runs it, ordered skill-detection with graceful skip, pass-gated, explain outcome never affects the verdict, `WebSearch/WebFetch` added to the Claude high executor only (mid/low and Codex untouched), and a scoped KB-repo-only commit carve-out to the executor's "never commit" invariant (Codex `workspace-write` degrades that fallback to skip). New decisions entry to add at REVIEW.
 
+## Review notes (P8.REVIEW)
+
+**Verdict: `pass`.** Objective shipped, both slices met their plans with no deviations, all
+phase-wide validation green (`build.py --check`, `sync-agents --check`, `retrofit_smoke.sh`,
+`validate`, all mirror + spot-grep checks). All five settled decisions verified faithfully
+implemented against the real diff of commit `9a015a0`. Contract/mirror hygiene clean; no historical
+CHANGELOG entries patched; no `docs/current` change in the S1 commit.
+
+- **Docs consolidated at this review:** operations **v0016** and decisions **v0022** (both
+  `--source P8.REVIEW`), `docs/current` rebuilt, `validate` re-run green.
+- **Gotcha for future reviews — long doc summaries overflow the filename.** `doc-new-version`
+  derives the version filename from the `--summary`, so a very long summary can exceed the OS
+  filename limit (`OSError: File name too long`, seen here on the first decisions attempt). No state
+  is written when it fails, so just retry with a shorter `--summary` (put the full detail in the doc
+  body, not the summary).
+- **Auto-explain dogfood (first real run of the new machinery):** user-level explain skill found
+  first; KB configured via the legacy convention with local fallback available; web research ran
+  (best-practices section included with citations); the KB API at `localhost:8766` was **down**, so
+  the offline fallback wrote + committed the explainer **in the KB repo only** (`d06d17e`, not
+  pushed) — the scoped carve-out path worked as designed and did **not** affect the verdict.
+  `explain: saved <KB_ROOT>/docs/bootstrap_agentic_workspace.sh/2026-07-22-auto-explain-phase-review.html`
+  (offline fallback). Confirms the whole graceful-degradation ladder end-to-end: detection →
+  KB probe → research → API-unreachable → local KB fallback → KB-repo commit, never touching this
+  workspace's repo.
+
 ## Open Questions
 
 - None. Gate satisfied, all five decisions settled, touch surface verified (with the CLAUDE.md/AGENTS.md byte-equality correction noted above).

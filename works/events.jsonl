@@ -153,3 +153,8 @@
 {"ts": "2026-07-22T00:00:15+09:00", "type": "slice_status_changed", "slice": "P8.DECOMP", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-07-22T00:27:40+09:00", "type": "slice_status_changed", "slice": "P8.S1", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-07-22T00:34:40+09:00", "type": "slice_status_changed", "slice": "P8.S1", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-07-22T00:35:31+09:00", "type": "slice_status_changed", "slice": "P8.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-07-22T00:37:34+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0016_phase_review_now_also_produces_a_phase_explainer_on_a_passing_review_review_validate_consolidate_docs_explain_via_the_knowledge_plugin_s_explain_skill_gracefully_skipped_when_absent_workspace_v16", "source": "P8.REVIEW"}
+{"ts": "2026-07-22T00:38:40+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0022_auto-explain_the_phase_at_a_passing_review_via_the_external_explain_skill_pass-gated_verdict-neutral_ordered_detection_websearch_webfetch_on_claude_high_only_scoped_kb-repo_commit_carve-out_workspace_v16", "source": "P8.REVIEW"}
+{"ts": "2026-07-22T00:46:48+09:00", "type": "slice_status_changed", "slice": "P8.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-07-22T00:46:48+09:00", "type": "phase_reviewed", "phase": "P8", "verdict": "pass", "reviewer": "slice-executor-high"}

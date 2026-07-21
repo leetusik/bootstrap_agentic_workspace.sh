@@ -5,19 +5,19 @@
 
 ## Pointer
 
-- Current phase: `P8`
-- Current slice: `P8.REVIEW`
+- Current phase: `none`
+- Current slice: `none`
 - Next slice: `none`
 - Waiting on operator: `none`
 - Open deferred jobs: `0`
-- Rebuilt at: `2026-07-22T00:34:40+09:00`
+- Rebuilt at: `2026-07-22T00:46:48+09:00`
 
 ## Active Phases
 
 | Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
 | [x] `P7` | `done` | `pass` | Retire embedded /explain | `none` | `works/phases/active/P7` |
-| [ ] `P8` | `planned` | `pending` | Auto-explain at phase review | `P8.REVIEW` | `works/phases/active/P8` |
+| [x] `P8` | `done` | `pass` | Auto-explain at phase review | `none` | `works/phases/active/P8` |
 
 ## Phase P7: Retire embedded /explain
 
@@ -33,4 +33,4 @@
 |---|---|---|---|---|
 | [x] `P8.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P8/slices/P8.DECOMP` |
 | [x] `P8.S1` | `done` | Auto-explain the phase at a passing review | `implementation` | `works/phases/active/P8/slices/P8.S1` |
-| [ ] `P8.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P8/slices/P8.REVIEW` |
+| [x] `P8.REVIEW` | `done` | phase review | `review` | `works/phases/active/P8/slices/P8.REVIEW` |
