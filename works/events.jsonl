@@ -137,3 +137,6 @@
 {"ts": "2026-07-21T13:23:37+09:00", "type": "phase_archived", "phase": "P4", "archive_path": "works/phases/archived/20260721_132337_P4_model-flexible_attribution_installer_split_versioned_workspace_updates"}
 {"ts": "2026-07-21T13:23:37+09:00", "type": "phase_archived", "phase": "P5", "archive_path": "works/phases/archived/20260721_132337_P5_optional_explain_install_--with-explain"}
 {"ts": "2026-07-21T13:23:37+09:00", "type": "phase_archived", "phase": "P6", "archive_path": "works/phases/archived/20260721_132337_P6_wire_explain_to_the_kb_document_api"}
+{"ts": "2026-07-21T13:29:23+09:00", "type": "slice_status_changed", "slice": "P7.DECOMP", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-07-21T13:31:30+09:00", "type": "slice_created", "phase": "P7", "slice": "P7.S1"}
+{"ts": "2026-07-21T13:33:15+09:00", "type": "slice_status_changed", "slice": "P7.DECOMP", "old_status": "in_progress", "new_status": "done"}
