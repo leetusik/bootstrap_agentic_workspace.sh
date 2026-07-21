@@ -206,20 +206,12 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-echo "== Test 8: /explain is opt-in (--with-explain installs it) =="
+echo "== Test 8: --with-explain is retired (now an unknown option) =="
 newtmp G
 out=$(sh "$BOOT" "$G" --with-explain --name "Fresh" --summary "fresh" 2>&1); rc=$?
-[ "$rc" -eq 0 ] && ok "--with-explain install exits 0" || bad "--with-explain install exit=$rc -- $out"
-( cd "$G" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) && ok "--with-explain workspace validates" || bad "--with-explain workspace failed validate"
-for rel in \
-  .claude/skills/explain/SKILL.md \
-  .agents/skills/explain/SKILL.md \
-  .agents/skills/explain/agents/openai.yaml ; do
-  [ -f "$G/$rel" ] && ok "--with-explain installs $rel" || bad "--with-explain missing $rel"
-  diff -q "$REPO_ROOT/$rel" "$G/$rel" >/dev/null \
-    && ok "dual-apply: $rel" \
-    || bad "DRIFT: $rel differs from the bootstrap-embedded copy"
-done
+[ "$rc" -ne 0 ] && ok "--with-explain is rejected (exit=$rc)" || bad "--with-explain should be unknown but install exited 0 -- $out"
+printf '%s\n' "$out" | grep -q "unknown option --with-explain" && ok "reports the unknown-option error" || bad "no unknown-option error -- $out"
+[ ! -d "$G/.claude/skills/explain" ] && [ ! -d "$G/.agents/skills/explain" ] && ok "explain skill never installed" || bad "explain skill dir created despite the rejection"
 
 # ---------------------------------------------------------------------------
 echo

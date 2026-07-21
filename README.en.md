@@ -159,7 +159,6 @@ commits at slice boundaries, and stops at `pending` hand-offs for your review. S
 | `--into-existing` | off | Non-destructively retrofit into an existing repo (see the [Retrofit Guide](docs/retrofit-guide.md)) |
 | `--update` | off | Update an already-installed workspace's machinery to this version (preserves your `works/` and `docs/`) |
 | `--dry-run` | off | With `--update`, preview the change-list without writing anything |
-| `--with-explain` | off | Also install the optional `explain` skill (assumes a personal knowledge base — see [Skills](#the-skills)) |
 | `-h`, `--help` | — | Show help and exit |
 
 Both `--flag value` and `--flag=value` forms work.
@@ -169,7 +168,7 @@ Both `--flag value` and `--flag=value` forms work.
 - [`CLAUDE.md`](CLAUDE.md) + [`AGENTS.md`](AGENTS.md) — the equivalent per-tool routing contracts.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
 - `.claude/` + `.agents/` — the 14 core Agent Skills, mirrored for both tools (`do-whole-phase` is
-  Claude Code only; the optional `explain` skill installs only with `--with-explain`), plus the three risk-routed `slice-executor`
+  Claude Code only), plus the three risk-routed `slice-executor`
   tier subagents for each tool (`.claude/agents/slice-executor-{low,mid,high}.md` — sonnet / opus / opus by default (the `flex` mode);
   `.codex/agents/` on gpt-5.5 at tiered efforts), `executors.toml` (seeded tier mode/model/effort config, applied with
   `sync-agents`), and `.codex/config.toml`.
@@ -270,7 +269,11 @@ is Claude Code only — so the same step works natively in either tool:
 | `commit` | Group pending changes into focused conventional commits |
 | `retrofit` | Non-destructively adopt this workspace into an existing repo |
 | `update-workspace` | Update an adopted workspace's machinery to the latest upstream, preserving your work |
-| `explain` _(optional — installs only with `--with-explain`)_ | Write a novice-friendly educational explainer of a topic and file it in the personal knowledge base (`~/projects/personal/knowledge`) |
+
+> The `explain` educational-explainer skill no longer ships with the bootstrap — it has graduated
+> into a standalone Claude Code plugin in the [knowledge repo](https://github.com/leetusik/knowledge).
+> Install it inside Claude Code with `/plugin marketplace add leetusik/knowledge` then
+> `/plugin install knowledge@knowledge`, run `/knowledge:setup` once, and use `/knowledge:explain <topic>`.
 
 Both tools delegate the heavy lifting to a **`slice-executor`** subagent in one of three capability
 tiers, picked by each slice's risk: `slice-executor-low` (sonnet by default — a literal plan-follower
@@ -284,9 +287,7 @@ cheap and fast without capping quality. Tier models and efforts are configurable
 haiku / sonnet / opus mapping) plus per-tier overrides (seeded with commented defaults; seed-once —
 updates never overwrite it), applied with `python3 scripts/workflow.py sync-agents`. Workflow skills are
 **explicit-invocation only** — agents don't fire them on their own. They are the **operator's
-interface**: you type the slash command; the agent does everything it implies. (`explain` is the
-one exception: a general-purpose, non-workflow skill agents may fire when you ask for an
-explainer in plain words.)
+interface**: you type the slash command; the agent does everything it implies.
 
 ### Read order
 

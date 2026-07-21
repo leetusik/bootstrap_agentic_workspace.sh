@@ -64,6 +64,15 @@ Then `/knowledge:setup` once to scaffold a KB, and `/knowledge:explain <topic>` 
 
 D1 ("Make /explain portable so public users can use it") is resolved by this deletion — the plugin makes it portable for real. The **orchestrator** runs `drop-deferred D1` after S1 lands (reason: resolved by retiring embedded explain in favor of the knowledge plugin). S1/executor must NOT run deferred commands.
 
+### S1 execution note (done — for REVIEW)
+
+The removal footprint in Findings matched reality exactly; every planned edit applied cleanly. Landed: both explain skill dirs deleted, wrapper's four explain bits removed, main.py's optional-skill block removed + `WORKSPACE_VERSION` → 15, smoke Test 8 rewritten to assert `--with-explain` is rejected, README.en.md pruned + knowledge-plugin pointer added, CHANGELOG v15 with Migration notes, and `bootstrap_agentic_workspace.sh` rebuilt (`--check` OK).
+
+Notes for REVIEW:
+- **Skill counts were re-derived, not decremented:** post-deletion `.claude/skills/*/` = 15 dirs, `.agents/skills/*/` = 14. README's "14 core … mirrored", "15 Agent Skills", and "15 Agent Skills (Claude Code)" are all correct as-is (explain was the separately-counted "optional" extra), so no number changed.
+- **Sweep survivors are all expected:** zero explain hits in `installer/`, `.claude/`, `.agents/`, `README*`, and the rebuilt artifact. `tests/retrofit_smoke.sh` still contains `--with-explain`/`skills/explain` on lines 173–174 (kept regressions) and 209–214 (new Test 8) — required by plan step 4, not surprises. `docs/current/{operations,decisions}.md` + `docs/versions/**` + `docs/index.json` still carry explain history (the durable-doc consolidation REVIEW must supersede — operations v0010/v0011 + a new decisions entry).
+- **`flag_stale_skills` / `OBSOLETE_MACHINERY` deliberately untouched** — the generic stale-skill flagging already gives the intended asymmetric `--update` behavior (Codex copy flagged, Claude copy left as operator-owned), documented in the CHANGELOG Migration notes.
+
 ## Constraints
 
 - **Same-commit installer rebuild (non-negotiable):** S1 must run `python3 installer/build.py` and stage the rebuilt `bootstrap_agentic_workspace.sh` in the **same** commit as the machinery edits; `python3 installer/build.py --check` must pass (the `.githooks/pre-commit` hook enforces it — register once with `git config core.hooksPath .githooks`). The executor makes the edits + rebuild and validates; the orchestrator commits.
@@ -76,7 +85,9 @@ D1 ("Make /explain portable so public users can use it") is resolved by this del
 
 _Running list; REVIEW consolidates into doc versions. Slices append one-liners here._
 
--
+- **operations** (P7.S1): explain no longer ships in the bootstrap; `--with-explain` retired (now an unknown option); `WITH_EXPLAIN`/`OPTIONAL_SKILLS` wiring removed; workspace bumped to v15. Supersedes operations v0010/v0011.
+- **operations** (P7.S1): installers/users point at the knowledge repo's Claude Code plugin — `/plugin marketplace add leetusik/knowledge` → `/plugin install knowledge@knowledge`, then `/knowledge:setup` once and `/knowledge:explain <topic>` (namespace change from bare `/explain`).
+- **decisions** (P7.S1): embedded explain retired in favor of the knowledge repo's Claude Code plugin; migration is manual (existing installs never auto-deleted). New decisions entry to add at REVIEW.
 
 ## Open Questions
 

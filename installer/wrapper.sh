@@ -13,7 +13,6 @@ Options:
   --into-existing             Non-destructively retrofit into an existing repo (see docs/retrofit-guide.md)
   --update                    Update an already-installed workspace's machinery to this version
   --dry-run                   With --update, preview the change-list without writing anything
-  --with-explain              Also install the optional /explain skill (default: off)
   -h, --help                  Show this help
 
 TARGET_DIR defaults to the current directory.
@@ -49,7 +48,6 @@ force_empty_ok=0
 into_existing=0
 update=0
 dry_run=0
-with_explain=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -62,7 +60,6 @@ while [ $# -gt 0 ]; do
     --into-existing) into_existing=1; shift ;;
     --update) update=1; shift ;;
     --dry-run) dry_run=1; shift ;;
-    --with-explain) with_explain=1; shift ;;
     --) shift; while [ $# -gt 0 ]; do [ -z "$target_dir" ] || die "only one TARGET_DIR may be provided"; target_dir=$1; shift; done ;;
     -*) die "unknown option $1" ;;
     *) [ -z "$target_dir" ] || die "only one TARGET_DIR may be provided"; target_dir=$1; shift ;;
@@ -87,7 +84,6 @@ export FORCE_EMPTY_OK="$force_empty_ok"
 export INTO_EXISTING="$into_existing"
 export UPDATE="$update"
 export DRY_RUN="$dry_run"
-export WITH_EXPLAIN="$with_explain"
 
 python3 - <<'INSTALLER_PY'
 #@@PYTHON_BODY@@

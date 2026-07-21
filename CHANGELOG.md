@@ -9,6 +9,30 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v15 — 2026-07-21
+
+- **Embedded `/explain` is retired — the feature ships as a Claude Code plugin now.** The bootstrap
+  used to carry an optional `explain` skill (installed with `--with-explain`) that wrote
+  novice-friendly educational explainers into a hard-coded personal knowledge base. That feature has
+  graduated into a real, portable Claude Code plugin in the
+  [knowledge repo](https://github.com/leetusik/knowledge), so it no longer needs to ride inside every
+  workspace. The embedded skill copies (`.claude/skills/explain`, `.agents/skills/explain`), the
+  `--with-explain` installer flag, and the `WITH_EXPLAIN` / `OPTIONAL_SKILLS` wiring are all gone —
+  `--with-explain` is now an unknown option that the installer rejects.
+- **Install the plugin instead.** Inside Claude Code:
+
+      /plugin marketplace add leetusik/knowledge
+      /plugin install knowledge@knowledge
+
+  then run `/knowledge:setup` once to scaffold a knowledge base, and `/knowledge:explain <topic>` to
+  use it. Note the namespace change: the embedded skill was bare `/explain`; the plugin's command is
+  `/knowledge:explain`.
+- **Migration notes:** existing installs are never auto-deleted. On `--update`, the Codex copy
+  `.agents/skills/explain` is flagged stale ("remove manually?") while the Claude copy
+  `.claude/skills/explain` is left untouched — it carries no workspace marker, so it is treated as an
+  operator-owned skill. Remove both copies by hand and install the knowledge plugin instead. No
+  `sync-agents` re-run is needed; this is a payload/installer change only.
+
 ## v14 — 2026-07-17
 
 - **The design round returns a card set — the operator has to see the design to design it.** v13 was

@@ -4,16 +4,16 @@
 
 ## Summary
 
-- Open: `1`
+- Open: `0`
 - Promoted: `0`
-- Dropped: `0`
-- Rebuilt at: `2026-07-21T13:33:15+09:00`
+- Dropped: `1`
+- Rebuilt at: `2026-07-21T13:41:54+09:00`
 
 ## Open
 
 | ID | Status | Title | Source | Trigger | Path |
 |---|---|---|---|---|---|
-| `D1` | `deferred` | Make /explain portable so public users can use it | P5 | When shipping /explain to public users: parameterize the KB location and viewer (configurable path + port via env or a setting, or drop the docker/mkdocs assumption) so any adopter can point it at their own knowledge base. | `works/deferred/open/D1` |
+| - | - | - | - | - | - |
 
 ## Promoted
 
@@ -25,4 +25,4 @@
 
 | ID | Status | Title | Reason | Path |
 |---|---|---|---|---|
-| - | - | - | - | - |
+| `D1` | `dropped` | Make /explain portable so public users can use it | Resolved by P7.S1: embedded /explain retired; portability shipped for real by the knowledge repo's Claude Code plugin (/knowledge:explain) | `works/deferred/dropped/D1` |
