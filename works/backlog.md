@@ -6,11 +6,11 @@
 ## Pointer
 
 - Current phase: `P9`
-- Current slice: `P9.DECOMP`
-- Next slice: `P9.REVIEW`
+- Current slice: `P9.S1`
+- Next slice: `P9.S2`
 - Waiting on operator: `none`
 - Open deferred jobs: `0`
-- Rebuilt at: `2026-07-22T18:49:37+09:00`
+- Rebuilt at: `2026-07-22T19:56:29+09:00`
 
 ## Active Phases
 
@@ -18,7 +18,7 @@
 |---|---|---|---|---|---|
 | [x] `P7` | `done` | `pass` | Retire embedded /explain | `none` | `works/phases/active/P7` |
 | [x] `P8` | `done` | `pass` | Auto-explain at phase review | `none` | `works/phases/active/P8` |
-| [ ] `P9` | `planned` | `pending` | Knowledge-by-default in bootstrapped workspaces | `P9.DECOMP` | `works/phases/active/P9` |
+| [ ] `P9` | `planned` | `pending` | Knowledge-by-default in bootstrapped workspaces | `P9.S1` | `works/phases/active/P9` |
 
 ## Phase P7: Retire embedded /explain
 
@@ -40,5 +40,7 @@
 
 | Slice | Status | Name | Kind | Path |
 |---|---|---|---|---|
-| [ ] `P9.DECOMP` | `todo` | decompose phase | `decomposition` | `works/phases/active/P9/slices/P9.DECOMP` |
+| [x] `P9.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P9/slices/P9.DECOMP` |
+| [ ] `P9.S1` | `todo` | Installer/product knowledge-setup wiring | `implementation` | `works/phases/active/P9/slices/P9.S1` |
+| [ ] `P9.S2` | `todo` | Repo docs alignment: env-var/REST knowledge default | `implementation` | `works/phases/active/P9/slices/P9.S2` |
 | [ ] `P9.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P9/slices/P9.REVIEW` |
