@@ -9,6 +9,28 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v17 — 2026-07-22
+
+- **Fresh workspaces now ship with knowledge-setup guidance by default.** The seed
+  `operations.md` doc body gains a `## Knowledge (phase explainers)` section describing the
+  default, plugin-free path: sign up at the knowledge service → mint an org-level API key →
+  export `KB_API_BASE_URL` + `KB_API_TOKEN` in `~/.zshenv` (never a repo `.env` — neither Claude
+  Code nor Codex auto-loads it, and a repo file risks committing the secret). With the env vars
+  set, a passing phase review auto-saves the phase explainer via plain REST — Claude Code and
+  Codex equally, no plugin install required. One key serves every repo; each document's project
+  defaults to the repo's directory name.
+- **Codex sandbox opt-in documented.** The seed section notes that Codex's `workspace-write`
+  sandbox blocks outbound network by default (so the save skips) and how to opt in with
+  `[sandbox_workspace_write] network_access = true` in `~/.codex/config.toml`, with its tradeoff
+  (loosens all Codex workspace-write runs; Claude Code needs nothing). The Claude Code knowledge
+  plugin remains the alternative/richer path.
+- **Fresh-install stdout gains a knowledge line** pointing operators at the `~/.zshenv` exports
+  and `docs/current/operations.md` for details.
+- **Migration notes:** no action required. Doc seeds are fresh-install-only, so existing
+  workspaces won't gain the `## Knowledge` section on `--update` — add the exports to `~/.zshenv`
+  directly (works regardless of workspace version), and, for Codex reviews to post online, enable
+  `[sandbox_workspace_write] network_access = true` in `~/.codex/config.toml`.
+
 ## v16 — 2026-07-22
 
 - **A passing phase review now auto-produces a phase explainer.** Phase review used to be

@@ -37,6 +37,8 @@ REVIEW (order 9999) then validates both slices together and, on a pass, consolid
   - `README.en.md` knowledge callout (~lines 274–279) still **leads with the plugin-install path** (`/plugin marketplace add …`); S2 reframes to env-var/REST-first.
 - **Current durable knowledge stance** lives in `docs/current/operations.md` (v0016) and `docs/current/decisions.md` (v0022). These are the two docs S2 flags for REVIEW consolidation. Durable docs are versioned only at REVIEW — middle slices append Doc-impact notes, never run `doc-new-version`.
 - `CHANGELOG.md` exists at repo root — S1 adds an entry alongside the version bump (by precedent for machinery edits).
+- **(S1 done)** Canonical knowledge-setup wording landed in `installer/payloads/doc_bodies/operations.md` (new `## Knowledge (phase explainers)` section between Environment Variables and Deployment) — **S2 should mirror this in `README.en.md`**. The canonical framing: (1) sign up at the knowledge service → mint an API key → export in **`~/.zshenv`** (`export KB_API_BASE_URL="https://knowledge.hi2vi.com"` / `export KB_API_TOKEN="vk_..."`), never a repo `.env` (neither Claude Code nor Codex auto-loads it, and a repo file risks committing the secret); (2) one org-level key serves every repo, each doc's project defaults to the repo directory name; (3) with env vars set, a passing review auto-saves the phase explainer via plain REST — Claude Code and Codex equally, no plugin install required; (4) Codex caveat — its `workspace-write` sandbox blocks outbound network by default (save skips), opt in via `[sandbox_workspace_write] network_access = true` in `~/.codex/config.toml` (loosens all Codex workspace-write runs; Claude Code needs nothing); (5) the Claude Code plugin (`/plugin marketplace add leetusik/knowledge` → `/plugin install knowledge@knowledge` → `/knowledge:setup`, `/knowledge:explain` on demand) is the alternative/richer path. S1 leads with the env-var/REST default and demotes the plugin — S2's `README.en.md` reframe should match that emphasis.
+- **(S1 done)** `WORKSPACE_VERSION` bumped 16 → 17 (`installer/main.py:38`); `CHANGELOG.md` gained a `## v17 — 2026-07-22` entry with a Migration-notes line (doc seeds are fresh-install-only, so `--update` won't add the section to existing workspaces — add the exports to `~/.zshenv` directly); artifact rebuilt via `python3 installer/build.py`, `--check` green. The fresh-install stdout block (final `else:` in `installer/main.py`) also gained a `Knowledge (optional): ...` line.
 
 ## Constraints
 
@@ -49,6 +51,7 @@ REVIEW (order 9999) then validates both slices together and, on a pass, consolid
 
 _Running list of durable-truth changes; the REVIEW slice consolidates these into new doc versions. Middle slices append here — no `doc-new-version` before REVIEW._
 
+- **(S1)** `operations.md` — fresh workspaces now ship a `## Knowledge (phase explainers)` seed section (env-var/REST default via `~/.zshenv`, one org-level key, project = repo basename, Codex `network_access` opt-in, plugin as alternative); this repo's own `docs/current/operations.md` should gain the same knowledge-setup stance at REVIEW.
 - _(S2 will append: `operations.md` + `decisions.md` — new env-var/REST knowledge default, `~/.zshenv` recommendation, Codex `network_access` opt-in.)_
 
 ## Open Questions
