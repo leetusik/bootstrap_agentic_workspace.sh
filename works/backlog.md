@@ -5,12 +5,12 @@
 
 ## Pointer
 
-- Current phase: `none`
-- Current slice: `none`
-- Next slice: `none`
+- Current phase: `P9`
+- Current slice: `P9.DECOMP`
+- Next slice: `P9.REVIEW`
 - Waiting on operator: `none`
 - Open deferred jobs: `0`
-- Rebuilt at: `2026-07-22T00:46:48+09:00`
+- Rebuilt at: `2026-07-22T18:49:37+09:00`
 
 ## Active Phases
 
@@ -18,6 +18,7 @@
 |---|---|---|---|---|---|
 | [x] `P7` | `done` | `pass` | Retire embedded /explain | `none` | `works/phases/active/P7` |
 | [x] `P8` | `done` | `pass` | Auto-explain at phase review | `none` | `works/phases/active/P8` |
+| [ ] `P9` | `planned` | `pending` | Knowledge-by-default in bootstrapped workspaces | `P9.DECOMP` | `works/phases/active/P9` |
 
 ## Phase P7: Retire embedded /explain
 
@@ -34,3 +35,10 @@
 | [x] `P8.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P8/slices/P8.DECOMP` |
 | [x] `P8.S1` | `done` | Auto-explain the phase at a passing review | `implementation` | `works/phases/active/P8/slices/P8.S1` |
 | [x] `P8.REVIEW` | `done` | phase review | `review` | `works/phases/active/P8/slices/P8.REVIEW` |
+
+## Phase P9: Knowledge-by-default in bootstrapped workspaces
+
+| Slice | Status | Name | Kind | Path |
+|---|---|---|---|---|
+| [ ] `P9.DECOMP` | `todo` | decompose phase | `decomposition` | `works/phases/active/P9/slices/P9.DECOMP` |
+| [ ] `P9.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P9/slices/P9.REVIEW` |

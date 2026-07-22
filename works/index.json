@@ -23,10 +23,22 @@
       "current_slice": null,
       "slice_count": 3,
       "done_slice_count": 3
+    },
+    {
+      "id": "P9",
+      "name": "Knowledge-by-default in bootstrapped workspaces",
+      "objective": "Make the knowledge SaaS the default low-friction knowledge path for bootstrapped workspaces: document/wire the env-var setup (KB_API_BASE_URL + KB_API_TOKEN via ~/.zshenv, not a repo .env), address the Codex workspace-write network-sandbox blocker, and align the workspace docs with the agent-first skill flow.",
+      "status": "planned",
+      "order": 6,
+      "path": "works/phases/active/P9",
+      "review_status": "pending",
+      "current_slice": "P9.DECOMP",
+      "slice_count": 2,
+      "done_slice_count": 0
     }
   ],
   "deferred_open_count": 0,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 1,
-  "last_rebuilt_at": "2026-07-22T00:46:48+09:00"
+  "last_rebuilt_at": "2026-07-22T18:49:37+09:00"
 }

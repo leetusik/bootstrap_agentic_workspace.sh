@@ -158,3 +158,4 @@
 {"ts": "2026-07-22T00:38:40+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0022_auto-explain_the_phase_at_a_passing_review_via_the_external_explain_skill_pass-gated_verdict-neutral_ordered_detection_websearch_webfetch_on_claude_high_only_scoped_kb-repo_commit_carve-out_workspace_v16", "source": "P8.REVIEW"}
 {"ts": "2026-07-22T00:46:48+09:00", "type": "slice_status_changed", "slice": "P8.REVIEW", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-07-22T00:46:48+09:00", "type": "phase_reviewed", "phase": "P8", "verdict": "pass", "reviewer": "slice-executor-high"}
+{"ts": "2026-07-22T02:01:41+09:00", "type": "phase_created", "phase": "P9"}
