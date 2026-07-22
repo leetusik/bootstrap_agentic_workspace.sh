@@ -107,7 +107,7 @@
       ]
     },
     "operations": {
-      "latest": "v0016_phase_review_now_also_produces_a_phase_explainer_on_a_passing_review_review_validate_consolidate_docs_explain_via_the_knowledge_plugin_s_explain_skill_gracefully_skipped_when_absent_workspace_v16",
+      "latest": "v0017_knowledge_setup_ships_by_default_in_fresh_workspaces_env-var_rest_via_.zshenv_org-level_key_codex_network_access_opt-in_plugin_as_alternative_workspace_v17",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -237,6 +237,14 @@
           "source": "P8.REVIEW",
           "summary": "Phase review now also produces a phase explainer on a passing review (review = validate + consolidate docs + explain) via the knowledge plugin's explain skill; gracefully skipped when absent; workspace v16",
           "previous": "v0015_embedded_explain_retired_no_longer_ships_--with-explain_removed_workspace_v15_install_the_knowledge_plugin_plugin_marketplace_add_leetusik_knowledge_-_plugin_install_knowledge_knowledge_knowledge_setup_knowledge_explain"
+        },
+        {
+          "id": "v0017_knowledge_setup_ships_by_default_in_fresh_workspaces_env-var_rest_via_.zshenv_org-level_key_codex_network_access_opt-in_plugin_as_alternative_workspace_v17",
+          "path": "docs/versions/operations/v0017_knowledge_setup_ships_by_default_in_fresh_workspaces_env-var_rest_via_.zshenv_org-level_key_codex_network_access_opt-in_plugin_as_alternative_workspace_v17.md",
+          "created_at": "2026-07-22T20:09:19+09:00",
+          "source": "P9.REVIEW",
+          "summary": "Knowledge setup ships by default in fresh workspaces: env-var/REST via ~/.zshenv, org-level key, Codex network_access opt-in, plugin as alternative; workspace v17",
+          "previous": "v0016_phase_review_now_also_produces_a_phase_explainer_on_a_passing_review_review_validate_consolidate_docs_explain_via_the_knowledge_plugin_s_explain_skill_gracefully_skipped_when_absent_workspace_v16"
         }
       ]
     },
@@ -277,7 +285,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0022_auto-explain_the_phase_at_a_passing_review_via_the_external_explain_skill_pass-gated_verdict-neutral_ordered_detection_websearch_webfetch_on_claude_high_only_scoped_kb-repo_commit_carve-out_workspace_v16",
+      "latest": "v0023_knowledge-by-default_in_bootstrapped_workspaces_via_the_plugin-free_env-var_rest_path_plugin_demoted_to_alternative_.zshenv_over_a_repo_.env_codex_sandbox_the_real_blocker_workspace_v17",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -455,9 +463,17 @@
           "source": "P8.REVIEW",
           "summary": "Auto-explain the phase at a passing review via the external explain skill (pass-gated, verdict-neutral, ordered detection, WebSearch/WebFetch on Claude high only, scoped KB-repo commit carve-out); workspace v16",
           "previous": "v0021_embedded_explain_retired_in_favor_of_the_knowledge_repo_s_claude_code_plugin_manual_migration_stale-flag_asymmetry_accepted_workspace_v15"
+        },
+        {
+          "id": "v0023_knowledge-by-default_in_bootstrapped_workspaces_via_the_plugin-free_env-var_rest_path_plugin_demoted_to_alternative_.zshenv_over_a_repo_.env_codex_sandbox_the_real_blocker_workspace_v17",
+          "path": "docs/versions/decisions/v0023_knowledge-by-default_in_bootstrapped_workspaces_via_the_plugin-free_env-var_rest_path_plugin_demoted_to_alternative_.zshenv_over_a_repo_.env_codex_sandbox_the_real_blocker_workspace_v17.md",
+          "created_at": "2026-07-22T20:09:21+09:00",
+          "source": "P9.REVIEW",
+          "summary": "Knowledge-by-default in bootstrapped workspaces via the plugin-free env-var/REST path (plugin demoted to alternative); ~/.zshenv over a repo .env, Codex sandbox the real blocker; workspace v17",
+          "previous": "v0022_auto-explain_the_phase_at_a_passing_review_via_the_external_explain_skill_pass-gated_verdict-neutral_ordered_detection_websearch_webfetch_on_claude_high_only_scoped_kb-repo_commit_carve-out_workspace_v16"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-07-22T00:39:38+09:00"
+  "last_rebuilt_at": "2026-07-22T20:11:36+09:00"
 }
