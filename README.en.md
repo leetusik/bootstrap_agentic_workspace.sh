@@ -271,12 +271,24 @@ is Claude Code only — so the same step works natively in either tool:
 | `retrofit` | Non-destructively adopt this workspace into an existing repo |
 | `update-workspace` | Update an adopted workspace's machinery to the latest upstream, preserving your work |
 
-> The `explain` educational-explainer skill no longer ships with the bootstrap — it has graduated
-> into a standalone Claude Code plugin in the [knowledge repo](https://github.com/leetusik/knowledge).
-> Install it inside Claude Code with `/plugin marketplace add leetusik/knowledge` then
-> `/plugin install knowledge@knowledge`, run `/knowledge:setup` once, and use `/knowledge:explain <topic>`.
-> With the plugin installed, a passing phase review also files a phase explainer into your KB
-> automatically (auto-explain — gracefully skipped when the plugin or KB is absent).
+> **Knowledge (phase explainers).** A passing phase review can auto-save an interactive HTML phase
+> explainer to the knowledge service — plugin-free by default. Sign up at the
+> [knowledge service](https://knowledge.hi2vi.com), mint an org-level API key, and add two exports to
+> `~/.zshenv` (sourced by every zsh invocation): `export KB_API_BASE_URL="https://knowledge.hi2vi.com"`
+> and `export KB_API_TOKEN="vk_..."`. Never a repo `.env` — neither Claude Code nor Codex auto-loads it,
+> and a secret in a repo file risks being committed. One org-level key serves every repo, each document's
+> project defaults to the repo's directory name, and with the env vars set a passing review auto-saves the
+> explainer via plain REST — Claude Code and Codex equally, no plugin install required (gracefully skipped
+> when the KB is absent).
+>
+> **Codex caveat:** its `workspace-write` sandbox blocks outbound network by default, so the save is
+> skipped — opt in with `[sandbox_workspace_write] network_access = true` in `~/.codex/config.toml`, which
+> loosens all Codex workspace-write runs (your call); Claude Code needs nothing.
+>
+> **Alternative (Claude Code plugin):** `explain` graduated out of the bootstrap into a standalone plugin
+> in the [knowledge repo](https://github.com/leetusik/knowledge) for a richer path —
+> `/plugin marketplace add leetusik/knowledge` → `/plugin install knowledge@knowledge` →
+> `/knowledge:setup` once, then `/knowledge:explain <topic>` on demand.
 
 Both tools delegate the heavy lifting to a **`slice-executor`** subagent in one of three capability
 tiers, picked by each slice's risk: `slice-executor-low` (sonnet by default — a literal plan-follower
