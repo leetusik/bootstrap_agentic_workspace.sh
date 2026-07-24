@@ -35,10 +35,22 @@
       "current_slice": null,
       "slice_count": 4,
       "done_slice_count": 4
+    },
+    {
+      "id": "P10",
+      "name": "Pipelined slice planning and verbatim plan capture",
+      "objective": "Overlap the next slice's planning research with the running executor in do-whole-phase, and persist operator-approved plans by copying the harness plan file instead of re-emitting it.",
+      "status": "planned",
+      "order": 7,
+      "path": "works/phases/active/P10",
+      "review_status": "pending",
+      "current_slice": "P10.DECOMP",
+      "slice_count": 2,
+      "done_slice_count": 0
     }
   ],
   "deferred_open_count": 0,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 1,
-  "last_rebuilt_at": "2026-07-22T20:17:37+09:00"
+  "last_rebuilt_at": "2026-07-25T00:44:04+09:00"
 }

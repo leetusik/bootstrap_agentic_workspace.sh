@@ -172,3 +172,4 @@
 {"ts": "2026-07-22T20:09:21+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0023_knowledge-by-default_in_bootstrapped_workspaces_via_the_plugin-free_env-var_rest_path_plugin_demoted_to_alternative_.zshenv_over_a_repo_.env_codex_sandbox_the_real_blocker_workspace_v17", "source": "P9.REVIEW"}
 {"ts": "2026-07-22T20:17:37+09:00", "type": "slice_status_changed", "slice": "P9.REVIEW", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-07-22T20:17:37+09:00", "type": "phase_reviewed", "phase": "P9", "verdict": "pass", "reviewer": "slice-executor-high"}
+{"ts": "2026-07-25T00:43:31+09:00", "type": "phase_created", "phase": "P10"}
