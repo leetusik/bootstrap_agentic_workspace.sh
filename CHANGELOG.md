@@ -9,6 +9,50 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v21 — 2026-07-28
+
+- **The phase review no longer writes the phase explainer — this reverses v16's auto-explain.**
+  v16 made a passing review locate the knowledge plugin's explain skill and produce a phase
+  explainer as part of the review. That is removed: explaining is now a **separate operation the
+  operator runs** (`/explain`) whenever they want one. The review executor locates no skill, runs
+  no KB probe, has no offline fallback, and does no research for it — it was an authoring-plus-
+  research job bolted onto the review at its most context-loaded moment, and explaining is a
+  different job from reviewing.
+- **The review still reports a pointer, so explainers do not silently stop happening.** Its
+  structured return and `result.md` carry one fixed line on every verdict:
+  `explain: not written — run /explain for this phase`. No work, just the nudge.
+- **The KB-repo commit carve-out is gone.** v16 gave the executor's "never commit" invariant one
+  narrow exception — the explain skill's offline fallback committing with `git -C <KB_ROOT>` in the
+  separate knowledge-base repo. It existed solely for the explainer, so it is deleted from both
+  `slice-executor-high` files: the executor now runs **no** `git` write command in any git root, on
+  any slice kind. `WebSearch` / `WebFetch` stay on `slice-executor-high` — a reviewer sometimes
+  needs to check an external fact.
+- **A non-passing review now stops and hands back, instead of skipping a step and carrying on.**
+  The old wording ("on `changes_requested` / `blocked`, version nothing") read as *skip the docs and
+  continue*. It now reads as a full stop: the moment the verdict is not `pass`, the review executor
+  does no doc consolidation and no other pass-only work, and returns the verdict with its numbered
+  findings and proposed fix slices (`<P>.F<n>`) to the orchestrator, which decides — fix slices, or
+  an operator decision.
+- **"Stop" is scoped to the pass-only work, not to the review itself.** The executor still completes
+  validation and judgment across every slice *before* branching on the verdict — it never aborts at
+  the first failing check — so the orchestrator receives the complete picture in one cycle rather
+  than one finding per cycle. Review and doc consolidation stay in the **same** executor; only the
+  branch changed.
+- **Fresh installs say the same thing.** The bootstrap's closing knowledge line and the seeded
+  `operations.md` doc body no longer claim a passing review auto-saves the explainer — both now
+  describe `/explain` as the operator-run step. Your KB setup instructions are otherwise identical.
+- Unchanged: the review is still `slice-executor-high`'s job in a fresh context that never edits
+  source, docs are still versioned once per phase at a passing review, and `review-phase` verdict
+  handling, the executor tiers, `auto`'s safety halts, the escalation ladder, `plan only` / `ready`,
+  v19's copy-based plan capture, and v20's optional idle window are all untouched.
+
+Migration notes: **nothing to delete and nothing to configure.** The review simply stops writing
+explainers — run `/explain` yourself when you want one; your knowledge-base setup (`KB_API_BASE_URL`
+/ `KB_API_TOKEN`, or the plugin) still works exactly as before and is only ever used on demand now.
+Everything else lands automatically with `--update`: the rewritten `review-phase` checklist (both
+copies), the review paragraphs in `do-next-slice` / `do-whole-phase`, the amended contract bullets in
+`CLAUDE.md` / `AGENTS.md`, and both `slice-executor-high` files.
+
 ## v20 — 2026-07-28
 
 - **The `do-whole-phase` prefetch becomes a permission instead of a procedure.** v19 told the

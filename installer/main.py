@@ -35,7 +35,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 20
+WORKSPACE_VERSION = 21
 ROOT = TARGET.resolve()
 
 DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
@@ -630,6 +630,6 @@ else:
     print("Any agent / CI: python3 scripts/workflow.py <command>")
     print("Canonical state: phase.json / slice.json / deferred.json; generated: works/backlog.md, works/deferred.md")
     print("Versioned docs: docs/versions/<doc>/vNNNN_*.md with generated docs/current/*.md")
-    print("Knowledge (optional): export KB_API_BASE_URL + KB_API_TOKEN in ~/.zshenv to auto-save phase explainers on a passing review — see docs/current/operations.md")
+    print("Knowledge (optional): export KB_API_BASE_URL + KB_API_TOKEN in ~/.zshenv so /explain can save phase explainers to your KB (an operator-run step; the phase review writes none) — see docs/current/operations.md")
     print("No phases yet — the workspace starts empty on purpose.")
     print("Next: create the first phase with /create-phase (Claude Code), $create-phase (Codex), or python3 scripts/workflow.py new-phase ...")

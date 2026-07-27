@@ -235,6 +235,9 @@ _One line per durable-truth change; `REVIEW` consolidates these into doc version
 - **`operations.md`** (`P11.S1`) — the v19 section *Pipelined slice planning — the `slice-planner` prefetch* is now wrong end to end: the agent is deleted and the prefetch is an **optional** use of the executor's idle window with no prescribed mechanism (`Explore`, inline reading, thinking, or just waiting); the invariants (read-only, no second executor, never blocks, discarded on any non-`done` verdict, scratchpad-only, gate unmoved) survive, the five skip conditions are now guidance, and the v19 mentions at `:33`, `:81`, `:356` need the same recast. Workspace ships as **v20**.
 - **`decisions.md`** (`P11.S1`) — v0024's claim that the prefetch is read-only *by tool allowlist, not prose* must be **superseded**, not carried forward: with the bespoke agent gone, `Explore` has `Bash` and inline research is bounded only by the orchestrator's own discipline — read-only is now a rule to follow, not a structural guarantee. Record the reasons for accepting that trade: no fourth managed agent surface, no agent outside `EXECUTOR_TIERS` (no `executors.toml` knob, no `sync-agents` coverage), no in-file pinned model drifting from the tier presets, and a rule that reads as a permission rather than a procedure (the operator's `intent.md` correction).
 
+- **`operations.md`** (`P11.S3`) — the phase review **no longer produces the phase explainer**: auto-explain leaves the review's default behaviour (superseding the v16 description at `docs/current/operations.md:33-56` and the whole `## Knowledge (phase explainers)` framing of "a passing review auto-saves"), explaining becomes an operator-run `/explain`, and the review instead reports one fixed pointer, `explain: not written — run /explain for this phase`; separately, a **non-passing verdict now stops the review executor** before doc consolidation and hands numbered findings plus proposed fix slices back to the orchestrator — after validation and judgment are complete, never at the first failing check. The KB-repo `git -C <KB_ROOT>` commit carve-out is deleted with it. Workspace ships as **v21**.
+- **`decisions.md`** (`P11.S3`) — a new decision that **reverses P8's** v0022 auto-explain-at-review decision (and the carve-out it introduced), rather than dropping it quietly: why (the review executor was carrying an authoring-plus-research job at its most context-loaded moment, and explaining is a different job from reviewing), what replaces it (operator-run `/explain`, with the review reporting a pointer so explainers do not silently stop happening), the consequence that the executor's scoped KB-repo commit exception is **gone** — "never commit" is bright again in every git root — while `WebSearch`/`WebFetch` deliberately **stay** on `slice-executor-high` (a reviewer sometimes needs an external fact; cheap to remove later). Plus the fail-fast rule: doc consolidation is pass-only work and a `changes_requested`/`blocked` verdict stops before it, with "stop" scoped to the **pass-only work**, not to the review — validation and judgment always complete first so the orchestrator gets the whole picture in one cycle instead of one finding per cycle.
+
 ### From `P11.S2` (implementation)
 
 - **All three planned string replacements matched verbatim and were applied with no surprises**:
@@ -247,7 +250,62 @@ _One line per durable-truth change; `REVIEW` consolidates these into doc version
 - No Doc impact note added — this slice changes no durable truth; `P11.S1`'s `operations.md` and
   `decisions.md` notes above remain the only ones for `REVIEW` to consolidate.
 
+### From `P11.S3` (implementation — scope added mid-phase, `intent.md` item 3)
+
+- **Ships as workspace `v21`, a second release inside one phase.** `v20` was already released and
+  committed at `P11.S1`, so S3 bumped `installer/main.py:38` to `21` and added its own `## v21`
+  CHANGELOG section. The phase constraint "one release, bumped exactly once, in `P11.S1`" was written
+  before the operator expanded the phase; it now reads as *one release per intent item*. `REVIEW`
+  should expect two CHANGELOG sections dated 2026-07-28 (`v20` = idle window, `v21` = review).
+- **The plan's verified table was built from `grep 'auto-explain'` and missed two live surfaces that
+  say "auto-**save**" instead.** Both are embedded machinery and both were fixed (recorded as the
+  slice's one deviation): `installer/main.py:633`, the bootstrap's closing knowledge banner, and
+  `installer/payloads/doc_bodies/operations.md`'s `## Knowledge (phase explainers)` section — the body
+  seeded as every new workspace's `docs/versions/operations/v0001_bootstrap.md`. Without them a
+  freshly bootstrapped v21 workspace would have printed, and then documented, exactly the behaviour
+  this slice removed. **Lesson for future explainer/knowledge edits: grep `explain|explainer|
+  auto-save|KB_API` across `installer/payloads/` and the banner prints, not just the skills.** The
+  fresh-install probe is what caught it — the banner prints on every bootstrap.
+- **`README.en.md` is now stale in three places and was deliberately left alone** (the plan's
+  non-goals say "No README edits"): `:48` ("files a phase explainer into your KB"), `:274-281` (the
+  Knowledge callout's "a passing phase review can auto-save…" / "with the env vars set a passing
+  review auto-saves…"), and `:295-301` ("on a pass, producing the phase explainer via the knowledge
+  plugin's explain skill"). `README.md` (Korean) makes no explainer claim — grep-verified — so it is
+  one file, three spots, no rebuild needed (READMEs are absent from `FIXED_LIVE_FILES`).
+  **Recommended to `REVIEW` as a fix slice `P11.F1` (`risk: low`, three named replacements)** or as
+  an operator follow-up. This is a scope boundary the plan drew, not a defect in S3's work.
+- **The KB-repo commit carve-out is deleted, not narrowed** — P8's v0022 exception existed only for
+  the explainer's offline fallback. Both `slice-executor-high` files now read "no exception anywhere:
+  not in this workspace's repo and not in any other git root, on any slice kind", with an added
+  parenthetical that read-only `git status` / `git diff` is still fine. That parenthetical is the one
+  piece of text S3 added inside a safety invariant that the plan did not spell out; it exists because
+  "no exception anywhere" alone could be over-read as banning inspection. `slice-executor-low`/`-mid`
+  never carried the carve-out and are untouched. `WebSearch`/`WebFetch` stay on the high tier's
+  `tools:` line per the operator's explicit call.
+- **How the "stop ≠ abort" distinction is worded** (the thing the plan said was most likely to be got
+  wrong), for `REVIEW` to weigh: every surface states the order — complete validation and judgment
+  across all slices *first*, **then** branch on the verdict — and the non-pass bullet names what is
+  skipped (doc consolidation "and no other pass-only step") rather than saying "stop the review". The
+  clinching sentence, replacing the old "version nothing" phrasing, is *"This is a full stop, not a
+  skipped step you carry on past."* The rationale is stated inline ("or the orchestrator learns one
+  finding per review cycle instead of all of them at once") so the rule carries its own reason.
+- **The `explain` pointer is verdict-independent on purpose.** It is reported identically on `pass`,
+  `changes_requested`, and `blocked` — it costs the executor no work, so it does not collide with the
+  stop rule, and saying so explicitly stops a reader inferring it is pass-only work.
+- **Baseline for `REVIEW`:** the tree is green after S3 — `validate`, `build.py --check`, and
+  `sync-agents --check` all pass; `CLAUDE.md`/`AGENTS.md` bodies byte-equal (regenerated structurally,
+  not eyeballed); both `review-phase` copies and both `do-next-slice` copies byte-identical below
+  frontmatter. The fresh-install probe is left at
+  `/private/tmp/claude-502/-Users-sugang-projects-personal-bootstrap-agentic-workspace-sh/e928efe8-a4ce-400f-8417-b9be6cb5ed57/scratchpad/probe-p11-s3`
+  — inspect **`ws2/`** (the final v21 tree); `ws/` is the earlier probe that exposed the banner/doc-body
+  misses and predates their fix.
+- **Note for whoever runs `P11.REVIEW`:** its own `plan.md` was written before S3 existed and still
+  describes auto-explain as part of the review. Under the rules this slice just landed, the review
+  writes **no** explainer and reports the pointer instead — and if the verdict is not `pass`, it stops
+  before consolidating `operations.md` / `decisions.md` and hands back.
+
 ## Open Questions
 
 - None. (The one judgment call `DECOMP` was asked to settle — whether the READMEs should gain a
-  sentence about the idle window — is decided **no**; see *Findings*.)
+  sentence about the idle window — is decided **no**; see *Findings*. The `README.en.md` explainer
+  staleness raised by `P11.S3` is a recommendation to `REVIEW`, not an open question.)
