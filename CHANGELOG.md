@@ -9,6 +9,38 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v19 — 2026-07-28
+
+- **`do-whole-phase` now overlaps the next slice's research with the running executor.**
+  Right after dispatching executor N in the background, the orchestrator dispatches a new
+  read-only prefetch agent to research slice N+1 during the idle window; when N returns it
+  plans N+1 by **reconciling** that brief with what N actually changed, instead of starting
+  a research pass from scratch. `do-next-slice` is unchanged — it stops after one slice, so
+  a tail prefetch would speculate on work the operator may never run.
+- **New agent: `.claude/agents/slice-planner.md`** (`Read, Glob, Grep` only; `sonnet`, pinned
+  in-file). The tool allowlist, not prose, is what makes the prefetch read-only: with no
+  `Bash` it cannot run `workflow.py`, `git`, or any build; with no `Agent` it cannot dispatch
+  a second executor; with no `Write`/`Edit` it cannot touch a slice folder. It returns a
+  compact advisory brief — relevant files, patterns to reuse, constraints, open questions,
+  and an explicit "not read / possibly stale" list — never a plan and never a file dump.
+- **The guardrails ship with it.** The prefetch is **skipped** when the current slice is
+  `DECOMP`, when the next is `REVIEW`, when the next is already `ready` (`[r]`), when the
+  phase or any slice is `pending`, or when the next slice's files sit inside slice N's blast
+  radius (the paths N's `plan.md` says it will touch). The brief is **discarded** on any
+  verdict other than `done`, is **never blocked on** (the executor's return always wins), and
+  lives in the session scratchpad — **never** in a slice folder, where a stale draft could be
+  misread as an approved plan. **The operator's approval gate does not move:** plan N+1 is
+  still approved after slice N's `result.md`, verdict, and `phase.md` notes are in hand.
+  Prefetch applies in the default loop and in `auto`; `plan only` has no idle window to fill.
+- The `slice-planner` model is **not** wired into `executors.toml` / `sync-agents` — it is not
+  an executor tier, so it stays pinned in the agent file and is not covered by the tier presets.
+
+Migration notes: after `--update`, adopting workspaces gain `.claude/agents/slice-planner.md`
+plus the amended `do-whole-phase` rules and contract bullet. No manual action is required, and
+no existing behavior changes: `do-next-slice`, the approval gate, `auto`'s safety halts, the
+escalation ladder, `plan only` / `ready`, and the executor tiers are all untouched. Codex is
+unaffected (there is no Codex `do-whole-phase`, so no `slice-planner` counterpart ships).
+
 ## v18 — 2026-07-28
 
 - **Both tier presets are re-cut, and `economy` is the new default.** The shipped

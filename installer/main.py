@@ -35,7 +35,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 18
+WORKSPACE_VERSION = 19
 ROOT = TARGET.resolve()
 
 DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
@@ -77,6 +77,7 @@ MANAGED_FILES = [
     *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md")],
     "scripts/workflow.py",
     ".claude/agents/slice-executor-low.md", ".claude/agents/slice-executor-mid.md", ".claude/agents/slice-executor-high.md",
+    ".claude/agents/slice-planner.md",
     ".claude/settings.json",
     ".codex/config.toml", ".codex/agents/slice-executor-low.toml", ".codex/agents/slice-executor-mid.toml", ".codex/agents/slice-executor-high.toml",
     "executors.toml",
@@ -480,6 +481,11 @@ for name in CLAUDE_SKILLS:
 for tier in ("low", "mid", "high"):
     write_text(f".claude/agents/slice-executor-{tier}.md", PAYLOADS[f".claude/agents/slice-executor-{tier}.md"])
     write_text(f".codex/agents/slice-executor-{tier}.toml", PAYLOADS[f".codex/agents/slice-executor-{tier}.toml"])
+
+# The read-only prefetch planner used by do-whole-phase. Written outside the tier loop
+# above: it is not an executor tier (no executors.toml knob, no Codex counterpart, since
+# do-whole-phase is Claude Code only), so that loop would never emit it.
+write_text(".claude/agents/slice-planner.md", PAYLOADS[".claude/agents/slice-planner.md"])
 
 # ---- Executor-tier config (seeded once — commented defaults; operator-owned) ----
 write_text("executors.toml", PAYLOADS["executors.toml"])

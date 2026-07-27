@@ -46,6 +46,7 @@ FIXED_LIVE_FILES = [
     ".claude/agents/slice-executor-low.md",
     ".claude/agents/slice-executor-mid.md",
     ".claude/agents/slice-executor-high.md",
+    ".claude/agents/slice-planner.md",
     ".codex/agents/slice-executor-low.toml",
     ".codex/agents/slice-executor-mid.toml",
     ".codex/agents/slice-executor-high.toml",
