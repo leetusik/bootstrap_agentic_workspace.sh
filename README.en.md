@@ -44,8 +44,8 @@ three sessions of the same agent) at one repo and you get three different conven
 - **Durable, shared memory** — a per-phase notebook plus append-only versioned docs carry what each
   step learned forward to the next, so knowledge survives compaction and hand-offs between tools.
 - **Review gates** — work isn't "done" until a phase review (run by the executor in a fresh,
-  isolated context that never edits source) checks it against the phase's objective, consolidates its
-  doc versions, and — with the knowledge plugin installed — files a phase explainer into your KB.
+  isolated context that never edits source) checks it against the phase's objective and consolidates
+  its doc versions. A verdict short of `pass` stops there and hands its findings back.
 
 It is **cross-tool by design**: the same commands and skills work natively in Claude Code and in
 Codex, with a plain `python3 scripts/workflow.py …` fallback that works anywhere (including CI).
@@ -271,15 +271,15 @@ is Claude Code only — so the same step works natively in either tool:
 | `retrofit` | Non-destructively adopt this workspace into an existing repo |
 | `update-workspace` | Update an adopted workspace's machinery to the latest upstream, preserving your work |
 
-> **Knowledge (phase explainers).** A passing phase review can auto-save an interactive HTML phase
-> explainer to the knowledge service — plugin-free by default. Sign up at the
+> **Knowledge (phase explainers).** Phase explainers are interactive HTML documents saved to the
+> knowledge service — produced on demand, not by the review: run `/explain` for a phase when you want
+> one, and a passing review simply reports that none was written. Sign up at the
 > [knowledge service](https://knowledge.hi2vi.com), mint an org-level API key, and add two exports to
 > `~/.zshenv` (sourced by every zsh invocation): `export KB_API_BASE_URL="https://knowledge.hi2vi.com"`
 > and `export KB_API_TOKEN="vk_..."`. Never a repo `.env` — neither Claude Code nor Codex auto-loads it,
 > and a secret in a repo file risks being committed. One org-level key serves every repo, each document's
-> project defaults to the repo's directory name, and with the env vars set a passing review auto-saves the
-> explainer via plain REST — Claude Code and Codex equally, no plugin install required (gracefully skipped
-> when the KB is absent).
+> project defaults to the repo's directory name, and with the env vars set `/explain` saves via plain
+> REST — Claude Code and Codex equally, no plugin install required.
 >
 > **Codex caveat:** its `workspace-write` sandbox blocks outbound network by default, so the save is
 > skipped — opt in with `[sandbox_workspace_write] network_access = true` in `~/.codex/config.toml`, which
@@ -294,9 +294,8 @@ Both tools delegate the heavy lifting to a **`slice-executor`** subagent in one 
 tiers, picked by each slice's risk: `slice-executor-low` (sonnet by default — a literal plan-follower
 for mechanical low-risk slices), `slice-executor-mid` (sonnet — medium-risk), and
 `slice-executor-high` (opus — decomposition, high-risk slices, anything not rated `low` or `medium`, and the phase review, which it runs in
-a fresh context that never edits source, validating the phase and consolidating its doc versions, and,
-on a pass, producing the phase explainer via the knowledge plugin's explain skill — gracefully skipped
-when the plugin/KB is absent).
+a fresh context that never edits source, validating the phase and — only on a pass — consolidating its
+doc versions; a `changes_requested` or `blocked` verdict stops there and hands the findings back).
 When a low/mid executor hits something beyond its depth it returns an `escalate` verdict; the
 orchestrator folds the findings into the plan and re-dispatches one tier up — so routine slices run
 cheap and fast without capping quality. Tier models and efforts are configurable via the repo-root

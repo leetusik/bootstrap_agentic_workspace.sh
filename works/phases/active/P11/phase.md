@@ -304,6 +304,22 @@ _One line per durable-truth change; `REVIEW` consolidates these into doc version
   writes **no** explainer and reports the pointer instead — and if the verdict is not `pass`, it stops
   before consolidating `operations.md` / `decisions.md` and hands back.
 
+### From `P11.S4` (implementation — fix for the staleness `P11.S3` flagged)
+
+- **All four planned string replacements matched verbatim and were applied with no surprises**, closing
+  the three `README.en.md` staleness spots `P11.S3` flagged (`:48` explainer-into-KB claim, `:274-281`
+  the Knowledge blockquote's "auto-save" framing, `:296-298` the tier paragraph's "producing the phase
+  explainer via the knowledge plugin's explain skill"). No escalation needed.
+- **No rebuild, no `WORKSPACE_VERSION` bump, no CHANGELOG entry** — confirmed correct per plan:
+  `README.en.md` is absent from `FIXED_LIVE_FILES`, and `installer/build.py --check` still reports in
+  sync afterward, proving no rebuild ran. v21 stands as shipped by `P11.S3`.
+- **No Doc impact note added** — this slice changes no durable truth (READMEs are not consolidated via
+  `doc-new-version`); `P11.S1`'s `operations.md`/`decisions.md` notes above remain the only ones for
+  `REVIEW` to consolidate.
+- **`git diff --stat` at slice end also shows pre-existing dirty state files** (`works/backlog.md`,
+  `works/deferred.md`, `works/events.jsonl`, `works/index.json`, `works/state.json`) from the
+  orchestrator's `start-slice P11.S4` transition — expected, not part of this slice's edit.
+
 ## Open Questions
 
 - None. (The one judgment call `DECOMP` was asked to settle — whether the READMEs should gain a

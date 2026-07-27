@@ -10,7 +10,7 @@
 - Next slice: `none`
 - Waiting on operator: `none`
 - Open deferred jobs: `0`
-- Rebuilt at: `2026-07-28T04:46:41+09:00`
+- Rebuilt at: `2026-07-28T04:55:55+09:00`
 
 ## Active Phases
 
@@ -64,4 +64,5 @@
 | [x] `P11.S1` | `done` | Drop slice-planner; make idle-window preparation optional | `implementation` | `works/phases/active/P11/slices/P11.S1` |
 | [x] `P11.S2` | `done` | Refresh the stale README tier facts | `implementation` | `works/phases/active/P11/slices/P11.S2` |
 | [x] `P11.S3` | `done` | Take auto-explain out of the review; stop on a non-passing verdict | `implementation` | `works/phases/active/P11/slices/P11.S3` |
+| [x] `P11.S4` | `done` | Correct the README explainer claims after auto-explain removal | `implementation` | `works/phases/active/P11/slices/P11.S4` |
 | [ ] `P11.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P11/slices/P11.REVIEW` |
