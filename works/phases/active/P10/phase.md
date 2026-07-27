@@ -141,6 +141,43 @@ _(Expected targets, for planning only — the slices record the real notes: `ope
   prefetch bullet are all textually intact — this slice's edits are additive/substitutive within
   the persistence clauses only.
 
+### Cross-slice notes from `P10.REVIEW` (verdict: `pass` — docs consolidated)
+
+- **Both intent items shipped; every non-goal held.** Validated all slices together: `validate`,
+  `installer/build.py --check`, `sync-agents --check`, both byte-equality diffs, the version/no-bump
+  greps, and **one fresh end-to-end install probe** — all green. The probe is what proves the
+  payload is live: `slice-planner.md` byte-identical in the probe, `Bash(cp:*)` in the probe's
+  settings, prefetch present in `do-whole-phase` and **0×** in both `do-next-slice` copies, the copy
+  rule at all four sites, `workspace_version: 19`.
+- **Doc versions created (consolidating all four Doc-impact notes):** `operations` **v0018** and
+  `decisions` **v0024**. `operations` also gained the **three-edit rule for shipping a new
+  `.claude/agents/*.md`** (build.py `FIXED_LIVE_FILES` + an explicit `write_text` + `MANAGED_FILES`)
+  with the "verify with a real install probe, not a grep" warning — the phase's most transferable
+  finding.
+- **Correction made outside P10's scope, declared:** `operations.md`'s Executor-tiers and
+  Environment-Variables tables still carried the pre-`b26d622` defaults (`haiku` low tier, uniform
+  `xhigh`). `b26d622`/v18 landed as a direct commit outside any phase and never got a doc version,
+  so v0018 corrects both tables to the two shipped presets. Future phases: **a direct machinery
+  commit still owes a doc version** — v18's did not happen, and this review paid it off.
+- **The three referred items, decided:** (1) S2's terser `plan only` back-reference — **accepted**,
+  it names the mechanism inline and points backward two bullets in the same file; (2) **stale
+  READMEs** (`README.en.md:170-175` under-counts `.claude/agents/`; `README.md`'s Korean tier table
+  still says mid = Opus) — **not edited** (a review writes only docs), recommended as **one small
+  follow-up covering both files**; (3) **`effort: xhigh` on `slice-planner`** — kept, but
+  **recommend lowering to `medium`/`high`**: `xhigh` maximises latency for an agent governed by "a
+  late brief is dropped", and the default preset is now `economy`. One line + rebuild.
+- **Two `defer-job` candidates for the orchestrator to file after the phase** (executors cannot run
+  it): (a) `slice-planner` is outside `EXECUTOR_TIERS` — no `executors.toml` knob and no `validate`
+  drift warning after `/update-workspace` resets it; bundle the `effort` retune with it. (b) The
+  README refresh above.
+- **Auto-explain: saved via the local fallback.** The KB API at `localhost:8766` was down (curl exit
+  7), so the explain skill's step-6 fallback wrote
+  `~/projects/personal/knowledge/docs/bootstrap_agentic_workspace.sh/2026-07-28-pipelined-planning-and-copy-based-plan-capture-p10.html`
+  and committed it in the **KB repo only** (`cfcb409`, no push) under the scoped carve-out. Note for
+  future reviews on this machine: `KB_API_BASE_URL`/`KB_API_TOKEN` are **not** exported in the
+  agent's environment, so the v17 env-var/REST default never engages and resolution falls through to
+  the legacy local-KB convention — worth fixing in `~/.zshenv` if the SaaS save is wanted.
+
 ## Open Questions
 
 - ~~How is the prefetch subagent defined (new agent file? tier config? Codex counterpart?)~~ — **resolved by `DECOMP`**: a new read-only `.claude/agents/slice-planner.md` (`Read, Glob, Grep`; `sonnet`@`xhigh` pinned in-file; `bypassPermissions`), wired through all three installer touchpoints, with **no** Codex counterpart and **no** `executors.toml`/`sync-agents` tier support. See *Findings & Notes → Decision*.

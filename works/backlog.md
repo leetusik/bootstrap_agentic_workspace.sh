@@ -5,12 +5,12 @@
 
 ## Pointer
 
-- Current phase: `P10`
-- Current slice: `P10.REVIEW`
+- Current phase: `none`
+- Current slice: `none`
 - Next slice: `none`
 - Waiting on operator: `none`
 - Open deferred jobs: `0`
-- Rebuilt at: `2026-07-28T03:05:00+09:00`
+- Rebuilt at: `2026-07-28T03:19:15+09:00`
 
 ## Active Phases
 
@@ -19,7 +19,7 @@
 | [x] `P7` | `done` | `pass` | Retire embedded /explain | `none` | `works/phases/active/P7` |
 | [x] `P8` | `done` | `pass` | Auto-explain at phase review | `none` | `works/phases/active/P8` |
 | [x] `P9` | `done` | `pass` | Knowledge-by-default in bootstrapped workspaces | `none` | `works/phases/active/P9` |
-| [ ] `P10` | `planned` | `pending` | Pipelined slice planning and verbatim plan capture | `P10.REVIEW` | `works/phases/active/P10` |
+| [x] `P10` | `done` | `pass` | Pipelined slice planning and verbatim plan capture | `none` | `works/phases/active/P10` |
 
 ## Phase P7: Retire embedded /explain
 
@@ -53,4 +53,4 @@
 | [x] `P10.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P10/slices/P10.DECOMP` |
 | [x] `P10.S1` | `done` | Pipelined prefetch in do-whole-phase | `implementation` | `works/phases/active/P10/slices/P10.S1` |
 | [x] `P10.S2` | `done` | Copy-based verbatim plan capture | `implementation` | `works/phases/active/P10/slices/P10.S2` |
-| [ ] `P10.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P10/slices/P10.REVIEW` |
+| [x] `P10.REVIEW` | `done` | phase review | `review` | `works/phases/active/P10/slices/P10.REVIEW` |

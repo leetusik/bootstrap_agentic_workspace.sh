@@ -182,3 +182,8 @@
 {"ts": "2026-07-28T02:55:49+09:00", "type": "slice_status_changed", "slice": "P10.S1", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-07-28T02:59:06+09:00", "type": "slice_status_changed", "slice": "P10.S2", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-07-28T03:05:00+09:00", "type": "slice_status_changed", "slice": "P10.S2", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-07-28T03:06:34+09:00", "type": "slice_status_changed", "slice": "P10.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-07-28T03:09:29+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0018_do-whole-phase_pipelines_the_next_slice_s_research_via_a_read-only_slice-planner_prefetch_and_approved_plans_are_persisted_by_copying_the_harness_plan_file_workspace_v19", "source": "P10.REVIEW"}
+{"ts": "2026-07-28T03:10:59+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0024_pipeline_the_next_slice_s_research_into_the_executor_s_idle_window_via_a_read-only_slice-planner_subagent_and_persist_approved_plans_by_copying_the_harness_plan_file_instead_of_retyping_it_workspace_v19", "source": "P10.REVIEW"}
+{"ts": "2026-07-28T03:19:15+09:00", "type": "slice_status_changed", "slice": "P10.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-07-28T03:19:15+09:00", "type": "phase_reviewed", "phase": "P10", "verdict": "pass", "reviewer": "slice-executor-high"}
