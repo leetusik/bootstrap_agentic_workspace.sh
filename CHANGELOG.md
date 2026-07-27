@@ -34,12 +34,29 @@ history.
   Prefetch applies in the default loop and in `auto`; `plan only` has no idle window to fill.
 - The `slice-planner` model is **not** wired into `executors.toml` / `sync-agents` — it is not
   an executor tier, so it stays pinned in the agent file and is not covered by the tier presets.
+- **Every plan-persistence site now copies the approved plan instead of retyping it.** After the
+  operator approves a plan in Claude Code, the orchestrator `cp`s the harness plan file — the
+  exact path the harness named for that planning session, confirmed to hold the just-approved
+  slice's plan — into the slice's `plan.md`, immediately, before the next `EnterPlanMode`
+  overwrites it. This is byte-exact and removes the one step where a paraphrase or a silent
+  truncation could creep in. Slice-local additions (an `## Escalation` section, for example) are
+  appended after the copy, never a rewrite of the copied body. `Write` remains the fallback
+  wherever no plan file exists: Codex (no plan mode) and `auto` (plan mode never entered).
+  Covers `do-next-slice` (its default and `plan only` branches, both copies) and `do-whole-phase`
+  (default loop and `plan only`; `auto` keeps `Write`, since it never enters plan mode).
+- **New settings allowlist entry: `Bash(cp:*)`** in `.claude/settings.json`, beside the existing
+  `Bash(python3 scripts/workflow.py:*)`. It grants nothing beyond the already-allowed `Write` tool
+  (file overwrite, no deletion) but avoids a permission prompt immediately after every approval
+  gate.
 
-Migration notes: after `--update`, adopting workspaces gain `.claude/agents/slice-planner.md`
-plus the amended `do-whole-phase` rules and contract bullet. No manual action is required, and
-no existing behavior changes: `do-next-slice`, the approval gate, `auto`'s safety halts, the
-escalation ladder, `plan only` / `ready`, and the executor tiers are all untouched. Codex is
-unaffected (there is no Codex `do-whole-phase`, so no `slice-planner` counterpart ships).
+Migration notes: after `--update`, adopting workspaces gain `.claude/agents/slice-planner.md`,
+the amended `do-whole-phase` rules and contract bullet, the copy-based plan-persistence rule in
+both `do-next-slice` copies and in `do-whole-phase`, and the `Bash(cp:*)` allow entry merged into
+`.claude/settings.json`. No manual action is required, and no existing behavior changes beyond how
+the approved plan is persisted: the approval gate, `auto`'s safety halts, the escalation ladder,
+`plan only` / `ready`, and the executor tiers are all untouched. Codex is unaffected (no plan mode
+there, so it keeps the `Write` fallback; there is no Codex `do-whole-phase`, so no `slice-planner`
+counterpart ships).
 
 ## v18 — 2026-07-28
 

@@ -95,6 +95,8 @@ _(Expected targets, for planning only — the slices record the real notes: `ope
 
 - **`operations.md`** — the `do-whole-phase` loop is no longer strictly serial: as of workspace **v19** the orchestrator dispatches a read-only `slice-planner` prefetch for slice N+1 right after dispatching executor N, then plans N+1 by reconciling that brief instead of re-researching. Document the new agent (`Read, Glob, Grep` only, sonnet pinned in-file, outside `executors.toml`/`sync-agents`), the five skip conditions + blast radius, never-block / discard-on-non-`done` / scratchpad-only, the per-slice sizing rule, and that this is `do-whole-phase`-only (not `do-next-slice`, not `plan only`) with the operator's approval gate unmoved. (Source: `P10.S1`.)
 - **`decisions.md`** — new decision (P10, v19): *pipeline the next slice's research into the executor's idle window via a read-only prefetch subagent*. Record the alternatives weighed (orchestrator-inline research only vs. a delegated read-only agent; a fourth `executors.toml` tier vs. a model pinned in-file), why the tool allowlist — not prose — is the enforcement mechanism, the accepted trade-offs (discarded prefetch tokens; the prefetch reads a tree the executor is mutating, with blast-radius skipping as a mitigation rather than a guarantee), and the guardrails that keep the delegation rule, the approval gate, `auto`'s safety halts, and the escalation ladder untouched. (Source: `P10.S1`.)
+- **`operations.md`** — as of workspace **v19**, the orchestrator no longer retypes an approved plan through `Write`: in Claude Code it `cp`s the harness plan file the harness named for that planning session into the slice's `plan.md`, after confirming its opening lines match the just-approved plan (guards against the harness's one-plan-file-per-session reuse), and does so immediately, before the next `EnterPlanMode` overwrites it. Slice-local additions (an `## Escalation` section, for example) are appended after the copy, never a rewrite. `Write` remains the fallback wherever no plan file exists (Codex — no plan mode; `auto` — plan mode never entered). Covers every persistence site: `do-next-slice`'s default and `plan only` branches (both copies), and `do-whole-phase`'s default loop and `plan only` branch. Document the confirm-before-copy guard as load-bearing, not decorative. (Source: `P10.S2`.)
+- **`decisions.md`** — new decision (P10, v19): *persist the operator-approved plan by copying the harness's own plan file instead of re-emitting it through `Write`*. Record the alternative considered and rejected (keep `Write`, i.e. status quo — rejected because retyping a document the harness already holds is the one step where a paraphrase or silent truncation can creep in), the load-bearing guard this decision depends on (confirm the plan file's opening lines match the just-approved plan before copying, because the harness reuses one plan file per session and a skipped step can leave a stale entry), why `Write` stays as the explicit fallback (Codex has no plan mode; `auto` never enters it, so no harness file exists to copy in either case), and the new `.claude/settings.json` `Bash(cp:*)` allowlist entry this decision required (grants nothing beyond the already-allowed `Write` tool; added purely to avoid a permission prompt right after the approval gate). (Source: `P10.S2`.)
 
 ### Cross-slice notes from `P10.S1` (pipelined prefetch — shipped)
 
@@ -107,6 +109,37 @@ _(Expected targets, for planning only — the slices record the real notes: `ope
 - **The exact `slice-planner` dispatch-prompt shape** the orchestrator should use is written out in `slices/P10.S1/result.md` (§ *Dispatch-prompt shape*). It matters because the agent has no `Bash`: everything — slice id/folder, phase folder, the specific questions, and the blast-radius exclusions — must be handed over as paths. Note that `phase.md` itself is always partly inside the running slice's blast radius (every executor appends to its tail), so it is readable-but-stale by construction.
 - **READMEs deliberately untouched (flagged for `REVIEW`, not fixed here).** `README.en.md:170-175` enumerates what a bootstrapped workspace ships ("plus the three risk-routed `slice-executor` tier subagents…") and now under-counts the `.claude/agents/` inventory; `README.md`'s Korean tier table (lines 153-155) is separately stale since `b26d622` (it still says `slice-executor-mid` = Opus). Neither file is embedded machinery or in this slice's plan scope, and editing only the English one would have left the pair inconsistent. Best handled as one small follow-up covering both READMEs — the review's call.
 - **Validation reality check:** the end-to-end install probe is the check that catches dead payload — greps alone would have passed even with the `write_text` call missing. The probe (into the session scratchpad) installed cleanly, wrote `.claude/agents/slice-planner.md` byte-identical to source, stamped `workspace_version: 19`, and showed `slice-planner` 3× in the probe's `do-whole-phase/SKILL.md`, 2× in each contract, and **0×** in `do-next-slice/SKILL.md`.
+
+### Cross-slice notes from `P10.S2` (copy-based verbatim plan capture — shipped)
+
+- **All four rule sites landed, plus the settings allowlist and the CHANGELOG append.** Both
+  `do-next-slice` copies (default + `plan only` branches, same paragraph), all three
+  `do-whole-phase` persistence sites (default loop, `auto`'s explicit `Write`-stays clause, `plan
+  only`), and both contract clauses (`CLAUDE.md`/`AGENTS.md` — the *Driving This Workspace*
+  sentence and the "each slice owns exactly two context files" Hard Rules bullet) now describe
+  copy-not-retype. `CLAUDE.md:42`/`:57` (the operator-intent "verbatim" references) were
+  deliberately left alone, as `DECOMP`'s finding flagged.
+- **`.claude/settings.json` needed no installer wiring beyond the rebuild** — it was already in
+  `FIXED_LIVE_FILES`, had an explicit `write_text` call, and `installer/main.py::_merge_settings_json`
+  already unions permission entries into an existing file on `--update`, so the new `Bash(cp:*)`
+  entry propagates to adopting workspaces automatically. Confirmed via the install probe (probe's
+  `.claude/settings.json` contains the entry) rather than by running an update probe (S1 already
+  established the update path works for `.claude/*` payload changes; this slice's change is
+  additive to an existing merged file, a lower-risk path than S1's brand-new file).
+- **`WORKSPACE_VERSION` stayed at 19** — appended three bullets and extended the Migration notes
+  paragraph in the `## v19` section S1 opened; no new section, no bump. The Migration notes now
+  correct S1's claim that `do-next-slice` is "untouched" (true only for the prefetch change; this
+  slice is the one that touches it) and add the `.claude/settings.json` merge note.
+- **One judgment call left for `REVIEW` to weigh:** the `do-whole-phase` `plan only` bullet says
+  "the same confirm-then-copy rule as the default loop above" rather than re-spelling the full
+  multi-clause rule a third time in one file (the default-loop bullet directly above it, and
+  `do-next-slice`'s own `plan only` branch in a different file, both spell it out in full). This
+  keeps the bullet from padding out the already-large prefetch block just below it, but trades off
+  a same-file forward reference instead of full self-containment. See `result.md` deviations.
+- **Read-through confirmed nothing adjacent weakened:** the approval gate's position, `auto`'s
+  safety halts, the escalation ladder, `plan only` / `ready` semantics, and S1's `slice-planner`
+  prefetch bullet are all textually intact — this slice's edits are additive/substitutive within
+  the persistence clauses only.
 
 ## Open Questions
 

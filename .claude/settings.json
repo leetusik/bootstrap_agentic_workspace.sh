@@ -2,6 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(python3 scripts/workflow.py:*)",
+      "Bash(cp:*)",
       "Read",
       "Edit",
       "Write",
