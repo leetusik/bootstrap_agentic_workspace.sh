@@ -155,6 +155,43 @@ corrected against the final tree.
 - **Baseline is green** at decomposition time: `validate` passes and
   `python3 installer/build.py --check` reports in sync, so any drift a later slice sees is its own.
 
+### From `P11.S1` (implementation)
+
+- **All four installer edits applied as `DECOMP` specified, and the fourth one is load-bearing.** The
+  `OBSOLETE_MACHINERY` entry (`installer/main.py:519`, `# retired in v20 — …`) was **probe-verified**:
+  in a freshly bootstrapped v20 workspace, hand-creating `.claude/agents/slice-planner.md` and running
+  `--update --dry-run` prints `stale workspace skills/machinery dropped upstream (remove manually?):
+  .claude/agents/slice-planner.md` and leaves the file in place. `DECOMP`'s reading of the update
+  path was exactly right; without that entry the removal would have been silent.
+- **`grep -c 'slice-planner' bootstrap_agentic_workspace.sh` is `1`, not `0` — and 1 is correct.** The
+  plan's table expected 0 on the reasoning that the artifact embeds no CHANGELOG, but the artifact
+  *is* `installer/main.py` + payloads, so the mandated `OBSOLETE_MACHINERY` entry necessarily rides in
+  it. The two requirements are mutually exclusive; the check's intent still holds strictly (that one
+  line is the *only* hit in 294 KB, so no payload mentions the agent, and `grep -rl` over the whole
+  fresh-install probe returns nothing). `REVIEW` should expect **exactly 1, the `OBSOLETE_MACHINERY`
+  line** — and the same will be true of every future retirement entry.
+- **Wording approach, for `REVIEW` to weigh:** both rewritten bullets open on the permission and put
+  the limits after it, framed as constraining *how* the orchestrator prepares, never *whether* — the
+  operator's correction was that the rule should read "you may, and here is how to judge it". The five
+  P10 conditions are kept in full but restated as "usually does not pay off when… / weigh these, do
+  not tick them off". `Explore` is named as "the natural fit", a suggestion rather than a requirement,
+  since naming no mechanism read as vague and naming a required one would repeat P10's mistake.
+- **The CHANGELOG v20 section deliberately omits the README fixes** (`P11.S2`): the READMEs are not
+  embedded machinery, and the CHANGELOG is what adopting workspaces read on `--update`, where an
+  upstream README correction is not a change they receive. If `REVIEW` wants it recorded, it is a
+  one-line addition — but `P11.S2` itself must still not touch the CHANGELOG or rebuild.
+- **Baseline for `P11.S2`:** the tree is green after S1 — `validate`, `build.py --check`, and
+  `sync-agents --check` all pass, `CLAUDE.md`/`AGENTS.md` bodies are byte-equal, and both
+  `do-next-slice` copies are untouched (still differing only by their two frontmatter lines). The
+  fresh-install probe is left at
+  `/private/tmp/claude-502/-Users-sugang-projects-personal-bootstrap-agentic-workspace-sh/a91b7b90-28ed-40ac-90ed-5be6ff99160a/scratchpad/probe-p11`
+  for `REVIEW` to inspect (it contains a hand-planted `slice-planner.md` from the obsolete-flag probe
+  — that file is probe scaffolding, not a regression).
+- **`DECOMP`'s README finding re-confirmed after the change:** `slice-planner` now appears nowhere
+  outside `CHANGELOG.md`, `installer/main.py`'s retirement entry, the rebuilt artifact, and `docs/`
+  (v19 versions + `current/`, which `REVIEW` supersedes). Neither README is affected, so `P11.S2`
+  stays the two named string replacements.
+
 ### Docs that `REVIEW` must supersede (middle slices only append notes)
 
 - `docs/current/operations.md` — has a whole section *Pipelined slice planning — the `slice-planner`
@@ -195,7 +232,8 @@ Inherited by both middle slices:
 
 _One line per durable-truth change; `REVIEW` consolidates these into doc versions._
 
--
+- **`operations.md`** (`P11.S1`) — the v19 section *Pipelined slice planning — the `slice-planner` prefetch* is now wrong end to end: the agent is deleted and the prefetch is an **optional** use of the executor's idle window with no prescribed mechanism (`Explore`, inline reading, thinking, or just waiting); the invariants (read-only, no second executor, never blocks, discarded on any non-`done` verdict, scratchpad-only, gate unmoved) survive, the five skip conditions are now guidance, and the v19 mentions at `:33`, `:81`, `:356` need the same recast. Workspace ships as **v20**.
+- **`decisions.md`** (`P11.S1`) — v0024's claim that the prefetch is read-only *by tool allowlist, not prose* must be **superseded**, not carried forward: with the bespoke agent gone, `Explore` has `Bash` and inline research is bounded only by the orchestrator's own discipline — read-only is now a rule to follow, not a structural guarantee. Record the reasons for accepting that trade: no fourth managed agent surface, no agent outside `EXECUTOR_TIERS` (no `executors.toml` knob, no `sync-agents` coverage), no in-file pinned model drifting from the tier presets, and a rule that reads as a permission rather than a procedure (the operator's `intent.md` correction).
 
 ## Open Questions
 

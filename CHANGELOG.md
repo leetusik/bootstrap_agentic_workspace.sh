@@ -9,6 +9,48 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v20 — 2026-07-28
+
+- **The `do-whole-phase` prefetch becomes a permission instead of a procedure.** v19 told the
+  orchestrator to dispatch a research agent immediately after every executor and listed five
+  hard conditions for skipping it. That is now one optional practice: while executor N runs,
+  the orchestrator is idle on the main thread and **may** use that window to prepare slice N+1
+  — by dispatching the built-in read-only **`Explore`** agent, by reading inline itself, by
+  thinking the slice through, or by simply waiting. No mechanism is required, nothing is
+  mandatory, and the choice is the orchestrator's per slice. The goal is efficient,
+  high-quality work, not a sequence to follow.
+- **The agent is gone: `.claude/agents/slice-planner.md` is deleted.** Plain Claude Code
+  behaviour replaces it, so the workspace no longer maintains a fourth managed agent surface —
+  and the v19 anomaly of an agent outside `EXECUTOR_TIERS` (no `executors.toml` knob, no
+  `sync-agents` coverage, a model pinned in-file and drifting from the tier presets) dissolves
+  rather than needing a fix. `scripts/workflow.py` is unchanged; there was never a Codex
+  counterpart, since `do-whole-phase` is Claude Code only.
+- **The enforcement guarantee is honestly weaker, and the docs say so.** v19's read-only
+  property came from the agent's `Read, Glob, Grep` allowlist — structural, not prose. With the
+  agent gone, `Explore` has `Bash` and inline research is bounded only by the orchestrator's own
+  discipline: read-only is now a rule to follow, not a tool allowlist that enforces itself.
+- **What still binds, whatever the orchestrator chooses:** read-only (no repo writes, no
+  `workflow.py` state commands, no commits, none of slice N+1's actual work); no second
+  executor; never block (the executor's completion notification always wins, and anything not
+  ready by then is dropped); discard on any verdict other than `done`; notes live in the session
+  scratchpad, never in a slice folder; and **the operator's approval gate does not move**.
+- **v19's five skip conditions are demoted to guidance**, not deleted — `DECOMP`, a `REVIEW` or
+  already-`ready` next slice, anything `pending`, and blast-radius overlap are now stated as
+  where preparing ahead usually does not pay off, alongside where it does. The useful half of the
+  deleted agent's prompt (hand everything by path, ask sharp questions, expect a compact advisory
+  brief with an explicit "not read / possibly stale" list — never a plan, never a file dump)
+  survives as short guidance inside the skill.
+- Unchanged: v19's copy-based plan capture, `auto`'s safety halts, the escalation ladder,
+  `plan only` / `ready` semantics, the executor tiers, and both `do-next-slice` copies (which
+  never prefetched).
+
+Migration notes: **delete `.claude/agents/slice-planner.md` by hand after `--update`.** The
+updater never deletes files; it now lists the agent as **stale** in the update summary, but
+removing it is a manual step. Leaving it in place is harmless — nothing dispatches it any more —
+but it is dead machinery that will drift. Everything else lands automatically: the rewritten
+`do-whole-phase` rule and the amended contract bullets in `CLAUDE.md` / `AGENTS.md`. No workflow
+behaviour changes for Codex.
+
 ## v19 — 2026-07-28
 
 - **`do-whole-phase` now overlaps the next slice's research with the running executor.**
