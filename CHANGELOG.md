@@ -9,6 +9,32 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v18 — 2026-07-28
+
+- **Both tier presets are re-cut, and `economy` is the new default.** The shipped
+  `flex` / `economy` mappings adopt the tuning proven in a downstream workspace:
+  `economy` — now the default, applied even when `executors.toml` is absent or has no
+  `mode` key — runs low = sonnet@medium, mid = sonnet@high, high = opus@high;
+  `flex` raises the same ladder to low = sonnet@high, mid = sonnet@xhigh,
+  high = opus@xhigh. The Codex tiers are unchanged and still identical in both presets
+  (gpt-5.5 @ medium/high/xhigh). Per-tier `[claude.<tier>]` / `[codex.<tier>]` tables
+  still override the active preset field by field.
+- **No shipped preset uses haiku any more.** The low tier is sonnet in both presets, so
+  the empty-`effort` escape hatch (`effort = ""` omits the effort line) is now purely an
+  override-only feature — it stays in the engine and in `executors.toml`'s comments.
+- **What each mode is for:** `economy` is the everyday default — the previous default
+  (`flex` at sonnet@xhigh / opus@xhigh / opus@xhigh) put Opus on every medium-risk slice,
+  which is more than routine work needs. `flex` is the opt-in step up for a phase where
+  depth matters more than cost; the escalation ladder still covers the tail either way.
+
+Migration notes: after `--update`, re-run `python3 scripts/workflow.py sync-agents`
+— workspaces without explicit tier overrides move to the new economy mapping. To keep
+the deeper tiers, set `mode = "flex"` in `executors.toml` (and note that `flex` itself
+moved: its mid tier is now sonnet@xhigh, not opus@xhigh — pin `[claude.mid] model = "opus"`
+to keep the old behavior). Uncommented per-tier tables keep overriding as before. A
+previously seeded `executors.toml` keeps its old comment block — documentation only;
+delete it and re-run `--update` to reseed.
+
 ## v17 — 2026-07-22
 
 - **Fresh workspaces now ship with knowledge-setup guidance by default.** The seed

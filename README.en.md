@@ -170,7 +170,7 @@ Both `--flag value` and `--flag=value` forms work.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
 - `.claude/` + `.agents/` — the 14 core Agent Skills, mirrored for both tools (`do-whole-phase` is
   Claude Code only), plus the three risk-routed `slice-executor`
-  tier subagents for each tool (`.claude/agents/slice-executor-{low,mid,high}.md` — sonnet / opus / opus by default (the `flex` mode);
+  tier subagents for each tool (`.claude/agents/slice-executor-{low,mid,high}.md` — sonnet / sonnet / opus at tiered efforts by default (the `economy` mode);
   `.codex/agents/` on gpt-5.5 at tiered efforts), `executors.toml` (seeded tier mode/model/effort config, applied with
   `sync-agents`), and `.codex/config.toml`.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
@@ -300,8 +300,9 @@ when the plugin/KB is absent).
 When a low/mid executor hits something beyond its depth it returns an `escalate` verdict; the
 orchestrator folds the findings into the plan and re-dispatches one tier up — so routine slices run
 cheap and fast without capping quality. Tier models and efforts are configurable via the repo-root
-`executors.toml` — a top-level `mode` preset (`flex`, the default; `economy` = the old
-haiku / sonnet / opus mapping) plus per-tier overrides (seeded with commented defaults; seed-once —
+`executors.toml` — a top-level `mode` preset (`economy`, the default, at sonnet@medium /
+sonnet@high / opus@high; `flex` raises those to sonnet@high / sonnet@xhigh / opus@xhigh) plus
+per-tier overrides (seeded with commented defaults; seed-once —
 updates never overwrite it), applied with `python3 scripts/workflow.py sync-agents`. Workflow skills are
 **explicit-invocation only** — agents don't fire them on their own. They are the **operator's
 interface**: you type the slash command; the agent does everything it implies.

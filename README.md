@@ -163,8 +163,8 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 잔상이 다음 작업을 오염시키지 않습니다. 티어별 모델과 노력 수준은 저장소 루트의
 [`executors.toml`](executors.toml)에서 바꿀 수 있습니다 — 에이전트에게 말하면 수정하고
 `sync-agents`로 적용해 줍니다. 모델 매핑은 `mode` 프리셋으로 한 번에 바꿀 수 있습니다 —
-기본은 `flex`(Sonnet/Opus/Opus)이고, `mode = "economy"`는 예전 매핑(Haiku/Sonnet/Opus)을
-되살립니다.
+기본은 `economy`(Sonnet@medium / Sonnet@high / Opus@high)이고, `mode = "flex"`는
+한 단계씩 올린 매핑(Sonnet@high / Sonnet@xhigh / Opus@xhigh)을 씁니다.
 
 ## 자주 쓰는 명령
 

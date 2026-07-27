@@ -8,8 +8,8 @@
 #
 #   1. mode — a named preset for the Claude tiers (top level, before any table;
 #      the Codex tiers are identical in both presets):
-#        flex    (default)  low = sonnet@xhigh, mid = opus@xhigh, high = opus@xhigh
-#        economy            low = haiku (no effort line), mid = sonnet@xhigh, high = opus@xhigh
+#        economy (default)  low = sonnet@medium, mid = sonnet@high,  high = opus@high
+#        flex               low = sonnet@high,   mid = sonnet@xhigh, high = opus@xhigh
 #   2. Per-tier [claude.<tier>] / [codex.<tier>] tables — override the active
 #      preset field by field.
 #
@@ -23,18 +23,18 @@
 # config. After /update-workspace, re-run sync-agents (updates reset the
 # agent files to upstream defaults; `validate` warns while they drift).
 
-#mode = "flex"    # or "economy"
+#mode = "economy"    # or "flex"
 
-# Claude Code (.claude/agents/slice-executor-{low,mid,high}.md) — flex values shown
+# Claude Code (.claude/agents/slice-executor-{low,mid,high}.md) — economy values shown
 #[claude.low]
 #model = "sonnet"
-#effort = "xhigh"
+#effort = "medium"
 #[claude.mid]
-#model = "opus"
-#effort = "xhigh"
+#model = "sonnet"
+#effort = "high"
 #[claude.high]
 #model = "opus"    # e.g. "fable", or "claude-mythos-5" once available
-#effort = "xhigh"
+#effort = "high"
 
 # Codex (.codex/agents/slice-executor-{low,mid,high}.toml) — identical in both modes
 #[codex.low]
