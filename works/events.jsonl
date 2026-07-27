@@ -205,3 +205,8 @@
 {"ts": "2026-07-28T04:47:05+09:00", "type": "slice_created", "phase": "P11", "slice": "P11.S4"}
 {"ts": "2026-07-28T04:54:22+09:00", "type": "slice_status_changed", "slice": "P11.S4", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-07-28T04:55:55+09:00", "type": "slice_status_changed", "slice": "P11.S4", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-07-28T04:57:29+09:00", "type": "slice_status_changed", "slice": "P11.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-07-28T05:00:51+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0019_idle-window_preparation_in_do-whole-phase_is_optional_and_mechanism-free_slice-planner_retired_the_phase_review_writes_no_explainer_and_consolidates_docs_only_on_a_pass_stopping_and_handing_back_otherwise_workspace_v20_v21", "source": "P11.REVIEW"}
+{"ts": "2026-07-28T05:04:05+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0025_p11_retire_the_slice-planner_agent_and_make_idle-window_preparation_optional_and_reverse_p8_s_auto-explain-at-review_pointer_instead_carve-out_dropped_non-pass_stops_before_doc_consolidation_workspace_v20_v21", "source": "P11.REVIEW"}
+{"ts": "2026-07-28T05:08:10+09:00", "type": "slice_status_changed", "slice": "P11.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-07-28T05:08:10+09:00", "type": "phase_reviewed", "phase": "P11", "verdict": "pass", "reviewer": "slice-executor-high"}

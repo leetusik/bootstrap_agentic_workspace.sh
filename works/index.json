@@ -52,17 +52,17 @@
       "id": "P11",
       "name": "Free the orchestrator's idle window",
       "objective": "Drop the bespoke slice-planner agent, recast the do-whole-phase prefetch from a mandated procedure into an optional use of the executor's idle window that the orchestrator sizes per slice, and refresh the stale README sections.",
-      "status": "planned",
+      "status": "done",
       "order": 8,
       "path": "works/phases/active/P11",
-      "review_status": "pending",
-      "current_slice": "P11.REVIEW",
+      "review_status": "pass",
+      "current_slice": null,
       "slice_count": 6,
-      "done_slice_count": 5
+      "done_slice_count": 6
     }
   ],
   "deferred_open_count": 0,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 1,
-  "last_rebuilt_at": "2026-07-28T04:55:55+09:00"
+  "last_rebuilt_at": "2026-07-28T05:08:10+09:00"
 }

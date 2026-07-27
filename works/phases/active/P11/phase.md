@@ -320,6 +320,43 @@ _One line per durable-truth change; `REVIEW` consolidates these into doc version
   `works/deferred.md`, `works/events.jsonl`, `works/index.json`, `works/state.json`) from the
   orchestrator's `start-slice P11.S4` transition — expected, not part of this slice's edit.
 
+### From `P11.REVIEW` (phase review — verdict `pass`)
+
+- **Verdict `pass`.** All four middle slices validated together and green: `validate`,
+  `build.py --check`, `sync-agents --check`, byte-equal contracts, byte-identical `review-phase` and
+  `do-next-slice` copies, `WORKSPACE_VERSION = 21` (×1 in the artifact), CHANGELOG carrying `## v21`,
+  `## v20` **and** `## v19`, and a fresh end-to-end install probe at
+  `/private/tmp/claude-502/-Users-sugang-projects-personal-bootstrap-agentic-workspace-sh/e928efe8-a4ce-400f-8417-b9be6cb5ed57/scratchpad/probe-p11-review2/ws`.
+- **The probe cleared the one thing that could have shipped a false claim.** `grep -rl
+  'slice-planner\|auto-explain\|auto-save'` over the whole freshly bootstrapped tree returns
+  **nothing** — including the seeded `docs/versions/operations/v0001_bootstrap.md`, which now says
+  explaining is an operator-run step and the review writes no explainer. The bootstrap banner printed
+  the corrected line too. **`P11.S3`'s deviation is ratified as correct and complete**, and a wider
+  sweep for `phase explainer|explainer` across `installer/`, the skills, the agents and both contracts
+  found no third missed surface.
+- **`P11.S1`'s deviation is ratified: `grep -c 'slice-planner' bootstrap_agentic_workspace.sh` is
+  expected to be `1`,** the `OBSOLETE_MACHINERY` line — the artifact embeds `installer/main.py`, so
+  every future retirement entry will behave the same. Recorded as standing truth in `operations` v0019.
+- **Both P10-era follow-ups are closed, explicitly** — the README refresh landed (S2 + S4), and the
+  `slice-planner`-outside-`EXECUTOR_TIERS` gap dissolved by deletion (`EXECUTOR_TIERS` unchanged,
+  zero references in `scripts/workflow.py`). Nothing from P10 remains open.
+- **Doc versions created:** `operations` **v0019** and `decisions` **v0025**, each consolidating all
+  four Doc-impact notes. `decisions` **supersedes without erasing**: P10's and P8's entries stay as
+  history with annotated `Status:` lines, and two new `## Superseded Decisions` records spell out what
+  fell (P10's bespoke agent, prescribed mechanism, hard skip conditions and the tool-allowlist
+  enforcement claim; P8's auto-explain and its KB-repo commit carve-out) and what carried forward
+  (the idle window and its invariants; P8's pass-gating principle, now generalised; `WebSearch`/
+  `WebFetch` on the high tier).
+- **Engine sharp edge for future reviews:** `doc-new-version --summary` is slugified into the
+  filename with **no truncation**, so a long summary crashes with `OSError: [Errno 63] File name too
+  long` (it raises before any write, so the failed attempt is harmless). Keep `--summary` under
+  roughly 200 characters. Pre-existing, not a P11 defect.
+- **Dogfooding note:** this review ran under the rules `P11.S3` shipped and they held cleanly —
+  validation and judgment completed across every slice *before* the verdict, then the `pass` branch
+  consolidated docs; the no-explainer rule reduced to reporting one pointer line with no work. The
+  "stop ≠ abort" wording was unambiguous from inside the executor, which is the strongest available
+  evidence that it reads correctly.
+
 ## Open Questions
 
 - None. (The one judgment call `DECOMP` was asked to settle — whether the READMEs should gain a

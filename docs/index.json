@@ -107,7 +107,7 @@
       ]
     },
     "operations": {
-      "latest": "v0018_do-whole-phase_pipelines_the_next_slice_s_research_via_a_read-only_slice-planner_prefetch_and_approved_plans_are_persisted_by_copying_the_harness_plan_file_workspace_v19",
+      "latest": "v0019_idle-window_preparation_in_do-whole-phase_is_optional_and_mechanism-free_slice-planner_retired_the_phase_review_writes_no_explainer_and_consolidates_docs_only_on_a_pass_stopping_and_handing_back_otherwise_workspace_v20_v21",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -253,6 +253,14 @@
           "source": "P10.REVIEW",
           "summary": "do-whole-phase pipelines the next slice's research via a read-only slice-planner prefetch, and approved plans are persisted by copying the harness plan file; workspace v19",
           "previous": "v0017_knowledge_setup_ships_by_default_in_fresh_workspaces_env-var_rest_via_.zshenv_org-level_key_codex_network_access_opt-in_plugin_as_alternative_workspace_v17"
+        },
+        {
+          "id": "v0019_idle-window_preparation_in_do-whole-phase_is_optional_and_mechanism-free_slice-planner_retired_the_phase_review_writes_no_explainer_and_consolidates_docs_only_on_a_pass_stopping_and_handing_back_otherwise_workspace_v20_v21",
+          "path": "docs/versions/operations/v0019_idle-window_preparation_in_do-whole-phase_is_optional_and_mechanism-free_slice-planner_retired_the_phase_review_writes_no_explainer_and_consolidates_docs_only_on_a_pass_stopping_and_handing_back_otherwise_workspace_v20_v21.md",
+          "created_at": "2026-07-28T05:00:51+09:00",
+          "source": "P11.REVIEW",
+          "summary": "Idle-window preparation in do-whole-phase is optional and mechanism-free (slice-planner retired); the phase review writes no explainer and consolidates docs only on a pass, stopping and handing back otherwise; workspace v20 + v21",
+          "previous": "v0018_do-whole-phase_pipelines_the_next_slice_s_research_via_a_read-only_slice-planner_prefetch_and_approved_plans_are_persisted_by_copying_the_harness_plan_file_workspace_v19"
         }
       ]
     },
@@ -293,7 +301,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0024_pipeline_the_next_slice_s_research_into_the_executor_s_idle_window_via_a_read-only_slice-planner_subagent_and_persist_approved_plans_by_copying_the_harness_plan_file_instead_of_retyping_it_workspace_v19",
+      "latest": "v0025_p11_retire_the_slice-planner_agent_and_make_idle-window_preparation_optional_and_reverse_p8_s_auto-explain-at-review_pointer_instead_carve-out_dropped_non-pass_stops_before_doc_consolidation_workspace_v20_v21",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -487,9 +495,17 @@
           "source": "P10.REVIEW",
           "summary": "Pipeline the next slice's research into the executor's idle window via a read-only slice-planner subagent, and persist approved plans by copying the harness plan file instead of retyping it; workspace v19",
           "previous": "v0023_knowledge-by-default_in_bootstrapped_workspaces_via_the_plugin-free_env-var_rest_path_plugin_demoted_to_alternative_.zshenv_over_a_repo_.env_codex_sandbox_the_real_blocker_workspace_v17"
+        },
+        {
+          "id": "v0025_p11_retire_the_slice-planner_agent_and_make_idle-window_preparation_optional_and_reverse_p8_s_auto-explain-at-review_pointer_instead_carve-out_dropped_non-pass_stops_before_doc_consolidation_workspace_v20_v21",
+          "path": "docs/versions/decisions/v0025_p11_retire_the_slice-planner_agent_and_make_idle-window_preparation_optional_and_reverse_p8_s_auto-explain-at-review_pointer_instead_carve-out_dropped_non-pass_stops_before_doc_consolidation_workspace_v20_v21.md",
+          "created_at": "2026-07-28T05:04:05+09:00",
+          "source": "P11.REVIEW",
+          "summary": "P11 — retire the slice-planner agent and make idle-window preparation optional, and reverse P8's auto-explain-at-review (pointer instead, carve-out dropped, non-pass stops before doc consolidation); workspace v20 + v21",
+          "previous": "v0024_pipeline_the_next_slice_s_research_into_the_executor_s_idle_window_via_a_read-only_slice-planner_subagent_and_persist_approved_plans_by_copying_the_harness_plan_file_instead_of_retyping_it_workspace_v19"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-07-28T03:12:06+09:00"
+  "last_rebuilt_at": "2026-07-28T05:05:48+09:00"
 }

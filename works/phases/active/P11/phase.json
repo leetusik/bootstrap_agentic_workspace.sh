@@ -2,16 +2,16 @@
   "id": "P11",
   "name": "Free the orchestrator's idle window",
   "objective": "Drop the bespoke slice-planner agent, recast the do-whole-phase prefetch from a mandated procedure into an optional use of the executor's idle window that the orchestrator sizes per slice, and refresh the stale README sections.",
-  "status": "planned",
+  "status": "done",
   "order": 8,
   "created_at": "2026-07-28T03:39:33+09:00",
   "started_at": null,
-  "completed_at": null,
+  "completed_at": "2026-07-28T05:08:10+09:00",
   "review": {
-    "status": "pending",
-    "reviewed_at": null,
-    "reviewer": null,
-    "note": null
+    "status": "pass",
+    "reviewed_at": "2026-07-28T05:08:10+09:00",
+    "reviewer": "slice-executor-high",
+    "note": "All four slices validate together, including a fresh install probe confirming a bootstrapped v21 workspace carries no auto-explain or slice-planner claim (seeded operations v0001 included). All three intent items satisfied. Docs consolidated into operations v0019 and decisions v0025."
   },
   "paths": {
     "phase_md": "phase.md",
