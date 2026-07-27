@@ -187,3 +187,4 @@
 {"ts": "2026-07-28T03:10:59+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0024_pipeline_the_next_slice_s_research_into_the_executor_s_idle_window_via_a_read-only_slice-planner_subagent_and_persist_approved_plans_by_copying_the_harness_plan_file_instead_of_retyping_it_workspace_v19", "source": "P10.REVIEW"}
 {"ts": "2026-07-28T03:19:15+09:00", "type": "slice_status_changed", "slice": "P10.REVIEW", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-07-28T03:19:15+09:00", "type": "phase_reviewed", "phase": "P10", "verdict": "pass", "reviewer": "slice-executor-high"}
+{"ts": "2026-07-28T03:39:33+09:00", "type": "phase_created", "phase": "P11"}
