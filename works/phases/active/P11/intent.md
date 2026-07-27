@@ -9,6 +9,15 @@
 
 > yeah, but dispatching explore while meantime planning is not forced. orchestrator can choose to research by it self, or awaiting for the slice to end(no pre plan), and stuff. I just want to give a free to the orchestrator. and tell it you can plan also while awaiting. it's an option not mandatory. the goal is to make efficient, and high quality work.
 
+_(Scope added mid-phase, after `P11.S1`/`P11.S2` landed and the review was stopped:)_
+
+> I mistakenly stopped the review executor. btw, I wnat to do like this:
+>
+> 1. drop explain from default behaviour of the review. it will be operated seperately.
+> 2. running review-phase and docs at the same executor fine. but if problem detected on review, stop the process and inform main thread, not going to docs with skip. creating fix slice or decision making with main thread.
+>
+> not a big task, so just include above into this p11. suggest things if you'd do differentely.
+
 ## Confirmed Intent (refined + clarified)
 
 Two changes, both landing on top of P10 (workspace v19).
@@ -55,6 +64,29 @@ a full end-to-end accuracy audit of both files.
 
 Ships as one release (workspace **v20**) with the usual rebuild obligation.
 
+**3. Take auto-explain out of the review, and make a non-passing review stop rather than continue.**
+(Added mid-phase, after S1/S2 landed.) Two changes to what the review slice does:
+
+- **Auto-explain is no longer part of the review's default behaviour.** The review stops producing
+  the phase explainer; explaining becomes a separate operation the operator runs when they want it.
+  The review still **reports a pointer** — one line saying no explainer was written and that
+  `/explain` can produce one for this phase — so explainers do not silently stop happening. This
+  partly reverses **P8** (which existed to add auto-explain at the review); `decisions.md` must
+  record that reversal plainly rather than dropping the earlier decision quietly.
+- **A non-passing review stops and hands back, instead of skipping ahead.** Review and doc
+  consolidation stay in the *same* executor — that part is fine — but the moment the verdict is
+  anything other than `pass`, the executor stops before the pass-only work and returns its findings
+  plus proposed fix slices to the main thread, which decides what happens next (fix slices, or an
+  operator decision). "Stop" means **do not proceed to the docs**; it does **not** mean abort at the
+  first failing check — the executor still completes validation and judgment first, so the
+  orchestrator receives the complete picture rather than one finding per cycle.
+- `slice-executor-high` keeps `WebSearch` / `WebFetch` even though P8 added them for the
+  explainer's citations: a reviewer occasionally needs to check an external fact, and removing them
+  is cheap to do later if they go unused.
+- This lands as a third middle slice (`P11.S3`), created after `DECOMP` because the operator
+  expanded the phase mid-flight; it ships in the same release train (a further version bump, since
+  v20 is already released).
+
 ## Clarifications Resolved
 
 - Q: Dropping `slice-planner` — what replaces it in the `do-whole-phase` prefetch? — A: the
@@ -67,6 +99,11 @@ Ships as one release (workspace **v20**) with the usual rebuild obligation.
   split them: keep as hard rules only what protects correctness (never block, discard on
   non-`done`, a draft is never an approved plan, read-only, no second executor), and demote the
   five skip conditions to guidance.
+- Q: With the explainer gone from the review, should the review still nudge? — A: yes — report a
+  one-line pointer (`explainer: not written — run /explain for this phase`); no work in the
+  executor, but it keeps explainers from quietly never being written.
+- Q: Keep `WebSearch`/`WebFetch` on `slice-executor-high`, added in P8 for the explainer? — A: keep
+  them; a review can legitimately need to check an external fact.
 
 ## Notes
 

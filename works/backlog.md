@@ -6,11 +6,11 @@
 ## Pointer
 
 - Current phase: `P11`
-- Current slice: `P11.REVIEW`
-- Next slice: `none`
+- Current slice: `P11.S3`
+- Next slice: `P11.REVIEW`
 - Waiting on operator: `none`
 - Open deferred jobs: `0`
-- Rebuilt at: `2026-07-28T04:12:06+09:00`
+- Rebuilt at: `2026-07-28T04:24:03+09:00`
 
 ## Active Phases
 
@@ -20,7 +20,7 @@
 | [x] `P8` | `done` | `pass` | Auto-explain at phase review | `none` | `works/phases/active/P8` |
 | [x] `P9` | `done` | `pass` | Knowledge-by-default in bootstrapped workspaces | `none` | `works/phases/active/P9` |
 | [x] `P10` | `done` | `pass` | Pipelined slice planning and verbatim plan capture | `none` | `works/phases/active/P10` |
-| [ ] `P11` | `planned` | `pending` | Free the orchestrator's idle window | `P11.REVIEW` | `works/phases/active/P11` |
+| [ ] `P11` | `planned` | `pending` | Free the orchestrator's idle window | `P11.S3` | `works/phases/active/P11` |
 
 ## Phase P7: Retire embedded /explain
 
@@ -63,4 +63,5 @@
 | [x] `P11.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P11/slices/P11.DECOMP` |
 | [x] `P11.S1` | `done` | Drop slice-planner; make idle-window preparation optional | `implementation` | `works/phases/active/P11/slices/P11.S1` |
 | [x] `P11.S2` | `done` | Refresh the stale README tier facts | `implementation` | `works/phases/active/P11/slices/P11.S2` |
+| [ ] `P11.S3` | `todo` | Take auto-explain out of the review; stop on a non-passing verdict | `implementation` | `works/phases/active/P11/slices/P11.S3` |
 | [ ] `P11.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P11/slices/P11.REVIEW` |
