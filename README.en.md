@@ -292,8 +292,8 @@ is Claude Code only — so the same step works natively in either tool:
 
 Both tools delegate the heavy lifting to a **`slice-executor`** subagent in one of three capability
 tiers, picked by each slice's risk: `slice-executor-low` (sonnet by default — a literal plan-follower
-for mechanical low-risk slices), `slice-executor-mid` (opus — medium-risk, the default), and
-`slice-executor-high` (opus — decomposition, high-risk slices, and the phase review, which it runs in
+for mechanical low-risk slices), `slice-executor-mid` (sonnet — medium-risk), and
+`slice-executor-high` (opus — decomposition, high-risk slices, anything not rated `low` or `medium`, and the phase review, which it runs in
 a fresh context that never edits source, validating the phase and consolidating its doc versions, and,
 on a pass, producing the phase explainer via the knowledge plugin's explain skill — gracefully skipped
 when the plugin/KB is absent).

@@ -151,7 +151,7 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 | 티어 | 기본 모델 | 맡는 일 |
 |---|---|---|
 | `slice-executor-low` | Sonnet | 판단이 필요 없는 기계적인 저위험 slice. 계획을 문자 그대로 따름 |
-| `slice-executor-mid` | Opus | 중간 위험 slice |
+| `slice-executor-mid` | Sonnet | 중간 위험 slice |
 | `slice-executor-high` | Opus | 일 나누기(`DECOMP`), 최종 리뷰(`REVIEW`), 고위험 slice |
 
 낮은 티어가 예상 밖의 상황을 만나면 그 자리에서 멈추고 **에스컬레이션**을 돌려줍니다.

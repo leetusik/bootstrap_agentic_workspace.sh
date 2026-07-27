@@ -235,6 +235,18 @@ _One line per durable-truth change; `REVIEW` consolidates these into doc version
 - **`operations.md`** (`P11.S1`) — the v19 section *Pipelined slice planning — the `slice-planner` prefetch* is now wrong end to end: the agent is deleted and the prefetch is an **optional** use of the executor's idle window with no prescribed mechanism (`Explore`, inline reading, thinking, or just waiting); the invariants (read-only, no second executor, never blocks, discarded on any non-`done` verdict, scratchpad-only, gate unmoved) survive, the five skip conditions are now guidance, and the v19 mentions at `:33`, `:81`, `:356` need the same recast. Workspace ships as **v20**.
 - **`decisions.md`** (`P11.S1`) — v0024's claim that the prefetch is read-only *by tool allowlist, not prose* must be **superseded**, not carried forward: with the bespoke agent gone, `Explore` has `Bash` and inline research is bounded only by the orchestrator's own discipline — read-only is now a rule to follow, not a structural guarantee. Record the reasons for accepting that trade: no fourth managed agent surface, no agent outside `EXECUTOR_TIERS` (no `executors.toml` knob, no `sync-agents` coverage), no in-file pinned model drifting from the tier presets, and a rule that reads as a permission rather than a procedure (the operator's `intent.md` correction).
 
+### From `P11.S2` (implementation)
+
+- **All three planned string replacements matched verbatim and were applied with no surprises**:
+  `README.md:154` (Korean table, `mid` → Sonnet) and `README.en.md:295-296` (English prose,
+  `mid` → sonnet, "the default" claim dropped, `high` explicitly named as the catch-all). No
+  escalation needed.
+- **No rebuild, no `WORKSPACE_VERSION` bump, no CHANGELOG entry** — confirmed correct per plan:
+  READMEs are absent from `FIXED_LIVE_FILES`, and `installer/build.py --check` still reports in
+  sync afterward (unchanged), proving no rebuild ran.
+- No Doc impact note added — this slice changes no durable truth; `P11.S1`'s `operations.md` and
+  `decisions.md` notes above remain the only ones for `REVIEW` to consolidate.
+
 ## Open Questions
 
 - None. (The one judgment call `DECOMP` was asked to settle — whether the READMEs should gain a
