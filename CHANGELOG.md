@@ -9,6 +9,44 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v22 — 2026-07-28
+
+- **A phase that both designs and builds now decomposes in two passes.** The old `design-cowork` shape
+  assumed a phase could be cut up front ("one phase: design slice → implement slice"), but the design is
+  what decides *what gets built* — features appear and disappear at the gate — so an opening `DECOMP`
+  that cuts the build slices is guessing. It no longer does: the first `DECOMP` creates only what is
+  knowable before the gate — any groundwork slices, the design slice(s), and a **second decomposition
+  slice `P<N>.DECOMP2`** ordered after the last of them — and records a **build inventory** in `phase.md`
+  (the candidate feature/surface list, *what* to build, not how) instead of build slices. That inventory
+  is what the handoff's scope checklist is written from.
+- **`P<N>.DECOMP2` cuts the build slices after the design lands**, from the landed spec in `phase.md` and
+  the round's `build-prompt.md`: **backing/backend work first, then the design implementation**, then any
+  fidelity fix. An ordinary decomposition slice otherwise — orchestrator plans it, `slice-executor-high`
+  executes it, bare folders only. It is **never pre-planned**: `plan only` now stops before it for the
+  same reason it stops before `REVIEW`.
+- **How many design slices a phase gets is decided at the first `DECOMP`.** A design with many items to
+  cover splits into several rounds, one `co-work` slice each with its own handoff and `pending` gate —
+  that count *is* knowable up front from the inventory, unlike the build slices.
+- **A design-only phase is unchanged** — single pass, `DECOMP` → design slice(s) → `REVIEW`. So is the
+  *apply* phase of a two-phase split: its own `DECOMP` already runs after the design landed.
+- **`co-work` is now a kind the machinery actually knows.** `design-cowork` has always mandated
+  `--kind co-work` and said the design slice is never dispatched (only the main thread has `DesignSync`),
+  but no driver skill or executor knew the word: `do-next-slice`, `do-whole-phase`, and
+  `slice-executor-high` all enumerated "decomposition, implementation, `fix`, review" and would have
+  dispatched a design slice to an executor that has no `DesignSync`. All of them now carve `co-work` out
+  explicitly, `slice-executor-high` returns `needs_operator` if it is ever handed one, and
+  `do-whole-phase`'s idle-window list notes that a `co-work` slice has no idle window at all.
+- **`/create-phase` now asks the design-split question.** Whether a big design gets its own phase plus a
+  separate *apply* phase can only be decided there — the `DECOMP` executor is forbidden from running
+  `new-phase`, so a split decided later cannot be created from inside decomposition.
+
+**Migration notes:** no state or command changes — `--kind` and slice ids are free-form strings, so
+`P<N>.DECOMP2` and `--kind co-work` need no `workflow.py` change and `validate` is unaffected. But an
+**in-flight phase that mixes design and build and was decomposed under the old single-pass rule needs
+re-shaping**: delete the not-yet-started build slices, and insert a `P<N>.DECOMP2` slice
+(`--kind decomposition --risk high`) after the design slice at a fractional `--order`, to cut them from
+the landed design instead. Phases already past their design gate, and design-only phases, need nothing.
+
 ## v21 — 2026-07-28
 
 - **The phase review no longer writes the phase explainer — this reverses v16's auto-explain.**
