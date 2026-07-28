@@ -1,0 +1,13 @@
+{
+  "phase_id": "P7",
+  "archived_at": "2026-07-28T15:41:38+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P7",
+  "archive_path": "works/phases/archived/20260728_154138_P7_retire_embedded_explain",
+  "slices": [
+    "P7.DECOMP",
+    "P7.S1",
+    "P7.REVIEW"
+  ]
+}

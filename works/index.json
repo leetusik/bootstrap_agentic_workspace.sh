@@ -1,68 +1,7 @@
 {
-  "active_phases": [
-    {
-      "id": "P7",
-      "name": "Retire embedded /explain",
-      "objective": "Remove the explain feature from the bootstrap distribution — embedded skill copies (.claude/skills/explain, .agents/skills/explain), the --with-explain installer path, and KB API wiring — and point users at the knowledge repo's Claude Code plugin instead. Gated: starts only after the knowledge repo's P7 (Claude Code plugin) review passes; leave everything as-is until then. Rebuild the installer (python3 installer/build.py) as part of the work; likely resolves deferred D1 (hardcoded KB path/ports) by deletion.",
-      "status": "done",
-      "order": 4,
-      "path": "works/phases/active/P7",
-      "review_status": "pass",
-      "current_slice": null,
-      "slice_count": 3,
-      "done_slice_count": 3
-    },
-    {
-      "id": "P8",
-      "name": "Auto-explain at phase review",
-      "objective": "Extend the phase-review machinery so a passing review also produces a phase explainer via the knowledge plugin's explain skill — review = validate + consolidate docs + explain — gracefully skipped when the skill/KB is unavailable; update the review machinery files (+ Codex mirrors, contract if touched) and rebuild the installer.",
-      "status": "done",
-      "order": 5,
-      "path": "works/phases/active/P8",
-      "review_status": "pass",
-      "current_slice": null,
-      "slice_count": 3,
-      "done_slice_count": 3
-    },
-    {
-      "id": "P9",
-      "name": "Knowledge-by-default in bootstrapped workspaces",
-      "objective": "Make the knowledge SaaS the default low-friction knowledge path for bootstrapped workspaces: document/wire the env-var setup (KB_API_BASE_URL + KB_API_TOKEN via ~/.zshenv, not a repo .env), address the Codex workspace-write network-sandbox blocker, and align the workspace docs with the agent-first skill flow.",
-      "status": "done",
-      "order": 6,
-      "path": "works/phases/active/P9",
-      "review_status": "pass",
-      "current_slice": null,
-      "slice_count": 4,
-      "done_slice_count": 4
-    },
-    {
-      "id": "P10",
-      "name": "Pipelined slice planning and verbatim plan capture",
-      "objective": "Overlap the next slice's planning research with the running executor in do-whole-phase, and persist operator-approved plans by copying the harness plan file instead of re-emitting it.",
-      "status": "done",
-      "order": 7,
-      "path": "works/phases/active/P10",
-      "review_status": "pass",
-      "current_slice": null,
-      "slice_count": 4,
-      "done_slice_count": 4
-    },
-    {
-      "id": "P11",
-      "name": "Free the orchestrator's idle window",
-      "objective": "Drop the bespoke slice-planner agent, recast the do-whole-phase prefetch from a mandated procedure into an optional use of the executor's idle window that the orchestrator sizes per slice, and refresh the stale README sections.",
-      "status": "done",
-      "order": 8,
-      "path": "works/phases/active/P11",
-      "review_status": "pass",
-      "current_slice": null,
-      "slice_count": 6,
-      "done_slice_count": 6
-    }
-  ],
+  "active_phases": [],
   "deferred_open_count": 0,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 1,
-  "last_rebuilt_at": "2026-07-28T05:08:18+09:00"
+  "last_rebuilt_at": "2026-07-28T15:41:41+09:00"
 }
