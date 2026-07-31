@@ -169,8 +169,8 @@ Both `--flag value` and `--flag=value` forms work.
 - [`CLAUDE.md`](CLAUDE.md) + [`AGENTS.md`](AGENTS.md) — the equivalent per-tool routing contracts.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
 - `.claude/` + `.agents/` — the 14 core Agent Skills, mirrored for both tools (`do-whole-phase` is
-  Claude Code only), plus the three risk-routed `slice-executor`
-  tier subagents for each tool (`.claude/agents/slice-executor-{low,mid,high}.md` — sonnet / sonnet / opus at tiered efforts by default (the `economy` mode);
+  Claude Code only), plus the two risk-routed `slice-executor`
+  tier subagents for each tool (`.claude/agents/slice-executor-{mid,high}.md` — sonnet / opus at tiered efforts by default (the `economy` mode);
   `.codex/agents/` on gpt-5.5 at tiered efforts), `executors.toml` (seeded tier mode/model/effort config, applied with
   `sync-agents`), and `.codex/config.toml`.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
@@ -290,17 +290,19 @@ is Claude Code only — so the same step works natively in either tool:
 > `/plugin marketplace add leetusik/knowledge` → `/plugin install knowledge@knowledge` →
 > `/knowledge:setup` once, then `/knowledge:explain <topic>` on demand.
 
-Both tools delegate the heavy lifting to a **`slice-executor`** subagent in one of three capability
-tiers, picked by each slice's risk: `slice-executor-low` (sonnet by default — a literal plan-follower
-for mechanical low-risk slices), `slice-executor-mid` (sonnet — medium-risk), and
-`slice-executor-high` (opus — decomposition, high-risk slices, anything not rated `low` or `medium`, and the phase review, which it runs in
+Both tools delegate the heavy lifting to a **`slice-executor`** subagent in one of two capability
+tiers, picked by each slice's risk: `slice-executor-mid` (sonnet by default — a one-line, or few-line,
+code edit, or docs: slices rated `risk: low`) and `slice-executor-high` (opus — decomposition,
+essentially all code writing including every cross-file change, anything not rated `low`, and the phase review, which it runs in
 a fresh context that never edits source, validating the phase and — only on a pass — consolidating its
 doc versions; a `changes_requested` or `blocked` verdict stops there and hands the findings back).
-When a low/mid executor hits something beyond its depth it returns an `escalate` verdict; the
-orchestrator folds the findings into the plan and re-dispatches one tier up — so routine slices run
-cheap and fast without capping quality. Tier models and efforts are configurable via the repo-root
-`executors.toml` — a top-level `mode` preset (`economy`, the default, at sonnet@medium /
-sonnet@high / opus@high; `flex` raises those to sonnet@high / sonnet@xhigh / opus@xhigh) plus
+Risk is two values, `low` and `high`, defaulting to `high` — only an exact `low` routes down, so an
+unset or unrecognized value always lands on the thorough tier. When the mid executor hits something
+beyond its depth it returns an `escalate` verdict; the orchestrator folds the findings into the plan
+and re-dispatches to `slice-executor-high` (once per slice) — so trivial slices run cheap without
+capping quality. Tier models and efforts are configurable via the repo-root
+`executors.toml` — a top-level `mode` preset (`economy`, the default, at
+sonnet@high / opus@high; `flex` raises those to sonnet@xhigh / opus@xhigh) plus
 per-tier overrides (seeded with commented defaults; seed-once —
 updates never overwrite it), applied with `python3 scripts/workflow.py sync-agents`. Workflow skills are
 **explicit-invocation only** — agents don't fire them on their own. They are the **operator's
@@ -339,7 +341,7 @@ Archived phases and old doc versions are history; they're not read by default.
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
 │   ├── skills/                    # 15 Agent Skills (Claude Code)
-│   ├── agents/                    # slice-executor tiers low/mid/high (implement slices + run the review)
+│   ├── agents/                    # slice-executor tiers mid/high (implement slices + run the review)
 │   └── settings.json              # pre-approves workflow.py; denies push & rm -rf
 ├── .agents/skills/                # the same skills, mirrored for Codex (minus do-whole-phase)
 └── .codex/

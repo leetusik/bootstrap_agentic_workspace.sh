@@ -27,7 +27,8 @@ DEFERRED_STATUSES = {"deferred", "ready", "promoted", "done", "dropped"}
 REVIEW_VERDICTS = {"pass", "changes_requested", "blocked"}
 CLAUDE_AGENTS = ROOT / ".claude" / "agents"
 CODEX_AGENTS = ROOT / ".codex" / "agents"
-EXECUTOR_TIERS = ("low", "mid", "high")
+EXECUTOR_TIERS = ("mid", "high")
+RETIRED_EXECUTOR_TIERS = ("low",)  # dropped in workspace v23 — routing is two-tier (mid/high)
 # Shipped presets for the slice-executor tiers. A top-level mode = "<preset>" key in
 # the repo-root executors.toml picks one (absent file or key -> economy); per-tier
 # [claude.<tier>] / [codex.<tier>] tables with model/effort keys override the active
@@ -37,12 +38,10 @@ EXECUTOR_TIERS = ("low", "mid", "high")
 DEFAULT_EXECUTOR_MODE = "economy"
 EXECUTOR_PRESETS = {
     "flex": {
-        "low": {"model": "sonnet", "effort": "high", "codex_model": "gpt-5.5", "codex_effort": "medium"},
         "mid": {"model": "sonnet", "effort": "xhigh", "codex_model": "gpt-5.5", "codex_effort": "high"},
         "high": {"model": "opus", "effort": "xhigh", "codex_model": "gpt-5.5", "codex_effort": "xhigh"},
     },
     "economy": {
-        "low": {"model": "sonnet", "effort": "medium", "codex_model": "gpt-5.5", "codex_effort": "medium"},
         "mid": {"model": "sonnet", "effort": "high", "codex_model": "gpt-5.5", "codex_effort": "high"},
         "high": {"model": "opus", "effort": "high", "codex_model": "gpt-5.5", "codex_effort": "xhigh"},
     },
@@ -130,10 +129,16 @@ def read_executors_toml() -> tuple:
                 raise SystemExit(f"executors.toml line {n}: unknown mode {m.group(1)!r} (valid: {', '.join(sorted(EXECUTOR_PRESETS))})")
             mode = m.group(1)
             continue
-        m = re.match(r"^\[\s*(claude|codex)\s*\.\s*(low|mid|high)\s*\]\s*(?:#.*)?$", line)
+        m = re.match(r"^\[\s*(claude|codex)\s*\.\s*(mid|high)\s*\]\s*(?:#.*)?$", line)
         if m:
             section = (m.group(1), m.group(2))
             continue
+        m = re.match(r"^\[\s*(claude|codex)\s*\.\s*(" + "|".join(RETIRED_EXECUTOR_TIERS) + r")\s*\]\s*(?:#.*)?$", line)
+        if m:
+            raise SystemExit(
+                f"executors.toml line {n}: the {m.group(2)} executor tier was retired in workspace v23 — "
+                f"routing is two-tier now, so drop this section or move its settings to [{m.group(1)}.mid]"
+            )
         m = re.match(r'^(model|effort)\s*=\s*"([^"]*)"\s*(?:#.*)?$', line)
         if m:
             if section is None:
@@ -145,7 +150,7 @@ def read_executors_toml() -> tuple:
             continue
         if re.match(r"^(model|effort|mode)\s*=", line):
             raise SystemExit(f'executors.toml line {n}: values must be double-quoted TOML strings, e.g. model = "haiku"')
-        raise SystemExit(f"executors.toml line {n}: cannot parse {line!r} (expected mode = \"...\", [claude.<low|mid|high>], [codex.<low|mid|high>], or model/effort = \"...\")")
+        raise SystemExit(f"executors.toml line {n}: cannot parse {line!r} (expected mode = \"...\", [claude.<mid|high>], [codex.<mid|high>], or model/effort = \"...\")")
     return mode, values
 
 
@@ -194,7 +199,7 @@ def _patched_agent_toml(text: str, model: str, effort: str) -> str:
 
 
 def executor_agent_files(config: dict) -> list:
-    """(tier, path, kind, model, effort) for the 6 tier agent files."""
+    """(tier, path, kind, model, effort) for the 4 tier agent files."""
     entries = []
     for tier in EXECUTOR_TIERS:
         cfg = config[tier]
@@ -675,8 +680,8 @@ def new_phase(args: argparse.Namespace) -> None:
     write_json(pdir / "phase.json", phase_data)
     write_text(pdir / "phase.md", f"# Phase {phase_id}: {args.name}\n\n_Intent: see [intent.md](intent.md)._\n\n## Objective\n\n{args.objective}\n\n## Context\n\n## Decomposition\n\n_Slice breakdown and rationale — filled by the `{phase_id}.DECOMP` slice._\n\n## Findings & Notes\n\n_Durable findings and cross-slice notes; `DECOMP` seeds this, and each slice appends when it finishes._\n\n## Constraints\n\n## Open Questions\n\n-\n")
     write_text(pdir / "intent.md", render_template(load_template("intent.md"), PHASE_ID=phase_id, CAPTURED_AT=now_iso(), ORIGIN="operator"))
-    create_slice(phase_id, f"{phase_id}.DECOMP", "decompose phase", "decomposition", 0, "low", source={"type": "new_phase", "id": phase_id})
-    create_slice(phase_id, f"{phase_id}.REVIEW", "phase review", "review", 9999, "medium", source={"type": "new_phase", "id": phase_id})
+    create_slice(phase_id, f"{phase_id}.DECOMP", "decompose phase", "decomposition", 0, "high", source={"type": "new_phase", "id": phase_id})
+    create_slice(phase_id, f"{phase_id}.REVIEW", "phase review", "review", 9999, "high", source={"type": "new_phase", "id": phase_id})
     append_event("phase_created", phase=phase_id)
     rebuild_index_and_state()
     print(f"created phase {phase_id}: {pdir.relative_to(ROOT)}")
@@ -1061,7 +1066,7 @@ def main(argv=None) -> int:
     p.add_argument("--slice", required=True)
     p.add_argument("--name", required=True)
     p.add_argument("--kind", default="implementation")
-    p.add_argument("--risk", default="medium")
+    p.add_argument("--risk", default="high", help="low (a one-line code edit or docs -> slice-executor-mid) or high (everything else -> slice-executor-high); unrecognized values route to high")
     p.add_argument("--order", type=float)
     p.add_argument("--depends-on", action="append")
     p.set_defaults(func=new_slice)
@@ -1105,7 +1110,7 @@ def main(argv=None) -> int:
     p.add_argument("--slice", required=True)
     p.add_argument("--name")
     p.add_argument("--kind", default="implementation")
-    p.add_argument("--risk", default="medium")
+    p.add_argument("--risk", default="high", help="low (a one-line code edit or docs -> slice-executor-mid) or high (everything else -> slice-executor-high); unrecognized values route to high")
     p.add_argument("--order", type=float)
     p.add_argument("--depends-on", action="append")
     p.add_argument("--create-phase", action="store_true")

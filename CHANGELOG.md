@@ -9,6 +9,42 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v23 — 2026-08-01
+
+- **The `low` executor tier is retired — slice execution is two-tier now.** `slice-executor-low` and
+  `slice-executor-mid` were byte-identical apart from `name`, `description`, and `effort`, so the third
+  tier bought a posture sentence and one effort step. The split is now drawn on **what the slice does**
+  rather than on a three-point difficulty scale: **`slice-executor-high`** takes decomposition, the phase
+  review, and essentially all code writing — every cross-file change without exception — while
+  **`slice-executor-mid`** takes a one-line (or few-line) code edit, or docs, and nothing more.
+- **The risk vocabulary narrows to `low | high`, and `--risk` now defaults to `high`** (it was `medium`)
+  on both `new-slice` and `promote-deferred`. Routing fails safe: only an exact `low` reaches `mid`, so
+  an unset, legacy (`medium`), or misspelled risk lands on `high`. `--risk` is still not validated by the
+  engine — deliberately, and it is what makes this migration free. A phase's `DECOMP` and `REVIEW` slices
+  are now created with `risk: high`, matching the `kind` rule that already routed them to the top tier.
+- **The surviving `mid` tier keeps its own models and efforts** — economy `sonnet` @ `high`, flex
+  `sonnet` @ `xhigh`, Codex `gpt-5.5` @ `high`. It was not re-cut down to the retired low tier's cheaper
+  values. `high` is untouched (`opus` @ `high` / `xhigh`, Codex `gpt-5.5` @ `xhigh`). `mid` also keeps
+  judgment within the plan's intent — it is not the old literal plan-follower — but escalates the moment
+  a slice turns out to be real code writing, spans more than one file, or breaks the plan's assumptions.
+- **The escalation ladder collapses to one step:** `mid → high`, at most **1** escalation per slice (was
+  `low → mid → high`, max 2). The section heading is the fixed `## Escalation: mid → high`.
+  `slice-executor-high` is still the ceiling and never escalates.
+- **`sync-agents` now manages four agent files, not six**, and rejects a retired `[claude.low]` /
+  `[codex.low]` section by name with a line-numbered migration message instead of a generic parse error.
+- **Incidental fix:** `.githooks/pre-commit` did not match `executors.toml` in its staged-path regex even
+  though the build embeds that file verbatim, so an `executors.toml`-only edit could ship without a
+  rebuild. Added.
+
+**Migration notes.** `--update` never deletes, so it flags
+`.claude/agents/slice-executor-low.md` and `.codex/agents/slice-executor-low.toml` as stale — remove both
+by hand. If you customized `executors.toml`, drop any `[claude.low]` / `[codex.low]` block (`sync-agents`
+now errors on them), then re-run `python3 scripts/workflow.py sync-agents`, since updates reset the agent
+files to upstream defaults. Existing slices need no edits: `risk: medium` routes to `slice-executor-high`
+and `risk: low` routes to `slice-executor-mid`. Note the cost posture moves **up** by default — work you
+would previously have rated `medium` now runs on opus; rate a slice `low` only when it truly is a
+one-line edit or docs.
+
 ## v22 — 2026-07-28
 
 - **A phase that both designs and builds now decomposes in two passes.** The old `design-cowork` shape

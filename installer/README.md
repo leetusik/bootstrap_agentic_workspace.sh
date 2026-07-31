@@ -66,7 +66,7 @@ path), so editing them and rebuilding is all that is needed:
 - `.claude/skills/*/SKILL.md`, `.agents/skills/*/SKILL.md`,
   `.agents/skills/*/agents/openai.yaml` (skills are discovered from disk — a skill
   is Claude-only, e.g. `do-whole-phase`, when it has no `.agents/skills/` mirror)
-- `.claude/agents/slice-executor-{low,mid,high}.md`, `.codex/agents/slice-executor-{low,mid,high}.toml`
+- `.claude/agents/slice-executor-{mid,high}.md`, `.codex/agents/slice-executor-{mid,high}.toml`
 - `executors.toml` (seed-once executor-tier config — created if absent, never overwritten on update)
 - `.claude/settings.json`, `.codex/config.toml`
 - `works/templates/{result,deferred_brief,intent}.md`

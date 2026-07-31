@@ -215,3 +215,5 @@
 {"ts": "2026-07-28T15:41:38+09:00", "type": "phase_archived", "phase": "P9", "archive_path": "works/phases/archived/20260728_154138_P9_knowledge-by-default_in_bootstrapped_workspaces"}
 {"ts": "2026-07-28T15:41:38+09:00", "type": "phase_archived", "phase": "P10", "archive_path": "works/phases/archived/20260728_154138_P10_pipelined_slice_planning_and_verbatim_plan_capture"}
 {"ts": "2026-07-28T15:41:38+09:00", "type": "phase_archived", "phase": "P11", "archive_path": "works/phases/archived/20260728_154138_P11_free_the_orchestrator_s_idle_window"}
+{"ts": "2026-08-01T02:44:10+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0020_drop_the_low_executor_tier_two-tier_mid_high_routing_risk_low_high_defaulting_to_high_one-step_escalation_workspace_v23", "source": "manual"}
+{"ts": "2026-08-01T02:44:50+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0026_drop_the_low_executor_tier_two-tier_mid_high_routing_risk_low_high_defaulting_to_high_one-step_escalation_ladder_workspace_v23", "source": "manual"}

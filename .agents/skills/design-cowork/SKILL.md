@@ -35,7 +35,7 @@ read-back — …`, with the `pending` window between them.
 
 ## Shape
 
-- **The design slice:** `--kind co-work --risk high`. Never `low` — nothing here is mechanical.
+- **The design slice:** `--kind co-work --risk high`. Never `low` — that tier is for a one-line edit or docs, and nothing here is either.
 - **A design slice never writes implementation code.** It ends at the landed design + SIGNOFF.
   **Implementation is always its own slice.**
 - **Big design → several design slices**, one per round, each with its own handoff and `pending`, and

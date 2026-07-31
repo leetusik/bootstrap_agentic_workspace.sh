@@ -35,7 +35,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 22
+WORKSPACE_VERSION = 23
 ROOT = TARGET.resolve()
 
 DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
@@ -76,9 +76,9 @@ MANAGED_FILES = [
     "works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/events.jsonl",
     *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md")],
     "scripts/workflow.py",
-    ".claude/agents/slice-executor-low.md", ".claude/agents/slice-executor-mid.md", ".claude/agents/slice-executor-high.md",
+    ".claude/agents/slice-executor-mid.md", ".claude/agents/slice-executor-high.md",
     ".claude/settings.json",
-    ".codex/config.toml", ".codex/agents/slice-executor-low.toml", ".codex/agents/slice-executor-mid.toml", ".codex/agents/slice-executor-high.toml",
+    ".codex/config.toml", ".codex/agents/slice-executor-mid.toml", ".codex/agents/slice-executor-high.toml",
     "executors.toml",
 ]
 for name in CLAUDE_SKILLS:
@@ -475,9 +475,9 @@ for name in CLAUDE_SKILLS:
     write_text(f".agents/skills/{name}/SKILL.md", PAYLOADS[f".agents/skills/{name}/SKILL.md"])
     write_text(f".agents/skills/{name}/agents/openai.yaml", PAYLOADS[f".agents/skills/{name}/agents/openai.yaml"])
 
-# Subagents: full-permission workers that implement one already-planned slice, in three
+# Subagents: full-permission workers that implement one already-planned slice, in two
 # capability tiers picked by the slice's risk (embedded verbatim from the live repo).
-for tier in ("low", "mid", "high"):
+for tier in ("mid", "high"):
     write_text(f".claude/agents/slice-executor-{tier}.md", PAYLOADS[f".claude/agents/slice-executor-{tier}.md"])
     write_text(f".codex/agents/slice-executor-{tier}.toml", PAYLOADS[f".codex/agents/slice-executor-{tier}.toml"])
 
@@ -517,6 +517,8 @@ OBSOLETE_MACHINERY = [
     "executors.toml.example",             # example dropped in v9 — executors.toml itself is seeded
     "works/templates/result.md",          # template dropped in v10 — result.md is free-form, written by the executor
     ".claude/agents/slice-planner.md",    # retired in v20 — idle-window research uses plain Claude Code behaviour (Explore or inline)
+    ".claude/agents/slice-executor-low.md",   # low tier retired in v23 — routing is two-tier (mid/high)
+    ".codex/agents/slice-executor-low.toml",  # low tier retired in v23 — routing is two-tier (mid/high)
 ]
 
 
@@ -624,9 +626,9 @@ elif RETROFIT:
 else:
     print(f"Bootstrapped cross-tool agentic workspace at {TARGET}")
     print("Contracts: CLAUDE.md and AGENTS.md (equivalent)")
-    print("Claude Code: skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{low,mid,high}.md, settings .claude/settings.json")
-    print("Codex: skills in .agents/skills/ (e.g. $do-next-slice), subagent tiers .codex/agents/slice-executor-{low,mid,high}.toml, instructions AGENTS.md")
-    print("Executor tiers are risk-routed (low/mid/high); pick a mode preset (economy default / flex) and tune models/efforts in executors.toml (seeded with commented defaults) + python3 scripts/workflow.py sync-agents")
+    print("Claude Code: skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{mid,high}.md, settings .claude/settings.json")
+    print("Codex: skills in .agents/skills/ (e.g. $do-next-slice), subagent tiers .codex/agents/slice-executor-{mid,high}.toml, instructions AGENTS.md")
+    print("Executor tiers are risk-routed (mid for a one-line edit or docs, high for everything else); pick a mode preset (economy default / flex) and tune models/efforts in executors.toml (seeded with commented defaults) + python3 scripts/workflow.py sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
     print("Canonical state: phase.json / slice.json / deferred.json; generated: works/backlog.md, works/deferred.md")
     print("Versioned docs: docs/versions/<doc>/vNNNN_*.md with generated docs/current/*.md")
