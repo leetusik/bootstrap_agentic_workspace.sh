@@ -31,6 +31,12 @@ REVIEW_VERDICTS = {"pass", "changes_requested", "blocked"}
 # every behavior is exactly as before, byte for byte. See `phase_execution`.
 EXECUTION_MODES = {"parallel"}
 CONSOLIDATION_STATES = {"pending", "done"}
+# A default-stream phase in any of these states means main is mid-flight, so a phase
+# branch may not be merged into it yet (the quiet-point gate, `parallel-gate`).
+BUSY_PHASE_STATUSES = ("in_progress", "in_review", "pending", "blocked")
+# Regenerated from works/phases/** and docs/versions/** by `parallel-merge-finish`;
+# never merged by hand (see .gitattributes).
+GENERATED_FILES = ("works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "docs/current/*.md")
 CLAUDE_AGENTS = ROOT / ".claude" / "agents"
 CODEX_AGENTS = ROOT / ".codex" / "agents"
 EXECUTOR_TIERS = ("mid", "high")
@@ -949,6 +955,72 @@ def _branch_exists(branch: str) -> bool:
     return _git(["rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"], check=False).returncode == 0
 
 
+def _git_available() -> bool:
+    """True when this workspace sits inside a usable git work tree. Never raises: a
+    workspace without git (or outside a repo) must keep working exactly as before."""
+    try:
+        proc = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=str(ROOT), capture_output=True, text=True)
+    except Exception:  # noqa: BLE001 - git is optional
+        return False
+    return proc.returncode == 0 and proc.stdout.strip() == "true"
+
+
+_REPO_PREFIX = None
+
+
+def _repo_prefix() -> str:
+    """The workspace root's path inside the git repo ('' at the repo root).
+
+    `git show <ref>:<path>` and `git ls-tree` take repo-relative paths, so every
+    cross-ref read below prefixes the workspace-relative path with this."""
+    global _REPO_PREFIX
+    if _REPO_PREFIX is None:
+        _REPO_PREFIX = _git(["rev-parse", "--show-prefix"], check=False).stdout.strip()
+    return _REPO_PREFIX
+
+
+def _json_at_ref(ref: str, rel: str):
+    """A workspace-relative JSON file as recorded at a git ref, or None when unreadable."""
+    proc = _git(["show", f"{ref}:{_repo_prefix()}{rel}"], check=False)
+    if proc.returncode != 0:
+        return None
+    try:
+        return json.loads(proc.stdout)
+    except ValueError:
+        return None
+
+
+def _phase_json_at_ref(ref: str, phase_id: str):
+    return _json_at_ref(ref, f"works/phases/active/{phase_id}/phase.json")
+
+
+def _phases_at_ref(ref: str):
+    """Every active phase.json as recorded at a git ref (ordered), or None if the ref is unreadable.
+
+    Lets the gate read another stream's state (main, `origin/main`, a phase branch)
+    without switching checkouts -- pre-merge, main's copy of a phase branch's state is stale.
+    """
+    proc = _git(["ls-tree", "--name-only", ref, f"{_repo_prefix()}works/phases/active/"], check=False)
+    if proc.returncode != 0:
+        return None
+    phases = []
+    for line in proc.stdout.splitlines():
+        entry = line.strip().rstrip("/")
+        if not entry:
+            continue
+        raw = _git(["show", f"{ref}:{entry}/phase.json"], check=False)
+        if raw.returncode != 0:
+            continue
+        try:
+            data = json.loads(raw.stdout)
+        except ValueError:
+            continue
+        data.setdefault("path", entry)
+        phases.append(data)
+    phases.sort(key=lambda d: d.get("order", 999999))
+    return phases
+
+
 def _phase_branch(phase_id: str, name: str, slug_override=None) -> str:
     """`phase/P<N>-<slug>` -- the stream key every other part of parallel mode reads."""
     slug = slugify(slug_override or name, fallback=phase_id.lower())
@@ -1061,6 +1133,173 @@ def parallel_teardown(args: argparse.Namespace) -> None:
     if execution.get("consolidation") == "pending":
         print(f"warning: {args.phase} doc consolidation is still 'pending' -- run the post-merge consolidation on this stream (teardown does not gate on it)")
     print("phase.json changed -- commit it with the rest of the merge cleanup")
+
+
+def parallel_gate(args: argparse.Namespace) -> None:
+    """The quiet-point gate: may this parallel phase's branch be merged into the default stream now?
+
+    Two independent questions, both read at a git ref so no checkout has to be switched:
+
+    * **branch side** -- the phase is `done` with a `pass` review *on its own branch*. Main's copy
+      is stale before the merge, so it is never trusted here.
+    * **main side** -- the default stream is quiet: every non-parallel active phase is `planned` or
+      `done`. Merging into a live phase is what this gate exists to prevent.
+
+    Read-only and CI-shaped: `GATE OPEN` + exit 0, or `GATE CLOSED` + numbered reasons + exit 1.
+    """
+    pdir = require_phase(args.phase)
+    data = read_json(pdir / "phase.json")
+    execution = phase_execution(data)
+    branch_ref = args.branch_ref or (execution or {}).get("branch")
+    if not branch_ref:
+        raise SystemExit(
+            f"phase {args.phase} carries no parallel execution block in this checkout; "
+            f"pass --branch-ref <ref> to name the phase branch explicitly")
+    _require_git_repo()
+    reasons: list = []
+    notes: list = []
+    print(f"phase={args.phase}")
+    print(f"branch_ref={branch_ref}")
+
+    branch_data = _phase_json_at_ref(branch_ref, args.phase)
+    if branch_data is None:
+        reasons.append(
+            f"cannot read works/phases/active/{args.phase}/phase.json at {branch_ref} "
+            f"(unknown ref, or the phase folder does not exist there)")
+    else:
+        branch_status = branch_data.get("status")
+        branch_review = (branch_data.get("review") or {}).get("status")
+        print(f"branch_phase_status={branch_status}")
+        print(f"branch_review={branch_review}")
+        if branch_status != "done":
+            reasons.append(f"phase {args.phase} is {branch_status!r} on {branch_ref}, not 'done'; finish its slices and record the review first")
+        if branch_review != "pass":
+            reasons.append(f"phase {args.phase} review is {branch_review!r} on {branch_ref}, not 'pass'; record a passing review with review-phase on the branch")
+
+    if args.main_ref:
+        main_phases = _phases_at_ref(args.main_ref)
+        if main_phases is None:
+            reasons.append(f"cannot read the default stream's phase state at {args.main_ref} (unknown ref?)")
+            main_phases = []
+        source = args.main_ref
+    else:
+        # Without --main-ref the working tree stands in for main. Refuse when it is the phase
+        # branch itself -- either checked out by name (its worktree) or checked out detached at
+        # its tip (how CI checks out a PR). Sharing a tip with main is normal right after
+        # opt-in and does NOT count.
+        current = git_current_branch()
+        on_phase_branch = current is not None and current in {(execution or {}).get("branch"), branch_ref}
+        detached_at_tip = current is None and _git(["rev-parse", "HEAD"], check=False).stdout.strip() == _git(["rev-parse", branch_ref], check=False).stdout.strip() != ""
+        if on_phase_branch or detached_at_tip:
+            raise SystemExit(
+                f"this checkout is the phase branch {branch_ref} itself, so the working tree cannot stand in for the default stream; "
+                f"pass --main-ref <ref> (e.g. --main-ref origin/main) to say where the default stream's state is read from")
+        main_phases = all_active_phases()
+        source = "working tree"
+    print(f"main_state_source={source}")
+    for p in main_phases:
+        if p.get("id") == args.phase or phase_execution(p):
+            continue  # parallel phases run on their own stream; they do not make main busy
+        if p.get("status") in BUSY_PHASE_STATUSES:
+            reasons.append(f"the default stream is not quiet: phase {p.get('id')} is {p.get('status')!r} (finish or park it, then re-run the gate)")
+    for p in main_phases:
+        other = phase_execution(p)
+        if p.get("id") != args.phase and other and other.get("consolidation") == "pending" and p.get("status") == "done":
+            notes.append(f"phase {p.get('id')} is merged but not consolidated yet; consolidation is serialized, so finish it first (parallel-consolidated {p.get('id')})")
+    for n in notes:
+        print(f"note: {n}")
+
+    if reasons:
+        print("GATE CLOSED")
+        for i, reason in enumerate(reasons, 1):
+            print(f"{i}. {reason}")
+        raise SystemExit(1)
+    print("GATE OPEN")
+    print(f"next: merge {branch_ref} into the default stream, then run: python3 scripts/workflow.py parallel-merge-finish")
+
+
+def parallel_merge_finish(args: argparse.Namespace) -> None:
+    """Run on the default stream right after a phase branch's merge: regenerate, then report what is left.
+
+    The generated files (`works/state.json`, `works/index.json`, `works/backlog.md`,
+    `works/deferred.md`, `docs/current/*.md`) are derived, never authored, so a merge conflict in
+    them is resolved by taking either side and regenerating here -- which is why parallel mode
+    needs no custom git merge driver (a driver would need per-clone `git config` and would not
+    travel with the repo). Makes no commit: the regenerated files belong to the merge commit's
+    cleanup, which the orchestrator owns.
+    """
+    git_ok = _git_available()
+    if git_ok and _git(["rev-parse", "-q", "--verify", "MERGE_HEAD"], check=False).returncode == 0:
+        raise SystemExit(
+            "this checkout is mid-merge (MERGE_HEAD exists) -- finish the merge first, then re-run.\n"
+            f"generated files ({', '.join(GENERATED_FILES)}) are regenerated by this command, so resolve any conflict in them by taking EITHER side.\n"
+            "then: python3 scripts/workflow.py parallel-merge-finish")
+    phases = all_active_phases()
+    stream = current_stream(phases)
+    if stream:
+        print(f"warning: this checkout is on parallel stream {stream}; parallel-merge-finish belongs on the default stream, after the merge")
+    rebuild_docs()
+    rebuild_index_and_state()
+    print(f"regenerated from the merged folders: {', '.join(GENERATED_FILES)}")
+    awaiting = []
+    for p in all_active_phases():
+        execution = phase_execution(p)
+        if not execution or execution.get("consolidation") != "pending" or p.get("status") != "done":
+            continue
+        branch = execution.get("branch")
+        merged = True  # a deleted branch means the phase was already merged and torn down
+        if git_ok and branch and _branch_exists(branch):
+            merged = _git(["merge-base", "--is-ancestor", branch, "HEAD"], check=False).returncode == 0
+        if merged:
+            awaiting.append((p, execution))
+    if not awaiting:
+        print("nothing awaiting doc consolidation")
+    else:
+        print(f"{len(awaiting)} merged phase(s) await doc consolidation -- do them ONE AT A TIME, on this stream (doc versions are allocated from a single index):")
+        for p, execution in awaiting:
+            print(f"- {p['id']}: doc impact notes in {p['path']}/phase.md (section '## Doc Impact')")
+            print(f"    per note: python3 scripts/workflow.py doc-new-version --doc <doc> --summary \"...\" --source {p['id']}.REVIEW -> edit the returned edit_path -> python3 scripts/workflow.py rebuild-docs")
+            print(f"    when that phase's notes are all consolidated: python3 scripts/workflow.py parallel-consolidated {p['id']}")
+            if execution.get("worktree") or (git_ok and execution.get("branch") and _branch_exists(execution["branch"])):
+                print(f"    then retire its branch + worktree: python3 scripts/workflow.py parallel-teardown {p['id']}")
+    print("no commit made -- commit the regenerated files with the merge cleanup")
+
+
+def parallel_consolidated(args: argparse.Namespace) -> None:
+    """Record that a merged parallel phase's deferred doc consolidation is finished.
+
+    The engine cannot write the prose: an agent runs `doc-new-version` per "Doc Impact" note on the
+    default stream and then calls this to flip `execution.consolidation` to "done", which is also
+    what unblocks archiving the phase.
+    """
+    pdir = require_phase(args.phase)
+    data = read_json(pdir / "phase.json")
+    execution = phase_execution(data)
+    if not execution:
+        raise SystemExit(f"phase {args.phase} is not opted into parallel execution (no parallel execution block); default-stream phases consolidate docs in their own REVIEW slice")
+    stream = current_stream(all_active_phases())
+    if stream:
+        raise SystemExit(f"this checkout is on parallel stream {stream}; run parallel-consolidated on the default stream, after the branch is merged")
+    if data.get("status") != "done":
+        raise SystemExit(f"phase {args.phase} is {data.get('status')!r}, not 'done'; consolidation happens after its review passes and the branch is merged")
+    review_status = data.get("review", {}).get("status")
+    if review_status != "pass":
+        raise SystemExit(f"phase {args.phase} review is {review_status!r}, not 'pass'; record the passing review before consolidating")
+    consolidation = execution.get("consolidation")
+    if consolidation == "done":
+        raise SystemExit(f"phase {args.phase} is already marked consolidated (execution.consolidation='done')")
+    if consolidation != "pending":
+        raise SystemExit(f"phase {args.phase} has execution.consolidation {consolidation!r}; expected 'pending' (set at opt-in by parallel-start)")
+    data["execution"]["consolidation"] = "done"
+    write_json(pdir / "phase.json", data)
+    append_event("phase_consolidated", phase=args.phase, branch=execution.get("branch"))
+    rebuild_index_and_state()
+    print(f"phase {args.phase} docs consolidated (execution.consolidation=done)")
+    print("phase.json changed -- commit it together with the new doc versions")
+    branch = execution.get("branch")
+    if execution.get("worktree") or (branch and _git_available() and _branch_exists(branch)):
+        print(f"next: python3 scripts/workflow.py parallel-teardown {args.phase}")
+    print(f"{args.phase} is now archivable (archive-phase/rotate-backlog no longer block on pending consolidation)")
 
 
 def parallel_start_hint(state: dict, index: dict) -> str:
@@ -1230,6 +1469,11 @@ def _phase_blockers(pdir: Path) -> list:
     review_status = phase.get("review", {}).get("status")
     if review_status != "pass":
         reasons.append(f"review is {review_status!r}, not pass")
+    # A merged parallel phase still owes the default stream its deferred doc consolidation.
+    # Teardown only warns about this (it is reversible); archiving is not, so it blocks.
+    execution = phase_execution(phase)
+    if execution and execution.get("consolidation") == "pending":
+        reasons.append(f"docs not consolidated -- run the post-merge consolidation, then: python3 scripts/workflow.py parallel-consolidated {phase['id']}")
     return reasons
 
 
@@ -1411,6 +1655,19 @@ def main(argv=None) -> int:
     p.add_argument("--worktree", default=None, help="worktree path (default: a sibling of the repo root, ../<repo>-<phase>)")
     p.add_argument("--slug", default=None, help="branch slug override (default: slugified phase name); branch is phase/<phase>-<slug>")
     p.set_defaults(func=parallel_start)
+
+    p = sub.add_parser("parallel-gate", help="Quiet-point gate: is this parallel phase's branch mergeable now (branch done+pass, default stream quiet)? Exit 0 = open")
+    p.add_argument("phase")
+    p.add_argument("--branch-ref", default=None, help="git ref holding the phase branch's state (default: the phase's stamped execution.branch; e.g. HEAD or origin/phase/P2-x in CI)")
+    p.add_argument("--main-ref", default=None, help="git ref holding the default stream's state (default: this working tree; e.g. origin/main when running from a PR checkout)")
+    p.set_defaults(func=parallel_gate)
+
+    p = sub.add_parser("parallel-merge-finish", help="Run on the default stream right after merging a phase branch: regenerate the generated files and list phases awaiting doc consolidation")
+    p.set_defaults(func=parallel_merge_finish)
+
+    p = sub.add_parser("parallel-consolidated", help="Mark a merged parallel phase's deferred doc consolidation done (run on the default stream, after the doc versions land)")
+    p.add_argument("phase")
+    p.set_defaults(func=parallel_consolidated)
 
     p = sub.add_parser("parallel-teardown", help="Retire a merged parallel phase's worktree and branch; run from the default stream")
     p.add_argument("phase")
