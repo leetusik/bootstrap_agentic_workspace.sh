@@ -10,8 +10,9 @@ mirroring.
 Source of truth:
   * Live repo files (embedded verbatim, killing the double-maintenance):
       scripts/workflow.py, .claude/skills/*, .agents/skills/*, the .claude/.codex
-      subagents, .claude/settings.json, .codex/config.toml, works/templates/*, and
-      the CLAUDE.md == AGENTS.md contract body (asserted byte-equal, embedded once).
+      subagents, .claude/settings.json, .codex/config.toml, works/templates/*,
+      .github/workflows/workspace-ci.yml, .gitattributes, and the CLAUDE.md ==
+      AGENTS.md contract body (asserted byte-equal, embedded once).
   * installer/payloads/  (fresh-install-only seeds, no live counterpart):
       doc_bodies/<doc>.md, sentinel-templated (__PROJECT_NAME__ / __PROJECT_SUMMARY__
       substituted by main.py at install time).
@@ -50,6 +51,11 @@ FIXED_LIVE_FILES = [
     "executors.toml",
     "works/templates/deferred_brief.md",
     "works/templates/intent.md",
+    # Repo-level policy files. Embedded like any other live file; main.py emits them
+    # through their own write policy (CI seed-once, .gitattributes line-merge) so an
+    # adopting repo's own CI / attributes are never clobbered.
+    ".github/workflows/workspace-ci.yml",
+    ".gitattributes",
 ]
 
 CLAUDE_HDR = "# CLAUDE.md\n\n> Equivalent to `AGENTS.md`. If you change workflow rules, update both.\n\n"

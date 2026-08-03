@@ -70,7 +70,22 @@ path), so editing them and rebuilding is all that is needed:
 - `executors.toml` (seed-once executor-tier config — created if absent, never overwritten on update)
 - `.claude/settings.json`, `.codex/config.toml`
 - `works/templates/{result,deferred_brief,intent}.md`
+- `.github/workflows/workspace-ci.yml` (**seed-once** repo policy file — created when
+  absent, never overwritten, on install/retrofit/update alike; one generic workflow
+  that runs `validate` everywhere and shell-guards the upstream-only checks
+  `installer/build.py --check` + `tests/retrofit_smoke.sh` on the presence of those
+  files, plus a `parallel-gate` job on `phase/*` pull requests)
+- `.gitattributes` (**line-merged** repo policy file — the
+  `works/events.jsonl merge=union` rule is appended when missing and existing content
+  is never rewritten; skipping a repo's existing `.gitattributes` would silently drop
+  the union rule)
 - the `CLAUDE.md` == `AGENTS.md` contract body (asserted byte-equal, embedded once)
+
+Both policy files are emitted by `emit_policy_files()` in `main.py` rather than through
+the normal `write_text` dispatch, so their policy is defined once and applies to fresh
+installs, `--into-existing` retrofits and `--update` alike. They are deliberately **not**
+in `MANAGED_FILES`: a repo that already has CI or attribute rules must not fail the
+fresh-install conflict guard.
 
 Interpolation that depends on install-time values (project name, doc frontmatter
 dates) stays as code in `main.py`; the payloads carry only static text plus the

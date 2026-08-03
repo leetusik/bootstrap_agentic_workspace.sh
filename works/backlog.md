@@ -6,17 +6,17 @@
 ## Pointer
 
 - Current phase: `P12`
-- Current slice: `P12.S5`
-- Next slice: `P12.S6`
+- Current slice: `P12.S6`
+- Next slice: `P12.S7`
 - Waiting on operator: `none`
 - Open deferred jobs: `0`
-- Rebuilt at: `2026-08-03T23:31:15+09:00`
+- Rebuilt at: `2026-08-03T23:44:13+09:00`
 
 ## Active Phases
 
 | Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
-| [ ] `P12` | `planned` | `pending` | Opt-in parallel phase execution: branch-per-phase with PR + CI | `P12.S5` | `works/phases/active/P12` |
+| [ ] `P12` | `planned` | `pending` | Opt-in parallel phase execution: branch-per-phase with PR + CI | `P12.S6` | `works/phases/active/P12` |
 
 ## Phase P12: Opt-in parallel phase execution: branch-per-phase with PR + CI
 
@@ -27,7 +27,7 @@
 | [x] `P12.S2` | `done` | Opt-in lifecycle: branch + worktree cut, teardown, proactive suggestion | `implementation` | `works/phases/active/P12/slices/P12.S2` |
 | [x] `P12.S3` | `done` | Merge machinery: quiet-point gate, merge-finish rebuild, deferred consolidation | `implementation` | `works/phases/active/P12/slices/P12.S3` |
 | [x] `P12.S4` | `done` | Cross-stream status view | `implementation` | `works/phases/active/P12/slices/P12.S4` |
-| [ ] `P12.S5` | `todo` | PR + CI layer, agent-driven integration | `implementation` | `works/phases/active/P12/slices/P12.S5` |
+| [x] `P12.S5` | `done` | PR + CI layer, agent-driven integration | `implementation` | `works/phases/active/P12/slices/P12.S5` |
 | [ ] `P12.S6` | `todo` | Skills + contract for parallel mode | `implementation` | `works/phases/active/P12/slices/P12.S6` |
 | [ ] `P12.S7` | `todo` | README documentation for parallel mode | `implementation` | `works/phases/active/P12/slices/P12.S7` |
 | [ ] `P12.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P12/slices/P12.REVIEW` |

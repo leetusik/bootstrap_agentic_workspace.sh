@@ -5,7 +5,7 @@
 # is read-only (assembles in memory, compares bytes); it reads the worktree, so it is
 # exact only when machinery edits are staged together — the normal flow here.
 
-if ! git diff --cached --name-only | grep -qE '^(installer/|scripts/workflow\.py$|CLAUDE\.md$|AGENTS\.md$|executors\.toml$|\.claude/|\.agents/|\.codex/|works/templates/|bootstrap_agentic_workspace\.sh$)'; then
+if ! git diff --cached --name-only | grep -qE '^(installer/|scripts/workflow\.py$|CLAUDE\.md$|AGENTS\.md$|executors\.toml$|\.claude/|\.agents/|\.codex/|\.github/|\.gitattributes$|works/templates/|bootstrap_agentic_workspace\.sh$)'; then
     exit 0
 fi
 

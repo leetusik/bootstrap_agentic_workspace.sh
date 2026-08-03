@@ -9,6 +9,49 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v24 — 2026-08-03
+
+- **The workspace now ships CI.** `.github/workflows/workspace-ci.yml` is one generic workflow that
+  works unchanged upstream and in every adopting repo: a `validate` job runs
+  `python3 scripts/workflow.py validate` on every push and pull request, and the two upstream-only
+  checks (`python3 installer/build.py --check`, `bash tests/retrofit_smoke.sh`) are **shell-guarded on
+  the presence of the files they need**, so a repo without `installer/`/`tests/` simply skips them.
+  Policy: **seed-once** — created when absent, never overwritten (the `executors.toml` precedent), on
+  fresh install, `--into-existing` and `--update` alike. It is your CI file; edit it freely.
+- **A second CI job gates parallel phase merges.** On a pull request whose head branch is
+  `phase/P<N>-<slug>` (the branch `parallel-start` cuts), the `parallel-gate` job derives `<P>` from
+  the branch name and runs `parallel-gate <P> --branch-ref HEAD --main-ref origin/<base>`, checking
+  the branch out at the PR head sha with full history. `GATE CLOSED` exits non-zero, so the check goes
+  red; whether that blocks the merge is your branch-protection choice, and the agent-side flow treats
+  a red check as stop-and-report.
+- **`.gitattributes` now ships too, line-merged instead of overwritten.** The
+  `works/events.jsonl merge=union` rule (append-only log, built-in git driver, no per-clone config) is
+  appended when missing and existing content is never rewritten — on install, retrofit and update
+  alike. Skipping a repo that already has a `.gitattributes` would have silently dropped the rule
+  exactly where a phase-branch merge conflicts. The generated files (`works/state.json`,
+  `works/index.json`, `works/backlog.md`, `works/deferred.md`, `docs/current/*.md`) still get **no**
+  merge driver on purpose: regenerate, don't merge.
+- **The shipped `.claude/settings.json` deny narrows from `Bash(git push:*)` to
+  `Bash(git push --force:*)`.** Agent-driven parallel integration has the orchestrator push a phase
+  branch and drive `gh`; a blanket deny blocked that outright, with no prompt. Pushes now go through
+  the normal interactive permission prompt — nothing is pre-allowed, the operator still approves each
+  one — while force-pushes stay denied.
+- **No `gh` wrapper in the engine.** PR creation/merge stays skill-guided (`gh` run directly by the
+  orchestrator): `gh` auth/output/error handling is agent territory, and `parallel-gate` is already
+  the shared engine-side check that both CI and the agent run before merging. `scripts/workflow.py`
+  stays offline-testable and unchanged by this release.
+- **Incidental:** `.githooks/pre-commit` now also matches `^\.github/` and `^\.gitattributes$` in its
+  staged-path regex, since both files are embedded in the distributable and must not ship stale.
+
+**Migration notes.** Existing adopters: the settings merge is **additive** — a deny entry can never be
+removed downstream — so your `.claude/settings.json` keeps the old `Bash(git push:*)` line. If you
+adopt agent-driven parallel integration, **remove `Bash(git push:*)` from `.claude/settings.json` by
+hand** (keep `Bash(git push --force:*)`); otherwise leave it and push manually. `--update` adds the CI
+workflow when you have none (it never touches an existing `.github/workflows/workspace-ci.yml`) and
+appends the union line to your `.gitattributes`, creating the file if absent — review both in
+`git status` before committing. If your CI is not GitHub Actions, delete the seeded file; the
+equivalent check anywhere is `python3 scripts/workflow.py validate`.
+
 ## v23 — 2026-08-01
 
 - **The `low` executor tier is retired — slice execution is two-tier now.** `slice-executor-low` and

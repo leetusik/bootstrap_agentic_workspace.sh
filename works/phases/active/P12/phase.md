@@ -373,6 +373,55 @@ refuses an unmerged branch, so a missing branch implies the merge already happen
 never shells out); a stamped parallel phase with no usable git work tree → a clear
 `not inside a git work tree` error, since the command is inherently git-backed.
 
+### S5 — the CI layer and the PR route (binding for S6–S7)
+
+**1. Skill-guided `gh`, no engine wrapper.** The orchestrator runs `gh` directly per S6's skill text;
+`scripts/workflow.py` gained **no** `gh` subcommand and was not touched at all by S5. Rationale:
+`gh` auth/output/error handling is agent territory, the engine stays offline-testable, and
+`parallel-gate` is already the shared engine-side check that both CI and the agent run before
+merging. S6 writes the sequence from S3's §5 verbatim: `parallel-gate` → `gh pr create` / push →
+merge → `parallel-merge-finish` → consolidate → `parallel-consolidated <P>` → `parallel-teardown <P>`.
+
+**2. One generic CI workflow, `.github/workflows/workspace-ci.yml`, embedded seed-once.** Job
+`validate` runs `python3 scripts/workflow.py validate` on every push and PR; `installer/build.py
+--check` and `bash tests/retrofit_smoke.sh` are **shell-guarded** on the presence of those files, so
+an adopting workspace (no `installer/`, no `tests/`) skips them. Job `parallel-gate` runs only on a
+`pull_request` whose `github.head_ref` starts with `phase/`: it checks out the **PR head sha**
+(`fetch-depth: 0`) — never the default PR *merge* commit, whose `works/` is a blend of both sides —
+derives `<P>` from `phase/P<N>-<slug>` with `sed -n 's|^phase/\(P[0-9][0-9]*\)-.*$|\1|p'`, and runs
+`parallel-gate <P> --branch-ref HEAD --main-ref origin/<base>`. `GATE CLOSED` → exit 1 → red check;
+whether that blocks the merge is branch protection's business, and the agent-side flow treats red as
+stop-and-report. No external actions beyond `actions/checkout@v4`, ASCII, no secrets.
+
+**3. Installer policy for the two repo-level files (`emit_policy_files()` in `installer/main.py`).**
+Both are in `FIXED_LIVE_FILES` but in **neither** `MANAGED_FILES` nor `_is_machinery` — a repo that
+already has CI or attribute rules must not trip the fresh-install conflict guard (both names are
+already in `EMPTY_OK_ALLOWLIST`). They bypass `write_text` and are emitted by one helper, so a single
+policy definition covers fresh install, `--into-existing` and `--update` alike:
+
+- `.github/workflows/workspace-ci.yml` — **seed-once** (created when absent, never overwritten;
+  `executors.toml` precedent).
+- `.gitattributes` — **line-merged** (`works/events.jsonl merge=union` appended only when that exact
+  line is absent, existing content never rewritten). A skipped file would silently lose the union
+  rule exactly on the repos where a phase-branch merge conflicts. This closes S3's open question.
+
+`WORKSPACE_VERSION` is now **24**, with the matching `CHANGELOG.md` entry; `.githooks/pre-commit`
+also matches `^\.github/` and `^\.gitattributes$` (both are embedded payloads, so editing either
+must force the artifact-parity check).
+
+**4. The shipped `.claude/settings.json` deny is now `Bash(git push --force:*)`, not
+`Bash(git push:*)`.** Amendment 2 has the orchestrator push phase branches and drive `gh`; a blanket
+deny blocked that outright, with no prompt. Pushes now go through the normal interactive permission
+prompt (nothing is pre-allowed — the operator still approves each one) while force-pushes stay
+denied. **Existing adopters keep the old deny** (settings merge is additive; a deny can never be
+removed downstream) and must delete the `Bash(git push:*)` line by hand — stated in the v24 migration
+notes, and S6/S7 should repeat it wherever they describe the parallel merge flow.
+
+**5. Not verifiable in this slice:** CI has never actually run — pushing is outside a slice's
+boundaries. The workflow was validated locally only (PyYAML + `ruby -ryaml` parse, ASCII check,
+branch-name derivation against S2's real format, and the commands it invokes run locally). The first
+real run happens on the operator's next push.
+
 ## Doc Impact
 
 _Running list for the `REVIEW` slice to consolidate into doc versions (one version per doc, per
@@ -403,6 +452,23 @@ phase). Do not run `doc-new-version` in a middle slice._
   default stream's `works/backlog.md` cannot show before the merge), and a one-line verdict naming
   the next command; it is the only workflow command that writes nothing (no rebuild), and falls back
   to the local copy with a note once the branch is torn down.
+- **`operations`** (S5) — the workspace now ships CI: `.github/workflows/workspace-ci.yml` runs
+  `validate` on every push/PR everywhere and shell-guards the upstream-only checks
+  (`installer/build.py --check`, `tests/retrofit_smoke.sh`) on the presence of those files, plus a
+  `parallel-gate` job that runs the quiet-point gate on `phase/*` pull requests
+  (`--branch-ref HEAD --main-ref origin/<base>`, red check when the gate is closed). The installer
+  seeds that file once (never overwritten) and line-merges `works/events.jsonl merge=union` into any
+  existing `.gitattributes`, on fresh install, retrofit and `--update` alike; `WORKSPACE_VERSION` is
+  24. PR creation and merging stay operator/agent-run `gh` commands — the engine has no `gh` wrapper.
+- **`decisions`** (S5) — three choices: (a) **no `gh` wrapper in the engine** — PR steps are
+  skill-guided so `gh` auth/output/error handling stays agent territory and `workflow.py` stays
+  offline-testable, with `parallel-gate` as the one shared check CI and the agent both run; (b) the
+  CI workflow ships **seed-once** while `.gitattributes` ships **line-merged**, because an adopter's
+  CI is theirs to own but a skipped `.gitattributes` would silently drop the union rule exactly where
+  a phase-branch merge conflicts; (c) the shipped Claude deny narrows from `Bash(git push:*)` to
+  `Bash(git push --force:*)` so agent-driven integration can prompt for a push instead of being
+  blocked outright — and because settings merges are additive, existing adopters must remove the old
+  deny by hand.
 - **`decisions`** (S3) — generated workspace files are **regenerated, not merged**: no custom git
   merge driver, because a driver needs per-clone `git config` and therefore does not travel with the
   repo. A merge conflict in `works/{state.json,index.json,backlog.md,deferred.md}` or

@@ -44,6 +44,7 @@ printf 'def util():\n    return 1\n'                  > "$R/scripts/util.py"
 printf '# Their Contract\n\nUse 4-space indent.\n'    > "$R/CLAUDE.md"
 printf '# Their Contract\n\nUse 4-space indent.\n'    > "$R/AGENTS.md"
 printf '{\n  "permissions": {\n    "allow": ["Bash(make:*)"]\n  },\n  "env": {"FOO": "bar"}\n}\n' > "$R/.claude/settings.json"
+printf '*.py text\n'                                  > "$R/.gitattributes"
 git -C "$R" init -q
 git -C "$R" add -A
 git -C "$R" -c user.email=t@t -c user.name=t commit -qm "initial existing repo"
@@ -59,10 +60,16 @@ rc=$?
 [ "$(sha "$R/scripts/util.py")" = "$UT" ] && ok "scripts/util.py byte-identical" || bad "scripts/util.py changed"
 [ "$(git -C "$R" rev-parse HEAD)" = "$HEAD0" ] && ok "git HEAD unchanged" || bad "git HEAD changed"
 
-mods=$(git -C "$R" status --porcelain | grep '^ M' | awk '{print $2}' | sort | tr '\n' ',')
-[ "$mods" = ".claude/settings.json,AGENTS.md,CLAUDE.md," ] \
-  && ok "only the 3 intended files are modified (rest are additions)" \
+mods=$(git -C "$R" status --porcelain | grep '^ M' | awk '{print $2}' | LC_ALL=C sort | tr '\n' ',')
+[ "$mods" = ".claude/settings.json,.gitattributes,AGENTS.md,CLAUDE.md," ] \
+  && ok "only the 4 intended files are modified (rest are additions)" \
   || bad "unexpected tracked modifications: $mods"
+
+# .gitattributes is line-merged, never replaced; the CI workflow is seeded when absent.
+grep -q '^\*\.py text$' "$R/.gitattributes" && ok ".gitattributes original rule preserved" || bad ".gitattributes original rule lost"
+[ "$(grep -c '^works/events\.jsonl merge=union$' "$R/.gitattributes")" -eq 1 ] \
+  && ok ".gitattributes gains exactly one union rule" || bad ".gitattributes union rule missing or duplicated"
+[ -f "$R/.github/workflows/workspace-ci.yml" ] && ok "retrofit seeds the CI workflow" || bad "retrofit did not seed the CI workflow"
 
 grep -q "Their Contract" "$R/CLAUDE.md" && ok "CLAUDE.md original content preserved" || bad "CLAUDE.md content lost"
 [ -f "$R/CLAUDE.workspace.md" ] && ok "CLAUDE.workspace.md sidecar written" || bad "no CLAUDE.workspace.md sidecar"
@@ -141,6 +148,8 @@ grep -q '^model_reasoning_effort = "high"$' "$F/.codex/agents/slice-executor-mid
 [ ! -f "$F/.claude/agents/slice-executor.md" ] && [ ! -f "$F/.codex/agents/slice-executor.toml" ] && ok "legacy untiered slice-executor retired (absent on fresh install)" || bad "legacy untiered slice-executor should be retired but is present"
 [ ! -f "$F/.claude/agents/slice-executor-low.md" ] && [ ! -f "$F/.codex/agents/slice-executor-low.toml" ] && ok "low tier retired in v23 (absent on fresh install)" || bad "slice-executor-low should be retired but is present"
 [ -f "$F/executors.toml" ] && ok "fresh install seeds executors.toml (commented defaults)" || bad "fresh install missing executors.toml"
+[ -f "$F/.github/workflows/workspace-ci.yml" ] && ok "fresh install seeds the CI workflow" || bad "fresh install missing .github/workflows/workspace-ci.yml"
+grep -q '^works/events\.jsonl merge=union$' "$F/.gitattributes" && ok "fresh install seeds .gitattributes with the union rule" || bad "fresh install missing the .gitattributes union rule"
 [ ! -f "$F/.env.example" ] && [ ! -f "$F/executors.toml.example" ] && ok "legacy .env.example / executors.toml.example retired (absent on fresh install)" || bad "a legacy tier-config example should be retired but is present"
 ( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && ok "sync-agents --check: seeded config parses to the built-in defaults" || bad "sync-agents --check failed on a fresh install"
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
@@ -169,6 +178,19 @@ rm -f "$F/executors.toml"
 sh "$BOOT" "$F" --update >/dev/null 2>&1 && [ -f "$F/executors.toml" ] \
   && ok "--update seeds a missing executors.toml (pre-v9 workspace)" || bad "--update did not seed a missing executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && ok "re-seeded executors.toml parses to defaults" || bad "re-seeded executors.toml drifts from defaults"
+# --update reaches a pre-v24 workspace: CI is seeded once, .gitattributes is line-merged.
+rm -f "$F/.github/workflows/workspace-ci.yml"
+printf '*.md text\n' > "$F/.gitattributes"
+sh "$BOOT" "$F" --update >/dev/null 2>&1
+[ -f "$F/.github/workflows/workspace-ci.yml" ] && ok "--update seeds a missing CI workflow (pre-v24 workspace)" || bad "--update did not seed the CI workflow"
+grep -q '^\*\.md text$' "$F/.gitattributes" && grep -q '^works/events\.jsonl merge=union$' "$F/.gitattributes" \
+  && ok "--update line-merges .gitattributes (their rule kept, union rule appended)" || bad "--update did not line-merge .gitattributes"
+printf '# hand-edited\n' >> "$F/.github/workflows/workspace-ci.yml"
+sh "$BOOT" "$F" --update >/dev/null 2>&1
+grep -q '^# hand-edited$' "$F/.github/workflows/workspace-ci.yml" && ok "--update preserves an edited CI workflow (seed-once)" || bad "--update clobbered an edited CI workflow"
+[ "$(grep -c '^works/events\.jsonl merge=union$' "$F/.gitattributes")" -eq 1 ] && ok "--update .gitattributes merge is idempotent (one union rule)" || bad ".gitattributes union rule duplicated on re-update"
+rm -f "$F/.github/workflows/workspace-ci.yml" "$F/.gitattributes"
+sh "$BOOT" "$F" --update >/dev/null 2>&1   # restore both verbatim for the Test 6 diff
 [ ! -f "$F/.codex/agents/phase-reviewer.toml" ] && [ ! -f "$F/.claude/agents/phase-reviewer.md" ] && ok "phase-reviewer retired (absent on fresh install)" || bad "phase-reviewer should be retired but is present"
 [ ! -d "$F/.agents/skills/do-whole-phase" ] && ok "fresh install drops Codex do-whole-phase (Claude-only)" || bad "Codex do-whole-phase should not be generated"
 [ -d "$F/.claude/skills/do-whole-phase" ] && ok "fresh install keeps Claude do-whole-phase" || bad "Claude do-whole-phase missing"
@@ -190,6 +212,7 @@ for rel in \
   .claude/agents/slice-executor-mid.md .claude/agents/slice-executor-high.md \
   .codex/agents/slice-executor-mid.toml .codex/agents/slice-executor-high.toml \
   executors.toml \
+  .github/workflows/workspace-ci.yml .gitattributes \
   CLAUDE.md AGENTS.md ; do
   diff -q "$REPO_ROOT/$rel" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \

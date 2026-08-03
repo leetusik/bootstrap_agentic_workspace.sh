@@ -35,7 +35,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 23
+WORKSPACE_VERSION = 24
 ROOT = TARGET.resolve()
 
 DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
@@ -122,6 +122,74 @@ def _atomic_write(p, text: str, executable: bool = False) -> None:
         raise
 
 
+# ---- Repo-level policy files (CI workflow, .gitattributes) ------------------
+# Neither file is machinery that may be overwritten: a target repo may already have
+# its own CI or its own attribute rules, and both are legal fresh-install
+# destinations (.github and .gitattributes are in EMPTY_OK_ALLOWLIST). So both ship
+# through one policy, applied identically on fresh install, retrofit and --update
+# (they are emitted by emit_policy_files() below, not through write_text):
+#   .github/workflows/workspace-ci.yml -- SEED-ONCE: created when absent, never
+#     overwritten (executors.toml precedent; adopters customize their own CI).
+#   .gitattributes -- LINE-MERGE: the `works/events.jsonl merge=union` rule is
+#     appended when missing and existing content is left untouched. Skipping the
+#     file outright (the plain retrofit policy) would silently drop the union rule
+#     on any repo that already has a .gitattributes, which is exactly where a
+#     phase-branch merge would then conflict.
+CI_WORKFLOW_PATH = ".github/workflows/workspace-ci.yml"
+GITATTRIBUTES_PATH = ".gitattributes"
+GITATTRIBUTES_MERGE_LINE = "works/events.jsonl merge=union"
+GITATTRIBUTES_APPEND_NOTE = (
+    "\n# Added by the agentic workspace: works/events.jsonl is an append-only log, so\n"
+    "# both sides of a merge are always wanted (`union` is a built-in git merge driver\n"
+    "# and needs no per-clone config). The generated files (works/state.json,\n"
+    "# works/index.json, works/backlog.md, works/deferred.md, docs/current/*.md) get no\n"
+    "# merge driver on purpose -- resolve a conflict there by taking either side and\n"
+    "# re-running: python3 scripts/workflow.py parallel-merge-finish\n"
+)
+
+
+def _gitattributes_action() -> str:
+    """What applying our merge rules would do: 'create' | 'merge' | 'unchanged'."""
+    p = ROOT / GITATTRIBUTES_PATH
+    if not p.is_file():
+        return "create"
+    try:
+        existing = p.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return "unchanged"  # unreadable/binary -- never touch it
+    if any(ln.strip() == GITATTRIBUTES_MERGE_LINE for ln in existing.splitlines()):
+        return "unchanged"
+    return "merge"
+
+
+def _apply_gitattributes(text: str, action: str) -> None:
+    p = ROOT / GITATTRIBUTES_PATH
+    if action == "create":
+        _atomic_write(p, text)
+        return
+    existing = p.read_text(encoding="utf-8")
+    sep = "" if (not existing or existing.endswith("\n")) else "\n"
+    _atomic_write(p, existing + sep + GITATTRIBUTES_APPEND_NOTE + GITATTRIBUTES_MERGE_LINE + "\n")
+
+
+def emit_policy_files() -> None:
+    """Emit the CI workflow (seed-once) and .gitattributes (line-merge) under every
+    install mode, recording the outcome in whichever summary the mode reports."""
+    ci_exists = (ROOT / CI_WORKFLOW_PATH).exists()
+    ga_action = _gitattributes_action()
+    if not DRY_RUN:
+        if not ci_exists:
+            _atomic_write(ROOT / CI_WORKFLOW_PATH, PAYLOADS[CI_WORKFLOW_PATH])
+        if ga_action != "unchanged":
+            _apply_gitattributes(PAYLOADS[GITATTRIBUTES_PATH], ga_action)
+    if UPDATE:
+        UPDATE_SUMMARY["preserved" if ci_exists else "added"].append(CI_WORKFLOW_PATH)
+        UPDATE_SUMMARY[{"create": "added", "merge": "merged", "unchanged": "unchanged"}[ga_action]].append(GITATTRIBUTES_PATH)
+    elif RETROFIT:
+        RETROFIT_SUMMARY["skipped" if ci_exists else "created"].append(CI_WORKFLOW_PATH)
+        RETROFIT_SUMMARY[{"create": "created", "merge": "merged", "unchanged": "skipped"}[ga_action]].append(GITATTRIBUTES_PATH)
+
+
 # ---- Retrofit (--into-existing) write policy --------------------------------
 # In retrofit mode the workspace is added non-destructively: an existing file is
 # never overwritten. A small, known set is additively, idempotently merged.
@@ -200,6 +268,8 @@ def _retrofit_handle(path: str, text: str) -> bool:
 #     overwritten).
 #   PRESERVE (never touch): everything under works/ except templates, and all of
 #     docs/ (the append-only version chain plus generated snapshots).
+# The repo-level policy files (.github/workflows/workspace-ci.yml seed-once,
+# .gitattributes line-merged) bypass this dispatch entirely — see emit_policy_files().
 # In --dry-run nothing is written; changes are only recorded for the report.
 def _is_machinery(path: str) -> bool:
     if path in ("scripts/workflow.py", ".codex/config.toml"):
@@ -490,6 +560,9 @@ write_text(".claude/settings.json", PAYLOADS[".claude/settings.json"])
 # ---- Codex project config (documentation + safe defaults) -------------------
 write_text(".codex/config.toml", PAYLOADS[".codex/config.toml"])
 
+# ---- Repo-level policy files: CI workflow (seed-once) + .gitattributes (merge) ----
+emit_policy_files()
+
 # ---- Generate dashboards/state from the source of truth, then self-check ----
 def run_workflow(*workflow_args: str) -> None:
     subprocess.run([sys.executable, str(ROOT / "scripts" / "workflow.py"), *workflow_args], cwd=str(ROOT), check=True)
@@ -630,6 +703,7 @@ else:
     print("Codex: skills in .agents/skills/ (e.g. $do-next-slice), subagent tiers .codex/agents/slice-executor-{mid,high}.toml, instructions AGENTS.md")
     print("Executor tiers are risk-routed (mid for a one-line edit or docs, high for everything else); pick a mode preset (economy default / flex) and tune models/efforts in executors.toml (seeded with commented defaults) + python3 scripts/workflow.py sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
+    print("CI: .github/workflows/workspace-ci.yml runs validate on every push/PR (seeded once — yours to edit); .gitattributes carries the merge rules for machine-written files")
     print("Canonical state: phase.json / slice.json / deferred.json; generated: works/backlog.md, works/deferred.md")
     print("Versioned docs: docs/versions/<doc>/vNNNN_*.md with generated docs/current/*.md")
     print("Knowledge (optional): export KB_API_BASE_URL + KB_API_TOKEN in ~/.zshenv so /explain can save phase explainers to your KB (an operator-run step; the phase review writes none) — see docs/current/operations.md")
