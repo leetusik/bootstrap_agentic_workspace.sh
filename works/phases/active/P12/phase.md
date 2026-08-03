@@ -422,6 +422,56 @@ boundaries. The workflow was validated locally only (PyYAML + `ruby -ryaml` pars
 branch-name derivation against S2's real format, and the commands it invokes run locally). The first
 real run happens on the operator's next push.
 
+### S6 — the documentation surface (binding for S7 and the REVIEW)
+
+**1. `WORKSPACE_VERSION` stays 24 — the v24 CHANGELOG entry was extended, not superseded.** S5 bumped
+to 24 in this same unreleased change set, so S6's skill + contract work is part of that release: two
+bullets were appended to the v24 section (the new `parallel-phase` skill; the contract/skill/agent
+carve-outs). **S7 must extend v24 too, not bump to 25.**
+
+**2. The new skill is `parallel-phase`** (`.claude/skills/`, `.agents/skills/` + `openai.yaml`), and it
+is **explicit-invocation only** (`disable-model-invocation: true`, `allow_implicit_invocation: false`)
+like every other command skill — `design-cowork` remains the sole model-invocable guide. It is the
+single source for the parallel lifecycle: when to suggest, `parallel-start`, worktree work, the branch
+review's deferral, and the 10-step integration sequence. README text (S7) should point at it rather
+than restate it.
+
+**3. Division of labour: the contract routes, the skill explains.** `CLAUDE.md`/`AGENTS.md` gained only
+rules — the commit-convention carve-out, the deferral condition on the durable-doc/delegation/archive
+bullets, one new compact parallel bullet, the stream-scoped pointer note, and the six `parallel-*`
+command lines. Every lifecycle detail lives in the skill. Keep it that way.
+
+**4. The commit-convention carve-out's exact shape** (quote it if S7 restates it): opting a phase in
+*is* the operator's ask, and it authorizes the engine's one fixed-message stamp commit, the phase
+branch, slice commits on that branch, and the pushes that open/merge the PR — **each push still goes
+through the permission prompt** (nothing is pre-allowed), and existing adopters must first delete the
+old blanket `Bash(git push:*)` deny by hand (keep `Bash(git push --force:*)`). Outside that flow the
+old rule stands verbatim.
+
+**5. The review-side wording every surface now shares:** a parallel phase's passing review creates no
+doc versions, **verifies** that `phase.md`'s "Doc impact" list covers every durable-truth change (an
+incomplete list is a review finding), and returns
+`doc_versions: none — deferred to post-merge consolidation (parallel mode)`. The `docs/current` vs.
+`docs/index.json` parity check applies at consolidation time on the default stream, not at the branch
+review.
+
+**6. Opting in is a creation-time decision.** `parallel-start` requires status `planned`, so the
+`create-phase` skill relays `new-phase`'s hint and may run the opt-in itself (its existing
+`allowed-tools` already cover `python3 scripts/workflow.py ...`); once decomposition or execution
+starts, the phase can no longer be opted in.
+
+**7. New skills really do auto-register** (S1–S5's DECOMP correction confirmed end to end): folders +
+`python3 installer/build.py` were enough — a fresh install from the rebuilt artifact ships
+`.claude/skills/parallel-phase/SKILL.md`, `.agents/skills/parallel-phase/SKILL.md` and its
+`openai.yaml` byte-identical to the live files. No `installer/main.py` edit.
+
+**8. Two engine gaps found while writing the prose (recorded, not patched — S6 was docs-only):**
+(a) the consolidation deferral is **prose-enforced only** — `doc-new-version` does not refuse on a
+parallel stream, though `parallel-consolidated` does exactly that check, so a branch review that
+ignores the rule collides silently on `vNNNN` later; (b) `parallel-merge-finish` only *warns* on a
+parallel stream while `parallel-consolidated` hard-refuses. Both are review-time calls (fix slice or
+accept as designed), detailed in S6's `result.md`.
+
 ## Doc Impact
 
 _Running list for the `REVIEW` slice to consolidate into doc versions (one version per doc, per
@@ -475,3 +525,32 @@ phase). Do not run `doc-new-version` in a middle slice._
   `docs/current/*.md` is resolved by taking either side and re-running `parallel-merge-finish`; only
   the append-only `works/events.jsonl` gets an attributes rule (`merge=union`, a built-in driver) in
   the new repo-root `.gitattributes`.
+- **`operations`** (S6) — the agent-facing documentation now describes parallel mode end to end: a new
+  **`parallel-phase`** skill (Claude Code `/parallel-phase` and Codex alike) carries the whole
+  lifecycle — the advisory `parallel-start` hints, opting in while the phase is still `planned`,
+  stream-scoped work in the worktree, the branch review's deferred consolidation, and the agent-run
+  integration sequence (`parallel-gate <P>` → push → `gh pr create` → `gh pr checks --watch` →
+  `gh pr merge --merge` → `parallel-merge-finish` → serialized `doc-new-version` on the default stream
+  → `parallel-consolidated <P>` → `parallel-teardown <P>` → commit) — while `create-phase`,
+  `do-next-slice`, `do-whole-phase`, `review-phase` and `archive-phase` gained the matching relays and
+  gates, and the contract lists the six `parallel-*` commands and documents the `works/state.json`
+  pointer as stream-scoped.
+- **`decisions`** (S6) — three choices about *how parallel mode is taught*: (a) the **commit-convention
+  carve-out** — opting a phase in is the operator's ask, so the engine's stamp commit, the phase
+  branch, its slice commits and the pushes that open/merge the PR are authorized inside that
+  documented flow (each push still prompts; adopters must delete any old blanket `Bash(git push:*)`
+  deny), while outside it "no branching, never push unasked" stands verbatim; (b) **the contract
+  routes and the skill explains** — `CLAUDE.md`/`AGENTS.md` take only rules (carve-outs, one compact
+  parallel bullet, the command lines) and every lifecycle detail lives in the `parallel-phase` skill;
+  (c) the deferral is stated identically on every review surface — a parallel phase's passing review
+  *verifies* the "Doc impact" list and reports `doc_versions: none — deferred to post-merge
+  consolidation (parallel mode)`, with the `docs/current` parity check moving to consolidation time on
+  the default stream.
+- **`decisions`** (S6, **for the REVIEW: supersede, do not append**) — `docs/current/decisions.md`
+  (currently line 476) ends the orchestrator/executor entry with "*Parallel fan-out across slices
+  (worktree isolation)* — rejected for now … parallelism is out of scope unless a decomposition
+  explicitly marks slices independent." P12 supersedes that blanket claim **at the phase level**:
+  phase-level parallelism now exists — opt-in, on a branch + worktree, with a quiet-point merge gate.
+  **Slice-level** fan-out inside a phase remains rejected (slices build on each other through
+  `phase.md` and a commit per boundary). The consolidation must **rewrite** that line to say exactly
+  that, not merely add a newer entry alongside it.

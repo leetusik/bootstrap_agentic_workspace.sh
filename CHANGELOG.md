@@ -40,6 +40,25 @@ history.
   orchestrator): `gh` auth/output/error handling is agent territory, and `parallel-gate` is already
   the shared engine-side check that both CI and the agent run before merging. `scripts/workflow.py`
   stays offline-testable and unchanged by this release.
+- **A new `parallel-phase` skill documents the whole lifecycle** (Claude Code `/parallel-phase` and
+  Codex alike): when to suggest parallel mode (the engine's advisory `parallel-start` hints in
+  `new-phase` / `next`), how to opt in, how work and `pending` behave stream-scoped in the worktree,
+  the one difference at the branch review (a passing review defers doc consolidation), and the
+  agent-run integration sequence — `parallel-gate <P>` → push → `gh pr create` → `gh pr checks
+  --watch` → `gh pr merge --merge` → `parallel-merge-finish` → serialized `doc-new-version` on the
+  default stream → `parallel-consolidated <P>` → `parallel-teardown <P>` → commit.
+- **The contract and the existing skills gained the matching carve-outs.** `CLAUDE.md`/`AGENTS.md`:
+  the commit convention now says opting a phase in **is** the operator's ask (the engine stamp commit,
+  the phase branch, and the pushes that open/merge its PR are authorized inside that documented flow —
+  each push still prompts; outside it nothing changes), the durable-doc and review rules carry the
+  parallel deferral, archiving is blocked while `execution.consolidation` is `"pending"`, the
+  `works/state.json` pointer is documented as stream-scoped, and the six `parallel-*` commands are
+  listed. `create-phase` relays the opt-in hint at creation time (the only moment a phase is still
+  `planned`), `do-next-slice` / `do-whole-phase` read the pointer as stream-scoped and run the
+  integration after a parallel `pass`, `review-phase` skips consolidation on a parallel branch (it
+  verifies the "Doc impact" list instead), `archive-phase` names the consolidation gate, and all four
+  `slice-executor-*` agent files report `doc_versions: none — deferred to post-merge consolidation
+  (parallel mode)` in that case.
 - **Incidental:** `.githooks/pre-commit` now also matches `^\.github/` and `^\.gitattributes$` in its
   staged-path regex, since both files are embedded in the distributable and must not ship stale.
 

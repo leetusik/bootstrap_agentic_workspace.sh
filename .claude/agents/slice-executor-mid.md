@@ -33,8 +33,8 @@ You are given the slice id and its folder path. Read the files yourself — do n
 3. Write `result.md` — free-form, from scratch (there is no template or scaffold; shape it however best fits the slice), covering at least: the validation commands and their outcomes, the doc versions you created (review slice) or the "Doc impact" notes you recorded (other slices), and any deviations from `plan.md`.
 4. Append durable cross-slice notes (decisions, findings, gotchas) to the phase's `phase.md` so later slices build on what you learned. For a decomposition slice, record the slice breakdown (what each middle slice covers and why) here.
 5. Docs are versioned **once per phase, at the review slice — never per slice**:
-   - **A non-review slice that changes durable truth** (product / architecture / API / …): do **not** version docs — append a one-line note to the "Doc impact" running list in `phase.md` naming the doc(s) affected and what changed, so the review consolidates them.
-   - **The review slice, on a `pass` only:** for each durable-truth area changed across the phase (per those "Doc impact" notes), run `python3 scripts/workflow.py doc-new-version --doc <doc> --summary "..." --source <P>.REVIEW`, edit only the returned `edit_path`, run `python3 scripts/workflow.py rebuild-docs`, and report the versions — one per affected doc, capturing the whole phase. Never patch `docs/current/*.md` or an existing version.
+   - **A non-review slice that changes durable truth** (product / architecture / API / …): do **not** version docs — append a one-line note to the "Doc impact" running list in `phase.md` naming the doc(s) affected and what changed, so the review — or, for a parallel-mode phase, the post-merge step on the default stream — consolidates them.
+   - **The review slice, on a `pass` only:** for each durable-truth area changed across the phase (per those "Doc impact" notes), run `python3 scripts/workflow.py doc-new-version --doc <doc> --summary "..." --source <P>.REVIEW`, edit only the returned `edit_path`, run `python3 scripts/workflow.py rebuild-docs`, and report the versions — one per affected doc, capturing the whole phase. Never patch `docs/current/*.md` or an existing version. **Exception — a phase running in parallel mode** (its `phase.json` carries an `execution` block with `mode: "parallel"`): consolidation is deferred to a serialized post-merge step on the default stream, so a passing branch review creates **no** doc versions — instead verify that the "Doc impact" list in `phase.md` covers every durable-truth change the phase made (an incomplete list is a review finding), and report `doc_versions: none — deferred to post-merge consolidation (parallel mode)`.
 
 ## Never
 
@@ -44,7 +44,7 @@ You are given the slice id and its folder path. Read the files yourself — do n
 - pre-fill another slice's `plan.md` (including the middle slices you create during decomposition);
 - violate any repo-specific safety rule in `CLAUDE.md` / `AGENTS.md`.
 
-The orchestrator trusts your `done` verdict (it re-runs only `validate`, not your tests), then runs `finish-slice` and commits — the phase review validates all slices together and consolidates the docs. Leaving state transitions and commits to the orchestrator is what keeps the slice boundary clean. On `escalate` the orchestrator revises `plan.md` with your findings and re-dispatches the slice to `slice-executor-high`.
+The orchestrator trusts your `done` verdict (it re-runs only `validate`, not your tests), then runs `finish-slice` and commits — the phase review validates all slices together and consolidates the docs (deferred to the post-merge step in parallel mode). Leaving state transitions and commits to the orchestrator is what keeps the slice boundary clean. On `escalate` the orchestrator revises `plan.md` with your findings and re-dispatches the slice to `slice-executor-high`.
 
 ## Escalate early instead of thrashing (mid tier only)
 
