@@ -217,3 +217,13 @@
 {"ts": "2026-07-28T15:41:38+09:00", "type": "phase_archived", "phase": "P11", "archive_path": "works/phases/archived/20260728_154138_P11_free_the_orchestrator_s_idle_window"}
 {"ts": "2026-08-01T02:44:10+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0020_drop_the_low_executor_tier_two-tier_mid_high_routing_risk_low_high_defaulting_to_high_one-step_escalation_workspace_v23", "source": "manual"}
 {"ts": "2026-08-01T02:44:50+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0026_drop_the_low_executor_tier_two-tier_mid_high_routing_risk_low_high_defaulting_to_high_one-step_escalation_ladder_workspace_v23", "source": "manual"}
+{"ts": "2026-08-03T22:12:44+09:00", "type": "phase_created", "phase": "P12"}
+{"ts": "2026-08-03T22:42:50+09:00", "type": "slice_status_changed", "slice": "P12.DECOMP", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-08-03T22:44:35+09:00", "type": "slice_created", "phase": "P12", "slice": "P12.S1"}
+{"ts": "2026-08-03T22:44:35+09:00", "type": "slice_created", "phase": "P12", "slice": "P12.S2"}
+{"ts": "2026-08-03T22:44:35+09:00", "type": "slice_created", "phase": "P12", "slice": "P12.S3"}
+{"ts": "2026-08-03T22:44:35+09:00", "type": "slice_created", "phase": "P12", "slice": "P12.S4"}
+{"ts": "2026-08-03T22:44:39+09:00", "type": "slice_created", "phase": "P12", "slice": "P12.S5"}
+{"ts": "2026-08-03T22:44:39+09:00", "type": "slice_created", "phase": "P12", "slice": "P12.S6"}
+{"ts": "2026-08-03T22:44:39+09:00", "type": "slice_created", "phase": "P12", "slice": "P12.S7"}
+{"ts": "2026-08-03T22:48:25+09:00", "type": "slice_status_changed", "slice": "P12.DECOMP", "old_status": "in_progress", "new_status": "done"}
