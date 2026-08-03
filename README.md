@@ -179,11 +179,38 @@ Claude Code에서는 `/이름`, Codex에서는 `$이름`으로 입력합니다.
 | `do-next-slice` | slice 하나만 완료하고 멈춤 |
 | `do-whole-phase` | phase를 리뷰까지 끝까지 실행 (Claude Code 전용) |
 | `review-phase` | phase를 리뷰하고 `pass` / `changes_requested` / `blocked` 기록 |
+| `parallel-phase` | phase를 별도 branch + worktree에서 병렬로 실행하고 다시 합치기 |
 | `retrofit` | 기존 저장소에 워크스페이스 추가 |
 | `update-workspace` | 설치된 워크스페이스의 시스템 파일만 최신으로 교체 |
 
-스킬은 모두 15개입니다. 전체 목록과 CLI 명령, 설치 옵션은
+스킬은 모두 16개입니다. 전체 목록과 CLI 명령, 설치 옵션은
 [English README](README.en.md)와 [CLAUDE.md](CLAUDE.md)에 있습니다.
+
+## 병렬 phase (옵트인)
+
+기본적으로 phase는 `main`에서 한 번에 하나씩 순서대로 진행됩니다. 지금 진행 중인 phase와
+전혀 다른 영역을 건드리는 phase가 있다면, 뒤에서 대기시키는 대신 **병렬 모드**로 옵트인할 수
+있습니다. 그 phase만의 branch와 worktree, 그리고 그 안에서 진행되는 별도의 오케스트레이터
+세션이 생기고, `main`은 원래 하던 phase를 그대로 계속합니다. 병렬 모드는 phase 단위로만
+켤 수 있는 선택 사항이며 기본값이 아닙니다. 한 phase 안의 slice는 여전히 순서대로만
+진행됩니다.
+
+워크스페이스는 다른 phase가 진행 중일 때 새 phase를 만들거나, 대기 중인 phase를 실행하려
+할 때 병렬 모드를 **제안만** 합니다. 실제로 옵트인할지는 여러분의 선택입니다.
+
+`parallel-start <P>`로 옵트인하면 phase를 stamp하고 `phase/P<N>-<slug>` branch와 전용
+worktree를 만듭니다. 그 worktree에서 새 에이전트 세션을 열어 `/do-whole-phase`나
+`/do-next-slice`로 평소처럼 진행하면 됩니다 — 각 checkout은 자기 stream의 phase만 보게
+됩니다. 어느 checkout에서든 `parallel-status`로 모든 stream의 진행 상황을 볼 수 있습니다.
+
+병렬로 진행한 phase의 리뷰가 통과하면, 문서 버전 작업은 그 자리에서 하지 않고 나중에 `main`으로
+merge된 뒤 한 번에 처리합니다. 에이전트가 `parallel-gate` → PR → CI → merge →
+`parallel-merge-finish` → 문서 버전 확정 → `parallel-teardown` 순서로 통합까지 직접
+진행합니다.
+
+자세한 절차는 [`parallel-phase`](.claude/skills/parallel-phase/SKILL.md) 스킬
+(`/parallel-phase`, Codex에서는 `$parallel-phase`)과
+[English README](README.en.md#parallel-phases-opt-in)에 있습니다.
 
 ## ⭐ 에이전트와 일하는 6가지 습관
 
@@ -204,7 +231,7 @@ Claude Code에서는 `/이름`, Codex에서는 `$이름`으로 입력합니다.
 
 ## 더 알아보기
 
-- 전체 문서 (설치 옵션, CLI 명령 전체, 프로젝트 구조, 스킬 15종): [English README](README.en.md)
+- 전체 문서 (설치 옵션, CLI 명령 전체, 프로젝트 구조, 스킬 16종): [English README](README.en.md)
 - 에이전트 규칙 문서: [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md)
 - 기존 저장소에 추가하는 절차: [Retrofit Guide](docs/retrofit-guide.md)
 - 기여하기: 이 저장소는 자기 워크플로우로 개발됩니다. phase를 열고 slice 단위로 기여해

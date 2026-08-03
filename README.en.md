@@ -168,7 +168,7 @@ Both `--flag value` and `--flag=value` forms work.
 
 - [`CLAUDE.md`](CLAUDE.md) + [`AGENTS.md`](AGENTS.md) — the equivalent per-tool routing contracts.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` + `.agents/` — the 14 core Agent Skills, mirrored for both tools (`do-whole-phase` is
+- `.claude/` + `.agents/` — the 15 core Agent Skills, mirrored for both tools (`do-whole-phase` is
   Claude Code only), plus the two risk-routed `slice-executor`
   tier subagents for each tool (`.claude/agents/slice-executor-{mid,high}.md` — sonnet / opus at tiered efforts by default (the `economy` mode);
   `.codex/agents/` on gpt-5.5 at tiered efforts), `executors.toml` (seeded tier mode/model/effort config, applied with
@@ -244,13 +244,14 @@ another agent, CI — drives the workspace with the exact same commands:
 | `defer-job --title … --reason … --trigger …` | Park a deferred job |
 | `promote-deferred D1 --phase P1 --slice P1.S2` | Promote a deferred job into a slice |
 | `sync-agents` | Apply the `executors.toml` executor-tier mode/model/effort config to the agent files |
+| `parallel-start <P>` … `parallel-teardown <P>` | Run a phase in parallel on its own branch + worktree, then integrate it back (see the `parallel-phase` skill) |
 | `validate` | Check workspace integrity |
 
 The full command list lives in [`CLAUDE.md`](CLAUDE.md).
 
 ### The same operations as Agent Skills
 
-The common workflows also ship as **15 Agent Skills** in `.claude/skills/` (Claude Code:
+The common workflows also ship as **16 Agent Skills** in `.claude/skills/` (Claude Code:
 `/slash` commands), all but one mirrored in `.agents/skills/` (Codex: `$skill`) — `do-whole-phase`
 is Claude Code only — so the same step works natively in either tool:
 
@@ -260,6 +261,7 @@ is Claude Code only — so the same step works natively in either tool:
 | `do-next-slice` | Complete exactly one slice, then stop |
 | `do-whole-phase` | Finish the active phase end-to-end, including its review _(Claude Code only — needs plan mode)_ |
 | `review-phase` | Review a phase and record a `pass` / `changes_requested` / `blocked` verdict |
+| `parallel-phase` | Run a phase in parallel on its own branch + worktree, and integrate it back: PR, quiet-point gate, merge, deferred doc consolidation, teardown |
 | `doc-new-version` | Create a new versioned durable doc instead of patching the current one |
 | `defer-job` | Park work as a deferred job, outside active selection |
 | `deferred` | Rebuild and show the deferred-jobs dashboard |
@@ -320,6 +322,43 @@ When an agent picks up work, it reads in this order — and no further by defaul
 
 Archived phases and old doc versions are history; they're not read by default.
 
+### Parallel phases (opt-in)
+
+By default every phase runs on `main`, one at a time. When a phase and its predecessor genuinely
+touch different ground, you can opt a `planned` phase into **parallel mode** instead of queueing it:
+its own branch, its own git worktree, and its own orchestrator session, while `main` keeps working
+the phase in front of it. This is opt-in per phase and never a default — a workspace that never uses
+it behaves exactly as before, and the phase is the unit of parallelism (slices inside one phase stay
+strictly sequential).
+
+**The workspace suggests it, never assumes it.** `new-phase` hints when another phase is already
+`in_progress`; `next` hints when a `planned` phase is waiting behind one that's mid-flight. Both name
+the opt-in command; queueing normally is always a valid answer.
+
+**Opting in.** `parallel-start <P> [--worktree PATH] [--slug S]` stamps the phase, cuts
+`phase/P<N>-<slug>` off a commit that carries the stamp, and adds a git worktree for it (never a
+plain clone on your own machine — a teammate can instead clone the repo and check the branch out).
+From there, open a second agent session in that worktree and drive the phase as usual
+(`/do-whole-phase`, `/do-next-slice`) — selection and `pending` are stream-scoped, so each checkout
+sees only its own phase.
+
+**Working in two streams.** `parallel-status` shows every stream's state from any checkout — this
+one's pointer plus each parallel phase's branch, worktree, and slice progress — without switching
+branches. A parallel phase's review defers its doc-version consolidation to a serialized post-merge
+step on `main`, instead of versioning docs on the branch.
+
+**Integrating back.** Once a parallel phase's review passes, the agent runs the integration itself:
+`parallel-gate <P>` checks the quiet-point (the branch's phase done + `main` between phases), then
+push → PR → CI → merge → `parallel-merge-finish` (regenerates the shared dashboards) → doc
+consolidation → `parallel-consolidated <P>` → `parallel-teardown <P>` retires the worktree and
+branch. A closed gate stops the sequence with a report instead of merging. CI
+(`.github/workflows/workspace-ci.yml`) runs `validate` on every push and PR, plus a `parallel-gate`
+check on `phase/*` pull requests.
+
+See the [`parallel-phase`](.claude/skills/parallel-phase/SKILL.md) skill (`/parallel-phase` in
+Claude Code, `$parallel-phase` in Codex) for the full lifecycle, and [`CLAUDE.md`](CLAUDE.md) for the
+command reference.
+
 ## Project structure
 
 ```
@@ -340,13 +379,16 @@ Archived phases and old doc versions are history; they're not read by default.
 │   │   └── archived/             # finished phases
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
-│   ├── skills/                    # 15 Agent Skills (Claude Code)
+│   ├── skills/                    # 16 Agent Skills (Claude Code)
 │   ├── agents/                    # slice-executor tiers mid/high (implement slices + run the review)
-│   └── settings.json              # pre-approves workflow.py; denies push & rm -rf
+│   └── settings.json              # pre-approves workflow.py; denies force-push & rm -rf
 ├── .agents/skills/                # the same skills, mirrored for Codex (minus do-whole-phase)
-└── .codex/
-    ├── agents/                    # slice-executor tiers (Codex, gpt-5.5 at tiered efforts)
-    └── config.toml                # Codex project config
+├── .codex/
+│   ├── agents/                    # slice-executor tiers (Codex, gpt-5.5 at tiered efforts)
+│   └── config.toml                # Codex project config
+└── .github/
+    └── workflows/
+        └── workspace-ci.yml       # CI: validate on push/PR; parallel-gate job on phase/* PRs
 ```
 
 ## ⭐ How I work with coding agents
@@ -389,7 +431,7 @@ contract — so switching tools never means switching conventions.
 ## Related / inspired by
 
 A quick map of the neighborhood. The combination this workspace bundles — a persisted
-phase/slice/deferred state machine, versioned durable docs, parallel cross-tool `.claude/` +
+phase/slice/deferred state machine, versioned durable docs, mirrored cross-tool `.claude/` +
 `.agents/` skills, and a single bootstrap script — shows up *piece by piece* across the projects
 below, but I wanted them together in one place. (That framing is my own editorial positioning, not a
 scorecard, and star counts move too fast to quote.)

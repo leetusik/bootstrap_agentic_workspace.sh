@@ -472,6 +472,16 @@ ignores the rule collides silently on `vNNNN` later; (b) `parallel-merge-finish`
 parallel stream while `parallel-consolidated` hard-refuses. Both are review-time calls (fix slice or
 accept as designed), detailed in S6's `result.md`.
 
+- **`P12.S7`** — README documentation landed in both files: `README.en.md` gained a new `### Parallel
+  phases (opt-in)` H3 under "How it works", a grouped CLI-table row, a `parallel-phase` skills-table
+  row, three skill-count fixes (14→15 core / 15→16 total, verified against `ls .claude/skills` = 16),
+  the `.github/workflows/workspace-ci.yml` tree entry + `settings.json` comment fix (force-push, not
+  push), and the "parallel"→"mirrored" wording fix; `README.md` gained a Korean `## 병렬 phase
+  (옵트인)` H2, a skills-table row, and two count fixes (L185's table caption *and* an additional
+  stale "스킬 15종" the plan didn't name, found in "더 알아보기" and fixed for consistency with the
+  plan's own validation grep). No doc-impact note needed — the READMEs mirror durable truth already
+  captured by S1–S6.
+
 ## Doc Impact
 
 _Running list for the `REVIEW` slice to consolidate into doc versions (one version per doc, per
