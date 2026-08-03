@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 from datetime import datetime
@@ -25,6 +26,11 @@ PHASE_STATUSES = {"planned", "in_progress", "in_review", "pending", "blocked", "
 SLICE_STATUSES = {"todo", "ready", "in_progress", "in_review", "changes_requested", "pending", "blocked", "done"}
 DEFERRED_STATUSES = {"deferred", "ready", "promoted", "done", "dropped"}
 REVIEW_VERDICTS = {"pass", "changes_requested", "blocked"}
+# Opt-in parallel execution (workspace v24). A phase.json MAY carry an optional
+# `execution` block; its absence means the phase belongs to the default stream and
+# every behavior is exactly as before, byte for byte. See `phase_execution`.
+EXECUTION_MODES = {"parallel"}
+CONSOLIDATION_STATES = {"pending", "done"}
 CLAUDE_AGENTS = ROOT / ".claude" / "agents"
 CODEX_AGENTS = ROOT / ".codex" / "agents"
 EXECUTOR_TIERS = ("mid", "high")
@@ -446,6 +452,87 @@ def rebuild_deferred_dashboard(groups=None, rebuilt_at=None) -> None:
     write_text(WORKS / "deferred.md", "\n".join(lines))
 
 
+def phase_execution(data) -> dict:
+    """The phase's parallel-execution block, or None when it belongs to the default stream.
+
+    Shape (all fields optional in the file, absence of the whole block = today's behavior):
+
+        "execution": {
+          "mode": "parallel",              # only recognized mode; anything else = default stream
+          "branch": "phase/P13-some-slug", # required when parallel; the stream key
+          "worktree": "/path or null",     # informational (null on a plain clone)
+          "consolidation": "pending"       # "pending" until the post-merge doc consolidation, then "done"
+        }
+
+    Read the block only through this helper so every caller agrees on what "parallel" means.
+    """
+    if not isinstance(data, dict):
+        return None
+    execution = data.get("execution")
+    if not isinstance(execution, dict) or execution.get("mode") not in EXECUTION_MODES:
+        return None
+    return execution
+
+
+def git_current_branch() -> str:
+    """The checkout's current branch name, or None (detached HEAD, no git, not a repo).
+
+    `symbolic-ref` first because it is right on a branch that has no commit yet (where
+    `rev-parse --abbrev-ref HEAD` fails); `rev-parse` as the fallback. Any failure is
+    silent: a workspace without git, or outside a repo, must keep working unchanged.
+    """
+    for cmd in (["git", "symbolic-ref", "--short", "-q", "HEAD"], ["git", "rev-parse", "--abbrev-ref", "HEAD"]):
+        try:
+            proc = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=10)
+        except Exception:  # noqa: BLE001 - git is optional; fall back to the default stream
+            return None
+        if proc.returncode != 0:
+            continue
+        branch = proc.stdout.strip()
+        if not branch or branch == "HEAD":  # empty, or detached HEAD
+            return None
+        return branch
+    return None
+
+
+def current_stream(phases: list) -> str:
+    """The parallel stream this checkout is in, or None for the default stream.
+
+    Stream membership is the current git branch matched against the phases' stamped
+    `execution.branch` -- which works identically in a `git worktree` and in a plain
+    clone on another machine, and needs no marker file. Git is consulted only when at
+    least one active phase is actually opted in, so an untouched workspace never shells out.
+    """
+    branches = set()
+    for phase in phases:
+        execution = phase_execution(phase)
+        if execution and execution.get("branch"):
+            branches.add(execution["branch"])
+    if not branches:
+        return None
+    branch = git_current_branch()
+    return branch if branch in branches else None
+
+
+def stream_phases(phases: list, stream) -> list:
+    """The phases the current stream may select from.
+
+    Default stream (`stream` is None): every phase except the ones opted out to a branch.
+    Parallel stream: only the phase stamped with that branch. Selection, and therefore the
+    `works/state.json` pointer and the `pending` halt, is scoped to one stream this way;
+    the dashboards still list every active phase folder.
+    """
+    scoped = []
+    for phase in phases:
+        execution = phase_execution(phase)
+        if stream is None:
+            if execution is None:
+                scoped.append(phase)
+        elif execution and execution.get("branch") == stream:
+            scoped.append(phase)
+    return scoped
+
+
 def resolve_current(phases: list) -> tuple:
     for phase in phases:
         if phase.get("status") == "done":
@@ -478,8 +565,12 @@ def operator_wait_target(phases: list, current_phase, current_slice):
 
 def rebuild_index_and_state() -> None:
     phases = all_active_phases()
-    current_phase, current_slice, next_slice = resolve_current(phases)
-    waiting_on = operator_wait_target(phases, current_phase, current_slice)
+    # Selection (pointer + operator halt) is scoped to this checkout's stream; the
+    # dashboards below still list every active phase, parallel ones included.
+    stream = current_stream(phases)
+    selectable = stream_phases(phases, stream)
+    current_phase, current_slice, next_slice = resolve_current(selectable)
+    waiting_on = operator_wait_target(selectable, current_phase, current_slice)
     deferred = deferred_jobs()
     rebuilt_at = now_iso()
     index = {
@@ -491,6 +582,7 @@ def rebuild_index_and_state() -> None:
                 "current_slice": next((s["id"] for s in p["slices"] if s.get("status") != "done"), None),
                 "slice_count": len(p["slices"]),
                 "done_slice_count": sum(1 for s in p["slices"] if s.get("status") == "done"),
+                **({"execution": phase_execution(p)} if phase_execution(p) else {}),
             } for p in phases
         ],
         "deferred_open_count": len(deferred.get("open", [])),
@@ -500,7 +592,10 @@ def rebuild_index_and_state() -> None:
     }
     write_json(WORKS / "index.json", index)
     mode = "waiting" if waiting_on else ("phase" if current_phase else "idle")
-    state = {"current_phase": current_phase, "current_slice": current_slice, "next_slice": next_slice, "waiting_on_operator": waiting_on, "mode": mode, "updated_at": rebuilt_at}
+    state = {"current_phase": current_phase, "current_slice": current_slice, "next_slice": next_slice, "waiting_on_operator": waiting_on, "mode": mode}
+    if stream:  # only ever present in a parallel-phase checkout
+        state["stream"] = stream
+    state["updated_at"] = rebuilt_at
     write_json(WORKS / "state.json", state)
     rebuild_backlog(phases, state, index)
     rebuild_deferred_dashboard(deferred, rebuilt_at)
@@ -515,6 +610,10 @@ def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
         f"- Current slice: `{state.get('current_slice') or 'none'}`",
         f"- Next slice: `{state.get('next_slice') or 'none'}`",
         f"- Waiting on operator: `{state.get('waiting_on_operator') or 'none'}`",
+    ]
+    if state.get("stream"):  # only in a parallel-phase checkout; absent on the default stream
+        lines.append(f"- Stream: `{clean_cell(state['stream'])}` (parallel phase checkout; the pointer above is scoped to it)")
+    lines += [
         f"- Open deferred jobs: `{index.get('deferred_open_count', 0)}`",
         f"- Rebuilt at: `{index.get('last_rebuilt_at')}`", "",
         "## Active Phases", "", "| Phase | Status | Review | Name | Current Slice | Path |", "|---|---|---|---|---|---|",
@@ -525,7 +624,11 @@ def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
         current = next((s["id"] for s in p["slices"] if s.get("status") != "done"), "none")
         name = clean_cell(p.get("name", ""))
         review = clean_cell(p.get("review", {}).get("status"))
-        lines.append(f"| [{status_box(p['status'])}] `{p['id']}` | `{p['status']}` | `{review}` | {name} | `{current}` | `{p['path']}` |")
+        current_cell = f"`{current}`"
+        execution = phase_execution(p)
+        if execution:  # runs on its own branch; from another stream the slice state may be behind
+            current_cell += f" · parallel: `{clean_cell(execution.get('branch'))}`"
+        lines.append(f"| [{status_box(p['status'])}] `{p['id']}` | `{p['status']}` | `{review}` | {name} | {current_cell} | `{p['path']}` |")
     for p in phases:
         lines.extend(["", f"## Phase {p['id']}: {p['name']}", "", "| Slice | Status | Name | Kind | Path |", "|---|---|---|---|---|"])
         for s in p["slices"]:
@@ -541,6 +644,7 @@ def validate() -> int:
     warnings: list = []
     phases = all_active_phases()
     seen_phases, seen_slices = set(), set()
+    seen_branches: dict = {}
     all_slice_ids = {s["id"] for p in phases for s in p["slices"]}
     for p in phases:
         if p["id"] in seen_phases:
@@ -555,6 +659,30 @@ def validate() -> int:
             unfinished = [s["id"] for s in p["slices"] if s.get("status") != "done"]
             if unfinished:
                 errors.append(f"phase {p['id']} is done but has unfinished slices: {', '.join(unfinished)}; a passing review closes the REVIEW slice")
+        # Optional parallel-execution block. Absent = default stream = nothing to check.
+        # A phase that merged `done` while its doc consolidation is still pending
+        # (`consolidation: "pending"`) is a legitimate state and passes cleanly here.
+        if "execution" in p:
+            execution = p.get("execution")
+            if not isinstance(execution, dict):
+                errors.append(f"phase {p['id']} has a non-object execution block: {execution!r}")
+            else:
+                mode = execution.get("mode")
+                if mode not in EXECUTION_MODES:
+                    errors.append(f"phase {p['id']} has invalid execution.mode {mode!r}; expected one of {sorted(EXECUTION_MODES)}")
+                branch = execution.get("branch")
+                if not isinstance(branch, str) or not branch.strip():
+                    errors.append(f"phase {p['id']} is parallel but has no execution.branch; the branch name is the stream key")
+                elif branch in seen_branches:
+                    errors.append(f"duplicate execution.branch {branch!r}: {seen_branches[branch]} and {p['id']}")
+                else:
+                    seen_branches[branch] = p["id"]
+                worktree = execution.get("worktree")
+                if worktree is not None and not isinstance(worktree, str):
+                    errors.append(f"phase {p['id']} has invalid execution.worktree {worktree!r}; expected a path string or null")
+                consolidation = execution.get("consolidation")
+                if consolidation is not None and consolidation not in CONSOLIDATION_STATES:
+                    errors.append(f"phase {p['id']} has invalid execution.consolidation {consolidation!r}; expected one of {sorted(CONSOLIDATION_STATES)} or null")
         if not (ACTIVE / p["id"] / "intent.md").exists():
             warnings.append(f"phase {p['id']} has no intent.md (expected {p['id']}/intent.md); capture operator intent via the create-phase skill")
         for s in p["slices"]:
@@ -796,6 +924,19 @@ def review_phase(args: argparse.Namespace) -> None:
 def cmd_next(args: argparse.Namespace) -> None:
     rebuild_index_and_state()
     state = read_json(WORKS / "state.json")
+    # Stream context. Both lines are silent on the default stream with no parallel
+    # phases, so an untouched workspace sees exactly the output it saw before.
+    stream = state.get("stream")
+    if stream:
+        print(f"stream={stream} (parallel phase checkout; the pointer below is scoped to this phase)")
+    index = read_json(WORKS / "index.json")
+    elsewhere = [
+        f"{p['id']}:{p['execution'].get('branch')}"
+        for p in index.get("active_phases", [])
+        if p.get("execution") and p["execution"].get("branch") != stream
+    ]
+    if elsewhere:
+        print(f"parallel_phases_elsewhere={', '.join(elsewhere)} (not in this stream; each runs from its own branch)")
     waiting = state.get("waiting_on_operator")
     if waiting:
         kind = "slice" if "." in waiting else "phase"

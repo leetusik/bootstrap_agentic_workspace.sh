@@ -6,24 +6,24 @@
 ## Pointer
 
 - Current phase: `P12`
-- Current slice: `P12.S1`
-- Next slice: `P12.S2`
+- Current slice: `P12.S2`
+- Next slice: `P12.S3`
 - Waiting on operator: `none`
 - Open deferred jobs: `0`
-- Rebuilt at: `2026-08-03T22:48:25+09:00`
+- Rebuilt at: `2026-08-03T22:58:30+09:00`
 
 ## Active Phases
 
 | Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
-| [ ] `P12` | `planned` | `pending` | Opt-in parallel phase execution: branch-per-phase with PR + CI | `P12.S1` | `works/phases/active/P12` |
+| [ ] `P12` | `planned` | `pending` | Opt-in parallel phase execution: branch-per-phase with PR + CI | `P12.S2` | `works/phases/active/P12` |
 
 ## Phase P12: Opt-in parallel phase execution: branch-per-phase with PR + CI
 
 | Slice | Status | Name | Kind | Path |
 |---|---|---|---|---|
 | [x] `P12.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P12/slices/P12.DECOMP` |
-| [ ] `P12.S1` | `todo` | Parallel-mode schema + phase-scoped selection | `implementation` | `works/phases/active/P12/slices/P12.S1` |
+| [x] `P12.S1` | `done` | Parallel-mode schema + phase-scoped selection | `implementation` | `works/phases/active/P12/slices/P12.S1` |
 | [ ] `P12.S2` | `todo` | Opt-in lifecycle: branch + worktree cut, teardown, proactive suggestion | `implementation` | `works/phases/active/P12/slices/P12.S2` |
 | [ ] `P12.S3` | `todo` | Merge machinery: quiet-point gate, merge-finish rebuild, deferred consolidation | `implementation` | `works/phases/active/P12/slices/P12.S3` |
 | [ ] `P12.S4` | `todo` | Cross-stream status view | `implementation` | `works/phases/active/P12/slices/P12.S4` |

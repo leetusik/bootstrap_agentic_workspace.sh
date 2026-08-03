@@ -180,17 +180,79 @@ current at commit `6f9e3c7`).
 Design decisions deliberately **not** made at decomposition — each is owned by the slice that must
 settle it, and once settled it is recorded here for the later slices that quote it:
 
-- **Exact `phase.json` stream field names, and the opt-in command's name** — owned by **S1** (schema)
-  and **S2** (command). Everything downstream (S3–S7) reads whatever these two decide; the naming in
-  this phase.md (`execution: {mode, branch, worktree, consolidation}`, `status --all`) is
-  illustrative, not binding.
-- **How a worktree session detects which stream it is in** — owned by **S1**. Candidates: current git
-  branch vs. the phase's stamped branch, a worktree-local marker file, or `git rev-parse
-  --show-toplevel` compared against the stamped worktree path. Must work in a plain clone on a
-  teammate's machine too, not only in a worktree.
+- ~~**Exact `phase.json` stream field names**~~ — **SETTLED by S1**, see *Settled Decisions* below.
+  The opt-in command's **name** remains open, owned by **S2**.
+- ~~**How a worktree session detects which stream it is in**~~ — **SETTLED by S1** (current git
+  branch vs. the stamped `execution.branch`), see *Settled Decisions* below.
 - **`gh`-helper vs. skill-guided PR steps** — owned by **S5**: does the engine wrap `gh` in a
   workflow.py subcommand, or does the skill instruct the orchestrator to run `gh` directly? Affects
   how much of the integration sequence is testable and what happens where `gh` is absent.
 - **Installer embedding of the CI workflow and `.gitattributes`** — owned by **S5** (recommendation:
   yes, in generic form, added to `FIXED_LIVE_FILES` + `MANAGED_FILES`). An adopting workspace has no
   `installer/`, so the embedded CI must not assume `installer/build.py --check` unconditionally.
+
+## Settled Decisions
+
+### S1 — the `execution` block and stream detection (binding for S2–S7)
+
+**1. Schema.** `phase.json` may carry one optional top-level `execution` object; **absence means the
+phase is on the default stream and every behavior is exactly as before** (proven byte-identical, see
+S1's `result.md`). The field names below are now binding — quote them verbatim:
+
+```json
+"execution": {
+  "mode": "parallel",
+  "branch": "phase/P13-some-slug",
+  "worktree": "/abs/path/to/worktree",
+  "consolidation": "pending"
+}
+```
+
+- `mode` — the only recognized value is `"parallel"`; any other value (or a missing `mode`) means
+  default-stream behavior at runtime **and** is a `validate` error, so a typo fails loudly.
+- `branch` — **required** when parallel. This is *the* stream key: everything (selection, S4's
+  cross-stream read, S5's PR) keys off the branch name, never off `order` or the worktree path.
+  Duplicate `branch` across active phases is a `validate` error.
+- `worktree` — informational only; a path string, or `null` on a plain clone / after teardown.
+  Nothing in the engine keys off it.
+- `consolidation` — `"pending"` from opt-in until S3's post-merge step sets it `"done"`; may also be
+  absent/`null`. Only `"pending"`/`"done"`/absent validate. A phase that is `done` + review `pass` +
+  `consolidation: "pending"` (merged, awaiting consolidation) **passes `validate` cleanly** — verified
+  in the S1 smoke; the archive-side gating on that state is still S3's.
+- Read the block **only** through `phase_execution(data) -> dict | None`
+  (`scripts/workflow.py`), which returns `None` for anything that is not a well-formed parallel
+  block. Never test `data.get("execution")` directly — that is what keeps "parallel" one definition.
+- Constants: `EXECUTION_MODES = {"parallel"}`, `CONSOLIDATION_STATES = {"pending", "done"}`.
+
+**2. Stream detection = current git branch vs. stamped `execution.branch`.** `current_stream(phases)`
+collects every active phase's `execution.branch`, and — **only if at least one exists** — calls
+`git_current_branch()` and returns the branch if it matches one, else `None`. No marker file, so a
+`git worktree` and a teammate's plain clone behave identically. `git_current_branch()` tries
+`git symbolic-ref --short -q HEAD` first and falls back to `git rev-parse --abbrev-ref HEAD`
+(symbolic-ref is correct on a branch with no commit yet, where rev-parse exits 128); detached HEAD,
+missing git, or a non-repo all return `None` **silently** → default stream. An untouched workspace
+never shells out to git at all.
+
+**3. Scoping shape.** `resolve_current` / `operator_wait_target` were left untouched; the filtering
+happens once upstream in `rebuild_index_and_state` via `stream_phases(phases, stream)` — default
+stream sees every non-parallel phase, a parallel stream sees only its own phase. Consequences S2–S7
+can rely on: the `works/state.json` pointer is stream-scoped, and a `pending` slice/phase halts only
+its own stream. Dashboards still list **every** active phase (`index.json` entries carry the
+`execution` block; `backlog.md` marks the row `· parallel: <branch>`), and `state.json` gains a
+`"stream": "<branch>"` key **only** when the checkout is on a parallel stream. `cmd_next` prints a
+`stream=` line on a parallel stream and a `parallel_phases_elsewhere=<P>:<branch>` line when
+opted-in phases exist outside the current stream — informational only; the **proactive opt-in hint
+naming the command is still S2's** to add.
+
+**4. Not done here (deliberately):** `new_phase` still writes no `execution` block — creation stays
+default; the stamping command is S2's, archive/consolidation gating is S3's.
+
+## Doc Impact
+
+_Running list for the `REVIEW` slice to consolidate into doc versions (one version per doc, per
+phase). Do not run `doc-new-version` in a middle slice._
+
+- **`architecture`** (S1) — `phase.json` gains an optional `execution: {mode, branch, worktree,
+  consolidation}` block, and workspace selection becomes stream-scoped: the `works/state.json`
+  pointer and the `pending` halt cover only the current git branch's stream (default stream skips
+  opted-in phases), while dashboards keep listing every active phase.
