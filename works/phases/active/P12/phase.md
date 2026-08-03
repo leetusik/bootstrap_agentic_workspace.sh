@@ -247,6 +247,43 @@ naming the command is still S2's** to add.
 **4. Not done here (deliberately):** `new_phase` still writes no `execution` block — creation stays
 default; the stamping command is S2's, archive/consolidation gating is S3's.
 
+### S2 — the opt-in command names and the engine commit (binding for S3–S7)
+
+**1. Command names: `parallel-start <P>` and `parallel-teardown <P>`** (`scripts/workflow.py`
+subcommands). Symmetric and self-describing; every hint, skill, and README line quotes these names
+verbatim. Options: `parallel-start [--worktree <path>] [--slug <slug>]` (defaults: worktree
+`../<repo-dirname>-<P>` absolute, slug `slugify(phase name)` capped at 40 chars → branch
+`phase/P<N>-<slug>`); `parallel-teardown` takes only the phase id.
+
+**2. `parallel-start` makes one engine commit — the single, narrow exception to "the engine never
+commits".** The stamp has to exist on **both** the default branch (so its pointer skips the phase)
+and the phase branch (so the worktree claims the stream), and the branch must be cut from a commit
+already containing it. One fixed-message commit — `chore(works): opt <P> into parallel execution`,
+plain, **no trailers** (trailers are the orchestrator's business) — made only after a clean-tree
+guard, so it can contain nothing but the stamp plus the regenerated `works/` files, followed by
+`git worktree add -b <branch> <path> HEAD`. **`parallel-teardown` commits nothing**: it leaves
+`phase.json` dirty (worktree nulled) for the orchestrator to commit with the merge cleanup.
+
+**3. Guard contract S3–S5 can lean on.** `parallel-start` refuses unless: phase status is `planned`,
+no existing `execution` block, inside a git work tree, the checkout is on the **default** stream,
+the tree is clean, the branch name is free (in `refs/heads/` and unstamped), and the worktree path is
+free with an existing parent — all checked before any mutation, so a refusal leaves zero partial
+state. `parallel-teardown` refuses unless the phase has a parallel block, the checkout is **not** the
+phase's own branch, and the branch is merged into HEAD (`git merge-base --is-ancestor`) — merging
+itself is S5's; teardown only cleans up after it. It **warns but does not block** on
+`consolidation: "pending"` — tightening that is S3's call. Nothing sets `consolidation` to `"done"`
+yet.
+
+**4. Reusable helpers** added alongside: `_git(cmd, cwd, check)` (SystemExit carrying git's own
+message), `_require_git_repo()`, `_branch_exists(branch)`, `_phase_branch(phase_id, name, slug)`.
+S4's `git show <branch>:works/...` reads and S5's push/PR steps should go through `_git`.
+
+**5. Proactive suggestion, engine half (amendment 1)** — stdout only, generated files untouched:
+`new_phase` prints a hint when another **default-stream** phase is `in_progress`; `cmd_next` prints
+one (via `parallel_start_hint(state, index)`) on the default stream when the current phase is
+`in_progress` and a later default-stream phase is still `planned`, naming the first such phase. Both
+name `parallel-start`, run nothing, and are silent otherwise. The matching **skill text is S6's**.
+
 ## Doc Impact
 
 _Running list for the `REVIEW` slice to consolidate into doc versions (one version per doc, per
@@ -256,3 +293,11 @@ phase). Do not run `doc-new-version` in a middle slice._
   consolidation}` block, and workspace selection becomes stream-scoped: the `works/state.json`
   pointer and the `pending` halt cover only the current git branch's stream (default stream skips
   opted-in phases), while dashboards keep listing every active phase.
+- **`operations`** (S2) — two new operator commands, `parallel-start <P>` (opt a `planned` phase onto
+  `phase/P<N>-<slug>` in its own git worktree; makes one fixed-message engine commit so the stamp
+  lands on both branches) and `parallel-teardown <P>` (retire the merged branch + worktree, warn if
+  doc consolidation is still pending), plus proactive `parallel-start` hints in `new-phase` and
+  `next`.
+- **`architecture`** (S2) — the opt-in stamp must exist on both the default branch and the phase
+  branch, so `parallel-start` is the one deliberate engine-made git commit (fixed message, clean-tree
+  guard, nothing but the stamp + regenerated `works/` files) and the phase branch is cut from it.

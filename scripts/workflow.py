@@ -813,6 +813,11 @@ def new_phase(args: argparse.Namespace) -> None:
     append_event("phase_created", phase=phase_id)
     rebuild_index_and_state()
     print(f"created phase {phase_id}: {pdir.relative_to(ROOT)}")
+    # Proactive opt-in suggestion: a phase created while another one is mid-flight is the
+    # first of the two moments parallel mode becomes relevant. Suggestion only, never a default.
+    busy = next((p for p in all_active_phases() if p["id"] != phase_id and p.get("status") == "in_progress" and phase_execution(p) is None), None)
+    if busy:
+        print(f"hint: {busy['id']} is in progress -- this phase can run in parallel on its own branch: python3 scripts/workflow.py parallel-start {phase_id}")
 
 
 def _clean_order(value):
@@ -921,6 +926,167 @@ def review_phase(args: argparse.Namespace) -> None:
         print("Archive all phases together with `archive-all` only once every active phase is done (the last review slice is complete).")
 
 
+def _git(cmd: list, cwd=None, check: bool = True):
+    """Run a git command in the workspace root. With `check`, a failure raises SystemExit
+    carrying git's own message, so every parallel-mode guard fails loudly and in one style."""
+    try:
+        proc = subprocess.run(["git", *cmd], cwd=str(cwd or ROOT), capture_output=True, text=True)
+    except FileNotFoundError:
+        raise SystemExit("git is not available; parallel execution needs git")
+    if check and proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout).strip() or f"exit {proc.returncode}"
+        raise SystemExit(f"git {' '.join(cmd)} failed: {detail}")
+    return proc
+
+
+def _require_git_repo() -> None:
+    proc = _git(["rev-parse", "--is-inside-work-tree"], check=False)
+    if proc.returncode != 0 or proc.stdout.strip() != "true":
+        raise SystemExit("not inside a git work tree; parallel execution needs a git repo")
+
+
+def _branch_exists(branch: str) -> bool:
+    return _git(["rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"], check=False).returncode == 0
+
+
+def _phase_branch(phase_id: str, name: str, slug_override=None) -> str:
+    """`phase/P<N>-<slug>` -- the stream key every other part of parallel mode reads."""
+    slug = slugify(slug_override or name, fallback=phase_id.lower())
+    if len(slug) > 40:  # branch names stay short enough to type and to read in `git branch`
+        slug = slug[:40].rstrip("_-.") or phase_id.lower()
+    return f"phase/{phase_id}-{slug}"
+
+
+def parallel_start(args: argparse.Namespace) -> None:
+    """Opt a planned phase into parallel execution: stamp it, commit the stamp, cut branch + worktree.
+
+    This is the single place the engine makes a git commit, and it is deliberate. The stamp must
+    exist on BOTH the default branch (so this stream's pointer skips the phase) and the phase
+    branch (so the worktree session claims the stream), and the branch has to be cut from a commit
+    that already contains it. One fixed-message commit, made only after a clean-tree guard so it
+    can contain nothing but the stamp plus the regenerated dashboards, achieves that by
+    construction; stamping and asking the operator to commit cannot.
+    """
+    pdir = require_phase(args.phase)
+    data = read_json(pdir / "phase.json")
+    if data.get("status") != "planned":
+        raise SystemExit(f"phase {args.phase} is {data.get('status')!r}; opt in before it starts (parallel-start needs status 'planned')")
+    if data.get("execution") is not None:
+        raise SystemExit(f"phase {args.phase} already carries an execution block: {json.dumps(data['execution'], ensure_ascii=False)}")
+    _require_git_repo()
+    phases = all_active_phases()
+    stream = current_stream(phases)
+    if stream:
+        raise SystemExit(f"this checkout is on parallel stream {stream}; run parallel-start from the default stream")
+    if _git(["status", "--porcelain"]).stdout.strip():
+        raise SystemExit("working tree is not clean; commit or stash first -- parallel-start makes one commit and it must contain only the opt-in stamp")
+    branch = _phase_branch(args.phase, data.get("name") or args.phase, args.slug)
+    if _branch_exists(branch):
+        raise SystemExit(f"branch already exists: {branch} (pass --slug to pick another name)")
+    for p in phases:
+        execution = phase_execution(p)
+        if execution and execution.get("branch") == branch:
+            raise SystemExit(f"branch {branch} is already stamped on phase {p['id']}")
+    default_worktree = ROOT.parent / f"{ROOT.name}-{args.phase}"
+    worktree = Path(os.path.abspath(str(Path(args.worktree).expanduser()))) if args.worktree else default_worktree
+    if worktree.exists():
+        raise SystemExit(f"worktree path already exists: {worktree} (pass --worktree to pick another path)")
+    if not worktree.parent.exists():
+        raise SystemExit(f"worktree parent directory does not exist: {worktree.parent}")
+
+    data["execution"] = {"mode": "parallel", "branch": branch, "worktree": str(worktree), "consolidation": "pending"}
+    write_json(pdir / "phase.json", data)
+    append_event("phase_parallel_started", phase=args.phase, branch=branch, worktree=str(worktree))
+    rebuild_index_and_state()
+    _git(["add", "--", str(pdir.relative_to(ROOT)), "works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/events.jsonl"])
+    _git(["commit", "-m", f"chore(works): opt {args.phase} into parallel execution"])
+    proc = _git(["worktree", "add", "-b", branch, str(worktree), "HEAD"], check=False)
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout).strip() or f"exit {proc.returncode}"
+        raise SystemExit(
+            f"git worktree add failed: {detail}\n"
+            f"the opt-in stamp for {args.phase} is already committed on this branch; fix the cause and finish by hand: "
+            f"git worktree add -b {branch} {worktree} HEAD")
+    print(f"phase {args.phase} opted into parallel execution")
+    print(f"branch={branch}")
+    print(f"worktree={worktree}")
+    print(f"stamp committed here: chore(works): opt {args.phase} into parallel execution (present on both this branch and {branch})")
+    print(f"next: open a session in {worktree} and run /do-whole-phase there -- the phase runs entirely from that checkout")
+    print(f"this stream's pointer now skips {args.phase}; after the branch is merged back, run: python3 scripts/workflow.py parallel-teardown {args.phase}")
+
+
+def parallel_teardown(args: argparse.Namespace) -> None:
+    """Retire a merged parallel phase's worktree and branch, from the default stream.
+
+    Refuses while the branch is unmerged (merging is a separate step). Keeps `mode`/`branch`/
+    `consolidation` as history and only nulls `worktree`, which is informational anyway.
+    """
+    pdir = require_phase(args.phase)
+    data = read_json(pdir / "phase.json")
+    execution = phase_execution(data)
+    if not execution:
+        raise SystemExit(f"phase {args.phase} is not opted into parallel execution (no parallel execution block)")
+    branch = execution.get("branch")
+    if not branch:
+        raise SystemExit(f"phase {args.phase} has a parallel execution block with no branch; fix phase.json first")
+    _require_git_repo()
+    if git_current_branch() == branch:
+        raise SystemExit(f"this checkout is on {branch}; run parallel-teardown from the default stream (a worktree cannot remove itself)")
+    branch_exists = _branch_exists(branch)
+    if branch_exists and _git(["merge-base", "--is-ancestor", branch, "HEAD"], check=False).returncode != 0:
+        raise SystemExit(f"branch {branch} is not merged into HEAD; merge it first, then run: python3 scripts/workflow.py parallel-teardown {args.phase}")
+    removed = []
+    worktree = execution.get("worktree")
+    if worktree and Path(worktree).exists():
+        proc = _git(["worktree", "remove", str(worktree)], check=False)
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout).strip() or f"exit {proc.returncode}"
+            raise SystemExit(f"git worktree remove {worktree} failed: {detail}\nclean up that checkout (uncommitted work?) or drop it with `git worktree remove --force {worktree}`, then re-run")
+        removed.append(f"worktree {worktree}")
+    else:
+        _git(["worktree", "prune"], check=False)
+    if branch_exists:
+        _git(["branch", "-d", branch])  # -d refuses an unmerged branch: a free second check
+        removed.append(f"branch {branch}")
+    data["execution"]["worktree"] = None
+    write_json(pdir / "phase.json", data)
+    append_event("phase_parallel_torndown", phase=args.phase, branch=branch)
+    rebuild_index_and_state()
+    print(f"phase {args.phase} parallel checkout retired")
+    for item in removed:
+        print(f"removed {item}")
+    if not removed:
+        print("nothing to remove (worktree and branch were already gone)")
+    print(f"execution.worktree=null; mode/branch/consolidation kept as history (branch={branch}, consolidation={execution.get('consolidation')})")
+    if execution.get("consolidation") == "pending":
+        print(f"warning: {args.phase} doc consolidation is still 'pending' -- run the post-merge consolidation on this stream (teardown does not gate on it)")
+    print("phase.json changed -- commit it with the rest of the merge cleanup")
+
+
+def parallel_start_hint(state: dict, index: dict) -> str:
+    """The proactive opt-in suggestion for `next`, or None.
+
+    Fires only on the default stream when the current phase is in_progress and a later
+    default-stream phase is still `planned` -- i.e. exactly when the operator is about to
+    start a second phase behind a live one. Suggestion only, never a default.
+    """
+    if state.get("stream"):
+        return None
+    current = state.get("current_phase")
+    phases = index.get("active_phases", [])  # already ordered by phase order
+    ids = [p.get("id") for p in phases]
+    if current not in ids:
+        return None
+    cur = phases[ids.index(current)]
+    if cur.get("status") != "in_progress":
+        return None
+    waiting = next((p for p in phases[ids.index(current) + 1:] if p.get("status") == "planned" and not p.get("execution")), None)
+    if not waiting:
+        return None
+    return (f"hint: {waiting['id']} is waiting behind {current} -- it can run in parallel on its own branch: "
+            f"python3 scripts/workflow.py parallel-start {waiting['id']}")
+
+
 def cmd_next(args: argparse.Namespace) -> None:
     rebuild_index_and_state()
     state = read_json(WORKS / "state.json")
@@ -960,6 +1126,9 @@ def cmd_next(args: argparse.Namespace) -> None:
     print(f"current_slice={current_slice}")
     print(f"slice_path={sdir.relative_to(ROOT)}")
     print(f"next_slice={state.get('next_slice') or 'none'}")
+    hint = parallel_start_hint(state, index)
+    if hint:
+        print(hint)
 
 
 def cmd_deferred(args: argparse.Namespace) -> None:
@@ -1236,6 +1405,16 @@ def main(argv=None) -> int:
     p.add_argument("--reviewer", default=None)
     p.add_argument("--note", default=None)
     p.set_defaults(func=review_phase)
+
+    p = sub.add_parser("parallel-start", help="Opt a planned phase into parallel execution: stamp it, commit the stamp, and cut its phase branch + git worktree")
+    p.add_argument("phase")
+    p.add_argument("--worktree", default=None, help="worktree path (default: a sibling of the repo root, ../<repo>-<phase>)")
+    p.add_argument("--slug", default=None, help="branch slug override (default: slugified phase name); branch is phase/<phase>-<slug>")
+    p.set_defaults(func=parallel_start)
+
+    p = sub.add_parser("parallel-teardown", help="Retire a merged parallel phase's worktree and branch; run from the default stream")
+    p.add_argument("phase")
+    p.set_defaults(func=parallel_teardown)
 
     p = sub.add_parser("defer-job", help="Create a deferred job folder")
     p.add_argument("--id")
