@@ -526,6 +526,28 @@ whole**, not just per slice (see point 2). One engine gap is held open.
    `docs/current/decisions.md` is confirmed still present and must be **rewritten** (phase-level
    parallelism now ships; slice-level fan-out stays rejected), not shadowed by a newer entry.
 
+### F1 — the consolidation deferral is now engine-enforced (closes REVIEW finding 1)
+
+1. **`new_doc_version` refuses on a parallel stream**, immediately after the `doc_id in DOC_TYPES`
+   check and **before `doc_index()`** — so a refusal leaves zero partial state (verified by hashing
+   `docs/` and byte-comparing `docs/index.json` + `works/events.jsonl` across a refused run). The
+   message mirrors `parallel_consolidated`'s (`this checkout is on parallel stream {stream}; ...`,
+   ASCII `--`) and additionally names the three-step post-merge sequence. S6 gap (a) is closed;
+   gap (b) (`parallel-merge-finish` warns) stays as designed per REVIEW finding 2.
+2. **`validate_docs` rejects duplicate `vNNNN` numbers per doc** (`duplicate doc version number in
+   docs/index.json: <doc> vNNNN claimed by both <id-a> and <id-b>`), placed right after the
+   index-entry check so it reports even when `latest` is broken. Ids without a `vNNNN` prefix are
+   skipped, never errored.
+3. **Backward compatibility measured, not argued**: `current_stream` returns `None` without shelling
+   out to git unless an active phase carries a parallel stamp, so the guard is unreachable for a
+   default workspace — proven by running the whole `doc-new-version` -> `rebuild-docs` -> `validate`
+   chain in a workspace with **no git at all**, plus the 17-artifact byte-identity pass against
+   pre-P12 `6f9e3c7` (still `IDENTICAL` with F1 applied). `smoke_s3` (49 checks) stays green.
+4. **Harness note for anyone extending `smoke_f1.py`**: you cannot test the in-function `DOC_TYPES`
+   check through the CLI — argparse `choices` rejects an unknown `--doc` before `new_doc_version`
+   runs. Assert the observable property (an invalid doc on a parallel stream reports the doc error,
+   not the stream refusal) instead.
+
 ## Doc Impact
 
 _Running list for the `REVIEW` slice to consolidate into doc versions (one version per doc, per
@@ -608,3 +630,8 @@ phase). Do not run `doc-new-version` in a middle slice._
   **Slice-level** fan-out inside a phase remains rejected (slices build on each other through
   `phase.md` and a commit per boundary). The consolidation must **rewrite** that line to say exactly
   that, not merely add a newer entry alongside it.
+- **`operations`** (F1) — the deferred doc consolidation is now **engine-enforced, not prose-only**:
+  `doc-new-version` hard-refuses on a parallel stream (naming the post-merge sequence
+  `parallel-merge-finish` -> `doc-new-version` -> `parallel-consolidated`) before allocating anything,
+  and `validate` now fails on two version entries claiming the same `vNNNN` within one doc, so a
+  collision that already happened surfaces instead of silently dropping a version from `docs/current`.

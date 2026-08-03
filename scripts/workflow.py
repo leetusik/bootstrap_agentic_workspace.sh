@@ -301,6 +301,13 @@ def new_doc_version(args: argparse.Namespace) -> None:
     doc_id = args.doc
     if doc_id not in DOC_TYPES:
         raise SystemExit(f"doc must be one of: {', '.join(sorted(DOC_TYPES))}")
+    # Doc versions are allocated from a single `docs/index.json` (`max+1` per doc), so two streams
+    # consolidating at once pick the same vNNNN and collide silently on the merge. A parallel phase
+    # defers consolidation to the serialized post-merge step on the default stream -- refuse here,
+    # before any allocation or write, so a refusal leaves zero partial state.
+    stream = current_stream(all_active_phases())
+    if stream:
+        raise SystemExit(f"this checkout is on parallel stream {stream}; doc consolidation runs on the default stream, after the branch is merged -- defer it to the post-merge step (parallel-merge-finish, then doc-new-version, then parallel-consolidated)")
     index = doc_index()
     info = index["docs"][doc_id]
     latest_id = info["latest"]
@@ -354,6 +361,20 @@ def validate_docs(errors: list) -> None:
         if not info:
             errors.append(f"missing doc index entry: {doc_id}")
             continue
+        # Version numbers must be unique per doc: `next_doc_version_id` allocates `max+1`, so two
+        # entries claiming the same vNNNN means a collision already happened (two streams, or a
+        # hand-resolved merge of docs/index.json) and one version is silently absent from
+        # docs/current. Fail loudly instead.
+        seen_nums = {}
+        for version in info.get("versions", []):
+            m = re.match(r"v(\d+)", str(version.get("id", "")))
+            if not m:
+                continue
+            num = int(m.group(1))
+            if num in seen_nums:
+                errors.append(f"duplicate doc version number in docs/index.json: {doc_id} v{num:04d} claimed by both {seen_nums[num]} and {version.get('id')}")
+            else:
+                seen_nums[num] = version.get("id")
         latest = next((v for v in info.get("versions", []) if v.get("id") == info.get("latest")), None)
         if not latest:
             errors.append(f"missing latest doc version entry: {doc_id}")
