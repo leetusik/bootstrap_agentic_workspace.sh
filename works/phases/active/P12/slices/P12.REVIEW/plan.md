@@ -80,3 +80,21 @@ consolidation record or the stop). Return the structured verdict including `revi
 (`pass|changes_requested|blocked`), `doc_versions` (on pass), and the fixed pointer
 `explain: not written — run /explain for this phase`. No commits, no status transitions (the
 orchestrator records the verdict via `review-phase`), no archiving.
+
+## Re-review (after P12.F1)
+
+Cycle 1 ran the full matrix and returned `changes_requested` on one finding; `P12.F1` has landed
+the fix (the `new_doc_version` stream guard + the `validate_docs` duplicate-`vNNNN` check, commit
+`6052230`). This cycle:
+
+1. **Verify finding 1 is closed:** read the F1 diff and `P12.F1/result.md`; run
+   `python3 <scratchpad>/smoke_f1.py` (23 checks) and confirm the guard sits before any
+   allocation and the duplicate check fails/passes as designed.
+2. **Re-validate what F1 could have disturbed, not everything:** `python3 -m py_compile`,
+   `python3 scripts/workflow.py validate` + `next`, `python3 installer/build.py --check`,
+   `sync-agents --check`, one `smoke_s3.py` regression run, and the byte-identity pass vs
+   `6f9e3c7` (F1's own run may be reused if reproducible). Cycle 1's full results stand.
+3. Findings 2 and 3 stay closed (no-change decisions) — do not reopen without new evidence.
+4. Form the verdict; **on pass, run §4 consolidation now** — the Doc Impact list has gained F1's
+   `operations` note (12 notes: architecture ×2, operations ×6, decisions ×4); the
+   `decisions` supersede-not-append instruction still applies.

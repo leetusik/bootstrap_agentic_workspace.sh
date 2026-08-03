@@ -247,3 +247,9 @@
 {"ts": "2026-08-04T00:13:32+09:00", "type": "slice_created", "phase": "P12", "slice": "P12.F1"}
 {"ts": "2026-08-04T00:14:17+09:00", "type": "slice_status_changed", "slice": "P12.F1", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-08-04T00:19:46+09:00", "type": "slice_status_changed", "slice": "P12.F1", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-08-04T00:20:00+09:00", "type": "slice_status_changed", "slice": "P12.REVIEW", "old_status": "changes_requested", "new_status": "in_progress"}
+{"ts": "2026-08-04T00:21:45+09:00", "type": "doc_version_created", "doc": "architecture", "version": "v0003_opt-in_parallel_phase_execution_the_phase.json_execution_block_and_stream-scoped_selection", "source": "P12.REVIEW"}
+{"ts": "2026-08-04T00:22:46+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0021_parallel_phase_execution_the_six_parallel-_commands_workspace_ci_the_parallel-phase_skill_and_the_deferred_consolidation_gate_v24", "source": "P12.REVIEW"}
+{"ts": "2026-08-04T00:24:07+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0027_opt-in_phase-level_parallelism_regenerate-not-merge_no_gh_wrapper_seed-once_ci_narrowed_push_deny_contract-routes-skill-explains_and_slice-level_fan-out_still_rejected_v24", "source": "P12.REVIEW"}
+{"ts": "2026-08-04T00:27:46+09:00", "type": "slice_status_changed", "slice": "P12.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-08-04T00:27:46+09:00", "type": "phase_reviewed", "phase": "P12", "verdict": "pass", "reviewer": "slice-executor-high"}

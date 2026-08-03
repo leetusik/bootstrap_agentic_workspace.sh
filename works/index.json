@@ -4,17 +4,17 @@
       "id": "P12",
       "name": "Opt-in parallel phase execution: branch-per-phase with PR + CI",
       "objective": "Keep the default single-stream flow on main unchanged, and add an opt-in per-phase parallel mode: an opted-in phase runs on its own branch in its own git worktree with its own orchestrator session, with phase-scoped next-slice selection, durable-doc consolidation deferred to a serialized post-merge step on main, merge-safe generated dashboards, and a PR + CI layer (pushed phase branches, PRs mapped to review verdicts, CI running validate).",
-      "status": "in_progress",
+      "status": "done",
       "order": 1,
       "path": "works/phases/active/P12",
-      "review_status": "changes_requested",
-      "current_slice": "P12.REVIEW",
+      "review_status": "pass",
+      "current_slice": null,
       "slice_count": 10,
-      "done_slice_count": 9
+      "done_slice_count": 10
     }
   ],
   "deferred_open_count": 0,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 1,
-  "last_rebuilt_at": "2026-08-04T00:19:46+09:00"
+  "last_rebuilt_at": "2026-08-04T00:27:46+09:00"
 }

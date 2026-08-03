@@ -29,7 +29,7 @@
       ]
     },
     "architecture": {
-      "latest": "v0002_installer_source_tree_assembles_the_committed_single-file_distributable",
+      "latest": "v0003_opt-in_parallel_phase_execution_the_phase.json_execution_block_and_stream-scoped_selection",
       "current_path": "docs/current/architecture.md",
       "versions": [
         {
@@ -47,6 +47,14 @@
           "source": "P4.REVIEW",
           "summary": "installer/ source tree assembles the committed single-file distributable",
           "previous": "v0001_bootstrap"
+        },
+        {
+          "id": "v0003_opt-in_parallel_phase_execution_the_phase.json_execution_block_and_stream-scoped_selection",
+          "path": "docs/versions/architecture/v0003_opt-in_parallel_phase_execution_the_phase.json_execution_block_and_stream-scoped_selection.md",
+          "created_at": "2026-08-04T00:21:45+09:00",
+          "source": "P12.REVIEW",
+          "summary": "opt-in parallel phase execution: the phase.json execution block and stream-scoped selection",
+          "previous": "v0002_installer_source_tree_assembles_the_committed_single-file_distributable"
         }
       ]
     },
@@ -107,7 +115,7 @@
       ]
     },
     "operations": {
-      "latest": "v0020_drop_the_low_executor_tier_two-tier_mid_high_routing_risk_low_high_defaulting_to_high_one-step_escalation_workspace_v23",
+      "latest": "v0021_parallel_phase_execution_the_six_parallel-_commands_workspace_ci_the_parallel-phase_skill_and_the_deferred_consolidation_gate_v24",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -269,6 +277,14 @@
           "source": "manual",
           "summary": "Drop the low executor tier: two-tier mid/high routing, risk low|high defaulting to high, one-step escalation (workspace v23)",
           "previous": "v0019_idle-window_preparation_in_do-whole-phase_is_optional_and_mechanism-free_slice-planner_retired_the_phase_review_writes_no_explainer_and_consolidates_docs_only_on_a_pass_stopping_and_handing_back_otherwise_workspace_v20_v21"
+        },
+        {
+          "id": "v0021_parallel_phase_execution_the_six_parallel-_commands_workspace_ci_the_parallel-phase_skill_and_the_deferred_consolidation_gate_v24",
+          "path": "docs/versions/operations/v0021_parallel_phase_execution_the_six_parallel-_commands_workspace_ci_the_parallel-phase_skill_and_the_deferred_consolidation_gate_v24.md",
+          "created_at": "2026-08-04T00:22:46+09:00",
+          "source": "P12.REVIEW",
+          "summary": "parallel phase execution: the six parallel-* commands, workspace CI, the parallel-phase skill and the deferred consolidation gate (v24)",
+          "previous": "v0020_drop_the_low_executor_tier_two-tier_mid_high_routing_risk_low_high_defaulting_to_high_one-step_escalation_workspace_v23"
         }
       ]
     },
@@ -309,7 +325,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0026_drop_the_low_executor_tier_two-tier_mid_high_routing_risk_low_high_defaulting_to_high_one-step_escalation_ladder_workspace_v23",
+      "latest": "v0027_opt-in_phase-level_parallelism_regenerate-not-merge_no_gh_wrapper_seed-once_ci_narrowed_push_deny_contract-routes-skill-explains_and_slice-level_fan-out_still_rejected_v24",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -519,9 +535,17 @@
           "source": "manual",
           "summary": "Drop the low executor tier: two-tier mid/high routing, risk low|high defaulting to high, one-step escalation ladder (workspace v23)",
           "previous": "v0025_p11_retire_the_slice-planner_agent_and_make_idle-window_preparation_optional_and_reverse_p8_s_auto-explain-at-review_pointer_instead_carve-out_dropped_non-pass_stops_before_doc_consolidation_workspace_v20_v21"
+        },
+        {
+          "id": "v0027_opt-in_phase-level_parallelism_regenerate-not-merge_no_gh_wrapper_seed-once_ci_narrowed_push_deny_contract-routes-skill-explains_and_slice-level_fan-out_still_rejected_v24",
+          "path": "docs/versions/decisions/v0027_opt-in_phase-level_parallelism_regenerate-not-merge_no_gh_wrapper_seed-once_ci_narrowed_push_deny_contract-routes-skill-explains_and_slice-level_fan-out_still_rejected_v24.md",
+          "created_at": "2026-08-04T00:24:07+09:00",
+          "source": "P12.REVIEW",
+          "summary": "opt-in phase-level parallelism: regenerate-not-merge, no gh wrapper, seed-once CI, narrowed push deny, contract-routes-skill-explains, and slice-level fan-out still rejected (v24)",
+          "previous": "v0026_drop_the_low_executor_tier_two-tier_mid_high_routing_risk_low_high_defaulting_to_high_one-step_escalation_ladder_workspace_v23"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-08-03T23:17:07+09:00"
+  "last_rebuilt_at": "2026-08-04T00:25:14+09:00"
 }

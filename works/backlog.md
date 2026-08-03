@@ -5,18 +5,18 @@
 
 ## Pointer
 
-- Current phase: `P12`
-- Current slice: `P12.REVIEW`
+- Current phase: `none`
+- Current slice: `none`
 - Next slice: `none`
 - Waiting on operator: `none`
 - Open deferred jobs: `0`
-- Rebuilt at: `2026-08-04T00:19:46+09:00`
+- Rebuilt at: `2026-08-04T00:27:46+09:00`
 
 ## Active Phases
 
 | Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
-| [ ] `P12` | `in_progress` | `changes_requested` | Opt-in parallel phase execution: branch-per-phase with PR + CI | `P12.REVIEW` | `works/phases/active/P12` |
+| [x] `P12` | `done` | `pass` | Opt-in parallel phase execution: branch-per-phase with PR + CI | `none` | `works/phases/active/P12` |
 
 ## Phase P12: Opt-in parallel phase execution: branch-per-phase with PR + CI
 
@@ -31,4 +31,4 @@
 | [x] `P12.S6` | `done` | Skills + contract for parallel mode | `implementation` | `works/phases/active/P12/slices/P12.S6` |
 | [x] `P12.S7` | `done` | README documentation for parallel mode | `implementation` | `works/phases/active/P12/slices/P12.S7` |
 | [x] `P12.F1` | `done` | Guard doc-new-version against a parallel stream | `fix` | `works/phases/active/P12/slices/P12.F1` |
-| [ ] `P12.REVIEW` | `changes_requested` | phase review | `review` | `works/phases/active/P12/slices/P12.REVIEW` |
+| [x] `P12.REVIEW` | `done` | phase review | `review` | `works/phases/active/P12/slices/P12.REVIEW` |

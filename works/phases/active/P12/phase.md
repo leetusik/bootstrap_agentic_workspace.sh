@@ -548,10 +548,54 @@ whole**, not just per slice (see point 2). One engine gap is held open.
    runs. Assert the observable property (an invalid doc on a parallel stream reports the doc error,
    not the stream refusal) instead.
 
+### REVIEW cycle 2 — verdict `pass`, docs consolidated (phase complete)
+
+Full detail in `slices/P12.REVIEW/result.md` (cycle 2 section). The re-review verified `P12.F1`
+closed the one must-fix finding and re-validated only what F1 could have disturbed; cycle 1's full
+matrix, intent walk and judgment stand.
+
+1. **Finding 1 is closed at the engine level.** Verified against the F1 diff and the current source,
+   not the report: the guard sits before `doc_index()`, so a refusal leaves zero partial state, and
+   `smoke_f1.py` measures that (hashing `docs/`, byte-comparing `docs/index.json`, asserting no
+   `doc_version_created` event) rather than asserting it. Section A's no-git-at-all run is the real
+   backward-compat proof — the guard cannot be reached on the default path because `current_stream`
+   returns `None` without shelling out. Intent item 3's "can **never** collide" is now delivered by
+   the engine instead of by prose.
+2. **Scoped re-validation, all green:** `py_compile`, `smoke_f1` (23), `smoke_s3` (49), `validate`,
+   `next`, `build.py --check`, `sync-agents --check`, and an independently re-run byte-identity pass
+   vs pre-P12 `6f9e3c7` (17 artifacts `IDENTICAL`) — the last two re-run **again after** the doc
+   consolidation, still clean. `smoke_s2`/`s4`/`s5` and `retrofit_smoke.sh` were deliberately not
+   re-run: F1 touched only `new_doc_version` and `validate_docs`, which none of them exercise.
+3. **Findings 2 and 3 stay closed** — F1's two hunks are entirely inside those two functions and
+   touch neither surface, so no new evidence exists to reopen them.
+4. **Docs consolidated — three versions, all 12 Doc Impact notes covered:** `architecture` **v0003**
+   (S1+S2 — a new "Execution Streams" section: the `execution` schema, branch-based stream detection,
+   scope-once-upstream, regenerate-not-merge, why doc versioning is serial), `operations` **v0021**
+   (S2–S6+F1 — a new "Parallel phase execution" section with the six-command table, the integration
+   sequence, both CI jobs, installer policy, the by-hand push-deny migration; plus a parallel-mode
+   bullet in the phase-review section), `decisions` **v0027** (S3, S5, S6 ×2 — one new entry with
+   nine decision points and seven rejected alternatives).
+5. **The supersede was executed as a supersede.** `decisions.md`'s "*Parallel fan-out across slices*
+   — rejected for now … parallelism is out of scope" bullet was **rewritten in place** (now line 509)
+   to scope the rejection to **slice level only**, state that the blanket claim no longer holds, and
+   cross-reference the new v24 entry — not shadowed by a newer entry beside it. Anyone re-reading
+   that bullet later gets the current truth at the point of the stale claim, which is the whole point
+   of the rule.
+6. **Residual risk carried forward, unresolved by design:** CI has still never executed on GitHub.
+   Locally verified only; the first real run is the operator's next push, where runner `python3`
+   availability and the `origin/<base>` fetch depth are the two unknowns.
+7. **Reusable lesson for future reviews:** a phase-wide backward-compat proof must compare against
+   the **pre-phase commit**, never `HEAD` — the S1/S4 rebuild-diff harness compares to `HEAD`, which
+   at review time already contains the whole phase, making it a guaranteed no-diff that proves
+   nothing. `<scratchpad>/rebuild_diff_review.py` is the corrected shape.
+
 ## Doc Impact
 
 _Running list for the `REVIEW` slice to consolidate into doc versions (one version per doc, per
 phase). Do not run `doc-new-version` in a middle slice._
+
+**CONSOLIDATED at REVIEW cycle 2** into `architecture` v0003, `operations` v0021 and `decisions`
+v0027. The list below is kept as the record of what each slice contributed.
 
 - **`architecture`** (S1) — `phase.json` gains an optional `execution: {mode, branch, worktree,
   consolidation}` block, and workspace selection becomes stream-scoped: the `works/state.json`

@@ -1,5 +1,14 @@
 # P12.REVIEW — phase review result
 
+> **This file has two cycles.** Cycle 1 (below, unchanged) returned `changes_requested` on one
+> finding. Cycle 2 — the re-review after `P12.F1` — is at the bottom under
+> **[Cycle 2 — re-review after P12.F1](#cycle-2--re-review-after-p12f1)** and is the **current
+> verdict: `pass`**, with the phase's docs consolidated into three new versions.
+
+---
+
+## Cycle 1 (superseded verdict, findings retained)
+
 **Verdict: `changes_requested`.** One finding, one proposed fix slice. Everything else in the phase
 landed as specified: all eight intent requirements and both amendments are implemented, backward
 compatibility is proven byte-identical against the true pre-P12 baseline, and the docs/skills/
@@ -207,5 +216,140 @@ fine to defer.
    "stop before any consolidation" instruction and the pass-only rule.
 
 No commits, no status transitions, no archiving, no other slice's `plan.md` touched.
+
+`explain: not written — run /explain for this phase`
+
+---
+
+# Cycle 2 — re-review after P12.F1
+
+**Verdict: `pass`.** Finding 1 is closed by `P12.F1` (`6052230`), verified against the diff and its
+smoke rather than taken on report. Nothing F1 could have disturbed drifted. Findings 2 and 3 stay
+closed — no new evidence surfaced. Cycle 1's full matrix, intent walk and judgment stand as written;
+this cycle re-ran only the scoped set the plan's re-review section calls for, then ran the §4
+consolidation.
+
+## 1. Finding 1 — verified closed
+
+Read the F1 diff (`git show 6052230 -- scripts/workflow.py`) directly, not just `result.md`. Two
+hunks, both exactly what the finding prescribed:
+
+**The guard** sits in `new_doc_version` immediately after the `doc_id not in DOC_TYPES` check and
+**before `index = doc_index()`** — confirmed by reading the current source, not the diff context.
+So the refusal precedes every read, allocation and write, and leaves zero partial state by
+construction. The message mirrors `parallel_consolidated`'s opening verbatim
+(`this checkout is on parallel stream {stream}; …`), then names the three-command post-merge
+sequence. A four-line comment above it records *why* (single-index `max+1` ⇒ silent collision), so
+the guard reads as load-bearing rather than boilerplate to a later editor.
+
+**The hardening** in `validate_docs` collects the `v(\d+)` prefix per doc and errors on a repeat,
+naming the doc, the number and **both** ids. Placement is right after the index-entry check, so it
+reports even when `latest` is broken. `re.match(r"v(\d+)", …)` mirrors `next_doc_version_id`
+exactly, and non-`vNNNN` ids are skipped rather than errored — correct, since the engine never
+allocated those.
+
+`python3 <scratchpad>/smoke_f1.py` → **pass, 23/23**. What it proves matters more than the count:
+
+- section **A** runs the whole `doc-new-version → rebuild-docs → validate` chain in a workspace with
+  **no git at all** and it still succeeds — the strongest available evidence that the guard is
+  unreachable on the default path, since `current_stream` returns `None` without shelling out;
+- section **C** asserts *zero partial state* by hashing `docs/`, byte-comparing `docs/index.json`
+  and checking that no `doc_version_created` event was appended across a refused invocation — the
+  property the finding actually cared about, measured rather than argued;
+- section **E** builds the exact hand-merged duplicate-`vNNNN` index the finding traced and confirms
+  `validate` now fails on it, and passes again once removed.
+
+The one intent promise the phase had not delivered — item 3's "can **never** collide" — is now
+delivered by the engine, not by prose. Finding 1 is closed.
+
+## 2. Re-validation of what F1 could have disturbed
+
+| # | Command | Outcome |
+|---|---|---|
+| 1 | `python3 -m py_compile scripts/workflow.py` | **pass** |
+| 2 | `python3 <scratchpad>/smoke_f1.py` (23 checks) | **pass** — `SMOKE PASSED (23 checks)` |
+| 3 | `python3 <scratchpad>/smoke_s3.py` (49 checks) | **pass** — `SMOKE PASSED (49 checks)`, the adjacent consolidation/merge paths are clean |
+| 4 | `python3 scripts/workflow.py validate` | **pass** |
+| 5 | `python3 scripts/workflow.py next` | **pass** — `current_phase=P12 current_slice=P12.REVIEW next_slice=none` |
+| 6 | `python3 installer/build.py --check` | **pass** — artifact in sync (F1 rebuilt it in the same commit) |
+| 7 | `python3 scripts/workflow.py sync-agents --check` | **pass** — `agent files in sync` |
+| 8 | Byte-identity vs pre-P12 `6f9e3c7` (`<scratchpad>/rebuild_diff_review.py`) | **pass** — 17 artifacts `IDENTICAL`, re-run independently rather than reusing F1's run |
+| 9 | Re-ran #6 and #8 **after** the consolidation | **pass** — still `IDENTICAL` / in sync |
+
+`git show --stat 6052230` confirms the installer-rebuild discipline held for the fix too: the
+rebuilt `bootstrap_agentic_workspace.sh` rides in the same commit as `scripts/workflow.py`.
+Two files of real change, exactly the scope the fix slice was cut for.
+
+Not re-run, deliberately, per the re-review scope: `smoke_s2` / `smoke_s4` / `smoke_s5.sh` /
+`tests/retrofit_smoke.sh` / the mirror + skill-twin checks. F1 touched only `new_doc_version` and
+`validate_docs`, neither of which those exercise, and cycle 1's results stand.
+
+## 3. Findings 2 and 3 — still closed
+
+Re-checked that F1's diff did not touch either surface (it did not — the two hunks are entirely
+within `new_doc_version` and `validate_docs`). No new evidence, so both stay as cycle 1 judged them:
+`parallel-merge-finish`'s warning is proportionate to its non-destructive, idempotent nature, and
+the `smoke_s2` set-equality assertion is a scratchpad harness bug with no engine consequence.
+
+The residual risk from cycle 1 §4 is unchanged and carried forward, not resolved: **CI has still
+never executed on GitHub.** The first real run is the operator's next push.
+
+## 4. Consolidation — three doc versions
+
+Ran only on the pass, and only after the judgment above. All 12 §Doc Impact notes are covered
+(`architecture` ×2, `operations` ×6, `decisions` ×4). No `docs/current/*` was hand-edited and no
+file under `docs/versions/` was patched — `git status` shows the three new version files as
+untracked additions, with `docs/current/*` and `docs/index.json` modified only by `rebuild-docs`.
+
+| Doc | New version | Consolidates |
+|---|---|---|
+| `architecture` | `v0003_opt-in_parallel_phase_execution_the_phase.json_execution_block_and_stream-scoped_selection` | S1 + S2 notes |
+| `operations` | `v0021_parallel_phase_execution_the_six_parallel-_commands_workspace_ci_the_parallel-phase_skill_and_the_deferred_consolidation_gate_v24` | S2, S3, S4, S5, S6, F1 notes |
+| `decisions` | `v0027_opt-in_phase-level_parallelism_regenerate-not-merge_no_gh_wrapper_seed-once_ci_narrowed_push_deny_contract-routes-skill-explains_and_slice-level_fan-out_still_rejected_v24` | S3, S5, S6 ×2 notes |
+
+**`architecture` v0003** — Status now names stream-scoped execution; the repo-shape list gains
+`.github/workflows/workspace-ci.yml` and `.gitattributes`; and a new **"Execution Streams (opt-in
+parallel phases)"** section carries the `execution` schema field by field (including why `branch` is
+*the* stream key and why the `phase_execution` accessor is the only reader), branch-based stream
+detection and why it beats a marker file, the scope-once-upstream shape with its three consequences
+(stream-scoped pointer, stream-local `pending` halt, dashboards still listing everything),
+regenerate-not-merge, and why doc versioning is serial by construction.
+
+**`operations` v0021** — Status gains the v24 sentence; the phase-review section gains a
+parallel-mode bullet (verify the Doc Impact list, return
+`doc_versions: none — deferred to post-merge consolidation (parallel mode)`, engine-enforced); and a
+new **"Parallel phase execution (opt-in, since v24)"** section carries a six-command table plus
+per-command notes, the engine's one-commit exception and its zero-partial-state guard contract, the
+proactive hints, the 10-step agent-run integration sequence, both CI jobs (including *why* the gate
+job checks out the PR **head sha** rather than the merge commit), the installer's seed-once /
+line-merged policy, the narrowed push deny **with the by-hand migration for existing adopters**, and
+the `parallel-phase` skill's contract-routes/skill-explains division.
+
+**`decisions` v0027** — one new entry, *"Ship opt-in phase-level parallelism"*, at the top of the
+log: nine decision points, seven rejected alternatives (each with the reason, including the
+prose-only enforcement this review rejected and the deliberate `parallel-merge-finish` asymmetry),
+and consequences split engine / repo+installer / machinery / migration / residual risk.
+
+**The supersede was done as a supersede, not an append** — the instruction the S6 note and both my
+cycle-1 findings insisted on. `decisions.md`'s *Route slice execution through a `slice-executor`
+subagent* entry previously ended its alternatives list with "*Parallel fan-out across slices
+(worktree isolation)* — rejected for now … parallelism is out of scope". That bullet is **rewritten
+in place** (now line 509) to say the rejection is **slice-level only**, that the blanket claim no
+longer holds, that v24 ships phase-level parallelism, and why phases are the independent unit while
+slices are not — with a cross-reference to the new entry, and a matching back-reference in the new
+entry's `Status:` line. The Status paragraph count went 25 → 26 and gained the v24 clause.
+
+Then `python3 scripts/workflow.py rebuild-docs` (once, at the end) and `validate` — both clean, and
+`docs` confirms all three `latest` pointers advanced.
+
+## Deviations from `plan.md` (cycle 2)
+
+**None.** The re-review section was followed as written: verify finding 1, re-validate the scoped
+set, leave findings 2–3 closed, form the verdict, consolidate on the pass with the supersede rule
+applied. Cycle 1's three deviations are recorded in its own section above and are unchanged.
+
+No commits, no status transitions, no archiving, no source code edited, no other slice's `plan.md`
+touched. The only files I wrote are the three new doc versions, the two files `rebuild-docs`
+generates, this `result.md`, and `phase.md`'s notes.
 
 `explain: not written — run /explain for this phase`
