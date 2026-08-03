@@ -334,6 +334,45 @@ probe that never raises, as opposed to `_require_git_repo()`.
 generated-file conflict by taking either side → `parallel-merge-finish` → commit → consolidate docs
 one phase at a time → `parallel-consolidated <P>` → `parallel-teardown <P>` → commit.
 
+### S4 — the cross-stream view's name and read model (binding for S5–S7)
+
+**1. Command name: `parallel-status`** (no arguments) — the intent's `status --all` was an
+illustrative "e.g."; there is no existing `status` command to extend, and the `parallel-*` prefix is
+how the operator discovers the whole family. Quote it verbatim in skills and README.
+
+**2. It is the one command that writes nothing.** Every other command funnels through
+`rebuild_index_and_state()`; `parallel-status` deliberately does not, because it is meant to be run
+from a parallel worktree, where a rebuild would rewrite that checkout's dashboards as a side
+effect. It recomputes the pointer in memory with the same helpers the rebuild uses
+(`current_stream` → `stream_phases` → `resolve_current` / `operator_wait_target`) and prints. The
+smoke hashes `works/` + `docs/` around every invocation to keep it that way.
+
+**3. Where each phase's truth is read from**, in order — reported on a `source=` line so the output
+always says what it read:
+
+- the phase's branch is *this* checkout's stream → the **working tree** (fresher than its own last
+  commit);
+- otherwise `git show <branch>:…`, falling back to `origin/<branch>` (a teammate's clone that
+  fetched but has no local branch);
+- otherwise the **local folder copy** plus a `note: (local copy; branch not found: <branch>)` line —
+  the torn-down case, where the merged copy in this checkout *is* the truth.
+
+**4. Verdict ladder** (one line per phase, each naming the next command): in flight `n/m slices
+done` → review not `pass` → ready to merge (`parallel-gate <P>`) → merged, docs awaiting
+consolidation (`parallel-merge-finish` → `parallel-consolidated <P>`) → merged + consolidated
+(`parallel-teardown <P>`) → merged, consolidated and torn down (archivable). "Merged" is
+`git merge-base --is-ancestor <branch> HEAD`, computed only when the checkout is *not* the phase's
+own stream (there HEAD trivially contains the branch), plus the deleted-branch case: teardown
+refuses an unmerged branch, so a missing branch implies the merge already happened.
+
+**5. Helper added for S5:** `_slices_at_ref(ref, phase_id)` — the slice-level twin of
+`_phases_at_ref`, ordered by `order`, `None` when the ref is unreadable.
+
+**6. Edge cases:** no parallel phases anywhere → header + `no parallel phases` + the
+`parallel-start <P>` pointer, exit 0 (never an error, git or no git — an untouched workspace still
+never shells out); a stamped parallel phase with no usable git work tree → a clear
+`not inside a git work tree` error, since the command is inherently git-backed.
+
 ## Doc Impact
 
 _Running list for the `REVIEW` slice to consolidate into doc versions (one version per doc, per
@@ -358,6 +397,12 @@ phase). Do not run `doc-new-version` in a middle slice._
   regenerates every generated file, lists the phases still owing doc consolidation, commits
   nothing), and `parallel-consolidated <P>` (records that the deferred consolidation is done);
   archiving a parallel phase is now blocked while its `execution.consolidation` is `"pending"`.
+- **`operations`** (S4) — `parallel-status` answers "what is happening on every stream right now?"
+  from any checkout: this stream's pointer plus, per parallel phase, its branch/worktree/
+  consolidation state, the branch-side slice table read with `git show`/`git ls-tree` (which the
+  default stream's `works/backlog.md` cannot show before the merge), and a one-line verdict naming
+  the next command; it is the only workflow command that writes nothing (no rebuild), and falls back
+  to the local copy with a note once the branch is torn down.
 - **`decisions`** (S3) — generated workspace files are **regenerated, not merged**: no custom git
   merge driver, because a driver needs per-clone `git config` and therefore does not travel with the
   repo. A merge conflict in `works/{state.json,index.json,backlog.md,deferred.md}` or

@@ -1021,6 +1021,32 @@ def _phases_at_ref(ref: str):
     return phases
 
 
+def _slices_at_ref(ref: str, phase_id: str):
+    """Every slice.json of one phase as recorded at a git ref (ordered), or None if unreadable.
+
+    The cross-stream half of `_phases_at_ref`: a phase branch's slice progress exists only on
+    that branch until the merge, so reading it needs the tree at the ref, not the checkout.
+    """
+    proc = _git(["ls-tree", "--name-only", ref, f"{_repo_prefix()}works/phases/active/{phase_id}/slices/"], check=False)
+    if proc.returncode != 0:
+        return None
+    slices = []
+    for line in proc.stdout.splitlines():
+        entry = line.strip().rstrip("/")
+        if not entry:
+            continue
+        raw = _git(["show", f"{ref}:{entry}/slice.json"], check=False)
+        if raw.returncode != 0:
+            continue
+        try:
+            data = json.loads(raw.stdout)
+        except ValueError:
+            continue
+        slices.append(data)
+    slices.sort(key=lambda d: d.get("order", 999999))
+    return slices
+
+
 def _phase_branch(phase_id: str, name: str, slug_override=None) -> str:
     """`phase/P<N>-<slug>` -- the stream key every other part of parallel mode reads."""
     slug = slugify(slug_override or name, fallback=phase_id.lower())
@@ -1300,6 +1326,125 @@ def parallel_consolidated(args: argparse.Namespace) -> None:
     if execution.get("worktree") or (branch and _git_available() and _branch_exists(branch)):
         print(f"next: python3 scripts/workflow.py parallel-teardown {args.phase}")
     print(f"{args.phase} is now archivable (archive-phase/rotate-backlog no longer block on pending consolidation)")
+
+
+def _parallel_verdict(phase_id: str, status, review, slices, consolidation, merged, branch_gone: bool, own_stream: bool) -> str:
+    """One line saying where a parallel phase stands, and what the operator does next.
+
+    `merged` is None when the answer is unknown (this checkout is the phase's own stream, so it
+    trivially contains its own branch); `branch_gone` means the branch was deleted, which implies
+    the phase was merged first -- `parallel-teardown` refuses an unmerged branch.
+    """
+    if status is None:
+        return "unknown -- neither the phase branch nor a local copy could be read"
+    slices = slices or []
+    total = len(slices)
+    done = sum(1 for s in slices if s.get("status") == "done")
+    open_slice = next((s.get("id") for s in slices if s.get("status") != "done"), None)
+    integrated = merged is True or branch_gone
+    if status == "done" and review == "pass":
+        if consolidation == "pending":
+            if integrated:
+                return (f"merged, docs still awaiting consolidation -- run on the default stream: "
+                        f"parallel-merge-finish, then parallel-consolidated {phase_id}")
+            return f"ready to merge -- check the quiet point first: parallel-gate {phase_id} (from the default stream)"
+        if integrated:
+            if not branch_gone:
+                return f"merged + consolidated -- retire the branch and worktree: parallel-teardown {phase_id}"
+            return f"merged, consolidated and torn down -- nothing left but archiving ({phase_id} is archivable)"
+        return f"ready to merge -- check the quiet point first: parallel-gate {phase_id} (from the default stream)"
+    if status == "done":
+        return f"slices done but review is {review!r} -- record a passing review on its branch (review-phase {phase_id} --verdict pass)"
+    if status == "pending":
+        return "waiting on the operator (phase is pending [~]) -- it halts only its own stream"
+    if status == "blocked":
+        return "blocked on its own stream -- resolve the impediment there"
+    where = " on this checkout's own stream" if own_stream else " on its branch"
+    tail = f"; current slice {open_slice}" if open_slice else ""
+    return f"in flight{where} -- {done}/{total} slices done{tail}"
+
+
+def parallel_status(args: argparse.Namespace) -> None:
+    """Read-only cross-stream view: this checkout's pointer plus every parallel phase's real state.
+
+    A parallel phase's slice progress lives on its own branch, so the default stream's
+    `works/backlog.md` stands still until the merge. This reads each phase's truth straight out of
+    its branch with `git show` / `git ls-tree` -- no checkout switching, no fetching, and (unlike
+    every other command here) no rebuild: nothing on disk is written.
+    """
+    phases = all_active_phases()
+    stream = current_stream(phases)
+    # The same in-memory pointer computation `rebuild_index_and_state` does, minus the writes.
+    selectable = stream_phases(phases, stream)
+    current_phase, current_slice, next_slice = resolve_current(selectable)
+    waiting = operator_wait_target(selectable, current_phase, current_slice)
+    print(f"stream={stream}" if stream else "stream=default")
+    print(f"current_phase={current_phase or 'none'}")
+    print(f"current_slice={current_slice or 'none'}")
+    print(f"next_slice={next_slice or 'none'}")
+    print(f"waiting_on_operator={waiting or 'none'}")
+    print("(the pointer above is this stream's; each section below is read from that phase's own branch)")
+
+    parallel = [(p, phase_execution(p)) for p in phases if phase_execution(p)]
+    if not parallel:
+        print("no parallel phases -- every active phase runs on the default stream")
+        print("opt one in with: python3 scripts/workflow.py parallel-start <P>")
+        return
+    if not _git_available():
+        raise SystemExit(
+            "parallel-status reads each phase branch with git, but this workspace is not inside a git work tree "
+            f"({len(parallel)} phase(s) are stamped for parallel execution)")
+    print(f"parallel_phases={len(parallel)}")
+
+    for phase, execution in parallel:
+        pid = phase.get("id")
+        branch = execution.get("branch")
+        own_stream = bool(branch) and branch == stream
+        note = None
+        data = slices = None
+        if own_stream:  # our own working tree is fresher than our own last commit
+            source = "working tree (this checkout's own stream)"
+            data, slices = phase, phase.get("slices", [])
+        else:
+            ref = None
+            for candidate in ([branch, f"origin/{branch}"] if branch else []):
+                data = _phase_json_at_ref(candidate, pid)
+                if data is not None:
+                    ref = candidate
+                    break
+            if ref:
+                source = f"branch {ref}"
+                slices = _slices_at_ref(ref, pid) or []
+            else:  # torn down after the merge, or a clone that never fetched the branch
+                source = "local copy"
+                note = (f"(local copy; branch not found{': ' + branch if branch else ''}) -- "
+                        f"merged and torn down, or never fetched in this clone")
+                data, slices = phase, phase.get("slices", [])
+        branch_gone = bool(branch) and not _branch_exists(branch)
+        merged = None  # unknowable from the phase's own stream: HEAD *is* the branch there
+        if branch and not branch_gone and not own_stream:
+            merged = _git(["merge-base", "--is-ancestor", branch, "HEAD"], check=False).returncode == 0
+        status = (data or {}).get("status")
+        review = ((data or {}).get("review") or {}).get("status")
+        worktree = execution.get("worktree")
+        print()
+        print(f"== {pid}: {phase.get('name', '')} ==")
+        print(f"  branch={branch or '- (stamped parallel with no branch; fix phase.json)'}")
+        print(f"  worktree={worktree or '- (plain clone, or already torn down)'}")
+        print(f"  consolidation={execution.get('consolidation') or '-'}")
+        print(f"  source={source}")
+        if note:
+            print(f"  note: {note}")
+        print(f"  status={status} review={review}" + ("" if merged is None else f" merged_into_HEAD={str(merged).lower()}"))
+        if slices:
+            width = max(len(str(s.get("id", ""))) for s in slices)
+            print(f"  slices ({sum(1 for s in slices if s.get('status') == 'done')}/{len(slices)} done):")
+            for s in slices:
+                name = str(s.get("name", "")).replace("\n", " ")
+                print(f"    [{status_box(s.get('status'))}] {str(s.get('id', '')):<{width}}  {str(s.get('status', '')):<17} {name}")
+        else:
+            print("  slices: none readable at that source")
+        print(f"  verdict: {_parallel_verdict(pid, status, review, slices, execution.get('consolidation'), merged, branch_gone, own_stream)}")
 
 
 def parallel_start_hint(state: dict, index: dict) -> str:
@@ -1655,6 +1800,9 @@ def main(argv=None) -> int:
     p.add_argument("--worktree", default=None, help="worktree path (default: a sibling of the repo root, ../<repo>-<phase>)")
     p.add_argument("--slug", default=None, help="branch slug override (default: slugified phase name); branch is phase/<phase>-<slug>")
     p.set_defaults(func=parallel_start)
+
+    p = sub.add_parser("parallel-status", help="Read-only cross-stream view: this checkout's pointer plus every parallel phase's branch-side slice state (never writes anything)")
+    p.set_defaults(func=parallel_status)
 
     p = sub.add_parser("parallel-gate", help="Quiet-point gate: is this parallel phase's branch mergeable now (branch done+pass, default stream quiet)? Exit 0 = open")
     p.add_argument("phase")
