@@ -482,6 +482,50 @@ accept as designed), detailed in S6's `result.md`.
   plan's own validation grep). No doc-impact note needed — the READMEs mirror durable truth already
   captured by S1–S6.
 
+### REVIEW — verdict `changes_requested`, and what the re-review must carry
+
+Full detail in `slices/P12.REVIEW/result.md`. The phase is functionally complete — all eight intent
+requirements and both amendments landed, and backward compatibility is **proven for the phase as a
+whole**, not just per slice (see point 2). One engine gap is held open.
+
+1. **The one fix: `doc-new-version` has no parallel-stream guard** (`P12.F1`, `fix`, `high`).
+   `new_doc_version` (`scripts/workflow.py:300`) never calls `current_stream()`, while its sibling
+   `parallel_consolidated` (`:1294`) hard-refuses that exact condition — so the feature guards its
+   bookkeeping command and leaves its *destructive* one open. Traced, not assumed: `dest.exists()`
+   (`:313`) compares the full `vNNNN_<slug>.md` path, so two different summaries never collide;
+   `docs/index.json` is authoritative and deliberately **not** in `GENERATED_FILES` (`:39`), so it
+   is hand-merged; and `validate_docs` has no version-id uniqueness check. Net effect: two files
+   claiming the same `vNNNN`, one version's content silently missing from `docs/current`, and
+   `validate` still passing. Intent item 3 promised this "can **never** collide" — prose does not
+   deliver *never*. The guard belongs right after the `doc_id in DOC_TYPES` check, before any
+   allocation, and is backward-compatible for free (`current_stream` returns `None` without touching
+   git unless a phase carries a parallel stamp).
+2. **Byte-identity must be measured against `6f9e3c7`, not `HEAD`.** S1's and S4's rebuild-diff
+   harness compares the working tree to `HEAD` — which now contains all of S1–S7, making the check a
+   guaranteed no-diff that proves nothing at review time. Re-pointed at the last pre-P12 commit: 17
+   generated artifacts (4 dashboards + 11 `docs/current/*.md` + `next` + `validate`, timestamps
+   normalized) `IDENTICAL`. Any future phase-wide backward-compat proof should use the pre-phase
+   commit, not `HEAD`.
+3. **S6 gap 2 is closed as designed — do not "fix" it.** `parallel-merge-finish` warning (`:1265`)
+   where `parallel-consolidated` refuses (`:1307`) is proportionate: merge-finish is idempotent and
+   non-destructive, and on a parallel stream its rebuild writes exactly the stream-scoped state that
+   checkout should have. Refusing would strand someone mid-cleanup for no safety gain.
+4. **The `smoke_s2` flake is a harness bug, never an engine bug — no repo change.** The failing run
+   commits a *subset* (4 of 6 files: `state.json`/`deferred.md` unchanged in the same wall-clock
+   second), never anything extra. The safety property is an upper bound ("nothing but the stamp and
+   the regenerated files"), and `parallel-start`'s fixed `git add` list holds it unconditionally.
+   The harness asserts set equality where its own name says "only"; relax `==` to `<=` if reused.
+5. **Residual risk: CI has still never executed on GitHub.** Locally verified only (two YAML
+   parsers, ASCII, branch derivation, every invoked command). First real run is the operator's next
+   push; runner `python3` availability and the `origin/<base>` fetch are the two unknowns.
+6. **§Doc Impact below was verified complete and accurate against the shipped code** (11 notes:
+   `architecture` ×2, `operations` ×5, `decisions` ×4) and is ready to consolidate verbatim once
+   `P12.F1` lands and the re-review passes. Nothing was versioned at this review — the verdict is
+   non-pass, and consolidation is pass-only. The `decisions` **supersede-not-append** instruction
+   still stands: the stale "*Parallel fan-out across slices* — rejected for now" sentence in
+   `docs/current/decisions.md` is confirmed still present and must be **rewritten** (phase-level
+   parallelism now ships; slice-level fan-out stays rejected), not shadowed by a newer entry.
+
 ## Doc Impact
 
 _Running list for the `REVIEW` slice to consolidate into doc versions (one version per doc, per
