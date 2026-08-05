@@ -115,7 +115,7 @@
       ]
     },
     "operations": {
-      "latest": "v0021_parallel_phase_execution_the_six_parallel-_commands_workspace_ci_the_parallel-phase_skill_and_the_deferred_consolidation_gate_v24",
+      "latest": "v0022_auto_becomes_the_default_execution_mode_for_do-next-slice_do-whole-phase_gate_is_the_explicit_approval_opt-in",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -285,6 +285,14 @@
           "source": "P12.REVIEW",
           "summary": "parallel phase execution: the six parallel-* commands, workspace CI, the parallel-phase skill and the deferred consolidation gate (v24)",
           "previous": "v0020_drop_the_low_executor_tier_two-tier_mid_high_routing_risk_low_high_defaulting_to_high_one-step_escalation_workspace_v23"
+        },
+        {
+          "id": "v0022_auto_becomes_the_default_execution_mode_for_do-next-slice_do-whole-phase_gate_is_the_explicit_approval_opt-in",
+          "path": "docs/versions/operations/v0022_auto_becomes_the_default_execution_mode_for_do-next-slice_do-whole-phase_gate_is_the_explicit_approval_opt-in.md",
+          "created_at": "2026-08-05T13:27:26+09:00",
+          "source": "operator",
+          "summary": "auto becomes the default execution mode for do-next-slice/do-whole-phase; gate is the explicit approval opt-in",
+          "previous": "v0021_parallel_phase_execution_the_six_parallel-_commands_workspace_ci_the_parallel-phase_skill_and_the_deferred_consolidation_gate_v24"
         }
       ]
     },
@@ -325,7 +333,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0027_opt-in_phase-level_parallelism_regenerate-not-merge_no_gh_wrapper_seed-once_ci_narrowed_push_deny_contract-routes-skill-explains_and_slice-level_fan-out_still_rejected_v24",
+      "latest": "v0028_flip_the_execution-mode_default_auto_by_default_gate_opt-in",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -543,9 +551,17 @@
           "source": "P12.REVIEW",
           "summary": "opt-in phase-level parallelism: regenerate-not-merge, no gh wrapper, seed-once CI, narrowed push deny, contract-routes-skill-explains, and slice-level fan-out still rejected (v24)",
           "previous": "v0026_drop_the_low_executor_tier_two-tier_mid_high_routing_risk_low_high_defaulting_to_high_one-step_escalation_ladder_workspace_v23"
+        },
+        {
+          "id": "v0028_flip_the_execution-mode_default_auto_by_default_gate_opt-in",
+          "path": "docs/versions/decisions/v0028_flip_the_execution-mode_default_auto_by_default_gate_opt-in.md",
+          "created_at": "2026-08-05T13:27:26+09:00",
+          "source": "operator",
+          "summary": "flip the execution-mode default: auto by default, gate opt-in",
+          "previous": "v0027_opt-in_phase-level_parallelism_regenerate-not-merge_no_gh_wrapper_seed-once_ci_narrowed_push_deny_contract-routes-skill-explains_and_slice-level_fan-out_still_rejected_v24"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-08-04T00:25:14+09:00"
+  "last_rebuilt_at": "2026-08-05T13:29:34+09:00"
 }

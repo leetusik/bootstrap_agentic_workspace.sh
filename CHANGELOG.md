@@ -9,6 +9,32 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v25 — 2026-08-05
+
+- **`auto` is now the default execution mode for `do-next-slice` and `do-whole-phase`.** Invoked with
+  no mode word, both skills plan each slice inline, `Write` its `plan.md`, and dispatch the executor
+  straight through — no per-plan approval pause. The safety halts are unchanged: `pending`,
+  `needs_operator`, `blocked`, and a failed/empty `slice-executor-high` return still stop the loop,
+  and an `escalate` (or a failed/empty `mid` return) still re-dispatches to `slice-executor-high`
+  without stopping. The word `auto` (and "run unattended") remains accepted as an explicit synonym of
+  the default.
+- **`gate` is the new explicit opt-in for manual-approval mode** (`/do-whole-phase gate`,
+  `/do-next-slice gate`): the previous default loop — plan at the operator's gate (`EnterPlanMode` /
+  `ExitPlanMode` in Claude Code; inline presentation in Codex), operator approves the readied plan,
+  persist it by copying the harness plan file (confirm-then-copy), then dispatch — is unchanged, just
+  no longer the default. Plan persistence inverts with the flip: `Write` is now the default path
+  (plan mode is never entered, so no harness plan file exists), and the copy rule applies in the
+  gated modes.
+- **`plan only` is unchanged and always gated** — it exists to produce operator-approved plans, so it
+  runs the approval gate regardless of the new default; an accompanying `auto` word is ignored
+  (previously phrased as "`plan only` never combines with `auto`").
+- The contract (`CLAUDE.md`/`AGENTS.md`), both skills (the Claude copies and the Codex
+  `do-next-slice` mirror), both READMEs, and the durable docs (`operations`, `decisions`) carry the
+  flipped wording. The engine has no mode logic, so `scripts/workflow.py` is untouched.
+- **Migration notes:** behavioral change — a bare `/do-whole-phase` or `/do-next-slice` now runs
+  unattended to the end of the phase (or slice) with no plan-approval pauses. Invoke with `gate` to
+  keep the old approve-each-plan behavior.
+
 ## v24 — 2026-08-03
 
 - **The workspace now ships CI.** `.github/workflows/workspace-ci.yml` is one generic workflow that

@@ -200,9 +200,9 @@ the phase (seeding only `DECOMP` + `REVIEW`) — then stops. No decomposition, n
 Then execute it at whichever pace you prefer:
 
 ```
-/do-next-slice          # one slice only — approve its plan, it runs, then stop
-/do-whole-phase         # the whole phase — pauses only for your approval of each slice's plan
-/do-whole-phase auto    # the whole phase non-stop — skips plan approvals (safety halts still stop it)
+/do-next-slice          # one slice — plans and runs it non-stop, then stops
+/do-whole-phase         # the whole phase non-stop — no plan-approval pauses (safety halts still stop it)
+/do-whole-phase gate    # the whole phase — pauses for your approval of each slice's plan
 ```
 
 (`do-whole-phase` is Claude Code only — in Codex, repeat `$do-next-slice`.)

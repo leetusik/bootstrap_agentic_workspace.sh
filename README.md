@@ -88,8 +88,8 @@ sh /path/to/bootstrap_agentic_workspace.sh . --update             # 실제 적�
 
 ```
 /do-next-slice          # slice 하나만 실행하고 멈춤
-/do-whole-phase         # phase 끝까지 실행, slice마다 계획 승인 때만 멈춤
-/do-whole-phase auto    # phase 끝까지 멈추지 않고 실행 (계획 승인 생략)
+/do-whole-phase         # phase 끝까지 멈추지 않고 실행 (계획 승인 생략)
+/do-whole-phase gate    # phase 끝까지 실행, slice마다 계획 승인 때만 멈춤
 ```
 
 (`do-whole-phase`는 Claude Code 전용입니다. Codex에서는 `$do-next-slice`를 반복하면 됩니다.)
