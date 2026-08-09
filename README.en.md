@@ -273,24 +273,33 @@ is Claude Code only — so the same step works natively in either tool:
 | `retrofit` | Non-destructively adopt this workspace into an existing repo |
 | `update-workspace` | Update an adopted workspace's machinery to the latest upstream, preserving your work |
 
-> **Knowledge (phase explainers).** Phase explainers are interactive HTML documents saved to the
-> knowledge service — produced on demand, not by the review: run `/explain` for a phase when you want
-> one, and a passing review simply reports that none was written. Sign up at the
-> [knowledge service](https://knowledge.hi2vi.com), mint an org-level API key, and add two exports to
-> `~/.zshenv` (sourced by every zsh invocation): `export KB_API_BASE_URL="https://knowledge.hi2vi.com"`
-> and `export KB_API_TOKEN="vk_..."`. Never a repo `.env` — neither Claude Code nor Codex auto-loads it,
-> and a secret in a repo file risks being committed. One org-level key serves every repo, each document's
-> project defaults to the repo's directory name, and with the env vars set `/explain` saves via plain
-> REST — Claude Code and Codex equally, no plugin install required.
+> **Knowledge (phase explainers).** The `explain` skill ships with the workspace, for both tools.
+> Explainers are interactive HTML documents saved to the knowledge service — produced on demand, not
+> by the review: run `/explain` for a phase when you want one, and a passing review simply reports
+> that none was written.
 >
-> **Codex caveat:** its `workspace-write` sandbox blocks outbound network by default, so the save is
-> skipped — opt in with `[sandbox_workspace_write] network_access = true` in `~/.codex/config.toml`, which
-> loosens all Codex workspace-write runs (your call); Claude Code needs nothing.
+> **Setup happens on first use, and it asks first.** Run `/explain`; if no knowledge base is
+> configured it offers to create one on the [hosted service](https://knowledge.hi2vi.com) — it asks
+> for an email, installs the `knowledge` CLI, signs you up (or logs you in), and writes an org-level
+> key to `~/.config/knowledge-kb/config.json` at mode 0600. Creating an account is an outward-facing
+> action, so nothing happens until you say yes. One org key serves every repo, and each document's
+> project defaults to the repo's directory name.
 >
-> **Alternative (Claude Code plugin):** `explain` graduated out of the bootstrap into a standalone plugin
-> in the [knowledge repo](https://github.com/leetusik/knowledge) for a richer path —
+> Already have a knowledge base, hosted or self-hosted? Skip setup by exporting
+> `KB_API_BASE_URL="https://knowledge.hi2vi.com"` and `KB_API_TOKEN="vk_..."` in `~/.zshenv`
+> (sourced by every zsh invocation). Never a repo `.env` — neither Claude Code nor Codex auto-loads
+> it, and a secret in a repo file risks being committed.
+>
+> **Codex caveat:** its `workspace-write` sandbox blocks outbound network by default, so both the
+> setup and the save fail there — opt in with `[sandbox_workspace_write] network_access = true` in
+> `~/.codex/config.toml`, which loosens all Codex workspace-write runs (your call); Claude Code needs
+> nothing.
+>
+> **Alternative (Claude Code plugin):** the same feature also lives as a standalone plugin in the
+> [knowledge repo](https://github.com/leetusik/knowledge) —
 > `/plugin marketplace add leetusik/knowledge` → `/plugin install knowledge@knowledge` →
-> `/knowledge:setup` once, then `/knowledge:explain <topic>` on demand.
+> `/knowledge:setup` once, then `/knowledge:explain <topic>`. That is a separate namespace from this
+> workspace's `/explain`; you do not need both.
 
 Both tools delegate the heavy lifting to a **`slice-executor`** subagent in one of two capability
 tiers, picked by each slice's risk: `slice-executor-mid` (sonnet by default — a one-line, or few-line,

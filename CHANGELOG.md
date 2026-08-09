@@ -9,6 +9,47 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v26 — 2026-08-10
+
+- **`/explain` ships with every workspace again — this reverses v15 for the skill.** v15 retired the
+  embedded `explain` skill because the feature had graduated into a standalone Claude Code plugin.
+  That left a dangling pointer: the phase review, the contract, the seeded `operations.md`, and the
+  installer's closing line all tell you to "run `/explain`", while the workspace shipped nothing that
+  provides it — an adopter followed the instructions and found no command. `explain` is now a normal
+  workspace skill in both `.claude/skills/` and `.agents/skills/`, so the pointer resolves.
+- **It sets up its own knowledge base on first use, and asks first.** A plugin-free workspace has no
+  `/knowledge:setup` either, so the old "STOP, go run the plugin's setup" branch is replaced by
+  step 2a: the skill asks for **one** thing — an email — then installs the `knowledge` CLI and runs
+  `knowledge init` to sign you up (or log you in), mint an org-level key, and write
+  `~/.config/knowledge-kb/config.json` at mode 0600. Creating an account is an outward-facing action,
+  so nothing runs until the operator agrees, and passwords are piped via `--password-stdin`, never
+  through argv. The hosted service at `knowledge.hi2vi.com` is the encouraged path; self-hosting stays
+  supported via `KB_API_BASE_URL` / `KB_API_TOKEN` but is not walked through.
+- **Operator-invoked only.** The vendored copy carries `disable-model-invocation: true` (and
+  `allow_implicit_invocation: false` on the Codex side), matching every other workflow command-skill —
+  `design-cowork` remains the single model-invocable exception. The phase review still writes no
+  explainer; it only reports `explain: not written — run /explain for this phase`.
+- **The offline local-file fallback is gone.** The upstream skill's "API unreachable" path wrote
+  markdown into a local KB checkout and committed it with `git -C <KB_ROOT>` — but v21 deleted the
+  contract carve-out that authorized exactly that commit, and a hosted account has no `kb_root`, so
+  the path was both unauthorized and unreachable. An unreachable API is now reported as a failed save.
+  This does not touch self-hosting: a self-hosted server is reached over the same REST API.
+- **Docs and permissions.** `.claude/settings.json` gains three read-only allow entries
+  (`Bash(command -v:*)`, `Bash(knowledge config:*)`, `Bash(knowledge guide:*)`); the account-creating
+  and software-installing commands are deliberately **not** pre-approved, so they still prompt. The
+  seeded `operations.md`, `README.en.md`, `installer/README.md`, and the installer's closing line all
+  describe the new first-run setup.
+- **Migration notes:** v15 left any existing `.claude/skills/explain/` alone as operator-owned. It is
+  now workspace machinery, so **`--update` overwrites it unconditionally** — if you hand-maintained
+  that file, run `--update --dry-run` first and save your copy. `--into-existing` still **skips** any
+  `explain` dir already present, so a retrofitted repo keeps its own. The new `settings.json` entries
+  merge in additively. A separately installed `knowledge` plugin is unaffected — its command is
+  `/knowledge:explain`, a different namespace from this workspace's `/explain`, and you do not need
+  both. `/explain` needs a knowledge base and will offer to create one on first run. On Codex it needs
+  `[sandbox_workspace_write] network_access = true`, which now gates the setup as well as the save.
+  The `--with-explain` flag stays **retired** — `explain` is unconditional, so the flag remains an
+  unknown option the installer rejects. No `sync-agents` re-run is needed.
+
 ## v25 — 2026-08-05
 
 - **`auto` is now the default execution mode for `do-next-slice` and `do-whole-phase`.** Invoked with

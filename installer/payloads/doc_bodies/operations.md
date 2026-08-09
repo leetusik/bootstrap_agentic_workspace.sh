@@ -23,30 +23,32 @@ Use this doc for local development, environment variables, deployment, infra, jo
 
 ## Knowledge (phase explainers)
 
-Explaining is an **operator-run step, separate from the phase review**: run `/explain`
-for a phase when you want one and it saves an interactive HTML phase explainer to the
-knowledge service. The review itself writes no explainer — it only reports the pointer
-`explain: not written — run /explain for this phase`. Default, plugin-free setup — one
-org-level key serves every repo:
+The `explain` skill ships with this workspace, in both `.claude/skills/` and
+`.agents/skills/`. Explaining is an **operator-run step, separate from the phase review**:
+run `/explain` for a phase when you want one and it saves an interactive HTML explainer to
+the knowledge service. The review itself writes no explainer — it only reports the pointer
+`explain: not written — run /explain for this phase`.
 
-1. Sign up at the knowledge service and mint an API key.
-2. Export it in `~/.zshenv` (sourced by every zsh invocation) — never a repo `.env`,
-   which neither Claude Code nor Codex auto-loads and which risks committing the secret:
+**Setup is on first use, and it asks first.** Run `/explain`; if no knowledge base is
+configured it offers to create one on the hosted service at `https://knowledge.hi2vi.com`
+— it asks for an email, installs the `knowledge` CLI, signs you up (or logs you in), and
+writes an org-level key to `~/.config/knowledge-kb/config.json` at mode 0600. One org key
+serves every repo. Each document's project defaults to the repo's directory name.
 
-       export KB_API_BASE_URL="https://knowledge.hi2vi.com"
-       export KB_API_TOKEN="vk_..."
+Already have a knowledge base — hosted or self-hosted? Skip the setup entirely by exporting
+the credentials in `~/.zshenv` (sourced by every zsh invocation) — never a repo `.env`,
+which neither Claude Code nor Codex auto-loads and which risks committing the secret:
 
-With the env vars set, `/explain` saves the phase explainer via plain REST — Claude Code
-and Codex equally, no plugin install required. Each document's project defaults to the
-repo's directory name.
+    export KB_API_BASE_URL="https://knowledge.hi2vi.com"
+    export KB_API_TOKEN="vk_..."
 
 - **Codex caveat:** its `workspace-write` sandbox blocks outbound network by default, so
-  the save is skipped. Opt in with `[sandbox_workspace_write] network_access = true` in
-  `~/.codex/config.toml` — this loosens all Codex workspace-write runs (your call); Claude
-  Code needs nothing.
+  both the setup and the save fail there. Opt in with
+  `[sandbox_workspace_write] network_access = true` in `~/.codex/config.toml` — this
+  loosens all Codex workspace-write runs (your call); Claude Code needs nothing.
 - **Alternative (Claude Code plugin):** `/plugin marketplace add leetusik/knowledge` →
-  `/plugin install knowledge@knowledge` → `/knowledge:setup`, then `/knowledge:explain` on
-  demand for a richer path.
+  `/plugin install knowledge@knowledge` → `/knowledge:setup`, then `/knowledge:explain`.
+  A separate namespace from this workspace's `/explain`; you do not need both.
 
 Drive knowledge through the skill/agents; REST is the substrate.
 

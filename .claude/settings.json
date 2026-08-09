@@ -3,6 +3,9 @@
     "allow": [
       "Bash(python3 scripts/workflow.py:*)",
       "Bash(cp:*)",
+      "Bash(command -v:*)",
+      "Bash(knowledge config:*)",
+      "Bash(knowledge guide:*)",
       "Read",
       "Edit",
       "Write",

@@ -255,3 +255,5 @@
 {"ts": "2026-08-04T00:27:46+09:00", "type": "phase_reviewed", "phase": "P12", "verdict": "pass", "reviewer": "slice-executor-high"}
 {"ts": "2026-08-05T13:27:26+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0022_auto_becomes_the_default_execution_mode_for_do-next-slice_do-whole-phase_gate_is_the_explicit_approval_opt-in", "source": "operator"}
 {"ts": "2026-08-05T13:27:26+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0028_flip_the_execution-mode_default_auto_by_default_gate_opt-in", "source": "operator"}
+{"ts": "2026-08-10T00:20:42+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0023_explain_ships_by_default_again_with_first-run_knowledge-base_setup_the_offline_local-file_fallback_is_removed_workspace_v26", "source": "operator"}
+{"ts": "2026-08-10T00:23:43+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0029_ship_explain_by_default_again_with_first-run_knowledge-base_setup_reversing_the_v15_retirement_workspace_v26", "source": "operator"}

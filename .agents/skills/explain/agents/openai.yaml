@@ -1,0 +1,6 @@
+interface:
+  display_name: "explain"
+  short_description: "Research a topic or code change in the current repo/conversation and save a single self-contained interactive HTML explainer — Background, Intuition, Code, a cited \"Best practices & next steps\" section, and a 5-question quiz — into your personal knowledge base, setting one up on first use if none is configured. Use ONLY when the operator wants an explanation persisted as a document (explain and document, write this up, document what we just changed) — NOT for ordinary questions that deserve a normal chat answer."
+  default_prompt: "Use the explain skill."
+policy:
+  allow_implicit_invocation: false

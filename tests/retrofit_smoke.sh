@@ -194,8 +194,10 @@ sh "$BOOT" "$F" --update >/dev/null 2>&1   # restore both verbatim for the Test 
 [ ! -f "$F/.codex/agents/phase-reviewer.toml" ] && [ ! -f "$F/.claude/agents/phase-reviewer.md" ] && ok "phase-reviewer retired (absent on fresh install)" || bad "phase-reviewer should be retired but is present"
 [ ! -d "$F/.agents/skills/do-whole-phase" ] && ok "fresh install drops Codex do-whole-phase (Claude-only)" || bad "Codex do-whole-phase should not be generated"
 [ -d "$F/.claude/skills/do-whole-phase" ] && ok "fresh install keeps Claude do-whole-phase" || bad "Claude do-whole-phase missing"
-[ ! -d "$F/.claude/skills/explain" ] && ok "default install omits Claude explain (opt-in)" || bad "Claude explain installed without --with-explain"
-[ ! -d "$F/.agents/skills/explain" ] && ok "default install omits Codex explain (opt-in)" || bad "Codex explain installed without --with-explain"
+[ -f "$F/.claude/skills/explain/SKILL.md" ] && ok "fresh install ships the Claude explain skill" || bad "Claude explain skill missing"
+[ -f "$F/.agents/skills/explain/SKILL.md" ] && ok "fresh install ships the Codex explain skill" || bad "Codex explain skill missing"
+[ -f "$F/.agents/skills/explain/agents/openai.yaml" ] && ok "fresh install ships the Codex explain policy" || bad "Codex explain openai.yaml missing"
+grep -q "knowledge:setup" "$F/.claude/skills/explain/SKILL.md" && bad "vendored explain still points at the plugin-only /knowledge:setup" || ok "vendored explain is de-plugin-ified"
 
 # ---------------------------------------------------------------------------
 echo "== Test 6: dual-apply -- live files match the bootstrap-embedded copies =="
@@ -208,6 +210,7 @@ for rel in \
   .claude/skills/retrofit/SKILL.md .agents/skills/retrofit/SKILL.md .agents/skills/retrofit/agents/openai.yaml \
   .claude/skills/do-next-slice/SKILL.md .agents/skills/do-next-slice/SKILL.md \
   .claude/skills/do-whole-phase/SKILL.md \
+  .claude/skills/explain/SKILL.md .agents/skills/explain/SKILL.md .agents/skills/explain/agents/openai.yaml \
   .claude/skills/review-phase/SKILL.md .agents/skills/review-phase/SKILL.md \
   .claude/agents/slice-executor-mid.md .claude/agents/slice-executor-high.md \
   .codex/agents/slice-executor-mid.toml .codex/agents/slice-executor-high.toml \
@@ -236,7 +239,7 @@ newtmp G
 out=$(sh "$BOOT" "$G" --with-explain --name "Fresh" --summary "fresh" 2>&1); rc=$?
 [ "$rc" -ne 0 ] && ok "--with-explain is rejected (exit=$rc)" || bad "--with-explain should be unknown but install exited 0 -- $out"
 printf '%s\n' "$out" | grep -q "unknown option --with-explain" && ok "reports the unknown-option error" || bad "no unknown-option error -- $out"
-[ ! -d "$G/.claude/skills/explain" ] && [ ! -d "$G/.agents/skills/explain" ] && ok "explain skill never installed" || bad "explain skill dir created despite the rejection"
+[ ! -d "$G/.claude/skills" ] && [ ! -d "$G/.agents/skills" ] && ok "rejected install writes nothing" || bad "install wrote skills despite the rejection"
 
 # ---------------------------------------------------------------------------
 echo

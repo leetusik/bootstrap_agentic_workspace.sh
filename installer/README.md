@@ -65,7 +65,13 @@ path), so editing them and rebuilding is all that is needed:
 - `scripts/workflow.py`
 - `.claude/skills/*/SKILL.md`, `.agents/skills/*/SKILL.md`,
   `.agents/skills/*/agents/openai.yaml` (skills are discovered from disk — a skill
-  is Claude-only, e.g. `do-whole-phase`, when it has no `.agents/skills/` mirror)
+  is Claude-only, e.g. `do-whole-phase`, when it has no `.agents/skills/` mirror).
+  Only `*/SKILL.md` and `*/agents/openai.yaml` are embedded: a skill needing a
+  `references/` or `scripts/` subdir would be **silently dropped**, so keep skills flat.
+  `explain` is the one **vendored** skill — its upstream is
+  `plugin/skills/explain/SKILL.md` in [leetusik/knowledge](https://github.com/leetusik/knowledge),
+  de-plugin-ified here (self-service onboarding replaces `/knowledge:setup`, and the
+  offline local-file fallback is removed). Nothing syncs the two; re-vendor by hand.
 - `.claude/agents/slice-executor-{mid,high}.md`, `.codex/agents/slice-executor-{mid,high}.toml`
 - `executors.toml` (seed-once executor-tier config — created if absent, never overwritten on update)
 - `.claude/settings.json`, `.codex/config.toml`
