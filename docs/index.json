@@ -341,7 +341,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0030_realign_design-cowork_with_the_shipped_claude_design_contract_correct_the_dscard_marker_spec_drop_the_slice-id_group_prefix_and_sort_marker_narrow_the_designsync_write_ban_to_new_visual_decisions",
+      "latest": "v0031_restore_the_round_s_slice_id_in_design_card_groups_and_retire_it_with_a_post-approval_pure_regroup",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -583,9 +583,17 @@
           "source": "operator",
           "summary": "realign design-cowork with the shipped Claude Design contract: correct the @dsCard marker spec, drop the slice-ID group prefix and sort marker, narrow the DesignSync write ban to new visual decisions",
           "previous": "v0029_ship_explain_by_default_again_with_first-run_knowledge-base_setup_reversing_the_v15_retirement_workspace_v26"
+        },
+        {
+          "id": "v0031_restore_the_round_s_slice_id_in_design_card_groups_and_retire_it_with_a_post-approval_pure_regroup",
+          "path": "docs/versions/decisions/v0031_restore_the_round_s_slice_id_in_design_card_groups_and_retire_it_with_a_post-approval_pure_regroup.md",
+          "created_at": "2026-08-11T05:43:14+09:00",
+          "source": "operator",
+          "summary": "restore the round's slice ID in design card groups and retire it with a post-approval pure regroup",
+          "previous": "v0030_realign_design-cowork_with_the_shipped_claude_design_contract_correct_the_dscard_marker_spec_drop_the_slice-id_group_prefix_and_sort_marker_narrow_the_designsync_write_ban_to_new_visual_decisions"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-08-11T05:35:16+09:00"
+  "last_rebuilt_at": "2026-08-11T05:44:00+09:00"
 }

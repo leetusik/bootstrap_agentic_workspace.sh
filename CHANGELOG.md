@@ -9,6 +9,40 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v28 — 2026-08-11
+
+- **The round's slice ID comes back to the group names, and a post-approval regroup takes it off.** v27
+  banned stamping a round address into a group name because a design system's taxonomy is cumulative —
+  but the operator was using the prefix for a real reason (finding this round's cards in the pane), and
+  v27's replacement covered the *agent's* checkability, not the operator's. The ban was the wrong
+  strength. Both needs are now served, in sequence rather than as a trade.
+- **During the round, the group carries the address** — `⏳ P48.S1 · Components` — so the operator lands
+  on the cards under review instead of digging for them.
+- **At SIGNOFF, after the operator has approved, the orchestrator does a *pure regroup***: `list_files`
+  → `get_file` → rewrite **the `group` value on line 1 and nothing else** → `finalize_plan` with exactly
+  those paths → `write_files`. The card's path never moves; only the display label does. Idempotent, and
+  a pane that does not re-index is reported at the gate and left alone — a stale group label is cosmetic
+  and never blocks the apply slices.
+- **Why this is safe rather than a loophole.** "Pure regroup" is a first-class concept in the shipped
+  design tooling, not something invented here: `group` is a **display-only** label, the render hash
+  **deliberately ignores** it (`a pure regroup must not read as a contract change`), and a regroup
+  **must not orphan grades**. The skill already classified grouping as "organization, not a design
+  decision", so re-filing a card is documentation — the job this skill assigns the agent — and it
+  happens *after* approval, so it cannot influence the design.
+- **One enforceable invariant carries the whole carve-out:** everything after line 1 is byte-identical,
+  confirmed by diff before upload. Below line 1 is the design, and it stays untouchable. `Never` gains
+  two entries: touching anything below line 1 during a regroup, and regrouping **before** approval —
+  which would remove the operator's way of finding the cards mid-review.
+- **The write list is now two cases, not one:** grounding the project in already-implemented components
+  (v27), and the SIGNOFF regroup. Both go list/read → `finalize_plan` (the operator sees the exact path
+  list in the permission prompt) → `write_files`. "Never write anything that is a new visual decision"
+  is unchanged.
+- **Migration notes:** behavioral only — no state migration, no `sync-agents` re-run, no engine change.
+  If you kept prefixed group names from before v27, they are now the documented review-time state again;
+  nothing to undo. **Not verified end to end:** the regroup's semantics are confirmed from the shipped
+  tooling, but that a `write_files` regroup makes the pane re-index has not been observed on a live
+  round — hence the explicit "report it and leave the names" fallback.
+
 ## v27 — 2026-08-11
 
 - **`design-cowork` is realigned with the shipped Claude Design contract.** The skill's policy was never
