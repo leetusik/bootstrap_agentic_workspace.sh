@@ -9,6 +9,56 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v27 — 2026-08-11
+
+- **`design-cowork` is realigned with the shipped Claude Design contract.** The skill's policy was never
+  the problem — *the agent never makes a visual decision; Claude Design and the operator do* still holds,
+  and so does the whole handoff → `pending` → read-back → land → implement-in-a-separate-slice shape,
+  including the two-pass `DECOMP` / `DECOMP2` rule. What had drifted was the skill prescribing mechanics
+  of a product this workspace does not own, some of it demonstrably wrong.
+- **The `@dsCard` marker spec is corrected.** The skill said "Line 1 of every card file, **exactly**"
+  and gave four attributes, asserting that "the `subtitle` is where a card says what it is for." The
+  card emitter shipped in Claude Code writes
+  `` `<!-- @dsCard group="${escapeHtml(group)}"${viewportAttr} -->` `` — a `group` plus an *optional*
+  `viewport`, and nothing else. `name` and `subtitle` are fields of `register_assets`, the path the
+  `DesignSync` tool description itself labels **legacy** and which `@dsCard` replaced. We were telling
+  Claude Design to write attributes the Design System pane does not read. The skill now documents the
+  real two-attribute marker and says a card is addressed by its **file path**.
+- **The slice-ID group prefix and the `⏳` sort-first marker are dropped.** `group` is free-form, so
+  `P48.S1 · Components` was legal — but a design system is cumulative and shared, and stamping a round
+  ID into its taxonomy turns a component library into a work log. The `⏳` trick additionally depended on
+  group-ordering behavior in the server-side pane that is specified nowhere. Groups now follow the design
+  system's own taxonomy (`Foundations`, `Components`, `Type`, `Colors`, the app's surfaces), and the
+  round is made checkable a way we control: **the handoff names the exact card paths the round must
+  produce, and read-back verifies them with `list_files`.**
+- **The blanket ban on `DesignSync` writes is narrowed to what it always meant.** The skill's own opening
+  line assigns "documenting *what exists*" to the agent, then forbade the one write that is pure
+  documentation. The rule is now "never author a **new visual decision**", and one write is sanctioned,
+  operator-requested only: pushing previews of components that **already exist and are implemented** in
+  the repo, when there is no Connect-GitHub connection — following the tool's own
+  list/read → `finalize_plan` → `write_files` ordering, with `get_project` first to confirm
+  `type: PROJECT_TYPE_DESIGN_SYSTEM`. Mirroring nothing remains the default.
+- **"Never run `/design-sync`" is replaced with what is true.** `/design-sync` and `/design …` ship
+  `disableModelInvocation: true`, so the model could never call them; the old rule was inert and steered
+  the operator away from the sanctioned way to ground a project in an existing component library. The
+  skill now says the operator runs them.
+- **The required-output manifest asks for content, not filenames.** Anthropic ships a native handoff
+  bundle for exactly this purpose, so a round must return the card set, a record of what was designed,
+  and an implementation contract complete enough to build from — and if the session produces the native
+  bundle, that **is** the record and the contract. `result.md` / `build-prompt.md` remain only the names
+  we land under when the bundle brings none of its own.
+- **Why this was needed:** every earlier design-cowork change (v12, v13, v14, v22) moved `CLAUDE.md`,
+  `AGENTS.md`, and this changelog together. The commit that introduced the slice-ID prefix and the `⏳`
+  marker (`6cadb40`) touched only the two `SKILL.md` copies and the rebuilt installer — no changelog, no
+  contract, no doc version, and no check against the product. That is how the unverified spec got in.
+- **Migration notes:** behavioral only — no state migration, no `sync-agents` re-run, and no engine
+  change (`scripts/workflow.py` is untouched; `co-work` and `DECOMP2` were always free-form strings).
+  The contract's "Visual design is Claude Design's job" rule is reworded in place, so `--update`
+  refreshes `CLAUDE.md` / `AGENTS.md` and both `design-cowork` skill copies as usual. If your design
+  project already carries groups named with slice-ID prefixes or `⏳` markers, nothing breaks — they are
+  valid group names; new rounds simply stop adding them, and you can rename the old ones in the pane at
+  your leisure. Driver skills, executors, and the phase/slice architecture are unchanged.
+
 ## v26 — 2026-08-10
 
 - **`/explain` ships with every workspace again — this reverses v15 for the skill.** v15 retired the
