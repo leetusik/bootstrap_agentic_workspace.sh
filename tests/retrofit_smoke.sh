@@ -6,8 +6,8 @@
 # the test is never installed into an adopter's repo. It builds throwaway sample
 # repos under $TMPDIR, runs the retrofit, and asserts non-destructiveness, the
 # empty-start invariant (no phases seeded), the collision tiers, the
-# fresh-install regression, and the live<->bootstrap-embedded dual-apply
-# invariants. Re-runnable; self-cleaning.
+# fresh-install regression, the live<->bootstrap-embedded dual-apply
+# invariants, and the v31 Codex-removal negatives. Re-runnable; self-cleaning.
 #
 # Usage:  bash tests/retrofit_smoke.sh
 # Exit 0 if every check passes; non-zero otherwise.
@@ -35,75 +35,80 @@ command -v git >/dev/null 2>&1 || { echo "git is required to run this smoke test
 [ -f "$BOOT" ] || { echo "installer not found: $BOOT"; exit 2; }
 
 # ---------------------------------------------------------------------------
-echo "== Test 0: release skill manifest is complete and symmetric =="
+echo "== Test 0: the shipped Claude skill set is complete, and Codex stays gone =="
 if python3 - "$REPO_ROOT" <<'PY'
 from pathlib import Path
 import sys
 
 root = Path(sys.argv[1])
-claude = {p.parent.name for p in (root / ".claude/skills").glob("*/SKILL.md")}
-codex = {p.parent.name for p in (root / ".agents/skills").glob("*/SKILL.md")}
-assert len(claude) == 17, len(claude)
-assert len(codex) == 17, len(codex)
-assert claude == codex, (sorted(claude - codex), sorted(codex - claude))
-for name in codex:
-    meta_path = root / ".agents/skills" / name / "agents/openai.yaml"
-    assert meta_path.is_file(), name
-    meta = meta_path.read_text()
-    expected = "true" if name == "design-cowork" else "false"
-    assert f"allow_implicit_invocation: {expected}" in meta, (name, expected)
+skills = {p.parent.name for p in (root / ".claude/skills").glob("*/SKILL.md")}
+assert len(skills) == 17, len(skills)
 
+# v31 dropped Codex: the mirrored skill tree, the Codex agent config, and the
+# CLAUDE.md twin are gone from the repo and must stay gone.
+for gone in ("AGENTS.md", ".agents", ".codex"):
+    assert not (root / gone).exists(), gone
+
+# Workflow command-skills are explicit-invocation only; design-cowork is the one
+# deliberately model-invocable guide. (The Claude analogue of the retired
+# allow_implicit_invocation metadata.)
+for name in sorted(skills):
+    body = (root / ".claude/skills" / name / "SKILL.md").read_text()
+    marker = "disable-model-invocation: true"
+    assert (marker in body) == (name != "design-cowork"), name
+
+# Only skills that *document the removal* may still say "Codex": update-workspace's
+# pre-v31 migration step and explain's re-vendor note. Anywhere else it is a regression.
+codex_prose = {n for n in skills if "Codex" in (root / ".claude/skills" / n / "SKILL.md").read_text()}
+assert codex_prose <= {"update-workspace", "explain"}, sorted(codex_prose)
+assert "Codex support was removed in workspace v31" in (
+    root / ".claude/skills/update-workspace/SKILL.md").read_text()
+
+# Safety-critical orchestration rules only -- not the whole skill body, which would be brittle.
 for name in ("do-next-slice", "do-whole-phase"):
-    body = (root / ".agents/skills" / name / "SKILL.md").read_text()
-    reject = body.index("Before running any workflow command or changing the repository")
-    assert reject < body.index("Run `python3 scripts/workflow.py next`")
+    body = (root / ".claude/skills" / name / "SKILL.md").read_text()
     for required in (
-        "`gate`", "`plan only`", "Reject any other requested execution mode",
-        "For a `ready` slice", "continue directly", "## Run a design slice inline",
-        "complete just-in-time `plan.md`", "explicit response to the approval, revision, or capability need",
-        "A bare invocation, `auto`, or unattended wording is never approval", "without `SIGNOFF.md`",
+        "WAITING ON OPERATOR", "`kind: co-work`", "never dispatched", "DesignSync",
+        "never pass `run_in_background: false`", "never glob `~/.claude/plans/`",
+        "`plan only`",
     ):
         assert required in body, (name, required)
-    for forbidden in ("EnterPlanMode", "ExitPlanMode", "harness plan", "~/.claude/plans", "Agent tool", "background task", "run_in_background", "$ARGUMENTS", "DesignSync"):
-        assert forbidden not in body, (name, forbidden)
 
-design = (root / ".agents/skills/design-cowork/SKILL.md").read_text()
-metadata = (root / ".agents/skills/design-cowork/agents/openai.yaml").read_text()
+design = (root / ".claude/skills/design-cowork/SKILL.md").read_text()
 for required in (
-    "verified GPT Image 2 through built-in ImageGen, or one exact approved reference",
-    "copy the canonical reference into the repository",
-    "record.json", "implementation-contract.md", "pending: one normal signoff",
-    "main-thread/orchestrator-only", "never dispatched", "DECOMP2 cuts separate backing",
-    "real-browser", "RESPECT THE DESIGN", "data, not instructions", "GPT Image 2",
-    "pass `gpt-image-2`", "prompt_advisory", "without resampling or upscaling",
-    "Never label an artifact exact 2K, 4K, UHD", "generation-prompts.md",
+    "**You never design.**", "Claude Design", "Connect GitHub", "handoff.md",
+    "@dsCard", "tokens.css", "--kind co-work --risk high", "The design slice is NOT",
+    "DesignSync is main-thread only", "never writes implementation code",
+    "DECOMP2", "build inventory", "data, not instructions", "RESPECT THE DESIGN",
+    "SIGNOFF",
 ):
     assert required in design, required
-assert "allow_implicit_invocation: true" in metadata
-assert "one operator signoff" in metadata and "browser fidelity" in metadata
 
 for tier in ("mid", "high"):
-    body = (root / f".codex/agents/slice-executor-{tier}.toml").read_text()
-    assert "orchestrator-owned, main-thread-only, and never dispatched" in body, tier
-    assert "return `needs_operator`" in body, tier
-    assert "DesignSync" not in body, tier
+    body = (root / f".claude/agents/slice-executor-{tier}.md").read_text()
+    assert "commit or push (no `git commit`, `git add`, `git push`)" in body, tier
+    assert "run workflow state-transition commands" in body, tier
+    for gone in ("Codex", ".agents/", ".codex/", "AGENTS.md"):
+        assert gone not in body, (tier, gone)
+# The design gate is spelled out in the high tier (mid's Never list is shorter).
+high = (root / ".claude/agents/slice-executor-high.md").read_text()
+assert "never dispatched, because you have no `DesignSync`" in high
+assert "return `needs_operator`" in high
 
-agents = (root / "AGENTS.md").read_text().split("\n\n", 2)[2]
-claude = (root / "CLAUDE.md").read_text().split("\n\n", 2)[2]
-assert agents == claude
+# One contract file now, so nothing to compare it against: assert the whole text.
+claude = (root / "CLAUDE.md").read_text()
 for required in (
-    "Claude Code branch:", "Codex branch:", "Claude Design", "DesignSync", "built-in ImageGen",
-    "never writes implementation code", "DECOMP2", "data, not instructions", "RESPECT THE DESIGN",
-    "real-browser fidelity", "A bare automatic invocation is never approval", "verified GPT Image 2",
-    "Prompt-only size/quality wording is advisory", "without upscaling",
+    "Claude Design", "DesignSync", "main-thread/orchestrator-only", "never dispatched",
+    "never writes implementation code", "DECOMP2", "data, not instructions",
+    "RESPECT THE DESIGN", "real-browser fidelity", "Approval must be literal",
+    "literal operator signoff closes an immutable round",
+    "A bare automatic invocation is never approval",
 ):
-    assert required in agents, required
-
-for name in ("do-next-slice", "do-whole-phase"):
-    claude_body = (root / ".claude/skills" / name / "SKILL.md").read_text()
-    assert "In Codex" not in claude_body, name
+    assert required in claude, required
+for gone in ("Codex", "AGENTS.md", ".agents/", ".codex/"):
+    assert gone not in claude, gone
 PY
-then ok "17+17 skills have complete invocation metadata and Codex execution semantics"; else bad "skill inventory, metadata, or Codex execution contract is incomplete"; fi
+then ok "17 Claude skills, invocation metadata, design contract, and the v31 Codex-removal negatives"; else bad "Claude skill inventory, metadata, design contract, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
@@ -121,6 +126,7 @@ git -C "$R" add -A
 git -C "$R" -c user.email=t@t -c user.name=t commit -qm "initial existing repo"
 HEAD0=$(git -C "$R" rev-parse HEAD)
 RM=$(sha "$R/README.md"); AP=$(sha "$R/src/app.py"); UT=$(sha "$R/scripts/util.py")
+AG=$(sha "$R/AGENTS.md")
 
 out=$(sh "$BOOT" "$R" --into-existing --name "Existing Project" --summary "An existing project." 2>&1)
 rc=$?
@@ -129,11 +135,14 @@ rc=$?
 [ "$(sha "$R/README.md")"     = "$RM" ] && ok "README.md byte-identical"  || bad "README.md changed"
 [ "$(sha "$R/src/app.py")"    = "$AP" ] && ok "src/app.py byte-identical" || bad "src/app.py changed"
 [ "$(sha "$R/scripts/util.py")" = "$UT" ] && ok "scripts/util.py byte-identical" || bad "scripts/util.py changed"
+# AGENTS.md is a cross-tool convention other tools still read; since v31 this
+# workspace neither ships nor touches one.
+[ "$(sha "$R/AGENTS.md")"     = "$AG" ] && ok "a repo's own AGENTS.md left byte-identical" || bad "retrofit modified the repo's own AGENTS.md"
 [ "$(git -C "$R" rev-parse HEAD)" = "$HEAD0" ] && ok "git HEAD unchanged" || bad "git HEAD changed"
 
 mods=$(git -C "$R" status --porcelain | grep '^ M' | awk '{print $2}' | LC_ALL=C sort | tr '\n' ',')
-[ "$mods" = ".claude/settings.json,.gitattributes,AGENTS.md,CLAUDE.md," ] \
-  && ok "only the 4 intended files are modified (rest are additions)" \
+[ "$mods" = ".claude/settings.json,.gitattributes,CLAUDE.md," ] \
+  && ok "only the 3 intended files are modified (rest are additions)" \
   || bad "unexpected tracked modifications: $mods"
 
 # .gitattributes is line-merged, never replaced; the CI workflow is seeded when absent.
@@ -162,19 +171,15 @@ nph=$(find "$R/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null 
 cp_state=$(python3 -c "import json;print(json.load(open('$R/works/state.json'))['current_phase'])" 2>/dev/null)
 [ "$cp_state" = "None" ] && ok "state.json has no current phase" || bad "state.json current_phase: '$cp_state'"
 ( cd "$R" && python3 scripts/workflow.py next 2>&1 | grep -q "no active slice" ) && ok "next reports the empty-start state" || bad "next does not report empty start"
-[ -f "$R/.agents/skills/do-whole-phase/SKILL.md" ] \
-  && [ -f "$R/.agents/skills/do-whole-phase/agents/openai.yaml" ] \
-  && ok "retrofit ships Codex do-whole-phase body + metadata" || bad "retrofit missing Codex do-whole-phase package"
+[ ! -d "$R/.agents" ] && [ ! -d "$R/.codex" ] \
+  && ok "retrofit installs no Codex trees (.agents/, .codex/)" || bad "retrofit created a Codex tree"
+[ ! -f "$R/AGENTS.workspace.md" ] \
+  && ok "retrofit writes no AGENTS.workspace.md sidecar" || bad "retrofit wrote an AGENTS.workspace.md sidecar"
 [ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "17" ] \
-  && [ "$(find "$R/.agents/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "17" ] \
-  && [ "$(find "$R/.agents/skills" -mindepth 3 -maxdepth 3 -name openai.yaml -type f | wc -l | tr -d ' ')" = "17" ] \
-  && ok "retrofit installs both 17-skill inventories with complete Codex metadata" || bad "retrofit skill inventory incomplete"
-diff -q "$REPO_ROOT/.agents/skills/design-cowork/SKILL.md" "$R/.agents/skills/design-cowork/SKILL.md" >/dev/null \
-  && diff -q "$REPO_ROOT/.agents/skills/design-cowork/agents/openai.yaml" "$R/.agents/skills/design-cowork/agents/openai.yaml" >/dev/null \
-  && ok "retrofit installs the exact Codex visual-cowork body and metadata" || bad "retrofit Codex visual-cowork package drifted"
-grep -q 'Claude Code branch:' "$R/AGENTS.workspace.md" && grep -q 'Codex branch:' "$R/AGENTS.workspace.md" \
-  && grep -q 'never writes implementation code' "$R/AGENTS.workspace.md" && grep -q 'RESPECT THE DESIGN' "$R/AGENTS.workspace.md" \
-  && ok "retrofit sidecar carries both harness visual paths and shared invariants" || bad "retrofit visual contract is incomplete"
+  && ok "retrofit installs the 17-skill Claude inventory" || bad "retrofit skill inventory incomplete"
+grep -q 'Claude Design' "$R/CLAUDE.workspace.md" && grep -q 'never writes implementation code' "$R/CLAUDE.workspace.md" \
+  && grep -q 'RESPECT THE DESIGN' "$R/CLAUDE.workspace.md" \
+  && ok "retrofit sidecar carries the visual design contract" || bad "retrofit visual contract is incomplete"
 
 # ---------------------------------------------------------------------------
 echo "== Test 2: re-running retrofit is an idempotent no-op =="
@@ -229,30 +234,22 @@ changelog_versions = [int(v) for v in re.findall(r"^## v(\d+) ", (root / "CHANGE
 assert changelog_versions == sorted(set(changelog_versions), reverse=True), changelog_versions
 top_changelog = changelog_versions[0]
 marker_version = json.loads(marker_path.read_text())["workspace_version"]
-assert main_version == top_changelog == marker_version == 30, (main_version, top_changelog, marker_version)
+# No literal pin: the three-way equality already catches any partial bump, and a
+# release slice can bump the version without touching this test.
+assert main_version == top_changelog == marker_version, (main_version, top_changelog, marker_version)
 PY
-then ok "release version is v30 in installer, top changelog heading, and fresh marker"; else bad "v30 release markers disagree"; fi
+then ok "release version agrees across installer, top changelog heading, and fresh marker"; else bad "release version markers disagree"; fi
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
 [ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "17" ] \
-  && [ "$(find "$F/.agents/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "17" ] \
-  && [ "$(find "$F/.agents/skills" -mindepth 3 -maxdepth 3 -name openai.yaml -type f | wc -l | tr -d ' ')" = "17" ] \
-  && ok "fresh install has 17 Claude + 17 Codex skills and all Codex metadata" || bad "fresh skill inventory incomplete"
-diff -q "$REPO_ROOT/.agents/skills/design-cowork/SKILL.md" "$F/.agents/skills/design-cowork/SKILL.md" >/dev/null \
-  && diff -q "$REPO_ROOT/.agents/skills/design-cowork/agents/openai.yaml" "$F/.agents/skills/design-cowork/agents/openai.yaml" >/dev/null \
-  && grep -q 'Claude Code branch:' "$F/AGENTS.md" && grep -q 'Codex branch:' "$F/AGENTS.md" \
-  && ok "fresh install carries exact Codex visual cowork and both contract branches" || bad "fresh visual workflow payload is incomplete"
+  && ok "fresh install has the 17 Claude skills" || bad "fresh skill inventory incomplete"
+[ ! -f "$F/AGENTS.md" ] && [ ! -d "$F/.agents" ] && [ ! -d "$F/.codex" ] \
+  && ok "fresh install is Codex-free (no AGENTS.md, no .agents/, no .codex/)" || bad "fresh install still ships Codex machinery"
 [ -f "$F/.claude/agents/slice-executor-mid.md" ] && [ -f "$F/.claude/agents/slice-executor-high.md" ] && ok "fresh install ships the 2 Claude slice-executor tiers" || bad "fresh install missing Claude slice-executor tier(s)"
-[ -f "$F/.codex/agents/slice-executor-mid.toml" ] && [ -f "$F/.codex/agents/slice-executor-high.toml" ] && ok "fresh install ships the 2 Codex slice-executor tiers" || bad "fresh install missing Codex slice-executor tier(s)"
 grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-mid.md" \
   && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-high.md" \
-  && ok "fresh install follows seeded flex mode: Claude sonnet@xhigh / opus@xhigh" || bad "fresh Claude flex tiers wrong"
-grep -q '^model = "gpt-5.6-terra"$' "$F/.codex/agents/slice-executor-mid.toml" \
-  && grep -q '^model_reasoning_effort = "high"$' "$F/.codex/agents/slice-executor-mid.toml" \
-  && grep -q '^model = "gpt-5.6-sol"$' "$F/.codex/agents/slice-executor-high.toml" \
-  && grep -q '^model_reasoning_effort = "high"$' "$F/.codex/agents/slice-executor-high.toml" \
-  && ok "fresh install follows seeded flex mode: Codex gpt-5.6-terra@high / gpt-5.6-sol@high" || bad "fresh Codex flex tiers wrong"
-[ ! -f "$F/.claude/agents/slice-executor.md" ] && [ ! -f "$F/.codex/agents/slice-executor.toml" ] && ok "legacy untiered slice-executor retired (absent on fresh install)" || bad "legacy untiered slice-executor should be retired but is present"
-[ ! -f "$F/.claude/agents/slice-executor-low.md" ] && [ ! -f "$F/.codex/agents/slice-executor-low.toml" ] && ok "low tier retired in v23 (absent on fresh install)" || bad "slice-executor-low should be retired but is present"
+  && ok "fresh install follows seeded flex mode: sonnet@xhigh / opus@xhigh" || bad "fresh flex tiers wrong"
+[ ! -f "$F/.claude/agents/slice-executor.md" ] && ok "legacy untiered slice-executor retired (absent on fresh install)" || bad "legacy untiered slice-executor should be retired but is present"
+[ ! -f "$F/.claude/agents/slice-executor-low.md" ] && ok "low tier retired in v23 (absent on fresh install)" || bad "slice-executor-low should be retired but is present"
 [ -f "$F/executors.toml" ] && ok "fresh install seeds the tracked executors.toml selection" || bad "fresh install missing executors.toml"
 [ -f "$F/.github/workflows/workspace-ci.yml" ] && ok "fresh install seeds the CI workflow" || bad "fresh install missing .github/workflows/workspace-ci.yml"
 grep -q '^works/events\.jsonl merge=union$' "$F/.gitattributes" && ok "fresh install seeds .gitattributes with the union rule" || bad "fresh install missing the .gitattributes union rule"
@@ -262,9 +259,7 @@ printf '# No active mode selects the built-in economy preset.\n' > "$F/executors
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) \
   && grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-mid.md" \
   && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-high.md" \
-  && grep -q '^model = "gpt-5.6-luna"$' "$F/.codex/agents/slice-executor-mid.toml" && grep -q '^model_reasoning_effort = "high"$' "$F/.codex/agents/slice-executor-mid.toml" \
-  && grep -q '^model = "gpt-5.6-terra"$' "$F/.codex/agents/slice-executor-high.toml" && grep -q '^model_reasoning_effort = "high"$' "$F/.codex/agents/slice-executor-high.toml" \
-  && ok "no mode selects economy: Claude sonnet/opus and Codex luna/terra at high" || bad "economy mode matrix wrong"
+  && ok "no mode selects economy: sonnet/opus at high" || bad "economy mode matrix wrong"
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: fable$' "$F/.claude/agents/slice-executor-high.md" \
   && ok "executors.toml override patches the high-tier model" || bad "executors.toml override did not patch the high tier"
@@ -272,11 +267,11 @@ printf 'mode = "flex"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) \
   && grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-mid.md" \
   && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-high.md" \
-  && grep -q '^model = "gpt-5.6-terra"$' "$F/.codex/agents/slice-executor-mid.toml" && grep -q '^model_reasoning_effort = "high"$' "$F/.codex/agents/slice-executor-mid.toml" \
-  && grep -q '^model = "gpt-5.6-sol"$' "$F/.codex/agents/slice-executor-high.toml" && grep -q '^model_reasoning_effort = "high"$' "$F/.codex/agents/slice-executor-high.toml" \
-  && ok "mode = flex selects Claude sonnet/opus@xhigh and Codex terra/sol@high" || bad "flex mode matrix wrong"
+  && ok "mode = flex selects sonnet/opus at xhigh" || bad "flex mode matrix wrong"
 printf '[claude.low]\nmodel = "sonnet"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 | grep -q 'retired in workspace v23' ) && ok "retired [claude.low] section rejected with a migration message" || bad "[claude.low] should be rejected as a retired tier"
+printf '[codex.high]\nmodel = "gpt-5.6-sol"\n' > "$F/executors.toml"
+( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 | grep -q 'removed in workspace v31' ) && ok "leftover [codex.*] section rejected with the v31 migration message" || bad "[codex.*] should be rejected as removed support"
 printf 'mode = "cheap"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && bad "unknown mode should fail sync-agents" || ok "unknown mode rejected"
 printf 'mode = "flex"\nmode = "economy"\n' > "$F/executors.toml"
@@ -285,22 +280,41 @@ printf '[claude.high]\nmodel = "opus"\nmode = "flex"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && bad "mode after a section should fail sync-agents" || ok "mode after a section rejected"
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed re-applying the fable override"
-rm -rf "$F/.agents/skills/do-whole-phase"
-printf '%s\n' '# stale pre-v30 Codex visual skill' > "$F/.agents/skills/design-cowork/SKILL.md"
-printf '%s\n' 'policy:' '  allow_implicit_invocation: false' > "$F/.agents/skills/design-cowork/agents/openai.yaml"
+rm -rf "$F/.claude/skills/do-whole-phase"
+printf '%s\n' '# stale pre-v31 visual skill' > "$F/.claude/skills/design-cowork/SKILL.md"
+# Seed the pre-v31 Codex shape so the v31 migration flagging has something to find.
+mkdir -p "$F/.agents/skills/do-next-slice" "$F/.codex/agents"
+printf 'stale\n' > "$F/.agents/skills/do-next-slice/SKILL.md"
+printf 'stale\n' > "$F/.codex/agents/slice-executor.toml"
+printf 'stale\n' > "$F/.codex/agents/slice-executor-low.toml"
+printf '# their own contract\n' > "$F/AGENTS.md"
+printf '# stranded retrofit sidecar\n' > "$F/AGENTS.workspace.md"
 update_out=$(sh "$BOOT" "$F" --update 2>&1); update_rc=$?
 [ "$update_rc" -eq 0 ] && grep -q 'fable' "$F/executors.toml" \
   && ok "--update preserves an edited executors.toml (seed-once)" || bad "--update clobbered or failed on an edited executors.toml"
-[ -f "$F/.agents/skills/do-whole-phase/SKILL.md" ] \
-  && [ -f "$F/.agents/skills/do-whole-phase/agents/openai.yaml" ] \
-  && ok "--update restores a missing pre-parity Codex do-whole-phase package" || bad "--update did not restore Codex do-whole-phase"
-printf '%s\n' "$update_out" | grep -q 'stale workspace.*\.agents/skills/do-whole-phase' \
-  && bad "--update incorrectly flags Codex do-whole-phase as stale" || ok "--update does not flag Codex do-whole-phase as stale"
-diff -q "$REPO_ROOT/.agents/skills/design-cowork/SKILL.md" "$F/.agents/skills/design-cowork/SKILL.md" >/dev/null \
-  && diff -q "$REPO_ROOT/.agents/skills/design-cowork/agents/openai.yaml" "$F/.agents/skills/design-cowork/agents/openai.yaml" >/dev/null \
-  && ok "--update refreshes stale pre-v30 Codex visual skill and metadata" || bad "--update did not refresh Codex visual cowork"
-printf '%s\n' "$update_out" | grep -q 'stale workspace.*\.agents/skills/design-cowork' \
-  && bad "--update incorrectly flags current Codex design-cowork as stale" || ok "--update keeps Codex design-cowork in the current inventory"
+[ -f "$F/.claude/skills/do-whole-phase/SKILL.md" ] \
+  && ok "--update restores a deleted skill package" || bad "--update did not restore the deleted skill package"
+printf '%s\n' "$update_out" | grep -q 'stale workspace.*\.claude/skills/do-whole-phase' \
+  && bad "--update incorrectly flags do-whole-phase as stale" || ok "--update does not flag do-whole-phase as stale"
+diff -q "$REPO_ROOT/.claude/skills/design-cowork/SKILL.md" "$F/.claude/skills/design-cowork/SKILL.md" >/dev/null \
+  && ok "--update refreshes a stale design-cowork skill body" || bad "--update did not refresh design-cowork"
+printf '%s\n' "$update_out" | grep -q 'stale workspace.*\.claude/skills/design-cowork' \
+  && bad "--update incorrectly flags current design-cowork as stale" || ok "--update keeps design-cowork in the current inventory"
+# v31 migration: each retired Codex path is named exactly once (the .codex directory
+# entry subsumes the two old per-file ones) and nothing is ever deleted.
+stale_line=$(printf '%s\n' "$update_out" | grep 'stale workspace skills/machinery')
+stale_bad=""
+for pat in '\.agents' '\.codex' 'AGENTS\.md' 'AGENTS\.workspace\.md'; do
+  n=$(printf '%s\n' "$stale_line" | grep -o "$pat" | wc -l | tr -d ' ')
+  [ "$n" = "1" ] || stale_bad="$stale_bad $pat=$n"
+done
+[ -z "$stale_bad" ] \
+  && ok "--update flags each pre-v31 Codex path as stale exactly once" \
+  || bad "v31 stale-machinery line is wrong ($stale_bad) -- $stale_line"
+[ -f "$F/.agents/skills/do-next-slice/SKILL.md" ] && [ -f "$F/.codex/agents/slice-executor.toml" ] \
+  && [ -f "$F/AGENTS.md" ] && [ -f "$F/AGENTS.workspace.md" ] \
+  && ok "--update never deletes the flagged pre-v31 machinery" || bad "--update deleted machinery it only flags"
+rm -rf "$F/.agents" "$F/.codex" "$F/AGENTS.md" "$F/AGENTS.workspace.md"
 printf '%s\n' "$update_out" | grep -q 'python3 scripts/workflow.py sync-agents' \
   && ok "--update instructs the adopter to re-run sync-agents" || bad "--update omitted the sync-agents migration step"
 grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" \
@@ -327,14 +341,19 @@ grep -q '^# hand-edited$' "$F/.github/workflows/workspace-ci.yml" && ok "--updat
 [ "$(grep -c '^works/events\.jsonl merge=union$' "$F/.gitattributes")" -eq 1 ] && ok "--update .gitattributes merge is idempotent (one union rule)" || bad ".gitattributes union rule duplicated on re-update"
 rm -f "$F/.github/workflows/workspace-ci.yml" "$F/.gitattributes"
 sh "$BOOT" "$F" --update >/dev/null 2>&1   # restore both verbatim for the Test 6 diff
-[ ! -f "$F/.codex/agents/phase-reviewer.toml" ] && [ ! -f "$F/.claude/agents/phase-reviewer.md" ] && ok "phase-reviewer retired (absent on fresh install)" || bad "phase-reviewer should be retired but is present"
-[ -f "$F/.agents/skills/do-whole-phase/SKILL.md" ] && ok "fresh install ships Codex do-whole-phase" || bad "Codex do-whole-phase skill missing"
-[ -f "$F/.agents/skills/do-whole-phase/agents/openai.yaml" ] && ok "fresh install ships Codex do-whole-phase policy" || bad "Codex do-whole-phase openai.yaml missing"
-[ -d "$F/.claude/skills/do-whole-phase" ] && ok "fresh install keeps Claude do-whole-phase" || bad "Claude do-whole-phase missing"
-[ -f "$F/.claude/skills/explain/SKILL.md" ] && ok "fresh install ships the Claude explain skill" || bad "Claude explain skill missing"
-[ -f "$F/.agents/skills/explain/SKILL.md" ] && ok "fresh install ships the Codex explain skill" || bad "Codex explain skill missing"
-[ -f "$F/.agents/skills/explain/agents/openai.yaml" ] && ok "fresh install ships the Codex explain policy" || bad "Codex explain openai.yaml missing"
+[ ! -f "$F/.claude/agents/phase-reviewer.md" ] && ok "phase-reviewer retired (absent on fresh install)" || bad "phase-reviewer should be retired but is present"
+[ -d "$F/.claude/skills/do-whole-phase" ] && ok "fresh install keeps do-whole-phase" || bad "do-whole-phase skill missing"
+[ -f "$F/.claude/skills/explain/SKILL.md" ] && ok "fresh install ships the explain skill" || bad "explain skill missing"
 grep -q "knowledge:setup" "$F/.claude/skills/explain/SKILL.md" && bad "vendored explain still points at the plugin-only /knowledge:setup" || ok "vendored explain is de-plugin-ified"
+# Since v31 the installer neither claims nor writes AGENTS.md, so --force-empty-ok
+# installs beside a repo's own copy instead of aborting on a managed-file conflict.
+newtmp H
+printf '# Their cross-tool contract\n' > "$H/AGENTS.md"
+AGH=$(sha "$H/AGENTS.md")
+out=$(sh "$BOOT" "$H" --force-empty-ok --name "Fresh" --summary "fresh" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ -f "$H/CLAUDE.md" ] \
+  && ok "--force-empty-ok installs beside a repo's own AGENTS.md" || bad "--force-empty-ok beside AGENTS.md exit=$rc -- $out"
+[ "$(sha "$H/AGENTS.md")" = "$AGH" ] && ok "install leaves a pre-existing AGENTS.md byte-identical" || bad "install rewrote the repo's own AGENTS.md"
 
 # ---------------------------------------------------------------------------
 echo "== Test 6: dual-apply -- live files match the bootstrap-embedded copies =="
@@ -343,22 +362,42 @@ echo "== Test 6: dual-apply -- live files match the bootstrap-embedded copies ==
 diff -q "$REPO_ROOT/scripts/workflow.py" "$F/scripts/workflow.py" >/dev/null \
   && ok "scripts/workflow.py == bootstrap-embedded WORKFLOW_PY" \
   || bad "DRIFT: scripts/workflow.py differs from the bootstrap-embedded copy"
-for rel in $(cd "$REPO_ROOT" && find .claude/skills .agents/skills -type f \( -name SKILL.md -o -name openai.yaml \) | LC_ALL=C sort); do
+skill_rels=$(cd "$REPO_ROOT" && find .claude/skills -type f -name SKILL.md | LC_ALL=C sort)
+nskill=$(printf '%s\n' "$skill_rels" | grep -c .)
+[ "$nskill" -eq 17 ] && ok "dual-apply covers all 17 skill bodies" || bad "expected 17 SKILL.md files to diff, found $nskill"
+for rel in $skill_rels; do
   diff -q "$REPO_ROOT/$rel" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
     || bad "DRIFT: $rel differs from the bootstrap-embedded copy"
 done
-for rel in \
-  .claude/agents/slice-executor-mid.md .claude/agents/slice-executor-high.md \
-  .codex/agents/slice-executor-mid.toml .codex/agents/slice-executor-high.toml \
-  .claude/settings.json .codex/config.toml executors.toml \
-  works/templates/deferred_brief.md works/templates/intent.md \
-  .github/workflows/workspace-ci.yml .gitattributes \
-  CLAUDE.md AGENTS.md ; do
+DUAL_FIXED=".claude/agents/slice-executor-mid.md
+.claude/agents/slice-executor-high.md
+.claude/settings.json
+executors.toml
+works/templates/deferred_brief.md
+works/templates/intent.md
+.github/workflows/workspace-ci.yml
+.gitattributes"
+for rel in $DUAL_FIXED CLAUDE.md; do
   diff -q "$REPO_ROOT/$rel" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
     || bad "DRIFT: $rel differs from the bootstrap-embedded copy"
 done
+# The manifest above is hand-maintained; the installer's own list is the thing it
+# must cover, so cross-check it instead of trusting both to be edited together.
+if python3 - "$REPO_ROOT" scripts/workflow.py $DUAL_FIXED <<'PY'
+import ast, sys
+from pathlib import Path
+
+root, covered = Path(sys.argv[1]), set(sys.argv[2:])
+fixed = None
+for node in ast.walk(ast.parse((root / "installer/build.py").read_text())):
+    if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "FIXED_LIVE_FILES" for t in node.targets):
+        fixed = [e.value for e in node.value.elts]
+assert fixed, "FIXED_LIVE_FILES not found in installer/build.py"
+assert not sorted(set(fixed) - covered), sorted(set(fixed) - covered)
+PY
+then ok "dual-apply manifest covers every installer FIXED_LIVE_FILES entry"; else bad "dual-apply manifest misses a FIXED_LIVE_FILES entry (see installer/build.py)"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 7: the committed installer is in sync with installer/ source =="

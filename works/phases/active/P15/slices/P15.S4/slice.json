@@ -3,14 +3,14 @@
   "phase_id": "P15",
   "name": "Rewrite the retrofit smoke test Codex-free",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 4,
   "depends_on": [
     "P15.S3"
   ],
   "created_at": "2026-08-14T05:16:44+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-08-14T05:48:00+09:00",
+  "completed_at": "2026-08-14T06:00:48+09:00",
   "risk": "high",
   "source": {
     "type": "manual",

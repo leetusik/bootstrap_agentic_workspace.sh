@@ -339,6 +339,68 @@ The survey in `intent.md` is accurate. Confirmed exactly:
 9. **`.claude/settings.json` / `settings.local.json` needed no edit**, as the plan said, and neither
    did any `.claude/**` file outside the 11.
 
+### From `P15.S4` (smoke test)
+
+1. **`tests/retrofit_smoke.sh` is green again — 115 PASS, 0 FAIL, exit 0** (was 24 failures). All
+   eight blocks still fire. `ok` sites 89 → 91, `bad` 90 → 92: **9 Codex-existence assertions
+   removed, 11 added**, itemized in `slices/P15.S4/result.md`. `S5` and `S6` should keep it green
+   and treat a red run as their own regression, not inherited fallout.
+2. **The version pin's literal `== 30` is gone — `P15.S6` needs no test edit.** The block now
+   asserts only `main_version == top_changelog == marker_version`, which already catches every
+   partial bump. This closes the *Open Question* "whether to keep the literal release pin": there
+   is no literal left to disagree with `WORKSPACE_VERSION`. `S6` bumps `installer/main.py` and
+   appends the `## v31` CHANGELOG heading; the smoke test follows automatically. **The `v31`
+   string still pinned by the test is S1's rejection message** (`removed in workspace v31`), which
+   records *when* removal happened and does not drift with the workspace version — but if the
+   release lands on a number other than 31, S1's string, the `update-workspace` migration
+   paragraph, and this assertion all move together.
+3. **The Codex-removal negatives now in the test**, so a regression cannot land silently:
+   `AGENTS.md`/`.agents`/`.codex` absent at the repo root, absent after a retrofit, absent after a
+   fresh install; no `AGENTS.workspace.md` sidecar written; no `Codex`/`AGENTS.md`/`.agents/`/
+   `.codex/` string in `CLAUDE.md` or in either `slice-executor-*.md`; a leftover `[codex.*]`
+   table rejected with S1's v31 message; and — the strongest one — **a sha pin proving a repo's
+   own `AGENTS.md` comes out of a retrofit byte-identical** (finding 8 / S2 finding 2, now
+   enforced). S2's `--force-empty-ok`-beside-`AGENTS.md` path (S2 finding 1) is covered too.
+4. **The `OBSOLETE_MACHINERY` regression pins three S2 decisions with one assertion.** The test
+   seeds the pre-v31 shape (`.agents/skills/<x>/`, `.codex/agents/slice-executor{,-low}.toml`,
+   `AGENTS.md`, `AGENTS.workspace.md`), runs `--update`, and asserts each of the four paths appears
+   in the stale line **exactly once** and that all four **still exist afterwards**. Reverting
+   `flag_obsolete_machinery()` to `is_file()` drops the two directory entries → count 0 → fail;
+   un-collapsing the two redundant `.codex/agents/*.toml` entries → `.codex` counted 3 times →
+   fail; deleting instead of flagging → fail. Real output, verified:
+   `stale workspace skills/machinery dropped upstream (remove manually?): .agents, .codex, AGENTS.md, AGENTS.workspace.md`
+5. **That block had been testing nothing at all.** Its old fixture (`printf … > "$F/.agents/skills/
+   design-cowork/…"`) was a shell redirect into a tree S2 deleted, so it failed as a redirect error
+   and every assertion after it was vacuous. It is now the Claude-side equivalent (delete
+   `.claude/skills/do-whole-phase`, junk `.claude/skills/design-cowork/SKILL.md`) and genuinely
+   exercises restore + refresh + the two "not flagged stale" negatives.
+6. **Test 0's contract read is fixed** (S3 finding 8). The `AGENTS.md` read and the
+   `.split("\n\n", 2)[2]` are both gone — the split existed only to compare the two bodies and,
+   after S3 shortened the header, was landing one paragraph late and passing by luck. Test 0 now
+   asserts against the full `CLAUDE.md` text.
+7. **Deviation, for `P15.REVIEW`: "zero `Codex` in the 17 skills" was not achievable and was not
+   forced.** S3 finding 6 kept two deliberate mentions (`update-workspace`'s mandated pre-v31
+   migration step, `explain`'s re-vendor comment). The test asserts
+   `codex_prose <= {"update-workspace", "explain"}` — a *subset*, so any third mention fails and
+   dropping one later is allowed — plus a pin that the adopter-facing
+   `"Codex support was removed in workspace v31"` sentence is still there. If `REVIEW` overrules
+   S3's interpretation, tighten the subset to `== set()` in the same edit that removes the prose.
+8. **`.claude/agents/slice-executor-mid.md` has no `co-work` / `DesignSync` clause** — the Codex
+   tomls stated the design gate in *both* tiers; the Claude files state it only in `high`. So the
+   ported assertion covers `high` only (both tiers still assert the commit ban, the
+   state-transition ban, and Codex absence). **Pre-existing asymmetry, not introduced by this
+   phase** — flagged for `REVIEW` to decide whether `mid` should carry the clause too (a `mid`
+   executor handed a `co-work` slice has no written instruction to refuse it).
+9. **Test 6 gained a count guard and a cross-check.** The skill loop asserts exactly 17 `SKILL.md`
+   files (with `.agents/skills` dropped from the `find`, a typo would otherwise produce an empty
+   loop and a green result), and a new `ast`-based check proves the hand-maintained dual-apply list
+   plus `scripts/workflow.py` covers every `FIXED_LIVE_FILES` entry in `installer/build.py`
+   (mutation-checked: a truncated list fails). Anything that adds a fixed live file now fails the
+   smoke test until the manifest is updated.
+10. **No doc impact from this slice.** `docs/current/qa.md`'s smoke-test sentence stays accurate
+    word for word, and no doc describes the test's contents; the phase's existing engine /
+    installer / contract lines already carry the durable truth this test enforces.
+
 ### Doc impact
 
 _(One line per durable-truth change; `P15.REVIEW` consolidates these into new doc versions —
@@ -406,8 +468,9 @@ never patch `docs/current/*.md` or an existing version.)_
 
 - ~~**`AGENTS.workspace.md` for already-retrofitted adopters**~~ — **RESOLVED by `P15.S2`: flagged.**
   It is in `OBSOLETE_MACHINERY` with the other three. See *From `P15.S2`* item 3.
-- **Whether to keep the literal `== 30`/`== 31` release pin in the smoke test** (finding 2). `S4`
-  and `S6` between them must not leave the pin and `WORKSPACE_VERSION` disagreeing.
+- ~~**Whether to keep the literal `== 30`/`== 31` release pin in the smoke test**~~ (finding 2) —
+  **RESOLVED by `P15.S4`: dropped.** The three-way equality stands alone, so there is no literal
+  left to disagree with `WORKSPACE_VERSION` and `S6` needs no test edit. See *From `P15.S4`* item 2.
 - **NEW (`P15.S2`) — `installer/build.py` only `compile()`s the assembled artifact body (~L171);
   it never executes it.** So `installer/main.py`'s import-time guards and every payload-key lookup
   are invisible to the build. A change that stops embedding a payload while leaving its

@@ -6,11 +6,11 @@
 ## Pointer
 
 - Current phase: `P15`
-- Current slice: `P15.S4`
-- Next slice: `P15.S5`
+- Current slice: `P15.S5`
+- Next slice: `P15.S6`
 - Waiting on operator: `none`
-- Open deferred jobs: `0`
-- Rebuilt at: `2026-08-14T05:47:57+09:00`
+- Open deferred jobs: `1`
+- Rebuilt at: `2026-08-14T06:00:49+09:00`
 
 ## Active Phases
 
@@ -19,7 +19,7 @@
 | [x] `P12` | `done` | `pass` | Opt-in parallel phase execution: branch-per-phase with PR + CI | `none` | `works/phases/active/P12` |
 | [x] `P13` | `done` | `pass` | Codex workflow parity | `none` | `works/phases/active/P13` |
 | [x] `P14` | `done` | `pass` | Codex visual-design cowork replacement | `none` | `works/phases/active/P14` |
-| [ ] `P15` | `planned` | `pending` | Drop Codex support | `P15.S4` | `works/phases/active/P15` |
+| [ ] `P15` | `planned` | `pending` | Drop Codex support | `P15.S5` | `works/phases/active/P15` |
 
 ## Phase P12: Opt-in parallel phase execution: branch-per-phase with PR + CI
 
@@ -69,7 +69,7 @@
 | [x] `P15.S1` | `done` | Strip Codex from the workflow engine and executors.toml | `implementation` | `works/phases/active/P15/slices/P15.S1` |
 | [x] `P15.S2` | `done` | Strip Codex from the installer and delete the Codex trees | `implementation` | `works/phases/active/P15/slices/P15.S2` |
 | [x] `P15.S3` | `done` | Strip Codex from the contract and Claude skill prose | `implementation` | `works/phases/active/P15/slices/P15.S3` |
-| [ ] `P15.S4` | `todo` | Rewrite the retrofit smoke test Codex-free | `implementation` | `works/phases/active/P15/slices/P15.S4` |
+| [x] `P15.S4` | `done` | Rewrite the retrofit smoke test Codex-free | `implementation` | `works/phases/active/P15/slices/P15.S4` |
 | [ ] `P15.S5` | `todo` | Strip Codex from READMEs, guides, and shipped doc bodies | `implementation` | `works/phases/active/P15/slices/P15.S5` |
 | [ ] `P15.S6` | `todo` | Ship the removal as workspace v31 with a CHANGELOG entry | `implementation` | `works/phases/active/P15/slices/P15.S6` |
 | [ ] `P15.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P15/slices/P15.REVIEW` |
