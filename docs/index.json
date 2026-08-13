@@ -29,7 +29,7 @@
       ]
     },
     "architecture": {
-      "latest": "v0003_opt-in_parallel_phase_execution_the_phase.json_execution_block_and_stream-scoped_selection",
+      "latest": "v0004_single-harness_repo_shape_claude.md_is_the_only_contract_.claude_the_only_entry_points_and_the_artifact_embeds_claude_machinery_alone_v31",
       "current_path": "docs/current/architecture.md",
       "versions": [
         {
@@ -55,6 +55,14 @@
           "source": "P12.REVIEW",
           "summary": "opt-in parallel phase execution: the phase.json execution block and stream-scoped selection",
           "previous": "v0002_installer_source_tree_assembles_the_committed_single-file_distributable"
+        },
+        {
+          "id": "v0004_single-harness_repo_shape_claude.md_is_the_only_contract_.claude_the_only_entry_points_and_the_artifact_embeds_claude_machinery_alone_v31",
+          "path": "docs/versions/architecture/v0004_single-harness_repo_shape_claude.md_is_the_only_contract_.claude_the_only_entry_points_and_the_artifact_embeds_claude_machinery_alone_v31.md",
+          "created_at": "2026-08-14T06:45:17+09:00",
+          "source": "P15.REVIEW",
+          "summary": "Single-harness repo shape: CLAUDE.md is the only contract, .claude/ the only entry points, and the artifact embeds Claude machinery alone (v31)",
+          "previous": "v0003_opt-in_parallel_phase_execution_the_phase.json_execution_block_and_stream-scoped_selection"
         }
       ]
     },
@@ -115,7 +123,7 @@
       ]
     },
     "operations": {
-      "latest": "v0025_operate_the_v30_codex_visual-design_gate_explicit_resume_decomp2_and_browser-fidelity_lifecycle",
+      "latest": "v0026_operate_the_single-harness_workspace_claude-only_executor_config_the_v31_install_retrofit_update_contract_and_a_uniform_pending_gate",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -317,6 +325,14 @@
           "source": "P14.REVIEW",
           "summary": "Operate the v30 Codex visual-design gate, explicit resume, DECOMP2, and browser-fidelity lifecycle",
           "previous": "v0024_codex_first-class_automatic_workflow_parity_executor_presets_and_v29_installation_lifecycle"
+        },
+        {
+          "id": "v0026_operate_the_single-harness_workspace_claude-only_executor_config_the_v31_install_retrofit_update_contract_and_a_uniform_pending_gate",
+          "path": "docs/versions/operations/v0026_operate_the_single-harness_workspace_claude-only_executor_config_the_v31_install_retrofit_update_contract_and_a_uniform_pending_gate.md",
+          "created_at": "2026-08-14T06:46:18+09:00",
+          "source": "P15.REVIEW",
+          "summary": "Operate the single-harness workspace: Claude-only executor config, the v31 install/retrofit/update contract, and a uniform pending gate",
+          "previous": "v0025_operate_the_v30_codex_visual-design_gate_explicit_resume_decomp2_and_browser-fidelity_lifecycle"
         }
       ]
     },
@@ -357,7 +373,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0033_codex-native_visual_cowork_durable_imagegen_or_exact-reference_gate_one_signoff_and_faithful_build_handoff",
+      "latest": "v0034_drop_codex_support_and_ship_claude_code_only_flagged_pre-v31_migration_and_a_uniform_pending_gate",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -623,9 +639,17 @@
           "source": "P14.REVIEW",
           "summary": "Codex-native visual cowork: durable ImageGen or exact-reference gate, one signoff, and faithful build handoff",
           "previous": "v0032_codex_automatic-only_workflow_parity_with_project_executor_presets_and_complete_skill_inventory"
+        },
+        {
+          "id": "v0034_drop_codex_support_and_ship_claude_code_only_flagged_pre-v31_migration_and_a_uniform_pending_gate",
+          "path": "docs/versions/decisions/v0034_drop_codex_support_and_ship_claude_code_only_flagged_pre-v31_migration_and_a_uniform_pending_gate.md",
+          "created_at": "2026-08-14T06:52:16+09:00",
+          "source": "P15.REVIEW",
+          "summary": "Drop Codex support and ship Claude Code only; flagged pre-v31 migration and a uniform pending gate",
+          "previous": "v0033_codex-native_visual_cowork_durable_imagegen_or_exact-reference_gate_one_signoff_and_faithful_build_handoff"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-08-13T17:39:25+09:00"
+  "last_rebuilt_at": "2026-08-14T06:53:33+09:00"
 }

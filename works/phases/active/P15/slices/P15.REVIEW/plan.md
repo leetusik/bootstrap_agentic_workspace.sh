@@ -1,133 +1,102 @@
-# Plan — P15.REVIEW: phase review
+# Plan — P15.REVIEW: phase re-review (round 2)
 
-Review the whole of `P15` — six implementation slices, all committed — against the phase
-objective and `intent.md`, validate everything together, and **only on a passing verdict**
-consolidate the "Doc impact" list into new doc versions.
+The first review returned `changes_requested` with one finding. `P15.F1` has landed and is
+committed. This round verifies that fix, re-confirms the phase still holds together, and — on a
+pass — consolidates the durable docs.
 
-This phase is **not** in parallel mode, so doc consolidation happens here rather than
-post-merge.
+**Your round-1 `result.md` is still in this folder. Do not discard it — extend it.** Append a
+round-2 section rather than rewriting the round-1 record; the earlier finding and the reasoning
+behind it are part of the phase's history.
 
-## Read
+## 1. Verify finding 1 is actually resolved
 
-`works/phases/active/P15/intent.md` (the operator's confirmed intent and the three resolved
-clarifications), `phase.md` in full (the breakdown, ~40 cross-slice notes, the Doc impact list,
-Constraints, and Open Questions), and each of `slices/P15.{DECOMP,S1,S2,S3,S4,S5,S6}/result.md`.
+`P15.F1` deleted the `pending` design exception from `CLAUDE.md` (option A), corrected the v31
+CHANGELOG bullet in place, and replaced the smoke assertion that pinned the deleted wording with
+a positive assert plus mutation-checked negatives.
 
-## 1. Validate the phase as a whole
+Check, don't assume:
 
-Run, and report actual output:
+- The exception is gone from `CLAUDE.md` and the bullet reads as one continuous rule.
+- The contract and both skill bodies now **agree** — `CLAUDE.md`'s `pending` rule versus
+  `do-next-slice`/`do-whole-phase`'s *"Resume only after the operator clears `pending`."* That
+  agreement was the substance of the finding, not the deletion itself.
+- The v31 CHANGELOG section is accurate about what shipped, and was corrected **in place** (same
+  version, same date) rather than superseded.
+- Run the new smoke assertions' mutation check yourself: reintroducing the exception must fail
+  the test.
+- Nothing anywhere still asserts the deleted rule.
+
+## 2. Re-run the phase gates
 
 - `python3 scripts/workflow.py validate`
 - `python3 installer/build.py --check`
 - `bash tests/retrofit_smoke.sh` — expected 115 PASS / 0 FAIL
 - `python3 scripts/workflow.py sync-agents --check`
-- **Execute the artifact end to end**, because the build gate only `compile()`s the body: a
-  fresh install into a temp dir under the scratchpad, a retrofit into a repo that has its own
-  `CLAUDE.md` and `AGENTS.md`, and an `--update` over a pre-v31 install. Confirm the fresh
-  install reports workspace version 31, contains no `AGENTS.md`/`.agents`/`.codex`, and that the
-  retrofit leaves the seeded `AGENTS.md` byte-identical.
+- **Execute the artifact again** — the build gate only `compile()`s. A fresh install (confirm
+  workspace version 31, Codex-free root, installed `CLAUDE.md` byte-identical to the repo's) is
+  the minimum. You verified retrofit and `--update` thoroughly in round 1 against a real pre-v31
+  install; re-run them only if anything in `installer/` changed since, which it should not have
+  — confirm that with `git diff --stat` over `P15.F1`'s commit rather than assuming.
 
-## 2. Judge against the objective and intent
+## 3. Re-confirm the boundary and the judgment calls
 
-The objective: *remove all Codex-specific machinery, contract text, installer payload, tests,
-and documentation so the workspace ships Claude Code only, and give existing adopters a flagged
-upgrade path.*
+- The out-of-scope boundary from `intent.md` must still hold: no P13/P14, no `docs/versions/**`,
+  no `docs/current/**`, and `CHANGELOG.md` still append-only **except** F1's in-place correction
+  of the unshipped v31 section, which is intended.
+- Judgment calls 2 and 3 (`AGENTS.workspace.md` flagging; the vendored `explain/SKILL.md` edit)
+  were upheld in round 1 and are unchanged. No need to re-litigate.
 
-Check each half honestly:
+## 4. Doc consolidation — on a pass, and only on a pass
 
-- **Complete removal.** Sweep the repo for anything Codex-shaped that should have gone. The
-  deliberate survivors are: `CHANGELOG.md` history, `.claude/skills/{update-workspace,explain}`
-  (documented migration/divergence notes), `installer/main.py`'s `OBSOLETE_MACHINERY` comments,
-  `scripts/workflow.py`'s rejection strings, `tests/`' proof-of-absence negatives, and the
-  generated/immutable `docs/current/**`, `docs/versions/**`, `works/**`. **A non-zero
-  `grep -ri codex` is expected — judge whether each survivor is deliberate**, not whether the
-  count is zero.
-- **The adopter path actually works.** S2 built it and S4 pinned it; verify it end to end
-  yourself rather than trusting either. In particular confirm the `is_file()` → `.exists()` fix
-  is what makes the directory entries fire, and that `--update` deletes nothing.
-- **Nothing regressed for Claude Code users.** The workspace must still drive normally.
+**Read the Doc impact list in `phase.md` carefully — it contains a retraction.** `P15.F1`
+retracted item (a) of `P15.S3`'s `operations` line: the claim that the `pending` design
+exception "is now harness-general" is the **opposite** of shipped truth. Do not consolidate the
+withdrawn claim. The `operations` version must instead record that the Codex-only inline-resume
+carve-out was removed along with Codex, and that the `pending` gate is uniform — resuming only
+after explicit operator input. Item (b) of that line (the `update-workspace` pre-v31 migration
+step) stands.
 
-## 3. Scrutinize the three judgment calls the phase made
+Round 1 also appended two corrections to that list: `docs/current/architecture.md` has a third
+stale line at **L58** (`it has no .agents/skills/<name>/ mirror`) beyond the recorded L23/L35,
+and an explicit note that the list was still outstanding.
 
-These were orchestrator or executor decisions, not operator instructions. Challenge them; a
-review that rubber-stamps them is not doing its job.
-
-1. **The `pending` design exception was generalized, not deleted** (`CLAUDE.md`, S3). It was
-   labelled a "Narrow Codex design exception"; the reasoning for keeping it was that the
-   mechanism is not Codex-specific and Claude Code's default `auto` mode hits the identical
-   situation, so deleting it would have silently removed a capability the operator never asked
-   to remove. **This is the one place the phase widened a rule rather than narrowing it.** Judge
-   whether that was right. If you disagree, say so explicitly and propose a fix slice — and note
-   the coupling: `CHANGELOG.md`'s v31 section carries a bullet describing this change, so
-   overruling it means editing `CLAUDE.md` and that bullet together.
-2. **`AGENTS.workspace.md` was added to `OBSOLETE_MACHINERY`** (S2) — flagging a sidecar the
-   installer created but will never refresh again. Reasonable, or overreach into files the
-   operator owns?
-3. **`.claude/skills/explain/SKILL.md` was edited despite being vendored** from
-   `leetusik/knowledge @ d0c2c38`, creating upstream drift, plus a re-vendor comment. Right
-   call?
-
-## 4. Verify the intent's out-of-scope boundary held
-
-`intent.md` says the historical record is preserved. Confirm `works/phases/active/P13` and
-`P14`, `docs/versions/**`, `works/events.jsonl`, and the pre-v31 `CHANGELOG.md` sections are
-untouched by this phase's commits (`git log --stat` over the phase's range). A violation here is
-a `changes_requested`, not a note.
-
-## 5. Spot-check the "actively wrong" doc fixes
-
-S5 corrected ten passages that documented behaviour S1–S3 changed. Pick the load-bearing ones —
-the retrofit guide's Tier 3 contract-merge promise, its manual-fallback steps, and
-`installer/README.md`'s build-check list — and verify the *new* text against the *actual* code
-in `installer/main.py` and `installer/build.py`. S5 caught one error in its own draft this way;
-check whether it caught them all.
-
-## 6. Doc consolidation — **only on a passing verdict**
-
-If and only if the verdict is `pass`, consolidate the "Doc impact" list in `phase.md` into new
-doc versions. Three docs are affected — `architecture`, `operations`, `decisions` — and several
-Doc impact lines fold into the same doc (S2's and S3's `architecture` lines are the same
-version; S1/S2/S3/S5 all touch `operations`).
+Then, for each of the three affected docs:
 
 ```
 python3 scripts/workflow.py doc-new-version --doc <doc> --summary "..." --source P15.REVIEW
 ```
 
-Then write the new version files. Rules:
-
-- **Never patch an existing file under `docs/versions/`** and never hand-edit
-  `docs/current/*.md` — those are generated. Create new versions and let `rebuild-docs`
-  regenerate the snapshots.
-- `decisions` gets a **new appended decision** — "drop Codex support; ship Claude Code only",
-  with the rationale (the dual-harness parity tax) and the migration mechanism
+- **`architecture`** — one contract (`CLAUDE.md`, no `AGENTS.md` twin), one set of entry points
+  (`.claude/`), and the single-harness distributable (the artifact embeds `.claude/**` only, no
+  parity or byte-equality assertions). Fold S2's and S3's lines together; fix all three stale
+  lines including L58.
+- **`operations`** — the largest: the executor-tier config story, the install/retrofit/update
+  contract (a repo's own `AGENTS.md` untouched; the v31 stale-flagging migration that never
+  deletes), and the corrected `pending`-gate truth above.
+- **`decisions`** — **append one new accepted decision**, "drop Codex support; ship Claude Code
+  only", with the rationale (the dual-harness parity tax) and the migration mechanism
   (`OBSOLETE_MACHINERY` flagging, workspace v31). **Do not rewrite the 33 historical entries** —
-  P13 and P14 remain accepted history that this decision supersedes.
-- Note that S5's Doc impact line is about the **shipped seed payload**
-  (`installer/payloads/doc_bodies/*.md`), not this repo's own `docs/current/` — do not
-  double-count it.
-- Finish with `python3 scripts/workflow.py rebuild-docs` and confirm `validate` still passes.
+  P13 and P14 remain accepted history this decision supersedes.
 
-**A non-passing verdict stops before all of this.** Complete the validation and judgment first
-so the orchestrator gets the whole picture in one cycle, then return the verdict with numbered
-findings and proposed fix slices, and do no consolidation.
+Note that `P15.S5`'s Doc impact line concerns the **shipped seed payload**
+(`installer/payloads/doc_bodies/*.md`), not this repo's own `docs/current/` — do not
+double-count it.
 
-## 7. Open questions to close or carry
+Never patch an existing file under `docs/versions/`; never hand-edit `docs/current/*.md`. Finish
+with `python3 scripts/workflow.py rebuild-docs`, then `validate`, and confirm the regenerated
+snapshots carry the new truth.
 
-`phase.md` carries open questions from several slices. Resolve what you can and state what
-carries forward. At minimum:
+## 5. Close the open questions
 
-- **`installer/build.py` only `compile()`s the artifact body**, so a broken installer can pass
-  every commit gate — the phase surfaced this and worked around it by running the artifact in
-  every slice. It is pre-existing and out of scope. Recommend whether it should become a
-  deferred job (`D3`); the orchestrator will file it.
-- The retrofit guide's Troubleshooting row that omits the `.gitattributes` line-merge
-  (pre-existing, non-Codex, flagged by S5).
-- `D2` is already filed for the `slice-executor-mid` co-work refusal gap.
+State which of `phase.md`'s open questions are resolved and which carry forward. `D2` (the
+`slice-executor-mid` co-work refusal gap) and `D3` (making `build.py` smoke-execute the
+artifact) are already filed as deferred jobs — confirm nothing else needs filing.
 
 ## Boundaries
 
 - Do **not** commit and do **not** transition slice or phase status — the orchestrator runs
-  `review-phase`, which moves both.
-- Do **not** write a phase explainer. Return the fixed pointer
+  `review-phase`.
+- Do **not** write a phase explainer. Return
   `explain: not written — run /explain for this phase`.
-- Return a `review_verdict` of `pass`, `changes_requested`, or `blocked`, with numbered findings.
+- Return a `review_verdict` of `pass`, `changes_requested`, or `blocked`. If it is not a pass,
+  stop before consolidation and return numbered findings with proposed fix slices.

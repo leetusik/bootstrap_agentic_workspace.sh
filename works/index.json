@@ -40,17 +40,17 @@
       "id": "P15",
       "name": "Drop Codex support",
       "objective": "Remove all Codex-specific machinery, contract text, installer payload, tests, and documentation so the workspace ships Claude Code only, and give existing adopters a flagged upgrade path.",
-      "status": "in_progress",
+      "status": "done",
       "order": 4,
       "path": "works/phases/active/P15",
-      "review_status": "changes_requested",
-      "current_slice": "P15.REVIEW",
+      "review_status": "pass",
+      "current_slice": null,
       "slice_count": 9,
-      "done_slice_count": 8
+      "done_slice_count": 9
     }
   ],
-  "deferred_open_count": 2,
+  "deferred_open_count": 3,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 1,
-  "last_rebuilt_at": "2026-08-14T06:39:38+09:00"
+  "last_rebuilt_at": "2026-08-14T06:56:59+09:00"
 }

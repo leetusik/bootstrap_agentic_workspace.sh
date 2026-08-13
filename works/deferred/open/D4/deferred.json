@@ -1,0 +1,11 @@
+{
+  "id": "D4",
+  "title": "Retrofit guide Troubleshooting omits the .gitattributes line-merge",
+  "status": "deferred",
+  "source": "P15.REVIEW",
+  "reason": "The Troubleshooting row describing 'the only intended modification' to a retrofitted repo lists the settings.json merge and the CLAUDE.md marker block but omits the .gitattributes line-merge, which the lifecycle smoke test pins as expected behaviour. Pre-existing and unrelated to Codex; surfaced by P15.S5 and carried through P15.REVIEW, whose phase.md Open Questions archive with the phase.",
+  "trigger": "Next time docs/retrofit-guide.md is edited",
+  "created_at": "2026-08-14T06:56:59+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

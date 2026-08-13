@@ -2,16 +2,16 @@
   "id": "P15",
   "name": "Drop Codex support",
   "objective": "Remove all Codex-specific machinery, contract text, installer payload, tests, and documentation so the workspace ships Claude Code only, and give existing adopters a flagged upgrade path.",
-  "status": "in_progress",
+  "status": "done",
   "order": 4,
   "created_at": "2026-08-14T05:10:12+09:00",
   "started_at": null,
-  "completed_at": null,
+  "completed_at": "2026-08-14T06:56:59+09:00",
   "review": {
-    "status": "changes_requested",
-    "reviewed_at": "2026-08-14T06:33:06+09:00",
+    "status": "pass",
+    "reviewed_at": "2026-08-14T06:56:59+09:00",
     "reviewer": "slice-executor-high",
-    "note": "Phase gates all green and the adopter migration verified end to end, but the pending design exception was widened to Claude Code on an inverted premise and the widened rule contradicts both skill bodies that implement it. One fix slice P15.F1."
+    "note": "Round 2. Finding 1 resolved and verified against the tree: contract, both skill bodies, CHANGELOG, and the smoke test agree, mutation-checked. All gates green (115 PASS / 0 FAIL), artifact executed, out-of-scope boundary held over the whole phase range. Consolidated architecture v0004, operations v0026, decisions v0034, honouring F1's retraction."
   },
   "paths": {
     "phase_md": "phase.md",

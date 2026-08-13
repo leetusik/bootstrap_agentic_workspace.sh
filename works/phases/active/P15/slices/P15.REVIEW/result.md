@@ -1,5 +1,14 @@
 # Result — P15.REVIEW: phase review
 
+> **Two rounds.** Round 1 (below) returned `changes_requested` on one finding. Round 2 (at the
+> end of this file) verified `P15.F1`'s fix, re-ran every gate, and returned **`pass`** with the
+> three consolidated doc versions. Round 1's record is kept verbatim — the finding and the
+> reasoning behind it are part of the phase's history.
+
+---
+
+# Round 1 — verdict `changes_requested`
+
 **Verdict: `changes_requested`.** One blocking finding, in the contract itself. Everything else in
 this phase is clean: the mechanical removal is complete and correct, the adopter migration path
 works end to end against a real pre-v31 install, the out-of-scope boundary held exactly, and two of
@@ -327,3 +336,191 @@ writes only docs + `result.md` / `phase.md`). No phase explainer — `explain: n
 
 Files written by this slice: this `result.md`, and the `From P15.REVIEW` section + two `Doc impact`
 corrections + four `Open Questions` updates in `works/phases/active/P15/phase.md`.
+
+---
+
+# Round 2 — verdict `pass`
+
+**Verdict: `pass`.** Finding 1 is resolved — not merely deleted, but resolved in the sense that
+mattered: the contract, both operative skill bodies, the released CHANGELOG entry, and the smoke
+test now say the same thing about the `pending` gate. Every gate is green, the artifact was
+executed again, the out-of-scope boundary still holds over the whole phase range, and the three
+durable docs are consolidated.
+
+## 1. Finding 1 — checked, not assumed
+
+`P15.F1` took option A (delete). Five checks, each run against the tree rather than against the
+fix slice's own account:
+
+| # | Check | Result |
+| --- | --- | --- |
+| 1 | The exception is gone from `CLAUDE.md` and the bullet reads continuously | **PASS** |
+| 2 | Contract ↔ both skill bodies agree | **PASS** |
+| 3 | The v31 CHANGELOG section is accurate, and corrected **in place** | **PASS** |
+| 4 | The new smoke assertions are load-bearing (my own mutation run) | **PASS** |
+| 5 | Nothing anywhere still asserts the deleted rule | **PASS** |
+
+**1 — the deletion.** `CLAUDE.md:67` is now one continuous rule ending
+*"…normally the operator does that, or the orchestrator does it on their explicit say-so. `pending`
+means "waiting on the operator" and is distinct from `blocked` …"*. Diffed sentence-by-sentence
+against `c307eb9`'s L70: exactly two sentences left (`**Narrow Codex design exception:** …` and
+`A bare automatic invocation is never approval, and no other pending gate is relaxed.`) and
+**nothing else in the bullet moved** — the surviving text is byte-identical to the pre-phase
+version. No seam, no residue.
+
+**2 — the agreement, which was the substance of the finding.** Read all three live files:
+
+- `CLAUDE.md:67` — "Work resumes only after explicit operator input clears the same item back to
+  `in_progress`; normally the operator does that, or the orchestrator does it on their explicit
+  say-so."
+- `.claude/skills/do-next-slice/SKILL.md:14` — "Resume only after the operator approves and clears
+  the `pending` status back to `in_progress`."
+- `.claude/skills/do-whole-phase/SKILL.md:16` — "Resume only after the operator clears `pending`
+  back to `in_progress`."
+
+No contradiction remains. I also re-verified the historical claim the fix rests on, from git rather
+than from the phase's notes: at `c307eb9` the two Claude skill bodies carried **exactly the same
+"resume only after the operator clears" sentences they carry now** (unchanged by this phase), while
+the deleted `.agents/skills/do-whole-phase/SKILL.md:18` carried the matching operational clause and
+called it, in its own words, *"exactly one **Codex-only** resume exception"*. So the permission was
+Codex's, its backing clause died with the Codex tree, and deleting the contract sentence orphans
+nothing. Round 1's diagnosis holds up under its own evidence standard.
+
+The surviving "or the orchestrator does it on their explicit say-so" is **not** a residual
+carve-out: it is gated on explicit operator input and only names who types the command. It is
+pre-P15 text and was never in conflict with either skill.
+
+**3 — the CHANGELOG.** The v31 bullet now reads *"The contract keeps every rule that was not
+Codex-specific, **and drops the one that was**"* and states plainly which rule went, why it was
+Codex-only, and that the `pending` gate is uniform again "exactly as the `do-next-slice` and
+`do-whole-phase` skills have always said" — which I verified is true of both files. Corrected **in
+place**: `git show 2be44fc -- CHANGELOG.md` is a single 7→8-line bullet rewrite inside `## v31 —
+2026-08-14`; no version number, no date, no other section. And over the phase's whole range
+(`c307eb9..HEAD`) `CHANGELOG.md` is **51 insertions / 0 deletions** — the intermediate S6 wording
+never existed outside this working history, so the released file is a pure append.
+
+**4 — the mutation check, run by me.** I extracted Test 0's Python block from
+`tests/retrofit_smoke.sh` (lines 40-113) verbatim and ran it against a scratch copy of `.claude/` +
+`CLAUDE.md`:
+
+- unmutated → exit 0;
+- with the exception sentence re-injected after the "explicit say-so" anchor → **exit 1**,
+  `AssertionError: design exception`.
+
+So the negatives are load-bearing, not vacuous, and a reintroduction cannot land silently. The
+positive assert (`"Work resumes only after explicit operator input clears the same item"`) pins the
+surviving rule from the other side.
+
+**5 — the sweep.** `grep -rn 'Narrow design exception|Narrow Codex design exception|never approval|
+no other pending gate'` over every `*.md` / `*.sh` / `*.py` / `*.toml` / `*.json` / `*.yml` in the
+repo: the only **live** hits are the smoke test's own negatives (`tests/retrofit_smoke.sh:110`).
+Everything else is history — `docs/versions/operations/v0025_*` (never patched), this phase's and
+P14's planning records — plus `docs/current/operations.md:145`, which was generated from the stale
+v0025 body and is exactly what this round's `operations` consolidation replaces. The rebuilt
+artifact has **0** hits. `.claude/`, `README*.md`, and `docs/retrofit-guide.md` have none at all.
+
+## 2. Gates — re-run, with real output
+
+| # | Command | Outcome |
+| --- | --- | --- |
+| 1 | `python3 scripts/workflow.py validate` | **PASS** — `Workflow validation passed.` (exit 0) |
+| 2 | `python3 installer/build.py --check` | **PASS** — `OK: bootstrap_agentic_workspace.sh is in sync with installer/ source` (exit 0) |
+| 3 | `bash tests/retrofit_smoke.sh` | **PASS** — **115 PASS / 0 FAIL**, exit 0, `ALL RETROFIT SMOKE TESTS PASSED` — the number `plan.md` predicted |
+| 4 | `python3 scripts/workflow.py sync-agents --check` | **PASS** — `mid   sonnet @ xhigh` / `high  opus @ xhigh` / `config source: executors.toml (mode flex, 0 override(s))` / `agent files in sync` (exit 0) |
+| 5 | **Fresh install of the rebuilt artifact** | **PASS** — see below |
+| 6 | Test 0 mutation check (extracted, run standalone) | **PASS** — clean copy exit 0, mutated copy exit 1 |
+| 7 | `python3 scripts/workflow.py validate` **after** doc consolidation | **PASS** |
+| 8 | `python3 installer/build.py --check` **after** doc consolidation | **PASS** — docs are not embedded; artifact untouched |
+
+**5 — the artifact was executed, not just built.** `bash bootstrap_agentic_workspace.sh <scratch>`:
+exit 0, clean banner, no import-time error; `works/.workspace-version.json` →
+`"workspace_version": 31`; root inventory exactly
+`.claude .gitattributes .github CLAUDE.md docs executors.toml scripts works` (Codex-free); 17 skills;
+installed `CLAUDE.md` **byte-identical** to this repo's (`diff` clean) with **0** hits for
+`design exception|never approval|no other pending gate|Codex|AGENTS.md`; inside the fresh workspace
+`validate` passes and `sync-agents --check` exits 0.
+
+**Retrofit and `--update` were not re-run, deliberately and on evidence.** `plan.md` allows skipping
+them if `installer/` did not change since round 1; `git diff --stat 237d57b..HEAD -- installer/` is
+**empty**, and so is the same diff over `.claude/`. The only machinery `P15.F1` touched is the
+contract body (plus the rebuild it forces), so round 1's live pre-v31 `--update` and retrofit
+verification stands unchanged — and the fresh install above re-proves the one thing a contract edit
+can break (`collect_contract_body()`'s `CLAUDE_HDR` slice).
+
+## 3. Boundary and judgment calls — re-confirmed
+
+**Out-of-scope boundary, over `c307eb9..HEAD`:** no file under `works/phases/active/P13`,
+`P14`, `works/phases/archived/`, `docs/versions/**`, or `docs/current/**` appears in the phase's
+diff (the doc versions this round creates are the review's own sanctioned consolidation, not phase
+work). `works/events.jsonl`: **29 insertions / 0 deletions**. `CHANGELOG.md`: **51 / 0** — append-only
+across the range, F1's in-place v31 correction included, exactly as intended.
+
+**Judgment calls 2 and 3 — untouched and still upheld.** `git diff 237d57b..HEAD -- installer/
+.claude/` is empty, so `AGENTS.workspace.md`'s `OBSOLETE_MACHINERY` entry and the vendored
+`explain/SKILL.md` edit are byte-identical to what round 1 examined. Not re-litigated.
+
+**Every surviving `Codex` string is still deliberate.** Live, non-generated, non-history sweep:
+`tests/retrofit_smoke.sh` (proof-of-absence negatives), `installer/main.py` (5 — the
+`OBSOLETE_MACHINERY` entries and the `flag_obsolete_machinery` `.exists()` note),
+`scripts/workflow.py` (2 — the `[codex.*]` rejection), `.claude/skills/{update-workspace,explain}/SKILL.md`
+(1 each), `installer/README.md` (1), `docs/retrofit-guide.md` (7 — the adopter migration paragraph),
+`CHANGELOG.md` (release history). Zero elsewhere. Artifact: 474619 → **323796 bytes** on disk
+(`build.py`'s printed 322345 is a *character* count — S6 finding 4), so the CHANGELOG's
+"~475 KB to ~324 KB" is accurate.
+
+## 4. Doc consolidation — three versions, with the retraction honoured
+
+Consolidated per the "Doc impact" list in `phase.md`, **including `P15.F1`'s retraction**: the
+`P15.S3` line's item (a) — *"the `pending` design exception is now harness-general"* — was **not**
+carried into any version; the `operations` version records the opposite, which is the shipped truth.
+Item (b) of that line (the `update-workspace` pre-v31 migration step) was carried. `P15.S5`'s line
+concerns the shipped **seed payload** (`installer/payloads/doc_bodies/*.md`) and was correctly not
+double-counted against this repo's own docs.
+
+| Doc | Version | What it now records |
+| --- | --- | --- |
+| `architecture` | **v0003 → v0004** | One contract (`CLAUDE.md`, no `AGENTS.md` twin) · one entry-point tree (`.claude/`, 17 skills + 2 tier agents) · the single-harness distributable (payload is `.claude/**` only; no parity and no byte-equality assertion; the two surviving invariants are `EXPECTED_SKILL_COUNT = 17` and the `CLAUDE_HDR` prefix test) · and that the build only `compile()`s the artifact, never runs it (`D3`). **All three stale lines fixed**, L58 included. |
+| `operations` | **v0025 → v0026** | The largest rewrite: the v31 single-harness status; the executor-tier story (one model/effort pair per tier, `[claude.<tier>]` kept, `[codex.*]` rejected by name with the exact v31 message and its exact severity — `sync-agents` exits 1, `validate` warns and exits 0; the new one-line-per-tier `sync-agents` output); the install/retrofit/update contract (a repo's own `AGENTS.md` byte-identical on both paths with the `--force-empty-ok` caveat named, the four flagged paths each exactly once, `.exists()`-not-`is_file()` called out as load-bearing, never deletes); the visual-design runbook rewritten from the shipped Claude skill (handoff → `pending` → DesignSync read-back → land as-is → SIGNOFF → pure regroup → separate implement slice); and **the corrected `pending`-gate truth**. |
+| `decisions` | **v0033 → v0034** | **One appended entry** — *"Drop Codex support; ship Claude Code only (phase P15)"* — with the dual-harness parity tax as rationale, the `OBSOLETE_MACHINERY` / workspace-v31 flagging as the migration mechanism, five rejected alternatives (including the generalized-exception option this review overruled), and `D2`/`D3` named as filed follow-ups. Two supersession bullets added to *Superseded Decisions*, naming what P13/P14 lose and what carries forward unchanged. **The 33 historical entries were not rewritten** — verified: 32 pre-existing `###` entries in, 33 out. |
+
+Mechanics: `doc-new-version` → edit **only** the returned `edit_path` → `rebuild-docs` → `validate`.
+No file under `docs/versions/` was patched (`git status` shows the three new versions as untracked
+additions and **no modification** anywhere else under `docs/versions/`), and `docs/current/*.md` was
+never hand-edited — the three snapshots changed only by regeneration. Verified after the rebuild:
+`docs/current/{architecture,operations,decisions}.md` carry frontmatter `v0004` / `v0026` / `v0034`
+with `source: P15.REVIEW`, `docs/index.json` lists 4 / 26 / 34 versions, the retracted
+"harness-general" claim appears nowhere, and the Codex-era inline-resume paragraph that sat at
+`docs/current/operations.md:141-146` is replaced by the uniform-gate text.
+
+**One disclosed deviation:** while rewriting the `architecture` body I corrected one adjacent stale
+clause that is *not* Codex-related — `installer/payloads/` was still described as containing
+"`p1_seed/` phase+intent scaffolds", deleted in v6 (the `operations` doc has said so since). It is a
+single clause in a body I was authoring anyway; signing a new version that I knew to be false read
+worse than the scope nit. Named here so the correction is auditable.
+
+## 5. Open questions — final disposition
+
+| Question | Disposition |
+| --- | --- |
+| `AGENTS.workspace.md` strand | **closed** (S2: flagged; upheld both rounds) |
+| Literal release pin in the smoke test | **closed** (S4: dropped; S6 needed no test edit, proved by a green run) |
+| The `pending` design exception | **closed** by `P15.F1` — deleted, contract/skills/CHANGELOG/test aligned, mutation-checked |
+| `installer/build.py` only `compile()`s the artifact | **filed as `D3`** (`works/deferred/open/D3`), trigger recorded; also now stated in `docs/current/architecture.md` and `operations.md` so it survives the phase's archiving |
+| `slice-executor-mid` has no `co-work` refusal clause | **filed as `D2`** (`works/deferred/open/D2`) |
+| Retrofit guide's Troubleshooting row omits the `.gitattributes` line-merge | **still carried, and the only item with no durable home.** Pre-existing, non-Codex, one clause. `phase.md`'s Open Questions are archived with the phase, so unlike `D2`/`D3` this note will be lost. **Recommendation for the orchestrator (not a finding, and not a gate on this verdict):** one `defer-job` call parks it — `--title "retrofit guide Troubleshooting omits the .gitattributes line-merge" --reason "…the only intended modification is the additive .claude/settings.json merge and the marked CLAUDE.md section' omits the .gitattributes line-merge that the smoke test pins" --trigger "next edit to docs/retrofit-guide.md" --source P15.REVIEW`. I did not run it: `defer-job` is outside a review executor's two carve-outs. |
+
+Nothing else needs filing.
+
+## 6. Deviations from `plan.md` (round 2)
+
+One, explicitly authorized by the plan: **retrofit and `--update` were not re-executed**, because
+`git diff --stat 237d57b..HEAD -- installer/` is empty (§2). Everything else was run as written. The
+`architecture` clause correction in §4 is a disclosed addition, not a departure from an instruction.
+
+## 7. Boundaries respected (round 2)
+
+No commit, no `git add`. No `review-phase`, `start-slice`, `finish-slice`, `set-slice-status`,
+`set-phase-status`, `defer-job`, or `new-slice`. No source code edited — the only writes are the
+three new `docs/versions/**` files, the regenerated `docs/current/*.md` + `docs/index.json` (via
+`rebuild-docs`), this `result.md`, and the round-2 notes in `phase.md`. No phase explainer:
+`explain: not written — run /explain for this phase`.

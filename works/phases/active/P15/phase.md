@@ -622,6 +622,47 @@ The survey in `intent.md` is accurate. Confirmed exactly:
    judgment calls, `D2`/`D3`, and the retrofit guide's `.gitattributes` Troubleshooting clause were
    left untouched, and no doc consolidation was started (it belongs to the re-review).
 
+### From `P15.REVIEW` round 2 (re-review — verdict `pass`)
+
+1. **Finding 1 is resolved, and the resolution was checked against the tree, not against `P15.F1`'s
+   account.** The two sentences are gone from `CLAUDE.md:67` and **nothing else in that bullet
+   moved** (sentence-level diff against `c307eb9` L70). Contract, `do-next-slice/SKILL.md:14`, and
+   `do-whole-phase/SKILL.md:16` now say the same thing. Independent historical confirmation from
+   git: at `c307eb9` both Claude skill bodies already carried today's "resume only after the
+   operator clears" sentences **unchanged**, while the deleted `.agents/skills/do-whole-phase/SKILL.md:18`
+   described itself as *"exactly one **Codex-only** resume exception"*. The permission and its
+   backing clause were both Codex's; deleting the contract sentence orphaned nothing.
+2. **The smoke-test negatives are load-bearing — verified by running the mutation myself**, not by
+   trusting the fix slice. Test 0's Python block (`tests/retrofit_smoke.sh` L40-113) extracted and
+   run standalone against a scratch copy: clean → exit 0; exception re-injected → exit 1
+   `AssertionError: design exception`. Anyone editing that contract rule must move these assertions
+   with it.
+3. **`CHANGELOG.md` is append-only across the whole phase, in fact and not just in intent.**
+   `git diff --numstat c307eb9..HEAD -- CHANGELOG.md` is **51 insertions / 0 deletions**: `S6`'s
+   original v31 wording never existed outside this working history, so `F1`'s in-place correction is
+   invisible at range level. `works/events.jsonl` is 29 / 0. No protected path (P13, P14, archived
+   phases, `docs/versions/**`, `docs/current/**`) appears in the phase diff.
+4. **Retrofit and `--update` were deliberately not re-run this round**, on evidence rather than
+   assumption: `git diff --stat 237d57b..HEAD -- installer/` and `-- .claude/` are both **empty**, so
+   round 1's live pre-v31 verification still describes the shipped code. The one thing a contract-body
+   edit *can* break — `collect_contract_body()`'s `CLAUDE_HDR` slice — was re-proved by a fresh
+   install whose `CLAUDE.md` is byte-identical to this repo's.
+5. **Artifact size, in the two units that keep getting confused:** `build.py` prints **322345
+   characters**; the file on disk is **323796 bytes**. The phase-over-phase shrink in real bytes is
+   474619 → 323796, so the CHANGELOG's "~475 KB to ~324 KB" is right.
+6. **The `.gitattributes` Troubleshooting clause is the one carried item with no durable home.**
+   `D2` and `D3` are filed as deferred jobs and survive archiving; this one lives only in
+   `phase.md`'s Open Questions, which archive with the phase. A review executor may not run
+   `defer-job`, so it is recorded here and recommended to the orchestrator in `result.md` §5.
+7. **Doc consolidation completed on the pass** — `architecture` v0004, `operations` v0026,
+   `decisions` v0034, all `source: P15.REVIEW`. The `P15.F1` retraction was honoured: the
+   "harness-general" claim was **not** consolidated anywhere; `operations` records the uniform
+   `pending` gate instead. No file under `docs/versions/` was patched and no `docs/current/*.md` was
+   hand-edited (both verified by `git status`: three new untracked version files, three regenerated
+   snapshots, nothing else). One disclosed extra: the `architecture` body's stale
+   "`p1_seed/` phase+intent scaffolds" clause (deleted in v6, non-Codex) was corrected while
+   authoring that version.
+
 ### Doc impact
 
 _(One line per durable-truth change; `P15.REVIEW` consolidates these into new doc versions —
@@ -684,9 +725,24 @@ never patch `docs/current/*.md` or an existing version.)_
   always said. Item (b) of that S3 line (the `update-workspace` pre-v31 migration step) is unaffected
   and still stands. This also folds into the existing `operations` line covering the Codex-era inline
   resume rule still present at `docs/current/operations.md` L141-146.
-- **Not consolidated at `P15.REVIEW`:** the review returned `changes_requested`, so per the contract
+- ~~**Not consolidated at `P15.REVIEW`:** the review returned `changes_requested`, so per the contract
   it stopped before `doc-new-version`. This whole list is still outstanding and belongs to the
-  re-review after the fix slice lands.
+  re-review after the fix slice lands.~~ — **CONSOLIDATED at the round-2 re-review (verdict `pass`),
+  2026-08-14.** Three versions, one per affected doc, each capturing the whole phase:
+  - `architecture` **v0004** — *Single-harness repo shape: `CLAUDE.md` is the only contract, `.claude/`
+    the only entry points, and the artifact embeds Claude machinery alone (v31)*. Folds the S2 and S3
+    lines together; all three stale lines fixed (L23, L35, **and L58**).
+  - `operations` **v0026** — *Operate the single-harness workspace: Claude-only executor config, the
+    v31 install/retrofit/update contract, and a uniform `pending` gate*. Carries S1's executor-tier
+    story, S2's install/retrofit/update contract, S3's item (b), the rewritten Claude-only
+    visual-design runbook, and — per `P15.F1`'s retraction — the **uniform** `pending` gate. The
+    retracted "harness-general" claim was **not** consolidated anywhere.
+  - `decisions` **v0034** — one **appended** entry, *"Drop Codex support; ship Claude Code only (phase
+    P15)"*, plus two supersession bullets. The 33 historical entries were not rewritten (32 `###`
+    entries in, 33 out).
+
+  `P15.S5`'s line was correctly **not** double-counted: it changed the shipped seed payload
+  (`installer/payloads/doc_bodies/*.md`), not this repo's own `docs/current/`.
 
 ## Constraints
 
@@ -741,6 +797,10 @@ never patch `docs/current/*.md` or an existing version.)_
   non-Codex, so out of this phase's scope; a one-clause fix. `P15.REVIEW` did not fold it into the
   fix slice below (different file, unrelated cause) — pick it up whenever someone is next in that
   file, or attach it to the fix slice if the operator prefers one pass.
+  **Round 2:** still open, and it is now the **only** carried item without a durable home — `D2` and
+  `D3` are filed deferred jobs, while this note archives with the phase. A review executor may not
+  run `defer-job`, so the re-review recommends the orchestrator file it (suggested title/reason/
+  trigger in `slices/P15.REVIEW/result.md` §5). Not a gate on the passing verdict.
 - **CARRIED (`P15.S4` finding 8) — already filed as `D2`**: `.claude/agents/slice-executor-mid.md`
   has no `co-work` refusal clause. Pre-existing asymmetry (the deleted Codex tomls stated the design
   gate in both tiers; the Claude files state it only in `high`). No action this phase.

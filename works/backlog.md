@@ -5,12 +5,12 @@
 
 ## Pointer
 
-- Current phase: `P15`
-- Current slice: `P15.REVIEW`
+- Current phase: `none`
+- Current slice: `none`
 - Next slice: `none`
 - Waiting on operator: `none`
-- Open deferred jobs: `2`
-- Rebuilt at: `2026-08-14T06:39:38+09:00`
+- Open deferred jobs: `3`
+- Rebuilt at: `2026-08-14T06:56:59+09:00`
 
 ## Active Phases
 
@@ -19,7 +19,7 @@
 | [x] `P12` | `done` | `pass` | Opt-in parallel phase execution: branch-per-phase with PR + CI | `none` | `works/phases/active/P12` |
 | [x] `P13` | `done` | `pass` | Codex workflow parity | `none` | `works/phases/active/P13` |
 | [x] `P14` | `done` | `pass` | Codex visual-design cowork replacement | `none` | `works/phases/active/P14` |
-| [ ] `P15` | `in_progress` | `changes_requested` | Drop Codex support | `P15.REVIEW` | `works/phases/active/P15` |
+| [x] `P15` | `done` | `pass` | Drop Codex support | `none` | `works/phases/active/P15` |
 
 ## Phase P12: Opt-in parallel phase execution: branch-per-phase with PR + CI
 
@@ -73,4 +73,4 @@
 | [x] `P15.S5` | `done` | Strip Codex from READMEs, guides, and shipped doc bodies | `implementation` | `works/phases/active/P15/slices/P15.S5` |
 | [x] `P15.S6` | `done` | Ship the removal as workspace v31 with a CHANGELOG entry | `implementation` | `works/phases/active/P15/slices/P15.S6` |
 | [x] `P15.F1` | `done` | Settle the pending design exception | `fix` | `works/phases/active/P15/slices/P15.F1` |
-| [ ] `P15.REVIEW` | `changes_requested` | phase review | `review` | `works/phases/active/P15/slices/P15.REVIEW` |
+| [x] `P15.REVIEW` | `done` | phase review | `review` | `works/phases/active/P15/slices/P15.REVIEW` |
