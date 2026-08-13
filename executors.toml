@@ -3,13 +3,15 @@
 #
 #   python3 scripts/workflow.py sync-agents
 #
-# Everything commented out (or missing) keeps the built-in defaults — the
-# values shown below ARE the defaults. Two knobs, lowest precedence first:
+# With no active mode or overrides, the engine uses economy. This repo selects
+# flex below, and the commented per-tier values match that active preset. Two
+# knobs, lowest precedence first:
 #
-#   1. mode — a named preset for the Claude tiers (top level, before any table;
-#      the Codex tiers are identical in both presets):
-#        economy (default)  mid = sonnet@high,  high = opus@high
-#        flex               mid = sonnet@xhigh, high = opus@xhigh
+#   1. mode — a named preset for both harnesses (top level, before any table):
+#        economy (default)  Claude sonnet@high / opus@high;
+#                           Codex  gpt-5.6-luna@high / gpt-5.6-terra@high
+#        flex               Claude sonnet@xhigh / opus@xhigh;
+#                           Codex  gpt-5.6-terra@high / gpt-5.6-sol@high
 #   2. Per-tier [claude.<tier>] / [codex.<tier>] tables — override the active
 #      preset field by field.
 #
@@ -28,17 +30,17 @@
 # config. After /update-workspace, re-run sync-agents (updates reset the
 # agent files to upstream defaults; `validate` warns while they drift).
 
-#mode = "economy"    # or "flex"
+mode = "flex"
 
-# Claude Code (.claude/agents/slice-executor-{mid,high}.md) — economy values shown
+# Claude Code (.claude/agents/slice-executor-{mid,high}.md) — flex values shown
 #[claude.mid]
 #model = "sonnet"
-#effort = "high"
+#effort = "xhigh"
 #[claude.high]
 #model = "opus"    # e.g. "fable", or "claude-mythos-5" once available
-#effort = "high"
+#effort = "xhigh"
 
-# Codex (.codex/agents/slice-executor-{mid,high}.toml) — identical in both modes
+# Codex (.codex/agents/slice-executor-{mid,high}.toml) — flex values shown
 #[codex.mid]
 #model = "gpt-5.6-terra"
 #effort = "high"

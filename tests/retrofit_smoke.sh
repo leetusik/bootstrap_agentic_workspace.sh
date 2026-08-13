@@ -139,21 +139,28 @@ grep -q '"workspace_version"' "$F/works/.workspace-version.json" && ok "fresh ma
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
 [ -f "$F/.claude/agents/slice-executor-mid.md" ] && [ -f "$F/.claude/agents/slice-executor-high.md" ] && ok "fresh install ships the 2 Claude slice-executor tiers" || bad "fresh install missing Claude slice-executor tier(s)"
 [ -f "$F/.codex/agents/slice-executor-mid.toml" ] && [ -f "$F/.codex/agents/slice-executor-high.toml" ] && ok "fresh install ships the 2 Codex slice-executor tiers" || bad "fresh install missing Codex slice-executor tier(s)"
-grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-mid.md" \
-  && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-high.md" \
-  && ok "Claude tier defaults (economy): sonnet@high / opus@high" || bad "Claude executor tier defaults wrong"
+grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-mid.md" \
+  && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-high.md" \
+  && ok "fresh install follows seeded flex mode: Claude sonnet@xhigh / opus@xhigh" || bad "fresh Claude flex tiers wrong"
 grep -q '^model = "gpt-5.6-terra"$' "$F/.codex/agents/slice-executor-mid.toml" \
   && grep -q '^model_reasoning_effort = "high"$' "$F/.codex/agents/slice-executor-mid.toml" \
   && grep -q '^model = "gpt-5.6-sol"$' "$F/.codex/agents/slice-executor-high.toml" \
   && grep -q '^model_reasoning_effort = "high"$' "$F/.codex/agents/slice-executor-high.toml" \
-  && ok "Codex tier defaults: gpt-5.6-terra@high / gpt-5.6-sol@high" || bad "Codex executor tier defaults wrong"
+  && ok "fresh install follows seeded flex mode: Codex gpt-5.6-terra@high / gpt-5.6-sol@high" || bad "fresh Codex flex tiers wrong"
 [ ! -f "$F/.claude/agents/slice-executor.md" ] && [ ! -f "$F/.codex/agents/slice-executor.toml" ] && ok "legacy untiered slice-executor retired (absent on fresh install)" || bad "legacy untiered slice-executor should be retired but is present"
 [ ! -f "$F/.claude/agents/slice-executor-low.md" ] && [ ! -f "$F/.codex/agents/slice-executor-low.toml" ] && ok "low tier retired in v23 (absent on fresh install)" || bad "slice-executor-low should be retired but is present"
-[ -f "$F/executors.toml" ] && ok "fresh install seeds executors.toml (commented defaults)" || bad "fresh install missing executors.toml"
+[ -f "$F/executors.toml" ] && ok "fresh install seeds the tracked executors.toml selection" || bad "fresh install missing executors.toml"
 [ -f "$F/.github/workflows/workspace-ci.yml" ] && ok "fresh install seeds the CI workflow" || bad "fresh install missing .github/workflows/workspace-ci.yml"
 grep -q '^works/events\.jsonl merge=union$' "$F/.gitattributes" && ok "fresh install seeds .gitattributes with the union rule" || bad "fresh install missing the .gitattributes union rule"
 [ ! -f "$F/.env.example" ] && [ ! -f "$F/executors.toml.example" ] && ok "legacy .env.example / executors.toml.example retired (absent on fresh install)" || bad "a legacy tier-config example should be retired but is present"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && ok "sync-agents --check: seeded config parses to the built-in defaults" || bad "sync-agents --check failed on a fresh install"
+( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && ok "sync-agents --check: seeded flex config matches live agents" || bad "sync-agents --check failed on a fresh install"
+printf '# No active mode selects the built-in economy preset.\n' > "$F/executors.toml"
+( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) \
+  && grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-mid.md" \
+  && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-high.md" \
+  && grep -q '^model = "gpt-5.6-luna"$' "$F/.codex/agents/slice-executor-mid.toml" && grep -q '^model_reasoning_effort = "high"$' "$F/.codex/agents/slice-executor-mid.toml" \
+  && grep -q '^model = "gpt-5.6-terra"$' "$F/.codex/agents/slice-executor-high.toml" && grep -q '^model_reasoning_effort = "high"$' "$F/.codex/agents/slice-executor-high.toml" \
+  && ok "no mode selects economy: Claude sonnet/opus and Codex luna/terra at high" || bad "economy mode matrix wrong"
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: fable$' "$F/.claude/agents/slice-executor-high.md" \
   && ok "executors.toml override patches the high-tier model" || bad "executors.toml override did not patch the high tier"
@@ -161,7 +168,9 @@ printf 'mode = "flex"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) \
   && grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-mid.md" \
   && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-high.md" \
-  && ok "mode = flex raises the tiers: sonnet@xhigh / opus@xhigh" || bad "flex mode did not raise the tiers"
+  && grep -q '^model = "gpt-5.6-terra"$' "$F/.codex/agents/slice-executor-mid.toml" && grep -q '^model_reasoning_effort = "high"$' "$F/.codex/agents/slice-executor-mid.toml" \
+  && grep -q '^model = "gpt-5.6-sol"$' "$F/.codex/agents/slice-executor-high.toml" && grep -q '^model_reasoning_effort = "high"$' "$F/.codex/agents/slice-executor-high.toml" \
+  && ok "mode = flex selects Claude sonnet/opus@xhigh and Codex terra/sol@high" || bad "flex mode matrix wrong"
 printf '[claude.low]\nmodel = "sonnet"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 | grep -q 'retired in workspace v23' ) && ok "retired [claude.low] section rejected with a migration message" || bad "[claude.low] should be rejected as a retired tier"
 printf 'mode = "cheap"\n' > "$F/executors.toml"
@@ -179,7 +188,7 @@ grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" \
 rm -f "$F/executors.toml"
 sh "$BOOT" "$F" --update >/dev/null 2>&1 && [ -f "$F/executors.toml" ] \
   && ok "--update seeds a missing executors.toml (pre-v9 workspace)" || bad "--update did not seed a missing executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && ok "re-seeded executors.toml parses to defaults" || bad "re-seeded executors.toml drifts from defaults"
+( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && ok "re-seeded executors.toml restores the tracked flex selection" || bad "re-seeded executors.toml drifts from the tracked flex selection"
 # --update reaches a pre-v24 workspace: CI is seeded once, .gitattributes is line-merged.
 rm -f "$F/.github/workflows/workspace-ci.yml"
 printf '*.md text\n' > "$F/.gitattributes"

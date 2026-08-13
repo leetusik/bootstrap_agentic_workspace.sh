@@ -148,10 +148,10 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 실행자는 slice의 위험도(`risk`)에 따라 두 티어 중 하나가 선택됩니다. 위험도 표시가 곧
 비용 조절 장치입니다 — 한 줄짜리 수정은 싼 모델이, 실제로 코드를 쓰는 일은 좋은 모델이 맡습니다.
 
-| 티어 | 기본 모델 | 맡는 일 |
-|---|---|---|
-| `slice-executor-mid` | Sonnet | `risk`가 정확히 `low`인 slice — 한 줄(또는 몇 줄) 코드 수정, 문서 작업 |
-| `slice-executor-high` | Opus | 일 나누기(`DECOMP`), 최종 리뷰(`REVIEW`), 그리고 그 외 전부 — 사실상 모든 코드 작성과 여러 파일에 걸친 변경 |
+| 티어 | Claude / Codex (`economy`) | Claude / Codex (`flex`) | 맡는 일 |
+|---|---|---|---|
+| `slice-executor-mid` | Sonnet@high / GPT-5.6 Luna@high | Sonnet@xhigh / GPT-5.6 Terra@high | `risk`가 정확히 `low`인 slice — 한 줄(또는 몇 줄) 코드 수정, 문서 작업 |
+| `slice-executor-high` | Opus@high / GPT-5.6 Terra@high | Opus@xhigh / GPT-5.6 Sol@high | 일 나누기(`DECOMP`), 최종 리뷰(`REVIEW`), 그리고 그 외 전부 — 사실상 모든 코드 작성과 여러 파일에 걸친 변경 |
 
 `risk`는 `low`와 `high` 두 값이고 기본값은 `high`입니다. 정확히 `low`일 때만 `mid`로 가므로,
 값을 안 줬거나 알아볼 수 없는 값이면 항상 `high`로 떨어집니다 — 안전한 쪽이 기본입니다.
@@ -166,8 +166,8 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 잔상이 다음 작업을 오염시키지 않습니다. 티어별 모델과 노력 수준은 저장소 루트의
 [`executors.toml`](executors.toml)에서 바꿀 수 있습니다 — 에이전트에게 말하면 수정하고
 `sync-agents`로 적용해 줍니다. 모델 매핑은 `mode` 프리셋으로 한 번에 바꿀 수 있습니다 —
-기본은 `economy`(Sonnet@high / Opus@high)이고, `mode = "flex"`는
-한 단계씩 올린 매핑(Sonnet@xhigh / Opus@xhigh)을 씁니다.
+모드를 고르지 않으면 `economy`(Claude Sonnet@high / Opus@high, Codex Luna@high / Terra@high)이고,
+`mode = "flex"`는 Claude Sonnet@xhigh / Opus@xhigh, Codex Terra@high / Sol@high을 씁니다.
 
 ## 자주 쓰는 명령
 

@@ -46,7 +46,7 @@ RETIRED_EXECUTOR_TIERS = ("low",)  # dropped in workspace v23 — routing is two
 # [claude.<tier>] / [codex.<tier>] tables with model/effort keys override the active
 # preset field by field; apply with `sync-agents`. An empty effort means "write no
 # effort line" — the escape hatch for models that reject the effort parameter
-# (e.g. haiku). Models may not be empty. Codex tiers are identical in both presets.
+# (e.g. haiku). Models may not be empty. Both harnesses have preset-specific values.
 DEFAULT_EXECUTOR_MODE = "economy"
 EXECUTOR_PRESETS = {
     "flex": {
@@ -54,8 +54,8 @@ EXECUTOR_PRESETS = {
         "high": {"model": "opus", "effort": "xhigh", "codex_model": "gpt-5.6-sol", "codex_effort": "high"},
     },
     "economy": {
-        "mid": {"model": "sonnet", "effort": "high", "codex_model": "gpt-5.6-terra", "codex_effort": "high"},
-        "high": {"model": "opus", "effort": "high", "codex_model": "gpt-5.6-sol", "codex_effort": "high"},
+        "mid": {"model": "sonnet", "effort": "high", "codex_model": "gpt-5.6-luna", "codex_effort": "high"},
+        "high": {"model": "opus", "effort": "high", "codex_model": "gpt-5.6-terra", "codex_effort": "high"},
     },
 }
 

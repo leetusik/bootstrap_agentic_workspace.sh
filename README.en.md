@@ -170,8 +170,8 @@ Both `--flag value` and `--flag=value` forms work.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
 - `.claude/` + `.agents/` — the 15 core Agent Skills, mirrored for both tools (`do-whole-phase` is
   Claude Code only), plus the two risk-routed `slice-executor`
-  tier subagents for each tool (`.claude/agents/slice-executor-{mid,high}.md` — sonnet / opus at tiered efforts by default (the `economy` mode);
-  `.codex/agents/` on gpt-5.6-terra / gpt-5.6-sol at high effort), `executors.toml` (seeded tier mode/model/effort config, applied with
+  tier subagents for each tool (`.claude/agents/slice-executor-{mid,high}.md` and `.codex/agents/`,
+  with economy/flex model matrices selected by `executors.toml` and applied with
   `sync-agents`), and `.codex/config.toml`.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
@@ -312,9 +312,10 @@ unset or unrecognized value always lands on the thorough tier. When the mid exec
 beyond its depth it returns an `escalate` verdict; the orchestrator folds the findings into the plan
 and re-dispatches to `slice-executor-high` (once per slice) — so trivial slices run cheap without
 capping quality. Tier models and efforts are configurable via the repo-root
-`executors.toml` — a top-level `mode` preset (`economy`, the default, at
-sonnet@high / opus@high; `flex` raises those to sonnet@xhigh / opus@xhigh) plus
-per-tier overrides (seeded with commented defaults; seed-once —
+`executors.toml` — a top-level `mode` preset (`economy`, the default, at Claude
+sonnet@high / opus@high and Codex gpt-5.6-luna@high / gpt-5.6-terra@high; `flex`
+uses Claude sonnet@xhigh / opus@xhigh and Codex gpt-5.6-terra@high / gpt-5.6-sol@high) plus
+per-tier overrides (seed-once —
 updates never overwrite it), applied with `python3 scripts/workflow.py sync-agents`. Workflow skills are
 **explicit-invocation only** — agents don't fire them on their own. They are the **operator's
 interface**: you type the slash command; the agent does everything it implies.
@@ -393,7 +394,7 @@ command reference.
 │   └── settings.json              # pre-approves workflow.py; denies force-push & rm -rf
 ├── .agents/skills/                # the same skills, mirrored for Codex (minus do-whole-phase)
 ├── .codex/
-│   ├── agents/                    # slice-executor tiers (Codex, gpt-5.6-terra / gpt-5.6-sol at high effort)
+│   ├── agents/                    # slice-executor tiers (Codex, economy/flex models from executors.toml)
 │   └── config.toml                # Codex project config
 └── .github/
     └── workflows/

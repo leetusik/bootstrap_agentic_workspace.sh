@@ -4,14 +4,16 @@
 # .agents/skills/ automatically. The primary Codex config lives in your user
 # home (~/.codex/config.toml); keep machine/account settings there.
 #
-# Subagents ship under .codex/agents/ (https://developers.openai.com/codex/subagents):
+# Subagents ship under .codex/agents/ (https://developers.openai.com/codex/subagents).
+# This repo selects the flex preset in executors.toml:
 #   - slice-executor-mid.toml   — gpt-5.6-terra / high, a one-line (or few-line) code edit, or docs: slices with risk exactly `low`
 #   - slice-executor-high.toml  — gpt-5.6-sol / high,   decomposition, the phase review, and everything else — essentially all
 #                                                   code writing, and every cross-file change (the default risk)
+# With no mode selected, economy instead maps Codex mid/high to gpt-5.6-luna / gpt-5.6-terra at high.
 # The orchestrator (main Codex thread) picks the tier from the slice's kind + risk and never implements
 # a slice inline; a mid executor that returns `escalate` is re-dispatched to slice-executor-high with a
 # revised plan (at most once per slice). Tier models/efforts are configurable via the repo-root
-# executors.toml (seeded with commented defaults), applied with `python3 scripts/workflow.py sync-agents`.
+# executors.toml (seeded once), applied with `python3 scripts/workflow.py sync-agents`.
 #
 # Recommended user-level settings to pair with this workspace:
 #

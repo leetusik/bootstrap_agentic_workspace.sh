@@ -10,7 +10,7 @@
 - Next slice: `P13.S4`
 - Waiting on operator: `none`
 - Open deferred jobs: `0`
-- Rebuilt at: `2026-08-13T15:51:19+09:00`
+- Rebuilt at: `2026-08-13T15:58:37+09:00`
 
 ## Active Phases
 
@@ -42,6 +42,7 @@
 | [x] `P13.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P13/slices/P13.DECOMP` |
 | [x] `P13.S1` | `done` | Determine and land Codex executor tiers | `implementation` | `works/phases/active/P13/slices/P13.S1` |
 | [x] `P13.S2` | `done` | Restore Codex do-whole-phase | `implementation` | `works/phases/active/P13/slices/P13.S2` |
+| [x] `P13.F1` | `done` | Adjust Codex executor presets and enable flex | `fix` | `works/phases/active/P13/slices/P13.F1` |
 | [ ] `P13.S3` | `todo` | Align Codex workflow contracts and command skills | `implementation` | `works/phases/active/P13/slices/P13.S3` |
 | [ ] `P13.S4` | `todo` | Ship Codex parity through installation and updates | `implementation` | `works/phases/active/P13/slices/P13.S4` |
 | [ ] `P13.S5` | `todo` | Audit and regression closure | `implementation` | `works/phases/active/P13/slices/P13.S5` |
