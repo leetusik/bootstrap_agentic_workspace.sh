@@ -231,6 +231,15 @@ after explicit operator input and continues to `DECOMP2` only after signoff.
 - No workflow choice remains for S2. S2 implements this Codex skill contract; S3 aligns orchestration
   and shared guardrails; S4 ships/asserts it; S5 audits the complete source and built artifact.
 
+### P14.S2 implementation finding
+
+- The Codex `design-cowork` skill and metadata now implement the selected ImageGen/exact-reference
+  workflow as a self-contained flat package: durable repository read-back, one normal signoff gate,
+  explicit capability halts, immutable rounds, `DECOMP2` implementation handoff, and real-browser
+  fidelity. The generated installer embeds that Codex payload while the Claude skill remains at blob
+  `0e3a1766ebb85126ab97356f4fdbc5f82753067e`. The existing `decisions`/`operations` Doc impact line
+  already covers this implementation, so no duplicate entry was added.
+
 ## Constraints
 
 - P14 performs no product visual design. It creates no mockup, palette, type scale, card, or product
