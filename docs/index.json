@@ -115,7 +115,7 @@
       ]
     },
     "operations": {
-      "latest": "v0024_codex_first-class_automatic_workflow_parity_executor_presets_and_v29_installation_lifecycle",
+      "latest": "v0025_operate_the_v30_codex_visual-design_gate_explicit_resume_decomp2_and_browser-fidelity_lifecycle",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -309,6 +309,14 @@
           "source": "P13.REVIEW",
           "summary": "Codex first-class automatic workflow parity, executor presets, and v29 installation lifecycle",
           "previous": "v0023_explain_ships_by_default_again_with_first-run_knowledge-base_setup_the_offline_local-file_fallback_is_removed_workspace_v26"
+        },
+        {
+          "id": "v0025_operate_the_v30_codex_visual-design_gate_explicit_resume_decomp2_and_browser-fidelity_lifecycle",
+          "path": "docs/versions/operations/v0025_operate_the_v30_codex_visual-design_gate_explicit_resume_decomp2_and_browser-fidelity_lifecycle.md",
+          "created_at": "2026-08-13T17:37:15+09:00",
+          "source": "P14.REVIEW",
+          "summary": "Operate the v30 Codex visual-design gate, explicit resume, DECOMP2, and browser-fidelity lifecycle",
+          "previous": "v0024_codex_first-class_automatic_workflow_parity_executor_presets_and_v29_installation_lifecycle"
         }
       ]
     },
@@ -349,7 +357,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0032_codex_automatic-only_workflow_parity_with_project_executor_presets_and_complete_skill_inventory",
+      "latest": "v0033_codex-native_visual_cowork_durable_imagegen_or_exact-reference_gate_one_signoff_and_faithful_build_handoff",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -607,9 +615,17 @@
           "source": "P13.REVIEW",
           "summary": "Codex automatic-only workflow parity with project executor presets and complete skill inventory",
           "previous": "v0031_restore_the_round_s_slice_id_in_design_card_groups_and_retire_it_with_a_post-approval_pure_regroup"
+        },
+        {
+          "id": "v0033_codex-native_visual_cowork_durable_imagegen_or_exact-reference_gate_one_signoff_and_faithful_build_handoff",
+          "path": "docs/versions/decisions/v0033_codex-native_visual_cowork_durable_imagegen_or_exact-reference_gate_one_signoff_and_faithful_build_handoff.md",
+          "created_at": "2026-08-13T17:37:15+09:00",
+          "source": "P14.REVIEW",
+          "summary": "Codex-native visual cowork: durable ImageGen or exact-reference gate, one signoff, and faithful build handoff",
+          "previous": "v0032_codex_automatic-only_workflow_parity_with_project_executor_presets_and_complete_skill_inventory"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-08-13T16:40:20+09:00"
+  "last_rebuilt_at": "2026-08-13T17:39:25+09:00"
 }

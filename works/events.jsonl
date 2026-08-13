@@ -305,3 +305,8 @@
 {"ts": "2026-08-13T17:23:30+09:00", "type": "slice_status_changed", "slice": "P14.S4", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-08-13T17:23:52+09:00", "type": "slice_status_changed", "slice": "P14.S5", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-08-13T17:32:54+09:00", "type": "slice_status_changed", "slice": "P14.S5", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-08-13T17:33:14+09:00", "type": "slice_status_changed", "slice": "P14.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-08-13T17:37:15+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0033_codex-native_visual_cowork_durable_imagegen_or_exact-reference_gate_one_signoff_and_faithful_build_handoff", "source": "P14.REVIEW"}
+{"ts": "2026-08-13T17:37:15+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0025_operate_the_v30_codex_visual-design_gate_explicit_resume_decomp2_and_browser-fidelity_lifecycle", "source": "P14.REVIEW"}
+{"ts": "2026-08-13T17:40:47+09:00", "type": "slice_status_changed", "slice": "P14.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-08-13T17:40:47+09:00", "type": "phase_reviewed", "phase": "P14", "verdict": "pass", "reviewer": "slice-executor-high"}

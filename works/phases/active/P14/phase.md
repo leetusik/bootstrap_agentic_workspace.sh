@@ -264,6 +264,15 @@ after explicit operator input and continues to `DECOMP2` only after signoff.
   machinery churn or new Doc impact area was warranted; P14 is ready for whole-phase review on its
   existing combined `decisions`/`operations` durable-doc pointer.
 
+### P14.REVIEW finding
+
+- Whole-phase review passed. Official guidance supports ImageGen visual direction, exact-reference
+  implementation with repository-system reuse, focused UI refinement, and real-browser verification;
+  P14 correctly keeps its one-signoff, immutable-round, and `DECOMP2` ordering as workspace-derived
+  policy. The full source/artifact/install/update smoke remained green, the preserved design skill hash
+  and header-stripped shared contracts matched, and the combined Doc impact was consolidated into
+  decisions v0033 and operations v0025.
+
 ## Constraints
 
 - P14 performs no product visual design. It creates no mockup, palette, type scale, card, or product
