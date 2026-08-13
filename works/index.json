@@ -11,10 +11,34 @@
       "current_slice": null,
       "slice_count": 10,
       "done_slice_count": 10
+    },
+    {
+      "id": "P13",
+      "name": "Codex workflow parity",
+      "objective": "Make Codex a first-class orchestrator across all non-visual workspace workflow machinery: ship and align applicable command skills including create-phase and do-whole-phase, support automatic execution only with Codex gate and plan-only modes removed or rejected, and achieve parity across executor tiers, routing, escalation, configuration, commit attribution, contracts, installer payloads, documentation, validation, and tests while auditing the workspace for remaining Claude-only assumptions.",
+      "status": "planned",
+      "order": 2,
+      "path": "works/phases/active/P13",
+      "review_status": "pending",
+      "current_slice": "P13.S1",
+      "slice_count": 7,
+      "done_slice_count": 1
+    },
+    {
+      "id": "P14",
+      "name": "Codex visual-design cowork replacement",
+      "objective": "Evaluate Codex-compatible alternatives to Claude Design and DesignSync, select a practical replacement, and implement a complete Codex visual-design cowork workflow covering handoff, operator review, artifact read-back, signoff, implementation handoff, skills, contracts, installer output, documentation, validation, and tests, while retaining Claude Code's existing Claude Design integration where appropriate.",
+      "status": "planned",
+      "order": 3,
+      "path": "works/phases/active/P14",
+      "review_status": "pending",
+      "current_slice": "P14.DECOMP",
+      "slice_count": 2,
+      "done_slice_count": 0
     }
   ],
   "deferred_open_count": 0,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 1,
-  "last_rebuilt_at": "2026-08-04T00:27:55+09:00"
+  "last_rebuilt_at": "2026-08-13T15:37:29+09:00"
 }

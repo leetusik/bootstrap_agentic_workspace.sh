@@ -5,18 +5,20 @@
 
 ## Pointer
 
-- Current phase: `none`
-- Current slice: `none`
-- Next slice: `none`
+- Current phase: `P13`
+- Current slice: `P13.S1`
+- Next slice: `P13.S2`
 - Waiting on operator: `none`
 - Open deferred jobs: `0`
-- Rebuilt at: `2026-08-04T00:27:55+09:00`
+- Rebuilt at: `2026-08-13T15:37:29+09:00`
 
 ## Active Phases
 
 | Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
 | [x] `P12` | `done` | `pass` | Opt-in parallel phase execution: branch-per-phase with PR + CI | `none` | `works/phases/active/P12` |
+| [ ] `P13` | `planned` | `pending` | Codex workflow parity | `P13.S1` | `works/phases/active/P13` |
+| [ ] `P14` | `planned` | `pending` | Codex visual-design cowork replacement | `P14.DECOMP` | `works/phases/active/P14` |
 
 ## Phase P12: Opt-in parallel phase execution: branch-per-phase with PR + CI
 
@@ -32,3 +34,22 @@
 | [x] `P12.S7` | `done` | README documentation for parallel mode | `implementation` | `works/phases/active/P12/slices/P12.S7` |
 | [x] `P12.F1` | `done` | Guard doc-new-version against a parallel stream | `fix` | `works/phases/active/P12/slices/P12.F1` |
 | [x] `P12.REVIEW` | `done` | phase review | `review` | `works/phases/active/P12/slices/P12.REVIEW` |
+
+## Phase P13: Codex workflow parity
+
+| Slice | Status | Name | Kind | Path |
+|---|---|---|---|---|
+| [x] `P13.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P13/slices/P13.DECOMP` |
+| [ ] `P13.S1` | `todo` | Determine and land Codex executor tiers | `implementation` | `works/phases/active/P13/slices/P13.S1` |
+| [ ] `P13.S2` | `todo` | Restore Codex do-whole-phase | `implementation` | `works/phases/active/P13/slices/P13.S2` |
+| [ ] `P13.S3` | `todo` | Align Codex workflow contracts and command skills | `implementation` | `works/phases/active/P13/slices/P13.S3` |
+| [ ] `P13.S4` | `todo` | Ship Codex parity through installation and updates | `implementation` | `works/phases/active/P13/slices/P13.S4` |
+| [ ] `P13.S5` | `todo` | Audit and regression closure | `implementation` | `works/phases/active/P13/slices/P13.S5` |
+| [ ] `P13.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P13/slices/P13.REVIEW` |
+
+## Phase P14: Codex visual-design cowork replacement
+
+| Slice | Status | Name | Kind | Path |
+|---|---|---|---|---|
+| [ ] `P14.DECOMP` | `todo` | decompose phase | `decomposition` | `works/phases/active/P14/slices/P14.DECOMP` |
+| [ ] `P14.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P14/slices/P14.REVIEW` |
