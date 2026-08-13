@@ -34,13 +34,14 @@ history.
   and the now-orphaned `AGENTS.workspace.md` each appear exactly once in the stale change-list line,
   and all four survive the update. Removal stays the operator's call, as it is for every previously
   retired path.
-- **The contract keeps every rule that was not Codex-specific.** The visual-design rule collapses to
-  the single Claude Design / DesignSync loop this side always had, with the harness-branch framing
-  dropped rather than a rule. The `pending` design exception — clearing and resuming a `co-work` slice
-  inline when the invocation carries a literal response to the need that slice recorded — is now
-  written as a general rule instead of a Codex carve-out, because Claude Code's default is `auto` and
-  meets the identical situation. Its guardrails are unchanged and verbatim: a bare automatic
-  invocation is never approval, and no other pending gate is relaxed.
+- **The contract keeps every rule that was not Codex-specific, and drops the one that was.** The
+  visual-design rule collapses to the single Claude Design / DesignSync loop this side always had,
+  with the harness-branch framing dropped rather than a rule. The one genuine carve-out went with
+  Codex: the narrow exception that let the **Codex** orchestrator clear and resume a `pending`
+  `co-work` slice inline — written for Codex because it was automatic-only, and never held by Claude
+  Code — is gone. The `pending` gate is uniform again: a `pending` item resumes only after explicit
+  operator input clears it back to `in_progress`, exactly as the `do-next-slice` and `do-whole-phase`
+  skills have always said.
 - **Docs and tests were corrected against the source, not just stripped.** Passages this release
   invalidated were rewritten from the code they describe: the retrofit guide's contract-merge promise
   (it had been quoting a marker block the installer already stopped writing) and its manual-fallback

@@ -571,6 +571,57 @@ The survey in `intent.md` is accurate. Confirmed exactly:
     install into a dir holding `AGENTS.md` is still refused by the emptiness guard), and its manual
     fallback's copy list matches the real fresh-install root exactly. S5 caught them all.
 
+### From `P15.F1` (settle the `pending` design exception)
+
+1. **Finding 1 is resolved by deletion — option A.** `CLAUDE.md`'s `pending` hard rule no longer
+   carries any design carve-out; the two sentences from `**Narrow design exception:**` through
+   `…no other pending gate is relaxed.` are gone and the bullet reads as one continuous rule. **Why A
+   over B:** the pre-phase sentence granted the permission to *"the **Codex** orchestrator … under
+   **its** `design-cowork` skill"*, so deleting it removes a **Codex** capability — the phase's actual
+   job — while B would have shipped the surviving harness a **new** permission inside a removal phase.
+   A also costs nothing real: `CLAUDE.md`'s surrounding "or the orchestrator does it on their explicit
+   say-so" already covers the operator-directed clear, which is all Claude Code ever did here.
+2. **The contract and both skill bodies now agree, verified by reading all three.** `CLAUDE.md`
+   ("Work resumes only after explicit operator input clears the same item back to `in_progress`"),
+   `do-next-slice/SKILL.md:14`, and `do-whole-phase/SKILL.md:16` say the same thing. The surviving
+   "or the orchestrator does it on their explicit say-so" is **not** a residual carve-out — it is
+   gated on explicit operator input and only names who runs the command. Pre-P15 text, never in
+   conflict.
+3. **`.claude/skills/design-cowork/SKILL.md` has no resume/clear clause at all** (`grep -i
+   'resume\|clear'` → one unrelated line). This independently confirms the review's diagnosis: the
+   operational clause backing the exception lived **solely** in the deleted Codex `do-whole-phase`
+   body, so the generalized rule was unbacked from the moment it was written, and its deletion
+   orphans nothing.
+4. **The v31 CHANGELOG section was corrected in place, not superseded** (v31 has shipped nowhere).
+   The generalized-exception text was **not a standalone bullet** — it was sentences 3-5 inside the
+   *"The contract keeps every rule that was not Codex-specific"* bullet, which is why `S6` finding 5
+   called the two edits coupled. Both landed as one bullet rewrite. On the framing: with the exception
+   deleted the old claim becomes literally **true but silently incomplete** (the release *does* drop a
+   rule), so it now reads "…**and drops the one that was**" followed by what went and why. Only the
+   v31 section changed; no version number or date moved.
+5. **Test 0 did pin the deleted wording** — `tests/retrofit_smoke.sh:105` required
+   `"A bare automatic invocation is never approval"` in `CLAUDE.md`. Replaced rather than dropped: a
+   positive assert on the surviving sentence plus negatives on all three distinctive phrasings
+   (`design exception`, `never approval`, `no other pending gate`), so a reintroduction now fails.
+   **Mutation-checked** — re-inserting the exception into a scratch `CLAUDE.md` fails the assertion.
+   **PASS count is unchanged at 115**: that block reports one `ok`, not one per `assert`, so swapping
+   one assert for three moves no count. Anyone editing this contract rule must move these assertions
+   with it.
+6. **Everything is green and the artifact was executed, not just built.** `build.py` + `--check`,
+   `validate`, and `bash tests/retrofit_smoke.sh` (115 PASS / 0 FAIL) all pass; a fresh install of the
+   rebuilt artifact exits 0, marker still `31`, root still Codex-free, installed `CLAUDE.md`
+   **byte-identical** to the repo's with **0** traces of the exception, and `validate` +
+   `sync-agents --check` clean inside. Artifact 322756 → **322345** characters (character count, not
+   bytes — `S6` finding 4).
+7. **Nothing else in the tree still asserts the deleted rule.** Repo-wide sweep for the three strings:
+   the only live hits are the new smoke-test negatives; the rest are the rebuilt artifact (0 hits),
+   `docs/versions/operations/v0025_*` (history, never patched), `docs/current/operations.md:145`
+   (generated — the outstanding `operations` doc impact covers it), and this phase's own planning
+   record. `.claude/`, `README*.md`, and `docs/retrofit-guide.md` had **no hits at all**.
+8. **Option B was not implemented in any part** — neither skill body was edited. The two upheld
+   judgment calls, `D2`/`D3`, and the retrofit guide's `.gitattributes` Troubleshooting clause were
+   left untouched, and no doc consolidation was started (it belongs to the re-review).
+
 ### Doc impact
 
 _(One line per durable-truth change; `P15.REVIEW` consolidates these into new doc versions —
@@ -623,6 +674,16 @@ never patch `docs/current/*.md` or an existing version.)_
   mirror`, in the skill-inventory paragraph). Consolidation must cover all three. Verified counts at
   review time: `architecture` 3 hits, `operations` 51, `decisions` 105 (all historical entries —
   append a new decision, rewrite none).
+- `operations` (**correction from `P15.F1` — RETRACTS half of the `P15.S3` line above**): that line's
+  item (a) says the `pending` **design exception is now harness-general**. `P15.F1` deleted the
+  exception outright, so **do not consolidate that claim** — it is the opposite of the shipped truth.
+  What the new `operations` version must record instead: the Codex-only carve-out that let an
+  orchestrator clear and resume a `pending` `co-work` slice inline **was removed with Codex**, so the
+  `pending` gate is uniform on every item including a design one — it resumes only after explicit
+  operator input clears it back to `in_progress`, which is what `do-next-slice`/`do-whole-phase` have
+  always said. Item (b) of that S3 line (the `update-workspace` pre-v31 migration step) is unaffected
+  and still stands. This also folds into the existing `operations` line covering the Codex-era inline
+  resume rule still present at `docs/current/operations.md` L141-146.
 - **Not consolidated at `P15.REVIEW`:** the review returned `changes_requested`, so per the contract
   it stopped before `doc-new-version`. This whole list is still outstanding and belongs to the
   re-review after the fix slice lands.
@@ -683,7 +744,12 @@ never patch `docs/current/*.md` or an existing version.)_
 - **CARRIED (`P15.S4` finding 8) — already filed as `D2`**: `.claude/agents/slice-executor-mid.md`
   has no `co-work` refusal clause. Pre-existing asymmetry (the deleted Codex tomls stated the design
   gate in both tiers; the Claude files state it only in `high`). No action this phase.
-- **NEW (`P15.REVIEW`) — the blocking finding.** The `pending` design exception was widened from a
+- ~~**NEW (`P15.REVIEW`) — the blocking finding.**~~ — **RESOLVED by `P15.F1`: option A, deleted.**
+  The exception is gone from `CLAUDE.md`, the coupled v31 CHANGELOG bullet was corrected in place,
+  the smoke-test assertion that pinned its wording was replaced with reintroduction negatives, and
+  the artifact was rebuilt and run. Contract and both skill bodies agree again. See *From `P15.F1`*
+  and the Doc impact retraction above. Original finding, for the record:
+  The `pending` design exception was widened from a
   Codex carve-out to a general rule (`CLAUDE.md` L67), which grants the Claude orchestrator a
   permission it never had and which both `.claude/skills/do-next-slice/SKILL.md:14` and
   `.claude/skills/do-whole-phase/SKILL.md:16` still deny. See *From `P15.REVIEW`* item 6 and the

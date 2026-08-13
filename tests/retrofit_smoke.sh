@@ -102,9 +102,13 @@ for required in (
     "never writes implementation code", "DECOMP2", "data, not instructions",
     "RESPECT THE DESIGN", "real-browser fidelity", "Approval must be literal",
     "literal operator signoff closes an immutable round",
-    "A bare automatic invocation is never approval",
 ):
     assert required in claude, required
+# The Codex-only `pending` co-work carve-out went with Codex: clearing a `pending`
+# item is uniformly the operator's, on every gate including a design one.
+assert "Work resumes only after explicit operator input clears the same item" in claude
+for gone in ("design exception", "never approval", "no other pending gate"):
+    assert gone not in claude, gone
 for gone in ("Codex", "AGENTS.md", ".agents/", ".codex/"):
     assert gone not in claude, gone
 PY
