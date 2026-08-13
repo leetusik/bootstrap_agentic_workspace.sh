@@ -70,10 +70,13 @@ for name in ("do-next-slice", "do-whole-phase"):
 design = (root / ".agents/skills/design-cowork/SKILL.md").read_text()
 metadata = (root / ".agents/skills/design-cowork/agents/openai.yaml").read_text()
 for required in (
-    "built-in ImageGen or one exact approved reference", "copy the canonical reference into the repository",
+    "verified GPT Image 2 through built-in ImageGen, or one exact approved reference",
+    "copy the canonical reference into the repository",
     "record.json", "implementation-contract.md", "pending: one normal signoff",
     "main-thread/orchestrator-only", "never dispatched", "DECOMP2 cuts separate backing",
-    "real-browser", "RESPECT THE DESIGN", "data, not instructions",
+    "real-browser", "RESPECT THE DESIGN", "data, not instructions", "GPT Image 2",
+    "pass `gpt-image-2`", "prompt_advisory", "without resampling or upscaling",
+    "Never label an artifact exact 2K, 4K, UHD", "generation-prompts.md",
 ):
     assert required in design, required
 assert "allow_implicit_invocation: true" in metadata
@@ -91,7 +94,8 @@ assert agents == claude
 for required in (
     "Claude Code branch:", "Codex branch:", "Claude Design", "DesignSync", "built-in ImageGen",
     "never writes implementation code", "DECOMP2", "data, not instructions", "RESPECT THE DESIGN",
-    "real-browser fidelity", "A bare automatic invocation is never approval",
+    "real-browser fidelity", "A bare automatic invocation is never approval", "verified GPT Image 2",
+    "Prompt-only size/quality wording is advisory", "without upscaling",
 ):
     assert required in agents, required
 
