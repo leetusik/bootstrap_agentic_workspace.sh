@@ -9,10 +9,10 @@ mirroring.
 
 Source of truth:
   * Live repo files (embedded verbatim, killing the double-maintenance):
-      scripts/workflow.py, .claude/skills/*, .agents/skills/*, the .claude/.codex
-      subagents, .claude/settings.json, .codex/config.toml, works/templates/*,
-      .github/workflows/workspace-ci.yml, .gitattributes, and the CLAUDE.md ==
-      AGENTS.md contract body (asserted byte-equal, embedded once).
+      scripts/workflow.py, .claude/skills/*, the .claude subagents,
+      .claude/settings.json, executors.toml, works/templates/*,
+      .github/workflows/workspace-ci.yml, .gitattributes, and the CLAUDE.md
+      contract body (header stripped, embedded once).
   * installer/payloads/  (fresh-install-only seeds, no live counterpart):
       doc_bodies/<doc>.md, sentinel-templated (__PROJECT_NAME__ / __PROJECT_SUMMARY__
       substituted by main.py at install time).
@@ -44,11 +44,8 @@ EXPECTED_SKILL_COUNT = 17
 FIXED_LIVE_FILES = [
     "scripts/workflow.py",
     ".claude/settings.json",
-    ".codex/config.toml",
     ".claude/agents/slice-executor-mid.md",
     ".claude/agents/slice-executor-high.md",
-    ".codex/agents/slice-executor-mid.toml",
-    ".codex/agents/slice-executor-high.toml",
     "executors.toml",
     "works/templates/deferred_brief.md",
     "works/templates/intent.md",
@@ -60,7 +57,6 @@ FIXED_LIVE_FILES = [
 ]
 
 CLAUDE_HDR = "# CLAUDE.md\n\n> Equivalent to `AGENTS.md`. If you change workflow rules, update both.\n\n"
-AGENTS_HDR = "# AGENTS.md\n\n> Equivalent to `CLAUDE.md`. If you change workflow rules, update both.\n\n"
 
 
 def die(msg: str) -> "None":
@@ -83,51 +79,22 @@ def collect_live_payloads() -> "dict":
     # Skills are discovered from disk (sorted) so adding/removing a skill needs no code change.
     for skill in sorted((REPO / ".claude/skills").glob("*/SKILL.md")):
         payloads[str(skill.relative_to(REPO))] = skill.read_text(encoding="utf-8")
-    for skill in sorted((REPO / ".agents/skills").glob("*/SKILL.md")):
-        payloads[str(skill.relative_to(REPO))] = skill.read_text(encoding="utf-8")
-    for yaml in sorted((REPO / ".agents/skills").glob("*/agents/openai.yaml")):
-        payloads[str(yaml.relative_to(REPO))] = yaml.read_text(encoding="utf-8")
     claude_skills = {
         Path(k).parts[2]
         for k in payloads
         if k.startswith(".claude/skills/") and k.endswith("/SKILL.md")
     }
-    codex_skills = {
-        Path(k).parts[2]
-        for k in payloads
-        if k.startswith(".agents/skills/") and k.endswith("/SKILL.md")
-    }
-    if len(claude_skills) != EXPECTED_SKILL_COUNT or len(codex_skills) != EXPECTED_SKILL_COUNT:
-        die(
-            f"expected {EXPECTED_SKILL_COUNT} Claude and Codex skills; "
-            f"found Claude={len(claude_skills)}, Codex={len(codex_skills)}"
-        )
-    if claude_skills != codex_skills:
-        die(
-            "Claude/Codex skill inventories differ: "
-            f"Claude-only={sorted(claude_skills - codex_skills)}, "
-            f"Codex-only={sorted(codex_skills - claude_skills)}"
-        )
-    missing_metadata = [
-        name
-        for name in sorted(codex_skills)
-        if f".agents/skills/{name}/agents/openai.yaml" not in payloads
-    ]
-    if missing_metadata:
-        die(f"Codex skills missing agents/openai.yaml: {', '.join(missing_metadata)}")
+    # Release invariant: a truncated or half-collected payload is a build error.
+    if len(claude_skills) != EXPECTED_SKILL_COUNT:
+        die(f"expected {EXPECTED_SKILL_COUNT} Claude skills; found {len(claude_skills)}")
     return payloads
 
 
 def collect_contract_body() -> str:
-    claude, agents = read("CLAUDE.md"), read("AGENTS.md")
+    claude = read("CLAUDE.md")
     if not claude.startswith(CLAUDE_HDR):
         die("CLAUDE.md header changed — update CLAUDE_HDR in build.py")
-    if not agents.startswith(AGENTS_HDR):
-        die("AGENTS.md header changed — update AGENTS_HDR in build.py")
-    body = claude[len(CLAUDE_HDR):]
-    if body != agents[len(AGENTS_HDR):]:
-        die("CLAUDE.md and AGENTS.md bodies differ — the contract must stay equivalent")
-    return body
+    return claude[len(CLAUDE_HDR):]
 
 
 def collect_seed_payloads() -> "dict":

@@ -52,23 +52,15 @@ EMPTY_OK_ALLOWLIST = {
 
 #@@GENERATED_PAYLOADS@@
 
-# Skill inventories are derived independently from the embedded payload manifest.
-# The build enforces the release invariant: 17 matching packages, with complete
-# Codex metadata for every package.
+# The skill inventory is derived independently from the embedded payload manifest.
+# The build enforces the release invariant: 17 skill packages.
 CLAUDE_SKILLS = sorted({k.split("/")[2] for k in PAYLOADS if k.startswith(".claude/skills/") and k.endswith("/SKILL.md")})
-CODEX_SKILLS = sorted({k.split("/")[2] for k in PAYLOADS if k.startswith(".agents/skills/") and k.endswith("/SKILL.md")})
 EXPECTED_SKILL_COUNT = 17
-if len(CLAUDE_SKILLS) != EXPECTED_SKILL_COUNT or len(CODEX_SKILLS) != EXPECTED_SKILL_COUNT or CLAUDE_SKILLS != CODEX_SKILLS:
+if len(CLAUDE_SKILLS) != EXPECTED_SKILL_COUNT:
     raise RuntimeError(
-        f"embedded skill inventory must contain {EXPECTED_SKILL_COUNT} matching Claude/Codex packages "
-        f"(found Claude={len(CLAUDE_SKILLS)}, Codex={len(CODEX_SKILLS)})"
+        f"embedded skill inventory must contain {EXPECTED_SKILL_COUNT} skill packages "
+        f"(found {len(CLAUDE_SKILLS)})"
     )
-missing_codex_metadata = [
-    name for name in CODEX_SKILLS
-    if f".agents/skills/{name}/agents/openai.yaml" not in PAYLOADS
-]
-if missing_codex_metadata:
-    raise RuntimeError(f"Codex skills missing agents/openai.yaml: {', '.join(missing_codex_metadata)}")
 
 MANAGED_DIRS = [
     "docs", "docs/current", "docs/versions",
@@ -77,12 +69,10 @@ MANAGED_DIRS = [
     "works/deferred", "works/deferred/open", "works/deferred/promoted", "works/deferred/dropped",
     "works/templates", "scripts",
     ".claude", ".claude/skills", ".claude/agents",
-    ".agents", ".agents/skills",
-    ".codex", ".codex/agents",
 ]
 
 MANAGED_FILES = [
-    "AGENTS.md", "CLAUDE.md",
+    "CLAUDE.md",
     "docs/README.md", "docs/index.json",
     *[f"docs/current/{doc_id}.md" for doc_id in DOC_TYPES],
     *[f"docs/versions/{doc_id}/v0001_bootstrap.md" for doc_id in DOC_TYPES],
@@ -91,18 +81,11 @@ MANAGED_FILES = [
     "scripts/workflow.py",
     ".claude/agents/slice-executor-mid.md", ".claude/agents/slice-executor-high.md",
     ".claude/settings.json",
-    ".codex/config.toml", ".codex/agents/slice-executor-mid.toml", ".codex/agents/slice-executor-high.toml",
     "executors.toml",
 ]
 for name in CLAUDE_SKILLS:
     MANAGED_DIRS.append(f".claude/skills/{name}")
     MANAGED_FILES.append(f".claude/skills/{name}/SKILL.md")
-for name in CODEX_SKILLS:
-    MANAGED_DIRS.extend([f".agents/skills/{name}", f".agents/skills/{name}/agents"])
-    MANAGED_FILES.extend([
-        f".agents/skills/{name}/SKILL.md",
-        f".agents/skills/{name}/agents/openai.yaml",
-    ])
 
 
 
@@ -229,16 +212,16 @@ def _merge_settings_json(text: str) -> None:
 
 
 def _merge_contract(path: str, full_text: str) -> None:
-    """Keep the target's existing CLAUDE.md/AGENTS.md; write the full workspace
-    contract to a *.workspace.md sidecar and append a marked, idempotent pointer
-    block (re-running replaces just the marked block, never duplicates)."""
+    """Keep the target's existing CLAUDE.md; write the full workspace contract to a
+    *.workspace.md sidecar and append a marked, idempotent pointer block
+    (re-running replaces just the marked block, never duplicates)."""
     p = ROOT / path
     sidecar = path[:-3] + ".workspace.md"  # CLAUDE.md -> CLAUDE.workspace.md
     _atomic_write(ROOT / sidecar, full_text)
     begin, end = "<!-- BEGIN agentic-workspace -->", "<!-- END agentic-workspace -->"
     block = (
         f"{begin}\n"
-        f"> This repo uses the agentic workspace (`scripts/workflow.py` + skills under `.claude/`/`.agents/`).\n"
+        f"> This repo uses the agentic workspace (`scripts/workflow.py` + skills under `.claude/`).\n"
         f"> Full operating contract: [`{sidecar}`]({sidecar}) — reconcile it with this file's own rules as needed.\n"
         f"{end}"
     )
@@ -263,7 +246,7 @@ def _retrofit_handle(path: str, text: str) -> bool:
     if path == ".claude/settings.json":
         _merge_settings_json(text)
         return True
-    if path in ("CLAUDE.md", "AGENTS.md"):
+    if path == "CLAUDE.md":
         _merge_contract(path, text)
         return True
     RETROFIT_SUMMARY["skipped"].append(path)  # keep theirs
@@ -273,9 +256,9 @@ def _retrofit_handle(path: str, text: str) -> bool:
 # ---- Update (--update) write policy -----------------------------------------
 # Refresh machinery in place while preserving the downstream's own work and docs:
 #   OVERWRITE (machinery, upstream-owned): scripts/workflow.py, the .claude
-#     subagents, every skill, .codex/config.toml, works/templates/*.
+#     subagents, every skill, works/templates/*.
 #   MERGE (additive): .claude/settings.json.
-#   CONTRACT (sidecar-aware): CLAUDE.md / AGENTS.md.
+#   CONTRACT (sidecar-aware): CLAUDE.md.
 #   SEED-ONCE: executors.toml (operator tier config — created if absent, never
 #     overwritten).
 #   PRESERVE (never touch): everything under works/ except templates, and all of
@@ -284,9 +267,9 @@ def _retrofit_handle(path: str, text: str) -> bool:
 # .gitattributes line-merged) bypass this dispatch entirely — see emit_policy_files().
 # In --dry-run nothing is written; changes are only recorded for the report.
 def _is_machinery(path: str) -> bool:
-    if path in ("scripts/workflow.py", ".codex/config.toml"):
+    if path == "scripts/workflow.py":
         return True
-    return path.startswith((".claude/agents/", ".codex/agents/", ".claude/skills/", ".agents/skills/", "works/templates/"))
+    return path.startswith((".claude/agents/", ".claude/skills/", "works/templates/"))
 
 
 def _difflines(old: str, new: str):
@@ -345,10 +328,10 @@ def _update_handle(path: str, text: str, executable: bool) -> None:
         else:
             _update_write(path, text, executable)
         return
-    # Contract: a retrofitted repo keeps its own CLAUDE.md/AGENTS.md and we
-    # refresh the workspace sidecar; a fresh-installed repo's contract IS
-    # machinery, so overwrite it in place (operator previews via --dry-run).
-    if path in ("CLAUDE.md", "AGENTS.md"):
+    # Contract: a retrofitted repo keeps its own CLAUDE.md and we refresh the
+    # workspace sidecar; a fresh-installed repo's contract IS machinery, so
+    # overwrite it in place (operator previews via --dry-run).
+    if path == "CLAUDE.md":
         sidecar = path[:-3] + ".workspace.md"
         if (ROOT / sidecar).exists():
             _record_change(sidecar, text)
@@ -473,9 +456,8 @@ for rel in MANAGED_DIRS:
 
 created_at = now_iso()
 
-# ---- Routing contract (CLAUDE.md / AGENTS.md) -------------------------------
+# ---- Routing contract (CLAUDE.md) -------------------------------------------
 write_text("CLAUDE.md", f"# CLAUDE.md\n\n> Equivalent to `AGENTS.md`. If you change workflow rules, update both.\n\n{CONTRACT_BODY}")
-write_text("AGENTS.md", f"# AGENTS.md\n\n> Equivalent to `CLAUDE.md`. If you change workflow rules, update both.\n\n{CONTRACT_BODY}")
 
 # ---- Versioned docs ---------------------------------------------------------
 
@@ -549,27 +531,20 @@ write_text("works/events.jsonl", json.dumps({"ts": created_at, "type": "bootstra
 # ---- Workflow engine (scripts/workflow.py) ----------------------------------
 write_text("scripts/workflow.py", PAYLOADS["scripts/workflow.py"], executable=True)
 
-# ---- Agent surfaces: skills for both tools ----------------------------------
+# ---- Agent surfaces: Claude Code skills -------------------------------------
 for name in CLAUDE_SKILLS:
     write_text(f".claude/skills/{name}/SKILL.md", PAYLOADS[f".claude/skills/{name}/SKILL.md"])
-for name in CODEX_SKILLS:
-    write_text(f".agents/skills/{name}/SKILL.md", PAYLOADS[f".agents/skills/{name}/SKILL.md"])
-    write_text(f".agents/skills/{name}/agents/openai.yaml", PAYLOADS[f".agents/skills/{name}/agents/openai.yaml"])
 
 # Subagents: full-permission workers that implement one already-planned slice, in two
 # capability tiers picked by the slice's risk (embedded verbatim from the live repo).
 for tier in ("mid", "high"):
     write_text(f".claude/agents/slice-executor-{tier}.md", PAYLOADS[f".claude/agents/slice-executor-{tier}.md"])
-    write_text(f".codex/agents/slice-executor-{tier}.toml", PAYLOADS[f".codex/agents/slice-executor-{tier}.toml"])
 
 # ---- Executor-tier config (seeded once — commented defaults; operator-owned) ----
 write_text("executors.toml", PAYLOADS["executors.toml"])
 
 # ---- Claude Code project settings: pre-approve the workflow manager ----------
 write_text(".claude/settings.json", PAYLOADS[".claude/settings.json"])
-
-# ---- Codex project config (documentation + safe defaults) -------------------
-write_text(".codex/config.toml", PAYLOADS[".codex/config.toml"])
 
 # ---- Repo-level policy files: CI workflow (seed-once) + .gitattributes (merge) ----
 emit_policy_files()
@@ -592,52 +567,49 @@ def write_version_marker() -> None:
     _atomic_write(ROOT / "works/.workspace-version.json", json.dumps(marker, ensure_ascii=False, indent=2) + "\n")
 
 
-# Machinery files older workspace versions shipped that this version has retired.
-# --update never deletes; flag them so the operator removes them manually.
+# Machinery files and directories older workspace versions shipped that this version
+# has retired. --update never deletes; flag them so the operator removes them manually.
 OBSOLETE_MACHINERY = [
     ".claude/agents/slice-executor.md",   # replaced by slice-executor-{low,mid,high}.md in v7
-    ".codex/agents/slice-executor.toml",  # replaced by slice-executor-{low,mid,high}.toml in v7
     ".env.example",                       # tier config moved to executors.toml(.example) in v8
     "executors.toml.example",             # example dropped in v9 — executors.toml itself is seeded
     "works/templates/result.md",          # template dropped in v10 — result.md is free-form, written by the executor
     ".claude/agents/slice-planner.md",    # retired in v20 — idle-window research uses plain Claude Code behaviour (Explore or inline)
     ".claude/agents/slice-executor-low.md",   # low tier retired in v23 — routing is two-tier (mid/high)
-    ".codex/agents/slice-executor-low.toml",  # low tier retired in v23 — routing is two-tier (mid/high)
+    ".agents",                            # Codex support dropped in v31 — the mirrored Codex skill tree
+    ".codex",                             # Codex support dropped in v31 — Codex config + executor agents
+    "AGENTS.md",                          # Codex support dropped in v31 — CLAUDE.md is the single contract
+    "AGENTS.workspace.md",                # Codex support dropped in v31 — retrofit sidecar, no longer refreshed
 ]
 
 
 def flag_obsolete_machinery() -> None:
+    # .exists(), not .is_file(): OBSOLETE_MACHINERY carries retired directories
+    # (.agents, .codex) as well as files.
     for rel in OBSOLETE_MACHINERY:
-        if (ROOT / rel).is_file():
+        if (ROOT / rel).exists():
             UPDATE_SUMMARY["stale"].append(rel)
 
 
 def flag_stale_skills() -> None:
     """Surface workspace-managed skill dirs that this version no longer ships, so
-    the operator can remove them. A dir is "ours" only by a tool-specific marker
-    (Claude SKILL.md sets `disable-model-invocation: true`; a Codex skill carries an
-    `agents/openai.yaml`) — so the operator's own skills are not mislabeled. The
-    expected set is per-tool, so a workspace updated to this version flags a managed
-    skill copy that its tool no longer ships. Never deletes."""
-    claude_expected = set(CLAUDE_SKILLS)
-    codex_expected = set(CODEX_SKILLS)
-    for base, expected in ((".claude/skills", claude_expected), (".agents/skills", codex_expected)):
-        d = ROOT / base
-        if not d.is_dir():
+    the operator can remove them. A dir is "ours" only by our marker (a shipped
+    SKILL.md sets `disable-model-invocation: true`) — so the operator's own skills
+    are not mislabeled. Never deletes."""
+    expected = set(CLAUDE_SKILLS)
+    base = ".claude/skills"
+    d = ROOT / base
+    if not d.is_dir():
+        return
+    for sub in sorted(d.iterdir()):
+        if not sub.is_dir() or sub.name in expected:
             continue
-        for sub in sorted(d.iterdir()):
-            if not sub.is_dir() or sub.name in expected:
-                continue
-            if base == ".claude/skills":
-                try:
-                    head = (sub / "SKILL.md").read_text(encoding="utf-8")[:400]
-                except OSError:
-                    continue
-                ours = "disable-model-invocation: true" in head
-            else:
-                ours = (sub / "agents" / "openai.yaml").is_file()
-            if ours:
-                UPDATE_SUMMARY["stale"].append(f"{base}/{sub.name}")
+        try:
+            head = (sub / "SKILL.md").read_text(encoding="utf-8")[:400]
+        except OSError:
+            continue
+        if "disable-model-invocation: true" in head:
+            UPDATE_SUMMARY["stale"].append(f"{base}/{sub.name}")
 
 
 def print_change_list() -> None:
@@ -706,14 +678,13 @@ elif RETROFIT:
     if not INSTALL_DOCS:
         print("  note: docs versioning not installed; skipped docs rebuild/validate")
     print("The installer made no git changes. Review the diff (git status); commit the adoption once the operator approves.")
-    print("If CLAUDE.md/AGENTS.md already existed, reconcile the *.workspace.md sidecar(s); add __pycache__/ to .gitignore.")
-    print("Next: python3 scripts/workflow.py validate, then create the first phase (/create-phase in Claude Code, $create-phase in Codex)")
+    print("If CLAUDE.md already existed, reconcile the CLAUDE.workspace.md sidecar; add __pycache__/ to .gitignore.")
+    print("Next: python3 scripts/workflow.py validate, then create the first phase (/create-phase in Claude Code)")
 else:
-    print(f"Bootstrapped cross-tool agentic workspace at {TARGET}")
-    print("Contracts: CLAUDE.md and AGENTS.md (equivalent)")
+    print(f"Bootstrapped agentic workspace at {TARGET}")
+    print("Contract: CLAUDE.md")
     print("Claude Code: 17 skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{mid,high}.md, settings .claude/settings.json")
-    print("Codex: 17 skills in .agents/skills/ (e.g. $do-next-slice), each with agents/openai.yaml; automatic-only do-next-slice/do-whole-phase; subagent tiers .codex/agents/slice-executor-{mid,high}.toml")
-    print("Visual design: design-cowork fires automatically; Claude Code uses Claude Design + DesignSync, while Codex persists a measured, verified-GPT-Image-2/exact-reference record for one normal signoff before separate implementation and browser fidelity")
+    print("Visual design: design-cowork fires automatically, using Claude Design + DesignSync for one normal signoff before separate implementation and browser fidelity")
     print("Executor tiers are risk-routed (mid for a one-line edit or docs, high for everything else); economy is the no-mode fallback, while this seed selects flex in executors.toml; tune it and run python3 scripts/workflow.py sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
     print("CI: .github/workflows/workspace-ci.yml runs validate on every push/PR (seeded once — yours to edit); .gitattributes carries the merge rules for machine-written files")
@@ -721,4 +692,4 @@ else:
     print("Versioned docs: docs/versions/<doc>/vNNNN_*.md with generated docs/current/*.md")
     print("Knowledge: /explain writes an interactive explainer for a phase or topic to your knowledge base (an operator-run step; the phase review writes none). First run sets up a hosted KB for you — it asks first. Already have one? export KB_API_BASE_URL + KB_API_TOKEN — see docs/current/operations.md")
     print("No phases yet — the workspace starts empty on purpose.")
-    print("Next: create the first phase with /create-phase (Claude Code), $create-phase (Codex), or python3 scripts/workflow.py new-phase ...")
+    print("Next: create the first phase with /create-phase (Claude Code) or python3 scripts/workflow.py new-phase ...")

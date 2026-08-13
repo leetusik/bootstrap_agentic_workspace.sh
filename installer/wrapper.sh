@@ -17,14 +17,12 @@ Options:
 
 TARGET_DIR defaults to the current directory.
 
-This bootstrap creates a compact, scalable agentic workspace tuned for BOTH
-Claude Code and OpenAI Codex:
+This bootstrap creates a compact, scalable agentic workspace tuned for
+Claude Code:
 
-- AGENTS.md / CLAUDE.md are equivalent compact routing contracts (the reliable
-  cross-tool fallback both agents read).
-- Operations ship as Agent Skills in BOTH .claude/skills/ (Claude Code: /slash +
-  auto-invocation) and .agents/skills/ (Codex: $skill / implicit), so the same
-  command works natively in either tool.
+- CLAUDE.md is the compact routing contract every agent reads.
+- Operations ship as Agent Skills in .claude/skills/ (Claude Code: /slash +
+  auto-invocation).
 - works/backlog.md and works/deferred.md are generated dashboards, never the
   task database. Canonical state is JSON in the phase/slice/deferred folders.
 - Each slice owns slice.json plus plan.md (the orchestrator's free-form native plan, written at the slice's turn) and result.md (written at slice end).

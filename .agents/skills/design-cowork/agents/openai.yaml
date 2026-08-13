@@ -1,6 +1,0 @@
-interface:
-  display_name: "Codex visual design cowork"
-  short_description: "Create a durable visual direction with verified GPT Image 2 or an exact reference, one operator signoff, and browser fidelity."
-  default_prompt: "Use design-cowork to run this Codex visual-design round with verified GPT Image 2, measured repository-persisted artifacts, one signoff gate, and later real-browser fidelity checks."
-policy:
-  allow_implicit_invocation: true

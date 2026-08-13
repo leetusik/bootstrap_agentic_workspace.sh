@@ -202,6 +202,70 @@ The survey in `intent.md` is accurate. Confirmed exactly:
 7. **`tests/retrofit_smoke.sh` is now red**, as planned (Codex tier-model greps). Expected until `S4`;
    the pre-commit hook does not run it, so local commits are unaffected.
 
+### From `P15.S2` (installer + tree deletion)
+
+1. **Fresh-install conflict guard narrowed — but less than expected, and the exact shape matters.**
+   `MANAGED_FILES` lost `"AGENTS.md"`, so a target containing one no longer trips the
+   *managed-file conflict* guard. It is **still rejected by the emptiness guard**, because
+   `AGENTS.md` is not in `EMPTY_OK_ALLOWLIST` — verified: the error is now "target is not empty
+   (beyond common repo metadata) … - AGENTS.md" instead of "target already contains managed
+   workflow files". The behaviour change is therefore confined to
+   `--force-empty-ok`: pre-S2 that combination aborted on the managed-file conflict; now it
+   installs and leaves the repo's own `AGENTS.md` byte-identical. That is correct — we no longer
+   write there — and it is arguably better, but it is a real change. (Adding `AGENTS.md` to
+   `EMPTY_OK_ALLOWLIST` would make the plain case work too; **not** done here, out of scope.)
+2. **A repo's own `AGENTS.md` is now left completely untouched, on every path.** Retrofit no longer
+   reads it, no longer appends a pointer block, and no longer writes an `AGENTS.workspace.md`
+   sidecar; `--update` no longer rewrites it. Verified byte-identical after a real retrofit (diff)
+   and after a real `--update` (md5 unchanged). This makes the installer strictly less invasive and
+   is the desired outcome — `AGENTS.md` is a cross-tool convention (Cursor, Amp, Copilot) that this
+   workspace must not clobber. **For `S4`:** finding 8 above is now confirmed behaviour, so the
+   smoke test should keep the sample `AGENTS.md` and assert it comes out byte-identical (this is
+   the "should the installer *assert* it never touches a repo's own `AGENTS.md`" question from the
+   S2 plan — answer: yes, and it belongs in the smoke test, not in `main.py`). The pinned
+   modified-file list becomes `.claude/settings.json,.gitattributes,CLAUDE.md,`.
+3. **`AGENTS.workspace.md` — decided: flagged.** Resolves the first *Open Question*. It is in
+   `OBSOLETE_MACHINERY` alongside `.agents`, `.codex`, and `AGENTS.md`. Rationale: `_merge_contract`
+   created it for retrofitted adopters, and once the installer stops handling `AGENTS.md` it would
+   never be refreshed and never flagged — a silent strand, which is exactly what this list exists to
+   prevent.
+4. **Final `OBSOLETE_MACHINERY` list** (10 entries): `.claude/agents/slice-executor.md`,
+   `.env.example`, `executors.toml.example`, `works/templates/result.md`,
+   `.claude/agents/slice-planner.md`, `.claude/agents/slice-executor-low.md`, `.agents`, `.codex`,
+   `AGENTS.md`, `AGENTS.workspace.md`. The two `.codex/agents/slice-executor{,-low}.toml` entries
+   were **removed** — the `.codex` directory entry subsumes them and they would double-report.
+   `flag_obsolete_machinery()` now tests `.exists()` instead of `is_file()` (finding 3); without
+   that the two directory entries are dead code. Verified end-to-end: a real `--update` against a
+   pre-S2 install prints
+   `stale workspace skills/machinery dropped upstream (remove manually?): .agents, .codex, AGENTS.md, AGENTS.workspace.md`
+   — each exactly once — and deletes nothing (37 Codex files before and after).
+5. **`EXPECTED_SKILL_COUNT = 17` kept in both `build.py` and `main.py`** as a Claude-only assert.
+   `S5`/`S6` must not drop it, and anything that changes the shipped skill count must move both.
+6. **Scope correction for `S3`: 11 `.claude/**` files, not 10.** Exact current hits —
+   `.claude/agents/slice-executor-{mid,high}.md` (2 `AGENTS.md` each, no "Codex");
+   `.claude/skills/{create-phase,do-next-slice,do-whole-phase,parallel-phase,review-phase}/SKILL.md`
+   (1 `AGENTS.md` each); `.claude/skills/retrofit/SKILL.md` (2 `AGENTS.md`);
+   `.claude/skills/{design-cowork,explain}/SKILL.md` (2 "Codex" each, no `AGENTS.md`);
+   `.claude/skills/update-workspace/SKILL.md` (2 "Codex" + 1 `AGENTS.md`, **plus** two
+   `.agents/`/`.codex/` path references at L12 and L61 that a "Codex"/"AGENTS.md" grep alone
+   misses). `CLAUDE.md` itself: 11 "Codex" + 2 `AGENTS.md` + `.agents/`/`.codex/` path references
+   at L7, L16, L23, L27, L75, L76. **Grep for `\.agents/\|\.codex/` as well as `codex\|AGENTS`.**
+7. **The artifact is now Codex-free at the payload level**: zero `'.agents/…'` / `'.codex/…'`
+   payload keys. The 28 remaining "Codex" strings in `bootstrap_agentic_workspace.sh` all come from
+   embedded prose `S3` owns (`.claude/skills/*`, the `CLAUDE.md` contract body) plus the two
+   deliberate `[codex.*]`-rejection strings in `scripts/workflow.py` from `S1`. **`S3`'s rebuild
+   should drive that 28 down to just the 2 workflow.py rejection strings** — a good closing check
+   for `S3`.
+8. **The `.githooks/pre-commit` narrowing is inert for the `S2` commit** and verified so: the new
+   alternation still matches `installer/*` and `bootstrap_agentic_workspace.sh`, which are staged
+   here, so the hook fires and `--check` runs. Only a hypothetical deletions-only commit would stop
+   firing, which is harmless (no installer/artifact change ⇒ no drift possible).
+9. **`S1` + `S2` compose correctly in a *freshly installed* workspace** — the combination neither
+   slice could verify alone. In the temp fresh install, `validate` passes and
+   `sync-agents --check` prints the new S1 format (`mid   sonnet @ xhigh` / `high  opus @ xhigh`)
+   and exits 0.
+10. **`tests/retrofit_smoke.sh` remains red**, as planned, and was deliberately not run as a gate.
+
 ### Doc impact
 
 _(One line per durable-truth change; `P15.REVIEW` consolidates these into new doc versions —
@@ -222,6 +286,15 @@ never patch `docs/current/*.md` or an existing version.)_
   accepts `[claude.<tier>]` only (a `[codex.*]` section is a hard error naming workspace v31), the
   presets are two fields per tier, and `sync-agents` prints `<tier> <model> @ <effort>` instead of
   `claude=... codex=...`.
+- `architecture` (from `P15.S2`) — the installer/distributable story is single-harness: the artifact
+  embeds `.claude/**` only (no `.agents/`/`.codex/` payloads, no `CLAUDE.md == AGENTS.md`
+  byte-equality assertion), and a fresh install produces `CLAUDE.md` + `.claude/` with no
+  `AGENTS.md`.
+- `operations` (from `P15.S2`) — the install/retrofit/update contract changed: retrofit and
+  `--update` now leave a repo's own `AGENTS.md` completely untouched (no pointer block, no
+  `AGENTS.workspace.md` sidecar), and `--update` flags `.agents`, `.codex`, `AGENTS.md`, and
+  `AGENTS.workspace.md` as stale machinery to remove manually (workspace v31 migration path;
+  `--update` still never deletes).
 - No other `docs/current/*.md` mentions Codex (`product`, `experience`, `frontend`, `backend`,
   `data`, `api`, `security`, `qa` are all clean).
 
@@ -248,9 +321,20 @@ never patch `docs/current/*.md` or an existing version.)_
 
 ## Open Questions
 
-- **`AGENTS.workspace.md` for already-retrofitted adopters** (finding 5): flag it as obsolete too,
-  or accept the strand? `S2` should decide and record the choice here. Not a blocker — either
-  answer is defensible; it just must be deliberate.
+- ~~**`AGENTS.workspace.md` for already-retrofitted adopters**~~ — **RESOLVED by `P15.S2`: flagged.**
+  It is in `OBSOLETE_MACHINERY` with the other three. See *From `P15.S2`* item 3.
 - **Whether to keep the literal `== 30`/`== 31` release pin in the smoke test** (finding 2). `S4`
   and `S6` between them must not leave the pin and `WORKSPACE_VERSION` disagreeing.
+- **NEW (`P15.S2`) — `installer/build.py` only `compile()`s the assembled artifact body (~L171);
+  it never executes it.** So `installer/main.py`'s import-time guards and every payload-key lookup
+  are invisible to the build. A change that stops embedding a payload while leaving its
+  `PAYLOADS[...]` read or its parity `raise` in place passes `python3 installer/build.py`,
+  `--check`, **and the pre-commit hook**, and ships an artifact that dies on the first line of
+  every install, retrofit, and update. `S2` dodged this only because its plan mandated running the
+  built artifact for real. **This is a pre-existing hazard this phase surfaced, not one it
+  introduced — do not fix it here.** Candidate deferred job for `P15.REVIEW` to file: *"Make
+  `installer/build.py` smoke-execute the assembled artifact (e.g. a fresh install into a temp dir)
+  so the build gate catches a broken artifact instead of only a non-compiling one."* Until then,
+  **any slice that changes what `main.py` reads out of `PAYLOADS` must run the artifact, not just
+  build it** — that includes `S3` and `S5`.
 - Nothing else was left unresolved read-only.
