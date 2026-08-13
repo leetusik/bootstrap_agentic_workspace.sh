@@ -4,16 +4,17 @@
 
 ## Summary
 
-- Open: `1`
+- Open: `2`
 - Promoted: `0`
 - Dropped: `1`
-- Rebuilt at: `2026-08-14T06:22:05+09:00`
+- Rebuilt at: `2026-08-14T06:33:06+09:00`
 
 ## Open
 
 | ID | Status | Title | Source | Trigger | Path |
 |---|---|---|---|---|---|
 | `D2` | `deferred` | slice-executor-mid has no co-work refusal clause | P15.S4 | Next time .claude/agents/slice-executor-*.md are edited, or if a co-work slice is ever mis-routed to mid | `works/deferred/open/D2` |
+| `D3` | `deferred` | Make installer/build.py smoke-execute the assembled artifact | P15.REVIEW | Next time installer/build.py is touched, or the first time a broken artifact reaches a commit | `works/deferred/open/D3` |
 
 ## Promoted
 

@@ -1,0 +1,329 @@
+# Result — P15.REVIEW: phase review
+
+**Verdict: `changes_requested`.** One blocking finding, in the contract itself. Everything else in
+this phase is clean: the mechanical removal is complete and correct, the adopter migration path
+works end to end against a real pre-v31 install, the out-of-scope boundary held exactly, and two of
+the three flagged judgment calls are upheld. The third — generalizing the `pending` design
+exception — is overruled, and the argument is in §3.
+
+Per the contract, a non-passing review **stops before doc consolidation**. No `doc-new-version` was
+run and no doc file was touched; the whole "Doc impact" list is still outstanding and belongs to the
+re-review. No commit, no state transition, no explainer.
+
+---
+
+## 1. Validation — every command actually run, with real output
+
+| # | Command | Outcome |
+| --- | --- | --- |
+| 1 | `python3 scripts/workflow.py validate` | **PASS** — `Workflow validation passed.` (exit 0) |
+| 2 | `python3 installer/build.py --check` | **PASS** — `OK: bootstrap_agentic_workspace.sh is in sync with installer/ source` (exit 0) |
+| 3 | `python3 scripts/workflow.py sync-agents --check` | **PASS** — `mid   sonnet @ xhigh` / `high  opus @ xhigh` / `config source: executors.toml (mode flex, 0 override(s))` / `agent files in sync` (exit 0) |
+| 4 | `bash tests/retrofit_smoke.sh` | **PASS** — **115 PASS / 0 FAIL**, exit 0, `ALL RETROFIT SMOKE TESTS PASSED`. Matches the expectation in `plan.md` exactly. |
+| 5 | **Fresh install of the artifact** into scratch | **PASS** — see below |
+| 6 | **Retrofit** into a git repo with its own `CLAUDE.md` + `AGENTS.md` | **PASS** — see below |
+| 7 | **`--update`** over a real pre-v31 install | **PASS** — see below |
+
+### 5 — fresh install (the gate `build.py` cannot provide)
+
+`installer/build.py` only `compile()`s the assembled body (L138) and `sh -n`s the wrapper (L162);
+it never executes the artifact. So the artifact was run for real:
+
+- exit 0, no import-time `RuntimeError` / `KeyError`
+- `works/.workspace-version.json` → `"workspace_version": 31`
+- root inventory is exactly `.claude .gitattributes .github CLAUDE.md docs executors.toml scripts works`
+- `AGENTS.md`, `.agents`, `.codex`, `AGENTS.workspace.md` — **all four absent**
+- 17 skills in `.claude/skills/`; `.claude/agents/` is exactly `slice-executor-{mid,high}.md`
+- installed `CLAUDE.md` opens `# CLAUDE.md` → blank → `## Agent Contract`, and is **byte-identical**
+  to this repo's `CLAUDE.md` (`diff` clean) — the strongest available proof that
+  `collect_contract_body()`'s `CLAUDE_HDR` slice still lands on the right line after S3 shortened
+  the header
+- in the fresh workspace: `validate` passes, `sync-agents --check` exits 0 with the S1 format
+- `grep -ri 'codex\|AGENTS.md'` over the installed `docs/` returns nothing
+
+### 6 — retrofit leaves a repo's own `AGENTS.md` alone
+
+Seeded a git repo with its own `CLAUDE.md`, its own `AGENTS.md` ("My own cross-tool contract for
+Cursor and Amp. Do not clobber me."), and `src/app.py`. After `--into-existing`:
+
+- exit 0, `merged (additive): CLAUDE.md`, 52 files created
+- `AGENTS.md` sha `bb47d403…` **before and after — byte-identical**
+- no `AGENTS.workspace.md`, no `.agents`, no `.codex`
+- `CLAUDE.workspace.md` written and byte-identical to this repo's `CLAUDE.md`
+- `validate` passes in the retrofitted repo
+
+### 7 — the adopter migration path, against a real pre-v31 install
+
+Not simulated: installed **`git show c307eb9:bootstrap_agentic_workspace.sh`** (the actual last
+dual-harness artifact) into scratch, confirmed marker 30 and `.agents` + `.codex` + `AGENTS.md`
+present, then hand-seeded an `AGENTS.workspace.md` (the retrofitted-adopter strand) and a leftover
+`[codex.mid]` table, then ran `--update` with the v31 artifact:
+
+```
+  machinery updated: 13 file(s)     ← CLAUDE.md, scripts/workflow.py, 9 skills, 2 tier agents
+  stale workspace skills/machinery dropped upstream (remove manually?): .agents, .codex, AGENTS.md, AGENTS.workspace.md
+```
+
+- marker 30 → **31**
+- all four paths flagged, **each exactly once** (the collapsed `.codex/agents/*.toml` entries do not
+  double-report)
+- **deletes nothing**: Codex file count **37 before, 37 after**; `AGENTS.workspace.md` still present
+- `AGENTS.md` sha `aad2a4f7…` unchanged — `--update` no longer rewrites it either
+
+**The `is_file()` → `.exists()` fix is confirmed load-bearing, mechanically**, against that live
+tree:
+
+```
+.agents              exists=True  is_file=False
+.codex               exists=True  is_file=False
+AGENTS.md            exists=True  is_file=True
+AGENTS.workspace.md  exists=True  is_file=True
+
+under is_file() the flagged set would be: ['AGENTS.md', 'AGENTS.workspace.md']
+under .exists()  the flagged set is:      ['.agents', '.codex', 'AGENTS.md', 'AGENTS.workspace.md']
+```
+
+Without S2's one-word change the two directory entries are dead code and the migration promise is
+silently empty. `S4`'s exactly-once assertion pins it.
+
+**Error severity matches the docs.** With the leftover `[codex.mid]` table: `sync-agents --check`
+exits **1** with `executors.toml line 51: Codex support was removed in workspace v31 — …`, while
+`validate` prints it as `warning: executor tier config check failed: …` and still exits **0**. That
+is precisely the correction `S5` made to its own draft ("aborts every workflow command" was false),
+and the guide and `update-workspace/SKILL.md` both say it correctly. Deleting the table restores
+`sync-agents` to exit 0.
+
+---
+
+## 2. The objective, judged
+
+> *Remove all Codex-specific machinery, contract text, installer payload, tests, and documentation so
+> the workspace ships Claude Code only, and give existing adopters a flagged upgrade path.*
+
+**Removal half — complete.** Non-generated, non-history sweep for `codex` leaves six files, and
+every survivor is deliberate:
+
+| File | Hits | Deliberate? |
+| --- | --- | --- |
+| `tests/retrofit_smoke.sh` | 26 | yes — every one a proof of absence |
+| `installer/main.py` | 5 | yes — the 4 `OBSOLETE_MACHINERY` entries + the `flag_obsolete_machinery` note; this *is* the migration deliverable |
+| `scripts/workflow.py` | 2 | yes — the `[codex.*]` rejection regex + message |
+| `.claude/skills/update-workspace/SKILL.md` | 1 | yes — the mandated pre-v31 migration paragraph |
+| `.claude/skills/explain/SKILL.md` | 1 | yes — the re-vendor comment |
+| `installer/README.md` | 1 | yes — the `explain` vendoring note (not on the plan's expected-survivor list, but clearly documentation of the removal) |
+
+Zero elsewhere. No `.agents/` / `.codex/` / `AGENTS.md` reference survives outside those.
+
+**Adopter half — verified independently, not trusted.** §1.7 above.
+
+**Nothing regressed for Claude Code users.** Fresh install, retrofit, and `--update` all produce a
+working workspace whose `validate` and `sync-agents --check` are clean; the smoke test's 115 checks
+cover the drift manifest, the mode matrices, the dual-apply manifest cross-check, and the version
+three-way agreement.
+
+---
+
+## 3. The three judgment calls
+
+### 3.1 — The `pending` design exception, generalized rather than deleted — **OVERRULED**
+
+This is the blocking finding.
+
+**What changed.** `CLAUDE.md` @ `c307eb9` L70:
+
+> **Narrow Codex design exception:** … **the Codex orchestrator** may clear and resume that same
+> slice inline under **its** `design-cowork` skill.
+
+`CLAUDE.md` @ `HEAD` L67:
+
+> **Narrow design exception:** … **the orchestrator** may clear and resume that same slice inline
+> under the `design-cowork` skill.
+
+**Why I disagree — four reasons, in descending weight.**
+
+1. **The stated rationale is factually inverted.** `S3`'s justification (recorded in `phase.md`
+   *From `P15.S3`* item 2, and repeated in `plan.md`) is that deleting the sentence "would have
+   silently removed a capability the operator never asked to remove." But the capability was
+   **Codex's** — the sentence named "the Codex orchestrator … under **its** `design-cowork` skill".
+   Claude Code never held it. Removing Codex's capabilities is exactly what `intent.md` asked for.
+   Deleting the sentence was the in-scope action; generalizing it **granted the surviving harness a
+   new permission**, which is the one thing a removal phase should not do on its own authority.
+
+2. **The permission is now unbacked, and contradicted, by the skills that actually run.** Both
+   operative Claude skill bodies still say the opposite:
+   - `.claude/skills/do-whole-phase/SKILL.md:16` — "Resume only after the operator clears `pending`
+     back to `in_progress`."
+   - `.claude/skills/do-next-slice/SKILL.md:14` — "Resume only after the operator approves and
+     clears the `pending` status back to `in_progress`."
+
+   Pre-P15 there was no conflict, because the exception was Codex-scoped and the **Codex**
+   `do-whole-phase/SKILL.md:18` carried the matching operational clause ("read that literal input …
+   set that same slice back to `in_progress`, and resume it inline under `design-cowork`"), plus its
+   approval / revision / capability resume paths at L43-45. That tree is now deleted and nothing
+   replaced it. So the contract grants a permission on a **safety halt** that the skills deny, with
+   no procedure anywhere for exercising it safely — on a design-approval gate, which is precisely
+   where `design-cowork`'s "approval must be literal" invariant is load-bearing.
+
+3. **The original scoping was load-bearing, and its justification does not transfer.** Codex was
+   automatic-only — it *rejected* `gate` and `plan only` — so an invocation was the operator's only
+   channel for a literal approval. Claude Code has `gate`, `plan only`, an interactive session, and
+   a plain `set-slice-status <id> in_progress`. The carve-out existed to solve a problem Claude Code
+   does not have.
+
+4. **The CHANGELOG misdescribes its own change.** `CHANGELOG.md` L26-32 files this under
+   "**The contract keeps every rule that was not Codex-specific.**" The rule *was* explicitly
+   Codex-specific. An adopter reading the entry is told a rule was preserved when it was widened.
+
+**Mitigation I weighed and rejected as sufficient.** `CLAUDE.md`'s surrounding general clause
+already says "normally the operator does that, **or the orchestrator does it on their explicit
+say-so**", so one can argue the exception only adds "resume that same slice *inline*". That softens
+the size of the widening but not the two concrete defects: the contract-vs-skill contradiction on a
+safety halt, and a CHANGELOG bullet advertising a capability the shipped skills refuse. Both are in
+the **released** v31 contract and artifact.
+
+**Credit where due:** `S3` did not do this silently. It flagged the call in `phase.md`, `S6` put it
+in the CHANGELOG so adopters would see it, and both explicitly asked the review to challenge it.
+That is the process working — the disagreement is with the conclusion, not the conduct.
+
+#### Proposed fix slice `P15.F1` — "Settle the `pending` design exception"
+
+`--kind fix --risk high` (multi-file + embedded machinery ⇒ rebuild required).
+
+The operator picks one of two coherent endings; **do not leave the current middle state**:
+
+- **Option A (recommended — restores the phase to pure removal).** Delete the exception sentence
+  from `CLAUDE.md`'s `pending` hard rule. The surrounding "or the orchestrator does it on their
+  explicit say-so" already authorizes an operator-directed clear, and `design-cowork`'s "Read back,
+  then land it" flow (`SKILL.md` §*Read back, then land it*, steps 1-5) already covers what happens
+  on the resume run — so nothing Claude Code actually does today is lost.
+- **Option B (keep the capability, deliberately).** Keep the generalized sentence **and** add the
+  matching operational clause to `.claude/skills/do-next-slice/SKILL.md:14` and
+  `.claude/skills/do-whole-phase/SKILL.md:16` so the contract and the skills agree, porting the
+  guardrails from the deleted Codex body (bare/`auto`/unattended invocation is never approval; a
+  pending *phase*, any other slice kind, or input that does not answer the recorded need still
+  halts).
+
+Either way, in the **same commit**:
+- rewrite `CHANGELOG.md`'s v31 bullet at L28-32 to match (the coupling `S6` finding 5 called out) —
+  and fix its "keeps every rule that was not Codex-specific" framing;
+- run `python3 installer/build.py` and stage the regenerated artifact (`CLAUDE.md` and `.claude/**`
+  are both embedded);
+- under Option A, tighten `tests/retrofit_smoke.sh`'s `codex_prose` subset assertion only if the
+  prose hits change (they do not under either option);
+- re-run `validate`, `build.py --check`, and `tests/retrofit_smoke.sh`.
+
+### 3.2 — `AGENTS.workspace.md` added to `OBSOLETE_MACHINERY` — **UPHELD**
+
+It is installer-created machinery, not an operator file: `_merge_contract()` wrote it, and once
+`AGENTS.md` handling is gone nothing would ever refresh or flag it — a silent strand, which is what
+this list exists to prevent. The mechanism flags with "remove manually?" and provably deletes
+nothing (§1.7: 37 files before and after). Not overreach.
+
+The sharper edge is flagging **`AGENTS.md` itself**, which an adopter may legitimately own for
+Cursor / Amp / Copilot. I checked whether the phase covered that, and it did, in all three
+adopter-facing places — `docs/retrofit-guide.md:129-131` ("Your `AGENTS.md` is never touched … not
+read, not appended to, and gets no sidecar") and `:244`, `.claude/skills/update-workspace/SKILL.md:61`
+("an `AGENTS.md` your project maintains for other tools is yours to keep"), and `CHANGELOG.md` v31
+L29-31. Adequately handled; no change requested.
+
+### 3.3 — Editing the vendored `.claude/skills/explain/SKILL.md` — **UPHELD**
+
+The two dropped passages (the Codex `workspace-write` network caveat, the `<noreply@openai.com>`
+attribution) are Codex-only. Leaving them would ship *live instructions* naming a harness that no
+longer exists — strictly worse than drift. Forking upstream is out of scope. The divergence is
+recorded where a re-vendor will actually look: the file's own comment (`SKILL.md:11-18`) now
+enumerates all four divergences and closes "Nothing syncs the two copies — re-vendor by hand", and
+`installer/README.md:76` repeats it. `phase.md` alone would have been the wrong home — it gets
+archived. Right call.
+
+---
+
+## 4. The out-of-scope boundary — held exactly
+
+Verified over `c307eb9..HEAD`:
+
+| Protected | Result |
+| --- | --- |
+| `works/phases/active/P13`, `P14`, `works/phases/archived/**` | **no file in the diff** |
+| `docs/versions/**`, `docs/current/**` | **no file in the diff** |
+| `works/events.jsonl` | **0 removed lines** — pure append |
+| pre-v31 `CHANGELOG.md` sections | **0 removed lines** — pure append; the v31 section was inserted above `## v30`, none rewritten |
+
+No violation. Nothing to report here.
+
+---
+
+## 5. The "actively wrong" doc fixes — spot-checked against the code
+
+I checked the three load-bearing ones the plan named, against the source rather than against S5's
+description:
+
+1. **Retrofit guide Tier-3 contract-merge promise** (`docs/retrofit-guide.md:118-131`) — the quoted
+   marker block matches `_merge_contract`'s literal in `installer/main.py:222-227` **verbatim**
+   (`> This repo uses the agentic workspace (\`scripts/workflow.py\` + skills under \`.claude/\`).`
+   and the `CLAUDE.workspace.md` sidecar line). My live retrofit (§1.6) produced exactly that.
+   The added byte-identical promise is correctly **scoped to retrofit + `--update`** and
+   deliberately not to a fresh install — right, because a fresh install into a directory holding
+   `AGENTS.md` is still refused by the emptiness guard unless `--force-empty-ok`.
+2. **Manual fallback** (`docs/retrofit-guide.md:254-273`) — copy list is `scripts/workflow.py`,
+   `.claude/`, `executors.toml`, `docs/`, `works/`, and conditionally `CLAUDE.workspace.md`. Matches
+   my fresh install's actual root exactly; naming `.agents/` / `.codex/` / `AGENTS.workspace.md`
+   here would have told an operator to hand-create three of the four paths `--update` now flags.
+   Correctly fixed.
+3. **`installer/README.md` build-safety list** — every claim verifies line by line against
+   `installer/build.py`: `compile()` L138 · heredoc-delimiter collision L142-143 · `sh -n` L162-165
+   · `EXPECTED_SKILL_COUNT` 17 L88-89 · `CLAUDE_HDR` prefix test L95-96. Its added sentence "**It
+   only `compile()`s the artifact — it never runs it**" is true: `build.py` has no execution path.
+
+S5 caught them all. No residual inaccuracy found in the passages checked.
+
+---
+
+## 6. Doc consolidation — **not performed**
+
+Correct for a non-passing verdict. No `doc-new-version`, no `rebuild-docs`, no file under
+`docs/versions/**` or `docs/current/**` touched.
+
+For the re-review, I verified the "Doc impact" list is otherwise complete and appended **one
+correction** to it in `phase.md`: `docs/current/architecture.md` has a **third** stale line the list
+did not name — **L58** (`it has no .agents/skills/<name>/ mirror`), alongside the recorded L23 and
+L35. Review-time counts: `architecture` 3, `operations` 51, `decisions` 105 (all historical entries
+— the plan is right that `decisions` takes a **new appended** entry and no rewrite of the 33). The
+other eight `docs/current/*.md` are clean, as recorded. Three docs to version when this passes:
+`architecture`, `operations`, `decisions`.
+
+---
+
+## 7. Open questions — closed or carried
+
+| Question | Disposition |
+| --- | --- |
+| `AGENTS.workspace.md` strand | **closed** by S2 (flagged); upheld here (§3.2) |
+| literal release pin in the smoke test | **closed** by S4 (dropped); confirmed — S6 needed no test edit and the run is green |
+| `installer/build.py` only `compile()`s the artifact | **carried — recommend filing as `D3`.** Confirmed still true; pre-existing and correctly out of scope. Harmless for *this* phase, since the review re-ran all three artifact paths for real. Suggested title: *"Make `installer/build.py` smoke-execute the assembled artifact so the build gate catches a broken artifact, not only a non-compiling one."* Trigger: next edit to `build.py` or the payload plumbing. Workaround is now documented for contributors at `installer/README.md:47-48`. |
+| retrofit guide Troubleshooting omits the `.gitattributes` line-merge | **carried.** Pre-existing, non-Codex, one clause. Not folded into `P15.F1` (different file, unrelated cause) — attach it there only if the operator wants one pass. |
+| `slice-executor-mid` co-work refusal gap | **already `D2`**, open. No action this phase. |
+
+---
+
+## 8. Deviations from `plan.md`
+
+**None.** Every step was executed as written: the five validation commands plus the three real
+artifact executions (§1), the completeness sweep and adopter-path verification (§2), all three
+judgment calls challenged (§3), the boundary check over the phase's commit range (§4), the
+load-bearing doc spot-checks (§5), and the open questions (§7). Step 6 (doc consolidation) was
+**correctly skipped** because the verdict is not `pass` — the plan mandates exactly that.
+
+One judgment worth naming: I completed the entire review, including the doc-impact completeness
+check and the open-question dispositions, **before** returning the non-pass, so the orchestrator
+gets the whole picture in one cycle rather than one finding per cycle.
+
+## 9. Boundaries respected
+
+No commit. No `review-phase`, `start-slice`, `finish-slice`, `set-slice-status`, or
+`set-phase-status`. No `doc-new-version` / `rebuild-docs`. No source code edited (a review slice
+writes only docs + `result.md` / `phase.md`). No phase explainer — `explain: not written — run
+/explain for this phase`.
+
+Files written by this slice: this `result.md`, and the `From P15.REVIEW` section + two `Doc impact`
+corrections + four `Open Questions` updates in `works/phases/active/P15/phase.md`.
