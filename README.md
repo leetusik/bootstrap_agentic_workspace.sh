@@ -65,7 +65,10 @@ sh /path/to/bootstrap_agentic_workspace.sh . --update --dry-run   # 바뀔 내�
 sh /path/to/bootstrap_agentic_workspace.sh . --update             # 실제 적용
 ```
 
-에이전트에게는 `/update-workspace`라고 입력하면 됩니다.
+에이전트에게는 `/update-workspace`(Codex에서는 `$update-workspace`)라고 입력하면 됩니다.
+업데이트는 기존 `executors.toml`을 보존하지만 생성된 Claude/Codex 에이전트 파일은 최신
+기본값으로 바꾸므로, 적용 뒤 `python3 scripts/workflow.py sync-agents`를 실행해 선택한
+프리셋과 오버라이드를 다시 반영하세요.
 
 ### 2. 에이전트에게 맡기기
 
@@ -232,7 +235,7 @@ merge된 뒤 한 번에 처리합니다. 에이전트가 `parallel-gate` → PR 
 
 ## 더 알아보기
 
-- 전체 문서 (설치 옵션, CLI 명령 전체, 프로젝트 구조, 스킬 16종): [English README](README.en.md)
+- 전체 문서 (설치 옵션, CLI 명령 전체, 프로젝트 구조, 스킬 17종): [English README](README.en.md)
 - 에이전트 규칙 문서: [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md)
 - 기존 저장소에 추가하는 절차: [Retrofit Guide](docs/retrofit-guide.md)
 - 기여하기: 이 저장소는 자기 워크플로우로 개발됩니다. phase를 열고 slice 단위로 기여해

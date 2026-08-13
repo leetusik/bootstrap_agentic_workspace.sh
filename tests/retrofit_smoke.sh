@@ -35,6 +35,23 @@ command -v git >/dev/null 2>&1 || { echo "git is required to run this smoke test
 [ -f "$BOOT" ] || { echo "installer not found: $BOOT"; exit 2; }
 
 # ---------------------------------------------------------------------------
+echo "== Test 0: release skill manifest is complete and symmetric =="
+if python3 - "$REPO_ROOT" <<'PY'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+claude = {p.parent.name for p in (root / ".claude/skills").glob("*/SKILL.md")}
+codex = {p.parent.name for p in (root / ".agents/skills").glob("*/SKILL.md")}
+assert len(claude) == 17, len(claude)
+assert len(codex) == 17, len(codex)
+assert claude == codex, (sorted(claude - codex), sorted(codex - claude))
+for name in codex:
+    assert (root / ".agents/skills" / name / "agents/openai.yaml").is_file(), name
+PY
+then ok "live manifest has 17 Claude + 17 Codex packages and complete Codex metadata"; else bad "live skill manifest incomplete or asymmetric"; fi
+
+# ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
 newtmp R
 mkdir -p "$R/src" "$R/scripts" "$R/.claude"
@@ -91,6 +108,13 @@ nph=$(find "$R/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null 
 cp_state=$(python3 -c "import json;print(json.load(open('$R/works/state.json'))['current_phase'])" 2>/dev/null)
 [ "$cp_state" = "None" ] && ok "state.json has no current phase" || bad "state.json current_phase: '$cp_state'"
 ( cd "$R" && python3 scripts/workflow.py next 2>&1 | grep -q "no active slice" ) && ok "next reports the empty-start state" || bad "next does not report empty start"
+[ -f "$R/.agents/skills/do-whole-phase/SKILL.md" ] \
+  && [ -f "$R/.agents/skills/do-whole-phase/agents/openai.yaml" ] \
+  && ok "retrofit ships Codex do-whole-phase body + metadata" || bad "retrofit missing Codex do-whole-phase package"
+[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "17" ] \
+  && [ "$(find "$R/.agents/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "17" ] \
+  && [ "$(find "$R/.agents/skills" -mindepth 3 -maxdepth 3 -name openai.yaml -type f | wc -l | tr -d ' ')" = "17" ] \
+  && ok "retrofit installs both 17-skill inventories with complete Codex metadata" || bad "retrofit skill inventory incomplete"
 
 # ---------------------------------------------------------------------------
 echo "== Test 2: re-running retrofit is an idempotent no-op =="
@@ -135,8 +159,22 @@ out=$(sh "$BOOT" "$F" --name "Fresh" --summary "fresh" 2>&1); rc=$?
 ( cd "$F" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) && ok "fresh workspace validates" || bad "fresh workspace failed validate"
 nphf=$(find "$F/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
 [ "$nphf" = "0" ] && ok "fresh install seeds no phases (empty start)" || bad "fresh install seeded $nphf phase(s)"
-grep -q '"workspace_version"' "$F/works/.workspace-version.json" && ok "fresh marker carries workspace_version" || bad "fresh marker missing workspace_version"
+if python3 - "$REPO_ROOT" "$F/works/.workspace-version.json" <<'PY'
+import json, re, sys
+from pathlib import Path
+
+root, marker_path = map(Path, sys.argv[1:])
+main_version = int(re.search(r"^WORKSPACE_VERSION = (\d+)$", (root / "installer/main.py").read_text(), re.M).group(1))
+top_changelog = int(re.search(r"^## v(\d+) ", (root / "CHANGELOG.md").read_text(), re.M).group(1))
+marker_version = json.loads(marker_path.read_text())["workspace_version"]
+assert main_version == top_changelog == marker_version == 29, (main_version, top_changelog, marker_version)
+PY
+then ok "release version is v29 in installer, top changelog heading, and fresh marker"; else bad "v29 release markers disagree"; fi
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
+[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "17" ] \
+  && [ "$(find "$F/.agents/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "17" ] \
+  && [ "$(find "$F/.agents/skills" -mindepth 3 -maxdepth 3 -name openai.yaml -type f | wc -l | tr -d ' ')" = "17" ] \
+  && ok "fresh install has 17 Claude + 17 Codex skills and all Codex metadata" || bad "fresh skill inventory incomplete"
 [ -f "$F/.claude/agents/slice-executor-mid.md" ] && [ -f "$F/.claude/agents/slice-executor-high.md" ] && ok "fresh install ships the 2 Claude slice-executor tiers" || bad "fresh install missing Claude slice-executor tier(s)"
 [ -f "$F/.codex/agents/slice-executor-mid.toml" ] && [ -f "$F/.codex/agents/slice-executor-high.toml" ] && ok "fresh install ships the 2 Codex slice-executor tiers" || bad "fresh install missing Codex slice-executor tier(s)"
 grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-mid.md" \
@@ -181,8 +219,17 @@ printf '[claude.high]\nmodel = "opus"\nmode = "flex"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && bad "mode after a section should fail sync-agents" || ok "mode after a section rejected"
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed re-applying the fable override"
-sh "$BOOT" "$F" --update >/dev/null 2>&1 && grep -q 'fable' "$F/executors.toml" \
+rm -rf "$F/.agents/skills/do-whole-phase"
+update_out=$(sh "$BOOT" "$F" --update 2>&1); update_rc=$?
+[ "$update_rc" -eq 0 ] && grep -q 'fable' "$F/executors.toml" \
   && ok "--update preserves an edited executors.toml (seed-once)" || bad "--update clobbered or failed on an edited executors.toml"
+[ -f "$F/.agents/skills/do-whole-phase/SKILL.md" ] \
+  && [ -f "$F/.agents/skills/do-whole-phase/agents/openai.yaml" ] \
+  && ok "--update restores a missing pre-parity Codex do-whole-phase package" || bad "--update did not restore Codex do-whole-phase"
+printf '%s\n' "$update_out" | grep -q 'stale workspace.*\.agents/skills/do-whole-phase' \
+  && bad "--update incorrectly flags Codex do-whole-phase as stale" || ok "--update does not flag Codex do-whole-phase as stale"
+printf '%s\n' "$update_out" | grep -q 'python3 scripts/workflow.py sync-agents' \
+  && ok "--update instructs the adopter to re-run sync-agents" || bad "--update omitted the sync-agents migration step"
 grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" \
   && ok "--update resets agent files to upstream defaults (re-run sync-agents after updates)" || bad "--update did not reset the agent files"
 rm -f "$F/executors.toml"
@@ -218,12 +265,12 @@ echo "== Test 6: dual-apply -- live files match the bootstrap-embedded copies ==
 diff -q "$REPO_ROOT/scripts/workflow.py" "$F/scripts/workflow.py" >/dev/null \
   && ok "scripts/workflow.py == bootstrap-embedded WORKFLOW_PY" \
   || bad "DRIFT: scripts/workflow.py differs from the bootstrap-embedded copy"
+for rel in $(cd "$REPO_ROOT" && find .claude/skills .agents/skills -type f \( -name SKILL.md -o -name openai.yaml \) | LC_ALL=C sort); do
+  diff -q "$REPO_ROOT/$rel" "$F/$rel" >/dev/null \
+    && ok "dual-apply: $rel" \
+    || bad "DRIFT: $rel differs from the bootstrap-embedded copy"
+done
 for rel in \
-  .claude/skills/retrofit/SKILL.md .agents/skills/retrofit/SKILL.md .agents/skills/retrofit/agents/openai.yaml \
-  .claude/skills/do-next-slice/SKILL.md .agents/skills/do-next-slice/SKILL.md \
-  .claude/skills/do-whole-phase/SKILL.md .agents/skills/do-whole-phase/SKILL.md .agents/skills/do-whole-phase/agents/openai.yaml \
-  .claude/skills/explain/SKILL.md .agents/skills/explain/SKILL.md .agents/skills/explain/agents/openai.yaml \
-  .claude/skills/review-phase/SKILL.md .agents/skills/review-phase/SKILL.md \
   .claude/agents/slice-executor-mid.md .claude/agents/slice-executor-high.md \
   .codex/agents/slice-executor-mid.toml .codex/agents/slice-executor-high.toml \
   executors.toml \

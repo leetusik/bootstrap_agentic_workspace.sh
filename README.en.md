@@ -133,7 +133,10 @@ Or drive it with an agent via the `/update-workspace` skill (`$update-workspace`
 Codex): it clones the latest upstream, shows you the dry-run change-list, applies on
 your approval, runs `validate`, and records the synced commit in
 `works/.workspace-version.json`. It never commits — you review the diff and commit
-when ready. (For *first-time* adoption use `--into-existing` / `/retrofit` instead.)
+when ready. Updates preserve your existing `executors.toml` but refresh the generated
+Claude/Codex agent files, so run `python3 scripts/workflow.py sync-agents` after every
+update to re-apply your selected preset and overrides. (For *first-time* adoption use
+`--into-existing` / `/retrofit` instead.)
 
 ### 2. Hand it to your agent
 

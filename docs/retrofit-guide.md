@@ -142,6 +142,17 @@ collision means a clean abort — never a half-installed repo.
 At the end, retrofit prints a **summary** of what it created, skipped, merged,
 and which subsystems it installed vs. left alone.
 
+The installed command surface is complete in both harnesses: 17 Claude Code
+skills under `.claude/skills/` and the same 17 Codex skills under
+`.agents/skills/`, each Codex package carrying `agents/openai.yaml`. Codex's
+`do-next-slice` and `do-whole-phase` are independent automatic-only bodies:
+bare/`auto` invocations execute, while `gate` and `plan only` are rejected before
+mutation. Existing `ready` slices remain executable for upgrade and cross-tool
+compatibility. Executor selection comes from `executors.toml`: no selected mode
+falls back to `economy` (Claude Sonnet/Opus at `high`, Codex Luna/Terra at
+`high`), while this upstream seed selects `flex` (Claude Sonnet/Opus at `xhigh`,
+Codex Terra/Sol at `high`).
+
 ---
 
 ## Your first phase
@@ -207,6 +218,17 @@ Retrofit is idempotent. A second `--into-existing` run over an already-adopted
 repo detects the existing workspace (`works/` is present), makes no changes, and
 exits cleanly (exit 0) — a safe no-op. (To re-apply the workspace after deleting
 parts of it, remove `works/` first.)
+
+## Updating after adoption
+
+Once the workspace is present, use `--update` (or `/update-workspace`,
+`$update-workspace` in Codex), not retrofit. Preview first with `--update
+--dry-run`; this matters especially if an operator-maintained path collides with
+a newly managed workspace skill. Update preserves all phase/docs state and the
+existing seed-once `executors.toml`, but refreshes the generated Claude/Codex
+agent files and all managed skill packages. After every update, run
+`python3 scripts/workflow.py sync-agents` to re-apply the preserved preset and
+per-tier overrides, then run `python3 scripts/workflow.py next`.
 
 ---
 

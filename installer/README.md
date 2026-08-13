@@ -64,9 +64,10 @@ path), so editing them and rebuilding is all that is needed:
 
 - `scripts/workflow.py`
 - `.claude/skills/*/SKILL.md`, `.agents/skills/*/SKILL.md`,
-  `.agents/skills/*/agents/openai.yaml` (skills are discovered from disk; a skill is
-  tool-specific only when it has no counterpart, while the Codex `do-*` bodies intentionally
-  differ from Claude's because Codex is automatic-only).
+  `.agents/skills/*/agents/openai.yaml` (skills are discovered from disk; the build asserts
+  the release inventory is exactly 17 matching Claude/Codex packages and every Codex package
+  has metadata, while the Codex `do-*` bodies intentionally differ from Claude's because
+  Codex is automatic-only).
   Only `*/SKILL.md` and `*/agents/openai.yaml` are embedded: a skill needing a
   `references/` or `scripts/` subdir would be **silently dropped**, so keep skills flat.
   `explain` is the one **vendored** skill — its upstream is
@@ -76,7 +77,7 @@ path), so editing them and rebuilding is all that is needed:
 - `.claude/agents/slice-executor-{mid,high}.md`, `.codex/agents/slice-executor-{mid,high}.toml`
 - `executors.toml` (seed-once executor-tier config — created if absent, never overwritten on update)
 - `.claude/settings.json`, `.codex/config.toml`
-- `works/templates/{result,deferred_brief,intent}.md`
+- `works/templates/{deferred_brief,intent}.md`
 - `.github/workflows/workspace-ci.yml` (**seed-once** repo policy file — created when
   absent, never overwritten, on install/retrofit/update alike; one generic workflow
   that runs `validate` everywhere and shell-guards the upstream-only checks

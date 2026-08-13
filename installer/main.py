@@ -35,7 +35,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 28
+WORKSPACE_VERSION = 29
 ROOT = TARGET.resolve()
 
 DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
@@ -52,10 +52,23 @@ EMPTY_OK_ALLOWLIST = {
 
 #@@GENERATED_PAYLOADS@@
 
-# Skill inventory derived from the embedded payload manifest: a skill is Claude-only
-# when it has no Codex counterpart under .agents/skills/.
+# Skill inventories are derived independently from the embedded payload manifest.
+# The build enforces the release invariant: 17 matching packages, with complete
+# Codex metadata for every package.
 CLAUDE_SKILLS = sorted({k.split("/")[2] for k in PAYLOADS if k.startswith(".claude/skills/") and k.endswith("/SKILL.md")})
 CODEX_SKILLS = sorted({k.split("/")[2] for k in PAYLOADS if k.startswith(".agents/skills/") and k.endswith("/SKILL.md")})
+EXPECTED_SKILL_COUNT = 17
+if len(CLAUDE_SKILLS) != EXPECTED_SKILL_COUNT or len(CODEX_SKILLS) != EXPECTED_SKILL_COUNT or CLAUDE_SKILLS != CODEX_SKILLS:
+    raise RuntimeError(
+        f"embedded skill inventory must contain {EXPECTED_SKILL_COUNT} matching Claude/Codex packages "
+        f"(found Claude={len(CLAUDE_SKILLS)}, Codex={len(CODEX_SKILLS)})"
+    )
+missing_codex_metadata = [
+    name for name in CODEX_SKILLS
+    if f".agents/skills/{name}/agents/openai.yaml" not in PAYLOADS
+]
+if missing_codex_metadata:
+    raise RuntimeError(f"Codex skills missing agents/openai.yaml: {', '.join(missing_codex_metadata)}")
 
 MANAGED_DIRS = [
     "docs", "docs/current", "docs/versions",
@@ -84,8 +97,7 @@ MANAGED_FILES = [
 for name in CLAUDE_SKILLS:
     MANAGED_DIRS.append(f".claude/skills/{name}")
     MANAGED_FILES.append(f".claude/skills/{name}/SKILL.md")
-    if name not in CODEX_SKILLS:
-        continue
+for name in CODEX_SKILLS:
     MANAGED_DIRS.extend([f".agents/skills/{name}", f".agents/skills/{name}/agents"])
     MANAGED_FILES.extend([
         f".agents/skills/{name}/SKILL.md",
@@ -540,8 +552,7 @@ write_text("scripts/workflow.py", PAYLOADS["scripts/workflow.py"], executable=Tr
 # ---- Agent surfaces: skills for both tools ----------------------------------
 for name in CLAUDE_SKILLS:
     write_text(f".claude/skills/{name}/SKILL.md", PAYLOADS[f".claude/skills/{name}/SKILL.md"])
-    if name not in CODEX_SKILLS:
-        continue  # Claude-only skill — no Codex counterpart
+for name in CODEX_SKILLS:
     write_text(f".agents/skills/{name}/SKILL.md", PAYLOADS[f".agents/skills/{name}/SKILL.md"])
     write_text(f".agents/skills/{name}/agents/openai.yaml", PAYLOADS[f".agents/skills/{name}/agents/openai.yaml"])
 
@@ -681,7 +692,8 @@ elif UPDATE:
         print("  note: no docs subsystem here; skipped docs rebuild (ran 'next' only)")
     print(f"  provenance recorded: works/.workspace-version.json (synced_commit {os.environ.get('SYNCED_COMMIT') or 'bootstrap'})")
     print("The installer made no git changes. Review the diff (git status); commit once the operator approves.")
-    print("Next: python3 scripts/workflow.py next")
+    print("Next: python3 scripts/workflow.py sync-agents  # re-apply your preserved executors.toml")
+    print("Then: python3 scripts/workflow.py next")
 elif RETROFIT:
     created, skipped, merged = (RETROFIT_SUMMARY["created"], RETROFIT_SUMMARY["skipped"], RETROFIT_SUMMARY["merged"])
     print(f"Retrofit complete (--into-existing) at {TARGET}")
@@ -699,9 +711,9 @@ elif RETROFIT:
 else:
     print(f"Bootstrapped cross-tool agentic workspace at {TARGET}")
     print("Contracts: CLAUDE.md and AGENTS.md (equivalent)")
-    print("Claude Code: skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{mid,high}.md, settings .claude/settings.json")
-    print("Codex: skills in .agents/skills/ (e.g. $do-next-slice), subagent tiers .codex/agents/slice-executor-{mid,high}.toml, instructions AGENTS.md")
-    print("Executor tiers are risk-routed (mid for a one-line edit or docs, high for everything else); pick a mode preset (economy default / flex) and tune models/efforts in executors.toml (seeded with commented defaults) + python3 scripts/workflow.py sync-agents")
+    print("Claude Code: 17 skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{mid,high}.md, settings .claude/settings.json")
+    print("Codex: 17 skills in .agents/skills/ (e.g. $do-next-slice), each with agents/openai.yaml; automatic-only do-next-slice/do-whole-phase; subagent tiers .codex/agents/slice-executor-{mid,high}.toml")
+    print("Executor tiers are risk-routed (mid for a one-line edit or docs, high for everything else); economy is the no-mode fallback, while this seed selects flex in executors.toml; tune it and run python3 scripts/workflow.py sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
     print("CI: .github/workflows/workspace-ci.yml runs validate on every push/PR (seeded once — yours to edit); .gitattributes carries the merge rules for machine-written files")
     print("Canonical state: phase.json / slice.json / deferred.json; generated: works/backlog.md, works/deferred.md")

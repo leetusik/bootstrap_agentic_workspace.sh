@@ -9,6 +9,36 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v29 — 2026-08-13
+
+- **Codex now ships the complete workflow surface as a first-class orchestrator.** All 17 Claude
+  Code skills have matching Codex packages with `agents/openai.yaml`. In particular,
+  `do-next-slice` and the restored `do-whole-phase` are independent Codex bodies: bare, `auto`,
+  and unattended requests execute automatically, while `gate`, `plan only`, and unknown modes
+  are rejected before workflow, state, or repository mutation. Existing `ready` slices still
+  dispatch from their approved `plan.md` for upgrade and cross-tool compatibility.
+- **Both harnesses use project custom-agent tiers with explicit preset matrices.** `economy`, the
+  no-mode fallback, maps Claude to Sonnet/Opus at `high` and Codex to GPT-5.6 Luna/Terra at
+  `high`; `flex` maps Claude to Sonnet/Opus at `xhigh` and Codex to GPT-5.6 Terra/Sol at `high`.
+  The shipped seed and this upstream repo select `mode = "flex"`; adopter-owned per-tier overrides
+  remain supported through `executors.toml` + `sync-agents`. Routing stays `risk: low` → mid and
+  everything else → high, with one `mid → high` escalation.
+- **Attribution follows the model that actually did the work.** Codex commits and saved explainers
+  no longer name a hard-coded default model; the orchestrator records the executing model's current
+  display name. The Codex project config also uses the current per-session concurrency setting.
+- **Fresh install, non-destructive retrofit, and update now carry the same parity release.** The
+  installer independently inventories both 17-skill trees, requires metadata for every Codex
+  package, emits the restored Codex whole-phase files in every lifecycle, and treats them as current
+  managed machinery rather than stale. Fresh installs seed the tracked `flex` selection; retrofits
+  still skip every pre-existing operator file; updates add missing pre-parity Codex files, refresh
+  managed skill/agent machinery, and preserve phase state, docs, and an existing seed-once
+  `executors.toml`.
+- **Migration notes:** preview with `--update --dry-run`, especially if a hand-maintained path may
+  collide with the newly managed `.agents/skills/do-whole-phase/` package. Updates preserve the
+  existing `executors.toml` but reset generated Claude/Codex agent files to upstream machinery, so
+  run `python3 scripts/workflow.py sync-agents` immediately after updating. Codex `gate` and
+  `plan only` requests are now rejected without mutation; already-`ready` slices remain executable.
+
 ## v28 — 2026-08-11
 
 - **The round's slice ID comes back to the group names, and a post-approval regroup takes it off.** v27

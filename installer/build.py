@@ -38,6 +38,7 @@ ARTIFACT = REPO / "bootstrap_agentic_workspace.sh"
 HEREDOC_DELIM = "INSTALLER_PY"                  # distinctive: no payload/body line may equal it
 PAYLOAD_MARKER = "#@@GENERATED_PAYLOADS@@"      # in main.py — replaced by generated constants
 BODY_MARKER = "#@@PYTHON_BODY@@\n"              # in wrapper.sh — replaced by the python body
+EXPECTED_SKILL_COUNT = 17
 
 # Live repo files embedded verbatim (path relative to repo root == emit target path).
 FIXED_LIVE_FILES = [
@@ -86,8 +87,34 @@ def collect_live_payloads() -> "dict":
         payloads[str(skill.relative_to(REPO))] = skill.read_text(encoding="utf-8")
     for yaml in sorted((REPO / ".agents/skills").glob("*/agents/openai.yaml")):
         payloads[str(yaml.relative_to(REPO))] = yaml.read_text(encoding="utf-8")
-    if not any(k.startswith(".claude/skills/") for k in payloads):
-        die("no Claude skills found under .claude/skills/")
+    claude_skills = {
+        Path(k).parts[2]
+        for k in payloads
+        if k.startswith(".claude/skills/") and k.endswith("/SKILL.md")
+    }
+    codex_skills = {
+        Path(k).parts[2]
+        for k in payloads
+        if k.startswith(".agents/skills/") and k.endswith("/SKILL.md")
+    }
+    if len(claude_skills) != EXPECTED_SKILL_COUNT or len(codex_skills) != EXPECTED_SKILL_COUNT:
+        die(
+            f"expected {EXPECTED_SKILL_COUNT} Claude and Codex skills; "
+            f"found Claude={len(claude_skills)}, Codex={len(codex_skills)}"
+        )
+    if claude_skills != codex_skills:
+        die(
+            "Claude/Codex skill inventories differ: "
+            f"Claude-only={sorted(claude_skills - codex_skills)}, "
+            f"Codex-only={sorted(codex_skills - claude_skills)}"
+        )
+    missing_metadata = [
+        name
+        for name in sorted(codex_skills)
+        if f".agents/skills/{name}/agents/openai.yaml" not in payloads
+    ]
+    if missing_metadata:
+        die(f"Codex skills missing agents/openai.yaml: {', '.join(missing_metadata)}")
     return payloads
 
 
