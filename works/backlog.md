@@ -5,19 +5,19 @@
 
 ## Pointer
 
-- Current phase: `P13`
-- Current slice: `P13.REVIEW`
-- Next slice: `none`
+- Current phase: `P14`
+- Current slice: `P14.DECOMP`
+- Next slice: `P14.REVIEW`
 - Waiting on operator: `none`
 - Open deferred jobs: `0`
-- Rebuilt at: `2026-08-13T16:28:23+09:00`
+- Rebuilt at: `2026-08-13T16:42:28+09:00`
 
 ## Active Phases
 
 | Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
 | [x] `P12` | `done` | `pass` | Opt-in parallel phase execution: branch-per-phase with PR + CI | `none` | `works/phases/active/P12` |
-| [ ] `P13` | `planned` | `pending` | Codex workflow parity | `P13.REVIEW` | `works/phases/active/P13` |
+| [x] `P13` | `done` | `pass` | Codex workflow parity | `none` | `works/phases/active/P13` |
 | [ ] `P14` | `planned` | `pending` | Codex visual-design cowork replacement | `P14.DECOMP` | `works/phases/active/P14` |
 
 ## Phase P12: Opt-in parallel phase execution: branch-per-phase with PR + CI
@@ -46,7 +46,7 @@
 | [x] `P13.S3` | `done` | Align Codex workflow contracts and command skills | `implementation` | `works/phases/active/P13/slices/P13.S3` |
 | [x] `P13.S4` | `done` | Ship Codex parity through installation and updates | `implementation` | `works/phases/active/P13/slices/P13.S4` |
 | [x] `P13.S5` | `done` | Audit and regression closure | `implementation` | `works/phases/active/P13/slices/P13.S5` |
-| [ ] `P13.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P13/slices/P13.REVIEW` |
+| [x] `P13.REVIEW` | `done` | phase review | `review` | `works/phases/active/P13/slices/P13.REVIEW` |
 
 ## Phase P14: Codex visual-design cowork replacement
 

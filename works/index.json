@@ -16,13 +16,13 @@
       "id": "P13",
       "name": "Codex workflow parity",
       "objective": "Make Codex a first-class orchestrator across all non-visual workspace workflow machinery: ship and align applicable command skills including create-phase and do-whole-phase, support automatic execution only with Codex gate and plan-only modes removed or rejected, and achieve parity across executor tiers, routing, escalation, configuration, commit attribution, contracts, installer payloads, documentation, validation, and tests while auditing the workspace for remaining Claude-only assumptions.",
-      "status": "planned",
+      "status": "done",
       "order": 2,
       "path": "works/phases/active/P13",
-      "review_status": "pending",
-      "current_slice": "P13.REVIEW",
+      "review_status": "pass",
+      "current_slice": null,
       "slice_count": 8,
-      "done_slice_count": 7
+      "done_slice_count": 8
     },
     {
       "id": "P14",
@@ -40,5 +40,5 @@
   "deferred_open_count": 0,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 1,
-  "last_rebuilt_at": "2026-08-13T16:28:23+09:00"
+  "last_rebuilt_at": "2026-08-13T16:42:28+09:00"
 }

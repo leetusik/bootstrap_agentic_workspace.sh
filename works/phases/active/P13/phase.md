@@ -52,6 +52,8 @@ The slices are deliberately sequential: S1 establishes the executor contract use
 - S5 made the compact retrofit smoke durable for Codex rejection ordering and forbidden Claude mechanics, all 17 invocation policies, `ready` compatibility, economy/flex synchronization, detectable post-update drift plus resync, complete fixed-payload parity, and unique descending v29 changelog/marker invariants.
 - Final audit classification: remaining plan-mode/harness/Agent/background matches are Claude-specific; `/explain` in Codex review output is the required fixed pointer; GPT-5.5/old-mode matches are historical changelog/versioned-doc records awaiting REVIEW consolidation; DesignSync/Claude Design matches are confined to P14-owned visual surfaces or explicit Claude branches.
 - Doc impact completeness — operations and decisions: the existing P13 notes cover every durable truth changed by S1–S5 (including the final audit/test closure); P13.REVIEW should consolidate those two docs only, with no additional doc area required.
+- P13.REVIEW passed after the complete combined validation: the final v29 live tree meets the confirmed non-visual parity objective, all prerequisite slice briefs, and the P14 visual boundary.
+- Review consolidation created operations v0024 and decisions v0032; the former records current automatic-only Codex workflow and v29 lifecycle truth, while the latter records the accepted decision and explicit supersessions of the old GPT-5.5, Claude-only whole-phase, identical-preset, and fixed-attribution claims.
 
 ## Constraints
 

@@ -283,3 +283,8 @@
 {"ts": "2026-08-13T16:20:11+09:00", "type": "slice_status_changed", "slice": "P13.S4", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-08-13T16:21:00+09:00", "type": "slice_status_changed", "slice": "P13.S5", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-08-13T16:28:23+09:00", "type": "slice_status_changed", "slice": "P13.S5", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-08-13T16:29:03+09:00", "type": "slice_status_changed", "slice": "P13.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-08-13T16:34:07+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0024_codex_first-class_automatic_workflow_parity_executor_presets_and_v29_installation_lifecycle", "source": "P13.REVIEW"}
+{"ts": "2026-08-13T16:34:21+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0032_codex_automatic-only_workflow_parity_with_project_executor_presets_and_complete_skill_inventory", "source": "P13.REVIEW"}
+{"ts": "2026-08-13T16:42:28+09:00", "type": "slice_status_changed", "slice": "P13.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-08-13T16:42:28+09:00", "type": "phase_reviewed", "phase": "P13", "verdict": "pass", "reviewer": "slice-executor-high"}
