@@ -47,9 +47,26 @@ assert len(claude) == 17, len(claude)
 assert len(codex) == 17, len(codex)
 assert claude == codex, (sorted(claude - codex), sorted(codex - claude))
 for name in codex:
-    assert (root / ".agents/skills" / name / "agents/openai.yaml").is_file(), name
+    meta_path = root / ".agents/skills" / name / "agents/openai.yaml"
+    assert meta_path.is_file(), name
+    meta = meta_path.read_text()
+    expected = "true" if name == "design-cowork" else "false"
+    assert f"allow_implicit_invocation: {expected}" in meta, (name, expected)
+
+for name in ("do-next-slice", "do-whole-phase"):
+    body = (root / ".agents/skills" / name / "SKILL.md").read_text()
+    reject = body.index("Before running any workflow command or changing the repository")
+    assert reject < body.index("Run `python3 scripts/workflow.py next`")
+    for required in ("`gate`", "`plan only`", "Reject any other requested execution mode", "For a `ready` slice", "dispatch directly"):
+        assert required in body, (name, required)
+    for forbidden in ("EnterPlanMode", "ExitPlanMode", "harness plan", "~/.claude/plans", "Agent tool", "background task", "run_in_background", "$ARGUMENTS", "DesignSync"):
+        assert forbidden not in body, (name, forbidden)
+
+for name in ("do-next-slice", "do-whole-phase"):
+    claude_body = (root / ".claude/skills" / name / "SKILL.md").read_text()
+    assert "In Codex" not in claude_body, name
 PY
-then ok "live manifest has 17 Claude + 17 Codex packages and complete Codex metadata"; else bad "live skill manifest incomplete or asymmetric"; fi
+then ok "17+17 skills have complete invocation metadata and Codex execution semantics"; else bad "skill inventory, metadata, or Codex execution contract is incomplete"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
@@ -165,7 +182,9 @@ from pathlib import Path
 
 root, marker_path = map(Path, sys.argv[1:])
 main_version = int(re.search(r"^WORKSPACE_VERSION = (\d+)$", (root / "installer/main.py").read_text(), re.M).group(1))
-top_changelog = int(re.search(r"^## v(\d+) ", (root / "CHANGELOG.md").read_text(), re.M).group(1))
+changelog_versions = [int(v) for v in re.findall(r"^## v(\d+) ", (root / "CHANGELOG.md").read_text(), re.M)]
+assert changelog_versions == sorted(set(changelog_versions), reverse=True), changelog_versions
+top_changelog = changelog_versions[0]
 marker_version = json.loads(marker_path.read_text())["workspace_version"]
 assert main_version == top_changelog == marker_version == 29, (main_version, top_changelog, marker_version)
 PY
@@ -232,6 +251,11 @@ printf '%s\n' "$update_out" | grep -q 'python3 scripts/workflow.py sync-agents' 
   && ok "--update instructs the adopter to re-run sync-agents" || bad "--update omitted the sync-agents migration step"
 grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" \
   && ok "--update resets agent files to upstream defaults (re-run sync-agents after updates)" || bad "--update did not reset the agent files"
+( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) \
+  && bad "preserved executor override should require re-sync after update" || ok "--update leaves a detectable executor drift until sync-agents"
+( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) \
+  && grep -q '^model: fable$' "$F/.claude/agents/slice-executor-high.md" \
+  && ok "sync-agents re-applies the preserved executor override" || bad "sync-agents did not restore the preserved override"
 rm -f "$F/executors.toml"
 sh "$BOOT" "$F" --update >/dev/null 2>&1 && [ -f "$F/executors.toml" ] \
   && ok "--update seeds a missing executors.toml (pre-v9 workspace)" || bad "--update did not seed a missing executors.toml"
@@ -273,7 +297,8 @@ done
 for rel in \
   .claude/agents/slice-executor-mid.md .claude/agents/slice-executor-high.md \
   .codex/agents/slice-executor-mid.toml .codex/agents/slice-executor-high.toml \
-  executors.toml \
+  .claude/settings.json .codex/config.toml executors.toml \
+  works/templates/deferred_brief.md works/templates/intent.md \
   .github/workflows/workspace-ci.yml .gitattributes \
   CLAUDE.md AGENTS.md ; do
   diff -q "$REPO_ROOT/$rel" "$F/$rel" >/dev/null \

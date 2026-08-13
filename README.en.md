@@ -279,10 +279,10 @@ are independent automatic-only bodies; Claude retains its optional approval mode
 
 > **Knowledge (phase explainers).** The `explain` skill ships with the workspace, for both tools.
 > Explainers are interactive HTML documents saved to the knowledge service — produced on demand, not
-> by the review: run `/explain` for a phase when you want one, and a passing review simply reports
+> by the review: run `/explain` in Claude Code or `$explain` in Codex for a phase when you want one, and a passing review simply reports
 > that none was written.
 >
-> **Setup happens on first use, and it asks first.** Run `/explain`; if no knowledge base is
+> **Setup happens on first use, and it asks first.** Run `/explain` in Claude Code or `$explain` in Codex; if no knowledge base is
 > configured it offers to create one on the [hosted service](https://knowledge.hi2vi.com) — it asks
 > for an email, installs the `knowledge` CLI, signs you up (or logs you in), and writes an org-level
 > key to `~/.config/knowledge-kb/config.json` at mode 0600. Creating an account is an outward-facing

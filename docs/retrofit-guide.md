@@ -23,7 +23,7 @@ without deleting or rewriting your content.
 |---|---|
 | Brand-new / empty directory | the plain bootstrap (see the README Quickstart) |
 | A repo that already has code/docs/history, **no** workspace yet | **this guide** (`--into-existing` or the `/retrofit` skill) |
-| A repo that already has the workspace | nothing — retrofit is a no-op; just use `/do-next-slice` etc. |
+| A repo that already has the workspace | nothing — retrofit is a no-op; use `/do-next-slice` in Claude Code, `$do-next-slice` in Codex, or the skill name |
 
 ## Prerequisites
 
@@ -209,7 +209,8 @@ python3 scripts/workflow.py next       # -> "no active slice; create a phase or 
 That `next` message is the expected empty-start state, not an error: the
 workspace has no phases until you create the first one. Confirm
 `works/state.json` exists, then create your first phase with `/create-phase`
-(`$create-phase` in Codex) and drive it with `/do-next-slice` — or any agent can
+(`$create-phase` in Codex) and drive it with `/do-next-slice` in Claude Code or
+`$do-next-slice` in Codex — or any agent can
 call `python3 scripts/workflow.py` directly.
 
 ## Re-running is safe

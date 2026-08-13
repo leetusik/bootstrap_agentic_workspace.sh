@@ -1130,7 +1130,7 @@ def parallel_start(args: argparse.Namespace) -> None:
     print(f"branch={branch}")
     print(f"worktree={worktree}")
     print(f"stamp committed here: chore(works): opt {args.phase} into parallel execution (present on both this branch and {branch})")
-    print(f"next: open a session in {worktree} and run /do-whole-phase there -- the phase runs entirely from that checkout")
+    print(f"next: open a session in {worktree} and run the do-whole-phase skill there (/do-whole-phase in Claude Code, $do-whole-phase in Codex) -- the phase runs entirely from that checkout")
     print(f"this stream's pointer now skips {args.phase}; after the branch is merged back, run: python3 scripts/workflow.py parallel-teardown {args.phase}")
 
 
