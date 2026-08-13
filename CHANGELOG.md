@@ -9,6 +9,56 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v31 — 2026-08-14
+
+- **Codex support is removed; the workspace ships Claude Code only.** The `.agents/` skill mirror (34
+  files), the `.codex/` config and executor agents (3 files), and `AGENTS.md` are gone from the
+  repository and from the installer payload, and the build no longer asserts that `CLAUDE.md` and
+  `AGENTS.md` carry byte-equal bodies. `CLAUDE.md` is the single routing contract — its "Equivalent to
+  `AGENTS.md`" header line went with the twin, so a fresh install, a retrofit sidecar, and an
+  `--update` refresh all write a contract that opens `# CLAUDE.md` → `## Agent Contract`. The Claude
+  Code surface itself is unchanged: the same 17 skills, the same `slice-executor-mid` / `-high` tiers,
+  the same workflow commands. The built artifact drops from ~475 KB to ~324 KB.
+- **The engine is single-harness.** Executor presets carry one model/effort pair per tier — `economy`
+  is Sonnet@high / Opus@high, `flex` (which the shipped seed selects) is Sonnet@xhigh / Opus@xhigh —
+  and `executors.toml` accepts `[claude.<tier>]` tables only. A leftover `[codex.*]` table is a
+  dedicated hard error naming this release rather than a generic parse failure, so an adopter is told
+  what to delete instead of what failed to parse. `sync-agents` now prints one line per tier
+  (`mid   sonnet @ xhigh`) in place of the old `claude=… codex=…` pair.
+- **Retrofit is less invasive than before.** The installer no longer reads, merges into, appends to,
+  or rewrites a repo's own `AGENTS.md` on any path, and writes no `AGENTS.workspace.md` sidecar. An
+  `AGENTS.md` your project maintains for other tools comes out of a retrofit and out of an `--update`
+  byte-identical — pinned by a sha check in the lifecycle smoke test. `CLAUDE.md` alone gets the
+  marked section and the `CLAUDE.workspace.md` sidecar.
+- **`--update` flags the retired machinery instead of deleting it.** `.agents`, `.codex`, `AGENTS.md`,
+  and the now-orphaned `AGENTS.workspace.md` each appear exactly once in the stale change-list line,
+  and all four survive the update. Removal stays the operator's call, as it is for every previously
+  retired path.
+- **The contract keeps every rule that was not Codex-specific.** The visual-design rule collapses to
+  the single Claude Design / DesignSync loop this side always had, with the harness-branch framing
+  dropped rather than a rule. The `pending` design exception — clearing and resuming a `co-work` slice
+  inline when the invocation carries a literal response to the need that slice recorded — is now
+  written as a general rule instead of a Codex carve-out, because Claude Code's default is `auto` and
+  meets the identical situation. Its guardrails are unchanged and verbatim: a bare automatic
+  invocation is never approval, and no other pending gate is relaxed.
+- **Docs and tests were corrected against the source, not just stripped.** Passages this release
+  invalidated were rewritten from the code they describe: the retrofit guide's contract-merge promise
+  (it had been quoting a marker block the installer already stopped writing) and its manual-fallback
+  copy list (following it literally would have recreated three of the four paths `--update` now
+  flags), plus `installer/README.md`'s list of build safety checks. The lifecycle smoke test asserts
+  Codex's *absence* as regressions — no `.agents/` or `.codex/` installed, no `AGENTS.md` in a fresh
+  workspace, a repo's own `AGENTS.md` sha-pinned across a retrofit — and covers the stale-flagging
+  mechanism itself.
+- **Migration notes:** preview with `--update --dry-run`. The update flags `.agents`, `.codex`,
+  `AGENTS.md`, and `AGENTS.workspace.md` as stale machinery and never deletes them, so remove them by
+  hand; an `AGENTS.md` your project maintains for other tools is yours to keep. Drop any `[codex.*]`
+  table from `executors.toml` — `sync-agents` rejects it outright and `validate` reports the same
+  thing as a warning — then run `python3 scripts/workflow.py sync-agents` to re-apply your preserved
+  mode and per-tier overrides. Phases, docs, and the seed-once `executors.toml` are preserved as
+  always, and no state migration is needed. `docs/retrofit-guide.md` § *Updating after adoption* walks
+  the procedure step by step. **If you drive this workspace from Codex, do not update** — v30 is the
+  last release with a Codex path.
+
 ## v30 — 2026-08-13
 
 - **Codex now has a native visual-design cowork path.** The model-invocable `design-cowork` skill uses

@@ -462,6 +462,42 @@ The survey in `intent.md` is accurate. Confirmed exactly:
     predicted (only `installer/payloads/doc_bodies/*` is embedded among this slice's files, and no
     test greps the doc bodies).
 
+### From `P15.S6` (release)
+
+1. **The phase ships as workspace v31, dated 2026-08-14.** `installer/main.py:38`
+   `WORKSPACE_VERSION = 31`; `CHANGELOG.md` gained one `## v31 — 2026-08-14` section directly above
+   `## v30` (L12, with `## v30` now at L62). 31 `## v<N>` headings total, unique and strictly
+   descending. No existing section was rewritten.
+2. **The three-way version agreement holds, proved by a real install.** `bash tests/retrofit_smoke.sh`
+   is **115 PASS / 0 FAIL** with **no test edit** — `S4` finding 2 was exactly right. The block that
+   matters reads `release version agrees across installer, top changelog heading, and fresh marker`,
+   and `marker_version` comes from a fresh install of the built artifact, so it independently catches
+   a bumped constant shipped with a stale artifact. A separate manual fresh install into scratch
+   confirmed `works/.workspace-version.json` → `"workspace_version": 31` and a Codex-free root.
+3. **All v31 prose pins agree with the bumped constant** — re-read, none edited:
+   `scripts/workflow.py:154` (S1's rejection message), `.claude/skills/update-workspace/SKILL.md:61`
+   (step 8's migration paragraph), `docs/retrofit-guide.md:241,248` (the guide's migration
+   paragraph), plus `installer/main.py:579-582`'s four `# Codex support dropped in v31` comments and
+   `explain/SKILL.md:14`'s re-vendor note. A repo-wide `workspace v3[01]` / `WORKSPACE_VERSION` /
+   `pre-v31` grep found no other pin and no stale `30` outside `CHANGELOG.md`'s own history and the
+   generated `docs/current/**`.
+4. **Gotcha for anyone comparing artifact sizes: `installer/build.py` prints a *character* count, not
+   a byte count.** It reports `322756 bytes` while the file on disk is `324207` bytes — the artifact
+   holds multi-byte em-dashes. Both `--check` and the smoke test pass; the numbers are not in
+   conflict. Every artifact size quoted in earlier slice results is the character count. The
+   phase-over-phase shrink measured in real bytes is **474619 → 324207** (`c307eb9` → now).
+5. **One coupling this slice created, for `P15.REVIEW`.** The CHANGELOG's v31 section carries a bullet
+   describing `S3` finding 2 — the `pending` design exception generalized from a Codex carve-out to a
+   general rule — because it is a shipped change of a gate's shape and an adopter deciding whether to
+   update is entitled to it. **If the review overrules `S3` there, the fix must edit `CLAUDE.md` and
+   that CHANGELOG bullet together.** Nothing else in the entry depends on an unsettled decision.
+6. **The Migration notes deliberately do not duplicate `docs/retrofit-guide.md`** (`S5` finding 2):
+   they state the release's minimum steps and point at § *Updating after adoption* for the procedure.
+   They also close with the one sentence the guide cannot give — *if you drive this workspace from
+   Codex, do not update; v30 is the last release with a Codex path.*
+7. **No doc impact from this slice.** Release metadata only; `docs/current/operations.md` documents
+   `WORKSPACE_VERSION` as a mechanism and pins no value, so nothing below needed a new line.
+
 ### Doc impact
 
 _(One line per durable-truth change; `P15.REVIEW` consolidates these into new doc versions —
