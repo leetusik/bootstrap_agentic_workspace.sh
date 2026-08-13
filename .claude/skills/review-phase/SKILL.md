@@ -13,7 +13,7 @@ The phase review is executed by `slice-executor-high` — the top executor tier;
 
 Read:
 
-- `AGENTS.md` (or `CLAUDE.md`)
+- `CLAUDE.md`
 - `docs/current/*.md` relevant to the phase, and `docs/index.json`
 - `works/state.json`, `works/backlog.md`
 - the phase folder under `works/phases/active/<P>/` and each completed slice's `slice.json` + `result.md`

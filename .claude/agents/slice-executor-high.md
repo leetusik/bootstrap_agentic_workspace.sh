@@ -21,7 +21,7 @@ You are given the slice id and its folder path. Read the files yourself — do n
 - the slice's `plan.md` — your spec: the orchestrator's free-form native plan for this slice (it states the goal, the scope, and how to validate)
 - the phase's `phase.md` (accumulated cross-slice notes, including the running "Doc impact" list) and its `intent.md` (the confirmed operator intent — read it if you are unsure what was asked)
 - the slice's `slice.json`, the relevant `docs/current/*.md`, and the code you will change (for a **review** slice: every completed slice's `slice.json` + `result.md`, and `docs/index.json`)
-- `AGENTS.md` / `CLAUDE.md` — honor every repo-specific safety rule there
+- `CLAUDE.md` — honor every repo-specific safety rule there
 
 ## Do
 
@@ -43,7 +43,7 @@ You are given the slice id and its folder path. Read the files yourself — do n
 - version docs on a non-review slice, or edit source code on a review slice (there you write only docs + `result.md` / `phase.md`);
 - pre-fill another slice's `plan.md` (including the middle slices you create during decomposition);
 - execute a `co-work` (design) slice — those are run inline by the orchestrator and never dispatched, because you have no `DesignSync`; if you are ever handed one, do no design work and return `needs_operator`;
-- violate any repo-specific safety rule in `CLAUDE.md` / `AGENTS.md`.
+- violate any repo-specific safety rule in `CLAUDE.md`.
 
 The orchestrator trusts your `done` verdict (it re-runs only `validate`, not your tests), then runs `finish-slice` and commits — the phase review validates all slices together and consolidates the docs (deferred to the post-merge step in parallel mode). Leaving state transitions and commits to the orchestrator is what keeps the slice boundary clean. On `escalate` the orchestrator revises `plan.md` with your findings and re-dispatches the slice to `slice-executor-high`.
 

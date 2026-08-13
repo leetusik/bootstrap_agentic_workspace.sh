@@ -10,7 +10,10 @@ disable-model-invocation: true
 
 <!-- Vendored from leetusik/knowledge @ d0c2c38 — plugin/skills/explain/SKILL.md.
      De-plugin-ified for this workspace: step 2a's self-service onboarding replaces the
-     plugin-only setup command, and the offline local-file fallback is removed.
+     plugin-only setup command, and the offline local-file fallback is removed. Since
+     workspace v31 this workspace ships Claude Code only, so upstream's two Codex notes
+     (the `workspace-write` network caveat in step 2a and the `<noreply@openai.com>`
+     attribution parenthetical) are dropped too.
      Nothing syncs the two copies — re-vendor by hand. -->
 
 Produce an educational explainer — a single **self-contained interactive HTML page**
@@ -152,10 +155,6 @@ The hosted service is the recommended path — offer it as the default, not as o
 options. If the operator declines, STOP with a single sentence: this skill points at any
 other knowledge base, self-hosted or otherwise, via the `KB_API_BASE_URL` and
 `KB_API_TOKEN` env vars. Do not walk them through self-hosting.
-
-**On Codex**, `workspace-write` blocks outbound network by default, so both the CLI
-install and every later save fail. If you are running there without
-`[sandbox_workspace_write] network_access = true`, say so plainly and STOP — do not retry.
 
 1. `command -v knowledge` — if it resolves, skip to 3.
 2. **Install the CLI.** Requires Python 3.12+. Check `command -v uv`:
@@ -457,8 +456,7 @@ not a literal template to paste:
 - Write `<tmp>/meta.json` with exactly these fields — note `"format": "html"`. Leave
   `date`, `slug`, `overwrite`, and `commit` unset (API defaults). `co_authored_by` is the
   bare attribution value naming the model that actually did the work — the API prepends
-  `Co-Authored-By: ` itself (in Codex, use the actual executing model name with
-  `<noreply@openai.com>`):
+  `Co-Authored-By: ` itself:
 
       {
         "title": "<Title>",

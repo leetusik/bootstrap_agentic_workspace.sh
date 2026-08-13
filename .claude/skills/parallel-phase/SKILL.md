@@ -15,7 +15,7 @@ The unit of parallelism is the **phase**. Slices inside a phase stay strictly se
 on each other through `phase.md` and a commit at every boundary — so never fan out slices.
 
 Everything below is the whole lifecycle, in order: suggest → opt in → work → review on the branch →
-integrate back. The contract (`CLAUDE.md` / `AGENTS.md`) carries only the rules; the detail lives here.
+integrate back. The contract (`CLAUDE.md`) carries only the rules; the detail lives here.
 
 ## 1. When — suggestion only
 

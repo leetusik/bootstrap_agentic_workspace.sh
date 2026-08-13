@@ -457,7 +457,7 @@ for rel in MANAGED_DIRS:
 created_at = now_iso()
 
 # ---- Routing contract (CLAUDE.md) -------------------------------------------
-write_text("CLAUDE.md", f"# CLAUDE.md\n\n> Equivalent to `AGENTS.md`. If you change workflow rules, update both.\n\n{CONTRACT_BODY}")
+write_text("CLAUDE.md", f"# CLAUDE.md\n\n{CONTRACT_BODY}")
 
 # ---- Versioned docs ---------------------------------------------------------
 

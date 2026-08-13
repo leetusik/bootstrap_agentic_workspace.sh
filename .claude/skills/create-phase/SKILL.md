@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # create-phase
 
-Turn an operator request for new work into one or more phases — or a deferred job — with the operator's intent captured first. Explicit invocation only. **This skill creates phases; it never decomposes or implements them** (see *Making a phase ≠ executing it* in the contract — `AGENTS.md`/`CLAUDE.md`).
+Turn an operator request for new work into one or more phases — or a deferred job — with the operator's intent captured first. Explicit invocation only. **This skill creates phases; it never decomposes or implements them** (see *Making a phase ≠ executing it* in the contract — `CLAUDE.md`).
 
 ## Procedure
 

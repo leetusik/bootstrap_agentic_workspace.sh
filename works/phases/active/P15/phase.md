@@ -266,6 +266,79 @@ The survey in `intent.md` is accurate. Confirmed exactly:
    and exits 0.
 10. **`tests/retrofit_smoke.sh` remains red**, as planned, and was deliberately not run as a gate.
 
+### From `P15.S3` (contract + Claude skill prose)
+
+1. **The `CLAUDE_HDR` coupling landed cleanly.** `CLAUDE.md` now opens `# CLAUDE.md\n\n## Agent
+   Contract`; `installer/build.py:59` `CLAUDE_HDR` and the `installer/main.py:460`
+   `write_text("CLAUDE.md", …)` literal are both `"# CLAUDE.md\n\n"`. Verified end to end, not just
+   by the build: a fresh install, a retrofit sidecar (`CLAUDE.workspace.md`), and an `--update`
+   contract refresh each produce a `CLAUDE.md` **byte-identical to the repo's**, which is the
+   strongest available proof that `collect_contract_body()`'s length-slice still lands exactly on
+   `## Agent Contract`. `grep -rn 'Equivalent to'` over the whole repo (incl. `tests/`, `README*`,
+   `docs/retrofit-guide.md`, the artifact) returns **zero** — nothing else pinned that line.
+2. **The design exception was generalized, not deleted — flagged for `P15.REVIEW` to challenge.**
+   The `pending` hard rule now reads "**Narrow design exception:**" and "the orchestrator may clear
+   and resume that same slice inline under the `design-cowork` skill"; both guardrails are verbatim
+   ("A bare automatic invocation is never approval, and no other pending gate is relaxed").
+   Rationale: it was written for Codex only because Codex was automatic-only, but Claude Code's
+   default **is** `auto`, so it meets the identical situation; the mechanism is not harness-specific;
+   and it has no `.claude/**` counterpart, so deletion would have removed the behaviour from the
+   workspace outright. **This is the one place where `S3` widened a rule's applicability rather than
+   narrowing it** — the reviewer should judge whether `auto` + a literal in-invocation approval is a
+   gate it wants relaxed for Claude Code.
+3. **Final wording of the design hard rule.** Single rule, no branches: opener "**Product visual
+   design follows the `design-cowork` skill.**" → "The invariants: …" (the same list, unchanged) →
+   the rescued sentence → the Claude Design / DesignSync body inlined without its "**Claude Code
+   branch:**" label → closing "**Never** invent visual decisions in an executor or pre-plan build
+   slices before the signed design." All Codex-only mechanics (ImageGen / GPT Image 2, native-pixel
+   chapter composition, the advisory size/quality wording, `SIGNOFF.md`, the no-pre-generation-
+   confirmation sentence) are gone.
+4. **The rescued sentence survived verbatim**: "Approval must be literal; revisions create new
+   immutable superseding rounds; later slices verify the running product in a real browser." It sits
+   at the end of the invariants, before the Claude Design body. It slightly overlaps "literal
+   operator signoff closes an immutable round", which was kept deliberately — the rescued sentence
+   carries two facts (revision rounds, browser verification) that exist nowhere else in the contract.
+   `DesignSync` still appears in `CLAUDE.md` (exactly once, in that rule) for `P15.S4`'s assertion.
+5. **`.claude/skills/explain/SKILL.md` now diverges from its vendored upstream** (`leetusik/knowledge
+   @ d0c2c38`). Two upstream passages were dropped: the step-2a "**On Codex**, `workspace-write`
+   blocks outbound network…" paragraph and the `<noreply@openai.com>` attribution parenthetical. The
+   divergence is recorded **in the file's own re-vendor comment** (which already enumerated the two
+   pre-existing de-plugin-ification divergences) so a future re-vendor does not silently reintroduce
+   them. Nothing syncs the two copies; upstream is unchanged and unaware.
+6. **Two deliberate "Codex" hits remain under `CLAUDE.md` + `.claude/` — an interpreted gate, same
+   shape as `S2`'s.** The plan asked for zero, but its own body mandates one of them:
+   - `.claude/skills/update-workspace/SKILL.md` step 8 — the **pre-v31 migration paragraph** the
+     plan explicitly required ("mention that `--update` now flags `.agents`, `.codex`, `AGENTS.md`,
+     and `AGENTS.workspace.md` as stale"), which also quotes `S1`'s real error string verbatim
+     (`executors.toml line <n>: Codex support was removed in workspace v31 — …`) so an adopter can
+     recognize the `[codex.*]` table they must delete.
+   - `.claude/skills/explain/SKILL.md` — the re-vendor comment in item 5.
+   Both **document the removal**; neither instructs an agent to do anything Codex-shaped. This is the
+   same reading `S2` applied to its `OBSOLETE_MACHINERY` comments. `P15.REVIEW` may overrule it.
+7. **Artifact "Codex" count: 28 → 19**, not the 2 `S2` predicted, and the gap is fully accounted for:
+   5 in `installer/payloads/doc_bodies/{architecture,operations}.md` (**`S5`'s**), 8 in
+   `installer/main.py`'s own `OBSOLETE_MACHINERY` entries + `flag_obsolete_machinery()` comment
+   (`S2`'s deliberate migration block, embedded because `main.py` *is* the artifact), 2 in
+   `scripts/workflow.py`'s rejection strings (`S1`'s), and 4 in the two `.claude/**` prose hits in
+   item 6. `S2`'s "down to just the 2" estimate simply forgot the doc bodies and its own `main.py`
+   comments. **After `S5` the floor is 14**, not 2.
+8. **Concrete `S4` findings this slice created** (beyond the ones already listed):
+   - `tests/retrofit_smoke.sh` L91-92 does `(root / "AGENTS.md").read_text()` and
+     `(root / "CLAUDE.md").read_text().split("\n\n", 2)[2]`. The `AGENTS.md` read now raises. The
+     `split("\n\n", 2)[2]` was written to skip a **two-paragraph** header (`# CLAUDE.md` + the
+     blockquote); the header is one paragraph shorter now, so `[2]` starts at "This file is a
+     compact routing contract…" instead of "## Agent Contract". Every string it asserts lives further
+     down, so it would still pass by luck — `S4` should drop the split and read the whole file.
+   - The contract strings the smoke test requires at L95 / L175-176 / L242 are now: `"Claude Code
+     branch:"` **gone**, `"Codex branch:"` **gone**, `"Claude Design"` kept, `"DesignSync"` kept,
+     `"built-in ImageGen"` **gone**, `"never writes implementation code"` kept, `"RESPECT THE
+     DESIGN"` kept.
+   - The `--update` change-list is an exact scope oracle: updating a pre-`S3` install with the new
+     artifact reports **precisely 12 machinery files** — `CLAUDE.md` plus the 11 `.claude/**` files —
+     confirming nothing else embedded moved.
+9. **`.claude/settings.json` / `settings.local.json` needed no edit**, as the plan said, and neither
+   did any `.claude/**` file outside the 11.
+
 ### Doc impact
 
 _(One line per durable-truth change; `P15.REVIEW` consolidates these into new doc versions —
@@ -295,6 +368,16 @@ never patch `docs/current/*.md` or an existing version.)_
   `AGENTS.workspace.md` sidecar), and `--update` flags `.agents`, `.codex`, `AGENTS.md`, and
   `AGENTS.workspace.md` as stale machinery to remove manually (workspace v31 migration path;
   `--update` still never deletes).
+- `architecture` (from `P15.S3`) — the shipped contract has no `AGENTS.md` equivalence header: a
+  fresh install, a retrofit sidecar, and an `--update` refresh all write a `CLAUDE.md` that opens
+  `# CLAUDE.md` → `## Agent Contract`. (Folds into the S2 `architecture` line; same doc, same
+  version.)
+- `operations` (from `P15.S3`) — two operating rules changed shape, not just wording: (a) the
+  `pending` **design exception is now harness-general** — any orchestrator may clear and resume a
+  `pending` `co-work` slice inline when the invocation carries a literal response to it (guardrails
+  unchanged: a bare automatic invocation is never approval, no other pending gate is relaxed);
+  (b) `update-workspace` now carries a **pre-v31 migration step** (`.agents`, `.codex`, `AGENTS.md`,
+  `AGENTS.workspace.md` flagged, remove by hand; a leftover `[codex.*]` table is a hard error).
 - No other `docs/current/*.md` mentions Codex (`product`, `experience`, `frontend`, `backend`,
   `data`, `api`, `security`, `qa` are all clean).
 

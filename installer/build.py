@@ -56,7 +56,7 @@ FIXED_LIVE_FILES = [
     ".gitattributes",
 ]
 
-CLAUDE_HDR = "# CLAUDE.md\n\n> Equivalent to `AGENTS.md`. If you change workflow rules, update both.\n\n"
+CLAUDE_HDR = "# CLAUDE.md\n\n"
 
 
 def die(msg: str) -> "None":
