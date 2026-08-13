@@ -171,7 +171,7 @@ Both `--flag value` and `--flag=value` forms work.
 - `.claude/` + `.agents/` — the 15 core Agent Skills, mirrored for both tools (`do-whole-phase` is
   Claude Code only), plus the two risk-routed `slice-executor`
   tier subagents for each tool (`.claude/agents/slice-executor-{mid,high}.md` — sonnet / opus at tiered efforts by default (the `economy` mode);
-  `.codex/agents/` on gpt-5.5 at tiered efforts), `executors.toml` (seeded tier mode/model/effort config, applied with
+  `.codex/agents/` on gpt-5.6-terra / gpt-5.6-sol at high effort), `executors.toml` (seeded tier mode/model/effort config, applied with
   `sync-agents`), and `.codex/config.toml`.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
@@ -393,7 +393,7 @@ command reference.
 │   └── settings.json              # pre-approves workflow.py; denies force-push & rm -rf
 ├── .agents/skills/                # the same skills, mirrored for Codex (minus do-whole-phase)
 ├── .codex/
-│   ├── agents/                    # slice-executor tiers (Codex, gpt-5.5 at tiered efforts)
+│   ├── agents/                    # slice-executor tiers (Codex, gpt-5.6-terra / gpt-5.6-sol at high effort)
 │   └── config.toml                # Codex project config
 └── .github/
     └── workflows/

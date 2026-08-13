@@ -142,9 +142,11 @@ grep -q '"workspace_version"' "$F/works/.workspace-version.json" && ok "fresh ma
 grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-mid.md" \
   && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-high.md" \
   && ok "Claude tier defaults (economy): sonnet@high / opus@high" || bad "Claude executor tier defaults wrong"
-grep -q '^model_reasoning_effort = "high"$' "$F/.codex/agents/slice-executor-mid.toml" \
-  && grep -q '^model_reasoning_effort = "xhigh"$' "$F/.codex/agents/slice-executor-high.toml" \
-  && ok "Codex tier efforts: high / xhigh" || bad "Codex executor tier efforts wrong"
+grep -q '^model = "gpt-5.6-terra"$' "$F/.codex/agents/slice-executor-mid.toml" \
+  && grep -q '^model_reasoning_effort = "high"$' "$F/.codex/agents/slice-executor-mid.toml" \
+  && grep -q '^model = "gpt-5.6-sol"$' "$F/.codex/agents/slice-executor-high.toml" \
+  && grep -q '^model_reasoning_effort = "high"$' "$F/.codex/agents/slice-executor-high.toml" \
+  && ok "Codex tier defaults: gpt-5.6-terra@high / gpt-5.6-sol@high" || bad "Codex executor tier defaults wrong"
 [ ! -f "$F/.claude/agents/slice-executor.md" ] && [ ! -f "$F/.codex/agents/slice-executor.toml" ] && ok "legacy untiered slice-executor retired (absent on fresh install)" || bad "legacy untiered slice-executor should be retired but is present"
 [ ! -f "$F/.claude/agents/slice-executor-low.md" ] && [ ! -f "$F/.codex/agents/slice-executor-low.toml" ] && ok "low tier retired in v23 (absent on fresh install)" || bad "slice-executor-low should be retired but is present"
 [ -f "$F/executors.toml" ] && ok "fresh install seeds executors.toml (commented defaults)" || bad "fresh install missing executors.toml"

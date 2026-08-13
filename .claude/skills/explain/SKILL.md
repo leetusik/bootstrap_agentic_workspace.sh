@@ -457,7 +457,8 @@ not a literal template to paste:
 - Write `<tmp>/meta.json` with exactly these fields — note `"format": "html"`. Leave
   `date`, `slug`, `overwrite`, and `commit` unset (API defaults). `co_authored_by` is the
   bare attribution value naming the model that actually did the work — the API prepends
-  `Co-Authored-By: ` itself (e.g. in Codex, `GPT-5.5 <noreply@openai.com>`):
+  `Co-Authored-By: ` itself (in Codex, use the actual executing model name with
+  `<noreply@openai.com>`):
 
       {
         "title": "<Title>",

@@ -26,6 +26,12 @@ The slices are deliberately sequential: S1 establishes the executor contract use
 - Official guidance currently recommends `gpt-5.6` for demanding multi-step agents and `gpt-5.6-terra` for faster, lower-cost supporting agents. S1 owns the final tier choice and its repository-wide consequences.
 - P14 exclusively owns the visual-design cowork replacement. P13 audits and changes only non-visual workflow machinery.
 - Codex is automatic-only: `gate` and `plan only` must fail clearly, while legacy/cross-tool slices already in `ready` state remain executable.
+- S1 executor decision, operator-specified: Codex `slice-executor-mid` runs `gpt-5.6-terra` at `high`; Codex `slice-executor-high` runs `gpt-5.6-sol` at `high`. Both presets carry the same Codex defaults; `economy` / `flex` continue to vary Claude only.
+- S1 kept the existing routing and recovery contract unchanged: only `risk: low` reaches mid; decomposition, review, and every other risk reach high; mid may escalate once to high.
+- S1 removed live hard-coded GPT-5.5 attribution examples. Codex commit/explainer attribution names the model that actually performed the work.
+- S1 updated `.codex/config.toml` to use the current `agents.max_concurrent_threads_per_session` setting name; the older `agents.max_threads` remains only an upstream-supported legacy alias.
+- Doc impact — operations: record the Codex executor defaults (`gpt-5.6-terra` high / `gpt-5.6-sol` high), preset behavior, official project-agent schema baseline, and current concurrency setting name.
+- Doc impact — decisions: supersede the Codex GPT-5.5/xhigh tier defaults and hard-coded attribution example with the operator-selected 5.6 tier pair and actual-executing-model attribution.
 
 ## Constraints
 

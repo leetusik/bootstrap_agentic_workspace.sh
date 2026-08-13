@@ -50,12 +50,12 @@ RETIRED_EXECUTOR_TIERS = ("low",)  # dropped in workspace v23 — routing is two
 DEFAULT_EXECUTOR_MODE = "economy"
 EXECUTOR_PRESETS = {
     "flex": {
-        "mid": {"model": "sonnet", "effort": "xhigh", "codex_model": "gpt-5.5", "codex_effort": "high"},
-        "high": {"model": "opus", "effort": "xhigh", "codex_model": "gpt-5.5", "codex_effort": "xhigh"},
+        "mid": {"model": "sonnet", "effort": "xhigh", "codex_model": "gpt-5.6-terra", "codex_effort": "high"},
+        "high": {"model": "opus", "effort": "xhigh", "codex_model": "gpt-5.6-sol", "codex_effort": "high"},
     },
     "economy": {
-        "mid": {"model": "sonnet", "effort": "high", "codex_model": "gpt-5.5", "codex_effort": "high"},
-        "high": {"model": "opus", "effort": "high", "codex_model": "gpt-5.5", "codex_effort": "xhigh"},
+        "mid": {"model": "sonnet", "effort": "high", "codex_model": "gpt-5.6-terra", "codex_effort": "high"},
+        "high": {"model": "opus", "effort": "high", "codex_model": "gpt-5.6-sol", "codex_effort": "high"},
     },
 }
 
