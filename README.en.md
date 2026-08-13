@@ -211,6 +211,16 @@ Then execute it at whichever pace you prefer:
 Codex ships both `$do-next-slice` and `$do-whole-phase`, but supports automatic execution only;
 `gate` and `plan only` are rejected before any state or repository mutation.
 
+### Visual work: one design signoff
+
+`design-cowork` fires automatically when the work changes a product's visual appearance. In Codex,
+the normal path uses built-in ImageGen or one exact approved reference, persists the exact reference
+and implementation contract in the repository, asks you for one visual signoff, then implements in
+separate slices and checks the running result in a real browser. You do not approve generation or
+every intermediate plan. A missing capability or reference, or a requested revision, is an explicit
+exceptional halt. Claude Code keeps its own Claude Design + DesignSync path under the same shared
+rules: the design slice contains no implementation, and the approved design is respected downstream.
+
 Track progress in [`works/backlog.md`](works/backlog.md) (the generated dashboard) and the active
 phase folder under `works/phases/active/` (the phase notebook and slice folders) — or just ask the
 agent, *"where are we?"*.

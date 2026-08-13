@@ -68,6 +68,11 @@ path), so editing them and rebuilding is all that is needed:
   the release inventory is exactly 17 matching Claude/Codex packages and every Codex package
   has metadata, while the Codex `do-*` bodies intentionally differ from Claude's because
   Codex is automatic-only).
+  `design-cowork` is intentionally harness-specific too: Claude Code retains its Claude Design /
+  DesignSync card workflow, while Codex carries the ImageGen-or-exact-reference, repository record,
+  one-signoff, and later browser-fidelity contract. Do not mirror one body over the other. Release
+  validation preserves the Claude body at Git blob
+  `0e3a1766ebb85126ab97356f4fdbc5f82753067e` while checking the Codex body and metadata independently.
   Only `*/SKILL.md` and `*/agents/openai.yaml` are embedded: a skill needing a
   `references/` or `scripts/` subdir would be **silently dropped**, so keep skills flat.
   `explain` is the one **vendored** skill — its upstream is

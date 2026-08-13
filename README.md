@@ -98,6 +98,16 @@ sh /path/to/bootstrap_agentic_workspace.sh . --update             # 실제 적�
 Codex에서도 `$do-next-slice`와 `$do-whole-phase`를 모두 쓸 수 있지만 자동 실행만 지원합니다.
 Codex에서 `gate`와 `plan only`를 요청하면 어떤 상태나 파일도 바꾸기 전에 거부합니다.
 
+### 시각 디자인 작업: 승인 한 번
+
+제품의 화면 모양을 바꾸는 일이면 `design-cowork` 스킬이 자동으로 작동합니다. Codex는 보통
+내장 ImageGen이나 이미 승인된 정확한 레퍼런스 하나를 사용하고, 그 레퍼런스와 구현 계약을
+저장소에 그대로 남긴 뒤 시각 방향에 대한 승인을 한 번만 요청합니다. 승인이 끝나면 별도
+slice에서 구현하고 실제 브라우저로 결과를 확인합니다. 이미지 생성 자체나 중간 계획마다
+승인할 필요는 없습니다. 필요한 기능이나 정확한 레퍼런스가 없거나 수정을 요청한 경우에만
+예외적으로 다시 멈춥니다. Claude Code는 기존 Claude Design + DesignSync 경로를 그대로 쓰며,
+두 경로 모두 디자인 slice에서는 구현하지 않고 승인된 디자인을 이후 작업에서 충실히 따릅니다.
+
 진행 상황은 [`works/backlog.md`](works/backlog.md)에서 확인할 수 있습니다.
 아니면 에이전트에게 "지금 어디까지 했어?"라고 물어보세요.
 

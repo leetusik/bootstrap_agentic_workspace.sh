@@ -1,8 +1,8 @@
 {
   "current_phase": "P14",
-  "current_slice": "P14.S4",
-  "next_slice": "P14.S5",
+  "current_slice": "P14.S5",
+  "next_slice": "P14.REVIEW",
   "waiting_on_operator": null,
   "mode": "phase",
-  "updated_at": "2026-08-13T17:19:12+09:00"
+  "updated_at": "2026-08-13T17:23:30+09:00"
 }

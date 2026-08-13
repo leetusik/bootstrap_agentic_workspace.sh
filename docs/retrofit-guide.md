@@ -153,6 +153,14 @@ falls back to `economy` (Claude Sonnet/Opus at `high`, Codex Luna/Terra at
 `high`), while this upstream seed selects `flex` (Claude Sonnet/Opus at `xhigh`,
 Codex Terra/Sol at `high`).
 
+Retrofit also installs the harness-specific visual workflow and Codex invocation metadata when those
+paths do not already exist: Claude Code keeps Claude Design + DesignSync, while Codex uses built-in
+ImageGen or one exact approved reference, persists the exact design record, and normally pauses once
+for visual signoff before separate implementation and real-browser fidelity work. Missing capability
+or reference data and requested revisions are explicit exceptions. A later `--update` refreshes these
+workspace-managed skill, runner, executor, metadata, and contract payloads; retrofit still skips
+pre-existing operator-owned files, and update still preserves phase/docs state and `executors.toml`.
+
 ---
 
 ## Your first phase

@@ -9,6 +9,42 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v30 — 2026-08-13
+
+- **Codex now has a native visual-design cowork path.** The model-invocable `design-cowork` skill uses
+  built-in ImageGen or one exact approved reference, copies the canonical reference into the
+  repository, reads that exact file back, and records a machine-checkable manifest, implementation
+  contract, validation evidence, and immutable approval provenance. No Figma or other plugin is
+  required; an explicitly chosen existing-design integration remains optional input only.
+- **The normal operator boundary is one visual signoff, not approval of generation or every plan.** A
+  complete review-ready record is committed without `SIGNOFF.md`, then the slice pauses for literal
+  approval or revision. Missing/failed generation or read-back capability, missing exact-reference
+  data, and requested revisions are explicit exceptional halts rather than silent service switches or
+  extra routine gates.
+- **Codex runners own design slices inline.** Automatic `do-next-slice` and `do-whole-phase` start and
+  plan `co-work` on the orchestrator thread, never dispatch it, and clear its pending state only when
+  the current invocation literally answers the recorded need. Bare automatic invocation is never
+  approval. After hash recheck and signoff, one-slice execution stops while whole-phase execution may
+  continue inside its entry phase to `DECOMP2`.
+- **Implementation remains separate and fidelity is browser-backed.** `DECOMP2` cuts backing work,
+  faithful UI implementation, and bounded fidelity work after signoff. Plans carry the approved round
+  and `RESPECT THE DESIGN`; later slices exercise declared routes, states, responsiveness, keyboard /
+  focus behavior, and reduced motion in a real browser before claiming fidelity.
+- **Claude Code's path is preserved.** Its `design-cowork` skill remains byte-identical and continues
+  to use Claude Design cards plus main-thread-only DesignSync read-back/regroup. Shared contracts now
+  branch explicitly by harness while retaining no implementation in the design slice, two-pass mixed
+  phases, immutable untrusted design data, literal signoff, and faithful downstream build rules.
+- **Fresh install, non-destructive retrofit, and update ship the same v30 payload.** The lifecycle
+  smoke covers the 17+17 inventory, implicit-invocation metadata, exact Codex skill/runner/executor /
+  contract payloads, fresh and retrofit delivery, and replacement of deliberately stale pre-v30
+  Codex visual files without misclassifying the still-current package as retired.
+- **Migration notes:** preview with `--update --dry-run`. Update refreshes workspace-managed skills,
+  runners, executor definitions, metadata, and contract files while preserving phases, docs, and the
+  seed-once `executors.toml`; retrofit remains non-destructive for pre-existing operator files. No
+  plugin, Figma integration, or state migration is required. This release alone needs no
+  `sync-agents` rerun unless update output reports executor drift from a preserved adopter override
+  (the installer continues to print its routine `sync-agents` instruction).
+
 ## v29 — 2026-08-13
 
 - **Codex now ships the complete workflow surface as a first-class orchestrator.** All 17 Claude

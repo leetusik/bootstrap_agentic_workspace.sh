@@ -249,6 +249,14 @@ after explicit operator input and continues to `DECOMP2` only after signoff.
   retaining the common two-pass, implementation-free design slice, untrusted-data, faithful-build,
   and real-browser rules. The existing `decisions`/`operations` Doc impact line remains complete.
 
+### P14.S4 release finding
+
+- Workspace v30 ships the settled Codex visual-cowork path through fresh install, non-destructive
+  retrofit, and update, with concise English/Korean/operator/maintainer guidance and lifecycle smoke
+  coverage for implicit invocation, inline first-run/resume, executor rejection, both harness contract
+  branches, exact payload delivery, and stale pre-v30 refresh. Claude Design/DesignSync remains at the
+  required blob, and the existing `decisions`/`operations` Doc impact line still covers the release.
+
 ## Constraints
 
 - P14 performs no product visual design. It creates no mockup, palette, type scale, card, or product

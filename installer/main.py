@@ -35,7 +35,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 29
+WORKSPACE_VERSION = 30
 ROOT = TARGET.resolve()
 
 DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
@@ -713,6 +713,7 @@ else:
     print("Contracts: CLAUDE.md and AGENTS.md (equivalent)")
     print("Claude Code: 17 skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{mid,high}.md, settings .claude/settings.json")
     print("Codex: 17 skills in .agents/skills/ (e.g. $do-next-slice), each with agents/openai.yaml; automatic-only do-next-slice/do-whole-phase; subagent tiers .codex/agents/slice-executor-{mid,high}.toml")
+    print("Visual design: design-cowork fires automatically; Claude Code uses Claude Design + DesignSync, while Codex persists an ImageGen/exact-reference record for one normal signoff before separate implementation and browser fidelity")
     print("Executor tiers are risk-routed (mid for a one-line edit or docs, high for everything else); economy is the no-mode fallback, while this seed selects flex in executors.toml; tune it and run python3 scripts/workflow.py sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
     print("CI: .github/workflows/workspace-ci.yml runs validate on every push/PR (seeded once — yours to edit); .gitattributes carries the merge rules for machine-written files")
