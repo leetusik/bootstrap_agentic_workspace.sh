@@ -32,6 +32,11 @@ The slices are deliberately sequential: S1 establishes the executor contract use
 - S1 updated `.codex/config.toml` to use the current `agents.max_concurrent_threads_per_session` setting name; the older `agents.max_threads` remains only an upstream-supported legacy alias.
 - Doc impact — operations: record the Codex executor defaults (`gpt-5.6-terra` high / `gpt-5.6-sol` high), preset behavior, official project-agent schema baseline, and current concurrency setting name.
 - Doc impact — decisions: supersede the Codex GPT-5.5/xhigh tier defaults and hard-coded attribution example with the operator-selected 5.6 tier pair and actual-executing-model attribution.
+- S2 restored `.agents/skills/do-whole-phase/` as an independent Codex skill: bare, `auto`, and unattended wording run the same automatic sequential loop; `gate` and `plan only` stop before any mutation.
+- S2 preserves direct execution of existing `ready` plans for upgrade/cross-tool compatibility, routes sequentially through the P13.S1 custom tiers with one `mid → high` escalation, and leaves visual `co-work` at the `design-cowork` boundary.
+- S2 extended the minimal retrofit smoke coverage for both Codex whole-phase files and their live-versus-embedded installer parity; the workspace version/changelog release boundary remains assigned to S4.
+- Doc impact — operations: document the explicit-only Codex `do-whole-phase` skill, its automatic-only entry contract, sequential custom-tier loop, safety halts, `ready` compatibility, escalation, and review/fix behavior.
+- Doc impact — decisions: record that Codex whole-phase orchestration is restored independently from Claude's multi-mode skill, with automatic execution accepted and `gate` / `plan only` rejected without mutation.
 
 ## Constraints
 

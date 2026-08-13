@@ -194,7 +194,8 @@ grep -q '^# hand-edited$' "$F/.github/workflows/workspace-ci.yml" && ok "--updat
 rm -f "$F/.github/workflows/workspace-ci.yml" "$F/.gitattributes"
 sh "$BOOT" "$F" --update >/dev/null 2>&1   # restore both verbatim for the Test 6 diff
 [ ! -f "$F/.codex/agents/phase-reviewer.toml" ] && [ ! -f "$F/.claude/agents/phase-reviewer.md" ] && ok "phase-reviewer retired (absent on fresh install)" || bad "phase-reviewer should be retired but is present"
-[ ! -d "$F/.agents/skills/do-whole-phase" ] && ok "fresh install drops Codex do-whole-phase (Claude-only)" || bad "Codex do-whole-phase should not be generated"
+[ -f "$F/.agents/skills/do-whole-phase/SKILL.md" ] && ok "fresh install ships Codex do-whole-phase" || bad "Codex do-whole-phase skill missing"
+[ -f "$F/.agents/skills/do-whole-phase/agents/openai.yaml" ] && ok "fresh install ships Codex do-whole-phase policy" || bad "Codex do-whole-phase openai.yaml missing"
 [ -d "$F/.claude/skills/do-whole-phase" ] && ok "fresh install keeps Claude do-whole-phase" || bad "Claude do-whole-phase missing"
 [ -f "$F/.claude/skills/explain/SKILL.md" ] && ok "fresh install ships the Claude explain skill" || bad "Claude explain skill missing"
 [ -f "$F/.agents/skills/explain/SKILL.md" ] && ok "fresh install ships the Codex explain skill" || bad "Codex explain skill missing"
@@ -211,7 +212,7 @@ diff -q "$REPO_ROOT/scripts/workflow.py" "$F/scripts/workflow.py" >/dev/null \
 for rel in \
   .claude/skills/retrofit/SKILL.md .agents/skills/retrofit/SKILL.md .agents/skills/retrofit/agents/openai.yaml \
   .claude/skills/do-next-slice/SKILL.md .agents/skills/do-next-slice/SKILL.md \
-  .claude/skills/do-whole-phase/SKILL.md \
+  .claude/skills/do-whole-phase/SKILL.md .agents/skills/do-whole-phase/SKILL.md .agents/skills/do-whole-phase/agents/openai.yaml \
   .claude/skills/explain/SKILL.md .agents/skills/explain/SKILL.md .agents/skills/explain/agents/openai.yaml \
   .claude/skills/review-phase/SKILL.md .agents/skills/review-phase/SKILL.md \
   .claude/agents/slice-executor-mid.md .claude/agents/slice-executor-high.md \
