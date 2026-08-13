@@ -15,17 +15,26 @@ Run `python3 scripts/workflow.py next`, then read `AGENTS.md` (or `CLAUDE.md`), 
 
 `next` is stream-scoped: on the default stream it skips phases opted into parallel mode and may report `parallel_phases_elsewhere=<P>:<branch>`; in a phase worktree it sees only that phase and reports `stream=`. Use `python3 scripts/workflow.py parallel-status` only when a cross-stream view is needed. Relay any `parallel-start` hint as an optional suggestion, and keep working on the selected slice unless the operator explicitly opts another phase into parallel mode.
 
-If `next` reports `WAITING ON OPERATOR`, or the phase or selected slice is `pending`, report the required operator action and STOP. Never start, finish, or move past a pending item.
+If `next` reports `WAITING ON OPERATOR`, or the phase or selected slice is `pending`, the normal rule is to report the required operator action and STOP. There is exactly one Codex-only resume exception: if the pending item is a `co-work` slice and this invocation contains an explicit response to the approval, revision, or capability need recorded in that slice's `result.md`, read that literal input and the existing `plan.md`, set that same slice back to `in_progress`, and resume it inline under `design-cowork`. A bare invocation, `auto`, or unattended wording is never approval and never clears pending. A pending phase, any other pending slice kind, or input that does not answer the recorded need still halts unchanged.
 
 Read the selected slice's `slice.json` and current phase context, then prepare it:
 
 - For a `todo` slice, run `python3 scripts/workflow.py start-slice <slice_id>`, research the relevant code and docs inline, write a complete free-form native plan to that slice's own `plan.md`, and continue immediately. Incorporate any operator note, but do not duplicate the verbatim phase intent. Never pre-fill another slice's plan.
-- For a `ready` slice, preserve upgrade and cross-tool compatibility: read its existing approved `plan.md` and `phase.md`, run `python3 scripts/workflow.py start-slice <slice_id>`, and dispatch directly from that plan. Replace it only when concrete, visible workspace drift makes it unsafe or stale; record that drift and write the complete updated plan before dispatch.
+- For a `ready` slice, preserve upgrade and cross-tool compatibility: read its existing approved `plan.md` and `phase.md`, run `python3 scripts/workflow.py start-slice <slice_id>`, and continue directly from that plan. Replace it only when concrete, visible workspace drift makes it unsafe or stale; record that drift and write the complete updated plan before execution.
 - For an already `in_progress` or re-opened `changes_requested` slice, resume from its existing `plan.md` and current phase notes. If the plan is missing or visibly stale, write a complete current plan before dispatch. Do not redo work already recorded as complete.
 
-A `co-work` slice is outside this automatic non-visual workflow: do not dispatch it or invent visual decisions. STOP and route it to the applicable `design-cowork` workflow.
+## Run a design slice inline
+
+After preparation, branch on `kind` before executor selection. A `co-work` slice is the sole inline exception: read and follow this harness's `.agents/skills/design-cowork/SKILL.md` on the orchestrator thread. Never spawn an executor for it, and keep all source implementation and later browser-fidelity work out of the slice.
+
+- **First run:** for a `todo` slice, the preceding preparation starts it and writes its complete just-in-time `plan.md`. Probe capabilities and run the full handoff, generation-or-exact-reference, repository persistence, exact read-back, and concreteness flow. Built-in ImageGen needs no separate pre-generation confirmation. Missing or failed generation/read-back/browser-route capability and missing exact-reference data are exceptional operator needs, not design approval and not permission to switch paths silently.
+- **Review-ready boundary:** after a successful first pass, write `result.md` with the exact round paths, hashes, validation outcome, and literal approval-or-revision request; append the round and any doc impact to `phase.md`; and run `python3 scripts/workflow.py validate`. Commit the durable design record without `SIGNOFF.md`; this intentional `co-work` boundary is complete even though the slice is not finished. Then set the slice to `pending`, report the exact request, and STOP. No implementation or push is implied.
+- **Approval resume:** only literal operator approval matching that recorded request authorizes the pending exception above. Recompute and match the reference, manifest, and contract hashes; create `SIGNOFF.md` with the literal words; update `result.md`; run `python3 scripts/workflow.py validate`; finish the slice; validate again; and commit the gate-close boundary. Stop after this signed slice, as required by exactly-one-slice semantics.
+- **Revision or capability resume:** follow `design-cowork` without mutating an earlier round. A revision creates a new immutable, superseding round; a supplied capability/reference resumes the incomplete gate. Update `result.md`, commit a new review-ready boundary when one exists, return the slice to `pending`, report the next exact need, and STOP.
 
 ## Dispatch the project executor
+
+This section applies only after confirming the selected kind is not `co-work`.
 
 Select exactly one project-scoped custom executor from `slice.json` and the plan:
 
@@ -37,7 +46,7 @@ The preset matrix comes from `executors.toml` and `sync-agents`: the no-mode `ec
 
 Spawn the matching project custom agent from `.codex/agents/slice-executor-mid.toml` or `.codex/agents/slice-executor-high.toml`. Give it the slice ID and folder path and require it to execute that slice's `plan.md`, validate the work, write `result.md`, append durable notes and doc-impact lines to `phase.md`, and return its structured verdict. Wait for that executor; never implement the slice inline and never dispatch a second executor.
 
-The decomposition executor may create only the planned bare middle-slice folders with `new-slice`; it never fills their plans. A design-bearing decomposition stops at the separate `design-cowork` boundary and follows that workflow's two-pass rules without inventing a Codex visual-design substitute here.
+The decomposition executor may create only the planned bare middle-slice folders with `new-slice`; it never fills their plans. A design-bearing decomposition follows `design-cowork`'s two-pass rules and creates the inline `co-work` boundary plus `DECOMP2`; it never invents or pre-plans the visual direction.
 
 ## Handle the verdict
 

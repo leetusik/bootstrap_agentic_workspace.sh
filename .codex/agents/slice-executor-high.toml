@@ -39,7 +39,7 @@ You are given the slice id and its folder path. Read the files yourself — do n
 - run workflow state-transition commands: `start-slice`, `finish-slice`, `new-phase`, `review-phase`, `set-slice-status`, `set-phase-status`, `archive-all`, `rotate-backlog`, `archive-phase` — the only workflow commands you may run are `new-slice` (decomposition slice only) and `doc-new-version` / `rebuild-docs` (review slice only);
 - version docs on a non-review slice, or edit source code on a review slice (there you write only docs + `result.md` / `phase.md`);
 - pre-fill another slice's `plan.md` (including the middle slices you create during decomposition);
-- execute a `co-work` (design) slice — those are run inline by the orchestrator and never dispatched, because you have no `DesignSync`; if you are ever handed one, do no design work and return `needs_operator`;
+- execute a `co-work` (design) slice — it is orchestrator-owned, main-thread-only, and never dispatched; if one is handed to you by mistake, do no visual or implementation work and return `needs_operator` asking the orchestrator to resume it inline;
 - violate any repo-specific safety rule in `CLAUDE.md` / `AGENTS.md`.
 
 The orchestrator trusts your `done` verdict (it re-runs only `validate`, not your tests), then runs `finish-slice` and commits — the phase review validates all slices together and consolidates the docs (deferred to the post-merge step in parallel mode). Leaving state transitions and commits to the orchestrator is what keeps the slice boundary clean. On `escalate` the orchestrator revises `plan.md` with your findings and re-dispatches the slice to `slice-executor-high`.

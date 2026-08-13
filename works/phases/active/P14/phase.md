@@ -240,6 +240,15 @@ after explicit operator input and continues to `DECOMP2` only after signoff.
   `0e3a1766ebb85126ab97356f4fdbc5f82753067e`. The existing `decisions`/`operations` Doc impact line
   already covers this implementation, so no duplicate entry was added.
 
+### P14.S3 orchestration finding
+
+- Codex phase intake and both automatic runners now own `co-work` inline from just-in-time planning
+  through the review-ready commit, literal pending resume, immutable signoff, and `DECOMP2` handoff;
+  both Codex executors reject accidental dispatch on ownership grounds. The shared contract branches
+  explicitly between Claude Design/DesignSync and Codex ImageGen/exact-reference mechanics while
+  retaining the common two-pass, implementation-free design slice, untrusted-data, faithful-build,
+  and real-browser rules. The existing `decisions`/`operations` Doc impact line remains complete.
+
 ## Constraints
 
 - P14 performs no product visual design. It creates no mockup, palette, type scale, card, or product
