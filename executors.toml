@@ -7,13 +7,11 @@
 # flex below, and the commented per-tier values match that active preset. Two
 # knobs, lowest precedence first:
 #
-#   1. mode — a named preset for both harnesses (top level, before any table):
-#        economy (default)  Claude sonnet@high / opus@high;
-#                           Codex  gpt-5.6-luna@high / gpt-5.6-terra@high
-#        flex               Claude sonnet@xhigh / opus@xhigh;
-#                           Codex  gpt-5.6-terra@high / gpt-5.6-sol@high
-#   2. Per-tier [claude.<tier>] / [codex.<tier>] tables — override the active
-#      preset field by field.
+#   1. mode — a named preset for both tiers (top level, before any table):
+#        economy (default)  sonnet@high / opus@high
+#        flex               sonnet@xhigh / opus@xhigh
+#   2. Per-tier [claude.<tier>] tables — override the active preset field by
+#      field.
 #
 # There are two tiers. `mid` takes a one-line (or few-line) code edit or docs;
 # `high` takes decomposition, the phase review, and essentially all code writing
@@ -39,11 +37,3 @@ mode = "flex"
 #[claude.high]
 #model = "opus"    # e.g. "fable", or "claude-mythos-5" once available
 #effort = "xhigh"
-
-# Codex (.codex/agents/slice-executor-{mid,high}.toml) — flex values shown
-#[codex.mid]
-#model = "gpt-5.6-terra"
-#effort = "high"
-#[codex.high]
-#model = "gpt-5.6-sol"
-#effort = "high"

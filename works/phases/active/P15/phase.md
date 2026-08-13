@@ -165,6 +165,43 @@ The survey in `intent.md` is accurate. Confirmed exactly:
     skill-glob set are). Confirmed against `build.py`. So `S4` needs no rebuild; `S5` does, because
     of the two doc bodies.
 
+### From `P15.S1` (engine + `executors.toml`)
+
+1. **`sync-agents` output format changed** — the per-tier line is now
+   `f"{tier:<5} {cfg['model']} @ {cfg['effort'] or '(no effort line)'}"` (was
+   `claude=... codex=...`). Sample output: `mid   sonnet @ xhigh` / `high  opus @ xhigh`. The
+   `config source:` line, the `missing agent file:` lines, and both `--check` outcomes are byte-identical
+   to before. **Good news for `P15.S4`:** the smoke test's mode-matrix blocks send `sync-agents` stdout
+   to `/dev/null` and assert against the *generated agent files*, so the format change breaks nothing —
+   the only stdout assertion is L279 (`grep -q 'retired in workspace v23'`), and that message still fires.
+   What `S4` must actually remove is the `.codex/agents/slice-executor-*.toml` greps at L249-253,
+   L265-266, L275-276.
+2. **`[claude.<tier>]` table name kept** (deliberate, per plan). Renaming it would break every adopter's
+   existing `executors.toml` for no gain. So a post-v31 `executors.toml` is the old syntax minus the
+   Codex tables — an adopter who never wrote a `[codex.*]` block needs no migration at all.
+3. **New `[codex.*]` rejection**, placed right after the retired-tier check in `read_executors_toml()`:
+   `executors.toml line {n}: Codex support was removed in workspace v31 — this workspace ships Claude
+   Code only, so drop this section`. Regex `^\[\s*codex\s*\.\s*[^\]]*\]\s*(?:#.*)?$` — loose on the tier,
+   so `[codex.low]` lands here rather than on the retired-tier message (the retired-tier regex is now
+   `claude`-only, so the two can never collide). **This message pins the version number `v31`** — it is a
+   second place, alongside `WORKSPACE_VERSION` and the CHANGELOG, where `P15.S6` must land on 31. If the
+   release ends up being a different number, this string must move with it. A smoke-test assertion
+   mirroring L279 (`grep -q 'removed in workspace v31'`) would be a cheap regression for `S4` to add.
+4. **`values` key tuple simplified** to `(tier, key)` (was `(harness, tier, key)`); `read_executors_toml`'s
+   `section` is now a bare tier string and `executor_config()`'s overlay is a plain two-line loop. No
+   `harness == "claude"` residue remains. `executor_agent_files()` also lost its `kind` element →
+   `(tier, path, model, effort)`; both call sites (`sync_agents`, `validate`) call `_patched_agent_md`
+   directly. Anything later touching these helpers should expect the 4-tuple.
+5. **Nothing outside `scripts/workflow.py` referenced the removed symbols** — verified by grepping the
+   whole repo (excluding the generated artifact, `works/`, `docs/`) for `_patched_agent_toml`,
+   `CODEX_AGENTS`, `codex_model`, `codex_effort`, `executor_agent_files`: only `workflow.py` itself. The
+   engine cut was genuinely self-contained.
+6. **`validate` still emits zero warnings** after the cut, because the `.codex/agents/*.toml` files it
+   used to check are simply no longer in `executor_agent_files()`. The advisory-only `try/except` wrapper
+   is unchanged, so a partial or foreign workspace still validates.
+7. **`tests/retrofit_smoke.sh` is now red**, as planned (Codex tier-model greps). Expected until `S4`;
+   the pre-commit hook does not run it, so local commits are unaffected.
+
 ### Doc impact
 
 _(One line per durable-truth change; `P15.REVIEW` consolidates these into new doc versions —
@@ -181,6 +218,10 @@ never patch `docs/current/*.md` or an existing version.)_
   its rationale (dual-harness parity tax) and its migration mechanism (`OBSOLETE_MACHINERY`
   flagging, workspace v31). **Append a new decision; do not rewrite the 33 historical entries** —
   P13/P14 remain accepted history that this decision supersedes. (latest `v0033`.)
+- `operations` (from `P15.S1`) — the executor-tier config story is now single-harness: `executors.toml`
+  accepts `[claude.<tier>]` only (a `[codex.*]` section is a hard error naming workspace v31), the
+  presets are two fields per tier, and `sync-agents` prints `<tier> <model> @ <effort>` instead of
+  `claude=... codex=...`.
 - No other `docs/current/*.md` mentions Codex (`product`, `experience`, `frontend`, `backend`,
   `data`, `api`, `security`, `qa` are all clean).
 

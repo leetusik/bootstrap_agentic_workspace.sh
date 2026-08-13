@@ -38,24 +38,23 @@ BUSY_PHASE_STATUSES = ("in_progress", "in_review", "pending", "blocked")
 # never merged by hand (see .gitattributes).
 GENERATED_FILES = ("works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "docs/current/*.md")
 CLAUDE_AGENTS = ROOT / ".claude" / "agents"
-CODEX_AGENTS = ROOT / ".codex" / "agents"
 EXECUTOR_TIERS = ("mid", "high")
 RETIRED_EXECUTOR_TIERS = ("low",)  # dropped in workspace v23 — routing is two-tier (mid/high)
 # Shipped presets for the slice-executor tiers. A top-level mode = "<preset>" key in
 # the repo-root executors.toml picks one (absent file or key -> economy); per-tier
-# [claude.<tier>] / [codex.<tier>] tables with model/effort keys override the active
-# preset field by field; apply with `sync-agents`. An empty effort means "write no
-# effort line" — the escape hatch for models that reject the effort parameter
-# (e.g. haiku). Models may not be empty. Both harnesses have preset-specific values.
+# [claude.<tier>] tables with model/effort keys override the active preset field by
+# field; apply with `sync-agents`. An empty effort means "write no effort line" — the
+# escape hatch for models that reject the effort parameter (e.g. haiku). Models may
+# not be empty.
 DEFAULT_EXECUTOR_MODE = "economy"
 EXECUTOR_PRESETS = {
     "flex": {
-        "mid": {"model": "sonnet", "effort": "xhigh", "codex_model": "gpt-5.6-terra", "codex_effort": "high"},
-        "high": {"model": "opus", "effort": "xhigh", "codex_model": "gpt-5.6-sol", "codex_effort": "high"},
+        "mid": {"model": "sonnet", "effort": "xhigh"},
+        "high": {"model": "opus", "effort": "xhigh"},
     },
     "economy": {
-        "mid": {"model": "sonnet", "effort": "high", "codex_model": "gpt-5.6-luna", "codex_effort": "high"},
-        "high": {"model": "opus", "effort": "high", "codex_model": "gpt-5.6-terra", "codex_effort": "high"},
+        "mid": {"model": "sonnet", "effort": "high"},
+        "high": {"model": "opus", "effort": "high"},
     },
 }
 
@@ -114,13 +113,12 @@ def strip_frontmatter(text: str) -> str:
 
 
 def read_executors_toml() -> tuple:
-    """(mode, {(harness, tier, key): value}) from the repo-root executors.toml.
+    """(mode, {(tier, key): value}) from the repo-root executors.toml.
 
     Strict subset of TOML — an optional top-level mode = "<preset>" line (before
-    any section) plus [claude.<tier>] / [codex.<tier>] tables holding
-    model/effort keys with double-quoted string values; '#' comments and blanks
-    ignored. Anything else is an error, so typos surface instead of silently
-    keeping a default."""
+    any section) plus [claude.<tier>] tables holding model/effort keys with
+    double-quoted string values; '#' comments and blanks ignored. Anything else
+    is an error, so typos surface instead of silently keeping a default."""
     path = ROOT / "executors.toml"
     mode = None
     values: dict = {}
@@ -134,35 +132,40 @@ def read_executors_toml() -> tuple:
         m = re.match(r'^mode\s*=\s*"([^"]*)"\s*(?:#.*)?$', line)
         if m:
             if section is not None:
-                raise SystemExit(f"executors.toml line {n}: mode must be set at the top level, before any [claude.*]/[codex.*] section")
+                raise SystemExit(f"executors.toml line {n}: mode must be set at the top level, before any [claude.*] section")
             if mode is not None:
                 raise SystemExit(f"executors.toml line {n}: duplicate mode")
             if m.group(1) not in EXECUTOR_PRESETS:
                 raise SystemExit(f"executors.toml line {n}: unknown mode {m.group(1)!r} (valid: {', '.join(sorted(EXECUTOR_PRESETS))})")
             mode = m.group(1)
             continue
-        m = re.match(r"^\[\s*(claude|codex)\s*\.\s*(mid|high)\s*\]\s*(?:#.*)?$", line)
+        m = re.match(r"^\[\s*claude\s*\.\s*(mid|high)\s*\]\s*(?:#.*)?$", line)
         if m:
-            section = (m.group(1), m.group(2))
+            section = m.group(1)
             continue
-        m = re.match(r"^\[\s*(claude|codex)\s*\.\s*(" + "|".join(RETIRED_EXECUTOR_TIERS) + r")\s*\]\s*(?:#.*)?$", line)
+        m = re.match(r"^\[\s*claude\s*\.\s*(" + "|".join(RETIRED_EXECUTOR_TIERS) + r")\s*\]\s*(?:#.*)?$", line)
         if m:
             raise SystemExit(
-                f"executors.toml line {n}: the {m.group(2)} executor tier was retired in workspace v23 — "
-                f"routing is two-tier now, so drop this section or move its settings to [{m.group(1)}.mid]"
+                f"executors.toml line {n}: the {m.group(1)} executor tier was retired in workspace v23 — "
+                "routing is two-tier now, so drop this section or move its settings to [claude.mid]"
+            )
+        if re.match(r"^\[\s*codex\s*\.\s*[^\]]*\]\s*(?:#.*)?$", line):
+            raise SystemExit(
+                f"executors.toml line {n}: Codex support was removed in workspace v31 — "
+                "this workspace ships Claude Code only, so drop this section"
             )
         m = re.match(r'^(model|effort)\s*=\s*"([^"]*)"\s*(?:#.*)?$', line)
         if m:
             if section is None:
-                raise SystemExit(f"executors.toml line {n}: key outside a section — put it under [claude.<tier>] or [codex.<tier>]")
-            key = (section[0], section[1], m.group(1))
+                raise SystemExit(f"executors.toml line {n}: key outside a section — put it under [claude.<tier>]")
+            key = (section, m.group(1))
             if key in values:
-                raise SystemExit(f"executors.toml line {n}: duplicate {m.group(1)} for [{section[0]}.{section[1]}]")
+                raise SystemExit(f"executors.toml line {n}: duplicate {m.group(1)} for [claude.{section}]")
             values[key] = m.group(2)
             continue
         if re.match(r"^(model|effort|mode)\s*=", line):
             raise SystemExit(f'executors.toml line {n}: values must be double-quoted TOML strings, e.g. model = "haiku"')
-        raise SystemExit(f"executors.toml line {n}: cannot parse {line!r} (expected mode = \"...\", [claude.<mid|high>], [codex.<mid|high>], or model/effort = \"...\")")
+        raise SystemExit(f"executors.toml line {n}: cannot parse {line!r} (expected mode = \"...\", [claude.<mid|high>], or model/effort = \"...\")")
     return mode, values
 
 
@@ -171,13 +174,11 @@ def executor_config() -> dict:
     mode, overrides = read_executors_toml()
     preset = EXECUTOR_PRESETS[mode or DEFAULT_EXECUTOR_MODE]
     config = {tier: dict(preset[tier]) for tier in EXECUTOR_TIERS}
-    for (harness, tier, key), value in overrides.items():
-        field = key if harness == "claude" else f"codex_{key}"
-        config[tier][field] = value
+    for (tier, key), value in overrides.items():
+        config[tier][key] = value
     for tier in EXECUTOR_TIERS:
-        for field, label in (("model", f"[claude.{tier}] model"), ("codex_model", f"[codex.{tier}] model")):
-            if not config[tier][field]:
-                raise SystemExit(f"executors.toml: {label} must not be empty (efforts may be empty; models may not)")
+        if not config[tier]["model"]:
+            raise SystemExit(f"executors.toml: [claude.{tier}] model must not be empty (efforts may be empty; models may not)")
     return config
 
 
@@ -194,30 +195,12 @@ def _patched_agent_md(text: str, model: str, effort: str) -> str:
     return "---\n" + "\n".join(lines) + text[end:]
 
 
-def _patched_agent_toml(text: str, model: str, effort: str) -> str:
-    """Rewrite only the model/model_reasoning_effort keys of a .codex agent file."""
-    head, sep, tail = text.partition('developer_instructions = """')
-    out = []
-    for line in head.split("\n"):
-        if line.startswith("model = "):
-            out.append(f'model = "{model}"')
-            if effort:
-                out.append(f'model_reasoning_effort = "{effort}"')
-            continue
-        if line.startswith("model_reasoning_effort = "):
-            continue
-        out.append(line)
-    return "\n".join(out) + sep + tail
-
-
 def executor_agent_files(config: dict) -> list:
-    """(tier, path, kind, model, effort) for the 4 tier agent files."""
-    entries = []
-    for tier in EXECUTOR_TIERS:
-        cfg = config[tier]
-        entries.append((tier, CLAUDE_AGENTS / f"slice-executor-{tier}.md", "md", cfg["model"], cfg["effort"]))
-        entries.append((tier, CODEX_AGENTS / f"slice-executor-{tier}.toml", "toml", cfg["codex_model"], cfg["codex_effort"]))
-    return entries
+    """(tier, path, model, effort) for the 2 tier agent files."""
+    return [
+        (tier, CLAUDE_AGENTS / f"slice-executor-{tier}.md", config[tier]["model"], config[tier]["effort"])
+        for tier in EXECUTOR_TIERS
+    ]
 
 
 def sync_agents(args: argparse.Namespace) -> None:
@@ -229,19 +212,19 @@ def sync_agents(args: argparse.Namespace) -> None:
     if legacy_env.exists() and "SLICE_EXECUTOR" in legacy_env.read_text(encoding="utf-8"):
         print("warning: .env holds SLICE_EXECUTOR_* keys, but tier config moved to executors.toml in v8 — .env is no longer read")
     changed, missing = [], []
-    for tier, path, kind, model, effort in executor_agent_files(config):
+    for tier, path, model, effort in executor_agent_files(config):
         if not path.exists():
             missing.append(str(path.relative_to(ROOT)))
             continue
         current = path.read_text(encoding="utf-8")
-        desired = _patched_agent_md(current, model, effort) if kind == "md" else _patched_agent_toml(current, model, effort)
+        desired = _patched_agent_md(current, model, effort)
         if desired != current:
             changed.append(str(path.relative_to(ROOT)))
             if not args.check:
                 write_text(path, desired)
     for tier in EXECUTOR_TIERS:
         cfg = config[tier]
-        print(f"{tier:<5} claude={cfg['model']} @ {cfg['effort'] or '(no effort line)'}  codex={cfg['codex_model']} @ {cfg['codex_effort']}")
+        print(f"{tier:<5} {cfg['model']} @ {cfg['effort'] or '(no effort line)'}")
     mode_str = f"mode {mode}" if mode else f"mode {DEFAULT_EXECUTOR_MODE} (default)"
     print(f"config source: {f'executors.toml ({mode_str}, {override_count} override(s))' if config_present else f'{DEFAULT_EXECUTOR_MODE} defaults (no executors.toml)'}")
     for m in missing:
@@ -748,12 +731,12 @@ def validate() -> int:
     # Executor-tier drift is advisory only: warn (never error, never crash) when the agent
     # files disagree with executors.toml/defaults, so a foreign or partial workspace still validates.
     try:
-        for tier, path, kind, model, effort in executor_agent_files(executor_config()):
+        for tier, path, model, effort in executor_agent_files(executor_config()):
             if not path.exists():
                 warnings.append(f"missing executor agent file: {path.relative_to(ROOT)} (run: python3 scripts/workflow.py sync-agents)")
                 continue
             current = path.read_text(encoding="utf-8")
-            desired = _patched_agent_md(current, model, effort) if kind == "md" else _patched_agent_toml(current, model, effort)
+            desired = _patched_agent_md(current, model, effort)
             if desired != current:
                 warnings.append(f"executor agent file out of sync with executors.toml/defaults: {path.relative_to(ROOT)} (run: python3 scripts/workflow.py sync-agents)")
     except (SystemExit, Exception) as exc:  # noqa: BLE001 - advisory check must not fail validate
@@ -1130,7 +1113,7 @@ def parallel_start(args: argparse.Namespace) -> None:
     print(f"branch={branch}")
     print(f"worktree={worktree}")
     print(f"stamp committed here: chore(works): opt {args.phase} into parallel execution (present on both this branch and {branch})")
-    print(f"next: open a session in {worktree} and run the do-whole-phase skill there (/do-whole-phase in Claude Code, $do-whole-phase in Codex) -- the phase runs entirely from that checkout")
+    print(f"next: open a session in {worktree} and run /do-whole-phase there -- the phase runs entirely from that checkout")
     print(f"this stream's pointer now skips {args.phase}; after the branch is merged back, run: python3 scripts/workflow.py parallel-teardown {args.phase}")
 
 
