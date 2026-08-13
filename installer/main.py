@@ -53,7 +53,7 @@ EMPTY_OK_ALLOWLIST = {
 #@@GENERATED_PAYLOADS@@
 
 # Skill inventory derived from the embedded payload manifest: a skill is Claude-only
-# (e.g. do-whole-phase) when it has no Codex mirror under .agents/skills/.
+# when it has no Codex counterpart under .agents/skills/.
 CLAUDE_SKILLS = sorted({k.split("/")[2] for k in PAYLOADS if k.startswith(".claude/skills/") and k.endswith("/SKILL.md")})
 CODEX_SKILLS = sorted({k.split("/")[2] for k in PAYLOADS if k.startswith(".agents/skills/") and k.endswith("/SKILL.md")})
 
@@ -530,7 +530,7 @@ write_text("works/templates/intent.md", PAYLOADS["works/templates/intent.md"])
 
 # ---- Works state: starts with NO phases --------------------------------------
 # The workspace intentionally bootstraps empty: the operator's first real task is
-# captured via the create-phase intake flow (/create-phase → new-phase), never a
+# captured via the create-phase intake flow (create-phase → new-phase), never a
 # pre-seeded placeholder phase.
 write_text("works/events.jsonl", json.dumps({"ts": created_at, "type": "bootstrap", "project": PROJECT_NAME}, ensure_ascii=False) + "\n")
 
@@ -541,7 +541,7 @@ write_text("scripts/workflow.py", PAYLOADS["scripts/workflow.py"], executable=Tr
 for name in CLAUDE_SKILLS:
     write_text(f".claude/skills/{name}/SKILL.md", PAYLOADS[f".claude/skills/{name}/SKILL.md"])
     if name not in CODEX_SKILLS:
-        continue  # Claude-only skill (e.g. do-whole-phase) — no Codex mirror
+        continue  # Claude-only skill — no Codex counterpart
     write_text(f".agents/skills/{name}/SKILL.md", PAYLOADS[f".agents/skills/{name}/SKILL.md"])
     write_text(f".agents/skills/{name}/agents/openai.yaml", PAYLOADS[f".agents/skills/{name}/agents/openai.yaml"])
 
@@ -606,8 +606,8 @@ def flag_stale_skills() -> None:
     the operator can remove them. A dir is "ours" only by a tool-specific marker
     (Claude SKILL.md sets `disable-model-invocation: true`; a Codex skill carries an
     `agents/openai.yaml`) — so the operator's own skills are not mislabeled. The
-    expected set is per-tool: Codex excludes `claude_only` skills (e.g. do-whole-phase),
-    so a workspace updated to this version flags its now-stale Codex copy. Never deletes."""
+    expected set is per-tool, so a workspace updated to this version flags a managed
+    skill copy that its tool no longer ships. Never deletes."""
     claude_expected = set(CLAUDE_SKILLS)
     codex_expected = set(CODEX_SKILLS)
     for base, expected in ((".claude/skills", claude_expected), (".agents/skills", codex_expected)):

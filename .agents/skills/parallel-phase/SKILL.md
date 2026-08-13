@@ -50,8 +50,8 @@ What it does:
 - cuts `phase/P<N>-<slug>` (slug = the slugified phase name unless `--slug` overrides) and adds a
   sibling worktree at `../<repo>-<P>` unless `--worktree` overrides.
 
-Then **open a second session in that worktree** and drive the phase from there (`/do-whole-phase`,
-`/do-next-slice`). A teammate can instead clone the repo and check the branch out — from that point
+Then **open a second session in that worktree** and drive the phase from there (`$do-whole-phase`,
+`$do-next-slice`, or the corresponding skill names). A teammate can instead clone the repo and check the branch out — from that point
 on the two are identical, because stream membership is read from the current git branch versus the
 stamped `execution.branch`, never from a marker file.
 

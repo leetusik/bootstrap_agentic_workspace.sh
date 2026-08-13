@@ -49,4 +49,4 @@ Turn an operator request for new work into one or more phases — or a deferred 
       then driven from a session opened in that worktree. See the `parallel-phase` skill for the full
       lifecycle (work, branch review, PR, merge, deferred doc consolidation, teardown).
 
-5. **STOP and report.** List the phases created — IDs, names, and `intent.md` paths — or the deferred job created. Do **not** decompose into middle slices, write any slice's `plan.md`, or implement code. Decomposition is the `DECOMP` slice's own job, later, when the operator executes the phase (`/do-next-slice`, `/do-whole-phase`) or explicitly tells you to.
+5. **STOP and report.** List the phases created — IDs, names, and `intent.md` paths — or the deferred job created. Do **not** decompose into middle slices, write any slice's `plan.md`, or implement code. Decomposition is the `DECOMP` slice's own job, later, when the operator executes the phase (`$do-next-slice`, `$do-whole-phase`, or the skill name in Codex) or explicitly tells you to.

@@ -22,7 +22,7 @@ code change/diff/phase — emit the same interactive HTML explainer.
 
 ## 1. Resolve the topic and the mode
 
-**Arguments** = the skill arguments: $ARGUMENTS. First, strip any of these **trailing
+**Arguments** = the operator's text supplied with this skill invocation. First, strip any of these **trailing
 standalone words** (they compose — any combination, any order) and remember each flag:
 
 - `here` → PROJECT_COPY=yes (also write a copy into the current project, step 6).

@@ -168,8 +168,8 @@ Both `--flag value` and `--flag=value` forms work.
 
 - [`CLAUDE.md`](CLAUDE.md) + [`AGENTS.md`](AGENTS.md) — the equivalent per-tool routing contracts.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` + `.agents/` — the 15 core Agent Skills, mirrored for both tools (`do-whole-phase` is
-  Claude Code only), plus the two risk-routed `slice-executor`
+- `.claude/` + `.agents/` — the 17 Agent Skills, mirrored for both tools (Codex has independent
+  automatic-only bodies for `do-next-slice` and `do-whole-phase`), plus the two risk-routed `slice-executor`
   tier subagents for each tool (`.claude/agents/slice-executor-{mid,high}.md` and `.codex/agents/`,
   with economy/flex model matrices selected by `executors.toml` and applied with
   `sync-agents`), and `.codex/config.toml`.
@@ -202,10 +202,11 @@ Then execute it at whichever pace you prefer:
 ```
 /do-next-slice          # one slice — plans and runs it non-stop, then stops
 /do-whole-phase         # the whole phase non-stop — no plan-approval pauses (safety halts still stop it)
-/do-whole-phase gate    # the whole phase — pauses for your approval of each slice's plan
+/do-whole-phase gate    # Claude Code only — pauses for your approval of each slice's plan
 ```
 
-(`do-whole-phase` is Claude Code only — in Codex, repeat `$do-next-slice`.)
+Codex ships both `$do-next-slice` and `$do-whole-phase`, but supports automatic execution only;
+`gate` and `plan only` are rejected before any state or repository mutation.
 
 Track progress in [`works/backlog.md`](works/backlog.md) (the generated dashboard) and the active
 phase folder under `works/phases/active/` (the phase notebook and slice folders) — or just ask the
@@ -251,15 +252,15 @@ The full command list lives in [`CLAUDE.md`](CLAUDE.md).
 
 ### The same operations as Agent Skills
 
-The common workflows also ship as **16 Agent Skills** in `.claude/skills/` (Claude Code:
-`/slash` commands), all but one mirrored in `.agents/skills/` (Codex: `$skill`) — `do-whole-phase`
-is Claude Code only — so the same step works natively in either tool:
+The common workflows also ship as **17 Agent Skills** in `.claude/skills/` (Claude Code:
+`/slash` commands), mirrored in `.agents/skills/` (Codex: `$skill`). Codex's two execution skills
+are independent automatic-only bodies; Claude retains its optional approval modes:
 
 | Skill | What it does |
 |---|---|
 | `create-phase` | Capture intent, then create a phase (seeds `DECOMP` + `REVIEW`); stops before decomposition |
 | `do-next-slice` | Complete exactly one slice, then stop |
-| `do-whole-phase` | Finish the active phase end-to-end, including its review _(Claude Code only — needs plan mode)_ |
+| `do-whole-phase` | Finish the active phase end-to-end, including its review _(Codex: automatic only)_ |
 | `review-phase` | Review a phase and record a `pass` / `changes_requested` / `blocked` verdict |
 | `parallel-phase` | Run a phase in parallel on its own branch + worktree, and integrate it back: PR, quiet-point gate, merge, deferred doc consolidation, teardown |
 | `doc-new-version` | Create a new versioned durable doc instead of patching the current one |
@@ -302,9 +303,9 @@ is Claude Code only — so the same step works natively in either tool:
 > workspace's `/explain`; you do not need both.
 
 Both tools delegate the heavy lifting to a **`slice-executor`** subagent in one of two capability
-tiers, picked by each slice's risk: `slice-executor-mid` (sonnet by default — a one-line, or few-line,
-code edit, or docs: slices rated `risk: low`) and `slice-executor-high` (opus — decomposition,
-essentially all code writing including every cross-file change, anything not rated `low`, and the phase review, which it runs in
+tiers, picked by each slice's risk: `slice-executor-mid` (a one-line or few-line code edit, or docs:
+slices rated `risk: low`) and `slice-executor-high` (decomposition, essentially all code writing
+including every cross-file change, anything not rated `low`, and the phase review, which it runs in
 a fresh context that never edits source, validating the phase and — only on a pass — consolidating its
 doc versions; a `changes_requested` or `blocked` verdict stops there and hands the findings back).
 Risk is two values, `low` and `high`, defaulting to `high` — only an exact `low` routes down, so an
@@ -318,7 +319,8 @@ uses Claude sonnet@xhigh / opus@xhigh and Codex gpt-5.6-terra@high / gpt-5.6-sol
 per-tier overrides (seed-once —
 updates never overwrite it), applied with `python3 scripts/workflow.py sync-agents`. Workflow skills are
 **explicit-invocation only** — agents don't fire them on their own. They are the **operator's
-interface**: you type the slash command; the agent does everything it implies.
+interface**: you invoke the slash command in Claude Code or the `$skill` in Codex; the agent does
+everything it implies.
 
 ### Read order
 
@@ -389,10 +391,10 @@ command reference.
 │   │   └── archived/             # finished phases
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
-│   ├── skills/                    # 16 Agent Skills (Claude Code)
+│   ├── skills/                    # 17 Agent Skills (Claude Code)
 │   ├── agents/                    # slice-executor tiers mid/high (implement slices + run the review)
 │   └── settings.json              # pre-approves workflow.py; denies force-push & rm -rf
-├── .agents/skills/                # the same skills, mirrored for Codex (minus do-whole-phase)
+├── .agents/skills/                # the same skills for Codex; do-* execution is automatic-only
 ├── .codex/
 │   ├── agents/                    # slice-executor tiers (Codex, economy/flex models from executors.toml)
 │   └── config.toml                # Codex project config
@@ -467,8 +469,8 @@ This repo dogfoods its own workflow, so contributing means *using* it — throug
 
 1. Open a phase: ask your agent — *"make a phase for \<your change\>"*. It runs
    `python3 scripts/workflow.py new-phase …`, which seeds only `DECOMP` + `REVIEW`, and stops there.
-2. Execute it: type `/do-next-slice` or `/do-whole-phase` (Claude Code), `$do-next-slice`
-   (Codex), or let any agent run the `workflow.py` commands directly. The `DECOMP` slice breaks the
+2. Execute it: type `/do-next-slice` or `/do-whole-phase` (Claude Code), `$do-next-slice` or
+   `$do-whole-phase` (Codex), or let any agent run the `workflow.py` commands directly. The `DECOMP` slice breaks the
    phase into slices.
 3. Review it: the phase closes only on a passing review — the agent records it with
    `python3 scripts/workflow.py review-phase P2 --verdict …`; you read the result and approve.

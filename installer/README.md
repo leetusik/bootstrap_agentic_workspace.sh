@@ -64,8 +64,9 @@ path), so editing them and rebuilding is all that is needed:
 
 - `scripts/workflow.py`
 - `.claude/skills/*/SKILL.md`, `.agents/skills/*/SKILL.md`,
-  `.agents/skills/*/agents/openai.yaml` (skills are discovered from disk — a skill
-  is Claude-only, e.g. `do-whole-phase`, when it has no `.agents/skills/` mirror).
+  `.agents/skills/*/agents/openai.yaml` (skills are discovered from disk; a skill is
+  tool-specific only when it has no counterpart, while the Codex `do-*` bodies intentionally
+  differ from Claude's because Codex is automatic-only).
   Only `*/SKILL.md` and `*/agents/openai.yaml` are embedded: a skill needing a
   `references/` or `scripts/` subdir would be **silently dropped**, so keep skills flat.
   `explain` is the one **vendored** skill — its upstream is

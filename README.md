@@ -89,10 +89,11 @@ sh /path/to/bootstrap_agentic_workspace.sh . --update             # 실제 적�
 ```
 /do-next-slice          # slice 하나만 실행하고 멈춤
 /do-whole-phase         # phase 끝까지 멈추지 않고 실행 (계획 승인 생략)
-/do-whole-phase gate    # phase 끝까지 실행, slice마다 계획 승인 때만 멈춤
+/do-whole-phase gate    # Claude Code 전용: slice마다 계획 승인 때만 멈춤
 ```
 
-(`do-whole-phase`는 Claude Code 전용입니다. Codex에서는 `$do-next-slice`를 반복하면 됩니다.)
+Codex에서도 `$do-next-slice`와 `$do-whole-phase`를 모두 쓸 수 있지만 자동 실행만 지원합니다.
+Codex에서 `gate`와 `plan only`를 요청하면 어떤 상태나 파일도 바꾸기 전에 거부합니다.
 
 진행 상황은 [`works/backlog.md`](works/backlog.md)에서 확인할 수 있습니다.
 아니면 에이전트에게 "지금 어디까지 했어?"라고 물어보세요.
@@ -112,8 +113,8 @@ sh /path/to/bootstrap_agentic_workspace.sh . --update             # 실제 적�
 - **검증을 통과해야 끝납니다.** phase는 리뷰를 통과해야 완료 처리됩니다. 리뷰는 깨끗한
   새 컨텍스트에서 실행되어 목표와 결과를 대조합니다.
 
-같은 명령과 스킬이 Claude Code와 Codex에서 똑같이 동작합니다. 어디서든(CI 포함) 쓸 수
-있는 `python3 scripts/workflow.py …` 명령도 있습니다.
+같은 핵심 명령과 스킬이 Claude Code와 Codex에 모두 있고, Codex의 실행 스킬은 자동 모드만
+지원합니다. 어디서든(CI 포함) 쓸 수 있는 `python3 scripts/workflow.py …` 명령도 있습니다.
 
 > 이 저장소도 이 방식 그대로 개발됩니다. 여기 보이는 [`works/`](works/)와
 > [`docs/`](docs/)가 그 기록이고, 이 README도 하나의 phase로 작성됐습니다.
@@ -139,8 +140,8 @@ sh /path/to/bootstrap_agentic_workspace.sh . --update             # 실제 적�
 slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합니다.
 
 - **오케스트레이터** — 여러분과 대화하는 메인 에이전트입니다. slice마다 계획(`plan.md`)을
-  세우고, 여러분의 승인을 받고, 작업 상태를 옮기고, 커밋합니다. 하지만 구현은 직접 하지
-  않습니다.
+  세우고, 작업 상태를 옮기고, 커밋합니다. Claude Code에서 `gate`를 고른 경우에만 계획 승인을
+  기다립니다. 구현은 직접 하지 않습니다.
 - **실행자(`slice-executor`)** — 승인된 계획을 받아 실제 작업을 하는 하위 에이전트입니다.
   매번 깨끗한 새 컨텍스트에서 시작하고, 끝나면 결과(`result.md`)와 배운 것(`phase.md` 노트)을
   남기고 판정만 돌려줍니다. 커밋과 상태 변경은 하지 않습니다.
@@ -177,13 +178,13 @@ Claude Code에서는 `/이름`, Codex에서는 `$이름`으로 입력합니다.
 |---|---|
 | `create-phase` | 요청을 확인받은 뒤 phase 생성. 일을 나누기 전에 멈춤 |
 | `do-next-slice` | slice 하나만 완료하고 멈춤 |
-| `do-whole-phase` | phase를 리뷰까지 끝까지 실행 (Claude Code 전용) |
+| `do-whole-phase` | phase를 리뷰까지 끝까지 실행 (Codex는 자동 모드만 지원) |
 | `review-phase` | phase를 리뷰하고 `pass` / `changes_requested` / `blocked` 기록 |
 | `parallel-phase` | phase를 별도 branch + worktree에서 병렬로 실행하고 다시 합치기 |
 | `retrofit` | 기존 저장소에 워크스페이스 추가 |
 | `update-workspace` | 설치된 워크스페이스의 시스템 파일만 최신으로 교체 |
 
-스킬은 모두 16개입니다. 전체 목록과 CLI 명령, 설치 옵션은
+스킬은 모두 17개입니다. 전체 목록과 CLI 명령, 설치 옵션은
 [English README](README.en.md)와 [CLAUDE.md](CLAUDE.md)에 있습니다.
 
 ## 병렬 phase (옵트인)

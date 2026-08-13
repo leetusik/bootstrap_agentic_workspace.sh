@@ -5,7 +5,7 @@ description: Create a new versioned durable doc instead of patching current docs
 
 # doc-new-version
 
-Run `python3 scripts/workflow.py doc-new-version $ARGUMENTS` (for example `--doc product --summary "..." --source P1.S1`).
+Translate the operator's supplied skill arguments into the command, then run `python3 scripts/workflow.py doc-new-version ...` (for example `--doc product --summary "..." --source P1.S1`).
 
 Then edit only the returned `edit_path` under `docs/versions/<doc>/`, and run:
 

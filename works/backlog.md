@@ -6,18 +6,18 @@
 ## Pointer
 
 - Current phase: `P13`
-- Current slice: `P13.S3`
-- Next slice: `P13.S4`
+- Current slice: `P13.S4`
+- Next slice: `P13.S5`
 - Waiting on operator: `none`
 - Open deferred jobs: `0`
-- Rebuilt at: `2026-08-13T15:58:37+09:00`
+- Rebuilt at: `2026-08-13T16:13:12+09:00`
 
 ## Active Phases
 
 | Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
 | [x] `P12` | `done` | `pass` | Opt-in parallel phase execution: branch-per-phase with PR + CI | `none` | `works/phases/active/P12` |
-| [ ] `P13` | `planned` | `pending` | Codex workflow parity | `P13.S3` | `works/phases/active/P13` |
+| [ ] `P13` | `planned` | `pending` | Codex workflow parity | `P13.S4` | `works/phases/active/P13` |
 | [ ] `P14` | `planned` | `pending` | Codex visual-design cowork replacement | `P14.DECOMP` | `works/phases/active/P14` |
 
 ## Phase P12: Opt-in parallel phase execution: branch-per-phase with PR + CI
@@ -43,7 +43,7 @@
 | [x] `P13.S1` | `done` | Determine and land Codex executor tiers | `implementation` | `works/phases/active/P13/slices/P13.S1` |
 | [x] `P13.S2` | `done` | Restore Codex do-whole-phase | `implementation` | `works/phases/active/P13/slices/P13.S2` |
 | [x] `P13.F1` | `done` | Adjust Codex executor presets and enable flex | `fix` | `works/phases/active/P13/slices/P13.F1` |
-| [ ] `P13.S3` | `todo` | Align Codex workflow contracts and command skills | `implementation` | `works/phases/active/P13/slices/P13.S3` |
+| [x] `P13.S3` | `done` | Align Codex workflow contracts and command skills | `implementation` | `works/phases/active/P13/slices/P13.S3` |
 | [ ] `P13.S4` | `todo` | Ship Codex parity through installation and updates | `implementation` | `works/phases/active/P13/slices/P13.S4` |
 | [ ] `P13.S5` | `todo` | Audit and regression closure | `implementation` | `works/phases/active/P13/slices/P13.S5` |
 | [ ] `P13.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P13/slices/P13.REVIEW` |

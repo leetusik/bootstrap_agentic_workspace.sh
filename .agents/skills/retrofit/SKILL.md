@@ -10,7 +10,7 @@ Adopt the agentic workspace into the CURRENT existing repository, non-destructiv
 Preflight (read-only):
 
 1. Confirm a git repo: `git rev-parse --is-inside-work-tree`. If the working tree is dirty (`git status --porcelain` is non-empty), tell the operator and recommend committing or stashing first, so the retrofit lands as a clean, reviewable diff.
-2. If `works/state.json` already exists, STOP and report: this repo already has the workspace — drive it with `python3 scripts/workflow.py` (or `/do-next-slice`). Do not retrofit again.
+2. If `works/state.json` already exists, STOP and report: this repo already has the workspace — drive it with `python3 scripts/workflow.py` (or `$do-next-slice` / the `do-next-slice` skill). Do not retrofit again.
 3. Locate the installer `bootstrap_agentic_workspace.sh`. It is NOT part of an installed workspace, so ask the operator for its path, or fetch it per the README (the `curl` one-liner). Never fabricate a copy.
 
 Apply:
