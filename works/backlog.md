@@ -6,11 +6,11 @@
 ## Pointer
 
 - Current phase: `P14`
-- Current slice: `P14.S1`
-- Next slice: `P14.S2`
+- Current slice: `P14.S2`
+- Next slice: `P14.S3`
 - Waiting on operator: `none`
 - Open deferred jobs: `0`
-- Rebuilt at: `2026-08-13T16:59:17+09:00`
+- Rebuilt at: `2026-08-13T17:06:49+09:00`
 
 ## Active Phases
 
@@ -18,7 +18,7 @@
 |---|---|---|---|---|---|
 | [x] `P12` | `done` | `pass` | Opt-in parallel phase execution: branch-per-phase with PR + CI | `none` | `works/phases/active/P12` |
 | [x] `P13` | `done` | `pass` | Codex workflow parity | `none` | `works/phases/active/P13` |
-| [ ] `P14` | `planned` | `pending` | Codex visual-design cowork replacement | `P14.S1` | `works/phases/active/P14` |
+| [ ] `P14` | `planned` | `pending` | Codex visual-design cowork replacement | `P14.S2` | `works/phases/active/P14` |
 
 ## Phase P12: Opt-in parallel phase execution: branch-per-phase with PR + CI
 
@@ -53,7 +53,7 @@
 | Slice | Status | Name | Kind | Path |
 |---|---|---|---|---|
 | [x] `P14.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P14/slices/P14.DECOMP` |
-| [ ] `P14.S1` | `todo` | Research and select the Codex visual cowork contract | `implementation` | `works/phases/active/P14/slices/P14.S1` |
+| [x] `P14.S1` | `done` | Research and select the Codex visual cowork contract | `implementation` | `works/phases/active/P14/slices/P14.S1` |
 | [ ] `P14.S2` | `todo` | Implement the Codex-native design-cowork skill | `implementation` | `works/phases/active/P14/slices/P14.S2` |
 | [ ] `P14.S3` | `todo` | Align Codex orchestration and shared contracts | `implementation` | `works/phases/active/P14/slices/P14.S3` |
 | [ ] `P14.S4` | `todo` | Ship the replacement through installer and release lifecycle | `implementation` | `works/phases/active/P14/slices/P14.S4` |
