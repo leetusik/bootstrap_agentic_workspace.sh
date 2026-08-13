@@ -2,14 +2,16 @@
 
 [English](README.en.md) | **한국어**
 
-> Claude Code, Codex 같은 코딩 에이전트를 체계적으로 일하게 만드는 워크스페이스입니다.
+> Claude Code를 체계적으로 일하게 만드는 워크스페이스입니다.
 > 에이전트가 일을 잘게 나누고, 배운 것을 기록하고, 검증을 통과해야 끝난 것으로 칩니다.
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 셸 스크립트 하나를 실행하면 에이전트용 워크스페이스가 만들어집니다. 에이전트가 따르는
 작업 규칙, 파일로 저장되는 작업 상태, 버전으로 쌓이는 문서가 함께 설치됩니다.
-같은 명령을 Claude Code와 Codex 어디서든 그대로 쓸 수 있습니다.
+명령은 Claude Code 스킬로 제공되고, 똑같은 동작을 `python3 scripts/workflow.py …`로도
+실행할 수 있어 셸이 있는 곳이면(다른 에이전트, 스크립트, CI) 어디서든 같은 워크스페이스를
+움직일 수 있습니다.
 
 ## 빠른 시작
 
@@ -52,7 +54,7 @@ sh /path/to/bootstrap_agentic_workspace.sh . --into-existing \
   --name "My Project" --summary "한 문장."
 ```
 
-에이전트에게 `/retrofit`(Codex에서는 `$retrofit`)이라고 입력해 맡겨도 됩니다.
+에이전트에게 `/retrofit`이라고 입력해 맡겨도 됩니다.
 자세한 절차는 [Retrofit Guide](docs/retrofit-guide.md)에 있습니다.
 
 ### 설치한 워크스페이스 업데이트하기
@@ -65,14 +67,14 @@ sh /path/to/bootstrap_agentic_workspace.sh . --update --dry-run   # 바뀔 내�
 sh /path/to/bootstrap_agentic_workspace.sh . --update             # 실제 적용
 ```
 
-에이전트에게는 `/update-workspace`(Codex에서는 `$update-workspace`)라고 입력하면 됩니다.
-업데이트는 기존 `executors.toml`을 보존하지만 생성된 Claude/Codex 에이전트 파일은 최신
+에이전트에게는 `/update-workspace`라고 입력하면 됩니다.
+업데이트는 기존 `executors.toml`을 보존하지만 생성된 `slice-executor` 에이전트 파일은 최신
 기본값으로 바꾸므로, 적용 뒤 `python3 scripts/workflow.py sync-agents`를 실행해 선택한
 프리셋과 오버라이드를 다시 반영하세요.
 
 ### 2. 에이전트에게 맡기기
 
-터미널이 필요한 일은 여기까지입니다. 이제 Claude Code나 Codex로 이 디렉터리를 열고,
+터미널이 필요한 일은 여기까지입니다. 이제 Claude Code로 이 디렉터리를 열고,
 `/create-phase`로 첫 phase를 만드는 것부터 시작하세요. 전체 흐름은 바로 아래
 사용 예시에 있습니다.
 
@@ -92,21 +94,21 @@ sh /path/to/bootstrap_agentic_workspace.sh . --update             # 실제 적�
 ```
 /do-next-slice          # slice 하나만 실행하고 멈춤
 /do-whole-phase         # phase 끝까지 멈추지 않고 실행 (계획 승인 생략)
-/do-whole-phase gate    # Claude Code 전용: slice마다 계획 승인 때만 멈춤
+/do-whole-phase gate    # slice마다 계획 승인 때만 멈춤
 ```
 
-Codex에서도 `$do-next-slice`와 `$do-whole-phase`를 모두 쓸 수 있지만 자동 실행만 지원합니다.
-Codex에서 `gate`와 `plan only`를 요청하면 어떤 상태나 파일도 바꾸기 전에 거부합니다.
+자동 실행이 기본입니다. `gate`(slice마다 계획을 승인)와 `plan only`(계획만 쓰고 실행 전에
+멈춤)는 명령 뒤에 덧붙이는 선택 사항입니다.
 
 ### 시각 디자인 작업: 승인 한 번
 
-제품의 화면 모양을 바꾸는 일이면 `design-cowork` 스킬이 자동으로 작동합니다. Codex는 보통
-내장 ImageGen이나 이미 승인된 정확한 레퍼런스 하나를 사용하고, 그 레퍼런스와 구현 계약을
-저장소에 그대로 남긴 뒤 시각 방향에 대한 승인을 한 번만 요청합니다. 승인이 끝나면 별도
-slice에서 구현하고 실제 브라우저로 결과를 확인합니다. 이미지 생성 자체나 중간 계획마다
-승인할 필요는 없습니다. 필요한 기능이나 정확한 레퍼런스가 없거나 수정을 요청한 경우에만
-예외적으로 다시 멈춥니다. Claude Code는 기존 Claude Design + DesignSync 경로를 그대로 쓰며,
-두 경로 모두 디자인 slice에서는 구현하지 않고 승인된 디자인을 이후 작업에서 충실히 따릅니다.
+제품의 화면 모양을 바꾸는 일이면 `design-cowork` 스킬이 자동으로 작동합니다. **에이전트는
+디자인하지 않습니다** — 시각적 결정은 [Claude Design](https://claude.ai/design)과 여러분이
+내립니다. Claude Design이 저장소를 직접 읽으므로(Connect GitHub, 또는 로컬 디렉터리 연결)
+에이전트는 아무것도 따로 복제하지 않습니다. 검토할 수 있는 카드 세트를 요구하는 `handoff.md`
+하나를 쓰고 멈춰서 여러분의 디자인 라운드를 기다린 뒤, `DesignSync`로 결과를 읽어 저장소에
+그대로 반영합니다. 승인은 명시적이어야 하고, 수정은 새 라운드가 되며, 구현은 언제나 별도
+slice에서 승인된 디자인을 그대로 따라 진행하고 실제 브라우저로 결과를 확인합니다.
 
 진행 상황은 [`works/backlog.md`](works/backlog.md)에서 확인할 수 있습니다.
 아니면 에이전트에게 "지금 어디까지 했어?"라고 물어보세요.
@@ -121,13 +123,13 @@ slice에서 구현하고 실제 브라우저로 결과를 확인합니다. 이�
   [`works/state.json`](works/state.json) 파일에 기록되어 있어서, 어느 세션에서 열어도
   같은 답이 나옵니다.
 - **배운 것이 남습니다.** 각 단계에서 알게 된 내용을 노트(`phase.md`)와 버전 문서에
-  기록해서, 다음 단계가 이어받습니다. 대화가 압축돼도, 도구를 바꿔도 지식이 사라지지
+  기록해서, 다음 단계가 이어받습니다. 대화가 압축돼도, 세션이 바뀌어도 지식이 사라지지
   않습니다.
 - **검증을 통과해야 끝납니다.** phase는 리뷰를 통과해야 완료 처리됩니다. 리뷰는 깨끗한
   새 컨텍스트에서 실행되어 목표와 결과를 대조합니다.
 
-같은 핵심 명령과 스킬이 Claude Code와 Codex에 모두 있고, Codex의 실행 스킬은 자동 모드만
-지원합니다. 어디서든(CI 포함) 쓸 수 있는 `python3 scripts/workflow.py …` 명령도 있습니다.
+핵심 명령은 Claude Code 스킬로 제공되고, 똑같은 동작을 어디서든(CI 포함) 쓸 수 있는
+`python3 scripts/workflow.py …` 명령으로도 실행할 수 있습니다.
 
 > 이 저장소도 이 방식 그대로 개발됩니다. 여기 보이는 [`works/`](works/)와
 > [`docs/`](docs/)가 그 기록이고, 이 README도 하나의 phase로 작성됐습니다.
@@ -153,8 +155,8 @@ slice에서 구현하고 실제 브라우저로 결과를 확인합니다. 이�
 slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합니다.
 
 - **오케스트레이터** — 여러분과 대화하는 메인 에이전트입니다. slice마다 계획(`plan.md`)을
-  세우고, 작업 상태를 옮기고, 커밋합니다. Claude Code에서 `gate`를 고른 경우에만 계획 승인을
-  기다립니다. 구현은 직접 하지 않습니다.
+  세우고, 작업 상태를 옮기고, 커밋합니다. `gate`를 고른 경우에만 계획 승인을 기다립니다.
+  구현은 직접 하지 않습니다.
 - **실행자(`slice-executor`)** — 승인된 계획을 받아 실제 작업을 하는 하위 에이전트입니다.
   매번 깨끗한 새 컨텍스트에서 시작하고, 끝나면 결과(`result.md`)와 배운 것(`phase.md` 노트)을
   남기고 판정만 돌려줍니다. 커밋과 상태 변경은 하지 않습니다.
@@ -162,10 +164,10 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 실행자는 slice의 위험도(`risk`)에 따라 두 티어 중 하나가 선택됩니다. 위험도 표시가 곧
 비용 조절 장치입니다 — 한 줄짜리 수정은 싼 모델이, 실제로 코드를 쓰는 일은 좋은 모델이 맡습니다.
 
-| 티어 | Claude / Codex (`economy`) | Claude / Codex (`flex`) | 맡는 일 |
+| 티어 | `economy` | `flex` | 맡는 일 |
 |---|---|---|---|
-| `slice-executor-mid` | Sonnet@high / GPT-5.6 Luna@high | Sonnet@xhigh / GPT-5.6 Terra@high | `risk`가 정확히 `low`인 slice — 한 줄(또는 몇 줄) 코드 수정, 문서 작업 |
-| `slice-executor-high` | Opus@high / GPT-5.6 Terra@high | Opus@xhigh / GPT-5.6 Sol@high | 일 나누기(`DECOMP`), 최종 리뷰(`REVIEW`), 그리고 그 외 전부 — 사실상 모든 코드 작성과 여러 파일에 걸친 변경 |
+| `slice-executor-mid` | Sonnet@high | Sonnet@xhigh | `risk`가 정확히 `low`인 slice — 한 줄(또는 몇 줄) 코드 수정, 문서 작업 |
+| `slice-executor-high` | Opus@high | Opus@xhigh | 일 나누기(`DECOMP`), 최종 리뷰(`REVIEW`), 그리고 그 외 전부 — 사실상 모든 코드 작성과 여러 파일에 걸친 변경 |
 
 `risk`는 `low`와 `high` 두 값이고 기본값은 `high`입니다. 정확히 `low`일 때만 `mid`로 가므로,
 값을 안 줬거나 알아볼 수 없는 값이면 항상 `high`로 떨어집니다 — 안전한 쪽이 기본입니다.
@@ -180,18 +182,18 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 잔상이 다음 작업을 오염시키지 않습니다. 티어별 모델과 노력 수준은 저장소 루트의
 [`executors.toml`](executors.toml)에서 바꿀 수 있습니다 — 에이전트에게 말하면 수정하고
 `sync-agents`로 적용해 줍니다. 모델 매핑은 `mode` 프리셋으로 한 번에 바꿀 수 있습니다 —
-모드를 고르지 않으면 `economy`(Claude Sonnet@high / Opus@high, Codex Luna@high / Terra@high)이고,
-`mode = "flex"`는 Claude Sonnet@xhigh / Opus@xhigh, Codex Terra@high / Sol@high을 씁니다.
+모드를 고르지 않으면 `economy`(Sonnet@high / Opus@high)이고, `mode = "flex"`는
+Sonnet@xhigh / Opus@xhigh를 씁니다. 티어별 `[claude.<tier>]` 표로 항목마다 덮어쓸 수도 있습니다.
 
 ## 자주 쓰는 명령
 
-Claude Code에서는 `/이름`, Codex에서는 `$이름`으로 입력합니다.
+Claude Code에서 `/이름`으로 입력합니다.
 
 | 스킬 | 하는 일 |
 |---|---|
 | `create-phase` | 요청을 확인받은 뒤 phase 생성. 일을 나누기 전에 멈춤 |
 | `do-next-slice` | slice 하나만 완료하고 멈춤 |
-| `do-whole-phase` | phase를 리뷰까지 끝까지 실행 (Codex는 자동 모드만 지원) |
+| `do-whole-phase` | phase를 리뷰까지 끝까지 실행 |
 | `review-phase` | phase를 리뷰하고 `pass` / `changes_requested` / `blocked` 기록 |
 | `parallel-phase` | phase를 별도 branch + worktree에서 병렬로 실행하고 다시 합치기 |
 | `retrofit` | 기존 저장소에 워크스페이스 추가 |
@@ -222,8 +224,7 @@ merge된 뒤 한 번에 처리합니다. 에이전트가 `parallel-gate` → PR 
 `parallel-merge-finish` → 문서 버전 확정 → `parallel-teardown` 순서로 통합까지 직접
 진행합니다.
 
-자세한 절차는 [`parallel-phase`](.claude/skills/parallel-phase/SKILL.md) 스킬
-(`/parallel-phase`, Codex에서는 `$parallel-phase`)과
+자세한 절차는 [`parallel-phase`](.claude/skills/parallel-phase/SKILL.md) 스킬(`/parallel-phase`)과
 [English README](README.en.md#parallel-phases-opt-in)에 있습니다.
 
 ## ⭐ 에이전트와 일하는 6가지 습관
@@ -233,7 +234,7 @@ merge된 뒤 한 번에 처리합니다. 에이전트가 `parallel-gate` → PR 
 1. **만들기 전에 나눕니다.** 모든 phase의 첫걸음은 코드가 아니라 일을 나누는 것입니다.
    나눌 수 없는 일은 아직 이해하지 못한 일입니다.
 2. **기억을 파일로 남깁니다.** 중요한 내용을 채팅에만 두지 않습니다. 노트와 버전 문서에
-   기록해서 다음 작업이, 또는 다른 도구가 이어받게 합니다.
+   기록해서 다음 작업이, 또는 다음 세션이 이어받게 합니다.
 3. **모든 작업이 스스로 증명합니다.** 계획을 먼저 쓰고, 결과를 남기고, 새 컨텍스트의
    리뷰를 통과해야 끝입니다. "돌아간다"가 아니라 "검증됐다"가 기준입니다.
 4. **결정은 버전으로 쌓습니다.** 문서를 고쳐 쓰지 않고 새 버전을 추가합니다. 무엇을 왜
@@ -246,7 +247,7 @@ merge된 뒤 한 번에 처리합니다. 에이전트가 `parallel-gate` → PR 
 ## 더 알아보기
 
 - 전체 문서 (설치 옵션, CLI 명령 전체, 프로젝트 구조, 스킬 17종): [English README](README.en.md)
-- 에이전트 규칙 문서: [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md)
+- 에이전트 규칙 문서: [CLAUDE.md](CLAUDE.md)
 - 기존 저장소에 추가하는 절차: [Retrofit Guide](docs/retrofit-guide.md)
 - 기여하기: 이 저장소는 자기 워크플로우로 개발됩니다. phase를 열고 slice 단위로 기여해
   주세요. 방법은 [English README의 Contributing](README.en.md#contributing)에 있습니다.

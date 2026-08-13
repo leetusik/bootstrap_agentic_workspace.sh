@@ -2,15 +2,14 @@
 
 **English** | [한국어](README.md)
 
-> An opinionated, portable workspace that makes coding agents — Claude Code, Codex, or any CLI
-> agent — work like a disciplined team: **decompose** the work, **remember** what they learn, and
-> **prove** it before moving on.
+> An opinionated, portable workspace that makes Claude Code work like a disciplined team:
+> **decompose** the work, **remember** what it learns, and **prove** it before moving on.
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 One shell script scaffolds a complete workspace: a compact agent **contract**, a persisted
 **phase → slice** state machine, **versioned** documentation, and the same operations exposed as
-**Agent Skills** in both Claude Code and Codex.
+**Agent Skills** in Claude Code.
 
 ## Contents
 
@@ -28,9 +27,8 @@ One shell script scaffolds a complete workspace: a compact agent **contract**, a
 
 `bootstrap_agentic_workspace.sh` is a single, dependency-light script that turns any empty
 directory into a structured home for agent-driven work. Inside, a coding agent doesn't just get a
-prompt and improvise — it works under a compact contract ([`CLAUDE.md`](CLAUDE.md) /
-[`AGENTS.md`](AGENTS.md)) that says how to break work down, where to write things, and what "done"
-means.
+prompt and improvise — it works under a compact contract ([`CLAUDE.md`](CLAUDE.md)) that says how to
+break work down, where to write things, and what "done" means.
 
 **The problem it solves.** Coding agents are capable but forgetful. Across a long task they lose
 context when the conversation compacts, redo work they already did, silently overwrite earlier
@@ -42,17 +40,18 @@ three sessions of the same agent) at one repo and you get three different conven
 - **Routing** — there is always a single, machine-checkable answer to "what runs next?"
   ([`works/state.json`](works/) and the generated backlog).
 - **Durable, shared memory** — a per-phase notebook plus append-only versioned docs carry what each
-  step learned forward to the next, so knowledge survives compaction and hand-offs between tools.
+  step learned forward to the next, so knowledge survives compaction and hand-offs between sessions.
 - **Review gates** — work isn't "done" until a phase review (run by the executor in a fresh,
   isolated context that never edits source) checks it against the phase's objective and consolidates
   its doc versions. A verdict short of `pass` stops there and hands its findings back.
 
-It is **cross-tool by design**: the same commands and skills work natively in Claude Code and in
-Codex, with a plain `python3 scripts/workflow.py …` fallback that works anywhere (including CI).
+**One command surface.** The workflows ship as native Claude Code skills, and the exact same
+operations are always reachable as plain `python3 scripts/workflow.py …` commands — so anything that
+can run a shell (another agent, a script, CI) drives the same workspace.
 
 **Who runs what.** You — the **operator** — drive everything by talking to your agent: slash
-commands like `/do-next-slice` (`$do-next-slice` in Codex), or plain requests like *"make a phase
-for X"*. The **agent** types every actual command — `python3 scripts/workflow.py …`, the git
+commands like `/do-next-slice`, or plain requests like *"make a phase for X"*. The **agent** types
+every actual command — `python3 scripts/workflow.py …`, the git
 commits, the validation runs (`.claude/settings.json` pre-approves the workflow script, so none of
 it prompts). Your job is judgment: review results, clear `pending` hand-offs, decide when to
 archive. Every shell block in this README is something the agent runs on your behalf — except the
@@ -109,9 +108,9 @@ sh /path/to/bootstrap_agentic_workspace.sh . --into-existing \
   --name "My Project" --summary "One sentence."
 ```
 
-or drive it with an agent via the `/retrofit` skill (`$retrofit` in Codex). See
-the **[Retrofit Guide](docs/retrofit-guide.md)** for the full procedure and
-collision policy.
+or drive it with an agent via the `/retrofit` skill. See the
+**[Retrofit Guide](docs/retrofit-guide.md)** for the full procedure and collision
+policy.
 
 ### Keeping an adopted workspace up to date
 
@@ -129,23 +128,22 @@ sh /path/to/bootstrap_agentic_workspace.sh . --update --dry-run
 sh /path/to/bootstrap_agentic_workspace.sh . --update
 ```
 
-Or drive it with an agent via the `/update-workspace` skill (`$update-workspace` in
-Codex): it clones the latest upstream, shows you the dry-run change-list, applies on
-your approval, runs `validate`, and records the synced commit in
-`works/.workspace-version.json`. It never commits — you review the diff and commit
-when ready. Updates preserve your existing `executors.toml` but refresh the generated
-Claude/Codex agent files, so run `python3 scripts/workflow.py sync-agents` after every
-update to re-apply your selected preset and overrides. (For *first-time* adoption use
-`--into-existing` / `/retrofit` instead.)
+Or drive it with an agent via the `/update-workspace` skill: it clones the latest
+upstream, shows you the dry-run change-list, applies on your approval, runs
+`validate`, and records the synced commit in `works/.workspace-version.json`. It
+never commits — you review the diff and commit when ready. Updates preserve your
+existing `executors.toml` but refresh the generated `slice-executor` agent files, so
+run `python3 scripts/workflow.py sync-agents` after every update to re-apply your
+selected preset and overrides. (For *first-time* adoption use `--into-existing` /
+`/retrofit` instead.)
 
 ### 2. Hand it to your agent
 
 Setup was the last time you needed a terminal. The workspace starts with **no phases** — open the
-directory in Claude Code or Codex and create your first one:
+directory in Claude Code and create your first one:
 
 ```
-/create-phase <your first task>      # Claude Code
-$create-phase <your first task>      # Codex — the same skill
+/create-phase <your first task>
 ```
 
 — or just ask in plain language: *"make a phase for X"*. The agent runs the workflow commands,
@@ -169,13 +167,12 @@ Both `--flag value` and `--flag=value` forms work.
 
 ### What gets created
 
-- [`CLAUDE.md`](CLAUDE.md) + [`AGENTS.md`](AGENTS.md) — the equivalent per-tool routing contracts.
+- [`CLAUDE.md`](CLAUDE.md) — the compact routing contract every agent session works under.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` + `.agents/` — the 17 Agent Skills, mirrored for both tools (Codex has independent
-  automatic-only bodies for `do-next-slice` and `do-whole-phase`), plus the two risk-routed `slice-executor`
-  tier subagents for each tool (`.claude/agents/slice-executor-{mid,high}.md` and `.codex/agents/`,
-  with economy/flex model matrices selected by `executors.toml` and applied with
-  `sync-agents`), and `.codex/config.toml`.
+- `.claude/` — the 17 Agent Skills (`/slash` commands), the two risk-routed `slice-executor` tier
+  subagents (`.claude/agents/slice-executor-{mid,high}.md`, with economy/flex model matrices
+  selected by `executors.toml` and applied with `sync-agents`), and a `settings.json` that
+  pre-approves the workflow script.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - [`works/`](works/) — the state machine, starting with **no phases**: a `deferred/` area,
@@ -205,21 +202,21 @@ Then execute it at whichever pace you prefer:
 ```
 /do-next-slice          # one slice — plans and runs it non-stop, then stops
 /do-whole-phase         # the whole phase non-stop — no plan-approval pauses (safety halts still stop it)
-/do-whole-phase gate    # Claude Code only — pauses for your approval of each slice's plan
+/do-whole-phase gate    # pauses for your approval of each slice's plan
 ```
 
-Codex ships both `$do-next-slice` and `$do-whole-phase`, but supports automatic execution only;
-`gate` and `plan only` are rejected before any state or repository mutation.
+Automatic execution is the default; `gate` (approve each slice's plan) and `plan only` (write the
+plan, stop before running it) are opt-in words you add to the command.
 
 ### Visual work: one design signoff
 
-`design-cowork` fires automatically when the work changes a product's visual appearance. In Codex,
-the normal path uses built-in ImageGen or one exact approved reference, persists the exact reference
-and implementation contract in the repository, asks you for one visual signoff, then implements in
-separate slices and checks the running result in a real browser. You do not approve generation or
-every intermediate plan. A missing capability or reference, or a requested revision, is an explicit
-exceptional halt. Claude Code keeps its own Claude Design + DesignSync path under the same shared
-rules: the design slice contains no implementation, and the approved design is respected downstream.
+`design-cowork` fires automatically when the work changes a product's visual appearance. **The agent
+never designs** — [Claude Design](https://claude.ai/design) and you make every visual decision.
+Claude Design reads the real repository itself (Connect GitHub, or a local-directory connection), so
+the agent mirrors nothing: it writes one `handoff.md` asking for a reviewable card set, stops for
+your design round, reads the result back with `DesignSync`, and lands it in the repo as-is. Approval
+must be literal, a revision becomes a new round, and implementation is always a separate slice that
+follows the approved design faithfully and checks the running result in a real browser.
 
 Track progress in [`works/backlog.md`](works/backlog.md) (the generated dashboard) and the active
 phase folder under `works/phases/active/` (the phase notebook and slice folders) — or just ask the
@@ -265,15 +262,14 @@ The full command list lives in [`CLAUDE.md`](CLAUDE.md).
 
 ### The same operations as Agent Skills
 
-The common workflows also ship as **17 Agent Skills** in `.claude/skills/` (Claude Code:
-`/slash` commands), mirrored in `.agents/skills/` (Codex: `$skill`). Codex's two execution skills
-are independent automatic-only bodies; Claude retains its optional approval modes:
+The common workflows also ship as **17 Agent Skills** in `.claude/skills/`, invoked as `/slash`
+commands in Claude Code:
 
 | Skill | What it does |
 |---|---|
 | `create-phase` | Capture intent, then create a phase (seeds `DECOMP` + `REVIEW`); stops before decomposition |
 | `do-next-slice` | Complete exactly one slice, then stop |
-| `do-whole-phase` | Finish the active phase end-to-end, including its review _(Codex: automatic only)_ |
+| `do-whole-phase` | Finish the active phase end-to-end, including its review |
 | `review-phase` | Review a phase and record a `pass` / `changes_requested` / `blocked` verdict |
 | `parallel-phase` | Run a phase in parallel on its own branch + worktree, and integrate it back: PR, quiet-point gate, merge, deferred doc consolidation, teardown |
 | `doc-new-version` | Create a new versioned durable doc instead of patching the current one |
@@ -287,12 +283,12 @@ are independent automatic-only bodies; Claude retains its optional approval mode
 | `retrofit` | Non-destructively adopt this workspace into an existing repo |
 | `update-workspace` | Update an adopted workspace's machinery to the latest upstream, preserving your work |
 
-> **Knowledge (phase explainers).** The `explain` skill ships with the workspace, for both tools.
+> **Knowledge (phase explainers).** The `explain` skill ships with the workspace.
 > Explainers are interactive HTML documents saved to the knowledge service — produced on demand, not
-> by the review: run `/explain` in Claude Code or `$explain` in Codex for a phase when you want one, and a passing review simply reports
+> by the review: run `/explain` for a phase when you want one, and a passing review simply reports
 > that none was written.
 >
-> **Setup happens on first use, and it asks first.** Run `/explain` in Claude Code or `$explain` in Codex; if no knowledge base is
+> **Setup happens on first use, and it asks first.** Run `/explain`; if no knowledge base is
 > configured it offers to create one on the [hosted service](https://knowledge.hi2vi.com) — it asks
 > for an email, installs the `knowledge` CLI, signs you up (or logs you in), and writes an org-level
 > key to `~/.config/knowledge-kb/config.json` at mode 0600. Creating an account is an outward-facing
@@ -301,13 +297,8 @@ are independent automatic-only bodies; Claude retains its optional approval mode
 >
 > Already have a knowledge base, hosted or self-hosted? Skip setup by exporting
 > `KB_API_BASE_URL="https://knowledge.hi2vi.com"` and `KB_API_TOKEN="vk_..."` in `~/.zshenv`
-> (sourced by every zsh invocation). Never a repo `.env` — neither Claude Code nor Codex auto-loads
+> (sourced by every zsh invocation). Never a repo `.env` — Claude Code does not auto-load
 > it, and a secret in a repo file risks being committed.
->
-> **Codex caveat:** its `workspace-write` sandbox blocks outbound network by default, so both the
-> setup and the save fail there — opt in with `[sandbox_workspace_write] network_access = true` in
-> `~/.codex/config.toml`, which loosens all Codex workspace-write runs (your call); Claude Code needs
-> nothing.
 >
 > **Alternative (Claude Code plugin):** the same feature also lives as a standalone plugin in the
 > [knowledge repo](https://github.com/leetusik/knowledge) —
@@ -315,8 +306,8 @@ are independent automatic-only bodies; Claude retains its optional approval mode
 > `/knowledge:setup` once, then `/knowledge:explain <topic>`. That is a separate namespace from this
 > workspace's `/explain`; you do not need both.
 
-Both tools delegate the heavy lifting to a **`slice-executor`** subagent in one of two capability
-tiers, picked by each slice's risk: `slice-executor-mid` (a one-line or few-line code edit, or docs:
+The orchestrator delegates the heavy lifting to a **`slice-executor`** subagent in one of two
+capability tiers, picked by each slice's risk: `slice-executor-mid` (a one-line or few-line code edit, or docs:
 slices rated `risk: low`) and `slice-executor-high` (decomposition, essentially all code writing
 including every cross-file change, anything not rated `low`, and the phase review, which it runs in
 a fresh context that never edits source, validating the phase and — only on a pass — consolidating its
@@ -326,14 +317,12 @@ unset or unrecognized value always lands on the thorough tier. When the mid exec
 beyond its depth it returns an `escalate` verdict; the orchestrator folds the findings into the plan
 and re-dispatches to `slice-executor-high` (once per slice) — so trivial slices run cheap without
 capping quality. Tier models and efforts are configurable via the repo-root
-`executors.toml` — a top-level `mode` preset (`economy`, the default, at Claude
-sonnet@high / opus@high and Codex gpt-5.6-luna@high / gpt-5.6-terra@high; `flex`
-uses Claude sonnet@xhigh / opus@xhigh and Codex gpt-5.6-terra@high / gpt-5.6-sol@high) plus
-per-tier overrides (seed-once —
+`executors.toml` — a top-level `mode` preset (`economy`, the default, at
+sonnet@high / opus@high; `flex` uses sonnet@xhigh / opus@xhigh) plus
+per-tier `[claude.<tier>]` overrides (seed-once —
 updates never overwrite it), applied with `python3 scripts/workflow.py sync-agents`. Workflow skills are
 **explicit-invocation only** — agents don't fire them on their own. They are the **operator's
-interface**: you invoke the slash command in Claude Code or the `$skill` in Codex; the agent does
-everything it implies.
+interface**: you invoke the slash command; the agent does everything it implies.
 
 ### Read order
 
@@ -380,15 +369,14 @@ branch. A closed gate stops the sequence with a report instead of merging. CI
 (`.github/workflows/workspace-ci.yml`) runs `validate` on every push and PR, plus a `parallel-gate`
 check on `phase/*` pull requests.
 
-See the [`parallel-phase`](.claude/skills/parallel-phase/SKILL.md) skill (`/parallel-phase` in
-Claude Code, `$parallel-phase` in Codex) for the full lifecycle, and [`CLAUDE.md`](CLAUDE.md) for the
-command reference.
+See the [`parallel-phase`](.claude/skills/parallel-phase/SKILL.md) skill (`/parallel-phase`) for the
+full lifecycle, and [`CLAUDE.md`](CLAUDE.md) for the command reference.
 
 ## Project structure
 
 ```
 .
-├── CLAUDE.md / AGENTS.md          # equivalent per-tool routing contracts
+├── CLAUDE.md                      # the compact routing contract
 ├── bootstrap_agentic_workspace.sh # the scaffolding script (self-contained)
 ├── scripts/
 │   └── workflow.py                # the one manager that drives all state
@@ -404,13 +392,9 @@ command reference.
 │   │   └── archived/             # finished phases
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
-│   ├── skills/                    # 17 Agent Skills (Claude Code)
-│   ├── agents/                    # slice-executor tiers mid/high (implement slices + run the review)
+│   ├── skills/                    # 17 Agent Skills (/slash commands)
+│   ├── agents/                    # slice-executor tiers mid/high (economy/flex models from executors.toml)
 │   └── settings.json              # pre-approves workflow.py; denies force-push & rm -rf
-├── .agents/skills/                # the same skills for Codex; do-* execution is automatic-only
-├── .codex/
-│   ├── agents/                    # slice-executor tiers (Codex, economy/flex models from executors.toml)
-│   └── config.toml                # Codex project config
 └── .github/
     └── workflows/
         └── workspace-ci.yml       # CI: validate on push/PR; parallel-gate job on phase/* PRs
@@ -429,7 +413,7 @@ the ones I lean on; the [contract in `CLAUDE.md`](CLAUDE.md) is how they're actu
 2. **Give agents durable, shared memory.** Conversations compact and agents forget, so I never keep
    important context only in the chat. Every phase has a notebook (`phase.md`) that each slice reads
    on the way in and appends to on the way out, and decisions land in versioned docs. The next
-   slice — or the next *tool* — starts from what the last one learned.
+   slice — or the next *session* — starts from what the last one learned.
 
 3. **Make every slice prove itself.** A slice writes its `plan.md` before it touches anything and a
    `result.md` when it's done, and the phase doesn't close until a fresh-context review checks it
@@ -449,15 +433,15 @@ the ones I lean on; the [contract in `CLAUDE.md`](CLAUDE.md) is how they're actu
    legible history means the next agent — or future me — can actually read what happened and bisect
    when something breaks.
 
-None of this is tool-specific: one manager (`scripts/workflow.py`) plus skills mirrored into
-`.claude/` and `.agents/` mean Claude Code, Codex, or a plain CLI agent all follow the same
-contract — so switching tools never means switching conventions.
+None of this lives in a conversation: one manager (`scripts/workflow.py`) plus one contract
+(`CLAUDE.md`) mean a Claude Code session, a fresh session tomorrow, or a plain CLI agent running the
+same commands all follow the same rules — the conventions belong to the repo, not to a chat.
 
 ## Related / inspired by
 
 A quick map of the neighborhood. The combination this workspace bundles — a persisted
-phase/slice/deferred state machine, versioned durable docs, mirrored cross-tool `.claude/` +
-`.agents/` skills, and a single bootstrap script — shows up *piece by piece* across the projects
+phase/slice/deferred state machine, versioned durable docs, `.claude/` Agent Skills over a
+tool-agnostic CLI, and a single bootstrap script — shows up *piece by piece* across the projects
 below, but I wanted them together in one place. (That framing is my own editorial positioning, not a
 scorecard, and star counts move too fast to quote.)
 
@@ -482,9 +466,8 @@ This repo dogfoods its own workflow, so contributing means *using* it — throug
 
 1. Open a phase: ask your agent — *"make a phase for \<your change\>"*. It runs
    `python3 scripts/workflow.py new-phase …`, which seeds only `DECOMP` + `REVIEW`, and stops there.
-2. Execute it: type `/do-next-slice` or `/do-whole-phase` (Claude Code), `$do-next-slice` or
-   `$do-whole-phase` (Codex), or let any agent run the `workflow.py` commands directly. The `DECOMP` slice breaks the
-   phase into slices.
+2. Execute it: type `/do-next-slice` or `/do-whole-phase`, or let any agent run the `workflow.py`
+   commands directly. The `DECOMP` slice breaks the phase into slices.
 3. Review it: the phase closes only on a passing review — the agent records it with
    `python3 scripts/workflow.py review-phase P2 --verdict …`; you read the result and approve.
 
@@ -493,8 +476,11 @@ A few house rules:
 - **Commits** follow `type(scope): summary` — imperative mood, no trailing period (types: `feat`,
   `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `build`, `perf`, `revert`). Commit per completed
   slice; branch off `main` first.
-- **Keep [`CLAUDE.md`](CLAUDE.md) and [`AGENTS.md`](AGENTS.md) in sync** — they're equivalent
-  contracts, one per tool. If you change a workflow rule, change both.
+- **Rebuild the artifact whenever you touch machinery.** `bootstrap_agentic_workspace.sh` is a
+  build product: after editing `scripts/workflow.py`, `.claude/**`, [`CLAUDE.md`](CLAUDE.md),
+  `executors.toml`, `works/templates/**`, or `installer/`, run `python3 installer/build.py` and
+  commit the rebuilt artifact in the same commit (`python3 installer/build.py --check` must pass;
+  register the tracked hook once with `git config core.hooksPath .githooks`).
 - **Never hand-edit `docs/current/*.md`** (they're generated) and never patch old files under
   `docs/versions/`. Create a new version with `doc-new-version` instead.
 

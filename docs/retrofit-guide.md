@@ -23,7 +23,7 @@ without deleting or rewriting your content.
 |---|---|
 | Brand-new / empty directory | the plain bootstrap (see the README Quickstart) |
 | A repo that already has code/docs/history, **no** workspace yet | **this guide** (`--into-existing` or the `/retrofit` skill) |
-| A repo that already has the workspace | nothing — retrofit is a no-op; use `/do-next-slice` in Claude Code, `$do-next-slice` in Codex, or the skill name |
+| A repo that already has the workspace | nothing — retrofit is a no-op; use `/do-next-slice` instead |
 
 ## Prerequisites
 
@@ -41,11 +41,10 @@ without deleting or rewriting your content.
 
 ### Option A — the `/retrofit` skill (agent-driven)
 
-From inside your existing repo, in Claude Code or Codex:
+From inside your existing repo, in Claude Code:
 
 ```
-/retrofit            # Claude Code
-$retrofit            # Codex
+/retrofit
 ```
 
 The skill runs a preflight (confirms you're in a git repo, warns on a dirty
@@ -75,17 +74,16 @@ first phase*).
 
 ## What retrofit adds, and how collisions are handled
 
-The workspace's own surface is: the routing contract (`CLAUDE.md` / `AGENTS.md`),
-the engine (`scripts/workflow.py`), the skills (`.claude/skills/`,
-`.agents/skills/`, `.codex/`), the versioned docs (`docs/`), and the state
-machine (`works/`). Retrofit classifies **every** path it would write into one of
-four tiers:
+The workspace's own surface is: the routing contract (`CLAUDE.md`), the engine
+(`scripts/workflow.py`), the skills and subagents (`.claude/`), the versioned
+docs (`docs/`), and the state machine (`works/`). Retrofit classifies **every**
+path it would write into one of four tiers:
 
 ### Tier 1 — Skip if you already have it (keep yours)
 
 Pure content files are written only if absent; if present, **yours is kept
 untouched**. This covers the skills, the `slice-executor` tier subagents,
-`executors.toml`, `.codex/config.toml`, the `works/templates/*`, and `docs/README.md`.
+`executors.toml`, the `works/templates/*`, and `docs/README.md`.
 
 ### Tier 2 — Whole subsystem, only if entirely absent
 
@@ -114,20 +112,24 @@ nothing:
   your existing `permissions.allow` / `permissions.deny`. All your other keys are
   preserved. (`.claude/settings.local.json` is never touched.) Without this, every
   workflow command would prompt for permission.
-- **`CLAUDE.md` / `AGENTS.md`** — your file is kept, and a short, clearly
-  delimited workspace section is appended between markers:
+- **`CLAUDE.md`** — your file is kept, and a short, clearly delimited workspace
+  section is appended between markers:
 
   ```
   <!-- BEGIN agentic-workspace -->
-  > This repo uses the agentic workspace. The full operating contract is in
-  > CLAUDE.workspace.md; the engine is scripts/workflow.py.
+  > This repo uses the agentic workspace (`scripts/workflow.py` + skills under `.claude/`).
+  > Full operating contract: [`CLAUDE.workspace.md`](CLAUDE.workspace.md) — reconcile it with this file's own rules as needed.
   <!-- END agentic-workspace -->
   ```
 
-  The full contract is written alongside as **`CLAUDE.workspace.md`** /
-  **`AGENTS.workspace.md`** (sidecars, not merged into your file) so you can
-  reconcile the two routing contracts deliberately. Re-running replaces just the
-  marked block — it never duplicates.
+  The full contract is written alongside as **`CLAUDE.workspace.md`** (a sidecar,
+  not merged into your file) so you can reconcile it with your own contract
+  deliberately. Re-running replaces just the marked block — it never duplicates.
+
+> **Your `AGENTS.md` is never touched.** This workspace ships Claude Code only and
+> treats `CLAUDE.md` as its single routing contract. An `AGENTS.md` your repo keeps
+> for other tools is not read, not appended to, and gets no sidecar — retrofit and
+> `--update` leave it byte-identical.
 
 ### Tier 4 — Stop, don't clobber
 
@@ -142,24 +144,22 @@ collision means a clean abort — never a half-installed repo.
 At the end, retrofit prints a **summary** of what it created, skipped, merged,
 and which subsystems it installed vs. left alone.
 
-The installed command surface is complete in both harnesses: 17 Claude Code
-skills under `.claude/skills/` and the same 17 Codex skills under
-`.agents/skills/`, each Codex package carrying `agents/openai.yaml`. Codex's
-`do-next-slice` and `do-whole-phase` are independent automatic-only bodies:
-bare/`auto` invocations execute, while `gate` and `plan only` are rejected before
-mutation. Existing `ready` slices remain executable for upgrade and cross-tool
-compatibility. Executor selection comes from `executors.toml`: no selected mode
-falls back to `economy` (Claude Sonnet/Opus at `high`, Codex Luna/Terra at
-`high`), while this upstream seed selects `flex` (Claude Sonnet/Opus at `xhigh`,
-Codex Terra/Sol at `high`).
+The installed command surface is complete: 17 Agent Skills under
+`.claude/skills/`, plus the two risk-routed `slice-executor` tier subagents under
+`.claude/agents/`. `do-next-slice` and `do-whole-phase` execute automatically by
+default; `gate` and `plan only` are opt-in words you add to the invocation, and an
+existing `ready` slice remains executable for upgrade compatibility. Executor
+selection comes from `executors.toml`: no selected mode falls back to `economy`
+(Sonnet/Opus at `high`), while this upstream seed selects `flex` (Sonnet/Opus at
+`xhigh`).
 
-Retrofit also installs the harness-specific visual workflow and Codex invocation metadata when those
-paths do not already exist: Claude Code keeps Claude Design + DesignSync, while Codex uses built-in
-ImageGen or one exact approved reference, persists the exact design record, and normally pauses once
-for visual signoff before separate implementation and real-browser fidelity work. Missing capability
-or reference data and requested revisions are explicit exceptions. A later `--update` refreshes these
-workspace-managed skill, runner, executor, metadata, and contract payloads; retrofit still skips
-pre-existing operator-owned files, and update still preserves phase/docs state and `executors.toml`.
+Retrofit also installs the `design-cowork` visual workflow when those paths do not already exist:
+Claude Design plus the operator make every visual decision, the agent writes one `handoff.md`, stops,
+reads the result back with `DesignSync`, and lands it as-is. The design slice writes no
+implementation code — separate later slices implement the approved design and verify it in a real
+browser. A later `--update` refreshes these workspace-managed skill, subagent, and contract payloads;
+retrofit still skips pre-existing operator-owned files, and update still preserves phase/docs state
+and `executors.toml`.
 
 ---
 
@@ -216,10 +216,9 @@ python3 scripts/workflow.py next       # -> "no active slice; create a phase or 
 
 That `next` message is the expected empty-start state, not an error: the
 workspace has no phases until you create the first one. Confirm
-`works/state.json` exists, then create your first phase with `/create-phase`
-(`$create-phase` in Codex) and drive it with `/do-next-slice` in Claude Code or
-`$do-next-slice` in Codex — or any agent can
-call `python3 scripts/workflow.py` directly.
+`works/state.json` exists, then create your first phase with `/create-phase` and
+drive it with `/do-next-slice` — or any agent can call
+`python3 scripts/workflow.py` directly.
 
 ## Re-running is safe
 
@@ -230,14 +229,25 @@ parts of it, remove `works/` first.)
 
 ## Updating after adoption
 
-Once the workspace is present, use `--update` (or `/update-workspace`,
-`$update-workspace` in Codex), not retrofit. Preview first with `--update
---dry-run`; this matters especially if an operator-maintained path collides with
-a newly managed workspace skill. Update preserves all phase/docs state and the
-existing seed-once `executors.toml`, but refreshes the generated Claude/Codex
-agent files and all managed skill packages. After every update, run
-`python3 scripts/workflow.py sync-agents` to re-apply the preserved preset and
-per-tier overrides, then run `python3 scripts/workflow.py next`.
+Once the workspace is present, use `--update` (or `/update-workspace`), not
+retrofit. Preview first with `--update --dry-run`; this matters especially if an
+operator-maintained path collides with a newly managed workspace skill. Update
+preserves all phase/docs state and the existing seed-once `executors.toml`, but
+refreshes the generated `slice-executor` agent files and all managed skill
+packages. After every update, run `python3 scripts/workflow.py sync-agents` to
+re-apply the preserved preset and per-tier overrides, then run
+`python3 scripts/workflow.py next`.
+
+**Coming from a pre-v31 workspace.** Workspace v31 dropped Codex support — this
+workspace ships Claude Code only. An update flags `.agents`, `.codex`, `AGENTS.md`,
+and `AGENTS.workspace.md` as stale machinery in its change-list; as always it
+**never deletes**, so remove them by hand once you're satisfied. An `AGENTS.md`
+your project maintains for other tools is yours to keep — nothing here writes it
+any more. One thing does hard-fail: a leftover `[codex.*]` table in
+`executors.toml` makes `sync-agents` abort with
+`executors.toml line <n>: Codex support was removed in workspace v31 — this
+workspace ships Claude Code only, so drop this section` (`validate` reports the
+same thing as a warning). Delete that block and re-run `sync-agents`.
 
 ---
 
@@ -250,10 +260,10 @@ using a throwaway staging copy — the same idea the flag automates:
 1. Bootstrap a fresh workspace into an **empty temp dir**:
    `sh bootstrap_agentic_workspace.sh /tmp/ws-stage --name "…" --summary "…"`.
 2. Copy the workspace files that you **don't already have** into your repo —
-   never overwriting: `scripts/workflow.py`, `.claude/`, `.agents/`, `.codex/`,
-   `docs/` (only if you have no `docs/index.json`), `works/`, and the contract as
-   `CLAUDE.workspace.md` / `AGENTS.workspace.md`. A safe copy is
-   `rsync -a --ignore-existing /tmp/ws-stage/ .` followed by a `git status`
+   never overwriting: `scripts/workflow.py`, `.claude/`, `executors.toml`,
+   `docs/` (only if you have no `docs/index.json`), `works/`, and — if you already
+   have a `CLAUDE.md` — the staged contract as `CLAUDE.workspace.md`. A safe copy
+   is `rsync -a --ignore-existing /tmp/ws-stage/ .` followed by a `git status`
    review.
 3. Union the staged `.claude/settings.json` permissions into yours by hand.
 4. From your repo, run `python3 scripts/workflow.py rebuild` then `validate`.

@@ -23,8 +23,8 @@ Use this doc for local development, environment variables, deployment, infra, jo
 
 ## Knowledge (phase explainers)
 
-The `explain` skill ships with this workspace, in both `.claude/skills/` and
-`.agents/skills/`. Explaining is an **operator-run step, separate from the phase review**:
+The `explain` skill ships with this workspace, in `.claude/skills/`.
+Explaining is an **operator-run step, separate from the phase review**:
 run `/explain` for a phase when you want one and it saves an interactive HTML explainer to
 the knowledge service. The review itself writes no explainer — it only reports the pointer
 `explain: not written — run /explain for this phase`.
@@ -37,15 +37,11 @@ serves every repo. Each document's project defaults to the repo's directory name
 
 Already have a knowledge base — hosted or self-hosted? Skip the setup entirely by exporting
 the credentials in `~/.zshenv` (sourced by every zsh invocation) — never a repo `.env`,
-which neither Claude Code nor Codex auto-loads and which risks committing the secret:
+which Claude Code does not auto-load and which risks committing the secret:
 
     export KB_API_BASE_URL="https://knowledge.hi2vi.com"
     export KB_API_TOKEN="vk_..."
 
-- **Codex caveat:** its `workspace-write` sandbox blocks outbound network by default, so
-  both the setup and the save fail there. Opt in with
-  `[sandbox_workspace_write] network_access = true` in `~/.codex/config.toml` — this
-  loosens all Codex workspace-write runs (your call); Claude Code needs nothing.
 - **Alternative (Claude Code plugin):** `/plugin marketplace add leetusik/knowledge` →
   `/plugin install knowledge@knowledge` → `/knowledge:setup`, then `/knowledge:explain`.
   A separate namespace from this workspace's `/explain`; you do not need both.

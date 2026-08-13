@@ -401,6 +401,67 @@ The survey in `intent.md` is accurate. Confirmed exactly:
     word for word, and no doc describes the test's contents; the phase's existing engine /
     installer / contract lines already carry the durable truth this test enforces.
 
+### From `P15.S5` (READMEs, guides, shipped doc bodies)
+
+1. **Three passages were fixed against the code, not against a grep — record the ground truth so
+   `S6`/`REVIEW` do not re-derive it.**
+   - The retrofit guide's Tier-3 contract promise now quotes `_merge_contract`'s marker block
+     **verbatim from `installer/main.py:222-227`**. The old guide quoted a block text the installer
+     had already stopped writing (it still described "the engine is scripts/workflow.py" phrasing),
+     so the `AGENTS.md` removal was not the only thing stale there.
+   - The guide's new positive promise is scoped deliberately: *retrofit and `--update` leave a
+     repo's own `AGENTS.md` byte-identical*. It does **not** say "fresh install", because a fresh
+     install into a directory containing `AGENTS.md` is still rejected by the emptiness guard unless
+     `--force-empty-ok` (S2 finding 1). Anyone tightening this sentence later must keep that scope.
+   - The v31 migration note originally read "a leftover `[codex.*]` table aborts every workflow
+     command". **False** — `validate` catches the `SystemExit` in its advisory `try/except`
+     (`scripts/workflow.py:733-743`) and prints it as a *warning*; only `sync-agents` hard-fails.
+     The shipped wording says exactly that. The `update-workspace` skill's step 8 does not make the
+     "every command" claim either, so the two agree.
+2. **The v31 migration note landed in `docs/retrofit-guide.md` § *Updating after adoption*.**
+   `P15.S6` should **not** duplicate it verbatim in the CHANGELOG's Migration notes — the guide's
+   version is adopter-procedural (flags four paths, never deletes, keep your own `AGENTS.md`, delete
+   the `[codex.*]` table and re-run `sync-agents`). The CHANGELOG's should be release-shaped. Both
+   quote S1's error string verbatim; if the release lands on a number other than 31, **three** places
+   now pin `v31` in prose: S1's engine string, `update-workspace` step 8, and this guide paragraph.
+3. **Final executor-matrix wording, both languages** (ground truth `scripts/workflow.py:50-59`):
+   - English (`README.en.md`): "a top-level `mode` preset (`economy`, the default, at sonnet@high /
+     opus@high; `flex` uses sonnet@xhigh / opus@xhigh) plus per-tier `[claude.<tier>]` overrides".
+   - Korean (`README.md`) table headers are now bare `economy` / `flex`; prose: "모드를 고르지
+     않으면 `economy`(Sonnet@high / Opus@high)이고, `mode = "flex"`는 Sonnet@xhigh / Opus@xhigh를
+     씁니다. 티어별 `[claude.<tier>]` 표로 항목마다 덮어쓸 수도 있습니다."
+   - The retrofit guide's third copy: "`economy` (Sonnet/Opus at `high`) … this upstream seed selects
+     `flex` (Sonnet/Opus at `xhigh`)". **Three copies of this fact now exist**; a preset change must
+     move all three.
+4. **The visual-design paragraph was authored in English and translated**, and both now describe only
+   the Claude Design / DesignSync loop from `CLAUDE.md`'s post-S3 rule: the agent never designs,
+   Claude Design reads the repo itself, one `handoff.md` → stop → `DesignSync` read-back → land as-is,
+   literal approval, revisions are new rounds, implementation is a separate slice verified in a real
+   browser. No `SIGNOFF.md`, no ImageGen, no "harness-specific" framing anywhere.
+5. **No link repointing was needed** — the four `[AGENTS.md](AGENTS.md)` links were deleted, not
+   redirected, because every one of them sat beside an existing `CLAUDE.md` link. A script re-resolved
+   all 43 remaining relative markdown links in both READMEs; all exist.
+6. **`README.en.md`'s Contributing house rule now states the build/rebuild contract** (run
+   `installer/build.py`, commit the artifact in the same commit, `--check` must pass, register
+   `.githooks` once) in place of the deleted "keep both contracts in sync" rule. That is the first
+   time an external contributor learns the rebuild requirement from the README rather than from
+   `CLAUDE.md`.
+7. **Pre-existing inaccuracy left alone, flagged for `P15.REVIEW`:** the retrofit guide's
+   Troubleshooting table says "the only intended modification is the additive `.claude/settings.json`
+   merge and the marked `CLAUDE.md` section". It omits the `.gitattributes` line-merge, which S4's
+   smoke test pins (`.claude/settings.json,.gitattributes,CLAUDE.md,`). Unrelated to Codex, so out of
+   this slice's scope — a one-clause fix whenever someone is in that file next.
+8. **Artifact "Codex" count: 19 → 14**, exactly S3 finding 7's predicted floor; the 5 that left were
+   the two doc bodies. Nothing in the remaining 14 is `S6`'s to remove — they are S1's two rejection
+   strings, S2's `OBSOLETE_MACHINERY` comments, and S3's two `.claude/**` prose hits.
+9. **The doc bodies were verified by a real fresh install, not by the build** (the standing rule from
+   the open question). Produced `docs/current/{architecture,operations}.md` contain the edited payload
+   sources verbatim under generated frontmatter; the installed root has no `AGENTS.md`/`.agents`/
+   `.codex`; `validate` and `sync-agents --check` both clean there.
+10. **`tests/retrofit_smoke.sh` still 115 PASS / 0 FAIL** — `S5` changed nothing it asserts, as
+    predicted (only `installer/payloads/doc_bodies/*` is embedded among this slice's files, and no
+    test greps the doc bodies).
+
 ### Doc impact
 
 _(One line per durable-truth change; `P15.REVIEW` consolidates these into new doc versions —
@@ -440,6 +501,12 @@ never patch `docs/current/*.md` or an existing version.)_
   unchanged: a bare automatic invocation is never approval, no other pending gate is relaxed);
   (b) `update-workspace` now carries a **pre-v31 migration step** (`.agents`, `.codex`, `AGENTS.md`,
   `AGENTS.workspace.md` flagged, remove by hand; a leftover `[codex.*]` table is a hard error).
+- `architecture` + `operations` (from `P15.S5`) — the **shipped seed bodies** a fresh install writes
+  into a new workspace's `docs/current/` are single-harness now: `architecture`'s repo-shape lines
+  read `CLAUDE.md` (one contract) and `.claude/` (one set of entry points), and `operations`' Knowledge
+  section drops the `.agents/skills/` location and the Codex `workspace-write` network caveat. This
+  is a **payload** change (`installer/payloads/doc_bodies/*.md`, embedded in the artifact); it does not
+  alter this repo's own `docs/current/*.md`, which the S2/S3 lines above already cover.
 - No other `docs/current/*.md` mentions Codex (`product`, `experience`, `frontend`, `backend`,
   `data`, `api`, `security`, `qa` are all clean).
 

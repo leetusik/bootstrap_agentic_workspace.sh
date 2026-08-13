@@ -6,7 +6,7 @@ __PROJECT_NAME__ is newly bootstrapped. This document should describe stable sys
 
 ## Current Repo Shape
 
-- `CLAUDE.md` / `AGENTS.md`: equivalent compact routing contracts
+- `CLAUDE.md`: the compact routing contract
 - `docs/current/`: generated latest doc snapshots
 - `docs/versions/`: immutable durable doc versions by category
 - `docs/index.json`: latest-version map
@@ -17,7 +17,7 @@ __PROJECT_NAME__ is newly bootstrapped. This document should describe stable sys
 - `works/phases/archived/`: archived phase folders
 - `works/deferred/`: deferred job folders
 - `scripts/workflow.py`: workflow and docs version manager
-- `.claude/`, `.agents/`, `.codex/`: tool entry points (skills, subagents, config)
+- `.claude/`: Claude Code entry points (skills, subagents, settings)
 
 ## System Shape
 

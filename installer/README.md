@@ -40,9 +40,12 @@ register it once per clone: `git config core.hooksPath .githooks`.
   `wrapper.sh` heredoc, and writes the root artifact (preserving the executable
   bit). Determinism = sorted walks + sorted dict keys + `repr()` literals, no
   timestamps → same inputs produce a byte-identical artifact. Safety checks:
-  `compile()` the python body, `sh -n` the assembled artifact, assert
-  `CLAUDE.md` == `AGENTS.md` (contract body), assert no line collides with the
-  heredoc delimiter.
+  `compile()` the assembled python body, `sh -n` the assembled artifact, assert no
+  body line collides with the heredoc delimiter (`INSTALLER_PY`), assert the skill
+  inventory is exactly `EXPECTED_SKILL_COUNT` (17) packages, and assert `CLAUDE.md`
+  still starts with `CLAUDE_HDR` before slicing the contract body off it.
+  **It only `compile()`s the artifact — it never runs it**, so a change to what
+  `main.py` reads out of `PAYLOADS` needs a real install into a temp dir to verify.
 - **`wrapper.sh`** — the POSIX-sh wrapper (arg parsing, env export) ending in the
   `python3 - <<'INSTALLER_PY'` heredoc with a `#@@PYTHON_BODY@@` marker where the
   python driver is spliced.
@@ -63,26 +66,18 @@ register it once per clone: `git config core.hooksPath .githooks`.
 path), so editing them and rebuilding is all that is needed:
 
 - `scripts/workflow.py`
-- `.claude/skills/*/SKILL.md`, `.agents/skills/*/SKILL.md`,
-  `.agents/skills/*/agents/openai.yaml` (skills are discovered from disk; the build asserts
-  the release inventory is exactly 17 matching Claude/Codex packages and every Codex package
-  has metadata, while the Codex `do-*` bodies intentionally differ from Claude's because
-  Codex is automatic-only).
-  `design-cowork` is intentionally harness-specific too: Claude Code retains its Claude Design /
-  DesignSync card workflow, while Codex carries the verified-GPT-Image-2-or-exact-reference,
-  measured repository record, one-signoff, and later browser-fidelity contract. Do not mirror one
-  body over the other. Release
-  validation preserves the Claude body at Git blob
-  `0e3a1766ebb85126ab97356f4fdbc5f82753067e` while checking the Codex body and metadata independently.
-  Only `*/SKILL.md` and `*/agents/openai.yaml` are embedded: a skill needing a
+- `.claude/skills/*/SKILL.md` (skills are discovered from disk; the build asserts the release
+  inventory is exactly 17 packages — `EXPECTED_SKILL_COUNT` in both `build.py` and `main.py`, so
+  adding or removing a skill means moving both). Only `*/SKILL.md` is embedded: a skill needing a
   `references/` or `scripts/` subdir would be **silently dropped**, so keep skills flat.
   `explain` is the one **vendored** skill — its upstream is
   `plugin/skills/explain/SKILL.md` in [leetusik/knowledge](https://github.com/leetusik/knowledge),
   de-plugin-ified here (self-service onboarding replaces `/knowledge:setup`, and the
-  offline local-file fallback is removed). Nothing syncs the two; re-vendor by hand.
-- `.claude/agents/slice-executor-{mid,high}.md`, `.codex/agents/slice-executor-{mid,high}.toml`
+  offline local-file fallback is removed) and further trimmed of its Codex-only passages.
+  Nothing syncs the two; re-vendor by hand, and read the divergence comment in the file first.
+- `.claude/agents/slice-executor-{mid,high}.md`
 - `executors.toml` (seed-once executor-tier config — created if absent, never overwritten on update)
-- `.claude/settings.json`, `.codex/config.toml`
+- `.claude/settings.json`
 - `works/templates/{deferred_brief,intent}.md`
 - `.github/workflows/workspace-ci.yml` (**seed-once** repo policy file — created when
   absent, never overwritten, on install/retrofit/update alike; one generic workflow
@@ -93,7 +88,9 @@ path), so editing them and rebuilding is all that is needed:
   `works/events.jsonl merge=union` rule is appended when missing and existing content
   is never rewritten; skipping a repo's existing `.gitattributes` would silently drop
   the union rule)
-- the `CLAUDE.md` == `AGENTS.md` contract body (asserted byte-equal, embedded once)
+- the `CLAUDE.md` contract body (the `# CLAUDE.md\n\n` header stripped, embedded once as
+  `CONTRACT_BODY`; the header literal is pinned as `CLAUDE_HDR` in `build.py` **and** in the
+  `main.py` write — change the contract's first line and both must move with it)
 
 Both policy files are emitted by `emit_policy_files()` in `main.py` rather than through
 the normal `write_text` dispatch, so their policy is defined once and applies to fresh
