@@ -310,3 +310,12 @@
 {"ts": "2026-08-13T17:37:15+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0025_operate_the_v30_codex_visual-design_gate_explicit_resume_decomp2_and_browser-fidelity_lifecycle", "source": "P14.REVIEW"}
 {"ts": "2026-08-13T17:40:47+09:00", "type": "slice_status_changed", "slice": "P14.REVIEW", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-08-13T17:40:47+09:00", "type": "phase_reviewed", "phase": "P14", "verdict": "pass", "reviewer": "slice-executor-high"}
+{"ts": "2026-08-14T05:10:12+09:00", "type": "phase_created", "phase": "P15"}
+{"ts": "2026-08-14T05:11:56+09:00", "type": "slice_status_changed", "slice": "P15.DECOMP", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-08-14T05:16:43+09:00", "type": "slice_created", "phase": "P15", "slice": "P15.S1"}
+{"ts": "2026-08-14T05:16:43+09:00", "type": "slice_created", "phase": "P15", "slice": "P15.S2"}
+{"ts": "2026-08-14T05:16:44+09:00", "type": "slice_created", "phase": "P15", "slice": "P15.S3"}
+{"ts": "2026-08-14T05:16:44+09:00", "type": "slice_created", "phase": "P15", "slice": "P15.S4"}
+{"ts": "2026-08-14T05:16:44+09:00", "type": "slice_created", "phase": "P15", "slice": "P15.S5"}
+{"ts": "2026-08-14T05:16:44+09:00", "type": "slice_created", "phase": "P15", "slice": "P15.S6"}
+{"ts": "2026-08-14T05:19:28+09:00", "type": "slice_status_changed", "slice": "P15.DECOMP", "old_status": "in_progress", "new_status": "done"}
