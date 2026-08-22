@@ -15,6 +15,23 @@ Use this doc for local development, environment variables, deployment, infra, jo
 - Test:
 - Build:
 
+## Operator Runtime
+
+How the **operator** runs and views this product. Any slice claiming "verified in a real
+browser" verifies here — this runtime, this access path, these devices — and additionally in
+the production build when the two differ.
+
+- Run command(s):
+- Mode: <dev or production build; say where they differ — dev may enable StrictMode / Fast Refresh, production does not>
+- Origin / host the operator browses: <localhost, LAN IP, Tailscale host, deployed URL>
+- Devices / viewports / browsers: <e.g. desktop 1440px Chrome, phone 390px Safari>
+- Production build command + origin (when different):
+- Also needed to see what the operator sees: <auth/test account, seeded data, feature flags>
+- Status: UNFILLED — fill before any slice claims real-browser verification
+
+An absent section and an unfilled one mean the same thing: the slice stops `pending` and asks
+the operator, it never assumes. Remove the `Status:` line once the fields above are real.
+
 ## Environment Variables
 
 | Name | Required | Purpose | Notes |

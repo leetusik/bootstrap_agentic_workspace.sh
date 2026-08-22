@@ -230,6 +230,32 @@ Verified against the tree at decomposition time.
   `_phases_at_ref` reads only known keys, so `parallel-status`/`parallel-gate` are inert to the new
   key (verified in the throwaway copy).
 
+- **The `## Operator Runtime` manifest, as seeded (landed in `P16.S2`).** Heading `## Operator
+  Runtime`, sitting between `## Local Development` and `## Environment Variables` in
+  `installer/payloads/doc_bodies/operations.md`. Its six field bullets, verbatim leading text and
+  order: `- Run command(s):` · `- Mode:` · `- Origin / host the operator browses:` ·
+  `- Devices / viewports / browsers:` · `- Production build command + origin (when different):` ·
+  `- Also needed to see what the operator sees:`. **The unfilled marker line, decided once and
+  quoted by S3/S5, is exactly** (em dash, not hyphen):
+  `- Status: UNFILLED — fill before any slice claims real-browser verification`
+  — the greppable token is `UNFILLED`, and the section's closing sentence states that an absent
+  section and an unfilled one mean the same thing (the slice stops `pending` and asks; it never
+  assumes). Stable tokens for S6's Test 0: `## Operator Runtime` and `UNFILLED`.
+- **The smoke list's line shape (landed in `P16.S2`).** `## Regression Checklist` in
+  `installer/payloads/doc_bodies/qa.md` is now the cumulative product smoke list; its contract
+  paragraph says headline behaviours only, appended by each phase's fidelity/review slice and
+  **re-run whole** in the operator runtime, citing `` `## Operator Runtime` in the operations doc ``
+  by that exact phrase. Line shape S3/S5 should cite:
+  `- [ ] <surface>: <one observable behaviour> (P<N>)`. Three generic example lines ship seeded
+  (landing/login visible, every visible control does something observable, timers-refresh without
+  wiping in-progress typing); the old `- [ ] <check>` stub is gone.
+- **The seed reaches fresh installs only — confirmed end to end (`P16.S2`).** A fresh install of
+  the rebuilt artifact into a temp dir lands both sections in `docs/current/*` *and* in
+  `docs/versions/{operations,qa}/v0001_bootstrap.md`, and the fresh workspace validates. Combined
+  with the `--update`/retrofit finding above, S6's v32 Migration note must tell existing adopters
+  to add `## Operator Runtime` and rewrite their `## Regression Checklist` themselves, through
+  `doc-new-version` (never by hand-editing `docs/current/`).
+
 ### Deferred jobs
 
 - **D2 — folded into `P16.S4`.** Its trigger ("next time `.claude/agents/slice-executor-*.md` are
@@ -259,6 +285,16 @@ _One line per durable-truth change; the `REVIEW` slice consolidates these into d
   boundary, `--open --walkthrough` at the review, `--clear [--note]` by the operator, bare = show);
   it is the only new engine surface, `next` prints the open gate's walkthrough, and `validate` errors
   on a `done` phase whose required gate was never cleared. (`P16.S1`)
+- `operations` — the seeded operations doc gains an `## Operator Runtime` manifest section (run
+  command(s), dev-vs-prod mode, the origin/host the operator browses, devices/viewports/browsers,
+  the production build command + origin when different, and what else is needed to see what the
+  operator sees), shipping with the marker line
+  `- Status: UNFILLED — fill before any slice claims real-browser verification`; absent and
+  unfilled are treated identically. Reaches **fresh installs only**. (`P16.S2`)
+- `qa` — the seeded `## Regression Checklist` is now the product's **cumulative smoke list**:
+  headline behaviours only, one line each (`- [ ] <surface>: <one observable behaviour> (P<N>)`),
+  append-only across phases, appended to and **re-run whole** by each phase's fidelity/review slice
+  in the operator runtime. Reaches **fresh installs only**. (`P16.S2`)
 
 ### Operator questions
 
