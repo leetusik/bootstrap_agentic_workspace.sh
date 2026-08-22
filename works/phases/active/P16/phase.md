@@ -333,6 +333,30 @@ Verified against the tree at decomposition time.
   `python3 scripts/workflow.py drop-deferred D2 --reason "fixed in P16.S4 — slice-executor-mid now carries the co-work refusal clause"`
   (not run in the slice: executors run no state-transition command).
 
+- **`design-cowork` now has a fidelity specification (`P16.S5`).** New section
+  **`## Verifying — RESPECT THE DESIGN, and does it work`**, placed between *Implementing — RESPECT
+  THE DESIGN* and *Never*, with one sub-heading **`### When the record never drew it`** (the gap
+  channel). Two yardsticks (*matches the record* / *works as a product*); the four sweep items are
+  **every visible interactive element does something observable**, **interaction states**
+  (focus/hover/keyboard, incl. browser defaults the record never drew), **liveness over time**, and
+  **type into it and wait**. Then *Where it runs* (manifest runtime + production build when they
+  differ; absent **or** `UNFILLED` → `needs_operator` → `pending`; every manifest viewport),
+  *Re-run the whole list* (`## Regression Checklist`, append shape `- [ ] <surface>: <one observable
+  behaviour> (P<N>)` via *Doc impact*), *What a fidelity slice may fix, and what it may not*, and
+  *Evidence, terse*. The review's gate stages are **linked, not restated** — one sentence points at
+  `review-phase` + the contract — and `acceptance.required: true` is named exactly once, as the
+  switch an apply phase always trips. **`accept-gate` does not appear in the file at all.**
+- **Sentences S6 can pin as Test 0 invariants (`P16.S5`), each present exactly once.**
+  `## Verifying — RESPECT THE DESIGN, and does it work`, `### When the record never drew it`,
+  `matching it is not acceptance`, `Questions get asked, not archived.`,
+  `signing the cards is not accepting the product`. The 15 existing design-cowork assertions were
+  re-run green — none of them moved. S5 added no test assertions itself (S6 owns Test 0).
+- **Three grafted clauses, no other new sections (`P16.S5`).** *Shape*'s fidelity-fix bullet now
+  reads "for a departure from the record *or* a dead, no-op or unreachable control the functional
+  sweep found"; *Implementing — RESPECT THE DESIGN* now ends by requiring the implement slice's
+  `plan.md` **and** dispatch prompt to name `## Operator Runtime`; *Never* gained two bullets
+  (verify-only-against-the-record / only in a convenient runtime; fix a design gap silently).
+
 ### Deferred jobs
 
 - **D2 — folded into `P16.S4`.** Its trigger ("next time `.claude/agents/slice-executor-*.md` are
@@ -403,6 +427,27 @@ _One line per durable-truth change; the `REVIEW` slice consolidates these into d
   commands, and one new return field `walkthrough`; both tiers now share a byte-identical body
   (mid gained the co-work refusal — D2 — plus the two-pass decomposition, review-branching,
   `explain` pointer and broader no-commit wording). (`P16.S4`)
+- `qa` — **fidelity verification now has a second, named yardstick beside "matches the record":
+  "works as a product"**, specified in `design-cowork`'s new `## Verifying — RESPECT THE DESIGN, and
+  does it work` section. The mandatory functional sweep — every visible interactive element does
+  something observable, interaction states (focus/hover/keyboard, including browser defaults the
+  record never drew), liveness over time (timers tick for a real interval; refresh does not destroy
+  in-progress input), and type-into-it-and-wait for anything implying live behaviour — makes each
+  failure a defect **even when the render is pixel-perfect**. Verification runs in the
+  `## Operator Runtime` runtime and access path and additionally in the production build when they
+  differ, at every viewport the manifest names (absent or `UNFILLED` → `needs_operator` →
+  `pending`), and each fidelity slice re-runs the **whole** `## Regression Checklist` before
+  appending its own headline lines. Evidence stays terse — the small-test-files rule applies to
+  verification. (`P16.S5`)
+- `decisions` — **the gap channel through RESPECT THE DESIGN**: what the design record never settled
+  is still never invented, but "catalogue it" now means *deliver* it — each gap is a one-line
+  question on the phase's `## Operator Questions` list (not only in `result.md`), routed at the
+  review into the acceptance walkthrough or a deferred job, with an unrouted entry blocking the
+  pass. A fidelity slice may fix departures from the record; a *design* question — something the
+  record drew that is bad in the flesh, or never drew at all — may not be fixed silently or
+  "improved". **Signing the cards is not accepting the product:** the operator meets the running
+  product at the acceptance gate and may change their mind there, which is a `changes_requested`
+  plus a new round or `fix` slice, not a fidelity failure. (`P16.S5`)
 
 ### Operator questions
 

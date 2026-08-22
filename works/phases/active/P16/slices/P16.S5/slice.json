@@ -3,15 +3,15 @@
   "phase_id": "P16",
   "name": "design-cowork: works-as-a-product verification and the gap channel",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 50,
   "depends_on": [
     "P16.S2",
     "P16.S3"
   ],
   "created_at": "2026-08-23T06:44:41+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-08-23T07:21:10+09:00",
+  "completed_at": "2026-08-23T07:25:47+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
