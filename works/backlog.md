@@ -5,12 +5,12 @@
 
 ## Pointer
 
-- Current phase: `none`
-- Current slice: `none`
-- Next slice: `none`
+- Current phase: `P16`
+- Current slice: `P16.S1`
+- Next slice: `P16.S2`
 - Waiting on operator: `none`
 - Open deferred jobs: `3`
-- Rebuilt at: `2026-08-14T06:56:59+09:00`
+- Rebuilt at: `2026-08-23T06:47:26+09:00`
 
 ## Active Phases
 
@@ -20,6 +20,7 @@
 | [x] `P13` | `done` | `pass` | Codex workflow parity | `none` | `works/phases/active/P13` |
 | [x] `P14` | `done` | `pass` | Codex visual-design cowork replacement | `none` | `works/phases/active/P14` |
 | [x] `P15` | `done` | `pass` | Drop Codex support | `none` | `works/phases/active/P15` |
+| [ ] `P16` | `planned` | `pending` | Operator acceptance gate and runtime-faithful verification | `P16.S1` | `works/phases/active/P16` |
 
 ## Phase P12: Opt-in parallel phase execution: branch-per-phase with PR + CI
 
@@ -74,3 +75,16 @@
 | [x] `P15.S6` | `done` | Ship the removal as workspace v31 with a CHANGELOG entry | `implementation` | `works/phases/active/P15/slices/P15.S6` |
 | [x] `P15.F1` | `done` | Settle the pending design exception | `fix` | `works/phases/active/P15/slices/P15.F1` |
 | [x] `P15.REVIEW` | `done` | phase review | `review` | `works/phases/active/P15/slices/P15.REVIEW` |
+
+## Phase P16: Operator acceptance gate and runtime-faithful verification
+
+| Slice | Status | Name | Kind | Path |
+|---|---|---|---|---|
+| [x] `P16.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P16/slices/P16.DECOMP` |
+| [ ] `P16.S1` | `todo` | Acceptance-gate engine: phase.json block + accept-gate commands | `implementation` | `works/phases/active/P16/slices/P16.S1` |
+| [ ] `P16.S2` | `todo` | Seed the operator runtime manifest and the cumulative product smoke list | `implementation` | `works/phases/active/P16/slices/P16.S2` |
+| [ ] `P16.S3` | `todo` | Contract + review/loop skills: gate, manifest, catalogue routing, review independence | `implementation` | `works/phases/active/P16/slices/P16.S3` |
+| [ ] `P16.S4` | `todo` | Executor prompts: manifest runtime, review independence, catalogue routing, co-work refusal (D2) | `implementation` | `works/phases/active/P16/slices/P16.S4` |
+| [ ] `P16.S5` | `todo` | design-cowork: works-as-a-product verification and the gap channel | `implementation` | `works/phases/active/P16/slices/P16.S5` |
+| [ ] `P16.S6` | `todo` | Ship workspace v32: version, CHANGELOG, adopter prose, Test 0 invariants | `implementation` | `works/phases/active/P16/slices/P16.S6` |
+| [ ] `P16.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P16/slices/P16.REVIEW` |

@@ -1,0 +1,251 @@
+# Phase P16: Operator acceptance gate and runtime-faithful verification
+
+_Intent: see [intent.md](intent.md)._
+
+## Objective
+
+Put the product owner back in the loop: record how the operator runs and views the product as durable truth and require real-browser verification in that runtime (and prod when it differs); make every operator-visible phase stop pending with a concrete walkthrough before its review can pass, with operator-reported failures becoming fix slices; add a 'works as a product' dimension (every control does something, interaction states, liveness over time, dev+prod) and a fresh-eyes UX walkthrough beside record fidelity; route operator-question catalogues into the gate or deferred jobs so no review passes with unrouted questions; seed a terse cumulative product smoke list re-run by each phase; require the review executor to spot-check the running product itself; ship as the next workspace version with the installer rebuilt and adopters able to pick it up via update.
+
+## Context
+
+This is a **machinery-hardening phase for the upstream bootstrap repo**, not product visual
+design: it edits the *text* of `design-cowork` and the machinery around it, and designs no
+product's look. Decomposed in a **single pass** — no `co-work` slice, no `P16.DECOMP2`.
+
+The six fixes F1–F6 come from `intent.md` §3–4 (root causes RC1–RC7 of the Mijual incident).
+Read `intent.md` end to end before planning any slice — it is the phase's spec.
+
+## Decomposition
+
+Six middle slices, ordered so each commit is self-consistent: the engine first (so the prose can
+name real commands), then the seeded doc bodies (so the prose can cite a real heading), then the
+three prose surfaces that must agree with both, then the release.
+
+| Slice | Order | Depends on | Covers |
+|---|---|---|---|
+| `P16.S1` | 10 | — | **F2 engine.** `scripts/workflow.py`: the `acceptance` block on `phase.json`, its stamping in `new_phase`, the `accept-gate` command, the `review-phase --verdict pass` refusal, `validate` shape checks, the `next` gate output, the `## Operator Questions` heading in the `phase.md` scaffold. |
+| `P16.S2` | 20 | — | **F1 + F5 data side.** `installer/payloads/doc_bodies/operations.md` gains `## Operator Runtime`; `qa.md`'s `## Regression Checklist` is rewritten as the cumulative product smoke list. Seed-only files — verify how they reach fresh installs, retrofits, and `--update` (see *Findings*). |
+| `P16.S3` | 30 | S1, S2 | **F1/F2/F4/F6 rules.** `CLAUDE.md` Hard Rules; `.claude/skills/review-phase/SKILL.md` (the biggest single change: gate opening, fresh-eyes stage, catalogue routing, review independence, smoke re-run); `do-next-slice` + `do-whole-phase` loop rules; one sentence in `parallel-phase`. |
+| `P16.S4` | 40 | S3 | **Executor prompts.** `.claude/agents/slice-executor-{mid,high}.md`: the manifest-runtime line, the review-independence + fresh-eyes + catalogue-routing duties, the `walkthrough` return field, `accept-gate` on the Never list, the `## Operator Questions` running list beside "Doc impact", and **D2**'s co-work refusal clause for `mid`. `sync-agents --check` must stay green. |
+| `P16.S5` | 50 | S2, S3 | **F3 + F4 + F1 inside fidelity.** `.claude/skills/design-cowork/SKILL.md`: a new *Verifying* section (the works-as-a-product sweep, both runtime modes, the manifest requirement) and the gap channel through RESPECT THE DESIGN. Note: **there is no fidelity specification there today** — this writes one. |
+| `P16.S6` | 60 | S1–S5 | **Release.** `installer/main.py` `WORKSPACE_VERSION = 32`, a `## v32` CHANGELOG entry with **Migration notes**, `update-workspace` / README / `docs/retrofit-guide.md` prose, the new Test 0 invariants in `tests/retrofit_smoke.sh`, final rebuild. |
+
+**Risk rationale — every slice is `high`.** Each touches more than one file and each must rebuild
+the distributable, so none qualifies for `mid` ("a one-line/few-line code edit or docs"). `S2` is
+the closest call: it is prose in two seed files, but that prose *defines* the manifest contract and
+the smoke-list contract that S3–S5 cite by heading, so a mid escalation is likelier than a saving.
+`S3` is the phase's largest slice and stays whole on purpose — splitting the contract from the
+review procedure invites the two to disagree, which is precisely the failure class this phase
+exists to close.
+
+**Not split into more slices** because the four prose surfaces (contract, skills, agents,
+design-cowork) each have one owner slice; the shared vocabulary is fixed below so they cannot
+drift.
+
+## Shared design decisions (settled here — slices must not diverge)
+
+These are binding. `S1` implements them; `S3`, `S4`, `S5` describe them; `S6` documents them.
+
+### 1. The acceptance gate lives on `phase.json` as `acceptance`
+
+```json
+"acceptance": {
+  "required": null,        // null = undeclared | true = operator-visible | false = waived
+  "walkthrough": null,     // the concrete walkthrough text, recorded when the gate opens
+  "requested_at": null,
+  "cleared_at": null,
+  "note": null             // the operator's clearing note, or the waive reason
+}
+```
+
+Read it through one helper — `phase_acceptance(data)` — exactly as `phase_execution(data)` is read,
+so every caller agrees on what "gated" means. Five fields, no more: the dashboards stay lean.
+
+### 2. Command surface: one command, `accept-gate`, orchestrator-only
+
+| Invocation | Who / when | Effect |
+|---|---|---|
+| `accept-gate <P> --require` | orchestrator, at the `DECOMP` boundary | `required: true`. No status change — the phase is still being built. |
+| `accept-gate <P> --waive --note "why"` | orchestrator, at the `DECOMP` boundary | `required: false` + the reason. A not-operator-visible phase **declares so explicitly**, never by omission. `--note` is mandatory here. |
+| `accept-gate <P> --open --walkthrough "..."` | orchestrator, at the review, after the executor's validation **and** judgment | records the walkthrough, stamps `requested_at`, sets the phase `pending`, prints the operator instructions. Requires `required: true`. |
+| `accept-gate <P> --clear [--note "..."]` | operator (or the orchestrator on their explicit say-so) | stamps `cleared_at`, returns the phase to `in_progress`. |
+| `accept-gate <P>` | anyone | prints the current gate state; writes nothing. |
+
+`accept-gate` is a phase-state command: **executors never run it** (it joins the Never list in both
+agent files). The review executor returns the walkthrough text; the orchestrator opens the gate.
+No `new-phase` flag and no `create-phase` hook — **the single mandatory declaration point is the
+`DECOMP` boundary**, and the refusal below is the backstop that makes forgetting impossible.
+
+### 3. What `review-phase` refuses, and what it never refuses
+
+`review-phase --verdict pass` refuses when the phase carries an `acceptance` block and either
+
+- `required` is `null` (undeclared) → error naming `accept-gate <P> --require|--waive`, or
+- `required` is `true` and `cleared_at` is `null` → error naming `accept-gate <P> --open` /
+  `--clear`.
+
+`changes_requested` and `blocked` are **never** refused — the operator's failure report has to be
+recordable. `review-phase --verdict changes_requested` **resets `walkthrough`, `requested_at` and
+`cleared_at` to `null`**: the phase changed again, so the gate re-opens for the re-review.
+
+### 4. Legacy phases (the `--update` answer)
+
+`--update` never touches `works/`, so every phase an adopter already has keeps **no `acceptance`
+key at all**. Absence = legacy = `pass` is allowed (print one advisory line, nothing more).
+`validate` **does not warn** about a missing block — nagging five legacy phases on every run
+violates the lean-dashboard principle; it only checks the block's *shape* when present, and errors
+on `status: done` + `required: true` + `cleared_at: null` (the same shape as the existing "done but
+review is not pass" error). `new_phase` stamps the block on every phase created from v32 on, so
+"undeclared" and "legacy" are distinguishable and only new phases get the refusal.
+
+**P16 itself is legacy-shaped** (created by v31) and machinery-only: its own `P16.REVIEW` passes
+under the legacy path, and it should say so in one line rather than trying to self-apply the gate.
+
+### 5. The operator runtime manifest: `## Operator Runtime` in the `operations` doc
+
+Heading — quoted verbatim by S3/S4/S5 — is **`## Operator Runtime`**, seeded in
+`installer/payloads/doc_bodies/operations.md` immediately after `## Local Development` and before
+`## Environment Variables`. Fields: exact run command(s); mode (dev vs production build, and
+whether they differ); the origin/host the operator actually browses; devices/viewports/browsers;
+the production build command + origin when different; anything else needed to see what the operator
+sees (auth, seeded data, feature flags).
+
+The seed ships an explicit **unfilled marker** line, so "no manifest" is greppable rather than
+guessed: **an absent section and an unfilled one are treated identically** — the slice claiming
+real-browser verification stops `pending` and asks the operator, never assumes.
+
+### 6. The cumulative product smoke list: `## Regression Checklist` in the `qa` doc
+
+**Reuse the existing seeded section — no new file and no new template.** Every adopter already has
+that heading, its doc is versioned once per phase at the review (exactly the append-at-review
+cadence F5 wants), and inventing a parallel list would fork the truth. S2 rewrites the stub to
+state the contract: headline behaviours only (terse — the small-test-files rule applies), appended
+by each phase's fidelity/review, and **re-run whole** by every later phase.
+
+### 7. Catalogue routing (F4): procedure plus one named list, no new engine check
+
+Operator-question catalogues accumulate in a **`## Operator Questions` running list in `phase.md`**,
+mirroring the proven "Doc impact" pattern (S1 adds the heading to the `new_phase` scaffold; S4 tells
+executors to append to it). At the review each entry must be **routed**: folded into the `--open`
+walkthrough as a decision to take, **or** filed with `defer-job` so it shows on the deferred
+dashboard. An unrouted entry is a review finding — the review may not pass with one. No new
+`phase.json` field and no engine check beyond the gate itself.
+
+### 8. The review's new stages, and who performs them
+
+The review executor — not a new agent tier — performs, after validating all slices and before
+rendering the verdict, for a phase whose gate is `required: true`:
+
+1. **Independent spot-check (F6):** open the running product in the manifest runtime and verify the
+   phase's headline claims (N key flows) itself; never pass on other slices' reports alone.
+2. **Fresh-eyes UX walkthrough (F3):** use the product as a first-time user and report everything
+   dead, confusing, or annoying — **explicitly not judged against the design record**. Findings
+   route to the gate walkthrough, never to silent fixes.
+3. **Re-run the whole cumulative smoke list** (decision 6) and append this phase's headline checks.
+4. Return `review_verdict: pass` **plus one new structured-return field, `walkthrough`** — the
+   concrete script (URLs, actions, in the manifest runtime) plus the routed operator questions.
+   The orchestrator runs `accept-gate --open` with it and STOPS.
+
+**One new return field only** (`walkthrough`, review slices only). Routing evidence lives inside it
+and in `result.md`.
+
+### 9. The conditioning switch that keeps non-product work unaffected
+
+Every F1/F3/F6 duty is conditioned on the phase's declaration: `required: true` → the duties bite;
+`--waive` → none of them do. One switch instead of scattered "if applicable" hedges — and it is why
+a machinery-only repo like this one (no running product, no manifest) is untouched by the new
+rules.
+
+## Findings & Notes
+
+Verified against the tree at decomposition time.
+
+- **Every slice must rebuild the artifact.** `.githooks/pre-commit` runs `installer/build.py --check`
+  when anything under `installer/`, `scripts/workflow.py`, `CLAUDE.md`, `executors.toml`, `.claude/`,
+  `.github/`, `.gitattributes`, `works/templates/`, or the artifact is staged. All six slices touch
+  at least one of those, so each ends with `python3 installer/build.py` and leaves
+  `python3 installer/build.py --check` + `python3 scripts/workflow.py validate` green.
+- **No new payload file is needed.** `build.py` discovers skills by glob and doc bodies by glob
+  (`collect_seed_payloads`), so `FIXED_LIVE_FILES` needs no edit and `EXPECTED_SKILL_COUNT` stays
+  **17**. Deferred job **D3** ("smoke-execute the assembled artifact", triggered by touching
+  `installer/build.py`) therefore does **not** fire in this phase.
+- **`--update` preserves all of `docs/`** (`_update_handle` in `installer/main.py`), and a retrofit
+  installs doc bodies only when the target has no `docs/` of its own. So the seeded
+  `## Operator Runtime` and the rewritten `## Regression Checklist` reach **fresh installs only** —
+  an existing adopter must add/fill them by hand. That is a **required Migration note** in the v32
+  CHANGELOG entry (S6), and it is the concrete reason the "no manifest → `pending` stop" rule
+  (decision 5) has to exist rather than assuming a manifest is present.
+- **`design-cowork` has no fidelity specification today.** The only fidelity language is one line in
+  *Shape* ("A **design-fidelity fix** slice is part of the normal shape, not a failure") and the
+  *Implementing — RESPECT THE DESIGN* section. S5 therefore **writes a new section**, it does not
+  edit an existing one. `CLAUDE.md`'s design rule already contains the string `real-browser fidelity`
+  and Test 0 asserts it — keep that string alive.
+- **`slice-executor-mid.md` lags `-high.md` by more than D2.** Beyond the missing co-work refusal
+  clause it also lacks: the two-pass/`DECOMP2` decomposition language, the review's
+  "complete validation and judgment before branching on the verdict" rule, the pass-only stop, the
+  `explain:` pointer, and high's broader no-commit wording ("with no exception anywhere… any other
+  git root"). S4 should close the gap deliberately rather than adding only the D2 line; Test 0's
+  existing per-tier assertions are the place to pin whatever it lands.
+- **`next`'s pending output is generic today** — it prints `set-phase-status <P> in_progress` as the
+  clear command. S1 special-cases an open acceptance gate: print the walkthrough and
+  `accept-gate <P> --clear`. Reuse the existing `pending` halt; do **not** invent a second halt
+  state (`operator_wait_target` / `resolve_current` already stop selection, stream-scoped).
+- **Parallel mode composes without new work.** `parallel-gate` already requires branch phase `done`
+  + review `pass`, and the gate sits *before* that pass, on the branch, where the operator walks the
+  branch's running product. `phase.json` is not a generated file, so the `acceptance` block merges
+  with the phase folder. S3 needs at most one sentence in `parallel-phase`.
+- **`.claude/settings.json` needs no change:** `Bash(python3 scripts/workflow.py:*)` already
+  pre-approves `accept-gate`.
+- **Doc-impact candidates for this repo's own durable docs** (the `REVIEW` consolidates them; active
+  docs here are `architecture`, `operations`, `qa`, `decisions`): `decisions` — the gate, its
+  declaration point and the legacy default; `operations` — how to drive `accept-gate`, the manifest,
+  the v32 migration; `architecture` — the `acceptance` block and the review lifecycle; `qa` — the
+  works-as-a-product dimension and the cumulative smoke list. Each slice appends its own one-line
+  note to *Doc impact* below; **no slice runs `doc-new-version`**.
+- **Test 0 additions land in `S6`, all at once**, written against the final text of S1–S5, so the
+  assertions are authored once and cannot describe wording that later moved. Keep them terse — the
+  safety-critical invariants only (the refusal, the manifest heading, the `--waive` requirement, the
+  co-work refusal in both tiers), not whole skill bodies.
+
+### Deferred jobs
+
+- **D2 — folded into `P16.S4`.** Its trigger ("next time `.claude/agents/slice-executor-*.md` are
+  edited") is exactly S4, and the fix is one line in a file S4 is already rewriting. Promoting it
+  would create a redundant slice — and `promote-deferred` pre-fills the new slice's `plan.md`, which
+  decomposition may not do. **Recommendation to the orchestrator** (whose command it is): after S4
+  lands, close it with
+  `python3 scripts/workflow.py drop-deferred D2 --reason "fixed in P16.S4 — slice-executor-mid now carries the co-work refusal clause"`.
+  Not run here: `DECOMP` may run no state-transition command but `new-slice`.
+- **D4 — trigger fires, call is the orchestrator's.** "Next time `docs/retrofit-guide.md` is edited"
+  is true in S6. It is a one-paragraph Troubleshooting addition about the `.gitattributes`
+  line-merge, unrelated to P16's objective. Fold it into S6 if you want it closed while the file is
+  open; otherwise leave it deferred. Do not let it grow the release slice.
+- **D3 — does not fire** (see above): `installer/build.py` is not edited.
+
+### Doc impact
+
+_One line per durable-truth change; the `REVIEW` slice consolidates these into doc versions._
+
+- (none from `P16.DECOMP` — it created slice folders and wrote this notebook.)
+
+### Operator questions
+
+_Routed at the review into the acceptance walkthrough or a deferred job (shared decision 7)._
+
+- (none from `P16.DECOMP`.)
+
+## Constraints
+
+- Single decomposition pass: **no `co-work` slice, no `P16.DECOMP2`** — this phase designs no
+  product's look.
+- Every slice leaves `python3 installer/build.py --check` and `python3 scripts/workflow.py validate`
+  green, with the rebuilt `bootstrap_agentic_workspace.sh` in the same commit.
+- Weigh every addition against the house principles: lean dashboards, terse tests, explicit
+  invocation. F1–F3 carry most of the value; prefer one clear rule over a heavy engine feature.
+- Keep the new engine surface to the one `accept-gate` command and the one `acceptance` block.
+- No slice runs `doc-new-version`; durable truth goes to *Doc impact* above.
+
+## Open Questions
+
+- None open at decomposition. The two judgment calls the plan asked for are settled above: the gate
+  is declared at the `DECOMP` boundary (decision 2) and legacy phases pass by default (decision 4).
