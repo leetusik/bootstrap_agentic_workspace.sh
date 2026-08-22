@@ -306,6 +306,33 @@ Verified against the tree at decomposition time.
   already implies the operator accepted what is about to be merged. No engine or command change, and
   the deferred doc consolidation is untouched.
 
+- **Executor prompts: mid and high now have byte-identical bodies (`P16.S4`).** The only surviving
+  differences between `.claude/agents/slice-executor-{mid,high}.md` are in **frontmatter**
+  (`name`, `description`, `tools` — high adds `WebSearch, WebFetch` — and the `sync-agents`-owned
+  `model`/`effort`); `diff` of the two bodies from line 9 is empty. The three body differences the
+  S4 plan expected to survive were already identical before the slice, so closing the `DECOMP`
+  drift list left nothing behind. **S6 may pin this as a one-line Test 0 invariant** (bodies equal
+  below the frontmatter) — S4 deliberately added no test assertions.
+- **The exact strings S6's Test 0 can pin (landed in `P16.S4`), present once in each tier file.**
+  Return field (a single unwrapped line in each file; line-wrapped here): `` - `walkthrough`: (review slice only, required when the phase's
+  `acceptance.required` is `true`, otherwise `none`) the concrete script the operator runs — URLs to
+  open, actions to try, in the manifest runtime and access path — plus the routed questions as
+  decisions to take, and any deferred jobs you want filed (title, reason, trigger), since you never
+  run `defer-job` yourself ``. Co-work refusal, now word-for-word in **both** tiers:
+  `` execute a `co-work` (design) slice — those are run inline by the orchestrator and never
+  dispatched, because you have no `DesignSync`; if you are ever handed one, do no design work and
+  return `needs_operator` ``. Gate-stage opener: `` On a gated phase (`acceptance.required` is
+  `true` — and only then) also run the gate stages ``. The Never bullet naming both prohibited
+  commands keeps the existing Test 0 substring `run workflow state-transition commands` intact and
+  adds `` `accept-gate` `` (1x) and `` `defer-job` `` to the same sentence.
+- **`deferred_jobs_to_file` was NOT added — decision 8 holds (`P16.S4`).** The review's deferred-job
+  list is folded into the `walkthrough` field's trailing clause plus `result.md`, so `walkthrough`
+  remains the **one** new structured-return field. S5/S6 must not introduce a second field.
+- **D2 is fixed (`P16.S4`).** `slice-executor-mid.md` now carries the co-work refusal clause,
+  word-for-word identical to high's. The orchestrator can close it with
+  `python3 scripts/workflow.py drop-deferred D2 --reason "fixed in P16.S4 — slice-executor-mid now carries the co-work refusal clause"`
+  (not run in the slice: executors run no state-transition command).
+
 ### Deferred jobs
 
 - **D2 — folded into `P16.S4`.** Its trigger ("next time `.claude/agents/slice-executor-*.md` are
@@ -367,6 +394,15 @@ _One line per durable-truth change; the `REVIEW` slice consolidates these into d
   operator gate, never to silent fixes), re-runs the **whole** cumulative `## Regression Checklist`
   and appends this phase's headline checks, and routes every `## Operator Questions` entry into the
   walkthrough or into a deferred job — an unrouted entry blocks the pass. (`P16.S3`)
+- `architecture` — the executor prompts (`.claude/agents/slice-executor-{mid,high}.md`) now carry the
+  gate duties themselves: the `acceptance.required` switch and the `## Operator Runtime` manifest as
+  named inputs, the manifest-runtime rule for any real-browser claim (absent or `UNFILLED` →
+  `needs_operator` → `pending`), the review's six gate stages summarized from the `review-phase`
+  skill with consolidation staying in the pass path before the gate opens, the `## Operator
+  Questions` append habit beside "Doc impact", `accept-gate` + `defer-job` added to the prohibited
+  commands, and one new return field `walkthrough`; both tiers now share a byte-identical body
+  (mid gained the co-work refusal — D2 — plus the two-pass decomposition, review-branching,
+  `explain` pointer and broader no-commit wording). (`P16.S4`)
 
 ### Operator questions
 
