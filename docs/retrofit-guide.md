@@ -238,6 +238,22 @@ packages. After every update, run `python3 scripts/workflow.py sync-agents` to
 re-apply the preserved preset and per-tier overrides, then run
 `python3 scripts/workflow.py next`.
 
+**Coming from a pre-v32 workspace.** Workspace v32 adds the operator acceptance
+gate and the operator runtime manifest. Nothing breaks on update: every phase you
+already have carries no `acceptance` block, so it stays legacy and its review
+passes exactly as before. To put a phase that is still **live** under the gate,
+run `python3 scripts/workflow.py accept-gate <P> --require` — never on a `done`
+phase, since `validate` would then correctly report it as done with an uncleared
+gate. The other step is manual because `--update` preserves all of `docs/`: the
+seeded `## Operator Runtime` manifest (in the operations doc) and the rewritten
+`## Regression Checklist` cumulative smoke list (in the qa doc) reach **fresh
+installs only**. Add both to your own docs with
+`python3 scripts/workflow.py doc-new-version --doc operations|qa …`, copying the
+seed text from `installer/payloads/doc_bodies/` in an upstream clone, and fill
+the manifest in — never by hand-editing `docs/current/*.md`. Until the manifest
+is real, the first slice that claims real-browser verification stops `pending`
+and asks you for it, which is the intended behaviour.
+
 **Coming from a pre-v31 workspace.** Workspace v31 dropped Codex support — this
 workspace ships Claude Code only. An update flags `.agents`, `.codex`, `AGENTS.md`,
 and `AGENTS.workspace.md` as stale machinery in its change-list; as always it
@@ -289,4 +305,4 @@ versioned system when you want it to be durable, regenerated truth.
 | "this repo already contains an agentic workspace" | `works/state.json` present | Nothing to do — use the workspace directly. |
 | docs system not installed | you already have `docs/index.json` | Intended (Tier 2). Adopt manually if you want it. |
 | Every workflow command prompts for permission | `.claude/settings.json` merge skipped or your tool ignores it | Confirm the workspace permission entries are present in `.claude/settings.json`. |
-| `git status` shows a modified file you had | should not happen for Tier 1/2/4 | The only intended modification is the additive `.claude/settings.json` merge and the marked `CLAUDE.md` section; report anything else as a bug. |
+| `git status` shows a modified file you had | should not happen for Tier 1/2/4 | The only intended modifications are the additive `.claude/settings.json` merge, the marked `CLAUDE.md` section, and the `.gitattributes` line-merge (the `works/events.jsonl merge=union` rule appended below a comment — your existing rules are left untouched, and re-running adds nothing); report anything else as a bug. |

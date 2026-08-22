@@ -6,11 +6,11 @@
 ## Pointer
 
 - Current phase: `P16`
-- Current slice: `P16.S6`
-- Next slice: `P16.REVIEW`
+- Current slice: `P16.REVIEW`
+- Next slice: `none`
 - Waiting on operator: `none`
-- Open deferred jobs: `2`
-- Rebuilt at: `2026-08-23T07:25:47+09:00`
+- Open deferred jobs: `1`
+- Rebuilt at: `2026-08-23T07:40:05+09:00`
 
 ## Active Phases
 
@@ -20,7 +20,7 @@
 | [x] `P13` | `done` | `pass` | Codex workflow parity | `none` | `works/phases/active/P13` |
 | [x] `P14` | `done` | `pass` | Codex visual-design cowork replacement | `none` | `works/phases/active/P14` |
 | [x] `P15` | `done` | `pass` | Drop Codex support | `none` | `works/phases/active/P15` |
-| [ ] `P16` | `planned` | `pending` | Operator acceptance gate and runtime-faithful verification | `P16.S6` | `works/phases/active/P16` |
+| [ ] `P16` | `planned` | `pending` | Operator acceptance gate and runtime-faithful verification | `P16.REVIEW` | `works/phases/active/P16` |
 
 ## Phase P12: Opt-in parallel phase execution: branch-per-phase with PR + CI
 
@@ -86,5 +86,5 @@
 | [x] `P16.S3` | `done` | Contract + review/loop skills: gate, manifest, catalogue routing, review independence | `implementation` | `works/phases/active/P16/slices/P16.S3` |
 | [x] `P16.S4` | `done` | Executor prompts: manifest runtime, review independence, catalogue routing, co-work refusal (D2) | `implementation` | `works/phases/active/P16/slices/P16.S4` |
 | [x] `P16.S5` | `done` | design-cowork: works-as-a-product verification and the gap channel | `implementation` | `works/phases/active/P16/slices/P16.S5` |
-| [ ] `P16.S6` | `todo` | Ship workspace v32: version, CHANGELOG, adopter prose, Test 0 invariants | `implementation` | `works/phases/active/P16/slices/P16.S6` |
+| [x] `P16.S6` | `done` | Ship workspace v32: version, CHANGELOG, adopter prose, Test 0 invariants | `implementation` | `works/phases/active/P16/slices/P16.S6` |
 | [ ] `P16.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P16/slices/P16.REVIEW` |

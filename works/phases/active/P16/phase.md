@@ -357,6 +357,40 @@ Verified against the tree at decomposition time.
   `plan.md` **and** dispatch prompt to name `## Operator Runtime`; *Never* gained two bullets
   (verify-only-against-the-record / only in a convenient runtime; fix a design gap silently).
 
+- **The release surface, as shipped (`P16.S6`).** The workspace version has exactly **one** stamp —
+  `installer/main.py:38 WORKSPACE_VERSION = 32`; nothing else in the tree states the current version
+  (every remaining `v31` is history: the CHANGELOG, the Codex-removal negatives in
+  `tests/retrofit_smoke.sh`, the `update-workspace` / `explain` / retrofit-guide migration notes,
+  `installer/main.py`'s `OBSOLETE_MACHINERY` comments, and the generated `docs/current/*`). The
+  smoke test's existing three-way check (`installer/main.py` == top `## v<N>` heading == fresh
+  `works/.workspace-version.json`) is what enforces the bump, so a future release slice needs no new
+  test. `installer/README.md` needed no edit: its release rule is version-agnostic.
+- **Fresh-install proof of v32 (`P16.S6`).** Installing the rebuilt artifact into a scratchpad temp
+  dir (log written **outside** the target — S2's gotcha) gives `"workspace_version": 32`,
+  `## Operator Runtime` + `UNFILLED` in `docs/current/operations.md`, the cumulative smoke list in
+  `docs/current/qa.md`, a passing `validate`, and a `new-phase` there stamps the five null
+  `acceptance` fields and scaffolds `## Operator Questions`. End-to-end, S1+S2 reach a fresh adopter.
+- **The new Test 0 invariants were proved to bite (`P16.S6`).** Test 0's python body was extracted to
+  the scratchpad and run against *mutated copies* of `.claude/`, `CLAUDE.md` and `installer/` (never
+  the real tree): six independent mutations — mid's body altered (parity), `Questions get asked, not
+  archived.` removed, `UNFILLED` → `TBD` in the seed, `accept-gate` off both Never lists, `never by
+  omission` out of `CLAUDE.md`, `## Gate stages` renamed — each failed with the expected assertion,
+  and the unmutated control passed. The **tier-parity check** is one line
+  (`body.split("---\n", 2)[2]` compared between mid and high), so S4's byte-identical bodies are now
+  a maintained invariant rather than a happy accident. Engine probes ride Test 5's existing throwaway
+  fresh install (`$F`): the probe phase `P1` left there does not disturb the later `--update`
+  assertions.
+- **No defect found in S1–S5 (`P16.S6`).** Reading all five surfaces against each other while
+  writing the release prose turned up no contradiction to report to the `REVIEW`: the vocabulary
+  (`accept-gate` flags, `## Operator Runtime` + `UNFILLED`, `## Operator Questions`,
+  `## Regression Checklist` line shape, the `walkthrough` return field, the pass-path consolidation
+  timing) is spelled identically everywhere the release prose had to quote it.
+- **`D4` is fixed in `P16.S6`; `D3` did not fire.** The retrofit guide's "only intended modification"
+  Troubleshooting row now also names the `.gitattributes` line-merge (verified against
+  `_gitattributes_action` / `_apply_gitattributes` in `installer/main.py` and the smoke test's
+  `.claude/settings.json,.gitattributes,CLAUDE.md` modification set). The orchestrator can close it:
+  `python3 scripts/workflow.py drop-deferred D4 --reason "fixed in P16.S6 — the retrofit guide's Troubleshooting row now lists the .gitattributes line-merge"`.
+
 ### Deferred jobs
 
 - **D2 — folded into `P16.S4`.** Its trigger ("next time `.claude/agents/slice-executor-*.md` are
@@ -449,11 +483,29 @@ _One line per durable-truth change; the `REVIEW` slice consolidates these into d
   product at the acceptance gate and may change their mind there, which is a `changes_requested`
   plus a new round or `fix` slice, not a fidelity failure. (`P16.S5`)
 
+- `operations` — **workspace v32 is released**: `WORKSPACE_VERSION = 32` in `installer/main.py`, a
+  `## v32 — 2026-08-23` CHANGELOG entry with Migration notes, the `update-workspace` pre-v32 step and
+  the retrofit guide's *Updating after adoption* paragraph. Adopters update with
+  `--update --dry-run` → `--update` → `sync-agents`; existing phases keep **no** `acceptance` block
+  and pass as before (opt a **live** phase in with `accept-gate <P> --require`, never a `done` one),
+  and because `--update` preserves all of `docs/`, `## Operator Runtime` and the rewritten
+  `## Regression Checklist` reach **fresh installs only** — an adopter adds them with
+  `doc-new-version` from `installer/payloads/doc_bodies/` and fills the manifest, or the first
+  real-browser slice stops `pending` asking for it. (`P16.S6`)
+- `architecture` — the executor-tier **parity invariant is now enforced**: `tests/retrofit_smoke.sh`
+  Test 0 asserts that `.claude/agents/slice-executor-{mid,high}.md` are byte-equal below their
+  frontmatter, alongside the v32 gate strings in `CLAUDE.md`, `review-phase`, the two loop skills,
+  both agent files, `design-cowork` and the two seeded doc bodies, plus three engine probes
+  (`new-phase` stamps the block; an undeclared `--verdict pass` is refused; `--waive` requires
+  `--note`). (`P16.S6`)
+
 ### Operator questions
 
 _Routed at the review into the acceptance walkthrough or a deferred job (shared decision 7)._
 
 - (none from `P16.DECOMP`.)
+- (none from `P16.S1`–`P16.S6` — machinery-only phase; every judgment call the release
+  needed was already settled in *Shared design decisions* or by S1–S5's findings.)
 
 ## Constraints
 

@@ -251,6 +251,7 @@ another agent, CI — drives the workspace with the exact same commands:
 | `new-slice --phase P1 --slice P1.S1 --name …` | Add a slice |
 | `start-slice P1.S1` / `finish-slice P1.S1` | Move a slice through its lifecycle |
 | `review-phase P1 --verdict pass` | Record a phase review |
+| `accept-gate P1 --require` / `--open --walkthrough …` / `--clear` | Declare, open, and clear a phase's operator acceptance gate |
 | `doc-new-version --doc backend --summary … --source P1.S1` | Cut a new durable doc version |
 | `defer-job --title … --reason … --trigger …` | Park a deferred job |
 | `promote-deferred D1 --phase P1 --slice P1.S2` | Promote a deferred job into a slice |
@@ -470,6 +471,9 @@ This repo dogfoods its own workflow, so contributing means *using* it — throug
    commands directly. The `DECOMP` slice breaks the phase into slices.
 3. Review it: the phase closes only on a passing review — the agent records it with
    `python3 scripts/workflow.py review-phase P2 --verdict …`; you read the result and approve.
+   On a phase that changes what you can see, the review stops one step earlier: it ends with the
+   phase `pending` and a concrete walkthrough, and the pass is recorded only after you have walked
+   the running product yourself and cleared the gate (`accept-gate P2 --clear`).
 
 A few house rules:
 

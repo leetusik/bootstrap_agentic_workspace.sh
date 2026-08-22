@@ -9,6 +9,82 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v32 — 2026-08-23
+
+- **Why this release: every gate the machinery had sat between agents.** An adopting workspace ran
+  two build phases — 30 slices, a scripted real-browser fidelity pass at the end of each, both
+  reviews passed — and the product owner, meeting the running product only afterwards, filed 11
+  user-visible failures, starting with a login link that never rendered because of a dev-only
+  double-effect the production-build verification could not see. Every check had passed, because
+  verification's only yardsticks were the signed design record and the executor's most convenient
+  runtime. v32 puts the operator, and the operator's runtime, back in the loop.
+- **The operator acceptance gate, machine-enforced.** `phase.json` gains an optional five-field
+  `acceptance` block (`required` / `walkthrough` / `requested_at` / `cleared_at` / `note`) driven by
+  one new command, `accept-gate <P>`: `--require` or `--waive --note "why"` at the `DECOMP`
+  boundary — every phase declares explicitly, never by omission, whether it changes operator-visible
+  surfaces — then `--open --walkthrough "..."` at the review (records the script, sets the phase
+  `pending`), `--clear [--note "..."]` once the operator has walked the product, and a bare
+  invocation that shows the gate. The engine enforces it rather than trusting anyone to remember:
+  `review-phase --verdict pass` refuses while the gate is undeclared or uncleared and names the
+  exact command, while `changes_requested` and `blocked` are never refused — an operator's failure
+  report has to stay recordable — and `changes_requested` resets the gate for the re-review. `next`
+  prints an open gate's walkthrough and its `--clear` command, and `validate` errors on a `done`
+  phase whose required gate was never cleared. A phase carrying **no `acceptance` block at all** is
+  legacy and passes exactly as before.
+- **The operator runtime manifest.** The seeded operations doc gains an `## Operator Runtime`
+  section — run command(s), dev-vs-production mode, the origin the operator actually browses,
+  devices/viewports/browsers, the production build command when it differs. Any slice claiming
+  "verified in a real browser" now verifies **in that runtime and access path**, and additionally in
+  the production build when the two differ, because dev-only bug classes and access-path differences
+  live in exactly the gap between it and whichever runtime is convenient. The section ships an
+  explicit `- Status: UNFILLED — …` marker; absent and unfilled mean the same thing — the slice
+  returns `needs_operator` and the orchestrator sets it `pending` rather than assuming.
+- **"Works as a product" is a named verification dimension beside "matches the record."** The
+  `design-cowork` skill, which specified fidelity to the signed record and nothing else, gains a
+  `## Verifying — RESPECT THE DESIGN, and does it work` section: the record is the floor of what to
+  check, never the ceiling, and matching it is not acceptance. Its mandatory sweep — every visible
+  control does something observable, interaction states (focus/hover/keyboard, including browser
+  defaults the record never drew), liveness over time (the timer ticks; a refresh does not destroy
+  in-progress typing), and type-into-it-and-wait — makes each failure a defect even when the render
+  is pixel-perfect, in both runtime modes. Beside it the review walks the product once with fresh
+  eyes as a first-time user, reporting everything dead, confusing or annoying **explicitly not
+  judged against the design record**, and opens the running product itself instead of passing on
+  other slices' reports.
+- **Questions get asked, not archived.** Operator-decision questions accumulate on a running
+  `## Operator Questions` list in `phase.md` (now in the `new-phase` scaffold), mirroring the proven
+  "Doc impact" list, and the review must **route** every entry — into the acceptance walkthrough as
+  a decision for the operator, or into a deferred job — because an unrouted entry is a finding it
+  may not pass with. Catalogued now means delivered: a design gap is never fixed silently or
+  "improved", and signing the cards is not accepting the product.
+- **A cumulative product smoke list.** The seeded qa doc's `## Regression Checklist` is now the
+  product's append-only smoke list — headline behaviours only, shaped
+  `- [ ] <surface>: <one observable behaviour> (P<N>)` — re-run **whole** in the operator runtime by
+  every later phase before it appends its own lines, so a phase touching shared surfaces can no
+  longer silently invalidate an earlier phase's pass. Terse on purpose: the small-test-files rule
+  applies to verification too.
+- **Executor prompts carry the gate duties, with one new return field.** Both `slice-executor` tiers
+  read `acceptance.required` as the single switch for every new duty (`true` bites, `false` is
+  waived, `null` is a finding, no block is legacy), name `## Operator Runtime` as an input for any
+  real-browser claim, run the review's six gate stages in order, and append to
+  `## Operator Questions` beside "Doc impact". `walkthrough` is the one new structured-return field;
+  `accept-gate` and `defer-job` join the prohibited commands (the review *returns* the walkthrough
+  and *lists* the jobs; the orchestrator opens the gate and files them). Doc consolidation does not
+  move — it stays in the review's pass path, before the gate opens, and parallel mode still defers
+  it to the post-merge step. The two tier bodies are now byte-identical below their frontmatter (mid
+  gained the co-work refusal clause it lacked, plus the two-pass decomposition and no-commit
+  wording), pinned by the smoke test.
+- **Migration notes:** preview with `--update --dry-run`. `--update` preserves `works/` and `docs/`,
+  which shapes both manual steps. **(a) Every phase you already have carries no `acceptance`
+  block**, so it is legacy and passes as before; to gate a phase already in flight, run
+  `accept-gate <P> --require` on a **live** phase only — never on a `done` one, since `validate`
+  would then correctly report it as done with an uncleared gate. **(b) The `## Operator Runtime`
+  section and the rewritten `## Regression Checklist` reach fresh installs only.** Add them to your
+  own docs with `doc-new-version` (`--doc operations` / `--doc qa`, copying the seed text from
+  `installer/payloads/doc_bodies/` in an upstream clone) and fill the manifest in — never by
+  hand-editing `docs/current/*.md`. Until it exists, the first slice claiming real-browser
+  verification stops `pending` and asks you for it, as intended. **(c)** Run
+  `python3 scripts/workflow.py sync-agents` after the update, as always.
+
 ## v31 — 2026-08-14
 
 - **Codex support is removed; the workspace ships Claude Code only.** The `.agents/` skill mirror (34

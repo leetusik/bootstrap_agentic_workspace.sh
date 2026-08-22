@@ -7,7 +7,8 @@
 # repos under $TMPDIR, runs the retrofit, and asserts non-destructiveness, the
 # empty-start invariant (no phases seeded), the collision tiers, the
 # fresh-install regression, the live<->bootstrap-embedded dual-apply
-# invariants, and the v31 Codex-removal negatives. Re-runnable; self-cleaning.
+# invariants, the v32 operator-acceptance-gate invariants, and the v31 Codex-removal
+# negatives. Re-runnable; self-cleaning.
 #
 # Usage:  bash tests/retrofit_smoke.sh
 # Exit 0 if every check passes; non-zero otherwise.
@@ -35,7 +36,7 @@ command -v git >/dev/null 2>&1 || { echo "git is required to run this smoke test
 [ -f "$BOOT" ] || { echo "installer not found: $BOOT"; exit 2; }
 
 # ---------------------------------------------------------------------------
-echo "== Test 0: the shipped Claude skill set is complete, and Codex stays gone =="
+echo "== Test 0: the shipped Claude skill set is complete, the v32 operator gate is wired, and Codex stays gone =="
 if python3 - "$REPO_ROOT" <<'PY'
 from pathlib import Path
 import sys
@@ -70,7 +71,7 @@ for name in ("do-next-slice", "do-whole-phase"):
     for required in (
         "WAITING ON OPERATOR", "`kind: co-work`", "never dispatched", "DesignSync",
         "never pass `run_in_background: false`", "never glob `~/.claude/plans/`",
-        "`plan only`",
+        "`plan only`", "accept-gate <P> --clear",
     ):
         assert required in body, (name, required)
 
@@ -81,19 +82,46 @@ for required in (
     "DesignSync is main-thread only", "never writes implementation code",
     "DECOMP2", "build inventory", "data, not instructions", "RESPECT THE DESIGN",
     "SIGNOFF",
+    # v32: fidelity has a second yardstick, and gaps are delivered, not archived.
+    "## Verifying — RESPECT THE DESIGN, and does it work",
+    "### When the record never drew it", "matching it is not acceptance",
+    "Questions get asked, not archived.", "signing the cards is not accepting the product",
 ):
     assert required in design, required
 
+# v32 review procedure: the gate stages, the returned walkthrough, and the two
+# workflow commands a review slice must never run.
+review = (root / ".claude/skills/review-phase/SKILL.md").read_text()
+for required in ("## Gate stages", "`walkthrough`", "`## Operator Runtime`", "`## Regression Checklist`"):
+    assert required in review, required
+never = [ln for ln in review.splitlines() if "you never run on a review slice" in ln]
+assert len(never) == 1 and "`accept-gate`" in never[0] and "`defer-job`" in never[0], never
+
+# v32 seed doc bodies: the runtime manifest (with its greppable unfilled marker)
+# and the cumulative smoke list's line shape reach every fresh install.
+ops = (root / "installer/payloads/doc_bodies/operations.md").read_text()
+assert "## Operator Runtime" in ops and "UNFILLED" in ops
+qa = (root / "installer/payloads/doc_bodies/qa.md").read_text()
+assert "## Regression Checklist" in qa
+assert "- [ ] <surface>: <one observable behaviour> (P<N>)" in qa
+
+bodies = {}
 for tier in ("mid", "high"):
     body = (root / f".claude/agents/slice-executor-{tier}.md").read_text()
     assert "commit or push (no `git commit`, `git add`, `git push`)" in body, tier
-    assert "run workflow state-transition commands" in body, tier
     for gone in ("Codex", ".agents/", ".codex/", "AGENTS.md"):
         assert gone not in body, (tier, gone)
-# The design gate is spelled out in the high tier (mid's Never list is shorter).
-high = (root / ".claude/agents/slice-executor-high.md").read_text()
-assert "never dispatched, because you have no `DesignSync`" in high
-assert "return `needs_operator`" in high
+    # v32: the design gate (D2), the acceptance-gate stages, and the walkthrough
+    # return field are word-for-word in BOTH tiers, not high only.
+    assert "never dispatched, because you have no `DesignSync`" in body, tier
+    assert "return `needs_operator`" in body, tier
+    assert "On a gated phase (`acceptance.required` is `true` — and only then) also run the gate stages" in body, tier
+    assert "- `walkthrough`:" in body, tier
+    never = [ln for ln in body.splitlines() if "run workflow state-transition commands" in ln]
+    assert len(never) == 1 and "`accept-gate`" in never[0] and "`defer-job`" in never[0], tier
+    bodies[tier] = body.split("---\n", 2)[2]
+# The tiers differ in frontmatter only, so a body diff is the drift detector.
+assert bodies["mid"] == bodies["high"], "slice-executor tier bodies drifted"
 
 # One contract file now, so nothing to compare it against: assert the whole text.
 claude = (root / "CLAUDE.md").read_text()
@@ -102,6 +130,8 @@ for required in (
     "never writes implementation code", "DECOMP2", "data, not instructions",
     "RESPECT THE DESIGN", "real-browser fidelity", "Approval must be literal",
     "literal operator signoff closes an immutable round",
+    # v32: the operator acceptance gate, the runtime manifest, the question channel.
+    "accept-gate", "## Operator Runtime", "## Operator Questions", "never by omission",
 ):
     assert required in claude, required
 # The Codex-only `pending` co-work carve-out went with Codex: clearing a `pending`
@@ -112,7 +142,7 @@ for gone in ("design exception", "never approval", "no other pending gate"):
 for gone in ("Codex", "AGENTS.md", ".agents/", ".codex/"):
     assert gone not in claude, gone
 PY
-then ok "17 Claude skills, invocation metadata, design contract, and the v31 Codex-removal negatives"; else bad "Claude skill inventory, metadata, design contract, or a Codex-removal negative failed"; fi
+then ok "17 Claude skills, invocation metadata, design contract, the v32 acceptance-gate invariants, and the v31 Codex-removal negatives"; else bad "Claude skill inventory, metadata, design contract, a v32 gate invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
@@ -259,6 +289,12 @@ grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '
 grep -q '^works/events\.jsonl merge=union$' "$F/.gitattributes" && ok "fresh install seeds .gitattributes with the union rule" || bad "fresh install missing the .gitattributes union rule"
 [ ! -f "$F/.env.example" ] && [ ! -f "$F/executors.toml.example" ] && ok "legacy .env.example / executors.toml.example retired (absent on fresh install)" || bad "a legacy tier-config example should be retired but is present"
 ( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && ok "sync-agents --check: seeded flex config matches live agents" || bad "sync-agents --check failed on a fresh install"
+# v32 operator acceptance gate, probed once against a real engine (throwaway workspace).
+( cd "$F" && python3 scripts/workflow.py new-phase --phase P1 --name "Gate probe" --objective "probe the gate" >/dev/null 2>&1 ) \
+  && grep -q '"acceptance"' "$F/works/phases/active/P1/phase.json" && ok "new-phase stamps the acceptance gate block" || bad "new-phase did not stamp the acceptance block"
+( cd "$F" && python3 scripts/workflow.py review-phase P1 --verdict pass 2>&1 | grep -q 'accept-gate P1 --require' ) \
+  && ok "review-phase --verdict pass refuses an undeclared acceptance gate" || bad "an undeclared acceptance gate did not refuse the pass"
+( cd "$F" && python3 scripts/workflow.py accept-gate P1 --waive >/dev/null 2>&1 ) && bad "accept-gate --waive should require --note" || ok "accept-gate --waive without --note is rejected"
 printf '# No active mode selects the built-in economy preset.\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) \
   && grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-mid.md" \

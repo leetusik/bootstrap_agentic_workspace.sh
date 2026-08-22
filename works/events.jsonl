@@ -366,3 +366,6 @@
 {"ts": "2026-08-23T07:20:13+09:00", "type": "deferred_dropped", "deferred": "D2", "reason": "fixed in P16.S4 — slice-executor-mid now carries the co-work refusal clause"}
 {"ts": "2026-08-23T07:21:10+09:00", "type": "slice_status_changed", "slice": "P16.S5", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-08-23T07:25:47+09:00", "type": "slice_status_changed", "slice": "P16.S5", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-08-23T07:26:58+09:00", "type": "slice_status_changed", "slice": "P16.S6", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-08-23T07:40:05+09:00", "type": "slice_status_changed", "slice": "P16.S6", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-08-23T07:40:05+09:00", "type": "deferred_dropped", "deferred": "D4", "reason": "fixed in P16.S6 — the retrofit guide's Troubleshooting row now lists the .gitattributes line-merge"}
