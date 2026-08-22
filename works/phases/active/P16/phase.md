@@ -207,6 +207,29 @@ Verified against the tree at decomposition time.
   safety-critical invariants only (the refusal, the manifest heading, the `--waive` requirement, the
   co-work refusal in both tiers), not whole skill bodies.
 
+- **The engine surface S3-S5 must quote verbatim (landed in `P16.S1`).** Command `accept-gate <P>`;
+  flags `--require`, `--waive --note "..."`, `--open --walkthrough "..."`, `--clear [--note "..."]`;
+  bare invocation shows the gate and writes nothing. Helper `phase_acceptance(data)` +
+  `acceptance_gate_is_open(data)`. Events: `acceptance_required|waived|opened|cleared`. `next`, on an
+  open gate, prints `acceptance_gate=open (requested_at=...)`, then a `WALKTHROUGH:` line, the
+  walkthrough text, and `After the operator approves, clear it: python3 scripts/workflow.py
+  accept-gate <P> --clear`. `--walkthrough-file` was deliberately **not** shipped (surface stays small).
+- **`## Operator Questions` is now in the `new_phase` scaffold** (between `## Findings & Notes` and
+  `## Constraints`), with one guidance line about routing at the review. **S4 must quote that exact
+  heading** — note that this notebook, written before S1, carries a level-3 `### Operator questions`
+  under *Findings & Notes* instead; the scaffold heading is the canonical one from v32 on.
+- **`review-phase --verdict pass` refuses before it writes anything**, so a refused pass leaves no
+  trace; `changes_requested` / `blocked` are never refused and `changes_requested` nulls
+  `walkthrough`/`requested_at`/`cleared_at` while keeping `required` + `note`. A **malformed** (not
+  absent) block is treated as legacy with its own advisory line — `validate` is the single authority
+  on block shape.
+- **`accept-gate <P> --require` on an already-`done` phase is accepted and then fails `validate`**
+  ("done but its operator acceptance gate was never cleared"). Correct behaviour, but **S6's
+  migration note must say adopters opt *live* phases in, never finished ones.**
+- **No second halt state and no new `parallel-*` work.** The gate rides the existing `pending` halt;
+  `_phases_at_ref` reads only known keys, so `parallel-status`/`parallel-gate` are inert to the new
+  key (verified in the throwaway copy).
+
 ### Deferred jobs
 
 - **D2 — folded into `P16.S4`.** Its trigger ("next time `.claude/agents/slice-executor-*.md` are
@@ -227,6 +250,15 @@ Verified against the tree at decomposition time.
 _One line per durable-truth change; the `REVIEW` slice consolidates these into doc versions._
 
 - (none from `P16.DECOMP` — it created slice folders and wrote this notebook.)
+- `architecture` — `phase.json` gains an optional five-field `acceptance` block
+  (`required`/`walkthrough`/`requested_at`/`cleared_at`/`note`), read only through
+  `phase_acceptance()`; the phase review lifecycle now has an operator gate between the review
+  executor's judgment and `review-phase --verdict pass` (refused while undeclared or uncleared; reset
+  on `changes_requested`), and an absent block means legacy = pass allowed. (`P16.S1`)
+- `operations` — new `accept-gate <P>` command (`--require` / `--waive --note` at the `DECOMP`
+  boundary, `--open --walkthrough` at the review, `--clear [--note]` by the operator, bare = show);
+  it is the only new engine surface, `next` prints the open gate's walkthrough, and `validate` errors
+  on a `done` phase whose required gate was never cleared. (`P16.S1`)
 
 ### Operator questions
 
