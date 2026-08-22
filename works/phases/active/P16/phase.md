@@ -256,6 +256,56 @@ Verified against the tree at decomposition time.
   to add `## Operator Runtime` and rewrite their `## Regression Checklist` themselves, through
   `doc-new-version` (never by hand-editing `docs/current/`).
 
+- **Doc-consolidation timing on a gated phase — DECIDED, binding for S4/S6 (`P16.S3`).** The review
+  executor consolidates docs **in its `pass` path, before the gate opens** — i.e. exactly as today,
+  outside parallel mode; the stage-4 smoke-list append to `## Regression Checklist` rides that same
+  consolidation. Rationale: one dispatch, no new orchestrator duty, mechanics unchanged; and if the
+  operator then reports failures, the `changes_requested` → fix → re-review cycle consolidates again
+  and the newer versions supersede (versions are append-only durable truth — one describing code
+  that exists is not false). The rejected alternative (defer like parallel mode, consolidate after
+  the `--clear`) buys the cleaner semantics "docs describe accepted truth" but costs a second review
+  dispatch or an orchestrator-run consolidation, i.e. new surface in three skills — not worth it for
+  a window that only exists between a pass and a clear. Written into `CLAUDE.md`'s durable-docs rule
+  and `review-phase`'s pass bullet; **S4 and S6 must say the same thing.** Parallel mode is
+  unchanged: it still defers to the post-merge step.
+- **Exact wording S4/S5/S6 must mirror (landed in `P16.S3`).**
+  - Return field: **`walkthrough`**, review slices only, returned *beside* `review_verdict`;
+    described everywhere as "the concrete script the operator runs — URLs to open, actions to try,
+    in the manifest runtime and access path — plus the routed questions as decisions to take".
+  - Missing/unfilled manifest: the review (or any slice claiming real-browser verification) returns
+    **`needs_operator`** and the orchestrator sets it `pending`. Contract phrasing: "the executor
+    returns `needs_operator`, the orchestrator sets the slice `pending`". Absent section == `UNFILLED`
+    marker present.
+  - Executor prohibitions (both agent files): **`accept-gate`** (phase-state command) and
+    **`defer-job`** — the review *lists* the deferred jobs (title, reason, trigger) in `result.md`
+    and its return; the orchestrator files them. The review's own workflow commands stay
+    `doc-new-version` / `rebuild-docs` (pass only) plus `validate`.
+  - Declaration point sentence: "right after `finish-slice <P>.DECOMP`, and in the same commit,
+    `accept-gate <P> --require` or `accept-gate <P> --waive --note "why nothing operator-visible
+    changes"`, decided from `intent.md` and the decomposition"; never by omission.
+  - Legacy wording used everywhere: "a phase carrying **no `acceptance` block at all** is legacy
+    (created before workspace v32) and passes directly with one advisory line".
+  - Gate-stage order in `review-phase`: (1) find the manifest, (2) independent spot-check, (3)
+    fresh-eyes UX walkthrough (explicitly **not** judged against the design record), (4) re-run the
+    **whole** `## Regression Checklist` + append this phase's lines in the shape
+    `- [ ] <surface>: <one observable behaviour> (P<N>)`, (5) route every `## Operator Questions`
+    entry, (6) return the `walkthrough`. All six are conditioned on `acceptance.required is true`
+    (decision 9): waived and legacy phases skip the whole section. **S5 states the design-side
+    fidelity spec; S3 stated only the review-side duty** — S5 should not restate the review stages,
+    only the fidelity sweep and the gap channel.
+- **Contract kept compact (`P16.S3`).** Three new *Hard Rules* bullets (acceptance gate; operator
+  runtime manifest; questions-get-asked + review independence), one new *Workflow Commands* line,
+  and clauses grafted onto six existing sentences (*Orchestrator and executor*, *Canonical State*
+  phase-state line, the `pending` rule, the `review-phase` rule, the durable-docs rule, the design
+  rule). No new section. `real-browser fidelity` and every other Test 0 string survived unchanged —
+  the design rule now ends "...fidelity to the record **and** whether it works as a product (every
+  visible control does something, interaction states, liveness over time, in the operator's runtime
+  as well as production)", which is the one clause S5 expands into a specification.
+- **`parallel-phase` needed exactly one paragraph (`P16.S3`)**, in §4: the gate opens and clears on
+  the branch, before the branch `pass`, so `parallel-gate`'s "branch phase `done` + review `pass`"
+  already implies the operator accepted what is about to be merged. No engine or command change, and
+  the deferred doc consolidation is untouched.
+
 ### Deferred jobs
 
 - **D2 — folded into `P16.S4`.** Its trigger ("next time `.claude/agents/slice-executor-*.md` are
@@ -295,6 +345,28 @@ _One line per durable-truth change; the `REVIEW` slice consolidates these into d
   headline behaviours only, one line each (`- [ ] <surface>: <one observable behaviour> (P<N>)`),
   append-only across phases, appended to and **re-run whole** by each phase's fidelity/review slice
   in the operator runtime. Reaches **fresh installs only**. (`P16.S2`)
+- `decisions` — the operator acceptance gate is now contract law: every phase declares
+  operator-visibility explicitly at the `DECOMP` boundary (`accept-gate --require` /
+  `--waive --note`, never by omission), a required gate stops the phase `pending` with a concrete
+  walkthrough before `review-phase --verdict pass` can be recorded, operator-reported failures come
+  back as `changes_requested` + `fix` slices, phases with no `acceptance` block stay legacy and pass
+  directly, and **doc consolidation stays in the review's pass path, before the gate opens** (a
+  later re-review supersedes). (`P16.S3`)
+- `operations` — how the gate is driven end to end: the orchestrator declares it after
+  `finish-slice <P>.DECOMP`, opens it at the review with the executor's returned `walkthrough`
+  (`accept-gate <P> --open --walkthrough "..."`, phase → `pending`) and STOPS, the operator clears it
+  with `accept-gate <P> --clear [--note "..."]` (never `set-phase-status`), and the pass is recorded
+  on the resume without re-dispatching the review; plus the manifest rule — any "verified in a real
+  browser" claim verifies in `## Operator Runtime`'s runtime and access path (and in the production
+  build when they differ), and an absent or `UNFILLED` section means `needs_operator` → `pending`,
+  never an assumption. In parallel mode the gate opens and clears on the branch. (`P16.S3`)
+- `qa` — the review's new gate stages, all conditioned on `acceptance.required: true`: the reviewer
+  opens the running product itself in the manifest runtime and spot-checks the phase's headline
+  claims (never passing on other slices' reports alone), walks it once with fresh eyes as a
+  first-time user with findings explicitly **not** judged against the design record (they go to the
+  operator gate, never to silent fixes), re-runs the **whole** cumulative `## Regression Checklist`
+  and appends this phase's headline checks, and routes every `## Operator Questions` entry into the
+  walkthrough or into a deferred job — an unrouted entry blocks the pass. (`P16.S3`)
 
 ### Operator questions
 

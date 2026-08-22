@@ -6,11 +6,11 @@
 ## Pointer
 
 - Current phase: `P16`
-- Current slice: `P16.S3`
-- Next slice: `P16.S4`
+- Current slice: `P16.S4`
+- Next slice: `P16.S5`
 - Waiting on operator: `none`
 - Open deferred jobs: `3`
-- Rebuilt at: `2026-08-23T07:02:21+09:00`
+- Rebuilt at: `2026-08-23T07:12:43+09:00`
 
 ## Active Phases
 
@@ -20,7 +20,7 @@
 | [x] `P13` | `done` | `pass` | Codex workflow parity | `none` | `works/phases/active/P13` |
 | [x] `P14` | `done` | `pass` | Codex visual-design cowork replacement | `none` | `works/phases/active/P14` |
 | [x] `P15` | `done` | `pass` | Drop Codex support | `none` | `works/phases/active/P15` |
-| [ ] `P16` | `planned` | `pending` | Operator acceptance gate and runtime-faithful verification | `P16.S3` | `works/phases/active/P16` |
+| [ ] `P16` | `planned` | `pending` | Operator acceptance gate and runtime-faithful verification | `P16.S4` | `works/phases/active/P16` |
 
 ## Phase P12: Opt-in parallel phase execution: branch-per-phase with PR + CI
 
@@ -83,7 +83,7 @@
 | [x] `P16.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P16/slices/P16.DECOMP` |
 | [x] `P16.S1` | `done` | Acceptance-gate engine: phase.json block + accept-gate commands | `implementation` | `works/phases/active/P16/slices/P16.S1` |
 | [x] `P16.S2` | `done` | Seed the operator runtime manifest and the cumulative product smoke list | `implementation` | `works/phases/active/P16/slices/P16.S2` |
-| [ ] `P16.S3` | `todo` | Contract + review/loop skills: gate, manifest, catalogue routing, review independence | `implementation` | `works/phases/active/P16/slices/P16.S3` |
+| [x] `P16.S3` | `done` | Contract + review/loop skills: gate, manifest, catalogue routing, review independence | `implementation` | `works/phases/active/P16/slices/P16.S3` |
 | [ ] `P16.S4` | `todo` | Executor prompts: manifest runtime, review independence, catalogue routing, co-work refusal (D2) | `implementation` | `works/phases/active/P16/slices/P16.S4` |
 | [ ] `P16.S5` | `todo` | design-cowork: works-as-a-product verification and the gap channel | `implementation` | `works/phases/active/P16/slices/P16.S5` |
 | [ ] `P16.S6` | `todo` | Ship workspace v32: version, CHANGELOG, adopter prose, Test 0 invariants | `implementation` | `works/phases/active/P16/slices/P16.S6` |
