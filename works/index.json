@@ -52,17 +52,17 @@
       "id": "P16",
       "name": "Operator acceptance gate and runtime-faithful verification",
       "objective": "Put the product owner back in the loop: record how the operator runs and views the product as durable truth and require real-browser verification in that runtime (and prod when it differs); make every operator-visible phase stop pending with a concrete walkthrough before its review can pass, with operator-reported failures becoming fix slices; add a 'works as a product' dimension (every control does something, interaction states, liveness over time, dev+prod) and a fresh-eyes UX walkthrough beside record fidelity; route operator-question catalogues into the gate or deferred jobs so no review passes with unrouted questions; seed a terse cumulative product smoke list re-run by each phase; require the review executor to spot-check the running product itself; ship as the next workspace version with the installer rebuilt and adopters able to pick it up via update.",
-      "status": "planned",
+      "status": "done",
       "order": 5,
       "path": "works/phases/active/P16",
-      "review_status": "pending",
-      "current_slice": "P16.REVIEW",
+      "review_status": "pass",
+      "current_slice": null,
       "slice_count": 8,
-      "done_slice_count": 7
+      "done_slice_count": 8
     }
   ],
   "deferred_open_count": 1,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 3,
-  "last_rebuilt_at": "2026-08-23T07:40:05+09:00"
+  "last_rebuilt_at": "2026-08-23T07:54:49+09:00"
 }

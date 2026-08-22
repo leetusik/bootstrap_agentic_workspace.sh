@@ -29,7 +29,7 @@
       ]
     },
     "architecture": {
-      "latest": "v0004_single-harness_repo_shape_claude.md_is_the_only_contract_.claude_the_only_entry_points_and_the_artifact_embeds_claude_machinery_alone_v31",
+      "latest": "v0005_operator_acceptance_gate_on_phase.json_and_the_gated_phase-review_lifecycle_v32",
       "current_path": "docs/current/architecture.md",
       "versions": [
         {
@@ -63,6 +63,14 @@
           "source": "P15.REVIEW",
           "summary": "Single-harness repo shape: CLAUDE.md is the only contract, .claude/ the only entry points, and the artifact embeds Claude machinery alone (v31)",
           "previous": "v0003_opt-in_parallel_phase_execution_the_phase.json_execution_block_and_stream-scoped_selection"
+        },
+        {
+          "id": "v0005_operator_acceptance_gate_on_phase.json_and_the_gated_phase-review_lifecycle_v32",
+          "path": "docs/versions/architecture/v0005_operator_acceptance_gate_on_phase.json_and_the_gated_phase-review_lifecycle_v32.md",
+          "created_at": "2026-08-23T07:48:23+09:00",
+          "source": "P16.REVIEW",
+          "summary": "Operator acceptance gate on phase.json and the gated phase-review lifecycle (v32)",
+          "previous": "v0004_single-harness_repo_shape_claude.md_is_the_only_contract_.claude_the_only_entry_points_and_the_artifact_embeds_claude_machinery_alone_v31"
         }
       ]
     },
@@ -123,7 +131,7 @@
       ]
     },
     "operations": {
-      "latest": "v0026_operate_the_single-harness_workspace_claude-only_executor_config_the_v31_install_retrofit_update_contract_and_a_uniform_pending_gate",
+      "latest": "v0027_driving_the_accept-gate_lifecycle_the_operator_runtime_manifest_rule_and_the_v32_release",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -333,6 +341,14 @@
           "source": "P15.REVIEW",
           "summary": "Operate the single-harness workspace: Claude-only executor config, the v31 install/retrofit/update contract, and a uniform pending gate",
           "previous": "v0025_operate_the_v30_codex_visual-design_gate_explicit_resume_decomp2_and_browser-fidelity_lifecycle"
+        },
+        {
+          "id": "v0027_driving_the_accept-gate_lifecycle_the_operator_runtime_manifest_rule_and_the_v32_release",
+          "path": "docs/versions/operations/v0027_driving_the_accept-gate_lifecycle_the_operator_runtime_manifest_rule_and_the_v32_release.md",
+          "created_at": "2026-08-23T07:49:10+09:00",
+          "source": "P16.REVIEW",
+          "summary": "Driving the accept-gate lifecycle, the operator runtime manifest rule, and the v32 release",
+          "previous": "v0026_operate_the_single-harness_workspace_claude-only_executor_config_the_v31_install_retrofit_update_contract_and_a_uniform_pending_gate"
         }
       ]
     },
@@ -351,7 +367,7 @@
       ]
     },
     "qa": {
-      "latest": "v0002_keep_test_files_small_by_default_prefer_lightweight_verification",
+      "latest": "v0003_works_as_a_product_beside_matches_the_record_the_fidelity_sweep_the_review_gate_stages_and_the_cumulative_smoke_list",
       "current_path": "docs/current/qa.md",
       "versions": [
         {
@@ -369,11 +385,19 @@
           "source": "create-phase",
           "summary": "keep test files small by default; prefer lightweight verification",
           "previous": "v0001_bootstrap"
+        },
+        {
+          "id": "v0003_works_as_a_product_beside_matches_the_record_the_fidelity_sweep_the_review_gate_stages_and_the_cumulative_smoke_list",
+          "path": "docs/versions/qa/v0003_works_as_a_product_beside_matches_the_record_the_fidelity_sweep_the_review_gate_stages_and_the_cumulative_smoke_list.md",
+          "created_at": "2026-08-23T07:50:11+09:00",
+          "source": "P16.REVIEW",
+          "summary": "Works as a product beside matches the record: the fidelity sweep, the review gate stages, and the cumulative smoke list",
+          "previous": "v0002_keep_test_files_small_by_default_prefer_lightweight_verification"
         }
       ]
     },
     "decisions": {
-      "latest": "v0034_drop_codex_support_and_ship_claude_code_only_flagged_pre-v31_migration_and_a_uniform_pending_gate",
+      "latest": "v0035_operator_acceptance_gate_as_contract_law_declaration_at_the_decomp_boundary_legacy_default_and_works-as-a-product_verification_p16",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -647,9 +671,17 @@
           "source": "P15.REVIEW",
           "summary": "Drop Codex support and ship Claude Code only; flagged pre-v31 migration and a uniform pending gate",
           "previous": "v0033_codex-native_visual_cowork_durable_imagegen_or_exact-reference_gate_one_signoff_and_faithful_build_handoff"
+        },
+        {
+          "id": "v0035_operator_acceptance_gate_as_contract_law_declaration_at_the_decomp_boundary_legacy_default_and_works-as-a-product_verification_p16",
+          "path": "docs/versions/decisions/v0035_operator_acceptance_gate_as_contract_law_declaration_at_the_decomp_boundary_legacy_default_and_works-as-a-product_verification_p16.md",
+          "created_at": "2026-08-23T07:50:55+09:00",
+          "source": "P16.REVIEW",
+          "summary": "Operator acceptance gate as contract law: declaration at the DECOMP boundary, legacy default, and works-as-a-product verification (P16)",
+          "previous": "v0034_drop_codex_support_and_ship_claude_code_only_flagged_pre-v31_migration_and_a_uniform_pending_gate"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-08-14T06:53:33+09:00"
+  "last_rebuilt_at": "2026-08-23T07:51:55+09:00"
 }

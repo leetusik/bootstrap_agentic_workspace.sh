@@ -391,6 +391,36 @@ Verified against the tree at decomposition time.
   `.claude/settings.json,.gitattributes,CLAUDE.md` modification set). The orchestrator can close it:
   `python3 scripts/workflow.py drop-deferred D4 --reason "fixed in P16.S6 — the retrofit guide's Troubleshooting row now lists the .gitattributes line-merge"`.
 
+
+- **Phase review: `pass`, under the legacy path (`P16.REVIEW`).** P16 carries no `acceptance` block
+  (created under v31) and this repo ships machinery, not a browsable product — so the six gate stages
+  were skipped, `walkthrough` is `none`, and no gate was declared on P16, exactly as decision 4
+  prescribes. Validation re-run across the whole phase: `validate`, `installer/build.py --check`,
+  `sync-agents --check`, and `bash tests/retrofit_smoke.sh` (**119 PASS, 0 FAIL**) all green.
+- **The review re-verified the phase's headline claims itself, in throwaway copies only.** (a) The
+  engine end to end in `scratchpad/rvcopy` — 36 assertions covering the stamp, the two refusals, the
+  open/clear cycle, the `changes_requested` reset, the `--waive` note requirement, the legacy
+  advisory and the done+uncleared `validate` error; (b) **the operator-reports-failures path, which
+  no earlier slice had exercised**: `--open` (phase `pending`) → `review-phase --verdict
+  changes_requested` is accepted, returns the phase to `in_progress`, resets the three gate fields,
+  reopens the `REVIEW` slice, and leaves `--clear` and `pass` correctly refused until the gate
+  re-opens — the documented failure cycle works; (c) a fresh install of the rebuilt artifact (23
+  assertions: version 32, both seeded sections in `docs/current` **and** in `v0001_bootstrap`,
+  `new-phase` stamping the block, an undeclared pass refused there); (d) Test 0's python body run
+  against six mutated copies — every mutation fails with the expected assertion, control passes, so
+  the new invariants genuinely bite.
+- **Cross-file vocabulary is consistent and describes only what exists.** `accept-gate --help` matches
+  the documented flag surface; `--walkthrough-file` and `deferred_jobs_to_file` appear **nowhere**;
+  the consolidation-timing sentence ("the pass path, before the gate opens; parallel still defers")
+  reads the same in `CLAUDE.md`, `review-phase`, both agent files and the CHANGELOG.
+- **Two observations recorded rather than fixed** (neither warrants a fix slice): this notebook's own
+  `### Operator questions` heading predates S1's canonical `## Operator Questions` scaffold; and this
+  repo deliberately has no `## Operator Runtime` (no browsable product), which the consolidated
+  `operations` doc now states explicitly so a later agent does not read the absence as an oversight.
+- **Operator questions: none to route** (the list is explicitly empty for `DECOMP` and `S1`–`S6`), so
+  nothing blocked the pass. **No deferred jobs to file**; `D2`/`D4` were already closed by the
+  orchestrator and `D3` did not fire.
+
 ### Deferred jobs
 
 - **D2 — folded into `P16.S4`.** Its trigger ("next time `.claude/agents/slice-executor-*.md` are
@@ -498,6 +528,16 @@ _One line per durable-truth change; the `REVIEW` slice consolidates these into d
   both agent files, `design-cowork` and the two seeded doc bodies, plus three engine probes
   (`new-phase` stamps the block; an undeclared `--verdict pass` is refused; `--waive` requires
   `--note`). (`P16.S6`)
+
+
+- **Consolidated at `P16.REVIEW` (this phase is not in parallel mode), one version per doc:**
+  `architecture` v0005 (the `acceptance` block, `phase_acceptance()`, the three enforcement points,
+  parallel inertness, gate duties in the executor prompts, tier-parity invariant) ·
+  `operations` v0027 (driving `accept-gate` end to end, the manifest rule, why this repo has none,
+  the v32 release + migration) · `qa` v0003 (the two yardsticks, the functional sweep, where
+  verification runs, the review's six gate stages — and this repo's own `## Regression Checklist`
+  rewritten to the cumulative-smoke-list contract) · `decisions` v0035 (one Decision Log entry with
+  the incident context, the nine-part decision, eight rejected alternatives, consequences).
 
 ### Operator questions
 

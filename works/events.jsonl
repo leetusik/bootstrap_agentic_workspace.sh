@@ -369,3 +369,10 @@
 {"ts": "2026-08-23T07:26:58+09:00", "type": "slice_status_changed", "slice": "P16.S6", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-08-23T07:40:05+09:00", "type": "slice_status_changed", "slice": "P16.S6", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-08-23T07:40:05+09:00", "type": "deferred_dropped", "deferred": "D4", "reason": "fixed in P16.S6 — the retrofit guide's Troubleshooting row now lists the .gitattributes line-merge"}
+{"ts": "2026-08-23T07:40:58+09:00", "type": "slice_status_changed", "slice": "P16.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-08-23T07:48:23+09:00", "type": "doc_version_created", "doc": "architecture", "version": "v0005_operator_acceptance_gate_on_phase.json_and_the_gated_phase-review_lifecycle_v32", "source": "P16.REVIEW"}
+{"ts": "2026-08-23T07:49:10+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0027_driving_the_accept-gate_lifecycle_the_operator_runtime_manifest_rule_and_the_v32_release", "source": "P16.REVIEW"}
+{"ts": "2026-08-23T07:50:11+09:00", "type": "doc_version_created", "doc": "qa", "version": "v0003_works_as_a_product_beside_matches_the_record_the_fidelity_sweep_the_review_gate_stages_and_the_cumulative_smoke_list", "source": "P16.REVIEW"}
+{"ts": "2026-08-23T07:50:55+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0035_operator_acceptance_gate_as_contract_law_declaration_at_the_decomp_boundary_legacy_default_and_works-as-a-product_verification_p16", "source": "P16.REVIEW"}
+{"ts": "2026-08-23T07:54:49+09:00", "type": "slice_status_changed", "slice": "P16.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-08-23T07:54:49+09:00", "type": "phase_reviewed", "phase": "P16", "verdict": "pass", "reviewer": "slice-executor-high"}

@@ -2,16 +2,16 @@
   "id": "P16",
   "name": "Operator acceptance gate and runtime-faithful verification",
   "objective": "Put the product owner back in the loop: record how the operator runs and views the product as durable truth and require real-browser verification in that runtime (and prod when it differs); make every operator-visible phase stop pending with a concrete walkthrough before its review can pass, with operator-reported failures becoming fix slices; add a 'works as a product' dimension (every control does something, interaction states, liveness over time, dev+prod) and a fresh-eyes UX walkthrough beside record fidelity; route operator-question catalogues into the gate or deferred jobs so no review passes with unrouted questions; seed a terse cumulative product smoke list re-run by each phase; require the review executor to spot-check the running product itself; ship as the next workspace version with the installer rebuilt and adopters able to pick it up via update.",
-  "status": "planned",
+  "status": "done",
   "order": 5,
   "created_at": "2026-08-23T06:35:44+09:00",
   "started_at": null,
-  "completed_at": null,
+  "completed_at": "2026-08-23T07:54:49+09:00",
   "review": {
-    "status": "pending",
-    "reviewed_at": null,
-    "reviewer": null,
-    "note": null
+    "status": "pass",
+    "reviewed_at": "2026-08-23T07:54:49+09:00",
+    "reviewer": "slice-executor-high",
+    "note": "F1-F6 shipped as intent.md states; engine, seeds, prose, executor prompts and v32 release validated together incl. the operator-failure cycle; docs consolidated (architecture v0005, operations v0027, qa v0003, decisions v0035). Legacy-shaped phase (no acceptance block) — reviewed under the legacy path."
   },
   "paths": {
     "phase_md": "phase.md",
