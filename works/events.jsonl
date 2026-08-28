@@ -376,3 +376,8 @@
 {"ts": "2026-08-23T07:50:55+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0035_operator_acceptance_gate_as_contract_law_declaration_at_the_decomp_boundary_legacy_default_and_works-as-a-product_verification_p16", "source": "P16.REVIEW"}
 {"ts": "2026-08-23T07:54:49+09:00", "type": "slice_status_changed", "slice": "P16.REVIEW", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-08-23T07:54:49+09:00", "type": "phase_reviewed", "phase": "P16", "verdict": "pass", "reviewer": "slice-executor-high"}
+{"ts": "2026-08-23T13:54:26+09:00", "type": "phase_archived", "phase": "P12", "archive_path": "works/phases/archived/20260823_135426_P12_opt-in_parallel_phase_execution_branch-per-phase_with_pr_ci"}
+{"ts": "2026-08-23T13:54:26+09:00", "type": "phase_archived", "phase": "P13", "archive_path": "works/phases/archived/20260823_135426_P13_codex_workflow_parity"}
+{"ts": "2026-08-23T13:54:26+09:00", "type": "phase_archived", "phase": "P14", "archive_path": "works/phases/archived/20260823_135426_P14_codex_visual-design_cowork_replacement"}
+{"ts": "2026-08-23T13:54:26+09:00", "type": "phase_archived", "phase": "P15", "archive_path": "works/phases/archived/20260823_135426_P15_drop_codex_support"}
+{"ts": "2026-08-23T13:54:26+09:00", "type": "phase_archived", "phase": "P16", "archive_path": "works/phases/archived/20260823_135426_P16_operator_acceptance_gate_and_runtime-faithful_verification"}

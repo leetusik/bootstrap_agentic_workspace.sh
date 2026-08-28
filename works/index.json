@@ -1,68 +1,7 @@
 {
-  "active_phases": [
-    {
-      "id": "P12",
-      "name": "Opt-in parallel phase execution: branch-per-phase with PR + CI",
-      "objective": "Keep the default single-stream flow on main unchanged, and add an opt-in per-phase parallel mode: an opted-in phase runs on its own branch in its own git worktree with its own orchestrator session, with phase-scoped next-slice selection, durable-doc consolidation deferred to a serialized post-merge step on main, merge-safe generated dashboards, and a PR + CI layer (pushed phase branches, PRs mapped to review verdicts, CI running validate).",
-      "status": "done",
-      "order": 1,
-      "path": "works/phases/active/P12",
-      "review_status": "pass",
-      "current_slice": null,
-      "slice_count": 10,
-      "done_slice_count": 10
-    },
-    {
-      "id": "P13",
-      "name": "Codex workflow parity",
-      "objective": "Make Codex a first-class orchestrator across all non-visual workspace workflow machinery: ship and align applicable command skills including create-phase and do-whole-phase, support automatic execution only with Codex gate and plan-only modes removed or rejected, and achieve parity across executor tiers, routing, escalation, configuration, commit attribution, contracts, installer payloads, documentation, validation, and tests while auditing the workspace for remaining Claude-only assumptions.",
-      "status": "done",
-      "order": 2,
-      "path": "works/phases/active/P13",
-      "review_status": "pass",
-      "current_slice": null,
-      "slice_count": 8,
-      "done_slice_count": 8
-    },
-    {
-      "id": "P14",
-      "name": "Codex visual-design cowork replacement",
-      "objective": "Evaluate Codex-compatible alternatives to Claude Design and DesignSync, select a practical replacement, and implement a complete Codex visual-design cowork workflow covering handoff, operator review, artifact read-back, signoff, implementation handoff, skills, contracts, installer output, documentation, validation, and tests, while retaining Claude Code's existing Claude Design integration where appropriate.",
-      "status": "done",
-      "order": 3,
-      "path": "works/phases/active/P14",
-      "review_status": "pass",
-      "current_slice": null,
-      "slice_count": 7,
-      "done_slice_count": 7
-    },
-    {
-      "id": "P15",
-      "name": "Drop Codex support",
-      "objective": "Remove all Codex-specific machinery, contract text, installer payload, tests, and documentation so the workspace ships Claude Code only, and give existing adopters a flagged upgrade path.",
-      "status": "done",
-      "order": 4,
-      "path": "works/phases/active/P15",
-      "review_status": "pass",
-      "current_slice": null,
-      "slice_count": 9,
-      "done_slice_count": 9
-    },
-    {
-      "id": "P16",
-      "name": "Operator acceptance gate and runtime-faithful verification",
-      "objective": "Put the product owner back in the loop: record how the operator runs and views the product as durable truth and require real-browser verification in that runtime (and prod when it differs); make every operator-visible phase stop pending with a concrete walkthrough before its review can pass, with operator-reported failures becoming fix slices; add a 'works as a product' dimension (every control does something, interaction states, liveness over time, dev+prod) and a fresh-eyes UX walkthrough beside record fidelity; route operator-question catalogues into the gate or deferred jobs so no review passes with unrouted questions; seed a terse cumulative product smoke list re-run by each phase; require the review executor to spot-check the running product itself; ship as the next workspace version with the installer rebuilt and adopters able to pick it up via update.",
-      "status": "done",
-      "order": 5,
-      "path": "works/phases/active/P16",
-      "review_status": "pass",
-      "current_slice": null,
-      "slice_count": 8,
-      "done_slice_count": 8
-    }
-  ],
+  "active_phases": [],
   "deferred_open_count": 1,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 3,
-  "last_rebuilt_at": "2026-08-23T07:54:49+09:00"
+  "last_rebuilt_at": "2026-08-23T13:54:26+09:00"
 }

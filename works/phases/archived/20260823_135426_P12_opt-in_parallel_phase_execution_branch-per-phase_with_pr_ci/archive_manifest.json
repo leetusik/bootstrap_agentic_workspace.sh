@@ -1,0 +1,20 @@
+{
+  "phase_id": "P12",
+  "archived_at": "2026-08-23T13:54:26+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P12",
+  "archive_path": "works/phases/archived/20260823_135426_P12_opt-in_parallel_phase_execution_branch-per-phase_with_pr_ci",
+  "slices": [
+    "P12.DECOMP",
+    "P12.S1",
+    "P12.S2",
+    "P12.S3",
+    "P12.S4",
+    "P12.S5",
+    "P12.S6",
+    "P12.S7",
+    "P12.F1",
+    "P12.REVIEW"
+  ]
+}

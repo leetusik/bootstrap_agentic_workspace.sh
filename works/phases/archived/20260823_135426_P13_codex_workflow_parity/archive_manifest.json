@@ -1,0 +1,18 @@
+{
+  "phase_id": "P13",
+  "archived_at": "2026-08-23T13:54:26+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P13",
+  "archive_path": "works/phases/archived/20260823_135426_P13_codex_workflow_parity",
+  "slices": [
+    "P13.DECOMP",
+    "P13.S1",
+    "P13.S2",
+    "P13.F1",
+    "P13.S3",
+    "P13.S4",
+    "P13.S5",
+    "P13.REVIEW"
+  ]
+}

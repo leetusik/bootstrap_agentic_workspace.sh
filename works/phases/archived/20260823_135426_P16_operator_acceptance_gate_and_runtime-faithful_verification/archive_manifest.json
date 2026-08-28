@@ -1,0 +1,18 @@
+{
+  "phase_id": "P16",
+  "archived_at": "2026-08-23T13:54:26+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P16",
+  "archive_path": "works/phases/archived/20260823_135426_P16_operator_acceptance_gate_and_runtime-faithful_verification",
+  "slices": [
+    "P16.DECOMP",
+    "P16.S1",
+    "P16.S2",
+    "P16.S3",
+    "P16.S4",
+    "P16.S5",
+    "P16.S6",
+    "P16.REVIEW"
+  ]
+}
