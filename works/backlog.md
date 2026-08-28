@@ -6,21 +6,24 @@
 ## Pointer
 
 - Current phase: `P17`
-- Current slice: `P17.DECOMP`
-- Next slice: `P17.REVIEW`
+- Current slice: `P17.S1`
+- Next slice: `P17.S2`
 - Waiting on operator: `none`
 - Open deferred jobs: `1`
-- Rebuilt at: `2026-08-29T03:07:44+09:00`
+- Rebuilt at: `2026-08-29T03:14:34+09:00`
 
 ## Active Phases
 
 | Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
-| [ ] `P17` | `planned` | `pending` | design co-work styles, the mockup gate, and agent-runnable create-phase | `P17.DECOMP` | `works/phases/active/P17` |
+| [ ] `P17` | `planned` | `pending` | design co-work styles, the mockup gate, and agent-runnable create-phase | `P17.S1` | `works/phases/active/P17` |
 
 ## Phase P17: design co-work styles, the mockup gate, and agent-runnable create-phase
 
 | Slice | Status | Name | Kind | Path |
 |---|---|---|---|---|
-| [ ] `P17.DECOMP` | `todo` | decompose phase | `decomposition` | `works/phases/active/P17/slices/P17.DECOMP` |
+| [x] `P17.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P17/slices/P17.DECOMP` |
+| [ ] `P17.S1` | `todo` | rewrite design-cowork: three styles, the mockup, one gate per round | `implementation` | `works/phases/active/P17/slices/P17.S1` |
+| [ ] `P17.S2` | `todo` | propagate: SLICE_KINDS validation, create-phase, drivers, executor agents, contract | `implementation` | `works/phases/active/P17/slices/P17.S2` |
+| [ ] `P17.S3` | `todo` | release workspace v34: version bump, CHANGELOG, installer rebuild | `implementation` | `works/phases/active/P17/slices/P17.S3` |
 | [ ] `P17.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P17/slices/P17.REVIEW` |

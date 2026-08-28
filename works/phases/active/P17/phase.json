@@ -14,11 +14,11 @@
     "note": null
   },
   "acceptance": {
-    "required": null,
+    "required": false,
     "walkthrough": null,
     "requested_at": null,
     "cleared_at": null,
-    "note": null
+    "note": "Workspace machinery only: rewrites the design-cowork skill, the contract, both drivers, both executor agents, and the engine's --kind validation. No operator-visible product surface changes; the mockup gate this phase specifies is exercised by phases that adopt it, not by this one."
   },
   "paths": {
     "phase_md": "phase.md",

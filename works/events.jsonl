@@ -382,3 +382,9 @@
 {"ts": "2026-08-23T13:54:26+09:00", "type": "phase_archived", "phase": "P15", "archive_path": "works/phases/archived/20260823_135426_P15_drop_codex_support"}
 {"ts": "2026-08-23T13:54:26+09:00", "type": "phase_archived", "phase": "P16", "archive_path": "works/phases/archived/20260823_135426_P16_operator_acceptance_gate_and_runtime-faithful_verification"}
 {"ts": "2026-08-29T03:06:58+09:00", "type": "phase_created", "phase": "P17"}
+{"ts": "2026-08-29T03:10:13+09:00", "type": "slice_status_changed", "slice": "P17.DECOMP", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-08-29T03:12:15+09:00", "type": "slice_created", "phase": "P17", "slice": "P17.S1"}
+{"ts": "2026-08-29T03:12:15+09:00", "type": "slice_created", "phase": "P17", "slice": "P17.S2"}
+{"ts": "2026-08-29T03:12:15+09:00", "type": "slice_created", "phase": "P17", "slice": "P17.S3"}
+{"ts": "2026-08-29T03:14:34+09:00", "type": "slice_status_changed", "slice": "P17.DECOMP", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-08-29T03:14:34+09:00", "type": "acceptance_waived", "phase": "P17"}

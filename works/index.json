@@ -8,13 +8,13 @@
       "order": 1,
       "path": "works/phases/active/P17",
       "review_status": "pending",
-      "current_slice": "P17.DECOMP",
-      "slice_count": 2,
-      "done_slice_count": 0
+      "current_slice": "P17.S1",
+      "slice_count": 5,
+      "done_slice_count": 1
     }
   ],
   "deferred_open_count": 1,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 3,
-  "last_rebuilt_at": "2026-08-29T03:07:44+09:00"
+  "last_rebuilt_at": "2026-08-29T03:14:34+09:00"
 }

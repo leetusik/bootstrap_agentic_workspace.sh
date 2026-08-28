@@ -1,18 +1,18 @@
 {
-  "id": "P17.DECOMP",
+  "id": "P17.S1",
   "phase_id": "P17",
-  "name": "decompose phase",
-  "kind": "decomposition",
-  "status": "done",
-  "order": 0,
+  "name": "rewrite design-cowork: three styles, the mockup, one gate per round",
+  "kind": "implementation",
+  "status": "todo",
+  "order": 10,
   "depends_on": [],
-  "created_at": "2026-08-29T03:06:58+09:00",
-  "started_at": "2026-08-29T03:10:13+09:00",
-  "completed_at": "2026-08-29T03:14:34+09:00",
+  "created_at": "2026-08-29T03:12:15+09:00",
+  "started_at": null,
+  "completed_at": null,
   "risk": "high",
   "source": {
-    "type": "new_phase",
-    "id": "P17"
+    "type": "manual",
+    "id": null
   },
   "paths": {
     "plan": "plan.md",
