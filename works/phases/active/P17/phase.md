@@ -289,6 +289,38 @@ the line would have recorded a slice that never existed). `docs/index.json` pick
 timestamp and was restored with `git checkout` — **S2 created no doc versions**, as a non-review
 slice must not.
 
+### From `P17.S3`
+
+**v34 is released and the phase is complete.** `installer/main.py:38` is `WORKSPACE_VERSION = 34`,
+`CHANGELOG.md:12` opens `## v34 — 2026-08-29`, and `bootstrap_agentic_workspace.sh` was rebuilt
+**after** both edits (404,486 bytes). `build.py --check`, `workflow.py validate` and
+`tests/retrofit_smoke.sh` (Tests 0-8) all pass; the smoke suite reads the version out of
+`installer/main.py` by regex and asserts the installed marker matches, so it exercised **34**, not a
+hard-coded 33. Those three commands plus S1's and S2's are the whole re-run list for `P17.REVIEW`.
+
+**The changelog's five migration claims were each checked against the code, not assumed** — the
+review can spot-check rather than re-derive them:
+
+| Claim in the entry | Evidence |
+| --- | --- |
+| `--update` overwrites the contract, both agents and every skill; a retrofitted repo gets the sidecar | `installer/main.py` `_update_handle()` — `CLAUDE.md` writes in place unless `CLAUDE.workspace.md` exists, then `_merge_contract` |
+| An out-of-set `kind` warns and leaves the exit code alone | `scripts/workflow.py` `validate()` — the message goes on `warnings`, which only prints; `return 1` is reached from `errors` alone. `tests/retrofit_smoke.sh:365-368` asserts warn **and** `rc == 0` |
+| An in-flight design phase under the old shape needs nothing | the engine has never enforced round shape and still does not — nothing in `workflow.py` reads a round, a mockup route, or `## Design Style`; the whole loop is prose |
+| `--update` preserves all of `docs/`, so an adopter's `## Visual-design runbook` keeps the old text | `_update_handle()` returns "preserved" for every `docs/` path except `docs/README.md` |
+| `sync-agents` after the update | the installer prints exactly that as its own "Next:" line (`installer/main.py:667`) |
+
+**Nothing new for the Doc impact list, and nothing new for Operator Questions.** `CHANGELOG.md` and
+the version constant are release records, not durable truth; the list stands as S1/S2 left it
+(`operations.md` ×2, `decisions.md`, `qa.md`) and is what the review consolidates. The two open
+Operator Questions are still the `DECOMP` pair — `## Design Style` scaffolding, and the
+`flag_stale_skills()` heuristic — and both still need routing at the review.
+
+**An independent grep sweep for superseded wording found nothing left to fix.** `never dispatched`,
+`two passes`, `two-phase split` and `disable-model-invocation` across `.claude/`, `CLAUDE.md`,
+`README.md`, `scripts/` and `installer/main.py`: every surviving `never dispatched` is correctly
+scoped to the **DesignSync work**, and the only `disable-model-invocation` hits outside skill
+frontmatter are `flag_stale_skills()` itself (Operator Question 2). No finding against S1 or S2.
+
 ## Doc impact
 
 - (none yet from `P17.DECOMP` — decomposition changed no durable truth.)

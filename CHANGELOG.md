@@ -9,6 +9,98 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v34 — 2026-08-29
+
+- **Why this release: a design round ended at a picture, and the phase's shape was a guess.** The only
+  thing an operator ever approved was the **card set** — a static review surface in the Claude Design
+  pane — and whether `build-prompt.md` was concrete enough to build from was a human judgment call
+  that nothing tested. The skill admitted the gap in its own closing line: *signing the cards is not
+  accepting the product*. Beside it, the design-then-build split was an implicit binary an agent
+  picked off a soft "big design → two phases" hint, and `--kind` — the one field that keeps a design
+  slice from being dispatched to an executor with no DesignSync — had been an unvalidated free-form
+  string since the beginning, so `--kind cowork` silently produced an ordinary implementation slice.
+  v34 makes the round's approval **running code**, names the shapes so the operator picks one, and
+  closes the typo hole in the engine.
+- **Three named styles, suggested by the agent and confirmed by the operator.** `build-after` is the
+  existing two-pass shape (`DECOMP` → groundwork → design round(s) → `DECOMP2` → build slices cut from
+  the landed design). `design-only` is a design phase plus a separate apply phase, and **must be
+  chosen at `/create-phase`**: a `DECOMP` executor may not run `new-phase`, so a split decided later
+  cannot be created from inside decomposition. **`paired` is new** — design 1 → apply 1 → design 2 →
+  apply 2 inside one phase, with **no `DECOMP2`**; `DECOMP` cuts one apply slice per round as a **bare
+  folder**, and each one's `plan.md` is written at its turn from the round that just landed. Cutting a
+  bare folder is not pre-planning, and the ban on planning past the design gate is generalized rather
+  than weakened — it now names everything downstream of a round instead of `DECOMP2` specifically. The
+  confirmed style is recorded in the phase's `intent.md` under **`## Design Style`**, appended by
+  `create-phase` only when the phase is visual (`works/templates/intent.md` is unchanged, so no
+  non-visual phase grows the heading); every reader treats its absence as "ask it at `DECOMP`", which
+  stops **`pending`** for the answer.
+- **A runnable mockup, and exactly one approval per round.** After the read-back lands the record, a
+  **dispatched** span — `slice-executor-high`, no DesignSync, working from `build-prompt.md` plus the
+  landed record — builds the round as a **throwaway route in the project's own frontend**, and the
+  operator opens and clicks it. **Only the second `pending` window is an approval:** the operator
+  confirmed the design *inside* the Claude Design session and that session ending **is** the
+  confirmation, so the first window is a mechanical wait and **SIGNOFF moves off the read-back onto
+  the mockup gate**. A design slice now runs **inline → dispatched → inline**, so the old absolute
+  "the design slice is never dispatched" narrows to the DesignSync work alone, and its commits go
+  from two to **four** — `handoff`, `read-back`, `mockup`, `signoff`, one per span. Both drivers carry
+  the consequences a `co-work` grep would not find: `plan only` stops before any plan that depends on
+  a round that has not landed (`paired` has no `DECOMP2` to stop at), a design slice is resumed
+  **twice** because it stops `pending` twice, its dispatched mockup span is a genuine — if short —
+  idle window for `do-whole-phase`'s optional preparation, and the two `pending` stops are reported
+  distinguishably, since the engine cannot tell them apart and nothing else can carry the difference.
+- **The mockup is stubbed on purpose, and that bound is load-bearing.** It proves **look and states,
+  not wiring**: stubbed data, no backing work, non-functional controls acceptable **and named as such
+  in the gate walkthrough**. Without the bound the mockup span grows into the apply slice it exists to
+  precede, and the design gate lands after the build instead of before it. So the mockup is **exempt
+  from the full functional sweep** — that sweep stays an apply/fidelity duty on real wiring — and
+  `review-phase`'s fresh-eyes stage now says so, because **a phase shipping a mockup takes
+  `accept-gate --require`** (so a `design-only` phase can no longer be waived) and a gated review
+  meeting a stubbed mockup would otherwise have filed every deliberately unwired control as a defect.
+  What *is* checked: it runs, every designed element and state renders, it matches the record, and it
+  is verified in the runtime and access path `## Operator Runtime` names. The concreteness check stops
+  being a judgment call — the mockup either builds from `build-prompt.md` without inventing anything
+  or it does not, and a record too thin to build without inventing is a third `needs_operator`
+  condition. The route is throwaway: whichever slice later implements the surface for real deletes it,
+  and the phase review checks that no orphaned design routes remain.
+- **`--kind` is a closed set — this release's one piece of machine enforcement.** `SLICE_KINDS` is
+  `implementation`, `review`, `decomposition`, `fix`, `docs`, `qa`, `co-work`. An unknown kind is a
+  **hard error at creation** — at `new-slice` *and* at `promote-deferred`, through a
+  `require_slice_kind()` helper called both from `create_slice` (the shared chokepoint) and from the
+  top of `promote_deferred`, because `--create-phase` creates the phase several lines before the slice
+  and a single guard left a half-created phase behind on a rejected kind. In `validate()` it is a
+  **warning only, exit-code neutral**, so an adopting repo carrying an invented kind survives an
+  update instead of having `validate` fail on history it cannot change. `--risk` next door stays
+  deliberately **unvalidated** — an unrecognized value routes to the `high` tier, which is the safe
+  direction — and both halves of the asymmetry are now commented at `SLICE_KINDS` so neither is
+  "fixed" for symmetry later.
+- **`create-phase` is agent-runnable on instruction.** It loses `disable-model-invocation: true` and
+  becomes the second model-invocable skill — and a **narrower** exception than `design-cowork`, which
+  fires by itself whenever work turns visual: `create-phase` is callable when an approved plan or a
+  direct operator instruction calls for a phase, and **never on the agent's own initiative**. Its
+  step-3 confirmation gate does not move; `new-phase` still runs only after the operator has
+  explicitly confirmed each phase's name and objective. **Invocation is not the gate; confirmation
+  is.** The smoke suite now pins an exempt set of exactly those two skills, in both directions, so the
+  marker still cannot be dropped from any other skill by accident.
+- **Migration notes:** preview with `--update --dry-run`. **(a)** Fresh installs and any workspace
+  whose `CLAUDE.md` the installer owns need nothing — `--update` overwrites the contract, both
+  executor agents, and every skill. A **retrofitted** repo keeps its own `CLAUDE.md` and receives the
+  new contract text in the `CLAUDE.workspace.md` sidecar instead; if you maintain a customised
+  contract, fold in the amended bullets by hand — the design-style/dispatch rules, the "not every
+  `pending` is an approval" wording, the gate bullet's no-waiver clause, and the `new-slice` line's
+  closed `--kind` set. **(b) Existing slices whose
+  `kind` is outside the set** — `docs` and `qa` are in it, only invented kinds are not — now produce a
+  `validate` **warning** naming the set, and the **exit code is unchanged**, so nothing that gated on
+  `validate` starts failing. Edit that `slice.json` if you want the warning gone, or leave it: it is
+  history. **(c) A design phase already in flight under the old shape needs nothing done to it.** Its
+  round ended at the cards, SIGNOFF sits at the read-back, and there is no mockup route — the engine
+  never enforced round shape and still does not, so the new loop applies to rounds started from here
+  on, the same way v32 scoped its acceptance gate. For a round whose handoff has not gone out yet, run
+  it under the new loop and declare the phase's gate with `accept-gate <P> --require`. **(d)**
+  `--update` preserves all of `docs/`, so the `## Visual-design runbook` in your `operations.md` keeps
+  its old two-shape, one-`pending`-window text until you re-version it yourself with
+  `doc-new-version --doc operations` — never by hand-editing `docs/current/`. **(e)** Run
+  `python3 scripts/workflow.py sync-agents` after the update, as always.
+
 ## v33 — 2026-08-29
 
 - **`phase.md` and `result.md` now divide by audience, so nothing is written twice.** The contract
