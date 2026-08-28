@@ -684,7 +684,7 @@ else:
     print(f"Bootstrapped agentic workspace at {TARGET}")
     print("Contract: CLAUDE.md")
     print("Claude Code: 17 skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{mid,high}.md, settings .claude/settings.json")
-    print("Visual design: design-cowork fires automatically, using Claude Design + DesignSync for one normal signoff before separate implementation and browser fidelity")
+    print("Visual design: design-cowork fires automatically, using Claude Design + DesignSync; the operator picks a style (build-after / design-only / paired) and signs off on a runnable mockup, before separate implementation and browser fidelity")
     print("Executor tiers are risk-routed (mid for a one-line edit or docs, high for everything else); economy is the no-mode fallback, while this seed selects flex in executors.toml; tune it and run python3 scripts/workflow.py sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
     print("CI: .github/workflows/workspace-ci.yml runs validate on every push/PR (seeded once — yours to edit); .gitattributes carries the merge rules for machine-written files")

@@ -26,6 +26,16 @@ PHASE_STATUSES = {"planned", "in_progress", "in_review", "pending", "blocked", "
 SLICE_STATUSES = {"todo", "ready", "in_progress", "in_review", "changes_requested", "pending", "blocked", "done"}
 DEFERRED_STATUSES = {"deferred", "ready", "promoted", "done", "dropped"}
 REVIEW_VERDICTS = {"pass", "changes_requested", "blocked"}
+# Closed set of slice kinds (workspace v34). `kind` routes real behavior -- `co-work` in
+# particular means orchestrator-inline with DesignSync, so a typo like `cowork` used to
+# create a slice that read as ordinary implementation and got dispatched to an executor
+# with no DesignSync. Enforced asymmetrically on purpose: a HARD ERROR at creation
+# (`new-slice`, `promote-deferred`), only a WARNING in `validate()`, so an adopting repo
+# carrying an invented kind in its history survives an update instead of failing validate
+# on slices it cannot change. Note `--risk` next door is deliberately NOT validated:
+# unrecognized values route to the high tier, which is the safe direction -- do not
+# "fix" that asymmetry for symmetry's sake.
+SLICE_KINDS = {"implementation", "review", "decomposition", "fix", "docs", "qa", "co-work"}
 # Opt-in parallel execution (workspace v24). A phase.json MAY carry an optional
 # `execution` block; its absence means the phase belongs to the default stream and
 # every behavior is exactly as before, byte for byte. See `phase_execution`.
@@ -759,6 +769,10 @@ def validate() -> int:
                 errors.append(f"slice phase mismatch: {s['id']} says {s['phase_id']}, folder phase is {p['id']}")
             if s["status"] not in SLICE_STATUSES:
                 errors.append(f"invalid slice status {s['id']}: {s['status']}")
+            # Warning, never an error: creation is the hard gate (see SLICE_KINDS), and
+            # history an adopting repo cannot change must not break its validate.
+            if s.get("kind") not in SLICE_KINDS:
+                warnings.append(f"slice {s['id']} has unknown kind {s.get('kind')!r}; expected one of {sorted(SLICE_KINDS)} -- edit slice.json to one of them")
             if s["status"] == "ready" and not (ROOT / s["path"] / "plan.md").exists():
                 errors.append(f"slice {s['id']} is ready but has no plan.md; ready asserts an operator-approved plan exists")
             for dep in s.get("depends_on", []):
@@ -834,7 +848,18 @@ def render_template(text: str, **values: str) -> str:
     return text
 
 
+def require_slice_kind(kind: str) -> str:
+    """The one place an unknown slice kind is rejected. Called from create_slice (the shared
+    chokepoint for new-slice and promote-deferred) and, additionally, at the very top of
+    promote-deferred: its --create-phase branch creates the phase BEFORE the slice, so a
+    rejected kind must be caught before that happens rather than after."""
+    if kind not in SLICE_KINDS:
+        raise SystemExit(f"invalid slice kind: {kind}; expected one of {sorted(SLICE_KINDS)}")
+    return kind
+
+
 def create_slice(phase_id: str, slice_id: str, name: str, kind: str, order, risk: str, source: dict, depends_on=None) -> Path:
+    require_slice_kind(kind)
     require_phase(phase_id)
     if not slice_id.startswith(f"{phase_id}."):
         raise SystemExit(f"slice id must start with {phase_id}.")
@@ -1777,6 +1802,7 @@ def promote_deferred(args: argparse.Namespace) -> None:
     if not (ddir / "deferred.json").exists():
         raise SystemExit(f"open deferred job not found: {did}")
     data = read_json(ddir / "deferred.json")
+    require_slice_kind(args.kind)  # before --create-phase, so a bad kind leaves no half-created phase
     if not (ACTIVE / args.phase / "phase.json").exists():
         if not args.create_phase:
             raise SystemExit(f"phase does not exist: {args.phase}. Use --create-phase to create it.")
@@ -1982,7 +2008,7 @@ def main(argv=None) -> int:
     p.add_argument("--phase", required=True)
     p.add_argument("--slice", required=True)
     p.add_argument("--name", required=True)
-    p.add_argument("--kind", default="implementation")
+    p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, fix, docs, qa, co-work (closed set; unknown kinds are rejected)")
     p.add_argument("--risk", default="high", help="low (a one-line code edit or docs -> slice-executor-mid) or high (everything else -> slice-executor-high); unrecognized values route to high")
     p.add_argument("--order", type=float)
     p.add_argument("--depends-on", action="append")
@@ -2063,7 +2089,7 @@ def main(argv=None) -> int:
     p.add_argument("--phase", required=True)
     p.add_argument("--slice", required=True)
     p.add_argument("--name")
-    p.add_argument("--kind", default="implementation")
+    p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, fix, docs, qa, co-work (closed set; unknown kinds are rejected)")
     p.add_argument("--risk", default="high", help="low (a one-line code edit or docs -> slice-executor-mid) or high (everything else -> slice-executor-high); unrecognized values route to high")
     p.add_argument("--order", type=float)
     p.add_argument("--depends-on", action="append")

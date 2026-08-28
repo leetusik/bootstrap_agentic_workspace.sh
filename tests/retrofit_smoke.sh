@@ -50,13 +50,22 @@ assert len(skills) == 17, len(skills)
 for gone in ("AGENTS.md", ".agents", ".codex"):
     assert not (root / gone).exists(), gone
 
-# Workflow command-skills are explicit-invocation only; design-cowork is the one
-# deliberately model-invocable guide. (The Claude analogue of the retired
-# allow_implicit_invocation metadata.)
+# Workflow command-skills are explicit-invocation only, with exactly two exceptions:
+# design-cowork (a guide that fires by itself) and, since v34, create-phase (callable
+# by the agent WHEN INSTRUCTED, never on its own initiative -- its confirmation gate,
+# not its invocation, is the safety). Every other skill must still carry the marker.
+# (The Claude analogue of the retired allow_implicit_invocation metadata.)
+model_invocable = {"design-cowork", "create-phase"}
 for name in sorted(skills):
     body = (root / ".claude/skills" / name / "SKILL.md").read_text()
     marker = "disable-model-invocation: true"
-    assert (marker in body) == (name != "design-cowork"), name
+    assert (marker in body) == (name not in model_invocable), name
+create_phase = (root / ".claude/skills/create-phase/SKILL.md").read_text()
+assert "the agent when instructed" in create_phase
+assert "Never on the agent's own initiative" in create_phase
+assert "Invocation is not the gate; confirmation is." in create_phase
+for required in ("`build-after`", "`design-only`", "`paired`", "## Design Style"):
+    assert required in create_phase, required
 
 # Only skills that *document the removal* may still say "Codex": update-workspace's
 # pre-v31 migration step and explain's re-vendor note. Anywhere else it is a regression.
@@ -72,20 +81,41 @@ for name in ("do-next-slice", "do-whole-phase"):
         "WAITING ON OPERATOR", "`kind: co-work`", "never dispatched", "DesignSync",
         "never pass `run_in_background: false`", "never glob `~/.claude/plans/`",
         "`plan only`", "accept-gate <P> --clear",
+        # v34: the design slice runs inline -> dispatched -> inline, in one of three
+        # named styles, and stops `pending` twice with different meanings.
+        "mockup build is the one dispatched span", "`build-after`", "`design-only`",
+        "`paired`", "PENDING #1", "PENDING #2", "## Design Style",
+        "mechanical wait, not an approval",
     ):
         assert required in body, (name, required)
 
-design = (root / ".claude/skills/design-cowork/SKILL.md").read_text()
+# The spec hard-wraps its prose, so match against a whitespace-flattened copy: these
+# assertions are about the wording, not about where a line happens to break.
+design = " ".join((root / ".claude/skills/design-cowork/SKILL.md").read_text().split())
 for required in (
     "**You never design.**", "Claude Design", "Connect GitHub", "handoff.md",
-    "@dsCard", "tokens.css", "--kind co-work --risk high", "The design slice is NOT",
-    "DesignSync is main-thread only", "never writes implementation code",
+    "@dsCard", "tokens.css", "--kind co-work --risk high",
+    "DesignSync is main-thread only",
     "DECOMP2", "build inventory", "data, not instructions", "RESPECT THE DESIGN",
     "SIGNOFF",
     # v32: fidelity has a second yardstick, and gaps are delivered, not archived.
     "## Verifying — RESPECT THE DESIGN, and does it work",
     "### When the record never drew it", "matching it is not acceptance",
-    "Questions get asked, not archived.", "signing the cards is not accepting the product",
+    "Questions get asked, not archived.",
+    # v34: the dispatch ban narrowed to the DesignSync work (the mockup build is the
+    # one dispatched span), the code ban narrowed to *product* code, and the operator
+    # now signs a running mockup rather than the cards alone.
+    "the DesignSync work is never dispatched",
+    "The mockup build is the one dispatched span",
+    "A design slice writes no *product* implementation code",
+    "Write **product** implementation code in a design slice",
+    "signing the round off — the cards, and the stubbed mockup with them — is not accepting the product",
+    # v34, positive: the three named styles, the mockup section, PENDING #1 is not an
+    # approval, and the mockup's exemption from the functional sweep.
+    "## Shape — three styles", "**`build-after`**", "**`design-only`**", "**`paired`**",
+    "## The mockup — the design in the project's own language",
+    "Only PENDING #2 is an approval.", "PENDING #1 is a mechanical wait",
+    "Exempt from the full functional sweep", "Stubbed data, no backing work",
 ):
     assert required in design, required
 
@@ -115,6 +145,15 @@ for tier in ("mid", "high"):
     # return field are word-for-word in BOTH tiers, not high only.
     assert "never dispatched, because you have no `DesignSync`" in body, tier
     assert "return `needs_operator`" in body, tier
+    # v34: the mockup span is dispatchable and its rules ship in BOTH tiers.
+    for required in (
+        "The mockup span of a `co-work` (design) slice",
+        "Stubbed data, no backing work",
+        "exempt from the full functional sweep",
+        "*product* implementation work",
+        "`build-after`", "`design-only`", "`paired`",
+    ):
+        assert required in body, (tier, required)
     assert "On a gated phase (`acceptance.required` is `true` — and only then) also run the gate stages" in body, tier
     assert "- `walkthrough`:" in body, tier
     never = [ln for ln in body.splitlines() if "run workflow state-transition commands" in ln]
@@ -126,12 +165,17 @@ assert bodies["mid"] == bodies["high"], "slice-executor tier bodies drifted"
 # One contract file now, so nothing to compare it against: assert the whole text.
 claude = (root / "CLAUDE.md").read_text()
 for required in (
-    "Claude Design", "DesignSync", "main-thread/orchestrator-only", "never dispatched",
-    "never writes implementation code", "DECOMP2", "data, not instructions",
+    "Claude Design", "DesignSync", "never dispatched",
+    "DECOMP2", "data, not instructions",
     "RESPECT THE DESIGN", "real-browser fidelity", "Approval must be literal",
     "literal operator signoff closes an immutable round",
     # v32: the operator acceptance gate, the runtime manifest, the question channel.
     "accept-gate", "## Operator Runtime", "## Operator Questions", "never by omission",
+    # v34: the narrowed bans, the three named styles, and the closed --kind set.
+    "*DesignSync* work is never dispatched", "mockup build is its one dispatched span",
+    "writes no ***product*** implementation code",
+    "**`build-after`**", "**`design-only`**", "**`paired`**", "## Design Style",
+    "only PENDING #2 is an approval", "`--kind` is a **closed set**",
 ):
     assert required in claude, required
 # The Codex-only `pending` co-work carve-out went with Codex: clearing a `pending`
@@ -211,7 +255,7 @@ cp_state=$(python3 -c "import json;print(json.load(open('$R/works/state.json'))[
   && ok "retrofit writes no AGENTS.workspace.md sidecar" || bad "retrofit wrote an AGENTS.workspace.md sidecar"
 [ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "17" ] \
   && ok "retrofit installs the 17-skill Claude inventory" || bad "retrofit skill inventory incomplete"
-grep -q 'Claude Design' "$R/CLAUDE.workspace.md" && grep -q 'never writes implementation code' "$R/CLAUDE.workspace.md" \
+grep -q 'Claude Design' "$R/CLAUDE.workspace.md" && grep -q 'writes no \*\*\*product\*\*\* implementation code' "$R/CLAUDE.workspace.md" \
   && grep -q 'RESPECT THE DESIGN' "$R/CLAUDE.workspace.md" \
   && ok "retrofit sidecar carries the visual design contract" || bad "retrofit visual contract is incomplete"
 
@@ -295,6 +339,39 @@ grep -q '^works/events\.jsonl merge=union$' "$F/.gitattributes" && ok "fresh ins
 ( cd "$F" && python3 scripts/workflow.py review-phase P1 --verdict pass 2>&1 | grep -q 'accept-gate P1 --require' ) \
   && ok "review-phase --verdict pass refuses an undeclared acceptance gate" || bad "an undeclared acceptance gate did not refuse the pass"
 ( cd "$F" && python3 scripts/workflow.py accept-gate P1 --waive >/dev/null 2>&1 ) && bad "accept-gate --waive should require --note" || ok "accept-gate --waive without --note is rejected"
+# v34 closed --kind set, probed against the same throwaway engine. Creation is a hard
+# error; validate() only WARNS, so the warning is asserted on stdout, never on the exit
+# code -- that asymmetry is what lets an adopting repo's invented kinds survive an update.
+( cd "$F" && python3 scripts/workflow.py new-slice --phase P1 --slice P1.S9 --name "typo" --kind cowork 2>&1 | grep -q "invalid slice kind: cowork" ) \
+  && [ ! -d "$F/works/phases/active/P1/slices/P1.S9" ] \
+  && ok "new-slice rejects an unknown --kind and creates nothing" || bad "new-slice accepted an unknown --kind"
+( cd "$F" && python3 scripts/workflow.py new-slice --phase P1 --slice P1.S9 --name "typo" --kind cowork 2>&1 | grep -q "co-work" ) \
+  && ok "the unknown-kind error names the closed set" || bad "the unknown-kind error does not name the closed set"
+# promote-deferred --create-phase creates the phase BEFORE the slice, so the kind must be
+# rejected before that happens -- otherwise a typo leaves a half-created phase behind.
+( cd "$F" && python3 scripts/workflow.py defer-job --title "kind probe" --reason r --trigger t --source manual >/dev/null 2>&1 ) || bad "defer-job probe failed"
+( cd "$F" && python3 scripts/workflow.py promote-deferred D1 --phase P8 --slice P8.S1 --name x --kind cowork --create-phase 2>&1 | grep -q "invalid slice kind: cowork" ) \
+  && [ ! -d "$F/works/phases/active/P8" ] \
+  && ok "promote-deferred rejects an unknown --kind before --create-phase creates the phase" \
+  || bad "promote-deferred left a half-created phase behind on an unknown --kind"
+( cd "$F" && python3 scripts/workflow.py new-slice --phase P1 --slice P1.S1 --name "design round" --kind co-work >/dev/null 2>&1 ) \
+  && ok "new-slice accepts --kind co-work (absent from history, present in the set)" || bad "new-slice rejected --kind co-work"
+python3 - "$F/works/phases/active/P1/slices/P1.S1/slice.json" <<'PY2'
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p)); d["kind"] = "invented-by-an-adopter"
+json.dump(d, open(p, "w"), indent=2)
+PY2
+kind_out=$( cd "$F" && python3 scripts/workflow.py validate 2>&1 ); kind_rc=$?
+printf '%s\n' "$kind_out" | grep -q "unknown kind 'invented-by-an-adopter'" && [ "$kind_rc" -eq 0 ] \
+  && ok "validate warns on an unknown kind and still exits 0 (adopting history survives)" \
+  || bad "validate did not warn exit-code-neutrally on an unknown kind (rc=$kind_rc)"
+python3 - "$F/works/phases/active/P1/slices/P1.S1/slice.json" <<'PY2'
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p)); d["kind"] = "co-work"
+json.dump(d, open(p, "w"), indent=2)
+PY2
 printf '# No active mode selects the built-in economy preset.\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) \
   && grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-mid.md" \

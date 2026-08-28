@@ -208,6 +208,87 @@ product"*, because the operator now signs a mockup too and it is still not the w
 **`## Verifying` was left otherwise intact** — two yardsticks, Operator Runtime, whole-regression
 re-run, evidence bar, gap channel. Only the sweep's ownership and the gate sentence moved.
 
+### From `P17.S2`
+
+**The propagation is complete and the suite is green.** Seven files now restate S1's spec:
+`scripts/workflow.py`, `.claude/skills/create-phase|do-next-slice|do-whole-phase|review-phase/SKILL.md`,
+both `.claude/agents/slice-executor-*.md`, `CLAUDE.md` — plus `tests/retrofit_smoke.sh`,
+`installer/main.py` (one summary print) and `README.md`. **S3 owns only the `WORKSPACE_VERSION`
+bump and the `CHANGELOG.md` entry**; everything else is landed and the artifact is rebuilt.
+
+**The plan's `--kind` guard placement was insufficient — raising it rather than designing around
+it.** The plan said one guard in `create_slice()` *before* `require_phase` would stop
+`promote-deferred --create-phase` from creating a phase and then rejecting the slice. It does not:
+`promote_deferred` calls `new_phase()` itself, several lines before `create_slice` is reached, so
+the phase was created and *then* the kind was rejected (reproduced in a throwaway workspace: `P9`
+existed after `rc=1`). Landed shape: a `require_slice_kind()` helper called from **two** places —
+`create_slice` (still the shared chokepoint for both commands, so no call site can bypass it) and
+the top of `promote_deferred`, before its `--create-phase` branch. One message, one set. A smoke
+test asserts the phase is *not* created on a rejected kind. **Anyone touching either function
+later must keep both calls.**
+
+**The engine's asymmetry, stated once so it is not "fixed" later:** unknown kind = hard error at
+creation, **warning only** in `validate()` (exit-code-neutral — the test asserts on stdout, never
+on the exit status), and `--risk` next door stays deliberately unvalidated because unrecognized
+values route to the *high* tier, which is the safe direction. All three are commented in
+`scripts/workflow.py` at `SLICE_KINDS`.
+
+**Decision on the open `DECOMP` Operator Question — `## Design Style` is added by `create-phase`
+only when the phase is visual.** `works/templates/intent.md` is unchanged, so no adopting repo
+gets a `## Design Style` heading on non-visual phases. Every rule that reads it **tolerates its
+absence**: both drivers say that a phase whose `intent.md` has no such section has its style asked
+at `DECOMP`, which stops `pending` for the answer. Flag it at the review either way (it is still on
+the Operator Questions list below).
+
+**Two files outside the plan's list carried statements this phase falsifies.** Both fixed:
+
+- **`.claude/skills/review-phase/SKILL.md`** — the more important of the two, because `design-only`
+  phases can no longer be waived, so a gated review will now run its fresh-eyes stage against a
+  **stubbed mockup** and would report every deliberately unwired control as dead. Stage 3 gained the
+  qualifier (a mockup is exempt from the functional sweep; name its unwired controls in the
+  walkthrough instead of filing them as defects), and the checklist gained the spec's
+  **orphaned-design-route** check, which the spec assigns to the review and which lived nowhere else.
+- **`README.md`** (operator-facing, Korean) — its design section described the loop as ending at the
+  landed record. It now names the runnable-mockup gate and the three styles.
+
+**`installer/main.py` summary print** updated for the same reason (it told fresh adopters the loop
+had "one normal signoff before separate implementation"). `flag_stale_skills()` was **left alone**
+per plan — `create-phase` is derived into `CLAUDE_SKILLS` and skipped before the marker check, so
+nothing breaks today; its docstring still says a shipped SKILL.md carries the marker, which is now
+true of 15 of 17. That is the second Operator Question below, and `defer-job` material.
+
+**Wording that later slices must copy exactly** (the smoke suite now asserts each of these, so a
+paraphrase breaks the build):
+
+- `the DesignSync work is never dispatched` / `The mockup build is the one dispatched span`
+- `A design slice writes no *product* implementation code` (Shape) and
+  `Write **product** implementation code in a design slice` (Never)
+- `signing the round off — the cards, and the stubbed mockup with them — is not accepting the product`
+- the three style names, `## The mockup`, `Only PENDING #2 is an approval.`,
+  `PENDING #1 is a mechanical wait`, `Exempt from the full functional sweep`,
+  `Stubbed data, no backing work`
+- in **both** drivers: `mockup build is the one dispatched span`, all three style names,
+  `PENDING #1`, `PENDING #2`, `## Design Style`, `mechanical wait, not an approval`
+- in **both** agents: `The mockup span of a `co-work` (design) slice`, `*product* implementation work`,
+  `exempt from the full functional sweep` (lowercase there — the design skill's copy is capitalised)
+
+The design-skill assertions are matched against a **whitespace-flattened** copy of the file, because
+that spec hard-wraps its prose; the driver/agent/contract files are long single lines and are matched
+literally.
+
+**Two exempt skills now, not one.** `tests/retrofit_smoke.sh` previously asserted that every skill
+except `design-cowork` carries `disable-model-invocation: true`. It now checks membership in
+`{"design-cowork", "create-phase"}` — the assertion is still exact in both directions, so the marker
+still cannot be dropped from any other skill by accident. **`create-phase` is the narrower
+exception:** callable on instruction, never on the agent's own initiative, and its step-3 operator
+confirmation gate did not move.
+
+**`works/` was left as found.** The scratch `P17.S99` slice used to prove the kind guard was deleted
+and its lone `slice_created` line removed from `works/events.jsonl` (there is no deletion event, so
+the line would have recorded a slice that never existed). `docs/index.json` picked up a `rebuild`
+timestamp and was restored with `git checkout` — **S2 created no doc versions**, as a non-review
+slice must not.
+
 ## Doc impact
 
 - (none yet from `P17.DECOMP` — decomposition changed no durable truth.)
@@ -216,6 +297,25 @@ re-run, evidence bar, gap channel. Only the sweep's ownership and the gate sente
   per design slice. It needs the three named styles (`build-after` / `design-only` / `paired`), the
   runnable-mockup span with its own `pending` gate, SIGNOFF moving to that gate, four commits, and the
   `accept-gate --require` consequence for any phase shipping a mockup.
+- (`P17.S2`) **`operations.md`** — two sections drift further. (1) The `## Visual-design runbook`
+  (L58-99, L162-164) still describes the single two-pass shape, one `pending` window, a
+  never-dispatched `co-work` slice and SIGNOFF at the read-back; it needs the three named styles,
+  the dispatched mockup span, the second `pending` window (and that only the second is an
+  approval), four commits, and `accept-gate --require` for any phase shipping a mockup. (2) The
+  skill-inventory paragraph (L201-202, L288-289) says `design-cowork` is the **sole** skill without
+  `disable-model-invocation: true`; there are now **two** — `create-phase` is agent-callable **when
+  instructed**, never autonomous, with its confirmation gate unmoved.
+- (`P17.S2`) **`decisions.md`** — one ADR covering this phase's engine + contract change: the
+  **closed `--kind` set** (hard error at `new-slice` *and* at `promote-deferred`, before its
+  `--create-phase` branch; warning-only and exit-code-neutral in `validate()` so adopting history
+  survives an update; `--risk` deliberately left unvalidated because unknown values route to
+  `high`), and **agent-runnable `create-phase`** as the second, narrower model-invocable exception.
+  The three-styles/mockup half of the ADR is S1's note above; they are one decision and should
+  consolidate into one entry.
+- (`P17.S2`) **`qa.md`** — confirms S1's expectation and adds a second source: the mockup's relaxed
+  check versus the apply slice's full functional sweep is now also stated in `review-phase`'s gate
+  stage 3 (a stubbed mockup's unwired controls are named in the walkthrough, not filed as defects)
+  and in both executor agents.
 - **Expected across the phase, for the `P17.REVIEW` slice to consolidate:** `operations.md` (the
   `## Visual-design runbook`, L70-198, must gain the three styles and the mockup gate);
   `decisions.md` (a new ADR: three named design styles + approval moving onto a runnable mockup +
@@ -229,13 +329,17 @@ _Questions only the operator can answer; every entry is routed at the review -- 
 - (`P17.DECOMP`) **Should `## Design Style` be scaffolded into every phase's `intent.md`, or added by
   `create-phase` only when the phase is visual?** Decomposition's read is "only when visual" (a
   `## Design Style` heading on every non-visual phase is noise), but the intent does not say, and it
-  changes `works/templates/intent.md` for every adopting repo. S2 will implement the "only when
-  visual" reading unless the operator says otherwise — flag at the review either way.
+  changes `works/templates/intent.md` for every adopting repo. **S2 implemented "only when visual"**:
+  `works/templates/intent.md` is unchanged and every rule that reads the section tolerates its
+  absence. Still an operator decision to confirm at the review — reverting it would mean a template
+  change reaching every adopting repo.
 - (`P17.DECOMP`) **Should `installer/main.py`'s `flag_stale_skills()` heuristic be widened** now that a
   second shipped skill (`create-phase`, joining `design-cowork`) lacks the
   `disable-model-invocation: true` marker it uses to recognize workspace-managed skill dirs? Inert
   today; only bites if such a skill is later dropped upstream. Candidate for `defer-job` rather than
-  in-phase work.
+  in-phase work. **S2 left the heuristic and its docstring untouched, per plan** — the docstring now
+  says a shipped SKILL.md sets the marker, which holds for 15 of 17 skills. Route this one at the
+  review (most likely `defer-job`).
 
 ## Constraints
 
