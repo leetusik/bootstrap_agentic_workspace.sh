@@ -131,7 +131,7 @@
       ]
     },
     "operations": {
-      "latest": "v0027_driving_the_accept-gate_lifecycle_the_operator_runtime_manifest_rule_and_the_v32_release",
+      "latest": "v0028_three_named_design_styles_the_runnable-mockup_gate_four_commits_per_round_and_two_model-invocable_skills_v34",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -349,6 +349,14 @@
           "source": "P16.REVIEW",
           "summary": "Driving the accept-gate lifecycle, the operator runtime manifest rule, and the v32 release",
           "previous": "v0026_operate_the_single-harness_workspace_claude-only_executor_config_the_v31_install_retrofit_update_contract_and_a_uniform_pending_gate"
+        },
+        {
+          "id": "v0028_three_named_design_styles_the_runnable-mockup_gate_four_commits_per_round_and_two_model-invocable_skills_v34",
+          "path": "docs/versions/operations/v0028_three_named_design_styles_the_runnable-mockup_gate_four_commits_per_round_and_two_model-invocable_skills_v34.md",
+          "created_at": "2026-08-29T03:57:13+09:00",
+          "source": "P17.REVIEW",
+          "summary": "Three named design styles, the runnable-mockup gate, four commits per round, and two model-invocable skills (v34)",
+          "previous": "v0027_driving_the_accept-gate_lifecycle_the_operator_runtime_manifest_rule_and_the_v32_release"
         }
       ]
     },
@@ -367,7 +375,7 @@
       ]
     },
     "qa": {
-      "latest": "v0003_works_as_a_product_beside_matches_the_record_the_fidelity_sweep_the_review_gate_stages_and_the_cumulative_smoke_list",
+      "latest": "v0004_the_stubbed_mockup_s_relaxed_check_versus_the_apply_slice_s_full_functional_sweep_v34",
       "current_path": "docs/current/qa.md",
       "versions": [
         {
@@ -393,11 +401,19 @@
           "source": "P16.REVIEW",
           "summary": "Works as a product beside matches the record: the fidelity sweep, the review gate stages, and the cumulative smoke list",
           "previous": "v0002_keep_test_files_small_by_default_prefer_lightweight_verification"
+        },
+        {
+          "id": "v0004_the_stubbed_mockup_s_relaxed_check_versus_the_apply_slice_s_full_functional_sweep_v34",
+          "path": "docs/versions/qa/v0004_the_stubbed_mockup_s_relaxed_check_versus_the_apply_slice_s_full_functional_sweep_v34.md",
+          "created_at": "2026-08-29T03:59:28+09:00",
+          "source": "P17.REVIEW",
+          "summary": "The stubbed mockup's relaxed check versus the apply slice's full functional sweep (v34)",
+          "previous": "v0003_works_as_a_product_beside_matches_the_record_the_fidelity_sweep_the_review_gate_stages_and_the_cumulative_smoke_list"
         }
       ]
     },
     "decisions": {
-      "latest": "v0035_operator_acceptance_gate_as_contract_law_declaration_at_the_decomp_boundary_legacy_default_and_works-as-a-product_verification_p16",
+      "latest": "v0036_three_named_design_styles_approval_on_a_runnable_mockup_a_closed_--kind_set_and_agent-runnable_create-phase_p17_v34",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -679,9 +695,17 @@
           "source": "P16.REVIEW",
           "summary": "Operator acceptance gate as contract law: declaration at the DECOMP boundary, legacy default, and works-as-a-product verification (P16)",
           "previous": "v0034_drop_codex_support_and_ship_claude_code_only_flagged_pre-v31_migration_and_a_uniform_pending_gate"
+        },
+        {
+          "id": "v0036_three_named_design_styles_approval_on_a_runnable_mockup_a_closed_--kind_set_and_agent-runnable_create-phase_p17_v34",
+          "path": "docs/versions/decisions/v0036_three_named_design_styles_approval_on_a_runnable_mockup_a_closed_--kind_set_and_agent-runnable_create-phase_p17_v34.md",
+          "created_at": "2026-08-29T03:58:36+09:00",
+          "source": "P17.REVIEW",
+          "summary": "Three named design styles, approval on a runnable mockup, a closed --kind set, and agent-runnable create-phase (P17, v34)",
+          "previous": "v0035_operator_acceptance_gate_as_contract_law_declaration_at_the_decomp_boundary_legacy_default_and_works-as-a-product_verification_p16"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-08-23T07:51:55+09:00"
+  "last_rebuilt_at": "2026-08-29T03:59:53+09:00"
 }

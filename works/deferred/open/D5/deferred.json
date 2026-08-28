@@ -1,0 +1,11 @@
+{
+  "id": "D5",
+  "title": "Confirm: ## Design Style is appended by create-phase only when visual, not scaffolded into every intent.md",
+  "status": "deferred",
+  "source": "P17.REVIEW",
+  "reason": "P17.S2 implemented the 'only when visual' reading: works/templates/intent.md is unchanged and every reader treats the section's absence as 'not a design phase'. intent.md never said which way, and reverting would push a template change to every adopting repo.",
+  "trigger": "Before the first design-bearing phase runs under v34, or the next time works/templates/intent.md is edited.",
+  "created_at": "2026-08-29T04:02:30+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

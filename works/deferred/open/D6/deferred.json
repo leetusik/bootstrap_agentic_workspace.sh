@@ -1,0 +1,11 @@
+{
+  "id": "D6",
+  "title": "Widen installer/main.py flag_stale_skills() ownership heuristic beyond the disable-model-invocation marker",
+  "status": "deferred",
+  "source": "P17.REVIEW",
+  "reason": "The marker now holds for 15 of 17 shipped skills. Both exceptions (design-cowork, create-phase) are in CLAUDE_SKILLS and skipped before the check, so nothing breaks today, but a retired model-invocable skill would not be flagged stale for adopters and the docstring still asserts the marker is universal.",
+  "trigger": "If a model-invocable skill is retired upstream, or when flag_stale_skills() is next touched.",
+  "created_at": "2026-08-29T04:02:30+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

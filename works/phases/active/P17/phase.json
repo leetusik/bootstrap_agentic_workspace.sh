@@ -2,16 +2,16 @@
   "id": "P17",
   "name": "design co-work styles, the mockup gate, and agent-runnable create-phase",
   "objective": "Give design co-work three named operator-chosen styles (build-after / design-only / paired), move the single per-round approval onto a runnable mockup built in the project's own frontend language, close the unvalidated --kind hole in the engine, and let the agent invoke create-phase on instruction while the operator-confirmation gate stays put. Ships as workspace v34.",
-  "status": "planned",
+  "status": "done",
   "order": 1,
   "created_at": "2026-08-29T03:06:58+09:00",
   "started_at": null,
-  "completed_at": null,
+  "completed_at": "2026-08-29T04:02:36+09:00",
   "review": {
-    "status": "pending",
-    "reviewed_at": null,
-    "reviewer": null,
-    "note": null
+    "status": "pass",
+    "reviewed_at": "2026-08-29T04:02:36+09:00",
+    "reviewer": "slice-executor-high",
+    "note": "All four slices validated together: workflow validate, retrofit smoke (123 PASS / 0 FAIL, Tests 0-8), build.py --check, sync-agents --check, the executor-agent diff, and the --kind behaviour exercised by hand in a throwaway workspace. The central claim holds -- the Never block went 14 bullets to 15 with none deleted, four narrowed, one added, one scope-qualified; the only scope that shrank is the functional sweep, onto the stubbed-mockup case, while the manifest-runtime rule got stronger. Docs consolidated into operations v0028, decisions v0036, qa v0004. Three deferred jobs filed (D5-D7), including one non-blocking finding: review-phase gate stage 4 lacks the mockup qualifier stage 3 received."
   },
   "acceptance": {
     "required": false,

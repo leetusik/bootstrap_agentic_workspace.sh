@@ -398,3 +398,49 @@ The corrected rule, for S2 and S3:
   That was the substance of the note; the rebuild half of it was wrong.
 - The rebuild is deterministic (sorted walks + `repr()`), so rebuilding per slice produces no
   spurious diff churn beyond the payload bytes that actually changed.
+
+### From `P17.REVIEW`
+
+**Verdict: `pass`.** Gate waived (`acceptance.required: false`), so no gate stages ran — no
+walkthrough, no browser work, no fresh-eyes walk, no `## Regression Checklist` re-run. This repo has
+no `## Operator Runtime` and no product to browse; correctly, no P17 slice claimed one.
+
+**The phase's central claim holds: the four re-cut `## Never` bans got tighter.** Read the whole
+block against `git show e96a97e:.claude/skills/design-cowork/SKILL.md`, bullet by bullet — 14 bullets
+before, 15 after, **none deleted**:
+
+| Bullet | Before → after | Direction |
+| --- | --- | --- |
+| author mockups/palettes/… | `yourself` → *a mockup **before the round has come back***, and palette/type scale/cards banned **"ever"**, plus the transcription-vs-inventing sentence inside the bullet | **tighter** on palettes/cards, correctly time-bounded on the mockup |
+| delegate DesignSync / dispatch the design slice | → *dispatch the **read-back or the regroup***, with the mockup named as the dispatched span | narrowed exactly as intent §2 requires; agrees word-for-word in substance with `## Mechanics` |
+| write implementation code | → **product** implementation code, mockup bounded on four axes (dispatched, stubbed, throwaway, deleted later) | narrowed, bounded |
+| pre-plan past the design gate | `DECOMP2` → **everything downstream of a round**, instantiated per style, and "landed" became "landed, **approved**" | **generalized and tighter**; reads correctly under all three styles |
+| *(new)* | *Treat PENDING #1 as an approval, or sign a round off on the landed record alone* | **added ban** |
+| verify only against the record | sweep was unqualified-mandatory → sweep on **every slice shipping real wiring**, manifest runtime **"everywhere, the mockup included"** | the sweep's scope narrows exactly to the new stubbed-mockup case (nothing that used to be swept escapes); the **runtime rule got stronger** |
+
+The line the skill exists to hold is intact and stated three times over: the intro (*"Building an
+approved design in the product's own language is transcription; inventing one is designing"*), the
+`## The mockup` opening (*"It transcribes the round; it decides nothing"*), and the first `Never`
+bullet. **No finding.**
+
+**One new finding, non-blocking, routed as a deferred job rather than a fix slice.** `review-phase`'s
+gate **stage 4** ("re-run the whole smoke list, then **append this phase's headline checks**") is the
+only gate stage that did **not** get a mockup qualifier — stage 3 did. Since v34 a `design-only`
+phase can no longer be waived, so its review now runs stage 4 against a phase whose only
+operator-visible surface is a **throwaway route**, and appending a headline check for it would leave
+a permanently dead line on the cumulative `## Regression Checklist` that every later review re-runs.
+Inert until the first `design-only` phase runs, self-evident to whoever hits it, and the throwaway
+lifecycle already tells the apply slice to delete the route — so it is filed, not fixed here.
+
+**Advisory, not a finding, and not P17's:** `phase.json` sat at `status: planned` through the whole
+phase — `start-slice` never transitions the phase, only `review-phase`/`set-phase-status` do.
+Identical to P16 (`git show 3fc7ae2:works/phases/active/P16/phase.json`), so it is pre-existing engine
+behaviour, out of P17's scope, and `validate` is untroubled by it.
+
+**Doc consolidation is done — three versions, one per Doc impact target.** `operations` v0028,
+`decisions` v0036 (one ADR for the whole phase), `qa` v0004. Listed with their edits in
+`slices/P17.REVIEW/result.md`.
+
+**Both `## Operator Questions` entries are routed** as deferred jobs (the gate is waived, so there is
+no walkthrough to fold them into). Titles, reasons and triggers are in `result.md`; **the orchestrator
+files them** — the review never runs `defer-job`.
