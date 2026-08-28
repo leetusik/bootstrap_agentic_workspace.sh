@@ -150,9 +150,72 @@ commit; `.githooks/pre-commit` and `tests/retrofit_smoke.sh` (Test 7) both run
 `python3 installer/build.py --check`. S1 and S2 must not bump the version themselves — S3 owns it, so
 the artifact is rebuilt once over final files rather than three times over moving ones.
 
+### From `P17.S1`
+
+**The spec is landed: `.claude/skills/design-cowork/SKILL.md`, 334 → 480 lines.** S2 copies from it,
+not from `intent.md` — where the two differ, the file is the reconciled version and the differences
+are listed here.
+
+**Commit count is FOUR per design slice, not three.** The plan for S1 said three; `intent.md` §2's
+diagram has four `→ commit` markers and the new loop forces four, because SIGNOFF can no longer ride
+the read-back commit — the mockup build and PENDING #2 sit between them. Landed as four, each named:
+`handoff` → `read-back` → `mockup` → `signoff`. **S2 must propagate four.**
+
+**Section names S2's grep sweep needs** (headings moved, so grepping the old ones finds nothing):
+
+| Old | New |
+| --- | --- |
+| `## Shape` | `## Shape — three styles` |
+| — | `## The mockup — the design in the project's own language` (new, after `## Read back, then land it`) |
+| — | `## Closing the round — SIGNOFF, then regroup` (new, holds the old read-back steps 4 and 5) |
+| `## Read back, then land it` | unchanged name, now **ends at step 3** |
+
+**The one-line invariants S2 must restate identically in the other six files:**
+
+- A `co-work` slice is `--kind co-work --risk high`, orchestrator-inline, and writes **no *product*
+  implementation code** — the phrase is now "product implementation code", and the mockup is the
+  named exception.
+- **The DesignSync work is never dispatched** (read-back, regroup). **The mockup build is the one
+  dispatched span** — `slice-executor-high`, no DesignSync, built from `build-prompt.md`. A design
+  slice runs **inline → dispatched → inline**. The old absolute "the design slice is NOT dispatched"
+  is superseded everywhere.
+- **Only PENDING #2 is an approval.** PENDING #1 is a mechanical wait; the operator confirmed the
+  design inside the Claude Design session and that session ending is the confirmation. **SIGNOFF
+  happens at the mockup gate.**
+- **A phase shipping a mockup takes `accept-gate <P> --require`** — including `design-only`, which
+  can no longer be waived. (Gate-declaration rule lives in `CLAUDE.md` and both drivers.)
+- **The mockup is exempt from the full functional sweep**; the sweep is an apply/fidelity duty on
+  real wiring. (Qualifies the works-as-a-product doctrine in `CLAUDE.md` and `docs/current/qa.md`.)
+- **`design-only` must be chosen at `/create-phase`**; the style is confirmed by the operator and
+  recorded in the phase's `intent.md` under **`## Design Style`**; `DECOMP` may ask it late, stopping
+  `pending`.
+- **`paired` has no `DECOMP2`** and cuts its pairs as **bare folders**; creating a bare folder is not
+  pre-planning.
+
+**Two `Never`-block edits beyond the four the plan named — neither weakens a ban.** (1) Added a
+bullet: *Treat PENDING #1 as an approval, or sign a round off on the landed record alone.* (2)
+Scope-qualified the existing *"Verify only against the record… the functional sweep and the
+manifest's runtime are both mandatory"* — it now says the manifest runtime is mandatory **everywhere
+including the mockup** and the sweep is mandatory on **every slice shipping real wiring**, because
+left as an unqualified absolute it contradicted the mockup's sweep exemption two sections above. If
+S2 restates this ban anywhere, restate the qualified form.
+
+**Also updated for consistency, in case S2 greps the old wording:** the closing sentence of
+*When the record never drew it* was *"signing the cards is not accepting the product"*; it is now
+*"signing the round off — the cards, and the stubbed mockup with them — is not accepting the
+product"*, because the operator now signs a mockup too and it is still not the wired product.
+
+**`## Verifying` was left otherwise intact** — two yardsticks, Operator Runtime, whole-regression
+re-run, evidence bar, gap channel. Only the sweep's ownership and the gate sentence moved.
+
 ## Doc impact
 
 - (none yet from `P17.DECOMP` — decomposition changed no durable truth.)
+- (`P17.S1`) **`operations.md`** — the `## Visual-design runbook` now understates the process: it
+  describes the two-shape choice, a single `pending` window, SIGNOFF at the read-back and two commits
+  per design slice. It needs the three named styles (`build-after` / `design-only` / `paired`), the
+  runnable-mockup span with its own `pending` gate, SIGNOFF moving to that gate, four commits, and the
+  `accept-gate --require` consequence for any phase shipping a mockup.
 - **Expected across the phase, for the `P17.REVIEW` slice to consolidate:** `operations.md` (the
   `## Visual-design runbook`, L70-198, must gain the three styles and the mockup gate);
   `decisions.md` (a new ADR: three named design styles + approval moving onto a runnable mockup +
@@ -179,3 +242,23 @@ _Questions only the operator can answer; every entry is routed at the review -- 
 ## Open Questions
 
 -
+
+### From `P17.S1` (orchestrator note — correction to a `DECOMP` instruction)
+
+**"S1 and S2 must not rebuild; S3 owns it" is unworkable, and only the version bump survives.**
+`DECOMP`'s Release-discipline note asked S1/S2 to leave `installer/build.py` alone so the artifact
+is rebuilt once over final files. The tracked `.githooks/pre-commit` hook makes that impossible: it
+runs `installer/build.py --check` on every commit, and `.claude/skills/design-cowork/SKILL.md` is an
+embedded payload, so S1's commit was **rejected** until the artifact was rebuilt.
+
+The corrected rule, for S2 and S3:
+
+- **Every slice that edits an embedded machinery file runs `python3 installer/build.py` and stages
+  the rebuilt `bootstrap_agentic_workspace.sh` in its own commit.** Embedded files are
+  `scripts/workflow.py`, `.claude/agents/*`, `.claude/skills/*/SKILL.md`, `.claude/settings.json`,
+  `works/templates/*`, `executors.toml`, `.github/workflows/*`, `.gitattributes`, and `CLAUDE.md`.
+  S2 touches almost all of these, so S2 rebuilds too.
+- **What S3 still exclusively owns is the `WORKSPACE_VERSION` bump and the `CHANGELOG.md` entry.**
+  That was the substance of the note; the rebuild half of it was wrong.
+- The rebuild is deterministic (sorted walks + `repr()`), so rebuilding per slice produces no
+  spurious diff churn beyond the payload bytes that actually changed.
