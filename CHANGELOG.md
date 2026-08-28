@@ -9,6 +9,34 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v33 — 2026-08-29
+
+- **`phase.md` and `result.md` now divide by audience, so nothing is written twice.** The contract
+  asked every executor to write `result.md` and, separately, to append cross-slice notes to
+  `phase.md`, but never said the two must not carry the same content — so diligent executors wrote
+  both in full. A v32 slice put the operator-runtime field bullets and the `UNFILLED` marker
+  verbatim into each, and its `result.md` even noted "already recorded in `phase.md` Findings". The
+  duplicated part was always the forward-looking notes, and `phase.md` is the file every later
+  dispatch re-reads, so that copy was paid for on every slice rather than once.
+- **The boundary, stated once and enforced in both tiers.** `phase.md` is what the **next slice**
+  needs; `result.md` is what **this slice** did — its validation commands and outcomes, its
+  deviations from `plan.md`, and the durable form of the structured verdict, which is otherwise
+  ephemeral and dies with the session. A note belonging in `phase.md` goes there and is referenced
+  from `result.md` in a line, never restated in both. The `## Operator Questions` instruction
+  changed from "not *only* into `result.md`" — which invited writing both — to "there, rather than
+  into `result.md`".
+- **No behavioural surface moved.** Both slice files keep their owners, lifecycles, and readers;
+  the review still re-runs each slice's validation from its `plan.md` / `result.md`, and the
+  acceptance-gate resume still reads `review_verdict: pass` out of the `REVIEW` slice's
+  `result.md`. `slice-executor-mid` and `-high` received identical wording, so the pre-existing
+  drift between the tiers did not widen.
+- **Migration notes:** none for a fresh install or for a workspace whose `CLAUDE.md` the installer
+  owns — `--update` overwrites the contract and both agent files. A **retrofitted** repo keeps its
+  own `CLAUDE.md` and receives the new contract text in the `CLAUDE.workspace.md` sidecar instead;
+  fold the one amended bullet (the "two context files" rule) into your `CLAUDE.md` by hand if you
+  maintain a customised one. The rule applies to slices written from here on; existing `result.md`
+  files under `works/` are history and are not rewritten.
+
 ## v32 — 2026-08-23
 
 - **Why this release: every gate the machinery had sat between agents.** An adopting workspace ran
