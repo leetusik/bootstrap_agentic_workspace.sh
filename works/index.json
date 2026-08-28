@@ -1,7 +1,20 @@
 {
-  "active_phases": [],
+  "active_phases": [
+    {
+      "id": "P17",
+      "name": "design co-work styles, the mockup gate, and agent-runnable create-phase",
+      "objective": "Give design co-work three named operator-chosen styles (build-after / design-only / paired), move the single per-round approval onto a runnable mockup built in the project's own frontend language, close the unvalidated --kind hole in the engine, and let the agent invoke create-phase on instruction while the operator-confirmation gate stays put. Ships as workspace v34.",
+      "status": "planned",
+      "order": 1,
+      "path": "works/phases/active/P17",
+      "review_status": "pending",
+      "current_slice": "P17.DECOMP",
+      "slice_count": 2,
+      "done_slice_count": 0
+    }
+  ],
   "deferred_open_count": 1,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 3,
-  "last_rebuilt_at": "2026-08-23T13:54:26+09:00"
+  "last_rebuilt_at": "2026-08-29T03:07:44+09:00"
 }

@@ -381,3 +381,4 @@
 {"ts": "2026-08-23T13:54:26+09:00", "type": "phase_archived", "phase": "P14", "archive_path": "works/phases/archived/20260823_135426_P14_codex_visual-design_cowork_replacement"}
 {"ts": "2026-08-23T13:54:26+09:00", "type": "phase_archived", "phase": "P15", "archive_path": "works/phases/archived/20260823_135426_P15_drop_codex_support"}
 {"ts": "2026-08-23T13:54:26+09:00", "type": "phase_archived", "phase": "P16", "archive_path": "works/phases/archived/20260823_135426_P16_operator_acceptance_gate_and_runtime-faithful_verification"}
+{"ts": "2026-08-29T03:06:58+09:00", "type": "phase_created", "phase": "P17"}
