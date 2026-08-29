@@ -3,14 +3,14 @@
   "phase_id": "P18",
   "name": "engine: notebook budget warning, Doc-impact case check, drop dashboard Rebuilt-at",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 20,
   "depends_on": [
     "P18.S1"
   ],
   "created_at": "2026-08-29T11:07:03+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-08-29T11:20:04+09:00",
+  "completed_at": "2026-08-29T11:28:26+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -29,5 +29,6 @@
     "archived": false,
     "archived_at": null,
     "archive_path": null
-  }
+  },
+  "outcome": "budget warning + finish-slice size print, Doc Impact case-drift warning, dashboards without Rebuilt-at; 137 PASS"
 }

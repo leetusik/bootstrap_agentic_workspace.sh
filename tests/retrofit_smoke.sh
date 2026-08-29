@@ -8,7 +8,8 @@
 # empty-start invariant (no phases seeded), the collision tiers, the
 # fresh-install regression, the live<->bootstrap-embedded dual-apply
 # invariants, the v32 operator-acceptance-gate invariants, the v35 phase-notebook
-# invariants (template seed, generated ## Slices block, finish-slice --outcome), and the
+# invariants (template seed, generated ## Slices block, finish-slice --outcome, the
+# notebook budget/case-drift warnings and the timestamp-free dashboards), and the
 # v31 Codex-removal negatives. Re-runnable; self-cleaning.
 #
 # Usage:  bash tests/retrofit_smoke.sh
@@ -572,6 +573,36 @@ fallback = next(n.value.value for n in ast.walk(tree) if isinstance(n, ast.Assig
 assert fallback == (root / "works/templates/phase.md").read_text(), "fallback drifted from the shipped template"
 FALLBACK
 then ok "new_phase's embedded fallback is byte-identical to works/templates/phase.md"; else bad "PHASE_MD_TEMPLATE_FALLBACK drifted from works/templates/phase.md"; fi
+
+# ---------------------------------------------------------------------------
+echo "== Test 10: v35 notebook guardrails -- budget warning, ## Doc Impact case drift, no dashboard timestamp churn =="
+# Continues on $F (P2's phase.md lost its markers in Test 9; irrelevant here). Pad the
+# notebook past the 200-line budget and drift the Doc impact heading in one edit.
+python3 - "$PM" <<'PAD'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+p.write_text(p.read_text() + "\n## Doc Impact\n\n" + "- filler\n" * 220)
+PAD
+out=$( cd "$F" && python3 scripts/workflow.py validate 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && ok "validate exits 0 with notebook warnings (warn, never error)" || bad "validate exited $rc on warnings -- $out"
+printf '%s\n' "$out" | grep -q 'phase P2: phase.md is .* over the notebook budget' \
+  && ok "an over-budget phase.md warns" || bad "no over-budget warning -- $out"
+printf '%s\n' "$out" | grep -q 'has a `## Doc Impact` heading' \
+  && ok "a case-drifted ## Doc Impact heading warns" || bad "no Doc-impact case-drift warning -- $out"
+( cd "$F" && python3 scripts/workflow.py new-slice --phase P2 --slice P2.S2 --name "budget probe" >/dev/null 2>&1 )
+out=$( cd "$F" && python3 scripts/workflow.py finish-slice P2.S2 --outcome "probe" 2>&1 )
+printf '%s\n' "$out" | grep -q '^phase.md: .*(budget 200 / 16384)' && printf '%s\n' "$out" | grep -q 'OVER BUDGET' \
+  && ok "finish-slice prints the notebook size and flags it over budget" || bad "finish-slice notebook size print missing -- $out"
+grep -q 'Rebuilt at' "$F/works/backlog.md" "$F/works/deferred.md" \
+  && bad "a markdown dashboard still carries a Rebuilt at timestamp" || ok "no Rebuilt at timestamp in either markdown dashboard"
+# The churn this removes: repeated `next` calls must not dirty the two dashboards.
+( cd "$F" && git init -q . >/dev/null 2>&1 && git add -A >/dev/null 2>&1 \
+    && git -c user.email=smoke@example.invalid -c user.name=smoke commit -qm "smoke baseline" >/dev/null 2>&1 )
+( cd "$F" && python3 scripts/workflow.py next >/dev/null 2>&1; python3 scripts/workflow.py next >/dev/null 2>&1 )
+tracked=$( cd "$F" && git ls-files works/backlog.md works/deferred.md | wc -l | tr -d ' ' )
+dirty=$( cd "$F" && git status --short -- works/backlog.md works/deferred.md )
+[ "$tracked" = "2" ] && [ -z "$dirty" ] \
+  && ok "two next calls leave the dashboards byte-identical (no timestamp churn)" || bad "next dirtied the dashboards (tracked=$tracked) -- $dirty"
 
 # ---------------------------------------------------------------------------
 echo

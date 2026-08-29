@@ -36,6 +36,11 @@ REVIEW_VERDICTS = {"pass", "changes_requested", "blocked"}
 # unrecognized values route to the high tier, which is the safe direction -- do not
 # "fix" that asymmetry for symmetry's sake.
 SLICE_KINDS = {"implementation", "review", "decomposition", "fix", "docs", "qa", "co-work"}
+# Phase-notebook budget (workspace v35): (max lines, max bytes) -- both are measured and
+# either one over warns. A WARNING, never an error: a hard cap invites truncating exactly
+# the notes that matter, so the fix is always to rewrite (state stays in phase.md, detail
+# moves to the slice's result.md), never to delete under duress.
+PHASE_MD_BUDGET = (200, 16 * 1024)
 # Opt-in parallel execution (workspace v24). A phase.json MAY carry an optional
 # `execution` block; its absence means the phase belongs to the default stream and
 # every behavior is exactly as before, byte for byte. See `phase_execution`.
@@ -442,16 +447,15 @@ def status_box(status: object) -> str:
     return "x" if status == "done" else "~" if status == "pending" else "r" if status == "ready" else " "
 
 
-def rebuild_deferred_dashboard(groups=None, rebuilt_at=None) -> None:
+def rebuild_deferred_dashboard(groups=None) -> None:
     groups = groups or deferred_jobs()
-    rebuilt_at = rebuilt_at or now_iso()
     open_count = len(groups.get("open", []))
     promoted_count = len(groups.get("promoted", []))
     dropped_count = len(groups.get("dropped", []))
     lines = [
         "# Deferred Jobs", "", "> Generated dashboard. Do not put detailed deferred context here; edit each `works/deferred/<state>/<DID>/` folder instead.", "",
         "## Summary", "",
-        f"- Open: `{open_count}`", f"- Promoted: `{promoted_count}`", f"- Dropped: `{dropped_count}`", f"- Rebuilt at: `{rebuilt_at}`", "",
+        f"- Open: `{open_count}`", f"- Promoted: `{promoted_count}`", f"- Dropped: `{dropped_count}`", "",
         "## Open", "", "| ID | Status | Title | Source | Trigger | Path |", "|---|---|---|---|---|---|",
     ]
     if not groups.get("open"):
@@ -672,6 +676,19 @@ def refresh_phase_md_slices(pdir: Path, phase: dict) -> None:
         write_text(path, updated)
 
 
+def phase_md_size(pdir: Path) -> tuple:
+    """(lines, bytes) of a phase notebook, measured against PHASE_MD_BUDGET; (0, 0) when absent.
+
+    Shared by `validate` (warning) and `finish-slice` (size print) so the two can never
+    disagree about what "over budget" means.
+    """
+    path = pdir / "phase.md"
+    if not path.exists():
+        return (0, 0)
+    text = path.read_text(encoding="utf-8")
+    return (len(text.splitlines()), len(text.encode("utf-8")))
+
+
 def rebuild_index_and_state() -> None:
     phases = all_active_phases()
     # Selection (pointer + operator halt) is scoped to this checkout's stream; the
@@ -707,7 +724,7 @@ def rebuild_index_and_state() -> None:
     state["updated_at"] = rebuilt_at
     write_json(WORKS / "state.json", state)
     rebuild_backlog(phases, state, index)
-    rebuild_deferred_dashboard(deferred, rebuilt_at)
+    rebuild_deferred_dashboard(deferred)
     for p in phases:  # only the marker-delimited ## Slices block; archived phases are never touched
         refresh_phase_md_slices(ROOT / p["path"], p)
 
@@ -725,8 +742,7 @@ def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
     if state.get("stream"):  # only in a parallel-phase checkout; absent on the default stream
         lines.append(f"- Stream: `{clean_cell(state['stream'])}` (parallel phase checkout; the pointer above is scoped to it)")
     lines += [
-        f"- Open deferred jobs: `{index.get('deferred_open_count', 0)}`",
-        f"- Rebuilt at: `{index.get('last_rebuilt_at')}`", "",
+        f"- Open deferred jobs: `{index.get('deferred_open_count', 0)}`", "",
         "## Active Phases", "", "| Phase | Status | Review | Name | Current Slice | Path |", "|---|---|---|---|---|---|",
     ]
     if not phases:
@@ -812,6 +828,19 @@ def validate() -> int:
                     errors.append(f"phase {p['id']} is done but its operator acceptance gate was never cleared; the operator must walk the running product (accept-gate {p['id']} --open/--clear)")
         if not (ACTIVE / p["id"] / "intent.md").exists():
             warnings.append(f"phase {p['id']} has no intent.md (expected {p['id']}/intent.md); capture operator intent via the create-phase skill")
+        # Bounded notebook (v35). Warnings only: `validate` prints them and still exits 0.
+        # A `done` phase is skipped for the budget: its notebook is closed history waiting
+        # to be archived, so "rewrite it under budget" is advice nobody can act on -- the
+        # check must bite while the phase is still running (that includes `in_review`).
+        notebook = ACTIVE / p["id"] / "phase.md"
+        max_lines, max_bytes = PHASE_MD_BUDGET
+        lines_n, bytes_n = phase_md_size(notebook.parent)
+        if p["status"] != "done" and (lines_n > max_lines or bytes_n > max_bytes):
+            warnings.append(f"phase {p['id']}: phase.md is {lines_n} lines / {bytes_n} bytes, over the notebook budget of {max_lines} lines / {max_bytes} bytes; rewrite it under budget (state to phase.md, detail to the slice's result.md)")
+        # Heading-line check, not a substring search: notebooks legitimately quote both
+        # spellings in prose (this very rule, for one).
+        if notebook.exists() and any(re.match(r"## Doc Impact\b", ln) for ln in notebook.read_text(encoding="utf-8").split("\n")):
+            warnings.append(f"phase {p['id']}: phase.md has a `## Doc Impact` heading; the canonical section is `## Doc impact` (lowercase i) -- rename it so the review finds the notes")
         for s in p["slices"]:
             if s["id"] in seen_slices:
                 errors.append(f"duplicate slice id: {s['id']}")
@@ -1072,6 +1101,11 @@ def finish_slice(args: argparse.Namespace) -> None:
     if not outcome:  # a warning, never an error: the slice is still finished
         print(f"warning: no --outcome recorded for {args.slice}; the ## Slices row will be blank")
     print(f"finished {args.slice}")
+    max_lines, max_bytes = PHASE_MD_BUDGET
+    lines_n, bytes_n = phase_md_size(sdir.parents[1])  # .../<phase>/slices/<slice> -> <phase>
+    if lines_n or bytes_n:  # the notebook is where the next slice reads its state; keep it in view
+        over = " \u2014 OVER BUDGET" if (lines_n > max_lines or bytes_n > max_bytes) else ""
+        print(f"phase.md: {lines_n} lines / {bytes_n} bytes (budget {max_lines} / {max_bytes}){over}")
 
 
 def _set_phase_status(pdir: Path, status: str) -> str:
@@ -1621,7 +1655,7 @@ def parallel_merge_finish(args: argparse.Namespace) -> None:
     else:
         print(f"{len(awaiting)} merged phase(s) await doc consolidation -- do them ONE AT A TIME, on this stream (doc versions are allocated from a single index):")
         for p, execution in awaiting:
-            print(f"- {p['id']}: doc impact notes in {p['path']}/phase.md (section '## Doc Impact')")
+            print(f"- {p['id']}: doc impact notes in {p['path']}/phase.md (section '## Doc impact')")
             print(f"    per note: python3 scripts/workflow.py doc-new-version --doc <doc> --summary \"...\" --source {p['id']}.REVIEW -> edit the returned edit_path -> python3 scripts/workflow.py rebuild-docs")
             print(f"    when that phase's notes are all consolidated: python3 scripts/workflow.py parallel-consolidated {p['id']}")
             if execution.get("worktree") or (git_ok and execution.get("branch") and _branch_exists(execution["branch"])):
@@ -1632,7 +1666,7 @@ def parallel_merge_finish(args: argparse.Namespace) -> None:
 def parallel_consolidated(args: argparse.Namespace) -> None:
     """Record that a merged parallel phase's deferred doc consolidation is finished.
 
-    The engine cannot write the prose: an agent runs `doc-new-version` per "Doc Impact" note on the
+    The engine cannot write the prose: an agent runs `doc-new-version` per "Doc impact" note on the
     default stream and then calls this to flip `execution.consolidation` to "done", which is also
     what unblocks archiving the phase.
     """
