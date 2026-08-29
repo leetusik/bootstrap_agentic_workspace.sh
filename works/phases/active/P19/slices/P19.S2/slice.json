@@ -3,14 +3,14 @@
   "phase_id": "P19",
   "name": "prescribe Aside as the real-browser verification instrument; ship v36",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 2,
   "depends_on": [
     "P19.S1"
   ],
   "created_at": "2026-08-29T16:38:24+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-08-29T16:51:22+09:00",
+  "completed_at": "2026-08-29T17:00:34+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Aside prescribed as the default real-browser verification instrument (MCP first, CLI/REPL as Bash surfaces) with surface and fallback, instrument and runtime kept on separate axes; WORKSPACE_VERSION 36 and the v36 changelog covering both middle slices",
   "validation": {
     "required": [],
     "last_run": null,

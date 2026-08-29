@@ -9,6 +9,65 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v36 — 2026-08-29
+
+- **Why this release: two ways a slice could be the wrong shape.** An agent told `research` was
+  not a valid `--kind` announced it would cut its research slices as `--kind qa` instead — a slice
+  that reads as one thing and is another, the exact failure v34 closed the enum to prevent. And the
+  verification doctrine shipped in v32 says thoroughly **what** to check (the functional sweep) and
+  **where** (the `## Operator Runtime` manifest, plus the production build when they differ), and
+  never once said **with what** — so the scripted assertion suite everyone reaches for kept being
+  the default by silence, which is the very shape of check that let eleven user-visible failures
+  through thirty slices.
+- **`research` is a real slice kind** — the eighth member of the closed `SLICE_KINDS` set, with
+  four semantics stated everywhere routing is stated (contract, both agent bodies, both `do-*`
+  skills, both `--kind`/`--risk` help strings): **findings-only**, so it writes no product code and
+  a throwaway probe is deleted before it finishes; **always `slice-executor-high` by *kind***,
+  joining `decomposition` and `review` — set `--risk high` anyway so the record cannot contradict
+  the routing, and **the kind wins if the two ever disagree**; **its findings land in `phase.md`**,
+  because the executor's context dies with the slice and a finding that stays in `result.md` prose
+  is lost, which is the whole reason the kind is worth a dispatch; and a `DECOMP2` **usually**
+  follows it. "My findings change nothing about the breakdown" is itself a real result.
+- **`DECOMP2` now has two origins, neither a special case of the other:** a research slice, and the
+  `build-after` design style — which is unchanged in every particular. It was written as a design
+  device with a research exception bolted on nowhere; the contract states the two as peers, and
+  `design-cowork` gained one cross-reference bullet ("the id is not design-only") rather than
+  carrying machinery a design reader never uses. A genuine third pass is `P<N>.DECOMP3` — one more
+  id, not a numbering scheme.
+- **Aside is the prescribed instrument for real-browser verification, in place of scripted
+  Playwright-style automation.** [Aside](https://aside.com) is a local-first Chromium browser agent;
+  the workspace now names it wherever a real browser is needed — the functional sweep, fidelity
+  slices, a design round's mockup, and the review's own walk of the running product. The **MCP**
+  surface comes first (`aside mcp`, configured
+  `{"mcpServers":{"aside":{"command":"aside","args":["mcp"]}}}`) because an MCP server's tools
+  arrive as native tools in a dispatched executor's session, which a shell-out does not; the `aside`
+  **CLI** is the one-shot Bash surface and `aside repl` the deterministic-inspection one. The
+  argument is not restated in every file: the doctrine's demands — type into it and wait, watch a
+  timer tick for a real interval, catch the browser defaults the record never drew — are agentic
+  browsing, and an assertion suite can only test the selectors someone already thought of.
+- **Instrument and runtime stay different axes.** Aside *drives* the runtime `## Operator Runtime`
+  records; it never substitutes one of its own. The absent-or-`UNFILLED` → `needs_operator` →
+  `pending` rule is untouched and is about the **runtime**: a manifest that names no instrument is
+  not an unfilled manifest. The long-standing "never assume headless" line now carries its reason —
+  a browsing agent drives a visible browser, and Aside's headless story is undocumented.
+- **Prescription, surface, fallback — and no pretence.** Aside is a macOS desktop app and needs an
+  Aside account, so a workspace that cannot install it (Linux, CI, or an operator who declines) is
+  excused nothing: it owes the same sweep, at the same viewports, in the same manifest runtime,
+  through whatever real browser it has — **the doctrine's demands bind, the instrument does not.**
+  Every slice names in `result.md` which instrument it actually used, and claiming a browser run
+  that was not made stays banned. Nothing here installs, bundles, or calls Aside, and no verified
+  Aside run has been made from an executor in this repository: v36 ships the doctrine, not an
+  integration.
+- **Migration notes:** run `python3 scripts/workflow.py sync-agents` after updating, as always —
+  both agent bodies changed. The engine change is purely additive (one member added to
+  `SLICE_KINDS`), so existing slices, history and `validate` are unaffected; nothing needs
+  renaming. Because `--update` never touches `docs/`, the seed's new one-line `## Operator Runtime`
+  field — *Browser instrument for the agent* — reaches **fresh installs only**; add it to your own
+  operations doc with `doc-new-version` (copy the line from
+  `installer/payloads/doc_bodies/operations.md` in the upstream clone) if you want it recorded, and
+  note that its absence alone never stops a slice. Installing Aside is an operator action this
+  workspace never takes for you.
+
 ## v35 — 2026-08-29
 
 - **Why this release: `phase.md` was state and log in one append-only file, re-read whole on

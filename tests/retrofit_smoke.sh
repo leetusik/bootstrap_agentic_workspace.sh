@@ -9,7 +9,10 @@
 # fresh-install regression, the live<->bootstrap-embedded dual-apply
 # invariants, the v32 operator-acceptance-gate invariants, the v36 research-slice
 # invariants (the kind is in the closed set and its semantics are in the
-# contract, both agent bodies and both do-* skills), the v35 phase-notebook
+# contract, both agent bodies and both do-* skills), the v36 Aside invariants
+# (Aside is the prescribed real-browser instrument, with its MCP surface and its
+# fallback, in the contract, both agent bodies and the design/review skills),
+# the v35 phase-notebook
 # invariants (template seed, generated ## Slices block, finish-slice --outcome, the
 # notebook budget/case-drift warnings and the timestamp-free dashboards), and the
 # v31 Codex-removal negatives. Re-runnable; self-cleaning.
@@ -132,13 +135,21 @@ for required in (
     "## The mockup — the design in the project's own language",
     "Only PENDING #2 is an approval.", "PENDING #1 is a mechanical wait",
     "Exempt from the full functional sweep", "Stubbed data, no backing work",
+    # v36: the doctrine finally names an instrument -- Aside, MCP surface first,
+    # in place of scripted automation -- and a fallback that excuses no check.
+    "**With what — the instrument.**", "`aside mcp`",
+    "in place of scripted Playwright-style automation",
+    "The fallback — the doctrine's demands bind, the instrument does not.",
 ):
     assert required in design, required
 
 # v32 review procedure: the gate stages, the returned walkthrough, and the two
 # workflow commands a review slice must never run.
 review = (root / ".claude/skills/review-phase/SKILL.md").read_text()
-for required in ("## Gate stages", "`walkthrough`", "`## Operator Runtime`", "`## Regression Checklist`"):
+for required in ("## Gate stages", "`walkthrough`", "`## Operator Runtime`", "`## Regression Checklist`",
+                 # v36: the review opens the product with the prescribed instrument.
+                 "**Drive it with Aside**", "the doctrine's demands bind, the instrument does not",
+                 "with the same instrument as stage 2"):
     assert required in review, required
 never = [ln for ln in review.splitlines() if "you never run on a review slice" in ln]
 assert len(never) == 1 and "`accept-gate`" in never[0] and "`defer-job`" in never[0], never
@@ -147,6 +158,9 @@ assert len(never) == 1 and "`accept-gate`" in never[0] and "`defer-job`" in neve
 # and the cumulative smoke list's line shape reach every fresh install.
 ops = (root / "installer/payloads/doc_bodies/operations.md").read_text()
 assert "## Operator Runtime" in ops and "UNFILLED" in ops
+# v36: one seed field records what THIS machine has; its absence never stops a slice.
+assert "- Browser instrument for the agent:" in ops
+assert "its absence alone never stops a slice" in ops
 qa = (root / "installer/payloads/doc_bodies/qa.md").read_text()
 assert "## Regression Checklist" in qa
 assert "- [ ] <surface>: <one observable behaviour> (P<N>)" in qa
@@ -178,6 +192,16 @@ for tier in ("mid", "high"):
         "write **product** code on a `research` slice",
         "`decomposition`, `research` and `review` slice",
         "that is `DECOMP2`'s second origin",
+    ):
+        assert required in body, (tier, required)
+    # v36: Aside is the prescribed real-browser instrument in BOTH bodies -- the
+    # implementation bullet, the mockup span, and the review's gate stage 2.
+    for required in (
+        "Drive that browser with **Aside**",
+        "the doctrine's demands bind, the instrument does not",
+        "Name in `result.md` which instrument you used",
+        "driven with the same instrument (Aside first)",
+        "driving it with the same instrument (Aside first, the fallback browser otherwise)",
     ):
         assert required in body, (tier, required)
     assert "On a gated phase (`acceptance.required` is `true` — and only then) also run the gate stages" in body, tier
@@ -229,6 +253,10 @@ for required in (
     "**findings land in `phase.md`**",
     "**`DECOMP2` has two origins**", "`P<N>.DECOMP3`",
     "`research`, `fix`, `docs`, `qa`, `co-work`",
+    # v36: Aside is the named instrument, on its own axis, with a binding fallback.
+    "**Real-browser verification runs through Aside, not a script.**",
+    "**Instrument and runtime are different axes:**",
+    "**the doctrine's demands bind, the instrument does not.**",
 ):
     assert required in claude, required
 # v35 negatives: the pre-v35 read order and the append-only notebook verb are gone.
@@ -243,7 +271,7 @@ for gone in ("design exception", "never approval", "no other pending gate"):
 for gone in ("Codex", "AGENTS.md", ".agents/", ".codex/"):
     assert gone not in claude, gone
 PY
-then ok "17 Claude skills, invocation metadata, design contract, the v32 acceptance-gate invariants, the v36 research-kind invariants, and the v31 Codex-removal negatives"; else bad "Claude skill inventory, metadata, design contract, a v32 gate invariant, a v36 research-kind invariant, or a Codex-removal negative failed"; fi
+then ok "17 Claude skills, invocation metadata, design contract, the v32 acceptance-gate invariants, the v36 research-kind and Aside-instrument invariants, and the v31 Codex-removal negatives"; else bad "Claude skill inventory, metadata, design contract, a v32 gate invariant, a v36 research-kind or Aside-instrument invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
