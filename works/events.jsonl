@@ -403,3 +403,5 @@
 {"ts": "2026-08-29T04:02:30+09:00", "type": "deferred_created", "deferred": "D7", "source": "P17.REVIEW"}
 {"ts": "2026-08-29T04:02:36+09:00", "type": "slice_status_changed", "slice": "P17.REVIEW", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-08-29T04:02:36+09:00", "type": "phase_reviewed", "phase": "P17", "verdict": "pass", "reviewer": "slice-executor-high"}
+{"ts": "2026-08-29T10:57:12+09:00", "type": "phase_created", "phase": "P18"}
+{"ts": "2026-08-29T10:57:12+09:00", "type": "deferred_created", "deferred": "D8", "source": "P18"}

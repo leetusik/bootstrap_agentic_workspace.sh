@@ -4,10 +4,10 @@
 
 ## Summary
 
-- Open: `4`
+- Open: `5`
 - Promoted: `0`
 - Dropped: `3`
-- Rebuilt at: `2026-08-29T04:02:36+09:00`
+- Rebuilt at: `2026-08-29T10:57:50+09:00`
 
 ## Open
 
@@ -17,6 +17,7 @@
 | `D5` | `deferred` | Confirm: ## Design Style is appended by create-phase only when visual, not scaffolded into every intent.md | P17.REVIEW | Before the first design-bearing phase runs under v34, or the next time works/templates/intent.md is edited. | `works/deferred/open/D5` |
 | `D6` | `deferred` | Widen installer/main.py flag_stale_skills() ownership heuristic beyond the disable-model-invocation marker | P17.REVIEW | If a model-invocable skill is retired upstream, or when flag_stale_skills() is next touched. | `works/deferred/open/D6` |
 | `D7` | `deferred` | Qualify review-phase gate stage 4 for a phase whose only surface is a throwaway mockup | P17.REVIEW | Before the first design-only or mockup-shipping phase reaches its review. | `works/deferred/open/D7` |
+| `D8` | `deferred` | Slim CLAUDE.md to <= 12 KB | P18 | After P18 lands and the just-in-time Read Order is settled; a dedicated editorial phase, not folded into other work. | `works/deferred/open/D8` |
 
 ## Promoted
 
