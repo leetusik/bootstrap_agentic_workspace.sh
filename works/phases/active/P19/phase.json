@@ -2,16 +2,16 @@
   "id": "P19",
   "name": "the research slice kind and Aside-driven browser verification",
   "objective": "Add `research` to the closed SLICE_KINDS set as a findings-only slice -- no product code, always routed to slice-executor-high -- whose output lands in phase.md so the DECOMP2 slice that normally follows can re-cut the remaining work from what was learned, generalizing the second decomposition pass beyond the build-after design style. And make Aside (CLI / MCP / REPL) the workspace's prescribed instrument for real-browser verification -- the functional sweep, fidelity slices, and the review's own product walk -- in place of scripted Playwright-style automation. Ships as workspace v36.",
-  "status": "planned",
+  "status": "done",
   "order": 3,
   "created_at": "2026-08-29T16:18:53+09:00",
   "started_at": null,
-  "completed_at": null,
+  "completed_at": "2026-08-29T17:14:19+09:00",
   "review": {
-    "status": "pending",
-    "reviewed_at": null,
-    "reviewer": null,
-    "note": null
+    "status": "pass",
+    "reviewed_at": "2026-08-29T17:14:19+09:00",
+    "reviewer": "slice-executor-high",
+    "note": "Both halves of the objective landed and were verified, not trusted: agent-body parity below the frontmatter (identical, 24038 bytes), the engine accepting --kind research while still hard-erroring on an invented kind, and the Aside fallback judged not a loophole. retrofit_smoke.sh 139 PASS / 0 FAIL. Five Doc impact notes consolidated into operations v0030, qa v0006, decisions v0038, plus a stale 137-PASS baseline the list did not carry. All three operator questions routed to D9/D10/D11."
   },
   "acceptance": {
     "required": false,

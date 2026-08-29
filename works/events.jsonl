@@ -439,3 +439,12 @@
 {"ts": "2026-08-29T16:50:32+09:00", "type": "slice_status_changed", "slice": "P19.S1", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-08-29T16:51:22+09:00", "type": "slice_status_changed", "slice": "P19.S2", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-08-29T17:00:34+09:00", "type": "slice_status_changed", "slice": "P19.S2", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-08-29T17:01:20+09:00", "type": "slice_status_changed", "slice": "P19.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-08-29T17:06:42+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0030_the_research_slice_kind_kind-first_executor-tier_routing_and_the_seeded_manifest_s_optional_browser-instrument_field_v36", "source": "P19.REVIEW"}
+{"ts": "2026-08-29T17:07:59+09:00", "type": "doc_version_created", "doc": "qa", "version": "v0006_the_verification_doctrine_names_its_instrument_--_aside_mcp_first_in_place_of_scripted_automation_--_plus_the_fallback_and_the_139-pass_v36_baseline", "source": "P19.REVIEW"}
+{"ts": "2026-08-29T17:09:07+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0038_make_research_a_real_slice_kind_with_decomp2_as_its_ordinary_sequel_and_prescribe_aside_as_the_real-browser_instrument_--_doctrine_not_integration_p19_v36", "source": "P19.REVIEW"}
+{"ts": "2026-08-29T17:14:13+09:00", "type": "deferred_created", "deferred": "D9", "source": "P19.REVIEW"}
+{"ts": "2026-08-29T17:14:13+09:00", "type": "deferred_created", "deferred": "D10", "source": "P19.REVIEW"}
+{"ts": "2026-08-29T17:14:13+09:00", "type": "deferred_created", "deferred": "D11", "source": "P19.REVIEW"}
+{"ts": "2026-08-29T17:14:19+09:00", "type": "slice_status_changed", "slice": "P19.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-08-29T17:14:19+09:00", "type": "phase_reviewed", "phase": "P19", "verdict": "pass", "reviewer": "slice-executor-high"}
