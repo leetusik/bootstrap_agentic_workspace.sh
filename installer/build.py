@@ -49,6 +49,7 @@ FIXED_LIVE_FILES = [
     "executors.toml",
     "works/templates/deferred_brief.md",
     "works/templates/intent.md",
+    "works/templates/phase.md",
     # Repo-level policy files. Embedded like any other live file; main.py emits them
     # through their own write policy (CI seed-once, .gitattributes line-merge) so an
     # adopting repo's own CI / attributes are never clobbered.

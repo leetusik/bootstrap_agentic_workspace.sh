@@ -77,7 +77,7 @@ MANAGED_FILES = [
     *[f"docs/current/{doc_id}.md" for doc_id in DOC_TYPES],
     *[f"docs/versions/{doc_id}/v0001_bootstrap.md" for doc_id in DOC_TYPES],
     "works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/events.jsonl",
-    *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md")],
+    *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md", "phase.md")],
     "scripts/workflow.py",
     ".claude/agents/slice-executor-mid.md", ".claude/agents/slice-executor-high.md",
     ".claude/settings.json",
@@ -518,9 +518,10 @@ Doc updates are the agent's job, normally as part of a slice — the operator as
 # ---- Templates --------------------------------------------------------------
 # No plan.md or result.md template: the orchestrator writes its free-form native plan
 # into plan.md at the slice's turn, and the executor writes a free-form result.md at
-# slice end. Only intent.md (and the deferred brief) are scaffolded.
+# slice end. Scaffolded seeds: the phase notebook, the phase intent, and the deferred brief.
 write_text("works/templates/deferred_brief.md", PAYLOADS["works/templates/deferred_brief.md"])
 write_text("works/templates/intent.md", PAYLOADS["works/templates/intent.md"])
+write_text("works/templates/phase.md", PAYLOADS["works/templates/phase.md"])
 
 # ---- Works state: starts with NO phases --------------------------------------
 # The workspace intentionally bootstraps empty: the operator's first real task is

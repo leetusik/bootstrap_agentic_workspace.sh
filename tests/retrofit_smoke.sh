@@ -7,8 +7,9 @@
 # repos under $TMPDIR, runs the retrofit, and asserts non-destructiveness, the
 # empty-start invariant (no phases seeded), the collision tiers, the
 # fresh-install regression, the live<->bootstrap-embedded dual-apply
-# invariants, the v32 operator-acceptance-gate invariants, and the v31 Codex-removal
-# negatives. Re-runnable; self-cleaning.
+# invariants, the v32 operator-acceptance-gate invariants, the v35 phase-notebook
+# invariants (template seed, generated ## Slices block, finish-slice --outcome), and the
+# v31 Codex-removal negatives. Re-runnable; self-cleaning.
 #
 # Usage:  bash tests/retrofit_smoke.sh
 # Exit 0 if every check passes; non-zero otherwise.
@@ -493,6 +494,7 @@ DUAL_FIXED=".claude/agents/slice-executor-mid.md
 executors.toml
 works/templates/deferred_brief.md
 works/templates/intent.md
+works/templates/phase.md
 .github/workflows/workspace-ci.yml
 .gitattributes"
 for rel in $DUAL_FIXED CLAUDE.md; do
@@ -534,6 +536,42 @@ out=$(sh "$BOOT" "$G" --with-explain --name "Fresh" --summary "fresh" 2>&1); rc=
 [ "$rc" -ne 0 ] && ok "--with-explain is rejected (exit=$rc)" || bad "--with-explain should be unknown but install exited 0 -- $out"
 printf '%s\n' "$out" | grep -q "unknown option --with-explain" && ok "reports the unknown-option error" || bad "no unknown-option error -- $out"
 [ ! -d "$G/.claude/skills" ] && [ ! -d "$G/.agents/skills" ] && ok "rejected install writes nothing" || bad "install wrote skills despite the rejection"
+
+# ---------------------------------------------------------------------------
+echo "== Test 9: v35 phase notebook -- template seed, generated ## Slices block, finish-slice --outcome =="
+# Runs against the fresh workspace from Test 5 ($F), which already carries the gate-probe P1.
+sig() { python3 -c "import hashlib,os,sys;p=sys.argv[1];print(hashlib.sha256(open(p,'rb').read()).hexdigest(),os.stat(p).st_mtime_ns)" "$1"; }
+PM="$F/works/phases/active/P2/phase.md"
+( cd "$F" && python3 scripts/workflow.py new-phase --phase P2 --name "Notebook" --objective "notebook probe" >/dev/null 2>&1 )
+grep -q '<!-- slices:begin -->' "$PM" && grep -q '<!-- slices:end -->' "$PM" && grep -q '^## Now$' "$PM" \
+  && ok "new-phase seeds phase.md from the template (both markers + ## Now)" || bad "seeded phase.md is not the v35 shape"
+grep -q '^| `P2.DECOMP` |' "$PM" && ok "new-phase renders the generated ## Slices block" || bad "## Slices block was not filled on phase creation"
+( cd "$F" && python3 scripts/workflow.py new-slice --phase P2 --slice P2.S1 --name "probe" >/dev/null 2>&1 )
+out=$( cd "$F" && python3 scripts/workflow.py finish-slice P2.S1 --outcome "did X" 2>&1 )
+grep -q '| did X |' "$PM" && ok "finish-slice --outcome lands in the slice's generated row" || bad "outcome missing from the ## Slices row -- $out"
+out=$( cd "$F" && python3 scripts/workflow.py finish-slice P2.DECOMP 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^warning: no --outcome recorded for P2.DECOMP' \
+  && ok "finish-slice without --outcome warns and still succeeds" || bad "omitted --outcome must warn, never fail (exit=$rc) -- $out"
+before=$(sig "$PM"); ( cd "$F" && python3 scripts/workflow.py rebuild >/dev/null 2>&1 )
+[ "$(sig "$PM")" = "$before" ] && ok "an unchanged phase.md is not rewritten by rebuild (no notebook churn)" || bad "rebuild rewrote an unchanged phase.md"
+python3 - "$PM" <<'STRIP'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+p.write_text("\n".join(l for l in p.read_text().split("\n") if "slices:begin" not in l and "slices:end" not in l))
+STRIP
+before=$(sig "$PM"); ( cd "$F" && python3 scripts/workflow.py rebuild >/dev/null 2>&1 )
+[ "$(sig "$PM")" = "$before" ] && ok "a marker-less phase.md is left byte-identical (legacy no-op, no migration)" || bad "rebuild touched a marker-less phase.md"
+if python3 - "$REPO_ROOT" <<'FALLBACK'
+import ast, sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+tree = ast.parse((root / "scripts/workflow.py").read_text())
+fallback = next(n.value.value for n in ast.walk(tree) if isinstance(n, ast.Assign)
+                and any(getattr(t, "id", "") == "PHASE_MD_TEMPLATE_FALLBACK" for t in n.targets))
+assert fallback == (root / "works/templates/phase.md").read_text(), "fallback drifted from the shipped template"
+FALLBACK
+then ok "new_phase's embedded fallback is byte-identical to works/templates/phase.md"; else bad "PHASE_MD_TEMPLATE_FALLBACK drifted from works/templates/phase.md"; fi
 
 # ---------------------------------------------------------------------------
 echo
