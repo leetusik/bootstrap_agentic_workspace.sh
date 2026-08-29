@@ -405,3 +405,11 @@
 {"ts": "2026-08-29T04:02:36+09:00", "type": "phase_reviewed", "phase": "P17", "verdict": "pass", "reviewer": "slice-executor-high"}
 {"ts": "2026-08-29T10:57:12+09:00", "type": "phase_created", "phase": "P18"}
 {"ts": "2026-08-29T10:57:12+09:00", "type": "deferred_created", "deferred": "D8", "source": "P18"}
+{"ts": "2026-08-29T11:03:20+09:00", "type": "slice_status_changed", "slice": "P18.DECOMP", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-08-29T11:07:03+09:00", "type": "slice_created", "phase": "P18", "slice": "P18.S1"}
+{"ts": "2026-08-29T11:07:03+09:00", "type": "slice_created", "phase": "P18", "slice": "P18.S2"}
+{"ts": "2026-08-29T11:07:06+09:00", "type": "slice_created", "phase": "P18", "slice": "P18.S3"}
+{"ts": "2026-08-29T11:07:06+09:00", "type": "slice_created", "phase": "P18", "slice": "P18.S4"}
+{"ts": "2026-08-29T11:07:06+09:00", "type": "slice_created", "phase": "P18", "slice": "P18.S5"}
+{"ts": "2026-08-29T11:10:32+09:00", "type": "slice_status_changed", "slice": "P18.DECOMP", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-08-29T11:10:32+09:00", "type": "acceptance_waived", "phase": "P18"}

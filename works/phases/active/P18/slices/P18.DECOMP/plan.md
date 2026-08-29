@@ -1,0 +1,31 @@
+# Plan — P18.DECOMP (decomposition)
+
+## Goal
+
+Cut P18's middle slices as bare folders, seed `phase.md`, and record the build breakdown, findings, and rules the later slices need. Read `intent.md` first — it is the confirmed source of truth and already carries the full design (four parts), the resolved clarifications, and the measured basis. Do not implement anything.
+
+## Expected shape (guidance — you decide the real cut)
+
+| Slice | kind / risk | order | Work |
+|---|---|---|---|
+| `P18.S1` | implementation / high | 10 | **Engine.** `scripts/workflow.py`: move the `phase.md` seed out of the inline string in `new_phase` (~line 901) into `works/templates/phase.md` with an embedded fallback when the template is missing; the new seed sections per `intent.md` part 1 (`## Objective`, `## Slices` with `<!-- slices:begin -->`/`<!-- slices:end -->` markers, `## Decisions`, `## Doc impact`, `## Operator Questions`, `## Notes for later slices`, `## Now`); `finish-slice --outcome "..."` stored as `outcome` in `slice.json` (warn when omitted, never error); the `## Slices` block regenerated inside `rebuild_index_and_state` for every active phase from `slice.json` (id, name, kind/risk, status, outcome, `slices/<id>/result.md` link when the file exists) and left untouched when the markers are absent; `PHASE_MD_BUDGET = (200, 16 * 1024)` with a `validate` warning (never an error) when exceeded and a `finish-slice` size print; a `validate` warning on a `## Doc Impact` case-drifted heading and the fixed literal at the `parallel-merge-finish` hint (~line 1515); drop the `- Rebuilt at:` line from `works/backlog.md` (~678) and `works/deferred.md` (~454), keeping `last_rebuilt_at`/`updated_at` in `index.json`/`state.json`. Add `works/templates/phase.md` to the installer file lists (`installer/build.py` ~50-51, `installer/main.py` ~80) so the build embeds it. Extend `tests/retrofit_smoke.sh` with terse cases (template seed with markers; `--outcome` rendered by `rebuild`; omitted `--outcome` warns and succeeds; marker-less `phase.md` untouched; over-budget `phase.md` warns with exit 0; no `Rebuilt at` in the two dashboards). **Also migrate P18's own `phase.md` to the new shape** (keep everything already recorded; put the marker block in) so the rest of this phase runs on it and the review can measure it. |
+| `P18.S2` | implementation / high | 20 | **Agents + skills.** `.claude/agents/slice-executor-{mid,high}.md` (byte-identical below frontmatter — verify with `diff <(tail -n +9 a) <(tail -n +9 b)`): the read list (`plan.md` → `phase.md` → `intent.md` only if unsure → the `docs/current/` *sections* the plan names, never the whole set), step 3 (`result.md` verdict block first), step 4 (edit `phase.md` under budget: replace superseded Decisions, append Doc impact / Operator Questions, prune consumed Notes and add yours, rewrite `## Now`; prose to `result.md`), the review's cross-check of `phase.md` against every `result.md` for a dropped decision or unrouted question. Skills: `do-next-slice`, `do-whole-phase` (drop the per-slice `works/backlog.md` re-read; re-read bounded `phase.md` + the verdict; `result.md` head-first, whole only on a non-`done` verdict), `review-phase`, `create-phase` (read order lines), `design-cowork` (one line: the build inventory and landed spec in `phase.md` count against the budget). `sync-agents --check` must report no drift afterwards. |
+| `P18.S3` | implementation / high | 30 | **Contract.** `CLAUDE.md`: the Read Order (`works/state.json` + `next` → active phase and slice folders → the `docs/current/` sections the work touches via `workflow.py docs`; never all eleven up front, never `docs/index.json`), *Canonical State* "Phase notebook" line, the slice-files rule (bounded state rewritten under budget vs. the per-slice log; `## Slices` generated), the `finish-slice` line under *Workflow Commands*. `README.md` wherever it restates the read order or the notebook. |
+| `P18.S4` | implementation / low | 40 | **Release.** `installer/main.py` `WORKSPACE_VERSION = 34` → `35`; `CHANGELOG.md` `## v35 — 2026-08-29` entry; final `python3 installer/build.py`. |
+
+Merge or split as the work warrants; keep `risk: low` only for S4 (it is a version bump plus a changelog entry). Everything that writes code or spans files is `high`.
+
+## Rules to record in `phase.md` for the later slices
+
+- **Installer rebuild rides every slice that touches an embedded file** (`scripts/workflow.py`, `.claude/*`, `works/templates/*`, `CLAUDE.md`): the pre-commit hook runs `installer/build.py --check` on every commit, so S1–S3 each run `python3 installer/build.py` before returning. S4 owns only the version bump and CHANGELOG. (P17 learned this the hard way.)
+- **Doc impact** is consolidated at the review, never per slice. Expected notes: `operations.md` (the notebook runbook and the Read Order), `decisions.md` (an ADR: bounded state vs. log, no cache-setting change and why), `qa.md` only if a regression line is warranted. Each slice appends its own line.
+- The phase gate will be **waived** by the orchestrator right after this slice (workspace machinery; nothing operator-visible in a product).
+- `tests/retrofit_smoke.sh` is the smoke suite (Tests 0–8 today, 123 PASS); keep additions terse.
+
+## Do
+
+1. Read `intent.md`, this plan, `phase.md`, and skim `scripts/workflow.py` around `new_phase` (~901), `finish_slice`, `rebuild_index_and_state` (~635-700), `validate` (~692-809), plus `installer/build.py` and `installer/main.py` file lists, to cut the slices accurately.
+2. Create the middle slices with `python3 scripts/workflow.py new-slice --phase P18 --slice P18.S<n> --name "..." --kind implementation --risk <high|low> --order <n>` — bare folders only, never a `plan.md`.
+3. Seed `phase.md`: the slice breakdown (what each covers and why) under `## Decomposition`, the rules above and any findings under `## Findings & Notes`, an empty `## Doc impact` list ready for appends, and leave `## Operator Questions` as is unless you have one. (This file is still the old shape; S1 migrates it.)
+4. Run `python3 scripts/workflow.py validate`.
+5. Write `result.md` (validation commands and outcomes, deviations from this plan) and return the structured verdict.
