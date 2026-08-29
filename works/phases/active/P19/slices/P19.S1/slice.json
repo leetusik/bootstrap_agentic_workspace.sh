@@ -3,12 +3,12 @@
   "phase_id": "P19",
   "name": "add the research slice kind and generalize DECOMP2",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 1,
   "depends_on": [],
   "created_at": "2026-08-29T16:38:24+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-08-29T16:41:50+09:00",
+  "completed_at": "2026-08-29T16:50:32+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -18,7 +18,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "research added to SLICE_KINDS with all four semantics stated wherever routing is stated (findings-only, always high by kind, findings land in phase.md, DECOMP2 usually follows); DECOMP2 rewritten as a device with two peer origins",
   "validation": {
     "required": [],
     "last_run": null,

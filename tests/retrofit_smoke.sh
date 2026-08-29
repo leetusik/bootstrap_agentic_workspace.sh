@@ -7,7 +7,9 @@
 # repos under $TMPDIR, runs the retrofit, and asserts non-destructiveness, the
 # empty-start invariant (no phases seeded), the collision tiers, the
 # fresh-install regression, the live<->bootstrap-embedded dual-apply
-# invariants, the v32 operator-acceptance-gate invariants, the v35 phase-notebook
+# invariants, the v32 operator-acceptance-gate invariants, the v36 research-slice
+# invariants (the kind is in the closed set and its semantics are in the
+# contract, both agent bodies and both do-* skills), the v35 phase-notebook
 # invariants (template seed, generated ## Slices block, finish-slice --outcome, the
 # notebook budget/case-drift warnings and the timestamp-free dashboards), and the
 # v31 Codex-removal negatives. Re-runnable; self-cleaning.
@@ -91,6 +93,10 @@ for name in ("do-next-slice", "do-whole-phase"):
         # v35: just-in-time reads and the bounded notebook.
         "finish-slice <slice_id> --outcome", "bounded phase notebook",
         "verdict block", "just in time",
+        # v36: the research kind routes high by KIND, and DECOMP2 is no longer a
+        # design-only device -- it is also the sequel to a research slice.
+        "that is what the `research` kind is for", "`--kind research --risk high`",
+        "second origin", "`research` and review always",
     ):
         assert required in body, (name, required)
     # v35: the per-slice re-read of the generated backlog dashboard is gone --
@@ -164,6 +170,16 @@ for tier in ("mid", "high"):
         "`build-after`", "`design-only`", "`paired`",
     ):
         assert required in body, (tier, required)
+    # v36: the research kind is findings-only, lands its findings in the notebook,
+    # and reaches this tier by kind -- so BOTH bodies carry it word for word.
+    for required in (
+        "**Research slice (`kind: research`):** findings-only — **write no product code.**",
+        "in `phase.md`, where the next slice will actually read them",
+        "write **product** code on a `research` slice",
+        "`decomposition`, `research` and `review` slice",
+        "that is `DECOMP2`'s second origin",
+    ):
+        assert required in body, (tier, required)
     assert "On a gated phase (`acceptance.required` is `true` — and only then) also run the gate stages" in body, tier
     assert "- `walkthrough`:" in body, tier
     # v35: reads are just-in-time, result.md leads with the verdict block, and the
@@ -206,6 +222,13 @@ for required in (
     "**bounded state**", "PHASE_MD_BUDGET", "200 lines / 16 KB",
     "every slice **edits** it under budget", "structured verdict block first",
     "finish-slice P1.S1 --outcome",
+    # v36: the research kind (findings-only, high by kind, findings in the notebook)
+    # and DECOMP2 generalized past the build-after design style.
+    "**`research` is a findings-only slice kind, and a `DECOMP2` usually follows it.**",
+    "if the two ever disagree the **kind wins**",
+    "**findings land in `phase.md`**",
+    "**`DECOMP2` has two origins**", "`P<N>.DECOMP3`",
+    "`research`, `fix`, `docs`, `qa`, `co-work`",
 ):
     assert required in claude, required
 # v35 negatives: the pre-v35 read order and the append-only notebook verb are gone.
@@ -220,7 +243,7 @@ for gone in ("design exception", "never approval", "no other pending gate"):
 for gone in ("Codex", "AGENTS.md", ".agents/", ".codex/"):
     assert gone not in claude, gone
 PY
-then ok "17 Claude skills, invocation metadata, design contract, the v32 acceptance-gate invariants, and the v31 Codex-removal negatives"; else bad "Claude skill inventory, metadata, design contract, a v32 gate invariant, or a Codex-removal negative failed"; fi
+then ok "17 Claude skills, invocation metadata, design contract, the v32 acceptance-gate invariants, the v36 research-kind invariants, and the v31 Codex-removal negatives"; else bad "Claude skill inventory, metadata, design contract, a v32 gate invariant, a v36 research-kind invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
@@ -390,6 +413,12 @@ grep -q '^works/events\.jsonl merge=union$' "$F/.gitattributes" && ok "fresh ins
   || bad "promote-deferred left a half-created phase behind on an unknown --kind"
 ( cd "$F" && python3 scripts/workflow.py new-slice --phase P1 --slice P1.S1 --name "design round" --kind co-work >/dev/null 2>&1 ) \
   && ok "new-slice accepts --kind co-work (absent from history, present in the set)" || bad "new-slice rejected --kind co-work"
+# v36 research kind: in the closed set, named by the rejection message, and creatable.
+( cd "$F" && python3 scripts/workflow.py new-slice --phase P1 --slice P1.S9 --name "typo" --kind cowork 2>&1 | grep -q "'research'" ) \
+  && ok "the unknown-kind error names research in the closed set" || bad "the closed set does not contain research"
+( cd "$F" && python3 scripts/workflow.py new-slice --phase P1 --slice P1.S2 --name "learn first" --kind research --risk high >/dev/null 2>&1 ) \
+  && grep -q '"kind": "research"' "$F/works/phases/active/P1/slices/P1.S2/slice.json" \
+  && ok "new-slice accepts --kind research (v36, findings-only, always the high tier)" || bad "new-slice rejected --kind research"
 python3 - "$F/works/phases/active/P1/slices/P1.S1/slice.json" <<'PY2'
 import json, sys
 p = sys.argv[1]

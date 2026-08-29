@@ -72,6 +72,9 @@ The orchestrator makes all four; the dispatched executor commits nothing, as alw
   first, then the design implementation**, then any fidelity fix. In every other way an ordinary
   decomposition slice: the orchestrator plans it, `slice-executor-high` executes it, bare folders
   only, `--risk` set deliberately, breakdown recorded in `phase.md`.
+- **The id is not design-only.** `P<N>.DECOMP2` has two origins — this one, and a `research` slice
+  ("we had to learn something before we could cut the rest"); see `CLAUDE.md`. Nothing about
+  `build-after`'s use of it changes, and a design phase never needs the other origin to explain it.
 - **Choose it when** the whole design should land before any of it is built, and the build is small
   enough to sit in the same phase.
 
