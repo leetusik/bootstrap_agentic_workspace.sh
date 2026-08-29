@@ -5,9 +5,9 @@
 
 ## Pointer
 
-- Current phase: `none`
-- Current slice: `none`
-- Next slice: `none`
+- Current phase: `P19`
+- Current slice: `P19.S1`
+- Next slice: `P19.S2`
 - Waiting on operator: `none`
 - Open deferred jobs: `5`
 
@@ -17,6 +17,7 @@
 |---|---|---|---|---|---|
 | [x] `P17` | `done` | `pass` | design co-work styles, the mockup gate, and agent-runnable create-phase | `none` | `works/phases/active/P17` |
 | [x] `P18` | `done` | `pass` | Bounded phase notebook and just-in-time reads | `none` | `works/phases/active/P18` |
+| [ ] `P19` | `planned` | `pending` | the research slice kind and Aside-driven browser verification | `P19.S1` | `works/phases/active/P19` |
 
 ## Phase P17: design co-work styles, the mockup gate, and agent-runnable create-phase
 
@@ -39,3 +40,12 @@
 | [x] `P18.S4` | `done` | contract: CLAUDE.md Read Order, notebook rules, READMEs | `implementation` | `works/phases/active/P18/slices/P18.S4` |
 | [x] `P18.S5` | `done` | release workspace v35: version bump, CHANGELOG, installer rebuild | `implementation` | `works/phases/active/P18/slices/P18.S5` |
 | [x] `P18.REVIEW` | `done` | phase review | `review` | `works/phases/active/P18/slices/P18.REVIEW` |
+
+## Phase P19: the research slice kind and Aside-driven browser verification
+
+| Slice | Status | Name | Kind | Path |
+|---|---|---|---|---|
+| [x] `P19.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P19/slices/P19.DECOMP` |
+| [ ] `P19.S1` | `todo` | add the research slice kind and generalize DECOMP2 | `implementation` | `works/phases/active/P19/slices/P19.S1` |
+| [ ] `P19.S2` | `todo` | prescribe Aside as the real-browser verification instrument; ship v36 | `implementation` | `works/phases/active/P19/slices/P19.S2` |
+| [ ] `P19.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P19/slices/P19.REVIEW` |

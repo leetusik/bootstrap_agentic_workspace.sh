@@ -1,0 +1,32 @@
+{
+  "id": "P19.DECOMP",
+  "phase_id": "P19",
+  "name": "decompose phase",
+  "kind": "decomposition",
+  "status": "done",
+  "order": 0,
+  "depends_on": [],
+  "created_at": "2026-08-29T16:18:53+09:00",
+  "started_at": "2026-08-29T16:35:32+09:00",
+  "completed_at": "2026-08-29T16:40:52+09:00",
+  "risk": "high",
+  "source": {
+    "type": "new_phase",
+    "id": "P19"
+  },
+  "paths": {
+    "plan": "plan.md",
+    "result": "result.md"
+  },
+  "outcome": "Cut P19 into P19.S1 (the research kind + generalizing DECOMP2) and P19.S2 (Aside as the prescribed verification instrument, ships v36); Aside investigation done inline and handed down via the notebook",
+  "validation": {
+    "required": [],
+    "last_run": null,
+    "last_status": "pending"
+  },
+  "archive": {
+    "archived": false,
+    "archived_at": null,
+    "archive_path": null
+  }
+}
