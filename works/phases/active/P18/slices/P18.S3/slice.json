@@ -3,14 +3,14 @@
   "phase_id": "P18",
   "name": "executor agents + orchestrator skills: just-in-time reads and the notebook edit protocol",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 30,
   "depends_on": [
     "P18.S1"
   ],
   "created_at": "2026-08-29T11:07:06+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-08-29T11:29:08+09:00",
+  "completed_at": "2026-08-29T11:39:19+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -29,5 +29,6 @@
     "archived": false,
     "archived_at": null,
     "archive_path": null
-  }
+  },
+  "outcome": "executor tiers + six skills state the just-in-time read order, verdict-first result.md, budgeted phase.md edit protocol, review cross-check; 137 PASS"
 }

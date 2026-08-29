@@ -88,8 +88,16 @@ for name in ("do-next-slice", "do-whole-phase"):
         "mockup build is the one dispatched span", "`build-after`", "`design-only`",
         "`paired`", "PENDING #1", "PENDING #2", "## Design Style",
         "mechanical wait, not an approval",
+        # v35: just-in-time reads and the bounded notebook.
+        "finish-slice <slice_id> --outcome", "bounded phase notebook",
+        "verdict block", "just in time",
     ):
         assert required in body, (name, required)
+    # v35: the per-slice re-read of the generated backlog dashboard is gone --
+    # `next` prints the pointer. The only mentions left must say so.
+    for ln in body.splitlines():
+        if "works/backlog.md" in ln:
+            assert "next" in ln and "pointer" in ln, (name, ln)
 
 # The spec hard-wraps its prose, so match against a whitespace-flattened copy: these
 # assertions are about the wording, not about where a line happens to break.
@@ -158,6 +166,20 @@ for tier in ("mid", "high"):
         assert required in body, (tier, required)
     assert "On a gated phase (`acceptance.required` is `true` — and only then) also run the gate stages" in body, tier
     assert "- `walkthrough`:" in body, tier
+    # v35: reads are just-in-time, result.md leads with the verdict block, and the
+    # phase notebook is EDITED under budget -- except the engine-generated block.
+    for required in (
+        "just in time, never the whole tree",
+        "**only when you are unsure what was asked**",
+        "never the whole doc set, and never `docs/index.json`",
+        "**structured verdict block first**",
+        "**Edit** the phase's `phase.md`",
+        "200 lines / 16 KB",
+        "never edit inside the `<!-- slices:begin -->`",
+        "edit inside `phase.md`'s generated `## Slices` block",
+        "Cross-check the notebook against the logs",
+    ):
+        assert required in body, (tier, required)
     never = [ln for ln in body.splitlines() if "run workflow state-transition commands" in ln]
     assert len(never) == 1 and "`accept-gate`" in never[0] and "`defer-job`" in never[0], tier
     bodies[tier] = body.split("---\n", 2)[2]

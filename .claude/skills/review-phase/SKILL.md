@@ -16,9 +16,9 @@ The phase review is executed by `slice-executor-high` — the top executor tier;
 Read:
 
 - `CLAUDE.md`
-- `docs/current/*.md` relevant to the phase, and `docs/index.json`
-- `works/state.json`, `works/backlog.md`
-- the phase folder under `works/phases/active/<P>/` and each completed slice's `slice.json` + `result.md`
+- the `docs/current/` **sections** the phase actually touched (per its `## Doc impact` list) — not the whole doc set, and not `docs/index.json`: that is version history, and `validate` checks currency for you
+- `python3 scripts/workflow.py next` for the pointer (no per-slice re-read of `works/backlog.md` — it is generated from the same state)
+- the phase folder under `works/phases/active/<P>/`: `phase.md` — the **bounded notebook**, rewritten as the phase ran — and each completed slice's `slice.json` + `result.md`, read **head-first** (each `result.md` opens with that slice's verdict block: status, validation commands, deviations), whole wherever the detail matters
 - the phase's `## Operator Questions` list in `phase.md` — every entry has to be routed before this review can pass
 - on a gated phase: `## Operator Runtime` in `docs/current/operations.md` (how the operator runs and views the product) and `## Regression Checklist` in `docs/current/qa.md` (the cumulative product smoke list)
 
@@ -26,9 +26,10 @@ Check:
 
 - Did the phase objective actually ship?
 - Did each slice meet its brief and plan? Are deviations explained in `result.md`?
-- **Validate all slices together** (the orchestrator no longer re-runs per-slice validation): re-run each slice's validation commands from its `plan.md` / `result.md`, plus `python3 scripts/workflow.py validate`. Do they pass across the finished phase?
+- **Validate all slices together** (the orchestrator no longer re-runs per-slice validation): re-run each slice's validation commands — they are in the verdict block at the head of its `result.md`, with its `plan.md` as the fallback — plus `python3 scripts/workflow.py validate`. Do they pass across the finished phase?
 - Were the phase's durable-truth changes (product, architecture, API, …) consolidated into new doc versions **at this review** — not per-slice, not in-place edits? (Parallel mode: instead check that the "Doc impact" list in `phase.md` **covers every durable-truth change the phase made** — that list is the sole input to the post-merge consolidation, so an incomplete list is a review finding, not a detail.)
 - Do `docs/current/*.md` match the latest versions in `docs/index.json` after consolidation? (`python3 scripts/workflow.py validate` checks this.) In parallel mode this applies at consolidation time on the default stream, not at the branch review.
+- **Cross-check the notebook against the logs.** `phase.md` is bounded state that each slice *rewrote*, so what a slice knew survives only if it was written into `## Decisions` (or consumed and dropped on purpose). Read the notebook **and** every `result.md`: a decision or constraint a `result.md` records that no longer appears anywhere in `phase.md` is a **finding**, and so is a `## Doc impact` line missing for a durable-truth change a slice's log describes. (The notebook being *shorter* is not a finding — that is the point; the pre-edit text is in git.)
 - Is every entry on `phase.md`'s `## Operator Questions` list **routed** — folded into the walkthrough as a decision for the operator, or listed for the orchestrator to file with `defer-job`? An unrouted entry is a finding, and the review may not pass with one.
 - On a gated phase: did you open the running product **yourself**, or are you about to pass on other slices' reports?
 - Did a design round ship a **throwaway mockup route**? Then no **orphaned design route** may remain: whichever slice implemented the surface for real deletes it (under `design-only` the route deliberately survives into the apply phase and is deleted there). A leftover route is a finding.

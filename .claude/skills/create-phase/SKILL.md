@@ -12,7 +12,7 @@ Turn an operator request for new work into one or more phases — or a deferred 
 
 ## Procedure
 
-1. **Refine.** Restate the operator's request in clear language. Read `docs/current/*.md` and `works/backlog.md` for context if useful. Preserve the operator's exact words — you will record them verbatim later.
+1. **Refine.** Restate the operator's request in clear language. Read the `docs/current/` **sections** the request actually touches (just in time — never the whole doc set; `python3 scripts/workflow.py docs` lists what exists) and run `python3 scripts/workflow.py next` for the current pointer, if useful. Preserve the operator's exact words — you will record them verbatim later.
 
 2. **Clarify.** Ask the operator about anything ambiguous before acting: scope and boundaries, whether this is one phase or several, a sensible name and objective for each, and whether the work should start now (a phase) or be parked for later (a deferred job). Wait for answers. Do not run any `workflow.py` command yet.
 
