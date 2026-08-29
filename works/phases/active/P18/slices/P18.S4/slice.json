@@ -3,14 +3,14 @@
   "phase_id": "P18",
   "name": "contract: CLAUDE.md Read Order, notebook rules, READMEs",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 40,
   "depends_on": [
     "P18.S3"
   ],
   "created_at": "2026-08-29T11:07:06+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-08-29T11:39:47+09:00",
+  "completed_at": "2026-08-29T11:52:42+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -29,5 +29,6 @@
     "archived": false,
     "archived_at": null,
     "archive_path": null
-  }
+  },
+  "outcome": "CLAUDE.md Read Order just-in-time, notebook rules, finish-slice --outcome; READMEs mirror it; CLAUDE.md +1036 B (review to judge); 137 PASS"
 }

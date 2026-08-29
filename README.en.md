@@ -249,7 +249,7 @@ another agent, CI — drives the workspace with the exact same commands:
 | `next` | Show the current / next slice |
 | `new-phase --phase P2 --name … --objective …` | Create a phase (seeds `DECOMP` + `REVIEW`) |
 | `new-slice --phase P1 --slice P1.S1 --name …` | Add a slice |
-| `start-slice P1.S1` / `finish-slice P1.S1` | Move a slice through its lifecycle |
+| `start-slice P1.S1` / `finish-slice P1.S1 --outcome …` | Move a slice through its lifecycle |
 | `review-phase P1 --verdict pass` | Record a phase review |
 | `accept-gate P1 --require` / `--open --walkthrough …` / `--clear` | Declare, open, and clear a phase's operator acceptance gate |
 | `doc-new-version --doc backend --summary … --source P1.S1` | Cut a new durable doc version |
@@ -327,13 +327,13 @@ interface**: you invoke the slash command; the agent does everything it implies.
 
 ### Read order
 
-When an agent picks up work, it reads in this order — and no further by default:
+When an agent picks up work, it reads just in time, in this order — and no further by default:
 
-1. [`docs/current/*.md`](docs/current/) — the fullstack doc set
-2. [`docs/index.json`](docs/index.json)
-3. [`works/state.json`](works/state.json), [`works/backlog.md`](works/backlog.md), and
-   [`works/deferred.md`](works/deferred.md)
-4. The **active** phase folder and **active** slice folder only
+1. [`works/state.json`](works/state.json) and `next` — the pointer
+2. The **active** phase folder (`intent.md` and the bounded `phase.md`) and **active** slice folder
+   only
+3. Only the [`docs/current/`](docs/current/) **sections** the work touches — never the whole doc set
+   up front, and never [`docs/index.json`](docs/index.json)
 
 Archived phases and old doc versions are history; they're not read by default.
 
@@ -389,7 +389,7 @@ full lifecycle, and [`CLAUDE.md`](CLAUDE.md) for the command reference.
 │   ├── state.json                 # current / next pointer (canonical)
 │   ├── backlog.md / deferred.md   # generated dashboards (lean: IDs & pointers only)
 │   ├── phases/
-│   │   ├── active/<P>/            # phase.json, phase.md (notebook), slices/<id>/
+│   │   ├── active/<P>/            # phase.json, phase.md (bounded notebook), slices/<id>/
 │   │   └── archived/             # finished phases
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
@@ -413,8 +413,9 @@ the ones I lean on; the [contract in `CLAUDE.md`](CLAUDE.md) is how they're actu
 
 2. **Give agents durable, shared memory.** Conversations compact and agents forget, so I never keep
    important context only in the chat. Every phase has a notebook (`phase.md`) that each slice reads
-   on the way in and appends to on the way out, and decisions land in versioned docs. The next
-   slice — or the next *session* — starts from what the last one learned.
+   on the way in and rewrites — under a size budget — on the way out, so it stays the *state* of the
+   phase rather than its log; the log is each slice's own `result.md`, and decisions land in
+   versioned docs. The next slice — or the next *session* — starts from what the last one learned.
 
 3. **Make every slice prove itself.** A slice writes its `plan.md` before it touches anything and a
    `result.md` when it's done, and the phase doesn't close until a fresh-context review checks it

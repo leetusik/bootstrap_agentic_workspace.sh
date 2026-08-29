@@ -200,8 +200,18 @@ for required in (
     "writes no ***product*** implementation code",
     "**`build-after`**", "**`design-only`**", "**`paired`**", "## Design Style",
     "only PENDING #2 is an approval", "`--kind` is a **closed set**",
+    # v35: just-in-time reads, the bounded/edited notebook, and the slice outcome.
+    "Just in time, and only what the work in front of you needs",
+    "never the whole doc set up front, and never `docs/index.json`",
+    "**bounded state**", "PHASE_MD_BUDGET", "200 lines / 16 KB",
+    "every slice **edits** it under budget", "structured verdict block first",
+    "finish-slice P1.S1 --outcome",
 ):
     assert required in claude, required
+# v35 negatives: the pre-v35 read order and the append-only notebook verb are gone.
+for gone in ("for the fullstack doc set", "appends phase notes/doc impact",
+             "appends durable cross-slice notes"):
+    assert gone not in claude, gone
 # The Codex-only `pending` co-work carve-out went with Codex: clearing a `pending`
 # item is uniformly the operator's, on every gate including a design one.
 assert "Work resumes only after explicit operator input clears the same item" in claude

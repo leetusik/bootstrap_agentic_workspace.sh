@@ -6,8 +6,8 @@
 ## Pointer
 
 - Current phase: `P18`
-- Current slice: `P18.S4`
-- Next slice: `P18.S5`
+- Current slice: `P18.S5`
+- Next slice: `P18.REVIEW`
 - Waiting on operator: `none`
 - Open deferred jobs: `5`
 
@@ -16,7 +16,7 @@
 | Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
 | [x] `P17` | `done` | `pass` | design co-work styles, the mockup gate, and agent-runnable create-phase | `none` | `works/phases/active/P17` |
-| [ ] `P18` | `planned` | `pending` | Bounded phase notebook and just-in-time reads | `P18.S4` | `works/phases/active/P18` |
+| [ ] `P18` | `planned` | `pending` | Bounded phase notebook and just-in-time reads | `P18.S5` | `works/phases/active/P18` |
 
 ## Phase P17: design co-work styles, the mockup gate, and agent-runnable create-phase
 
@@ -36,6 +36,6 @@
 | [x] `P18.S1` | `done` | engine: phase.md template, generated ## Slices block, finish-slice --outcome | `implementation` | `works/phases/active/P18/slices/P18.S1` |
 | [x] `P18.S2` | `done` | engine: notebook budget warning, Doc-impact case check, drop dashboard Rebuilt-at | `implementation` | `works/phases/active/P18/slices/P18.S2` |
 | [x] `P18.S3` | `done` | executor agents + orchestrator skills: just-in-time reads and the notebook edit protocol | `implementation` | `works/phases/active/P18/slices/P18.S3` |
-| [ ] `P18.S4` | `todo` | contract: CLAUDE.md Read Order, notebook rules, READMEs | `implementation` | `works/phases/active/P18/slices/P18.S4` |
+| [x] `P18.S4` | `done` | contract: CLAUDE.md Read Order, notebook rules, READMEs | `implementation` | `works/phases/active/P18/slices/P18.S4` |
 | [ ] `P18.S5` | `todo` | release workspace v35: version bump, CHANGELOG, installer rebuild | `implementation` | `works/phases/active/P18/slices/P18.S5` |
 | [ ] `P18.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P18/slices/P18.REVIEW` |
