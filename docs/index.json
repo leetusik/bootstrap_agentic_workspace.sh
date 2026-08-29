@@ -131,7 +131,7 @@
       ]
     },
     "operations": {
-      "latest": "v0028_three_named_design_styles_the_runnable-mockup_gate_four_commits_per_round_and_two_model-invocable_skills_v34",
+      "latest": "v0029_the_bounded_phase_notebook_the_generated_slices_block_finish-slice_--outcome_and_just-in-time_reads_v35",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -357,6 +357,14 @@
           "source": "P17.REVIEW",
           "summary": "Three named design styles, the runnable-mockup gate, four commits per round, and two model-invocable skills (v34)",
           "previous": "v0027_driving_the_accept-gate_lifecycle_the_operator_runtime_manifest_rule_and_the_v32_release"
+        },
+        {
+          "id": "v0029_the_bounded_phase_notebook_the_generated_slices_block_finish-slice_--outcome_and_just-in-time_reads_v35",
+          "path": "docs/versions/operations/v0029_the_bounded_phase_notebook_the_generated_slices_block_finish-slice_--outcome_and_just-in-time_reads_v35.md",
+          "created_at": "2026-08-29T12:01:25+09:00",
+          "source": "P18.REVIEW",
+          "summary": "The bounded phase notebook, the generated ## Slices block, finish-slice --outcome, and just-in-time reads (v35)",
+          "previous": "v0028_three_named_design_styles_the_runnable-mockup_gate_four_commits_per_round_and_two_model-invocable_skills_v34"
         }
       ]
     },
@@ -375,7 +383,7 @@
       ]
     },
     "qa": {
-      "latest": "v0004_the_stubbed_mockup_s_relaxed_check_versus_the_apply_slice_s_full_functional_sweep_v34",
+      "latest": "v0005_this_repo_s_real_test_commands_and_the_v35_notebook_regression_lines_137-pass_baseline_tests_9-10",
       "current_path": "docs/current/qa.md",
       "versions": [
         {
@@ -409,11 +417,19 @@
           "source": "P17.REVIEW",
           "summary": "The stubbed mockup's relaxed check versus the apply slice's full functional sweep (v34)",
           "previous": "v0003_works_as_a_product_beside_matches_the_record_the_fidelity_sweep_the_review_gate_stages_and_the_cumulative_smoke_list"
+        },
+        {
+          "id": "v0005_this_repo_s_real_test_commands_and_the_v35_notebook_regression_lines_137-pass_baseline_tests_9-10",
+          "path": "docs/versions/qa/v0005_this_repo_s_real_test_commands_and_the_v35_notebook_regression_lines_137-pass_baseline_tests_9-10.md",
+          "created_at": "2026-08-29T12:03:33+09:00",
+          "source": "P18.REVIEW",
+          "summary": "This repo's real test commands and the v35 notebook regression lines (137-PASS baseline, Tests 9-10)",
+          "previous": "v0004_the_stubbed_mockup_s_relaxed_check_versus_the_apply_slice_s_full_functional_sweep_v34"
         }
       ]
     },
     "decisions": {
-      "latest": "v0036_three_named_design_styles_approval_on_a_runnable_mockup_a_closed_--kind_set_and_agent-runnable_create-phase_p17_v34",
+      "latest": "v0037_the_phase_notebook_is_bounded_rewritten_state_not_an_append-only_log_result.md_is_the_log_reads_become_just_in_time_p18_v35",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -703,9 +719,17 @@
           "source": "P17.REVIEW",
           "summary": "Three named design styles, approval on a runnable mockup, a closed --kind set, and agent-runnable create-phase (P17, v34)",
           "previous": "v0035_operator_acceptance_gate_as_contract_law_declaration_at_the_decomp_boundary_legacy_default_and_works-as-a-product_verification_p16"
+        },
+        {
+          "id": "v0037_the_phase_notebook_is_bounded_rewritten_state_not_an_append-only_log_result.md_is_the_log_reads_become_just_in_time_p18_v35",
+          "path": "docs/versions/decisions/v0037_the_phase_notebook_is_bounded_rewritten_state_not_an_append-only_log_result.md_is_the_log_reads_become_just_in_time_p18_v35.md",
+          "created_at": "2026-08-29T12:02:44+09:00",
+          "source": "P18.REVIEW",
+          "summary": "The phase notebook is bounded rewritten state, not an append-only log; result.md is the log; reads become just in time (P18, v35)",
+          "previous": "v0036_three_named_design_styles_approval_on_a_runnable_mockup_a_closed_--kind_set_and_agent-runnable_create-phase_p17_v34"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-08-29T11:18:44+09:00"
+  "last_rebuilt_at": "2026-08-29T12:06:20+09:00"
 }

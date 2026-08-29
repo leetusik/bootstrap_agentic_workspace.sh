@@ -2,16 +2,16 @@
   "id": "P18",
   "name": "Bounded phase notebook and just-in-time reads",
   "objective": "Make phase.md a bounded, rewritten state doc (generated ## Slices table, Decisions, Doc impact, Operator Questions, Notes for later slices, ## Now) with result.md as the per-slice log; add the engine support (works/templates/phase.md seed, finish-slice --outcome, rebuild-generated slice block, 200-line/16 KB budget warning, Doc-impact case-drift warning, no 'Rebuilt at' churn in backlog/deferred); rewrite the executor/skill read-and-write rules and the contract's Read Order to load docs sections just-in-time; ship as workspace v35.",
-  "status": "planned",
+  "status": "done",
   "order": 2,
   "created_at": "2026-08-29T10:57:12+09:00",
   "started_at": null,
-  "completed_at": null,
+  "completed_at": "2026-08-29T12:07:13+09:00",
   "review": {
-    "status": "pending",
-    "reviewed_at": null,
-    "reviewer": null,
-    "note": null
+    "status": "pass",
+    "reviewed_at": "2026-08-29T12:07:13+09:00",
+    "reviewer": "slice-executor-high",
+    "note": "All slices validated together (137 PASS, installer in sync, fresh-install smoke renders the generated Slices row). CLAUDE.md +1036 B accepted; reclamation is D8. Docs consolidated: operations v0029, decisions v0037, qa v0005. Explain not written — run /explain for this phase."
   },
   "acceptance": {
     "required": false,

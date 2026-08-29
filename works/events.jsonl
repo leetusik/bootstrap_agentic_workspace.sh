@@ -423,3 +423,9 @@
 {"ts": "2026-08-29T11:52:42+09:00", "type": "slice_status_changed", "slice": "P18.S4", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-08-29T11:53:09+09:00", "type": "slice_status_changed", "slice": "P18.S5", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-08-29T11:55:48+09:00", "type": "slice_status_changed", "slice": "P18.S5", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-08-29T11:56:23+09:00", "type": "slice_status_changed", "slice": "P18.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-08-29T12:01:25+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0029_the_bounded_phase_notebook_the_generated_slices_block_finish-slice_--outcome_and_just-in-time_reads_v35", "source": "P18.REVIEW"}
+{"ts": "2026-08-29T12:02:44+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0037_the_phase_notebook_is_bounded_rewritten_state_not_an_append-only_log_result.md_is_the_log_reads_become_just_in_time_p18_v35", "source": "P18.REVIEW"}
+{"ts": "2026-08-29T12:03:33+09:00", "type": "doc_version_created", "doc": "qa", "version": "v0005_this_repo_s_real_test_commands_and_the_v35_notebook_regression_lines_137-pass_baseline_tests_9-10", "source": "P18.REVIEW"}
+{"ts": "2026-08-29T12:07:13+09:00", "type": "slice_status_changed", "slice": "P18.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-08-29T12:07:13+09:00", "type": "phase_reviewed", "phase": "P18", "verdict": "pass", "reviewer": "slice-executor-high"}

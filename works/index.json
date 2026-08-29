@@ -16,17 +16,17 @@
       "id": "P18",
       "name": "Bounded phase notebook and just-in-time reads",
       "objective": "Make phase.md a bounded, rewritten state doc (generated ## Slices table, Decisions, Doc impact, Operator Questions, Notes for later slices, ## Now) with result.md as the per-slice log; add the engine support (works/templates/phase.md seed, finish-slice --outcome, rebuild-generated slice block, 200-line/16 KB budget warning, Doc-impact case-drift warning, no 'Rebuilt at' churn in backlog/deferred); rewrite the executor/skill read-and-write rules and the contract's Read Order to load docs sections just-in-time; ship as workspace v35.",
-      "status": "planned",
+      "status": "done",
       "order": 2,
       "path": "works/phases/active/P18",
-      "review_status": "pending",
-      "current_slice": "P18.REVIEW",
+      "review_status": "pass",
+      "current_slice": null,
       "slice_count": 7,
-      "done_slice_count": 6
+      "done_slice_count": 7
     }
   ],
   "deferred_open_count": 5,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 3,
-  "last_rebuilt_at": "2026-08-29T11:55:48+09:00"
+  "last_rebuilt_at": "2026-08-29T12:07:13+09:00"
 }
