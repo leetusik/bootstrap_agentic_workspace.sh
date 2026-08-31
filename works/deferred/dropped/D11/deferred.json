@@ -1,11 +1,11 @@
 {
   "id": "D11",
   "title": "Decide whether agent Aside runs are confined to a separate account, and write it into the doctrine",
-  "status": "deferred",
+  "status": "dropped",
   "source": "P19.REVIEW",
   "reason": "Aside is a real desktop browser signed into the operator's own accounts, so an agent driving it can act as the operator. v36 says use Aside and never says with which profile, though 'aside --account <id>' exists. A safety question about authority, not availability -- kept separate from the other two Aside jobs deliberately.",
   "trigger": "before any agent drives Aside against a signed-in browser -- immediately upon the install job, and in any case before an adopter follows the prescription on a personal machine",
   "created_at": "2026-08-29T17:14:13+09:00",
   "promoted_to": null,
-  "dropped_reason": null
+  "dropped_reason": "Answered and written into the doctrine at P20/v37: agent Aside runs happen on a dedicated profile via a per-invocation 'aside repl --account <id>', never 'aside account use'; the ## Operator Runtime manifest records the agent's account id in a conditionally required field; a manifest naming Aside without one, or a machine holding only the personal profile, is a third needs_operator halt."
 }

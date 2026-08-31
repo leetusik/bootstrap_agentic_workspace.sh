@@ -1,0 +1,14 @@
+# Deferred: D13 Decide whether the dedicated-profile rule binds the fallback browser as well as Aside
+
+## Context
+
+## Why Deferred
+
+intent.md part 3 names Aside, but the exposure is instrument-independent: a Linux/CI workspace can point 'whatever real browser it has' at the operator's daily Chrome profile. P20.S2 wrote one generalizing clause -- an agent never drives a browser profile signed into the operator's accounts, whichever browser it is -- into design-cowork's fallback paragraph and the CLAUDE.md rule, and nowhere else (agent bodies, review-phase and the seed stay Aside-specific). The operator confirms that scope or narrows it back to Aside; the phase's gate was waived, so there was no walkthrough to fold the question into.
+
+## Trigger to Promote
+
+before the first non-Aside workspace runs a fidelity or gated-review slice -- or whenever the Aside doctrine is next edited
+
+## Notes
+

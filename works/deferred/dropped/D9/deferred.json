@@ -1,11 +1,11 @@
 {
   "id": "D9",
   "title": "Decide whether the Aside fallback wording stands, or Aside becomes a hard requirement",
-  "status": "deferred",
+  "status": "dropped",
   "source": "P19.REVIEW",
   "reason": "Aside is macOS-only and needs an account (free tier 500 credits/month); headless is undocumented. v36 ships prescription + fallback -- a workspace that cannot install it owes the same sweep, viewports and manifest runtime through another real browser. P19.REVIEW judged the wording sound (it releases the instrument's identity and nothing else), but hard-requirement-vs-fallback is the operator's call. Edge case with no third branch: a workspace with no real browser at all.",
   "trigger": "before the first adopting workspace on Linux/CI runs a fidelity or gated-review slice",
   "created_at": "2026-08-29T17:14:13+09:00",
   "promoted_to": null,
-  "dropped_reason": null
+  "dropped_reason": "Answered at P20/v37: the fallback stands unchanged -- the doctrine's demands bind, the instrument does not (intent.md part 4). CLAUDE.md's fallback sentence is byte-identical to v36; design-cowork's gained one generalizing clause only."
 }

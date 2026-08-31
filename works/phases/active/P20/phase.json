@@ -2,16 +2,16 @@
   "id": "P20",
   "name": "make the Aside prescription true: the repl surface over Bash, on a dedicated profile",
   "objective": "Replace v36's three-surface taxonomy with the two that exist -- 'aside repl' (the Playwright-like surface, driven by the executor itself) and 'aside exec' (Aside's own model driving) -- and prescribe 'aside repl' over Bash as the default, explicitly NOT the MCP transport, recording the measured ~1,344-token-per-session cost as the reason and the listBrowserTabs()/attachBrowserTab() re-attach idiom as the canonical preamble. Name 'claude mcp add -s local aside -- aside mcp' as an optional per-operator escape hatch the workspace neither ships nor prescribes. Require agent Aside runs on a dedicated profile via 'aside --account <id>', never the operator's signed-in one, returning needs_operator when only the personal profile exists. Keep the Linux/CI fallback as written. Rewrite the 'not Playwright' argument as 'not a pre-written assertion suite'. Closes D9, D10, D11. Ships as workspace v37.",
-  "status": "planned",
+  "status": "done",
   "order": 4,
   "created_at": "2026-09-01T02:51:35+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-01T04:09:41+09:00",
+  "completed_at": "2026-09-01T04:09:41+09:00",
   "review": {
-    "status": "pending",
-    "reviewed_at": null,
-    "reviewer": null,
-    "note": null
+    "status": "pass",
+    "reviewed_at": "2026-09-01T04:09:41+09:00",
+    "reviewer": "slice-executor-high",
+    "note": "All five intent parts verified in the shipped files rather than inherited from the phase's own sweep; 140 PASS / 0 FAIL, build --check, sync-agents --check and the three-way version equality all green; ten doc-impact lines consolidated into qa/v0007, operations/v0031 and decisions/v0039, with v36's Aside decision keeping its body and gaining a supersession pointer on its surface half. No findings."
   },
   "acceptance": {
     "required": false,

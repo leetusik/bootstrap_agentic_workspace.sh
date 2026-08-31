@@ -131,7 +131,7 @@
       ]
     },
     "operations": {
-      "latest": "v0030_the_research_slice_kind_kind-first_executor-tier_routing_and_the_seeded_manifest_s_optional_browser-instrument_field_v36",
+      "latest": "v0031_the_v37_aside_correction_reaches_operations_aside_repl_over_bash_a_second_conditionally-required_manifest_field_for_the_agent_s_aside_account_and_the_pre-v37_update_path",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -373,6 +373,14 @@
           "source": "P19.REVIEW",
           "summary": "The research slice kind, kind-first executor-tier routing, and the seeded manifest's optional browser-instrument field (v36)",
           "previous": "v0029_the_bounded_phase_notebook_the_generated_slices_block_finish-slice_--outcome_and_just-in-time_reads_v35"
+        },
+        {
+          "id": "v0031_the_v37_aside_correction_reaches_operations_aside_repl_over_bash_a_second_conditionally-required_manifest_field_for_the_agent_s_aside_account_and_the_pre-v37_update_path",
+          "path": "docs/versions/operations/v0031_the_v37_aside_correction_reaches_operations_aside_repl_over_bash_a_second_conditionally-required_manifest_field_for_the_agent_s_aside_account_and_the_pre-v37_update_path.md",
+          "created_at": "2026-09-01T04:02:04+09:00",
+          "source": "P20.REVIEW",
+          "summary": "The v37 Aside correction reaches operations: aside repl over Bash, a second conditionally-required manifest field for the agent's Aside account, and the pre-v37 update path",
+          "previous": "v0030_the_research_slice_kind_kind-first_executor-tier_routing_and_the_seeded_manifest_s_optional_browser-instrument_field_v36"
         }
       ]
     },
@@ -391,7 +399,7 @@
       ]
     },
     "qa": {
-      "latest": "v0006_the_verification_doctrine_names_its_instrument_--_aside_mcp_first_in_place_of_scripted_automation_--_plus_the_fallback_and_the_139-pass_v36_baseline",
+      "latest": "v0007_aside_s_two_real_surfaces_the_aside_repl-over-bash_default_and_its_measured_mcp_cost_the_dedicated_agent_profile_as_a_third_halt_and_the_140-pass_v37_baseline",
       "current_path": "docs/current/qa.md",
       "versions": [
         {
@@ -441,11 +449,19 @@
           "source": "P19.REVIEW",
           "summary": "The verification doctrine names its instrument -- Aside, MCP first, in place of scripted automation -- plus the fallback and the 139-PASS v36 baseline",
           "previous": "v0005_this_repo_s_real_test_commands_and_the_v35_notebook_regression_lines_137-pass_baseline_tests_9-10"
+        },
+        {
+          "id": "v0007_aside_s_two_real_surfaces_the_aside_repl-over-bash_default_and_its_measured_mcp_cost_the_dedicated_agent_profile_as_a_third_halt_and_the_140-pass_v37_baseline",
+          "path": "docs/versions/qa/v0007_aside_s_two_real_surfaces_the_aside_repl-over-bash_default_and_its_measured_mcp_cost_the_dedicated_agent_profile_as_a_third_halt_and_the_140-pass_v37_baseline.md",
+          "created_at": "2026-09-01T04:00:38+09:00",
+          "source": "P20.REVIEW",
+          "summary": "Aside's two real surfaces, the aside repl-over-Bash default and its measured MCP cost, the dedicated agent profile as a third halt, and the 140-PASS v37 baseline",
+          "previous": "v0006_the_verification_doctrine_names_its_instrument_--_aside_mcp_first_in_place_of_scripted_automation_--_plus_the_fallback_and_the_139-pass_v36_baseline"
         }
       ]
     },
     "decisions": {
-      "latest": "v0038_make_research_a_real_slice_kind_with_decomp2_as_its_ordinary_sequel_and_prescribe_aside_as_the_real-browser_instrument_--_doctrine_not_integration_p19_v36",
+      "latest": "v0039_make_the_aside_prescription_true_two_surfaces_aside_repl_over_bash_as_the_default_and_a_dedicated_agent_profile_--_superseding_v36_s_mcp-first_surface_p20_v37",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -751,9 +767,17 @@
           "source": "P19.REVIEW",
           "summary": "Make research a real slice kind with DECOMP2 as its ordinary sequel, and prescribe Aside as the real-browser instrument -- doctrine, not integration (P19, v36)",
           "previous": "v0037_the_phase_notebook_is_bounded_rewritten_state_not_an_append-only_log_result.md_is_the_log_reads_become_just_in_time_p18_v35"
+        },
+        {
+          "id": "v0039_make_the_aside_prescription_true_two_surfaces_aside_repl_over_bash_as_the_default_and_a_dedicated_agent_profile_--_superseding_v36_s_mcp-first_surface_p20_v37",
+          "path": "docs/versions/decisions/v0039_make_the_aside_prescription_true_two_surfaces_aside_repl_over_bash_as_the_default_and_a_dedicated_agent_profile_--_superseding_v36_s_mcp-first_surface_p20_v37.md",
+          "created_at": "2026-09-01T04:03:12+09:00",
+          "source": "P20.REVIEW",
+          "summary": "Make the Aside prescription true: two surfaces, aside repl over Bash as the default, and a dedicated agent profile -- superseding v36's MCP-first surface (P20, v37)",
+          "previous": "v0038_make_research_a_real_slice_kind_with_decomp2_as_its_ordinary_sequel_and_prescribe_aside_as_the_real-browser_instrument_--_doctrine_not_integration_p19_v36"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-09-01T03:42:43+09:00"
+  "last_rebuilt_at": "2026-09-01T04:04:31+09:00"
 }

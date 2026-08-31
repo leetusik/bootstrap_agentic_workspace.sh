@@ -1,0 +1,11 @@
+{
+  "id": "D12",
+  "title": "Validate the v37 Aside prescription against a real browsable product",
+  "status": "deferred",
+  "source": "P20.REVIEW",
+  "reason": "The 'aside repl' over Bash default, the listBrowserTabs()/attachBrowserTab() re-attach preamble and the dedicated-profile rule are prescribed but have never been run by an executor against a real product -- this repository ships machinery and has nothing to open.",
+  "trigger": "the first phase with a real browsable product needing a functional sweep or gated review",
+  "created_at": "2026-09-01T04:09:22+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

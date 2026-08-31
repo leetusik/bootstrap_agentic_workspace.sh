@@ -4,13 +4,13 @@
       "id": "P20",
       "name": "make the Aside prescription true: the repl surface over Bash, on a dedicated profile",
       "objective": "Replace v36's three-surface taxonomy with the two that exist -- 'aside repl' (the Playwright-like surface, driven by the executor itself) and 'aside exec' (Aside's own model driving) -- and prescribe 'aside repl' over Bash as the default, explicitly NOT the MCP transport, recording the measured ~1,344-token-per-session cost as the reason and the listBrowserTabs()/attachBrowserTab() re-attach idiom as the canonical preamble. Name 'claude mcp add -s local aside -- aside mcp' as an optional per-operator escape hatch the workspace neither ships nor prescribes. Require agent Aside runs on a dedicated profile via 'aside --account <id>', never the operator's signed-in one, returning needs_operator when only the personal profile exists. Keep the Linux/CI fallback as written. Rewrite the 'not Playwright' argument as 'not a pre-written assertion suite'. Closes D9, D10, D11. Ships as workspace v37.",
-      "status": "planned",
+      "status": "done",
       "order": 4,
       "path": "works/phases/active/P20",
-      "review_status": "pending",
-      "current_slice": "P20.REVIEW",
+      "review_status": "pass",
+      "current_slice": null,
       "slice_count": 5,
-      "done_slice_count": 4
+      "done_slice_count": 5
     },
     {
       "id": "P21",
@@ -25,8 +25,8 @@
       "done_slice_count": 0
     }
   ],
-  "deferred_open_count": 8,
+  "deferred_open_count": 7,
   "deferred_promoted_count": 0,
-  "deferred_dropped_count": 3,
-  "last_rebuilt_at": "2026-09-01T03:54:21+09:00"
+  "deferred_dropped_count": 6,
+  "last_rebuilt_at": "2026-09-01T04:09:41+09:00"
 }
