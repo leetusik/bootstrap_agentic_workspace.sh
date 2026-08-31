@@ -9,6 +9,70 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v37 — 2026-09-01
+
+- **Why this release: v36 named the instrument and got the surface wrong.** It prescribed the
+  **MCP** transport for a reason that is true but not decisive — an MCP server's tools arrive as
+  native tools in a dispatched executor's session, which a shell-out does not — and it never
+  weighed the cost: that one `repl` tool definition is paid in **every** session, browser-related
+  or not (~1,344 tokens, no lazy-load). And it said *use Aside* without ever saying **with which
+  profile**, on a real desktop browser signed into the operator's accounts. Both were settled by
+  running the CLI rather than citing it (Aside 1.26.810.1915, on this machine, 2026-09-01).
+- **Two surfaces, not three.** v36's MCP / CLI / REPL split confused a *transport* difference with
+  a *surface* one, and hid the distinction that actually matters: **who picks the next action.**
+  There are two — the **`repl` surface**, one tool, identical over `aside mcp` and the `aside repl`
+  CLI (the same Playwright-like `page`, `snapshot()`, locators, page JS and screenshots; different
+  transport only), where the **executor** chooses each step; and **`aside exec`**, where **Aside's
+  own model** drives from a natural-language instruction.
+- **The default is `aside repl` over Bash** — `aside repl --account <id> "<js>"`, executor-driven,
+  explicitly **not** the MCP transport. The measured per-session cost is the recorded reason, and
+  the only thing the CLI loses (JS scope between invocations) is bought back by the two-line
+  `listBrowserTabs()` → `attachBrowserTab()` re-attach preamble, written out in full in the
+  `design-cowork` skill and verified live. Bash is already in both executor tiers' allowlists, so
+  **nothing ships, nothing registers, nothing is configured**, and the default costs nothing until
+  it is used. `claude mcp add -s local aside -- aside mcp` survives as a named optional
+  per-operator, per-session **escape hatch** the workspace neither ships nor prescribes.
+- **"Not scripted Playwright-style automation" → "not a pre-written assertion suite."** The old
+  wording forbade the very thing v37 prescribes: the surface *is* Playwright. What the doctrine
+  rejects is never the library but **deciding every check in advance** — an assertion suite can
+  only test the selectors someone already thought of. Every carrier now says so.
+- **A dedicated Aside profile is required for agent runs.** The probe that settled the surface also
+  reached a browser holding the operator's Google session, 49 imported passwords and 6 passkeys —
+  authority enough to read mail, spend from saved cards and authenticate as the operator, which
+  makes this a requirement rather than hygiene advice. So: `--account <id>` on **every**
+  invocation, never `aside account use` (it only moves the *default*, and the default is the
+  operator's profile); the `## Operator Runtime` manifest records which account id is the agent's;
+  and a manifest naming Aside with no agent account id — or a machine holding only the operator's
+  personal profile — is a **third** `needs_operator` halt, distinct from the runtime one, resolved
+  by neither borrowing the personal profile nor creating an account for the operator. The same
+  holds whichever browser is driven: an agent never drives a profile signed into the operator's
+  accounts.
+- **The fallback and the axes are unchanged.** Aside is macOS-only and needs an account, so a
+  workspace that cannot run it owes the same sweep, at the same viewports, in the same manifest
+  runtime, through whatever real browser it has — **the doctrine's demands bind, the instrument
+  does not.** Instrument and runtime remain different axes: the absent-or-`UNFILLED` →
+  `needs_operator` rule is about the **runtime**, and a manifest naming no instrument is still not
+  an unfilled one.
+- **Surface facts, executed rather than cited.** Snapshot refs are session- and snapshot-scoped and
+  go stale on navigation (`RefStaleError`); `getByRole` survives it. One v36 phrasing was wrong and
+  is corrected: `title` + `code` is the **MCP tool's** schema, not a CLI flag — `aside repl` takes
+  the code as a positional, so v36's wording would have shipped an invocation that fails. This
+  closes deferred jobs **D9** (fallback) and **D11** (profile) and **D10's surface half**; D10's
+  against-a-real-product half stays open, since no executor has yet run this prescription against
+  a browsable product.
+- **Migration notes:** run `python3 scripts/workflow.py sync-agents` after updating, as always —
+  **both agent bodies changed**. There is **no engine change at all** in this release
+  (`scripts/workflow.py` is untouched), so history, existing slices and `validate` are unaffected
+  and nothing needs renaming. Because `--update` never touches `docs/`, the seeded manifest's two
+  fields — the corrected *Browser instrument for the agent* line and the new **conditionally
+  required** *Agent's Aside account id* line — reach **fresh installs only**; copy them from
+  `installer/payloads/doc_bodies/operations.md` in the upstream clone into your own operations doc
+  with `doc-new-version`. **And the sharp one:** if you followed v36 and actually ran
+  `claude mcp add -s local aside -- aside mcp`, **remove that registration** — v37 stops
+  prescribing it, and leaving it in place keeps paying the per-session cost this release exists to
+  avoid. Installing Aside, and creating a second Aside account for the agent, remain operator
+  actions this workspace never takes for you.
+
 ## v36 — 2026-08-29
 
 - **Why this release: two ways a slice could be the wrong shape.** An agent told `research` was

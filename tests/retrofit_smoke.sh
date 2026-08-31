@@ -494,6 +494,20 @@ marker_version = json.loads(marker_path.read_text())["workspace_version"]
 assert main_version == top_changelog == marker_version, (main_version, top_changelog, marker_version)
 PY
 then ok "release version agrees across installer, top changelog heading, and fresh marker"; else bad "release version markers disagree"; fi
+# v37: every released section carries a Migration notes line -- the file's own intro
+# promises one whenever a sync needs manual steps, and /update-workspace prints exactly
+# those lines to adopting repos. v37's sharpest instruction (remove a v36 `aside mcp`
+# registration) reaches an adopter through no other channel.
+if python3 - "$REPO_ROOT" <<'PY'
+import re, sys
+from pathlib import Path
+
+parts = re.split(r"^## (v\d+) ", (Path(sys.argv[1]) / "CHANGELOG.md").read_text(), flags=re.M)
+it = iter(parts[1:])
+missing = [v for v, body in zip(it, it) if "Migration notes" not in body]
+assert not missing, missing
+PY
+then ok "every changelog release section carries a Migration notes line"; else bad "a changelog release section has no Migration notes line"; fi
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
 [ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "17" ] \
   && ok "fresh install has the 17 Claude skills" || bad "fresh skill inventory incomplete"

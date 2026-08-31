@@ -3,14 +3,14 @@
   "phase_id": "P20",
   "name": "ship workspace v37: version, changelog, consistency sweep",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 3,
   "depends_on": [
     "P20.S2"
   ],
   "created_at": "2026-09-01T03:11:47+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-01T03:44:15+09:00",
+  "completed_at": "2026-09-01T03:54:21+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Shipped workspace v37 — WORKSPACE_VERSION bumped before the rebuild, one `## v37` CHANGELOG section covering S1 and S2 (migration notes include removing any v36 `aside mcp` registration) — and ran the seven-check settled-tree sweep, which found no defect; +1 assertion (every changelog section carries Migration notes), 140 PASS / 0 FAIL",
   "validation": {
     "required": [],
     "last_run": null,
