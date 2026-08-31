@@ -6,8 +6,8 @@
 ## Pointer
 
 - Current phase: `P20`
-- Current slice: `P20.S2`
-- Next slice: `P20.S3`
+- Current slice: `P20.S3`
+- Next slice: `P20.REVIEW`
 - Waiting on operator: `none`
 - Open deferred jobs: `8`
 
@@ -15,7 +15,7 @@
 
 | Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
-| [ ] `P20` | `planned` | `pending` | make the Aside prescription true: the repl surface over Bash, on a dedicated profile | `P20.S2` | `works/phases/active/P20` |
+| [ ] `P20` | `planned` | `pending` | make the Aside prescription true: the repl surface over Bash, on a dedicated profile | `P20.S3` | `works/phases/active/P20` |
 | [ ] `P21` | `planned` | `pending` | close the workspace's context leaks, measured against live adopters | `P21.DECOMP` | `works/phases/active/P21` |
 
 ## Phase P20: make the Aside prescription true: the repl surface over Bash, on a dedicated profile
@@ -24,7 +24,7 @@
 |---|---|---|---|---|
 | [x] `P20.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P20/slices/P20.DECOMP` |
 | [x] `P20.S1` | `done` | correct the surface taxonomy and prescribe aside repl over Bash | `implementation` | `works/phases/active/P20/slices/P20.S1` |
-| [ ] `P20.S2` | `todo` | require a dedicated Aside profile for agent runs | `implementation` | `works/phases/active/P20/slices/P20.S2` |
+| [x] `P20.S2` | `done` | require a dedicated Aside profile for agent runs | `implementation` | `works/phases/active/P20/slices/P20.S2` |
 | [ ] `P20.S3` | `todo` | ship workspace v37: version, changelog, consistency sweep | `implementation` | `works/phases/active/P20/slices/P20.S3` |
 | [ ] `P20.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P20/slices/P20.REVIEW` |
 

@@ -158,6 +158,14 @@ for required in (
     "**Why the executor drives, and not a pre-written suite.**",
     "deciding every check in advance",
     "The fallback — the doctrine's demands bind, the instrument does not.",
+    # v37: whose browser an agent may drive -- a dedicated profile, named per
+    # invocation, with the personal-profile case as its own third halt, and the
+    # one clause generalizing the principle to the fallback browser.
+    "**Whose browser — a dedicated profile, never the operator's.**",
+    '`aside repl --account <id> "<js>"`',
+    "do not rely on `aside account use <id>`",
+    "That is a **third** halt condition and it is not the runtime one",
+    "an agent never drives a browser profile signed into the operator's accounts, whichever browser it is",
 ):
     assert required in design, required
 # v37 negatives: the MCP-first prescription is retired -- no config block to copy,
@@ -176,9 +184,16 @@ for required in ("## Gate stages", "`walkthrough`", "`## Operator Runtime`", "`#
                  # v37: on the `repl` surface over Bash, never a standing MCP
                  # registration, and against no pre-written suite.
                  "the `repl` surface over Bash", "never a standing `aside mcp` registration",
-                 "in place of a pre-written assertion suite"):
+                 "in place of a pre-written assertion suite",
+                 # v37: the review drives the product on the agent's own profile.
+                 "always on the agent's own Aside profile",
+                 '`aside repl --account <id> "<js>"`',
+                 "never the operator's signed-in one"):
     assert required in review, required
-for gone in ("MCP surface first", "scripted Playwright-style automation"):
+for gone in ("MCP surface first", "scripted Playwright-style automation",
+             # the default is never moved with `aside account use`; the flag is
+             # passed per invocation.
+             "aside account use"):
     assert gone not in review, gone
 never = [ln for ln in review.splitlines() if "you never run on a review slice" in ln]
 assert len(never) == 1 and "`accept-gate`" in never[0] and "`defer-job`" in never[0], never
@@ -194,6 +209,11 @@ assert "its absence alone never stops a slice" in ops
 # fresh install is told to stand up an MCP server.
 assert "`aside repl` over Bash" in ops
 assert "aside mcp" not in ops
+# v37: a second field, conditionally required -- whenever the instrument is Aside,
+# the manifest names the agent's own account id, never the operator's profile.
+assert "- Agent's Aside account id (required whenever the instrument above is Aside):" in ops
+assert "never the operator's signed-in one" in ops
+assert "aside account use" not in ops
 qa = (root / "installer/payloads/doc_bodies/qa.md").read_text()
 assert "## Regression Checklist" in qa
 assert "- [ ] <surface>: <one observable behaviour> (P<N>)" in qa
@@ -246,9 +266,17 @@ for tier in ("mid", "high"):
         "`listBrowserTabs()` → `attachBrowserTab()`",
         "never a standing `aside mcp` registration",
         "in place of a pre-written assertion suite",
+        # v37: and on the agent's own Aside profile, named per invocation, with
+        # the personal-profile case as a third halt of its own.
+        "Every call names the agent's own Aside profile",
+        '`aside repl --account <id> "<js>"`',
+        "never the operator's signed-in one",
+        "return `needs_operator` (a third halt, distinct from the runtime one)",
     ):
         assert required in body, (tier, required)
-    for gone in ("MCP surface first", "scripted Playwright-style automation"):
+    for gone in ("MCP surface first", "scripted Playwright-style automation",
+                 # nothing tells an executor to move the default account.
+                 "aside account use"):
         assert gone not in body, (tier, gone)
     assert "On a gated phase (`acceptance.required` is `true` — and only then) also run the gate stages" in body, tier
     assert "- `walkthrough`:" in body, tier
@@ -310,6 +338,12 @@ for required in (
     "**The default is `aside repl` over Bash**",
     "~1,344 tokens",
     "`claude mcp add -s local aside -- aside mcp` is an optional per-operator, per-session **escape hatch**",
+    # v37: whose browser -- a dedicated profile via a per-invocation flag, and the
+    # personal-profile case as a third halt, distinct from the runtime one.
+    "**Whose browser: a dedicated profile.**",
+    "pass `--account <id>` on every invocation",
+    "is a **third** halt: `needs_operator` → `pending`",
+    "an agent never drives a profile signed into the operator's accounts",
 ):
     assert required in claude, required
 # v37 negatives: the MCP-first prescription and the Playwright framing are retired
@@ -329,7 +363,7 @@ for gone in ("design exception", "never approval", "no other pending gate"):
 for gone in ("Codex", "AGENTS.md", ".agents/", ".codex/"):
     assert gone not in claude, gone
 PY
-then ok "17 Claude skills, invocation metadata, design contract, the v32 acceptance-gate invariants, the v36 research-kind and Aside-instrument invariants, the v37 Aside-surface invariants (two surfaces, `aside repl` over Bash, no standing MCP registration, the assertion-suite framing), and the v31 Codex-removal negatives"; else bad "Claude skill inventory, metadata, design contract, a v32 gate invariant, a v36 research-kind or Aside-instrument invariant, a v37 Aside-surface invariant, or a Codex-removal negative failed"; fi
+then ok "17 Claude skills, invocation metadata, design contract, the v32 acceptance-gate invariants, the v36 research-kind and Aside-instrument invariants, the v37 Aside-surface invariants (two surfaces, `aside repl` over Bash, no standing MCP registration, the assertion-suite framing), the v37 dedicated-profile invariants (`--account <id>` per invocation, the manifest field, the personal-profile halt), and the v31 Codex-removal negatives"; else bad "Claude skill inventory, metadata, design contract, a v32 gate invariant, a v36 research-kind or Aside-instrument invariant, a v37 Aside-surface or dedicated-profile invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="

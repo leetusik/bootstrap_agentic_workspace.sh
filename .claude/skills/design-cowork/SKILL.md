@@ -443,12 +443,32 @@ const page = await attachBrowserTab(tabs[0].targetId);
 ```
 
 Two sharp edges, both worth knowing before the first call. Over MCP the `repl` tool **requires both
-`title` and `code`** — a call omitting either fails (over the CLI the code is positional: `aside
-repl "await openTab('<url>')"`). And **snapshot refs are session- and snapshot-scoped: they go stale
-on navigation** (`RefStaleError`), while `getByRole` survives it — so after navigating, re-snapshot
+`title` and `code`** — a call omitting either fails (over the CLI the code is positional:
+`aside repl --account <id> "await openTab('<url>')"`). And **snapshot refs are session- and
+snapshot-scoped: they go stale on navigation** (`RefStaleError`), while `getByRole` survives it — so after navigating, re-snapshot
 or locate by role rather than reusing a ref. An operator who wants Aside's tools as native tools in
 their **own** session may run `claude mcp add -s local aside -- aside mcp`; that is a per-operator,
 per-session **escape hatch** the workspace neither ships nor prescribes, and no slice may assume it.
+
+**Whose browser — a dedicated profile, never the operator's.** Aside is a real desktop browser and
+`--account <id>` picks a real signed-in profile: the probe behind this rule reached one holding the
+operator's Google session, 49 imported passwords and 6 passkeys. An agent driving that profile is
+not "browsing" — it can read the operator's mail, spend from saved cards and authenticate as them
+anywhere those credentials reach, and nothing in a sweep here needs any of it. So agent runs happen
+on a **dedicated Aside profile**, and every call carries its own flag:
+`aside repl --account <id> "<js>"` (ids are short opaque tokens — `0`, `u0`, `u1` — and the same
+flag exists on `aside` and on `aside exec`). Pass it per invocation, and **do not rely on
+`aside account use <id>`**: that only moves the *default*, and the default is the operator's
+signed-in profile — exactly the thing that silently reverts between sessions, machines and updates.
+`## Operator Runtime` records which id is the agent's, and `aside account list` enumerates the local
+accounts without driving anything (it does need the Aside app running, so an unreachable daemon is
+not evidence either way). **The halt:** a manifest that names Aside but records no agent account id,
+or a machine holding only the operator's personal profile, returns **`needs_operator`** and stops —
+never a fallback to the personal profile "just for this check", and never an account the workspace
+creates on the operator's behalf (creating one is an outward-facing operator action; nothing here
+installs, bundles, registers or auto-configures Aside). That is a **third** halt condition and it is
+not the runtime one: the runtime halt fires on an absent or `UNFILLED` manifest, while a manifest
+naming no instrument still stops nothing.
 
 **Why the executor drives, and not a pre-written suite.** The surface *is* Playwright — what the
 doctrine rejects was never the library, it is **deciding every check in advance**. A suite tests the
@@ -462,8 +482,10 @@ instrument is the answer it could not name.
 **The fallback — the doctrine's demands bind, the instrument does not.** Aside is a macOS desktop
 browser and needs an Aside account, so a workspace that cannot install it (Linux, CI, or an operator
 who declines) is **not** excused anything here: run the same sweep, at the same viewports, in the
-same manifest runtime, through whatever real browser it does have. Name the instrument you actually
-used in `result.md`, and never report a browser run you did not make.
+same manifest runtime, through whatever real browser it does have — and on a profile of its own
+there too: an agent never drives a browser profile signed into the operator's accounts, whichever
+browser it is. Name the instrument you actually used in `result.md`, and never report a browser run
+you did not make.
 
 **Re-run the whole list.** A fidelity slice re-runs **all** of `## Regression Checklist` (the qa
 doc's cumulative product smoke list) — every earlier phase's headline behaviours, not only this

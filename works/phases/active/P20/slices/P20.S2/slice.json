@@ -3,14 +3,14 @@
   "phase_id": "P20",
   "name": "require a dedicated Aside profile for agent runs",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 2,
   "depends_on": [
     "P20.S1"
   ],
   "created_at": "2026-09-01T03:11:47+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-01T03:33:25+09:00",
+  "completed_at": "2026-09-01T03:42:22+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Wrote the dedicated-profile rule into S1's text: per-invocation `--account <id>` (never `aside account use`), the manifest records the agent's account, and a personal-profile-only machine is a third `needs_operator` halt distinct from the runtime one (139 PASS)",
   "validation": {
     "required": [],
     "last_run": null,

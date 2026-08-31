@@ -18,7 +18,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": "Cut P20 into three bare middle slices on the seams of the change — S1 surface truth (intent 1/2/5), S2 profile safety (3), S3 release + settled-tree consistency sweep — all implementation/high, chained S1→S2→S3, with passage ownership, the smoke-test hazard and the deferred-job mechanics in phase.md",
+  "outcome": "Cut P20 into three bare middle slices on the seams of the change \u2014 S1 surface truth, S2 profile safety, S3 release + consistency sweep \u2014 chained, with passage ownership and the smoke-test hazard in phase.md",
   "validation": {
     "required": [],
     "last_run": null,
