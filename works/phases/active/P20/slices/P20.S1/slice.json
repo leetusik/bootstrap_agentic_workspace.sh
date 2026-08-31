@@ -3,14 +3,14 @@
   "phase_id": "P20",
   "name": "correct the surface taxonomy and prescribe aside repl over Bash",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 1,
   "depends_on": [
     "P20.DECOMP"
   ],
   "created_at": "2026-09-01T03:11:43+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-01T03:17:54+09:00",
+  "completed_at": "2026-09-01T03:31:32+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Rewrote the Aside surface doctrine across all six live carriers — two surfaces not three, aside repl over Bash as the executor-driven default with the measured ~1,344-token MCP cost as its recorded reason, MCP demoted to a named per-operator escape hatch, and 'scripted Playwright-style automation' retargeted to 'a pre-written assertion suite' — with retrofit_smoke.sh repinned to the v37 strings (139 PASS / 0 FAIL)",
   "validation": {
     "required": [],
     "last_run": null,

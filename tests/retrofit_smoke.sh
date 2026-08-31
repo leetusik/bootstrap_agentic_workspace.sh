@@ -10,8 +10,9 @@
 # invariants, the v32 operator-acceptance-gate invariants, the v36 research-slice
 # invariants (the kind is in the closed set and its semantics are in the
 # contract, both agent bodies and both do-* skills), the v36 Aside invariants
-# (Aside is the prescribed real-browser instrument, with its MCP surface and its
-# fallback, in the contract, both agent bodies and the design/review skills),
+# (Aside is the prescribed real-browser instrument, driven on the v37 `repl`
+# surface over Bash rather than a standing MCP registration, with a fallback that
+# excuses no check, in the contract, both agent bodies and the design/review skills),
 # the v35 phase-notebook
 # invariants (template seed, generated ## Slices block, finish-slice --outcome, the
 # notebook budget/case-drift warnings and the timestamp-free dashboards), and the
@@ -135,13 +136,35 @@ for required in (
     "## The mockup — the design in the project's own language",
     "Only PENDING #2 is an approval.", "PENDING #1 is a mechanical wait",
     "Exempt from the full functional sweep", "Stubbed data, no backing work",
-    # v36: the doctrine finally names an instrument -- Aside, MCP surface first,
-    # in place of scripted automation -- and a fallback that excuses no check.
-    "**With what — the instrument.**", "`aside mcp`",
-    "in place of scripted Playwright-style automation",
+    # v36: the doctrine names an instrument -- Aside -- and a fallback that
+    # excuses no check. v37: two surfaces rather than three, the `repl` surface
+    # over Bash as the default (with the measured per-session MCP tool-definition
+    # cost as the recorded reason, and the re-attach preamble written out once),
+    # the surface's two sharp edges, and the MCP registration demoted to an
+    # operator-only escape hatch.
+    "**With what — the instrument.**",
+    "**two surfaces, not three**",
+    "**The default is `aside repl` over Bash**",
+    "~1,344 tokens",
+    "nothing ships, nothing registers, nothing is configured",
+    "const page = await attachBrowserTab(tabs[0].targetId);",
+    "requires both `title` and `code`",
+    "RefStaleError",
+    "claude mcp add -s local aside -- aside mcp",
+    "escape hatch",
+    # v37: what the doctrine rejects is the pre-written suite, not the library --
+    # the surface IS Playwright; what differs is who picks the next action.
+    "in place of a pre-written assertion suite",
+    "**Why the executor drives, and not a pre-written suite.**",
+    "deciding every check in advance",
     "The fallback — the doctrine's demands bind, the instrument does not.",
 ):
     assert required in design, required
+# v37 negatives: the MCP-first prescription is retired -- no config block to copy,
+# no surface preference, and no "Playwright-style automation" framing anywhere.
+for gone in ('{"mcpServers"', "Prefer the **MCP** surface", "MCP first",
+             "scripted Playwright-style automation", "scripted assertion suite"):
+    assert gone not in design, gone
 
 # v32 review procedure: the gate stages, the returned walkthrough, and the two
 # workflow commands a review slice must never run.
@@ -149,8 +172,14 @@ review = (root / ".claude/skills/review-phase/SKILL.md").read_text()
 for required in ("## Gate stages", "`walkthrough`", "`## Operator Runtime`", "`## Regression Checklist`",
                  # v36: the review opens the product with the prescribed instrument.
                  "**Drive it with Aside**", "the doctrine's demands bind, the instrument does not",
-                 "with the same instrument as stage 2"):
+                 "with the same instrument as stage 2",
+                 # v37: on the `repl` surface over Bash, never a standing MCP
+                 # registration, and against no pre-written suite.
+                 "the `repl` surface over Bash", "never a standing `aside mcp` registration",
+                 "in place of a pre-written assertion suite"):
     assert required in review, required
+for gone in ("MCP surface first", "scripted Playwright-style automation"):
+    assert gone not in review, gone
 never = [ln for ln in review.splitlines() if "you never run on a review slice" in ln]
 assert len(never) == 1 and "`accept-gate`" in never[0] and "`defer-job`" in never[0], never
 
@@ -161,6 +190,10 @@ assert "## Operator Runtime" in ops and "UNFILLED" in ops
 # v36: one seed field records what THIS machine has; its absence never stops a slice.
 assert "- Browser instrument for the agent:" in ops
 assert "its absence alone never stops a slice" in ops
+# v37: the field names how the agent drives it -- `aside repl` over Bash -- and no
+# fresh install is told to stand up an MCP server.
+assert "`aside repl` over Bash" in ops
+assert "aside mcp" not in ops
 qa = (root / "installer/payloads/doc_bodies/qa.md").read_text()
 assert "## Regression Checklist" in qa
 assert "- [ ] <surface>: <one observable behaviour> (P<N>)" in qa
@@ -204,6 +237,19 @@ for tier in ("mid", "high"):
         "driving it with the same instrument (Aside first, the fallback browser otherwise)",
     ):
         assert required in body, (tier, required)
+    # v37: the concrete default an executor actually runs is in BOTH bodies -- the
+    # `repl` surface over Bash with a reachable re-attach preamble, never a standing
+    # MCP registration, and against no pre-written suite.
+    for required in (
+        "Run its `repl` surface over Bash",
+        "`aside repl \"<js>\"`",
+        "`listBrowserTabs()` → `attachBrowserTab()`",
+        "never a standing `aside mcp` registration",
+        "in place of a pre-written assertion suite",
+    ):
+        assert required in body, (tier, required)
+    for gone in ("MCP surface first", "scripted Playwright-style automation"):
+        assert gone not in body, (tier, gone)
     assert "On a gated phase (`acceptance.required` is `true` — and only then) also run the gate stages" in body, tier
     assert "- `walkthrough`:" in body, tier
     # v35: reads are just-in-time, result.md leads with the verdict block, and the
@@ -254,11 +300,23 @@ for required in (
     "**`DECOMP2` has two origins**", "`P<N>.DECOMP3`",
     "`research`, `fix`, `docs`, `qa`, `co-work`",
     # v36: Aside is the named instrument, on its own axis, with a binding fallback.
-    "**Real-browser verification runs through Aside, not a script.**",
+    # v37: the rule names the two surfaces, defaults to `aside repl` over Bash with
+    # the measured per-session MCP cost as its reason, keeps the registration only as
+    # an operator escape hatch, and rejects the pre-written suite, not Playwright.
+    "**Real-browser verification runs through Aside, not a pre-written assertion suite.**",
     "**Instrument and runtime are different axes:**",
     "**the doctrine's demands bind, the instrument does not.**",
+    "**Two surfaces, not three:**",
+    "**The default is `aside repl` over Bash**",
+    "~1,344 tokens",
+    "`claude mcp add -s local aside -- aside mcp` is an optional per-operator, per-session **escape hatch**",
 ):
     assert required in claude, required
+# v37 negatives: the MCP-first prescription and the Playwright framing are retired
+# from the contract too -- the fact survives only where it explains the escape hatch.
+for gone in ("Prefer the **MCP** surface", "scripted Playwright-style automation",
+             "runs through Aside, not a script"):
+    assert gone not in claude, gone
 # v35 negatives: the pre-v35 read order and the append-only notebook verb are gone.
 for gone in ("for the fullstack doc set", "appends phase notes/doc impact",
              "appends durable cross-slice notes"):
@@ -271,7 +329,7 @@ for gone in ("design exception", "never approval", "no other pending gate"):
 for gone in ("Codex", "AGENTS.md", ".agents/", ".codex/"):
     assert gone not in claude, gone
 PY
-then ok "17 Claude skills, invocation metadata, design contract, the v32 acceptance-gate invariants, the v36 research-kind and Aside-instrument invariants, and the v31 Codex-removal negatives"; else bad "Claude skill inventory, metadata, design contract, a v32 gate invariant, a v36 research-kind or Aside-instrument invariant, or a Codex-removal negative failed"; fi
+then ok "17 Claude skills, invocation metadata, design contract, the v32 acceptance-gate invariants, the v36 research-kind and Aside-instrument invariants, the v37 Aside-surface invariants (two surfaces, `aside repl` over Bash, no standing MCP registration, the assertion-suite framing), and the v31 Codex-removal negatives"; else bad "Claude skill inventory, metadata, design contract, a v32 gate invariant, a v36 research-kind or Aside-instrument invariant, a v37 Aside-surface invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="

@@ -25,7 +25,7 @@ the production build when the two differ.
 - Mode: <dev or production build; say where they differ — dev may enable StrictMode / Fast Refresh, production does not>
 - Origin / host the operator browses: <localhost, LAN IP, Tailscale host, deployed URL>
 - Devices / viewports / browsers: <e.g. desktop 1440px Chrome, phone 390px Safari>
-- Browser instrument for the agent: <Aside (`aside mcp`) if installed here, else the real browser it may drive — optional; its absence alone never stops a slice>
+- Browser instrument for the agent: <Aside (driven as `aside repl` over Bash) if installed here, else the real browser it may drive — optional; its absence alone never stops a slice>
 - Production build command + origin (when different):
 - Also needed to see what the operator sees: <auth/test account, seeded data, feature flags>
 - Status: UNFILLED — fill before any slice claims real-browser verification
