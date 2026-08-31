@@ -8,9 +8,9 @@
       "order": 4,
       "path": "works/phases/active/P20",
       "review_status": "pending",
-      "current_slice": "P20.DECOMP",
-      "slice_count": 2,
-      "done_slice_count": 0
+      "current_slice": "P20.S1",
+      "slice_count": 5,
+      "done_slice_count": 1
     },
     {
       "id": "P21",
@@ -28,5 +28,5 @@
   "deferred_open_count": 8,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 3,
-  "last_rebuilt_at": "2026-09-01T03:03:48+09:00"
+  "last_rebuilt_at": "2026-09-01T03:15:55+09:00"
 }
