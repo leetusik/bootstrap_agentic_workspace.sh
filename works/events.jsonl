@@ -448,3 +448,8 @@
 {"ts": "2026-08-29T17:14:13+09:00", "type": "deferred_created", "deferred": "D11", "source": "P19.REVIEW"}
 {"ts": "2026-08-29T17:14:19+09:00", "type": "slice_status_changed", "slice": "P19.REVIEW", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-08-29T17:14:19+09:00", "type": "phase_reviewed", "phase": "P19", "verdict": "pass", "reviewer": "slice-executor-high"}
+{"ts": "2026-09-01T02:51:35+09:00", "type": "phase_created", "phase": "P20"}
+{"ts": "2026-09-01T03:02:05+09:00", "type": "phase_created", "phase": "P21"}
+{"ts": "2026-09-01T03:03:48+09:00", "type": "phase_archived", "phase": "P17", "archive_path": "works/phases/archived/20260901_030348_P17_design_co-work_styles_the_mockup_gate_and_agent-runnable_create-phase"}
+{"ts": "2026-09-01T03:03:48+09:00", "type": "phase_archived", "phase": "P18", "archive_path": "works/phases/archived/20260901_030348_P18_bounded_phase_notebook_and_just-in-time_reads"}
+{"ts": "2026-09-01T03:03:48+09:00", "type": "phase_archived", "phase": "P19", "archive_path": "works/phases/archived/20260901_030348_P19_the_research_slice_kind_and_aside-driven_browser_verification"}

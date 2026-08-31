@@ -1,44 +1,32 @@
 {
   "active_phases": [
     {
-      "id": "P17",
-      "name": "design co-work styles, the mockup gate, and agent-runnable create-phase",
-      "objective": "Give design co-work three named operator-chosen styles (build-after / design-only / paired), move the single per-round approval onto a runnable mockup built in the project's own frontend language, close the unvalidated --kind hole in the engine, and let the agent invoke create-phase on instruction while the operator-confirmation gate stays put. Ships as workspace v34.",
-      "status": "done",
-      "order": 1,
-      "path": "works/phases/active/P17",
-      "review_status": "pass",
-      "current_slice": null,
-      "slice_count": 5,
-      "done_slice_count": 5
+      "id": "P20",
+      "name": "make the Aside prescription true: the repl surface over Bash, on a dedicated profile",
+      "objective": "Replace v36's three-surface taxonomy with the two that exist -- 'aside repl' (the Playwright-like surface, driven by the executor itself) and 'aside exec' (Aside's own model driving) -- and prescribe 'aside repl' over Bash as the default, explicitly NOT the MCP transport, recording the measured ~1,344-token-per-session cost as the reason and the listBrowserTabs()/attachBrowserTab() re-attach idiom as the canonical preamble. Name 'claude mcp add -s local aside -- aside mcp' as an optional per-operator escape hatch the workspace neither ships nor prescribes. Require agent Aside runs on a dedicated profile via 'aside --account <id>', never the operator's signed-in one, returning needs_operator when only the personal profile exists. Keep the Linux/CI fallback as written. Rewrite the 'not Playwright' argument as 'not a pre-written assertion suite'. Closes D9, D10, D11. Ships as workspace v37.",
+      "status": "planned",
+      "order": 4,
+      "path": "works/phases/active/P20",
+      "review_status": "pending",
+      "current_slice": "P20.DECOMP",
+      "slice_count": 2,
+      "done_slice_count": 0
     },
     {
-      "id": "P18",
-      "name": "Bounded phase notebook and just-in-time reads",
-      "objective": "Make phase.md a bounded, rewritten state doc (generated ## Slices table, Decisions, Doc impact, Operator Questions, Notes for later slices, ## Now) with result.md as the per-slice log; add the engine support (works/templates/phase.md seed, finish-slice --outcome, rebuild-generated slice block, 200-line/16 KB budget warning, Doc-impact case-drift warning, no 'Rebuilt at' churn in backlog/deferred); rewrite the executor/skill read-and-write rules and the contract's Read Order to load docs sections just-in-time; ship as workspace v35.",
-      "status": "done",
-      "order": 2,
-      "path": "works/phases/active/P18",
-      "review_status": "pass",
-      "current_slice": null,
-      "slice_count": 7,
-      "done_slice_count": 7
-    },
-    {
-      "id": "P19",
-      "name": "the research slice kind and Aside-driven browser verification",
-      "objective": "Add `research` to the closed SLICE_KINDS set as a findings-only slice -- no product code, always routed to slice-executor-high -- whose output lands in phase.md so the DECOMP2 slice that normally follows can re-cut the remaining work from what was learned, generalizing the second decomposition pass beyond the build-after design style. And make Aside (CLI / MCP / REPL) the workspace's prescribed instrument for real-browser verification -- the functional sweep, fidelity slices, and the review's own product walk -- in place of scripted Playwright-style automation. Ships as workspace v36.",
-      "status": "done",
-      "order": 3,
-      "path": "works/phases/active/P19",
-      "review_status": "pass",
-      "current_slice": null,
-      "slice_count": 4,
-      "done_slice_count": 4
+      "id": "P21",
+      "name": "close the workspace's context leaks, measured against live adopters",
+      "objective": "Measure where the workspace actually spends context across four live adopting repos (changple5 v36, changple_web v35, Mijual v36, arb_upbit_1 v35 -- ~1,140 slices, 83 archived phases between three of them), then close only the leaks the measurement justifies. Confirmed leak with an operator-proposed remedy to research first: per-review durable-doc consolidation rewrites whole docs that only grow (changple5 backend.md at v0054, 420 KB, rewritten by every review) -- research retiring doc-new-version from the review slice in favour of dedicated operator-created docs phases, and what a review still records if so. Open questions: whether the 16 KB phase.md budget is right (post-v35 notebooks ride within bytes of the ceiling -- is mid-phase compaction losing decisions under that pressure?); whether plan.md + result.md suffice as the orchestrator's post-slice record; what the review may read instead of every result.md; executor validation cost; where keep-tests-small needs teeth (changple5: 494 test files / 6.3 MB; the other three comply). Two suspects retracted by measurement: archiving works (rotate-backlog; 56/20/7 archived) and the notebook budget is respected since v35. DECOMP cuts a research slice first -- the fix list is not knowable before the measurement -- and DECOMP2 cuts the remedies from findings. Machinery and doctrine only: adopter repos are read as evidence and receive a documented procedure, never edits from here.",
+      "status": "planned",
+      "order": 5,
+      "path": "works/phases/active/P21",
+      "review_status": "pending",
+      "current_slice": "P21.DECOMP",
+      "slice_count": 2,
+      "done_slice_count": 0
     }
   ],
   "deferred_open_count": 8,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 3,
-  "last_rebuilt_at": "2026-08-29T17:14:19+09:00"
+  "last_rebuilt_at": "2026-09-01T03:03:48+09:00"
 }

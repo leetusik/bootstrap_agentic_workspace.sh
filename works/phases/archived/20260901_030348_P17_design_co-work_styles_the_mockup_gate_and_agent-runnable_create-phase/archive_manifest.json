@@ -1,0 +1,15 @@
+{
+  "phase_id": "P17",
+  "archived_at": "2026-09-01T03:03:48+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P17",
+  "archive_path": "works/phases/archived/20260901_030348_P17_design_co-work_styles_the_mockup_gate_and_agent-runnable_create-phase",
+  "slices": [
+    "P17.DECOMP",
+    "P17.S1",
+    "P17.S2",
+    "P17.S3",
+    "P17.REVIEW"
+  ]
+}

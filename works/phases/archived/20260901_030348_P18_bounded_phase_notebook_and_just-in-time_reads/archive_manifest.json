@@ -1,0 +1,17 @@
+{
+  "phase_id": "P18",
+  "archived_at": "2026-09-01T03:03:48+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P18",
+  "archive_path": "works/phases/archived/20260901_030348_P18_bounded_phase_notebook_and_just-in-time_reads",
+  "slices": [
+    "P18.DECOMP",
+    "P18.S1",
+    "P18.S2",
+    "P18.S3",
+    "P18.S4",
+    "P18.S5",
+    "P18.REVIEW"
+  ]
+}

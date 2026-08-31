@@ -1,0 +1,14 @@
+{
+  "phase_id": "P19",
+  "archived_at": "2026-09-01T03:03:48+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P19",
+  "archive_path": "works/phases/archived/20260901_030348_P19_the_research_slice_kind_and_aside-driven_browser_verification",
+  "slices": [
+    "P19.DECOMP",
+    "P19.S1",
+    "P19.S2",
+    "P19.REVIEW"
+  ]
+}
