@@ -59,6 +59,8 @@ CONSOLIDATION_STATES = {"pending", "done"}
 # and silent staleness is the one outcome the trade may not have. This single constant is the
 # only "how loud" knob; a stated cadence can raise it later without any config plumbing.
 CONSOLIDATION_DEBT_MIN_PHASES = 1
+# What `docs-debt` calls a note that names no doc from DOC_TYPES -- listed, never guessed at.
+UNASSIGNED_DOC = "(unassigned)"
 # A default-stream phase in any of these states means main is mid-flight, so a phase
 # branch may not be merged into it yet (the quiet-point gate, `parallel-gate`).
 BUSY_PHASE_STATUSES = ("in_progress", "in_review", "pending", "blocked")
@@ -572,6 +574,18 @@ def phase_doc_impact_notes(pdir: Path) -> list:
             continue
         notes.append(body)
     return notes
+
+
+def doc_impact_docs(note: str) -> list:
+    """The durable docs one `## Doc impact` note touches, read off the `<doc>.md: ...` convention.
+
+    A note names its doc(s) in prose, so this is a best-effort read against the known `DOC_TYPES`
+    only -- one note may name several docs (`operations.md: ...; qa.md: ...`) and a note naming
+    none is reported unassigned rather than guessed at. Nothing routes on it: `docs-debt` groups
+    the worklist with it, and the operator still reads the note.
+    """
+    found = [d for d in sorted(DOC_TYPES) if re.search(rf"\b{re.escape(d)}\.md\b", note, re.I)]
+    return found
 
 
 def phases_owing_consolidation(phases: list) -> list:
@@ -1834,6 +1848,61 @@ def parallel_consolidated(args: argparse.Namespace) -> None:
     print(f"{args.phase} is now archivable (archive-phase/rotate-backlog no longer block on pending consolidation)")
 
 
+def docs_debt(args: argparse.Namespace) -> None:
+    """The docs phase's worklist: every phase owing durable-doc consolidation, its `## Doc impact`
+    notes, the docs those notes touch, and the commands that pay them. Writes nothing.
+
+    `next` and `validate` say *that* the debt exists; this says *what it is*, so the docs-phase
+    intake (`create-phase`) and the docs phase's own `DECOMP` never re-derive it by hand. The
+    default cut is one slice per doc -- `doc-new-version` is per doc, and one doc usually collects
+    notes from several phases -- which is why the per-doc rollup is printed as well as the
+    per-phase blocks.
+    """
+    phases = all_active_phases()
+    owing = phases_owing_consolidation(phases)
+    if not owing:
+        print("docs_debt=none (no active phase owes durable-doc consolidation)")
+        return
+    stream = current_stream(phases)
+    if stream:
+        print(f"warning: this checkout is on parallel stream {stream}; doc consolidation runs on the default stream")
+    per_doc, notes_total = {}, 0
+    blocks = []
+    for phase in owing:
+        notes = phase_doc_impact_notes(ROOT / phase["path"])
+        notes_total += len(notes)
+        for note in notes:
+            for doc in doc_impact_docs(note) or [UNASSIGNED_DOC]:
+                per_doc.setdefault(doc, {}).setdefault(phase["id"], 0)
+                per_doc[doc][phase["id"]] += 1
+        blocks.append((phase, notes))
+    docs_hit = sorted(d for d in per_doc if d != UNASSIGNED_DOC)
+    print(f"docs_debt={', '.join(p['id'] for p in owing)} ({len(owing)} phase(s), {notes_total} note(s), {len(docs_hit)} doc(s))")
+    for phase, notes in blocks:
+        print()
+        print(f"{phase['id']} {phase.get('name', '')} -- {phase['path']}/phase.md '## Doc impact'")
+        pay = consolidation_command(phase)
+        tail = "   (merged parallel phase)" if pay == "parallel-consolidated" else ""
+        print(f"  pay: python3 scripts/workflow.py {pay} {phase['id']}{tail}")
+        if not notes:
+            print("  - (no notes in the notebook; the debt was stamped from a list since compressed -- check git history)")
+        for note in notes:
+            print(f"  - {note}")
+    print()
+    print(f"docs={', '.join(docs_hit) or 'none named'} (default docs-phase cut: one slice per doc)")
+    for doc in docs_hit + ([UNASSIGNED_DOC] if UNASSIGNED_DOC in per_doc else []):
+        by_phase = per_doc[doc]
+        count = sum(by_phase.values())
+        print(f"  {doc}: {count} note(s) from {', '.join(sorted(by_phase))}")
+    if UNASSIGNED_DOC in per_doc:
+        print(f"  {UNASSIGNED_DOC} = the note names no doc from the known set; read it in the notebook and decide")
+    print()
+    print('per note: python3 scripts/workflow.py doc-new-version --doc <doc> --summary "..." --source <P>.REVIEW')
+    print("          -> edit only the returned edit_path -> python3 scripts/workflow.py rebuild-docs")
+    print("per phase, once all of its notes are consolidated: the pay command above (that is also what unblocks archiving)")
+    print("read-only: this command wrote nothing")
+
+
 def docs_consolidated(args: argparse.Namespace) -> None:
     """Record that a phase's deferred durable-doc consolidation has landed.
 
@@ -2363,6 +2432,9 @@ def main(argv=None) -> int:
     p.add_argument("--walkthrough", default=None, help="the concrete script the operator runs (URLs to open, actions to try, in the operator runtime); use with --open")
     p.add_argument("--note", default=None, help="mandatory reason with --waive; optional record of what the operator reported with --clear")
     p.set_defaults(func=accept_gate)
+
+    p = sub.add_parser("docs-debt", help="Read-only worklist for a docs phase: which phases owe durable-doc consolidation, their '## Doc impact' notes, the docs they touch and the paying commands")
+    p.set_defaults(func=docs_debt)
 
     p = sub.add_parser("docs-consolidated", help="Record that a phase's deferred durable-doc consolidation landed (run after a docs phase creates the versions; also unblocks archiving)")
     p.add_argument("phase")

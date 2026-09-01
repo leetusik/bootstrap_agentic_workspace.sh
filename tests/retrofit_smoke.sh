@@ -35,6 +35,10 @@ trap cleanup EXIT
 ok()  { printf 'PASS: %s\n' "$1"; }
 bad() { printf 'FAIL: %s\n' "$1"; FAILS=$((FAILS + 1)); }
 newtmp() { local _d; _d=$(mktemp -d); TMPDIRS+=("$_d"); printf -v "$1" '%s' "$_d"; }
+sha_stdin() {
+  if command -v shasum >/dev/null 2>&1; then shasum -a 256 | awk '{print $1}'
+  else sha256sum | awk '{print $1}'; fi
+}
 sha() {
   if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
   else sha256sum "$1" | awk '{print $1}'; fi
@@ -577,11 +581,27 @@ grep -q '"consolidation": "pending"' "$F/works/phases/active/P2/phase.json" \
 debt_out=$( cd "$F" && python3 scripts/workflow.py validate 2>&1 ); debt_rc=$?
 printf '%s\n' "$debt_out" | grep -q "warning: consolidation_owed=P2" && [ "$debt_rc" -eq 0 ] \
   && ok "validate warns about the doc debt and still exits 0" || bad "validate did not warn (or errored) on the doc debt"
+# ...and `docs-debt` is the docs phase's worklist: the owing phase, its notes, the docs those
+# notes name and the paying command -- read-only, so the tree must be byte-identical afterwards.
+debt_list=$( cd "$F" && python3 scripts/workflow.py docs-debt 2>&1 )
+printf '%s\n' "$debt_list" | grep -q "docs_debt=P2" \
+  && printf '%s\n' "$debt_list" | grep -q "a durable change (P2.S1)" \
+  && printf '%s\n' "$debt_list" | grep -q "docs-consolidated P2" \
+  && ok "docs-debt lists the owing phase, its '## Doc impact' notes and the paying command" \
+  || bad "docs-debt did not print the owing phase's worklist"
+before_debt=$( cd "$F" && find works docs -type f | sort | xargs cat | sha_stdin )
+( cd "$F" && python3 scripts/workflow.py docs-debt >/dev/null 2>&1 )
+after_debt=$( cd "$F" && find works docs -type f | sort | xargs cat | sha_stdin )
+[ -n "$before_debt" ] && [ "$before_debt" = "$after_debt" ] \
+  && ok "docs-debt writes nothing (the workspace tree is unchanged after it runs)" \
+  || bad "docs-debt modified the workspace"
 ( cd "$F" && python3 scripts/workflow.py archive-phase P2 2>&1 | grep -q "docs not consolidated" ) \
   && ok "archiving is blocked while the doc debt stands" || bad "a phase owing docs archived anyway"
 ( cd "$F" && python3 scripts/workflow.py docs-consolidated P2 >/dev/null 2>&1 && python3 scripts/workflow.py archive-phase P2 >/dev/null 2>&1 ) \
   && [ ! -d "$F/works/phases/active/P2" ] \
   && ok "docs-consolidated pays the debt and unblocks archiving" || bad "docs-consolidated did not unblock archiving"
+( cd "$F" && python3 scripts/workflow.py docs-debt 2>&1 | grep -q "docs_debt=none" ) \
+  && ok "docs-debt is silent once nothing owes consolidation" || bad "docs-debt still reports debt on a clean tree"
 python3 - "$F/works/phases/active/P1/slices/P1.S1/slice.json" <<'PY2'
 import json, sys
 p = sys.argv[1]

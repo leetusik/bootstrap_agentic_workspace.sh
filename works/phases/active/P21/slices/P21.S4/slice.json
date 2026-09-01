@@ -3,15 +3,15 @@
   "phase_id": "P21",
   "name": "docs-phase entry point (R4)",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 6,
   "depends_on": [
     "P21.S2",
     "P21.S3"
   ],
   "created_at": "2026-09-01T09:46:50+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-01T10:24:59+09:00",
+  "completed_at": "2026-09-01T10:37:48+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -21,7 +21,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "docs-debt worklist + create-phase docs-phase route through the unchanged gate; smoke 149 PASS",
   "validation": {
     "required": [],
     "last_run": null,

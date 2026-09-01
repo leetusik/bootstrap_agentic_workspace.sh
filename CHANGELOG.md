@@ -54,10 +54,21 @@ history.
   and "how loud" has exactly one knob — `CONSOLIDATION_DEBT_MIN_PHASES` (default 1 = always) — for a
   stated docs-phase cadence to tune later, with no config plumbing.
 
+- **The docs phase now has an entry point, not just a rule.** Every doc said *"a docs phase the operator
+  creates"*; nothing said how to start one. The new read-only **`docs-debt`** prints the worklist — each
+  owing phase with its `## Doc impact` notes, the docs those notes touch, and the command that pays it
+  (`docs-consolidated`, or `parallel-consolidated` for a phase merged from a branch) — including the
+  v24–v37 `execution.consolidation` shape, and it writes nothing. The `create-phase` skill gained a
+  **docs-phase route** that reads that output as the proposed scope and goes through the *same*
+  procedure: the step-3 confirmation gate does not move, and no new gate is added. The default cut is
+  **one slice per doc** (`doc-new-version` is per doc, and one doc usually collects notes from several
+  phases), ending in `docs-consolidated <P>` for each phase covered. A docs phase leaves no `## Doc
+  impact` notes of its own, so it cannot feed itself.
+
 - **Migration notes.** Nothing to run at update time, and no existing phase changes state. What changes
   is the habit: from your next passing review onward, `docs/current/*.md` trails the code until you
-  create a **docs phase** (`/create-phase`, objective "consolidate the `## Doc impact` notes from
-  P<a>–P<b>"), which runs `doc-new-version --doc <doc> --summary "..." --source <P>.REVIEW` per note,
+  create a **docs phase** — run `python3 scripts/workflow.py docs-debt` for the worklist, then
+  `/create-phase` (objective "consolidate the `## Doc impact` notes from P<a>–P<b>"), which runs `doc-new-version --doc <doc> --summary "..." --source <P>.REVIEW` per note,
   `rebuild-docs`, then `docs-consolidated <P>` for each phase it covered. Until you do, those phases
   stay in `active/` and `rotate-backlog` leaves them there — that is the guard keeping their notes
   findable, not a bug. Batching every ~5 phases is where the win is (3.3x fewer doc versions in the
