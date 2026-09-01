@@ -553,6 +553,28 @@ grep -q '^works/events\.jsonl merge=union$' "$F/.gitattributes" && ok "fresh ins
 ( cd "$F" && python3 scripts/workflow.py new-slice --phase P1 --slice P1.S2 --name "learn first" --kind research --risk high >/dev/null 2>&1 ) \
   && grep -q '"kind": "research"' "$F/works/phases/active/P1/slices/P1.S2/slice.json" \
   && ok "new-slice accepts --kind research (v36, findings-only, always the high tier)" || bad "new-slice rejected --kind research"
+# v38 deferred doc consolidation, probed once against the same throwaway engine: a passing
+# review records the debt instead of paying it, and archiving is held until it is paid.
+( cd "$F" && python3 scripts/workflow.py new-phase --phase P2 --name "Docs debt probe" --objective "probe deferral" >/dev/null 2>&1 ) || bad "v38 probe: new-phase P2 failed"
+python3 - "$F/works/phases/active/P2/phase.md" <<'PY2'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+p.write_text(p.read_text().replace("## Operator Questions", "- workflow.md: a durable change (P2.S1)\n\n## Operator Questions", 1))
+PY2
+( cd "$F" \
+  && python3 scripts/workflow.py accept-gate P2 --waive --note "probe" >/dev/null 2>&1 \
+  && python3 scripts/workflow.py set-slice-status P2.DECOMP done >/dev/null 2>&1 \
+  && python3 scripts/workflow.py set-slice-status P2.REVIEW done >/dev/null 2>&1 \
+  && python3 scripts/workflow.py review-phase P2 --verdict pass 2>&1 | grep -q "docs-consolidated P2" ) \
+  && ok "a passing review defers doc consolidation and names docs-consolidated" || bad "the passing review did not defer doc consolidation"
+grep -q '"consolidation": "pending"' "$F/works/phases/active/P2/phase.json" \
+  && ok "the passing review stamps the phase's consolidation debt" || bad "no consolidation debt stamped"
+( cd "$F" && python3 scripts/workflow.py archive-phase P2 2>&1 | grep -q "docs not consolidated" ) \
+  && ok "archiving is blocked while the doc debt stands" || bad "a phase owing docs archived anyway"
+( cd "$F" && python3 scripts/workflow.py docs-consolidated P2 >/dev/null 2>&1 && python3 scripts/workflow.py archive-phase P2 >/dev/null 2>&1 ) \
+  && [ ! -d "$F/works/phases/active/P2" ] \
+  && ok "docs-consolidated pays the debt and unblocks archiving" || bad "docs-consolidated did not unblock archiving"
 python3 - "$F/works/phases/active/P1/slices/P1.S1/slice.json" <<'PY2'
 import json, sys
 p = sys.argv[1]

@@ -491,8 +491,8 @@ you did not make.
 doc's cumulative product smoke list) — every earlier phase's headline behaviours, not only this
 phase's surfaces. That is not ceremony: a later phase touching shared chrome silently invalidates an
 earlier phase's pass, and nothing else is looking. Then append this phase's headline lines in the
-shipped shape `- [ ] <surface>: <one observable behaviour> (P<N>)` via the phase's "Doc impact" list
-— the review consolidates the docs.
+shipped shape `- [ ] <surface>: <one observable behaviour> (P<N>)` — the review writes that
+section itself, as one of its two named doc writes.
 
 **What a fidelity slice may fix, and what it may not.** A **departure from the record** is a
 faithful-implementation fix: make it in the slice, or cut a `fix` slice. Anything that is a **design

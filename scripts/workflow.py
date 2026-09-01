@@ -307,12 +307,12 @@ def new_doc_version(args: argparse.Namespace) -> None:
     if doc_id not in DOC_TYPES:
         raise SystemExit(f"doc must be one of: {', '.join(sorted(DOC_TYPES))}")
     # Doc versions are allocated from a single `docs/index.json` (`max+1` per doc), so two streams
-    # consolidating at once pick the same vNNNN and collide silently on the merge. A parallel phase
-    # defers consolidation to the serialized post-merge step on the default stream -- refuse here,
-    # before any allocation or write, so a refusal leaves zero partial state.
+    # consolidating at once pick the same vNNNN and collide silently on the merge. Consolidation
+    # therefore always runs on the default stream -- refuse here, before any allocation or write,
+    # so a refusal leaves zero partial state.
     stream = current_stream(all_active_phases())
     if stream:
-        raise SystemExit(f"this checkout is on parallel stream {stream}; doc consolidation runs on the default stream, after the branch is merged -- defer it to the post-merge step (parallel-merge-finish, then doc-new-version, then parallel-consolidated)")
+        raise SystemExit(f"this checkout is on parallel stream {stream}; doc consolidation runs on the default stream, never on a phase branch -- for a parallel phase defer it to the post-merge step (parallel-merge-finish, then doc-new-version, then parallel-consolidated)")
     index = doc_index()
     info = index["docs"][doc_id]
     latest_id = info["latest"]
@@ -503,6 +503,75 @@ def phase_execution(data) -> dict:
     if not isinstance(execution, dict) or execution.get("mode") not in EXECUTION_MODES:
         return None
     return execution
+
+
+def phase_consolidation(data) -> str:
+    """A phase's durable-doc consolidation debt: "pending", "done", or None (nothing owed).
+
+    Every phase defers consolidation: a passing review verifies the `## Doc impact` list and
+    creates no doc versions, so the debt is stamped there ("pending") and paid later by an
+    operator-created docs phase (`doc-new-version` per note, then `docs-consolidated <P>`).
+
+    Read through this helper only, so every caller agrees on what "owes docs" means:
+
+        "consolidation": "pending" | "done" | absent   # top-level in phase.json
+
+    Backward compatible in both directions. v24-v37 stamped the identical debt inside the
+    parallel `execution` block, so that field is the fallback and no phase.json needs migrating;
+    a phase.json carrying neither (every phase reviewed before this release, and every adopter
+    file) owes nothing and archives exactly as it always did.
+    """
+    if not isinstance(data, dict):
+        return None
+    state = data.get("consolidation")
+    if state in CONSOLIDATION_STATES:
+        return state
+    if state is None:
+        execution = phase_execution(data)
+        if execution and execution.get("consolidation") in CONSOLIDATION_STATES:
+            return execution["consolidation"]
+    return None  # absent, or malformed -> `validate` reports it; no debt is invented
+
+
+def set_phase_consolidation(data: dict, state: str) -> None:
+    """Write the debt to the top-level key, mirroring it into a parallel `execution` block so the
+    parallel commands and `parallel-status` keep reading the same truth from the field they know."""
+    data["consolidation"] = state
+    execution = phase_execution(data)
+    if execution is not None:
+        execution["consolidation"] = state
+
+
+def phase_doc_impact_notes(pdir: Path) -> list:
+    """The `## Doc impact` bullets in a phase's notebook -- what a docs phase consolidates from.
+
+    Real notes only: the italic seed line, blanks and an explicit `- (none ...)` placeholder are
+    not debt, and a phase with no notebook or no section owes nothing.
+    """
+    path = pdir / "phase.md"
+    if not path.exists():
+        return []
+    notes, inside = [], False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("## "):
+            inside = line.strip().lower() == "## doc impact"
+            continue
+        if not inside:
+            continue
+        text = line.strip()
+        if not (text.startswith("- ") or text.startswith("* ")):
+            continue
+        body = text[2:].strip()
+        if not body or body.startswith("_") or re.match(r"\(?none\b", body, re.I):
+            continue
+        notes.append(body)
+    return notes
+
+
+def phases_owing_consolidation(phases: list) -> list:
+    """Every active phase whose doc consolidation is still `pending` -- the debt list, in one place
+    so `parallel-merge-finish`, the archiving guard and any later surfacing all read the same set."""
+    return [p for p in phases if phase_consolidation(p) == "pending"]
 
 
 def new_acceptance() -> dict:
@@ -716,6 +785,7 @@ def rebuild_index_and_state() -> None:
                 "slice_count": len(p["slices"]),
                 "done_slice_count": sum(1 for s in p["slices"] if s.get("status") == "done"),
                 **({"execution": phase_execution(p)} if phase_execution(p) else {}),
+                **({"consolidation": phase_consolidation(p)} if phase_consolidation(p) else {}),
             } for p in phases
         ],
         "deferred_open_count": len(deferred.get("open", [])),
@@ -793,6 +863,10 @@ def validate() -> int:
             unfinished = [s["id"] for s in p["slices"] if s.get("status") != "done"]
             if unfinished:
                 errors.append(f"phase {p['id']} is done but has unfinished slices: {', '.join(unfinished)}; a passing review closes the REVIEW slice")
+        # Optional doc-consolidation debt. Absent = nothing owed (every phase reviewed before
+        # this field existed, and every phase whose `## Doc impact` list was empty).
+        if "consolidation" in p and p.get("consolidation") not in CONSOLIDATION_STATES:
+            errors.append(f"phase {p['id']} has invalid consolidation {p.get('consolidation')!r}; expected one of {sorted(CONSOLIDATION_STATES)}")
         # Optional parallel-execution block. Absent = default stream = nothing to check.
         # A phase that merged `done` while its doc consolidation is still pending
         # (`consolidation: "pending"`) is a legitimate state and passes cleanly here.
@@ -958,7 +1032,7 @@ _Durable cross-slice decisions. Replace a superseded line; never stack versions.
 
 ## Doc impact
 
-_One line per durable-truth change: `- <doc>.md: <what changed> (<slice>)`. Append only; consolidated into versions at the review, never per slice._
+_One line per durable-truth change: `- <doc>.md: <what changed> (<slice>)`. Append only; the review verifies this list and a later docs phase consolidates it into versions — never per slice, never at the review._
 
 ## Operator Questions
 
@@ -1199,6 +1273,19 @@ def review_phase(args: argparse.Namespace) -> None:
     if args.verdict == "changes_requested":
         print("create fix slices, e.g.: python3 scripts/workflow.py new-slice --phase {0} --slice {0}.F1 --name \"...\" --kind fix".format(args.phase))
     elif args.verdict == "pass":
+        notes = phase_doc_impact_notes(pdir)
+        if notes:
+            # The review verifies the list and creates no versions; the debt is paid by an
+            # operator-created docs phase. Stamp it so it is queryable and blocks archiving.
+            data = read_json(pdir / "phase.json")
+            set_phase_consolidation(data, "pending")
+            write_json(pdir / "phase.json", data)
+            append_event("phase_consolidation_owed", phase=args.phase, notes=len(notes))
+            rebuild_index_and_state()
+            done_cmd = "parallel-consolidated" if phase_execution(data) else "docs-consolidated"
+            print(f"docs: {len(notes)} '## Doc impact' note(s) recorded -- durable docs are NOT versioned here.")
+            print("  consolidation is deferred: the operator creates a docs phase for it (doc-new-version per note, then rebuild-docs).")
+            print(f"  when those versions land: python3 scripts/workflow.py {done_cmd} {args.phase}   (until then {args.phase} is held out of archiving)")
         print(f"phase {args.phase} is done and stays in active/. Do NOT archive a single phase now.")
         print("Archive all phases together with `archive-all` only once every active phase is done (the last review slice is complete).")
 
@@ -1534,8 +1621,8 @@ def parallel_teardown(args: argparse.Namespace) -> None:
         print(f"removed {item}")
     if not removed:
         print("nothing to remove (worktree and branch were already gone)")
-    print(f"execution.worktree=null; mode/branch/consolidation kept as history (branch={branch}, consolidation={execution.get('consolidation')})")
-    if execution.get("consolidation") == "pending":
+    print(f"execution.worktree=null; mode/branch/consolidation kept as history (branch={branch}, consolidation={phase_consolidation(data)})")
+    if phase_consolidation(data) == "pending":
         print(f"warning: {args.phase} doc consolidation is still 'pending' -- run the post-merge consolidation on this stream (teardown does not gate on it)")
     print("phase.json changed -- commit it with the rest of the merge cleanup")
 
@@ -1609,7 +1696,7 @@ def parallel_gate(args: argparse.Namespace) -> None:
             reasons.append(f"the default stream is not quiet: phase {p.get('id')} is {p.get('status')!r} (finish or park it, then re-run the gate)")
     for p in main_phases:
         other = phase_execution(p)
-        if p.get("id") != args.phase and other and other.get("consolidation") == "pending" and p.get("status") == "done":
+        if p.get("id") != args.phase and other and phase_consolidation(p) == "pending" and p.get("status") == "done":
             notes.append(f"phase {p.get('id')} is merged but not consolidated yet; consolidation is serialized, so finish it first (parallel-consolidated {p.get('id')})")
     for n in notes:
         print(f"note: {n}")
@@ -1647,9 +1734,9 @@ def parallel_merge_finish(args: argparse.Namespace) -> None:
     rebuild_index_and_state()
     print(f"regenerated from the merged folders: {', '.join(GENERATED_FILES)}")
     awaiting = []
-    for p in all_active_phases():
+    for p in phases_owing_consolidation(all_active_phases()):
         execution = phase_execution(p)
-        if not execution or execution.get("consolidation") != "pending" or p.get("status") != "done":
+        if not execution or p.get("status") != "done":
             continue
         branch = execution.get("branch")
         merged = True  # a deleted branch means the phase was already merged and torn down
@@ -1681,7 +1768,7 @@ def parallel_consolidated(args: argparse.Namespace) -> None:
     data = read_json(pdir / "phase.json")
     execution = phase_execution(data)
     if not execution:
-        raise SystemExit(f"phase {args.phase} is not opted into parallel execution (no parallel execution block); default-stream phases consolidate docs in their own REVIEW slice")
+        raise SystemExit(f"phase {args.phase} is not opted into parallel execution (no parallel execution block); record its consolidation with: python3 scripts/workflow.py docs-consolidated {args.phase}")
     stream = current_stream(all_active_phases())
     if stream:
         raise SystemExit(f"this checkout is on parallel stream {stream}; run parallel-consolidated on the default stream, after the branch is merged")
@@ -1690,20 +1777,50 @@ def parallel_consolidated(args: argparse.Namespace) -> None:
     review_status = data.get("review", {}).get("status")
     if review_status != "pass":
         raise SystemExit(f"phase {args.phase} review is {review_status!r}, not 'pass'; record the passing review before consolidating")
-    consolidation = execution.get("consolidation")
+    consolidation = phase_consolidation(data)
     if consolidation == "done":
-        raise SystemExit(f"phase {args.phase} is already marked consolidated (execution.consolidation='done')")
+        raise SystemExit(f"phase {args.phase} is already marked consolidated (consolidation='done')")
     if consolidation != "pending":
-        raise SystemExit(f"phase {args.phase} has execution.consolidation {consolidation!r}; expected 'pending' (set at opt-in by parallel-start)")
-    data["execution"]["consolidation"] = "done"
+        raise SystemExit(f"phase {args.phase} has consolidation {consolidation!r}; expected 'pending' (set at opt-in by parallel-start, or by its passing review)")
+    set_phase_consolidation(data, "done")
     write_json(pdir / "phase.json", data)
     append_event("phase_consolidated", phase=args.phase, branch=execution.get("branch"))
     rebuild_index_and_state()
-    print(f"phase {args.phase} docs consolidated (execution.consolidation=done)")
+    print(f"phase {args.phase} docs consolidated (consolidation=done)")
     print("phase.json changed -- commit it together with the new doc versions")
     branch = execution.get("branch")
     if execution.get("worktree") or (branch and _git_available() and _branch_exists(branch)):
         print(f"next: python3 scripts/workflow.py parallel-teardown {args.phase}")
+    print(f"{args.phase} is now archivable (archive-phase/rotate-backlog no longer block on pending consolidation)")
+
+
+def docs_consolidated(args: argparse.Namespace) -> None:
+    """Record that a phase's deferred durable-doc consolidation has landed.
+
+    Every phase defers: its passing review verified the `## Doc impact` list and created no
+    versions, and a docs phase the operator creates later runs `doc-new-version` per note. This
+    flips the debt to "done", which is also what unblocks archiving the phase. The engine cannot
+    tell whether the prose is right, so this is an explicit operator/orchestrator statement.
+    `parallel-consolidated` is the parallel-mode twin, kept for the post-merge sequence.
+    """
+    pdir = require_phase(args.phase)
+    data = read_json(pdir / "phase.json")
+    # Doc versions come from one shared index, so consolidation belongs on the default stream --
+    # the same refusal `doc-new-version` makes, one step earlier.
+    stream = current_stream(all_active_phases())
+    if stream:
+        raise SystemExit(f"this checkout is on parallel stream {stream}; run docs-consolidated on the default stream, after the branch is merged (parallel phases use: parallel-consolidated {args.phase})")
+    consolidation = phase_consolidation(data)
+    if consolidation == "done":
+        raise SystemExit(f"phase {args.phase} is already marked consolidated (consolidation='done')")
+    if consolidation != "pending":
+        raise SystemExit(f"phase {args.phase} owes no doc consolidation (consolidation is {consolidation!r}); a passing review records the debt when the phase's '## Doc impact' list is non-empty")
+    set_phase_consolidation(data, "done")
+    write_json(pdir / "phase.json", data)
+    append_event("phase_consolidated", phase=args.phase)
+    rebuild_index_and_state()
+    print(f"phase {args.phase} docs consolidated (consolidation=done)")
+    print("phase.json changed -- commit it together with the new doc versions")
     print(f"{args.phase} is now archivable (archive-phase/rotate-backlog no longer block on pending consolidation)")
 
 
@@ -1810,7 +1927,7 @@ def parallel_status(args: argparse.Namespace) -> None:
         print(f"== {pid}: {phase.get('name', '')} ==")
         print(f"  branch={branch or '- (stamped parallel with no branch; fix phase.json)'}")
         print(f"  worktree={worktree or '- (plain clone, or already torn down)'}")
-        print(f"  consolidation={execution.get('consolidation') or '-'}")
+        print(f"  consolidation={phase_consolidation(phase) or '-'}")
         print(f"  source={source}")
         if note:
             print(f"  note: {note}")
@@ -1823,7 +1940,7 @@ def parallel_status(args: argparse.Namespace) -> None:
                 print(f"    [{status_box(s.get('status'))}] {str(s.get('id', '')):<{width}}  {str(s.get('status', '')):<17} {name}")
         else:
             print("  slices: none readable at that source")
-        print(f"  verdict: {_parallel_verdict(pid, status, review, slices, execution.get('consolidation'), merged, branch_gone, own_stream)}")
+        print(f"  verdict: {_parallel_verdict(pid, status, review, slices, phase_consolidation(phase), merged, branch_gone, own_stream)}")
 
 
 def parallel_start_hint(state: dict, index: dict) -> str:
@@ -2008,11 +2125,12 @@ def _phase_blockers(pdir: Path) -> list:
     review_status = phase.get("review", {}).get("status")
     if review_status != "pass":
         reasons.append(f"review is {review_status!r}, not pass")
-    # A merged parallel phase still owes the default stream its deferred doc consolidation.
-    # Teardown only warns about this (it is reversible); archiving is not, so it blocks.
-    execution = phase_execution(phase)
-    if execution and execution.get("consolidation") == "pending":
-        reasons.append(f"docs not consolidated -- run the post-merge consolidation, then: python3 scripts/workflow.py parallel-consolidated {phase['id']}")
+    # The phase still owes its deferred doc consolidation. Archiving would move its
+    # `## Doc impact` list -- the sole input to that consolidation -- out of active/, so it
+    # blocks (parallel teardown only warns, because teardown is reversible).
+    if phase_consolidation(phase) == "pending":
+        cmd = "parallel-consolidated" if phase_execution(phase) else "docs-consolidated"
+        reasons.append(f"docs not consolidated -- run a docs phase over its '## Doc impact' notes, then: python3 scripts/workflow.py {cmd} {phase['id']}")
     return reasons
 
 
@@ -2200,6 +2318,10 @@ def main(argv=None) -> int:
     p.add_argument("--walkthrough", default=None, help="the concrete script the operator runs (URLs to open, actions to try, in the operator runtime); use with --open")
     p.add_argument("--note", default=None, help="mandatory reason with --waive; optional record of what the operator reported with --clear")
     p.set_defaults(func=accept_gate)
+
+    p = sub.add_parser("docs-consolidated", help="Record that a phase's deferred durable-doc consolidation landed (run after a docs phase creates the versions; also unblocks archiving)")
+    p.add_argument("phase")
+    p.set_defaults(func=docs_consolidated)
 
     p = sub.add_parser("parallel-start", help="Opt a planned phase into parallel execution: stamp it, commit the stamp, and cut its phase branch + git worktree")
     p.add_argument("phase")

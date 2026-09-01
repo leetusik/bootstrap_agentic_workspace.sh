@@ -9,6 +9,51 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v38 — 2026-09-01
+
+- **Why this release: the phase review was rewriting whole documents that only ever grow.** Measured
+  across four live adopting repos (P21.S1, ~1,140 slices): per-review durable-doc consolidation is
+  **90–97 %** of a review's read budget. One adopter's `backend.md` is at **v0054 / 420 KB** and every
+  review rewrote it whole, while its last sixteen versions averaged **2.7 % new lines**; one review of
+  sixteen versions exceeded a 1 M-token window. So consolidation moves off the review's critical path.
+
+- **Durable docs are now versioned in a docs phase the operator creates.** Every slice still appends a
+  one-line `## Doc impact` note to `phase.md`. A passing review **verifies** that the list covers every
+  durable-truth change (an incomplete list is a finding) and reports
+  `doc_versions: none — deferred to a docs phase` instead of creating versions. Nothing new was
+  invented: **parallel mode has run exactly this deferred path since v24** — `consolidation:
+  pending|done`, the awaiting-consolidation listing, the completion command, the archiving guard — and
+  v38 simply lifts it out of the `execution` block so it serves every phase.
+
+- **The review keeps a narrow, named carve-out: two sections.** `## Regression Checklist` in the qa doc
+  (the acceptance gate's stage-4 append) and `## Operator Runtime` in the operations doc are written by
+  the review itself through `doc-new-version` on that doc, editing **only that section**. Deferring them
+  would have let the product's cumulative smoke list silently lag by however many phases the operator
+  batches, and they are cheap: ~13 k tokens worst case against the 74–734 k the deferral saves. **In
+  parallel mode even the carve-out waits** for the post-merge step — doc versions come from one shared
+  index.
+
+- **The debt is real state, and it holds a phase out of archiving.** `phase.json` gains a top-level
+  `consolidation` field (`pending` / `done`, absent = nothing owed), stamped by `review-phase --verdict
+  pass` whenever the phase left `## Doc impact` notes. `archive-phase` / `archive-all` /
+  `rotate-backlog` refuse an owing phase — archiving is precisely what would move those notes out of
+  `active/` — and the new **`docs-consolidated <P>`** records the payment. `parallel-consolidated <P>`
+  is unchanged as the parallel twin, and now writes both fields.
+
+- **Backward compatible in both directions.** A `phase.json` with no `consolidation` field owes nothing
+  and archives exactly as before, so every phase reviewed under v37 and earlier is unaffected; a
+  `phase.json` carrying the v24–v37 `execution.consolidation` is still read (and still honoured by the
+  archiving guard) with no migration.
+
+- **Migration notes.** Nothing to run at update time, and no existing phase changes state. What changes
+  is the habit: from your next passing review onward, `docs/current/*.md` trails the code until you
+  create a **docs phase** (`/create-phase`, objective "consolidate the `## Doc impact` notes from
+  P<a>–P<b>"), which runs `doc-new-version --doc <doc> --summary "..." --source <P>.REVIEW` per note,
+  `rebuild-docs`, then `docs-consolidated <P>` for each phase it covered. Until you do, those phases
+  stay in `active/` and `rotate-backlog` leaves them there — that is the guard keeping their notes
+  findable, not a bug. Batching every ~5 phases is where the win is (3.3x fewer doc versions in the
+  repo measured). As always after an update, run `python3 scripts/workflow.py sync-agents`.
+
 ## v37 — 2026-09-01
 
 - **Why this release: v36 named the instrument and got the surface wrong.** It prescribed the

@@ -20,13 +20,13 @@
       "order": 5,
       "path": "works/phases/active/P21",
       "review_status": "pending",
-      "current_slice": "P21.S2",
+      "current_slice": "P21.S3",
       "slice_count": 8,
-      "done_slice_count": 3
+      "done_slice_count": 4
     }
   ],
   "deferred_open_count": 7,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 6,
-  "last_rebuilt_at": "2026-09-01T09:50:38+09:00"
+  "last_rebuilt_at": "2026-09-01T10:13:34+09:00"
 }
