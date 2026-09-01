@@ -1,0 +1,15 @@
+{
+  "phase_id": "P20",
+  "archived_at": "2026-09-02T07:03:38+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P20",
+  "archive_path": "works/phases/archived/20260902_070338_P20_make_the_aside_prescription_true_the_repl_surface_over_bash_on_a_dedicated_profile",
+  "slices": [
+    "P20.DECOMP",
+    "P20.S1",
+    "P20.S2",
+    "P20.S3",
+    "P20.REVIEW"
+  ]
+}

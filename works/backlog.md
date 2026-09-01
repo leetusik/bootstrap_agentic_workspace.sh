@@ -15,19 +15,8 @@
 
 | Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
-| [x] `P20` | `done` | `pass` | make the Aside prescription true: the repl surface over Bash, on a dedicated profile | `none` | `works/phases/active/P20` |
 | [x] `P21` | `done` | `pass` | close the workspace's context leaks, measured against live adopters | `none` | `works/phases/active/P21` |
 | [x] `P22` | `done` | `pass` | make doc staleness explicit and right-size the notebook and test guardrails | `none` | `works/phases/active/P22` |
-
-## Phase P20: make the Aside prescription true: the repl surface over Bash, on a dedicated profile
-
-| Slice | Status | Name | Kind | Path |
-|---|---|---|---|---|
-| [x] `P20.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P20/slices/P20.DECOMP` |
-| [x] `P20.S1` | `done` | correct the surface taxonomy and prescribe aside repl over Bash | `implementation` | `works/phases/active/P20/slices/P20.S1` |
-| [x] `P20.S2` | `done` | require a dedicated Aside profile for agent runs | `implementation` | `works/phases/active/P20/slices/P20.S2` |
-| [x] `P20.S3` | `done` | ship workspace v37: version, changelog, consistency sweep | `implementation` | `works/phases/active/P20/slices/P20.S3` |
-| [x] `P20.REVIEW` | `done` | phase review | `review` | `works/phases/active/P20/slices/P20.REVIEW` |
 
 ## Phase P21: close the workspace's context leaks, measured against live adopters
 

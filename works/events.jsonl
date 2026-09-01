@@ -528,3 +528,4 @@
 {"ts": "2026-09-02T07:01:35+09:00", "type": "deferred_dropped", "deferred": "D15", "reason": "resolved by P22"}
 {"ts": "2026-09-02T07:01:35+09:00", "type": "deferred_dropped", "deferred": "D16", "reason": "resolved by P22"}
 {"ts": "2026-09-02T07:01:35+09:00", "type": "deferred_created", "deferred": "D17", "source": "P22.REVIEW"}
+{"ts": "2026-09-02T07:03:38+09:00", "type": "phase_archived", "phase": "P20", "archive_path": "works/phases/archived/20260902_070338_P20_make_the_aside_prescription_true_the_repl_surface_over_bash_on_a_dedicated_profile"}
