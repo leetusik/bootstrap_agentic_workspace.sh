@@ -1,11 +1,11 @@
 {
   "id": "D14",
   "title": "State a docs-phase cadence and tune CONSOLIDATION_DEBT_MIN_PHASES to it",
-  "status": "deferred",
+  "status": "dropped",
   "source": "P21.REVIEW",
   "reason": "docs/current staleness is now operator-paced: batching every ~5 phases = 3.3x fewer versions (368->111), every ~10 = 5.9x but ten phases of notes ride in 16 KB notebooks; S3's knob makes an answer a one-token edit (P21.S1 OQ1)",
   "trigger": "after the first two or three real docs phases, or the first time the consolidation_owed= line feels like noise",
   "created_at": "2026-09-01T11:02:52+09:00",
   "promoted_to": null,
-  "dropped_reason": null
+  "dropped_reason": "resolved by P22"
 }

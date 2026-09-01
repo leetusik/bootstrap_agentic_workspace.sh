@@ -520,3 +520,11 @@
 {"ts": "2026-09-02T06:41:52+09:00", "type": "slice_status_changed", "slice": "P22.S1", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-09-02T06:42:37+09:00", "type": "slice_status_changed", "slice": "P22.S2", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-09-02T06:54:48+09:00", "type": "slice_status_changed", "slice": "P22.S2", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-09-02T06:55:16+09:00", "type": "slice_status_changed", "slice": "P22.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-09-02T07:01:35+09:00", "type": "slice_status_changed", "slice": "P22.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-09-02T07:01:35+09:00", "type": "phase_reviewed", "phase": "P22", "verdict": "pass", "reviewer": "slice-executor-high"}
+{"ts": "2026-09-02T07:01:35+09:00", "type": "phase_consolidation_owed", "phase": "P22", "notes": 8}
+{"ts": "2026-09-02T07:01:35+09:00", "type": "deferred_dropped", "deferred": "D14", "reason": "resolved by P22"}
+{"ts": "2026-09-02T07:01:35+09:00", "type": "deferred_dropped", "deferred": "D15", "reason": "resolved by P22"}
+{"ts": "2026-09-02T07:01:35+09:00", "type": "deferred_dropped", "deferred": "D16", "reason": "resolved by P22"}
+{"ts": "2026-09-02T07:01:35+09:00", "type": "deferred_created", "deferred": "D17", "source": "P22.REVIEW"}

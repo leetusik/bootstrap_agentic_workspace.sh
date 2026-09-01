@@ -1,0 +1,11 @@
+{
+  "id": "D17",
+  "title": "Make the stale_docs= aggregate count say what it counts",
+  "status": "deferred",
+  "source": "P22.REVIEW",
+  "reason": "the line sums per-doc note counts (11) where docs-debt reports distinct notes (9) for the same debt; both are defensible but the phrasing reads as distinct notes",
+  "trigger": "next time anyone touches stale_docs_line() or a docs phase runs",
+  "created_at": "2026-09-02T07:01:35+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

@@ -1,11 +1,11 @@
 {
   "id": "D15",
   "title": "Decide the phase-notebook budget's shape: bytes-only, raised, or excluding the generated block",
-  "status": "deferred",
+  "status": "dropped",
   "source": "P21.REVIEW",
   "reason": "lines never bind (69% vs 92% of bytes) and 37% of the ceiling is incompressible, a share deferral grows; live evidence: DECOMP2, S2, S3 and the P21 review all had to compress to land (P21.S1 OQ3)",
   "trigger": "the next time a slice compresses unrelated content to fit, or when PHASE_MD_BUDGET is touched",
   "created_at": "2026-09-01T11:02:52+09:00",
   "promoted_to": null,
-  "dropped_reason": null
+  "dropped_reason": "resolved by P22"
 }
