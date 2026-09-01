@@ -26,6 +26,7 @@ Doc updates happen in a **docs phase the operator creates** — never per slice.
 - The agent runs `python3 scripts/workflow.py rebuild-docs` after editing the new version.
 - `docs/current/*.md` is generated from the latest version and should not be manually edited.
 - When a phase's notes are all consolidated: `python3 scripts/workflow.py docs-consolidated <P>` (that is also what unblocks archiving it).
+- `doc-new-version` and `validate` warn (advisory only) when an H2 section has grown past ~10 KB: while consolidating that doc, split the section they name — per-doc judgment, not a sweep, and a small doc with few sections is fine as it is.
 
 ## Update Triggers
 

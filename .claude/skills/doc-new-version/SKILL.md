@@ -18,4 +18,6 @@ python3 scripts/workflow.py rebuild-docs
 python3 scripts/workflow.py validate
 ```
 
+**If the command prints an `oversized_doc_sections=` note** (the same text `validate` warns with), split the section(s) it names *in this version file* — a section past the threshold has outgrown the read-order rule, so "read only the sections the work touches" has quietly become "read the doc". Splitting is per-doc judgment while you are already editing that doc, never a sweep across the doc set: a small doc whose few sections are its whole content is measurably better left exactly as it is.
+
 Never manually edit `docs/current/*.md` or any existing file under `docs/versions/`.

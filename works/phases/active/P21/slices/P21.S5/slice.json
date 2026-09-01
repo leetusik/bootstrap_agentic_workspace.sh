@@ -3,12 +3,12 @@
   "phase_id": "P21",
   "name": "split oversized doc sections (R5)",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 7,
   "depends_on": [],
   "created_at": "2026-09-01T09:46:50+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-01T10:38:22+09:00",
+  "completed_at": "2026-09-01T10:47:05+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -18,7 +18,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Oversized H2 sections warned in validate + doc-new-version (advisory, 10 KB threshold); smoke 152 PASS",
   "validation": {
     "required": [],
     "last_run": null,

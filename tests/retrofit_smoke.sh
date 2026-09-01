@@ -602,6 +602,30 @@ after_debt=$( cd "$F" && find works docs -type f | sort | xargs cat | sha_stdin 
   && ok "docs-consolidated pays the debt and unblocks archiving" || bad "docs-consolidated did not unblock archiving"
 ( cd "$F" && python3 scripts/workflow.py docs-debt 2>&1 | grep -q "docs_debt=none" ) \
   && ok "docs-debt is silent once nothing owes consolidation" || bad "docs-debt still reports debt on a clean tree"
+# v38 oversized doc sections: advisory only, at both sites. A fresh install's seed docs are tiny,
+# so the clean tree must be silent; a version carrying a >10 KB H2 section must be named (doc,
+# heading, size) by `validate` WITHOUT changing its exit code, and by `doc-new-version` itself --
+# the only place a split can actually land.
+( cd "$F" && python3 scripts/workflow.py validate 2>&1 | grep -q "oversized_doc_sections=" ) \
+  && bad "validate flagged an oversized doc section on a clean fresh install" \
+  || ok "validate is silent about doc sections on a clean fresh install"
+big_path=$( cd "$F" && python3 scripts/workflow.py doc-new-version --doc data --summary "oversized probe" --source manual 2>&1 | sed -n 's/^edit_path=//p' )
+python3 - "$F/$big_path" <<'PY2'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+p.write_text(p.read_text() + "\n## Oversized probe section\n\n" + ("filler line to push this section past the threshold\n" * 240))
+PY2
+( cd "$F" && python3 scripts/workflow.py rebuild-docs >/dev/null 2>&1 ) || bad "rebuild-docs failed after the oversized probe"
+big_out=$( cd "$F" && python3 scripts/workflow.py validate 2>&1 ); big_rc=$?
+printf '%s\n' "$big_out" | grep -q "warning: oversized_doc_sections=1" \
+  && printf '%s\n' "$big_out" | grep -q "data.md '## Oversized probe section'" \
+  && [ "$big_rc" -eq 0 ] \
+  && ok "validate names an oversized doc section (doc, heading, size) and still exits 0" \
+  || bad "validate did not warn exit-code-neutrally about an oversized doc section (rc=$big_rc)"
+( cd "$F" && python3 scripts/workflow.py doc-new-version --doc data --summary "split probe" --source manual 2>&1 | grep -q "note: oversized_doc_sections=1" ) \
+  && ok "doc-new-version repeats the oversized-section note where the split can land" \
+  || bad "doc-new-version did not flag the oversized section it is about to hand over for editing"
 python3 - "$F/works/phases/active/P1/slices/P1.S1/slice.json" <<'PY2'
 import json, sys
 p = sys.argv[1]

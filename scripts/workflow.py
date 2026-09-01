@@ -22,6 +22,15 @@ DEFERRED_OPEN = WORKS / "deferred" / "open"
 DEFERRED_PROMOTED = WORKS / "deferred" / "promoted"
 DEFERRED_DROPPED = WORKS / "deferred" / "dropped"
 DOC_TYPES = {"product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"}
+# An H2 section in a durable doc past this many bytes has outgrown the read-order rule
+# ("read the `docs/current/` SECTIONS the work touches"): at ~4 B/token 10 KB is ~2.5 k tokens,
+# and measured across four live adopting repos (P21.S1 §2.8) 10 % of all H2 sections are already
+# over it, the worst one 112,619 B / ~28 k tokens in a single section. 10 KB is that measurement's
+# own cut line, so the check flags the tail that actually defeats the rule and stays quiet on the
+# other 90 %. ADVISORY ONLY -- a warning naming doc, section and size, never an error: splitting is
+# per-doc judgment for the next docs phase (small docs measured WORSE when sectioned, §2.4), so
+# this only makes the drift visible. One knob, no config plumbing.
+DOC_SECTION_WARN_BYTES = 10 * 1024
 PHASE_STATUSES = {"planned", "in_progress", "in_review", "pending", "blocked", "done"}
 SLICE_STATUSES = {"todo", "ready", "in_progress", "in_review", "changes_requested", "pending", "blocked", "done"}
 DEFERRED_STATUSES = {"deferred", "ready", "promoted", "done", "dropped"}
@@ -354,6 +363,12 @@ def new_doc_version(args: argparse.Namespace) -> None:
     print(f"created doc version {doc_id}/{version_id}")
     print(f"edit_path={rel}")
     print("after editing, run: python3 scripts/workflow.py rebuild-docs")
+    # The split can only happen in a new version, and this is one -- so say it here, not only in
+    # `validate`, where the reader is nowhere near an editable file.
+    hint = oversized_sections_line(oversized_doc_sections([doc_id]))
+    if hint:
+        print(f"note: {hint}")
+        print("note: you are writing that doc now -- if you split, split it in this version file, never in docs/current")
 
 
 def cmd_docs(args: argparse.Namespace) -> None:
@@ -362,6 +377,64 @@ def cmd_docs(args: argparse.Namespace) -> None:
         info = index["docs"][doc_id]
         latest = next(v for v in info["versions"] if v["id"] == info["latest"])
         print(f"{doc_id}: latest={info['latest']} current={info['current_path']} latest_path={latest['path']}")
+
+
+def h2_sections(text: str) -> list:
+    """`(heading, bytes)` for every `## ` section of a markdown document, biggest-unit-first order.
+
+    A section runs from its heading to the next `## `, so deeper headings count as its body -- that
+    is the unit a reader actually reads. Fenced blocks are skipped (a `## ` inside a shell example
+    is a comment, not a heading), and the size is bytes, because bytes are what the reader pays.
+    """
+    lines = text.split("\n")
+    fenced, starts = False, []
+    for i, line in enumerate(lines):
+        if line.startswith("```") or line.startswith("~~~"):
+            fenced = not fenced
+        elif not fenced and line.startswith("## "):
+            starts.append(i)
+    out = []
+    for j, i in enumerate(starts):
+        end = starts[j + 1] if j + 1 < len(starts) else len(lines)
+        out.append((lines[i].strip(), len("\n".join(lines[i:end]).encode("utf-8"))))
+    return out
+
+
+def oversized_doc_sections(doc_ids=None, threshold: int = DOC_SECTION_WARN_BYTES) -> list:
+    """Every `docs/current` H2 section past `threshold` bytes, biggest first: `(doc, heading, bytes)`.
+
+    Measured on the generated current snapshots, because those are what a slice reads. Best effort
+    and never fatal: a doc with no current file is skipped rather than reported, so a partial or
+    foreign workspace still validates. `doc_ids` narrows it to the doc being written.
+    """
+    wanted = sorted(DOC_TYPES if doc_ids is None else set(doc_ids) & DOC_TYPES)
+    found = []
+    for doc_id in wanted:
+        path = DOCS / "current" / f"{doc_id}.md"
+        if not path.exists():
+            continue
+        found += [(doc_id, heading, size) for heading, size in h2_sections(path.read_text(encoding="utf-8")) if size > threshold]
+    return sorted(found, key=lambda item: -item[2])
+
+
+def oversized_sections_line(sections: list, limit: int = 3) -> str:
+    """One advisory line naming the biggest oversized sections, or "" when there are none -- shared
+    by `validate` and `doc-new-version` so the warning and the write-time hint can never word it
+    differently (the `consolidation_debt_line` pattern).
+
+    Advisory everywhere, never an error and never a sweep order: splitting is per-doc judgment at
+    the next consolidation, and a small doc whose few sections are its whole content is fine as it is.
+    """
+    if not sections:
+        return ""
+    def short(heading: str) -> str:
+        return heading if len(heading) <= 60 else heading[:57] + "..."
+    named = "; ".join(f"{doc}.md '{short(heading)}' {size:,} B" for doc, heading, size in sections[:limit])
+    if len(sections) > limit:
+        named += f"; +{len(sections) - limit} more"
+    return (f"oversized_doc_sections={len(sections)} (H2 sections over {DOC_SECTION_WARN_BYTES:,} B, so"
+            f" \"read only the sections the work touches\" is no longer a small read): {named}"
+            f" -- split them at the next consolidation (a docs phase), by per-doc judgment, never a sweep")
 
 
 def validate_docs(errors: list) -> None:
@@ -1013,6 +1086,12 @@ def validate() -> int:
     debt = consolidation_debt_line(phases)
     if debt:
         warnings.append(debt)
+    # Oversized durable-doc sections. A WARNING, never an error, for the same reason: the read-order
+    # rule ("read the sections the work touches") degrades silently as sections outgrow the doc they
+    # were cut from, and the remedy -- splitting one -- belongs to the next docs phase, not to CI.
+    oversized = oversized_sections_line(oversized_doc_sections())
+    if oversized:
+        warnings.append(oversized)
     # Executor-tier drift is advisory only: warn (never error, never crash) when the agent
     # files disagree with executors.toml/defaults, so a foreign or partial workspace still validates.
     try:

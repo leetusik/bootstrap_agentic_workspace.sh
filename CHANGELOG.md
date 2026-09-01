@@ -65,6 +65,17 @@ history.
   phases), ending in `docs-consolidated <P>` for each phase covered. A docs phase leaves no `## Doc
   impact` notes of its own, so it cannot feed itself.
 
+- **A second-order leak the same root cause caused: sections that outgrew the read-order rule.** Docs
+  only grow and sections are never split, so "read only the `docs/current/` sections the work touches"
+  quietly stopped being a small read — across the four repos measured, **10 % of H2 sections exceed
+  10 KB** and the worst is a single **112,619 B (~28 k token)** section. `validate` and
+  `doc-new-version` now print one advisory `oversized_doc_sections=` line naming the doc, the heading
+  and the size, biggest first, with the same text from one helper. **Advisory only — a warning at
+  both sites, never an error, and never a sweep order:** splitting is per-doc judgment taken while a
+  docs phase is already editing that doc (`doc-new-version` prints it beside `edit_path`, the only
+  place a split can land), and the same measurement showed sectioning *hurts* small-doc repos, so a
+  small doc with few sections is right as it is. One knob: `DOC_SECTION_WARN_BYTES` (10 KB).
+
 - **Migration notes.** Nothing to run at update time, and no existing phase changes state. What changes
   is the habit: from your next passing review onward, `docs/current/*.md` trails the code until you
   create a **docs phase** — run `python3 scripts/workflow.py docs-debt` for the worklist, then
