@@ -13,7 +13,8 @@
 # (Aside is the prescribed real-browser instrument, driven on the v37 `repl`
 # surface over Bash rather than a standing MCP registration, with a fallback that
 # excuses no check, in the contract, both agent bodies and the design/review skills),
-# the v35 phase-notebook
+# the v39 doc-staleness invariants (the last-updated marker at write time, with and
+# without git, and the STALE flag an owed '## Doc impact' note raises), the v35 phase-notebook
 # invariants (template seed, generated ## Slices block, finish-slice --outcome, the
 # notebook budget/case-drift warnings and the timestamp-free dashboards), and the
 # v31 Codex-removal negatives. Re-runnable; self-cleaning.
@@ -564,7 +565,7 @@ python3 - "$F/works/phases/active/P2/phase.md" <<'PY2'
 import sys
 from pathlib import Path
 p = Path(sys.argv[1])
-p.write_text(p.read_text().replace("## Operator Questions", "- workflow.md: a durable change (P2.S1)\n\n## Operator Questions", 1))
+p.write_text(p.read_text().replace("## Operator Questions", "- workflow.md: a durable change (P2.S1)\n- architecture.md: a durable change to architecture (P2.S2)\n\n## Operator Questions", 1))
 PY2
 ( cd "$F" \
   && python3 scripts/workflow.py accept-gate P2 --waive --note "probe" >/dev/null 2>&1 \
@@ -595,6 +596,18 @@ after_debt=$( cd "$F" && find works docs -type f | sort | xargs cat | sha_stdin 
 [ -n "$before_debt" ] && [ "$before_debt" = "$after_debt" ] \
   && ok "docs-debt writes nothing (the workspace tree is unchanged after it runs)" \
   || bad "docs-debt modified the workspace"
+# v39 doc staleness (D14): the `docs` listing carries every doc's last-updated marker, and a doc
+# named by an unconsolidated '## Doc impact' note is flagged STALE there and named in `validate`.
+# Advisory only -- operator-paced consolidation is the design, so staleness must be loud, not fatal.
+docs_out=$( cd "$F" && python3 scripts/workflow.py docs 2>&1 )
+printf '%s\n' "$docs_out" | grep -qE "^  updated=[0-9]{4}-[0-9]{2}-[0-9]{2} source=[^ ]+ commit=" \
+  && ok "docs prints a last-updated marker (date, source, commit) under each doc" \
+  || bad "docs did not print the per-doc last-updated marker"
+printf '%s\n' "$docs_out" | grep -q "STALE: 1 unconsolidated '## Doc impact' note(s) from P2" \
+  && printf '%s\n' "$docs_out" | grep -q "stale_docs=architecture" \
+  && ok "docs flags the doc an owed note names as STALE" || bad "docs did not flag the stale doc"
+( cd "$F" && python3 scripts/workflow.py validate 2>&1 | grep -q "warning: stale_docs=architecture" ) \
+  && ok "validate names the stale docs (warning, exit 0)" || bad "validate did not name the stale docs"
 ( cd "$F" && python3 scripts/workflow.py archive-phase P2 2>&1 | grep -q "docs not consolidated" ) \
   && ok "archiving is blocked while the doc debt stands" || bad "a phase owing docs archived anyway"
 ( cd "$F" && python3 scripts/workflow.py docs-consolidated P2 >/dev/null 2>&1 && python3 scripts/workflow.py archive-phase P2 >/dev/null 2>&1 ) \
@@ -602,6 +615,9 @@ after_debt=$( cd "$F" && find works docs -type f | sort | xargs cat | sha_stdin 
   && ok "docs-consolidated pays the debt and unblocks archiving" || bad "docs-consolidated did not unblock archiving"
 ( cd "$F" && python3 scripts/workflow.py docs-debt 2>&1 | grep -q "docs_debt=none" ) \
   && ok "docs-debt is silent once nothing owes consolidation" || bad "docs-debt still reports debt on a clean tree"
+( cd "$F" && python3 scripts/workflow.py docs 2>&1 | grep -q "STALE" ) \
+  && bad "docs still flags a stale doc after the debt was paid" \
+  || ok "paying the consolidation debt clears the STALE flag"
 # v38 oversized doc sections: advisory only, at both sites. A fresh install's seed docs are tiny,
 # so the clean tree must be silent; a version carrying a >10 KB H2 section must be named (doc,
 # heading, size) by `validate` WITHOUT changing its exit code, and by `doc-new-version` itself --
@@ -626,6 +642,26 @@ printf '%s\n' "$big_out" | grep -q "warning: oversized_doc_sections=1" \
 ( cd "$F" && python3 scripts/workflow.py doc-new-version --doc data --summary "split probe" --source manual 2>&1 | grep -q "note: oversized_doc_sections=1" ) \
   && ok "doc-new-version repeats the oversized-section note where the split can land" \
   || bad "doc-new-version did not flag the oversized section it is about to hand over for editing"
+# v39 last-updated marker at write time: the HEAD sha lands in the version frontmatter (which
+# rebuild-docs copies verbatim into docs/current) AND in the index entry. Needs a repo with a
+# commit, so the fixture becomes one here; the later dashboard test re-inits it harmlessly.
+( cd "$F" && git init -q . >/dev/null 2>&1 && git add -A >/dev/null 2>&1 \
+    && git -c user.email=smoke@example.invalid -c user.name=smoke commit -qm "marker baseline" >/dev/null 2>&1 ) \
+  || bad "v39 marker probe: could not make the fixture a git repo"
+head_sha=$( cd "$F" && git rev-parse HEAD 2>/dev/null )
+marker_path=$( cd "$F" && python3 scripts/workflow.py doc-new-version --doc security --summary "marker probe" --source manual 2>&1 | sed -n 's/^edit_path=//p' )
+[ -n "$head_sha" ] && grep -q "^commit: $head_sha\$" "$F/$marker_path" \
+  && grep -q "\"commit\": \"$head_sha\"" "$F/docs/index.json" \
+  && grep -q "^commit: $head_sha\$" "$F/docs/current/security.md" \
+  && ok "doc-new-version records the HEAD sha in the frontmatter, docs/current and the index entry" \
+  || bad "doc-new-version did not record the commit sha"
+# ...and where git cannot answer at all (no git on PATH), the version is still written: the sha is
+# recorded as unknown/null and nothing raises.
+nogit_py=$( command -v python3 )
+nogit_path=$( cd "$F" && PATH="/var/empty" "$nogit_py" scripts/workflow.py doc-new-version --doc security --summary "no git probe" --source manual 2>&1 | sed -n 's/^edit_path=//p' )
+[ -n "$nogit_path" ] && grep -q "^commit: unknown\$" "$F/$nogit_path" && grep -q "\"commit\": null" "$F/docs/index.json" \
+  && ok "doc-new-version survives a checkout without git (commit unknown/null, never fatal)" \
+  || bad "doc-new-version broke or recorded a sha where git was unavailable"
 python3 - "$F/works/phases/active/P1/slices/P1.S1/slice.json" <<'PY2'
 import json, sys
 p = sys.argv[1]

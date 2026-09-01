@@ -11,6 +11,30 @@ history.
 
 ## v39 — 2026-09-02
 
+- **Why this release: a doc nobody has consolidated yet still reads like the truth.** v38 moved
+  durable-doc consolidation off the review and onto a docs phase the operator creates — deliberately
+  operator-paced, with no cadence forcing it. That left one gap: `docs/current` can trail the code by
+  however long the operator waits, and nothing on the page said so. v39 makes a doc's age readable and
+  states the doctrine that goes with it — **a doc whose last update predates the owed `## Doc impact`
+  notes is stale evidence to check against those notes, never current truth.** No cadence knob was
+  added: explicit staleness is what was taken instead of one.
+
+- **Every durable doc carries a last-updated marker.** `doc-new-version` now records the commit it was
+  written at beside the date and the consolidating slice, in **both** `docs/index.json` and the version's
+  frontmatter — and `rebuild-docs` copies that frontmatter verbatim, so the marker reaches
+  `docs/current/<doc>.md` itself. The sha is best-effort provenance, never a gate: a checkout without git
+  records `unknown` / `null` and still writes the version, and pre-v39 entries render `unknown (pre-v39)`
+  rather than being backfilled — a backfilled sha would mean "the commit that last touched the file", a
+  different fact wearing the same name. The staleness keys are the date and the source slice.
+
+- **`docs` and `validate` name the stale docs.** `workflow.py docs` — where an agent picks the sections
+  it is about to read — prints each doc's marker and flags every doc named by an unconsolidated
+  `## Doc impact` note as **STALE**, with the note count and the phases owing it; `validate` carries the
+  same shared `stale_docs=` line as a warning beside `consolidation_owed=` (which names phases and the
+  paying command, not docs). Advisory everywhere, exit codes unchanged, silent when nothing owes. The
+  contract's read-order item and both executor agents now say what a STALE doc is: evidence to check
+  against the notes, not truth.
+
 - **The phase-notebook budget is one generous byte cap, not a squeeze.** `PHASE_MD_BUDGET` was
   `(200 lines, 16 KB)`; it is now a single **400 KB** byte cap — roughly 100k tokens — and the line
   ceiling is gone. P21 measured both halves across every budget-era notebook: the byte half bound at
@@ -32,7 +56,10 @@ history.
 - **Migration notes.** Nothing to run at update time. Adopting repos pick up the relaxed budget the
   moment `scripts/workflow.py` syncs; a notebook written under the old squeeze stays valid and simply
   stops being over budget. If your repo restates "200 lines / 16 KB" in prose of its own, update it to
-  the soft ~100k-token cap.
+  the soft ~100k-token cap. The doc marker is equally passive: existing `docs/index.json` entries are
+  left alone and read as `unknown (pre-v39)`, the first `doc-new-version` after the sync starts
+  recording it, and any doc your phases already owe notes for is flagged STALE from the first `docs`
+  run — that flag is the debt you already had, now visible, not a new one.
 
 ## v38 — 2026-09-01
 

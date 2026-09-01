@@ -3,14 +3,14 @@
   "phase_id": "P22",
   "name": "make doc staleness explicit in docs/index.json and where docs are read (D14)",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 2,
   "depends_on": [
     "P22.S1"
   ],
   "created_at": "2026-09-02T06:32:28+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-02T06:42:37+09:00",
+  "completed_at": "2026-09-02T06:54:48+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Shipped D14 — doc versions record a last-updated marker (date, consolidating slice, commit sha) in docs/index.json and frontmatter; docs/validate flag docs outrun by unconsolidated Doc-impact notes as STALE via one shared stale_docs= line; staleness doctrine landed in CLAUDE.md and both executor tiers",
   "validation": {
     "required": [],
     "last_run": null,

@@ -70,7 +70,9 @@ CONSOLIDATION_STATES = {"pending", "done"}
 # 1 = always, whenever anything owes -- the deliberate default, because the debt has to be
 # visible at ANY docs-phase cadence: deferral traded review cost for operator-paced staleness,
 # and silent staleness is the one outcome the trade may not have. This single constant is the
-# only "how loud" knob; a stated cadence can raise it later without any config plumbing.
+# only "how loud" knob for the *debt* line. v39 settled the cadence question by declining it --
+# consolidation runs when the operator wants it, and explicit doc staleness (`stale_docs`) is what
+# was taken instead -- so this stays 1; a repo that later states a cadence can still raise it.
 CONSOLIDATION_DEBT_MIN_PHASES = 1
 # What `docs-debt` calls a note that names no doc from DOC_TYPES -- listed, never guessed at.
 UNASSIGNED_DOC = "(unassigned)"
@@ -323,6 +325,42 @@ def next_doc_version_id(doc_id: str, index: dict) -> tuple:
     return f"v{num:04d}", num
 
 
+def head_commit() -> str:
+    """The current HEAD sha, or "" where git cannot answer -- the provenance half of a doc's
+    last-updated marker.
+
+    Best effort and NEVER fatal: the engine has to keep working in a tarball copy, a fresh
+    unpushed install or any checkout without git, so every failure (missing binary, not a repo,
+    an empty repo with no commit yet, a timeout) records nothing instead of raising. Honest
+    semantics: this is the commit the version was *created at* -- the version file itself lands
+    in a later commit -- so the sha is provenance, while `created_at` and `source` are the
+    staleness keys a reader actually judges by.
+    """
+    try:
+        proc = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(ROOT), capture_output=True, text=True, timeout=10)
+    except Exception:  # noqa: BLE001 - git is optional; a doc version must still be writable without it
+        return ""
+    sha = proc.stdout.strip()
+    return sha if proc.returncode == 0 and re.fullmatch(r"[0-9a-f]{7,40}", sha) else ""
+
+
+def doc_marker(version: dict) -> str:
+    """One doc version's last-updated marker: when it was written, which slice consolidated it,
+    and the commit it was written at -- the line `docs` prints under every doc.
+
+    `commit` arrived in v39, so its two absences are reported differently and honestly: a key that
+    is *missing* predates the field (pre-v39, and never backfilled -- a backfilled sha would mean
+    "the commit that last touched the file", a different fact wearing the same name), while a key
+    that is `null` means the write happened where git could not be read. Neither is an error.
+    """
+    if "commit" in version:
+        sha = version.get("commit")
+        commit = str(sha)[:12] if sha else "unknown (no git at write time)"
+    else:
+        commit = "unknown (pre-v39)"
+    return f"updated={str(version.get('created_at', ''))[:10]} source={version.get('source') or 'unknown'} commit={commit}"
+
+
 def new_doc_version(args: argparse.Namespace) -> None:
     doc_id = args.doc
     if doc_id not in DOC_TYPES:
@@ -345,11 +383,16 @@ def new_doc_version(args: argparse.Namespace) -> None:
     dest = ROOT / rel
     if dest.exists():
         raise SystemExit(f"doc version already exists: {rel}")
+    # The last-updated marker (v39). Written into both the frontmatter -- which `rebuild_docs`
+    # copies verbatim into `docs/current`, so the marker reaches the file a reader opens -- and the
+    # index entry `docs` reads. Absent git is recorded as `unknown`/null, never raised.
+    commit = head_commit()
     frontmatter = (
         f"---\n"
         f"doc_id: {doc_id}\n"
         f"version: {version_prefix}\n"
         f"created_at: {now_iso()}\n"
+        f"commit: {commit or 'unknown'}\n"
         f"source: {args.source}\n"
         f"summary: {args.summary}\n"
         f"previous: {latest_id}\n"
@@ -358,7 +401,7 @@ def new_doc_version(args: argparse.Namespace) -> None:
     write_text(dest, frontmatter + base_body)
     info["latest"] = version_id
     info["versions"].append({
-        "id": version_id, "path": rel, "created_at": now_iso(),
+        "id": version_id, "path": rel, "created_at": now_iso(), "commit": commit or None,
         "source": args.source, "summary": args.summary, "previous": latest_id,
     })
     write_doc_index(index)
@@ -376,11 +419,24 @@ def new_doc_version(args: argparse.Namespace) -> None:
 
 
 def cmd_docs(args: argparse.Namespace) -> None:
+    """The durable-doc listing -- where an agent picks which sections to read, and therefore where
+    each doc's last-updated marker and its staleness belong. Writes nothing."""
     index = doc_index()
+    stale = stale_docs()
     for doc_id in sorted(index["docs"]):
         info = index["docs"][doc_id]
         latest = next(v for v in info["versions"] if v["id"] == info["latest"])
         print(f"{doc_id}: latest={info['latest']} current={info['current_path']} latest_path={latest['path']}")
+        line = f"  {doc_marker(latest)}"
+        owed = stale.get(doc_id)
+        if owed:
+            notes = sum(owed.values())
+            line += (f" -- STALE: {notes} unconsolidated '## Doc impact' note(s) from {', '.join(sorted(owed))}"
+                     f" are newer than this version; read them (docs-debt) before trusting this doc")
+        print(line)
+    hint = stale_docs_line(stale)
+    if hint:
+        print(hint)
 
 
 def h2_sections(text: str) -> list:
@@ -675,6 +731,58 @@ def consolidation_command(phase) -> str:
     """The command that pays one phase's debt. Parallel phases keep their post-merge twin, so
     the archiving guard, `next` and `validate` can never name a command the engine would refuse."""
     return "parallel-consolidated" if phase_execution(phase) else "docs-consolidated"
+
+
+def stale_docs(phases=None) -> dict:
+    """`{doc: {phase_id: note_count}}` -- every durable doc named by a `## Doc impact` note that no
+    consolidation has paid yet. The doc-side view of the same debt `consolidation_debt_line` states
+    phase-side.
+
+    Why it matters: an owed note is evidence *newer* than the doc's latest version, so on that
+    subject `docs/current` trails the code. The doc is then stale evidence to read against the
+    notes, never current truth -- which is a fact about the doc a reader is choosing, not about the
+    phase, so it is surfaced where docs are read.
+
+    Composed from the helpers that already exist (`phases_owing_consolidation`,
+    `phase_doc_impact_notes`, `doc_impact_docs`) so `docs`, `validate` and `docs-debt` can never
+    disagree about which docs are affected. Best effort, exactly like `doc_impact_docs`: a note
+    naming no known doc is counted under `UNASSIGNED_DOC` rather than guessed at, and a phase whose
+    notebook is gone contributes nothing instead of raising.
+    """
+    owing = phases_owing_consolidation(all_active_phases() if phases is None else phases)
+    per_doc = {}
+    for phase in owing:
+        pdir = ROOT / phase["path"] if phase.get("path") else ACTIVE / str(phase.get("id"))
+        for note in phase_doc_impact_notes(pdir):
+            for doc in doc_impact_docs(note) or [UNASSIGNED_DOC]:
+                per_doc.setdefault(doc, {}).setdefault(phase["id"], 0)
+                per_doc[doc][phase["id"]] += 1
+    return per_doc
+
+
+def stale_docs_line(stale: dict) -> str:
+    """One advisory `key=value` line naming the stale docs, or "" when none are -- shared by `docs`
+    and `validate` so the listing and the warning can never word it differently (the
+    `consolidation_debt_line` / `oversized_sections_line` pattern).
+
+    Distinct from `consolidation_owed=`, which names the *phases* that owe and the command that
+    pays: this names the *docs* a reader must not trust yet. Advisory everywhere, never an error --
+    operator-paced consolidation is the design (v39 took explicit staleness instead of a cadence),
+    so this must not fail CI or block the loop; it must only stop being silent.
+
+    Deliberately NOT gated on `CONSOLIDATION_DEBT_MIN_PHASES`: that knob tunes how loud the debt is,
+    and a debt can reasonably wait for a batch -- but staleness is a fact about the doc a reader is
+    holding right now, and no cadence setting may quiet it.
+    """
+    named = sorted(d for d in stale if d != UNASSIGNED_DOC)
+    if not named:
+        return ""
+    phases = sorted({pid for doc in named for pid in stale[doc]})
+    notes = sum(sum(stale[doc].values()) for doc in named)
+    return (f"stale_docs={', '.join(named)} ({len(named)} doc(s) named by {notes} unconsolidated"
+            f" '## Doc impact' note(s) from {', '.join(phases)}; docs/current is older than those notes, so"
+            f" for those subjects it is stale evidence to check against them, never current truth"
+            f" -- read them with docs-debt)")
 
 
 def consolidation_debt_line(phases: list) -> str:
@@ -1090,6 +1198,13 @@ def validate() -> int:
     debt = consolidation_debt_line(phases)
     if debt:
         warnings.append(debt)
+    # ...and the doc-side half of the same debt: which docs an agent must not read as current truth
+    # while it stands. A separate line because it carries what the debt line cannot -- the doc names
+    # a reader chooses by -- and a WARNING for the same reason: staleness is expected, being silent
+    # about it is not.
+    stale = stale_docs_line(stale_docs(phases))
+    if stale:
+        warnings.append(stale)
     # Oversized durable-doc sections. A WARNING, never an error, for the same reason: the read-order
     # rule ("read the sections the work touches") degrades silently as sections outgrow the doc they
     # were cut from, and the remedy -- splitting one -- belongs to the next docs phase, not to CI.
@@ -1948,15 +2063,13 @@ def docs_debt(args: argparse.Namespace) -> None:
     stream = current_stream(phases)
     if stream:
         print(f"warning: this checkout is on parallel stream {stream}; doc consolidation runs on the default stream")
-    per_doc, notes_total = {}, 0
-    blocks = []
+    # The per-doc rollup is the same mapping `docs` and `validate` call stale: one helper, so the
+    # worklist and the staleness warning can never name a different set of docs.
+    per_doc = stale_docs(owing)
+    notes_total, blocks = 0, []
     for phase in owing:
         notes = phase_doc_impact_notes(ROOT / phase["path"])
         notes_total += len(notes)
-        for note in notes:
-            for doc in doc_impact_docs(note) or [UNASSIGNED_DOC]:
-                per_doc.setdefault(doc, {}).setdefault(phase["id"], 0)
-                per_doc[doc][phase["id"]] += 1
         blocks.append((phase, notes))
     docs_hit = sorted(d for d in per_doc if d != UNASSIGNED_DOC)
     print(f"docs_debt={', '.join(p['id'] for p in owing)} ({len(owing)} phase(s), {notes_total} note(s), {len(docs_hit)} doc(s))")
