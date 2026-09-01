@@ -1,0 +1,35 @@
+{
+  "id": "P21.S4",
+  "phase_id": "P21",
+  "name": "docs-phase entry point (R4)",
+  "kind": "implementation",
+  "status": "todo",
+  "order": 6,
+  "depends_on": [
+    "P21.S2",
+    "P21.S3"
+  ],
+  "created_at": "2026-09-01T09:46:50+09:00",
+  "started_at": null,
+  "completed_at": null,
+  "risk": "high",
+  "source": {
+    "type": "manual",
+    "id": null
+  },
+  "paths": {
+    "plan": "plan.md",
+    "result": "result.md"
+  },
+  "outcome": null,
+  "validation": {
+    "required": [],
+    "last_run": null,
+    "last_status": "pending"
+  },
+  "archive": {
+    "archived": false,
+    "archived_at": null,
+    "archive_path": null
+  }
+}
