@@ -5,18 +5,18 @@
 
 ## Pointer
 
-- Current phase: `P21`
-- Current slice: `P21.REVIEW`
+- Current phase: `none`
+- Current slice: `none`
 - Next slice: `none`
 - Waiting on operator: `none`
-- Open deferred jobs: `7`
+- Open deferred jobs: `10`
 
 ## Active Phases
 
 | Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
 | [x] `P20` | `done` | `pass` | make the Aside prescription true: the repl surface over Bash, on a dedicated profile | `none` | `works/phases/active/P20` |
-| [ ] `P21` | `planned` | `pending` | close the workspace's context leaks, measured against live adopters | `P21.REVIEW` | `works/phases/active/P21` |
+| [x] `P21` | `done` | `pass` | close the workspace's context leaks, measured against live adopters | `none` | `works/phases/active/P21` |
 
 ## Phase P20: make the Aside prescription true: the repl surface over Bash, on a dedicated profile
 
@@ -39,4 +39,4 @@
 | [x] `P21.S3` | `done` | surface consolidation debt in next/validate (R3) | `implementation` | `works/phases/active/P21/slices/P21.S3` |
 | [x] `P21.S4` | `done` | docs-phase entry point (R4) | `implementation` | `works/phases/active/P21/slices/P21.S4` |
 | [x] `P21.S5` | `done` | split oversized doc sections (R5) | `implementation` | `works/phases/active/P21/slices/P21.S5` |
-| [ ] `P21.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P21/slices/P21.REVIEW` |
+| [x] `P21.REVIEW` | `done` | phase review | `review` | `works/phases/active/P21/slices/P21.REVIEW` |

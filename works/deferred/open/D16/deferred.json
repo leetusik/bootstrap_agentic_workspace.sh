@@ -1,0 +1,11 @@
+{
+  "id": "D16",
+  "title": "Decide whether keep-tests-small grows teeth for changple5, and in what shape",
+  "status": "deferred",
+  "source": "P21.REVIEW",
+  "reason": "teeth needed in exactly one adopter (test:source 0.42 vs 0.11-0.13; 40 post-rule files >20 KB, but 218 files / 2.86 MB predate the workspace) and this repo may not edit adopters; options: documented procedure, advisory ratio warning, or accept 0.42 (P21.S1 OQ4)",
+  "trigger": "when the operator next works in changple5, or when the keep-tests-small rule is next edited",
+  "created_at": "2026-09-01T11:02:52+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

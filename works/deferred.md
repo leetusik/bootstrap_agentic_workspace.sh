@@ -4,7 +4,7 @@
 
 ## Summary
 
-- Open: `7`
+- Open: `10`
 - Promoted: `0`
 - Dropped: `6`
 
@@ -14,6 +14,9 @@
 |---|---|---|---|---|---|
 | `D12` | `deferred` | Validate the v37 Aside prescription against a real browsable product | P20.REVIEW | the first phase with a real browsable product needing a functional sweep or gated review | `works/deferred/open/D12` |
 | `D13` | `deferred` | Decide whether the dedicated-profile rule binds the fallback browser as well as Aside | P20.REVIEW | before the first non-Aside workspace runs a fidelity or gated-review slice -- or whenever the Aside doctrine is next edited | `works/deferred/open/D13` |
+| `D14` | `deferred` | State a docs-phase cadence and tune CONSOLIDATION_DEBT_MIN_PHASES to it | P21.REVIEW | after the first two or three real docs phases, or the first time the consolidation_owed= line feels like noise | `works/deferred/open/D14` |
+| `D15` | `deferred` | Decide the phase-notebook budget's shape: bytes-only, raised, or excluding the generated block | P21.REVIEW | the next time a slice compresses unrelated content to fit, or when PHASE_MD_BUDGET is touched | `works/deferred/open/D15` |
+| `D16` | `deferred` | Decide whether keep-tests-small grows teeth for changple5, and in what shape | P21.REVIEW | when the operator next works in changple5, or when the keep-tests-small rule is next edited | `works/deferred/open/D16` |
 | `D3` | `deferred` | Make installer/build.py smoke-execute the assembled artifact | P15.REVIEW | Next time installer/build.py is touched, or the first time a broken artifact reaches a commit | `works/deferred/open/D3` |
 | `D5` | `deferred` | Confirm: ## Design Style is appended by create-phase only when visual, not scaffolded into every intent.md | P17.REVIEW | Before the first design-bearing phase runs under v34, or the next time works/templates/intent.md is edited. | `works/deferred/open/D5` |
 | `D6` | `deferred` | Widen installer/main.py flag_stale_skills() ownership heuristic beyond the disable-model-invocation marker | P17.REVIEW | If a model-invocable skill is retired upstream, or when flag_stale_skills() is next touched. | `works/deferred/open/D6` |

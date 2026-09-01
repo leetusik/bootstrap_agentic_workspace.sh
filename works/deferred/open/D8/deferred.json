@@ -3,7 +3,7 @@
   "title": "Slim CLAUDE.md to <= 12 KB",
   "status": "deferred",
   "source": "P18",
-  "reason": "CLAUDE.md is 33 KB in 115 lines (~8.5K tokens) and rides every agent's prefix (main thread and every executor dispatch); most of its rule detail is restated in the skills that own the operation, so the contract can go back to being the compact routing layer it claims to be.",
+  "reason": "CLAUDE.md is 41,205 B / 120 lines and the dispatch prefix with the agent file is ~16.3k tokens, up 5x in two months (P21.S1 result.md §6; P21 itself added +1,409 B); it rides every agent's prefix, and most rule detail is restated in the skills that own the operation, so the contract can go back to being the compact routing layer it claims to be. (reason refreshed by P21.REVIEW / OQ2)",
   "trigger": "After P18 lands and the just-in-time Read Order is settled; a dedicated editorial phase, not folded into other work.",
   "created_at": "2026-08-29T10:57:12+09:00",
   "promoted_to": null,

@@ -16,17 +16,18 @@
       "id": "P21",
       "name": "close the workspace's context leaks, measured against live adopters",
       "objective": "Measure where the workspace actually spends context across four live adopting repos (changple5 v36, changple_web v35, Mijual v36, arb_upbit_1 v35 -- ~1,140 slices, 83 archived phases between three of them), then close only the leaks the measurement justifies. Confirmed leak with an operator-proposed remedy to research first: per-review durable-doc consolidation rewrites whole docs that only grow (changple5 backend.md at v0054, 420 KB, rewritten by every review) -- research retiring doc-new-version from the review slice in favour of dedicated operator-created docs phases, and what a review still records if so. Open questions: whether the 16 KB phase.md budget is right (post-v35 notebooks ride within bytes of the ceiling -- is mid-phase compaction losing decisions under that pressure?); whether plan.md + result.md suffice as the orchestrator's post-slice record; what the review may read instead of every result.md; executor validation cost; where keep-tests-small needs teeth (changple5: 494 test files / 6.3 MB; the other three comply). Two suspects retracted by measurement: archiving works (rotate-backlog; 56/20/7 archived) and the notebook budget is respected since v35. DECOMP cuts a research slice first -- the fix list is not knowable before the measurement -- and DECOMP2 cuts the remedies from findings. Machinery and doctrine only: adopter repos are read as evidence and receive a documented procedure, never edits from here.",
-      "status": "planned",
+      "status": "done",
       "order": 5,
       "path": "works/phases/active/P21",
-      "review_status": "pending",
-      "current_slice": "P21.REVIEW",
+      "review_status": "pass",
+      "current_slice": null,
       "slice_count": 8,
-      "done_slice_count": 7
+      "done_slice_count": 8,
+      "consolidation": "pending"
     }
   ],
-  "deferred_open_count": 7,
+  "deferred_open_count": 10,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 6,
-  "last_rebuilt_at": "2026-09-01T10:47:05+09:00"
+  "last_rebuilt_at": "2026-09-01T11:03:08+09:00"
 }
