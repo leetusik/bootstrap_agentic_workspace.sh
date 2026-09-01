@@ -5,9 +5,9 @@
 
 ## Pointer
 
-- Current phase: `none`
-- Current slice: `none`
-- Next slice: `none`
+- Current phase: `P22`
+- Current slice: `P22.DECOMP`
+- Next slice: `P22.REVIEW`
 - Waiting on operator: `none`
 - Open deferred jobs: `10`
 
@@ -17,6 +17,7 @@
 |---|---|---|---|---|---|
 | [x] `P20` | `done` | `pass` | make the Aside prescription true: the repl surface over Bash, on a dedicated profile | `none` | `works/phases/active/P20` |
 | [x] `P21` | `done` | `pass` | close the workspace's context leaks, measured against live adopters | `none` | `works/phases/active/P21` |
+| [ ] `P22` | `planned` | `pending` | make doc staleness explicit and right-size the notebook and test guardrails | `P22.DECOMP` | `works/phases/active/P22` |
 
 ## Phase P20: make the Aside prescription true: the repl surface over Bash, on a dedicated profile
 
@@ -40,3 +41,10 @@
 | [x] `P21.S4` | `done` | docs-phase entry point (R4) | `implementation` | `works/phases/active/P21/slices/P21.S4` |
 | [x] `P21.S5` | `done` | split oversized doc sections (R5) | `implementation` | `works/phases/active/P21/slices/P21.S5` |
 | [x] `P21.REVIEW` | `done` | phase review | `review` | `works/phases/active/P21/slices/P21.REVIEW` |
+
+## Phase P22: make doc staleness explicit and right-size the notebook and test guardrails
+
+| Slice | Status | Name | Kind | Path |
+|---|---|---|---|---|
+| [ ] `P22.DECOMP` | `todo` | decompose phase | `decomposition` | `works/phases/active/P22/slices/P22.DECOMP` |
+| [ ] `P22.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P22/slices/P22.REVIEW` |

@@ -24,10 +24,22 @@
       "slice_count": 8,
       "done_slice_count": 8,
       "consolidation": "pending"
+    },
+    {
+      "id": "P22",
+      "name": "make doc staleness explicit and right-size the notebook and test guardrails",
+      "objective": "Implement the operator's three resolved decisions from P21's deferred questions. (1) D14 -- no fixed docs-phase cadence: consolidation runs only when the operator wants it; in exchange every durable doc carries an explicit last-updated marker (source commit, date, consolidating phase -- in docs/index.json and surfaced where agents read docs), plus doctrine that a doc older than the owed Doc-impact notes is stale evidence, not truth. (2) D15 -- relax the phase-notebook budget to a soft ~100k-token cap (warning-only), replacing the 16 KB / 200-line squeeze that forced four P21 slices to compress; keep the finish-slice size printout. (3) D16 -- sharpen keep-tests-small: test files only for very core behavior, never style/cosmetic/trivial surface -- verified live instead. Machinery and doctrine in this repo only (adopters inherit via upgrade); close D14/D15/D16 when the phase passes.",
+      "status": "planned",
+      "order": 6,
+      "path": "works/phases/active/P22",
+      "review_status": "pending",
+      "current_slice": "P22.DECOMP",
+      "slice_count": 2,
+      "done_slice_count": 0
     }
   ],
   "deferred_open_count": 10,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 6,
-  "last_rebuilt_at": "2026-09-01T11:03:08+09:00"
+  "last_rebuilt_at": "2026-09-02T06:20:59+09:00"
 }
