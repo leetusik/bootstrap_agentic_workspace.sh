@@ -570,6 +570,13 @@ PY2
   && ok "a passing review defers doc consolidation and names docs-consolidated" || bad "the passing review did not defer doc consolidation"
 grep -q '"consolidation": "pending"' "$F/works/phases/active/P2/phase.json" \
   && ok "the passing review stamps the phase's consolidation debt" || bad "no consolidation debt stamped"
+# ...and the debt is visible, advisory-only: one greppable line in `next`, a warning in
+# `validate` that still exits 0 (operator-paced staleness must never fail CI or block the loop).
+( cd "$F" && python3 scripts/workflow.py next 2>&1 | grep -q "consolidation_owed=P2" ) \
+  && ok "next names the phases owing doc consolidation" || bad "next did not surface the doc debt"
+debt_out=$( cd "$F" && python3 scripts/workflow.py validate 2>&1 ); debt_rc=$?
+printf '%s\n' "$debt_out" | grep -q "warning: consolidation_owed=P2" && [ "$debt_rc" -eq 0 ] \
+  && ok "validate warns about the doc debt and still exits 0" || bad "validate did not warn (or errored) on the doc debt"
 ( cd "$F" && python3 scripts/workflow.py archive-phase P2 2>&1 | grep -q "docs not consolidated" ) \
   && ok "archiving is blocked while the doc debt stands" || bad "a phase owing docs archived anyway"
 ( cd "$F" && python3 scripts/workflow.py docs-consolidated P2 >/dev/null 2>&1 && python3 scripts/workflow.py archive-phase P2 >/dev/null 2>&1 ) \

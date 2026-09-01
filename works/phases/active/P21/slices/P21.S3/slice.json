@@ -3,14 +3,14 @@
   "phase_id": "P21",
   "name": "surface consolidation debt in next/validate (R3)",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 5,
   "depends_on": [
     "P21.S2"
   ],
   "created_at": "2026-09-01T09:46:50+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-01T10:14:11+09:00",
+  "completed_at": "2026-09-01T10:24:19+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Debt visible: next prints consolidation_owed=, validate warns advisory-only; one shared helper, smoke 146 PASS",
   "validation": {
     "required": [],
     "last_run": null,

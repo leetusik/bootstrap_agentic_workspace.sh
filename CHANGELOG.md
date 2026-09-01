@@ -45,6 +45,15 @@ history.
   `phase.json` carrying the v24–v37 `execution.consolidation` is still read (and still honoured by the
   archiving guard) with no migration.
 
+- **The debt is visible, never silent.** Deferral traded review cost for operator-paced staleness, so
+  the staleness had to stop being invisible: `next` prints one advisory `consolidation_owed=<phases>`
+  line naming the phases and the paying command, and `validate` raises the same text as a **warning** —
+  never an error, so an owing phase can neither fail CI nor block the loop. Both read the debt through
+  one helper, so the v24–v37 `execution.consolidation` shape surfaces identically and a phase merged
+  from a parallel branch is named with `parallel-consolidated`. Nothing is printed when nothing owes,
+  and "how loud" has exactly one knob — `CONSOLIDATION_DEBT_MIN_PHASES` (default 1 = always) — for a
+  stated docs-phase cadence to tune later, with no config plumbing.
+
 - **Migration notes.** Nothing to run at update time, and no existing phase changes state. What changes
   is the habit: from your next passing review onward, `docs/current/*.md` trails the code until you
   create a **docs phase** (`/create-phase`, objective "consolidate the `## Doc impact` notes from

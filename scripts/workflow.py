@@ -53,6 +53,12 @@ PHASE_MD_BUDGET = (200, 16 * 1024)
 # every behavior is exactly as before, byte for byte. See `phase_execution`.
 EXECUTION_MODES = {"parallel"}
 CONSOLIDATION_STATES = {"pending", "done"}
+# How many phases must owe durable-doc consolidation before `next` / `validate` say so.
+# 1 = always, whenever anything owes -- the deliberate default, because the debt has to be
+# visible at ANY docs-phase cadence: deferral traded review cost for operator-paced staleness,
+# and silent staleness is the one outcome the trade may not have. This single constant is the
+# only "how loud" knob; a stated cadence can raise it later without any config plumbing.
+CONSOLIDATION_DEBT_MIN_PHASES = 1
 # A default-stream phase in any of these states means main is mid-flight, so a phase
 # branch may not be merged into it yet (the quiet-point gate, `parallel-gate`).
 BUSY_PHASE_STATUSES = ("in_progress", "in_review", "pending", "blocked")
@@ -574,6 +580,34 @@ def phases_owing_consolidation(phases: list) -> list:
     return [p for p in phases if phase_consolidation(p) == "pending"]
 
 
+def consolidation_command(phase) -> str:
+    """The command that pays one phase's debt. Parallel phases keep their post-merge twin, so
+    the archiving guard, `next` and `validate` can never name a command the engine would refuse."""
+    return "parallel-consolidated" if phase_execution(phase) else "docs-consolidated"
+
+
+def consolidation_debt_line(phases: list) -> str:
+    """One advisory `key=value` line naming every phase that owes durable-doc consolidation, or
+    "" when nothing does -- shared by `next` and `validate` so the two can never word it differently.
+
+    Advisory everywhere: this is expected operator-paced state, not a fault. `validate` prints it
+    as a warning and still exits 0, and `next` prints it without changing what it selects.
+    Accepts either phase records or `works/index.json` entries; both are read through
+    `phase_consolidation()` / `phase_execution()`, never off a raw field.
+    """
+    owing = phases_owing_consolidation(phases)
+    if len(owing) < CONSOLIDATION_DEBT_MIN_PHASES:
+        return ""
+    ids = ", ".join(p["id"] for p in owing)
+    plural = "phase owes" if len(owing) == 1 else "phases owe"
+    line = (f"consolidation_owed={ids} ({len(owing)} {plural} durable-doc consolidation; docs/current trails the code"
+            f" until a docs phase runs doc-new-version over each '## Doc impact' list, then: docs-consolidated <P>)")
+    merged = [p["id"] for p in owing if consolidation_command(p) == "parallel-consolidated"]
+    if merged:
+        line += f" -- {', '.join(merged)} came from a parallel branch: pay those with parallel-consolidated, on the default stream"
+    return line
+
+
 def new_acceptance() -> dict:
     """A fresh, undeclared operator acceptance gate. Five fields, no more."""
     return {"required": None, "walkthrough": None, "requested_at": None, "cleared_at": None, "note": None}
@@ -959,6 +993,12 @@ def validate() -> int:
                 errors.append(f"invalid deferred status {data.get('id')}: {data.get('status')}")
             if data.get("status") not in allowed:
                 errors.append(f"deferred job in wrong folder: {data.get('id')} status {data.get('status')} under {base.relative_to(ROOT)}")
+    # Deferred doc consolidation. A WARNING, never an error: the debt is expected operator-paced
+    # state (a passing review defers consolidation to a docs phase), so it must not fail CI or
+    # block the loop -- it must only stop being silent.
+    debt = consolidation_debt_line(phases)
+    if debt:
+        warnings.append(debt)
     # Executor-tier drift is advisory only: warn (never error, never crash) when the agent
     # files disagree with executors.toml/defaults, so a foreign or partial workspace still validates.
     try:
@@ -1745,7 +1785,7 @@ def parallel_merge_finish(args: argparse.Namespace) -> None:
         if merged:
             awaiting.append((p, execution))
     if not awaiting:
-        print("nothing awaiting doc consolidation")
+        print("no merged phase awaits doc consolidation (merged parallel phases only -- next/validate name every phase that owes)")
     else:
         print(f"{len(awaiting)} merged phase(s) await doc consolidation -- do them ONE AT A TIME, on this stream (doc versions are allocated from a single index):")
         for p, execution in awaiting:
@@ -1983,6 +2023,11 @@ def cmd_next(args: argparse.Namespace) -> None:
     ]
     if elsewhere:
         print(f"parallel_phases_elsewhere={', '.join(elsewhere)} (not in this stream; each runs from its own branch)")
+    # Deferred doc consolidation, printed before every return below so no path hides it. Purely
+    # advisory: it names the debt and the command, selects nothing, and is silent when nothing owes.
+    debt = consolidation_debt_line(index.get("active_phases", []))
+    if debt:
+        print(debt)
     waiting = state.get("waiting_on_operator")
     if waiting:
         kind = "slice" if "." in waiting else "phase"
@@ -2129,7 +2174,7 @@ def _phase_blockers(pdir: Path) -> list:
     # `## Doc impact` list -- the sole input to that consolidation -- out of active/, so it
     # blocks (parallel teardown only warns, because teardown is reversible).
     if phase_consolidation(phase) == "pending":
-        cmd = "parallel-consolidated" if phase_execution(phase) else "docs-consolidated"
+        cmd = consolidation_command(phase)
         reasons.append(f"docs not consolidated -- run a docs phase over its '## Doc impact' notes, then: python3 scripts/workflow.py {cmd} {phase['id']}")
     return reasons
 

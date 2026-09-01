@@ -110,7 +110,7 @@ Use `python3 scripts/workflow.py <command>`:
 - `parallel-consolidated P2` — record that a merged phase's deferred doc consolidation landed (also unblocks archiving)
 - `parallel-teardown P2` — retire a merged parallel phase's worktree and branch
 - `archive-all` (batch-archive every active phase once all are done) / `rotate-backlog` (archive just the done phases, leave the rest) / `archive-phase P1` (archive a single review-passed phase)
-- `rebuild` / `validate` (which also warns on an over-budget `phase.md`)
+- `rebuild` / `validate` (which also warns on an over-budget `phase.md` and on phases owing doc consolidation — `next` prints the same advisory `consolidation_owed=` line)
 - `sync-agents [--check]` — apply the repo-root `executors.toml` executor-tier config (mode preset + models/efforts) to the four `slice-executor-*` agent files; run after editing `executors.toml` and after a workspace update (`--check` reports drift without writing)
 
 ## Commit Convention

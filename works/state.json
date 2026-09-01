@@ -1,8 +1,8 @@
 {
   "current_phase": "P21",
-  "current_slice": "P21.S3",
-  "next_slice": "P21.S4",
+  "current_slice": "P21.S4",
+  "next_slice": "P21.S5",
   "waiting_on_operator": null,
   "mode": "phase",
-  "updated_at": "2026-09-01T10:13:34+09:00"
+  "updated_at": "2026-09-01T10:24:19+09:00"
 }
