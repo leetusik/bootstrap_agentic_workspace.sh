@@ -3,12 +3,12 @@
   "phase_id": "P22",
   "name": "decompose phase",
   "kind": "decomposition",
-  "status": "todo",
+  "status": "done",
   "order": 0,
   "depends_on": [],
   "created_at": "2026-09-02T06:20:59+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-02T06:29:27+09:00",
+  "completed_at": "2026-09-02T06:35:26+09:00",
   "risk": "high",
   "source": {
     "type": "new_phase",
@@ -18,7 +18,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Cut P22 into two implementation/high slices — S1 (D15+D16 guardrail right-sizing) and S2 (D14 doc staleness, depends on S1) — and seeded the notebook with edit sites, the drop-at-pass call and the gate advisory",
   "validation": {
     "required": [],
     "last_run": null,
