@@ -8,7 +8,7 @@
   "depends_on": [],
   "created_at": "2026-09-01T09:15:29+09:00",
   "started_at": "2026-09-01T09:18:35+09:00",
-  "completed_at": "2026-09-01T09:43:19+09:00",
+  "completed_at": "2026-09-01T09:43:55+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -18,7 +18,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": "Measured context spend across all four adopters (1,137 slice folders, 108 phases, 619 doc versions): doc-rewrite leak confirmed at 90-97% of a review's read budget, every other suspect small or clean; handed DECOMP2 a prioritised R1-R5 remedy list and the operator four questions",
+  "outcome": "Doc-rewrite leak is 90-97% of review read cost; rest clean; R1-R5 to DECOMP2, 4 operator Qs",
   "validation": {
     "required": [],
     "last_run": null,
