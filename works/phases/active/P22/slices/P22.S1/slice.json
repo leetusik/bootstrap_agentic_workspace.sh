@@ -3,12 +3,12 @@
   "phase_id": "P22",
   "name": "relax the notebook budget and sharpen keep-tests-small (D15+D16)",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 1,
   "depends_on": [],
   "created_at": "2026-09-02T06:32:28+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-02T06:35:58+09:00",
+  "completed_at": "2026-09-02T06:41:52+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -18,7 +18,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Shipped D15+D16 — PHASE_MD_BUDGET is one soft 400 KB byte cap (warning-only, line ceiling dropped) across engine and prose, keep-tests-small is core-only, smoke probes reshaped, v39 opened, installer rebuilt",
   "validation": {
     "required": [],
     "last_run": null,

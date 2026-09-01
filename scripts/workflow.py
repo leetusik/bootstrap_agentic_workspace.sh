@@ -52,11 +52,15 @@ REVIEW_VERDICTS = {"pass", "changes_requested", "blocked"}
 # `--risk high` on one so the recorded rating cannot contradict the routing; if the
 # two ever disagree, the kind wins.
 SLICE_KINDS = {"implementation", "review", "decomposition", "research", "fix", "docs", "qa", "co-work"}
-# Phase-notebook budget (workspace v35): (max lines, max bytes) -- both are measured and
-# either one over warns. A WARNING, never an error: a hard cap invites truncating exactly
-# the notes that matter, so the fix is always to rewrite (state stays in phase.md, detail
-# moves to the slice's result.md), never to delete under duress.
-PHASE_MD_BUDGET = (200, 16 * 1024)
+# Phase-notebook budget (v35; re-shaped in v39): ONE generous byte cap, ~100k tokens of
+# text. The v35 pair (200 lines / 16 KB) was measured in P21 and the line half never bound
+# while the byte half squeezed four slices into compressing unrelated notes -- so the line
+# ceiling is gone and the byte ceiling is a soft sanity cap, not a working constraint: a
+# notebook should stop compressing to fit and simply carry what the next slice needs.
+# Still a WARNING, never an error: a hard cap invites truncating exactly the notes that
+# matter, so the fix is always to rewrite (state stays in phase.md, detail moves to the
+# slice's result.md), never to delete under duress.
+PHASE_MD_BUDGET = 400 * 1024
 # Opt-in parallel execution (workspace v24). A phase.json MAY carry an optional
 # `execution` block; its absence means the phase belongs to the default stream and
 # every behavior is exactly as before, byte for byte. See `phase_execution`.
@@ -874,10 +878,11 @@ def refresh_phase_md_slices(pdir: Path, phase: dict) -> None:
 
 
 def phase_md_size(pdir: Path) -> tuple:
-    """(lines, bytes) of a phase notebook, measured against PHASE_MD_BUDGET; (0, 0) when absent.
+    """(lines, bytes) of a phase notebook; (0, 0) when absent.
 
-    Shared by `validate` (warning) and `finish-slice` (size print) so the two can never
-    disagree about what "over budget" means.
+    Both numbers are reported, but only the byte count is judged against
+    PHASE_MD_BUDGET (v39). Shared by `validate` (warning) and `finish-slice` (size print)
+    so the two can never disagree about what "over budget" means.
     """
     path = pdir / "phase.md"
     if not path.exists():
@@ -1035,10 +1040,9 @@ def validate() -> int:
         # to be archived, so "rewrite it under budget" is advice nobody can act on -- the
         # check must bite while the phase is still running (that includes `in_review`).
         notebook = ACTIVE / p["id"] / "phase.md"
-        max_lines, max_bytes = PHASE_MD_BUDGET
         lines_n, bytes_n = phase_md_size(notebook.parent)
-        if p["status"] != "done" and (lines_n > max_lines or bytes_n > max_bytes):
-            warnings.append(f"phase {p['id']}: phase.md is {lines_n} lines / {bytes_n} bytes, over the notebook budget of {max_lines} lines / {max_bytes} bytes; rewrite it under budget (state to phase.md, detail to the slice's result.md)")
+        if p["status"] != "done" and bytes_n > PHASE_MD_BUDGET:
+            warnings.append(f"phase {p['id']}: phase.md is {lines_n} lines / {bytes_n} bytes, over the notebook budget of {PHASE_MD_BUDGET} bytes; rewrite it under budget (state to phase.md, detail to the slice's result.md)")
         # Heading-line check, not a substring search: notebooks legitimately quote both
         # spellings in prose (this very rule, for one).
         if notebook.exists() and any(re.match(r"## Doc Impact\b", ln) for ln in notebook.read_text(encoding="utf-8").split("\n")):
@@ -1315,11 +1319,10 @@ def finish_slice(args: argparse.Namespace) -> None:
     if not outcome:  # a warning, never an error: the slice is still finished
         print(f"warning: no --outcome recorded for {args.slice}; the ## Slices row will be blank")
     print(f"finished {args.slice}")
-    max_lines, max_bytes = PHASE_MD_BUDGET
     lines_n, bytes_n = phase_md_size(sdir.parents[1])  # .../<phase>/slices/<slice> -> <phase>
     if lines_n or bytes_n:  # the notebook is where the next slice reads its state; keep it in view
-        over = " \u2014 OVER BUDGET" if (lines_n > max_lines or bytes_n > max_bytes) else ""
-        print(f"phase.md: {lines_n} lines / {bytes_n} bytes (budget {max_lines} / {max_bytes}){over}")
+        over = " \u2014 OVER BUDGET" if bytes_n > PHASE_MD_BUDGET else ""  # bytes judge; lines are informational
+        print(f"phase.md: {lines_n} lines / {bytes_n} bytes (budget {PHASE_MD_BUDGET} bytes){over}")
 
 
 def _set_phase_status(pdir: Path, status: str) -> str:

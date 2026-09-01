@@ -292,7 +292,7 @@ for tier in ("mid", "high"):
         "never the whole doc set, and never `docs/index.json`",
         "**structured verdict block first**",
         "**Edit** the phase's `phase.md`",
-        "200 lines / 16 KB",
+        "a soft ~100k-token cap (400 KB)",
         "never edit inside the `<!-- slices:begin -->`",
         "edit inside `phase.md`'s generated `## Slices` block",
         "Cross-check the notebook against the logs",
@@ -321,7 +321,7 @@ for required in (
     # v35: just-in-time reads, the bounded/edited notebook, and the slice outcome.
     "Just in time, and only what the work in front of you needs",
     "never the whole doc set up front, and never `docs/index.json`",
-    "**bounded state**", "PHASE_MD_BUDGET", "200 lines / 16 KB",
+    "**bounded state**", "PHASE_MD_BUDGET", "a soft ~100k-token cap (400 KB)",
     "every slice **edits** it under budget", "structured verdict block first",
     "finish-slice P1.S1 --outcome",
     # v36: the research kind (findings-only, high by kind, findings in the notebook)
@@ -843,13 +843,14 @@ FALLBACK
 then ok "new_phase's embedded fallback is byte-identical to works/templates/phase.md"; else bad "PHASE_MD_TEMPLATE_FALLBACK drifted from works/templates/phase.md"; fi
 
 # ---------------------------------------------------------------------------
-echo "== Test 10: v35 notebook guardrails -- budget warning, ## Doc Impact case drift, no dashboard timestamp churn =="
-# Continues on $F (P2's phase.md lost its markers in Test 9; irrelevant here). Pad the
-# notebook past the 200-line budget and drift the Doc impact heading in one edit.
+echo "== Test 10: v35/v39 notebook guardrails -- budget warning, ## Doc Impact case drift, no dashboard timestamp churn =="
+# Continues on $F (P2's phase.md lost its markers in Test 9; irrelevant here). v39's cap is
+# bytes-only and generous (400 KB), so the filler is generated, never checked in: pad the
+# notebook past it and drift the Doc impact heading in one edit.
 python3 - "$PM" <<'PAD'
 import pathlib, sys
 p = pathlib.Path(sys.argv[1])
-p.write_text(p.read_text() + "\n## Doc Impact\n\n" + "- filler\n" * 220)
+p.write_text(p.read_text() + "\n## Doc Impact\n\n" + "- filler\n" * 50_000)  # ~450 KB
 PAD
 out=$( cd "$F" && python3 scripts/workflow.py validate 2>&1 ); rc=$?
 [ "$rc" -eq 0 ] && ok "validate exits 0 with notebook warnings (warn, never error)" || bad "validate exited $rc on warnings -- $out"
@@ -859,7 +860,7 @@ printf '%s\n' "$out" | grep -q 'has a `## Doc Impact` heading' \
   && ok "a case-drifted ## Doc Impact heading warns" || bad "no Doc-impact case-drift warning -- $out"
 ( cd "$F" && python3 scripts/workflow.py new-slice --phase P2 --slice P2.S2 --name "budget probe" >/dev/null 2>&1 )
 out=$( cd "$F" && python3 scripts/workflow.py finish-slice P2.S2 --outcome "probe" 2>&1 )
-printf '%s\n' "$out" | grep -q '^phase.md: .*(budget 200 / 16384)' && printf '%s\n' "$out" | grep -q 'OVER BUDGET' \
+printf '%s\n' "$out" | grep -q '^phase.md: .* bytes (budget 409600 bytes)' && printf '%s\n' "$out" | grep -q 'OVER BUDGET' \
   && ok "finish-slice prints the notebook size and flags it over budget" || bad "finish-slice notebook size print missing -- $out"
 grep -q 'Rebuilt at' "$F/works/backlog.md" "$F/works/deferred.md" \
   && bad "a markdown dashboard still carries a Rebuilt at timestamp" || ok "no Rebuilt at timestamp in either markdown dashboard"

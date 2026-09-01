@@ -123,9 +123,9 @@ The orchestrator makes all four; the dispatched executor commits nothing, as alw
   to build, not how. That inventory is what the handoff's scope checklist is written from, what the
   round count is judged from, and what `paired` counts its apply slices from; the design is free to
   add to it and cut from it. In `build-after` it is what the opening `DECOMP` produces **instead of**
-  build slices. It lives in the **bounded notebook** and **counts against its budget** (200 lines /
-  16 KB), so keep it to the inventory itself — one line per candidate — and let the round's own
-  record hold the detail.
+  build slices. It lives in the **bounded notebook**, which stays curated even under a soft
+  ~100k-token cap (400 KB), so keep it to the inventory itself — one line per candidate — and
+  let the round's own record hold the detail.
 - A design slice keeps ordinary `S<n>` numbering: it is not necessarily the phase's first slice.
 - **Expect the read-back to re-shape the phase** — it routinely proves the design is bigger than
   decomposition assumed. In `build-after`, `DECOMP2` **is** that re-shaping, which is why it exists;
@@ -241,8 +241,9 @@ the round's `build-prompt.md` is the thing that is short — say so at read-back
    downstream slices. **Landing is not implementing:** it is what makes the implement slice easy.
    What goes into the notebook is the spec **pointers** — what landed, where the record is, the
    mockup route once it exists, and the decisions later slices must not re-litigate — because
-   `phase.md` is bounded (200 lines / 16 KB) and every later dispatch re-reads it; the artifacts and
-   the full spec stay in the round's record, linked by path, never copied in.
+   `phase.md` is bounded — a soft ~100k-token cap (400 KB) — and every later dispatch re-reads
+   it; the artifacts and the full spec stay in the round's record, linked by path, never
+   copied in.
 
 **Stop there.** Steps 4 and 5 — SIGNOFF and the regroup — happen **after the mockup gate** (*Closing
 the round*, below). What you hold at this point is a **landed** record, not an approved one, and the

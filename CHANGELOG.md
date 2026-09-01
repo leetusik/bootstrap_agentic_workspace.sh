@@ -9,6 +9,31 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v39 — 2026-09-02
+
+- **The phase-notebook budget is one generous byte cap, not a squeeze.** `PHASE_MD_BUDGET` was
+  `(200 lines, 16 KB)`; it is now a single **400 KB** byte cap — roughly 100k tokens — and the line
+  ceiling is gone. P21 measured both halves across every budget-era notebook: the byte half bound at
+  **92 %** of the ceiling while the line half sat at **69 %**, so four P21 slices compressed unrelated
+  notes purely to make room for their own. The cap is now a sanity check, not a working constraint:
+  the notebook is still **edited, never appended to**, still curated for the next slice, but it should
+  carry what that slice needs instead of shrinking to fit. Unchanged: it is a **warning, never an
+  error** (`validate` still exits 0 over budget, and still skips `done` phases), and `finish-slice`
+  still prints `phase.md: <lines> lines / <bytes> bytes (budget 409600 bytes)` — both numbers are
+  reported, only bytes judge.
+
+- **Tests are for core behavior only.** The contract's *keep test files small* rule now says what
+  earns a test file: **very core behavior — the logic the product cannot afford to break** — and
+  **never** style, cosmetic, or trivial surface, which is verified **live** instead (run the product,
+  `validate`, a small smoke check, the real-browser sweep). Tests that do exist still stay very small,
+  and still grow only when the operator asks or the risk warrants it. This closes the gap where "small
+  but welcome" was read as licence to test whatever was easy to assert.
+
+- **Migration notes.** Nothing to run at update time. Adopting repos pick up the relaxed budget the
+  moment `scripts/workflow.py` syncs; a notebook written under the old squeeze stays valid and simply
+  stops being over budget. If your repo restates "200 lines / 16 KB" in prose of its own, update it to
+  the soft ~100k-token cap.
+
 ## v38 — 2026-09-01
 
 - **Why this release: the phase review was rewriting whole documents that only ever grow.** Measured
