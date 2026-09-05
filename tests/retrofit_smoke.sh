@@ -14,7 +14,9 @@
 # surface over Bash rather than a standing MCP registration, with a fallback that
 # excuses no check, in the contract, both agent bodies and the design/review skills),
 # the v39 doc-staleness invariants (the last-updated marker at write time, with and
-# without git, and the STALE flag an owed '## Doc impact' note raises), the v35 phase-notebook
+# without git, and the STALE flag an owed '## Doc impact' note raises), the v41 review-boundary
+# invariants (every review surface re-runs the checklist inside the phase's boundary, never whole,
+# and phase-scope reads that boundary from git -- advisory without git), the v35 phase-notebook
 # invariants (template seed, generated ## Slices block, finish-slice --outcome, the
 # notebook budget/case-drift warnings and the timestamp-free dashboards), and the
 # v31 Codex-removal negatives. Re-runnable; self-cleaning.
@@ -125,6 +127,8 @@ for required in (
     "SIGNOFF",
     # v32: fidelity has a second yardstick, and gaps are delivered, not archived.
     "## Verifying — RESPECT THE DESIGN, and does it work",
+    # v41: the fidelity slice re-runs the checklist inside the phase's boundary, never whole.
+    "**Re-run the lines inside the boundary.**", "phase-scope <P>",
     "### When the record never drew it", "matching it is not acceptance",
     "Questions get asked, not archived.",
     # v34: the dispatch ban narrowed to the DesignSync work (the mockup build is the
@@ -193,12 +197,19 @@ for required in ("## Gate stages", "`walkthrough`", "`## Operator Runtime`", "`#
                  # v37: the review drives the product on the agent's own profile.
                  "always on the agent's own Aside profile",
                  '`aside repl --account <id> "<js>"`',
-                 "never the operator's signed-in one"):
+                 "never the operator's signed-in one",
+                 # v41: the review reviews the boundary of the phase, never the whole system --
+                 # phase-scope is its input, and stage 4 re-runs the checklist inside it.
+                 "## The boundary", "phase-scope <P>",
+                 "Re-run the checklist lines inside the boundary",
+                 "an operator-created QA phase, never by a review"):
     assert required in review, required
 for gone in ("MCP surface first", "scripted Playwright-style automation",
              # the default is never moved with `aside account use`; the flag is
              # passed per invocation.
-             "aside account use"):
+             "aside account use",
+             # v41: the whole-list re-run is retired from the review.
+             "not just this phase's lines", "Re-run the whole smoke list"):
     assert gone not in review, gone
 never = [ln for ln in review.splitlines() if "you never run on a review slice" in ln]
 assert len(never) == 1 and "`accept-gate`" in never[0] and "`defer-job`" in never[0], never
@@ -222,6 +233,8 @@ assert "aside account use" not in ops
 qa = (root / "installer/payloads/doc_bodies/qa.md").read_text()
 assert "## Regression Checklist" in qa
 assert "- [ ] <surface>: <one observable behaviour> (P<N>)" in qa
+# v41: the seed says the list is re-run inside the phase's boundary, never whole by a review.
+assert "phase-scope <P>" in qa and "re-runs the whole list" not in qa
 
 bodies = {}
 for tier in ("mid", "high"):
@@ -297,8 +310,13 @@ for tier in ("mid", "high"):
         "never edit inside the `<!-- slices:begin -->`",
         "edit inside `phase.md`'s generated `## Slices` block",
         "Cross-check the notebook against the logs",
+        # v41: the boundary rule and its phase-scope input are in BOTH bodies word for word.
+        "The review reviews the boundary of the phase, not the whole system",
+        "phase-scope <P>", "inside the phase's boundary",
     ):
         assert required in body, (tier, required)
+    for gone in ("not just this phase's lines", "re-run the **whole**"):
+        assert gone not in body, (tier, gone)
     never = [ln for ln in body.splitlines() if "run workflow state-transition commands" in ln]
     assert len(never) == 1 and "`accept-gate`" in never[0] and "`defer-job`" in never[0], tier
     bodies[tier] = body.split("---\n", 2)[2]
@@ -349,12 +367,16 @@ for required in (
     "pass `--account <id>` on every invocation",
     "is a **third** halt: `needs_operator` → `pending`",
     "an agent never drives a profile signed into the operator's accounts",
+    # v41: the review reviews the boundary of the phase; phase-scope is the command.
+    "**The review reviews the boundary of the phase, not the whole system:**",
+    "`phase-scope P1 [--base REF] [--head REF] [--json]`", "QA-sweep route",
 ):
     assert required in claude, required
 # v37 negatives: the MCP-first prescription and the Playwright framing are retired
 # from the contract too -- the fact survives only where it explains the escape hatch.
+# v41 negative: the whole-list re-run is retired from the contract.
 for gone in ("Prefer the **MCP** surface", "scripted Playwright-style automation",
-             "runs through Aside, not a script"):
+             "runs through Aside, not a script", "re-runs the whole cumulative"):
     assert gone not in claude, gone
 # v35 negatives: the pre-v35 read order and the append-only notebook verb are gone.
 for gone in ("for the fullstack doc set", "appends phase notes/doc impact",
@@ -908,6 +930,36 @@ tracked=$( cd "$F" && git ls-files works/backlog.md works/deferred.md | wc -l | 
 dirty=$( cd "$F" && git status --short -- works/backlog.md works/deferred.md )
 [ "$tracked" = "2" ] && [ -z "$dirty" ] \
   && ok "two next calls leave the dashboards byte-identical (no timestamp churn)" || bad "next dirtied the dashboards (tracked=$tracked) -- $dirty"
+
+# ---------------------------------------------------------------------------
+echo "== Test 11: v41 phase-scope -- the phase's boundary is read from git, advisory everywhere =="
+# $F is a clean git repo at the "smoke baseline" commit. A phase created and committed, then one
+# product file committed after it: the boundary is exactly that file, and neither works/ nor docs/.
+( cd "$F" && python3 scripts/workflow.py new-phase --phase P3 --name "Scope probe" --objective "probe the boundary" >/dev/null 2>&1 \
+    && git add -A >/dev/null 2>&1 && git -c user.email=smoke@example.invalid -c user.name=smoke commit -qm "create P3" >/dev/null 2>&1 ) \
+  || bad "phase-scope probe: could not create and commit P3"
+p3_created=$( cd "$F" && git rev-parse HEAD 2>/dev/null )
+mkdir -p "$F/src" && printf 'print("probe")\n' > "$F/src/probe.py"
+( cd "$F" && git add -A >/dev/null 2>&1 && git -c user.email=smoke@example.invalid -c user.name=smoke commit -qm "P3 product change" >/dev/null 2>&1 ) \
+  || bad "phase-scope probe: could not commit the product change"
+scope_out=$( cd "$F" && python3 scripts/workflow.py phase-scope P3 2>&1 ); scope_rc=$?
+[ "$scope_rc" -eq 0 ] && printf '%s\n' "$scope_out" | grep -q "^creation_commit=$p3_created" \
+  && printf '%s\n' "$scope_out" | grep -q "^  A src/probe.py$" \
+  && ! printf '%s\n' "$scope_out" | grep -qE "^  [AMDR] (works|docs)/" \
+  && ok "phase-scope names the creation commit and the changed product file, and excludes works/ and docs/" \
+  || bad "phase-scope did not print the boundary (rc=$scope_rc) -- $scope_out"
+( cd "$F" && python3 scripts/workflow.py phase-scope P3 --json 2>/dev/null | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+assert d["mode"] == "default" and d["creation_commit"] == sys.argv[1] and d["commits"] == 2, d
+assert {"status": "A", "path": "src/probe.py"} in d["files"], d
+' "$p3_created" ) \
+  && ok "phase-scope --json parses and carries the same creation commit, mode and file list" \
+  || bad "phase-scope --json is not the same answer as the text form"
+nogit_scope=$( cd "$F" && PATH="/var/empty" "$nogit_py" scripts/workflow.py phase-scope P3 2>&1 ); nogit_rc=$?
+[ "$nogit_rc" -eq 0 ] && printf '%s\n' "$nogit_scope" | grep -q "^phase-scope: no git history readable here" \
+  && ok "phase-scope without git is advisory: the no-history line and exit 0" \
+  || bad "phase-scope failed or was silent without git (rc=$nogit_rc) -- $nogit_scope"
 
 # ---------------------------------------------------------------------------
 echo

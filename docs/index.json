@@ -131,7 +131,7 @@
       ]
     },
     "operations": {
-      "latest": "v0031_the_v37_aside_correction_reaches_operations_aside_repl_over_bash_a_second_conditionally-required_manifest_field_for_the_agent_s_aside_account_and_the_pre-v37_update_path",
+      "latest": "v0032_v41_the_review_s_gate_stages_3-4_bounded_to_the_phase_phase-scope_names_the_boundary",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -381,6 +381,15 @@
           "source": "P20.REVIEW",
           "summary": "The v37 Aside correction reaches operations: aside repl over Bash, a second conditionally-required manifest field for the agent's Aside account, and the pre-v37 update path",
           "previous": "v0030_the_research_slice_kind_kind-first_executor-tier_routing_and_the_seeded_manifest_s_optional_browser-instrument_field_v36"
+        },
+        {
+          "id": "v0032_v41_the_review_s_gate_stages_3-4_bounded_to_the_phase_phase-scope_names_the_boundary",
+          "path": "docs/versions/operations/v0032_v41_the_review_s_gate_stages_3-4_bounded_to_the_phase_phase-scope_names_the_boundary.md",
+          "created_at": "2026-09-06T03:24:09+09:00",
+          "commit": "5004346bfb17cca5e4137d19089c1d671a07c11c",
+          "source": "v41",
+          "summary": "v41: the review's gate stages 3-4 bounded to the phase; phase-scope names the boundary",
+          "previous": "v0031_the_v37_aside_correction_reaches_operations_aside_repl_over_bash_a_second_conditionally-required_manifest_field_for_the_agent_s_aside_account_and_the_pre-v37_update_path"
         }
       ]
     },
@@ -399,7 +408,7 @@
       ]
     },
     "qa": {
-      "latest": "v0007_aside_s_two_real_surfaces_the_aside_repl-over-bash_default_and_its_measured_mcp_cost_the_dedicated_agent_profile_as_a_third_halt_and_the_140-pass_v37_baseline",
+      "latest": "v0008_v41_the_review_re-runs_the_regression_checklist_inside_the_phase_s_boundary_never_whole",
       "current_path": "docs/current/qa.md",
       "versions": [
         {
@@ -457,6 +466,15 @@
           "source": "P20.REVIEW",
           "summary": "Aside's two real surfaces, the aside repl-over-Bash default and its measured MCP cost, the dedicated agent profile as a third halt, and the 140-PASS v37 baseline",
           "previous": "v0006_the_verification_doctrine_names_its_instrument_--_aside_mcp_first_in_place_of_scripted_automation_--_plus_the_fallback_and_the_139-pass_v36_baseline"
+        },
+        {
+          "id": "v0008_v41_the_review_re-runs_the_regression_checklist_inside_the_phase_s_boundary_never_whole",
+          "path": "docs/versions/qa/v0008_v41_the_review_re-runs_the_regression_checklist_inside_the_phase_s_boundary_never_whole.md",
+          "created_at": "2026-09-06T03:24:09+09:00",
+          "commit": "5004346bfb17cca5e4137d19089c1d671a07c11c",
+          "source": "v41",
+          "summary": "v41: the review re-runs the regression checklist inside the phase's boundary, never whole",
+          "previous": "v0007_aside_s_two_real_surfaces_the_aside_repl-over-bash_default_and_its_measured_mcp_cost_the_dedicated_agent_profile_as_a_third_halt_and_the_140-pass_v37_baseline"
         }
       ]
     },
@@ -779,5 +797,5 @@
       ]
     }
   },
-  "last_rebuilt_at": "2026-09-01T11:03:02+09:00"
+  "last_rebuilt_at": "2026-09-06T03:25:43+09:00"
 }

@@ -488,12 +488,16 @@ there too: an agent never drives a browser profile signed into the operator's ac
 browser it is. Name the instrument you actually used in `result.md`, and never report a browser run
 you did not make.
 
-**Re-run the whole list.** A fidelity slice re-runs **all** of `## Regression Checklist` (the qa
-doc's cumulative product smoke list) — every earlier phase's headline behaviours, not only this
-phase's surfaces. That is not ceremony: a later phase touching shared chrome silently invalidates an
-earlier phase's pass, and nothing else is looking. Then append this phase's headline lines in the
-shipped shape `- [ ] <surface>: <one observable behaviour> (P<N>)` — the review writes that
-section itself, as one of its two named doc writes.
+**Re-run the lines inside the boundary.** A fidelity slice re-runs the `## Regression Checklist`
+lines inside its phase's boundary — this phase's surfaces plus every earlier line whose surface a
+file the phase changed feeds (`python3 scripts/workflow.py phase-scope <P>` prints the files;
+shared chrome widens the boundary to everything it feeds; a line you cannot place is inside) — and
+records the lines outside it by count, with the diff as the proof. That is not ceremony, and it is
+what catches a later phase silently invalidating an earlier one: the shared file is in the diff.
+Never the whole list — the product-wide sweep is an operator-created QA phase, not a slice's duty.
+Then append this phase's headline lines in the shipped shape
+`- [ ] <surface>: <one observable behaviour> (P<N>)` — the review writes that section itself, as
+one of its two named doc writes.
 
 **What a fidelity slice may fix, and what it may not.** A **departure from the record** is a
 faithful-implementation fix: make it in the slice, or cut a `fix` slice. Anything that is a **design

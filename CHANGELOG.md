@@ -9,6 +9,63 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v41 — 2026-09-06
+
+- **Why this release: the phase review re-verified the whole system on every phase.** Its gate stage
+  4 said *"re-run every line of `## Regression Checklist` … not just this phase's lines"*, its stage 3
+  walked the product with no phase boundary at all, and the fidelity slice carried the same whole-list
+  rule. On an adopting product with a 154-line cumulative list, a review of an auth-only phase re-ran
+  135 lines — paid model calls on a surface the phase never touched included — until the operator
+  interrupted it; the executor then derived the right scope itself from the phase's own diff. v41 makes
+  that the rule: **the review reviews the boundary of the phase, not the whole system.**
+
+- **The boundary is what the phase changed, and it is a mechanical read.** New read-only command
+  `phase-scope <P> [--base REF] [--head REF] [--json]` prints the phase's creation commit, its
+  base..head range and the product files it changed (`works/` and `docs/` excluded). The base is the
+  creation commit's parent (the merge-base with the default branch in parallel mode); the head is
+  `HEAD`, or the commit that recorded a passing review on a done phase, so a finished phase's boundary
+  never leaks later commits in. Archived phases resolve through the archive rename. Advisory
+  everywhere: without git it prints one explanatory line and exits 0, an uncommitted phase lists the
+  working tree, and `next` / `validate` are untouched.
+
+- **Stage 4 re-runs inside the boundary; stage 3 walks inside it.** The review classifies every
+  existing checklist line by its surface against `phase-scope`'s files — inside when a changed file
+  feeds it (a shared file such as global styles, chrome, a shared library or a dependency manifest
+  widens the boundary to everything it feeds; an unplaceable line is inside), outside otherwise —
+  re-runs the inside lines, records the classification in `result.md` with the outside count and the
+  diff as the proof, and appends its own lines as before. The fresh-eyes walk reaches the changed
+  surfaces the way a first-time user would and goes no further. Anything noticed outside the boundary
+  is an **observation**, listed as a deferred-job candidate for the orchestrator to file — never a
+  finding, never re-verified. The same wording lands in both executor bodies, both `do-*` skills, the
+  contract, and the fidelity paragraph of `design-cowork`.
+
+- **The whole-list sweep is an operator-created QA phase.** `create-phase` gains a *QA-sweep route*
+  beside the docs-phase route: "run the full regression sweep" becomes an ordinary phase whose `DECOMP`
+  cuts `--kind qa` slices per checklist block; it changes no code, appends no lines, and normally
+  waives its gate. The seed qa doc's `## Regression Checklist` intro says the same.
+
+- **v40 never bumped the marker.** The v40 change (decomposition slices plan at the gate by default in
+  `auto`) shipped without a `WORKSPACE_VERSION` bump or a changelog section; both are backfilled below
+  and the marker moves 39 → 41 in one step.
+
+- **Migration notes.** Nothing to run: `scripts/workflow.py` syncs the command and the skill/agent
+  prose carries the rule. Two things are yours: the `## Regression Checklist` intro in **your own** qa
+  doc still promises a whole-list re-run — rewrite it to the boundary wording (the seed body is the
+  model) in your next docs phase — and any review `plan.md` template of your own that says "read it
+  whole, re-run all of it" is retired. `python3 scripts/workflow.py phase-scope <P>` works on every
+  phase you already have, active or archived, so you can see a past phase's boundary today.
+
+## v40 — 2026-09-02
+
+- **Decomposition slices plan at the gate by default in `auto`.** With no mode word, a
+  `kind: decomposition` slice (`DECOMP`, `DECOMP2`, …) pauses for the operator to approve its plan and
+  then continues in `auto`; only an explicit `auto` invocation plans decompositions inline too. The
+  contract, `do-next-slice` and `do-whole-phase` state it. Shipped in commit `5004346` without a
+  version bump — this section is the backfill.
+
+- **Migration notes.** Nothing to run. Adopters who synced between 2026-09-02 and v41 already carry
+  this behaviour under a v39 marker; the marker catches up at v41.
+
 ## v39 — 2026-09-02
 
 - **Why this release: a doc nobody has consolidated yet still reads like the truth.** v38 moved

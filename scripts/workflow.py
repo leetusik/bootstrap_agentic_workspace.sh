@@ -2271,6 +2271,242 @@ def parallel_start_hint(state: dict, index: dict) -> str:
             f"python3 scripts/workflow.py parallel-start {waiting['id']}")
 
 
+# ---------------------------------------------------------------------------
+# phase-scope: the phase's boundary, read from git (v41)
+#
+# The review (and a fidelity slice) re-runs the regression checklist only INSIDE the phase's
+# boundary -- the product files the phase changed, the surfaces they feed. This command makes
+# that boundary a mechanical read instead of a guess: creation commit, base..head range, files.
+# Read-only and advisory everywhere: without git it explains itself and exits 0.
+# ---------------------------------------------------------------------------
+
+EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"  # `git hash-object -t tree /dev/null`
+PRODUCT_PATHSPEC = [".", ":!works", ":!docs"]  # the product: everything but the workflow state and the docs
+SCOPE_HINT = ("boundary: these files are what the phase changed; a checklist line whose surface "
+              "none of them feed is outside this phase's boundary")
+
+
+def _find_phase_dir(phase_id: str):
+    """`(dir, archived)` for an active or archived phase; SystemExit when neither holds it.
+
+    `require_phase` knows only `active/` on purpose (every state transition is an active-phase
+    operation); the boundary of a done, archived phase is still a fair question -- a QA phase or
+    a docs phase looks back at it -- so this lookup covers both."""
+    if (ACTIVE / phase_id / "phase.json").exists():
+        return ACTIVE / phase_id, False
+    hits = []
+    if ARCHIVED.exists():
+        for d in sorted(ARCHIVED.iterdir()):
+            pj = d / "phase.json"
+            if not pj.is_file():
+                continue
+            try:
+                if read_json(pj).get("id") == phase_id:
+                    hits.append(d)
+            except Exception:  # noqa: BLE001 - an unreadable archive entry is skipped, never fatal
+                continue
+    if hits:
+        return hits[-1], True
+    raise SystemExit(f"phase not found (active or archived): {phase_id}")
+
+
+def _phase_creation_commit(phase_id: str, pdir: Path, archived: bool):
+    """The sha that added the phase's `phase.json`, or None (uncommitted phase, or a shallow clone).
+
+    Pathspecs are cwd-relative and `_git` runs at the workspace root, so no repo prefix here.
+    Archiving is a pure rename, so `--follow` on the archived path walks back to the true
+    creation commit; the plain active path is the fallback (git keeps a deleted path's history)."""
+    active_rel = f"works/phases/active/{phase_id}/phase.json"
+    if not archived:
+        out = _git(["log", "--diff-filter=A", "--format=%H", "--", active_rel], check=False).stdout.split()
+        return out[0] if out else None  # newest: right even if the id was ever reused
+    archived_rel = f"{pdir.relative_to(ROOT).as_posix()}/phase.json"
+    out = _git(["log", "--follow", "--diff-filter=A", "--format=%H", "--", archived_rel], check=False).stdout.split()
+    if not out:
+        out = _git(["log", "--diff-filter=A", "--format=%H", "--", active_rel], check=False).stdout.split()
+    return out[-1] if out else None  # oldest: the creation, not the archive move
+
+
+def _default_branch():
+    """The default stream's branch: origin/HEAD's target, else a local main/master, else None."""
+    proc = _git(["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"], check=False)
+    if proc.returncode == 0 and proc.stdout.strip():
+        return proc.stdout.strip()
+    for cand in ("main", "master"):
+        if _branch_exists(cand):
+            return cand
+    return None
+
+
+def _rev_parse(ref: str):
+    proc = _git(["rev-parse", "-q", "--verify", f"{ref}^{{commit}}"], check=False)
+    return proc.stdout.strip() if proc.returncode == 0 and proc.stdout.strip() else None
+
+
+def _diff_product_files(base: str, head: str) -> list:
+    """`[{status, path[, from]}]` for the product files that differ between two commits."""
+    proc = _git(["diff", "--name-status", "--relative", "-M", base, head, "--", *PRODUCT_PATHSPEC], check=False)
+    files = []
+    for line in proc.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        status = parts[0][:1]
+        if status in ("R", "C") and len(parts) >= 3:
+            files.append({"status": status, "path": parts[2], "from": parts[1]})
+        else:
+            files.append({"status": status, "path": parts[-1]})
+    return files
+
+
+def _status_product_files() -> list:
+    """`[{status, path}]` for the uncommitted product changes in this checkout (untracked included)."""
+    proc = _git(["status", "--porcelain", "--untracked-files=all", "--", *PRODUCT_PATHSPEC], check=False)
+    prefix = _repo_prefix()
+    files = []
+    for line in proc.stdout.splitlines():
+        if len(line) < 4:
+            continue
+        code, path = line[:2], line[3:]
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        if prefix and path.startswith(prefix):
+            path = path[len(prefix):]
+        status = "A" if code == "??" else (code.strip()[:1] or "M")
+        files.append({"status": status, "path": path})
+    return files
+
+
+def _phase_review_commit(phase_id: str, base: str, tip: str):
+    """The first commit in base..tip whose recorded phase.json says `review.status == "pass"`.
+
+    A done phase's boundary ends where its review was recorded, not at today's HEAD -- otherwise
+    every later commit on the stream would leak into it."""
+    rng = tip if base == EMPTY_TREE else f"{base}..{tip}"
+    proc = _git(["log", "--reverse", "--format=%H", rng, "--", f"works/phases/active/{phase_id}/phase.json"], check=False)
+    for sha in proc.stdout.split():
+        data = _phase_json_at_ref(sha, phase_id)
+        if data and (data.get("review") or {}).get("status") == "pass":
+            return sha
+    return None
+
+
+def phase_scope(args: argparse.Namespace) -> None:
+    """Read-only: the phase's boundary -- its creation commit, the base..head range and the
+    product files that range changed (works/ and docs/ excluded) -- printed for the review and a
+    fidelity slice to re-run the regression checklist inside.
+
+    Default stream: base = the creation commit's parent (so a creation commit batched with product
+    edits still counts), head = HEAD, or the commit that recorded a passing review on a done phase.
+    Parallel mode: base = the merge-base with the default branch, measured on the phase branch.
+    Advisory everywhere: no git means one explanatory line and exit 0; an uncommitted phase lists
+    the working tree instead; `--base` / `--head` override either end verbatim.
+    """
+    pdir, archived = _find_phase_dir(args.phase)
+    data = read_json(pdir / "phase.json")
+    out = {"phase": args.phase, "status": data.get("status"), "archived": archived, "mode": "default",
+           "creation_commit": None, "base": None, "base_kind": None, "head": None, "head_kind": None,
+           "range": None, "commits": 0, "files": [], "uncommitted": [], "notes": [], "hint": SCOPE_HINT}
+
+    def emit(lines):
+        if args.json:
+            print(json.dumps(out, indent=2, ensure_ascii=False))
+        else:
+            for ln in lines:
+                print(ln)
+
+    header = [f"phase={args.phase} status={data.get('status')} archived={str(archived).lower()}"]
+    if not _git_available():
+        out["mode"] = "no-git"
+        out["hint"] = "phase-scope: no git history readable here -- derive the boundary from the slices' result.md files"
+        emit([out["hint"]])
+        return
+
+    creation = _phase_creation_commit(args.phase, pdir, archived)
+    out["creation_commit"] = creation
+    execution = phase_execution(data)
+    tip, base, base_kind = "HEAD", None, None
+    if args.base:
+        base = _rev_parse(args.base)
+        if not base:
+            raise SystemExit(f"--base {args.base}: not a commit")
+        base_kind = f"from --base {args.base}"
+    elif execution and execution.get("branch"):
+        out["mode"] = "parallel"
+        branch = execution["branch"]
+        default = _default_branch()
+        if default is None:
+            out["notes"].append("cannot find the default branch (no origin/HEAD, no main/master) -- measured from the creation commit; pass --base <ref> to narrow")
+        else:
+            if git_current_branch() == branch:
+                ref = "HEAD"
+            elif _branch_exists(branch):
+                ref = branch
+            elif _rev_parse(f"origin/{branch}"):
+                ref = f"origin/{branch}"
+            else:
+                ref = None
+                out["notes"].append(f"branch {branch} is gone (merged and torn down?) -- measured on this stream from the creation commit; concurrent default-stream work may appear; pass --base to narrow")
+            if ref:
+                mb = _git(["merge-base", default, ref], check=False)
+                if mb.returncode == 0 and mb.stdout.strip():
+                    base, tip, base_kind = mb.stdout.strip(), ref, f"merge-base with {default}"
+                    if ref != "HEAD":
+                        out["notes"].append(f"read from branch {ref}, not this checkout")
+    if base is None:
+        if creation is None:
+            out["uncommitted"] = _status_product_files()
+            lines = header + [f"mode={out['mode']}",
+                              f"creation_commit=none (works/phases/active/{args.phase}/phase.json has no commit yet -- uncommitted phase, or a shallow clone)",
+                              f"uncommitted_product_files={len(out['uncommitted'])} (working tree; works/ and docs/ excluded)"]
+            lines += [f"  {f['status']} {f['path']}" for f in out["uncommitted"]]
+            lines += [f"note: {n}" for n in out["notes"]] + [SCOPE_HINT]
+            emit(lines)
+            return
+        base = _rev_parse(f"{creation}^")
+        if base:
+            base_kind = "parent of the creation commit, so that commit's own product edits count"
+        else:
+            base, base_kind = EMPTY_TREE, "the empty tree: the creation commit has no readable parent (root commit, or a shallow clone)"
+    if args.head:
+        head = _rev_parse(args.head)
+        if not head:
+            raise SystemExit(f"--head {args.head}: not a commit")
+        head_kind = f"from --head {args.head}"
+    else:
+        head, head_kind = None, None
+        if (data.get("review") or {}).get("status") == "pass":
+            head = _phase_review_commit(args.phase, base, tip)
+            if head:
+                head_kind = "the commit that recorded review.status=pass; pass --head HEAD to read to the tip"
+        if not head:
+            head, head_kind = _rev_parse(tip), f"the tip of {tip}"
+    if not head:
+        raise SystemExit(f"cannot resolve {tip} to a commit")
+    rng = head if base == EMPTY_TREE else f"{base}..{head}"
+    count = _git(["rev-list", "--count", rng], check=False).stdout.strip() or "0"
+    files = _diff_product_files(base, head)
+    uncommitted = _status_product_files() if head == _rev_parse("HEAD") else []
+    out.update({"base": base, "base_kind": base_kind, "head": head, "head_kind": head_kind,
+                "range": f"{base[:7]}..{head[:7]}", "commits": int(count), "files": files, "uncommitted": uncommitted})
+
+    tally = {k: sum(1 for f in files if f["status"] == k) for k in ("A", "M", "D", "R")}
+    subject = _git(["log", "-1", "--format=%s", creation], check=False).stdout.strip() if creation else ""
+    lines = header + [f"mode={out['mode']}"]
+    lines.append(f"creation_commit={creation}  {subject}" if creation else "creation_commit=none (measured from --base)")
+    lines.append(f"base={base} ({base_kind})")
+    lines.append(f"head={head} ({head_kind})")
+    lines.append(f"range={out['range']} commits={count}")
+    lines.append(f"product_files={len(files)} (added {tally['A']}, modified {tally['M']}, deleted {tally['D']}, renamed {tally['R']}; works/ and docs/ excluded)")
+    for f in files:
+        lines.append(f"  {f['status']} {f['from']} -> {f['path']}" if f.get("from") else f"  {f['status']} {f['path']}")
+    if uncommitted:
+        lines.append(f"uncommitted_product_files={len(uncommitted)} (working tree, not in the range above)")
+        lines += [f"  {f['status']} {f['path']}" for f in uncommitted]
+    lines += [f"note: {n}" for n in out["notes"]] + [SCOPE_HINT]
+    emit(lines)
+
+
 def cmd_next(args: argparse.Namespace) -> None:
     rebuild_index_and_state()
     state = read_json(WORKS / "state.json")
@@ -2660,6 +2896,13 @@ def main(argv=None) -> int:
     p = sub.add_parser("parallel-teardown", help="Retire a merged parallel phase's worktree and branch; run from the default stream")
     p.add_argument("phase")
     p.set_defaults(func=parallel_teardown)
+
+    p = sub.add_parser("phase-scope", help="Read-only: the phase's boundary from git -- creation commit, base..head range and the product files it changed (works/ and docs/ excluded); advisory, exit 0 without git")
+    p.add_argument("phase")
+    p.add_argument("--base", default=None, help="use this ref as the range base verbatim (skips creation-commit / merge-base detection)")
+    p.add_argument("--head", default=None, help="use this ref as the range head (default: HEAD, or the commit that recorded a passing review on a done phase)")
+    p.add_argument("--json", action="store_true", help="print the same answer as one JSON object")
+    p.set_defaults(func=phase_scope)
 
     p = sub.add_parser("defer-job", help="Create a deferred job folder")
     p.add_argument("--id")
