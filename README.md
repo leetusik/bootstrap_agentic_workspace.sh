@@ -106,9 +106,14 @@ sh /path/to/bootstrap_agentic_workspace.sh . --update             # 실제 적�
 디자인하지 않습니다** — 시각적 결정은 [Claude Design](https://claude.ai/design)과 여러분이
 내립니다. Claude Design이 저장소를 직접 읽으므로(Connect GitHub, 또는 로컬 디렉터리 연결)
 에이전트는 아무것도 따로 복제하지 않습니다. 검토할 수 있는 카드 세트를 요구하는 `handoff.md`
-하나를 쓰고 멈춰서 여러분의 디자인 라운드를 기다린 뒤, `DesignSync`로 결과를 읽어 저장소에
-그대로 반영합니다. 그다음 그 디자인을 **프로젝트의 프런트엔드로 만든 실행 가능한 목업**으로
-띄우고 다시 멈춥니다 — 여러분이 그 목업을 직접 열어 승인하는 것이 그 한 번의 승인입니다.
+하나를 쓰되, 카드 경로마다 읽는 순서 번호를 붙여 요구하고(`01-nav.html`, `02-hero.html`, …)
+— 그래서 Claude Design의 결과를 여러분이 순서대로 볼 수 있습니다 — 멈춰서 여러분의 디자인
+라운드를 기다립니다. **돌아와서 "됐어"라고 말하는 것이 그 한 번의 승인입니다.** 에이전트는
+`DesignSync`로 결과를 읽어 번호가 매겨진 카드와 구체성을 확인하고(문제가 있으면 정확히 그
+부분만 짚어 다시 멈춥니다), 기록을 그대로 저장소에 반영한 뒤 여러분의 말을 `SIGNOFF.md`에
+남깁니다. **목업은 요청할 때만 만듭니다** — phase를 만들 때 `Mockup: requested`로 정하거나
+라운드 중에 말로 요청하면, 그 디자인을 프로젝트의 프런트엔드로 만든 실행 가능한 임시 목업으로
+띄우고 한 번 더 멈추며, 그때는 그 목업을 직접 열어 승인하는 것이 서명이 됩니다.
 (디자인 방식은 `build-after` / `design-only` / `paired` 중에서 여러분이 고릅니다.)
 승인은 명시적이어야 하고, 수정은 새 라운드가 되며, 구현은 언제나 별도
 slice에서 승인된 디자인을 그대로 따라 진행하고 실제 브라우저로 결과를 확인합니다.
@@ -203,37 +208,40 @@ Claude Code에서 `/이름`으로 입력합니다.
 | `do-next-slice` | slice 하나만 완료하고 멈춤 |
 | `do-whole-phase` | phase를 리뷰까지 끝까지 실행 |
 | `review-phase` | phase를 리뷰하고 `pass` / `changes_requested` / `blocked` 기록 |
-| `parallel-phase` | phase를 별도 branch + worktree에서 병렬로 실행하고 다시 합치기 |
+| `parallel-phase` | phase를 자기 worktree(기본값)에서 실행하고 로컬 merge로 다시 합치기 |
 | `retrofit` | 기존 저장소에 워크스페이스 추가 |
 | `update-workspace` | 설치된 워크스페이스의 시스템 파일만 최신으로 교체 |
 
 스킬은 모두 17개입니다. 전체 목록과 CLI 명령, 설치 옵션은
 [English README](README.en.md)와 [CLAUDE.md](CLAUDE.md)에 있습니다.
 
-## 병렬 phase (옵트인)
+## phase별 worktree (기본값)
 
-기본적으로 phase는 `main`에서 한 번에 하나씩 순서대로 진행됩니다. 지금 진행 중인 phase와
-전혀 다른 영역을 건드리는 phase가 있다면, 뒤에서 대기시키는 대신 **병렬 모드**로 옵트인할 수
-있습니다. 그 phase만의 branch와 worktree, 그리고 그 안에서 진행되는 별도의 오케스트레이터
-세션이 생기고, `main`은 원래 하던 phase를 그대로 계속합니다. 병렬 모드는 phase 단위로만
-켤 수 있는 선택 사항이며 기본값이 아닙니다. 한 phase 안의 slice는 여전히 순서대로만
-진행됩니다.
+phase는 기본적으로 **자기만의 git worktree**에서 진행됩니다. `planned` 상태의 phase를 처음
+실행하는 순간(`/do-whole-phase`, `/do-next-slice`) 에이전트가 `parallel-start <P>`를 실행해
+`phase/P<N>-<slug>` branch와 `.claude/worktrees/P<N>-<slug>` worktree를 만들고, **같은 세션
+안에서** 그 worktree로 들어가 phase를 끝까지 진행합니다. `main`은 그동안 원래 하던 일을
+그대로 계속하고, 각 checkout은 자기 stream의 phase만 봅니다. 한 phase 안의 slice는 여전히
+순서대로만 진행됩니다.
 
-워크스페이스는 다른 phase가 진행 중일 때 새 phase를 만들거나, 대기 중인 phase를 실행하려
-할 때 병렬 모드를 **제안만** 합니다. 실제로 옵트인할지는 여러분의 선택입니다.
+`main`의 작업 트리가 지저분해도 막히지 않습니다. stamp 커밋에는 그 phase 폴더와 다시 생성된
+`works/` 파일만 들어가고, 여러분이 커밋하지 않은 수정은 `main`에 그대로 남습니다 — worktree는
+그 커밋(최신 커밋)에서 시작합니다. `.claude/worktrees/`는 저장소의 `.git/info/exclude`에
+기록되므로 `main`에서 untracked로 보이지 않습니다(`.gitignore`는 건드리지 않습니다).
 
-`parallel-start <P>`로 옵트인하면 phase를 stamp하고 `phase/P<N>-<slug>` branch와 전용
-worktree를 만듭니다. 그 worktree에서 새 에이전트 세션을 열어 `/do-whole-phase`나
-`/do-next-slice`로 평소처럼 진행하면 됩니다 — 각 checkout은 자기 stream의 phase만 보게
-됩니다. 어느 checkout에서든 `parallel-status`로 모든 stream의 진행 상황을 볼 수 있습니다.
+`main`에 남겨야 하는 phase는 `parallel-skip <P>`로 고정하거나 `new-phase --on-main`으로
+만듭니다. 문서 통합(docs) phase는 항상 고정됩니다 — 문서 버전은 하나의 index에서만 나오기
+때문입니다. 이미 `main`에서 진행 중이던 phase는 그 자리에서 마칩니다.
 
-병렬로 진행한 phase의 리뷰가 통과하면, 문서 버전 작업은 그 자리에서 하지 않고 나중에 `main`으로
-merge된 뒤 한 번에 처리합니다. 에이전트가 `parallel-gate` → PR → CI → merge →
-`parallel-merge-finish` → 문서 버전 확정 → `parallel-teardown` 순서로 통합까지 직접
-진행합니다.
+worktree에서 진행한 phase의 리뷰가 통과하면 에이전트가 통합까지 직접 진행합니다:
+`parallel-gate <P>`(조용한 시점인지 확인) → worktree에서 나와 `main`으로 → `git merge --no-ff`
+(로컬 merge) → `parallel-merge-finish` → 리뷰가 남긴 두 게이트 섹션의 문서 버전 →
+`parallel-teardown <P>`. **push와 PR은 여러분이 요청할 때만** 합니다(원격 변형: push → PR →
+CI → merge). 나머지 문서 버전 작업은 평소처럼 나중에 docs phase에서 한 번에 처리합니다.
+어느 checkout에서든 `parallel-status`로 모든 stream의 진행 상황을 볼 수 있습니다.
 
-자세한 절차는 [`parallel-phase`](.claude/skills/parallel-phase/SKILL.md) 스킬(`/parallel-phase`)과
-[English README](README.en.md#parallel-phases-opt-in)에 있습니다.
+자세한 규칙과 절차는 [`parallel-phase`](.claude/skills/parallel-phase/SKILL.md) 스킬(`/parallel-phase`)과
+[English README](README.en.md#phase-worktrees-the-default)에 있습니다.
 
 ## ⭐ 에이전트와 일하는 6가지 습관
 

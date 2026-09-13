@@ -9,6 +9,88 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v42 — 2026-09-13
+
+- **Why this release: parallel mode was opt-in, so it was never the shape of the work — and a design
+  round always paid for a mockup.** Every phase queued on `main` behind the one before it; the opt-in
+  moment was creation, the one moment nobody thinks about execution; and `parallel-start`'s clean-tree
+  guard refused exactly when the operator was mid-edit. On the design side every round paid a
+  dispatched mockup build and a second `pending` stop even when the operator would have signed on the
+  cards, and the cards carried no order, so the operator's review order was undefined. v42 reverses
+  both defaults and writes the rules down.
+
+- **Every phase runs in its own git worktree by default, entered at first execution in the same
+  session.** Eight explicit **Worktree rules** now live in the contract and the `parallel-phase`
+  skill: (1) *when* — a `planned` phase with no `execution` block enters its worktree when `next`
+  points at it and `do-next-slice` / `do-whole-phase` run `parallel-start`; `create-phase` never does;
+  (2) *where* — `<repo>/.claude/worktrees/P<N>-<slug>` on `phase/P<N>-<slug>`, the location Claude
+  Code's `EnterWorktree` accepts from anywhere, with `.claude/worktrees/` written to
+  `.git/info/exclude` (never `.gitignore`); (3) *the stamp commit* — exactly the phase folder plus the
+  five regenerated `works/` files; (4) *what stays behind* — everything else dirty or staged, and the
+  worktree starts from that commit; (5) *what still refuses* — not `planned`, already stamped or
+  pinned, no git, a parallel stream, a merge or rebase in progress, a taken branch or path; (6) *enter
+  and exit* — `EnterWorktree` by path, `ExitWorktree keep` to come back; (7) *the merge* — local
+  `git merge --no-ff` after `parallel-gate`, push → PR only on request; (8) *stays on `main`* —
+  `parallel-skip <P>` or `new-phase --on-main`. `next` on the default stream prints
+  `hint: <P> runs in its own worktree by default …` for a planned, unstamped phase, and `new-phase`
+  prints one note saying where the phase will run.
+
+- **A dirty default checkout no longer blocks `parallel-start`.** The stamp commit is made with
+  `git add -- <paths>` + `git commit --only -- <paths>`, so it holds the phase folder (whole, if the
+  phase was never committed — `create-phase` makes no commit) plus `works/state.json`, `index.json`,
+  `backlog.md`, `deferred.md` and `events.jsonl`, whatever else is dirty or staged; the worktree is cut
+  from that commit and the operator's edits stay behind, uncommitted. The one new refusal is a merge
+  or rebase in progress, because a partial commit cannot be made mid-operation.
+
+- **Integration merges locally by default.** `parallel-gate <P>` — which now reads the default stream
+  from the local default branch when run inside the worktree, instead of refusing — then
+  `ExitWorktree keep` → `git pull --ff-only` only if `main` tracks a remote → stop and ask if the index
+  is not clean or the merge would touch an uncommitted file → `git merge --no-ff phase/P<N>-<slug> -m
+  "merge(P<N>): <name>"` → `parallel-merge-finish` → the review's two gate sections → commit →
+  `parallel-teardown <P>`. Push → PR → CI → `gh pr merge` stays documented as the **remote variant**,
+  run only when the operator asks or repo policy requires; the CI `parallel-gate` job still guards
+  `phase/*` PRs there.
+
+- **Pinned phases stay on `main`.** `parallel-skip <P>` (a `planned` phase) and `new-phase --on-main`
+  stamp `execution: {"mode": "default"}`: `validate` accepts it, the hints skip it, `parallel-start`
+  refuses it, the backlog marks the row `· pinned: default stream`, and `parallel-status` prints
+  `pinned_to_default=`. The `create-phase` docs-phase route pins its phase, since doc versions come
+  from one shared index.
+
+- **The branch review's gate sections are recorded, not lost.** A review running in a phase worktree
+  still writes no doc versions; it now appends its stage-4 checklist lines and any `## Operator
+  Runtime` change to `phase.md`'s `## Doc impact` tagged `(gate section — written at merge)`, and the
+  post-merge step writes exactly those. Every other note waits for the operator's docs phase, which
+  records `parallel-consolidated <P>` — v38's deferral holds one stream over.
+
+- **Numbered cards.** The design handoff names every card path with a two-digit reading-order prefix
+  (`01-nav.html`, `02-hero.html`, …) following the scope checklist; cards the session adds take the
+  next numbers, a superseding card keeps its path, read-back verifies the sequence, and the numbers
+  stay in the library because paths never move at the regroup. Ordering the review is organization,
+  not design.
+
+- **Mockups are on request, and the operator's return closes the round.** `## Design Style` in
+  `intent.md` gains a `Mockup: requested` / `Mockup: on request` line (default `on request`, asked at
+  `/create-phase` beside the style — or in the operator's own words during the round). Without a
+  mockup the round has one `pending` stop: the operator's literal "done" on returning from Claude
+  Design is the signoff, taken after the read-back's card-contract and concreteness checks, which on
+  any failure re-stop `pending` with the points named and sign nothing — two commits, two
+  `/do-next-slice` invocations. **PENDING #2 exists only when a mockup was requested**, and is then the
+  gate on the running mockup, as before (four commits, three invocations). The phase gate follows the
+  mockup with no judgment left: `--require` when one ships, the fixed note
+  `design-only, no mockup: the operator signed the round on the card set` for a `design-only` phase
+  that ships none. "Only PENDING #2 is an approval" and "mechanical wait" are retired.
+
+- **Migration notes.** Nothing to run. Phases already `in_progress` on `main` finish there
+  (`parallel-start` refuses a non-`planned` phase); every `planned` phase enters its worktree the first
+  time it is executed — run `python3 scripts/workflow.py parallel-skip <P>` on any that must stay on
+  `main` (docs phases always) and create such phases with `new-phase … --on-main`.
+  `.git/info/exclude` gains `.claude/worktrees/` on your first `parallel-start`; `.gitignore` is
+  untouched. The CI seed is unchanged; the old `Bash(git push:*)` deny matters only for the remote
+  variant. Design rounds in flight finish under the shape they started with; add the `Mockup:` line to
+  a live design phase's `intent.md` if you want one. Adopters with their own smoke pins on "Only
+  PENDING #2 is an approval" or "mechanical wait" retire them.
+
 ## v41 — 2026-09-06
 
 - **Why this release: the phase review re-verified the whole system on every phase.** Its gate stage

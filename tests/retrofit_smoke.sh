@@ -18,7 +18,10 @@
 # invariants (every review surface re-runs the checklist inside the phase's boundary, never whole,
 # and phase-scope reads that boundary from git -- advisory without git), the v35 phase-notebook
 # invariants (template seed, generated ## Slices block, finish-slice --outcome, the
-# notebook budget/case-drift warnings and the timestamp-free dashboards), and the
+# notebook budget/case-drift warnings and the timestamp-free dashboards), the v42
+# worktree-by-default invariants (parallel-start on a dirty tree commits only the phase folder
+# plus the regenerated works/ files, cuts a nested .claude/worktrees/ checkout hidden by the repo's
+# info/exclude, and parallel-skip pins a phase to the default stream), and the
 # v31 Codex-removal negatives. Re-runnable; self-cleaning.
 #
 # Usage:  bash tests/retrofit_smoke.sh
@@ -79,7 +82,10 @@ create_phase = (root / ".claude/skills/create-phase/SKILL.md").read_text()
 assert "the agent when instructed" in create_phase
 assert "Never on the agent's own initiative" in create_phase
 assert "Invocation is not the gate; confirmation is." in create_phase
-for required in ("`build-after`", "`design-only`", "`paired`", "## Design Style"):
+for required in ("`build-after`", "`design-only`", "`paired`", "## Design Style",
+                 # v42: the mockup question beside the style, and the worktree default relayed.
+                 "Mockup: requested", "Mockup: on request", "will you sign on the cards",
+                 "parallel-skip", "--on-main"):
     assert required in create_phase, required
 
 # Only skills that *document the removal* may still say "Codex": update-workspace's
@@ -100,7 +106,16 @@ for name in ("do-next-slice", "do-whole-phase"):
         # named styles, and stops `pending` twice with different meanings.
         "mockup build is the one dispatched span", "`build-after`", "`design-only`",
         "`paired`", "PENDING #1", "PENDING #2", "## Design Style",
-        "mechanical wait, not an approval",
+        # v42: the mockup is on request, the operator's return closes the round, the
+        # phase gate follows the mockup with a fixed waive note.
+        "PENDING #2 exists only when a mockup was requested",
+        "Mockup: requested", "Mockup: on request",
+        "design-only, no mockup: the operator signed the round on the card set",
+        # v42: every phase enters its own worktree at first execution, in the same
+        # session, and is merged back locally; the branch review records its two gate
+        # sections as tagged notes.
+        "runs in its own worktree by default", "parallel-start <P>", "EnterWorktree",
+        "parallel-skip <P>", "(gate section — written at merge)", "git merge --no-ff",
         # v35: just-in-time reads and the bounded notebook.
         "finish-slice <slice_id> --outcome", "bounded phase notebook",
         "verdict block", "just in time",
@@ -110,6 +125,11 @@ for name in ("do-next-slice", "do-whole-phase"):
         "second origin", "`research` and review always",
     ):
         assert required in body, (name, required)
+    # v42 negatives: the mandatory mockup, "not an approval" return, and the
+    # opt-in framing of the phase branch are retired from both drivers.
+    for gone in ("mechanical wait", "can no longer be waived", "suggestion, never a default",
+                 "Four commits and two `pending` stops", "where opting the phase in was the ask"):
+        assert gone not in body, (name, gone)
     # v35: the per-slice re-read of the generated backlog dashboard is gone --
     # `next` prints the pointer. The only mentions left must say so.
     for ln in body.splitlines():
@@ -138,13 +158,21 @@ for required in (
     "The mockup build is the one dispatched span",
     "A design slice writes no *product* implementation code",
     "Write **product** implementation code in a design slice",
-    "signing the round off — the cards, and the stubbed mockup with them — is not accepting the product",
+    "signing the round off — the cards, and any stubbed mockup with them — is not accepting the product",
     # v34, positive: the three named styles, the mockup section, PENDING #1 is not an
     # approval, and the mockup's exemption from the functional sweep.
     "## Shape — three styles", "**`build-after`**", "**`design-only`**", "**`paired`**",
-    "## The mockup — the design in the project's own language",
-    "Only PENDING #2 is an approval.", "PENDING #1 is a mechanical wait",
+    "## The mockup — only when the operator asks for one",
     "Exempt from the full functional sweep", "Stubbed data, no backing work",
+    # v42: mockups on request, the operator's return closes the round, the cards are
+    # numbered in reading order in the path, and the gate follows the mockup.
+    "The operator's return closes the round.",
+    "PENDING #2 exists only when a mockup was requested",
+    "**A mockup is optional.**",
+    "**Number the paths in reading order.**", "01-nav.html",
+    "Mockup: requested", "Mockup: on request",
+    "design-only, no mockup: the operator signed the round on the card set",
+    "Renumber a card",
     # v36: the doctrine names an instrument -- Aside -- and a fallback that
     # excuses no check. v37: two surfaces rather than three, the `repl` surface
     # over Bash as the default (with the measured per-session MCP tool-definition
@@ -180,7 +208,11 @@ for required in (
 # v37 negatives: the MCP-first prescription is retired -- no config block to copy,
 # no surface preference, and no "Playwright-style automation" framing anywhere.
 for gone in ('{"mcpServers"', "Prefer the **MCP** surface", "MCP first",
-             "scripted Playwright-style automation", "scripted assertion suite"):
+             "scripted Playwright-style automation", "scripted assertion suite",
+             # v42 negatives: the mandatory mockup and the "not an approval" return.
+             "Only PENDING #2 is an approval.", "mechanical wait", "SIGNOFF moves to the mockup gate",
+             "cut the slice into four", "can no longer be waived",
+             "the design in the project's own language"):
     assert gone not in design, gone
 
 # v32 review procedure: the gate stages, the returned walkthrough, and the two
@@ -201,6 +233,9 @@ for required in ("## Gate stages", "`walkthrough`", "`## Operator Runtime`", "`#
                  # v41: the review reviews the boundary of the phase, never the whole system --
                  # phase-scope is its input, and stage 4 re-runs the checklist inside it.
                  "## The boundary", "phase-scope <P>",
+                 # v42: a branch review records its two gate sections as tagged notes, and
+                 # the mockup qualifier applies only where the operator asked for one.
+                 "(gate section — written at merge)", "a phase in which the operator asked for one",
                  "Re-run the checklist lines inside the boundary",
                  "an operator-created QA phase, never by a review"):
     assert required in review, required
@@ -253,6 +288,9 @@ for tier in ("mid", "high"):
         "exempt from the full functional sweep",
         "*product* implementation work",
         "`build-after`", "`design-only`", "`paired`",
+        # v42: the mockup span exists only on request, and a branch review records
+        # its two gate sections as tagged notes.
+        "exists only when the operator asked for a mockup", "(gate section — written at merge)",
     ):
         assert required in body, (tier, required)
     # v36: the research kind is findings-only, lands its findings in the notebook,
@@ -336,7 +374,14 @@ for required in (
     "*DesignSync* work is never dispatched", "mockup build is its one dispatched span",
     "writes no ***product*** implementation code",
     "**`build-after`**", "**`design-only`**", "**`paired`**", "## Design Style",
-    "only PENDING #2 is an approval", "`--kind` is a **closed set**",
+    "`--kind` is a **closed set**",
+    # v42: mockups on request, the return closes the round, numbered cards, the fixed
+    # waive note; every phase in its own worktree with the eight rules, pin commands,
+    # and the recorded gate sections.
+    "the operator's return closes the round", "PENDING #2 exists only when a mockup was requested",
+    "design-only, no mockup: the operator signed the round on the card set",
+    "Mockup: requested", "two-digit reading-order prefix",
+    "Worktree rules", "parallel-skip", "--on-main", "(gate section — written at merge)",
     # v35: just-in-time reads, the bounded/edited notebook, and the slice outcome.
     "Just in time, and only what the work in front of you needs",
     "never the whole doc set up front, and never `docs/index.json`",
@@ -376,7 +421,11 @@ for required in (
 # from the contract too -- the fact survives only where it explains the escape hatch.
 # v41 negative: the whole-list re-run is retired from the contract.
 for gone in ("Prefer the **MCP** surface", "scripted Playwright-style automation",
-             "runs through Aside, not a script", "re-runs the whole cumulative"):
+             "runs through Aside, not a script", "re-runs the whole cumulative",
+             # v42 negatives: the mandatory mockup, the "not an approval" return, and the
+             # opt-in framing of parallel mode are retired from the contract.
+             "only PENDING #2 is an approval", "mechanical wait", "can no longer be waived",
+             "never a default", "Opting a phase into parallel mode is that ask"):
     assert gone not in claude, gone
 # v35 negatives: the pre-v35 read order and the append-only notebook verb are gone.
 for gone in ("for the fullstack doc set", "appends phase notes/doc impact",
@@ -390,7 +439,7 @@ for gone in ("design exception", "never approval", "no other pending gate"):
 for gone in ("Codex", "AGENTS.md", ".agents/", ".codex/"):
     assert gone not in claude, gone
 PY
-then ok "17 Claude skills, invocation metadata, design contract, the v32 acceptance-gate invariants, the v36 research-kind and Aside-instrument invariants, the v37 Aside-surface invariants (two surfaces, `aside repl` over Bash, no standing MCP registration, the assertion-suite framing), the v37 dedicated-profile invariants (`--account <id>` per invocation, the manifest field, the personal-profile halt), and the v31 Codex-removal negatives"; else bad "Claude skill inventory, metadata, design contract, a v32 gate invariant, a v36 research-kind or Aside-instrument invariant, a v37 Aside-surface or dedicated-profile invariant, or a Codex-removal negative failed"; fi
+then ok "17 Claude skills, invocation metadata, design contract, the v32 acceptance-gate invariants, the v36 research-kind and Aside-instrument invariants, the v37 Aside-surface invariants (two surfaces, `aside repl` over Bash, no standing MCP registration, the assertion-suite framing), the v37 dedicated-profile invariants (`--account <id>` per invocation, the manifest field, the personal-profile halt), the v42 invariants (mockups on request, the operator's return closes the round, numbered cards, the worktree-by-default rules), and the v31 Codex-removal negatives"; else bad "Claude skill inventory, metadata, design contract, a v32 gate invariant, a v36 research-kind or Aside-instrument invariant, a v37 Aside-surface or dedicated-profile invariant, a v42 mockup/worktree invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
@@ -960,6 +1009,81 @@ nogit_scope=$( cd "$F" && PATH="/var/empty" "$nogit_py" scripts/workflow.py phas
 [ "$nogit_rc" -eq 0 ] && printf '%s\n' "$nogit_scope" | grep -q "^phase-scope: no git history readable here" \
   && ok "phase-scope without git is advisory: the no-history line and exit 0" \
   || bad "phase-scope failed or was silent without git (rc=$nogit_rc) -- $nogit_scope"
+
+# ---------------------------------------------------------------------------
+echo "== Test 12: v42 worktree by default -- parallel-start on a dirty tree, the nested worktree, the exclude line, parallel-skip =="
+newtmp W
+sh "$BOOT" "$W" --name "Worktree" --summary "worktree probe" >/dev/null 2>&1 || bad "v42 probe: fresh install failed"
+( cd "$W" && git init -q -b main . 2>/dev/null || git init -q . ; git config user.email smoke@example.invalid && git config user.name smoke \
+    && git add -A >/dev/null 2>&1 && git commit -qm "worktree baseline" >/dev/null 2>&1 ) || bad "v42 probe: no baseline commit"
+np_out=$( cd "$W" && python3 scripts/workflow.py new-phase --phase P1 --name "Worktree probe" --objective "probe the default" 2>&1 )
+printf '%s\n' "$np_out" | grep -q "parallel-skip P1" && ok "new-phase prints the worktree-by-default note naming parallel-skip" || bad "new-phase note missing -- $np_out"
+( cd "$W" && python3 scripts/workflow.py next 2>&1 | grep -q "^hint: P1 runs in its own worktree by default" ) \
+  && ok "next hints the worktree default for a planned, unstamped phase" || bad "next printed no worktree hint"
+# P1 is NOT committed (create-phase makes no commit). Dirty one tracked file, stage another unrelated change.
+printf '\n# smoke: dirty edit that must stay behind\n' >> "$W/executors.toml"
+mkdir -p "$W/src" && printf 'staged\n' > "$W/src/staged.py" && ( cd "$W" && git add src/staged.py )
+ps_out=$( cd "$W" && python3 scripts/workflow.py parallel-start P1 2>&1 ); ps_rc=$?
+[ "$ps_rc" -eq 0 ] && ok "parallel-start runs on a dirty tree" || bad "parallel-start refused a dirty tree (rc=$ps_rc) -- $ps_out"
+# (a) the stamp commit is exactly the phase folder + (a subset of) the five works files
+stamp_files=$( cd "$W" && git show --name-only --format= HEAD )
+if python3 - "$stamp_files" <<'PY'
+import sys
+files = set(sys.argv[1].split())
+five = {"works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/events.jsonl"}
+phase = {f for f in files if f.startswith("works/phases/active/P1/")}
+assert "works/phases/active/P1/phase.json" in phase and "works/index.json" in files, files
+assert files == phase | (files & five), files
+PY
+then ok "the stamp commit holds only the phase folder and the regenerated works/ files"; else bad "the stamp commit swept in other paths -- $stamp_files"; fi
+( cd "$W" && git diff --cached --name-only | grep -qx "src/staged.py" && git diff --name-only | grep -qx "executors.toml" ) \
+  && ok "the unrelated staged change stays staged and the dirty edit stays dirty on the default checkout" || bad "parallel-start disturbed the operator's changes"
+# (b) the worktree is at .claude/worktrees/P<N>-<slug> and registered
+wt="$W/.claude/worktrees/P1-worktree_probe"
+[ -d "$wt" ] && ( cd "$W" && git worktree list --porcelain | grep -q "/\.claude/worktrees/P1-worktree_probe$" ) \
+  && ok "the worktree lives at .claude/worktrees/P1-worktree_probe and is in git worktree list" || bad "worktree missing or unregistered"
+( cd "$wt" && [ "$(git rev-parse --abbrev-ref HEAD)" = "phase/P1-worktree_probe" ] && python3 scripts/workflow.py next 2>&1 | grep -q "^stream=phase/P1-worktree_probe" ) \
+  && ok "inside the worktree next prints stream=phase/P1-worktree_probe" || bad "the worktree is not on the phase stream"
+# (c) the dirty edit is absent in the worktree, present on main
+if ! grep -q "smoke: dirty edit" "$wt/executors.toml" && [ ! -e "$wt/src/staged.py" ] && grep -q "smoke: dirty edit" "$W/executors.toml"; then
+  ok "the worktree starts from the stamp commit; the dirty edit and the staged file stayed behind"; else bad "uncommitted changes leaked into the worktree"; fi
+# (d) exclude line, once; main's status never lists the nested worktree
+[ "$(grep -cx '\.claude/worktrees/' "$W/.git/info/exclude")" = "1" ] && ok ".git/info/exclude carries .claude/worktrees/ exactly once" || bad "exclude line missing or duplicated"
+( cd "$W" && ! git status --porcelain --untracked-files=all | grep -q "\.claude/worktrees" ) && ok "git status on main does not list the nested worktree" || bad "nested worktree shows as untracked"
+# (e) parallel-skip pins; validate passes; the pinned phase is selectable here and not hinted
+( cd "$W" && python3 scripts/workflow.py new-phase --phase P2 --name "Pinned probe" --objective "stay on main" >/dev/null 2>&1 \
+    && python3 scripts/workflow.py parallel-skip P2 >/dev/null 2>&1 ) || bad "parallel-skip failed"
+grep -q '"mode": "default"' "$W/works/phases/active/P2/phase.json" && ok "parallel-skip stamps execution.mode=default" || bad "no pinned marker on P2"
+( cd "$W" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) && ok "validate accepts the pinned block" || bad "validate rejects execution.mode=default"
+nx=$( cd "$W" && python3 scripts/workflow.py next 2>&1 )
+if printf '%s\n' "$nx" | grep -q "^current_phase=P2" && ! printf '%s\n' "$nx" | grep -q "^hint: P2 runs"; then
+  ok "a pinned phase stays on the default stream and gets no worktree hint"; else bad "pinned phase skipped or still hinted -- $nx"; fi
+# (f) parallel-start refuses the pinned phase and cuts nothing; --on-main pins at creation
+if ( cd "$W" && python3 scripts/workflow.py parallel-start P2 2>&1 | grep -q "pinned" ) && ! ( cd "$W" && git rev-parse --verify --quiet refs/heads/phase/P2-pinned_probe >/dev/null 2>&1 ); then
+  ok "parallel-start refuses a pinned phase and cuts no branch"; else bad "parallel-start did not refuse the pinned phase"; fi
+if ( cd "$W" && python3 scripts/workflow.py new-phase --phase P3 --name "On main" --objective "pinned at creation" --on-main 2>&1 | grep -q "pinned" ) \
+    && grep -q '"mode": "default"' "$W/works/phases/active/P3/phase.json"; then
+  ok "new-phase --on-main pins at creation"; else bad "new-phase --on-main did not pin"; fi
+# (g) the gate runs from inside the worktree, and a local --no-ff merge + teardown of a clean nested worktree needs no --force
+( cd "$wt" && python3 scripts/workflow.py accept-gate P1 --waive --note "smoke" >/dev/null 2>&1 \
+    && python3 scripts/workflow.py set-slice-status P1.DECOMP done >/dev/null 2>&1 \
+    && python3 scripts/workflow.py review-phase P1 --verdict pass >/dev/null 2>&1 \
+    && git add -A >/dev/null 2>&1 && git commit -qm "P1 done" >/dev/null 2>&1 ) || bad "v42 probe: could not finish P1 on the branch"
+( cd "$wt" && python3 scripts/workflow.py parallel-gate P1 2>&1 | grep -q "^main_state_source=main (local default branch" ) \
+  && ok "parallel-gate run from the worktree reads the default stream from the local default branch" || bad "parallel-gate from the worktree did not fall back to the local default branch"
+( cd "$W" && git restore --staged src/staged.py && git add -A works >/dev/null 2>&1 && git commit -qm "pins" >/dev/null 2>&1 ) \
+  || bad "v42 probe: could not commit the pins on main before merging"
+# Both sides regenerated the dashboards, so the merge conflicts in generated files -- resolved the
+# documented way: take either side, conclude, and let parallel-merge-finish regenerate them.
+( cd "$W" && { git merge --no-ff -q phase/P1-worktree_probe -m "merge(P1): Worktree probe" >/dev/null 2>&1 \
+      || { unmerged=$(git diff --name-only --diff-filter=U); [ -n "$unmerged" ] \
+           && printf '%s\n' "$unmerged" | xargs git checkout --theirs -- >/dev/null 2>&1 \
+           && git add -A works >/dev/null 2>&1 && git commit -qm "merge(P1): Worktree probe" >/dev/null 2>&1; }; } \
+    && python3 scripts/workflow.py parallel-merge-finish >/dev/null 2>&1 \
+    && git add -A works >/dev/null 2>&1 && { git diff --cached --quiet || git commit -qm "post-merge" >/dev/null 2>&1; } \
+    && python3 scripts/workflow.py parallel-teardown P1 >/dev/null 2>&1 && [ ! -d "$wt" ] ) \
+  && ok "a local --no-ff merge lands (generated-file conflicts taken either side, then regenerated) and parallel-teardown removes the clean nested worktree" \
+  || bad "merge, merge-finish or teardown failed"
 
 # ---------------------------------------------------------------------------
 echo

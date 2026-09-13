@@ -61,10 +61,23 @@ SLICE_KINDS = {"implementation", "review", "decomposition", "research", "fix", "
 # matter, so the fix is always to rewrite (state stays in phase.md, detail moves to the
 # slice's result.md), never to delete under duress.
 PHASE_MD_BUDGET = 400 * 1024
-# Opt-in parallel execution (workspace v24). A phase.json MAY carry an optional
-# `execution` block; its absence means the phase belongs to the default stream and
-# every behavior is exactly as before, byte for byte. See `phase_execution`.
+# Execution streams (workspace v24; worktree-by-default since v42). A phase.json MAY carry
+# an optional `execution` block. `mode: "parallel"` = the phase runs on its own branch +
+# worktree, stamped by `parallel-start` -- which every planned phase gets at first execution
+# unless pinned. `mode: "default"` = PINNED to the default stream (`parallel-skip`,
+# `new-phase --on-main`): `phase_execution` still returns None for it, so a pinned phase IS
+# a default-stream phase everywhere; the block only tells the hints and `parallel-start` to
+# leave it alone. No block = a planned phase that has not executed yet (or any pre-v42
+# phase, which finishes where it is). See `phase_execution` / `phase_pinned`.
 EXECUTION_MODES = {"parallel"}
+PINNED_MODE = "default"
+# The default worktree home. Nested under the repo so Claude Code's EnterWorktree can enter it
+# from anywhere (it accepts `.claude/worktrees/` paths even from inside another worktree), and
+# excluded through the repo's own info/exclude so the default checkout never sees it.
+WORKTREES_DIR = ".claude/worktrees"
+# What the stamp commit carries besides the phase folder: the generated works/ files that
+# `rebuild_index_and_state` rewrites, plus the event log. Nothing else on the tree enters it.
+STAMP_WORKS_FILES = ("works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/events.jsonl")
 CONSOLIDATION_STATES = {"pending", "done"}
 # How many phases must owe durable-doc consolidation before `next` / `validate` say so.
 # 1 = always, whenever anything owes -- the deliberate default, because the debt has to be
@@ -630,7 +643,7 @@ def phase_execution(data) -> dict:
     Shape (all fields optional in the file, absence of the whole block = today's behavior):
 
         "execution": {
-          "mode": "parallel",              # only recognized mode; anything else = default stream
+          "mode": "parallel",              # "parallel" = own stream; "default" (pinned, v42) and anything else = default stream
           "branch": "phase/P13-some-slug", # required when parallel; the stream key
           "worktree": "/path or null",     # informational (null on a plain clone)
           "consolidation": "pending"       # "pending" until the post-merge doc consolidation, then "done"
@@ -644,6 +657,16 @@ def phase_execution(data) -> dict:
     if not isinstance(execution, dict) or execution.get("mode") not in EXECUTION_MODES:
         return None
     return execution
+
+
+def phase_pinned(data) -> bool:
+    """True when the phase is pinned to the default stream (`execution.mode == "default"`, v42).
+
+    A pinned phase never gets a worktree: `parallel-start` refuses it and the hints skip it.
+    Everything else treats it exactly like a phase with no block, because `phase_execution`
+    returns None for it."""
+    execution = data.get("execution") if isinstance(data, dict) else None
+    return isinstance(execution, dict) and execution.get("mode") == PINNED_MODE
 
 
 def phase_consolidation(data) -> str:
@@ -890,7 +913,7 @@ def current_stream(phases: list) -> str:
 def stream_phases(phases: list, stream) -> list:
     """The phases the current stream may select from.
 
-    Default stream (`stream` is None): every phase except the ones opted out to a branch.
+    Default stream (`stream` is None): every phase except the ones running in their own worktree (a pinned phase has no branch and stays here).
     Parallel stream: only the phase stamped with that branch. Selection, and therefore the
     `works/state.json` pointer and the `pending` halt, is scoped to one stream this way;
     the dashboards still list every active phase folder.
@@ -1019,6 +1042,7 @@ def rebuild_index_and_state() -> None:
                 "slice_count": len(p["slices"]),
                 "done_slice_count": sum(1 for s in p["slices"] if s.get("status") == "done"),
                 **({"execution": phase_execution(p)} if phase_execution(p) else {}),
+                **({"pinned": True} if phase_pinned(p) else {}),
                 **({"consolidation": phase_consolidation(p)} if phase_consolidation(p) else {}),
             } for p in phases
         ],
@@ -1066,6 +1090,8 @@ def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
         execution = phase_execution(p)
         if execution:  # runs on its own branch; from another stream the slice state may be behind
             current_cell += f" · parallel: `{clean_cell(execution.get('branch'))}`"
+        elif phase_pinned(p):  # v42: explicitly kept on the default stream, never a worktree
+            current_cell += " · pinned: default stream"
         lines.append(f"| [{status_box(p['status'])}] `{p['id']}` | `{p['status']}` | `{review}` | {name} | {current_cell} | `{p['path']}` |")
     for p in phases:
         lines.extend(["", f"## Phase {p['id']}: {p['name']}", "", "| Slice | Status | Name | Kind | Path |", "|---|---|---|---|---|"])
@@ -1110,21 +1136,24 @@ def validate() -> int:
                 errors.append(f"phase {p['id']} has a non-object execution block: {execution!r}")
             else:
                 mode = execution.get("mode")
-                if mode not in EXECUTION_MODES:
-                    errors.append(f"phase {p['id']} has invalid execution.mode {mode!r}; expected one of {sorted(EXECUTION_MODES)}")
-                branch = execution.get("branch")
-                if not isinstance(branch, str) or not branch.strip():
-                    errors.append(f"phase {p['id']} is parallel but has no execution.branch; the branch name is the stream key")
-                elif branch in seen_branches:
-                    errors.append(f"duplicate execution.branch {branch!r}: {seen_branches[branch]} and {p['id']}")
+                if mode not in EXECUTION_MODES and mode != PINNED_MODE:
+                    errors.append(f"phase {p['id']} has invalid execution.mode {mode!r}; expected one of {sorted(EXECUTION_MODES | {PINNED_MODE})}")
+                elif mode == PINNED_MODE:
+                    pass  # pinned to the default stream (v42): no branch, no worktree, nothing else to check
                 else:
-                    seen_branches[branch] = p["id"]
-                worktree = execution.get("worktree")
-                if worktree is not None and not isinstance(worktree, str):
-                    errors.append(f"phase {p['id']} has invalid execution.worktree {worktree!r}; expected a path string or null")
-                consolidation = execution.get("consolidation")
-                if consolidation is not None and consolidation not in CONSOLIDATION_STATES:
-                    errors.append(f"phase {p['id']} has invalid execution.consolidation {consolidation!r}; expected one of {sorted(CONSOLIDATION_STATES)} or null")
+                    branch = execution.get("branch")
+                    if not isinstance(branch, str) or not branch.strip():
+                        errors.append(f"phase {p['id']} is parallel but has no execution.branch; the branch name is the stream key")
+                    elif branch in seen_branches:
+                        errors.append(f"duplicate execution.branch {branch!r}: {seen_branches[branch]} and {p['id']}")
+                    else:
+                        seen_branches[branch] = p["id"]
+                    worktree = execution.get("worktree")
+                    if worktree is not None and not isinstance(worktree, str):
+                        errors.append(f"phase {p['id']} has invalid execution.worktree {worktree!r}; expected a path string or null")
+                    consolidation = execution.get("consolidation")
+                    if consolidation is not None and consolidation not in CONSOLIDATION_STATES:
+                        errors.append(f"phase {p['id']} has invalid execution.consolidation {consolidation!r}; expected one of {sorted(CONSOLIDATION_STATES)} or null")
         # Optional operator acceptance gate. Absent = legacy phase = nothing to check and
         # NO warning: nagging every pre-v32 phase on every run would clutter the dashboards.
         if "acceptance" in p:
@@ -1284,7 +1313,7 @@ _Durable cross-slice decisions. Replace a superseded line; never stack versions.
 
 ## Doc impact
 
-_One line per durable-truth change: `- <doc>.md: <what changed> (<slice>)`. Append only; the review verifies this list and a later docs phase consolidates it into versions — never per slice, never at the review._
+_One line per durable-truth change: `- <doc>.md: <what changed> (<slice>)`. Append only; the review verifies this list and a later docs phase consolidates it into versions — never per slice, never at the review — a branch review adds its two gate sections here tagged `(gate section — written at merge)`._
 
 ## Operator Questions
 
@@ -1355,6 +1384,7 @@ def new_phase(args: argparse.Namespace) -> None:
         "created_at": now_iso(), "started_at": None, "completed_at": None,
         "review": {"status": "pending", "reviewed_at": None, "reviewer": None, "note": None},
         "acceptance": new_acceptance(),
+        **({"execution": {"mode": PINNED_MODE}} if getattr(args, "on_main", False) else {}),
         "paths": {"phase_md": "phase.md", "intent_md": "intent.md", "slices_dir": "slices"},
         "archive": {"archived": False, "archived_at": None, "archive_path": None},
     }
@@ -1368,11 +1398,13 @@ def new_phase(args: argparse.Namespace) -> None:
     append_event("phase_created", phase=phase_id)
     rebuild_index_and_state()
     print(f"created phase {phase_id}: {pdir.relative_to(ROOT)}")
-    # Proactive opt-in suggestion: a phase created while another one is mid-flight is the
-    # first of the two moments parallel mode becomes relevant. Suggestion only, never a default.
-    busy = next((p for p in all_active_phases() if p["id"] != phase_id and p.get("status") == "in_progress" and phase_execution(p) is None), None)
-    if busy:
-        print(f"hint: {busy['id']} is in progress -- this phase can run in parallel on its own branch: python3 scripts/workflow.py parallel-start {phase_id}")
+    # v42: every phase runs in its own worktree by default, entered at first execution by the
+    # do-* skills (never by create-phase). One fixed note says so, or names the pin.
+    if getattr(args, "on_main", False):
+        print(f"pinned to the default stream (execution.mode=default): {phase_id} runs here, never in its own worktree")
+    else:
+        print(f"note: {phase_id} will run in its own git worktree on first execution -- do-next-slice / do-whole-phase run parallel-start {phase_id} then; "
+              f"to keep it on this stream: python3 scripts/workflow.py parallel-skip {phase_id}")
 
 
 def _clean_order(value):
@@ -1682,6 +1714,40 @@ def _git_available() -> bool:
     return proc.returncode == 0 and proc.stdout.strip() == "true"
 
 
+def _git_dir(common: bool = False) -> Path:
+    """This checkout's git dir (per-worktree state: HEAD, index, MERGE_HEAD, rebase-*) or, with
+    `common`, the dir every worktree shares (refs, info/exclude). Absolute either way: git prints
+    `.git` relative to the cwd in the main checkout and an absolute path from a linked worktree,
+    and joining onto ROOT is right in both cases."""
+    flag = "--git-common-dir" if common else "--git-dir"
+    return (ROOT / _git(["rev-parse", flag]).stdout.strip()).resolve()
+
+
+def _git_operation_in_progress():
+    """'merge' / 'rebase' while this checkout is mid-operation, else None. `git commit -- <paths>`
+    refuses a partial commit during either, so the stamp commit needs a plain HEAD."""
+    gd = _git_dir()
+    if (gd / "MERGE_HEAD").exists():
+        return "merge"
+    if (gd / "rebase-merge").exists() or (gd / "rebase-apply").exists():
+        return "rebase"
+    return None
+
+
+def _ensure_worktrees_excluded() -> None:
+    """Put `.claude/worktrees/` in the common `info/exclude` once, so a nested phase worktree never
+    shows as untracked (or gets swept into `git add -A` as an embedded repo) in any checkout of this
+    repo. Never `.gitignore`: that file is the adopter's, tracked, and theirs to edit."""
+    exclude = _git_dir(common=True) / "info" / "exclude"
+    line = f"{WORKTREES_DIR}/"
+    existing = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
+    if line in {l.strip() for l in existing.splitlines()}:
+        return
+    sep = "" if not existing or existing.endswith("\n") else "\n"
+    exclude.parent.mkdir(parents=True, exist_ok=True)
+    exclude.write_text(f"{existing}{sep}# agentic workspace (v42): per-phase git worktrees cut by parallel-start\n{line}\n", encoding="utf-8")
+
+
 _REPO_PREFIX = None
 
 
@@ -1773,19 +1839,25 @@ def _phase_branch(phase_id: str, name: str, slug_override=None) -> str:
 
 
 def parallel_start(args: argparse.Namespace) -> None:
-    """Opt a planned phase into parallel execution: stamp it, commit the stamp, cut branch + worktree.
+    """Move a planned phase into its own worktree: stamp it, commit the stamp, cut branch + worktree.
 
     This is the single place the engine makes a git commit, and it is deliberate. The stamp must
     exist on BOTH the default branch (so this stream's pointer skips the phase) and the phase
     branch (so the worktree session claims the stream), and the branch has to be cut from a commit
-    that already contains it. One fixed-message commit, made only after a clean-tree guard so it
-    can contain nothing but the stamp plus the regenerated dashboards, achieves that by
-    construction; stamping and asking the operator to commit cannot.
+    that already contains it. Since v42 this is the default first step of executing a phase (the
+    do-* skills run it when `next` points at a planned, unstamped phase), so it no longer demands
+    a clean tree: `git add -- <paths>` then `git commit --only -- <paths>` makes the one
+    fixed-message commit exact whatever else is dirty or staged -- only the phase folder plus the
+    regenerated works/ files go in, everything else stays behind in this checkout, and the
+    worktree is cut from that commit ("start from the latest commit"). Stamping and asking the
+    operator to commit cannot achieve that by construction; this can.
     """
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
     if data.get("status") != "planned":
-        raise SystemExit(f"phase {args.phase} is {data.get('status')!r}; opt in before it starts (parallel-start needs status 'planned')")
+        raise SystemExit(f"phase {args.phase} is {data.get('status')!r}; a phase enters its worktree before it starts (parallel-start needs status 'planned') -- a phase already in flight finishes on this stream")
+    if phase_pinned(data):
+        raise SystemExit(f"phase {args.phase} is pinned to the default stream (execution.mode=default, set by parallel-skip / new-phase --on-main); to un-pin it, delete the execution block from {pdir.relative_to(ROOT)}/phase.json first")
     if data.get("execution") is not None:
         raise SystemExit(f"phase {args.phase} already carries an execution block: {json.dumps(data['execution'], ensure_ascii=False)}")
     _require_git_repo()
@@ -1793,8 +1865,9 @@ def parallel_start(args: argparse.Namespace) -> None:
     stream = current_stream(phases)
     if stream:
         raise SystemExit(f"this checkout is on parallel stream {stream}; run parallel-start from the default stream")
-    if _git(["status", "--porcelain"]).stdout.strip():
-        raise SystemExit("working tree is not clean; commit or stash first -- parallel-start makes one commit and it must contain only the opt-in stamp")
+    busy = _git_operation_in_progress()
+    if busy:
+        raise SystemExit(f"a {busy} is in progress in this checkout; finish or abort it first -- the stamp commit must be an ordinary commit on the default branch")
     branch = _phase_branch(args.phase, data.get("name") or args.phase, args.slug)
     if _branch_exists(branch):
         raise SystemExit(f"branch already exists: {branch} (pass --slug to pick another name)")
@@ -1802,32 +1875,71 @@ def parallel_start(args: argparse.Namespace) -> None:
         execution = phase_execution(p)
         if execution and execution.get("branch") == branch:
             raise SystemExit(f"branch {branch} is already stamped on phase {p['id']}")
-    default_worktree = ROOT.parent / f"{ROOT.name}-{args.phase}"
-    worktree = Path(os.path.abspath(str(Path(args.worktree).expanduser()))) if args.worktree else default_worktree
+    if args.worktree:
+        worktree = Path(os.path.abspath(str(Path(args.worktree).expanduser())))
+        if not worktree.parent.exists():
+            raise SystemExit(f"worktree parent directory does not exist: {worktree.parent}")
+    else:
+        worktree = ROOT / WORKTREES_DIR / branch.split("/", 1)[1]  # P<N>-<slug>: the branch's own tail
     if worktree.exists():
         raise SystemExit(f"worktree path already exists: {worktree} (pass --worktree to pick another path)")
-    if not worktree.parent.exists():
-        raise SystemExit(f"worktree parent directory does not exist: {worktree.parent}")
+    # Every guard is above this line. The exclude line is not repo content and is idempotent, so
+    # it goes first; the parent is created only for the default home (an override keeps its guard).
+    _ensure_worktrees_excluded()
+    if not args.worktree:
+        worktree.parent.mkdir(parents=True, exist_ok=True)
 
     data["execution"] = {"mode": "parallel", "branch": branch, "worktree": str(worktree), "consolidation": "pending"}
     write_json(pdir / "phase.json", data)
     append_event("phase_parallel_started", phase=args.phase, branch=branch, worktree=str(worktree))
     rebuild_index_and_state()
-    _git(["add", "--", str(pdir.relative_to(ROOT)), "works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/events.jsonl"])
-    _git(["commit", "-m", f"chore(works): opt {args.phase} into parallel execution"])
+    stamp_paths = [str(pdir.relative_to(ROOT)), *STAMP_WORKS_FILES]
+    _git(["add", "--", *stamp_paths])
+    _git(["commit", "--only", "-m", f"chore(works): opt {args.phase} into parallel execution", "--", *stamp_paths])
     proc = _git(["worktree", "add", "-b", branch, str(worktree), "HEAD"], check=False)
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout).strip() or f"exit {proc.returncode}"
         raise SystemExit(
             f"git worktree add failed: {detail}\n"
-            f"the opt-in stamp for {args.phase} is already committed on this branch; fix the cause and finish by hand: "
+            f"the stamp for {args.phase} is already committed on this branch; fix the cause and finish by hand: "
             f"git worktree add -b {branch} {worktree} HEAD")
-    print(f"phase {args.phase} opted into parallel execution")
+    print(f"phase {args.phase} now runs in its own worktree")
     print(f"branch={branch}")
     print(f"worktree={worktree}")
-    print(f"stamp committed here: chore(works): opt {args.phase} into parallel execution (present on both this branch and {branch})")
-    print(f"next: open a session in {worktree} and run /do-whole-phase there -- the phase runs entirely from that checkout")
+    print(f"stamp committed here: chore(works): opt {args.phase} into parallel execution -- only {pdir.relative_to(ROOT)}/ plus the regenerated works/ files "
+          f"(a phase not yet committed goes in whole); everything else dirty or staged stayed behind in this checkout, uncommitted")
+    print(f"the worktree starts from that commit (HEAD); {WORKTREES_DIR}/ is excluded via the repo's .git/info/exclude")
+    print(f"next: enter the worktree in this session (Claude Code: EnterWorktree with path={worktree}) or open a session there, run next, and drive the phase from that checkout")
     print(f"this stream's pointer now skips {args.phase}; after the branch is merged back, run: python3 scripts/workflow.py parallel-teardown {args.phase}")
+
+
+def parallel_skip(args: argparse.Namespace) -> None:
+    """Pin a planned phase to the default stream: it never gets a worktree.
+
+    Since v42 every planned phase enters its own worktree at first execution, so "run on main"
+    needs a marker the hints and `parallel-start` can see: `execution: {"mode": "default"}`.
+    `phase_execution` still returns None for it, so a pinned phase is a default-stream phase
+    everywhere else. No commit and no git: the pin is ordinary phase state, committed with the
+    phase like any other edit. Docs phases are always pinned (doc versions come from one index).
+    """
+    pdir = require_phase(args.phase)
+    data = read_json(pdir / "phase.json")
+    if data.get("status") != "planned":
+        raise SystemExit(f"phase {args.phase} is {data.get('status')!r}; pin a phase before it starts (parallel-skip needs status 'planned') -- a phase already running on this stream needs no pin")
+    if phase_pinned(data):
+        raise SystemExit(f"phase {args.phase} is already pinned to the default stream")
+    if data.get("execution") is not None:
+        raise SystemExit(f"phase {args.phase} already carries an execution block: {json.dumps(data['execution'], ensure_ascii=False)}")
+    stream = current_stream(all_active_phases())
+    if stream:
+        raise SystemExit(f"this checkout is on parallel stream {stream}; run parallel-skip from the default stream")
+    data["execution"] = {"mode": PINNED_MODE}
+    write_json(pdir / "phase.json", data)
+    append_event("phase_pinned", phase=args.phase)
+    rebuild_index_and_state()
+    print(f"phase {args.phase} pinned to the default stream (execution.mode=default)")
+    print("no worktree, no branch, no commit -- it runs here like a pre-v42 phase; commit phase.json with your next commit")
+    print(f"to un-pin before it starts: delete the execution block from {pdir.relative_to(ROOT)}/phase.json")
 
 
 def parallel_teardown(args: argparse.Namespace) -> None:
@@ -1840,7 +1952,7 @@ def parallel_teardown(args: argparse.Namespace) -> None:
     data = read_json(pdir / "phase.json")
     execution = phase_execution(data)
     if not execution:
-        raise SystemExit(f"phase {args.phase} is not opted into parallel execution (no parallel execution block)")
+        raise SystemExit(f"phase {args.phase} is not running in its own worktree (no parallel execution block)")
     branch = execution.get("branch")
     if not branch:
         raise SystemExit(f"phase {args.phase} has a parallel execution block with no branch; fix phase.json first")
@@ -1926,19 +2038,29 @@ def parallel_gate(args: argparse.Namespace) -> None:
             main_phases = []
         source = args.main_ref
     else:
-        # Without --main-ref the working tree stands in for main. Refuse when it is the phase
-        # branch itself -- either checked out by name (its worktree) or checked out detached at
-        # its tip (how CI checks out a PR). Sharing a tip with main is normal right after
-        # opt-in and does NOT count.
+        # Without --main-ref the working tree stands in for main -- unless it IS the phase
+        # branch: checked out by name (its worktree) or detached at its tip (how CI checks out a
+        # PR). Then (v42) the local default branch stands in instead, so the gate can run from
+        # the worktree before the session exits it; only when no default branch resolves is the
+        # operator asked for --main-ref. Sharing a tip with main is normal right after the stamp
+        # and does NOT count.
         current = git_current_branch()
         on_phase_branch = current is not None and current in {(execution or {}).get("branch"), branch_ref}
         detached_at_tip = current is None and _git(["rev-parse", "HEAD"], check=False).stdout.strip() == _git(["rev-parse", branch_ref], check=False).stdout.strip() != ""
         if on_phase_branch or detached_at_tip:
-            raise SystemExit(
-                f"this checkout is the phase branch {branch_ref} itself, so the working tree cannot stand in for the default stream; "
-                f"pass --main-ref <ref> (e.g. --main-ref origin/main) to say where the default stream's state is read from")
-        main_phases = all_active_phases()
-        source = "working tree"
+            default = _default_branch()
+            if not default:
+                raise SystemExit(
+                    f"this checkout is the phase branch {branch_ref} itself and no default branch (origin/HEAD, main, master) resolves, "
+                    f"so nothing can stand in for the default stream; pass --main-ref <ref> (e.g. --main-ref origin/main)")
+            main_phases = _phases_at_ref(default)
+            if main_phases is None:
+                reasons.append(f"cannot read the default stream's phase state at {default} (unknown ref?)")
+                main_phases = []
+            source = f"{default} (local default branch; this checkout is the phase branch)"
+        else:
+            main_phases = all_active_phases()
+            source = "working tree"
     print(f"main_state_source={source}")
     for p in main_phases:
         if p.get("id") == args.phase or phase_execution(p):
@@ -2019,7 +2141,7 @@ def parallel_consolidated(args: argparse.Namespace) -> None:
     data = read_json(pdir / "phase.json")
     execution = phase_execution(data)
     if not execution:
-        raise SystemExit(f"phase {args.phase} is not opted into parallel execution (no parallel execution block); record its consolidation with: python3 scripts/workflow.py docs-consolidated {args.phase}")
+        raise SystemExit(f"phase {args.phase} is not running in its own worktree (no parallel execution block); record its consolidation with: python3 scripts/workflow.py docs-consolidated {args.phase}")
     stream = current_stream(all_active_phases())
     if stream:
         raise SystemExit(f"this checkout is on parallel stream {stream}; run parallel-consolidated on the default stream, after the branch is merged")
@@ -2032,7 +2154,7 @@ def parallel_consolidated(args: argparse.Namespace) -> None:
     if consolidation == "done":
         raise SystemExit(f"phase {args.phase} is already marked consolidated (consolidation='done')")
     if consolidation != "pending":
-        raise SystemExit(f"phase {args.phase} has consolidation {consolidation!r}; expected 'pending' (set at opt-in by parallel-start, or by its passing review)")
+        raise SystemExit(f"phase {args.phase} has consolidation {consolidation!r}; expected 'pending' (set by parallel-start, or by its passing review)")
     set_phase_consolidation(data, "done")
     write_json(pdir / "phase.json", data)
     append_event("phase_consolidated", phase=args.phase, branch=execution.get("branch"))
@@ -2185,10 +2307,13 @@ def parallel_status(args: argparse.Namespace) -> None:
     print(f"waiting_on_operator={waiting or 'none'}")
     print("(the pointer above is this stream's; each section below is read from that phase's own branch)")
 
+    pinned = [p["id"] for p in phases if phase_pinned(p)]
+    if pinned:
+        print(f"pinned_to_default={','.join(pinned)}")
     parallel = [(p, phase_execution(p)) for p in phases if phase_execution(p)]
     if not parallel:
-        print("no parallel phases -- every active phase runs on the default stream")
-        print("opt one in with: python3 scripts/workflow.py parallel-start <P>")
+        print("no phase is in its own worktree right now -- every active phase runs on the default stream")
+        print("a planned phase enters one at first execution (python3 scripts/workflow.py parallel-start <P>); pinned phases (parallel-skip) stay here")
         return
     if not _git_available():
         raise SystemExit(
@@ -2248,27 +2373,22 @@ def parallel_status(args: argparse.Namespace) -> None:
 
 
 def parallel_start_hint(state: dict, index: dict) -> str:
-    """The proactive opt-in suggestion for `next`, or None.
+    """The worktree-by-default hint for `next`, or None (v42).
 
-    Fires only on the default stream when the current phase is in_progress and a later
-    default-stream phase is still `planned` -- i.e. exactly when the operator is about to
-    start a second phase behind a live one. Suggestion only, never a default.
+    Fires on the default stream when the pointer's phase is still `planned` and carries no
+    `execution` block: executing it is what moves it into its own worktree (`parallel-start`,
+    run by the do-* skills), and `parallel-skip` keeps it here instead. Silent once the phase is
+    stamped either way, silent in a worktree. The pre-v42 condition (a planned phase queued
+    behind an in_progress one) is superseded: the default reversed, so the trigger did.
     """
     if state.get("stream"):
         return None
-    current = state.get("current_phase")
-    phases = index.get("active_phases", [])  # already ordered by phase order
-    ids = [p.get("id") for p in phases]
-    if current not in ids:
+    cur = next((p for p in index.get("active_phases", []) if p.get("id") == state.get("current_phase")), None)
+    if not cur or cur.get("status") != "planned" or cur.get("execution") or cur.get("pinned"):
         return None
-    cur = phases[ids.index(current)]
-    if cur.get("status") != "in_progress":
-        return None
-    waiting = next((p for p in phases[ids.index(current) + 1:] if p.get("status") == "planned" and not p.get("execution")), None)
-    if not waiting:
-        return None
-    return (f"hint: {waiting['id']} is waiting behind {current} -- it can run in parallel on its own branch: "
-            f"python3 scripts/workflow.py parallel-start {waiting['id']}")
+    path = ROOT / WORKTREES_DIR / _phase_branch(cur["id"], cur.get("name") or cur["id"]).split("/", 1)[1]
+    return (f"hint: {cur['id']} runs in its own worktree by default -- python3 scripts/workflow.py parallel-start {cur['id']} "
+            f"then enter {path}; parallel-skip {cur['id']} keeps it on this stream")
 
 
 # ---------------------------------------------------------------------------
@@ -2815,6 +2935,8 @@ def main(argv=None) -> int:
     p.add_argument("--name", required=True)
     p.add_argument("--objective", required=True)
     p.add_argument("--order", type=float)
+    p.add_argument("--on-main", action="store_true", dest="on_main",
+                   help="pin the phase to the default stream (execution.mode=default): it never gets a worktree -- docs phases, and anything the operator says must run here")
     p.set_defaults(func=new_phase)
 
     p = sub.add_parser("new-slice", help="Create a new slice folder with slice.json + markdown files")
@@ -2871,11 +2993,15 @@ def main(argv=None) -> int:
     p.add_argument("phase")
     p.set_defaults(func=docs_consolidated)
 
-    p = sub.add_parser("parallel-start", help="Opt a planned phase into parallel execution: stamp it, commit the stamp, and cut its phase branch + git worktree")
+    p = sub.add_parser("parallel-start", help="Move a planned phase into its own worktree (the v42 default first step of executing it): stamp it, commit the stamp (phase folder + works/ files only; a dirty tree is fine), cut phase/P<N>-<slug> and .claude/worktrees/P<N>-<slug>")
     p.add_argument("phase")
-    p.add_argument("--worktree", default=None, help="worktree path (default: a sibling of the repo root, ../<repo>-<phase>)")
+    p.add_argument("--worktree", default=None, help="worktree path (default: <repo>/.claude/worktrees/P<N>-<slug>, which EnterWorktree can enter in the same session; elsewhere means opening a second session there)")
     p.add_argument("--slug", default=None, help="branch slug override (default: slugified phase name); branch is phase/<phase>-<slug>")
     p.set_defaults(func=parallel_start)
+
+    p = sub.add_parser("parallel-skip", help="Pin a planned phase to the default stream (execution.mode=default): no worktree, no branch, no commit; new-phase --on-main does the same at creation")
+    p.add_argument("phase")
+    p.set_defaults(func=parallel_skip)
 
     p = sub.add_parser("parallel-status", help="Read-only cross-stream view: this checkout's pointer plus every parallel phase's branch-side slice state (never writes anything)")
     p.set_defaults(func=parallel_status)

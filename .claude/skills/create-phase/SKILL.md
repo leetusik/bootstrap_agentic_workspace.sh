@@ -24,6 +24,8 @@ Turn an operator request for new work into one or more phases — or a deferred 
 
    **`design-only` must be chosen here** — the `DECOMP` slice's executor is forbidden from running `new-phase`, so a phase split decided later cannot be created from inside decomposition. That is the deadline this choice has; the other two styles can still be settled at `DECOMP`. When a phase was created before its visual nature was clear, `DECOMP` asks the style instead and stops **`pending`** for the answer — and if the answer turns out to be `design-only`, the apply phase is created on the main thread through this skill, never from inside a `DECOMP`.
 
+   **Ask the mockup question in the same breath:** *do you want a runnable mockup of each round before you sign it, or will you sign on the cards?* A mockup is a throwaway route in the project's own frontend, built from the round's contract with stubbed data, that the operator opens before signing — it costs a dispatched build and a second `pending` stop per round. The default is **`on request`**: the round closes on the operator's "done" when they return from Claude Design, and they can still ask for a mockup in their own words at any time before that. Record the answer as the `Mockup:` line under `## Design Style` (step 4.2). When the style is asked at `DECOMP` instead, this question travels with it.
+
    **If the request is "consolidate the docs" / "run a docs phase" — or the operator is clearing a `consolidation_owed=` line from `next` — the scope is already written down.** Run `python3 scripts/workflow.py docs-debt` and propose what it prints; see *The docs-phase route* below. It is an ordinary phase through this same procedure, confirmed at step 3 like any other.
 
 3. **Confirm.** Present your refined understanding back to the operator — for each phase, the proposed **name** and **objective**; for deferred work, the title, reason, and trigger. Get explicit confirmation. Per the contract, do **not** run `new-phase` until the operator confirms.
@@ -48,21 +50,21 @@ Turn an operator request for new work into one or more phases — or a deferred 
       - write the confirmed, refined wording under *Confirmed Intent (refined + clarified)*;
       - record any clarifying Q/A under *Clarifications Resolved*;
       - **for a visual-design phase only**, append a `## Design Style` section naming the confirmed
-        style (`build-after` / `design-only` / `paired`) and the one-line reason. `DECOMP` reads it.
-        It is added **only when the phase is visual** — the scaffold does not carry the heading, and
-        every reader treats its absence as "not a design phase", never as an unanswered question.
+        style (`build-after` / `design-only` / `paired`) and the one-line reason, then a second line
+        `Mockup: requested` or `Mockup: on request` (the default when the operator did not ask for
+        one). `DECOMP` reads both. The section is added **only when the phase is visual** — the
+        scaffold does not carry the heading, and every reader treats its absence as "not a design
+        phase", never as an unanswered question; an absent `Mockup:` line reads as `on request`.
 
       (`new-phase` already filled the phase id and captured-at timestamp.)
    3. Confirm `phase.md` links `intent.md` near the top (the engine added `_Intent: see [intent.md](intent.md)._`).
-   4. **Relay the parallel hint if `new-phase` printed one.** When another phase is already
-      `in_progress`, the engine prints a `hint:` line offering
-      `python3 scripts/workflow.py parallel-start P<N>` — surface it to the operator as a
-      **suggestion, never a default**: this phase can run on its own branch and worktree instead of
-      queueing behind the current one. **Now is the only moment to opt in** — `parallel-start`
-      requires the phase to still be `planned`, so it must run before any decomposition or execution.
-      If the operator says yes, run it and report the branch and worktree it created; the phase is
-      then driven from a session opened in that worktree. See the `parallel-phase` skill for the full
-      lifecycle (work, branch review, PR, merge, deferred doc consolidation, teardown).
+   4. **Tell the operator where the phase will run.** `new-phase` prints one note: the phase will
+      run in its own git worktree (`.claude/worktrees/P<N>-<slug>`, branch `phase/P<N>-<slug>`) the
+      first time it is executed — `do-next-slice` / `do-whole-phase` run `parallel-start` then, in
+      the same session; `create-phase` does **not** run it. Relay that line. If the operator says
+      the phase must stay on this stream, run `python3 scripts/workflow.py parallel-skip P<N>` now
+      (or create it with `new-phase … --on-main`) and report the pin. A phase already `in_progress`
+      on this stream is unaffected. See the `parallel-phase` skill.
 
 5. **STOP and report.** List the phases created — IDs, names, and `intent.md` paths — or the deferred job created. Do **not** decompose into middle slices, write any slice's `plan.md`, or implement code. Decomposition is the `DECOMP` slice's own job, later, when the operator executes the phase (`/do-next-slice`, `/do-whole-phase`) or explicitly tells you to.
 
@@ -73,7 +75,7 @@ Durable docs are versioned **in a docs phase the operator creates** — never pe
 1. **Read the debt** (read-only): `python3 scripts/workflow.py docs-debt`. It prints every owing phase with its `## Doc impact` notes, the docs those notes touch, and the command that pays each phase.
 2. **Propose that as the scope** in step 2 — the phases and the docs it names. The operator may narrow it; a phase left out simply keeps owing and stays in `active/`.
 3. **Confirm the name and objective at step 3, unchanged.** An objective that works: *"consolidate the `## Doc impact` notes from P12–P16 into new versions of architecture, operations and qa"* — name the phases, because they are what gets cleared at the end.
-4. **`new-phase`, fill `intent.md`, STOP.** Record the `docs-debt` scope in `intent.md`; decomposition is the docs phase's own `DECOMP` slice, later.
+4. **`new-phase --on-main`, fill `intent.md`, STOP.** A docs phase is **pinned to the default stream** — `doc-new-version`, `docs-consolidated` and `parallel-consolidated` only run there — so create it with `--on-main` (or `parallel-skip` it right after). Record the `docs-debt` scope in `intent.md`; decomposition is the docs phase's own `DECOMP` slice, later.
 
 **What that `DECOMP` will cut** (write it into `intent.md`; do not cut it here): **one slice per doc**, `--kind docs` — `doc-new-version` is per doc and one doc usually collects notes from several phases, so per-doc keeps each doc to a single new version. Risk by the normal rule. Each slice runs, per note it covers:
 

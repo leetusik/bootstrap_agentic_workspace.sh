@@ -29,7 +29,7 @@
       ]
     },
     "architecture": {
-      "latest": "v0005_operator_acceptance_gate_on_phase.json_and_the_gated_phase-review_lifecycle_v32",
+      "latest": "v0006_v42_one_worktree_per_phase_by_default_the_pinned_execution_block_nested_worktrees_and_the_exclude_line",
       "current_path": "docs/current/architecture.md",
       "versions": [
         {
@@ -71,6 +71,15 @@
           "source": "P16.REVIEW",
           "summary": "Operator acceptance gate on phase.json and the gated phase-review lifecycle (v32)",
           "previous": "v0004_single-harness_repo_shape_claude.md_is_the_only_contract_.claude_the_only_entry_points_and_the_artifact_embeds_claude_machinery_alone_v31"
+        },
+        {
+          "id": "v0006_v42_one_worktree_per_phase_by_default_the_pinned_execution_block_nested_worktrees_and_the_exclude_line",
+          "path": "docs/versions/architecture/v0006_v42_one_worktree_per_phase_by_default_the_pinned_execution_block_nested_worktrees_and_the_exclude_line.md",
+          "created_at": "2026-09-13T22:05:59+09:00",
+          "commit": "bfc9a6557e7af18f1e0b8d04975710c863037544",
+          "source": "v42",
+          "summary": "v42: one worktree per phase by default, the pinned execution block, nested worktrees and the exclude line",
+          "previous": "v0005_operator_acceptance_gate_on_phase.json_and_the_gated_phase-review_lifecycle_v32"
         }
       ]
     },
@@ -131,7 +140,7 @@
       ]
     },
     "operations": {
-      "latest": "v0032_v41_the_review_s_gate_stages_3-4_bounded_to_the_phase_phase-scope_names_the_boundary",
+      "latest": "v0033_v42_phase_worktrees_by_default_dirty-tree_entry_local_merge_pinned_phases_design_rounds_close_on_the_operator_s_return_mockups_on_request_numbered_cards",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -390,6 +399,15 @@
           "source": "v41",
           "summary": "v41: the review's gate stages 3-4 bounded to the phase; phase-scope names the boundary",
           "previous": "v0031_the_v37_aside_correction_reaches_operations_aside_repl_over_bash_a_second_conditionally-required_manifest_field_for_the_agent_s_aside_account_and_the_pre-v37_update_path"
+        },
+        {
+          "id": "v0033_v42_phase_worktrees_by_default_dirty-tree_entry_local_merge_pinned_phases_design_rounds_close_on_the_operator_s_return_mockups_on_request_numbered_cards",
+          "path": "docs/versions/operations/v0033_v42_phase_worktrees_by_default_dirty-tree_entry_local_merge_pinned_phases_design_rounds_close_on_the_operator_s_return_mockups_on_request_numbered_cards.md",
+          "created_at": "2026-09-13T22:05:59+09:00",
+          "commit": "bfc9a6557e7af18f1e0b8d04975710c863037544",
+          "source": "v42",
+          "summary": "v42: phase worktrees by default, dirty-tree entry, local merge, pinned phases; design rounds close on the operator's return, mockups on request, numbered cards",
+          "previous": "v0032_v41_the_review_s_gate_stages_3-4_bounded_to_the_phase_phase-scope_names_the_boundary"
         }
       ]
     },
@@ -408,7 +426,7 @@
       ]
     },
     "qa": {
-      "latest": "v0008_v41_the_review_re-runs_the_regression_checklist_inside_the_phase_s_boundary_never_whole",
+      "latest": "v0009_v42_the_mockup_exemption_applies_only_to_rounds_where_the_operator_asked_for_a_mockup",
       "current_path": "docs/current/qa.md",
       "versions": [
         {
@@ -475,11 +493,20 @@
           "source": "v41",
           "summary": "v41: the review re-runs the regression checklist inside the phase's boundary, never whole",
           "previous": "v0007_aside_s_two_real_surfaces_the_aside_repl-over-bash_default_and_its_measured_mcp_cost_the_dedicated_agent_profile_as_a_third_halt_and_the_140-pass_v37_baseline"
+        },
+        {
+          "id": "v0009_v42_the_mockup_exemption_applies_only_to_rounds_where_the_operator_asked_for_a_mockup",
+          "path": "docs/versions/qa/v0009_v42_the_mockup_exemption_applies_only_to_rounds_where_the_operator_asked_for_a_mockup.md",
+          "created_at": "2026-09-13T22:05:59+09:00",
+          "commit": "bfc9a6557e7af18f1e0b8d04975710c863037544",
+          "source": "v42",
+          "summary": "v42: the mockup exemption applies only to rounds where the operator asked for a mockup",
+          "previous": "v0008_v41_the_review_re-runs_the_regression_checklist_inside_the_phase_s_boundary_never_whole"
         }
       ]
     },
     "decisions": {
-      "latest": "v0039_make_the_aside_prescription_true_two_surfaces_aside_repl_over_bash_as_the_default_and_a_dedicated_agent_profile_--_superseding_v36_s_mcp-first_surface_p20_v37",
+      "latest": "v0040_v42_phase_worktrees_by_default_with_a_dirty-tree_stamp_and_a_local_merge_mockups_on_request_the_round_closes_on_the_operator_s_return_numbered_cards",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -793,9 +820,18 @@
           "source": "P20.REVIEW",
           "summary": "Make the Aside prescription true: two surfaces, aside repl over Bash as the default, and a dedicated agent profile -- superseding v36's MCP-first surface (P20, v37)",
           "previous": "v0038_make_research_a_real_slice_kind_with_decomp2_as_its_ordinary_sequel_and_prescribe_aside_as_the_real-browser_instrument_--_doctrine_not_integration_p19_v36"
+        },
+        {
+          "id": "v0040_v42_phase_worktrees_by_default_with_a_dirty-tree_stamp_and_a_local_merge_mockups_on_request_the_round_closes_on_the_operator_s_return_numbered_cards",
+          "path": "docs/versions/decisions/v0040_v42_phase_worktrees_by_default_with_a_dirty-tree_stamp_and_a_local_merge_mockups_on_request_the_round_closes_on_the_operator_s_return_numbered_cards.md",
+          "created_at": "2026-09-13T22:05:59+09:00",
+          "commit": "bfc9a6557e7af18f1e0b8d04975710c863037544",
+          "source": "v42",
+          "summary": "v42: phase worktrees by default with a dirty-tree stamp and a local merge; mockups on request, the round closes on the operator's return, numbered cards",
+          "previous": "v0039_make_the_aside_prescription_true_two_surfaces_aside_repl_over_bash_as_the_default_and_a_dedicated_agent_profile_--_superseding_v36_s_mcp-first_surface_p20_v37"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-09-06T03:25:43+09:00"
+  "last_rebuilt_at": "2026-09-13T22:17:03+09:00"
 }

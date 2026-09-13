@@ -213,10 +213,14 @@ plan, stop before running it) are opt-in words you add to the command.
 `design-cowork` fires automatically when the work changes a product's visual appearance. **The agent
 never designs** — [Claude Design](https://claude.ai/design) and you make every visual decision.
 Claude Design reads the real repository itself (Connect GitHub, or a local-directory connection), so
-the agent mirrors nothing: it writes one `handoff.md` asking for a reviewable card set, stops for
-your design round, reads the result back with `DesignSync`, and lands it in the repo as-is. Approval
-must be literal, a revision becomes a new round, and implementation is always a separate slice that
-follows the approved design faithfully and checks the running result in a real browser.
+the agent mirrors nothing: it writes one `handoff.md` asking for a reviewable card set — every card
+path numbered in reading order (`01-nav.html`, `02-hero.html`, …) so you see the design in the
+right order — stops for your design round, reads the result back with `DesignSync`, and lands it in
+the repo as-is. You sign the round in your own words when you come back from Claude Design — and if
+you want to see it running first, ask for a mockup: the agent builds a throwaway, stubbed route in
+the project's own frontend and stops again for you to open it. Approval must be literal, a revision
+becomes a new round, and implementation is always a separate slice that follows the approved design
+faithfully and checks the running result in a real browser.
 
 Track progress in [`works/backlog.md`](works/backlog.md) (the generated dashboard) and the active
 phase folder under `works/phases/active/` (the phase notebook and slice folders) — or just ask the
@@ -256,7 +260,7 @@ another agent, CI — drives the workspace with the exact same commands:
 | `defer-job --title … --reason … --trigger …` | Park a deferred job |
 | `promote-deferred D1 --phase P1 --slice P1.S2` | Promote a deferred job into a slice |
 | `sync-agents` | Apply the `executors.toml` executor-tier mode/model/effort config to the agent files |
-| `parallel-start <P>` … `parallel-teardown <P>` | Run a phase in parallel on its own branch + worktree, then integrate it back (see the `parallel-phase` skill) |
+| `parallel-start <P>` … `parallel-teardown <P>` | Move a phase into its own branch + worktree (the default at first execution), then integrate it back with a local merge (see the `parallel-phase` skill) |
 | `validate` | Check workspace integrity |
 
 The full command list lives in [`CLAUDE.md`](CLAUDE.md).
@@ -272,7 +276,7 @@ commands in Claude Code:
 | `do-next-slice` | Complete exactly one slice, then stop |
 | `do-whole-phase` | Finish the active phase end-to-end, including its review |
 | `review-phase` | Review a phase and record a `pass` / `changes_requested` / `blocked` verdict |
-| `parallel-phase` | Run a phase in parallel on its own branch + worktree, and integrate it back: PR, quiet-point gate, merge, deferred doc consolidation, teardown |
+| `parallel-phase` | Run a phase in its own branch + worktree (the default) and integrate it back: quiet-point gate, local merge by default, the review's gate sections, teardown |
 | `doc-new-version` | Create a new versioned durable doc instead of patching the current one |
 | `defer-job` | Park work as a deferred job, outside active selection |
 | `deferred` | Rebuild and show the deferred-jobs dashboard |
@@ -337,41 +341,41 @@ When an agent picks up work, it reads just in time, in this order — and no fur
 
 Archived phases and old doc versions are history; they're not read by default.
 
-### Parallel phases (opt-in)
+### Phase worktrees (the default)
 
-By default every phase runs on `main`, one at a time. When a phase and its predecessor genuinely
-touch different ground, you can opt a `planned` phase into **parallel mode** instead of queueing it:
-its own branch, its own git worktree, and its own orchestrator session, while `main` keeps working
-the phase in front of it. This is opt-in per phase and never a default — a workspace that never uses
-it behaves exactly as before, and the phase is the unit of parallelism (slices inside one phase stay
-strictly sequential).
+Every phase runs in **its own git worktree** by default. The first time a `planned` phase is
+executed (`/do-whole-phase`, `/do-next-slice`), the agent runs `parallel-start <P>`, which cuts
+`phase/P<N>-<slug>` and a worktree at `.claude/worktrees/P<N>-<slug>`, then enters that worktree
+**in the same session** and drives the phase there. `main` keeps working whatever it was working,
+each checkout sees only its own stream, and the phase is the unit of parallelism (slices inside one
+phase stay strictly sequential).
 
-**The workspace suggests it, never assumes it.** `new-phase` hints when another phase is already
-`in_progress`; `next` hints when a `planned` phase is waiting behind one that's mid-flight. Both name
-the opt-in command; queueing normally is always a valid answer.
+**A dirty `main` does not block it.** The stamp commit carries exactly the phase folder plus the
+regenerated `works/` files; whatever else is dirty or staged stays behind on `main`, uncommitted,
+and the worktree starts from that commit. `.claude/worktrees/` is written to the repo's
+`.git/info/exclude`, never to `.gitignore`, so `main` never shows the nested worktree as untracked.
+What still refuses: a phase that is not `planned` or is already stamped, a merge or rebase in
+progress, a taken branch or path.
 
-**Opting in.** `parallel-start <P> [--worktree PATH] [--slug S]` stamps the phase, cuts
-`phase/P<N>-<slug>` off a commit that carries the stamp, and adds a git worktree for it (never a
-plain clone on your own machine — a teammate can instead clone the repo and check the branch out).
-From there, open a second agent session in that worktree and drive the phase as usual
-(`/do-whole-phase`, `/do-next-slice`) — selection and `pending` are stream-scoped, so each checkout
-sees only its own phase.
+**Staying on `main`.** `parallel-skip <P>` pins a `planned` phase to the default stream, and
+`new-phase --on-main` creates one pinned; docs phases are always pinned, because doc versions come
+from one shared index. A phase that was already `in_progress` on `main` finishes there. `next` on
+`main` prints a `hint:` line for a planned, unpinned phase, and `parallel-status` shows every
+stream's state from any checkout.
 
-**Working in two streams.** `parallel-status` shows every stream's state from any checkout — this
-one's pointer plus each parallel phase's branch, worktree, and slice progress — without switching
-branches. A parallel phase's review defers its doc-version consolidation to a serialized post-merge
-step on `main`, instead of versioning docs on the branch.
-
-**Integrating back.** Once a parallel phase's review passes, the agent runs the integration itself:
-`parallel-gate <P>` checks the quiet-point (the branch's phase done + `main` between phases), then
-push → PR → CI → merge → `parallel-merge-finish` (regenerates the shared dashboards) → doc
-consolidation → `parallel-consolidated <P>` → `parallel-teardown <P>` retires the worktree and
-branch. A closed gate stops the sequence with a report instead of merging. CI
-(`.github/workflows/workspace-ci.yml`) runs `validate` on every push and PR, plus a `parallel-gate`
-check on `phase/*` pull requests.
+**Integrating back.** Once the branch review passes, the agent runs the integration itself:
+`parallel-gate <P>` checks the quiet point (the branch's phase done + `main` between phases), then it
+exits the worktree and, on `main`, runs `git merge --no-ff phase/P<N>-<slug>` — a **local merge**
+— followed by `parallel-merge-finish` (regenerates the shared dashboards), the doc versions for the
+two gate sections the branch review recorded, and `parallel-teardown <P>`, which retires the
+worktree and branch. Everything else on the phase's "Doc impact" list waits for a docs phase, as on
+`main`. **Push and PR happen only when you ask** — push → PR → CI → merge is the remote variant, and
+CI (`.github/workflows/workspace-ci.yml`) runs `validate` on every push and PR plus a
+`parallel-gate` check on `phase/*` pull requests for it. A closed gate stops the sequence with a
+report instead of merging.
 
 See the [`parallel-phase`](.claude/skills/parallel-phase/SKILL.md) skill (`/parallel-phase`) for the
-full lifecycle, and [`CLAUDE.md`](CLAUDE.md) for the command reference.
+eight worktree rules and the full lifecycle, and [`CLAUDE.md`](CLAUDE.md) for the command reference.
 
 ## Project structure
 
@@ -398,7 +402,7 @@ full lifecycle, and [`CLAUDE.md`](CLAUDE.md) for the command reference.
 │   └── settings.json              # pre-approves workflow.py; denies force-push & rm -rf
 └── .github/
     └── workflows/
-        └── workspace-ci.yml       # CI: validate on push/PR; parallel-gate job on phase/* PRs
+        └── workspace-ci.yml       # CI: validate on push/PR; parallel-gate job on phase/* PRs (remote variant)
 ```
 
 ## ⭐ How I work with coding agents

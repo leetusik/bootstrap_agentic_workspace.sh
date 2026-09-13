@@ -1,74 +1,127 @@
 ---
 name: parallel-phase
-description: Run a phase in parallel on its own branch and worktree, and integrate it back: PR, quiet-point gate, merge, deferred doc consolidation, teardown.
+description: Run a phase in its own git worktree (the default since v42) and integrate it back: quiet-point gate, local merge, the review's two gate sections, teardown; push → PR is the remote variant.
 allowed-tools: Bash(python3 scripts/workflow.py:*), Read, Edit, Write, Glob, Grep, Bash
 disable-model-invocation: true
 ---
 
 # parallel-phase
 
-Parallel mode runs **one phase** on its own git branch in its own git worktree, driven by its own
-session, while the default stream keeps working on `main`. It is **opt-in per phase and never a
-default**: a workspace that never opts in behaves exactly as before.
+Every phase runs on its own git branch in its own git worktree, driven from the same session that
+started it, while the default stream keeps `main` free for the next phase. Since v42 this is **the
+default**: every `planned` phase enters its own worktree the first time it is executed, in the same
+session, and stays on `main` only when pinned (`parallel-skip <P>`, `new-phase --on-main`) or when it
+was already in flight before v42.
 
 The unit of parallelism is the **phase**. Slices inside a phase stay strictly sequential — they build
 on each other through `phase.md` and a commit at every boundary — so never fan out slices.
 
-Everything below is the whole lifecycle, in order: suggest → opt in → work → review on the branch →
-integrate back. The contract (`CLAUDE.md`) carries only the rules; the detail lives here.
+Everything below is the whole lifecycle, in order: enter at first execution → work → review on the
+branch → integrate back (a local merge by default). The contract (`CLAUDE.md`) carries only the rules;
+the detail lives here.
 
-## 1. When — suggestion only
+## 1. The default — every phase, at first execution
 
-The engine hints; it never acts. Relay a hint to the operator, and stop there unless they opt in:
+**Worktree rules:**
 
-- `python3 scripts/workflow.py new-phase ...` prints a hint when another phase is already
-  `in_progress` — the new phase can run on its own branch instead of queueing behind it.
-- `python3 scripts/workflow.py next` prints a hint when a `planned` phase is waiting behind the
-  `in_progress` one.
+1. **When** — a `planned` phase with no `execution` block enters its worktree at **first execution**:
+   when `next` on the default stream points at it, `do-next-slice` / `do-whole-phase` run
+   `parallel-start <P>`; `create-phase` never does.
+2. **Where** — `<repo>/.claude/worktrees/P<N>-<slug>` on branch `phase/P<N>-<slug>` (`--worktree`
+   overrides); the engine puts `.claude/worktrees/` in `.git/info/exclude` (common dir), never in
+   `.gitignore`.
+3. **The stamp commit** — the engine's one fixed-message commit (the stamp must exist on both branches)
+   contains exactly the phase folder plus the five regenerated `works/` files
+   (`git add -- <paths>` + `git commit --only -- <paths>`); a phase not yet committed goes in whole.
+4. **What stays behind** — a dirty or staged default checkout does not block it: everything else stays
+   there, uncommitted, and the worktree starts from that commit ("start from the latest commit").
+5. **What still refuses** — the phase is not `planned`; it already carries an `execution` block
+   (parallel or pinned); no git repo; the checkout is on a parallel stream; a merge or rebase is in
+   progress; the branch exists or is stamped on another phase; the worktree path exists; an overridden
+   path's parent is missing.
+6. **Enter and exit** — the orchestrator calls `EnterWorktree` with the printed path in the same
+   session, re-runs `next` (`stream=phase/…`), and works there; background Agents dispatched from there
+   run in the worktree. `ExitWorktree` `keep` returns to the default checkout for integration and never
+   removes the worktree. Stream membership is the current git branch vs. the stamped
+   `execution.branch`, never a marker file, so a plain clone of the branch works too. (Fallback if the
+   session cannot switch: drive the default checkout's engine by absolute path,
+   `python3 <repo>/scripts/workflow.py …`, since `ROOT` derives from the script's own location.)
+7. **The merge** — after `parallel-gate <P>` is OPEN (branch phase `done` + review `pass`, default
+   stream not busy; never past a closed gate): `ExitWorktree keep` → `git pull --ff-only` only if
+   `main` tracks a remote → if anything is staged, or a file the merge touches is uncommitted (typically
+   the generated `works/` files after a phase was created or pinned here since the stamp — commit that
+   workflow state first), STOP and ask (git refuses both; never unstage or discard the operator's work)
+   → `git merge --no-ff phase/P<N>-<slug> -m "merge(P<N>): <name>"`
+   (an orchestrator commit; a conflict in a generated file = take either side + regenerate) →
+   `parallel-merge-finish` → the review's tagged gate-section notes via `doc-new-version` +
+   `rebuild-docs` → commit → `parallel-teardown <P>` (worktree must be clean) → commit. Push → PR →
+   CI → `gh pr merge` is the **remote variant**, only when the operator asks or repo policy requires.
+8. **Stays on `main`** — `parallel-skip <P>` or `new-phase --on-main` stamps
+   `execution: {"mode": "default"}` (docs phases always — `doc-new-version` / `docs-consolidated` only
+   run on the default stream — and any phase the operator says so); a phase already `in_progress`
+   when v42 arrived finishes there.
 
-Both hints name `python3 scripts/workflow.py parallel-start <P>`. They are advisory: queueing the
-phase normally is always a valid answer, and parallel mode is worth its overhead only when the two
-phases genuinely touch different ground.
+**The two hints.** The engine tells you where a phase will run; it never enters a worktree itself:
 
-## 2. Opt in — `parallel-start`
+- `python3 scripts/workflow.py new-phase ...` prints one note: the phase will run in its own worktree
+  on first execution, and `parallel-skip <P>` keeps it on this stream.
+- `python3 scripts/workflow.py next` on the default stream prints, when the pointer's phase is
+  `planned` with no `execution` block:
+  `hint: <P> runs in its own worktree by default -- python3 scripts/workflow.py parallel-start <P> then enter <path>; parallel-skip <P> keeps it on this stream`
+
+`create-phase` never runs `parallel-start`; the do-* skills do, when `next` shows the hint. A pinned
+phase and a phase already stamped get no hint.
+
+## 2. `parallel-start` — what the stamp commit contains and what still refuses
 
 ```sh
 python3 scripts/workflow.py parallel-start <P> [--worktree <path>] [--slug <slug>]
 ```
 
-Run it **between `new-phase` and any `start-slice`** — from the default stream, with a clean tree.
-It refuses unless the phase is `planned`, has no `execution` block yet, the checkout is on the
-default stream inside a git work tree, the tree is clean, the branch name is free, and the worktree
-path is free with an existing parent. Every guard runs before any mutation, so a refusal leaves no
-partial state.
+Run it from the default stream, before the phase's first `start-slice` (the do-* skills do this for
+you when `next` prints the hint). It refuses when: the phase is not `planned`; it already carries an
+`execution` block (parallel or pinned); the checkout is not inside a git work tree; the checkout is on
+a parallel stream; a merge or rebase is in progress; the branch name exists or is stamped on another
+phase; the worktree path exists; an overridden path's parent is missing. Every guard runs before any
+mutation, so a refusal leaves no partial state.
+
+**A dirty tree does not block it.** The commit is made with `git add -- <paths>` and
+`git commit --only -- <paths>`, so it contains exactly the phase folder plus `works/state.json`,
+`works/index.json`, `works/backlog.md`, `works/deferred.md`, `works/events.jsonl` — whatever else is
+dirty or staged stays behind in the default checkout, uncommitted, and the worktree starts from that
+commit. A phase `create-phase` just made is usually not yet committed: the stamp carries the whole new
+folder, on purpose.
 
 What it does:
 
 - stamps `phase.json` with `execution: {mode: "parallel", branch, worktree, consolidation: "pending"}`;
 - makes **one** fixed-message engine commit — `chore(works): opt <P> into parallel execution`, no
-  trailers — containing nothing but that stamp plus the regenerated `works/` files. This is the single
-  deliberate exception to "the engine never commits": the stamp must exist on **both** branches, so
-  the phase branch has to be cut from a commit that already contains it;
-- cuts `phase/P<N>-<slug>` (slug = the slugified phase name unless `--slug` overrides) and adds a
-  sibling worktree at `../<repo>-<P>` unless `--worktree` overrides.
+  trailers — containing nothing but that stamp plus the regenerated `works/` files (rule 3). This is
+  the single deliberate exception to "the engine never commits": the stamp must exist on **both**
+  branches, so the phase branch has to be cut from a commit that already contains it;
+- cuts `phase/P<N>-<slug>` (slug = the slugified phase name unless `--slug` overrides) and adds the
+  worktree at `<repo>/.claude/worktrees/P<N>-<slug>` unless `--worktree` overrides (the engine adds
+  `.claude/worktrees/` to `.git/info/exclude`, never `.gitignore`).
 
-Then **open a second session in that worktree** and drive the phase from there (`/do-whole-phase`,
-`/do-next-slice`). A teammate can instead clone the repo and check the branch out — from that point
-on the two are identical, because stream membership is read from the current git branch versus the
-stamped `execution.branch`, never from a marker file.
+Then **enter it in this session**: call `EnterWorktree` with the printed `worktree=` path (it must be
+under `.claude/worktrees/` — an overridden path elsewhere means a second session there instead), run
+`python3 scripts/workflow.py next` (it prints `stream=phase/P<N>-<slug>`), and continue; background
+Agents dispatched from there run in the worktree. A teammate can instead clone the repo and check the
+branch out — from that point on the two are identical, because stream membership is read from the
+current git branch versus the stamped `execution.branch`, never from a marker file.
 
 ## 3. Work — in the worktree, as normal
 
 Nothing about slice work changes. Inside the worktree, run the usual skills; from anywhere, use
 `python3 scripts/workflow.py parallel-status` to see every stream at once (it is the one command that
-writes nothing — safe to run from a parallel worktree).
+writes nothing — safe to run from a phase worktree).
 
 What *is* stream-scoped:
 
 - **Selection.** `next` and `works/state.json` cover only the current checkout's stream: the default
-  stream skips phases opted out to a branch; a phase-branch checkout sees only its own phase. On a
+  stream skips phases in their own worktrees; a phase-branch checkout sees only its own phase. On a
   parallel stream `next` prints a `stream=` line; on the default stream it prints
-  `parallel_phases_elsewhere=<P>:<branch>` when opted-in phases exist elsewhere.
+  `parallel_phases_elsewhere=<P>:<branch>` when phases are running elsewhere.
 - **`pending`.** A `pending` slice or phase halts only its own stream — `WAITING ON OPERATOR` on one
   branch no longer freezes the other.
 - **Dashboards** still list *every* active phase (`works/backlog.md` marks the row
@@ -105,6 +158,14 @@ So on a parallel branch the review executor:
 - the "does `docs/current` match `docs/index.json`" check applies at consolidation time on the
   default stream, not here.
 
+**The two gate sections are recorded, not lost (v42).** Where a default-stream review writes
+`## Regression Checklist` (its stage-4 append) and `## Operator Runtime`, the branch review appends
+them to `phase.md`'s `## Doc impact` as notes tagged `(gate section — written at merge)` — the
+checklist lines verbatim in the shipped `- [ ] <surface>: <behaviour> (P<N>)` shape, the runtime
+change as the exact text — and the post-merge step writes exactly those, nothing more. Every other
+note waits for the operator's docs phase, as on the default stream, which records
+`parallel-consolidated <P>`.
+
 Record the verdict normally, from the worktree:
 
 ```sh
@@ -120,69 +181,97 @@ re-review. Only a `pass` opens the integration below.
 `pass` above can be recorded — so `parallel-gate`'s "branch phase `done` + review `pass`" already
 implies the operator accepted what is about to be merged.
 
-## 5. Integrate — agent-run, after the review passes
+## 5. Integrate — local merge by default, after the review passes
 
 The orchestrator runs this sequence itself; it is not a set of manual operator clicks. **If anything
 closes the gate or turns a check red mid-sequence, STOP and report — never merge past a closed gate.**
 
-1. **Gate.** From the worktree (or anywhere):
+1. **Gate.** From the worktree:
    ```sh
    python3 scripts/workflow.py parallel-gate <P>
    ```
    `GATE OPEN` (exit 0) → continue. `GATE CLOSED` (exit 1) prints numbered reasons: the branch's phase
    is not `done` with a `pass` review, or the default stream is busy (any default-stream phase
-   `in_progress` / `in_review` / `pending` / `blocked`). A busy main means wait, not merge.
-   `--branch-ref` / `--main-ref` override where each side is read from (CI uses
+   `in_progress` / `in_review` / `pending` / `blocked`). A busy main means wait, not merge. Run from
+   the worktree it reads the default stream from the local default branch; `--branch-ref` /
+   `--main-ref` override where each side is read from (CI uses
    `--branch-ref HEAD --main-ref origin/<base>`).
-2. **Push the branch.** `git push -u origin phase/P<N>-<slug>`. The interactive permission prompt
-   **is** the operator's approval — nothing is pre-allowed. Existing adopters must first delete the
-   old blanket `Bash(git push:*)` deny from `.claude/settings.json` by hand (settings merges are
-   additive, so an update cannot remove it); keep `Bash(git push --force:*)`.
-3. **Open the PR.** `gh pr create --base main --head phase/P<N>-<slug> --title "..." --body "..."`.
-   The **phase is the reviewable unit** — one PR per phase, body drawn from `phase.md` (objective,
-   slice breakdown, notable decisions). PR approval maps to the passing review verdict that already
-   exists; do not re-litigate the review in the PR.
-4. **Wait for CI.** `gh pr checks --watch`. The `validate` job runs everywhere; the `parallel-gate`
-   job re-runs the quiet point server-side on `phase/*` PRs. Red → stop and report.
-5. **Merge with a merge commit.** `gh pr merge --merge` — the slice-by-slice history is worth keeping,
-   so no squash and no rebase.
-6. **Finish the merge on the default stream.** Switch to the default checkout, `git pull`, then:
+2. **Exit the worktree.** `ExitWorktree` with `action: "keep"` — the session returns to the default
+   checkout and the worktree stays on disk for the teardown below.
+3. **Pull, only if there is something to pull from.** `git pull --ff-only` only when
+   `git rev-parse --abbrev-ref @{u}` names an upstream; a repo with no remote skips this.
+4. **Merge locally.** If `git diff --cached --quiet` fails, STOP and ask the operator to commit or
+   unstage — git refuses a merge on a non-clean index, and you never unstage their work. The same
+   refusal fires for uncommitted changes to a file the merge touches — typically the generated
+   `works/` files after a phase was created or pinned on this checkout since the stamp: that is
+   workflow state, yours to commit first (`git add works && git commit`), never the operator's edit
+   to discard. Then:
+   ```sh
+   git merge --no-ff phase/P<N>-<slug> -m "merge(P<N>): <phase name>"
+   ```
+   An orchestrator commit. A conflict in a generated file is resolved by taking either side, `git add`,
+   and concluding the merge (step 5 regenerates it); `phase.md` prose is merged by hand.
+5. **Finish the merge on the default stream.**
    ```sh
    python3 scripts/workflow.py parallel-merge-finish
    ```
    It refuses mid-merge (`MERGE_HEAD` present), regenerates every generated file from the merged
-   folders, and lists the phases still owing doc consolidation with the exact commands. A merge
-   conflict in a generated file is resolved by taking **either** side and re-running it. It makes no
+   folders, and lists the phases still owing doc consolidation with the exact commands. It makes no
    commit. `phase.md` is **not** a generated file: only its `## Slices` marker block is, so a conflict
    inside that block is fixed by re-running `rebuild`, and the rest of the notebook is merged by hand.
-7. **Consolidate the docs — serialized, on the default stream, one phase at a time.** Read the merged
-   `works/phases/active/<P>/phase.md` `## Doc impact` section and, per named doc:
+6. **Write the review's two gate sections — and nothing else.** For each `## Doc impact` note tagged
+   `(gate section — written at merge)`:
    ```sh
-   python3 scripts/workflow.py doc-new-version --doc <doc> --summary "..." --source <P>.REVIEW
-   # edit only the returned edit_path
+   python3 scripts/workflow.py doc-new-version --doc <qa|operations> --summary "..." --source <P>.REVIEW
+   # edit only that section in the returned edit_path
    python3 scripts/workflow.py rebuild-docs
    ```
-   One version per doc, capturing the whole phase. Never two phases in parallel here.
-8. **Mark it consolidated.** `python3 scripts/workflow.py parallel-consolidated <P>` — flips the
-   phase's `consolidation` to `"done"` (in both the general field and the `execution` block),
-   which is also what unblocks archiving. `docs-consolidated <P>` is the default-stream twin, for
-   a phase that never went parallel.
-9. **Tear down.** `python3 scripts/workflow.py parallel-teardown <P>` — removes the worktree and the
-   merged branch (it refuses if the branch is unmerged, or if run from the branch itself) and nulls
-   `execution.worktree`. It makes no commit.
-10. **Commit** the regenerated files, the new doc versions, and the `phase.json` changes on the
-    default stream, following the Commit Convention.
+   None tagged = skip this step. The rest of the `## Doc impact` list is not consolidated here.
+7. **Commit** the merge follow-up: the regenerated files and any doc versions from step 6, following
+   the Commit Convention.
+8. **Tear down.** `python3 scripts/workflow.py parallel-teardown <P>` — removes the worktree and the
+   merged branch (it refuses if the branch is unmerged, if run from the branch itself, or if the
+   worktree is not clean) and nulls `execution.worktree`. It makes no commit.
+9. **Commit** the `phase.json` change on the default stream.
+
+The rest of the debt is the docs phase's (`docs-debt` → `create-phase` docs-phase route), which records
+`parallel-consolidated <P>` — that flips the phase's `consolidation` to `"done"` (in both the general
+field and the `execution` block), which is also what unblocks archiving. `docs-consolidated <P>` is
+the twin for a phase that never left the default stream.
 
 Afterwards the phase is `done` and archivable the normal way (`archive-phase <P>`, `rotate-backlog`,
-`archive-all`) — archiving is still manual and still blocked while `consolidation` is
-`"pending"`.
+`archive-all`) — archiving is still manual and still blocked while `consolidation` is `"pending"`.
+
+### The remote variant — push → PR → CI → `gh pr merge`
+
+Only when the operator asks or the repo's policy requires it. It replaces steps 2-4 above:
+
+1. **Push the branch.** `git push -u origin phase/P<N>-<slug>`. The interactive permission prompt
+   **is** the operator's approval — nothing is pre-allowed. Existing adopters must first delete the
+   old blanket `Bash(git push:*)` deny from `.claude/settings.json` by hand (settings merges are
+   additive, so an update cannot remove it); keep `Bash(git push --force:*)`. That note matters only
+   here.
+2. **Open the PR.** `gh pr create --base main --head phase/P<N>-<slug> --title "..." --body "..."`.
+   The **phase is the reviewable unit** — one PR per phase, body drawn from `phase.md` (objective,
+   slice breakdown, notable decisions). PR approval maps to the passing review verdict that already
+   exists; do not re-litigate the review in the PR.
+3. **Wait for CI.** `gh pr checks --watch`. The `validate` job runs everywhere; the `parallel-gate`
+   job re-runs the quiet point server-side on `phase/*` PRs. Red → stop and report.
+4. **Merge with a merge commit.** `gh pr merge --merge` — the slice-by-slice history is worth keeping,
+   so no squash and no rebase.
+5. **Back on the default checkout** (`ExitWorktree` `keep` if you are still in the worktree), `git pull`,
+   then continue at step 5 above.
 
 ## Guardrails
 
 - Never merge a parallel phase whose `parallel-gate` is closed, and never merge two phases into the
   same quiet point at once.
-- Never run `parallel-consolidated` or `parallel-merge-finish` from a parallel worktree — they belong
+- Never run `parallel-consolidated` or `parallel-merge-finish` from a phase worktree — they belong
   on the default stream, after the merge.
 - Never hand-resolve a generated file's merge conflict by editing it; take either side and regenerate.
+- Never merge from inside the worktree — exit first.
+- Never `parallel-start` a pinned or in-flight phase.
+- Never enter a path the engine did not print / `git worktree list` does not show.
 - Slice-level parallelism inside a phase stays out of scope.
-- Outside this documented flow the ordinary rules stand: no branching unasked, no pushing unasked.
+- The phase branch and the stamp commit are part of executing a phase; pushing is not — push only
+  when asked.
