@@ -58,13 +58,12 @@ Turn an operator request for new work into one or more phases — or a deferred 
 
       (`new-phase` already filled the phase id and captured-at timestamp.)
    3. Confirm `phase.md` links `intent.md` near the top (the engine added `_Intent: see [intent.md](intent.md)._`).
-   4. **Tell the operator where the phase will run.** `new-phase` prints one note: the phase will
-      run in its own git worktree (`.claude/worktrees/P<N>-<slug>`, branch `phase/P<N>-<slug>`) the
-      first time it is executed — `do-next-slice` / `do-whole-phase` run `parallel-start` then, in
-      the same session; `create-phase` does **not** run it. Relay that line. If the operator says
-      the phase must stay on this stream, run `python3 scripts/workflow.py parallel-skip P<N>` now
-      (or create it with `new-phase … --on-main`) and report the pin. A phase already `in_progress`
-      on this stream is unaffected. See the `parallel-phase` skill.
+   4. **Say nothing about worktrees.** The phase runs on this stream, like every phase the
+      operator does not ask into a worktree (v43), and creation stamps nothing. The one exception
+      is a hint `new-phase` prints when another phase is already `in_progress` here — that this
+      phase *could* run in parallel on its own branch. **Relay that hint; never act on it.** Only
+      the operator's word starts a worktree, and it is `/do-next-slice` / `/do-whole-phase` that
+      act on it later, never `create-phase`. See the `parallel-phase` skill.
 
 5. **STOP and report.** List the phases created — IDs, names, and `intent.md` paths — or the deferred job created. Do **not** decompose into middle slices, write any slice's `plan.md`, or implement code. Decomposition is the `DECOMP` slice's own job, later, when the operator executes the phase (`/do-next-slice`, `/do-whole-phase`) or explicitly tells you to.
 
@@ -75,7 +74,7 @@ Durable docs are versioned **in a docs phase the operator creates** — never pe
 1. **Read the debt** (read-only): `python3 scripts/workflow.py docs-debt`. It prints every owing phase with its `## Doc impact` notes, the docs those notes touch, and the command that pays each phase.
 2. **Propose that as the scope** in step 2 — the phases and the docs it names. The operator may narrow it; a phase left out simply keeps owing and stays in `active/`.
 3. **Confirm the name and objective at step 3, unchanged.** An objective that works: *"consolidate the `## Doc impact` notes from P12–P16 into new versions of architecture, operations and qa"* — name the phases, because they are what gets cleared at the end.
-4. **`new-phase --on-main`, fill `intent.md`, STOP.** A docs phase is **pinned to the default stream** — `doc-new-version`, `docs-consolidated` and `parallel-consolidated` only run there — so create it with `--on-main` (or `parallel-skip` it right after). Record the `docs-debt` scope in `intent.md`; decomposition is the docs phase's own `DECOMP` slice, later.
+4. **`new-phase`, fill `intent.md`, STOP.** A docs phase runs on the default stream, like every phase (v43) — nothing to pass, nothing to pin. It has to: `doc-new-version`, `docs-consolidated` and `parallel-consolidated` only run there, so **never ask for a worktree on a docs phase**, whatever hint `new-phase` or `next` prints. Record the `docs-debt` scope in `intent.md`; decomposition is the docs phase's own `DECOMP` slice, later.
 
 **What that `DECOMP` will cut** (write it into `intent.md`; do not cut it here): **one slice per doc**, `--kind docs` — `doc-new-version` is per doc and one doc usually collects notes from several phases, so per-doc keeps each doc to a single new version. Risk by the normal rule. Each slice runs, per note it covers:
 

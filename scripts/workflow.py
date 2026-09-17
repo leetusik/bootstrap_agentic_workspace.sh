@@ -61,14 +61,17 @@ SLICE_KINDS = {"implementation", "review", "decomposition", "research", "fix", "
 # matter, so the fix is always to rewrite (state stays in phase.md, detail moves to the
 # slice's result.md), never to delete under duress.
 PHASE_MD_BUDGET = 400 * 1024
-# Execution streams (workspace v24; worktree-by-default since v42). A phase.json MAY carry
-# an optional `execution` block. `mode: "parallel"` = the phase runs on its own branch +
-# worktree, stamped by `parallel-start` -- which every planned phase gets at first execution
-# unless pinned. `mode: "default"` = PINNED to the default stream (`parallel-skip`,
-# `new-phase --on-main`): `phase_execution` still returns None for it, so a pinned phase IS
-# a default-stream phase everywhere; the block only tells the hints and `parallel-start` to
-# leave it alone. No block = a planned phase that has not executed yet (or any pre-v42
-# phase, which finishes where it is). See `phase_execution` / `phase_pinned`.
+# Execution streams (workspace v24; opt-in again since v43). A phase.json MAY carry an
+# optional `execution` block. `mode: "parallel"` = the phase runs on its own branch +
+# worktree, stamped by `parallel-start` -- which a phase gets ONLY when the operator asks
+# for it. No block = the phase runs on the default stream, which is where every phase runs
+# unless asked otherwise; that is the v43 default and it needs no marker.
+# `mode: "default"` = a LEGACY pin written by v42's `parallel-skip` / `new-phase --on-main`,
+# when the worktree was the default and staying on main needed saying. Both commands are
+# now no-ops, so nothing new is ever stamped with it -- but `phase_execution` still returns
+# None for it, so a pinned phase IS a default-stream phase everywhere, and `parallel-start`
+# still refuses one rather than silently overriding an old deliberate pin.
+# See `phase_execution` / `phase_pinned`.
 EXECUTION_MODES = {"parallel"}
 PINNED_MODE = "default"
 # The default worktree home. Nested under the repo so Claude Code's EnterWorktree can enter it
@@ -660,11 +663,13 @@ def phase_execution(data) -> dict:
 
 
 def phase_pinned(data) -> bool:
-    """True when the phase is pinned to the default stream (`execution.mode == "default"`, v42).
+    """True when the phase carries v42's legacy pin (`execution.mode == "default"`).
 
-    A pinned phase never gets a worktree: `parallel-start` refuses it and the hints skip it.
-    Everything else treats it exactly like a phase with no block, because `phase_execution`
-    returns None for it."""
+    Since v43 the default stream is the default, so nothing writes this block any more --
+    `parallel-skip` and `new-phase --on-main` are no-ops. It is still honoured where it
+    exists: `parallel-start` refuses a pinned phase rather than overriding a deliberate pin,
+    and the hints skip it. Everything else treats it exactly like a phase with no block,
+    because `phase_execution` returns None for it."""
     execution = data.get("execution") if isinstance(data, dict) else None
     return isinstance(execution, dict) and execution.get("mode") == PINNED_MODE
 
@@ -1090,7 +1095,7 @@ def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
         execution = phase_execution(p)
         if execution:  # runs on its own branch; from another stream the slice state may be behind
             current_cell += f" · parallel: `{clean_cell(execution.get('branch'))}`"
-        elif phase_pinned(p):  # v42: explicitly kept on the default stream, never a worktree
+        elif phase_pinned(p):  # v42's legacy pin; since v43 the default stream needs no marker
             current_cell += " · pinned: default stream"
         lines.append(f"| [{status_box(p['status'])}] `{p['id']}` | `{p['status']}` | `{review}` | {name} | {current_cell} | `{p['path']}` |")
     for p in phases:
@@ -1139,7 +1144,7 @@ def validate() -> int:
                 if mode not in EXECUTION_MODES and mode != PINNED_MODE:
                     errors.append(f"phase {p['id']} has invalid execution.mode {mode!r}; expected one of {sorted(EXECUTION_MODES | {PINNED_MODE})}")
                 elif mode == PINNED_MODE:
-                    pass  # pinned to the default stream (v42): no branch, no worktree, nothing else to check
+                    pass  # v42's legacy pin to the default stream: no branch, no worktree, nothing else to check
                 else:
                     branch = execution.get("branch")
                     if not isinstance(branch, str) or not branch.strip():
@@ -1384,7 +1389,6 @@ def new_phase(args: argparse.Namespace) -> None:
         "created_at": now_iso(), "started_at": None, "completed_at": None,
         "review": {"status": "pending", "reviewed_at": None, "reviewer": None, "note": None},
         "acceptance": new_acceptance(),
-        **({"execution": {"mode": PINNED_MODE}} if getattr(args, "on_main", False) else {}),
         "paths": {"phase_md": "phase.md", "intent_md": "intent.md", "slices_dir": "slices"},
         "archive": {"archived": False, "archived_at": None, "archive_path": None},
     }
@@ -1398,13 +1402,15 @@ def new_phase(args: argparse.Namespace) -> None:
     append_event("phase_created", phase=phase_id)
     rebuild_index_and_state()
     print(f"created phase {phase_id}: {pdir.relative_to(ROOT)}")
-    # v42: every phase runs in its own worktree by default, entered at first execution by the
-    # do-* skills (never by create-phase). One fixed note says so, or names the pin.
+    # v43: a phase runs on this stream unless the operator asks for a worktree, so creation
+    # stamps nothing and says nothing -- except where a worktree would actually buy something.
     if getattr(args, "on_main", False):
-        print(f"pinned to the default stream (execution.mode=default): {phase_id} runs here, never in its own worktree")
-    else:
-        print(f"note: {phase_id} will run in its own git worktree on first execution -- do-next-slice / do-whole-phase run parallel-start {phase_id} then; "
-              f"to keep it on this stream: python3 scripts/workflow.py parallel-skip {phase_id}")
+        print(f"note: --on-main is a no-op since v43 -- the default stream IS the default, so {phase_id} already runs here; nothing was stamped")
+    # Proactive opt-in suggestion: a phase created while another one is mid-flight is the
+    # first of the two moments a worktree becomes relevant. Suggestion only, never a default.
+    busy = next((p for p in all_active_phases() if p["id"] != phase_id and p.get("status") == "in_progress" and phase_execution(p) is None), None)
+    if busy:
+        print(f"hint: {busy['id']} is in progress -- this phase can run in parallel on its own branch: python3 scripts/workflow.py parallel-start {phase_id}")
 
 
 def _clean_order(value):
@@ -1745,7 +1751,7 @@ def _ensure_worktrees_excluded() -> None:
         return
     sep = "" if not existing or existing.endswith("\n") else "\n"
     exclude.parent.mkdir(parents=True, exist_ok=True)
-    exclude.write_text(f"{existing}{sep}# agentic workspace (v42): per-phase git worktrees cut by parallel-start\n{line}\n", encoding="utf-8")
+    exclude.write_text(f"{existing}{sep}# agentic workspace: per-phase git worktrees cut by parallel-start\n{line}\n", encoding="utf-8")
 
 
 _REPO_PREFIX = None
@@ -1844,20 +1850,22 @@ def parallel_start(args: argparse.Namespace) -> None:
     This is the single place the engine makes a git commit, and it is deliberate. The stamp must
     exist on BOTH the default branch (so this stream's pointer skips the phase) and the phase
     branch (so the worktree session claims the stream), and the branch has to be cut from a commit
-    that already contains it. Since v42 this is the default first step of executing a phase (the
-    do-* skills run it when `next` points at a planned, unstamped phase), so it no longer demands
-    a clean tree: `git add -- <paths>` then `git commit --only -- <paths>` makes the one
-    fixed-message commit exact whatever else is dirty or staged -- only the phase folder plus the
-    regenerated works/ files go in, everything else stays behind in this checkout, and the
-    worktree is cut from that commit ("start from the latest commit"). Stamping and asking the
-    operator to commit cannot achieve that by construction; this can.
+    that already contains it. Since v43 running here is the default and this command is the
+    opt-in: it runs when the operator asks for a worktree (the do-* skills run it on the
+    `worktree` mode word, never on their own), or straight from the operator's hand. It does not
+    demand a clean tree -- the operator asks for a worktree mid-stride, not at a quiet point:
+    `git add -- <paths>` then `git commit --only -- <paths>` makes the one fixed-message commit
+    exact whatever else is dirty or staged -- only the phase folder plus the regenerated works/
+    files go in, everything else stays behind in this checkout, and the worktree is cut from that
+    commit ("start from the latest commit"). Stamping and asking the operator to commit cannot
+    achieve that by construction; this can.
     """
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
     if data.get("status") != "planned":
         raise SystemExit(f"phase {args.phase} is {data.get('status')!r}; a phase enters its worktree before it starts (parallel-start needs status 'planned') -- a phase already in flight finishes on this stream")
     if phase_pinned(data):
-        raise SystemExit(f"phase {args.phase} is pinned to the default stream (execution.mode=default, set by parallel-skip / new-phase --on-main); to un-pin it, delete the execution block from {pdir.relative_to(ROOT)}/phase.json first")
+        raise SystemExit(f"phase {args.phase} carries v42's legacy pin to the default stream (execution.mode=default, written by the old parallel-skip / new-phase --on-main); it was pinned deliberately, so un-pin it by hand: delete the execution block from {pdir.relative_to(ROOT)}/phase.json first")
     if data.get("execution") is not None:
         raise SystemExit(f"phase {args.phase} already carries an execution block: {json.dumps(data['execution'], ensure_ascii=False)}")
     _require_git_repo()
@@ -1914,32 +1922,30 @@ def parallel_start(args: argparse.Namespace) -> None:
 
 
 def parallel_skip(args: argparse.Namespace) -> None:
-    """Pin a planned phase to the default stream: it never gets a worktree.
+    """Retired in v43: a no-op that explains itself and writes nothing.
 
-    Since v42 every planned phase enters its own worktree at first execution, so "run on main"
-    needs a marker the hints and `parallel-start` can see: `execution: {"mode": "default"}`.
-    `phase_execution` still returns None for it, so a pinned phase is a default-stream phase
-    everywhere else. No commit and no git: the pin is ordinary phase state, committed with the
-    phase like any other edit. Docs phases are always pinned (doc versions come from one index).
+    This command existed because v42 made the worktree the default, so "run on main" needed a
+    marker (`execution: {"mode": "default"}`) that the hints and `parallel-start` could see.
+    v43 put the default back on this stream, so there is nothing left to pin -- a phase with no
+    execution block already runs here, and only `parallel-start` moves it.
+
+    It stays callable rather than removed so an adopting workspace's habits and scripts (a docs
+    phase was always pinned) do not break on upgrade; it reports the phase's real stream and
+    exits 0. Phases still carrying v42's pin keep it: `parallel-start` honours it, so an old
+    deliberate pin is never silently overridden.
     """
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
-    if data.get("status") != "planned":
-        raise SystemExit(f"phase {args.phase} is {data.get('status')!r}; pin a phase before it starts (parallel-skip needs status 'planned') -- a phase already running on this stream needs no pin")
-    if phase_pinned(data):
-        raise SystemExit(f"phase {args.phase} is already pinned to the default stream")
-    if data.get("execution") is not None:
-        raise SystemExit(f"phase {args.phase} already carries an execution block: {json.dumps(data['execution'], ensure_ascii=False)}")
-    stream = current_stream(all_active_phases())
-    if stream:
-        raise SystemExit(f"this checkout is on parallel stream {stream}; run parallel-skip from the default stream")
-    data["execution"] = {"mode": PINNED_MODE}
-    write_json(pdir / "phase.json", data)
-    append_event("phase_pinned", phase=args.phase)
-    rebuild_index_and_state()
-    print(f"phase {args.phase} pinned to the default stream (execution.mode=default)")
-    print("no worktree, no branch, no commit -- it runs here like a pre-v42 phase; commit phase.json with your next commit")
-    print(f"to un-pin before it starts: delete the execution block from {pdir.relative_to(ROOT)}/phase.json")
+    execution = phase_execution(data)
+    print(f"note: parallel-skip is a no-op since v43 -- the default stream IS the default; nothing was stamped and nothing was written")
+    if execution:
+        print(f"phase {args.phase} is not on the default stream: it runs in its own worktree on {execution.get('branch')} (asked for with parallel-start)")
+        print(f"to bring it back here, merge and retire it: python3 scripts/workflow.py parallel-teardown {args.phase}")
+    elif phase_pinned(data):
+        print(f"phase {args.phase} carries v42's legacy pin (execution.mode=default) and runs on the default stream -- as it would with no block at all")
+    else:
+        print(f"phase {args.phase} already runs on the default stream")
+        print(f"to run it in its own worktree instead, ask for one: python3 scripts/workflow.py parallel-start {args.phase}")
 
 
 def parallel_teardown(args: argparse.Namespace) -> None:
@@ -2312,8 +2318,8 @@ def parallel_status(args: argparse.Namespace) -> None:
         print(f"pinned_to_default={','.join(pinned)}")
     parallel = [(p, phase_execution(p)) for p in phases if phase_execution(p)]
     if not parallel:
-        print("no phase is in its own worktree right now -- every active phase runs on the default stream")
-        print("a planned phase enters one at first execution (python3 scripts/workflow.py parallel-start <P>); pinned phases (parallel-skip) stay here")
+        print("no phase is in its own worktree right now -- every active phase runs on the default stream, which is where a phase runs unless asked otherwise")
+        print("to run one in its own worktree instead, ask for it: python3 scripts/workflow.py parallel-start <P>")
         return
     if not _git_available():
         raise SystemExit(
@@ -2373,22 +2379,30 @@ def parallel_status(args: argparse.Namespace) -> None:
 
 
 def parallel_start_hint(state: dict, index: dict) -> str:
-    """The worktree-by-default hint for `next`, or None (v42).
+    """The proactive opt-in suggestion for `next`, or None (restored in v43).
 
-    Fires on the default stream when the pointer's phase is still `planned` and carries no
-    `execution` block: executing it is what moves it into its own worktree (`parallel-start`,
-    run by the do-* skills), and `parallel-skip` keeps it here instead. Silent once the phase is
-    stamped either way, silent in a worktree. The pre-v42 condition (a planned phase queued
-    behind an in_progress one) is superseded: the default reversed, so the trigger did.
+    A worktree is opt-in again, so the hint fires only where one actually buys something: on
+    the default stream, when the current phase is in_progress and a LATER default-stream phase
+    is still `planned` -- exactly the moment a second phase would otherwise queue behind a live
+    one. Suggestion only, never a default: the ordinary one-phase-at-a-time run stays silent,
+    and so does a worktree checkout. v42's trigger (every planned phase, because the worktree
+    was the default) is gone with the default that justified it.
     """
     if state.get("stream"):
         return None
-    cur = next((p for p in index.get("active_phases", []) if p.get("id") == state.get("current_phase")), None)
-    if not cur or cur.get("status") != "planned" or cur.get("execution") or cur.get("pinned"):
+    current = state.get("current_phase")
+    phases = index.get("active_phases", [])  # already ordered by phase order
+    ids = [p.get("id") for p in phases]
+    if current not in ids:
         return None
-    path = ROOT / WORKTREES_DIR / _phase_branch(cur["id"], cur.get("name") or cur["id"]).split("/", 1)[1]
-    return (f"hint: {cur['id']} runs in its own worktree by default -- python3 scripts/workflow.py parallel-start {cur['id']} "
-            f"then enter {path}; parallel-skip {cur['id']} keeps it on this stream")
+    cur = phases[ids.index(current)]
+    if cur.get("status") != "in_progress":
+        return None
+    waiting = next((p for p in phases[ids.index(current) + 1:] if p.get("status") == "planned" and not p.get("execution")), None)
+    if not waiting:
+        return None
+    return (f"hint: {waiting['id']} is waiting behind {current} -- it can run in parallel on its own branch: "
+            f"python3 scripts/workflow.py parallel-start {waiting['id']}")
 
 
 # ---------------------------------------------------------------------------
@@ -2936,7 +2950,7 @@ def main(argv=None) -> int:
     p.add_argument("--objective", required=True)
     p.add_argument("--order", type=float)
     p.add_argument("--on-main", action="store_true", dest="on_main",
-                   help="pin the phase to the default stream (execution.mode=default): it never gets a worktree -- docs phases, and anything the operator says must run here")
+                   help="no-op since v43 (the default stream is the default); accepted so v42 habits and scripts keep working")
     p.set_defaults(func=new_phase)
 
     p = sub.add_parser("new-slice", help="Create a new slice folder with slice.json + markdown files")
@@ -2993,13 +3007,13 @@ def main(argv=None) -> int:
     p.add_argument("phase")
     p.set_defaults(func=docs_consolidated)
 
-    p = sub.add_parser("parallel-start", help="Move a planned phase into its own worktree (the v42 default first step of executing it): stamp it, commit the stamp (phase folder + works/ files only; a dirty tree is fine), cut phase/P<N>-<slug> and .claude/worktrees/P<N>-<slug>")
+    p = sub.add_parser("parallel-start", help="Ask for a worktree: move a planned phase out of the default stream into its own -- stamp it, commit the stamp (phase folder + works/ files only; a dirty tree is fine), cut phase/P<N>-<slug> and .claude/worktrees/P<N>-<slug>")
     p.add_argument("phase")
     p.add_argument("--worktree", default=None, help="worktree path (default: <repo>/.claude/worktrees/P<N>-<slug>, which EnterWorktree can enter in the same session; elsewhere means opening a second session there)")
     p.add_argument("--slug", default=None, help="branch slug override (default: slugified phase name); branch is phase/<phase>-<slug>")
     p.set_defaults(func=parallel_start)
 
-    p = sub.add_parser("parallel-skip", help="Pin a planned phase to the default stream (execution.mode=default): no worktree, no branch, no commit; new-phase --on-main does the same at creation")
+    p = sub.add_parser("parallel-skip", help="No-op since v43 (the default stream is the default, so there is nothing to pin): reports where the phase runs and writes nothing")
     p.add_argument("phase")
     p.set_defaults(func=parallel_skip)
 

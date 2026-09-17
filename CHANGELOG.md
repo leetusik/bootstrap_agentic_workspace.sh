@@ -9,6 +9,59 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v43 — 2026-09-17
+
+- **Why this release: v42 made every phase pay for parallelism almost no run used.** One phase at a
+  time is the normal shape of this workspace, and v42 put each one on its own branch in its own
+  worktree at first execution. Every ordinary run bought a stamp commit, a branch, a nested checkout
+  and an integration sequence to get back — machinery that earns its keep only when two phases are
+  genuinely moving at once. v43 puts the default back on the current checkout and makes the worktree
+  **opt-in again**. Nothing about the mechanism changed; only how it is reached.
+
+- **A phase runs on the default stream unless the operator asks for a worktree.** Rule 1 of the
+  contract's Worktree rules is now *when — only when asked*, and asking has three forms: the
+  **`worktree`** mode word on `/do-next-slice` / `/do-whole-phase` (or the same thing in the
+  operator's own words — "in a worktree", "in parallel", "on its own branch"), `parallel-start <P>`
+  run by the operator's own hand, or an explicit instruction to run two phases at once. The do-*
+  skills never run `parallel-start` on their own initiative and `create-phase` still never does; a
+  phase already carrying the stamp is entered without asking again. Rules 2–7 — the nested worktree
+  home and the `info/exclude` line, the dirty-tree stamp commit, what stays behind, what still
+  refuses, enter/exit, and the local `--no-ff` merge — are unchanged.
+
+- **The hints are suggestions again, and fire only where a worktree pays.** `next` on the default
+  stream prints `hint: <P> is waiting behind <current> — it can run in parallel on its own branch`
+  when the current phase is `in_progress` and a later one is still `planned`; `new-phase` prints the
+  same suggestion when it creates a phase while another is in flight. Both are silent in the ordinary
+  one-phase-at-a-time run. v42's "this phase runs in its own worktree by default" hint is gone with
+  the default that justified it. **Relay a hint; never act on it** — the contract, both do-* skills
+  and `create-phase` say so explicitly.
+
+- **`parallel-skip <P>` and `new-phase --on-main` are retired into no-ops.** They existed only
+  because v42 needed a marker for "run on `main`"; the default stream now needs none. Both stay
+  callable so adopting workspaces' habits and scripts survive the upgrade: they write nothing, stamp
+  nothing, report where the phase actually runs, and exit 0. A docs phase needs no pin either — it
+  runs on the default stream like everything else, and the rule that matters is stated directly
+  instead: **never ask for a worktree on a docs phase**, since `doc-new-version` /
+  `docs-consolidated` only work there.
+
+- **v42's pin is still honoured where it exists.** A phase carrying `execution: {"mode": "default"}`
+  keeps it, still validates, and still runs on the default stream — and `parallel-start` refuses that
+  phase rather than override a deliberate pin. Un-pinning is a deliberate hand edit: delete the block
+  from its `phase.json`.
+
+- Smoke Test 12 is rewritten for the reversed default: creating and selecting a lone phase says
+  nothing about worktrees, the waiting-behind hint fires from both `next` and `new-phase`, the
+  dirty-tree stamp / nested worktree / exclude line / gate / local merge / teardown checks are
+  unchanged, `parallel-skip` and `--on-main` are asserted to stamp nothing, and a hand-written legacy
+  pin is asserted to validate and to be refused by `parallel-start`. Both READMEs and the
+  `update-workspace` migration notes updated; installer rebuilt.
+
+**Migration notes.** Nothing to run. Phases already stamped `execution: {"mode": "parallel"}` keep
+running in their worktrees and integrate exactly as before. Phases carrying v42's
+`execution: {"mode": "default"}` pin keep it and still validate. If a habit or script calls
+`parallel-skip` or `new-phase --on-main`, it keeps working and now does nothing — drop it when
+convenient. To put a phase in a worktree from here on, ask for one.
+
 ## v42 — 2026-09-13
 
 - **Why this release: parallel mode was opt-in, so it was never the shape of the work — and a design

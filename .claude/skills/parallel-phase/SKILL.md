@@ -1,32 +1,44 @@
 ---
 name: parallel-phase
-description: Run a phase in its own git worktree (the default since v42) and integrate it back: quiet-point gate, local merge, the review's two gate sections, teardown; push → PR is the remote variant.
+description: Run a phase in its own git worktree when the operator asks for one, and integrate it back: quiet-point gate, local merge, the review's two gate sections, teardown; push → PR is the remote variant.
 allowed-tools: Bash(python3 scripts/workflow.py:*), Read, Edit, Write, Glob, Grep, Bash
 disable-model-invocation: true
 ---
 
 # parallel-phase
 
-Every phase runs on its own git branch in its own git worktree, driven from the same session that
-started it, while the default stream keeps `main` free for the next phase. Since v42 this is **the
-default**: every `planned` phase enters its own worktree the first time it is executed, in the same
-session, and stays on `main` only when pinned (`parallel-skip <P>`, `new-phase --on-main`) or when it
-was already in flight before v42.
+A phase can run on its own git branch in its own git worktree, driven from the same session that
+started it, while the default stream keeps `main` free for another phase. **Since v43 this is opt-in:
+a phase runs on the current checkout unless the operator asks for a worktree.** Nothing else moves it
+— not the engine, not `create-phase`, not the do-* skills on their own initiative. Asking looks like
+one of three things:
+
+- the **`worktree` mode word** on `/do-next-slice` or `/do-whole-phase` (or the same thing in their
+  own words: "in a worktree", "in parallel", "on its own branch"), on a phase that is still `planned`;
+- **`parallel-start <P>` run by the operator's own hand**, after which execution enters the stamped
+  worktree without asking again;
+- an explicit instruction to run two phases at once, which is the case the whole mechanism exists for.
+
+v42 briefly made the worktree the default and v43 put it back, because one phase at a time is the
+normal shape of this workspace and a branch per phase made every ordinary run pay for parallelism it
+never used. What v42 built stays — the dirty-tree stamp commit, the nested worktree home, the local
+merge, the gate-section notes — it is simply reached on request now.
 
 The unit of parallelism is the **phase**. Slices inside a phase stay strictly sequential — they build
 on each other through `phase.md` and a commit at every boundary — so never fan out slices.
 
-Everything below is the whole lifecycle, in order: enter at first execution → work → review on the
+Everything below is the whole lifecycle, in order: the operator asks → enter → work → review on the
 branch → integrate back (a local merge by default). The contract (`CLAUDE.md`) carries only the rules;
 the detail lives here.
 
-## 1. The default — every phase, at first execution
+## 1. The opt-in — only when the operator asks
 
 **Worktree rules:**
 
-1. **When** — a `planned` phase with no `execution` block enters its worktree at **first execution**:
-   when `next` on the default stream points at it, `do-next-slice` / `do-whole-phase` run
-   `parallel-start <P>`; `create-phase` never does.
+1. **When — only when asked** — a `planned` phase moves into its own worktree on the operator's
+   word and nothing else (the three forms above). `do-next-slice` / `do-whole-phase` run
+   `parallel-start <P>` when they are told to and never on their own initiative; `create-phase`
+   never does. A phase already carrying the stamp is entered without asking again.
 2. **Where** — `<repo>/.claude/worktrees/P<N>-<slug>` on branch `phase/P<N>-<slug>` (`--worktree`
    overrides); the engine puts `.claude/worktrees/` in `.git/info/exclude` (common dir), never in
    `.gitignore`.
@@ -49,28 +61,34 @@ the detail lives here.
 7. **The merge** — after `parallel-gate <P>` is OPEN (branch phase `done` + review `pass`, default
    stream not busy; never past a closed gate): `ExitWorktree keep` → `git pull --ff-only` only if
    `main` tracks a remote → if anything is staged, or a file the merge touches is uncommitted (typically
-   the generated `works/` files after a phase was created or pinned here since the stamp — commit that
+   the generated `works/` files after a phase was created here since the stamp — commit that
    workflow state first), STOP and ask (git refuses both; never unstage or discard the operator's work)
    → `git merge --no-ff phase/P<N>-<slug> -m "merge(P<N>): <name>"`
    (an orchestrator commit; a conflict in a generated file = take either side + regenerate) →
    `parallel-merge-finish` → the review's tagged gate-section notes via `doc-new-version` +
    `rebuild-docs` → commit → `parallel-teardown <P>` (worktree must be clean) → commit. Push → PR →
    CI → `gh pr merge` is the **remote variant**, only when the operator asks or repo policy requires.
-8. **Stays on `main`** — `parallel-skip <P>` or `new-phase --on-main` stamps
-   `execution: {"mode": "default"}` (docs phases always — `doc-new-version` / `docs-consolidated` only
-   run on the default stream — and any phase the operator says so); a phase already `in_progress`
-   when v42 arrived finishes there.
+8. **Staying on `main` needs nothing** — it *is* the default: no flag, no stamp, no `execution`
+   block. `parallel-skip <P>` and `new-phase --on-main` are **retired no-ops** (v43), kept callable
+   only so v42 habits and scripts survive the upgrade: they write nothing and report where the phase
+   already runs. A docs phase needs no pin either — it runs here like everything else, and since
+   `doc-new-version` / `docs-consolidated` only work on the default stream, never ask for a worktree
+   for one. A phase still carrying v42's `execution: {"mode": "default"}` pin keeps it, and
+   `parallel-start` refuses that phase rather than override a deliberate pin: to un-pin it, delete the
+   block from its `phase.json` by hand.
 
-**The two hints.** The engine tells you where a phase will run; it never enters a worktree itself:
+**The two hints — suggestions, not instructions.** The engine suggests a worktree at the two moments
+one actually pays, and at no other time. Both are silent in the ordinary one-phase-at-a-time run.
+**Relay a hint to the operator; never act on it.** Only their word starts a worktree:
 
-- `python3 scripts/workflow.py new-phase ...` prints one note: the phase will run in its own worktree
-  on first execution, and `parallel-skip <P>` keeps it on this stream.
-- `python3 scripts/workflow.py next` on the default stream prints, when the pointer's phase is
-  `planned` with no `execution` block:
-  `hint: <P> runs in its own worktree by default -- python3 scripts/workflow.py parallel-start <P> then enter <path>; parallel-skip <P> keeps it on this stream`
+- `python3 scripts/workflow.py new-phase ...`, when another phase is already `in_progress` on this
+  stream:
+  `hint: <busy> is in progress -- this phase can run in parallel on its own branch: python3 scripts/workflow.py parallel-start <P>`
+- `python3 scripts/workflow.py next` on the default stream, when the current phase is `in_progress`
+  and a later phase is still `planned`:
+  `hint: <P> is waiting behind <current> -- it can run in parallel on its own branch: python3 scripts/workflow.py parallel-start <P>`
 
-`create-phase` never runs `parallel-start`; the do-* skills do, when `next` shows the hint. A pinned
-phase and a phase already stamped get no hint.
+A phase already stamped gets no hint, and neither does a worktree checkout.
 
 ## 2. `parallel-start` — what the stamp commit contains and what still refuses
 
@@ -158,7 +176,7 @@ So on a parallel branch the review executor:
 - the "does `docs/current` match `docs/index.json`" check applies at consolidation time on the
   default stream, not here.
 
-**The two gate sections are recorded, not lost (v42).** Where a default-stream review writes
+**The two gate sections are recorded, not lost.** Where a default-stream review writes
 `## Regression Checklist` (its stage-4 append) and `## Operator Runtime`, the branch review appends
 them to `phase.md`'s `## Doc impact` as notes tagged `(gate section — written at merge)` — the
 checklist lines verbatim in the shipped `- [ ] <surface>: <behaviour> (P<N>)` shape, the runtime
@@ -203,7 +221,7 @@ closes the gate or turns a check red mid-sequence, STOP and report — never mer
 4. **Merge locally.** If `git diff --cached --quiet` fails, STOP and ask the operator to commit or
    unstage — git refuses a merge on a non-clean index, and you never unstage their work. The same
    refusal fires for uncommitted changes to a file the merge touches — typically the generated
-   `works/` files after a phase was created or pinned on this checkout since the stamp: that is
+   `works/` files after a phase was created on this checkout since the stamp: that is
    workflow state, yours to commit first (`git add works && git commit`), never the operator's edit
    to discard. Then:
    ```sh
@@ -270,7 +288,7 @@ Only when the operator asks or the repo's policy requires it. It replaces steps 
   on the default stream, after the merge.
 - Never hand-resolve a generated file's merge conflict by editing it; take either side and regenerate.
 - Never merge from inside the worktree — exit first.
-- Never `parallel-start` a pinned or in-flight phase.
+- Never `parallel-start` a phase the operator did not ask about, nor a pinned or in-flight one.
 - Never enter a path the engine did not print / `git worktree list` does not show.
 - Slice-level parallelism inside a phase stays out of scope.
 - The phase branch and the stamp commit are part of executing a phase; pushing is not — push only

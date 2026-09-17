@@ -29,7 +29,7 @@
       ]
     },
     "architecture": {
-      "latest": "v0006_v42_one_worktree_per_phase_by_default_the_pinned_execution_block_nested_worktrees_and_the_exclude_line",
+      "latest": "v0007_v43_the_phase_worktree_is_opt-in_again_the_pin_is_a_legacy_block_not_a_live_route",
       "current_path": "docs/current/architecture.md",
       "versions": [
         {
@@ -80,6 +80,15 @@
           "source": "v42",
           "summary": "v42: one worktree per phase by default, the pinned execution block, nested worktrees and the exclude line",
           "previous": "v0005_operator_acceptance_gate_on_phase.json_and_the_gated_phase-review_lifecycle_v32"
+        },
+        {
+          "id": "v0007_v43_the_phase_worktree_is_opt-in_again_the_pin_is_a_legacy_block_not_a_live_route",
+          "path": "docs/versions/architecture/v0007_v43_the_phase_worktree_is_opt-in_again_the_pin_is_a_legacy_block_not_a_live_route.md",
+          "created_at": "2026-09-17T18:10:59+09:00",
+          "commit": "0d061058f5bbfd3102196bbe35f3d07cf6697caa",
+          "source": "v43",
+          "summary": "v43: the phase worktree is opt-in again — the pin is a legacy block, not a live route",
+          "previous": "v0006_v42_one_worktree_per_phase_by_default_the_pinned_execution_block_nested_worktrees_and_the_exclude_line"
         }
       ]
     },
@@ -140,7 +149,7 @@
       ]
     },
     "operations": {
-      "latest": "v0033_v42_phase_worktrees_by_default_dirty-tree_entry_local_merge_pinned_phases_design_rounds_close_on_the_operator_s_return_mockups_on_request_numbered_cards",
+      "latest": "v0034_v43_the_phase_worktree_is_opt-in_again_a_phase_runs_on_the_default_stream_unless_the_operator_asks",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -408,6 +417,15 @@
           "source": "v42",
           "summary": "v42: phase worktrees by default, dirty-tree entry, local merge, pinned phases; design rounds close on the operator's return, mockups on request, numbered cards",
           "previous": "v0032_v41_the_review_s_gate_stages_3-4_bounded_to_the_phase_phase-scope_names_the_boundary"
+        },
+        {
+          "id": "v0034_v43_the_phase_worktree_is_opt-in_again_a_phase_runs_on_the_default_stream_unless_the_operator_asks",
+          "path": "docs/versions/operations/v0034_v43_the_phase_worktree_is_opt-in_again_a_phase_runs_on_the_default_stream_unless_the_operator_asks.md",
+          "created_at": "2026-09-17T18:09:17+09:00",
+          "commit": "0d061058f5bbfd3102196bbe35f3d07cf6697caa",
+          "source": "v43",
+          "summary": "v43: the phase worktree is opt-in again — a phase runs on the default stream unless the operator asks",
+          "previous": "v0033_v42_phase_worktrees_by_default_dirty-tree_entry_local_merge_pinned_phases_design_rounds_close_on_the_operator_s_return_mockups_on_request_numbered_cards"
         }
       ]
     },
@@ -506,7 +524,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0040_v42_phase_worktrees_by_default_with_a_dirty-tree_stamp_and_a_local_merge_mockups_on_request_the_round_closes_on_the_operator_s_return_numbered_cards",
+      "latest": "v0041_v43_put_the_phase_worktree_back_to_opt-in_the_default_stream_is_the_default_again",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -829,9 +847,18 @@
           "source": "v42",
           "summary": "v42: phase worktrees by default with a dirty-tree stamp and a local merge; mockups on request, the round closes on the operator's return, numbered cards",
           "previous": "v0039_make_the_aside_prescription_true_two_surfaces_aside_repl_over_bash_as_the_default_and_a_dedicated_agent_profile_--_superseding_v36_s_mcp-first_surface_p20_v37"
+        },
+        {
+          "id": "v0041_v43_put_the_phase_worktree_back_to_opt-in_the_default_stream_is_the_default_again",
+          "path": "docs/versions/decisions/v0041_v43_put_the_phase_worktree_back_to_opt-in_the_default_stream_is_the_default_again.md",
+          "created_at": "2026-09-17T18:12:09+09:00",
+          "commit": "0d061058f5bbfd3102196bbe35f3d07cf6697caa",
+          "source": "v43",
+          "summary": "v43: put the phase worktree back to opt-in — the default stream is the default again",
+          "previous": "v0040_v42_phase_worktrees_by_default_with_a_dirty-tree_stamp_and_a_local_merge_mockups_on_request_the_round_closes_on_the_operator_s_return_numbered_cards"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-09-13T22:17:03+09:00"
+  "last_rebuilt_at": "2026-09-17T18:12:52+09:00"
 }

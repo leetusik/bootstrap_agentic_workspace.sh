@@ -208,30 +208,39 @@ Claude Code에서 `/이름`으로 입력합니다.
 | `do-next-slice` | slice 하나만 완료하고 멈춤 |
 | `do-whole-phase` | phase를 리뷰까지 끝까지 실행 |
 | `review-phase` | phase를 리뷰하고 `pass` / `changes_requested` / `blocked` 기록 |
-| `parallel-phase` | phase를 자기 worktree(기본값)에서 실행하고 로컬 merge로 다시 합치기 |
+| `parallel-phase` | 요청했을 때 phase를 자기 worktree에서 실행하고 로컬 merge로 다시 합치기 |
 | `retrofit` | 기존 저장소에 워크스페이스 추가 |
 | `update-workspace` | 설치된 워크스페이스의 시스템 파일만 최신으로 교체 |
 
 스킬은 모두 17개입니다. 전체 목록과 CLI 명령, 설치 옵션은
 [English README](README.en.md)와 [CLAUDE.md](CLAUDE.md)에 있습니다.
 
-## phase별 worktree (기본값)
+## phase별 worktree (요청할 때만)
 
-phase는 기본적으로 **자기만의 git worktree**에서 진행됩니다. `planned` 상태의 phase를 처음
-실행하는 순간(`/do-whole-phase`, `/do-next-slice`) 에이전트가 `parallel-start <P>`를 실행해
-`phase/P<N>-<slug>` branch와 `.claude/worktrees/P<N>-<slug>` worktree를 만들고, **같은 세션
-안에서** 그 worktree로 들어가 phase를 끝까지 진행합니다. `main`은 그동안 원래 하던 일을
-그대로 계속하고, 각 checkout은 자기 stream의 phase만 봅니다. 한 phase 안의 slice는 여전히
-순서대로만 진행됩니다.
+phase는 **기본적으로 지금 있는 checkout(`main`)에서** 진행됩니다. 따로 할 일도, 붙일 옵션도
+없습니다. 한 번에 두 phase를 돌리고 싶을 때만 **여러분이 요청**하면, 그 phase가 자기만의 git
+worktree로 옮겨갑니다. 요청하는 방법은 둘 중 하나입니다.
+
+- `/do-whole-phase worktree` 또는 `/do-next-slice worktree`처럼 **`worktree`라는 말을 붙여**
+  실행하기 (같은 뜻의 다른 표현도 됩니다 — "worktree에서", "병렬로", "자기 branch에서")
+- `python3 scripts/workflow.py parallel-start <P>`를 **직접** 실행하기
+
+그러면 에이전트가 `phase/P<N>-<slug>` branch와 `.claude/worktrees/P<N>-<slug>` worktree를 만들고,
+**같은 세션 안에서** 그 worktree로 들어가 phase를 끝까지 진행합니다. `main`은 그동안 원래 하던
+일을 그대로 계속하고, 각 checkout은 자기 stream의 phase만 봅니다. 한 phase 안의 slice는 여전히
+순서대로만 진행됩니다. 에이전트가 먼저 worktree를 만드는 일은 없습니다 — 다른 phase가 진행 중일
+때 `next`가 "이 phase는 병렬로 돌릴 수 있습니다"라고 **제안**할 뿐이고, 그 제안을 실행할지는
+여러분이 정합니다.
 
 `main`의 작업 트리가 지저분해도 막히지 않습니다. stamp 커밋에는 그 phase 폴더와 다시 생성된
 `works/` 파일만 들어가고, 여러분이 커밋하지 않은 수정은 `main`에 그대로 남습니다 — worktree는
 그 커밋(최신 커밋)에서 시작합니다. `.claude/worktrees/`는 저장소의 `.git/info/exclude`에
 기록되므로 `main`에서 untracked로 보이지 않습니다(`.gitignore`는 건드리지 않습니다).
 
-`main`에 남겨야 하는 phase는 `parallel-skip <P>`로 고정하거나 `new-phase --on-main`으로
-만듭니다. 문서 통합(docs) phase는 항상 고정됩니다 — 문서 버전은 하나의 index에서만 나오기
-때문입니다. 이미 `main`에서 진행 중이던 phase는 그 자리에서 마칩니다.
+`main`에 남기려고 따로 할 일은 없습니다 — 그게 기본값입니다. 문서 통합(docs) phase만은
+**worktree를 요청하지 마세요**: 문서 버전은 하나의 index에서만 나오기 때문에 `doc-new-version`은
+기본 stream에서만 동작합니다. (v42에서 쓰던 `parallel-skip <P>`와 `new-phase --on-main`은 이제
+아무것도 하지 않는 no-op으로 남아 있습니다.)
 
 worktree에서 진행한 phase의 리뷰가 통과하면 에이전트가 통합까지 직접 진행합니다:
 `parallel-gate <P>`(조용한 시점인지 확인) → worktree에서 나와 `main`으로 → `git merge --no-ff`
@@ -241,7 +250,7 @@ CI → merge). 나머지 문서 버전 작업은 평소처럼 나중에 docs pha
 어느 checkout에서든 `parallel-status`로 모든 stream의 진행 상황을 볼 수 있습니다.
 
 자세한 규칙과 절차는 [`parallel-phase`](.claude/skills/parallel-phase/SKILL.md) 스킬(`/parallel-phase`)과
-[English README](README.en.md#phase-worktrees-the-default)에 있습니다.
+[English README](README.en.md#phase-worktrees-on-request)에 있습니다.
 
 ## ⭐ 에이전트와 일하는 6가지 습관
 

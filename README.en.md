@@ -260,7 +260,7 @@ another agent, CI — drives the workspace with the exact same commands:
 | `defer-job --title … --reason … --trigger …` | Park a deferred job |
 | `promote-deferred D1 --phase P1 --slice P1.S2` | Promote a deferred job into a slice |
 | `sync-agents` | Apply the `executors.toml` executor-tier mode/model/effort config to the agent files |
-| `parallel-start <P>` … `parallel-teardown <P>` | Move a phase into its own branch + worktree (the default at first execution), then integrate it back with a local merge (see the `parallel-phase` skill) |
+| `parallel-start <P>` … `parallel-teardown <P>` | Move a phase into its own branch + worktree when you ask for one, then integrate it back with a local merge (see the `parallel-phase` skill) |
 | `validate` | Check workspace integrity |
 
 The full command list lives in [`CLAUDE.md`](CLAUDE.md).
@@ -276,7 +276,7 @@ commands in Claude Code:
 | `do-next-slice` | Complete exactly one slice, then stop |
 | `do-whole-phase` | Finish the active phase end-to-end, including its review |
 | `review-phase` | Review a phase and record a `pass` / `changes_requested` / `blocked` verdict |
-| `parallel-phase` | Run a phase in its own branch + worktree (the default) and integrate it back: quiet-point gate, local merge by default, the review's gate sections, teardown |
+| `parallel-phase` | Run a phase in its own branch + worktree when you ask for one, and integrate it back: quiet-point gate, local merge by default, the review's gate sections, teardown |
 | `doc-new-version` | Create a new versioned durable doc instead of patching the current one |
 | `defer-job` | Park work as a deferred job, outside active selection |
 | `deferred` | Rebuild and show the deferred-jobs dashboard |
@@ -341,14 +341,24 @@ When an agent picks up work, it reads just in time, in this order — and no fur
 
 Archived phases and old doc versions are history; they're not read by default.
 
-### Phase worktrees (the default)
+### Phase worktrees (on request)
 
-Every phase runs in **its own git worktree** by default. The first time a `planned` phase is
-executed (`/do-whole-phase`, `/do-next-slice`), the agent runs `parallel-start <P>`, which cuts
-`phase/P<N>-<slug>` and a worktree at `.claude/worktrees/P<N>-<slug>`, then enters that worktree
-**in the same session** and drives the phase there. `main` keeps working whatever it was working,
-each checkout sees only its own stream, and the phase is the unit of parallelism (slices inside one
-phase stay strictly sequential).
+A phase runs **on the checkout you are already in** — `main`, normally. There is no flag to pass
+and nothing to set up. When you want two phases moving at once, **you ask**, and that phase moves
+into its own git worktree. Asking looks like either of these:
+
+- the word **`worktree`** alongside the command — `/do-whole-phase worktree`, `/do-next-slice
+  worktree` — or the same thing in your own words ("in a worktree", "in parallel", "on its own
+  branch");
+- **`python3 scripts/workflow.py parallel-start <P>`** run by your own hand, after which execution
+  enters the stamped worktree without asking again.
+
+Either way the agent cuts `phase/P<N>-<slug>` and a worktree at `.claude/worktrees/P<N>-<slug>`,
+then enters it **in the same session** and drives the phase there. `main` keeps working whatever it
+was working, each checkout sees only its own stream, and the phase is the unit of parallelism
+(slices inside one phase stay strictly sequential). The agent never starts a worktree on its own
+initiative: when another phase is already in flight, `next` *suggests* one for the phase queued
+behind it, and acting on that suggestion is your call.
 
 **A dirty `main` does not block it.** The stamp commit carries exactly the phase folder plus the
 regenerated `works/` files; whatever else is dirty or staged stays behind on `main`, uncommitted,
@@ -357,10 +367,11 @@ and the worktree starts from that commit. `.claude/worktrees/` is written to the
 What still refuses: a phase that is not `planned` or is already stamped, a merge or rebase in
 progress, a taken branch or path.
 
-**Staying on `main`.** `parallel-skip <P>` pins a `planned` phase to the default stream, and
-`new-phase --on-main` creates one pinned; docs phases are always pinned, because doc versions come
-from one shared index. A phase that was already `in_progress` on `main` finishes there. `next` on
-`main` prints a `hint:` line for a planned, unpinned phase, and `parallel-status` shows every
+**Staying on `main` takes nothing** — it is the default. The one thing to know: **never ask for a
+worktree on a docs phase**, because `doc-new-version` and `docs-consolidated` only work on the
+default stream (doc versions come from one shared index). `parallel-skip <P>` and `new-phase
+--on-main`, which pinned a phase back when v42 made the worktree the default, are now no-ops kept
+only so older habits and scripts still run; they write nothing. `parallel-status` shows every
 stream's state from any checkout.
 
 **Integrating back.** Once the branch review passes, the agent runs the integration itself:
@@ -376,6 +387,9 @@ report instead of merging.
 
 See the [`parallel-phase`](.claude/skills/parallel-phase/SKILL.md) skill (`/parallel-phase`) for the
 eight worktree rules and the full lifecycle, and [`CLAUDE.md`](CLAUDE.md) for the command reference.
+(v42 made the worktree the default for every phase; v43 put it back on request, because one phase at
+a time is the normal shape of this workspace and a branch per phase made every ordinary run pay for
+parallelism it never used. The mechanism itself is unchanged.)
 
 ## Project structure
 
