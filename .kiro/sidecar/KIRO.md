@@ -75,6 +75,11 @@ initiative. The `create-phase` rule in `CLAUDE.md` still holds.
    trailer is required, and never add a `Co-Authored-By: Claude …` trailer, since Claude Code didn't do the
    work. Never push. `.kiro/` is tracked, but slice commits don't touch it. Change the sidecar only when the
    operator asks, and commit that change on its own as `chore(kiro): ...`.
-8. **Upstream build rule.** Sidecar files aren't embedded machinery. Editing `.kiro/` never requires
-   `installer/build.py`. The rule still applies if a slice edits real machinery (`scripts/workflow.py`,
-   `.claude/*`, `works/templates/*`, `CLAUDE.md`).
+8. **Sidecar ownership.** `.kiro/` ships with the workspace (since v44), and `/update-workspace` refreshes it:
+   the agents, the skill wrappers and this file are overwritten from upstream, while `.kiro/settings/cli.json`
+   is only created if it's missing. To keep a local change such as a different executor `model`, re-apply it
+   after each update. In the upstream bootstrap repo (where `installer/` exists) `.kiro/` is embedded
+   machinery, so `CLAUDE.md`'s rebuild rule applies to it: `python3 installer/build.py`, then commit the
+   artifact together with the change.
+9. **Retrofitted repos.** When the repo's own `CLAUDE.md` points to `CLAUDE.workspace.md`, that file is the
+   workspace contract. Read it wherever this file or a skill says `CLAUDE.md`.

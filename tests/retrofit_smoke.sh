@@ -1113,6 +1113,50 @@ if ( cd "$W" && python3 scripts/workflow.py parallel-start P2 2>&1 | grep -q "le
   || bad "merge, merge-finish or teardown failed"
 
 # ---------------------------------------------------------------------------
+echo "== Test 13: v44 Kiro CLI sidecar -- shipped verbatim, machinery on --update, settings seed-once, retrofit keeps yours =="
+newtmp K
+sh "$BOOT" "$K" --name "Kiro" --summary "kiro" >/dev/null 2>&1 || bad "v44 probe: fresh install failed"
+kiro_rels=$(cd "$REPO_ROOT" && find .kiro -type f | LC_ALL=C sort)
+nkiro=$(printf '%s\n' "$kiro_rels" | grep -c .)
+[ "$nkiro" -ge 11 ] && ok "the live repo carries the Kiro sidecar ($nkiro files)" || bad "expected >= 11 files under .kiro/, found $nkiro"
+kdrift=0
+for rel in $kiro_rels; do diff -q "$REPO_ROOT/$rel" "$K/$rel" >/dev/null 2>&1 || { kdrift=1; bad "DRIFT: $rel differs from the bootstrap-embedded copy"; }; done
+[ "$kdrift" -eq 0 ] && ok "a fresh install ships every .kiro/ file verbatim"
+python3 - "$K" <<'PY' && ok "the Kiro agent configs parse, pin claude-opus-5.5, and deny executor git writes" || bad "Kiro agent configs malformed"
+import json, sys
+from pathlib import Path
+k = Path(sys.argv[1]) / ".kiro"
+wf = json.loads((k / "agents/workflow.json").read_text())
+ex = json.loads((k / "agents/slice-executor-high.json").read_text())
+assert json.loads((k / "settings/cli.json").read_text())["chat.defaultAgent"] == "workflow"
+assert ex["model"] == "claude-opus-5.5"
+assert "file://.claude/agents/slice-executor-high.md" in ex["resources"]
+assert any("git" in d and "commit" in d for d in ex["toolsSettings"]["shell"]["deniedCommands"])
+assert wf["toolsSettings"]["crew"]["availableAgents"] == ["slice-executor-high"]
+assert "shell" in wf["allowedTools"]
+PY
+grep -q "auto" "$K/.kiro/skills/do-whole-phase/SKILL.md" && grep -q '\$ARGUMENTS' "$K/.kiro/skills/do-whole-phase/SKILL.md" \
+  && grep -q ".claude/skills/do-whole-phase/SKILL.md" "$K/.kiro/skills/do-whole-phase/SKILL.md" \
+  && ok "the Kiro do-whole-phase wrapper passes \$ARGUMENTS and defers to the Claude skill" || bad "Kiro do-whole-phase wrapper malformed"
+printf '{ "chat.defaultAgent": "mine" }\n' > "$K/.kiro/settings/cli.json"
+printf 'stale\n' > "$K/.kiro/sidecar/KIRO.md"
+rm -f "$K/.kiro/skills/deferred/SKILL.md"
+kup=$(sh "$BOOT" "$K" --update 2>&1) || bad "v44 probe: --update failed"
+grep -q '"mine"' "$K/.kiro/settings/cli.json" && ok "--update keeps an existing .kiro/settings/cli.json (seed-once)" || bad "--update clobbered .kiro/settings/cli.json"
+diff -q "$REPO_ROOT/.kiro/sidecar/KIRO.md" "$K/.kiro/sidecar/KIRO.md" >/dev/null && ok "--update refreshes a stale .kiro/sidecar/KIRO.md" || bad "--update did not refresh KIRO.md"
+[ -f "$K/.kiro/skills/deferred/SKILL.md" ] && ok "--update restores a deleted Kiro skill wrapper" || bad "--update did not restore the Kiro skill wrapper"
+printf '%s\n' "$kup" | grep -q "Kiro sidecar" && ok "--update reminds the adopter to re-apply local Kiro edits" || bad "--update omitted the Kiro reminder"
+rm -f "$K/.kiro/settings/cli.json"
+sh "$BOOT" "$K" --update >/dev/null 2>&1 && [ -f "$K/.kiro/settings/cli.json" ] \
+  && ok "--update seeds a missing .kiro/settings/cli.json" || bad "--update did not seed .kiro/settings/cli.json"
+newtmp KR
+( cd "$KR" && git init -q && mkdir -p .kiro/agents && printf '{"name":"workflow","description":"mine"}\n' > .kiro/agents/workflow.json \
+  && printf 'app\n' > app.txt ) || bad "v44 probe: could not build the retrofit sample"
+sh "$BOOT" "$KR" --into-existing >/dev/null 2>&1 || bad "v44 probe: retrofit failed"
+grep -q '"mine"' "$KR/.kiro/agents/workflow.json" && [ -f "$KR/.kiro/sidecar/KIRO.md" ] \
+  && ok "retrofit keeps an existing .kiro/ file and adds the rest of the sidecar" || bad "retrofit clobbered or skipped the Kiro sidecar"
+
+# ---------------------------------------------------------------------------
 echo
 if [ "$FAILS" -eq 0 ]; then
   echo "ALL RETROFIT SMOKE TESTS PASSED"

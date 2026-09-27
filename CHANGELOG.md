@@ -9,6 +9,46 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v44 — 2026-09-27
+
+- **Why this release: Kiro CLI can drive a light version of the workflow.** Everything already runs
+  through `scripts/workflow.py` and plain files, so the gap was only the agent layer. v44 ships a
+  `.kiro/` sidecar alongside `.claude/`, so Kiro CLI can run the same workspace. Nothing on the Claude
+  Code side changes: no skill, agent or engine behaviour moves.
+
+- **What the sidecar is.** A `workflow` orchestrator agent (the workspace default in
+  `.kiro/settings/cli.json`) that loads `CLAUDE.md` plus `.kiro/sidecar/KIRO.md`, a single
+  `slice-executor-high` executor agent on `claude-opus-5.5` that follows
+  `.claude/agents/slice-executor-high.md` verbatim, and seven thin skill wrappers (`create-phase`,
+  `do-next-slice`, `do-whole-phase`, `defer-job`, `deferred`, `promote-deferred`, `commit`), each
+  of which reads the matching `.claude/skills/*/SKILL.md`. `KIRO.md` holds the overrides and wins
+  where they conflict. The contract comes from `CLAUDE.workspace.md` in a retrofitted repo.
+
+- **The light subset.** Auto mode only: decompositions are planned inline too, and `gate`, `plan only`
+  and the worktree mode words are refused and handed back to Claude Code. There is no idle-window
+  preparation. Every delegated slice goes to the one high tier, with no mid tier and no escalation,
+  though `risk` is still rated deliberately. `co-work` design slices, phase worktrees, `/explain`,
+  `/retrofit`, `/update-workspace` and `sync-agents` stay Claude Code only. The verdict of record is
+  the head of `result.md`. A missing or partial one (Kiro subagents have a fixed turn limit) counts
+  as a failed return, and the slice is never finished on it.
+
+- **Commits and permissions.** The Kiro orchestrator commits each slice, stages explicit paths only
+  and never pushes. It adds no model trailer. The orchestrator auto-approves its tools, but
+  force-push, `git add -A`/`.` and `rm -rf` are denied. The executor is denied every git write and
+  every state-changing `workflow.py` command.
+
+- **Installer.** `build.py` embeds every file under `.kiro/`, discovered from disk, and asserts the
+  load-bearing ones. Fresh installs and retrofits create the sidecar, and a retrofit keeps any
+  existing file. `--update` overwrites `.kiro/agents`, `.kiro/skills` and `.kiro/sidecar` as
+  machinery, and seeds `.kiro/settings/cli.json` once, like `executors.toml`. `.kiro` joins the
+  empty-dir allowlist, the contract's upstream rebuild rule and the pre-commit hook's machinery paths.
+  The smoke suite gains Test 13, and both READMEs gain a Kiro sidecar section.
+
+**Migration notes.** Nothing to run for Claude Code. The update adds `.kiro/`: commit it with
+the rest of the update, or delete it if you don't use Kiro. An existing `.kiro/settings/cli.json`
+is kept. Later updates overwrite the sidecar's agents and skills, so re-apply any local edit (for
+example the executor `model` in `.kiro/agents/slice-executor-high.json`) afterwards.
+
 ## v43 — 2026-09-17
 
 - **Why this release: v42 made every phase pay for parallelism almost no run used.** One phase at a
