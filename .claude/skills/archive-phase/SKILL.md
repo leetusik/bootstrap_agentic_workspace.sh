@@ -1,6 +1,6 @@
 ---
 name: archive-phase
-description: Archive review-passed phases: archive-all (full sweep), rotate-backlog (partial), or archive-phase (single).
+description: "Archive review-passed phases: archive-all (full sweep), rotate-backlog (partial), or archive-phase (single)."
 allowed-tools: Bash(python3 scripts/workflow.py:*)
 disable-model-invocation: true
 ---

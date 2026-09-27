@@ -1,6 +1,6 @@
 ---
 name: parallel-phase
-description: Run a phase in its own git worktree when the operator asks for one, and integrate it back: quiet-point gate, local merge, the review's two gate sections, teardown; push → PR is the remote variant.
+description: "Run a phase in its own git worktree when the operator asks for one, and integrate it back: quiet-point gate, local merge, the review's two gate sections, teardown; push → PR is the remote variant."
 allowed-tools: Bash(python3 scripts/workflow.py:*), Read, Edit, Write, Glob, Grep, Bash
 disable-model-invocation: true
 ---
