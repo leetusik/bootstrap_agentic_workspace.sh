@@ -252,27 +252,6 @@ CI → merge). 나머지 문서 버전 작업은 평소처럼 나중에 docs pha
 자세한 규칙과 절차는 [`parallel-phase`](.claude/skills/parallel-phase/SKILL.md) 스킬(`/parallel-phase`)과
 [English README](README.en.md#phase-worktrees-on-request)에 있습니다.
 
-## Kiro CLI 사이드카 (선택)
-
-주 도구는 Claude Code지만, 모든 워크스페이스에 `.kiro/` 사이드카가 함께 설치됩니다.
-[Kiro CLI](https://kiro.dev)에서도 같은 상태 파일을 두고 워크플로우의 **가벼운 부분 집합**을
-실행할 수 있습니다. Claude Code 쪽은 아무것도 바뀌지 않고, Kiro를 쓰지 않는다면 `.kiro/`를
-지워도 됩니다.
-
-- **지원:** `/create-phase`, `/do-next-slice`, `/do-whole-phase`(**auto 모드만**, 일 나누기 slice도
-  계획 승인 없이 진행), `/defer-job`, `/deferred`, `/promote-deferred`, `/commit`
-- **실행자 한 티어:** 모든 slice를 `slice-executor-high`(`claude-opus-5.5`)가 맡고,
-  `.claude/agents/slice-executor-high.md`를 그대로 따릅니다. 노력 수준은 Kiro 설정
-  (`chat.modelDefaults`)을 따릅니다.
-- **커밋:** 오케스트레이터가 slice마다 커밋합니다. 파일을 하나씩 지정해 stage하고, push는 하지 않습니다.
-- **Claude Code 전용:** `gate` / `plan only`, worktree, `co-work` 디자인 slice(DesignSync),
-  `/explain`, `/retrofit`, `/update-workspace`, `sync-agents`. Kiro는 여기서 멈추고 Claude Code로 넘깁니다.
-- **알려진 한계:** Kiro 하위 에이전트는 턴 수 제한이 있습니다. 결과가 잘리면 그 slice는 완료 처리하지 않습니다.
-
-규칙 전체는 [`.kiro/sidecar/KIRO.md`](.kiro/sidecar/KIRO.md)에 있습니다.
-`/update-workspace`는 `.kiro/agents`, `.kiro/skills`, `.kiro/sidecar`를 최신으로 바꾸고,
-이미 있는 `.kiro/settings/cli.json`은 그대로 둡니다.
-
 ## ⭐ 에이전트와 일하는 6가지 습관
 
 이 워크스페이스를 만든 이유이자, 규칙 문서([`CLAUDE.md`](CLAUDE.md))가 강제하는 것들입니다.

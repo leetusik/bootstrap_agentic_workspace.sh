@@ -35,7 +35,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 44
+WORKSPACE_VERSION = 43
 ROOT = TARGET.resolve()
 
 DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
@@ -45,7 +45,7 @@ DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "da
 # with README" case should just work).
 EMPTY_OK_ALLOWLIST = {
     ".git", ".github", ".gitignore", ".gitattributes", ".gitkeep",
-    ".editorconfig", ".vscode", ".idea", ".kiro", ".DS_Store",
+    ".editorconfig", ".vscode", ".idea", ".DS_Store",
     "README.md", "README", "README.rst", "README.txt",
     "LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING", "NOTICE",
 }
@@ -86,13 +86,6 @@ MANAGED_FILES = [
 for name in CLAUDE_SKILLS:
     MANAGED_DIRS.append(f".claude/skills/{name}")
     MANAGED_FILES.append(f".claude/skills/{name}/SKILL.md")
-
-# Kiro CLI sidecar (v44): every embedded file under .kiro/ (agents, skill wrappers,
-# KIRO.md overrides, workspace settings). Machinery like .claude/, except the
-# operator-owned .kiro/settings/cli.json, which is seed-once on --update.
-KIRO_FILES = sorted(k for k in PAYLOADS if k.startswith(".kiro/"))
-KIRO_SETTINGS = ".kiro/settings/cli.json"
-MANAGED_FILES.extend(KIRO_FILES)
 
 
 
@@ -267,8 +260,7 @@ def _retrofit_handle(path: str, text: str) -> bool:
 #   MERGE (additive): .claude/settings.json.
 #   CONTRACT (sidecar-aware): CLAUDE.md.
 #   SEED-ONCE: executors.toml (operator tier config — created if absent, never
-#     overwritten), and .kiro/settings/cli.json (Kiro workspace settings, v44).
-#   OVERWRITE also covers the Kiro sidecar (.kiro/agents, .kiro/skills, .kiro/sidecar).
+#     overwritten).
 #   PRESERVE (never touch): everything under works/ except templates, and all of
 #     docs/ (the append-only version chain plus generated snapshots).
 # The repo-level policy files (.github/workflows/workspace-ci.yml seed-once,
@@ -277,8 +269,7 @@ def _retrofit_handle(path: str, text: str) -> bool:
 def _is_machinery(path: str) -> bool:
     if path == "scripts/workflow.py":
         return True
-    return path.startswith((".claude/agents/", ".claude/skills/", "works/templates/",
-                            ".kiro/agents/", ".kiro/skills/", ".kiro/sidecar/"))
+    return path.startswith((".claude/agents/", ".claude/skills/", "works/templates/"))
 
 
 def _difflines(old: str, new: str):
@@ -351,7 +342,7 @@ def _update_handle(path: str, text: str, executable: bool) -> None:
         return
     # Seed-once: executors.toml is the operator's tier config — create it when
     # absent (a pre-v9 workspace) and never overwrite an existing one.
-    if path in ("executors.toml", KIRO_SETTINGS):
+    if path == "executors.toml":
         if (ROOT / path).exists():
             UPDATE_SUMMARY["preserved"].append(path)
         else:
@@ -551,10 +542,6 @@ for name in CLAUDE_SKILLS:
 for tier in ("mid", "high"):
     write_text(f".claude/agents/slice-executor-{tier}.md", PAYLOADS[f".claude/agents/slice-executor-{tier}.md"])
 
-# ---- Kiro CLI sidecar (v44): auto-mode subset of the workflow for Kiro CLI ----
-for rel in KIRO_FILES:
-    write_text(rel, PAYLOADS[rel])
-
 # ---- Executor-tier config (seeded once — commented defaults; operator-owned) ----
 write_text("executors.toml", PAYLOADS["executors.toml"])
 
@@ -680,7 +667,6 @@ elif UPDATE:
     print(f"  provenance recorded: works/.workspace-version.json (synced_commit {os.environ.get('SYNCED_COMMIT') or 'bootstrap'})")
     print("The installer made no git changes. Review the diff (git status); commit once the operator approves.")
     print("Next: python3 scripts/workflow.py sync-agents  # re-apply your preserved executors.toml")
-    print("Kiro sidecar: .kiro/ agents/skills refreshed from upstream; re-apply any local edit (e.g. the executor model)")
     print("Then: python3 scripts/workflow.py next")
 elif RETROFIT:
     created, skipped, merged = (RETROFIT_SUMMARY["created"], RETROFIT_SUMMARY["skipped"], RETROFIT_SUMMARY["merged"])
@@ -700,7 +686,6 @@ else:
     print(f"Bootstrapped agentic workspace at {TARGET}")
     print("Contract: CLAUDE.md")
     print("Claude Code: 17 skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{mid,high}.md, settings .claude/settings.json")
-    print("Kiro CLI sidecar: .kiro/ (auto-mode /create-phase, /do-next-slice, /do-whole-phase; overrides in .kiro/sidecar/KIRO.md)")
     print("Visual design: design-cowork fires automatically, using Claude Design + DesignSync; the operator picks a style (build-after / design-only / paired) and signs off on a runnable mockup, before separate implementation and browser fidelity")
     print("Executor tiers are risk-routed (mid for a one-line edit or docs, high for everything else); economy is the no-mode fallback, while this seed selects flex in executors.toml; tune it and run python3 scripts/workflow.py sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")

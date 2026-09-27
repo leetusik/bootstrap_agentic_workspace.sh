@@ -11,9 +11,8 @@ Source of truth:
   * Live repo files (embedded verbatim, killing the double-maintenance):
       scripts/workflow.py, .claude/skills/*, the .claude subagents,
       .claude/settings.json, executors.toml, works/templates/*,
-      .github/workflows/workspace-ci.yml, .gitattributes, the CLAUDE.md
-      contract body (header stripped, embedded once), and every file under
-      .kiro/ (the Kiro CLI sidecar, v44).
+      .github/workflows/workspace-ci.yml, .gitattributes, and the CLAUDE.md
+      contract body (header stripped, embedded once).
   * installer/payloads/  (fresh-install-only seeds, no live counterpart):
       doc_bodies/<doc>.md, sentinel-templated (__PROJECT_NAME__ / __PROJECT_SUMMARY__
       substituted by main.py at install time).
@@ -60,14 +59,6 @@ FIXED_LIVE_FILES = [
 
 CLAUDE_HDR = "# CLAUDE.md\n\n"
 
-# The Kiro CLI sidecar's load-bearing files; every other file under .kiro/ ships too.
-KIRO_REQUIRED = [
-    ".kiro/agents/workflow.json",
-    ".kiro/agents/slice-executor-high.json",
-    ".kiro/sidecar/KIRO.md",
-    ".kiro/settings/cli.json",
-]
-
 
 def die(msg: str) -> "None":
     print(f"build error: {msg}", file=sys.stderr)
@@ -97,13 +88,6 @@ def collect_live_payloads() -> "dict":
     # Release invariant: a truncated or half-collected payload is a build error.
     if len(claude_skills) != EXPECTED_SKILL_COUNT:
         die(f"expected {EXPECTED_SKILL_COUNT} Claude skills; found {len(claude_skills)}")
-    # Kiro CLI sidecar (v44): every file under .kiro/ ships verbatim, discovered from disk.
-    kiro = sorted(p for p in (REPO / ".kiro").rglob("*") if p.is_file())
-    for p in kiro:
-        payloads[str(p.relative_to(REPO))] = p.read_text(encoding="utf-8")
-    for required in KIRO_REQUIRED:
-        if required not in payloads:
-            die(f"Kiro sidecar file missing: {required}")
     return payloads
 
 

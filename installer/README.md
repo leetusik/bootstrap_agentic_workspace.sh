@@ -76,9 +76,6 @@ path), so editing them and rebuilding is all that is needed:
   offline local-file fallback is removed) and further trimmed of its Codex-only passages.
   Nothing syncs the two; re-vendor by hand, and read the divergence comment in the file first.
 - `.claude/agents/slice-executor-{mid,high}.md`
-- every file under `.kiro/` — the Kiro CLI sidecar (v44), discovered from disk; `build.py` asserts
-  the load-bearing ones (`KIRO_REQUIRED`). On `--update` the agents, skill wrappers and `KIRO.md` are
-  overwritten like `.claude/`; `.kiro/settings/cli.json` is seed-once, like `executors.toml`
 - `executors.toml` (seed-once executor-tier config — created if absent, never overwritten on update)
 - `.claude/settings.json`
 - `works/templates/{deferred_brief,intent}.md`

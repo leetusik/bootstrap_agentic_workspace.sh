@@ -173,8 +173,6 @@ Both `--flag value` and `--flag=value` forms work.
   subagents (`.claude/agents/slice-executor-{mid,high}.md`, with economy/flex model matrices
   selected by `executors.toml` and applied with `sync-agents`), and a `settings.json` that
   pre-approves the workflow script.
-- `.kiro/` — an optional [Kiro CLI sidecar](#kiro-cli-sidecar-optional): a light, auto-mode subset of
-  the same workflow for Kiro CLI.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - [`works/`](works/) — the state machine, starting with **no phases**: a `deferred/` area,
@@ -393,31 +391,6 @@ eight worktree rules and the full lifecycle, and [`CLAUDE.md`](CLAUDE.md) for th
 a time is the normal shape of this workspace and a branch per phase made every ordinary run pay for
 parallelism it never used. The mechanism itself is unchanged.)
 
-### Kiro CLI sidecar (optional)
-
-Claude Code is the primary driver, but every workspace also ships a `.kiro/` sidecar so
-[Kiro CLI](https://kiro.dev) can run a **light subset** of the same workflow on the same state.
-Nothing on the Claude Code side changes, and you can delete `.kiro/` if you don't use Kiro.
-
-- **What runs:** `/create-phase`, `/do-next-slice` and `/do-whole-phase` in **auto mode only**
-  (decomposition slices included), plus `/defer-job`, `/deferred`, `/promote-deferred` and `/commit`.
-  Each Kiro skill is a thin wrapper that reads the matching `.claude/skills/*/SKILL.md` and applies the
-  overrides in `.kiro/sidecar/KIRO.md`.
-- **One executor tier:** every slice is dispatched to `slice-executor-high` (`claude-opus-5.5`), which
-  follows `.claude/agents/slice-executor-high.md`. The effort level comes from your Kiro settings
-  (`chat.modelDefaults`). `risk` is still rated, for Claude Code's sake.
-- **Commits:** the orchestrator commits each slice, stages explicit paths only, and never pushes.
-  Executors are blocked from git writes and from state-changing `workflow.py` commands.
-- **Permissions:** the `workflow` agent (the workspace default, set in `.kiro/settings/cli.json`)
-  auto-approves its tools. What stays blocked: force-push, `git add -A`/`.` and `rm -rf`.
-- **Claude Code only:** `gate` / `plan only`, phase worktrees, `co-work` design slices (DesignSync),
-  `/explain`, `/retrofit`, `/update-workspace`, `sync-agents`. Kiro stops at these and hands you back.
-- **Known limit:** Kiro subagents have a fixed turn limit. A slice that runs out comes back
-  `blocked` or with a missing `result.md`, and it is never finished on a partial result.
-
-`/update-workspace` overwrites `.kiro/agents`, `.kiro/skills` and `.kiro/sidecar`, and keeps an
-existing `.kiro/settings/cli.json`.
-
 ## Project structure
 
 ```
@@ -441,7 +414,6 @@ existing `.kiro/settings/cli.json`.
 │   ├── skills/                    # 17 Agent Skills (/slash commands)
 │   ├── agents/                    # slice-executor tiers mid/high (economy/flex models from executors.toml)
 │   └── settings.json              # pre-approves workflow.py; denies force-push & rm -rf
-├── .kiro/                         # optional Kiro CLI sidecar (auto mode; overrides in sidecar/KIRO.md)
 └── .github/
     └── workflows/
         └── workspace-ci.yml       # CI: validate on push/PR; parallel-gate job on phase/* PRs (remote variant)
