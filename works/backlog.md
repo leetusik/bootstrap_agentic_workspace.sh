@@ -5,9 +5,9 @@
 
 ## Pointer
 
-- Current phase: `none`
-- Current slice: `none`
-- Next slice: `none`
+- Current phase: `P23`
+- Current slice: `P23.DECOMP`
+- Next slice: `P23.REVIEW`
 - Waiting on operator: `none`
 - Open deferred jobs: `8`
 
@@ -17,6 +17,7 @@
 |---|---|---|---|---|---|
 | [x] `P21` | `done` | `pass` | close the workspace's context leaks, measured against live adopters | `none` | `works/phases/active/P21` |
 | [x] `P22` | `done` | `pass` | make doc staleness explicit and right-size the notebook and test guardrails | `none` | `works/phases/active/P22` |
+| [ ] `P23` | `planned` | `pending` | slim the always-loaded contract back to a routing layer | `P23.DECOMP` | `works/phases/active/P23` |
 
 ## Phase P21: close the workspace's context leaks, measured against live adopters
 
@@ -39,3 +40,10 @@
 | [x] `P22.S1` | `done` | relax the notebook budget and sharpen keep-tests-small (D15+D16) | `implementation` | `works/phases/active/P22/slices/P22.S1` |
 | [x] `P22.S2` | `done` | make doc staleness explicit in docs/index.json and where docs are read (D14) | `implementation` | `works/phases/active/P22/slices/P22.S2` |
 | [x] `P22.REVIEW` | `done` | phase review | `review` | `works/phases/active/P22/slices/P22.REVIEW` |
+
+## Phase P23: slim the always-loaded contract back to a routing layer
+
+| Slice | Status | Name | Kind | Path |
+|---|---|---|---|---|
+| [ ] `P23.DECOMP` | `todo` | decompose phase | `decomposition` | `works/phases/active/P23/slices/P23.DECOMP` |
+| [ ] `P23.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P23/slices/P23.REVIEW` |

@@ -538,3 +538,4 @@
 {"ts": "2026-09-17T18:09:17+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0034_v43_the_phase_worktree_is_opt-in_again_a_phase_runs_on_the_default_stream_unless_the_operator_asks", "source": "v43"}
 {"ts": "2026-09-17T18:10:59+09:00", "type": "doc_version_created", "doc": "architecture", "version": "v0007_v43_the_phase_worktree_is_opt-in_again_the_pin_is_a_legacy_block_not_a_live_route", "source": "v43"}
 {"ts": "2026-09-17T18:12:09+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0041_v43_put_the_phase_worktree_back_to_opt-in_the_default_stream_is_the_default_again", "source": "v43"}
+{"ts": "2026-09-28T03:26:50+09:00", "type": "phase_created", "phase": "P23"}

@@ -25,10 +25,22 @@
       "slice_count": 4,
       "done_slice_count": 4,
       "consolidation": "pending"
+    },
+    {
+      "id": "P23",
+      "name": "slim the always-loaded contract back to a routing layer",
+      "objective": "Bring CLAUDE.md (49,646 chars, over Claude Code's 40k-char per-file warning floor and loaded into every executor dispatch) down toward D8's <= 12 KB routing layer without dropping a load-bearing rule. A research slice first maps which reader needs each rule (orchestrator, executor, or a skill that already owns it); then cut what the code derives (Workflow Commands restates workflow.py --help) and move skill-owned detail (worktrees, design, Aside, the acceptance gate, the review boundary) to the skill or executor file that owns it. Every never-rule stays in the contract. Re-point the smoke-test pins, rebuild the installer, and ship it as a workspace release. Pays D8.",
+      "status": "planned",
+      "order": 7,
+      "path": "works/phases/active/P23",
+      "review_status": "pending",
+      "current_slice": "P23.DECOMP",
+      "slice_count": 2,
+      "done_slice_count": 0
     }
   ],
   "deferred_open_count": 8,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 9,
-  "last_rebuilt_at": "2026-09-17T17:40:45+09:00"
+  "last_rebuilt_at": "2026-09-28T03:28:30+09:00"
 }
