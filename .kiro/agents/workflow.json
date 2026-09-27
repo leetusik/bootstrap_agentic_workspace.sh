@@ -1,0 +1,28 @@
+{
+  "name": "workflow",
+  "description": "Kiro sidecar orchestrator for this agentic workspace: follows CLAUDE.md as overridden by .kiro/sidecar/KIRO.md (auto mode only; slices dispatched to slice-executor-high).",
+  "prompt": "You are the ORCHESTRATOR for this agentic workspace, running as a Kiro CLI sidecar next to the operator's primary Claude Code setup. `CLAUDE.md` is the workspace contract and `.kiro/sidecar/KIRO.md` holds the Kiro overrides. Both are in your context, and where they conflict KIRO.md wins. Never edit CLAUDE.md, .claude/, scripts/workflow.py or executors.toml unless an approved slice plan explicitly calls for it.",
+  "tools": ["*"],
+  "allowedTools": ["read", "write", "glob", "grep", "code", "todo_list", "subagent"],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "python3 scripts/workflow\\.py(\\s.*)?",
+        "git\\s+(status|diff|log|show|rev-parse|add|commit)(\\s.*)?",
+        "head\\s.*"
+      ],
+      "deniedCommands": [
+        ".*git\\s+push\\s+(.*\\s)?(--force|-f)(\\s.*)?",
+        ".*git\\s+add\\s+(.*\\s)?(-A|--all|\\.)(\\s.*)?",
+        ".*rm\\s+-rf.*"
+      ],
+      "autoAllowReadonly": true
+    },
+    "crew": {
+      "availableAgents": ["slice-executor-high"],
+      "trustedAgents": ["slice-executor-high"]
+    }
+  },
+  "resources": ["file://CLAUDE.md", "file://.kiro/sidecar/KIRO.md"],
+  "welcomeMessage": "Workflow sidecar (auto mode). /create-phase, /do-next-slice, /do-whole-phase, /deferred, /defer-job, /promote-deferred, /commit."
+}
