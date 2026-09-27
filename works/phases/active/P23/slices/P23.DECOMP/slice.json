@@ -3,12 +3,12 @@
   "phase_id": "P23",
   "name": "decompose phase",
   "kind": "decomposition",
-  "status": "todo",
+  "status": "done",
   "order": 0,
   "depends_on": [],
   "created_at": "2026-09-28T03:26:50+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-28T08:20:01+09:00",
+  "completed_at": "2026-09-28T08:23:56+09:00",
   "risk": "high",
   "source": {
     "type": "new_phase",
@@ -18,7 +18,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Cut P23 research-first: P23.S1 (research/high) maps every contract rule to its reader, then P23.DECOMP2 (decomposition/high, gated) cuts the edit slices from that map; notebook seeded with six decisions and S1's agenda",
   "validation": {
     "required": [],
     "last_run": null,
