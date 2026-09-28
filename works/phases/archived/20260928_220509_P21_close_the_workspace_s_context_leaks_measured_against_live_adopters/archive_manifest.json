@@ -1,0 +1,18 @@
+{
+  "phase_id": "P21",
+  "archived_at": "2026-09-28T22:05:09+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P21",
+  "archive_path": "works/phases/archived/20260928_220509_P21_close_the_workspace_s_context_leaks_measured_against_live_adopters",
+  "slices": [
+    "P21.DECOMP",
+    "P21.S1",
+    "P21.DECOMP2",
+    "P21.S2",
+    "P21.S3",
+    "P21.S4",
+    "P21.S5",
+    "P21.REVIEW"
+  ]
+}

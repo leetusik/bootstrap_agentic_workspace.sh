@@ -1,0 +1,14 @@
+{
+  "phase_id": "P22",
+  "archived_at": "2026-09-28T22:05:09+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P22",
+  "archive_path": "works/phases/archived/20260928_220509_P22_make_doc_staleness_explicit_and_right-size_the_notebook_and_test_guardrails",
+  "slices": [
+    "P22.DECOMP",
+    "P22.S1",
+    "P22.S2",
+    "P22.REVIEW"
+  ]
+}

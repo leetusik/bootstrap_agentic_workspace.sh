@@ -1,0 +1,17 @@
+{
+  "phase_id": "P23",
+  "archived_at": "2026-09-28T22:05:09+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P23",
+  "archive_path": "works/phases/archived/20260928_220509_P23_slim_the_always-loaded_contract_back_to_a_routing_layer",
+  "slices": [
+    "P23.DECOMP",
+    "P23.S1",
+    "P23.DECOMP2",
+    "P23.S2",
+    "P23.S3",
+    "P23.S4",
+    "P23.REVIEW"
+  ]
+}

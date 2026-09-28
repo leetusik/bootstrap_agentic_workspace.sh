@@ -611,3 +611,7 @@
 {"ts": "2026-09-28T21:57:47+09:00", "type": "slice_status_changed", "slice": "P24.REVIEW", "old_status": "changes_requested", "new_status": "in_progress"}
 {"ts": "2026-09-28T22:04:52+09:00", "type": "slice_status_changed", "slice": "P24.REVIEW", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-09-28T22:04:52+09:00", "type": "phase_reviewed", "phase": "P24", "verdict": "pass", "reviewer": "slice-executor-high"}
+{"ts": "2026-09-28T22:05:09+09:00", "type": "phase_archived", "phase": "P21", "archive_path": "works/phases/archived/20260928_220509_P21_close_the_workspace_s_context_leaks_measured_against_live_adopters"}
+{"ts": "2026-09-28T22:05:09+09:00", "type": "phase_archived", "phase": "P22", "archive_path": "works/phases/archived/20260928_220509_P22_make_doc_staleness_explicit_and_right-size_the_notebook_and_test_guardrails"}
+{"ts": "2026-09-28T22:05:09+09:00", "type": "phase_archived", "phase": "P23", "archive_path": "works/phases/archived/20260928_220509_P23_slim_the_always-loaded_contract_back_to_a_routing_layer"}
+{"ts": "2026-09-28T22:05:09+09:00", "type": "phase_archived", "phase": "P24", "archive_path": "works/phases/archived/20260928_220509_P24_consolidate_the_p21_p23_doc_impact_into_the_docs_and_both_readmes"}

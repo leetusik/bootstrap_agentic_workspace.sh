@@ -1,0 +1,19 @@
+{
+  "phase_id": "P24",
+  "archived_at": "2026-09-28T22:05:09+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P24",
+  "archive_path": "works/phases/archived/20260928_220509_P24_consolidate_the_p21_p23_doc_impact_into_the_docs_and_both_readmes",
+  "slices": [
+    "P24.DECOMP",
+    "P24.S1",
+    "P24.S2",
+    "P24.S3",
+    "P24.S4",
+    "P24.S5",
+    "P24.F1",
+    "P24.F2",
+    "P24.REVIEW"
+  ]
+}
