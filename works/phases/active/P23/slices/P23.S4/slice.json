@@ -3,14 +3,14 @@
   "phase_id": "P23",
   "name": "rewrite the contract to the 12 KB outline",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 5,
   "depends_on": [
     "P23.S3"
   ],
   "created_at": "2026-09-28T12:27:45+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-28T12:57:20+09:00",
+  "completed_at": "2026-09-28T13:11:56+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Rewrote CLAUDE.md to the 7-section outline, 26,373 -> 12,259 B (29 B under the 12,288 B cap); intent rules merged into Driving, slice-file rules into Canonical State; S3 stubs and the D13 sentence byte-identical; 58/58 never-rules by exact phrase; v44 CHANGELOG one entry; per-dispatch prefix 40,844 B; smoke 180 PASS",
   "validation": {
     "required": [],
     "last_run": null,

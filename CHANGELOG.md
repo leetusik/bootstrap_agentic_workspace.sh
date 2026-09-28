@@ -11,12 +11,15 @@ history.
 
 ## v44 — 2026-09-28
 
-- **Why this release: the contract had outgrown the job its first line names.** `CLAUDE.md` was
-  50 KB (49,646 characters), over Claude Code's 40,000-character per-file instruction warning, and
-  it loads into every session and every slice-executor dispatch. Most of that weight was text the
-  engine or an owning skill already carried. v44 cuts the contract back toward a routing layer
-  without dropping a rule: every "never" rule keeps a statement in the contract, and everything
-  that leaves still has a carrier.
+- **Why this release: the contract is a routing layer again.** `CLAUDE.md` had grown to 50,048
+  bytes (49,646 characters), over Claude Code's 40,000-character per-file instruction warning, and
+  it loads into every session and every slice-executor dispatch. v44 cuts it to 12,259 bytes, under
+  the 12 KB (12,288-byte) target deferred job D8 set, without dropping a rule: each of its 58
+  "never" rules keeps a statement in the contract, and everything that left still has a carrier.
+  Commands are read from `python3 scripts/workflow.py --help`, procedure from the skill that runs
+  it (`do-next-slice`, `do-whole-phase`, `create-phase`, `review-phase`, `design-cowork`,
+  `parallel-phase`, `archive-phase`), and what a dispatched slice needs from the executor bodies.
+  The per-dispatch prefix (contract plus executor body) falls from 77,782 to 40,844 bytes.
 
 - **`## Workflow Commands` is gone; `python3 scripts/workflow.py --help` is the command
   reference.** The section restated the engine's own help, one bullet per command. The one fact
@@ -29,23 +32,6 @@ history.
   archiving guard and the phase-branch merge now live only in `do-next-slice`, `do-whole-phase`,
   `review-phase`, `design-cowork`, `archive-phase`, `parallel-phase`, the executor bodies and the
   engine, which already said the same thing. The contract keeps each rule's prohibition.
-
-- **A `docs` slice may now version docs.** The executor bodies forbade `doc-new-version` on every
-  slice but the review, while a docs phase's slices exist to run it; only the contract implied the
-  exception. Both executor bodies now carry it (operator-approved wording): a `docs` slice in an
-  operator-created docs phase, on the default stream, may run `doc-new-version` and `rebuild-docs`
-  for the `## Doc impact` notes its plan names, editing only the returned `edit_path`; recording
-  `docs-consolidated <P>` stays the orchestrator's.
-
-- **Fractional `--order` and advisory `depends_on` are stated where a decomposition reads them.**
-  The executor's decomposition bullet now says them, and `new-slice`, `promote-deferred` and
-  `new-phase` gained `--order` (and `--depends-on`) help text.
-
-- Smaller fixes: `do-next-slice` and `do-whole-phase` list `research` among the delegated kinds; the
-  notebook template (and its embedded fallback) tags notes `**(from <slice>, for <slice>)**`, the
-  form the executor and every live notebook use. Smoke Test 0 drops four contract pins whose text
-  left, each still asserted where the text lives now, and asserts the two new executor-body rules.
-  Installer rebuilt.
 
 - **The Aside, worktree and design rules are stubs now; their procedure lives in the skills.** The
   three largest Hard Rules bullets (11.5 KB between them) and the design-styles tail of the
@@ -61,19 +47,50 @@ history.
   `parallel-phase`. Both executor bodies now say that every design style's `DECOMP` records a
   **build inventory** in `phase.md`, which the contract used to carry.
 
+- **What remains is seven sections of short stubs, one statement per rule.** *Driving This
+  Workspace* absorbs the intent rules (refine, clarify, confirm; `new-phase` only after the operator
+  confirms) and *Canonical State* the slice-file and notebook rules (the verbatim `intent.md` is
+  immutable; two context files per slice, the verdict block first; the `phase.md` / `result.md`
+  audience split; never pre-filling another slice's plan; the notebook edited under budget, never
+  dropping a decision or a question), so *Hard Rules* keeps only what no other section owns. The
+  section headings and the anchors the skills cite (*Making a phase ≠ executing it*, *Orchestrator
+  and executor*, *Commit Convention*, `DECOMP2`'s two origins, the small-test-files rule) are
+  unchanged.
+
+- **A `docs` slice may now version docs.** The executor bodies forbade `doc-new-version` on every
+  slice but the review, while a docs phase's slices exist to run it; only the contract implied the
+  exception. Both executor bodies now carry it (operator-approved wording): a `docs` slice in an
+  operator-created docs phase, on the default stream, may run `doc-new-version` and `rebuild-docs`
+  for the `## Doc impact` notes its plan names, editing only the returned `edit_path`; recording
+  `docs-consolidated <P>` stays the orchestrator's.
+
+- **Fractional `--order` and advisory `depends_on` are stated where a decomposition reads them.**
+  The executor's decomposition bullet now says them, and `new-slice`, `promote-deferred` and
+  `new-phase` gained `--order` (and `--depends-on`) help text.
+
 - **`parallel-phase` no longer says the do-* skills start a worktree on a hint.** Its
   `parallel-start` section said "the do-* skills do this for you when `next` prints the hint", a
   v42 leftover that contradicted v43's "relay a hint, never act on it". It now says `parallel-start`
-  runs only on the operator's word and a hint is relayed. Smoke Test 0 gains a `parallel-phase` pin
-  list (the worktree rules, the hint and merge-gate prohibitions, and this fix), two more
-  `design-cowork` pins (the numbered cards, the instrument/runtime axis), and copies four retired
-  phrasings to the skills that now carry their rules; the contract list drops the 16 pins that
-  moved.
+  runs only on the operator's word and a hint is relayed.
+
+- Smaller fixes: `do-next-slice` and `do-whole-phase` list `research` among the delegated kinds; the
+  notebook template (and its embedded fallback) tags notes `**(from <slice>, for <slice>)**`, the
+  form the executor and every live notebook use. Installer rebuilt.
+
+- **Smoke follows the text.** Test 0's contract list keeps the 38 pins the stubs still carry and
+  all 19 retired-phrasing negatives. Each of the 22 pins whose text left the contract is asserted
+  where that text lives now: on the do-*, create-phase, design-cowork, parallel-phase,
+  review-phase or executor lists, or functionally (Tests 9 and 11). Test 0 also gains a
+  `parallel-phase` pin list (the worktree rules, the hint and merge-gate prohibitions, and the fix
+  above), two more `design-cowork` pins (the numbered cards, the instrument/runtime axis), asserts
+  for the two new executor-body rules, and copies of four retired phrasings on the skills that now
+  carry their rules. The PASS count is unchanged.
 
 **Migration notes.** Nothing to run. `/update-workspace` refreshes the contract (or its
 `CLAUDE.workspace.md` sidecar in a repo that keeps its own `CLAUDE.md`), the executor bodies, the
 skills and the engine. Use `python3 scripts/workflow.py --help` wherever you used to read the
-Workflow Commands list.
+Workflow Commands list, and read a procedure the contract used to spell out in the skill that runs
+it.
 
 ## v43 — 2026-09-17
 

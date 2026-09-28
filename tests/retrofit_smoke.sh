@@ -395,17 +395,20 @@ for tier in ("mid", "high"):
 assert bodies["mid"] == bodies["high"], "slice-executor tier bodies drifted"
 
 # One contract file now, so nothing to compare it against: assert the whole text.
-# v44 (P23) slimmed the contract to the rules every session needs: the text the engine
-# (`workflow.py --help`) or an owning skill/executor already carries left it, and its
-# pins left with that text. Each is still asserted where it lives now: the fixed
-# design-only waive note (do-* and design-cowork lists), `finish-slice ... --outcome`
-# (do-* list + Test 9), "findings land in phase.md" (executor list, equivalent phrase),
-# and the `phase-scope` synopsis (review-phase / executor / design-cowork + Test 11).
-# The Aside, worktree and design bullets are now never-stubs: their 16 procedure pins are
-# on the design-cowork list (the three styles, `## Design Style`, `Mockup: requested`,
-# the numbered cards, the return that closes the round, PENDING #2, the two surfaces, the
+# v44 (P23) cut the contract to a <= 12 KB routing layer: seven sections of short
+# stubs, each keeping a rule's prohibition, while the procedure lives in the engine
+# (`workflow.py --help`), the owning skills and the executor bodies. The pins below are
+# the phrases those stubs keep; each must sit raw on one line. Pins whose text left are
+# still asserted where it lives now: the fixed design-only waive note (do-* and
+# design-cowork lists), `finish-slice ... --outcome` (do-* list + Test 9), "findings land
+# in phase.md" and the research-kind heading (executor list, equivalent phrases), the
+# `phase-scope` synopsis (review-phase / executor / design-cowork + Test 11), and the
+# worktree review's `(gate section — written at merge)` tag (do-*, review-phase and
+# executor lists). The Aside, worktree and design stubs' 16 procedure pins are on the
+# design-cowork list (the three styles, `## Design Style`, `Mockup: requested`, the
+# numbered cards, the return that closes the round, PENDING #2, the two surfaces, the
 # `aside repl` default, ~1,344 tokens, the MCP escape hatch, the instrument/runtime axis),
-# the do-* and create-phase lists, and the new parallel-phase list (the worktree rules).
+# the do-* and create-phase lists, and the parallel-phase list (the worktree rules).
 claude = (root / "CLAUDE.md").read_text()
 for required in (
     "Claude Design", "DesignSync", "never dispatched",
@@ -419,15 +422,15 @@ for required in (
     "writes no ***product*** implementation code",
     "`--kind` is a **closed set**",
     # v43: the worktree is opt-in again (v44: the rules themselves live in parallel-phase).
-    "unless the operator asks for a worktree (v43)", "(gate section — written at merge)",
-    # v35: just-in-time reads, the bounded/edited notebook, and the slice outcome.
+    "unless the operator asks for a worktree (v43)",
+    # v35: just-in-time reads and the bounded/edited notebook.
     "Just in time, and only what the work in front of you needs",
     "never the whole doc set up front, and never `docs/index.json`",
     "**bounded state**", "PHASE_MD_BUDGET", "a soft ~100k-token cap (400 KB)",
     "every slice **edits** it under budget", "structured verdict block first",
-    # v36: the research kind (findings-only, high by kind) and DECOMP2 generalized past
-    # the build-after design style. v44: the closed --kind set lives in IDs and Status.
-    "**`research` is a findings-only slice kind, and a `DECOMP2` usually follows it.**",
+    # v36: the research kind (high by kind) and DECOMP2 generalized past the build-after
+    # design style. v44: the closed --kind set and DECOMP2's two origins live in IDs and
+    # Status; the research kind's findings-only rule is the executor's.
     "if the two ever disagree the **kind wins**",
     "**`DECOMP2` has two origins**", "`P<N>.DECOMP3`",
     "`research`, `fix`, `docs`, `qa`, `co-work`",

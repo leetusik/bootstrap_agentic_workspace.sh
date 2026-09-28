@@ -34,13 +34,13 @@
       "order": 7,
       "path": "works/phases/active/P23",
       "review_status": "pending",
-      "current_slice": "P23.S4",
+      "current_slice": "P23.REVIEW",
       "slice_count": 7,
-      "done_slice_count": 5
+      "done_slice_count": 6
     }
   ],
   "deferred_open_count": 8,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 9,
-  "last_rebuilt_at": "2026-09-28T12:56:58+09:00"
+  "last_rebuilt_at": "2026-09-28T13:11:56+09:00"
 }
