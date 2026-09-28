@@ -47,6 +47,29 @@ history.
   left, each still asserted where the text lives now, and asserts the two new executor-body rules.
   Installer rebuilt.
 
+- **The Aside, worktree and design rules are stubs now; their procedure lives in the skills.** The
+  three largest Hard Rules bullets (11.5 KB between them) and the design-styles tail of the
+  decomposition bullet restated `design-cowork` and `parallel-phase` almost word for word. Each is
+  now a short stub that keeps its prohibitions: `aside repl` over Bash and never a standing MCP
+  registration, the dedicated profile (`--account <id>` on every call, the third halt, and the
+  unchanged clause that an agent never drives a profile signed into the operator's accounts,
+  whichever browser it is), the fallback, a worktree only on the operator's word and never for a
+  docs phase, never merging past a closed gate, `--risk high` and no product code in a design
+  slice, `design-only` chosen at `/create-phase` or nowhere, literal signoff, and RESPECT THE
+  DESIGN. The two surfaces, the MCP cost and escape hatch, the eight worktree rules, the three
+  styles, the numbered cards and the design slice's stops are read from `design-cowork` and
+  `parallel-phase`. Both executor bodies now say that every design style's `DECOMP` records a
+  **build inventory** in `phase.md`, which the contract used to carry.
+
+- **`parallel-phase` no longer says the do-* skills start a worktree on a hint.** Its
+  `parallel-start` section said "the do-* skills do this for you when `next` prints the hint", a
+  v42 leftover that contradicted v43's "relay a hint, never act on it". It now says `parallel-start`
+  runs only on the operator's word and a hint is relayed. Smoke Test 0 gains a `parallel-phase` pin
+  list (the worktree rules, the hint and merge-gate prohibitions, and this fix), two more
+  `design-cowork` pins (the numbered cards, the instrument/runtime axis), and copies four retired
+  phrasings to the skills that now carry their rules; the contract list drops the 16 pins that
+  moved.
+
 **Migration notes.** Nothing to run. `/update-workspace` refreshes the contract (or its
 `CLAUDE.workspace.md` sidecar in a repo that keeps its own `CLAUDE.md`), the executor bodies, the
 skills and the engine. Use `python3 scripts/workflow.py --help` wherever you used to read the

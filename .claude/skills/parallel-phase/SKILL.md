@@ -96,12 +96,13 @@ A phase already stamped gets no hint, and neither does a worktree checkout.
 python3 scripts/workflow.py parallel-start <P> [--worktree <path>] [--slug <slug>]
 ```
 
-Run it from the default stream, before the phase's first `start-slice` (the do-* skills do this for
-you when `next` prints the hint). It refuses when: the phase is not `planned`; it already carries an
-`execution` block (parallel or pinned); the checkout is not inside a git work tree; the checkout is on
-a parallel stream; a merge or rebase is in progress; the branch name exists or is stamped on another
-phase; the worktree path exists; an overridden path's parent is missing. Every guard runs before any
-mutation, so a refusal leaves no partial state.
+Run it from the default stream, before the phase's first `start-slice`, and only on the operator's
+word (rule 1): when `next` prints the hint, the do-* skills relay it and run nothing. It refuses when:
+the phase is not `planned`; it already carries an `execution` block (parallel or pinned); the
+checkout is not inside a git work tree; the checkout is on a parallel stream; a merge or rebase is in
+progress; the branch name exists or is stamped on another phase; the worktree path exists; an
+overridden path's parent is missing. Every guard runs before any mutation, so a refusal leaves no
+partial state.
 
 **A dirty tree does not block it.** The commit is made with `git add -- <paths>` and
 `git commit --only -- <paths>`, so it contains exactly the phase folder plus `works/state.json`,

@@ -207,6 +207,10 @@ for required in (
     "do not rely on `aside account use <id>`",
     "That is a **third** halt condition and it is not the runtime one",
     "an agent never drives a browser profile signed into the operator's accounts, whichever browser it is",
+    # v44 (P23): two pins whose contract text left for this skill -- the numbered card
+    # paths and the instrument/runtime axis (the contract's "different axes" sentence).
+    "two-digit reading-order prefix",
+    "a manifest naming no instrument still stops nothing",
 ):
     assert required in design, required
 # v37 negatives: the MCP-first prescription is retired -- no config block to copy,
@@ -216,8 +220,26 @@ for gone in ('{"mcpServers"', "Prefer the **MCP** surface", "MCP first",
              # v42 negatives: the mandatory mockup and the "not an approval" return.
              "Only PENDING #2 is an approval.", "mechanical wait", "SIGNOFF moves to the mockup gate",
              "cut the slice into four", "can no longer be waived",
-             "the design in the project's own language"):
+             "the design in the project's own language",
+             # v44: copied from the contract list, now that the Aside rule lives here.
+             "runs through Aside, not a script"):
     assert gone not in design, gone
+
+# v44 (P23): the worktree rules left the contract for the skill that runs them, so their
+# pins live here now, whitespace-flattened like design-cowork's: rule 1 is "only when
+# asked", rule 8 retires the v42 pins, a hint is relayed and never acted on, and a closed
+# gate is never merged past. D-3: `parallel-start` itself runs only on the operator's word.
+parallel = " ".join((root / ".claude/skills/parallel-phase/SKILL.md").read_text().split())
+for required in ("Worktree rules", "**When — only when asked**", "retired no-ops",
+                 "Relay a hint to the operator; never act on it.",
+                 "Never merge a parallel phase whose `parallel-gate` is closed",
+                 "the do-* skills relay it and run nothing"):
+    assert required in parallel, required
+# v43 negatives copied from the contract list (the worktree-by-default framing), and the
+# v42 leftover that had the do-* skills start a worktree whenever `next` printed the hint.
+for gone in ("runs in its own worktree by default", "enters its worktree at **first execution**",
+             "the do-* skills do this for you"):
+    assert gone not in parallel, gone
 
 # v32 review procedure: the gate stages, the returned walkthrough, and the two
 # workflow commands a review slice must never run.
@@ -247,8 +269,10 @@ for gone in ("MCP surface first", "scripted Playwright-style automation",
              # the default is never moved with `aside account use`; the flag is
              # passed per invocation.
              "aside account use",
-             # v41: the whole-list re-run is retired from the review.
-             "not just this phase's lines", "Re-run the whole smoke list"):
+             # v41: the whole-list re-run is retired from the review (the last phrase is
+             # copied from the contract list in v44).
+             "not just this phase's lines", "Re-run the whole smoke list",
+             "re-runs the whole cumulative"):
     assert gone not in review, gone
 never = [ln for ln in review.splitlines() if "you never run on a review slice" in ln]
 assert len(never) == 1 and "`accept-gate`" in never[0] and "`defer-job`" in never[0], never
@@ -372,11 +396,16 @@ assert bodies["mid"] == bodies["high"], "slice-executor tier bodies drifted"
 
 # One contract file now, so nothing to compare it against: assert the whole text.
 # v44 (P23) slimmed the contract to the rules every session needs: the text the engine
-# (`workflow.py --help`) or an owning skill/executor already carries left it, and four
+# (`workflow.py --help`) or an owning skill/executor already carries left it, and its
 # pins left with that text. Each is still asserted where it lives now: the fixed
 # design-only waive note (do-* and design-cowork lists), `finish-slice ... --outcome`
 # (do-* list + Test 9), "findings land in phase.md" (executor list, equivalent phrase),
 # and the `phase-scope` synopsis (review-phase / executor / design-cowork + Test 11).
+# The Aside, worktree and design bullets are now never-stubs: their 16 procedure pins are
+# on the design-cowork list (the three styles, `## Design Style`, `Mockup: requested`,
+# the numbered cards, the return that closes the round, PENDING #2, the two surfaces, the
+# `aside repl` default, ~1,344 tokens, the MCP escape hatch, the instrument/runtime axis),
+# the do-* and create-phase lists, and the new parallel-phase list (the worktree rules).
 claude = (root / "CLAUDE.md").read_text()
 for required in (
     "Claude Design", "DesignSync", "never dispatched",
@@ -385,17 +414,11 @@ for required in (
     "literal operator signoff closes an immutable round",
     # v32: the operator acceptance gate, the runtime manifest, the question channel.
     "accept-gate", "## Operator Runtime", "## Operator Questions", "never by omission",
-    # v34: the narrowed bans, the three named styles, and the closed --kind set.
+    # v34: the narrowed bans and the closed --kind set.
     "*DesignSync* work is never dispatched", "mockup build is its one dispatched span",
     "writes no ***product*** implementation code",
-    "**`build-after`**", "**`design-only`**", "**`paired`**", "## Design Style",
     "`--kind` is a **closed set**",
-    # v42: mockups on request, the return closes the round, numbered cards. v43: the
-    # worktree is opt-in again -- the eight rules stay, rule 1 is "only when asked" and
-    # rule 8 retires the pins. (v44: the fixed waive note left the contract; see above.)
-    "the operator's return closes the round", "PENDING #2 exists only when a mockup was requested",
-    "Mockup: requested", "two-digit reading-order prefix",
-    "Worktree rules", "**When — only when asked**", "retired no-ops",
+    # v43: the worktree is opt-in again (v44: the rules themselves live in parallel-phase).
     "unless the operator asks for a worktree (v43)", "(gate section — written at merge)",
     # v35: just-in-time reads, the bounded/edited notebook, and the slice outcome.
     "Just in time, and only what the work in front of you needs",
@@ -408,17 +431,10 @@ for required in (
     "if the two ever disagree the **kind wins**",
     "**`DECOMP2` has two origins**", "`P<N>.DECOMP3`",
     "`research`, `fix`, `docs`, `qa`, `co-work`",
-    # v36: Aside is the named instrument, on its own axis, with a binding fallback.
-    # v37: the rule names the two surfaces, defaults to `aside repl` over Bash with
-    # the measured per-session MCP cost as its reason, keeps the registration only as
-    # an operator escape hatch, and rejects the pre-written suite, not Playwright.
+    # v36: Aside is the named instrument, with a binding fallback. v37: it rejects the
+    # pre-written suite, not Playwright (v44: its surfaces live in design-cowork).
     "**Real-browser verification runs through Aside, not a pre-written assertion suite.**",
-    "**Instrument and runtime are different axes:**",
     "**the doctrine's demands bind, the instrument does not.**",
-    "**Two surfaces, not three:**",
-    "**The default is `aside repl` over Bash**",
-    "~1,344 tokens",
-    "`claude mcp add -s local aside -- aside mcp` is an optional per-operator, per-session **escape hatch**",
     # v37: whose browser -- a dedicated profile via a per-invocation flag, and the
     # personal-profile case as a third halt, distinct from the runtime one.
     "**Whose browser: a dedicated profile.**",
@@ -456,7 +472,7 @@ for gone in ("design exception", "never approval", "no other pending gate"):
 for gone in ("Codex", "AGENTS.md", ".agents/", ".codex/"):
     assert gone not in claude, gone
 PY
-then ok "17 Claude skills, invocation metadata, design contract, the v32 acceptance-gate invariants, the v36 research-kind and Aside-instrument invariants, the v37 Aside-surface invariants (two surfaces, `aside repl` over Bash, no standing MCP registration, the assertion-suite framing), the v37 dedicated-profile invariants (`--account <id>` per invocation, the manifest field, the personal-profile halt), the v42 invariants (mockups on request, the operator's return closes the round, numbered cards, the worktree-by-default rules), and the v31 Codex-removal negatives"; else bad "Claude skill inventory, metadata, design contract, a v32 gate invariant, a v36 research-kind or Aside-instrument invariant, a v37 Aside-surface or dedicated-profile invariant, a v42 mockup/worktree invariant, or a Codex-removal negative failed"; fi
+then ok "17 Claude skills and their invocation metadata; the prose invariants of the do-*, create-phase, design-cowork (styles, mockups on request, numbered cards, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
