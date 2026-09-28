@@ -3,12 +3,12 @@
   "phase_id": "P23",
   "name": "map every contract rule to the reader that needs it",
   "kind": "research",
-  "status": "todo",
+  "status": "done",
   "order": 1,
   "depends_on": [],
   "created_at": "2026-09-28T08:20:33+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-28T08:32:07+09:00",
+  "completed_at": "2026-09-28T11:31:11+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -18,7 +18,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Mapped 166 contract rule units (59 STAY, 37 SPLIT, 68 CUT, 2 MOVE); a measured probe keeping all 58 never-rules is 11,510 B, so <= 12,288 B holds; recommends 3 implementation/high edit slices and raises OQ1 (docs-slice doc-new-version)",
   "validation": {
     "required": [],
     "last_run": null,
