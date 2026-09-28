@@ -1,0 +1,11 @@
+{
+  "id": "D19",
+  "title": "Match the contract's smoke pins with whitespace normalized",
+  "status": "deferred",
+  "source": "P23.REVIEW",
+  "reason": "Test 0's 38 contract pins are raw substrings that must each sit on one line, so any rewrap of a CLAUDE.md line risks a false failure; the design-cowork and parallel-phase lists already normalize whitespace.",
+  "trigger": "The next time a contract pin breaks on a line wrap, or together with the never-rule floor pin list.",
+  "created_at": "2026-09-28T13:26:32+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

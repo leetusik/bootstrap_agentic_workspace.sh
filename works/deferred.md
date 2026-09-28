@@ -4,9 +4,9 @@
 
 ## Summary
 
-- Open: `8`
+- Open: `12`
 - Promoted: `0`
-- Dropped: `9`
+- Dropped: `10`
 
 ## Open
 
@@ -15,11 +15,15 @@
 | `D12` | `deferred` | Validate the v37 Aside prescription against a real browsable product | P20.REVIEW | the first phase with a real browsable product needing a functional sweep or gated review | `works/deferred/open/D12` |
 | `D13` | `deferred` | Decide whether the dedicated-profile rule binds the fallback browser as well as Aside | P20.REVIEW | before the first non-Aside workspace runs a fidelity or gated-review slice -- or whenever the Aside doctrine is next edited | `works/deferred/open/D13` |
 | `D17` | `deferred` | Make the stale_docs= aggregate count say what it counts | P22.REVIEW | next time anyone touches stale_docs_line() or a docs phase runs | `works/deferred/open/D17` |
+| `D18` | `deferred` | Slim the slice-executor bodies | P23.REVIEW | The next phase that edits either executor body for content, or when the operator next targets per-dispatch cost. | `works/deferred/open/D18` |
+| `D19` | `deferred` | Match the contract's smoke pins with whitespace normalized | P23.REVIEW | The next time a contract pin breaks on a line wrap, or together with the never-rule floor pin list. | `works/deferred/open/D19` |
+| `D20` | `deferred` | Pin the never-rule floor in smoke | P23.REVIEW | The next edit of CLAUDE.md, or when the whitespace-normalized contract pins land. | `works/deferred/open/D20` |
+| `D21` | `deferred` | Correct two stale one-line descriptions (new-slice --help, executors.toml tier comment) | P23.REVIEW | The next edit of workflow.py's argparse help or of executors.toml, or the next docs phase. | `works/deferred/open/D21` |
+| `D22` | `deferred` | A running phase stays planned: start-slice never moves it to in_progress | P23.REVIEW | Before the next parallel-start or parallel-gate on a real phase, or the next edit of start_slice / parallel_start_hint. | `works/deferred/open/D22` |
 | `D3` | `deferred` | Make installer/build.py smoke-execute the assembled artifact | P15.REVIEW | Next time installer/build.py is touched, or the first time a broken artifact reaches a commit | `works/deferred/open/D3` |
 | `D5` | `deferred` | Confirm: ## Design Style is appended by create-phase only when visual, not scaffolded into every intent.md | P17.REVIEW | Before the first design-bearing phase runs under v34, or the next time works/templates/intent.md is edited. | `works/deferred/open/D5` |
 | `D6` | `deferred` | Widen installer/main.py flag_stale_skills() ownership heuristic beyond the disable-model-invocation marker | P17.REVIEW | If a model-invocable skill is retired upstream, or when flag_stale_skills() is next touched. | `works/deferred/open/D6` |
 | `D7` | `deferred` | Qualify review-phase gate stage 4 for a phase whose only surface is a throwaway mockup | P17.REVIEW | Before the first design-only or mockup-shipping phase reaches its review. | `works/deferred/open/D7` |
-| `D8` | `deferred` | Slim CLAUDE.md to <= 12 KB | P18 | After P18 lands and the just-in-time Read Order is settled; a dedicated editorial phase, not folded into other work. | `works/deferred/open/D8` |
 
 ## Promoted
 
@@ -39,4 +43,5 @@
 | `D16` | `dropped` | Decide whether keep-tests-small grows teeth for changple5, and in what shape | resolved by P22 | `works/deferred/dropped/D16` |
 | `D2` | `dropped` | slice-executor-mid has no co-work refusal clause | fixed in P16.S4 — slice-executor-mid now carries the co-work refusal clause | `works/deferred/dropped/D2` |
 | `D4` | `dropped` | Retrofit guide Troubleshooting omits the .gitattributes line-merge | fixed in P16.S6 — the retrofit guide's Troubleshooting row now lists the .gitattributes line-merge | `works/deferred/dropped/D4` |
+| `D8` | `dropped` | Slim CLAUDE.md to <= 12 KB | resolved by P23: CLAUDE.md slimmed from 50,048 B to 12,259 B (<= 12 KB) with all 58 never-rules kept; shipped as workspace v44 | `works/deferred/dropped/D8` |
 | `D9` | `dropped` | Decide whether the Aside fallback wording stands, or Aside becomes a hard requirement | Answered at P20/v37: the fallback stands unchanged -- the doctrine's demands bind, the instrument does not (intent.md part 4). CLAUDE.md's fallback sentence is byte-identical to v36; design-cowork's gained one generalizing clause only. | `works/deferred/dropped/D9` |

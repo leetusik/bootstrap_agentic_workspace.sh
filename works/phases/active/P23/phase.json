@@ -2,16 +2,16 @@
   "id": "P23",
   "name": "slim the always-loaded contract back to a routing layer",
   "objective": "Bring CLAUDE.md (49,646 chars, over Claude Code's 40k-char per-file warning floor and loaded into every executor dispatch) down toward D8's <= 12 KB routing layer without dropping a load-bearing rule. A research slice first maps which reader needs each rule (orchestrator, executor, or a skill that already owns it); then cut what the code derives (Workflow Commands restates workflow.py --help) and move skill-owned detail (worktrees, design, Aside, the acceptance gate, the review boundary) to the skill or executor file that owns it. Every never-rule stays in the contract. Re-point the smoke-test pins, rebuild the installer, and ship it as a workspace release. Pays D8.",
-  "status": "planned",
+  "status": "done",
   "order": 7,
   "created_at": "2026-09-28T03:26:50+09:00",
   "started_at": null,
-  "completed_at": null,
+  "completed_at": "2026-09-28T13:26:09+09:00",
   "review": {
-    "status": "pending",
-    "reviewed_at": null,
-    "reviewer": null,
-    "note": null
+    "status": "pass",
+    "reviewed_at": "2026-09-28T13:26:09+09:00",
+    "reviewer": "slice-executor-high",
+    "note": "CLAUDE.md 50,048 -> 12,259 B (cap 12,288); 58/58 never-rules present; independent sweep of the pre-P23 contract found no lost rule; inbound references resolve; smoke 180 PASS / 0 FAIL; v44; gate waived"
   },
   "acceptance": {
     "required": false,
@@ -29,5 +29,6 @@
     "archived": false,
     "archived_at": null,
     "archive_path": null
-  }
+  },
+  "consolidation": "pending"
 }

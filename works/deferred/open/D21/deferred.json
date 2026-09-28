@@ -1,0 +1,11 @@
+{
+  "id": "D21",
+  "title": "Correct two stale one-line descriptions (new-slice --help, executors.toml tier comment)",
+  "status": "deferred",
+  "source": "P23.REVIEW",
+  "reason": "workflow.py --help says new-slice creates 'slice.json + markdown files' but it writes only slice.json (workflow.py:1446; CLAUDE.md says nothing is scaffolded), and P23 made --help the command reference; the executors.toml tier comment leaves research out of what the high tier takes.",
+  "trigger": "The next edit of workflow.py's argparse help or of executors.toml, or the next docs phase.",
+  "created_at": "2026-09-28T13:26:32+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}
