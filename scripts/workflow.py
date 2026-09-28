@@ -1326,7 +1326,7 @@ _Questions only the operator can answer. Append only; every entry is routed at t
 
 ## Notes for later slices
 
-_Gotchas and constraints the next slices need, each tagged `(from P<N>.Sk)`. A slice that consumes a note removes it; the detail stays in that slice's `result.md`._
+_Gotchas and constraints the next slices need, each tagged `**(from <slice>, for <slice>)**`. A slice that consumes a note removes it; the detail stays in that slice's `result.md`._
 
 ## Now
 
@@ -2948,7 +2948,7 @@ def main(argv=None) -> int:
     p.add_argument("--phase", required=True)
     p.add_argument("--name", required=True)
     p.add_argument("--objective", required=True)
-    p.add_argument("--order", type=float)
+    p.add_argument("--order", type=float, help="sort position among phases; a fractional value (e.g. 4.5) inserts between two neighbors without renumbering")
     p.add_argument("--on-main", action="store_true", dest="on_main",
                    help="no-op since v43 (the default stream is the default); accepted so v42 habits and scripts keep working")
     p.set_defaults(func=new_phase)
@@ -2959,8 +2959,8 @@ def main(argv=None) -> int:
     p.add_argument("--name", required=True)
     p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work (closed set; unknown kinds are rejected). research is findings-only: no product code, findings land in phase.md, and it always routes to slice-executor-high")
     p.add_argument("--risk", default="high", help="low (a one-line code edit or docs -> slice-executor-mid) or high (everything else -> slice-executor-high); unrecognized values route to high; kind decomposition, review and research route to high whatever this says")
-    p.add_argument("--order", type=float)
-    p.add_argument("--depends-on", action="append")
+    p.add_argument("--order", type=float, help="sort position within the phase; a fractional value (e.g. 4.5) inserts between two neighbors without renumbering (default: 10 past the last non-review slice)")
+    p.add_argument("--depends-on", action="append", help="advisory: validate checks only that the named slice exists; selection still follows --order")
     p.set_defaults(func=new_slice)
 
     p = sub.add_parser("start-slice", help="Mark a slice in_progress")
@@ -3059,8 +3059,8 @@ def main(argv=None) -> int:
     p.add_argument("--name")
     p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work (closed set; unknown kinds are rejected). research is findings-only: no product code, findings land in phase.md, and it always routes to slice-executor-high")
     p.add_argument("--risk", default="high", help="low (a one-line code edit or docs -> slice-executor-mid) or high (everything else -> slice-executor-high); unrecognized values route to high; kind decomposition, review and research route to high whatever this says")
-    p.add_argument("--order", type=float)
-    p.add_argument("--depends-on", action="append")
+    p.add_argument("--order", type=float, help="sort position within the phase; a fractional value (e.g. 4.5) inserts between two neighbors without renumbering (default: 10 past the last non-review slice)")
+    p.add_argument("--depends-on", action="append", help="advisory: validate checks only that the named slice exists; selection still follows --order")
     p.add_argument("--create-phase", action="store_true")
     p.add_argument("--phase-name")
     p.add_argument("--phase-objective")

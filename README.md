@@ -212,8 +212,8 @@ Claude Code에서 `/이름`으로 입력합니다.
 | `retrofit` | 기존 저장소에 워크스페이스 추가 |
 | `update-workspace` | 설치된 워크스페이스의 시스템 파일만 최신으로 교체 |
 
-스킬은 모두 17개입니다. 전체 목록과 CLI 명령, 설치 옵션은
-[English README](README.en.md)와 [CLAUDE.md](CLAUDE.md)에 있습니다.
+스킬은 모두 17개입니다. 전체 목록과 설치 옵션은 [English README](README.en.md)에 있고,
+CLI 명령 전체는 `python3 scripts/workflow.py --help`로 확인할 수 있습니다.
 
 ## phase별 worktree (요청할 때만)
 

@@ -305,6 +305,11 @@ for tier in ("mid", "high"):
         "write **product** code on a `research` slice",
         "`decomposition`, `research` and `review` slice",
         "that is `DECOMP2`'s second origin",
+        # v44: two rules moved here from the contract -- the docs slice's
+        # doc-new-version carve-out (OQ1, operator-approved) and the fractional
+        # `--order` / advisory `depends_on` facts a DECOMP executor needs.
+        "**The `docs` slice's carve-out:**",
+        "a fractional `--order` (e.g. `4.5`) inserts a slice between two neighbors",
     ):
         assert required in body, (tier, required)
     # v36: Aside is the prescribed real-browser instrument in BOTH bodies -- the
@@ -366,6 +371,12 @@ for tier in ("mid", "high"):
 assert bodies["mid"] == bodies["high"], "slice-executor tier bodies drifted"
 
 # One contract file now, so nothing to compare it against: assert the whole text.
+# v44 (P23) slimmed the contract to the rules every session needs: the text the engine
+# (`workflow.py --help`) or an owning skill/executor already carries left it, and four
+# pins left with that text. Each is still asserted where it lives now: the fixed
+# design-only waive note (do-* and design-cowork lists), `finish-slice ... --outcome`
+# (do-* list + Test 9), "findings land in phase.md" (executor list, equivalent phrase),
+# and the `phase-scope` synopsis (review-phase / executor / design-cowork + Test 11).
 claude = (root / "CLAUDE.md").read_text()
 for required in (
     "Claude Design", "DesignSync", "never dispatched",
@@ -379,11 +390,10 @@ for required in (
     "writes no ***product*** implementation code",
     "**`build-after`**", "**`design-only`**", "**`paired`**", "## Design Style",
     "`--kind` is a **closed set**",
-    # v42: mockups on request, the return closes the round, numbered cards, the fixed
-    # waive note. v43: the worktree is opt-in again -- the eight rules stay, rule 1 is
-    # "only when asked" and rule 8 retires the pins.
+    # v42: mockups on request, the return closes the round, numbered cards. v43: the
+    # worktree is opt-in again -- the eight rules stay, rule 1 is "only when asked" and
+    # rule 8 retires the pins. (v44: the fixed waive note left the contract; see above.)
     "the operator's return closes the round", "PENDING #2 exists only when a mockup was requested",
-    "design-only, no mockup: the operator signed the round on the card set",
     "Mockup: requested", "two-digit reading-order prefix",
     "Worktree rules", "**When — only when asked**", "retired no-ops",
     "unless the operator asks for a worktree (v43)", "(gate section — written at merge)",
@@ -392,12 +402,10 @@ for required in (
     "never the whole doc set up front, and never `docs/index.json`",
     "**bounded state**", "PHASE_MD_BUDGET", "a soft ~100k-token cap (400 KB)",
     "every slice **edits** it under budget", "structured verdict block first",
-    "finish-slice P1.S1 --outcome",
-    # v36: the research kind (findings-only, high by kind, findings in the notebook)
-    # and DECOMP2 generalized past the build-after design style.
+    # v36: the research kind (findings-only, high by kind) and DECOMP2 generalized past
+    # the build-after design style. v44: the closed --kind set lives in IDs and Status.
     "**`research` is a findings-only slice kind, and a `DECOMP2` usually follows it.**",
     "if the two ever disagree the **kind wins**",
-    "**findings land in `phase.md`**",
     "**`DECOMP2` has two origins**", "`P<N>.DECOMP3`",
     "`research`, `fix`, `docs`, `qa`, `co-work`",
     # v36: Aside is the named instrument, on its own axis, with a binding fallback.
@@ -417,9 +425,10 @@ for required in (
     "pass `--account <id>` on every invocation",
     "is a **third** halt: `needs_operator` → `pending`",
     "an agent never drives a profile signed into the operator's accounts",
-    # v41: the review reviews the boundary of the phase; phase-scope is the command.
+    # v41: the review reviews the boundary of the phase (phase-scope's synopsis left
+    # with Workflow Commands in v44).
     "**The review reviews the boundary of the phase, not the whole system:**",
-    "`phase-scope P1 [--base REF] [--head REF] [--json]`", "QA-sweep route",
+    "QA-sweep route",
 ):
     assert required in claude, required
 # v37 negatives: the MCP-first prescription and the Playwright framing are retired

@@ -263,7 +263,7 @@ another agent, CI — drives the workspace with the exact same commands:
 | `parallel-start <P>` … `parallel-teardown <P>` | Move a phase into its own branch + worktree when you ask for one, then integrate it back with a local merge (see the `parallel-phase` skill) |
 | `validate` | Check workspace integrity |
 
-The full command list lives in [`CLAUDE.md`](CLAUDE.md).
+The full command list is `python3 scripts/workflow.py --help` (and `<command> -h` for one command's flags).
 
 ### The same operations as Agent Skills
 
@@ -386,7 +386,7 @@ CI (`.github/workflows/workspace-ci.yml`) runs `validate` on every push and PR p
 report instead of merging.
 
 See the [`parallel-phase`](.claude/skills/parallel-phase/SKILL.md) skill (`/parallel-phase`) for the
-eight worktree rules and the full lifecycle, and [`CLAUDE.md`](CLAUDE.md) for the command reference.
+eight worktree rules and the full lifecycle, and `python3 scripts/workflow.py --help` for the command reference.
 (v42 made the worktree the default for every phase; v43 put it back on request, because one phase at
 a time is the normal shape of this workspace and a branch per phase made every ordinary run pay for
 parallelism it never used. The mechanism itself is unchanged.)

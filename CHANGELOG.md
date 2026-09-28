@@ -9,6 +9,49 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v44 — 2026-09-28
+
+- **Why this release: the contract had outgrown the job its first line names.** `CLAUDE.md` was
+  50 KB (49,646 characters), over Claude Code's 40,000-character per-file instruction warning, and
+  it loads into every session and every slice-executor dispatch. Most of that weight was text the
+  engine or an owning skill already carried. v44 cuts the contract back toward a routing layer
+  without dropping a rule: every "never" rule keeps a statement in the contract, and everything
+  that leaves still has a carrier.
+
+- **`## Workflow Commands` is gone; `python3 scripts/workflow.py --help` is the command
+  reference.** The section restated the engine's own help, one bullet per command. The one fact
+  worth keeping in the contract, the closed `--kind` set, moved to *IDs and Status*. Both READMEs
+  now point at `--help` too.
+
+- **Procedure the skills and executors already carry left the contract.** Mode mechanics and plan
+  persistence, the preset matrices, the escalation path, idle-window details, the design slice's two
+  `pending` windows, the review-verdict transitions, the acceptance-gate walkthrough sequence, the
+  archiving guard and the phase-branch merge now live only in `do-next-slice`, `do-whole-phase`,
+  `review-phase`, `design-cowork`, `archive-phase`, `parallel-phase`, the executor bodies and the
+  engine, which already said the same thing. The contract keeps each rule's prohibition.
+
+- **A `docs` slice may now version docs.** The executor bodies forbade `doc-new-version` on every
+  slice but the review, while a docs phase's slices exist to run it; only the contract implied the
+  exception. Both executor bodies now carry it (operator-approved wording): a `docs` slice in an
+  operator-created docs phase, on the default stream, may run `doc-new-version` and `rebuild-docs`
+  for the `## Doc impact` notes its plan names, editing only the returned `edit_path`; recording
+  `docs-consolidated <P>` stays the orchestrator's.
+
+- **Fractional `--order` and advisory `depends_on` are stated where a decomposition reads them.**
+  The executor's decomposition bullet now says them, and `new-slice`, `promote-deferred` and
+  `new-phase` gained `--order` (and `--depends-on`) help text.
+
+- Smaller fixes: `do-next-slice` and `do-whole-phase` list `research` among the delegated kinds; the
+  notebook template (and its embedded fallback) tags notes `**(from <slice>, for <slice>)**`, the
+  form the executor and every live notebook use. Smoke Test 0 drops four contract pins whose text
+  left, each still asserted where the text lives now, and asserts the two new executor-body rules.
+  Installer rebuilt.
+
+**Migration notes.** Nothing to run. `/update-workspace` refreshes the contract (or its
+`CLAUDE.workspace.md` sidecar in a repo that keeps its own `CLAUDE.md`), the executor bodies, the
+skills and the engine. Use `python3 scripts/workflow.py --help` wherever you used to read the
+Workflow Commands list.
+
 ## v43 — 2026-09-17
 
 - **Why this release: v42 made every phase pay for parallelism almost no run used.** One phase at a
