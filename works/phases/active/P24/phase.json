@@ -2,16 +2,16 @@
   "id": "P24",
   "name": "consolidate the P21–P23 doc impact into the docs and both READMEs",
   "objective": "consolidate the `## Doc impact` notes from P21–P23 into new versions of architecture, decisions, operations and qa, bring README.md and README.en.md in line with the same changes, and record docs-consolidated for P21, P22 and P23",
-  "status": "in_progress",
+  "status": "done",
   "order": 8,
   "created_at": "2026-09-28T16:57:32+09:00",
   "started_at": null,
-  "completed_at": null,
+  "completed_at": "2026-09-28T22:04:52+09:00",
   "review": {
-    "status": "changes_requested",
-    "reviewed_at": "2026-09-28T21:48:13+09:00",
+    "status": "pass",
+    "reviewed_at": "2026-09-28T22:04:52+09:00",
     "reviewer": "slice-executor-high",
-    "note": "architecture v0008 and operations v0035 describe the parallel execution.consolidation field as a pre-v38-only fallback; parallel-start still stamps it and every write mirrors into it; fix slices F1 (architecture v0009) and F2 (operations v0036)"
+    "note": "re-review after F1/F2: architecture v0009 and operations v0036 match the engine on the parallel consolidation field; P21-P23 notes consolidated into architecture v0008, operations v0035, qa v0010, decisions v0042; debt paid; both READMEs in line; D23-D26 filed"
   },
   "acceptance": {
     "required": false,

@@ -608,3 +608,6 @@
 {"ts": "2026-09-28T21:53:33+09:00", "type": "slice_status_changed", "slice": "P24.F2", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-09-28T21:53:59+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0036_p24_fix_the_parallel_execution_block_still_carries_and_mirrors_the_consolidation_debt", "source": "P24.REVIEW"}
 {"ts": "2026-09-28T21:57:40+09:00", "type": "slice_status_changed", "slice": "P24.F2", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-09-28T21:57:47+09:00", "type": "slice_status_changed", "slice": "P24.REVIEW", "old_status": "changes_requested", "new_status": "in_progress"}
+{"ts": "2026-09-28T22:04:52+09:00", "type": "slice_status_changed", "slice": "P24.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-09-28T22:04:52+09:00", "type": "phase_reviewed", "phase": "P24", "verdict": "pass", "reviewer": "slice-executor-high"}

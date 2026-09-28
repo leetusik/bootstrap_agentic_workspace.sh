@@ -67,3 +67,42 @@ These come from S5's `result.md` *Observations* and anything you notice outside 
 - Edit `phase.md` under budget: rewrite `## Now` as the closing state.
 
 You never commit, never run `review-phase`, `defer-job`, `accept-gate` or any status transition, and never edit a README or doc on a review. Findings go in the verdict, never into silent fixes.
+
+
+## Re-review (after P24.F1 / P24.F2)
+
+The first review returned `changes_requested` with one finding: architecture v0008 and operations v0035 described the parallel `execution.consolidation` field as a pre-v38-only fallback. Its full validation and judgment are in this slice's `result.md`, which is the first pass, and everything else there passed. The orchestrator then:
+- filed that review's deferred-job candidates as **D23–D26**, so don't re-list them;
+- cut `P24.F1`, which produced architecture v0009 (source `P24.REVIEW`);
+- cut `P24.F2`, which produced operations v0036 (source `P24.REVIEW`).
+
+**This pass:**
+
+1. **Finding 1 is resolved.**
+   - Check the engine facts against the text in `docs/current/architecture.md` and `docs/current/operations.md`:
+     - `parallel_start` stamps `execution.consolidation: "pending"`;
+     - `set_phase_consolidation()` mirrors every write;
+     - `phase_consolidation()` reads the top-level key first and then the in-block field;
+     - a passing review stamps only when `## Doc impact` has real notes.
+   - Grep `consolidation` / `fallback` in both docs; every hit must agree.
+   - The parallel JSON example in architecture carries the field again.
+2. **The fixes did not regress anything.**
+   - v0009 and v0036 are v0008 and v0035 plus only the corrected passages. Check with `diff` between each pair of version files, ignoring frontmatter.
+   - No section crossed 10,240 B that wasn't already over.
+   - `docs/current` equals the latest versions. Run `rebuild-docs`, then `git status --short docs/` must stay clean apart from `docs/index.json`'s `last_rebuilt_at`.
+3. **Re-run the whole-phase cheap checks:**
+   - `validate` exits 0, with only `oversized_doc_sections=7`;
+   - `docs-debt` prints `none`;
+   - `docs` shows no STALE flag;
+   - `python3 installer/build.py --check` passes;
+   - there is no machinery diff over `d80e9a0..HEAD`;
+   - P21, P22 and P23 carry `consolidation: "done"`;
+   - P24's `## Doc impact` is still "(none …)", so the pass stamps no debt.
+4. The boundary and checklist are unchanged: no `## Regression Checklist` line is inside it, and the smoke suite is not run.
+5. **Write the result.** Rewrite `result.md` with the **new verdict block first**, and keep the first pass's record below it under a `## First pass (changes_requested)` heading. Rewrite `phase.md`'s `## Now` as the closing state.
+6. **Return:**
+   - `review_verdict`;
+   - `doc_versions: none — deferred to a docs phase`;
+   - `walkthrough: n/a (gate waived)`;
+   - `explain: not written — run /explain for this phase`;
+   - new deferred-job candidates only if this pass finds any.

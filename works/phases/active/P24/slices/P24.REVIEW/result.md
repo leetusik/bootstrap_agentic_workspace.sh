@@ -1,6 +1,143 @@
 # Result — P24.REVIEW (review)
 
-## Verdict
+## Verdict (re-review after P24.F1 / P24.F2)
+
+- **status:** done
+- **review_verdict:** `pass`. The first pass's one finding is resolved, and this pass found nothing new.
+  - Finding 1 is fixed in architecture v0009 and operations v0036, and both now agree with the v44 engine.
+  - The two fixes changed only the corrected passages and the frontmatter.
+  - Every whole-phase cheap check passes again.
+- **summary:** Re-reviewed P24 after F1 (architecture v0009) and F2 (operations v0036). Both docs now match the engine: `parallel-start` stamps the in-block `execution.consolidation`, `set_phase_consolidation()` mirrors later writes, and `phase_consolidation()` reads the top-level key first and then the in-block field. A passing review stamps the debt only when `## Doc impact` has real notes. The version diffs show no other change. Validation is clean apart from the pre-existing `oversized_doc_sections=7`, `docs_debt=none`, nothing is STALE, P21–P23 stay paid, P24 owes nothing, and no machinery changed.
+- **files_changed:**
+  - `works/phases/active/P24/slices/P24.REVIEW/result.md` (this file; the first pass is kept below).
+  - `works/phases/active/P24/phase.md`: one `## Decisions` bullet recording the fix-slice cut (see *Notebook*), and `## Now` rewritten as the closing state.
+  - `docs/index.json`: `rebuild-docs` changed only `last_rebuilt_at`.
+  - No doc, README or source edits.
+- **validation:** all passed. The commands and their output are under *Whole-phase cheap checks* below.
+  - `validate` exits 0 with only `oversized_doc_sections=7`.
+  - `docs-debt` prints `docs_debt=none`, and `docs` shows no STALE flag.
+  - After `rebuild-docs`, `git status --short docs/` shows only `docs/index.json`, which differs by `last_rebuilt_at`.
+  - `cmp` of each doc's latest version against `docs/current`: all four are equal.
+  - `diff` v0008→v0009 and v0035→v0036: only the corrected passages and the frontmatter changed.
+  - No section newly crossed 10,240 B.
+  - `installer/build.py --check`: OK. The machinery `git diff --stat d80e9a0..HEAD` is empty.
+  - P21, P22 and P23 carry `consolidation: "done"`, and `phase_doc_impact_notes(P24)` is `[]`.
+- **deviations:** none from the re-review plan.
+  - The one addition is a notebook curation: a `## Decisions` bullet for the fix-slice cut (F1/F2 as `docs / low`, `--source P24.REVIEW`). Without it, `phase.md`'s *Version source* decision ("every doc slice runs `--source "P21.REVIEW, P22.REVIEW, P23.REVIEW"`") would disagree with the two fix versions. This is recorded here, not made silently.
+- **doc_versions:** none — deferred to a docs phase.
+  - P24 *is* the docs phase. S1–S4 cut its four versions, and F1/F2 cut v0009 and v0036 under the docs-slice carve-out.
+  - The review wrote no gate section, because the phase changed neither `## Regression Checklist` nor `## Operator Runtime`.
+  - P24's `## Doc impact` is still the "(none …)" line, so the pass stamps no debt.
+- **walkthrough:** n/a (gate waived)
+- **explain:** not written — run /explain for this phase
+- **deferred-job candidates:** none new. D23–D26 were already filed from the first pass. The three observations below are wording and size notes that do not need a job of their own.
+- **relay (unchanged from the first pass):** D17's and D21's "next docs phase" triggers fire on this phase. Both stay deferred because both touch machinery (Decision 10).
+
+## Re-review detail
+
+### Finding 1 is resolved: each engine fact against the corrected text
+
+The engine was re-read at `scripts/workflow.py` for this pass, and an in-memory probe (throwaway, no file written) confirmed the behaviour.
+
+| Engine fact (v44) | Where in the engine | architecture v0009 | operations v0036 |
+|---|---|---|---|
+| `parallel-start` stamps `execution.consolidation: "pending"`, with no top-level key | `parallel_start` `:1900` | JSON example `:115–120` carries `"consolidation": "pending"` again. The paragraph `:152–153` says "`parallel-start` also stamps `"pending"` inside the parallel `execution` block at the stamp, before any review". | *The debt* `:784–785`, and the archiving bullet `:1043–1044` |
+| `set_phase_consolidation()` writes the top-level key and mirrors it into a parallel block | `:705–711`. Callers: review pass `:1570`, `parallel-consolidated` `:2164`, `docs-consolidated` `:2250` | `:153–155` | *The debt* `:786–787`, and the archiving bullet `:1044–1045` ("every write mirrors it there too") |
+| `phase_consolidation()` reads the top-level key first, then falls back to the in-block field | `:677–702` | `:156–158`: "covers both a parallel phase stamped but not yet reviewed and v24-v37 files — nothing is migrated" | `:787–788`, and `:1045–1047` |
+| A passing review stamps only when `## Doc impact` has real notes | `review_phase` `:1565–1570`, gated on `phase_doc_impact_notes(pdir)` | `:150–152`: "when the phase's `## Doc impact` list has real notes (a `- (none ...)` placeholder stamps nothing)" | `:782–783`: "when the phase's `## Doc impact` list has real notes" |
+
+**What the probe showed:**
+- A dict shaped exactly as `parallel_start` writes it has top-level `None`, and the reader returns `pending`.
+- A review-stamp `set_phase_consolidation(d, "pending")` gives `pending` / `pending`.
+- A `parallel-consolidated` `set(..., "done")` gives `done` / `done`, and the reader returns `done`.
+- A default-stream dict with no key reads `None`. After a set it carries only the top-level key.
+
+Every sentence in both corrected passages matches this.
+
+**Every grep hit agrees:**
+- `grep -n "consolidat\|fallback" docs/current/architecture.md`: 18 hits, each read in context (2 of them in the frontmatter).
+  - The former "only for pre-v38 `phase.json` files … which is why the JSON example above no longer shows it" clause is gone.
+  - The remaining hits agree with the table: the `## Status` `:25–26`, the `mode` bullet `:131`, *Doc versioning stays serial* `:218–220`, and *Parallel mode composes* `:297`. The `works/templates/` hit `:40` is about the notebook template's fallback and is unrelated.
+- `grep -n "fallback\|execution.consolidation\|review stamps\|mirror" docs/current/operations.md`: the two facts-bearing hits (`:782–788` and `:1040–1048`) are corrected. The other hits concern unrelated fallbacks and mirrors: the design instrument, the offline API, and the `.agents/` skill mirror.
+- `grep -n consolidat docs/current/operations.md` gives 42 hits. None still calls the in-block field pre-v38-only.
+- The same grep over `decisions.md`, `qa.md`, `README.md` and `README.en.md` turns up no claim about the in-block field. That confirms the first pass's scoping: the error was only ever in architecture and operations.
+
+### The fixes did not regress anything
+
+- **`diff` v0008 → v0009** (architecture) has three hunks:
+  - the frontmatter (version, created_at, commit `34cc39d`, source `P24.REVIEW`, summary, previous);
+  - the JSON example (`"worktree": "…",` plus the new `"consolidation": "pending"` line);
+  - the one paragraph, 9 lines → 14.
+  
+  Nothing else changed.
+- **`diff` v0035 → v0036** (operations) also has three hunks:
+  - the frontmatter (commit `859917b`, source `P24.REVIEW`);
+  - *The debt*, 4 lines → 9;
+  - the archiving bullet, 4 lines → 6.
+  
+  Nothing else changed: the *Seven commands* table, the default-stream wording and `## Status` are untouched.
+- **Section sizes.** `h2_sections()` was run on each version pair; the H2 sets are identical in both.
+
+  | Section | Before | After | Over 10,240 B? |
+  |---|---|---|---|
+  | architecture *Execution Streams* | 9,688 B | 10,182 B | no, 58 B under |
+  | operations *Durable-doc consolidation* | 3,945 B | 4,363 B | no |
+  | operations *Phase worktrees* | 17,137 B | 17,355 B | already over |
+
+  `oversized_doc_sections()` lists the same 7 sections as at the first pass. None is new.
+- **Current equals latest.** After `rebuild-docs`, `git status --short docs/` shows only ` M docs/index.json`, and `git diff` shows only `last_rebuilt_at`. `cmp` of the latest version file against `docs/current/<doc>.md` is equal for architecture v0009, operations v0036, qa v0010 and decisions v0042.
+- **`docs/index.json` over `628270d..HEAD`** is additive only: two new entries (each with its `commit` sha and `source: P24.REVIEW`) and two `latest` pointers.
+- **Files outside `works/` changed since the first review's base `628270d`:** the two new version files, the two regenerated `docs/current` files and `docs/index.json`. No README changed, and nothing else.
+
+### Whole-phase cheap checks, re-run
+
+| # | Command | Outcome |
+|---|---|---|
+| 1 | `python3 scripts/workflow.py validate` | Exit 0, `Workflow validation passed.` The only warning is `oversized_doc_sections=7`. No `consolidation_owed=` and no `stale_docs=`. |
+| 2 | `python3 scripts/workflow.py docs-debt` | `docs_debt=none (no active phase owes durable-doc consolidation)` |
+| 3 | `python3 scripts/workflow.py docs` | No STALE flag. architecture v0009 `source=P24.REVIEW commit=34cc39dfb690`, operations v0036 `source=P24.REVIEW commit=859917b0148c`. qa v0010 and decisions v0042 are unchanged (`source=P21.REVIEW, P22.REVIEW, P23.REVIEW`). |
+| 4 | `rebuild-docs`, `git status --short docs/`, and `cmp` ×4 | Clean apart from `last_rebuilt_at`. All four are equal. |
+| 5 | `git diff --name-status d80e9a0..HEAD -- docs/versions` | 6 `A` lines: v0008, v0009, v0035, v0036, qa v0010 and decisions v0042. No older version was modified. |
+| 6 | `python3 installer/build.py --check` | `OK: bootstrap_agentic_workspace.sh is in sync with installer/ source` |
+| 7 | `git diff --stat d80e9a0..HEAD -- scripts .claude installer works/templates CLAUDE.md bootstrap_agentic_workspace.sh tests`, and the same without a range (working tree) | Both empty. |
+| 8 | `consolidation` in P21, P22 and P23's `phase.json` | `done`, `done`, `done`. No `execution` block on any of them. |
+| 9 | `phase_doc_impact_notes(works/phases/active/P24)` | `[]`. The notebook still holds only the "(none …)" line, so the pass stamps no debt. |
+
+### Boundary and checklist: unchanged
+
+`phase-scope P24` gives `range=d80e9a0..da5f712`, 10 commits, and `product_files=2`: `M README.en.md` and `M README.md`. That is the same product list as at the first pass; F1 and F2 touched only `docs/` and `works/`. The qa `## Regression Checklist` still has 6 lines, and 0 of them are inside the boundary. The reasoning is the first pass's: no README or doc version feeds the installer, the gate refusal, Test 0, the `## Slices` rendering, the marker-less notebook or `--kind research`, and the machinery diff is empty. The outside count is 6, and the smoke suite was not run.
+
+### Notebook
+
+- `phase.md`'s `## Slices` table shows F1 and F2 `done`, with outcomes that match their `result.md`.
+- `## Notes for later slices` is empty. F2 removed the consumed REVIEW → F1/F2 note, correctly.
+- `## Doc impact` is still "(none …)". F1 and F2 each report `doc_impact: none` because they correct owed wording rather than add durable truth. That is right: no note is owed for a fix to a docs phase's own versions.
+- `## Operator Questions` has none, so none is unrouted.
+- **Curated this pass:**
+  - **What was missing.** The fix-slice cut decided after the first pass was not in `## Decisions`. The cut made F1/F2 `docs / low`, one `edit_path` each, with `--source P24.REVIEW`, and needed no `docs-consolidated`. It is recorded in the first pass's proposal, in F1/F2's `plan.md` and in both `result.md` files.
+  - **Why it matters.** Without it, the *Version source* decision reads as if every P24 version carries `P21.REVIEW, P22.REVIEW, P23.REVIEW`.
+  - **What changed.** I added one `## Decisions` bullet tagged `(P24.REVIEW)`. It supersedes no line, so no existing line was edited.
+- Every other decision still matches the slice logs.
+
+### Observations (not findings; no job proposed)
+
+1. **"Every write goes through `set_phase_consolidation()`"** (architecture `:153–154`, operations `:786`) and "every write mirrors it there too" (operations `:1044–1045`) are slightly loose.
+   - `parallel_start`'s own stamp (`:1900`) is a direct write into the block that sets no top-level key. Only the later writes (review, `docs-consolidated`, `parallel-consolidated`) go through the setter.
+   - Both docs say in the next sentence that the fallback read covers "a parallel phase stamped but not yet reviewed". That only makes sense if the stamp left the top-level key absent, so the text is self-consistent and does not mislead.
+   - The first pass's proposed wording was "every *later* write". Adding "later" would make it exact, at the next version of either doc.
+2. **operations `## Status` `:114` and the review's *On `pass`* bullet `:691`** still say the engine "stamps a top-level `consolidation: "pending"`" without the has-real-notes condition.
+   - Both were left untouched from v0035 (the first pass accepted the default-stream wording and made the qualifier optional).
+   - The runbook section (*The debt*) now states the condition, and both lines are summaries that point to it.
+   - Polish only.
+3. **architecture *Execution Streams* is at 10,182 B, 58 B under the 10,240 B advisory.** The next edit of that section will add it to `oversized_doc_sections`. That is relevant to whoever runs D25 (judge the oversized sections), and needs no job of its own.
+
+Observations 1 and 2 could ride on D24 (its trigger includes the next docs phase, and it already carries an operations part), or on the next docs phase that versions architecture or operations. Whether to append them to D24's brief is the orchestrator's call.
+
+## First pass (changes_requested)
+
+_The first pass's record, kept verbatim with its headings demoted one level. Finding 1 below is resolved by P24.F1 and P24.F2 (see the re-review above), and its J1–J4 were filed as D23–D26._
+
+### Verdict
 
 - **status:** done
 - **review_verdict:** `changes_requested`. One finding, in two docs. Everything else passes: validation, coverage of all 27 notes, merge-not-stack for budget, baseline and review-consolidates, both READMEs, scope, and the notebook.
@@ -45,7 +182,7 @@
   - J3: split decisions.md's 247 KB `## Decision Log` and judge the other six oversized sections.
   - J4: correct `phase_consolidation()`'s docstring (the machinery root of Finding 1).
 
-## Validation
+### Validation
 
 Every completed slice's validation, re-run together where it can be re-run:
 
@@ -82,9 +219,9 @@ None of those surfaces is fed by a README or a doc version:
 
 So the outside count is 6, with that diff as proof. The smoke suite was not run.
 
-## Judgment against the objective
+### Judgment against the objective
 
-### Coverage: all 27 notes landed, each spot-checked in the doc
+#### Coverage: all 27 notes landed, each spot-checked in the doc
 
 The notes were read verbatim in `P21/phase.md`, `P22/phase.md` and `P23/phase.md` `## Doc impact`, then checked against the S1–S4 tables and **in the doc itself** by grep or offset read. All 27 are present. The ones most likely to be missed:
 
@@ -112,7 +249,7 @@ The notes were read verbatim in `P21/phase.md`, `P22/phase.md` and `P23/phase.md
   - `## Superseded Decisions` opens with the v35-budget bullet and the v38 narrowing bullet, newest first.
   - The `## Status` count (45) equals the `### ` headings.
 
-### Finding 1: the parallel `execution.consolidation` field is described as pre-v38-only (architecture v0008, operations v0035)
+#### Finding 1: the parallel `execution.consolidation` field is described as pre-v38-only (architecture v0008, operations v0035)
 
 **What the docs now say:**
 - `architecture.md:147–155`: "**The `consolidation` debt is top-level, not part of this block (since v38).** … `phase_consolidation()` reads that top-level key first and falls back to the identically-named field inside a parallel `execution` block **only for pre-v38 `phase.json` files** that still carry it there — **which is why the JSON example above no longer shows it**."
@@ -139,7 +276,7 @@ The default-stream statements are all correct. The error is confined to parallel
 
 A related imprecision, which F1/F2 can fix in the same paragraphs: architecture `:149` and operations `:782` say "a passing review stamps `pending`" with no qualifier. The engine stamps only when the phase's `## Doc impact` list is non-empty (`scripts/workflow.py:1565–1570`), and decisions v38 states that condition correctly.
 
-### Merge, not stack
+#### Merge, not stack
 
 - **Budget:**
   - operations `:70` and `:610–619` state v39's 400 KB cap and frame v35's `(200 lines, 16 KB)` as history.
@@ -151,7 +288,7 @@ A related imprecision, which F1/F2 can fix in the same paragraphs: architecture 
   - The one line in each of operations `:68` / `:777` that mentions it is framed as "Until v38" / "Through v37".
   - In decisions, the pre-v29 rollup is explicitly "retained as historical context", and the 2026-06-29 and P11 entries are narrowed through v38's Status line and the new Superseded bullet.
 
-### READMEs (S5)
+#### READMEs (S5)
 
 - `README.en.md` *Review gates* (`:44–48`), the tier paragraph (`:320–325`) and `### Durable docs: a docs phase you start` (`:351–364`) agree with operations v0035 *Durable-doc consolidation* and with CLAUDE.md's Hard Rules and Read Order on each of these points:
   - the review verifies and writes two gate sections;
@@ -169,20 +306,20 @@ A related imprecision, which F1/F2 can fix in the same paragraphs: architecture 
   - habits 2 and 4, Contributing step 4 and the house rule;
   - the `(~12 KB)` tree comment (`CLAUDE.md` is 12,259 B).
 
-### Scope
+#### Scope
 
 - No section was split: the H2 sets are unchanged apart from operations' one planned new section.
 - P24's `## Doc impact` holds only the "(none …)" line, and the engine reads it as `[]`.
 - No machinery changed (4b), and `build.py --check` passes.
 - `docs/retrofit-guide.md` and `installer/README.md` contain no consolidation wording, so there was nothing out of scope to flag there.
 
-### Notebook
+#### Notebook
 
 - `phase.md`'s ten `## Decisions` match DECOMP's result and every slice's `result.md`, and no result records a phase-level decision the notebook dropped.
 - `## Operator Questions` has none (none were raised), so none is unrouted.
 - The "Payment" decision was carried out: all three `phase.json` files read `done`.
 
-### Minor observations (not findings; no fix proposed)
+#### Minor observations (not findings; no fix proposed)
 
 - **decisions `## Status`, v35 sentence** ("under a warned 200-line / 16 KB budget … supersedes nothing"). It lacks the in-place "since partly superseded by v39" note that the same section gives v42 and v36. The v39 sentence above it does state the supersession, so this is only polish for a future decisions consolidation.
 - **decisions v39 entry, "now in `CLAUDE.md`'s read order and Hard Rules".** This was true at v39 (`3418c17:CLAUDE.md:58`). Since v44 the STALE doctrine sits only in the contract's Read Order (`CLAUDE.md:27`) and in both executor bodies. As a dated decision record it reads as history.
@@ -192,7 +329,7 @@ A related imprecision, which F1/F2 can fix in the same paragraphs: architecture 
 - **D22 is visible here.** `P24/phase.json` still reads `status: "planned"` with six slices done, which is the known D22 behaviour (P23 did the same). It needs no new job.
 - **D17 and D21 triggers fire now** ("the next docs phase") and stay deferred because both touch machinery (Decision 10). Since a docs phase can never change machinery, the orchestrator might suggest to the operator, when relaying them, that the triggers be reworded to "the next phase that edits `workflow.py`". As written, they fire on every docs phase and are declined by every docs phase.
 
-## Deferred-job candidates (the orchestrator files them; this review runs no `defer-job`)
+### Deferred-job candidates (the orchestrator files them; this review runs no `defer-job`)
 
 1. **J1: Fix the `doc-new-version` skill's `--source P1.S1` example.**
    - Reason: `.claude/skills/doc-new-version/SKILL.md:10` still shows `--source P1.S1`. Since v38 a version's source is the owing phase's `<P>.REVIEW`, and S5 already fixed the README's copy of this example. The file is embedded machinery and needs an installer rebuild, so it is out of reach for a docs phase. It is the same kind of stale one-liner as D21, and **folding it into D21 is the natural merge**.
