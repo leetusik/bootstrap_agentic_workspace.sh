@@ -3,12 +3,12 @@
   "phase_id": "P24",
   "name": "decompose phase",
   "kind": "decomposition",
-  "status": "todo",
+  "status": "done",
   "order": 0,
   "depends_on": [],
   "created_at": "2026-09-28T16:57:32+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-28T20:56:01+09:00",
+  "completed_at": "2026-09-28T20:58:49+09:00",
   "risk": "high",
   "source": {
     "type": "new_phase",
@@ -18,7 +18,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "cut five bare docs slices: S1-S4 one per durable doc (docs/low), S5 both READMEs (docs/high)",
   "validation": {
     "required": [],
     "last_run": null,

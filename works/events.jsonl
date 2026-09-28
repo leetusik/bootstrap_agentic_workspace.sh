@@ -568,3 +568,11 @@
 {"ts": "2026-09-28T13:26:32+09:00", "type": "deferred_created", "deferred": "D22", "source": "P23.REVIEW"}
 {"ts": "2026-09-28T13:26:32+09:00", "type": "deferred_dropped", "deferred": "D8", "reason": "resolved by P23: CLAUDE.md slimmed from 50,048 B to 12,259 B (<= 12 KB) with all 58 never-rules kept; shipped as workspace v44"}
 {"ts": "2026-09-28T16:57:32+09:00", "type": "phase_created", "phase": "P24"}
+{"ts": "2026-09-28T20:56:01+09:00", "type": "slice_status_changed", "slice": "P24.DECOMP", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-09-28T20:56:51+09:00", "type": "slice_created", "phase": "P24", "slice": "P24.S1"}
+{"ts": "2026-09-28T20:56:51+09:00", "type": "slice_created", "phase": "P24", "slice": "P24.S2"}
+{"ts": "2026-09-28T20:56:51+09:00", "type": "slice_created", "phase": "P24", "slice": "P24.S3"}
+{"ts": "2026-09-28T20:56:51+09:00", "type": "slice_created", "phase": "P24", "slice": "P24.S4"}
+{"ts": "2026-09-28T20:56:51+09:00", "type": "slice_created", "phase": "P24", "slice": "P24.S5"}
+{"ts": "2026-09-28T20:58:49+09:00", "type": "slice_status_changed", "slice": "P24.DECOMP", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-09-28T20:58:49+09:00", "type": "acceptance_waived", "phase": "P24"}
