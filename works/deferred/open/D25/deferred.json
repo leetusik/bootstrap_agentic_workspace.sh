@@ -1,0 +1,11 @@
+{
+  "id": "D25",
+  "title": "Split decisions.md's Decision Log and judge the other oversized doc sections",
+  "status": "deferred",
+  "source": "P24.REVIEW",
+  "reason": "decisions.md's ## Decision Log is ~247 KB and six more H2 sections pass DOC_SECTION_WARN_BYTES; validate flags them every run and tells the next docs phase to split, but P24 declined (its Decision 6: the confirmed scope was the notes), so without a job nobody owns it; entries stay readable by offset, so it is not urgent",
+  "trigger": "The next docs phase whose confirmed scope includes restructuring, or the first slice that needs more than one Decision Log entry",
+  "created_at": "2026-09-28T21:48:28+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

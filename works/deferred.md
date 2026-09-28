@@ -4,7 +4,7 @@
 
 ## Summary
 
-- Open: `12`
+- Open: `16`
 - Promoted: `0`
 - Dropped: `10`
 
@@ -20,6 +20,10 @@
 | `D20` | `deferred` | Pin the never-rule floor in smoke | P23.REVIEW | The next edit of CLAUDE.md, or when the whitespace-normalized contract pins land. | `works/deferred/open/D20` |
 | `D21` | `deferred` | Correct two stale one-line descriptions (new-slice --help, executors.toml tier comment) | P23.REVIEW | The next edit of workflow.py's argparse help or of executors.toml, or the next docs phase. | `works/deferred/open/D21` |
 | `D22` | `deferred` | A running phase stays planned: start-slice never moves it to in_progress | P23.REVIEW | Before the next parallel-start or parallel-gate on a real phase, or the next edit of start_slice / parallel_start_hint. | `works/deferred/open/D22` |
+| `D23` | `deferred` | Fix the doc-new-version skill's --source P1.S1 example | P24.REVIEW | The next phase that edits the skill set or workflow.py help text, or together with D21 | `works/deferred/open/D23` |
+| `D24` | `deferred` | Correct README drift outside the P21-P23 changes | P24.REVIEW | The next phase that edits either README, or the next docs phase | `works/deferred/open/D24` |
+| `D25` | `deferred` | Split decisions.md's Decision Log and judge the other oversized doc sections | P24.REVIEW | The next docs phase whose confirmed scope includes restructuring, or the first slice that needs more than one Decision Log entry | `works/deferred/open/D25` |
+| `D26` | `deferred` | Correct the phase_consolidation and phase_execution docstrings on the parallel consolidation field | P24.REVIEW | The next edit of phase_consolidation, parallel_start or set_phase_consolidation, or together with D22 | `works/deferred/open/D26` |
 | `D3` | `deferred` | Make installer/build.py smoke-execute the assembled artifact | P15.REVIEW | Next time installer/build.py is touched, or the first time a broken artifact reaches a commit | `works/deferred/open/D3` |
 | `D5` | `deferred` | Confirm: ## Design Style is appended by create-phase only when visual, not scaffolded into every intent.md | P17.REVIEW | Before the first design-bearing phase runs under v34, or the next time works/templates/intent.md is edited. | `works/deferred/open/D5` |
 | `D6` | `deferred` | Widen installer/main.py flag_stale_skills() ownership heuristic beyond the disable-model-invocation marker | P17.REVIEW | If a model-invocable skill is retired upstream, or when flag_stale_skills() is next touched. | `works/deferred/open/D6` |

@@ -1,0 +1,11 @@
+{
+  "id": "D24",
+  "title": "Correct README drift outside the P21-P23 changes",
+  "status": "deferred",
+  "source": "P24.REVIEW",
+  "reason": "Both READMEs (and operations.md:68) describe tier routing as risk-only and never name research, which routes by kind; README.en.md's skill table has no design-cowork row under its 17-skills heading; README.en.md read-order item 1 and the Korean README's first 'why' bullet predate v43's per-checkout pointer",
+  "trigger": "The next phase that edits either README, or the next docs phase",
+  "created_at": "2026-09-28T21:48:28+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

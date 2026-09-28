@@ -1,0 +1,11 @@
+{
+  "id": "D23",
+  "title": "Fix the doc-new-version skill's --source P1.S1 example",
+  "status": "deferred",
+  "source": "P24.REVIEW",
+  "reason": "Since v38 a durable doc version is cut in a docs phase with --source <P>.REVIEW, but .claude/skills/doc-new-version/SKILL.md:10 still shows --source P1.S1; embedded machinery, so it needs an installer rebuild (pairs naturally with D21)",
+  "trigger": "The next phase that edits the skill set or workflow.py help text, or together with D21",
+  "created_at": "2026-09-28T21:48:28+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}
