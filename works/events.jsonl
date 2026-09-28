@@ -576,3 +576,6 @@
 {"ts": "2026-09-28T20:56:51+09:00", "type": "slice_created", "phase": "P24", "slice": "P24.S5"}
 {"ts": "2026-09-28T20:58:49+09:00", "type": "slice_status_changed", "slice": "P24.DECOMP", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-09-28T20:58:49+09:00", "type": "acceptance_waived", "phase": "P24"}
+{"ts": "2026-09-28T20:59:37+09:00", "type": "slice_status_changed", "slice": "P24.S1", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-09-28T21:00:02+09:00", "type": "doc_version_created", "doc": "architecture", "version": "v0008_p21-p23_top-level_consolidation_debt_doc_commit_markers_and_the_12_kb_routing_contract", "source": "P21.REVIEW, P22.REVIEW, P23.REVIEW"}
+{"ts": "2026-09-28T21:04:33+09:00", "type": "slice_status_changed", "slice": "P24.S1", "old_status": "in_progress", "new_status": "done"}

@@ -6,8 +6,8 @@
 ## Pointer
 
 - Current phase: `P24`
-- Current slice: `P24.S1`
-- Next slice: `P24.S2`
+- Current slice: `P24.S2`
+- Next slice: `P24.S3`
 - Waiting on operator: `none`
 - Open deferred jobs: `12`
 
@@ -18,7 +18,7 @@
 | [x] `P21` | `done` | `pass` | close the workspace's context leaks, measured against live adopters | `none` | `works/phases/active/P21` |
 | [x] `P22` | `done` | `pass` | make doc staleness explicit and right-size the notebook and test guardrails | `none` | `works/phases/active/P22` |
 | [x] `P23` | `done` | `pass` | slim the always-loaded contract back to a routing layer | `none` | `works/phases/active/P23` |
-| [ ] `P24` | `planned` | `pending` | consolidate the P21–P23 doc impact into the docs and both READMEs | `P24.S1` | `works/phases/active/P24` |
+| [ ] `P24` | `planned` | `pending` | consolidate the P21–P23 doc impact into the docs and both READMEs | `P24.S2` | `works/phases/active/P24` |
 
 ## Phase P21: close the workspace's context leaks, measured against live adopters
 
@@ -59,7 +59,7 @@
 | Slice | Status | Name | Kind | Path |
 |---|---|---|---|---|
 | [x] `P24.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P24/slices/P24.DECOMP` |
-| [ ] `P24.S1` | `todo` | consolidate the P21-P23 notes into architecture | `docs` | `works/phases/active/P24/slices/P24.S1` |
+| [x] `P24.S1` | `done` | consolidate the P21-P23 notes into architecture | `docs` | `works/phases/active/P24/slices/P24.S1` |
 | [ ] `P24.S2` | `todo` | consolidate the P21-P23 notes into operations | `docs` | `works/phases/active/P24/slices/P24.S2` |
 | [ ] `P24.S3` | `todo` | consolidate the P21-P23 notes into qa | `docs` | `works/phases/active/P24/slices/P24.S3` |
 | [ ] `P24.S4` | `todo` | consolidate the P21-P23 notes into decisions | `docs` | `works/phases/active/P24/slices/P24.S4` |

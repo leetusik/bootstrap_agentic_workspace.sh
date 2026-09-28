@@ -29,7 +29,7 @@
       ]
     },
     "architecture": {
-      "latest": "v0007_v43_the_phase_worktree_is_opt-in_again_the_pin_is_a_legacy_block_not_a_live_route",
+      "latest": "v0008_p21-p23_top-level_consolidation_debt_doc_commit_markers_and_the_12_kb_routing_contract",
       "current_path": "docs/current/architecture.md",
       "versions": [
         {
@@ -89,6 +89,15 @@
           "source": "v43",
           "summary": "v43: the phase worktree is opt-in again — the pin is a legacy block, not a live route",
           "previous": "v0006_v42_one_worktree_per_phase_by_default_the_pinned_execution_block_nested_worktrees_and_the_exclude_line"
+        },
+        {
+          "id": "v0008_p21-p23_top-level_consolidation_debt_doc_commit_markers_and_the_12_kb_routing_contract",
+          "path": "docs/versions/architecture/v0008_p21-p23_top-level_consolidation_debt_doc_commit_markers_and_the_12_kb_routing_contract.md",
+          "created_at": "2026-09-28T21:00:02+09:00",
+          "commit": "86c404b1ef0c1985c248d24789c8309b6771c02e",
+          "source": "P21.REVIEW, P22.REVIEW, P23.REVIEW",
+          "summary": "P21-P23: top-level consolidation debt, doc commit markers, and the 12 KB routing contract",
+          "previous": "v0007_v43_the_phase_worktree_is_opt-in_again_the_pin_is_a_legacy_block_not_a_live_route"
         }
       ]
     },
@@ -860,5 +869,5 @@
       ]
     }
   },
-  "last_rebuilt_at": "2026-09-28T20:58:30+09:00"
+  "last_rebuilt_at": "2026-09-28T21:02:25+09:00"
 }
