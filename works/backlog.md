@@ -6,8 +6,8 @@
 ## Pointer
 
 - Current phase: `P23`
-- Current slice: `P23.DECOMP2`
-- Next slice: `P23.REVIEW`
+- Current slice: `P23.S2`
+- Next slice: `P23.S3`
 - Waiting on operator: `none`
 - Open deferred jobs: `8`
 
@@ -17,7 +17,7 @@
 |---|---|---|---|---|---|
 | [x] `P21` | `done` | `pass` | close the workspace's context leaks, measured against live adopters | `none` | `works/phases/active/P21` |
 | [x] `P22` | `done` | `pass` | make doc staleness explicit and right-size the notebook and test guardrails | `none` | `works/phases/active/P22` |
-| [ ] `P23` | `planned` | `pending` | slim the always-loaded contract back to a routing layer | `P23.DECOMP2` | `works/phases/active/P23` |
+| [ ] `P23` | `planned` | `pending` | slim the always-loaded contract back to a routing layer | `P23.S2` | `works/phases/active/P23` |
 
 ## Phase P21: close the workspace's context leaks, measured against live adopters
 
@@ -47,5 +47,8 @@
 |---|---|---|---|---|
 | [x] `P23.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P23/slices/P23.DECOMP` |
 | [x] `P23.S1` | `done` | map every contract rule to the reader that needs it | `research` | `works/phases/active/P23/slices/P23.S1` |
-| [ ] `P23.DECOMP2` | `todo` | cut the editorial slices from the rule map | `decomposition` | `works/phases/active/P23/slices/P23.DECOMP2` |
+| [x] `P23.DECOMP2` | `done` | cut the editorial slices from the rule map | `decomposition` | `works/phases/active/P23/slices/P23.DECOMP2` |
+| [ ] `P23.S2` | `todo` | cut the derived and duplicated contract text and open v44 | `implementation` | `works/phases/active/P23/slices/P23.S2` |
+| [ ] `P23.S3` | `todo` | collapse the worktree, design and Aside bullets to stubs | `implementation` | `works/phases/active/P23/slices/P23.S3` |
+| [ ] `P23.S4` | `todo` | rewrite the contract to the 12 KB outline | `implementation` | `works/phases/active/P23/slices/P23.S4` |
 | [ ] `P23.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P23/slices/P23.REVIEW` |

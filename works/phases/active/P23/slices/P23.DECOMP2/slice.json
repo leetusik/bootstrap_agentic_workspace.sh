@@ -3,14 +3,14 @@
   "phase_id": "P23",
   "name": "cut the editorial slices from the rule map",
   "kind": "decomposition",
-  "status": "todo",
+  "status": "done",
   "order": 2,
   "depends_on": [
     "P23.S1"
   ],
   "created_at": "2026-09-28T08:20:34+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-28T12:26:59+09:00",
+  "completed_at": "2026-09-28T12:31:38+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Cut P23's edit work into three implementation/high slices from S1's rule map: S2 (derived/duplicate cut + open v44, ~36.6 KB), S3 (worktree/design/Aside bullets to stubs, ~27 KB), S4 (rewrite to the 12 KB outline); OQ1 answered at the plan gate (docs-slice carve-out approved)",
   "validation": {
     "required": [],
     "last_run": null,
