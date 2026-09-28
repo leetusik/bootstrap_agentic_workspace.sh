@@ -5,9 +5,9 @@
 
 ## Pointer
 
-- Current phase: `none`
-- Current slice: `none`
-- Next slice: `none`
+- Current phase: `P24`
+- Current slice: `P24.DECOMP`
+- Next slice: `P24.REVIEW`
 - Waiting on operator: `none`
 - Open deferred jobs: `12`
 
@@ -18,6 +18,7 @@
 | [x] `P21` | `done` | `pass` | close the workspace's context leaks, measured against live adopters | `none` | `works/phases/active/P21` |
 | [x] `P22` | `done` | `pass` | make doc staleness explicit and right-size the notebook and test guardrails | `none` | `works/phases/active/P22` |
 | [x] `P23` | `done` | `pass` | slim the always-loaded contract back to a routing layer | `none` | `works/phases/active/P23` |
+| [ ] `P24` | `planned` | `pending` | consolidate the P21–P23 doc impact into the docs and both READMEs | `P24.DECOMP` | `works/phases/active/P24` |
 
 ## Phase P21: close the workspace's context leaks, measured against live adopters
 
@@ -52,3 +53,10 @@
 | [x] `P23.S3` | `done` | collapse the worktree, design and Aside bullets to stubs | `implementation` | `works/phases/active/P23/slices/P23.S3` |
 | [x] `P23.S4` | `done` | rewrite the contract to the 12 KB outline | `implementation` | `works/phases/active/P23/slices/P23.S4` |
 | [x] `P23.REVIEW` | `done` | phase review | `review` | `works/phases/active/P23/slices/P23.REVIEW` |
+
+## Phase P24: consolidate the P21–P23 doc impact into the docs and both READMEs
+
+| Slice | Status | Name | Kind | Path |
+|---|---|---|---|---|
+| [ ] `P24.DECOMP` | `todo` | decompose phase | `decomposition` | `works/phases/active/P24/slices/P24.DECOMP` |
+| [ ] `P24.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P24/slices/P24.REVIEW` |

@@ -567,3 +567,4 @@
 {"ts": "2026-09-28T13:26:32+09:00", "type": "deferred_created", "deferred": "D21", "source": "P23.REVIEW"}
 {"ts": "2026-09-28T13:26:32+09:00", "type": "deferred_created", "deferred": "D22", "source": "P23.REVIEW"}
 {"ts": "2026-09-28T13:26:32+09:00", "type": "deferred_dropped", "deferred": "D8", "reason": "resolved by P23: CLAUDE.md slimmed from 50,048 B to 12,259 B (<= 12 KB) with all 58 never-rules kept; shipped as workspace v44"}
+{"ts": "2026-09-28T16:57:32+09:00", "type": "phase_created", "phase": "P24"}
