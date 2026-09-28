@@ -551,7 +551,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0041_v43_put_the_phase_worktree_back_to_opt-in_the_default_stream_is_the_default_again",
+      "latest": "v0042_p21-p23_docs_phases_pay_the_doc_debt_explicit_staleness_and_the_12_kb_routing_contract",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -883,9 +883,18 @@
           "source": "v43",
           "summary": "v43: put the phase worktree back to opt-in — the default stream is the default again",
           "previous": "v0040_v42_phase_worktrees_by_default_with_a_dirty-tree_stamp_and_a_local_merge_mockups_on_request_the_round_closes_on_the_operator_s_return_numbered_cards"
+        },
+        {
+          "id": "v0042_p21-p23_docs_phases_pay_the_doc_debt_explicit_staleness_and_the_12_kb_routing_contract",
+          "path": "docs/versions/decisions/v0042_p21-p23_docs_phases_pay_the_doc_debt_explicit_staleness_and_the_12_kb_routing_contract.md",
+          "created_at": "2026-09-28T21:19:31+09:00",
+          "commit": "0cc7721f21dd6f20851bf880899c10fe71f77068",
+          "source": "P21.REVIEW, P22.REVIEW, P23.REVIEW",
+          "summary": "P21-P23: docs phases pay the doc debt, explicit staleness, and the 12 KB routing contract",
+          "previous": "v0041_v43_put_the_phase_worktree_back_to_opt-in_the_default_stream_is_the_default_again"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-09-28T21:15:04+09:00"
+  "last_rebuilt_at": "2026-09-28T21:23:00+09:00"
 }

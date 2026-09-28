@@ -585,3 +585,9 @@
 {"ts": "2026-09-28T21:12:31+09:00", "type": "slice_status_changed", "slice": "P24.S3", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-09-28T21:13:11+09:00", "type": "doc_version_created", "doc": "qa", "version": "v0010_p21-p23_core-only_tests_and_the_smoke_baseline_at_180", "source": "P21.REVIEW, P22.REVIEW, P23.REVIEW"}
 {"ts": "2026-09-28T21:17:05+09:00", "type": "slice_status_changed", "slice": "P24.S3", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-09-28T21:17:06+09:00", "type": "slice_status_changed", "slice": "P24.S4", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-09-28T21:19:31+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0042_p21-p23_docs_phases_pay_the_doc_debt_explicit_staleness_and_the_12_kb_routing_contract", "source": "P21.REVIEW, P22.REVIEW, P23.REVIEW"}
+{"ts": "2026-09-28T21:25:01+09:00", "type": "slice_status_changed", "slice": "P24.S4", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-09-28T21:25:01+09:00", "type": "phase_consolidated", "phase": "P21"}
+{"ts": "2026-09-28T21:25:01+09:00", "type": "phase_consolidated", "phase": "P22"}
+{"ts": "2026-09-28T21:25:01+09:00", "type": "phase_consolidated", "phase": "P23"}
