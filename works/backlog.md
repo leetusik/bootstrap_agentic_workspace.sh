@@ -6,8 +6,8 @@
 ## Pointer
 
 - Current phase: `P24`
-- Current slice: `P24.F2`
-- Next slice: `P24.REVIEW`
+- Current slice: `P24.REVIEW`
+- Next slice: `none`
 - Waiting on operator: `none`
 - Open deferred jobs: `16`
 
@@ -18,7 +18,7 @@
 | [x] `P21` | `done` | `pass` | close the workspace's context leaks, measured against live adopters | `none` | `works/phases/active/P21` |
 | [x] `P22` | `done` | `pass` | make doc staleness explicit and right-size the notebook and test guardrails | `none` | `works/phases/active/P22` |
 | [x] `P23` | `done` | `pass` | slim the always-loaded contract back to a routing layer | `none` | `works/phases/active/P23` |
-| [ ] `P24` | `in_progress` | `changes_requested` | consolidate the P21–P23 doc impact into the docs and both READMEs | `P24.F2` | `works/phases/active/P24` |
+| [ ] `P24` | `in_progress` | `changes_requested` | consolidate the P21–P23 doc impact into the docs and both READMEs | `P24.REVIEW` | `works/phases/active/P24` |
 
 ## Phase P21: close the workspace's context leaks, measured against live adopters
 
@@ -65,5 +65,5 @@
 | [x] `P24.S4` | `done` | consolidate the P21-P23 notes into decisions | `docs` | `works/phases/active/P24/slices/P24.S4` |
 | [x] `P24.S5` | `done` | bring README.md and README.en.md in line with P21-P23 | `docs` | `works/phases/active/P24/slices/P24.S5` |
 | [x] `P24.F1` | `done` | correct the parallel consolidation field in architecture | `docs` | `works/phases/active/P24/slices/P24.F1` |
-| [ ] `P24.F2` | `todo` | correct the parallel consolidation field in operations | `docs` | `works/phases/active/P24/slices/P24.F2` |
+| [x] `P24.F2` | `done` | correct the parallel consolidation field in operations | `docs` | `works/phases/active/P24/slices/P24.F2` |
 | [ ] `P24.REVIEW` | `changes_requested` | phase review | `review` | `works/phases/active/P24/slices/P24.REVIEW` |
