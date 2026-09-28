@@ -3,14 +3,14 @@
   "phase_id": "P24",
   "name": "bring README.md and README.en.md in line with P21-P23",
   "kind": "docs",
-  "status": "todo",
+  "status": "done",
   "order": 5,
   "depends_on": [
     "P24.S4"
   ],
   "created_at": "2026-09-28T20:56:51+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-28T21:25:10+09:00",
+  "completed_at": "2026-09-28T21:30:40+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "both READMEs: review verifies not consolidates, docs-phase subsection, STALE read-order clause, docs/docs-debt/docs-consolidated rows",
   "validation": {
     "required": [],
     "last_run": null,

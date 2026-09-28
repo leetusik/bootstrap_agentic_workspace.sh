@@ -198,6 +198,18 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 모드를 고르지 않으면 `economy`(Sonnet@high / Opus@high)이고, `mode = "flex"`는
 Sonnet@xhigh / Opus@xhigh를 씁니다. 티어별 `[claude.<tier>]` 표로 항목마다 덮어쓸 수도 있습니다.
 
+## 문서 통합: docs phase
+
+일반 slice는 일하는 도중에 문서 버전을 만들지 않습니다. 오래 남을 사실을 바꾼 slice는 `phase.md`의
+`## Doc impact` 목록에 한 줄 노트를 남기고, 리뷰는 그 목록이 빠짐없는지 확인할 뿐 문서를 통합하지
+않습니다. 통과한 phase에는 문서 통합 **빚**이 남고, 빚을 갚기 전까지는 보관(archive)되지 않습니다.
+`next`는 `consolidation_owed=<phases>`로 빚을 알려 주고, `python3 scripts/workflow.py docs`는
+노트보다 뒤처진 문서를 **STALE**로 표시합니다. 원할 때 "문서 통합해 줘"라고 하거나
+`/create-phase 문서 통합`을 입력하면, 에이전트가 `docs-debt`의 작업 목록으로 docs phase를 만들어
+문서마다 새 버전을 하나씩 추가하고 `docs-consolidated <P>`로 빚을 갚았다고 기록합니다.
+docs phase는 항상 기본 stream(`main`)에서 진행합니다. 자세한 내용은
+[English README](README.en.md#durable-docs-a-docs-phase-you-start)에 있습니다.
+
 ## 자주 쓰는 명령
 
 Claude Code에서 `/이름`으로 입력합니다.

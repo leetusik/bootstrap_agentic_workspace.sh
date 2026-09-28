@@ -591,3 +591,5 @@
 {"ts": "2026-09-28T21:25:01+09:00", "type": "phase_consolidated", "phase": "P21"}
 {"ts": "2026-09-28T21:25:01+09:00", "type": "phase_consolidated", "phase": "P22"}
 {"ts": "2026-09-28T21:25:01+09:00", "type": "phase_consolidated", "phase": "P23"}
+{"ts": "2026-09-28T21:25:10+09:00", "type": "slice_status_changed", "slice": "P24.S5", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-09-28T21:30:40+09:00", "type": "slice_status_changed", "slice": "P24.S5", "old_status": "in_progress", "new_status": "done"}

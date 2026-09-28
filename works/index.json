@@ -47,13 +47,13 @@
       "order": 8,
       "path": "works/phases/active/P24",
       "review_status": "pending",
-      "current_slice": "P24.S5",
+      "current_slice": "P24.REVIEW",
       "slice_count": 7,
-      "done_slice_count": 5
+      "done_slice_count": 6
     }
   ],
   "deferred_open_count": 12,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 10,
-  "last_rebuilt_at": "2026-09-28T21:25:01+09:00"
+  "last_rebuilt_at": "2026-09-28T21:30:40+09:00"
 }

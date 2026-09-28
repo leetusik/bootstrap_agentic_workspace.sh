@@ -42,8 +42,10 @@ three sessions of the same agent) at one repo and you get three different conven
 - **Durable, shared memory** — a per-phase notebook plus append-only versioned docs carry what each
   step learned forward to the next, so knowledge survives compaction and hand-offs between sessions.
 - **Review gates** — work isn't "done" until a phase review (run by the executor in a fresh,
-  isolated context that never edits source) checks it against the phase's objective and consolidates
-  its doc versions. A verdict short of `pass` stops there and hands its findings back.
+  isolated context that never edits source) checks it against the phase's objective and verifies
+  its list of doc changes; the docs themselves are consolidated later, in a
+  [docs phase you start](#durable-docs-a-docs-phase-you-start). A verdict short of `pass` stops
+  there and hands its findings back.
 
 **One command surface.** The workflows ship as native Claude Code skills, and the exact same
 operations are always reachable as plain `python3 scripts/workflow.py …` commands — so anything that
@@ -256,7 +258,10 @@ another agent, CI — drives the workspace with the exact same commands:
 | `start-slice P1.S1` / `finish-slice P1.S1 --outcome …` | Move a slice through its lifecycle |
 | `review-phase P1 --verdict pass` | Record a phase review |
 | `accept-gate P1 --require` / `--open --walkthrough …` / `--clear` | Declare, open, and clear a phase's operator acceptance gate |
-| `doc-new-version --doc backend --summary … --source P1.S1` | Cut a new durable doc version |
+| `docs` | List each doc's latest version with its last-updated marker, flagging **STALE** docs |
+| `doc-new-version --doc backend --summary … --source P1.REVIEW` | Cut a new durable doc version (in a docs phase) |
+| `docs-debt` | Print a docs phase's worklist: the phases that owe consolidation, their notes, the docs they touch |
+| `docs-consolidated P1` | Record that a phase's doc debt is paid |
 | `defer-job --title … --reason … --trigger …` | Park a deferred job |
 | `promote-deferred D1 --phase P1 --slice P1.S2` | Promote a deferred job into a slice |
 | `sync-agents` | Apply the `executors.toml` executor-tier mode/model/effort config to the agent files |
@@ -281,8 +286,8 @@ commands in Claude Code:
 | `defer-job` | Park work as a deferred job, outside active selection |
 | `deferred` | Rebuild and show the deferred-jobs dashboard |
 | `promote-deferred` | Promote a deferred job into an active phase or slice |
-| `archive-phase` | Archive review-passed phases (normally batched via `archive-all`) |
-| `rotate-backlog` | Archive every currently-done phase, leaving in-progress phases active |
+| `archive-phase` | Archive review-passed phases whose doc debt is paid (normally batched via `archive-all`) |
+| `rotate-backlog` | Archive every currently-done phase with no doc debt, leaving the rest active |
 | `rebuild-workflow` | Rebuild generated dashboards, indexes, and doc snapshots, then validate |
 | `commit` | Group pending changes into focused conventional commits |
 | `retrofit` | Non-destructively adopt this workspace into an existing repo |
@@ -315,8 +320,9 @@ The orchestrator delegates the heavy lifting to a **`slice-executor`** subagent 
 capability tiers, picked by each slice's risk: `slice-executor-mid` (a one-line or few-line code edit, or docs:
 slices rated `risk: low`) and `slice-executor-high` (decomposition, essentially all code writing
 including every cross-file change, anything not rated `low`, and the phase review, which it runs in
-a fresh context that never edits source, validating the phase and — only on a pass — consolidating its
-doc versions; a `changes_requested` or `blocked` verdict stops there and hands the findings back).
+a fresh context that never edits source, validating the phase and — only on a pass — verifying its
+doc-impact list and writing its two gate sections, leaving the docs themselves to a docs phase; a
+`changes_requested` or `blocked` verdict stops there and hands the findings back).
 Risk is two values, `low` and `high`, defaulting to `high` — only an exact `low` routes down, so an
 unset or unrecognized value always lands on the thorough tier. When the mid executor hits something
 beyond its depth it returns an `escalate` verdict; the orchestrator folds the findings into the plan
@@ -337,9 +343,25 @@ When an agent picks up work, it reads just in time, in this order — and no fur
 2. The **active** phase folder (`intent.md` and the bounded `phase.md`) and **active** slice folder
    only
 3. Only the [`docs/current/`](docs/current/) **sections** the work touches — never the whole doc set
-   up front, and never [`docs/index.json`](docs/index.json)
+   up front, and never [`docs/index.json`](docs/index.json). A doc that `workflow.py docs` flags
+   **STALE** is evidence to check against the notes that outran it, never current truth
 
 Archived phases and old doc versions are history; they're not read by default.
+
+### Durable docs: a docs phase you start
+
+Ordinary slices don't version docs as they go. A slice that changes durable truth leaves a one-line
+note on its phase's `## Doc impact` list, and a passing review only **verifies** that list — beyond
+its two gate sections (`## Regression Checklist`, `## Operator Runtime`) it writes no doc. The phase
+then **owes** consolidation: it stays in `works/phases/active/` and can't be archived until the debt is
+paid. The debt is visible — `next` prints `consolidation_owed=<phases>`, `validate` warns
+(`consolidation_owed=`, `stale_docs=`, any doc section past 10 KB) and still exits 0, and
+`workflow.py docs` shows each doc's last-updated marker (date, source, commit) and flags a doc an
+owed note has outrun as **STALE**. When you choose, say *"consolidate the docs"*
+(`/create-phase consolidate the docs`): the agent scopes the phase from `docs-debt`, cuts one slice
+per doc so each doc gets exactly one new version, and records `docs-consolidated <P>` for every
+phase it pays. A docs phase always runs on the default stream,
+[never in a worktree](#phase-worktrees-on-request).
 
 ### Phase worktrees (on request)
 
@@ -395,7 +417,7 @@ parallelism it never used. The mechanism itself is unchanged.)
 
 ```
 .
-├── CLAUDE.md                      # the compact routing contract
+├── CLAUDE.md                      # the compact routing contract (~12 KB)
 ├── bootstrap_agentic_workspace.sh # the scaffolding script (self-contained)
 ├── scripts/
 │   └── workflow.py                # the one manager that drives all state
@@ -433,7 +455,8 @@ the ones I lean on; the [contract in `CLAUDE.md`](CLAUDE.md) is how they're actu
    important context only in the chat. Every phase has a notebook (`phase.md`) that each slice reads
    on the way in and rewrites — under a size budget — on the way out, so it stays the *state* of the
    phase rather than its log; the log is each slice's own `result.md`, and decisions land in
-   versioned docs. The next slice — or the next *session* — starts from what the last one learned.
+   versioned docs when I consolidate them in a docs phase. The next slice — or the next *session* —
+   starts from what the last one learned.
 
 3. **Make every slice prove itself.** A slice writes its `plan.md` before it touches anything and a
    `result.md` when it's done, and the phase doesn't close until a fresh-context review checks it
@@ -441,8 +464,9 @@ the ones I lean on; the [contract in `CLAUDE.md`](CLAUDE.md) is how they're actu
    do" is.
 
 4. **Version decisions; never overwrite them.** Docs are append-only versions, not files you edit in
-   place — each new version carries the slice that produced it. So the history of *what we decided
-   and why* is always recoverable, and the generated snapshots stay read-only on purpose.
+   place — each new version records its source (the phase reviews whose notes it consolidates) and
+   the commit it was cut at. So the history of *what we decided and why* is always recoverable, and
+   the generated snapshots stay read-only on purpose.
 
 5. **Park distractions; don't chase them.** Mid-slice, every shiny idea is a threat to the slice.
    Instead of following it, I drop it into a deferred job that sits outside the backlog and changes
@@ -493,6 +517,9 @@ This repo dogfoods its own workflow, so contributing means *using* it — throug
    On a phase that changes what you can see, the review stops one step earlier: it ends with the
    phase `pending` and a concrete walkthrough, and the pass is recorded only after you have walked
    the running product yourself and cleared the gate (`accept-gate P2 --clear`).
+4. Consolidate the docs when you choose: a passing phase leaves its doc changes as notes it owes,
+   and a docs phase you start — *"consolidate the docs"* — versions each touched doc once and pays
+   the debt (see [Durable docs](#durable-docs-a-docs-phase-you-start)).
 
 A few house rules:
 
@@ -505,7 +532,7 @@ A few house rules:
   commit the rebuilt artifact in the same commit (`python3 installer/build.py --check` must pass;
   register the tracked hook once with `git config core.hooksPath .githooks`).
 - **Never hand-edit `docs/current/*.md`** (they're generated) and never patch old files under
-  `docs/versions/`. Create a new version with `doc-new-version` instead.
+  `docs/versions/`. Create a new version with `doc-new-version` instead, in a docs phase.
 
 The contract in [`CLAUDE.md`](CLAUDE.md) is the source of truth; this README only points at it.
 
