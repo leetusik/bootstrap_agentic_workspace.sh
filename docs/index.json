@@ -462,7 +462,7 @@
       ]
     },
     "qa": {
-      "latest": "v0009_v42_the_mockup_exemption_applies_only_to_rounds_where_the_operator_asked_for_a_mockup",
+      "latest": "v0010_p21-p23_core-only_tests_and_the_smoke_baseline_at_180",
       "current_path": "docs/current/qa.md",
       "versions": [
         {
@@ -538,6 +538,15 @@
           "source": "v42",
           "summary": "v42: the mockup exemption applies only to rounds where the operator asked for a mockup",
           "previous": "v0008_v41_the_review_re-runs_the_regression_checklist_inside_the_phase_s_boundary_never_whole"
+        },
+        {
+          "id": "v0010_p21-p23_core-only_tests_and_the_smoke_baseline_at_180",
+          "path": "docs/versions/qa/v0010_p21-p23_core-only_tests_and_the_smoke_baseline_at_180.md",
+          "created_at": "2026-09-28T21:13:11+09:00",
+          "commit": "ed6bd7dd24451781e1f29c5cb09183c923e35028",
+          "source": "P21.REVIEW, P22.REVIEW, P23.REVIEW",
+          "summary": "P21-P23: core-only tests and the smoke baseline at 180",
+          "previous": "v0009_v42_the_mockup_exemption_applies_only_to_rounds_where_the_operator_asked_for_a_mockup"
         }
       ]
     },
@@ -878,5 +887,5 @@
       ]
     }
   },
-  "last_rebuilt_at": "2026-09-28T21:10:17+09:00"
+  "last_rebuilt_at": "2026-09-28T21:15:04+09:00"
 }
