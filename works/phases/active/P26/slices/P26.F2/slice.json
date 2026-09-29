@@ -3,12 +3,12 @@
   "phase_id": "P26",
   "name": "name in-page # fragments in the contract's self-contained rule",
   "kind": "fix",
-  "status": "todo",
+  "status": "done",
   "order": 24,
   "depends_on": [],
   "created_at": "2026-09-29T22:41:22+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-29T22:41:34+09:00",
+  "completed_at": "2026-09-29T22:45:52+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -18,7 +18,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Contract + drafter text name in-page # fragments (and data: for any resource); Test 0 pins both against DESIGN_ALLOWED_REFS; smoke 195",
   "validation": {
     "required": [],
     "last_run": null,

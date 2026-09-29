@@ -278,6 +278,21 @@ workflow_src = (root / "scripts/workflow.py").read_text()
 for const in ("DESIGN_ROOT_REL", "DESIGN_REGISTRY_ENV", "DESIGN_REGISTRY_DEFAULT"):
     value = re.search(r'^' + const + r' = "([^"]+)"$', workflow_src, re.M).group(1)
     assert value in design, (const, value)
+# P26.F2: the Self-contained bullet (and the drafter's mirror of it) names every reference prefix
+# design-check allows -- `#`, `data:`, `https:` -- read from DESIGN_ALLOWED_REFS so text and engine
+# cannot drift; `tokens.css` takes the same set without the ../tokens.css exception.
+refs = re.search(r'^DESIGN_ALLOWED_REFS = \(([^)]*)\)$', workflow_src, re.M).group(1)
+refs = [r.strip().strip('"') for r in refs.split(",") if r.strip()]
+assert refs and all(refs), refs
+bullet = design.split("- **Self-contained.**", 1)[1].split(" - **", 1)[0]
+drafter_rule = " ".join((root / ".claude/agents/design-drafter.md").read_text().split())
+drafter_rule = drafter_rule.split("**Keep every card self-contained.**", 1)[1].split(" 3. **", 1)[0]
+for text in (bullet, drafter_rule):
+    for ref in refs + ["../tokens.css"]:
+        assert "`" + ref.rstrip("/") + "`" in text, (ref, text)
+    assert "`#` fragments included, without the `../tokens.css` exception" in text, text
+    assert "The only relative reference allowed is `../tokens.css`" not in text, text
+assert "A card references nothing relative except `../tokens.css`. " not in design
 # P26.F1: the drafter's frontend-design licence is the handoff's `new visual direction` line, the
 # operator's call; a missing line is an open question, and the drafter never infers the licence.
 drafter = " ".join((root / ".claude/agents/design-drafter.md").read_text().split())

@@ -333,10 +333,12 @@ without breaking a reader.
   renumbered and no number is reused.
 - **One card per reviewable unit**, never a monolith: HTML anywhere under the root outside `cards/`
   (a round's `cards/` and `import/` aside) fails the check.
-- **Self-contained.** A card references nothing relative except `../tokens.css`. Images are inline
-  SVG or `data:`, and anything else is an absolute `https:` URL. That is what lets the same bytes
-  render from `cards/` and from a round snapshot. `tokens.css` follows the same rule with no
-  exception.
+- **Self-contained.** A card references nothing relative except `../tokens.css` and in-page `#`
+  fragments, which are same-document references: inline SVG's `url(#id)` and `<use href="#id">`, or
+  a `href="#"` stub for a link. Images are inline SVG or `data:` (a `data:` URI suits any resource),
+  and anything else is an absolute `https:` URL. That is what lets the same bytes render from
+  `cards/` and from a round snapshot. `tokens.css` follows the same rule, `#` fragments included,
+  without the `../tokens.css` exception.
 - **Line 1 is the marker, and only the marker:**
   ```html
   <!-- @dsCard group="Components" viewport="960x600" title="Primary button" -->
@@ -458,10 +460,10 @@ verdict. Its `done` is its claim, not your check:
 2. **Card-contract check — run it yourself:** `python3 scripts/workflow.py design-check <the handoff's
    numbered paths>`. **Never rest on the drafter's own `design_check` line.** Exit 1 — a listed path
    missing or unaddressed, a gap in the sequence, an unnumbered card, an unknown marker attribute, a
-   relative reference, one monolithic HTML — means the round is not reviewable card by card. It is
-   **not** something you fix by editing the cards or writing them yourself: authoring the design is the
-   line you do not cross. Re-dispatch the drafter on the same open round with exactly the named
-   problems; if they survive that second pass, report them and stop `pending`.
+   reference the self-contained rule forbids, one monolithic HTML — means the round is not reviewable
+   card by card. It is **not** something you fix by editing the cards or writing them yourself:
+   authoring the design is the line you do not cross. Re-dispatch the drafter on the same open round
+   with exactly the named problems; if they survive that second pass, report them and stop `pending`.
 3. **Read the round:** every card — with a screenshot of each when a browser is at hand (a throwaway
    headless one, or Aside only on the agent account `## Operator Runtime` records, never the operator's
    signed-in profile) — the drafter's `result.md` with every departure it logged, `build-prompt.md`,

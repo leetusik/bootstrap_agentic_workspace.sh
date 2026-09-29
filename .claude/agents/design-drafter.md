@@ -23,7 +23,7 @@ The dispatch prompt gives you the round folder (`docs/reference/design/rounds/<N
 ## Do
 
 1. **Write the cards** at exactly the numbered paths the handoff names (`cards/NN-slug.html`), one card per reviewable unit, never a monolith. Line 1 of each is the marker and only the marker: `<!-- @dsCard group="⏳ <slice> · <Group>" viewport="WxH" [title="…"] -->`, carrying the round's address (U+23F3, the owning slice id, U+00B7, the library group). A card that supersedes one already in the library is written at that card's path. Cards you add beyond the list take the next numbers.
-2. **Keep every card self-contained.** The only relative reference allowed is `../tokens.css`; images are inline SVG or `data:`, anything else an absolute `https:` URL.
+2. **Keep every card self-contained.** The only relative references allowed are `../tokens.css` and in-page `#` fragments, which are same-document references: inline SVG's `url(#id)` and `<use href="#id">`, or a `href="#"` stub for a link. Images are inline SVG or `data:` (a `data:` URI suits any resource), anything else an absolute `https:` URL. `tokens.css` follows the same rule, `#` fragments included, without the `../tokens.css` exception.
 3. **Write `tokens.css`** at the design root when the round changes the system, carrying the round's real values.
 4. **Write the round's `result.md`:** what was designed, and **every departure from the handoff logged**. A departure you did not log is a defect.
 5. **Write the round's `build-prompt.md`:** the implementation contract, complete enough to build from without inventing anything. A card shows what a state looks like; this says how to build it, so cover every state and every element the cards draw.
