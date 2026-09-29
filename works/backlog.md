@@ -5,9 +5,9 @@
 
 ## Pointer
 
-- Current phase: `none`
-- Current slice: `none`
-- Next slice: `none`
+- Current phase: `P27`
+- Current slice: `P27.S1`
+- Next slice: `P27.S2`
 - Waiting on operator: `none`
 - Open deferred jobs: `21`
 
@@ -17,6 +17,7 @@
 |---|---|---|---|---|---|
 | [x] `P25` | `done` | `pass` | Research a replacement for Claude Design in design-cowork | `none` | `works/phases/active/P25` |
 | [x] `P26` | `done` | `pass` | Replace the Claude Design loop with a repo-file design contract and a design subagent | `none` | `works/phases/active/P26` |
+| [ ] `P27` | `planned` | `pending` | Choose the design tool per phase: drafter or Claude Design | `P27.S1` | `works/phases/active/P27` |
 
 ## Phase P25: Research a replacement for Claude Design in design-cowork
 
@@ -39,3 +40,13 @@
 | [x] `P26.F1` | `done` | align the drafter's frontend-design licence, design-check's reference rule, the v47 changelog and the do-* feedback step with the doctrine | `fix` | `works/phases/active/P26/slices/P26.F1` |
 | [x] `P26.F2` | `done` | name in-page # fragments in the contract's self-contained rule | `fix` | `works/phases/active/P26/slices/P26.F2` |
 | [x] `P26.REVIEW` | `done` | phase review | `review` | `works/phases/active/P26/slices/P26.REVIEW` |
+
+## Phase P27: Choose the design tool per phase: drafter or Claude Design
+
+| Slice | Status | Name | Kind | Path |
+|---|---|---|---|---|
+| [x] `P27.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P27/slices/P27.DECOMP` |
+| [ ] `P27.S1` | `todo` | Engine: skip claude-design/, design-migrate, the register hint | `implementation` | `works/phases/active/P27/slices/P27.S1` |
+| [ ] `P27.S2` | `todo` | design-cowork carries both loops | `implementation` | `works/phases/active/P27/slices/P27.S2` |
+| [ ] `P27.S3` | `todo` | Choice, contract and driver sweep, then ship v48 | `implementation` | `works/phases/active/P27/slices/P27.S3` |
+| [ ] `P27.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P27/slices/P27.REVIEW` |

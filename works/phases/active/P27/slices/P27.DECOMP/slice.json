@@ -1,0 +1,32 @@
+{
+  "id": "P27.DECOMP",
+  "phase_id": "P27",
+  "name": "decompose phase",
+  "kind": "decomposition",
+  "status": "done",
+  "order": 0,
+  "depends_on": [],
+  "created_at": "2026-09-30T02:45:51+09:00",
+  "started_at": "2026-09-30T02:49:09+09:00",
+  "completed_at": "2026-09-30T02:52:52+09:00",
+  "risk": "high",
+  "source": {
+    "type": "new_phase",
+    "id": "P27"
+  },
+  "paths": {
+    "plan": "plan.md",
+    "result": "result.md"
+  },
+  "outcome": "Cut P27 into S1 engine (high), S2 design-cowork both loops (high), S3 sweep + v48 (low)",
+  "validation": {
+    "required": [],
+    "last_run": null,
+    "last_status": "pending"
+  },
+  "archive": {
+    "archived": false,
+    "archived_at": null,
+    "archive_path": null
+  }
+}
