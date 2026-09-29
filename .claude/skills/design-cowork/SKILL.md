@@ -191,14 +191,13 @@ good the design is. So spell the contract out in the handoff:
 - **One card per reviewable unit** — per component, per surface, per foundation. **Never one monolithic
   "design system" page:** the operator fixes one card at a time, and a monolith cannot be reviewed or
   superseded piecemeal.
-- **Line 1 of every card file** is the marker, and the marker is a `group` plus an optional `viewport`:
+- **Line 1 of every card file** is the marker: a `group`, a `viewport` and an optional `title`:
   ```html
   <!-- @dsCard group="Components" viewport="960x600" -->
   ```
-  That is the whole format the app emits and parses — **there is no `name` and no `subtitle` attribute**
-  (those belong to the legacy `register_assets` call that `@dsCard` replaced). A card is addressed by its
-  **file path**, so what it is and what it is for get said in the filename (`Button.html`) and in the
-  round's record, not in the marker. Do not invent attributes; the pane ignores them.
+  The attribute set is closed; the full grammar is in *The design record*, below. A card is addressed
+  by its **file path**, so what it is and what it is for get said in the filename (`03-button.html`),
+  the optional `title` and the round's record. Do not invent attributes: `design-check` rejects them.
 - **Name the `group`s** you want as the pane's headings, following **the design system's own taxonomy** —
   `Foundations`, `Components`, `Type`, `Colors`, the app's own surfaces, `Landing`, `States`. Grouping is
   organization, not a design decision: asking for shape is how you keep a round reviewable without
@@ -234,30 +233,167 @@ good the design is. So spell the contract out in the handoff:
 slice authorizes; it is not standing permission.** A local-dir connection needs no push: prefer it
 when publishing the repo is a concern.
 
-## The design record
+## The design record — the on-disk contract (schema 1)
 
-Durable, **outside `works/`** — the apply phase reads it long after the design phase archives:
+The design lives **in the product repo, as plain files**, under **`docs/reference/design/`**. That is
+the one root, fixed — a repo's own `design/` tree is no longer an alternative, because the engine and
+the dashboard must find the design without being told where. It is durable and outside `works/`, so
+the apply phase reads it long after the design phase archives. A separate **read-only** web dashboard
+(its own repo, served from the operator's Mac) reads these files straight from disk and finds repos
+through a registry kept **outside** them. This section is the whole interface between the two sides: a
+reader is built from it alone. The engine's `design-*` commands (the table at the end) are the only
+writers of the machine-readable parts, and `design-check` enforces the rest.
 
 ```
 docs/reference/design/
-├── rounds/<NN>-<slug>/
-│   ├── handoff.md          # OUT — you write it
-│   └── output/             # IN — Claude Design returns it; READ-ONLY
-│       ├── result.md       #   what was designed; every departure logged
-│       └── build-prompt.md #   the implementation contract
-└── SIGNOFF.md
+├── design.json              # the project manifest            design-init
+├── tokens.css               # the design's tokens             the drafter
+├── cards/                   # the cumulative card library: the live design
+│   ├── 01-colors.html       #   NN-slug.html, numbered 01…N, no gap
+│   └── 02-button.html
+└── rounds/
+    └── 01-signin/           # NN-slug/, numbered 01…N, no gap
+        ├── round.json       # the round manifest              design-open / design-close
+        ├── handoff.md       # the brief                       the orchestrator, at open
+        ├── result.md        # what was designed; every departure logged     the drafter
+        ├── build-prompt.md  # the implementation contract     the drafter
+        ├── feedback.md      # the operator's notes, verbatim  optional
+        ├── SIGNOFF.md       # the operator's literal words    signed rounds only
+        ├── import/          # a Claude Design handoff bundle, filed as-is   optional
+        ├── tokens.css       # snapshot at close
+        └── cards/           # snapshot at close: this round's cards as they were
 ```
 
-A repo may keep this under its own `design/` tree instead. Either way: **the returned record is
-read-only.** Never edit it; catalogue nits as apply-time to-dos. (The SIGNOFF regroup is not an
-exception to this — it rewrites a display label on the remote cards, never a byte of the landed record.)
+Text files are UTF-8 without a BOM. The JSON files each hold one object; readers must not depend on
+their formatting. **Readers ignore files and keys this section does not name; writers add none** —
+a new field is a new `schema`.
 
-**The cards stay in the design project — do not copy them down.** The pane is their home and the
-operator keeps working in it; a local copy is a mirror again, and it would go stale the moment the next
-round moves. **That is why `build-prompt.md` must be complete:** the implement slice is dispatched to an
-executor with **no DesignSync** — and so is the mockup, when the operator asked for one — so what you
-land is the whole source of truth either one gets. If you find yourself wanting the cards on disk to
-make a slice buildable, the round's `build-prompt.md` is the thing that is short — say so at read-back.
+**`design.json`** — exactly `{"schema": 1, "id": "acme-web", "name": "Acme Web"}`. `id` is lowercase
+`[a-z0-9-]`, starts alphanumeric, is at most 63 characters, and is unique across the operator's
+registry: it is the dashboard's key for the project. `name` is the display name. **One project per
+repo** in schema 1. The registry is keyed per project, so a later schema can hold several in one repo
+without breaking a reader.
+
+**Cards — `cards/NN-slug.html`.**
+
+- **The path.** `NN` is the number: at least two digits, zero-padded (`01`…`99`, then `100`), from
+  `01`, unique and **contiguous**; `slug` is `[a-z0-9]+(-[a-z0-9]+)*`. Sort numerically, never
+  lexically. A path never changes, number included: a card that supersedes one is written **at the
+  same path**, and the old version lives on in the earlier round's snapshot (and in git). No card is
+  renumbered and no number is reused.
+- **One card per reviewable unit**, never a monolith: HTML anywhere under the root outside `cards/`
+  (a round's `cards/` and `import/` aside) fails the check.
+- **Self-contained.** A card references nothing relative except `../tokens.css`. Images are inline
+  SVG or `data:`, and anything else is an absolute `https:` URL. That is what lets the same bytes
+  render from `cards/` and from a round snapshot. `tokens.css` follows the same rule with no
+  exception.
+- **Line 1 is the marker, and only the marker:**
+  ```html
+  <!-- @dsCard group="Components" viewport="960x600" title="Primary button" -->
+  ```
+  The grammar: `<!-- @dsCard`, then one or more ` key="value"` pairs (one space before each, double
+  quotes), then ` -->`, then the end of the line (`\n` or `\r\n`). The attribute set is **closed**:
+  - `group` (required) — the library heading;
+  - `viewport` (required) — `<W>x<H>` in CSS pixels, positive integers: the frame the reader
+    renders the card in. The dashboard's desktop-only access limits who opens it, not what a card
+    may show, so a `390x844` mobile card is as valid as a `1440x900` one;
+  - `title` (optional) — readers fall back to the slug.
+
+  Each appears at most once, in any order. Values are non-empty, carry no leading or trailing space,
+  and contain none of `"`, `<`, `>` or `--`. An unknown attribute fails the check.
+- **`group` is the design system's own taxonomy** — `Foundations`, `Components`, the app's surfaces —
+  cumulative across rounds: a library, not a work log. **While a round is under review, its cards
+  carry the round's address:** `group="⏳ <slice> · <Group>"` — U+23F3, a space, the owning slice's id
+  (`P48.S1`), a space, U+00B7, a space, the library group. A group that starts with `⏳` belongs to
+  the open round of that slice; any other group is the signed library.
+
+**`tokens.css`** — one stylesheet at the root, linked by the cards as `../tokens.css`, carrying the
+design's real values. It is optional until a round drafts it; a card that links it requires it.
+
+**Rounds — `rounds/NN-slug/`.** A round is one design iteration of a `co-work` slice. `NN` follows the
+card rule, and the next round takes the highest number plus one. **At most one round is open per
+project.** Its `round.json` has exactly these keys:
+
+| key | value |
+|---|---|
+| `schema` | `1` |
+| `round` | the folder name, `NN-slug` |
+| `title` | the display title |
+| `slice` | the `co-work` slice that owns the round (`P48.S1`); the address its cards carry |
+| `status` | `"open"`, `"signed"` or `"superseded"` |
+| `opened_at`, `closed_at` | ISO-8601 with offset; `closed_at` is `null` while open |
+| `cards` | the `cards/NN-slug.html` paths the round touched, in numeric order, filled at close; while open, the live address is the truth |
+| `supersedes` | earlier round ids whose cards this round re-drafted, derived at close; `[]` while open |
+| `signoff_words` | the operator's literal words when `signed`, otherwise `null` |
+
+**The lifecycle: `open` → `signed` or `superseded`.** A closed round is **immutable**: nothing in its
+folder changes again, and its snapshot is what walking past designs reads.
+
+- **open** — `design-open` creates the folder and `round.json`, and the orchestrator writes
+  `handoff.md`. The drafter writes the cards (addressed), `tokens.css`, `result.md` and
+  `build-prompt.md`. While a round is open, **the live cards carrying its address are the round**.
+  `design-check` requires `handoff.md` in every round and `SIGNOFF.md` in every signed one.
+- **signed** — on the operator's literal words: `SIGNOFF.md` first, then `design-close <round>
+  --words "…"`. That runs three steps. First the **snapshot**: the round's cards and `tokens.css`,
+  copied into the round folder as they are, address still on. Then the **regroup**: the `group` on
+  line 1 of each live card loses its address and becomes the library group. The path does not
+  change, and **every byte after line 1 is asserted identical**. Last, the manifest. The command is
+  idempotent: if it half-lands, run it again.
+- **superseded** — a design question replaces the round before it is signed: `design-close <round>
+  --superseded` snapshots it and closes it, with no regroup. Its cards stay under review, still
+  addressed, and the **next round of the same slice** takes them over. `design-open` refuses any other
+  slice while one of those cards is left.
+
+`supersedes` is derived, never declared. For each card a round touched, it names the latest earlier
+closed round that listed the same path. The reverse link, "superseded by", is the reader's to
+compute: a closed `round.json` is never rewritten to add it.
+
+**What a reader shows.** The library is `cards/`, sorted by number and grouped by `group`, with
+under-review groups first. An open round's cards are the live cards carrying its address. A closed
+round's cards are `rounds/<round>/cards/<file>` for each entry of `cards`; the same `../tokens.css`
+link picks up that round's `tokens.css`. A round's prose is whichever of `handoff.md`, `result.md`,
+`build-prompt.md`, `feedback.md` and `SIGNOFF.md` exist. No view needs git or a build step: each is a
+plain file read. Serve the design root as static files and render each card in its own frame at its
+`viewport`, so `../tokens.css` resolves from `cards/` and from a snapshot alike.
+
+**The drafted record is read-only.** Once the round closes, never edit it; catalogue nits as
+apply-time to-dos. The regroup is not an exception: it rewrites one label on line 1 of the *live*
+card, never a byte of the round's record. The implement slice reads this record from disk and
+nothing else, and so does the mockup when the operator asked for one. So **`build-prompt.md` must be
+complete.** A card shows what a state looks like; the contract says how to build it. If a slice
+cannot be built from the record, `build-prompt.md` is what is short — say so at read-back.
+
+**The registry — outside every repo.** The dashboard finds projects through one JSON file on the
+operator's machine: `$AGENTIC_DESIGN_REGISTRY` when that is set, otherwise
+`~/.config/agentic-workspace/design-registry.json`.
+
+```json
+{"schema": 1, "projects": [
+  {"id": "acme-web", "name": "Acme Web", "repo": "/Users/op/code/acme",
+   "root": "/Users/op/code/acme/docs/reference/design", "registered_at": "2026-09-29T21:30:00+09:00"}]}
+```
+
+`projects` is sorted by `id`, and `repo` and `root` are absolute paths. A reader lists each entry's
+`root`, and shows an entry whose `root` is gone as unavailable instead of failing. `design-register`
+is the only writer:
+
+- it is idempotent: an unchanged entry is not rewritten;
+- it writes atomically (temp file, then rename);
+- it refuses an `id` that another live repo holds;
+- it replaces an entry whose `root` has vanished (a moved repo);
+- it prints what it wrote.
+
+Every test points `$AGENTIC_DESIGN_REGISTRY` at a scratch path and never touches the operator's.
+
+**The commands** (`python3 scripts/workflow.py <command> --help` has the detail):
+
+| command | what it does |
+|---|---|
+| `design-init [--id I] [--name N]` | writes `design.json` (defaults from the repo folder's name); idempotent |
+| `design-open --slug S --slice P<N>.S<n> [--title T]` | opens the next round; refuses while one is open |
+| `design-check [cards/NN-slug.html …]` | checks the whole contract and names every problem (exit 1). Given the handoff's numbered list, it also checks each path is present and addressed, and that added cards are numbered after the list |
+| `design-close <round> --words "…"` / `--superseded` | snapshot, regroup (signed only), manifest; idempotent |
+| `design-register` | writes this repo's project into the registry |
 
 ## Read back, then land it
 

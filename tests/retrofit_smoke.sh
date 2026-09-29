@@ -22,7 +22,10 @@
 # worktree-on-request invariants (nothing enters a worktree unhinted or unasked; parallel-start
 # on a dirty tree commits only the phase folder plus the regenerated works/ files and cuts a
 # nested .claude/worktrees/ checkout hidden by the repo's info/exclude; parallel-skip and
-# new-phase --on-main are no-ops that stamp nothing), and the
+# new-phase --on-main are no-ops that stamp nothing), the v47 design-contract invariants
+# (design-check names a gap and an unnumbered card; design-close's regroup rewrites line 1 only,
+# keeps a pre-close snapshot and is idempotent; design-register writes only the env-overridden
+# registry, never the operator's ~/.config), and the
 # v31 Codex-removal negatives. Re-runnable; self-cleaning.
 #
 # Usage:  bash tests/retrofit_smoke.sh
@@ -218,8 +221,20 @@ for required in (
     # paths and the instrument/runtime axis (the contract's "different axes" sentence).
     "two-digit reading-order prefix",
     "a manifest naming no instrument still stops nothing",
+    # v47 (P26.S1): the design record is an on-disk contract a separate dashboard reads; its
+    # section names the root, the closed marker set, the lifecycle, the registry and the commands.
+    "## The design record — the on-disk contract (schema 1)",
+    "**every byte after line 1 is asserted identical**", "**At most one round is open per project.**",
+    "`design-init", "`design-open", "`design-check", "`design-close <round> --words", "`design-register`",
 ):
     assert required in design, required
+# v47: the contract section and the engine move together -- the root, the registry variable and
+# the registry's default path the skill states are the engine's own constants.
+import re
+workflow_src = (root / "scripts/workflow.py").read_text()
+for const in ("DESIGN_ROOT_REL", "DESIGN_REGISTRY_ENV", "DESIGN_REGISTRY_DEFAULT"):
+    value = re.search(r'^' + const + r' = "([^"]+)"$', workflow_src, re.M).group(1)
+    assert value in design, (const, value)
 # v37 negatives: the MCP-first prescription is retired -- no config block to copy,
 # no surface preference, and no "Playwright-style automation" framing anywhere.
 for gone in ('{"mcpServers"', "Prefer the **MCP** surface", "MCP first",
@@ -1177,6 +1192,75 @@ if ( cd "$W" && python3 scripts/workflow.py parallel-start P2 2>&1 | grep -q "le
     && python3 scripts/workflow.py parallel-teardown P1 >/dev/null 2>&1 && [ ! -d "$wt" ] ) \
   && ok "a local --no-ff merge lands (generated-file conflicts taken either side, then regenerated) and parallel-teardown removes the clean nested worktree" \
   || bad "merge, merge-finish or teardown failed"
+
+# ---------------------------------------------------------------------------
+echo "== Test 13: v47 design contract -- design-check names a gap and an unnumbered card, design-close regroups line 1 only (idempotent), design-register writes only the env-overridden registry =="
+# Runs in the fresh workspace $F. Every design command gets a scratch HOME as well as a scratch
+# $AGENTIC_DESIGN_REGISTRY, so even a broken override could never reach the operator's ~/.config.
+newtmp DZ
+DR="$F/docs/reference/design"
+REAL_REG="$HOME/.config/agentic-workspace/design-registry.json"
+real_reg_sig() { if [ -e "$REAL_REG" ]; then sig "$REAL_REG"; else echo absent; fi; }
+real_before=$(real_reg_sig)
+dw() { ( cd "$F" && HOME="$DZ/home" AGENTIC_DESIGN_REGISTRY="$DZ/reg/design-registry.json" python3 scripts/workflow.py "$@" ); }
+tree_sig() { ( cd "$DR" && find . -type f | LC_ALL=C sort | while read -r f; do printf '%s %s\n' "$f" "$(sha "$f")"; done ); }
+{ dw design-init --id smoke-design --name "Smoke design" && dw design-open --slug signin --slice P9.S1; } >/dev/null 2>&1 \
+  || bad "design probe: design-init / design-open failed"
+python3 - "$DR" <<'CARDS' || bad "design probe: could not write the round"
+import pathlib, sys
+d = pathlib.Path(sys.argv[1])
+(d / "cards").mkdir(exist_ok=True)
+(d / "tokens.css").write_text(":root { --ink: #111; }\n")
+(d / "rounds/01-signin/handoff.md").write_text("# handoff\n")
+for name in ("01-colors", "02-type", "03-button"):
+    (d / "cards" / f"{name}.html").write_text(
+        '<!-- @dsCard group="⏳ P9.S1 · Components" viewport="480x200" -->\n'
+        f'<link rel="stylesheet" href="../tokens.css">\n<p>{name}</p>\n', encoding="utf-8")
+CARDS
+mv "$DR/cards/02-type.html" "$DR/cards/type.html"
+out=$(dw design-check 2>&1); rc=$?
+mv "$DR/cards/type.html" "$DR/cards/02-type.html"
+ok_out=$(dw design-check cards/01-colors.html cards/02-type.html cards/03-button.html 2>&1); ok_rc=$?
+if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -q 'gap in the card numbering: no card numbered 02' \
+    && printf '%s\n' "$out" | grep -q 'cards/type.html: unnumbered card path' && [ "$ok_rc" -eq 0 ]; then
+  ok "design-check names a gap and an unnumbered card (exit 1) and passes the numbered set"
+else bad "design-check missed the gap or the unnumbered card (rc=$rc, restored rc=$ok_rc) -- $out $ok_out"; fi
+mkdir -p "$DZ/pre" && cp "$DR"/cards/*.html "$DZ/pre/" && printf 'Signed: "ship it"\n' > "$DR/rounds/01-signin/SIGNOFF.md"
+dw design-close 01-signin --words "ship it" >/dev/null 2>&1 || bad "design probe: design-close failed"
+if python3 - "$DR" "$DZ/pre" <<'REGROUP'
+import json, pathlib, sys
+d, pre = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+for old in sorted(pre.iterdir()):
+    new = (d / "cards" / old.name).read_bytes()
+    before = old.read_bytes()
+    assert new.split(b"\n", 1)[1] == before.split(b"\n", 1)[1], old.name  # every byte after line 1
+    assert new.split(b"\n", 1)[0] == b'<!-- @dsCard group="Components" viewport="480x200" -->', old.name
+    assert (d / "rounds/01-signin/cards" / old.name).read_bytes() == before, old.name  # the snapshot
+rnd = json.loads((d / "rounds/01-signin/round.json").read_text())
+assert rnd["status"] == "signed" and rnd["signoff_words"] == "ship it" and len(rnd["cards"]) == 3, rnd
+REGROUP
+then ok "design-close regroups line 1 only: the address comes off, every later byte is identical, the snapshot keeps the pre-close bytes"
+else bad "design-close changed more than the group on line 1, or lost the snapshot"; fi
+before=$(tree_sig); again=$(dw design-close 01-signin --words "ship it" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && printf '%s\n' "$again" | grep -q 'already signed' && [ "$(tree_sig)" = "$before" ] \
+  && ok "design-close is idempotent: a second run writes nothing" || bad "a second design-close was not a no-op (rc=$rc) -- $again"
+dw design-register >/dev/null 2>&1 || bad "design probe: design-register failed"
+REG="$DZ/reg/design-registry.json"
+reg_before=$( [ -f "$REG" ] && sha "$REG" ); again=$(dw design-register 2>&1)
+if python3 - "$REG" "$F" <<'REG_OK' && [ -n "$reg_before" ] && [ "$(sha "$REG")" = "$reg_before" ] \
+    && printf '%s\n' "$again" | grep -q 'nothing written'; then
+import json, os, sys
+reg = json.load(open(sys.argv[1]))
+assert reg["schema"] == 1 and [p["id"] for p in reg["projects"]] == ["smoke-design"], reg
+entry = reg["projects"][0]
+assert os.path.isabs(entry["repo"]) and os.path.isabs(entry["root"]), entry
+assert os.path.samefile(entry["root"], os.path.join(sys.argv[2], "docs/reference/design")), entry
+REG_OK
+  ok "design-register writes absolute paths to the env-overridden registry, and a second run writes nothing"
+else bad "design-register wrote the wrong entry or was not idempotent -- $again"; fi
+[ ! -e "$DZ/home/.config" ] && [ "$(real_reg_sig)" = "$real_before" ] \
+  && ok "design-register touched neither the scratch HOME's ~/.config nor the operator's real registry" \
+  || bad "design-register wrote outside \$AGENTIC_DESIGN_REGISTRY"
 
 # ---------------------------------------------------------------------------
 echo

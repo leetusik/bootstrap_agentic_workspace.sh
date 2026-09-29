@@ -2995,6 +2995,584 @@ def rotate_backlog(args: argparse.Namespace) -> None:
         print(f"left {len(blocked)} phase(s) active: {', '.join(p for p, _ in blocked)}")
 
 
+# ---------------------------------------------------------------------------
+# The design contract (workspace v47). A product repo keeps its visual design as plain files under
+# DESIGN_ROOT_REL -- a project manifest, a numbered card library, tokens, and one folder per design
+# round -- and a separate, READ-ONLY web dashboard (its own repo, served from the operator's Mac)
+# reads them straight from disk, finding repos through a registry that lives OUTSIDE every repo.
+# The contract itself (paths, manifest fields, the @dsCard grammar, the round lifecycle, the
+# registry) is written out in design-cowork/SKILL.md "The design record"; that section and these
+# commands must move together. The commands are the only writers of the machine-readable parts
+# (design.json, round.json, the close-time snapshots, the registry), and `design-check` enforces
+# the rest. Two invariants carry the weight: the regroup rewrites ONE label on line 1 of a card
+# and asserts every byte after line 1 identical, and `design-register` writes only the registry
+# path (env-overridable, so tests never touch the operator's real one), atomically. Stdlib only.
+DESIGN_ROOT_REL = "docs/reference/design"
+DESIGN_SCHEMA = 1
+DESIGN_REGISTRY_ENV = "AGENTIC_DESIGN_REGISTRY"
+DESIGN_REGISTRY_DEFAULT = "~/.config/agentic-workspace/design-registry.json"
+DESIGN_ROUND_STATUSES = ("open", "signed", "superseded")
+DESIGN_MANIFEST_KEYS = ("schema", "id", "name")
+DESIGN_ROUND_KEYS = ("schema", "round", "title", "slice", "status", "opened_at", "closed_at",
+                     "cards", "supersedes", "signoff_words")
+DESIGN_MARKER_KEYS = ("group", "viewport", "title")
+DESIGN_SLUG = r"[a-z0-9]+(?:-[a-z0-9]+)*"
+DESIGN_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+DESIGN_SLUG_RE = re.compile(rf"^{DESIGN_SLUG}$")
+DESIGN_CARD_RE = re.compile(rf"^(\d{{2,}})-({DESIGN_SLUG})\.html$")
+DESIGN_ROUND_RE = re.compile(rf"^(\d{{2,}})-({DESIGN_SLUG})$")
+DESIGN_CARD_REL_RE = re.compile(rf"^cards/(\d{{2,}})-{DESIGN_SLUG}\.html$")
+DESIGN_SLICE_RE = re.compile(r"^P\d+\.[A-Z][A-Z0-9]*$")
+DESIGN_MARKER_RE = re.compile(r'^<!-- @dsCard((?: [a-z]+="[^"]*")+) -->$')
+DESIGN_ATTR_RE = re.compile(r' ([a-z]+)="([^"]*)"')
+DESIGN_VIEWPORT_RE = re.compile(r"^[1-9]\d*x[1-9]\d*$")
+DESIGN_REVIEW_MARK = "⏳"  # the hourglass that opens a review-time group
+DESIGN_ADDRESS_RE = re.compile("^⏳ (\\S+) · (.+)$")
+DESIGN_REF_RE = re.compile(r"""\b(?:src|href)\s*=\s*["']([^"']*)["']|url\(\s*["']?([^"')]+?)["']?\s*\)""", re.I)
+DESIGN_ABSOLUTE_REFS = ("#", "data:", "http://", "https://", "//", "mailto:", "tel:", "javascript:", "about:")
+
+
+def design_root() -> Path:
+    return ROOT / DESIGN_ROOT_REL
+
+
+def design_number(text: str):
+    """The integer behind a canonical NN prefix (01, 42, 100), or None for 0, 1-digit or extra zeros."""
+    number = int(text)
+    return number if number >= 1 and f"{number:02d}" == text else None
+
+
+def design_line1(data: bytes):
+    head = data.split(b"\n", 1)[0]
+    if head.endswith(b"\r"):
+        head = head[:-1]
+    try:
+        return head.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def design_parse_marker(line) -> tuple:
+    """(attrs, None) for a valid line-1 @dsCard marker, else (None, why)."""
+    match = DESIGN_MARKER_RE.match(line or "")
+    if not match:
+        return None, 'line 1 is not an @dsCard marker (<!-- @dsCard group="…" viewport="WxH" -->)'
+    attrs: dict = {}
+    for key, value in DESIGN_ATTR_RE.findall(match.group(1)):
+        if key in attrs:
+            return None, f"duplicate attribute {key!r}"
+        attrs[key] = value
+    unknown = sorted(set(attrs) - set(DESIGN_MARKER_KEYS))
+    if unknown:
+        return None, f"unknown attribute(s) {', '.join(unknown)} (the set is closed: group, viewport, title)"
+    for key in ("group", "viewport"):
+        if key not in attrs:
+            return None, f"missing {key}"
+    for key, value in attrs.items():
+        if not value or value != value.strip():
+            return None, f"{key} is empty or padded with spaces"
+        if any(bad in value for bad in ("<", ">", "--")):
+            return None, f"{key} contains <, > or --"
+    if not DESIGN_VIEWPORT_RE.match(attrs["viewport"]):
+        return None, f"viewport {attrs['viewport']!r} is not WxH in positive integers"
+    return attrs, None
+
+
+def design_address(group: str):
+    """Split a card's group: (slice, library group) under review, (None, group) in the library,
+    None when it opens with the review mark but is not a well-formed address."""
+    if not group.startswith(DESIGN_REVIEW_MARK):
+        return None, group
+    match = DESIGN_ADDRESS_RE.match(group)
+    if not match or not DESIGN_SLICE_RE.match(match.group(1)) or match.group(2) != match.group(2).strip():
+        return None
+    return match.group(1), match.group(2)
+
+
+def design_reference_problems(data: bytes, root: Path, allow_tokens: bool) -> list:
+    """A card is self-contained except for ../tokens.css; tokens.css is self-contained outright."""
+    problems = set()
+    for first, second in DESIGN_REF_RE.findall(data.decode("utf-8", errors="replace")):
+        ref = (first or second).strip()
+        if not ref or ref.lower().startswith(DESIGN_ABSOLUTE_REFS):
+            continue
+        if allow_tokens and ref == "../tokens.css":
+            if not (root / "tokens.css").exists():
+                problems.add("links ../tokens.css but the design root has no tokens.css")
+            continue
+        allowed = "../tokens.css, `data:` or an absolute https URL" if allow_tokens else "`data:` or an absolute https URL"
+        problems.add(f"references {ref!r}: only {allowed} may be referenced (the same bytes must render from a round snapshot)")
+    return sorted(problems)
+
+
+def design_manifest_problems(data) -> list:
+    if not isinstance(data, dict):
+        return ["design.json is not a JSON object"]
+    problems = []
+    missing = [k for k in DESIGN_MANIFEST_KEYS if k not in data]
+    extra = sorted(set(data) - set(DESIGN_MANIFEST_KEYS))
+    if missing:
+        problems.append(f"design.json: missing field(s) {', '.join(missing)}")
+    if extra:
+        problems.append(f"design.json: unknown field(s) {', '.join(extra)} (schema {DESIGN_SCHEMA} is closed)")
+    if "schema" in data and (data["schema"] is True or data["schema"] != DESIGN_SCHEMA):
+        problems.append(f"design.json: schema {data['schema']!r} is not {DESIGN_SCHEMA}")
+    if "id" in data and not (isinstance(data["id"], str) and DESIGN_ID_RE.match(data["id"])):
+        problems.append(f"design.json: id {data['id']!r} is not lowercase [a-z0-9-], starting alphanumeric, at most 63 characters")
+    if "name" in data and not (isinstance(data["name"], str) and data["name"].strip()):
+        problems.append("design.json: name must be a non-empty string")
+    return problems
+
+
+def design_round_problems(rid: str, data, rdir: Path) -> list:
+    """Problems with one round folder, its round.json read as `data`."""
+    if not isinstance(data, dict):
+        return ["round.json is not a JSON object"]
+    missing = [k for k in DESIGN_ROUND_KEYS if k not in data]
+    extra = sorted(set(data) - set(DESIGN_ROUND_KEYS))
+    problems = []
+    if missing:
+        problems.append(f"round.json: missing field(s) {', '.join(missing)}")
+    if extra:
+        problems.append(f"round.json: unknown field(s) {', '.join(extra)} (schema {DESIGN_SCHEMA} is closed)")
+    if missing:
+        return problems
+    status = data["status"]
+    if data["schema"] is True or data["schema"] != DESIGN_SCHEMA:
+        problems.append(f"round.json: schema {data['schema']!r} is not {DESIGN_SCHEMA}")
+    if data["round"] != rid:
+        problems.append(f"round.json: round {data['round']!r} does not match its folder name")
+    if not (isinstance(data["title"], str) and data["title"].strip()):
+        problems.append("round.json: title must be a non-empty string")
+    if not (isinstance(data["slice"], str) and DESIGN_SLICE_RE.match(data["slice"])):
+        problems.append(f"round.json: slice {data['slice']!r} is not a slice id (P<N>.<ID>)")
+    if status not in DESIGN_ROUND_STATUSES:
+        problems.append(f"round.json: status {status!r} is not one of {', '.join(DESIGN_ROUND_STATUSES)}")
+    if not (isinstance(data["opened_at"], str) and data["opened_at"]):
+        problems.append("round.json: opened_at must be an ISO-8601 string")
+    closed = status in ("signed", "superseded")
+    if closed and not (isinstance(data["closed_at"], str) and data["closed_at"]):
+        problems.append(f"round.json: a {status} round needs closed_at")
+    if status == "open" and data["closed_at"] is not None:
+        problems.append("round.json: an open round has closed_at null")
+    words = data["signoff_words"]
+    if status == "signed" and not (isinstance(words, str) and words.strip()):
+        problems.append("round.json: a signed round records the operator's literal signoff_words")
+    if status != "signed" and words is not None:
+        problems.append("round.json: signoff_words is null unless the round is signed")
+    cards = data["cards"]
+    if not (isinstance(cards, list) and all(isinstance(c, str) and DESIGN_CARD_REL_RE.match(c) for c in cards)):
+        problems.append("round.json: cards must be a list of cards/NN-slug.html paths")
+        cards = []
+    elif len(set(cards)) != len(cards):
+        problems.append("round.json: cards lists a path twice")
+    sup = data["supersedes"]
+    if not (isinstance(sup, list) and all(isinstance(s, str) and DESIGN_ROUND_RE.match(s) for s in sup)):
+        problems.append("round.json: supersedes must be a list of round ids (NN-slug)")
+    if status == "signed" and not cards:
+        problems.append("round.json: a signed round lists the cards it touched")
+    if not (rdir / "handoff.md").exists():
+        problems.append("handoff.md missing (every round has its brief)")
+    if status == "signed" and not (rdir / "SIGNOFF.md").exists():
+        problems.append("SIGNOFF.md missing (a signed round records the operator's literal words)")
+    if closed:
+        for rel in cards:
+            snap = rdir / rel
+            if not snap.is_file():
+                problems.append(f"snapshot {rel} missing (a closed round keeps its cards as they were at close)")
+                continue
+            attrs, _ = design_parse_marker(design_line1(snap.read_bytes()))
+            split = design_address(attrs["group"]) if attrs else None
+            if not split or split[0] != data["slice"]:
+                problems.append(f"snapshot {rel}: line 1 does not carry the round address \"{DESIGN_REVIEW_MARK} {data['slice']} · …\"")
+    return problems
+
+
+def design_scan(root: Path) -> dict:
+    """Read the whole design root once: the manifest, the cards, the rounds, and every problem."""
+    problems: list = []
+    scan = {"manifest": None, "cards": [], "rounds": [], "problems": problems}
+    if not root.is_dir():
+        problems.append(f"no design root at {DESIGN_ROOT_REL}/ (run: python3 scripts/workflow.py design-init)")
+        return scan
+    mpath = root / "design.json"
+    if not mpath.exists():
+        problems.append("design.json missing (run: python3 scripts/workflow.py design-init)")
+    else:
+        try:
+            manifest = read_json(mpath)
+        except (ValueError, OSError) as exc:
+            problems.append(f"design.json is not valid JSON: {exc}")
+        else:
+            found = design_manifest_problems(manifest)
+            problems.extend(found)
+            if not found:
+                scan["manifest"] = manifest
+    numbers: dict = {}
+    cards_dir = root / "cards"
+    for entry in sorted(cards_dir.iterdir()) if cards_dir.is_dir() else []:
+        if entry.name.startswith("."):
+            continue
+        rel = f"cards/{entry.name}"
+        match = DESIGN_CARD_RE.match(entry.name)
+        if entry.is_dir() or not match:
+            kind = "unnumbered card path" if entry.suffix.lower() in (".html", ".htm") else "not a card file"
+            problems.append(f"{rel}: {kind} (cards/ holds NN-slug.html files only)")
+            continue
+        number = design_number(match.group(1))
+        if number is None:
+            problems.append(f"{rel}: non-canonical number {match.group(1)!r} (01, 02, … 99, 100: zero-padded to two digits, from 01)")
+            continue
+        if number in numbers:
+            problems.append(f"{rel}: duplicate card number {number:02d} (also {numbers[number]})")
+            continue
+        numbers[number] = rel
+        data = entry.read_bytes()
+        card = {"number": number, "rel": rel, "path": entry, "attrs": None, "address": None}
+        attrs, why = design_parse_marker(design_line1(data))
+        if why:
+            problems.append(f"{rel}: invalid @dsCard marker: {why}")
+        else:
+            split = design_address(attrs["group"])
+            if split is None:
+                problems.append(f"{rel}: malformed round address in group {attrs['group']!r} (expected \"{DESIGN_REVIEW_MARK} <slice> · <Group>\")")
+            else:
+                card["attrs"], card["address"] = attrs, split[0]
+        problems.extend(f"{rel}: {p}" for p in design_reference_problems(data, root, allow_tokens=True))
+        scan["cards"].append(card)
+    problems.extend(f"gap in the card numbering: no card numbered {n:02d}"
+                    for n in range(1, max(numbers, default=0) + 1) if n not in numbers)
+    if (root / "tokens.css").is_file():
+        problems.extend(f"tokens.css: {p}" for p in design_reference_problems((root / "tokens.css").read_bytes(), root, allow_tokens=False))
+    for page in sorted(root.rglob("*.htm*")):
+        parts = page.relative_to(root).parts
+        if any(part.startswith(".") for part in parts) or page.suffix.lower() not in (".html", ".htm"):
+            continue
+        if (parts[0] == "cards" and len(parts) == 2) or (parts[0] == "rounds" and len(parts) >= 4 and parts[2] in ("cards", "import")):
+            continue
+        problems.append(f"{'/'.join(parts)}: HTML outside cards/ -- a monolith or a stray page (one numbered card per reviewable unit)")
+    rnumbers: dict = {}
+    rounds_dir = root / "rounds"
+    for entry in sorted(rounds_dir.iterdir()) if rounds_dir.is_dir() else []:
+        if entry.name.startswith("."):
+            continue
+        rel = f"rounds/{entry.name}"
+        match = DESIGN_ROUND_RE.match(entry.name)
+        number = design_number(match.group(1)) if match else None
+        if not entry.is_dir() or number is None:
+            problems.append(f"{rel}: not a round folder (rounds/ holds NN-slug/ folders only)")
+            continue
+        if number in rnumbers:
+            problems.append(f"{rel}: duplicate round number {number:02d} (also {rnumbers[number]})")
+            continue
+        rnumbers[number] = rel
+        rnd = {"number": number, "id": entry.name, "path": entry, "data": None}
+        jpath = entry / "round.json"
+        if not jpath.is_file():
+            problems.append(f"{rel}: round.json missing")
+        else:
+            try:
+                data = read_json(jpath)
+            except (ValueError, OSError) as exc:
+                problems.append(f"{rel}: round.json is not valid JSON: {exc}")
+            else:
+                found = design_round_problems(entry.name, data, entry)
+                problems.extend(f"{rel}: {p}" for p in found)
+                if not any(p.startswith("round.json:") for p in found):
+                    rnd["data"] = data
+        scan["rounds"].append(rnd)
+    problems.extend(f"gap in the round numbering: no round numbered {n:02d}"
+                    for n in range(1, max(rnumbers, default=0) + 1) if n not in rnumbers)
+    known = {r["id"]: r["number"] for r in scan["rounds"]}
+    for rnd in scan["rounds"]:
+        for sid in (rnd["data"] or {}).get("supersedes", []):
+            if known.get(sid, rnd["number"]) >= rnd["number"]:
+                problems.append(f"rounds/{rnd['id']}: supersedes {sid!r}, which is not an earlier round")
+    opened = design_open_rounds(scan)
+    if len(opened) > 1:
+        problems.append(f"more than one open round: {', '.join(r['id'] for r in opened)} (at most one round is open per project)")
+    open_slices = {r["data"]["slice"] for r in opened}
+    for card in scan["cards"]:
+        if card["address"] and card["address"] not in open_slices:
+            problems.append(f"{card['rel']}: carries the review address of {card['address']}, which has no open round (sign it with design-close, or open that slice's next round)")
+    return scan
+
+
+def design_open_rounds(scan: dict) -> list:
+    return [r for r in scan["rounds"] if r["data"] and r["data"]["status"] == "open"]
+
+
+def design_expected_problems(scan: dict, paths: list) -> list:
+    """The read-back half: the handoff's numbered card list against the open round."""
+    opened = design_open_rounds(scan)
+    if len(opened) != 1:
+        return ["card paths were named, but there is no single open round to check them against"]
+    address = opened[0]["data"]["slice"]
+    by_rel = {c["rel"]: c for c in scan["cards"]}
+    prefix = DESIGN_ROOT_REL + "/"
+    named, problems = set(), []
+    for raw in paths:
+        rel = raw[2:] if raw.startswith("./") else raw
+        rel = rel[len(prefix):] if rel.startswith(prefix) else rel
+        if not DESIGN_CARD_REL_RE.match(rel):
+            problems.append(f"{raw}: not a numbered card path (cards/NN-slug.html)")
+            continue
+        named.add(rel)
+        card = by_rel.get(rel)
+        if card is None:
+            problems.append(f"{rel}: named by the handoff but missing")
+        elif card["address"] != address:
+            problems.append(f"{rel}: named by the handoff but its group does not carry the round address \"{DESIGN_REVIEW_MARK} {address} · …\"")
+    top = max((by_rel[r]["number"] for r in named if r in by_rel), default=0)
+    for card in scan["cards"]:
+        if card["address"] == address and card["rel"] not in named and card["number"] < top:
+            problems.append(f"{card['rel']}: added beyond the handoff's list but numbered before its last card ({top:02d}); added cards take the next numbers")
+    return problems
+
+
+def design_check(args: argparse.Namespace) -> int:
+    scan = design_scan(design_root())
+    problems = list(scan["problems"])
+    if args.paths:
+        problems.extend(design_expected_problems(scan, args.paths))
+    if problems:
+        print(f"design-check: {len(problems)} problem(s) in {DESIGN_ROOT_REL}/")
+        for problem in problems:
+            print(f"- {problem}")
+        return 1
+    opened = design_open_rounds(scan)
+    print(f"design-check: OK -- {len(scan['cards'])} card(s), {len(scan['rounds'])} round(s), "
+          f"open round: {opened[0]['id'] if opened else 'none'}")
+    return 0
+
+
+def design_write_bytes(path: Path, data: bytes) -> None:
+    """Atomic like write_text, and keeps the file's permission bits (mkstemp would leave 0600)."""
+    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp_", suffix=path.name)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        if mode is not None:
+            os.chmod(tmp, mode)
+        os.replace(tmp, str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def design_readdress(data: bytes, old_group: str, new_group: str) -> bytes:
+    """Rewrite the group value on line 1 and nothing else -- asserted, not assumed."""
+    head, sep, rest = data.partition(b"\n")
+    old_attr = f'group="{old_group}"'.encode("utf-8")
+    if head.count(old_attr) != 1:
+        raise SystemExit(f"design: line 1 does not carry {old_attr.decode('utf-8')} exactly once; nothing written")
+    new = head.replace(old_attr, f'group="{new_group}"'.encode("utf-8")) + sep + rest
+    new_head = new.partition(b"\n")[0]
+    if new[len(new_head):] != data[len(head):] or new_head.replace(f'group="{new_group}"'.encode("utf-8"), old_attr) != head:
+        raise SystemExit("design: the regroup would change more than the group label on line 1; nothing written")
+    return new
+
+
+def design_require(scan: dict, what: str) -> None:
+    if scan["problems"]:
+        lines = "\n".join(f"- {p}" for p in scan["problems"])
+        raise SystemExit(f"{what}: refused -- design-check finds {len(scan['problems'])} problem(s):\n{lines}")
+
+
+def design_init(args: argparse.Namespace) -> None:
+    root = design_root()
+    mpath = root / "design.json"
+    rel = f"{DESIGN_ROOT_REL}/design.json"
+    if mpath.exists():
+        try:
+            current = read_json(mpath)
+        except (ValueError, OSError) as exc:
+            raise SystemExit(f"design-init: {rel} is not valid JSON ({exc}); fix it by hand")
+        wanted = dict(current)
+    else:
+        current = None
+        default_id = re.sub(r"[^a-z0-9]+", "-", ROOT.name.lower()).strip("-")[:63].strip("-") or "design"
+        wanted = {"schema": DESIGN_SCHEMA, "id": default_id, "name": ROOT.name}
+    if args.id:
+        wanted["id"] = args.id
+    if args.name:
+        wanted["name"] = args.name
+    problems = design_manifest_problems(wanted)
+    if problems:
+        raise SystemExit("design-init: refused -- " + "; ".join(problems))
+    if wanted == current:
+        print(f"design-init: {rel} unchanged (id={wanted['id']})")
+        return
+    write_json(mpath, wanted)
+    print(f"design-init: {'updated' if current is not None else 'wrote'} {rel}")
+    print(json.dumps(wanted, ensure_ascii=False, indent=2))
+
+
+def design_open(args: argparse.Namespace) -> None:
+    root = design_root()
+    scan = design_scan(root)
+    if scan["manifest"] is None:
+        raise SystemExit(f"design-open: refused -- no valid {DESIGN_ROOT_REL}/design.json (run: python3 scripts/workflow.py design-init)")
+    if not DESIGN_SLUG_RE.match(args.slug):
+        raise SystemExit(f"design-open: --slug {args.slug!r} is not lowercase words joined by hyphens")
+    if not DESIGN_SLICE_RE.match(args.slice):
+        raise SystemExit(f"design-open: --slice {args.slice!r} is not a slice id (P<N>.<ID>)")
+    broken = [r["id"] for r in scan["rounds"] if r["data"] is None]
+    if broken:
+        raise SystemExit(f"design-open: refused -- round(s) {', '.join(broken)} have no well-formed round.json (run design-check)")
+    opened = design_open_rounds(scan)
+    for rnd in opened:
+        if rnd["id"].split("-", 1)[1] == args.slug and rnd["data"]["slice"] == args.slice:
+            print(f"design-open: {rnd['id']} is already open for {args.slice} (nothing written)")
+            return
+    if opened:
+        raise SystemExit(f"design-open: refused -- {opened[0]['id']} is open; close it first "
+                         f"(design-close {opened[0]['id']} --words \"…\" when signed, --superseded when a design question replaces it)")
+    stale = sorted({c["address"] for c in scan["cards"] if c["address"] and c["address"] != args.slice})
+    if stale:
+        raise SystemExit(f"design-open: refused -- cards still carry the review address of {', '.join(stale)}; "
+                         f"a superseded round's cards are taken over by the next round of the same slice")
+    number = max((r["number"] for r in scan["rounds"]), default=0) + 1
+    rid = f"{number:02d}-{args.slug}"
+    data = {
+        "schema": DESIGN_SCHEMA, "round": rid, "title": args.title or args.slug.replace("-", " "),
+        "slice": args.slice, "status": "open", "opened_at": now_iso(), "closed_at": None,
+        "cards": [], "supersedes": [], "signoff_words": None,
+    }
+    write_json(root / "rounds" / rid / "round.json", data)
+    print(f"design-open: opened {DESIGN_ROOT_REL}/rounds/{rid}/ for {args.slice}")
+    print(f"next: write rounds/{rid}/handoff.md; this round's cards carry "
+          f"group=\"{DESIGN_REVIEW_MARK} {args.slice} · <Group>\" on line 1 until design-close")
+
+
+def design_close(args: argparse.Namespace) -> None:
+    root = design_root()
+    status = "signed" if args.words is not None else "superseded"
+    if args.words is not None and not args.words.strip():
+        raise SystemExit("design-close: --words must carry the operator's literal words")
+    scan = design_scan(root)
+    rnd = next((r for r in scan["rounds"] if r["id"] == args.round), None)
+    if rnd is None:
+        raise SystemExit(f"design-close: no round {args.round!r} under {DESIGN_ROOT_REL}/rounds/")
+    data = rnd["data"]
+    if data is not None and data["status"] == status:
+        print(f"design-close: {args.round} is already {status} (nothing written)")
+        return
+    if data is not None and data["status"] != "open":
+        raise SystemExit(f"design-close: {args.round} is already {data['status']}; a closed round is immutable")
+    design_require(scan, "design-close")
+    rdir, address = rnd["path"], data["slice"]
+    if status == "signed" and not (rdir / "SIGNOFF.md").is_file():
+        raise SystemExit(f"design-close: write rounds/{args.round}/SIGNOFF.md (the operator's literal words) first")
+    touched = {c["rel"] for c in scan["cards"] if c["address"] == address} | set(data["cards"])
+    order = {c["rel"]: c["number"] for c in scan["cards"]}
+    missing = sorted(rel for rel in touched if rel not in order)
+    if missing:
+        raise SystemExit(f"design-close: refused -- listed card(s) no longer in the library: {', '.join(missing)}")
+    touched = sorted(touched, key=order.__getitem__)
+    if status == "signed" and not touched:
+        raise SystemExit(f"design-close: no card carries the address \"{DESIGN_REVIEW_MARK} {address} · …\"; nothing to sign")
+    jpath = rdir / "round.json"
+    if data["cards"] != touched:  # persist the list before any card moves, so a half-landed close resumes
+        data = dict(data, cards=touched)
+        write_json(jpath, data)
+    # 1. The snapshot: every touched card as it is under review, address on, plus the tokens.
+    by_rel = {c["rel"]: c for c in scan["cards"]}
+    for rel in touched:
+        card, snap = by_rel[rel], rdir / rel
+        live = card["path"].read_bytes()
+        if card["address"] == address:
+            if not snap.is_file() or snap.read_bytes() != live:
+                design_write_bytes(snap, live)
+        elif not snap.is_file():  # already regrouped by a half-landed run: put the address back exactly
+            group = card["attrs"]["group"]
+            design_write_bytes(snap, design_readdress(live, group, f"{DESIGN_REVIEW_MARK} {address} · {group}"))
+    if (root / "tokens.css").is_file():
+        tokens = (root / "tokens.css").read_bytes()
+        if not (rdir / "tokens.css").is_file() or (rdir / "tokens.css").read_bytes() != tokens:
+            design_write_bytes(rdir / "tokens.css", tokens)
+    # 2. The regroup (signed only): the review address comes off line 1, every later byte identical.
+    regrouped = 0
+    if status == "signed":
+        for rel in touched:
+            card = by_rel[rel]
+            if card["address"] != address:
+                continue
+            group = card["attrs"]["group"]
+            live = card["path"].read_bytes()
+            design_write_bytes(card["path"], design_readdress(live, group, design_address(group)[1]))
+            regrouped += 1
+    # 3. The manifest: supersedes is derived -- the latest earlier closed round that listed each card.
+    earlier = sorted((r for r in scan["rounds"] if r["number"] < rnd["number"] and r["data"]
+                      and r["data"]["status"] != "open"), key=lambda r: r["number"])
+    supersedes = set()
+    for rel in touched:
+        last = [r["id"] for r in earlier if rel in r["data"]["cards"]]
+        if last:
+            supersedes.add(last[-1])
+    data = dict(data, status=status, closed_at=now_iso(), cards=touched, supersedes=sorted(supersedes),
+                signoff_words=args.words if status == "signed" else None)
+    write_json(jpath, data)
+    print(f"design-close: {args.round} {status} -- {len(touched)} card(s) snapshotted to "
+          f"{DESIGN_ROOT_REL}/rounds/{args.round}/cards/"
+          + (f", {regrouped} regrouped (line 1 only)" if status == "signed" else ", left under review for the slice's next round"))
+    if data["supersedes"]:
+        print(f"supersedes: {', '.join(data['supersedes'])}")
+
+
+def design_registry_path() -> Path:
+    raw = os.environ.get(DESIGN_REGISTRY_ENV, "").strip()
+    return Path(os.path.abspath(os.path.expanduser(raw or DESIGN_REGISTRY_DEFAULT)))
+
+
+def design_register(args: argparse.Namespace) -> None:
+    root = design_root()
+    mpath = root / "design.json"
+    try:
+        manifest = read_json(mpath)
+    except (ValueError, OSError):
+        manifest = None
+    if manifest is None or design_manifest_problems(manifest):
+        raise SystemExit(f"design-register: refused -- no valid {DESIGN_ROOT_REL}/design.json (run: python3 scripts/workflow.py design-init)")
+    path = design_registry_path()
+    registry = {"schema": DESIGN_SCHEMA, "projects": []}
+    if path.exists():
+        try:
+            registry = read_json(path)
+        except (ValueError, OSError) as exc:
+            raise SystemExit(f"design-register: refused -- the registry {path} is not valid JSON ({exc}); fix or remove it by hand")
+        if not isinstance(registry, dict) or registry.get("schema") != DESIGN_SCHEMA:
+            raise SystemExit(f"design-register: refused -- the registry {path} is not a schema-{DESIGN_SCHEMA} object; fix or remove it by hand")
+        projects = registry.get("projects")
+        if not (isinstance(projects, list) and all(isinstance(p, dict) for p in projects)):
+            raise SystemExit(f"design-register: refused -- the registry {path} has no projects list; fix or remove it by hand")
+    entry = {"id": manifest["id"], "name": manifest["name"], "repo": str(ROOT), "root": str(root)}
+    projects = registry["projects"]
+    holder = next((p for p in projects if p.get("id") == entry["id"]), None)
+    if holder and holder.get("root") != entry["root"] and Path(str(holder.get("root"))).exists():
+        raise SystemExit(f"design-register: refused -- id {entry['id']!r} is already registered to {holder.get('root')}; "
+                         f"give this project another id (design-init --id <new-id>)")
+    same_root = next((p for p in projects if p.get("root") == entry["root"]), None)
+    kept = {**same_root, **entry} if same_root else dict(entry)
+    kept["registered_at"] = (same_root or {}).get("registered_at") or now_iso()
+    replaced = [p for p in projects if p is not same_root and (p.get("id") == entry["id"] or p.get("root") == entry["root"])]
+    rest = [p for p in projects if p is not same_root and p not in replaced]
+    updated = dict(registry, schema=DESIGN_SCHEMA, projects=sorted(rest + [kept], key=lambda p: str(p.get("id"))))
+    if updated == registry:
+        print(f"design-register: {entry['id']} already registered in {path} (nothing written)")
+        return
+    write_json(path, updated)
+    print(f"design-register: wrote {path}")
+    for gone in replaced:
+        print(f"replaced a stale entry: {gone.get('id')} at {gone.get('root')}")
+    print(json.dumps(kept, ensure_ascii=False, indent=2))
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Manage the agentic workflow state.")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -3130,6 +3708,37 @@ def main(argv=None) -> int:
     p.add_argument("--head", default=None, help="use this ref as the range head (default: HEAD, or the commit that recorded a passing review on a done phase)")
     p.add_argument("--json", action="store_true", help="print the same answer as one JSON object")
     p.set_defaults(func=phase_scope)
+
+    # The design contract (v47): the on-disk layout lives in design-cowork/SKILL.md "The design record".
+    p = sub.add_parser("design-init", help=f"Write the design project manifest {DESIGN_ROOT_REL}/design.json (schema {DESIGN_SCHEMA}: id, name); idempotent -- an unchanged manifest is not rewritten",
+                       description=f"Create or update {DESIGN_ROOT_REL}/design.json, the one design project this repo holds. Defaults: id = the repo folder's name, slugified; name = the folder's name.")
+    p.add_argument("--id", default=None, help="the project id: lowercase [a-z0-9-], starting alphanumeric, at most 63 characters; unique across the operator's registry")
+    p.add_argument("--name", default=None, help="the display name the dashboard shows")
+    p.set_defaults(func=design_init)
+
+    p = sub.add_parser("design-open", help=f"Open the next design round: {DESIGN_ROOT_REL}/rounds/NN-<slug>/round.json, status open; refuses while another round is open or a card still carries another slice's review address",
+                       description="Open the next design round (numbered max + 1). Its cards carry the review address on line 1 -- group=\"\u23f3 <slice> \u00b7 <Group>\" -- until design-close. The orchestrator writes the round's handoff.md next.")
+    p.add_argument("--slug", required=True, help="the round's slug: lowercase words joined by hyphens")
+    p.add_argument("--slice", required=True, help="the co-work slice that owns the round (e.g. P48.S1); its id is the review address the round's cards carry")
+    p.add_argument("--title", default=None, help="display title (default: the slug)")
+    p.set_defaults(func=design_open)
+
+    p = sub.add_parser("design-check", help=f"Check {DESIGN_ROOT_REL}/ against the design contract -- numbered contiguous cards, no unnumbered card or monolith, valid @dsCard markers, self-contained cards, well-formed design.json and round.json, snapshots of closed rounds; exit 1 with every problem named",
+                       description="Read-only. With card paths (the handoff's numbered list), also check that each is present and carries the open round's address, and that cards added beyond the list are numbered after it.")
+    p.add_argument("paths", nargs="*", help="card paths the handoff named, e.g. cards/03-button.html (optional)")
+    p.set_defaults(func=design_check)
+
+    p = sub.add_parser("design-close", help="Close the open design round: snapshot its cards and tokens.css into the round folder (address on), then with --words regroup the live cards (line 1 only, every later byte asserted identical) and mark it signed, or with --superseded mark it superseded; idempotent",
+                       description="--words needs rounds/<round>/SIGNOFF.md written first. A superseded round's cards stay under review for the same slice's next round. Re-run a half-landed close; a closed round is never rewritten.")
+    p.add_argument("round", help="the round id, e.g. 03-signin")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--words", default=None, help="the operator's literal signoff words, recorded verbatim in round.json")
+    g.add_argument("--superseded", action="store_true", help="a design question replaces the round before it is signed: snapshot and close it, no regroup")
+    p.set_defaults(func=design_close)
+
+    p = sub.add_parser("design-register", help=f"Register this repo's design project with the operator's dashboard: upsert it into the registry OUTSIDE the repo (${DESIGN_REGISTRY_ENV}, default {DESIGN_REGISTRY_DEFAULT}) with absolute paths; idempotent, atomic, prints what it wrote",
+                       description=f"Writes only the registry file: ${DESIGN_REGISTRY_ENV} when set, else {DESIGN_REGISTRY_DEFAULT}. Refuses an id another live repo holds; replaces an entry whose root has vanished (a moved repo). Tests must point ${DESIGN_REGISTRY_ENV} at a scratch path.")
+    p.set_defaults(func=design_register)
 
     p = sub.add_parser("defer-job", help="Create a deferred job folder")
     p.add_argument("--id")
