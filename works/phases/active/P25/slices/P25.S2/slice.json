@@ -3,14 +3,14 @@
   "phase_id": "P25",
   "name": "evaluate the shortlist and rank the top 3",
   "kind": "research",
-  "status": "todo",
+  "status": "done",
   "order": 2,
   "depends_on": [
     "P25.S1"
   ],
   "created_at": "2026-09-29T19:39:09+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-29T19:59:28+09:00",
+  "completed_at": "2026-09-29T20:35:08+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Ranked: 1 repo frames board, 2 Storybook+addon-mcp, 3 self-hosted Penpot; Doop out; retire DesignSync loop, keep Claude Design as optional bundle import",
   "validation": {
     "required": [],
     "last_run": null,
