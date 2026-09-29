@@ -36,9 +36,10 @@ SLICE_STATUSES = {"todo", "ready", "in_progress", "in_review", "changes_requeste
 DEFERRED_STATUSES = {"deferred", "ready", "promoted", "done", "dropped"}
 REVIEW_VERDICTS = {"pass", "changes_requested", "blocked"}
 # Closed set of slice kinds (workspace v34). `kind` routes real behavior -- `co-work` in
-# particular means orchestrator-inline with DesignSync, so a typo like `cowork` used to
-# create a slice that read as ordinary implementation and got dispatched to an executor
-# with no DesignSync. Enforced asymmetrically on purpose: a HARD ERROR at creation
+# particular means orchestrator-inline (the round's lifecycle and the operator's words
+# stay on the main thread), so a typo like `cowork` used to create a slice that read as
+# ordinary implementation and got dispatched to an executor that cannot run a design
+# round. Enforced asymmetrically on purpose: a HARD ERROR at creation
 # (`new-slice`, `promote-deferred`), only a WARNING in `validate()`, so an adopting repo
 # carrying an invented kind in its history survives an update instead of failing validate
 # on slices it cannot change. Note `--risk` next door is deliberately NOT validated:

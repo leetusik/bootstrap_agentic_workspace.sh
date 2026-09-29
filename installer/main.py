@@ -35,7 +35,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 46
+WORKSPACE_VERSION = 47
 ROOT = TARGET.resolve()
 
 DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
@@ -688,7 +688,7 @@ else:
     print(f"Bootstrapped agentic workspace at {TARGET}")
     print("Contract: CLAUDE.md")
     print("Claude Code: 18 skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{mid,high}.md, design subagent .claude/agents/design-drafter.md, settings .claude/settings.json")
-    print("Visual design: design-cowork fires automatically, using Claude Design + DesignSync; the operator picks a style (build-after / design-only / paired) and signs off on a runnable mockup, before separate implementation and browser fidelity")
+    print("Visual design: design-cowork fires automatically; the design-drafter subagent drafts each round as plain files under docs/reference/design/ (numbered cards, tokens, round records) and the operator decides — picks a style (build-after / design-only / paired) and signs on the cards, or on a runnable mockup they ask for, before separate implementation and browser fidelity; python3 scripts/workflow.py design-register lists the repo for a design dashboard")
     print("Executor tiers are risk-routed (mid is the default, real code included; high for decomposition, research, review, named triggers and retries); economy is the no-mode fallback, while this seed selects flex in executors.toml; switch it with python3 scripts/workflow.py executor-mode <economy|flex>, or tune it and run sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
     print("CI: .github/workflows/workspace-ci.yml runs validate on every push/PR (seeded once — yours to edit); .gitattributes carries the merge rules for machine-written files")

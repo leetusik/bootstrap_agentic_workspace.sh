@@ -9,6 +9,76 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v47 — 2026-09-29
+
+- **The design lives in the repo, under a written contract.** Visual design no longer lives in a
+  Claude Design project that the agent reads back through `DesignSync` (both need a claude.ai
+  login, so they fail under `ocx claude`, and `DesignSync` cannot run in a subagent).
+  Schema 1 puts one design project per repo at the fixed root `docs/reference/design/`: a
+  `design.json` manifest (`{schema, id, name}`), numbered self-contained cards
+  `cards/NN-slug.html` (line 1 is the `@dsCard` marker: `group`, `viewport`, optional `title`), one
+  `tokens.css`, and a flat folder per round under `rounds/NN-slug/` (`round.json`, `handoff.md`,
+  `result.md`, `build-prompt.md`, and `feedback.md`, `SIGNOFF.md` or an `import/` folder when they
+  apply). At most one round is open at a time, and a closed round is an immutable snapshot of the
+  cards and tokens it touched. The contract is written out in `design-cowork`, so a separate
+  dashboard can read it without configuration.
+
+- **Five `design-*` commands run the round's lifecycle.** `design-init` writes the manifest,
+  `design-open` opens the next round, `design-check` names every contract problem with exit 1 (and,
+  given the handoff's paths, runs the read-back check), `design-close <round> --words "…" |
+  --superseded` snapshots, regroups line 1 only (every later byte is asserted identical) and closes
+  the manifest, and `design-register` records the repo in a registry outside it so a dashboard can
+  list it. All five are stdlib-only, and `design-close` and `design-register` are idempotent.
+
+- **A design subagent drafts.** `.claude/agents/design-drafter.md` drafts one round's cards,
+  `tokens.css`, `result.md` and `build-prompt.md` from `handoff.md`, runs `design-check` on its own
+  paths, and returns a verdict block. It never signs, opens or closes a round, edits a record it does
+  not own, builds a mockup or writes product code. It is not a third tier: it follows the **high**
+  tier's model and effort through `sync-agents` and `executor-mode`, so one knob governs every agent
+  file. It may load the `frontend-design` skill on a round whose handoff says `new visual direction:
+  yes`, and nowhere else.
+
+- **`design-cowork` is rewritten around the files.** Per round: the orchestrator opens the round
+  and writes the handoff, `design-drafter` drafts it in the background, the orchestrator reads it
+  back with `design-check` itself, and the slice stops for the operator. Literal approval writes
+  `SIGNOFF.md` and runs `design-close --words` (two commits, one stop); anything else is recorded in
+  `feedback.md`, closes the round `--superseded` and opens a new round of the same slice (one more
+  commit and stop). A requested mockup is unchanged in spirit but goes three commits and two stops,
+  not four, because there is no landing step. The `DesignSync` read-back and the SIGNOFF regroup are
+  retired, along with the push and the `_ds_manifest.json` card contract. Governance is unchanged:
+  the three styles, immutable rounds, literal signoff, the mockup gate and RESPECT THE DESIGN.
+
+- **Claude Design is an optional bundle import.** An export the operator already has goes into a
+  round's `import/` folder; the drafter translates it and logs its departures. No claude.ai account
+  or `DesignSync` is needed for anything.
+
+- **The hard rule now says who drafts.** The contract's visual-design rule reads "the design
+  subagent drafts, the operator decides", and a `co-work` slice still runs inline. Its drafting is
+  dispatched to `design-drafter` and its mockup build (only on request) to `slice-executor-high`,
+  while the round's lifecycle and the operator's words stay on the main thread. Approval is still
+  literal and a design slice still authorizes no `git push`.
+
+- **Where it landed.** `CLAUDE.md` (the co-work exception and the visual-design rule, still under
+  12 KB), `design-cowork`, `do-next-slice`, `do-whole-phase` (the per-round co-work steps and the
+  idle-window note), `create-phase` (the mockup question), both executor bodies (the mockup span
+  now reads the round's record on disk; still word-for-word identical), the installer banner, both
+  READMEs and the retrofit guide. The smoke test moves the old pins to the new loop, retires
+  `DesignSync` and the four-commit mockup as negative pins, and adds pins for the contract, the
+  drafter and the commands. Installer rebuilt.
+
+- **Migration notes.** (1) A round in flight in Claude Design under v46 can be finished there and
+  brought in afterwards through the bundle import, or superseded by a first round under the new loop.
+  (2) A record built around `_ds_manifest.json`, a repo's own `design/` tree or `rounds/<NN>/output/`
+  moves to schema 1: run `python3 scripts/workflow.py design-init`, then move each card to
+  `docs/reference/design/cards/NN-slug.html` with the `@dsCard` marker on line 1 (see the contract in
+  `design-cowork`); `validate` does not run `design-check`, so run that yourself. (3) Run
+  `python3 scripts/workflow.py sync-agents` after `--update`: updates reset agent files to the
+  upstream defaults, and the drafter follows `[claude.high]`, so an override moves it too. (4) Run
+  `python3 scripts/workflow.py design-register` once per product repo to list it for a dashboard; the
+  registry is `$AGENTIC_DESIGN_REGISTRY`, default
+  `~/.config/agentic-workspace/design-registry.json`. It is the first engine write outside a repo,
+  which is why it is the operator's to run and no round waits on it.
+
 ## v46 — 2026-09-29
 
 - **Mid is the default executor tier.** Since v23 routing was "high unless trivial": only a

@@ -3,14 +3,14 @@
   "phase_id": "P26",
   "name": "sweep the contract and orchestrator skills, ship v47",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 4,
   "depends_on": [
     "P26.S3"
   ],
   "created_at": "2026-09-29T21:14:08+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-29T21:59:56+09:00",
+  "completed_at": "2026-09-29T22:11:21+09:00",
   "risk": "low",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "CLAUDE.md, do-* skills, create-phase, executors, banner, READMEs mirror the file loop + drafter; v47 released with migration notes; smoke 195",
   "validation": {
     "required": [],
     "last_run": null,

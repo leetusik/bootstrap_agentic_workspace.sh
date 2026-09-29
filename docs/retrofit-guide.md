@@ -154,8 +154,9 @@ selection comes from `executors.toml`: no selected mode falls back to `economy`
 `xhigh`).
 
 Retrofit also installs the `design-cowork` visual workflow when those paths do not already exist:
-Claude Design plus the operator make every visual decision, the agent writes one `handoff.md`, stops,
-reads the result back with `DesignSync`, and lands it as-is. The design slice writes no
+the `design-drafter` subagent drafts each round as plain files under `docs/reference/design/` and the
+operator makes every visual decision; the agent writes one `handoff.md`, has the round drafted, reads
+it back with `design-check`, stops, and signs only on the operator's literal words. The design slice writes no
 implementation code — separate later slices implement the approved design and verify it in a real
 browser. A later `--update` refreshes these workspace-managed skill, subagent, and contract payloads;
 retrofit still skips pre-existing operator-owned files, and update still preserves phase/docs state

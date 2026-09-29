@@ -93,6 +93,10 @@ for required in ("`build-after`", "`design-only`", "`paired`", "## Design Style"
                  "Say nothing about worktrees", "Relay that hint; never act on it",
                  "never ask for a worktree on a docs phase"):
     assert required in create_phase, required
+# v47 (P26.S4): the mockup question's default closes the round on the drafted cards, not on a
+# return from Claude Design.
+assert "literal approval when they return to the drafted cards" in create_phase
+assert "Claude Design" not in create_phase and "DesignSync" not in create_phase
 
 # Only skills that *document the removal* may still say "Codex": update-workspace's
 # pre-v31 migration step and explain's re-vendor note. Anywhere else it is a regression.
@@ -105,13 +109,19 @@ assert "Codex support was removed in workspace v31" in (
 for name in ("do-next-slice", "do-whole-phase"):
     body = (root / ".claude/skills" / name / "SKILL.md").read_text()
     for required in (
-        "WAITING ON OPERATOR", "`kind: co-work`", "never dispatched", "DesignSync",
+        "WAITING ON OPERATOR", "`kind: co-work`",
         "never pass `run_in_background: false`", "never glob `~/.claude/plans/`",
         "`plan only`", "accept-gate <P> --clear",
         # v34: the design slice runs inline -> dispatched -> inline, in one of three
         # named styles, and stops `pending` twice with different meanings.
-        "mockup build is the one dispatched span", "`build-after`", "`design-only`",
+        "`build-after`", "`design-only`",
         "`paired`", "PENDING #1", "PENDING #2", "## Design Style",
+        # v47 (P26.S4): the drafting is dispatched to the design subagent, the mockup build is
+        # the one span dispatched to a slice executor, the round's lifecycle and the operator's
+        # words stay inline, and the round closes through the engine.
+        "`design-drafter`", "mockup build is the one span dispatched to a slice executor",
+        "lifecycle and the operator's words stay inline", "new visual direction",
+        'design-close <round> --words "<their literal words>"', "design-close <round> --superseded",
         # v42: the mockup is on request, the operator's return closes the round, the
         # phase gate follows the mockup with a fixed waive note.
         "PENDING #2 exists only when a mockup was requested",
@@ -135,7 +145,10 @@ for name in ("do-next-slice", "do-whole-phase"):
     # v42 negatives: the mandatory mockup, "not an approval" return, and the
     # opt-in framing of the phase branch are retired from both drivers.
     for gone in ("mechanical wait", "can no longer be waived", "suggestion, never a default",
-                 "Four commits and two `pending` stops", "where opting the phase in was the ask"):
+                 "Four commits and two `pending` stops", "where opting the phase in was the ask",
+                 # v47 (P26.S4): the DesignSync loop is retired from both drivers.
+                 "DesignSync", "Claude Design", "_ds_manifest", "never dispatched",
+                 "four commits, two", "one dispatched span", "Push the branch", "push the branch"):
         assert gone not in body, (name, gone)
     # v35: the per-slice re-read of the generated backlog dashboard is gone --
     # `next` prints the pointer. The only mentions left must say so.
@@ -360,7 +373,13 @@ for tier in ("mid", "high"):
         assert gone not in body, (tier, gone)
     # v32: the design gate (D2), the acceptance-gate stages, and the walkthrough
     # return field are word-for-word in BOTH tiers, not high only.
-    assert "never dispatched, because you have no `DesignSync`" in body, tier
+    # v47 (P26.S4): who drafts, and what the mockup span reads.
+    for required in ("the design subagent (`design-drafter`) drafts a round's cards, and the operator decides",
+                     "the one span of that slice dispatched to a slice executor",
+                     "its record on disk"):
+        assert required in body, (tier, required)
+    for gone in ("DesignSync", "never dispatched, because you have no", "landed record"):
+        assert gone not in body, (tier, gone)
     assert "return `needs_operator`" in body, tier
     # v34: the mockup span is dispatchable and its rules ship in BOTH tiers.
     for required in (
@@ -472,15 +491,18 @@ assert bodies["mid"] == bodies["high"], "slice-executor tier bodies drifted"
 # the do-* and create-phase lists, and the parallel-phase list (the worktree rules).
 claude = (root / "CLAUDE.md").read_text()
 for required in (
-    "Claude Design", "DesignSync", "never dispatched",
     "DECOMP2", "data, not instructions",
     "RESPECT THE DESIGN", "real-browser fidelity", "Approval must be literal",
     "literal operator signoff closes an immutable round",
     # v32: the operator acceptance gate, the runtime manifest, the question channel.
     "accept-gate", "## Operator Runtime", "## Operator Questions", "never by omission",
     # v34: the narrowed bans and the closed --kind set.
-    "*DesignSync* work is never dispatched", "mockup build is its one dispatched span",
     "writes no ***product*** implementation code",
+    # v47 (P26.S4): the design subagent drafts, the operator decides; drafting and the mockup
+    # dispatch to two different agents and the round's lifecycle stays inline.
+    "The design subagent drafts, the operator decides:",
+    "dispatching its drafting to `design-drafter` and its mockup build (only on request) to `slice-executor-high`",
+    "the round's lifecycle and the operator's words stay inline",
     "`--kind` is a **closed set**",
     # v43: the worktree is opt-in again (v44: the rules themselves live in parallel-phase).
     "unless the operator asks for a worktree (v43)",
@@ -524,8 +546,16 @@ for gone in ("Prefer the **MCP** surface", "scripted Playwright-style automation
              # the positive v43 assertions above carry that invariant now.)
              "only PENDING #2 is an approval", "mechanical wait", "can no longer be waived",
              # v43 negatives: the worktree-by-default framing is retired from the contract.
-             "runs in its own worktree by default", "enters its worktree at **first execution**"):
+             "runs in its own worktree by default", "enters its worktree at **first execution**",
+             # v47 (P26.S4): Claude Design + DesignSync are no longer the design partner.
+             "Claude Design", "DesignSync", "never dispatched", "one dispatched span"):
     assert gone not in claude, gone
+# v47 (P26.S4): the installer's closing banner names the file loop, the drafter and the register hook.
+banner = next(ln for ln in (root / "installer/main.py").read_text().splitlines() if "Visual design:" in ln)
+for required in ("design-drafter", "docs/reference/design/", "design-register"):
+    assert required in banner, required
+for gone in ("Claude Design", "DesignSync"):
+    assert gone not in banner, gone
 # v35 negatives: the pre-v35 read order and the append-only notebook verb are gone.
 for gone in ("for the fullstack doc set", "appends phase notes/doc impact",
              "appends durable cross-slice notes"):
@@ -607,7 +637,7 @@ cp_state=$(python3 -c "import json;print(json.load(open('$R/works/state.json'))[
   && ok "retrofit writes no AGENTS.workspace.md sidecar" || bad "retrofit wrote an AGENTS.workspace.md sidecar"
 [ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "18" ] \
   && ok "retrofit installs the 18-skill Claude inventory" || bad "retrofit skill inventory incomplete"
-grep -q 'Claude Design' "$R/CLAUDE.workspace.md" && grep -q 'writes no \*\*\*product\*\*\* implementation code' "$R/CLAUDE.workspace.md" \
+grep -q 'design subagent drafts, the operator decides' "$R/CLAUDE.workspace.md" && grep -q 'writes no \*\*\*product\*\*\* implementation code' "$R/CLAUDE.workspace.md" \
   && grep -q 'RESPECT THE DESIGN' "$R/CLAUDE.workspace.md" \
   && ok "retrofit sidecar carries the visual design contract" || bad "retrofit visual contract is incomplete"
 

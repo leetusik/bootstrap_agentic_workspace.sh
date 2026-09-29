@@ -173,8 +173,8 @@ Both `--flag value` and `--flag=value` forms work.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
 - `.claude/` — the 18 Agent Skills (`/slash` commands), the two risk-routed `slice-executor` tier
   subagents (`.claude/agents/slice-executor-{mid,high}.md`, with economy/flex model matrices
-  selected by `executors.toml` and applied with `sync-agents`), and a `settings.json` that
-  pre-approves the workflow script.
+  selected by `executors.toml` and applied with `sync-agents`), the `design-drafter` design
+  subagent (it follows the high tier), and a `settings.json` that pre-approves the workflow script.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - [`works/`](works/) — the state machine, starting with **no phases**: a `deferred/` area,
@@ -213,16 +213,23 @@ plan, stop before running it) are opt-in words you add to the command.
 ### Visual work: one design signoff
 
 `design-cowork` fires automatically when the work changes a product's visual appearance. **The agent
-never designs** — [Claude Design](https://claude.ai/design) and you make every visual decision.
-Claude Design reads the real repository itself (Connect GitHub, or a local-directory connection), so
-the agent mirrors nothing: it writes one `handoff.md` asking for a reviewable card set — every card
-path numbered in reading order (`01-nav.html`, `02-hero.html`, …) so you see the design in the
-right order — stops for your design round, reads the result back with `DesignSync`, and lands it in
-the repo as-is. You sign the round in your own words when you come back from Claude Design — and if
-you want to see it running first, ask for a mockup: the agent builds a throwaway, stubbed route in
-the project's own frontend and stops again for you to open it. Approval must be literal, a revision
-becomes a new round, and implementation is always a separate slice that follows the approved design
-faithfully and checks the running result in a real browser.
+never designs** — a dedicated design subagent (`design-drafter`) drafts each round and you make
+every visual decision. The design lives in your repo as plain files under `docs/reference/design/`
+(numbered cards such as `cards/01-nav.html`, a `tokens.css`, and a record per round), so no account,
+push or external service is involved. The agent opens a round and writes one `handoff.md` asking for
+a reviewable card set — every card path numbered in reading order (`01-nav.html`, `02-hero.html`,
+…) so you see the design in the right order — then has the drafter draft it and checks the result
+itself with `design-check` (the numbered cards, and whether a builder would have any design
+decisions left to invent). It stops so you can open the card files in a browser. You sign the round
+in your own words when you come back; anything short of a literal approval is recorded as feedback
+and a new round of the same slice re-drafts it. If you want to see it running first, ask for a
+mockup: the agent builds a throwaway, stubbed route in the project's own frontend and stops again
+for you to open it. Approval must be literal, a revision becomes a new round, and implementation is
+always a separate slice that follows the approved design faithfully and checks the running result
+in a real browser. To list a repo for a design dashboard, run
+`python3 scripts/workflow.py design-register` once per product repo (the dashboard is a separate
+project outside this repo). A design exported from Claude Design can still be brought in through a
+round's `import/` folder, but nothing requires it.
 
 Track progress in [`works/backlog.md`](works/backlog.md) (the generated dashboard) and the active
 phase folder under `works/phases/active/` (the phase notebook and slice folders) — or just ask the
@@ -442,7 +449,7 @@ parallelism it never used. The mechanism itself is unchanged.)
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
 │   ├── skills/                    # 18 Agent Skills (/slash commands)
-│   ├── agents/                    # slice-executor tiers mid/high (economy/flex models from executors.toml)
+│   ├── agents/                    # slice-executor tiers mid/high + design-drafter (models from executors.toml)
 │   └── settings.json              # pre-approves workflow.py; denies force-push & rm -rf
 └── .github/
     └── workflows/
