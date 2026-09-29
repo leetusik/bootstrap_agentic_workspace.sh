@@ -3,14 +3,14 @@
   "phase_id": "P26",
   "name": "rewrite design-cowork around the files",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 3,
   "depends_on": [
     "P26.S2"
   ],
   "created_at": "2026-09-29T21:14:08+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-29T21:43:25+09:00",
+  "completed_at": "2026-09-29T21:59:27+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "design-cowork rewritten to the file loop + design-drafter; DesignSync dropped; bundle import optional; governance audit 37 rows unchanged; smoke 195",
   "validation": {
     "required": [],
     "last_run": null,

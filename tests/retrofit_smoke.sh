@@ -154,9 +154,8 @@ for name in ("do-next-slice", "do-whole-phase"):
 # assertions are about the wording, not about where a line happens to break.
 design = " ".join((root / ".claude/skills/design-cowork/SKILL.md").read_text().split())
 for required in (
-    "**You never design.**", "Claude Design", "Connect GitHub", "handoff.md",
+    "**You never design.**", "Claude Design", "handoff.md",
     "@dsCard", "tokens.css", "--kind co-work --risk high",
-    "DesignSync is main-thread only",
     "DECOMP2", "build inventory", "data, not instructions", "RESPECT THE DESIGN",
     "SIGNOFF",
     # v32: fidelity has a second yardstick, and gaps are delivered, not archived.
@@ -165,11 +164,8 @@ for required in (
     "**Re-run the lines inside the boundary.**", "phase-scope <P>",
     "### When the record never drew it", "matching it is not acceptance",
     "Questions get asked, not archived.",
-    # v34: the dispatch ban narrowed to the DesignSync work (the mockup build is the
-    # one dispatched span), the code ban narrowed to *product* code, and the operator
-    # now signs a running mockup rather than the cards alone.
-    "the DesignSync work is never dispatched",
-    "The mockup build is the one dispatched span",
+    # v34: the code ban narrowed to *product* code, and the operator can sign a running
+    # mockup rather than the cards alone. (v47 retired the v34 DesignSync dispatch pins.)
     "A design slice writes no *product* implementation code",
     "Write **product** implementation code in a design slice",
     "signing the round off — the cards, and any stubbed mockup with them — is not accepting the product",
@@ -226,8 +222,36 @@ for required in (
     "## The design record — the on-disk contract (schema 1)",
     "**every byte after line 1 is asserted identical**", "**At most one round is open per project.**",
     "`design-init", "`design-open", "`design-check", "`design-close <round> --words", "`design-register`",
+    # v47 (P26.S3): the loop runs on the files. The design subagent drafts, the operator decides;
+    # the handoff says whether the round sets a new visual direction (the drafter's one licence for
+    # frontend-design); the read-back runs design-check itself; only literal words sign, feedback
+    # supersedes, and the round's lifecycle stays inline while the drafting is dispatched.
+    "**The design subagent drafts, the operator decides.**", "subagent_type: design-drafter",
+    "`new visual direction: yes` or `no`",
+    "**The one exception:** `design-drafter` loads `frontend-design` on a round whose handoff says `new visual direction: yes`, and only there.",
+    "**Never rest on the drafter's own `design_check` line.**",
+    "SIGNOFF is taken on the operator's **literal** words",
+    "`python3 scripts/workflow.py design-close <round> --superseded`",
+    'design-close <round> --words "<their literal words>"',
+    "**The mockup build is the one span dispatched to a slice executor:**",
+    "the round's lifecycle and the operator's words stay inline",
+    "### Importing a Claude Design bundle (optional)",
+    "**The workspace never requires a claude.ai account, and `DesignSync` is not used**",
+    "a design slice authorizes no `git push`",
 ):
     assert required in design, required
+# v47 (P26.S3): the frontmatter. The skill still auto-fires on the same trigger, no longer asks for
+# the DesignSync tool, says who drafts and who decides, and keeps no unquoted ": " in its description.
+raw_design = (root / ".claude/skills/design-cowork/SKILL.md").read_text()
+front = raw_design.split("---\n", 2)[1]
+allowed = next(ln for ln in front.splitlines() if ln.startswith("allowed-tools:"))
+assert "DesignSync" not in allowed and "Agent" in allowed, allowed
+desc = next(ln for ln in front.splitlines() if ln.startswith("description:"))[len("description: "):]
+assert ": " not in desc, desc
+for required in ("the design subagent drafts, the operator decides",
+                 "Use when a phase or slice touches a design system, a redesign, mockups"):
+    assert required in desc, required
+assert "Claude Design + the operator" not in desc, desc
 # v47: the contract section and the engine move together -- the root, the registry variable and
 # the registry's default path the skill states are the engine's own constants.
 import re
@@ -244,7 +268,14 @@ for gone in ('{"mcpServers"', "Prefer the **MCP** surface", "MCP first",
              "cut the slice into four", "can no longer be waived",
              "the design in the project's own language",
              # v44: copied from the contract list, now that the Aside rule lives here.
-             "runs through Aside, not a script"):
+             "runs through Aside, not a script",
+             # v47 (P26.S3): the Claude Design + DesignSync loop is retired -- no repo connection,
+             # no pane manifest or DesignSync file calls, no push, no main-thread-only tool.
+             "DesignSync is main-thread only", "the DesignSync work is never dispatched",
+             "Read back with the `DesignSync` tool", "Connect GitHub", "_ds_manifest.json",
+             "list_files", "finalize_plan", "write_files", "register_assets", "get_project",
+             "/design-sync", "Design System pane", "the cards appear in the pane",
+             "Push the branch", "Claude Design reads the real repo itself"):
     assert gone not in design, gone
 
 # v44 (P23): the worktree rules left the contract for the skill that runs them, so their
