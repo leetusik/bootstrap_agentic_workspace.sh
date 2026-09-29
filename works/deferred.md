@@ -4,7 +4,7 @@
 
 ## Summary
 
-- Open: `20`
+- Open: `21`
 - Promoted: `0`
 - Dropped: `11`
 
@@ -29,6 +29,7 @@
 | `D3` | `deferred` | Make installer/build.py smoke-execute the assembled artifact | P15.REVIEW | Next time installer/build.py is touched, or the first time a broken artifact reaches a commit | `works/deferred/open/D3` |
 | `D30` | `deferred` | Flag a design round left open, or review addresses left over, when a design phase ends | P26.REVIEW | The first design-bearing phase under v47, or its review | `works/deferred/open/D30` |
 | `D31` | `deferred` | Bring docs/reference/design/ into a design phase's review boundary | P26.REVIEW | The first design-bearing phase review under v47 | `works/deferred/open/D31` |
+| `D32` | `deferred` | Widen design-check's reference scan beyond src, href and url() | P26.REVIEW | A drafted card passes design-check but loads a resource through a form the scan does not read, or the dashboard build asks for a stricter check | `works/deferred/open/D32` |
 | `D5` | `deferred` | Confirm: ## Design Style is appended by create-phase only when visual, not scaffolded into every intent.md | P17.REVIEW | Before the first design-bearing phase runs under v34, or the next time works/templates/intent.md is edited. | `works/deferred/open/D5` |
 | `D6` | `deferred` | Widen installer/main.py flag_stale_skills() ownership heuristic beyond the disable-model-invocation marker | P17.REVIEW | If a model-invocable skill is retired upstream, or when flag_stale_skills() is next touched. | `works/deferred/open/D6` |
 | `D7` | `deferred` | Qualify review-phase gate stage 4 for a phase whose only surface is a throwaway mockup | P17.REVIEW | Before the first design-only or mockup-shipping phase reaches its review. | `works/deferred/open/D7` |

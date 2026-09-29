@@ -9,9 +9,9 @@
   "completed_at": null,
   "review": {
     "status": "changes_requested",
-    "reviewed_at": "2026-09-29T22:24:21+09:00",
+    "reviewed_at": "2026-09-29T22:41:22+09:00",
     "reviewer": "slice-executor-high",
-    "note": "4 shipped inconsistencies: drafter frontend-design licence not keyed to handoff line; design-check lets // and http:// through; v47 CHANGELOG regroup contradiction; do-* feedback step omits revision handoff + read-back -> P26.F1"
+    "note": "Re-review: findings 1-4 fixed; finding 7: contract text and drafter Do 2 forbid the in-page # fragments design-check rightly allows -> P26.F2"
   },
   "acceptance": {
     "required": false,

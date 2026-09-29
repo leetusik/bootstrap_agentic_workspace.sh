@@ -64,3 +64,21 @@ Re-run only the `## Regression Checklist` lines (`docs/current/qa.md`) whose sur
 - **Otherwise:** finish every check first, then return `changes_requested` with numbered findings and proposed fix slices, each rated. A fix to a defect in a slice whose verdict reads `tier: mid` (S2 and S4) is `risk: high`.
 
 Also return `explain: not written — run /explain for this phase`.
+
+## Re-review after P26.F1
+
+The first review returned `changes_requested` with findings 1–4, and fix slice `P26.F1` (commit `b84eb1e`) addressed them. See `slices/P26.F1/result.md`. Re-run the review over the **whole** boundary (`phase-scope P26`; the range now ends at HEAD and includes the F1 commit), not only the fixes:
+
+1. **Validate everything together.** Run `build.py --check`, `sync-agents --check`, `validate`, and smoke on its own (expect 195 PASS). Run the in-boundary checklist lines.
+2. **Verify each finding is fixed, with your own probe:**
+   - **Finding 1:** the drafter's `frontend-design` licence is keyed to the handoff line, and a missing line becomes an open question.
+   - **Finding 2:** in a scratch install, `//` and `http://` fail with a named reason, while `https:`, `data:`, `../tokens.css` and `#` pass.
+   - **Finding 3:** the CHANGELOG is consistent.
+   - **Finding 4:** the do-* feedback step writes the revision handoff and reads back, matching `design-cowork`.
+3. **Judge F1's own call:** in-page `#` fragments stay allowed although the contract text does not name them (a reading of the inline-SVG rule). Either accept it, or make the contract text name `#` explicitly as a finding, so the contract, the engine and the dashboard summary agree. The dashboard repo builds against the contract text.
+4. **Check that F1 introduced no regression.** It widened the rejected set to `mailto:` / `tel:` / `javascript:` / `about:`. Confirm the contract section, the engine and the relay-ready dashboard summary in your earlier `result.md` all agree now; update that summary if needed.
+5. **Operator question: already routed.** It is filed as **D29**, and D30/D31 are also filed. Confirm and don't re-list them.
+6. **Doc impact list:** confirm it's complete, including F1's three lines.
+7. Rewrite `result.md` (verdict block first) and `## Now`.
+
+Verdict rules as above. Also return `explain: not written — run /explain for this phase`.
