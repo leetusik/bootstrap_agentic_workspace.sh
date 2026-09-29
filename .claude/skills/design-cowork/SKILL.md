@@ -68,7 +68,7 @@ as always.
 
 ## Shape — three styles
 
-- **The design slice:** `--kind co-work --risk high`. Never `low` — that tier is for a one-line edit or docs, and nothing here is either.
+- **The design slice:** `--kind co-work --risk high`. Never `low` — the slice runs inline, and its one dispatched span, the mockup, goes to `slice-executor-high` because it is the operator's approval surface.
 - **A design slice writes no *product* implementation code.** It ends at SIGNOFF, and **the real
   implementation is always its own slice.** The only code that can exist inside it is a mockup —
   throwaway, stubbed, dispatched, and built only when the operator asked for one (*The mockup*, below).

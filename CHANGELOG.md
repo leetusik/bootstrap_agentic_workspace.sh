@@ -9,6 +9,56 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v46 — 2026-09-29
+
+- **Mid is the default executor tier.** Since v23 routing was "high unless trivial": only a
+  one-line or few-line edit or docs was rated `risk: low` and went to `slice-executor-mid`, and mid
+  escalated the moment a slice turned into real code or touched a second file. With a stronger
+  sonnet the rule flips to "mid unless a named trigger says high". `implementation`, `fix`, `docs`
+  and `qa` slices are rated `low`, real code writing and multi-file changes included, as long as
+  the plan pins the approach. Models and presets are unchanged: mid is sonnet and high is opus, at
+  `high` effort in `economy` and `xhigh` in `flex`.
+
+- **`high` needs a named trigger.** A slice earns `risk: high` only for **open design** (the plan
+  cannot pin the approach), a **core invariant** (persisted state or a schema migration, state
+  transitions, auth, money, deletion, concurrency), an **unlocated root cause** (a bug whose cause
+  is known and located is `low`), or a **wide blast radius** (a shared interface whose callers are
+  spread across the code). The decomposition writes the trigger beside each high rating. Kind
+  routing is unchanged: `decomposition`, `research` and `review` go to high whatever their `risk`,
+  and so does a co-work mockup span, the operator's approval surface. The safety net is unchanged
+  too: `--risk` still defaults to `high` and an unrecognized value still routes high, so the
+  decomposition rates every slice explicitly. QA-sweep slices are now cut `--kind qa --risk low`.
+
+- **A second attempt never goes back to mid.** Mid escalates on four named reasons instead of
+  "real code or more than one file": the plan's approach fails and repairing it needs a design
+  decision the plan did not make; a high trigger the rating missed turns up; **two strikes**, where
+  the same validation failure survives two honest fix attempts; or the job grows past the plan's
+  scope. The ladder is unchanged (one escalation per slice, a failed or empty mid return counts as
+  one, high never escalates). New: the executor verdict block gains a `tier: mid|high` line, the
+  review rates each proposed fix slice, and a fix for a defect in a slice whose verdict reads
+  `tier: mid` is `risk: high`. The do-* skills now create fix slices with `--kind fix --risk
+  <low|high>` from that rating, where before they took the `high` default.
+
+- **Mid gets `WebSearch` and `WebFetch`.** Only high had them, a leftover from v16's auto-explain,
+  which has since been retired. A tier that writes real code against real libraries needs the
+  docs.
+
+- **Haiku is never an executor tier.** That was already true of both presets. The engine comment
+  and the seeded `executors.toml` header stop offering haiku as an example.
+
+- **Where it landed.** The contract's `risk` sentence (still under 12 KB), both executor bodies
+  (still word-for-word identical) and their descriptions, `do-next-slice`, `do-whole-phase`,
+  `review-phase`, `create-phase` (the QA-sweep rating), `design-cowork` (why the design slice stays
+  `high`), the `--risk` help on `new-slice` and `promote-deferred`, the seeded `executors.toml`
+  header, both READMEs and the installer's closing line. The smoke test pins the new wording in the
+  contract, the do-* skills and both executor bodies, plus mid's tools line. Installer rebuilt.
+
+- **Migration notes.** Run `python3 scripts/workflow.py sync-agents` after the update as usual.
+  Slices that already exist keep their recorded `risk` (planning bumps up, never down), so the new
+  standard applies to slices cut from now on. A seeded `executors.toml` is never overwritten, so an
+  adopting repo keeps the old tier comment in its header until the operator edits it. Only the
+  comment is stale; routing does not read it.
+
 ## v45 — 2026-09-29
 
 - **Switch the executor mode with one command, and see which one is on.** Changing the preset both

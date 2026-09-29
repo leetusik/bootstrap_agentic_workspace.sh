@@ -139,6 +139,13 @@ for name in ("do-next-slice", "do-whole-phase"):
     for ln in body.splitlines():
         if "works/backlog.md" in ln:
             assert "next" in ln and "pointer" in ln, (name, ln)
+    # v46: mid is the default tier; high needs a named trigger, and a fix to
+    # mid-tier work goes high. The one-line/few-line scope for mid is retired.
+    for required in ("**Mid is the default (v46):**", "--kind fix --risk <low|high>`",
+                     "work the mid tier got wrong never goes back to it"):
+        assert required in body, (name, required)
+    for gone in ("one-line/few-line", "one-line, or few-line"):
+        assert gone not in body, (name, gone)
 
 # The spec hard-wraps its prose, so match against a whitespace-flattened copy: these
 # assertions are about the wording, not about where a line happens to break.
@@ -390,6 +397,14 @@ for tier in ("mid", "high"):
         assert gone not in body, (tier, gone)
     never = [ln for ln in body.splitlines() if "run workflow state-transition commands" in ln]
     assert len(never) == 1 and "`accept-gate`" in never[0] and "`defer-job`" in never[0], tier
+    # v46: mid is the default tier, escalates on named reasons (never for real code
+    # or several files), and every verdict names its tier; mid gets the web tools.
+    for required in ("the default tier, where most slices land", "**two strikes**",
+                     "- `tier`: `mid` | `high`", "work the mid tier got wrong never goes back to it"):
+        assert required in body, (tier, required)
+    for gone in ("the light tier", "essentially all code writing"):
+        assert gone not in body, (tier, gone)
+    assert "tools: Read, Edit, Write, Glob, Grep, Bash, WebSearch, WebFetch\n" in body, tier
     bodies[tier] = body.split("---\n", 2)[2]
 # The tiers differ in frontmatter only, so a body diff is the drift detector.
 assert bodies["mid"] == bodies["high"], "slice-executor tier bodies drifted"
@@ -447,6 +462,8 @@ for required in (
     # v41: the review reviews the boundary of the phase (phase-scope's synopsis left
     # with Workflow Commands in v44).
     "**The review reviews the boundary of the phase, not the whole system:**",
+    # v46: mid is the default tier, and a retry never returns to mid.
+    "**mid the default**", "never returns to mid",
     "QA-sweep route",
 ):
     assert required in claude, required

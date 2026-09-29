@@ -18,15 +18,18 @@
 #   2. Per-tier [claude.<tier>] tables — override the active preset field by
 #      field.
 #
-# There are two tiers. `mid` takes a one-line (or few-line) code edit or docs;
-# `high` takes decomposition, the phase review, and essentially all code writing
-# — every cross-file change included. A slice's `risk` picks between them
-# (`low` -> mid, anything else -> high), so `high` is where the cost sits.
+# There are two tiers, and `mid` is the default (v46): it takes implementation,
+# fix, docs and qa slices rated `low`, real code and multi-file work included.
+# `high` takes decomposition, research, the phase review, a slice rated `high`
+# for a named trigger (open design, a core invariant, an unlocated root cause,
+# a wide blast radius) and every second attempt after mid. A slice's `risk`
+# picks between them (`low` -> mid, anything else -> high).
 #
 # Values are written verbatim into the agent files, so model aliases
-# (opus/sonnet/haiku), full model IDs, or "inherit" all work without code
-# changes. Set effort = "" to omit the effort line entirely — required for
-# models that reject the effort parameter (e.g. haiku). Models may not be empty.
+# (opus/sonnet), full model IDs, or "inherit" all work without code changes;
+# haiku is deliberately never an executor tier. Set effort = "" to omit the
+# effort line entirely — required for a model that rejects the effort
+# parameter. Models may not be empty.
 # This file is yours: the installer seeds it once and updates never overwrite
 # it; deleting it is also fine (defaults live in the engine). It holds no
 # secrets, so committing it is fine when the whole team should share the tier

@@ -105,8 +105,9 @@ RETIRED_EXECUTOR_TIERS = ("low",)  # dropped in workspace v23 — routing is two
 # the repo-root executors.toml picks one (absent file or key -> economy); per-tier
 # [claude.<tier>] tables with model/effort keys override the active preset field by
 # field; apply with `sync-agents`. An empty effort means "write no effort line" — the
-# escape hatch for models that reject the effort parameter (e.g. haiku). Models may
-# not be empty.
+# escape hatch for a model that rejects the effort parameter. Models may not be
+# empty. Haiku is deliberately never an executor tier (v46): both presets stay on
+# sonnet (mid, the default tier) and opus (high).
 DEFAULT_EXECUTOR_MODE = "economy"
 EXECUTOR_PRESETS = {
     "flex": {
@@ -225,7 +226,7 @@ def read_executors_toml() -> tuple:
             values[key] = m.group(2)
             continue
         if re.match(r"^(model|effort|mode)\s*=", line):
-            raise SystemExit(f'executors.toml line {n}: values must be double-quoted TOML strings, e.g. model = "haiku"')
+            raise SystemExit(f'executors.toml line {n}: values must be double-quoted TOML strings, e.g. model = "sonnet"')
         raise SystemExit(f"executors.toml line {n}: cannot parse {line!r} (expected mode = \"...\", [claude.<mid|high>], or model/effort = \"...\")")
     return mode, values
 
@@ -3044,7 +3045,7 @@ def main(argv=None) -> int:
     p.add_argument("--slice", required=True)
     p.add_argument("--name", required=True)
     p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work (closed set; unknown kinds are rejected). research is findings-only: no product code, findings land in phase.md, and it always routes to slice-executor-high")
-    p.add_argument("--risk", default="high", help="low (a one-line code edit or docs -> slice-executor-mid) or high (everything else -> slice-executor-high); unrecognized values route to high; kind decomposition, review and research route to high whatever this says")
+    p.add_argument("--risk", default="high", help="low (slice-executor-mid, the default tier since v46: implementation, fix, docs and qa work, real code included) or high (slice-executor-high: only for a named trigger -- open design, a core invariant, an unlocated root cause, a wide blast radius -- or a fix to mid-tier work); unset or unrecognized values route to high; kind decomposition, review and research route to high whatever this says")
     p.add_argument("--order", type=float, help="sort position within the phase; a fractional value (e.g. 4.5) inserts between two neighbors without renumbering (default: 10 past the last non-review slice)")
     p.add_argument("--depends-on", action="append", help="advisory: validate checks only that the named slice exists; selection still follows --order")
     p.set_defaults(func=new_slice)
@@ -3144,7 +3145,7 @@ def main(argv=None) -> int:
     p.add_argument("--slice", required=True)
     p.add_argument("--name")
     p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work (closed set; unknown kinds are rejected). research is findings-only: no product code, findings land in phase.md, and it always routes to slice-executor-high")
-    p.add_argument("--risk", default="high", help="low (a one-line code edit or docs -> slice-executor-mid) or high (everything else -> slice-executor-high); unrecognized values route to high; kind decomposition, review and research route to high whatever this says")
+    p.add_argument("--risk", default="high", help="low (slice-executor-mid, the default tier since v46: implementation, fix, docs and qa work, real code included) or high (slice-executor-high: only for a named trigger -- open design, a core invariant, an unlocated root cause, a wide blast radius -- or a fix to mid-tier work); unset or unrecognized values route to high; kind decomposition, review and research route to high whatever this says")
     p.add_argument("--order", type=float, help="sort position within the phase; a fractional value (e.g. 4.5) inserts between two neighbors without renumbering (default: 10 past the last non-review slice)")
     p.add_argument("--depends-on", action="append", help="advisory: validate checks only that the named slice exists; selection still follows --order")
     p.add_argument("--create-phase", action="store_true")

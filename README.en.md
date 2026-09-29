@@ -319,17 +319,21 @@ commands in Claude Code:
 > workspace's `/explain`; you do not need both.
 
 The orchestrator delegates the heavy lifting to a **`slice-executor`** subagent in one of two
-capability tiers, picked by each slice's risk: `slice-executor-mid` (a one-line or few-line code edit, or docs:
-slices rated `risk: low`) and `slice-executor-high` (decomposition, essentially all code writing
-including every cross-file change, anything not rated `low`, and the phase review, which it runs in
-a fresh context that never edits source, validating the phase and — only on a pass — verifying its
-doc-impact list and writing its two gate sections, leaving the docs themselves to a docs phase; a
-`changes_requested` or `blocked` verdict stops there and hands the findings back).
+capability tiers, picked by each slice's risk. `slice-executor-mid` is the default tier (since v46):
+implementation, `fix`, `docs` and `qa` slices rated `risk: low`, real code writing and multi-file
+changes included. `slice-executor-high` takes decomposition, `research`, the phase review (which it
+runs in a fresh context that never edits source, validating the phase and — only on a pass —
+verifying its doc-impact list and writing its two gate sections, leaving the docs themselves to a
+docs phase; a `changes_requested` or `blocked` verdict stops there and hands the findings back), a
+slice rated `risk: high` for a named trigger (open design, a core invariant, an unlocated root
+cause, a wide blast radius), and every second attempt after mid. Haiku is never an executor tier.
 Risk is two values, `low` and `high`, defaulting to `high` — only an exact `low` routes down, so an
-unset or unrecognized value always lands on the thorough tier. When the mid executor hits something
-beyond its depth it returns an `escalate` verdict; the orchestrator folds the findings into the plan
-and re-dispatches to `slice-executor-high` (once per slice) — so trivial slices run cheap without
-capping quality. Tier models and efforts are configurable via the repo-root
+unset or unrecognized value always lands on the thorough tier, and the decomposition rates every
+slice explicitly. When the mid executor needs a design decision the plan did not make, hits a
+trigger its rating missed, or fails the same validation twice, it returns an `escalate` verdict; the
+orchestrator folds the findings into the plan and re-dispatches to `slice-executor-high` (once per
+slice), and a review finding against mid-tier work gets a `high` fix slice — so most slices run on
+sonnet while opus takes what is genuinely hard or has already failed once. Tier models and efforts are configurable via the repo-root
 `executors.toml` — a top-level `mode` preset (`economy`, the default, at
 sonnet@high / opus@high; `flex` uses sonnet@xhigh / opus@xhigh) plus
 per-tier `[claude.<tier>]` overrides (seed-once —
