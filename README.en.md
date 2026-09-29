@@ -216,7 +216,11 @@ plan, stop before running it) are opt-in words you add to the command.
 never designs** — a dedicated design subagent (`design-drafter`) drafts each round and you make
 every visual decision. The design lives in your repo as plain files under `docs/reference/design/`
 (numbered cards such as `cards/01-nav.html`, a `tokens.css`, and a record per round), so no account,
-push or external service is involved. The agent opens a round and writes one `handoff.md` asking for
+push or external service is involved. That is the `drafter` tool, the default. The other,
+`claude-design`, restores the original loop: you design in Claude Design (it needs a claude.ai login
+and does not run under `ocx claude`), nothing is copied into the repo, and its records live under
+`docs/reference/design/claude-design/`, which the design dashboard does not show. You choose the
+tool per phase at `/create-phase` (`Design tool: drafter | claude-design`). The agent opens a round and writes one `handoff.md` asking for
 a reviewable card set — every card path numbered in reading order (`01-nav.html`, `02-hero.html`,
 …) so you see the design in the right order — then has the drafter draft it and checks the result
 itself with `design-check` (the numbered cards, and whether a builder would have any design
@@ -229,7 +233,9 @@ always a separate slice that follows the approved design faithfully and checks t
 in a real browser. To list a repo for a design dashboard, run
 `python3 scripts/workflow.py design-register` once per product repo (the dashboard is a separate
 project outside this repo). A design exported from Claude Design can still be brought in through a
-round's `import/` folder, but nothing requires it.
+round's `import/` folder, but nothing requires it. A repo whose `docs/reference/design/` still has the
+old Claude Design layout (from before v47) moves it under `claude-design/` with
+`python3 scripts/workflow.py design-migrate` (a dry run; `--apply` moves it).
 
 Track progress in [`works/backlog.md`](works/backlog.md) (the generated dashboard) and the active
 phase folder under `works/phases/active/` (the phase notebook and slice folders) — or just ask the

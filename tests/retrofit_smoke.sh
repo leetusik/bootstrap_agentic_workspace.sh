@@ -96,9 +96,12 @@ for required in ("`build-after`", "`design-only`", "`paired`", "## Design Style"
                  "never ask for a worktree on a docs phase"):
     assert required in create_phase, required
 # v47 (P26.S4): the mockup question's default closes the round on the drafted cards, not on a
-# return from Claude Design.
+# return from Claude Design. v48 (P27.S3): the design tool is asked in the same breath and recorded
+# as a `Design tool:` line; the DesignSync loop stays out of the skill itself.
 assert "literal approval when they return to the drafted cards" in create_phase
-assert "Claude Design" not in create_phase and "DesignSync" not in create_phase
+for required in ("Design tool:", "`claude-design`", "`drafter`", "reads as `drafter`"):
+    assert required in create_phase, required
+assert "DesignSync" not in create_phase
 
 # Only skills that *document the removal* may still say "Codex": update-workspace's
 # pre-v31 migration step and explain's re-vendor note. Anywhere else it is a regression.
@@ -128,6 +131,13 @@ for name in ("do-next-slice", "do-whole-phase"):
         # listed), re-dispatches the drafter and reads back before PENDING #1 -- as design-cowork says.
         "**write its handoff**", "**every card still carrying the slice's address**",
         "the new round inherits the addressed cards",
+        # v48 (P27.S3): the design tool is read from `## Design Style`, and the claude-design
+        # branch is compact: the DesignSync read-back is inline, the record lands under
+        # claude-design/, and a round costs two commits without a mockup, four with one.
+        "`Design tool:` under `## Design Style`", "an absent line reads as `drafter`",
+        "**`claude-design`**", "**read back inline with `DesignSync`**",
+        "`docs/reference/design/claude-design/rounds/<NN-slug>/`",
+        "**two commits without a mockup, four with one**",
         # v42: the mockup is on request, the operator's return closes the round, the
         # phase gate follows the mockup with a fixed waive note.
         "PENDING #2 exists only when a mockup was requested",
@@ -152,8 +162,9 @@ for name in ("do-next-slice", "do-whole-phase"):
     # opt-in framing of the phase branch are retired from both drivers.
     for gone in ("mechanical wait", "can no longer be waived", "suggestion, never a default",
                  "Four commits and two `pending` stops", "where opting the phase in was the ask",
-                 # v47 (P26.S4): the DesignSync loop is retired from both drivers.
-                 "DesignSync", "Claude Design", "_ds_manifest", "never dispatched",
+                 # v47 (P26.S4): the DesignSync loop's push and manifest phrases stay out of both
+                 # drivers. v48 (P27.S3): DesignSync and Claude Design come back beside claude-design.
+                 "_ds_manifest", "never dispatched",
                  "four commits, two", "one dispatched span", "Push the branch", "push the branch",
                  # P26.F1: the elided feedback step (no revision handoff, no read-back) is retired.
                  "in the same slice, re-dispatch the drafter"):
@@ -606,15 +617,19 @@ for gone in ("Prefer the **MCP** surface", "scripted Playwright-style automation
              "only PENDING #2 is an approval", "mechanical wait", "can no longer be waived",
              # v43 negatives: the worktree-by-default framing is retired from the contract.
              "runs in its own worktree by default", "enters its worktree at **first execution**",
-             # v47 (P26.S4): Claude Design + DesignSync are no longer the design partner.
-             "Claude Design", "DesignSync", "never dispatched", "one dispatched span"):
+             # v47 (P26.S4): the DesignSync dispatch wording is gone from the contract.
+             # v48 (P27.S3): Claude Design + DesignSync are back as the claude-design tool's
+             # partner, so only the old dispatch phrases stay out.
+             "never dispatched", "one dispatched span"):
     assert gone not in claude, gone
+assert "`claude-design`" in claude and "the operator designing in Claude Design" in claude
 # v47 (P26.S4): the installer's closing banner names the file loop, the drafter and the register hook.
 banner = next(ln for ln in (root / "installer/main.py").read_text().splitlines() if "Visual design:" in ln)
 for required in ("design-drafter", "docs/reference/design/", "design-register"):
     assert required in banner, required
-for gone in ("Claude Design", "DesignSync"):
-    assert gone not in banner, gone
+for required in ("claude-design", "drafter"):
+    assert required in banner, required
+assert "DesignSync" not in banner
 # v35 negatives: the pre-v35 read order and the append-only notebook verb are gone.
 for gone in ("for the fullstack doc set", "appends phase notes/doc impact",
              "appends durable cross-slice notes"):

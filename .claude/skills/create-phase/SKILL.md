@@ -26,6 +26,8 @@ Turn an operator request for new work into one or more phases — or a deferred 
 
    **Ask the mockup question in the same breath:** *do you want a runnable mockup of each round before you sign it, or will you sign on the cards?* A mockup is a throwaway route in the project's own frontend, built from the round's record with stubbed data, that the operator opens before signing — it costs a dispatched build and a second `pending` stop per round. The default is **`on request`**: the round closes on the operator's literal approval when they return to the drafted cards, and they can still ask for a mockup in their own words at any time before that. Record the answer as the `Mockup:` line under `## Design Style` (step 4.2). When the style is asked at `DECOMP` instead, this question travels with it.
 
+   **And ask which design tool:** `drafter` (the design subagent drafts into the repo, viewable in design-deck; the default) or `claude-design` (you design in Claude Design; it needs a claude.ai login and does not run under `ocx claude`)? Record it as the `Design tool:` line under `## Design Style` (step 4.2). It is fixed for the phase, and it travels with the style when that is asked at `DECOMP`.
+
    **If the request is "consolidate the docs" / "run a docs phase" — or the operator is clearing a `consolidation_owed=` line from `next` — the scope is already written down.** Run `python3 scripts/workflow.py docs-debt` and propose what it prints; see *The docs-phase route* below. It is an ordinary phase through this same procedure, confirmed at step 3 like any other.
 
 3. **Confirm.** Present your refined understanding back to the operator — for each phase, the proposed **name** and **objective**; for deferred work, the title, reason, and trigger. Get explicit confirmation. Per the contract, do **not** run `new-phase` until the operator confirms.
@@ -52,9 +54,11 @@ Turn an operator request for new work into one or more phases — or a deferred 
       - **for a visual-design phase only**, append a `## Design Style` section naming the confirmed
         style (`build-after` / `design-only` / `paired`) and the one-line reason, then a second line
         `Mockup: requested` or `Mockup: on request` (the default when the operator did not ask for
-        one). `DECOMP` reads both. The section is added **only when the phase is visual** — the
-        scaffold does not carry the heading, and every reader treats its absence as "not a design
-        phase", never as an unanswered question; an absent `Mockup:` line reads as `on request`.
+        one), then a third line `Design tool: drafter` or `Design tool: claude-design`. `DECOMP`
+        reads all three. The section is added **only when the phase is visual** — the scaffold
+        does not carry the heading, and every reader treats its absence as "not a design phase",
+        never as an unanswered question; an absent `Mockup:` line reads as `on request`, and an
+        absent `Design tool:` line reads as `drafter`.
 
       (`new-phase` already filled the phase id and captured-at timestamp.)
    3. Confirm `phase.md` links `intent.md` near the top (the engine added `_Intent: see [intent.md](intent.md)._`).

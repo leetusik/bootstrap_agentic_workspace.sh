@@ -9,6 +9,75 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v48 — 2026-09-30
+
+- **The design tool is a per-phase choice.** `/create-phase` asks it beside the style and the
+  mockup questions and records a `Design tool: drafter | claude-design` line under `## Design
+  Style` in `intent.md`. An absent line, and an absent `## Design Style` section, read as
+  `drafter`, so every existing phase keeps v47's loop. The tool is fixed for the phase and never
+  switched mid-round; a later phase may pick the other one. When the style is asked at `DECOMP`
+  instead, so is the tool.
+
+- **`design-cowork` carries both loops.** It stays one file. `drafter` is v47's loop unchanged: the
+  design subagent drafts into the repo and design-deck shows the cards. `claude-design` is the
+  loop v47 retired, restored as it was and adapted only in its paths: Connect GitHub (or a
+  local-dir connection), `handoff.md` and one `git push` per round, a `pending` stop while the
+  operator designs in Claude Design, the `DesignSync` read-back on the main thread, the remote
+  SIGNOFF regroup, and the `DesignSync` mechanics and Never lines. `DesignSync` is back in the
+  skill's `allowed-tools`. **Governance is shared** and is v47's text where the two loops differ:
+  the three styles, rounds and superseding, literal signoff, the mockup gate, RESPECT THE DESIGN.
+  Under `claude-design` a round costs two commits without a mockup and four with one (v47's drafter
+  loop keeps two and three).
+
+- **Claude Design keeps its own record, and nothing is copied.** A `claude-design` round keeps the
+  original layout (`rounds/NN-slug/{handoff.md, output/{result.md, build-prompt.md}}`, `SIGNOFF.md`,
+  `grounding/`) under `docs/reference/design/claude-design/`. The cards stay in Claude Design, and
+  design-deck shows nothing for those rounds. The `design-*` commands and design-deck skip that
+  folder, so both records can sit in one repo across phases.
+
+- **`design-migrate` moves a pre-v47 record into it.** A repo whose Claude Design record still sits
+  in the old layout at the design root fails `design-check` and `design-open` refuses it. The new
+  command is a dry run by default, `--apply` moves, and it is all-or-nothing: it refuses, moving
+  nothing, when a destination already exists. It never deletes, never runs git and never writes
+  `design.json`.
+
+- **`design-register` prints a design-deck hint.** On success it prints the deck URL from
+  `$AGENTIC_DESIGN_DECK_URL` when that is set, and warns when the repo sits outside the deck's
+  mounted projects folder (`$DECK_PROJECTS_DIR`, default `~/projects`), where the deck shows it as
+  unavailable. The engine never guesses a URL.
+
+- **The contract names the partner for either tool.** `CLAUDE.md` (still under 12 KB: the
+  co-work exception and the visual-design rule name `claude-design`, and a few descriptive phrases
+  were tightened to pay for it), both executor bodies (the refusal and the mockup span cover both
+  tools; under `claude-design` the mockup span reads only `build-prompt.md` and the landed record,
+  and the `DesignSync` read-back and regroup are never handed to an executor; the bodies stay
+  word-for-word identical), `do-next-slice` and `do-whole-phase` (a `claude-design` branch beside
+  the drafter steps), `create-phase` (the tool question and the `Design tool:` line), both READMEs,
+  the retrofit guide and the installer banner. The smoke test turns v47's absence pins into choice
+  pins and adds the `claude-design/` and `design-migrate` probes. Installer rebuilt.
+
+- **`claude-design` has real constraints.** It needs a **claude.ai login**, so it **fails under
+  `ocx claude`**, and `DesignSync` runs on the **main thread only**, never in a subagent. When
+  `DesignSync` is not available in the session, the slice stops `pending` and says so; it never
+  falls back to the drafter mid-round. The `drafter` tool needs none of this.
+
+- **Re-sync note.** A workspace synced at v47 **before P26.F1/F2** lacks three fixes to v47's own
+  loop: the drafter's `new visual direction` licence for `frontend-design`, the `#` in-page
+  fragments in the card contract's self-contained rule, and the stricter `design-check` reference
+  scan. design-deck is one of those copies. Update to v48; a copy synced at v47 is missing them.
+
+- **Migration notes.** (1) Nothing changes for a repo that keeps using v47's loop: an absent
+  `Design tool:` line reads as `drafter`. (2) A repo with a pre-v47 Claude Design record at its
+  design root moves it into `docs/reference/design/claude-design/`. Run
+  `python3 scripts/workflow.py design-migrate` (a dry run that prints each move), then
+  `python3 scripts/workflow.py design-migrate --apply`, and commit the renames yourself. The rule:
+  with no `design.json`, every top-level entry of the root moves; with one, only the rounds without
+  `round.json`, `SIGNOFF.md` and `grounding/` move. (3) Run `python3 scripts/workflow.py design-init`
+  only if the repo will also use the `drafter` tool. (4) To see the deck URL after
+  `design-register`, run `AGENTIC_DESIGN_DECK_URL=<deck url> python3 scripts/workflow.py
+  design-register`. (5) Run `python3 scripts/workflow.py sync-agents` after `--update`, as at v47:
+  updates reset agent files to the upstream defaults.
+
 ## v47 — 2026-09-29
 
 - **The design lives in the repo, under a written contract.** Visual design no longer lives in a

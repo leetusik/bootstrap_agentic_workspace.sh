@@ -156,7 +156,11 @@ selection comes from `executors.toml`: no selected mode falls back to `economy`
 Retrofit also installs the `design-cowork` visual workflow when those paths do not already exist:
 the `design-drafter` subagent drafts each round as plain files under `docs/reference/design/` and the
 operator makes every visual decision; the agent writes one `handoff.md`, has the round drafted, reads
-it back with `design-check`, stops, and signs only on the operator's literal words. The design slice writes no
+it back with `design-check`, stops, and signs only on the operator's literal words. That is the `drafter` tool, the default;
+each visual phase can instead choose `claude-design` at `/create-phase` (`Design tool: drafter | claude-design`),
+which restores the original Claude Design loop and keeps its records under `docs/reference/design/claude-design/`.
+A repo that already has a pre-v47 Claude Design layout under `docs/reference/design/` moves it there with
+`python3 scripts/workflow.py design-migrate` (a dry run; `--apply` moves it). The design slice writes no
 implementation code — separate later slices implement the approved design and verify it in a real
 browser. A later `--update` refreshes these workspace-managed skill, subagent, and contract payloads;
 retrofit still skips pre-existing operator-owned files, and update still preserves phase/docs state
