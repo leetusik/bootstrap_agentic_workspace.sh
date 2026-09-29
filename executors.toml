@@ -38,7 +38,9 @@
 
 mode = "flex"
 
-# Claude Code (.claude/agents/slice-executor-{mid,high}.md) — flex values shown
+# Claude Code (.claude/agents/slice-executor-{mid,high}.md) — flex values shown.
+# The design subagent (.claude/agents/design-drafter.md) is not a tier of its own:
+# sync-agents writes it the `high` values, so [claude.high] governs it too.
 #[claude.mid]
 #model = "sonnet"
 #effort = "xhigh"

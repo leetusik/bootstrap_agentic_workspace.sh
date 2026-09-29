@@ -661,6 +661,10 @@ then ok "every changelog release section carries a Migration notes line"; else b
 grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-mid.md" \
   && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-high.md" \
   && ok "fresh install follows seeded flex mode: sonnet@xhigh / opus@xhigh" || bad "fresh flex tiers wrong"
+# P26.S2: the design subagent ships with the Skill tool (frontend-design) and never DesignSync.
+[ -f "$F/.claude/agents/design-drafter.md" ] && grep -Eq '^tools: (.*, )?Skill(,.*)?$' "$F/.claude/agents/design-drafter.md" \
+  && ! grep -q '^tools: .*DesignSync' "$F/.claude/agents/design-drafter.md" \
+  && ok "fresh install ships the design-drafter subagent (Skill in tools, no DesignSync)" || bad "fresh install design-drafter missing, lacks Skill, or carries DesignSync"
 [ ! -f "$F/.claude/agents/slice-executor.md" ] && ok "legacy untiered slice-executor retired (absent on fresh install)" || bad "legacy untiered slice-executor should be retired but is present"
 [ ! -f "$F/.claude/agents/slice-executor-low.md" ] && ok "low tier retired in v23 (absent on fresh install)" || bad "slice-executor-low should be retired but is present"
 [ -f "$F/executors.toml" ] && ok "fresh install seeds the tracked executors.toml selection" || bad "fresh install missing executors.toml"
@@ -849,6 +853,11 @@ printf '%s\n' "$em_out" | grep -q '^mode: flex (executors.toml)$' && printf '%s\
 ( cd "$F" && python3 scripts/workflow.py executor-mode economy >/dev/null 2>&1 ) && grep -q '^mode = "economy"$' "$F/executors.toml" \
   && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-high.md" \
   && ok "executor-mode economy rewrites the mode line and syncs both tiers in one step" || bad "executor-mode economy did not switch and sync"
+# P26.S2: design-drafter follows the high tier (one knob), not a tier of its own.
+hi_model=$(sed -n 's/^model: //p' "$F/.claude/agents/slice-executor-high.md"); hi_effort=$(sed -n 's/^effort: //p' "$F/.claude/agents/slice-executor-high.md")
+[ -n "$hi_model" ] && [ "$(sed -n 's/^model: //p' "$F/.claude/agents/design-drafter.md")" = "$hi_model" ] \
+  && [ "$(sed -n 's/^effort: //p' "$F/.claude/agents/design-drafter.md")" = "$hi_effort" ] && [ "$hi_effort" = "high" ] \
+  && ok "sync-agents keeps design-drafter on the high tier's model and effort (economy: opus@high)" || bad "design-drafter did not follow the high tier through executor-mode economy"
 ( cd "$F" && python3 scripts/workflow.py executor-mode flex >/dev/null 2>&1 ) && cmp -s "$REPO_ROOT/executors.toml" "$F/executors.toml" \
   && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-high.md" \
   && ok "executor-mode flex round-trips the seeded executors.toml byte-identically" || bad "executor-mode round trip changed executors.toml"
@@ -955,6 +964,7 @@ for rel in $skill_rels; do
 done
 DUAL_FIXED=".claude/agents/slice-executor-mid.md
 .claude/agents/slice-executor-high.md
+.claude/agents/design-drafter.md
 .claude/settings.json
 executors.toml
 works/templates/deferred_brief.md

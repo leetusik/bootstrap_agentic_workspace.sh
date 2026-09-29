@@ -75,7 +75,7 @@ path), so editing them and rebuilding is all that is needed:
   de-plugin-ified here (self-service onboarding replaces `/knowledge:setup`, and the
   offline local-file fallback is removed) and further trimmed of its Codex-only passages.
   Nothing syncs the two; re-vendor by hand, and read the divergence comment in the file first.
-- `.claude/agents/slice-executor-{mid,high}.md`
+- `.claude/agents/slice-executor-{mid,high}.md`, `.claude/agents/design-drafter.md` (the design subagent; `sync-agents` keeps it on the high tier's model)
 - `executors.toml` (seed-once executor-tier config — created if absent, never overwritten on update)
 - `.claude/settings.json`
 - `works/templates/{deferred_brief,intent}.md`

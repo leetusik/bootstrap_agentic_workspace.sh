@@ -46,6 +46,7 @@ FIXED_LIVE_FILES = [
     ".claude/settings.json",
     ".claude/agents/slice-executor-mid.md",
     ".claude/agents/slice-executor-high.md",
+    ".claude/agents/design-drafter.md",
     "executors.toml",
     "works/templates/deferred_brief.md",
     "works/templates/intent.md",

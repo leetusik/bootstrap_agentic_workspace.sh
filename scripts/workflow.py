@@ -257,12 +257,22 @@ def _patched_agent_md(text: str, model: str, effort: str) -> str:
     return "---\n" + "\n".join(lines) + text[end:]
 
 
+# The design subagent is not a third tier: it follows the high tier's model and effort, so the one
+# economy/flex knob (and any [claude.high] override) governs every agent file and design work never
+# lands on the mid tier. It gets no EXECUTOR_TIERS entry, no executors.toml table and no preset row.
+DESIGN_DRAFTER_FOLLOWS = "high"
+
+
 def executor_agent_files(config: dict) -> list:
-    """(tier, path, model, effort) for the 2 tier agent files."""
-    return [
+    """(label, path, model, effort) for the 3 managed agent files: the 2 slice-executor tiers plus
+    design-drafter, which tracks the high tier (label "design-drafter"; it is not a tier)."""
+    files = [
         (tier, CLAUDE_AGENTS / f"slice-executor-{tier}.md", config[tier]["model"], config[tier]["effort"])
         for tier in EXECUTOR_TIERS
     ]
+    followed = config[DESIGN_DRAFTER_FOLLOWS]
+    files.append(("design-drafter", CLAUDE_AGENTS / "design-drafter.md", followed["model"], followed["effort"]))
+    return files
 
 
 def executor_agent_drift(config: dict) -> tuple:

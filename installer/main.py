@@ -79,7 +79,7 @@ MANAGED_FILES = [
     "works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/events.jsonl",
     *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md", "phase.md")],
     "scripts/workflow.py",
-    ".claude/agents/slice-executor-mid.md", ".claude/agents/slice-executor-high.md",
+    ".claude/agents/slice-executor-mid.md", ".claude/agents/slice-executor-high.md", ".claude/agents/design-drafter.md",
     ".claude/settings.json",
     "executors.toml",
 ]
@@ -538,9 +538,11 @@ for name in CLAUDE_SKILLS:
     write_text(f".claude/skills/{name}/SKILL.md", PAYLOADS[f".claude/skills/{name}/SKILL.md"])
 
 # Subagents: full-permission workers that implement one already-planned slice, in two
-# capability tiers picked by the slice's risk (embedded verbatim from the live repo).
+# capability tiers picked by the slice's risk (embedded verbatim from the live repo), plus
+# the design subagent that drafts one design round (it follows the high tier's model).
 for tier in ("mid", "high"):
     write_text(f".claude/agents/slice-executor-{tier}.md", PAYLOADS[f".claude/agents/slice-executor-{tier}.md"])
+write_text(".claude/agents/design-drafter.md", PAYLOADS[".claude/agents/design-drafter.md"])
 
 # ---- Executor-tier config (seeded once — commented defaults; operator-owned) ----
 write_text("executors.toml", PAYLOADS["executors.toml"])
@@ -685,7 +687,7 @@ elif RETROFIT:
 else:
     print(f"Bootstrapped agentic workspace at {TARGET}")
     print("Contract: CLAUDE.md")
-    print("Claude Code: 18 skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{mid,high}.md, settings .claude/settings.json")
+    print("Claude Code: 18 skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{mid,high}.md, design subagent .claude/agents/design-drafter.md, settings .claude/settings.json")
     print("Visual design: design-cowork fires automatically, using Claude Design + DesignSync; the operator picks a style (build-after / design-only / paired) and signs off on a runnable mockup, before separate implementation and browser fidelity")
     print("Executor tiers are risk-routed (mid is the default, real code included; high for decomposition, research, review, named triggers and retries); economy is the no-mode fallback, while this seed selects flex in executors.toml; switch it with python3 scripts/workflow.py executor-mode <economy|flex>, or tune it and run sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
