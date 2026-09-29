@@ -647,3 +647,10 @@
 {"ts": "2026-09-29T21:59:27+09:00", "type": "slice_status_changed", "slice": "P26.S3", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-09-29T21:59:56+09:00", "type": "slice_status_changed", "slice": "P26.S4", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-09-29T22:11:21+09:00", "type": "slice_status_changed", "slice": "P26.S4", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-09-29T22:11:49+09:00", "type": "slice_status_changed", "slice": "P26.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-09-29T22:24:21+09:00", "type": "slice_status_changed", "slice": "P26.REVIEW", "old_status": "in_progress", "new_status": "changes_requested"}
+{"ts": "2026-09-29T22:24:21+09:00", "type": "phase_reviewed", "phase": "P26", "verdict": "changes_requested", "reviewer": "slice-executor-high"}
+{"ts": "2026-09-29T22:24:21+09:00", "type": "slice_created", "phase": "P26", "slice": "P26.F1"}
+{"ts": "2026-09-29T22:24:21+09:00", "type": "deferred_created", "deferred": "D29", "source": "P26.REVIEW"}
+{"ts": "2026-09-29T22:24:21+09:00", "type": "deferred_created", "deferred": "D30", "source": "P26.REVIEW"}
+{"ts": "2026-09-29T22:24:22+09:00", "type": "deferred_created", "deferred": "D31", "source": "P26.REVIEW"}

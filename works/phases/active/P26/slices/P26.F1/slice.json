@@ -1,18 +1,18 @@
 {
-  "id": "P26.REVIEW",
+  "id": "P26.F1",
   "phase_id": "P26",
-  "name": "phase review",
-  "kind": "review",
-  "status": "changes_requested",
-  "order": 9999,
+  "name": "align the drafter's frontend-design licence, design-check's reference rule, the v47 changelog and the do-* feedback step with the doctrine",
+  "kind": "fix",
+  "status": "todo",
+  "order": 14,
   "depends_on": [],
-  "created_at": "2026-09-29T21:07:58+09:00",
-  "started_at": "2026-09-29T22:11:49+09:00",
+  "created_at": "2026-09-29T22:24:21+09:00",
+  "started_at": null,
   "completed_at": null,
   "risk": "high",
   "source": {
-    "type": "new_phase",
-    "id": "P26"
+    "type": "manual",
+    "id": null
   },
   "paths": {
     "plan": "plan.md",

@@ -6,17 +6,17 @@
 ## Pointer
 
 - Current phase: `P26`
-- Current slice: `P26.REVIEW`
-- Next slice: `none`
+- Current slice: `P26.F1`
+- Next slice: `P26.REVIEW`
 - Waiting on operator: `none`
-- Open deferred jobs: `17`
+- Open deferred jobs: `20`
 
 ## Active Phases
 
 | Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
 | [x] `P25` | `done` | `pass` | Research a replacement for Claude Design in design-cowork | `none` | `works/phases/active/P25` |
-| [ ] `P26` | `planned` | `pending` | Replace the Claude Design loop with a repo-file design contract and a design subagent | `P26.REVIEW` | `works/phases/active/P26` |
+| [ ] `P26` | `in_progress` | `changes_requested` | Replace the Claude Design loop with a repo-file design contract and a design subagent | `P26.F1` | `works/phases/active/P26` |
 
 ## Phase P25: Research a replacement for Claude Design in design-cowork
 
@@ -36,4 +36,5 @@
 | [x] `P26.S2` | `done` | add the design subagent and ship it | `implementation` | `works/phases/active/P26/slices/P26.S2` |
 | [x] `P26.S3` | `done` | rewrite design-cowork around the files | `implementation` | `works/phases/active/P26/slices/P26.S3` |
 | [x] `P26.S4` | `done` | sweep the contract and orchestrator skills, ship v47 | `implementation` | `works/phases/active/P26/slices/P26.S4` |
-| [ ] `P26.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P26/slices/P26.REVIEW` |
+| [ ] `P26.F1` | `todo` | align the drafter's frontend-design licence, design-check's reference rule, the v47 changelog and the do-* feedback step with the doctrine | `fix` | `works/phases/active/P26/slices/P26.F1` |
+| [ ] `P26.REVIEW` | `changes_requested` | phase review | `review` | `works/phases/active/P26/slices/P26.REVIEW` |

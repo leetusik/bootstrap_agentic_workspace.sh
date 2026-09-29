@@ -4,7 +4,7 @@
 
 ## Summary
 
-- Open: `17`
+- Open: `20`
 - Promoted: `0`
 - Dropped: `11`
 
@@ -25,7 +25,10 @@
 | `D25` | `deferred` | Split decisions.md's Decision Log and judge the other oversized doc sections | P24.REVIEW | The next docs phase whose confirmed scope includes restructuring, or the first slice that needs more than one Decision Log entry | `works/deferred/open/D25` |
 | `D26` | `deferred` | Correct the phase_consolidation and phase_execution docstrings on the parallel consolidation field | P24.REVIEW | The next edit of phase_consolidation, parallel_start or set_phase_consolidation, or together with D22 | `works/deferred/open/D26` |
 | `D28` | `deferred` | Re-evaluate Doop as a design-cowork option | P25.REVIEW | Doop reaches v1.0, publishes an image, or ships a non-interactive agent token | `works/deferred/open/D28` |
+| `D29` | `deferred` | Design schema 2: more than one design project per repo | P26.REVIEW | The operator answers yes, or a repo needs a second design system | `works/deferred/open/D29` |
 | `D3` | `deferred` | Make installer/build.py smoke-execute the assembled artifact | P15.REVIEW | Next time installer/build.py is touched, or the first time a broken artifact reaches a commit | `works/deferred/open/D3` |
+| `D30` | `deferred` | Flag a design round left open, or review addresses left over, when a design phase ends | P26.REVIEW | The first design-bearing phase under v47, or its review | `works/deferred/open/D30` |
+| `D31` | `deferred` | Bring docs/reference/design/ into a design phase's review boundary | P26.REVIEW | The first design-bearing phase review under v47 | `works/deferred/open/D31` |
 | `D5` | `deferred` | Confirm: ## Design Style is appended by create-phase only when visual, not scaffolded into every intent.md | P17.REVIEW | Before the first design-bearing phase runs under v34, or the next time works/templates/intent.md is edited. | `works/deferred/open/D5` |
 | `D6` | `deferred` | Widen installer/main.py flag_stale_skills() ownership heuristic beyond the disable-model-invocation marker | P17.REVIEW | If a model-invocable skill is retired upstream, or when flag_stale_skills() is next touched. | `works/deferred/open/D6` |
 | `D7` | `deferred` | Qualify review-phase gate stage 4 for a phase whose only surface is a throwaway mockup | P17.REVIEW | Before the first design-only or mockup-shipping phase reaches its review. | `works/deferred/open/D7` |

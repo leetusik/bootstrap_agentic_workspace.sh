@@ -1,0 +1,11 @@
+{
+  "id": "D30",
+  "title": "Flag a design round left open, or review addresses left over, when a design phase ends",
+  "status": "deferred",
+  "source": "P26.REVIEW",
+  "reason": "Neither validate nor review-phase runs design-check or checks for a leftover open round or cards still carrying a review address (hourglass group prefix) at phase end",
+  "trigger": "The first design-bearing phase under v47, or its review",
+  "created_at": "2026-09-29T22:24:21+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

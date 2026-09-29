@@ -1,0 +1,11 @@
+{
+  "id": "D29",
+  "title": "Design schema 2: more than one design project per repo",
+  "status": "deferred",
+  "source": "P26.REVIEW",
+  "reason": "Schema 1 fixes one design.json per repo (docs/reference/design/); the registry is already keyed per project so a later schema can add several per repo without breaking the dashboard. Routes P26's operator question (monorepo with separate apps each carrying a design system?).",
+  "trigger": "The operator answers yes, or a repo needs a second design system",
+  "created_at": "2026-09-29T22:24:21+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

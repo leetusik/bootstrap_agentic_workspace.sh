@@ -16,17 +16,17 @@
       "id": "P26",
       "name": "Replace the Claude Design loop with a repo-file design contract and a design subagent",
       "objective": "Define the on-disk design contract a separate web dashboard reads (each product repo holds its projects, rounds, numbered cards, tokens and decisions in git); add a dedicated design subagent that drafts rounds into it, using frontend-design only where it helps; rewrite design-cowork around the files, retiring the DesignSync read-back and SIGNOFF regroup and keeping Claude Design only as an optional bundle import; reword the executor hard rule to 'the design subagent drafts, the operator decides'; ship a hook that registers a repo with the dashboard. Governance unchanged (styles, rounds, literal signoff, mockup gate, RESPECT THE DESIGN); Claude Code only; no interim viewer (card files are opened directly); the dashboard is built in its own repo.",
-      "status": "planned",
+      "status": "in_progress",
       "order": 2,
       "path": "works/phases/active/P26",
-      "review_status": "pending",
-      "current_slice": "P26.REVIEW",
-      "slice_count": 6,
+      "review_status": "changes_requested",
+      "current_slice": "P26.F1",
+      "slice_count": 7,
       "done_slice_count": 5
     }
   ],
-  "deferred_open_count": 17,
+  "deferred_open_count": 20,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 11,
-  "last_rebuilt_at": "2026-09-29T22:11:21+09:00"
+  "last_rebuilt_at": "2026-09-29T22:24:22+09:00"
 }
