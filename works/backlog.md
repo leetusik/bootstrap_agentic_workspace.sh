@@ -6,8 +6,8 @@
 ## Pointer
 
 - Current phase: `P27`
-- Current slice: `P27.F2`
-- Next slice: `P27.REVIEW`
+- Current slice: `P27.REVIEW`
+- Next slice: `none`
 - Waiting on operator: `none`
 - Open deferred jobs: `21`
 
@@ -17,7 +17,7 @@
 |---|---|---|---|---|---|
 | [x] `P25` | `done` | `pass` | Research a replacement for Claude Design in design-cowork | `none` | `works/phases/active/P25` |
 | [x] `P26` | `done` | `pass` | Replace the Claude Design loop with a repo-file design contract and a design subagent | `none` | `works/phases/active/P26` |
-| [ ] `P27` | `in_progress` | `changes_requested` | Choose the design tool per phase: drafter or Claude Design | `P27.F2` | `works/phases/active/P27` |
+| [ ] `P27` | `in_progress` | `changes_requested` | Choose the design tool per phase: drafter or Claude Design | `P27.REVIEW` | `works/phases/active/P27` |
 
 ## Phase P25: Research a replacement for Claude Design in design-cowork
 
@@ -51,5 +51,5 @@
 | [x] `P27.S3` | `done` | Choice, contract and driver sweep, then ship v48 | `implementation` | `works/phases/active/P27/slices/P27.S3` |
 | [x] `P27.F3` | `done` | Make the installer body immune to the Python 3.9 stdin tokenizer chunk trap | `fix` | `works/phases/active/P27/slices/P27.F3` |
 | [x] `P27.F1` | `done` | Route claude-design feedback before the read-back in both drivers | `fix` | `works/phases/active/P27/slices/P27.F1` |
-| [ ] `P27.F2` | `todo` | Steer legacy design roots to design-migrate | `fix` | `works/phases/active/P27/slices/P27.F2` |
+| [x] `P27.F2` | `done` | Steer legacy design roots to design-migrate | `fix` | `works/phases/active/P27/slices/P27.F2` |
 | [ ] `P27.REVIEW` | `changes_requested` | phase review | `review` | `works/phases/active/P27/slices/P27.REVIEW` |

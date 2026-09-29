@@ -3,14 +3,14 @@
   "phase_id": "P27",
   "name": "Steer legacy design roots to design-migrate",
   "kind": "fix",
-  "status": "todo",
+  "status": "done",
   "order": 6,
   "depends_on": [
     "P27.F1"
   ],
   "created_at": "2026-09-30T07:26:14+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-30T07:40:09+09:00",
+  "completed_at": "2026-09-30T07:45:52+09:00",
   "risk": "low",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Pre-v47 roots steered to design-migrate: detector, hints in check/open/register, design-init refuses, tokens.css listed; smoke 203 PASS",
   "validation": {
     "required": [],
     "last_run": null,

@@ -39,7 +39,9 @@ history.
   in the old layout at the design root fails `design-check` and `design-open` refuses it. The new
   command is a dry run by default, `--apply` moves, and it is all-or-nothing: it refuses, moving
   nothing, when a destination already exists. It never deletes, never runs git and never writes
-  `design.json`.
+  `design.json`. On such a root `design-check`, `design-open` and `design-register` name it (dry
+  run first, ahead of `design-init`), and `design-init` refuses, so the old `tokens.css` cannot
+  silently become schema 1's. Run it before the first `claude-design/rounds/` folder exists.
 
 - **`design-register` prints a design-deck hint.** On success it prints the deck URL from
   `$AGENTIC_DESIGN_DECK_URL` when that is set, and warns when the repo sits outside the deck's
@@ -76,7 +78,8 @@ history.
   `python3 scripts/workflow.py design-migrate --apply`, and commit the renames yourself. The rule:
   with no `design.json`, every top-level entry of the root moves; with one, only the rounds without
   `round.json`, `SIGNOFF.md` and `grounding/` move. (3) Run `python3 scripts/workflow.py design-init`
-  only if the repo will also use the `drafter` tool. (4) To see the deck URL after
+  only if the repo will also use the `drafter` tool, and only after the migration (it refuses on a
+  root that still holds the old record). (4) To see the deck URL after
   `design-register`, run `AGENTIC_DESIGN_DECK_URL=<deck url> python3 scripts/workflow.py
   design-register`. (5) Run `python3 scripts/workflow.py sync-agents` after `--update`, as at v47:
   updates reset agent files to the upstream defaults.

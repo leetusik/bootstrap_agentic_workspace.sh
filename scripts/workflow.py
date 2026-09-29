@@ -3062,6 +3062,29 @@ def design_root() -> Path:
     return ROOT / DESIGN_ROOT_REL
 
 
+def design_legacy_record(root: Path) -> list:
+    """The pre-v47 (Claude Design) record's parts in a design root: rounds/<name>/ folders without a
+    round.json, the root SIGNOFF.md and grounding/ -- design-migrate's own rule for a root that has a
+    design.json, so the hints, design-init's refusal and the migration cannot disagree. Empty for a
+    root with no design.json whose rounds/ holds a schema-1 round: design-migrate refuses that root
+    until design-init restores the manifest, so the steer to design-migrate must stay out of its way."""
+    rounds_dir = root / "rounds"
+    entries = sorted(rounds_dir.iterdir()) if rounds_dir.is_dir() else []
+    if not (root / "design.json").exists() and any((e / "round.json").exists() for e in entries):
+        return []
+    parts = [e for e in entries if not e.name.startswith(".") and e.is_dir() and not (e / "round.json").exists()]
+    return parts + [root / name for name in ("SIGNOFF.md", "grounding") if os.path.lexists(root / name)]
+
+
+def design_legacy_hint(root: Path) -> str:
+    """One line steering a root that holds a pre-v47 record to design-migrate (ahead of design-init),
+    or "" when it holds none."""
+    if not design_legacy_record(root):
+        return ""
+    then = "" if (root / "design.json").exists() else ", then design-init if this repo will use the drafter"
+    return f"pre-v47 record: run python3 scripts/workflow.py design-migrate (dry run first){then}"
+
+
 def design_number(text: str):
     """The integer behind a canonical NN prefix (01, 42, 100), or None for 0, 1-digit or extra zeros."""
     number = int(text)
@@ -3224,8 +3247,10 @@ def design_scan(root: Path) -> dict:
         problems.append(f"no design root at {DESIGN_ROOT_REL}/ (run: python3 scripts/workflow.py design-init)")
         return scan
     mpath = root / "design.json"
+    hint = design_legacy_hint(root)  # said once, on the first legacy-related problem
     if not mpath.exists():
-        problems.append("design.json missing (run: python3 scripts/workflow.py design-init)")
+        problems.append(f"design.json missing; {hint}" if hint else "design.json missing (run: python3 scripts/workflow.py design-init)")
+        hint = ""
     else:
         try:
             manifest = read_json(mpath)
@@ -3299,7 +3324,8 @@ def design_scan(root: Path) -> dict:
         rnd = {"number": number, "id": entry.name, "path": entry, "data": None}
         jpath = entry / "round.json"
         if not jpath.is_file():
-            problems.append(f"{rel}: round.json missing")
+            problems.append(f"{rel}: round.json missing" + (f"; {hint}" if hint else ""))
+            hint = ""
         else:
             try:
                 data = read_json(jpath)
@@ -3418,6 +3444,8 @@ def design_init(args: argparse.Namespace) -> None:
     root = design_root()
     mpath = root / "design.json"
     rel = f"{DESIGN_ROOT_REL}/design.json"
+    if not mpath.exists() and design_legacy_hint(root):  # a refusal only: nothing moves, nothing is written
+        raise SystemExit(f"design-init: refused -- {design_legacy_hint(root)}")
     if mpath.exists():
         try:
             current = read_json(mpath)
@@ -3446,15 +3474,18 @@ def design_init(args: argparse.Namespace) -> None:
 def design_open(args: argparse.Namespace) -> None:
     root = design_root()
     scan = design_scan(root)
+    hint = design_legacy_hint(root)
     if scan["manifest"] is None:
-        raise SystemExit(f"design-open: refused -- no valid {DESIGN_ROOT_REL}/design.json (run: python3 scripts/workflow.py design-init)")
+        raise SystemExit(f"design-open: refused -- no valid {DESIGN_ROOT_REL}/design.json; {hint}" if hint else
+                         f"design-open: refused -- no valid {DESIGN_ROOT_REL}/design.json (run: python3 scripts/workflow.py design-init)")
     if not DESIGN_SLUG_RE.match(args.slug):
         raise SystemExit(f"design-open: --slug {args.slug!r} is not lowercase words joined by hyphens")
     if not DESIGN_SLICE_RE.match(args.slice):
         raise SystemExit(f"design-open: --slice {args.slice!r} is not a slice id (P<N>.<ID>)")
     broken = [r["id"] for r in scan["rounds"] if r["data"] is None]
     if broken:
-        raise SystemExit(f"design-open: refused -- round(s) {', '.join(broken)} have no well-formed round.json (run design-check)")
+        raise SystemExit(f"design-open: refused -- round(s) {', '.join(broken)} have no well-formed round.json; {hint}" if hint else
+                         f"design-open: refused -- round(s) {', '.join(broken)} have no well-formed round.json (run design-check)")
     opened = design_open_rounds(scan)
     for rnd in opened:
         if rnd["id"].split("-", 1)[1] == args.slug and rnd["data"]["slice"] == args.slice:
@@ -3568,7 +3599,9 @@ def design_register(args: argparse.Namespace) -> None:
     except (ValueError, OSError):
         manifest = None
     if manifest is None or design_manifest_problems(manifest):
-        raise SystemExit(f"design-register: refused -- no valid {DESIGN_ROOT_REL}/design.json (run: python3 scripts/workflow.py design-init)")
+        hint = design_legacy_hint(root)
+        raise SystemExit(f"design-register: refused -- no valid {DESIGN_ROOT_REL}/design.json; {hint}" if hint else
+                         f"design-register: refused -- no valid {DESIGN_ROOT_REL}/design.json (run: python3 scripts/workflow.py design-init)")
     path = design_registry_path()
     registry = {"schema": DESIGN_SCHEMA, "projects": []}
     if path.exists():
@@ -3647,23 +3680,21 @@ def design_migrate(args: argparse.Namespace) -> None:
                 continue
             moves.append((entry, legacy / entry.name))
     else:
-        for entry in sorted(rounds_dir.iterdir()) if rounds_dir.is_dir() else []:
-            if entry.name.startswith("."):
-                continue
-            if not entry.is_dir():
-                left.append((entry, outside))
-            elif not (entry / "round.json").exists():
-                moves.append((entry, legacy / "rounds" / entry.name))
-        for name in ("SIGNOFF.md", "grounding"):
-            if os.path.lexists(root / name):
-                moves.append((root / name, legacy / name))
+        left.extend((e, outside) for e in (sorted(rounds_dir.iterdir()) if rounds_dir.is_dir() else [])
+                    if not e.name.startswith(".") and not e.is_dir())
+        moves.extend((part, legacy / part.relative_to(root)) for part in design_legacy_record(root))
+        if moves and (root / "tokens.css").is_file():  # schema 1's own file: kept, but said out loud
+            left.append((root / "tokens.css", "kept as schema 1's tokens.css; if it belongs to the old record, move it into claude-design/ by hand"))
         schema1 = {"design.json", "cards", "tokens.css", "rounds", DESIGN_LEGACY_DIR, "SIGNOFF.md", "grounding"}
         left.extend((e, outside) for e in sorted(root.iterdir()) if e.name not in schema1 and not e.name.startswith("."))
     folders = [legacy] + ([legacy / "rounds"] if any(dst.parent == legacy / "rounds" for _, dst in moves) else [])
     for folder in folders:
         if os.path.lexists(folder) and not folder.is_dir():
             problems.append(f"{rel(folder)} exists and is not a folder")
-    problems.extend(f"{rel(dst)} already exists" for _, dst in moves if os.path.lexists(dst))
+    started = ("; a claude-design round was started first -- move each legacy round into claude-design/rounds/ by hand, "
+               "renumbering after the existing ones, remove the emptied rounds/, then re-run")
+    problems.extend(f"{rel(dst)} already exists" + (started if dst == legacy / "rounds" else "")
+                    for _, dst in moves if os.path.lexists(dst))
     if problems:
         raise SystemExit("design-migrate: refused -- nothing moved:\n" + "\n".join(f"- {p}" for p in problems))
     stayed = [f"design-migrate: left in place {rel(path)} ({why})" for path, why in left]

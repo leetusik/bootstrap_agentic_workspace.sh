@@ -334,7 +334,9 @@ what it carries does not:
 
 - You write it into the folder `design-open` just created
   (`docs/reference/design/rounds/<NN-slug>/handoff.md`) — on a product's first round, `design-init`
-  writes the project's `design.json` before that.
+  writes the project's `design.json` before that. If the design root still holds a pre-v47 record
+  (*Migrating a pre-v47 repo*, below), run `design-migrate` (dry run, then `--apply`, then commit the
+  renames) **before** `design-init`, which refuses on such a root.
 - Grounding in an existing, implemented component library is a round like any other: point the drafter
   at the components and ask for cards of them as they are.
 - **`new visual direction: yes` or `no`**, on a line of its own. `yes` for a product's first round, a
@@ -355,7 +357,9 @@ what it carries does not:
 
 - There is **no `design-open`** and no `new visual direction` line. You create the round folder yourself,
   `docs/reference/design/claude-design/rounds/<NN-slug>/`, numbered after the highest one there, and
-  write `handoff.md` into it.
+  write `handoff.md` into it. If the design root still holds a pre-v47 record (*Migrating a pre-v47
+  repo*, below), run `design-migrate` (dry run, then `--apply`, then commit the renames) **before**
+  creating any `claude-design/rounds/` folder, so the numbering continues from the old rounds.
 - Require the *content*, not filenames: if the session produces Claude Design's own **handoff
   bundle**, that **is** the record and the contract — take it as-is. `result.md` / `build-prompt.md`
   are only the names you land under when the bundle brings none of its own.
@@ -681,8 +685,10 @@ Move it here with `python3 scripts/workflow.py design-migrate`, a dry run that p
 `python3 scripts/workflow.py design-migrate --apply`, and commit the renames. It moves the old record
 unchanged: with no `design.json`, every top-level entry of the root moves; with one, only the rounds
 without `round.json`, the root `SIGNOFF.md` and `grounding/`. It is all-or-nothing — it refuses, moving
-nothing, when a destination already exists — never deletes and never runs git. Run `design-init`
-afterwards only if the repo will also use the `drafter` tool.
+nothing, when a destination already exists (so run it before the first `claude-design/rounds/` folder
+exists) — never deletes and never runs git. Run `design-init` afterwards only if the repo will also use
+the `drafter` tool; on a root that still holds the old record it refuses, and `design-check`,
+`design-open` and `design-register` name `design-migrate` instead.
 
 ## Read back, then land it
 

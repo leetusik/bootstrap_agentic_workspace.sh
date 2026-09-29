@@ -26,7 +26,7 @@
 # (design-check names a gap, an unnumbered card and a // or http:// reference; design-close's
 # regroup rewrites line 1 only, keeps a pre-close snapshot and is idempotent; design-register
 # writes only the env-overridden registry, never the operator's ~/.config; v48: design-check skips claude-design/,
-# design-migrate moves all-or-nothing, design-register prints the deck hint), the v48 design-tool
+# design-migrate moves all-or-nothing and a pre-v47 root is steered to it, design-register prints the deck hint), the v48 design-tool
 # invariants (design-cowork carries both loops, drafter and claude-design, with P26's governance
 # shared), and the v31 Codex-removal negatives. Re-runnable; self-cleaning.
 #
@@ -1458,7 +1458,15 @@ printf '# handoff\n' > "$MD/rounds/01-a/handoff.md"; printf 'Signed: "go"\n' > "
 printf '<p>g</p>\n' > "$MD/grounding/g.html"; printf '# the old record\n' > "$MD/README.md"
 mw() { ( cd "$MG" && HOME="$DZ/home" python3 scripts/workflow.py "$@" ); }
 mig_sig() { ( cd "$MD" && find . -type f | LC_ALL=C sort | while read -r f; do printf '%s %s\n' "$f" "$(sha "$f")"; done ); }
-legacy_before=$(mig_sig); out=$(mw design-migrate 2>&1); rc=$?
+# P27.F2: a pre-v47 root is steered to design-migrate -- design-init refuses and writes nothing (so the old
+# tokens.css cannot silently become schema 1's), and design-check names design-migrate ahead of design-init.
+legacy_before=$(mig_sig); init_out=$(mw design-init 2>&1); init_rc=$?; chk_out=$(mw design-check 2>&1); chk_rc=$?
+if [ "$init_rc" -ne 0 ] && printf '%s\n' "$init_out" | grep -Fq 'design-migrate' && [ ! -e "$MD/design.json" ] \
+    && [ "$chk_rc" -ne 0 ] && printf '%s\n' "$chk_out" | grep -Fq 'design.json missing; pre-v47 record: run python3 scripts/workflow.py design-migrate' \
+    && [ "$(mig_sig)" = "$legacy_before" ]; then
+  ok "a pre-v47 design root is steered to design-migrate: design-init refuses without writing, and design-check names design-migrate ahead of design-init"
+else bad "a pre-v47 root was not steered to design-migrate (init rc=$init_rc, check rc=$chk_rc) -- $init_out $chk_out"; fi
+out=$(mw design-migrate 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && [ "$(mig_sig)" = "$legacy_before" ] && printf '%s\n' "$out" | grep -q 'dry run -- nothing moved' \
     && ( for e in README.md SIGNOFF.md grounding rounds; do printf '%s\n' "$out" \
            | grep -Fqx "design-migrate: would move docs/reference/design/$e -> docs/reference/design/claude-design/$e" || exit 1; done ); then

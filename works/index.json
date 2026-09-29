@@ -33,13 +33,13 @@
       "order": 3,
       "path": "works/phases/active/P27",
       "review_status": "changes_requested",
-      "current_slice": "P27.F2",
+      "current_slice": "P27.REVIEW",
       "slice_count": 8,
-      "done_slice_count": 6
+      "done_slice_count": 7
     }
   ],
   "deferred_open_count": 21,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 11,
-  "last_rebuilt_at": "2026-09-30T07:40:09+09:00"
+  "last_rebuilt_at": "2026-09-30T07:45:52+09:00"
 }
