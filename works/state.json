@@ -1,8 +1,8 @@
 {
-  "current_phase": "P27",
-  "current_slice": "P27.REVIEW",
+  "current_phase": null,
+  "current_slice": null,
   "next_slice": null,
   "waiting_on_operator": null,
-  "mode": "phase",
-  "updated_at": "2026-09-30T07:45:52+09:00"
+  "mode": "idle",
+  "updated_at": "2026-09-30T07:58:34+09:00"
 }

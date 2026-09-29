@@ -29,17 +29,18 @@
       "id": "P27",
       "name": "Choose the design tool per phase: drafter or Claude Design",
       "objective": "Let each visual phase choose its design tool at /create-phase (Design tool: drafter | claude-design, drafter by default): design-cowork carries both the P26 drafter loop and the restored original Claude Design loop (no repo mirroring; records under docs/reference/design/claude-design/, skipped by design-* and design-deck), with a legacy-repo migration into that folder, a design-register deck hint, and a v48 bump with a re-sync note",
-      "status": "in_progress",
+      "status": "done",
       "order": 3,
       "path": "works/phases/active/P27",
-      "review_status": "changes_requested",
-      "current_slice": "P27.REVIEW",
+      "review_status": "pass",
+      "current_slice": null,
       "slice_count": 8,
-      "done_slice_count": 7
+      "done_slice_count": 8,
+      "consolidation": "pending"
     }
   ],
-  "deferred_open_count": 21,
+  "deferred_open_count": 23,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 11,
-  "last_rebuilt_at": "2026-09-30T07:45:52+09:00"
+  "last_rebuilt_at": "2026-09-30T07:58:34+09:00"
 }

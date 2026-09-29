@@ -2,6 +2,224 @@
 
 - **status:** done
 - **tier:** high
+- **review_verdict:** `pass`
+- **summary:** This re-review follows P27.F3, P27.F1 and P27.F2. All three first-pass findings and both nits are closed, and every slice validates together: smoke 203 PASS / 0 FAIL, `--check` OK, `validate` OK, `CLAUDE.md` 12,280 B. The live engine check and the fresh install also pass. F3 did real work: HEAD's installer with the cookie removed fails to install on this Mac's Python 3.9.6. The Doc impact list had no qa.md line for P27's smoke additions, so I appended one. Two non-blocking deferred-job candidates are listed below.
+- **files_changed:**
+  - `works/phases/active/P27/slices/P27.REVIEW/result.md`: this re-review on top, the first pass kept below it.
+  - `works/phases/active/P27/phase.md`:
+    - one `## Doc impact` line appended (qa.md);
+    - the consumed F1/F2 → REVIEW note removed from `## Notes for later slices`;
+    - `## Now` rewritten.
+  - No source edited.
+- **validation:**
+  - `bash tests/retrofit_smoke.sh`, run alone in the foreground: **203 PASS, 0 FAIL**, exit 0, `ALL RETROFIT SMOKE TESTS PASSED`, and no `Non-UTF-8` line. PASS
+  - `python3 installer/build.py --check`: `OK … in sync`. PASS
+  - `python3 scripts/workflow.py validate`: `Workflow validation passed.` It printed only the three warnings that were already there (P26 consolidation owed, stale docs, oversized sections). PASS
+  - `wc -c CLAUDE.md`: **12,280** (cap 12,288). No diff since `942ee3c`. PASS
+  - Live engine check on scratch copies of changple_web, vocky and Mijual: `design-migrate` dry run and `--apply`, `design-check`, `design-init`, `design-open` and `design-register` (with a scratch registry and `AGENTIC_DESIGN_DECK_URL`). PASS
+  - `design-migrate` moves the same things as before F2: the pre-F2 (`98d6d50`) and HEAD engines give identical dry runs on all three design.json-less roots and identical trees after `--apply`. On the design.json-present root they differ by the `tokens.css` listing line only. PASS
+  - Fresh install of the rebuilt artifact into scratch (exit 0, `validate` passes):
+    - `design-cowork` ships `DesignSync` in `allowed-tools`;
+    - `design-drafter`'s `tools:` has no `DesignSync`;
+    - `workspace_version` is 48 and `design-migrate` is in `--help`;
+    - the drivers, executors, `design-cowork`, `workflow.py` and `CLAUDE.md` are byte-identical to the repo's.
+
+    PASS
+  - F3's 3.9 sweep, re-run on `design-cowork/SKILL.md` at HEAD with k = 0…95 and a real rebuild for each k:
+    - with the cookie: **0 / 96** fail;
+    - with the cookie removed from a scratch copy: **52 / 96** fail, k = 0 included.
+
+    PASS
+  - F1's ordering pin, checked both ways: `False` on `942ee3c` for both drivers, `True` at HEAD. PASS
+  - Executor bodies: L33/L60 are identical between mid and high, and the only whole-file difference is the frontmatter `name`, `description` and `model`. PASS
+- **deviations:** I followed `plan.md`, with three additions:
+  1. **An end-to-end install with the cookie removed, plus a parse-only check of each fix commit's artifact without it** (scratch). The install exits 1 with `SyntaxError: Non-UTF-8 code … but no encoding declared`, and F2's commit is the first that fails, which proves the cookie is load-bearing at HEAD, not just in the sweep.
+  2. **Four edge probes of F2's detector**, cases E–H below.
+  3. **I appended the missing qa.md `## Doc impact` line myself instead of opening a fix slice.** It is bookkeeping, and the P21 and P15 reviews did the same on a pass. It is named here so the orchestrator can overrule it.
+- **doc_versions:** none — deferred to a docs phase
+- **walkthrough:** none (gate waived: `acceptance.required: false`)
+- **explain:** not written — run /explain for this phase
+
+## Re-review after P27.F3, P27.F1 and P27.F2
+
+The boundary is unchanged: `phase-scope P27` is `fe9ef30..e94c902`, 7 commits, and the same 14 product files. The fix commits touched 10 of them: both executor bodies, `design-cowork`, both drivers, `CHANGELOG.md`, `installer/main.py`, `scripts/workflow.py`, `tests/retrofit_smoke.sh` and the rebuilt artifact. `CLAUDE.md`, `create-phase`, both READMEs and `docs/retrofit-guide.md` were not touched after `942ee3c`.
+
+### 1. Finding 1 (claude-design feedback read back first) is closed
+- **Both drivers now branch on the operator's words first.**
+  - `do-next-slice` step 3 and the `do-whole-phase` claude-design block both open the resume with "branch on their words first".
+  - **Feedback** comes first. The words go verbatim into `feedback.md`, with "No read-back and no landing: the superseded round keeps only its `handoff.md` and `feedback.md`, read-only". The next round opens in the same slice, and its handoff is committed with that `feedback.md` and pushed. Then the loop stops at PENDING #1 again, which costs one more commit, push, stop (and, in `do-next-slice`, invocation).
+  - **Literal approval, no mockup:** the `DesignSync` read-back, the landing and the checks run, and a failure stops `pending` with nothing signed. "On a pass" comes the SIGNOFF entry and the regroup.
+  - **Mockup requested:** "the same read-back, landing and checks gate their go-ahead".
+- **The drivers agree with `design-cowork`:**
+  - The *Under claude-design* diagram (L148–160) puts feedback first.
+  - *Closing the round* L865–871 closes a superseded round by `feedback.md`, "keeps what it holds, read-only". Literal approval signs "once the read-back has passed and the record has landed".
+  - The superseding commit (L206–208) carries only `feedback.md` and the new `handoff.md`, now matched by "committed with that `feedback.md`".
+  - The commit counts ("**two commits without a mockup, four with one**") and the PENDING #1 report wording are unchanged and still match L187–204.
+- **The new claude-design Never line (L1222–1224),** "before the read-back has passed, the record has landed and the operator has given their go-ahead", matches two places:
+  - *The mockup* L779–780: "at their return once the record has landed";
+  - *Closing* L871.
+
+  The shared Never line keeps "(the timing is per tool, below)".
+- **Executor L60** now reads "transcribes the drafted (or, under `claude-design`, landed) record" in both bodies. That agrees with the skill's "`build-prompt.md` plus the landed record" (L817–820).
+- **The smoke pins it:** one ordering assert per driver (`feedback.md` before `DesignSync` in the claude-design branch). It fails on the pre-F1 text and passes at HEAD.
+- **Finding 3's notebook lines are present:**
+  - `## Decisions`: "A missing DesignSync stops `pending` (P27.S2)" and "Feedback is routed before the read-back under claude-design (P27.F1)".
+  - `## Doc impact`: the `decisions.md` line (push per round, superseding in the same slice, the DesignSync-unavailable stop) and F1's `operations.md` line.
+
+### 2. Finding 2 (legacy roots not steered to `design-migrate`) is closed
+I re-ran the three cases on fresh scratch copies of the real design folders, using `cp -R` only. The real repos' `docs/reference/design` trees are clean.
+
+- **A. changple_web, `design-init` first:**
+  - `design-check` finds 13 problems. The first reads `design.json missing; pre-v47 record: run … design-migrate (dry run first), then design-init if this repo will use the drafter`.
+  - `design-init`, `design-open` and `design-register` all refuse (rc 1) with the same steer, and the tree is unchanged.
+  - `design-migrate --apply` moves `README.md`, `SIGNOFF.md`, `rounds` and **`tokens.css`** into `claude-design/`, byte-identical. The first review's silent-`tokens.css` path is closed.
+  - Then `design-check` shows the plain `design.json missing (run: … design-init)`, `design-init` writes the manifest, and `design-check` is OK.
+- **B. vocky, a claude-design round started before migrating:** `design-migrate --apply` refuses with `claude-design/rounds already exists; a claude-design round was started first -- move each legacy round into claude-design/rounds/ by hand, renumbering after the existing ones, remove the emptied rounds/, then re-run`. Nothing moves. F2's log shows the remedy followed literally and succeeding.
+- **C. Mijual, a plain legacy root (drafter path):**
+  - Before migrating: `design-check` finds 53 problems with the steer first, and `design-init`, `design-open` and `design-register` all refuse with the steer.
+  - `--apply` leaves the `claude-design/` tree byte-identical to the pre-move root, and a second `--apply` reports `nothing to migrate`.
+  - `design-check` shows the plain design.json-missing hint, then `design-init` writes the manifest, `design-check` is OK, and `design-open --slug coexist` opens `rounds/01-coexist`.
+  - `design-register` with `AGENTIC_DESIGN_DECK_URL` set prints the URL and the outside-folder warning. The idempotent re-run with it unset prints the "set $AGENTIC_DESIGN_DECK_URL" line.
+- **What `design-migrate` moves did not change.**
+  - On all three design.json-less roots, the pre-F2 engine (`98d6d50`, which equals `942ee3c`) and HEAD print identical dry runs (4, 2 and 4 moves) and leave identical trees after `--apply`.
+  - With a hand-written `design.json` (changple_web, 13 moves), the dry runs differ only by the added `left in place … tokens.css (kept as schema 1's tokens.css; …)` line.
+  - The refactor of the design.json branch onto `design_legacy_record` keeps the same set and the same order of moves.
+- **The skill** says to migrate first in three places:
+  - the drafter's `design-init` bullet (L337–339);
+  - the claude-design handoff bullet (L360–362), "so the numbering continues from the old rounds";
+  - the migration paragraph (L688–691).
+
+  Each is labelled for its tool, so governance is unaffected.
+- **F2's stated consequence is correct and not a finding.** The consequence: a root with a stray root `SIGNOFF.md` or `grounding/` gets `design-init` refused until it is migrated. Three reasons:
+  1. **The refusal is narrow.** It fires only when there is **no `design.json`**. Case G, a schema-1 root *with* `design.json` and a stray root `SIGNOFF.md`, is not refused, and `design-check` is OK.
+  2. **The files are legacy by construction.** Schema 1 writes `SIGNOFF.md` per round and has no root `grounding/`, since grounding is a round. So those entries in a root that has not yet run `design-init` can only be the old layout, or a hand-placed file that the dry run lists before anything moves.
+  3. **The way out is non-destructive and always open.** Case F (a lone root `SIGNOFF.md`) runs `design-migrate --apply` and then `design-init`. The mixed-root carve-out, case E of F2's log, keeps `design-init` open where `design-migrate` itself asks for it, so they cannot deadlock.
+
+### 3. F3 (the installer's 3.9 stdin trap) is fixed
+- **The cookie is line 1 of the program.** Artifact L86 is `python3 - <<'INSTALLER_PY'`, and L87 is `# -*- coding: utf-8 -*-` (`installer/main.py` line 1). `installer/build.py` is unchanged since `942ee3c`, so D3's trigger did not fire.
+- **The Test 7 pin exists.** The smoke prints "PASS: the installer's stdin program starts with the utf-8 coding cookie".
+- **Spot sweep (scratch copies of HEAD, F3's `sweep_rebuild.py`, `/usr/bin/python3` 3.9.6, a real rebuild per k):**
+  - with the cookie: `design-cowork/SKILL.md` fails for **0 of 96** values of k (k = 0…95);
+  - the same copy with the cookie removed: **52 of 96** fail, **k = 0 included**, so HEAD's program as it stands fails without the cookie.
+- **Per commit** (parse-only, `parse_nocookie.py`, cookie line stripped):
+  - `942ee3c`, `c11ae52` and `98d6d50` parse;
+  - **`e94c902` (F2) fails** on program line 68, the `do-next-slice` payload.
+
+  F2 did not edit that payload. The chunk boundaries evidently depend on more than the line itself, most likely the tokenizer's buffer, which the longer payloads F2 did edit (`design-cowork`, `workflow.py`) size first. This is what the first review predicted when it put F3 first.
+- **End-to-end:** the cookie-less HEAD artifact, run through `sh` into scratch, exits 1 with `Non-UTF-8 code starting with '\xe2' … on line 68` and installs nothing. The real artifact installs cleanly (the fresh install above ran on the same 3.9.6). Without F3, F2's commit would have shipped an installer that fails on this Mac.
+
+### 4. No regression from the fixes
+- **Governance:**
+  - *Implementing* + *Verifying* are still byte-identical to `fe9ef30` (172 lines, `cmp`).
+  - The fix edits to `design-cowork` are all tool-labelled lines: two handoff bullets, the claude-design record's migration paragraph and the claude-design Never line.
+  - No shared governance line changed, and the drafter text in both drivers is unchanged (the word-diff touches only the claude-design runs).
+- **`CLAUDE.md`:** untouched since `942ee3c` (12,280 B). The first pass's line-by-line judgment stands.
+- **Executors:** L33/L60 are identical in the two bodies. The only change is F1's L60 clause, and the L33 bundle nit was left as the plan said.
+- **The CHANGELOG `## v48` entry is coherent.**
+  - F2 amended the `design-migrate` bullet (the three commands name it, `design-init` refuses, run it before the first `claude-design/rounds/`) and Migration note (3), "only after the migration".
+  - F1 added the installer-cookie bullet.
+  - `WORKSPACE_VERSION` stays 48, which is right, since F3 changes no shipped file. The smoke's version and Migration-notes checks pass.
+- **Engine:**
+  - `design_legacy_record` and `design_legacy_hint` add refusals and message text only. No path writes or moves anything new.
+  - `design-migrate` is still all-or-nothing with rollback, never deletes, runs no git (no `subprocess`), and its refusals still come before the first move.
+  - The scan skip for `claude-design/` is unchanged.
+
+### Non-blocking notes (inside the boundary, no fix slice)
+- **N1: in design.json mode, `design-migrate` merges beside an already-started claude-design round without a numbering check.**
+  - Case E: vocky with a `design.json` and a `claude-design/rounds/01-new` created before migrating. The dry run would move `rounds/01-brand-app-landing` and `rounds/02-onboarding` in beside `01-new`, giving two `01-` rounds with no refusal.
+  - The design.json-less path refuses and names the remedy (case B), but this path only refuses a same-name collision.
+  - **Why it does not block:**
+    - Nothing is lost, and nothing in the engine or design-deck reads `claude-design/`.
+    - Reaching it takes a `design.json` on a legacy root, which only a v47 `design-init` run before F2 could create. None of the surveyed legacy repos has one, and F2's refusal prevents new ones.
+    - It also takes ignoring the skill's migrate-first line.
+  - It is a deferred-job candidate below.
+- **The claude-design path's migrate-first guard is the skill's text, and the drivers don't carry it.** No engine command runs on that path, so an orchestrator reading only the driver's compact branch could create `claude-design/rounds/01-…` in an unmigrated root. The backstop is `design-migrate`'s refusal with the by-hand remedy (case B), and nothing is lost. F2's plan chose to leave the drivers alone. The drivers defer to `design-cowork` (*Under claude-design*), which carries the line, so I accept it as is.
+- **In design.json mode, `design-register` does not steer.** On a root with `design.json` and legacy rounds (case D), it registers without the steer, because it only validates the manifest. `design-check` and `design-open` both name `design-migrate` there, so the orchestrator meets the steer on every path that uses the rounds.
+- **The `design-init` argparse help** does not mention its new refusal. F2 did this on purpose to keep D21's trigger unfired. The refusal message is self-explanatory. It is worth adding to D21's scope when that job runs (see routing).
+
+### Doc impact: complete, after one appended line
+- **F1–F3's operations and decisions changes are covered:**
+  - F3: operations (cookie);
+  - F1: decisions (the S2 claude-design rules) and operations (feedback first);
+  - F2: operations (the steer).
+
+  The first pass's lines for S1–S3 still stand.
+- **The gap:** no line recorded P27's smoke changes for qa.md, although P26 set the convention of an itemized qa line per smoke change and qa.md's *Test Commands* tracks the baseline. The changes:
+  - the baseline moved 195 → 203;
+  - the Test 7 cookie pin;
+  - the F2 steer probe;
+  - the F1 driver ordering assert;
+  - the Python 3.9 trap as a known fragile area.
+
+  S3's qa line names the choice pins and the Test 13 probes, but no count and nothing on Test 7. qa.md was already owed for P27, so it would have been consolidated anyway, but the list did not itemize these. **I appended one line** (`phase.md` `## Doc impact`, the last entry): baseline 203/0 with the +6/+1/+1 breakdown, the Test 0 ordering assert, and the fragile-area note, tagged with its slices and "recorded at P27.REVIEW".
+- **Docs owed at the docs phase for P27:** operations, decisions, architecture and qa (plus P26's four).
+
+### Operator Questions: all 3 routed, none new
+1. **(P27.DECOMP) D18, D20, D21, D23 and D24: fold in or leave deferred?** This is still a decision to relay. **Recommendation: left deferred**, with the operator told which triggers have now fired:
+   - **D20** "Pin the never-rule floor in smoke" fired at S3. `CLAUDE.md` is 8 B under its cap and was verified by hand twice now. Take it first.
+   - **D18** "Slim the slice-executor bodies" fired at S3 and **again at F1** (the L60 content edit).
+   - **D23** "Fix the doc-new-version skill's --source example" fired at S1–S3 and **again at F1/F2** (skill edits).
+   - **D21** "Correct two stale one-line descriptions" fired at S1 (the `design-migrate` argparse help). F2 did not fire it again. Addendum for whoever runs it: `design-init`'s help line could mention its pre-v47 refusal.
+   - **D24** "Correct README drift" fired at S3, and not again.
+   - **D3** "Make installer/build.py smoke-execute the assembled artifact" **did not fire**: `build.py` was untouched and no broken artifact reached a commit. It stays the structural guard beyond the cookie, because it would catch any stdin-execution failure, not just this one.
+2. **(P27.S2) Pushes per claude-design slice.** **Routed and answered** by the operator on 2026-09-30: once per round, with its handoff commit (a superseding round's included), and none over a local-dir connection. It is recorded in `## Decisions`, and the skill, both drivers and the `decisions.md` Doc impact line agree.
+3. **(P27.S3) The installer stdin trap.** **Routed and answered** by the operator on 2026-09-30: "Fix now as P27.F3". The fix landed and is verified above. No deferred job is filed for it.
+
+No slice after the first pass added an `## Operator Questions` entry.
+
+### Deferred-job candidates (the orchestrator files them; I ran no `defer-job`)
+- **"Point `design-drafter` at the `claude-design/` record as design memory"** (still valid, outside the boundary).
+  - *Reason:* `design-drafter.md` Inputs §3 reads prior rounds' `SIGNOFF.md`, `feedback.md` and `result.md` "under `rounds/`" only. P27 did not change that file. In a repo that designed with claude-design before, the signed history in `claude-design/SIGNOFF.md` and `claude-design/rounds/*/output/` is invisible to the drafter unless the handoff's *Where to look* names it.
+  - *Trigger:* the first `drafter` phase in a repo that holds a `claude-design/` record, or the next edit to `design-drafter.md`.
+- **"`design-migrate`: refuse or flag a round-number collision with an existing `claude-design/rounds/` in design.json mode"** (N1).
+  - *Reason:* with a `design.json`, legacy rounds merge in beside rounds already created under `claude-design/rounds/`, and duplicate `NN` prefixes pass silently (case E). The design.json-less path refuses with a remedy.
+  - *Trigger:* the next edit to `design-migrate`, or the first repo found with a `design.json` on a legacy root.
+
+### Observations (outside the boundary; not findings)
+- The Claude Design project id ("target the project by id") still has no durable home. It was restored as-is from `7ecd381^`, so it is not a regression.
+- design-deck's side (verifying it ignores `claude-design/`) stays with the note in `phase.md` for a later design-deck phase.
+
+### Notebook cross-check
+- **Decisions:** every decision in `slices/P27.F3/result.md`, `P27.F1/result.md` and `P27.F2/result.md` is in `## Decisions`:
+  - F3: the cookie, spelled utf-8, no bump, `build.py` untouched;
+  - F1: feedback first, the S2 DesignSync stop, the confirmed push;
+  - F2: the detector, the hint, the `design-init` refusal, the `tokens.css` listing, the remedy, moves unchanged, migrate-first in the skill, drivers untouched.
+
+  F2's "no argparse help edit" is a deliberate scope choice. It is recorded in its `result.md` and in the D21 addendum above.
+- **Operator Questions:** all three are routed above.
+- **`phase.md` edits:**
+  - `## Doc impact`: +1 qa line (append-only kept).
+  - `## Notes for later slices`: the consumed "(from P27.F1 and P27.F2, for the re-run REVIEW)" note is removed. The design-deck note stays.
+  - `## Now`: rewritten.
+  - Nothing else changed.
+
+### Live-check log (scratch: `…/scratchpad/p27rereview/`)
+- **Scripts:**
+  - `setup.sh`: `cp -R` of the three real design folders, with the HEAD or pre-F2 engine.
+  - `moves.sh`: pre-F2 vs HEAD dry runs.
+  - `cases.sh`: post-apply trees and cases A–C, plus register.
+  - `edges.sh`: cases D–H.
+  - `sweep_rebuild.py`: F3's, copied.
+  - `parse_nocookie.py`: a per-commit parse check (`art_<sha>.sh`).
+- **Outputs:** `dry-{old,new}-*.txt`, `out_cookie.txt` / `out_nocookie.txt`, `e2e_nocookie.log`, `fresh_install.log`.
+- **Edge cases:**
+  - **D:** changple_web + `design.json`. `design-check`'s first `round.json missing` line carries the steer. `design-open` refuses with it. `design-register` succeeds (see notes).
+  - **E:** vocky + `design.json` + `claude-design/rounds/01-new`. The dry run would merge `01-brand-app-landing` and `02-onboarding` beside `01-new` (N1).
+  - **F:** no `design.json` and a lone root `SIGNOFF.md`. `design-check` and `design-init` steer, and `design-migrate` would move only it.
+  - **G:** `design.json` + a stray root `SIGNOFF.md`. `design-check` is OK, `design-init` is not refused, and `design-migrate` would move it.
+  - **H:** no design root. `design-init` writes the manifest (unaffected).
+- **Isolation:**
+  - `~/.config/agentic-workspace/`: listed and `stat`-ed before and after, identical (empty). Every run set `HOME` and `AGENTIC_DESIGN_REGISTRY` to scratch.
+  - `git status -- docs/reference/design` in vocky, Mijual and changple_web: clean.
+  - The workspace repo's `git status` shows only the `works/` files the orchestrator had already modified, plus this slice's two files.
+  - One stray file I wrote by mistake to `/tmp` during a section extraction was deleted at once.
+
+---
+
+# First pass (2026-09-30): `changes_requested`, superseded by the re-review above
+
+- **status:** done
+- **tier:** high
 - **review_verdict:** `changes_requested`
 - **summary:** Every slice validates together: smoke 201 PASS / 0 FAIL, `build.py --check` OK, `validate` passes, `CLAUDE.md` 12,280 B. The live engine and fresh-install checks pass, and all seven deliverables are present. Governance survived S2 (Implementing and Verifying are byte-identical to `fe9ef30`, and no restored line goes unlabelled), and `CLAUDE.md` kept every rule. Two in-boundary gaps in the claude-design path need fixing first: the drivers put a DesignSync read-back gate in front of the operator's feedback, which the skill does not do, and the legacy-migration command is not wired into the paths an orchestrator actually walks. A third, small gap: one S2 decision and its doc-impact line are missing from the notebook.
 - **files_changed:** `works/phases/active/P27/slices/P27.REVIEW/result.md` (new), `works/phases/active/P27/phase.md` (`## Now`, plus the consumed S3 note in `## Notes for later slices` replaced by a note for the fix slices). No source edited.

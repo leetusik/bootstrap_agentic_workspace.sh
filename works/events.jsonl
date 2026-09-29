@@ -692,3 +692,9 @@
 {"ts": "2026-09-30T07:40:09+09:00", "type": "slice_status_changed", "slice": "P27.F1", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-09-30T07:40:09+09:00", "type": "slice_status_changed", "slice": "P27.F2", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-09-30T07:45:52+09:00", "type": "slice_status_changed", "slice": "P27.F2", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-09-30T07:46:09+09:00", "type": "slice_status_changed", "slice": "P27.REVIEW", "old_status": "changes_requested", "new_status": "in_progress"}
+{"ts": "2026-09-30T07:58:33+09:00", "type": "deferred_created", "deferred": "D33", "source": "P27.REVIEW"}
+{"ts": "2026-09-30T07:58:34+09:00", "type": "deferred_created", "deferred": "D34", "source": "P27.REVIEW"}
+{"ts": "2026-09-30T07:58:34+09:00", "type": "slice_status_changed", "slice": "P27.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-09-30T07:58:34+09:00", "type": "phase_reviewed", "phase": "P27", "verdict": "pass", "reviewer": "slice-executor-high"}
+{"ts": "2026-09-30T07:58:34+09:00", "type": "phase_consolidation_owed", "phase": "P27", "notes": 11}

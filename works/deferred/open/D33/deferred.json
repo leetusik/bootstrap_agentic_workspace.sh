@@ -1,0 +1,11 @@
+{
+  "id": "D33",
+  "title": "Point design-drafter at the claude-design/ record as design memory",
+  "status": "deferred",
+  "source": "P27.REVIEW",
+  "reason": "design-drafter.md reads prior rounds only under rounds/, so signed claude-design history (claude-design/SIGNOFF.md, its rounds) is invisible to the drafter unless the handoff names it",
+  "trigger": "The first drafter phase in a repo that holds a claude-design/ record, or the next edit to design-drafter.md",
+  "created_at": "2026-09-30T07:58:33+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

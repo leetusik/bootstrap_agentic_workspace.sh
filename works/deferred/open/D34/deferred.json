@@ -1,0 +1,11 @@
+{
+  "id": "D34",
+  "title": "design-migrate: refuse or flag a round-number collision with an existing claude-design/rounds/ when design.json is present",
+  "status": "deferred",
+  "source": "P27.REVIEW",
+  "reason": "With design.json present, legacy rounds merge beside an already-started claude-design round with no numbering check (two 01- rounds in the vocky probe); the no-design.json path refuses with a remedy",
+  "trigger": "The next edit to design-migrate, or the first repo found with a design.json on a legacy root",
+  "created_at": "2026-09-30T07:58:34+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

@@ -74,3 +74,43 @@ Write `result.md` with the verdict block first:
 On a non-pass verdict, finish validation and judgment first, then stop before any pass-only step.
 
 Edit `phase.md` `## Now`. Do not commit, do not transition state, do not edit source, do not run `accept-gate` or `review-phase`.
+
+## Re-review after P27.F3, P27.F1 and P27.F2
+
+The first pass returned `changes_requested`. The operator answered two questions on 2026-09-30:
+- **Installer trap:** fold it in as P27.F3, ordered first.
+- **claude-design pushes:** one per round (confirmed).
+
+Three fix slices have landed since: F3 `c11ae52`, F1 `98d6d50`, F2 `e94c902`. Re-review the phase with the same boundary. `phase-scope P27` now reaches HEAD.
+
+Re-run everything in "Validate all slices together":
+- expect **203 PASS / 0 FAIL**;
+- `--check`;
+- `validate`;
+- `CLAUDE.md` at ≤ 12,288 B (expect 12,280);
+- the live engine check;
+- the fresh install.
+
+Then judge:
+
+1. **Finding 1 is closed.** Both drivers' `claude-design` branch routes the operator's words first:
+   - feedback goes to `feedback.md`, with no read-back and no landing;
+   - the read-back, landing and checks gate only approval and the mockup go-ahead.
+
+   Check that this agrees with `design-cowork`, including the new Never line and the executor L60 wording. Check that finding 3's `## Decisions` line and `decisions.md` Doc impact line are present.
+2. **Finding 2 is closed.**
+   - Re-run the three cases on scratch copies (changple_web init-first, vocky claude-design-round-first, a plain legacy root).
+   - Confirm `design-migrate` moves exactly what it moved before F2.
+   - Judge F2's stated consequence: a drafter repo with a stray root `SIGNOFF.md` or `grounding/` gets `design-init` refused until migrated. Schema 1 keeps `SIGNOFF.md` per round, so a root one is legacy by construction. Say whether that is correct or a finding.
+3. **F3.**
+   - The artifact's stdin program line 1 is the utf-8 cookie.
+   - The Test 7 pin exists.
+   - A spot re-run of the 3.9 sweep on one payload (a small sample of lengths is enough) shows 0 failures.
+4. **No regression.** Anything F1/F2/F3 touched outside its finding is reviewed like the first pass: governance, `CLAUDE.md` untouched, executors identical in L33/L60, and the CHANGELOG v48 entry coherent.
+5. **Operator Questions:** every entry is routed.
+   - The push and the installer questions are answered: record them as routed.
+   - The deferred-job triggers question (D18, D20, D21, D23, D24) remains a decision to relay: "left deferred".
+   - Any new entry is routed too.
+6. **Doc impact:** the list is complete for F1–F3 as well.
+
+On `pass`, return `doc_versions: none — deferred to a docs phase` plus any deferred-job candidates for the orchestrator to file. That includes the review's "Point `design-drafter` at the `claude-design/` record as design memory" candidate, if you still judge it valid. Don't file a deferred job for the installer trap (it's fixed).
