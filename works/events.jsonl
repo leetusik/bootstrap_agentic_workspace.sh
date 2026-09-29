@@ -615,3 +615,9 @@
 {"ts": "2026-09-28T22:05:09+09:00", "type": "phase_archived", "phase": "P22", "archive_path": "works/phases/archived/20260928_220509_P22_make_doc_staleness_explicit_and_right-size_the_notebook_and_test_guardrails"}
 {"ts": "2026-09-28T22:05:09+09:00", "type": "phase_archived", "phase": "P23", "archive_path": "works/phases/archived/20260928_220509_P23_slim_the_always-loaded_contract_back_to_a_routing_layer"}
 {"ts": "2026-09-28T22:05:09+09:00", "type": "phase_archived", "phase": "P24", "archive_path": "works/phases/archived/20260928_220509_P24_consolidate_the_p21_p23_doc_impact_into_the_docs_and_both_readmes"}
+{"ts": "2026-09-29T19:35:20+09:00", "type": "phase_created", "phase": "P25"}
+{"ts": "2026-09-29T19:38:50+09:00", "type": "slice_status_changed", "slice": "P25.DECOMP", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-09-29T19:39:09+09:00", "type": "slice_created", "phase": "P25", "slice": "P25.S1"}
+{"ts": "2026-09-29T19:39:09+09:00", "type": "slice_created", "phase": "P25", "slice": "P25.S2"}
+{"ts": "2026-09-29T19:40:33+09:00", "type": "slice_status_changed", "slice": "P25.DECOMP", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-09-29T19:40:33+09:00", "type": "acceptance_waived", "phase": "P25"}
