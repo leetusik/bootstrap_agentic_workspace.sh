@@ -630,3 +630,5 @@
 {"ts": "2026-09-29T20:41:21+09:00", "type": "phase_reviewed", "phase": "P25", "verdict": "pass", "reviewer": "slice-executor-high"}
 {"ts": "2026-09-29T20:41:21+09:00", "type": "deferred_created", "deferred": "D27", "source": "P25.REVIEW"}
 {"ts": "2026-09-29T20:41:21+09:00", "type": "deferred_created", "deferred": "D28", "source": "P25.REVIEW"}
+{"ts": "2026-09-29T21:07:58+09:00", "type": "phase_created", "phase": "P26"}
+{"ts": "2026-09-29T21:08:21+09:00", "type": "deferred_dropped", "deferred": "D27", "reason": "superseded by P26 (operator chose an own-repo dashboard over repo design files + a design subagent)"}

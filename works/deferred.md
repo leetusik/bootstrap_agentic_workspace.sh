@@ -4,9 +4,9 @@
 
 ## Summary
 
-- Open: `18`
+- Open: `17`
 - Promoted: `0`
-- Dropped: `10`
+- Dropped: `11`
 
 ## Open
 
@@ -24,7 +24,6 @@
 | `D24` | `deferred` | Correct README drift outside the P21-P23 changes | P24.REVIEW | The next phase that edits either README, or the next docs phase | `works/deferred/open/D24` |
 | `D25` | `deferred` | Split decisions.md's Decision Log and judge the other oversized doc sections | P24.REVIEW | The next docs phase whose confirmed scope includes restructuring, or the first slice that needs more than one Decision Log entry | `works/deferred/open/D25` |
 | `D26` | `deferred` | Correct the phase_consolidation and phase_execution docstrings on the parallel consolidation field | P24.REVIEW | The next edit of phase_consolidation, parallel_start or set_phase_consolidation, or together with D22 | `works/deferred/open/D26` |
-| `D27` | `deferred` | Adopt the chosen Claude Design replacement in design-cowork | P25.REVIEW | The operator picks an option from the P25 report, or before the next design-bearing phase runs design-cowork under ocx claude | `works/deferred/open/D27` |
 | `D28` | `deferred` | Re-evaluate Doop as a design-cowork option | P25.REVIEW | Doop reaches v1.0, publishes an image, or ships a non-interactive agent token | `works/deferred/open/D28` |
 | `D3` | `deferred` | Make installer/build.py smoke-execute the assembled artifact | P15.REVIEW | Next time installer/build.py is touched, or the first time a broken artifact reaches a commit | `works/deferred/open/D3` |
 | `D5` | `deferred` | Confirm: ## Design Style is appended by create-phase only when visual, not scaffolded into every intent.md | P17.REVIEW | Before the first design-bearing phase runs under v34, or the next time works/templates/intent.md is edited. | `works/deferred/open/D5` |
@@ -48,6 +47,7 @@
 | `D15` | `dropped` | Decide the phase-notebook budget's shape: bytes-only, raised, or excluding the generated block | resolved by P22 | `works/deferred/dropped/D15` |
 | `D16` | `dropped` | Decide whether keep-tests-small grows teeth for changple5, and in what shape | resolved by P22 | `works/deferred/dropped/D16` |
 | `D2` | `dropped` | slice-executor-mid has no co-work refusal clause | fixed in P16.S4 — slice-executor-mid now carries the co-work refusal clause | `works/deferred/dropped/D2` |
+| `D27` | `dropped` | Adopt the chosen Claude Design replacement in design-cowork | superseded by P26 (operator chose an own-repo dashboard over repo design files + a design subagent) | `works/deferred/dropped/D27` |
 | `D4` | `dropped` | Retrofit guide Troubleshooting omits the .gitattributes line-merge | fixed in P16.S6 — the retrofit guide's Troubleshooting row now lists the .gitattributes line-merge | `works/deferred/dropped/D4` |
 | `D8` | `dropped` | Slim CLAUDE.md to <= 12 KB | resolved by P23: CLAUDE.md slimmed from 50,048 B to 12,259 B (<= 12 KB) with all 58 never-rules kept; shipped as workspace v44 | `works/deferred/dropped/D8` |
 | `D9` | `dropped` | Decide whether the Aside fallback wording stands, or Aside becomes a hard requirement | Answered at P20/v37: the fallback stands unchanged -- the doctrine's demands bind, the instrument does not (intent.md part 4). CLAUDE.md's fallback sentence is byte-identical to v36; design-cowork's gained one generalizing clause only. | `works/deferred/dropped/D9` |
