@@ -1,0 +1,11 @@
+{
+  "id": "D28",
+  "title": "Re-evaluate Doop as a design-cowork option",
+  "status": "deferred",
+  "source": "P25.REVIEW",
+  "reason": "Closest to Claude Design's agent UX but dropped in P25: five weeks old with 86% of commits by one author, OAuth-only MCP, memory in its DB with no tokens, no published image, server binds all interfaces",
+  "trigger": "Doop reaches v1.0, publishes an image, or ships a non-interactive agent token",
+  "created_at": "2026-09-29T20:41:21+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

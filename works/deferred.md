@@ -4,7 +4,7 @@
 
 ## Summary
 
-- Open: `16`
+- Open: `18`
 - Promoted: `0`
 - Dropped: `10`
 
@@ -24,6 +24,8 @@
 | `D24` | `deferred` | Correct README drift outside the P21-P23 changes | P24.REVIEW | The next phase that edits either README, or the next docs phase | `works/deferred/open/D24` |
 | `D25` | `deferred` | Split decisions.md's Decision Log and judge the other oversized doc sections | P24.REVIEW | The next docs phase whose confirmed scope includes restructuring, or the first slice that needs more than one Decision Log entry | `works/deferred/open/D25` |
 | `D26` | `deferred` | Correct the phase_consolidation and phase_execution docstrings on the parallel consolidation field | P24.REVIEW | The next edit of phase_consolidation, parallel_start or set_phase_consolidation, or together with D22 | `works/deferred/open/D26` |
+| `D27` | `deferred` | Adopt the chosen Claude Design replacement in design-cowork | P25.REVIEW | The operator picks an option from the P25 report, or before the next design-bearing phase runs design-cowork under ocx claude | `works/deferred/open/D27` |
+| `D28` | `deferred` | Re-evaluate Doop as a design-cowork option | P25.REVIEW | Doop reaches v1.0, publishes an image, or ships a non-interactive agent token | `works/deferred/open/D28` |
 | `D3` | `deferred` | Make installer/build.py smoke-execute the assembled artifact | P15.REVIEW | Next time installer/build.py is touched, or the first time a broken artifact reaches a commit | `works/deferred/open/D3` |
 | `D5` | `deferred` | Confirm: ## Design Style is appended by create-phase only when visual, not scaffolded into every intent.md | P17.REVIEW | Before the first design-bearing phase runs under v34, or the next time works/templates/intent.md is edited. | `works/deferred/open/D5` |
 | `D6` | `deferred` | Widen installer/main.py flag_stale_skills() ownership heuristic beyond the disable-model-invocation marker | P17.REVIEW | If a model-invocable skill is retired upstream, or when flag_stale_skills() is next touched. | `works/deferred/open/D6` |
