@@ -3,14 +3,14 @@
   "phase_id": "P27",
   "name": "design-cowork carries both loops",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 2,
   "depends_on": [
     "P27.S1"
   ],
   "created_at": "2026-09-30T02:49:52+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-30T03:04:23+09:00",
+  "completed_at": "2026-09-30T03:21:33+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "design-cowork carries both loops: Design tool section, restored claude-design loop and record, DesignSync back in allowed-tools, governance audited; smoke 201 PASS",
   "validation": {
     "required": [],
     "last_run": null,

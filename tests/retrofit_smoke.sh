@@ -26,7 +26,9 @@
 # (design-check names a gap, an unnumbered card and a // or http:// reference; design-close's
 # regroup rewrites line 1 only, keeps a pre-close snapshot and is idempotent; design-register
 # writes only the env-overridden registry, never the operator's ~/.config; v48: design-check skips claude-design/,
-# design-migrate moves all-or-nothing, design-register prints the deck hint), and the v31 Codex-removal negatives. Re-runnable; self-cleaning.
+# design-migrate moves all-or-nothing, design-register prints the deck hint), the v48 design-tool
+# invariants (design-cowork carries both loops, drafter and claude-design, with P26's governance
+# shared), and the v31 Codex-removal negatives. Re-runnable; self-cleaning.
 #
 # Usage:  bash tests/retrofit_smoke.sh
 # Exit 0 if every check passes; non-zero otherwise.
@@ -255,27 +257,58 @@ for required in (
     "**The mockup build is the one span dispatched to a slice executor:**",
     "the round's lifecycle and the operator's words stay inline",
     "### Importing a Claude Design bundle (optional)",
-    "**The workspace never requires a claude.ai account, and `DesignSync` is not used**",
+    # v48 (P27.S2): the bundle import is a drafter-mode input, and only the drafter loop is account-free.
+    "**The drafter loop never requires a claude.ai account and does not use `DesignSync`**",
     "a design slice authorizes no `git push`",
+    # v48 (P27.S2): the design tool is a per-phase choice read from `## Design Style` -- `drafter`
+    # (P26's loop) or `claude-design` (the pre-P26 loop, restored) -- and `drafter` when the line is
+    # absent. The claude-design record lives under claude-design/, which design-* and design-deck skip.
+    "## Design tool — drafter or claude-design", "Design tool: drafter | claude-design",
+    "**An absent line reads as `drafter`**", "**design-deck shows `drafter` rounds only.**",
+    "**Governance is shared.**", "docs/reference/design/claude-design/",
+    "## The claude-design record — the original layout", "**`claude-design/` is outside schema 1.**",
+    "python3 scripts/workflow.py design-migrate --apply", "| `design-migrate [--apply]` |",
+    "### Under drafter", "### Under claude-design", "**two without a mockup, four with one**",
+    # ... and the restored loop's own mechanics come back, each labelled with its tool (v47's absence
+    # pins for these phrases are swapped for presence pins).
+    "**Claude Design reads the real repo itself**", "**Connect GitHub**", "The Design System pane",
+    "`_ds_manifest.json`", "**DesignSync is main-thread only.**", "**the DesignSync work is never dispatched**",
+    "**Read back with the `DesignSync` tool**", "`list_files` → `get_file` each card",
+    "**`finalize_plan`**", "`write_files`", "**Target the project by id, never by name** — `get_project` to verify",
+    "`register_assets`", "**`/design-sync`**", "**the cards appear in the pane**",
+    "**Push the branch** so Claude Design reads current code",
+    "**claude-design only:** the pane's own grammar, which never overrides schema 1",
 ):
     assert required in design, required
-# v47 (P26.S3): the frontmatter. The skill still auto-fires on the same trigger, no longer asks for
-# the DesignSync tool, says who drafts and who decides, and keeps no unquoted ": " in its description.
+# v48 (P27.S2): where the restored loop and P26's disagreed, P26's governance won -- the build slices
+# are cut once the design is *signed*, revisions are superseding rounds in the same slice (not one
+# co-work slice per round), the mockup route goes into phase.md and SIGNOFF.md (not "the round's
+# record"), and the design root is fixed (no repo-owned design/ tree).
+for gone in ("cuts the build slices once the design has landed", "one `co-work` slice each",
+             "in the round's record *and* in `phase.md`", "under its own `design/` tree instead",
+             "**The workspace never requires a claude.ai account"):
+    assert gone not in design, gone
+# v47 (P26.S3): the frontmatter. The skill still auto-fires on the same trigger, says who drafts and
+# who decides, and keeps no unquoted ": " in its description. v48 (P27.S2): it asks for the DesignSync
+# tool again (the claude-design loop's read-back and regroup) and names both design partners.
 raw_design = (root / ".claude/skills/design-cowork/SKILL.md").read_text()
 front = raw_design.split("---\n", 2)[1]
 allowed = next(ln for ln in front.splitlines() if ln.startswith("allowed-tools:"))
-assert "DesignSync" not in allowed and "Agent" in allowed, allowed
+assert "DesignSync" in allowed and "Agent" in allowed, allowed
 desc = next(ln for ln in front.splitlines() if ln.startswith("description:"))[len("description: "):]
 assert ": " not in desc, desc
 for required in ("the design subagent drafts, the operator decides",
+                 "the operator designs in Claude Design", "claude-design", "DesignSync",
                  "Use when a phase or slice touches a design system, a redesign, mockups"):
     assert required in desc, required
 assert "Claude Design + the operator" not in desc, desc
 # v47: the contract section and the engine move together -- the root, the registry variable and
-# the registry's default path the skill states are the engine's own constants.
+# the registry's default path the skill states are the engine's own constants. v48 (P27.S1/S2): so
+# are the claude-design record's folder name and the design-deck URL variable.
 import re
 workflow_src = (root / "scripts/workflow.py").read_text()
-for const in ("DESIGN_ROOT_REL", "DESIGN_REGISTRY_ENV", "DESIGN_REGISTRY_DEFAULT"):
+for const in ("DESIGN_ROOT_REL", "DESIGN_REGISTRY_ENV", "DESIGN_REGISTRY_DEFAULT",
+              "DESIGN_LEGACY_DIR", "DESIGN_DECK_URL_ENV"):
     value = re.search(r'^' + const + r' = "([^"]+)"$', workflow_src, re.M).group(1)
     assert value in design, (const, value)
 # P26.F2: the Self-contained bullet (and the drafter's mirror of it) names every reference prefix
@@ -310,14 +343,9 @@ for gone in ('{"mcpServers"', "Prefer the **MCP** surface", "MCP first",
              "cut the slice into four", "can no longer be waived",
              "the design in the project's own language",
              # v44: copied from the contract list, now that the Aside rule lives here.
-             "runs through Aside, not a script",
-             # v47 (P26.S3): the Claude Design + DesignSync loop is retired -- no repo connection,
-             # no pane manifest or DesignSync file calls, no push, no main-thread-only tool.
-             "DesignSync is main-thread only", "the DesignSync work is never dispatched",
-             "Read back with the `DesignSync` tool", "Connect GitHub", "_ds_manifest.json",
-             "list_files", "finalize_plan", "write_files", "register_assets", "get_project",
-             "/design-sync", "Design System pane", "the cards appear in the pane",
-             "Push the branch", "Claude Design reads the real repo itself"):
+             "runs through Aside, not a script"):
+    # (v47's absence pins for the Claude Design + DesignSync loop were retired in v48 (P27.S2): that
+    # loop is the `claude-design` tool now, and its phrases are presence pins above.)
     assert gone not in design, gone
 
 # v44 (P23): the worktree rules left the contract for the skill that runs them, so their
@@ -407,8 +435,10 @@ for tier in ("mid", "high"):
                      "the one span of that slice dispatched to a slice executor",
                      "its record on disk"):
         assert required in body, (tier, required)
-    for gone in ("DesignSync", "never dispatched, because you have no", "landed record"):
-        assert gone not in body, (tier, gone)
+    # v48 (P27.S2): the claude-design tool's words may come back into the bodies, but only beside
+    # that tool's name -- the drafter loop's text stays DesignSync-free.
+    for gated in ("DesignSync", "never dispatched, because you have no", "landed record"):
+        assert gated not in body or "claude-design" in body, (tier, gated)
     assert "return `needs_operator`" in body, tier
     # v34: the mockup span is dispatchable and its rules ship in BOTH tiers.
     for required in (
@@ -597,7 +627,7 @@ for gone in ("design exception", "never approval", "no other pending gate"):
 for gone in ("Codex", "AGENTS.md", ".agents/", ".codex/"):
     assert gone not in claude, gone
 PY
-then ok "18 Claude skills and their invocation metadata; the prose invariants of the do-*, create-phase, design-cowork (styles, mockups on request, numbered cards, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
+then ok "18 Claude skills and their invocation metadata; the prose invariants of the do-*, create-phase, design-cowork (both design tools, styles, mockups on request, numbered cards, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
