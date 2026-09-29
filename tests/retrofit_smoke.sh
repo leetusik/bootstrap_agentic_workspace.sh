@@ -1129,7 +1129,7 @@ PY
 then ok "dual-apply manifest covers every installer FIXED_LIVE_FILES entry"; else bad "dual-apply manifest misses a FIXED_LIVE_FILES entry (see installer/build.py)"; fi
 
 # ---------------------------------------------------------------------------
-echo "== Test 7: the committed installer is in sync with installer/ source =="
+echo "== Test 7: the committed installer is in sync with installer/ source, and its stdin program declares utf-8 =="
 # The distributable bootstrap_agentic_workspace.sh is a build product assembled by
 # installer/build.py from installer/ (live files + payloads). --check fails if the
 # committed artifact drifts from source, closing the loop: live files <-> artifact.
@@ -1138,6 +1138,12 @@ if ( cd "$REPO_ROOT" && python3 installer/build.py --check >/dev/null 2>&1 ); th
 else
   bad "DRIFT: bootstrap_agentic_workspace.sh is stale -- run: python3 installer/build.py"
 fi
+# P27.F3: the stdin program must open with the PEP 263 utf-8 cookie; without it CPython 3.9 rejects
+# the program when a multibyte character straddles a ~1 KB read chunk of a long payload line.
+cookie_line=$(grep -A1 -Fx "python3 - <<'INSTALLER_PY'" "$BOOT" | sed -n 2p)
+[ "$cookie_line" = "# -*- coding: utf-8 -*-" ] \
+  && ok "the installer's stdin program starts with the utf-8 coding cookie" \
+  || bad "the line after python3 - <<'INSTALLER_PY' is not '# -*- coding: utf-8 -*-' (got: $cookie_line)"
 
 # ---------------------------------------------------------------------------
 echo "== Test 8: --with-explain is retired (now an unknown option) =="

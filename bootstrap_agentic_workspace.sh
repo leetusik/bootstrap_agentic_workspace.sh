@@ -84,6 +84,11 @@ export UPDATE="$update"
 export DRY_RUN="$dry_run"
 
 python3 - <<'INSTALLER_PY'
+# -*- coding: utf-8 -*-
+# Line 1 must stay this PEP 263 cookie, spelled utf-8. wrapper.sh feeds this program to python3 on
+# stdin, and without a declared encoding CPython 3.9 rejects the whole program ("Non-UTF-8 code ...
+# but no encoding declared") whenever a multibyte character in one of the long embedded payload
+# lines straddles its ~1 KB read-chunk boundary. The cookie turns that per-chunk check off (P27.F3).
 from __future__ import annotations
 
 import difflib
