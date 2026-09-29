@@ -663,3 +663,7 @@
 {"ts": "2026-09-29T22:41:22+09:00", "type": "deferred_created", "deferred": "D32", "source": "P26.REVIEW"}
 {"ts": "2026-09-29T22:41:34+09:00", "type": "slice_status_changed", "slice": "P26.F2", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-09-29T22:45:52+09:00", "type": "slice_status_changed", "slice": "P26.F2", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-09-29T22:45:52+09:00", "type": "slice_status_changed", "slice": "P26.REVIEW", "old_status": "changes_requested", "new_status": "in_progress"}
+{"ts": "2026-09-29T22:53:04+09:00", "type": "slice_status_changed", "slice": "P26.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-09-29T22:53:04+09:00", "type": "phase_reviewed", "phase": "P26", "verdict": "pass", "reviewer": "slice-executor-high"}
+{"ts": "2026-09-29T22:53:04+09:00", "type": "phase_consolidation_owed", "phase": "P26", "notes": 19}

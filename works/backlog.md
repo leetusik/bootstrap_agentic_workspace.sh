@@ -5,8 +5,8 @@
 
 ## Pointer
 
-- Current phase: `P26`
-- Current slice: `P26.REVIEW`
+- Current phase: `none`
+- Current slice: `none`
 - Next slice: `none`
 - Waiting on operator: `none`
 - Open deferred jobs: `21`
@@ -16,7 +16,7 @@
 | Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
 | [x] `P25` | `done` | `pass` | Research a replacement for Claude Design in design-cowork | `none` | `works/phases/active/P25` |
-| [ ] `P26` | `in_progress` | `changes_requested` | Replace the Claude Design loop with a repo-file design contract and a design subagent | `P26.REVIEW` | `works/phases/active/P26` |
+| [x] `P26` | `done` | `pass` | Replace the Claude Design loop with a repo-file design contract and a design subagent | `none` | `works/phases/active/P26` |
 
 ## Phase P25: Research a replacement for Claude Design in design-cowork
 
@@ -38,4 +38,4 @@
 | [x] `P26.S4` | `done` | sweep the contract and orchestrator skills, ship v47 | `implementation` | `works/phases/active/P26/slices/P26.S4` |
 | [x] `P26.F1` | `done` | align the drafter's frontend-design licence, design-check's reference rule, the v47 changelog and the do-* feedback step with the doctrine | `fix` | `works/phases/active/P26/slices/P26.F1` |
 | [x] `P26.F2` | `done` | name in-page # fragments in the contract's self-contained rule | `fix` | `works/phases/active/P26/slices/P26.F2` |
-| [ ] `P26.REVIEW` | `changes_requested` | phase review | `review` | `works/phases/active/P26/slices/P26.REVIEW` |
+| [x] `P26.REVIEW` | `done` | phase review | `review` | `works/phases/active/P26/slices/P26.REVIEW` |

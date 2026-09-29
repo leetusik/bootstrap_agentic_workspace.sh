@@ -82,3 +82,24 @@ The first review returned `changes_requested` with findings 1–4, and fix slice
 7. Rewrite `result.md` (verdict block first) and `## Now`.
 
 Verdict rules as above. Also return `explain: not written — run /explain for this phase`.
+
+## Re-review after P26.F2
+
+The second review returned `changes_requested` with one finding (7): the contract text and the drafter's §Do 2 forbade the in-page `#` fragments. Fix slice `P26.F2` addressed it; see `slices/P26.F2/result.md`. F2 also:
+- added "a `data:` URI suits any resource" to both texts;
+- rewrote `design-cowork`'s read-back step 2, where "a relative reference" became "a reference the self-contained rule forbids";
+- extended the Test 0 pin to the drafter.
+
+Re-run the review over the **whole** boundary, the range now ending at HEAD:
+
+1. **Validate everything together.** Run `build.py --check`, `sync-agents --check`, `validate`, smoke alone (expect 195 PASS), and the in-boundary checklist lines.
+2. **Verify finding 7 is fixed.**
+   - Confirm the contract text, `design-drafter.md` §Do 2, the engine's `DESIGN_ALLOWED_REFS`, and the relay summary's [re-review] line in your `result.md` all agree.
+   - Judge F2's three deviations.
+   - Re-run your reference matrix probe (`scratchpad/rereview_probe.sh`, or a fresh one against the F2 installer), with `HOME` and `AGENTIC_DESIGN_REGISTRY` in scratch.
+3. **No regression elsewhere.** The first two reviews' passing checks stay passing.
+4. **D29–D32 are filed.** Don't re-list them.
+5. **Doc impact is complete.** It must include F2's three lines.
+6. **Rewrite `result.md`** with the verdict block first. Keep a final relay-ready dashboard contract summary in it, and rewrite `## Now` as the close-out.
+
+Verdict rules as above. Return `explain: not written — run /explain for this phase`.
