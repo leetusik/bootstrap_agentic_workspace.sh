@@ -197,6 +197,8 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 `sync-agents`로 적용해 줍니다. 모델 매핑은 `mode` 프리셋으로 한 번에 바꿀 수 있습니다 —
 모드를 고르지 않으면 `economy`(Sonnet@high / Opus@high)이고, `mode = "flex"`는
 Sonnet@xhigh / Opus@xhigh를 씁니다. 티어별 `[claude.<tier>]` 표로 항목마다 덮어쓸 수도 있습니다.
+모드는 명령 하나로 바꿉니다: `python3 scripts/workflow.py executor-mode flex`(또는 `/executor-mode flex`)가
+`mode` 줄을 고치고 에이전트 파일까지 맞춰 주며, 인자 없이 실행하면 지금 모드를 보여 줍니다.
 
 ## 문서 통합: docs phase
 
@@ -221,10 +223,11 @@ Claude Code에서 `/이름`으로 입력합니다.
 | `do-whole-phase` | phase를 리뷰까지 끝까지 실행 |
 | `review-phase` | phase를 리뷰하고 `pass` / `changes_requested` / `blocked` 기록 |
 | `parallel-phase` | 요청했을 때 phase를 자기 worktree에서 실행하고 로컬 merge로 다시 합치기 |
+| `executor-mode` | 실행기 모드(`economy` / `flex`) 확인, `/executor-mode flex`처럼 한 번에 전환 |
 | `retrofit` | 기존 저장소에 워크스페이스 추가 |
 | `update-workspace` | 설치된 워크스페이스의 시스템 파일만 최신으로 교체 |
 
-스킬은 모두 17개입니다. 전체 목록과 설치 옵션은 [English README](README.en.md)에 있고,
+스킬은 모두 18개입니다. 전체 목록과 설치 옵션은 [English README](README.en.md)에 있고,
 CLI 명령 전체는 `python3 scripts/workflow.py --help`로 확인할 수 있습니다.
 
 ## phase별 worktree (요청할 때만)
@@ -285,7 +288,7 @@ CI → merge). 나머지 문서 버전 작업은 평소처럼 나중에 docs pha
 
 ## 더 알아보기
 
-- 전체 문서 (설치 옵션, CLI 명령 전체, 프로젝트 구조, 스킬 17종): [English README](README.en.md)
+- 전체 문서 (설치 옵션, CLI 명령 전체, 프로젝트 구조, 스킬 18종): [English README](README.en.md)
 - 에이전트 규칙 문서: [CLAUDE.md](CLAUDE.md)
 - 기존 저장소에 추가하는 절차: [Retrofit Guide](docs/retrofit-guide.md)
 - 기여하기: 이 저장소는 자기 워크플로우로 개발됩니다. phase를 열고 slice 단위로 기여해

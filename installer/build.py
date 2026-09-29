@@ -38,7 +38,7 @@ ARTIFACT = REPO / "bootstrap_agentic_workspace.sh"
 HEREDOC_DELIM = "INSTALLER_PY"                  # distinctive: no payload/body line may equal it
 PAYLOAD_MARKER = "#@@GENERATED_PAYLOADS@@"      # in main.py — replaced by generated constants
 BODY_MARKER = "#@@PYTHON_BODY@@\n"              # in wrapper.sh — replaced by the python body
-EXPECTED_SKILL_COUNT = 17
+EXPECTED_SKILL_COUNT = 18
 
 # Live repo files embedded verbatim (path relative to repo root == emit target path).
 FIXED_LIVE_FILES = [

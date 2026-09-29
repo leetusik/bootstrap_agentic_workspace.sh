@@ -9,6 +9,46 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v45 — 2026-09-29
+
+- **Switch the executor mode with one command, and see which one is on.** Changing the preset both
+  slice-executor tiers run on (`economy`: sonnet@high / opus@high; `flex`: sonnet@xhigh /
+  opus@xhigh) meant hand-editing the `mode` line in `executors.toml` and then remembering
+  `sync-agents`. `python3 scripts/workflow.py executor-mode <economy|flex>` now does both. It
+  rewrites only the value of the top-level `mode = "…"` line (a trailing comment survives), inserts
+  one before the first `[claude.<tier>]` table when there is none, and creates a one-line file when
+  `executors.toml` is absent. Then it syncs `.claude/agents/slice-executor-{mid,high}.md`. A
+  malformed file errors before anything is written, an unknown preset is refused by the argument
+  parser, and re-selecting the active mode reports `(already set)` and still re-syncs. The switch
+  is logged as an `executor_mode_set` event beside the usual `agents_synced`.
+
+- **`executor-mode` run bare is the status command.** It prints the active mode and its source
+  (`executors.toml`, or the `economy` default with or without a file), each tier's model @ effort,
+  the per-tier overrides beside the preset value each one shadows, whether the agent files match
+  (naming the drifting or missing file), and the presets on offer. It is read-only and exits 0 even
+  on drift; `sync-agents --check` stays the gate that fails.
+
+- **Per-tier overrides still win, and a switch says so.** When `executors.toml` carries
+  `[claude.<tier>]` model/effort overrides, the switch still sets the mode but prints a `note:`
+  listing the overrides that keep beating the new preset. It never deletes or edits them.
+
+- **`/executor-mode` ships as the 18th skill**, explicit-invocation only like every other workflow
+  command skill: `/executor-mode` shows the mode, `/executor-mode flex` switches it. Claude Code
+  reloads edited agent files, so the next dispatch runs on the new mode without a restart. The
+  seeded `executors.toml` header now names the one-step switch before the manual edit-and-sync
+  route.
+
+- **Mechanics.** `sync-agents`' drift computation moved into a shared `executor_agent_drift()`
+  helper that both commands use, and `sync-agents`' output is unchanged. The skill inventory is 18
+  in `build.py`, `main.py`, the smoke test and both READMEs. The smoke test asserts the status
+  report, the switch in both directions, the byte-identical round trip of the seeded file, the
+  override note, the missing-file create, and the refusal of an unknown preset. Installer rebuilt.
+
+**Migration notes.** Nothing new to run: `/update-workspace` delivers the engine command and the
+`executor-mode` skill, and the usual post-update `sync-agents` still applies. Your `executors.toml`
+is seed-once, so its header comment keeps its old wording and won't mention `executor-mode`. The
+command works on the file as it is.
+
 ## v44 — 2026-09-28
 
 - **Why this release: the contract is a routing layer again.** `CLAUDE.md` had grown to 50,048

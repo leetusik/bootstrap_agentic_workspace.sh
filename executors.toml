@@ -1,10 +1,15 @@
 # Executor-tier configuration for the slice-executor subagents.
-# Uncomment/edit what you want to change, then apply:
+# To switch the mode below in one step (rewrites the mode line and syncs the
+# agent files), or run it bare to show the current mode:
+#
+#   python3 scripts/workflow.py executor-mode <economy|flex>
+#
+# For anything else, uncomment/edit what you want to change, then apply:
 #
 #   python3 scripts/workflow.py sync-agents
 #
-# With no active mode or overrides, the engine uses economy. This repo selects
-# flex below, and the commented per-tier values match that active preset. Two
+# With no active mode or overrides, the engine uses economy. The seed selects
+# flex below, and the commented per-tier values show that preset. Two
 # knobs, lowest precedence first:
 #
 #   1. mode — a named preset for both tiers (top level, before any table):

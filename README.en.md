@@ -171,7 +171,7 @@ Both `--flag value` and `--flag=value` forms work.
 
 - [`CLAUDE.md`](CLAUDE.md) — the compact routing contract every agent session works under.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` — the 17 Agent Skills (`/slash` commands), the two risk-routed `slice-executor` tier
+- `.claude/` — the 18 Agent Skills (`/slash` commands), the two risk-routed `slice-executor` tier
   subagents (`.claude/agents/slice-executor-{mid,high}.md`, with economy/flex model matrices
   selected by `executors.toml` and applied with `sync-agents`), and a `settings.json` that
   pre-approves the workflow script.
@@ -265,6 +265,7 @@ another agent, CI — drives the workspace with the exact same commands:
 | `defer-job --title … --reason … --trigger …` | Park a deferred job |
 | `promote-deferred D1 --phase P1 --slice P1.S2` | Promote a deferred job into a slice |
 | `sync-agents` | Apply the `executors.toml` executor-tier mode/model/effort config to the agent files |
+| `executor-mode` / `executor-mode flex` | Show the executor mode, or switch it in one step (sets `mode` in `executors.toml` and syncs the agent files) |
 | `parallel-start <P>` … `parallel-teardown <P>` | Move a phase into its own branch + worktree when you ask for one, then integrate it back with a local merge (see the `parallel-phase` skill) |
 | `validate` | Check workspace integrity |
 
@@ -272,7 +273,7 @@ The full command list is `python3 scripts/workflow.py --help` (and `<command> -h
 
 ### The same operations as Agent Skills
 
-The common workflows also ship as **17 Agent Skills** in `.claude/skills/`, invoked as `/slash`
+The common workflows also ship as **18 Agent Skills** in `.claude/skills/`, invoked as `/slash`
 commands in Claude Code:
 
 | Skill | What it does |
@@ -289,6 +290,7 @@ commands in Claude Code:
 | `archive-phase` | Archive review-passed phases whose doc debt is paid (normally batched via `archive-all`) |
 | `rotate-backlog` | Archive every currently-done phase with no doc debt, leaving the rest active |
 | `rebuild-workflow` | Rebuild generated dashboards, indexes, and doc snapshots, then validate |
+| `executor-mode` | Show the executor mode (`economy` / `flex`), or switch it in one step (`/executor-mode flex`) |
 | `commit` | Group pending changes into focused conventional commits |
 | `retrofit` | Non-destructively adopt this workspace into an existing repo |
 | `update-workspace` | Update an adopted workspace's machinery to the latest upstream, preserving your work |
@@ -331,7 +333,9 @@ capping quality. Tier models and efforts are configurable via the repo-root
 `executors.toml` — a top-level `mode` preset (`economy`, the default, at
 sonnet@high / opus@high; `flex` uses sonnet@xhigh / opus@xhigh) plus
 per-tier `[claude.<tier>]` overrides (seed-once —
-updates never overwrite it), applied with `python3 scripts/workflow.py sync-agents`. Workflow skills are
+updates never overwrite it), applied with `python3 scripts/workflow.py sync-agents`. To change the preset
+in one step, run `python3 scripts/workflow.py executor-mode <economy|flex>` (or `/executor-mode flex`): it
+rewrites the `mode` line and syncs the agent files, and run bare it shows the current mode. Workflow skills are
 **explicit-invocation only** — agents don't fire them on their own. They are the **operator's
 interface**: you invoke the slash command; the agent does everything it implies.
 
@@ -433,7 +437,7 @@ parallelism it never used. The mechanism itself is unchanged.)
 │   │   └── archived/             # finished phases
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
-│   ├── skills/                    # 17 Agent Skills (/slash commands)
+│   ├── skills/                    # 18 Agent Skills (/slash commands)
 │   ├── agents/                    # slice-executor tiers mid/high (economy/flex models from executors.toml)
 │   └── settings.json              # pre-approves workflow.py; denies force-push & rm -rf
 └── .github/

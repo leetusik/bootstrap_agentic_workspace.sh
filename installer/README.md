@@ -42,7 +42,7 @@ register it once per clone: `git config core.hooksPath .githooks`.
   timestamps → same inputs produce a byte-identical artifact. Safety checks:
   `compile()` the assembled python body, `sh -n` the assembled artifact, assert no
   body line collides with the heredoc delimiter (`INSTALLER_PY`), assert the skill
-  inventory is exactly `EXPECTED_SKILL_COUNT` (17) packages, and assert `CLAUDE.md`
+  inventory is exactly `EXPECTED_SKILL_COUNT` (18) packages, and assert `CLAUDE.md`
   still starts with `CLAUDE_HDR` before slicing the contract body off it.
   **It only `compile()`s the artifact — it never runs it**, so a change to what
   `main.py` reads out of `PAYLOADS` needs a real install into a temp dir to verify.
@@ -67,7 +67,7 @@ path), so editing them and rebuilding is all that is needed:
 
 - `scripts/workflow.py`
 - `.claude/skills/*/SKILL.md` (skills are discovered from disk; the build asserts the release
-  inventory is exactly 17 packages — `EXPECTED_SKILL_COUNT` in both `build.py` and `main.py`, so
+  inventory is exactly 18 packages — `EXPECTED_SKILL_COUNT` in both `build.py` and `main.py`, so
   adding or removing a skill means moving both). Only `*/SKILL.md` is embedded: a skill needing a
   `references/` or `scripts/` subdir would be **silently dropped**, so keep skills flat.
   `explain` is the one **vendored** skill — its upstream is

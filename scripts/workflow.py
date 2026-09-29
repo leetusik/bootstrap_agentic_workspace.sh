@@ -264,6 +264,20 @@ def executor_agent_files(config: dict) -> list:
     ]
 
 
+def executor_agent_drift(config: dict) -> tuple:
+    """([(path, desired text)] for agent files that disagree with config, [missing paths]); writes nothing."""
+    changed, missing = [], []
+    for tier, path, model, effort in executor_agent_files(config):
+        if not path.exists():
+            missing.append(path)
+            continue
+        current = path.read_text(encoding="utf-8")
+        desired = _patched_agent_md(current, model, effort)
+        if desired != current:
+            changed.append((path, desired))
+    return changed, missing
+
+
 def sync_agents(args: argparse.Namespace) -> None:
     config = executor_config()
     config_present = (ROOT / "executors.toml").exists()
@@ -272,17 +286,12 @@ def sync_agents(args: argparse.Namespace) -> None:
     legacy_env = ROOT / ".env"
     if legacy_env.exists() and "SLICE_EXECUTOR" in legacy_env.read_text(encoding="utf-8"):
         print("warning: .env holds SLICE_EXECUTOR_* keys, but tier config moved to executors.toml in v8 — .env is no longer read")
-    changed, missing = [], []
-    for tier, path, model, effort in executor_agent_files(config):
-        if not path.exists():
-            missing.append(str(path.relative_to(ROOT)))
-            continue
-        current = path.read_text(encoding="utf-8")
-        desired = _patched_agent_md(current, model, effort)
-        if desired != current:
-            changed.append(str(path.relative_to(ROOT)))
-            if not args.check:
-                write_text(path, desired)
+    drift, missing_paths = executor_agent_drift(config)
+    if not args.check:
+        for path, desired in drift:
+            write_text(path, desired)
+    changed = [str(path.relative_to(ROOT)) for path, _ in drift]
+    missing = [str(path.relative_to(ROOT)) for path in missing_paths]
     for tier in EXECUTOR_TIERS:
         cfg = config[tier]
         print(f"{tier:<5} {cfg['model']} @ {cfg['effort'] or '(no effort line)'}")
@@ -307,6 +316,79 @@ def sync_agents(args: argparse.Namespace) -> None:
         print("already in sync; nothing written")
     if missing:
         raise SystemExit(1)
+
+
+def _overrides_listing(overrides: dict, mode) -> str:
+    """`high.model = "fable" (preset opus)`, … for the per-tier overrides, in tier order."""
+    preset = EXECUTOR_PRESETS[mode or DEFAULT_EXECUTOR_MODE]
+    return ", ".join(
+        f'{tier}.{key} = "{overrides[(tier, key)]}" (preset {preset[tier][key] or "no effort line"})'
+        for tier in EXECUTOR_TIERS for key in ("model", "effort") if (tier, key) in overrides
+    )
+
+
+def _with_executor_mode(text: str, mode: str) -> str:
+    """executors.toml text with its top-level mode set to `mode`: the value rewritten in place
+    (trailing comment kept) or, when there is no mode line, one inserted before the first section.
+    Only called on text read_executors_toml() already accepted, so any mode line is top-level."""
+    lines = text.splitlines(keepends=True)
+    for i, raw in enumerate(lines):
+        if raw.strip().startswith("["):
+            lines[i:i] = [f'mode = "{mode}"\n', "\n"]
+            return "".join(lines)
+        m = re.match(r'^(\s*mode\s*=\s*")[^"]*(".*)$', raw, re.S)
+        if m:
+            lines[i] = m.group(1) + mode + m.group(2)
+            return "".join(lines)
+    if text and not text.endswith("\n"):
+        text += "\n"
+    return text + ("\n" if text.strip() else "") + f'mode = "{mode}"\n'
+
+
+def show_executor_mode() -> None:
+    mode, overrides = read_executors_toml()
+    config = executor_config()
+    if mode:
+        print(f"mode: {mode} (executors.toml)")
+    else:
+        where = "executors.toml sets no mode" if (ROOT / "executors.toml").exists() else "no executors.toml"
+        print(f"mode: {DEFAULT_EXECUTOR_MODE} (default; {where})")
+    for tier in EXECUTOR_TIERS:
+        cfg = config[tier]
+        print(f"{tier:<5} {cfg['model']} @ {cfg['effort'] or '(no effort line)'}")
+    print(f"overrides: {_overrides_listing(overrides, mode) or 'none'}")
+    drift, missing = executor_agent_drift(config)
+    stale = [str(path.relative_to(ROOT)) for path, _ in drift] + [f"{path.relative_to(ROOT)} (missing)" for path in missing]
+    if stale:
+        print(f"agent files: out of sync: {', '.join(stale)} (run: python3 scripts/workflow.py sync-agents)")
+    else:
+        print("agent files: in sync")
+    presets = ", ".join(
+        f"{name} ({' / '.join(EXECUTOR_PRESETS[name][t]['model'] + '@' + EXECUTOR_PRESETS[name][t]['effort'] for t in EXECUTOR_TIERS)})"
+        for name in sorted(EXECUTOR_PRESETS)
+    )
+    print(f"presets: {presets}")
+
+
+def cmd_executor_mode(args: argparse.Namespace) -> None:
+    """Bare: show the executor mode. With a preset: set it in executors.toml and sync the agent files."""
+    if args.mode is None:
+        show_executor_mode()
+        return
+    path = ROOT / "executors.toml"
+    previous, overrides = read_executors_toml()  # a malformed file errors here, before anything is written
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    updated = _with_executor_mode(text, args.mode)
+    if updated != text:
+        write_text(path, updated)
+    if previous == args.mode:
+        print(f"mode: {args.mode} (already set)")
+    else:
+        print(f"mode: {previous or DEFAULT_EXECUTOR_MODE + ' (default)'} -> {args.mode}")
+        append_event("executor_mode_set", previous=previous, mode=args.mode)
+    if overrides:
+        print(f"note: per-tier overrides in executors.toml still win over the {args.mode} preset: {_overrides_listing(overrides, args.mode)}")
+    sync_agents(argparse.Namespace(check=False))
 
 
 def doc_index() -> dict:
@@ -2937,6 +3019,10 @@ def main(argv=None) -> int:
     p = sub.add_parser("sync-agents", help="Apply the repo-root executors.toml executor-tier config (models/efforts) to the slice-executor agent files")
     p.add_argument("--check", action="store_true", help="Report drift without writing; exit 1 if out of sync")
     p.set_defaults(func=sync_agents)
+
+    p = sub.add_parser("executor-mode", help="Show the executor mode -- the economy/flex preset for both slice-executor tiers -- (bare), or switch it in one step: `executor-mode <preset>` sets the mode in executors.toml and syncs the agent files")
+    p.add_argument("mode", nargs="?", choices=sorted(EXECUTOR_PRESETS), help="The preset to switch to; omit to show the current mode, tiers, overrides and sync state")
+    p.set_defaults(func=cmd_executor_mode)
 
     p = sub.add_parser("next", help="Print the current phase/slice selection")
     p.set_defaults(func=cmd_next)

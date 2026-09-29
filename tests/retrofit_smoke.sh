@@ -62,7 +62,7 @@ import sys
 
 root = Path(sys.argv[1])
 skills = {p.parent.name for p in (root / ".claude/skills").glob("*/SKILL.md")}
-assert len(skills) == 17, len(skills)
+assert len(skills) == 18, len(skills)
 
 # v31 dropped Codex: the mirrored skill tree, the Codex agent config, and the
 # CLAUDE.md twin are gone from the repo and must stay gone.
@@ -475,7 +475,7 @@ for gone in ("design exception", "never approval", "no other pending gate"):
 for gone in ("Codex", "AGENTS.md", ".agents/", ".codex/"):
     assert gone not in claude, gone
 PY
-then ok "17 Claude skills and their invocation metadata; the prose invariants of the do-*, create-phase, design-cowork (styles, mockups on request, numbered cards, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
+then ok "18 Claude skills and their invocation metadata; the prose invariants of the do-*, create-phase, design-cowork (styles, mockups on request, numbered cards, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
@@ -542,8 +542,8 @@ cp_state=$(python3 -c "import json;print(json.load(open('$R/works/state.json'))[
   && ok "retrofit installs no Codex trees (.agents/, .codex/)" || bad "retrofit created a Codex tree"
 [ ! -f "$R/AGENTS.workspace.md" ] \
   && ok "retrofit writes no AGENTS.workspace.md sidecar" || bad "retrofit wrote an AGENTS.workspace.md sidecar"
-[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "17" ] \
-  && ok "retrofit installs the 17-skill Claude inventory" || bad "retrofit skill inventory incomplete"
+[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "18" ] \
+  && ok "retrofit installs the 18-skill Claude inventory" || bad "retrofit skill inventory incomplete"
 grep -q 'Claude Design' "$R/CLAUDE.workspace.md" && grep -q 'writes no \*\*\*product\*\*\* implementation code' "$R/CLAUDE.workspace.md" \
   && grep -q 'RESPECT THE DESIGN' "$R/CLAUDE.workspace.md" \
   && ok "retrofit sidecar carries the visual design contract" || bad "retrofit visual contract is incomplete"
@@ -621,8 +621,8 @@ assert not missing, missing
 PY
 then ok "every changelog release section carries a Migration notes line"; else bad "a changelog release section has no Migration notes line"; fi
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
-[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "17" ] \
-  && ok "fresh install has the 17 Claude skills" || bad "fresh skill inventory incomplete"
+[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "18" ] \
+  && ok "fresh install has the 18 Claude skills" || bad "fresh skill inventory incomplete"
 [ ! -f "$F/AGENTS.md" ] && [ ! -d "$F/.agents" ] && [ ! -d "$F/.codex" ] \
   && ok "fresh install is Codex-free (no AGENTS.md, no .agents/, no .codex/)" || bad "fresh install still ships Codex machinery"
 [ -f "$F/.claude/agents/slice-executor-mid.md" ] && [ -f "$F/.claude/agents/slice-executor-high.md" ] && ok "fresh install ships the 2 Claude slice-executor tiers" || bad "fresh install missing Claude slice-executor tier(s)"
@@ -808,6 +808,27 @@ printf 'mode = "flex"\nmode = "economy"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && bad "duplicate mode should fail sync-agents" || ok "duplicate mode rejected"
 printf '[claude.high]\nmodel = "opus"\nmode = "flex"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && bad "mode after a section should fail sync-agents" || ok "mode after a section rejected"
+# v45: executor-mode reports the mode bare, and switches it + syncs the agent files in one step.
+cp "$REPO_ROOT/executors.toml" "$F/executors.toml"
+em_out=$( cd "$F" && python3 scripts/workflow.py executor-mode 2>&1 )
+printf '%s\n' "$em_out" | grep -q '^mode: flex (executors.toml)$' && printf '%s\n' "$em_out" | grep -q '^overrides: none$' \
+  && printf '%s\n' "$em_out" | grep -q '^agent files: in sync$' \
+  && ok "executor-mode (bare) reports the seeded flex mode, no overrides, agent files in sync" || bad "executor-mode status wrong: $em_out"
+( cd "$F" && python3 scripts/workflow.py executor-mode economy >/dev/null 2>&1 ) && grep -q '^mode = "economy"$' "$F/executors.toml" \
+  && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-high.md" \
+  && ok "executor-mode economy rewrites the mode line and syncs both tiers in one step" || bad "executor-mode economy did not switch and sync"
+( cd "$F" && python3 scripts/workflow.py executor-mode flex >/dev/null 2>&1 ) && cmp -s "$REPO_ROOT/executors.toml" "$F/executors.toml" \
+  && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-high.md" \
+  && ok "executor-mode flex round-trips the seeded executors.toml byte-identically" || bad "executor-mode round trip changed executors.toml"
+printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
+em_out=$( cd "$F" && python3 scripts/workflow.py executor-mode economy 2>&1 )
+printf '%s\n' "$em_out" | grep -q 'overrides in executors.toml still win' && [ "$(head -1 "$F/executors.toml")" = 'mode = "economy"' ] \
+  && grep -q '^model = "fable"$' "$F/executors.toml" && grep -q '^model: fable$' "$F/.claude/agents/slice-executor-high.md" \
+  && ok "executor-mode inserts a missing mode line, keeps the overrides and notes they still win" || bad "executor-mode override handling wrong: $em_out"
+rm -f "$F/executors.toml"
+( cd "$F" && python3 scripts/workflow.py executor-mode flex >/dev/null 2>&1 ) && [ "$(cat "$F/executors.toml")" = 'mode = "flex"' ] \
+  && ok "executor-mode creates a one-line executors.toml when there is none" || bad "executor-mode did not create executors.toml"
+( cd "$F" && python3 scripts/workflow.py executor-mode cheap >/dev/null 2>&1 ) && bad "executor-mode should refuse an unknown preset" || ok "executor-mode refuses an unknown preset"
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed re-applying the fable override"
 rm -rf "$F/.claude/skills/do-whole-phase"
@@ -894,7 +915,7 @@ diff -q "$REPO_ROOT/scripts/workflow.py" "$F/scripts/workflow.py" >/dev/null \
   || bad "DRIFT: scripts/workflow.py differs from the bootstrap-embedded copy"
 skill_rels=$(cd "$REPO_ROOT" && find .claude/skills -type f -name SKILL.md | LC_ALL=C sort)
 nskill=$(printf '%s\n' "$skill_rels" | grep -c .)
-[ "$nskill" -eq 17 ] && ok "dual-apply covers all 17 skill bodies" || bad "expected 17 SKILL.md files to diff, found $nskill"
+[ "$nskill" -eq 18 ] && ok "dual-apply covers all 18 skill bodies" || bad "expected 18 SKILL.md files to diff, found $nskill"
 for rel in $skill_rels; do
   diff -q "$REPO_ROOT/$rel" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
