@@ -3040,7 +3040,15 @@ DESIGN_VIEWPORT_RE = re.compile(r"^[1-9]\d*x[1-9]\d*$")
 DESIGN_REVIEW_MARK = "⏳"  # the hourglass that opens a review-time group
 DESIGN_ADDRESS_RE = re.compile("^⏳ (\\S+) · (.+)$")
 DESIGN_REF_RE = re.compile(r"""\b(?:src|href)\s*=\s*["']([^"']*)["']|url\(\s*["']?([^"')]+?)["']?\s*\)""", re.I)
-DESIGN_ABSOLUTE_REFS = ("#", "data:", "http://", "https://", "//", "mailto:", "tel:", "javascript:", "about:")
+# What a card may reference besides ../tokens.css -- exactly the contract's "inline SVG or `data:`, and
+# anything else an absolute `https:` URL", plus in-page `#` fragments (a same-document reference
+# resolves inside the card's own bytes wherever it is opened, and inline SVG's url(#id) / <use
+# href="#id"> rely on it). Nothing else: a protocol-relative `//host/x` resolves against file:// when
+# the operator opens a card file directly, and `http:`, `mailto:`, `tel:`, `javascript:` or `about:`
+# are not what the contract names.
+DESIGN_ALLOWED_REFS = ("#", "data:", "https://")
+DESIGN_REF_WHY = (("//", "protocol-relative: it resolves against file:// when a card file is opened directly"),
+                  ("http://", "plain http, not https"))
 
 
 def design_root() -> Path:
@@ -3105,14 +3113,16 @@ def design_reference_problems(data: bytes, root: Path, allow_tokens: bool) -> li
     problems = set()
     for first, second in DESIGN_REF_RE.findall(data.decode("utf-8", errors="replace")):
         ref = (first or second).strip()
-        if not ref or ref.lower().startswith(DESIGN_ABSOLUTE_REFS):
+        if not ref or ref.lower().startswith(DESIGN_ALLOWED_REFS):
             continue
         if allow_tokens and ref == "../tokens.css":
             if not (root / "tokens.css").exists():
                 problems.add("links ../tokens.css but the design root has no tokens.css")
             continue
-        allowed = "../tokens.css, `data:` or an absolute https URL" if allow_tokens else "`data:` or an absolute https URL"
-        problems.add(f"references {ref!r}: only {allowed} may be referenced (the same bytes must render from a round snapshot)")
+        why = next((f" ({text})" for prefix, text in DESIGN_REF_WHY if ref.lower().startswith(prefix)), "")
+        allowed = "../tokens.css, an in-page `#` fragment, `data:` or an absolute https URL" if allow_tokens \
+            else "an in-page `#` fragment, `data:` or an absolute https URL"
+        problems.add(f"references {ref!r}{why}: only {allowed} may be referenced (the same bytes must render from a round snapshot)")
     return sorted(problems)
 
 

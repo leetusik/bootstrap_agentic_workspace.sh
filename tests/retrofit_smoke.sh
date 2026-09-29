@@ -23,9 +23,9 @@
 # on a dirty tree commits only the phase folder plus the regenerated works/ files and cuts a
 # nested .claude/worktrees/ checkout hidden by the repo's info/exclude; parallel-skip and
 # new-phase --on-main are no-ops that stamp nothing), the v47 design-contract invariants
-# (design-check names a gap and an unnumbered card; design-close's regroup rewrites line 1 only,
-# keeps a pre-close snapshot and is idempotent; design-register writes only the env-overridden
-# registry, never the operator's ~/.config), and the
+# (design-check names a gap, an unnumbered card and a // or http:// reference; design-close's
+# regroup rewrites line 1 only, keeps a pre-close snapshot and is idempotent; design-register
+# writes only the env-overridden registry, never the operator's ~/.config), and the
 # v31 Codex-removal negatives. Re-runnable; self-cleaning.
 #
 # Usage:  bash tests/retrofit_smoke.sh
@@ -122,6 +122,10 @@ for name in ("do-next-slice", "do-whole-phase"):
         "`design-drafter`", "mockup build is the one span dispatched to a slice executor",
         "lifecycle and the operator's words stay inline", "new visual direction",
         'design-close <round> --words "<their literal words>"', "design-close <round> --superseded",
+        # P26.F1: the feedback branch writes the revision round's handoff (every addressed card
+        # listed), re-dispatches the drafter and reads back before PENDING #1 -- as design-cowork says.
+        "**write its handoff**", "**every card still carrying the slice's address**",
+        "the new round inherits the addressed cards",
         # v42: the mockup is on request, the operator's return closes the round, the
         # phase gate follows the mockup with a fixed waive note.
         "PENDING #2 exists only when a mockup was requested",
@@ -148,7 +152,9 @@ for name in ("do-next-slice", "do-whole-phase"):
                  "Four commits and two `pending` stops", "where opting the phase in was the ask",
                  # v47 (P26.S4): the DesignSync loop is retired from both drivers.
                  "DesignSync", "Claude Design", "_ds_manifest", "never dispatched",
-                 "four commits, two", "one dispatched span", "Push the branch", "push the branch"):
+                 "four commits, two", "one dispatched span", "Push the branch", "push the branch",
+                 # P26.F1: the elided feedback step (no revision handoff, no read-back) is retired.
+                 "in the same slice, re-dispatch the drafter"):
         assert gone not in body, (name, gone)
     # v35: the per-slice re-read of the generated backlog dashboard is gone --
     # `next` prints the pointer. The only mentions left must say so.
@@ -272,6 +278,14 @@ workflow_src = (root / "scripts/workflow.py").read_text()
 for const in ("DESIGN_ROOT_REL", "DESIGN_REGISTRY_ENV", "DESIGN_REGISTRY_DEFAULT"):
     value = re.search(r'^' + const + r' = "([^"]+)"$', workflow_src, re.M).group(1)
     assert value in design, (const, value)
+# P26.F1: the drafter's frontend-design licence is the handoff's `new visual direction` line, the
+# operator's call; a missing line is an open question, and the drafter never infers the licence.
+drafter = " ".join((root / ".claude/agents/design-drafter.md").read_text().split())
+for required in ("the `new visual direction: yes` or `no` line", "your **only** licence to load it",
+                 "If the line is missing, do not load it, and name the missing line in `open_questions`.",
+                 "You never infer the licence yourself"):
+    assert required in drafter, required
+assert "**only** on a round that sets a new visual direction" not in drafter
 # v37 negatives: the MCP-first prescription is retired -- no config block to copy,
 # no surface preference, and no "Playwright-style automation" framing anywhere.
 for gone in ('{"mcpServers"', "Prefer the **MCP** surface", "MCP first",
@@ -1265,7 +1279,7 @@ if ( cd "$W" && python3 scripts/workflow.py parallel-start P2 2>&1 | grep -q "le
   || bad "merge, merge-finish or teardown failed"
 
 # ---------------------------------------------------------------------------
-echo "== Test 13: v47 design contract -- design-check names a gap and an unnumbered card, design-close regroups line 1 only (idempotent), design-register writes only the env-overridden registry =="
+echo "== Test 13: v47 design contract -- design-check names a gap, an unnumbered card and a // or http:// reference, design-close regroups line 1 only (idempotent), design-register writes only the env-overridden registry =="
 # Runs in the fresh workspace $F. Every design command gets a scratch HOME as well as a scratch
 # $AGENTIC_DESIGN_REGISTRY, so even a broken override could never reach the operator's ~/.config.
 newtmp DZ
@@ -1286,16 +1300,26 @@ d = pathlib.Path(sys.argv[1])
 for name in ("01-colors", "02-type", "03-button"):
     (d / "cards" / f"{name}.html").write_text(
         '<!-- @dsCard group="⏳ P9.S1 · Components" viewport="480x200" -->\n'
-        f'<link rel="stylesheet" href="../tokens.css">\n<p>{name}</p>\n', encoding="utf-8")
+        f'<link rel="stylesheet" href="../tokens.css">\n<p>{name}</p>\n'
+        # the contract's allowed references besides ../tokens.css: an in-page fragment, data:, https
+        '<a href="#top"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt=""></a>'
+        '<a href="https://example.com/">more</a>\n', encoding="utf-8")
 CARDS
+# P26.F1: a protocol-relative and a plain-http reference break the contract's "absolute https" rule.
+cp "$DR/cards/03-button.html" "$DZ/03-button.keep"
+printf '<img src="//cdn.example.com/x.png"><link rel="stylesheet" href="http://x.example/y.css">\n' >> "$DR/cards/03-button.html"
 mv "$DR/cards/02-type.html" "$DR/cards/type.html"
 out=$(dw design-check 2>&1); rc=$?
 mv "$DR/cards/type.html" "$DR/cards/02-type.html"
+cp "$DZ/03-button.keep" "$DR/cards/03-button.html"
 ok_out=$(dw design-check cards/01-colors.html cards/02-type.html cards/03-button.html 2>&1); ok_rc=$?
 if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -q 'gap in the card numbering: no card numbered 02' \
-    && printf '%s\n' "$out" | grep -q 'cards/type.html: unnumbered card path' && [ "$ok_rc" -eq 0 ]; then
-  ok "design-check names a gap and an unnumbered card (exit 1) and passes the numbered set"
-else bad "design-check missed the gap or the unnumbered card (rc=$rc, restored rc=$ok_rc) -- $out $ok_out"; fi
+    && printf '%s\n' "$out" | grep -q 'cards/type.html: unnumbered card path' \
+    && printf '%s\n' "$out" | grep -Fq "cards/03-button.html: references '//cdn.example.com/x.png' (protocol-relative" \
+    && printf '%s\n' "$out" | grep -Fq "cards/03-button.html: references 'http://x.example/y.css' (plain http" \
+    && [ "$ok_rc" -eq 0 ]; then
+  ok "design-check names a gap, an unnumbered card, a // and an http:// reference (exit 1) and passes the numbered set with ../tokens.css, #, data: and https references"
+else bad "design-check missed the gap, the unnumbered card, or a // / http:// reference, or failed the allowed set (rc=$rc, restored rc=$ok_rc) -- $out $ok_out"; fi
 mkdir -p "$DZ/pre" && cp "$DR"/cards/*.html "$DZ/pre/" && printf 'Signed: "ship it"\n' > "$DR/rounds/01-signin/SIGNOFF.md"
 dw design-close 01-signin --words "ship it" >/dev/null 2>&1 || bad "design probe: design-close failed"
 if python3 - "$DR" "$DZ/pre" <<'REGROUP'

@@ -44,8 +44,10 @@ history.
   `SIGNOFF.md` and runs `design-close --words` (two commits, one stop); anything else is recorded in
   `feedback.md`, closes the round `--superseded` and opens a new round of the same slice (one more
   commit and stop). A requested mockup is unchanged in spirit but goes three commits and two stops,
-  not four, because there is no landing step. The `DesignSync` read-back and the SIGNOFF regroup are
-  retired, along with the push and the `_ds_manifest.json` card contract. Governance is unchanged:
+  not four, because there is no landing step. The `DesignSync` read-back and its SIGNOFF regroup (the
+  write into the Claude Design project) are retired, along with the push and the `_ds_manifest.json`
+  card contract; the regroup itself lives on locally in `design-close --words`, which rewrites line 1
+  of each signed card and nothing after it. Governance is unchanged:
   the three styles, immutable rounds, literal signoff, the mockup gate and RESPECT THE DESIGN.
 
 - **Claude Design is an optional bundle import.** An export the operator already has goes into a

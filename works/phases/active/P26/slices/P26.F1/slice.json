@@ -3,12 +3,12 @@
   "phase_id": "P26",
   "name": "align the drafter's frontend-design licence, design-check's reference rule, the v47 changelog and the do-* feedback step with the doctrine",
   "kind": "fix",
-  "status": "todo",
+  "status": "done",
   "order": 14,
   "depends_on": [],
   "created_at": "2026-09-29T22:24:21+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-09-29T22:24:44+09:00",
+  "completed_at": "2026-09-29T22:33:33+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -18,7 +18,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Fixed the 4 review findings: drafter frontend-design keyed to handoff line; design-check refs = contract set; v47 CHANGELOG regroup wording; do-* revision handoff + read-back; smoke 195",
   "validation": {
     "required": [],
     "last_run": null,
