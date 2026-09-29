@@ -1213,9 +1213,9 @@ something to argue out of with the record.
 
 **claude-design:**
 
-- Author a mockup **before the round has come back**, or "round 1" yourself: designing is the
-  operator's, in Claude Design, and the two write cases in *Mechanics* cover what already exists and
-  where it is filed, never a new decision.
+- Author a mockup **before the read-back has passed, the record has landed and the operator has given
+  their go-ahead**, or "round 1" yourself: designing is the operator's, in Claude Design, and the two
+  write cases in *Mechanics* cover what already exists and where it is filed, never a new decision.
 - Read the drafter's `frontend-design` exception as reaching this loop: under `claude-design` there is
   none.
 - Try to run `/design-sync` or `/design …` — they are **user-invocable only**. The operator runs them,

@@ -169,6 +169,10 @@ for name in ("do-next-slice", "do-whole-phase"):
                  # P26.F1: the elided feedback step (no revision handoff, no read-back) is retired.
                  "in the same slice, re-dispatch the drafter"):
         assert gone not in body, (name, gone)
+    # P27.F1: the claude-design branch routes the operator's words first -- feedback reaches
+    # feedback.md before any DesignSync read-back, which gates only approval and the mockup.
+    cd_branch = body[body.index("**`claude-design`** (*Under claude-design*"):]
+    assert cd_branch.index("feedback.md") < cd_branch.index("DesignSync"), name
     # v35: the per-slice re-read of the generated backlog dashboard is gone --
     # `next` prints the pointer. The only mentions left must say so.
     for ln in body.splitlines():

@@ -61,6 +61,9 @@ history.
   `DesignSync` is not available in the session, the slice stops `pending` and says so; it never
   falls back to the drafter mid-round. The `drafter` tool needs none of this.
 
+- **The installer's stdin program now declares utf-8** (PEP 263), so the Mac's system Python 3.9
+  can no longer reject it when a multibyte character lands on a read-chunk boundary.
+
 - **Re-sync note.** A workspace synced at v47 **before P26.F1/F2** lacks three fixes to v47's own
   loop: the drafter's `new visual direction` licence for `frontend-design`, the `#` in-page
   fragments in the card contract's self-contained rule, and the stricter `design-check` reference
