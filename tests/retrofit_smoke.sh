@@ -25,8 +25,8 @@
 # new-phase --on-main are no-ops that stamp nothing), the v47 design-contract invariants
 # (design-check names a gap, an unnumbered card and a // or http:// reference; design-close's
 # regroup rewrites line 1 only, keeps a pre-close snapshot and is idempotent; design-register
-# writes only the env-overridden registry, never the operator's ~/.config), and the
-# v31 Codex-removal negatives. Re-runnable; self-cleaning.
+# writes only the env-overridden registry, never the operator's ~/.config; v48: design-check skips claude-design/,
+# design-migrate moves all-or-nothing, design-register prints the deck hint), and the v31 Codex-removal negatives. Re-runnable; self-cleaning.
 #
 # Usage:  bash tests/retrofit_smoke.sh
 # Exit 0 if every check passes; non-zero otherwise.
@@ -1294,7 +1294,7 @@ if ( cd "$W" && python3 scripts/workflow.py parallel-start P2 2>&1 | grep -q "le
   || bad "merge, merge-finish or teardown failed"
 
 # ---------------------------------------------------------------------------
-echo "== Test 13: v47 design contract -- design-check names a gap, an unnumbered card and a // or http:// reference, design-close regroups line 1 only (idempotent), design-register writes only the env-overridden registry =="
+echo "== Test 13: v47 design contract -- design-check names a gap, an unnumbered card and a // or http:// reference, design-close regroups line 1 only (idempotent), design-register writes only the env-overridden registry; v48: claude-design/ is skipped, design-migrate, the deck hint =="
 # Runs in the fresh workspace $F. Every design command gets a scratch HOME as well as a scratch
 # $AGENTIC_DESIGN_REGISTRY, so even a broken override could never reach the operator's ~/.config.
 newtmp DZ
@@ -1368,9 +1368,60 @@ assert os.path.samefile(entry["root"], os.path.join(sys.argv[2], "docs/reference
 REG_OK
   ok "design-register writes absolute paths to the env-overridden registry, and a second run writes nothing"
 else bad "design-register wrote the wrong entry or was not idempotent -- $again"; fi
+# v48 (P27.S1): design-register ends with the design-deck hint -- the URL only from the env, never guessed.
+out=$( cd "$F" && HOME="$DZ/home" AGENTIC_DESIGN_REGISTRY="$DZ/reg/design-registry.json" \
+       AGENTIC_DESIGN_DECK_URL="http://100.64.0.1:8765/" DECK_PROJECTS_DIR="$DZ/home/projects" \
+       python3 scripts/workflow.py design-register 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -Fqx 'design-deck reads this registry: http://100.64.0.1:8765/' \
+  && printf '%s\n' "$out" | grep -q '^warning: this repo is outside .*, so design-deck will show it as unavailable$' \
+  && ok "design-register prints the design-deck hint: the URL from \$AGENTIC_DESIGN_DECK_URL, and a warning for a repo outside the deck's projects folder" \
+  || bad "design-register printed no deck URL or no outside-folder warning (rc=$rc) -- $out"
 [ ! -e "$DZ/home/.config" ] && [ "$(real_reg_sig)" = "$real_before" ] \
   && ok "design-register touched neither the scratch HOME's ~/.config nor the operator's real registry" \
   || bad "design-register wrote outside \$AGENTIC_DESIGN_REGISTRY"
+# v48 (P27.S1): the claude-design tool's records live in claude-design/, which the scan never reads.
+mkdir -p "$DR/claude-design/grounding/previews" "$DR/claude-design/rounds/01-old"
+printf '<p>preview</p>\n' > "$DR/claude-design/grounding/previews/x.html"
+printf '# old handoff\n' > "$DR/claude-design/rounds/01-old/handoff.md"
+out=$(dw design-check 2>&1); rc=$?
+[ "$rc" -eq 0 ] && ! printf '%s\n' "$out" | grep -q 'claude-design' \
+  && ok "design-check skips claude-design/: neither its grounding HTML nor its legacy rounds are problems" \
+  || bad "design-check read claude-design/ (rc=$rc) -- $out"
+# With design.json present, design-migrate moves only the old record's parts and lists the rest.
+mkdir -p "$DR/rounds/02-legacy" && printf '# legacy\n' > "$DR/rounds/02-legacy/handoff.md"
+printf 'Signed: "old"\n' > "$DR/SIGNOFF.md" && printf 'notes\n' > "$DR/notes.txt"
+out=$(dw design-migrate --apply 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ -f "$DR/claude-design/rounds/02-legacy/handoff.md" ] && [ -f "$DR/claude-design/SIGNOFF.md" ] \
+  && [ ! -e "$DR/rounds/02-legacy" ] && [ ! -e "$DR/SIGNOFF.md" ] && [ -f "$DR/rounds/01-signin/round.json" ] && [ -f "$DR/notes.txt" ] \
+  && printf '%s\n' "$out" | grep -Fq 'left in place docs/reference/design/notes.txt' && dw design-check >/dev/null 2>&1 \
+  && ok "design-migrate beside design.json moves only a round without round.json and the root SIGNOFF.md, lists other files as left in place, and design-check passes after" \
+  || bad "design-migrate beside design.json moved the wrong entries (rc=$rc) -- $out"
+# A pre-v47 root (no design.json): every top-level entry moves, a dry run first, all-or-nothing.
+MG="$DZ/legacy"; MD="$MG/docs/reference/design"
+mkdir -p "$MG/scripts" "$MD/rounds/01-a" "$MD/grounding" && cp "$F/scripts/workflow.py" "$MG/scripts/"
+printf '# handoff\n' > "$MD/rounds/01-a/handoff.md"; printf 'Signed: "go"\n' > "$MD/SIGNOFF.md"
+printf '<p>g</p>\n' > "$MD/grounding/g.html"; printf '# the old record\n' > "$MD/README.md"
+mw() { ( cd "$MG" && HOME="$DZ/home" python3 scripts/workflow.py "$@" ); }
+mig_sig() { ( cd "$MD" && find . -type f | LC_ALL=C sort | while read -r f; do printf '%s %s\n' "$f" "$(sha "$f")"; done ); }
+legacy_before=$(mig_sig); out=$(mw design-migrate 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && [ "$(mig_sig)" = "$legacy_before" ] && printf '%s\n' "$out" | grep -q 'dry run -- nothing moved' \
+    && ( for e in README.md SIGNOFF.md grounding rounds; do printf '%s\n' "$out" \
+           | grep -Fqx "design-migrate: would move docs/reference/design/$e -> docs/reference/design/claude-design/$e" || exit 1; done ); then
+  ok "design-migrate is a dry run by default: it names every top-level entry of a design.json-less root and moves nothing"
+else bad "design-migrate's dry run moved something or missed an entry (rc=$rc) -- $out"; fi
+out=$(mw design-migrate --apply 2>&1); rc=$?; again=$(mw design-migrate --apply 2>&1); again_rc=$?
+if [ "$rc" -eq 0 ] && [ "$(ls -A "$MD")" = "claude-design" ] \
+    && [ "$(mig_sig)" = "$(printf '%s\n' "$legacy_before" | sed 's#^\./#./claude-design/#')" ] \
+    && [ "$again_rc" -eq 0 ] && printf '%s\n' "$again" | grep -q 'nothing to migrate'; then
+  ok "design-migrate --apply moves all four entries under claude-design/ byte-identical, and a second --apply has nothing to migrate"
+else bad "design-migrate --apply lost, changed or left an entry, or was not idempotent (rc=$rc/$again_rc) -- $out $again"; fi
+printf 'Signed again\n' > "$MD/SIGNOFF.md"; printf '# brief\n' > "$MD/BRIEF.md"
+mkdir -p "$MD/rounds/02-b" && printf '{}\n' > "$MD/rounds/02-b/round.json"
+conflict_before=$(mig_sig); out=$(mw design-migrate --apply 2>&1); rc=$?
+[ "$rc" -ne 0 ] && [ "$(mig_sig)" = "$conflict_before" ] && printf '%s\n' "$out" | grep -Fq 'claude-design/SIGNOFF.md already exists' \
+  && printf '%s\n' "$out" | grep -Fq 'schema-1 round(s) 02-b' \
+  && ok "design-migrate refuses an existing destination and a round.json in a design.json-less root, naming both, and moves nothing (not even the free BRIEF.md)" \
+  || bad "design-migrate moved something past a conflict, or did not name every conflict (rc=$rc) -- $out"
 
 # ---------------------------------------------------------------------------
 echo

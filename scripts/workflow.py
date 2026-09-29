@@ -3018,10 +3018,17 @@ def rotate_backlog(args: argparse.Namespace) -> None:
 # the rest. Two invariants carry the weight: the regroup rewrites ONE label on line 1 of a card
 # and asserts every byte after line 1 identical, and `design-register` writes only the registry
 # path (env-overridable, so tests never touch the operator's real one), atomically. Stdlib only.
+# Since v48 a phase may pick the `claude-design` tool instead; its records keep the pre-v47 layout
+# under DESIGN_LEGACY_DIR, which the scan never reads, and `design-migrate` moves a pre-v47 root
+# there (moves only, all-or-nothing, never a delete, never git).
 DESIGN_ROOT_REL = "docs/reference/design"
+# The `claude-design` tool's record home, in the pre-v47 layout, never read by the engine.
+DESIGN_LEGACY_DIR = "claude-design"
 DESIGN_SCHEMA = 1
 DESIGN_REGISTRY_ENV = "AGENTIC_DESIGN_REGISTRY"
 DESIGN_REGISTRY_DEFAULT = "~/.config/agentic-workspace/design-registry.json"
+# The design-deck URL design-register prints when set; the engine never guesses one.
+DESIGN_DECK_URL_ENV = "AGENTIC_DESIGN_DECK_URL"
 DESIGN_ROUND_STATUSES = ("open", "signed", "superseded")
 DESIGN_MANIFEST_KEYS = ("schema", "id", "name")
 DESIGN_ROUND_KEYS = ("schema", "round", "title", "slice", "status", "opened_at", "closed_at",
@@ -3267,6 +3274,8 @@ def design_scan(root: Path) -> dict:
         problems.extend(f"tokens.css: {p}" for p in design_reference_problems((root / "tokens.css").read_bytes(), root, allow_tokens=False))
     for page in sorted(root.rglob("*.htm*")):
         parts = page.relative_to(root).parts
+        if parts[0] == DESIGN_LEGACY_DIR:  # the claude-design tool's record, whatever it holds
+            continue
         if any(part.startswith(".") for part in parts) or page.suffix.lower() not in (".html", ".htm"):
             continue
         if (parts[0] == "cards" and len(parts) == 2) or (parts[0] == "rounds" and len(parts) >= 4 and parts[2] in ("cards", "import")):
@@ -3586,12 +3595,120 @@ def design_register(args: argparse.Namespace) -> None:
     updated = dict(registry, schema=DESIGN_SCHEMA, projects=sorted(rest + [kept], key=lambda p: str(p.get("id"))))
     if updated == registry:
         print(f"design-register: {entry['id']} already registered in {path} (nothing written)")
+        design_deck_hint()
         return
     write_json(path, updated)
     print(f"design-register: wrote {path}")
     for gone in replaced:
         print(f"replaced a stale entry: {gone.get('id')} at {gone.get('root')}")
     print(json.dumps(kept, ensure_ascii=False, indent=2))
+    design_deck_hint()
+
+
+def design_deck_hint() -> None:
+    """design-register's closing hint: the dashboard reads this registry, where it is served, and
+    which repos it can see -- design-deck's own mounted projects folder, $DECK_PROJECTS_DIR (its
+    deck.sh variable), default ~/projects. Prints only; the engine never guesses a URL."""
+    url = os.environ.get(DESIGN_DECK_URL_ENV, "").strip()
+    print(f"design-deck reads this registry: {url}" if url
+          else f"design-deck reads this registry (set ${DESIGN_DECK_URL_ENV} to print its URL here)")
+    projects = Path(os.path.expanduser(os.environ.get("DECK_PROJECTS_DIR", "").strip() or "~/projects")).resolve()
+    print(f"design-deck only sees repos under its mounted projects folder ({projects})")
+    try:
+        ROOT.resolve().relative_to(projects)
+    except ValueError:
+        print(f"warning: this repo is outside {projects}, so design-deck will show it as unavailable")
+
+
+def design_migrate(args: argparse.Namespace) -> None:
+    """Move a pre-v47 design record into DESIGN_LEGACY_DIR, unchanged. With no design.json the whole
+    root is the old record, so every top-level entry moves (dot-entries stay); with design.json the
+    repo already uses the drafter, so only the old record's parts move -- rounds without round.json,
+    the root SIGNOFF.md and grounding/. Every check runs before the first move (a refusal moves
+    nothing); a dry run unless --apply; never a delete (only an empty rounds/ is rmdir'ed), never git."""
+    root = design_root()
+    if not root.is_dir():
+        raise SystemExit(f"design-migrate: refused -- no design root at {DESIGN_ROOT_REL}/; nothing to migrate")
+    legacy = root / DESIGN_LEGACY_DIR
+    rounds_dir = root / "rounds"
+    rel = lambda p: p.relative_to(ROOT).as_posix()
+    moves, left, problems = [], [], []
+    outside = "not part of either contract; move it by hand if it belongs to the old record"
+    if not (root / "design.json").exists():
+        mixed = [e.name for e in sorted(rounds_dir.iterdir()) if (e / "round.json").exists()] if rounds_dir.is_dir() else []
+        if mixed:
+            problems.append(f"{rel(rounds_dir)} holds schema-1 round(s) {', '.join(mixed)} (they carry a round.json) but there is "
+                            f"no design.json; if this repo uses the drafter, restore it with design-init first")
+        for entry in sorted(root.iterdir()):
+            if entry.name == DESIGN_LEGACY_DIR:
+                continue
+            if entry.name.startswith("."):
+                left.append((entry, "a dot-entry"))
+                continue
+            moves.append((entry, legacy / entry.name))
+    else:
+        for entry in sorted(rounds_dir.iterdir()) if rounds_dir.is_dir() else []:
+            if entry.name.startswith("."):
+                continue
+            if not entry.is_dir():
+                left.append((entry, outside))
+            elif not (entry / "round.json").exists():
+                moves.append((entry, legacy / "rounds" / entry.name))
+        for name in ("SIGNOFF.md", "grounding"):
+            if os.path.lexists(root / name):
+                moves.append((root / name, legacy / name))
+        schema1 = {"design.json", "cards", "tokens.css", "rounds", DESIGN_LEGACY_DIR, "SIGNOFF.md", "grounding"}
+        left.extend((e, outside) for e in sorted(root.iterdir()) if e.name not in schema1 and not e.name.startswith("."))
+    folders = [legacy] + ([legacy / "rounds"] if any(dst.parent == legacy / "rounds" for _, dst in moves) else [])
+    for folder in folders:
+        if os.path.lexists(folder) and not folder.is_dir():
+            problems.append(f"{rel(folder)} exists and is not a folder")
+    problems.extend(f"{rel(dst)} already exists" for _, dst in moves if os.path.lexists(dst))
+    if problems:
+        raise SystemExit("design-migrate: refused -- nothing moved:\n" + "\n".join(f"- {p}" for p in problems))
+    stayed = [f"design-migrate: left in place {rel(path)} ({why})" for path, why in left]
+    if not moves:
+        print("\n".join(stayed + ["design-migrate: nothing to migrate"]))
+        return
+    if not args.apply:
+        print("\n".join([f"design-migrate: would move {rel(src)} -> {rel(dst)}" for src, dst in moves] + stayed
+                        + ["design-migrate: dry run -- nothing moved; re-run with --apply"]))
+        return
+    created, done = [], []
+    try:
+        for src, dst in moves:
+            for folder in folders:
+                if folder in dst.parents and not folder.is_dir():
+                    folder.mkdir()
+                    created.append(folder)
+            os.replace(src, dst)
+            done.append((src, dst))
+    except OSError as exc:  # all-or-nothing: put back what already moved, then drop only the folders made here
+        undo = []
+        for src, dst in reversed(done):
+            try:
+                os.replace(dst, src)
+            except OSError as again:
+                undo.append(f"- could not move {rel(dst)} back to {rel(src)}: {again}")
+        for folder in reversed(created):
+            try:
+                folder.rmdir()
+            except OSError:
+                pass
+        raise SystemExit(f"design-migrate: failed -- {exc}; " + (
+            "rolled back, nothing moved" if not undo else "rollback incomplete:\n" + "\n".join(undo)))
+    for src, dst in moves:
+        print(f"design-migrate: moved {rel(src)} -> {rel(dst)}")
+    if any(src.parent == rounds_dir for src, _ in moves) and rounds_dir.is_dir():
+        try:
+            rounds_dir.rmdir()  # only ever succeeds on a truly empty folder
+            print(f"design-migrate: removed the now-empty {rel(rounds_dir)}/")
+        except OSError:
+            pass
+    if stayed:
+        print("\n".join(stayed))
+    print("commit the move yourself (git sees it as renames)"
+          + ("" if (root / "design.json").exists() else "; run design-init only if this repo will use the drafter"))
 
 
 def main(argv=None) -> int:
@@ -3757,9 +3874,14 @@ def main(argv=None) -> int:
     g.add_argument("--superseded", action="store_true", help="a design question replaces the round before it is signed: snapshot and close it, no regroup")
     p.set_defaults(func=design_close)
 
-    p = sub.add_parser("design-register", help=f"Register this repo's design project with the operator's dashboard: upsert it into the registry OUTSIDE the repo (${DESIGN_REGISTRY_ENV}, default {DESIGN_REGISTRY_DEFAULT}) with absolute paths; idempotent, atomic, prints what it wrote",
-                       description=f"Writes only the registry file: ${DESIGN_REGISTRY_ENV} when set, else {DESIGN_REGISTRY_DEFAULT}. Refuses an id another live repo holds; replaces an entry whose root has vanished (a moved repo). Tests must point ${DESIGN_REGISTRY_ENV} at a scratch path.")
+    p = sub.add_parser("design-register", help=f"Register this repo's design project with the operator's dashboard: upsert it into the registry OUTSIDE the repo (${DESIGN_REGISTRY_ENV}, default {DESIGN_REGISTRY_DEFAULT}) with absolute paths; idempotent, atomic, prints what it wrote and a design-deck hint (its URL from ${DESIGN_DECK_URL_ENV} when set)",
+                       description=f"Writes only the registry file: ${DESIGN_REGISTRY_ENV} when set, else {DESIGN_REGISTRY_DEFAULT}. Refuses an id another live repo holds; replaces an entry whose root has vanished (a moved repo). Tests must point ${DESIGN_REGISTRY_ENV} at a scratch path. On success it also prints a design-deck hint: the deck URL from ${DESIGN_DECK_URL_ENV} when set (never guessed), and a warning when this repo is outside the deck's mounted projects folder ($DECK_PROJECTS_DIR, default ~/projects).")
     p.set_defaults(func=design_register)
+
+    p = sub.add_parser("design-migrate", help=f"Move a pre-v47 (Claude Design) design record into {DESIGN_ROOT_REL}/{DESIGN_LEGACY_DIR}/, unchanged: with no design.json every top-level entry, else only rounds without round.json, SIGNOFF.md and grounding/; a dry run unless --apply",
+                       description=f"All-or-nothing: every check runs before the first move, and an existing destination, or a design.json-less root whose rounds/ holds a round.json, refuses with nothing moved. Dot-entries, and with design.json anything outside both contracts, are listed as left in place. Never deletes (only an emptied rounds/ is rmdir'ed), never runs git, never writes design.json (design-init stays separate). The engine never reads {DESIGN_LEGACY_DIR}/.")
+    p.add_argument("--apply", action="store_true", help="perform the moves (default: print them and move nothing)")
+    p.set_defaults(func=design_migrate)
 
     p = sub.add_parser("defer-job", help="Create a deferred job folder")
     p.add_argument("--id")
