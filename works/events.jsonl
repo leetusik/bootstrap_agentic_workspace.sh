@@ -786,3 +786,6 @@
 {"ts": "2026-10-07T16:52:06+09:00", "type": "slice_created", "phase": "P31", "slice": "P31.S4"}
 {"ts": "2026-10-07T16:54:28+09:00", "type": "slice_status_changed", "slice": "P31.DECOMP", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-10-07T16:54:28+09:00", "type": "acceptance_waived", "phase": "P31"}
+{"ts": "2026-10-07T16:54:39+09:00", "type": "slice_status_changed", "slice": "P31.S1", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-10-07T16:56:16+09:00", "type": "doc_version_created", "doc": "architecture", "version": "v0010_p26-p30_design_contract_and_drafter_design_tool_choice_nested_install_default_rotate_docs-phase_proposal", "source": "P26.REVIEW, P27.REVIEW, P28.REVIEW, P29.REVIEW, P30.REVIEW"}
+{"ts": "2026-10-07T16:58:59+09:00", "type": "slice_status_changed", "slice": "P31.S1", "old_status": "in_progress", "new_status": "done"}
