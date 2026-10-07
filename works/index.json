@@ -69,17 +69,17 @@
       "id": "P31",
       "name": "Consolidate the doc impact of P26–P30",
       "objective": "consolidate the '## Doc impact' notes from P26, P27, P28, P29, P30 into new versions of architecture, decisions, operations, qa",
-      "status": "planned",
+      "status": "in_progress",
       "order": 7,
       "path": "works/phases/active/P31",
-      "review_status": "pending",
-      "current_slice": "P31.REVIEW",
-      "slice_count": 6,
+      "review_status": "changes_requested",
+      "current_slice": "P31.F1",
+      "slice_count": 8,
       "done_slice_count": 5
     }
   ],
-  "deferred_open_count": 38,
+  "deferred_open_count": 41,
   "deferred_promoted_count": 1,
   "deferred_dropped_count": 11,
-  "last_rebuilt_at": "2026-10-07T17:23:23+09:00"
+  "last_rebuilt_at": "2026-10-07T17:32:58+09:00"
 }

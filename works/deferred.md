@@ -4,7 +4,7 @@
 
 ## Summary
 
-- Open: `38`
+- Open: `41`
 - Promoted: `1`
 - Dropped: `11`
 
@@ -48,6 +48,9 @@
 | `D48` | `deferred` | Harden the P30 smoke asserts | P30.REVIEW | the next smoke edit near the docs-debt fixture | `works/deferred/open/D48` |
 | `D49` | `deferred` | Warn when rotate-backlog proposes a docs phase on a parallel stream | P30.REVIEW | the next rotate-backlog or parallel-phase change | `works/deferred/open/D49` |
 | `D5` | `deferred` | Confirm: ## Design Style is appended by create-phase only when visual, not scaffolded into every intent.md | P17.REVIEW | Before the first design-bearing phase runs under v34, or the next time works/templates/intent.md is edited. | `works/deferred/open/D5` |
+| `D51` | `deferred` | Bring decisions' and operations' executor-tier text and Status up to v45/v46 | P31.REVIEW | the next docs phase | `works/deferred/open/D51` |
+| `D52` | `deferred` | Recount Test 0's pins in qa | P31.REVIEW | the next docs phase, or the next Test 0 edit | `works/deferred/open/D52` |
+| `D53` | `deferred` | Fill operations' Local Development stub | P31.REVIEW | the next docs phase | `works/deferred/open/D53` |
 | `D6` | `deferred` | Widen installer/main.py flag_stale_skills() ownership heuristic beyond the disable-model-invocation marker | P17.REVIEW | If a model-invocable skill is retired upstream, or when flag_stale_skills() is next touched. | `works/deferred/open/D6` |
 | `D7` | `deferred` | Qualify review-phase gate stage 4 for a phase whose only surface is a throwaway mockup | P17.REVIEW | Before the first design-only or mockup-shipping phase reaches its review. | `works/deferred/open/D7` |
 

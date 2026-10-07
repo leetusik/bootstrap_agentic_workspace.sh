@@ -1,0 +1,11 @@
+{
+  "id": "D53",
+  "title": "Fill operations' Local Development stub",
+  "status": "deferred",
+  "source": "P31.REVIEW",
+  "reason": "P31.REVIEW: ## Local Development is still the empty seed beside the filled ## Operator Runtime",
+  "trigger": "the next docs phase",
+  "created_at": "2026-10-07T17:32:58+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

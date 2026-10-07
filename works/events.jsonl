@@ -803,3 +803,11 @@
 {"ts": "2026-10-07T17:23:23+09:00", "type": "phase_consolidated", "phase": "P28"}
 {"ts": "2026-10-07T17:23:23+09:00", "type": "phase_consolidated", "phase": "P29"}
 {"ts": "2026-10-07T17:23:23+09:00", "type": "phase_consolidated", "phase": "P30"}
+{"ts": "2026-10-07T17:23:47+09:00", "type": "slice_status_changed", "slice": "P31.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-10-07T17:32:58+09:00", "type": "slice_status_changed", "slice": "P31.REVIEW", "old_status": "in_progress", "new_status": "changes_requested"}
+{"ts": "2026-10-07T17:32:58+09:00", "type": "phase_reviewed", "phase": "P31", "verdict": "changes_requested", "reviewer": "slice-executor-high"}
+{"ts": "2026-10-07T17:32:58+09:00", "type": "slice_created", "phase": "P31", "slice": "P31.F1"}
+{"ts": "2026-10-07T17:32:58+09:00", "type": "slice_created", "phase": "P31", "slice": "P31.F2"}
+{"ts": "2026-10-07T17:32:58+09:00", "type": "deferred_created", "deferred": "D51", "source": "P31.REVIEW"}
+{"ts": "2026-10-07T17:32:58+09:00", "type": "deferred_created", "deferred": "D52", "source": "P31.REVIEW"}
+{"ts": "2026-10-07T17:32:58+09:00", "type": "deferred_created", "deferred": "D53", "source": "P31.REVIEW"}
