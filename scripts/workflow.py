@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -1043,6 +1044,58 @@ def consolidation_command(phase) -> str:
     return "parallel-consolidated" if phase_execution(phase) else "docs-consolidated"
 
 
+def phase_consolidates(data) -> list:
+    """The phase ids a docs phase declared it pays: the optional top-level `"consolidates"` list that
+    `new-phase --consolidates` writes (v51), `[]` when the key is absent or malformed (`validate`
+    reports a malformed one). It is the ONLY marker of a docs phase -- nothing reads a phase's name
+    or intent text to guess -- and a phase that carries none is simply not one, so no phase.json
+    needs migrating."""
+    value = data.get("consolidates") if isinstance(data, dict) else None
+    if not isinstance(value, list):
+        return []
+    return [v for v in value if isinstance(v, str)]
+
+
+def consolidation_cover(phases: list) -> dict:
+    """`{debt_phase_id: [covering phase, ...]}` -- which live docs phase already pays which phase's
+    debt: every active, not-`done` phase whose `consolidates` names it. A finished docs phase covers
+    nothing (it either paid the debt or it did not), so rotate proposes again rather than trusting
+    it. Read by `docs-debt` ("paid by") and `rotate-backlog` (no duplicate docs phase)."""
+    cover = {}
+    for phase in phases:
+        if phase.get("status") == "done":
+            continue
+        for pid in phase_consolidates(phase):
+            cover.setdefault(pid, []).append(phase)
+    return cover
+
+
+def next_phase_id() -> str:
+    """`P<n>`, one above the highest phase number across the active AND archived phases: an archived
+    id is spent, so reusing it would collide in history. Archived phases are read from their
+    `archive_manifest.json` `phase_id`, falling back to the `_P<N>_` in the folder name."""
+    numbers = []
+    for pdir in phase_dirs():
+        match = re.fullmatch(r"P([0-9]+)", str(read_json(pdir / "phase.json").get("id", "")))
+        if match:
+            numbers.append(int(match.group(1)))
+    if ARCHIVED.exists():
+        for adir in ARCHIVED.iterdir():
+            if not adir.is_dir():
+                continue
+            pid = ""
+            manifest = adir / "archive_manifest.json"
+            if manifest.exists():
+                try:
+                    pid = str(read_json(manifest).get("phase_id", ""))
+                except (ValueError, OSError):
+                    pid = ""
+            match = re.fullmatch(r"P([0-9]+)", pid) or re.search(r"_P([0-9]+)_", adir.name)
+            if match:
+                numbers.append(int(match.group(1)))
+    return f"P{max(numbers, default=0) + 1}"
+
+
 def stale_docs(phases=None) -> dict:
     """`{doc: {phase_id: note_count}}` -- every durable doc named by a `## Doc impact` note that no
     consolidation has paid yet. The doc-side view of the same debt `consolidation_debt_line` states
@@ -1420,6 +1473,11 @@ def validate() -> int:
         # this field existed, and every phase whose `## Doc impact` list was empty).
         if "consolidation" in p and p.get("consolidation") not in CONSOLIDATION_STATES:
             errors.append(f"phase {p['id']} has invalid consolidation {p.get('consolidation')!r}; expected one of {sorted(CONSOLIDATION_STATES)}")
+        # Optional docs-phase marker (v51): the active phases a docs phase pays. Absent = not a docs phase.
+        if "consolidates" in p:
+            paid = p.get("consolidates")
+            if not (isinstance(paid, list) and paid and all(isinstance(v, str) and re.fullmatch(r"P[0-9]+", v) for v in paid)):
+                errors.append(f"phase {p['id']} has invalid consolidates {paid!r}; expected a non-empty list of phase ids such as [\"P26\", \"P27\"] (written by new-phase --consolidates)")
         # Optional parallel-execution block. Absent = default stream = nothing to check.
         # A phase that merged `done` while its doc consolidation is still pending
         # (`consolidation: "pending"`) is a legitimate state and passes cleanly here.
@@ -1714,6 +1772,32 @@ def _with_host_anchors(data: dict, anchors: dict) -> dict:
     return data
 
 
+def _parse_consolidates(raw) -> list:
+    """`new-phase --consolidates P26,P27` -> `["P26", "P27"]`: comma-separated, spaces tolerated,
+    duplicates dropped in order. Refuses (before `new-phase` writes anything) when the flag names
+    nothing, or names an id that is not an ACTIVE phase still owing doc consolidation -- a docs phase
+    can only pay debt that stands. `None` (flag absent) is `[]`."""
+    if raw is None:
+        return []
+    ids = []
+    for part in raw.split(","):
+        part = part.strip()
+        if part and part not in ids:
+            ids.append(part)
+    if not ids:
+        raise SystemExit("--consolidates needs at least one phase id (e.g. --consolidates P26,P27)")
+    active = {p["id"]: p for p in all_active_phases()}
+    bad = []
+    for pid in ids:
+        if pid not in active:
+            bad.append(f"{pid} (not an active phase)")
+        elif phase_consolidation(active[pid]) != "pending":
+            bad.append(f"{pid} (owes no doc consolidation: consolidation is {phase_consolidation(active[pid])!r})")
+    if bad:
+        raise SystemExit(f"--consolidates refused, nothing was written: {'; '.join(bad)}. It names only active phases that still owe doc consolidation (see: {WORKFLOW_CMD} docs-debt).")
+    return ids
+
+
 def new_phase(args: argparse.Namespace) -> None:
     phase_id = args.phase
     if not re.fullmatch(r"P[0-9]+", phase_id):
@@ -1721,6 +1805,7 @@ def new_phase(args: argparse.Namespace) -> None:
     pdir = ACTIVE / phase_id
     if pdir.exists():
         raise SystemExit(f"phase already exists: {phase_id}")
+    consolidates = _parse_consolidates(getattr(args, "consolidates", None))  # refuses before anything is written
     order = _clean_order(args.order) if args.order is not None else max([read_json(p / "phase.json").get("order", 0) for p in phase_dirs()], default=0) + 1
     phase_data = {
         "id": phase_id, "name": args.name, "objective": args.objective, "status": "planned", "order": order,
@@ -1730,6 +1815,9 @@ def new_phase(args: argparse.Namespace) -> None:
         "paths": {"phase_md": "phase.md", "intent_md": "intent.md", "slices_dir": "slices"},
         "archive": {"archived": False, "archived_at": None, "archive_path": None},
     }
+    if consolidates:
+        # v51: the one marker of a docs phase -- the owing phases it pays. Absent without the flag.
+        phase_data["consolidates"] = consolidates
     if NESTED is not None:
         # The nested repo never sees the host's commits, so phase-scope's base is the host HEAD now
         # (null while the host has no commit). At root this key is never written.
@@ -1744,6 +1832,8 @@ def new_phase(args: argparse.Namespace) -> None:
     append_event("phase_created", phase=phase_id)
     rebuild_index_and_state()
     print(f"created phase {phase_id}: {shown(pdir)}")
+    if consolidates:
+        print(f"consolidates={', '.join(consolidates)} (docs phase: pays the doc debt of those phases; docs-debt shows it as 'paid by {phase_id}')")
     # v43: a phase runs on this stream unless the operator asks for a worktree, so creation
     # stamps nothing and says nothing -- except where a worktree would actually buy something.
     if getattr(args, "on_main", False):
@@ -2478,11 +2568,8 @@ def parallel_merge_finish(args: argparse.Namespace) -> None:
         execution = phase_execution(p)
         if not execution or p.get("status") != "done":
             continue
-        branch = execution.get("branch")
-        merged = True  # a deleted branch means the phase was already merged and torn down
-        if git_ok and branch and _branch_exists(branch):
-            merged = _git(["merge-base", "--is-ancestor", branch, "HEAD"], check=False).returncode == 0
-        if merged:
+        # a deleted branch means the phase was already merged and torn down
+        if _parallel_branch_merged(execution, git_ok):
             awaiting.append((p, execution))
     if not awaiting:
         print("no merged phase awaits doc consolidation (merged parallel phases only -- next/validate name every phase that owes)")
@@ -2562,6 +2649,7 @@ def docs_debt(args: argparse.Namespace) -> None:
         notes_total += len(notes)
         blocks.append((phase, notes))
     docs_hit = sorted(d for d in per_doc if d != UNASSIGNED_DOC)
+    cover = consolidation_cover(phases)
     print(f"docs_debt={', '.join(p['id'] for p in owing)} ({len(owing)} phase(s), {notes_total} note(s), {len(docs_hit)} doc(s))")
     for phase, notes in blocks:
         print()
@@ -2569,6 +2657,8 @@ def docs_debt(args: argparse.Namespace) -> None:
         pay = consolidation_command(phase)
         tail = "   (merged parallel phase)" if pay == "parallel-consolidated" else ""
         print(f"  pay: {WORKFLOW_CMD} {pay} {phase['id']}{tail}")
+        for docs_phase in cover.get(phase["id"], []):  # a live docs phase already pays this one (v51)
+            print(f"  paid by: {docs_phase['id']} ({str(docs_phase.get('status', '')).replace('_', ' ')})")
         if not notes:
             print("  - (no notes in the notebook; the debt was stamped from a list since compressed -- check git history)")
         for note in notes:
@@ -3331,24 +3421,53 @@ def drop_deferred(args: argparse.Namespace) -> None:
     print(f"dropped {did}: {shown(target)}")
 
 
-def _phase_blockers(pdir: Path) -> list:
-    """Reasons a phase is not cleanly archivable; empty list means ready."""
+def _phase_blocker_kinds(pdir: Path) -> list:
+    """Reasons a phase is not cleanly archivable, typed: `[(kind, text)]`, kind one of "slices",
+    "review" or "consolidation". Empty list means ready. `_phase_blockers` is this list's text, so
+    every refusal prints exactly what it always did; the kind lets `rotate-backlog` ask "is the
+    doc debt the ONLY thing holding this phase?" without matching strings."""
     phase = read_json(pdir / "phase.json")
     slices = [read_json(s / "slice.json") for s in slice_dirs(pdir)]
     reasons = []
     not_done = [s["id"] for s in slices if s.get("status") != "done"]
     if not_done:
-        reasons.append(f"unfinished slices: {', '.join(not_done)}")
+        reasons.append(("slices", f"unfinished slices: {', '.join(not_done)}"))
     review_status = phase.get("review", {}).get("status")
     if review_status != "pass":
-        reasons.append(f"review is {review_status!r}, not pass")
+        reasons.append(("review", f"review is {review_status!r}, not pass"))
     # The phase still owes its deferred doc consolidation. Archiving would move its
     # `## Doc impact` list -- the sole input to that consolidation -- out of active/, so it
     # blocks (parallel teardown only warns, because teardown is reversible).
     if phase_consolidation(phase) == "pending":
         cmd = consolidation_command(phase)
-        reasons.append(f"docs not consolidated -- run a docs phase over its '## Doc impact' notes, then: {WORKFLOW_CMD} {cmd} {phase['id']}")
+        reasons.append(("consolidation", f"docs not consolidated -- run a docs phase over its '## Doc impact' notes, then: {WORKFLOW_CMD} {cmd} {phase['id']}"))
     return reasons
+
+
+def _phase_blockers(pdir: Path) -> list:
+    """Reasons a phase is not cleanly archivable; empty list means ready."""
+    return [text for _, text in _phase_blocker_kinds(pdir)]
+
+
+def _parallel_branch_merged(execution: dict, git_ok: bool = None) -> bool:
+    """True when a parallel phase's branch is merged into HEAD. No branch, a deleted branch (merged
+    and torn down) and a workspace without git all count as merged; otherwise the branch must be an
+    ancestor of HEAD. The one test `parallel-merge-finish` and `rotate-backlog` share."""
+    git_ok = _git_available() if git_ok is None else git_ok
+    branch = execution.get("branch")
+    if git_ok and branch and _branch_exists(branch):
+        return _git(["merge-base", "--is-ancestor", branch, "HEAD"], check=False).returncode == 0
+    return True
+
+
+def _debt_only(pdir: Path) -> bool:
+    """True when doc consolidation is the ONLY thing holding this phase from archiving: every slice
+    done, review `pass`, `consolidation: pending`. A parallel phase whose branch is not yet merged is
+    never debt-only -- its docs cannot be consolidated until the merge lands."""
+    if [kind for kind, _ in _phase_blocker_kinds(pdir)] != ["consolidation"]:
+        return False
+    execution = phase_execution(read_json(pdir / "phase.json"))
+    return execution is None or _parallel_branch_merged(execution)
 
 
 def _archive_one(pdir: Path, forced: bool) -> Path:
@@ -3421,14 +3540,77 @@ def archive_all(args: argparse.Namespace) -> None:
         print(f"- {phase_id}: {shown(dest)}")
 
 
+def _phase_range_label(ids: list) -> str:
+    """`P26`, the en-dash range `P26–P29` when the numbers run consecutively, else `P26, P28, P29`."""
+    if len(ids) == 1:
+        return ids[0]
+    numbers = [int(i[1:]) for i in ids]
+    if all(b - a == 1 for a, b in zip(numbers, numbers[1:])):
+        return f"{ids[0]}\u2013{ids[-1]}"
+    return ", ".join(ids)
+
+
+def _shell_arg(text: str) -> str:
+    """One command argument, copy-pasteable. Double quotes keep the generated name and objective
+    readable (the objective carries `'## Doc impact'`); `shlex.quote` takes over for any text a
+    double-quoted shell word would expand or break on."""
+    if re.search(r'["$`\\!]', text):
+        return shlex.quote(text)
+    return f'"{text}"'
+
+
+def _print_docs_phase_proposal() -> None:
+    """Read-only, from the CURRENT active set (so after rotate's own archiving): turn the phases held
+    back ONLY by doc-consolidation debt into one proposed docs phase. Prints, never writes -- the
+    `new-phase` it names runs only after the operator confirms the name and objective (create-phase's
+    docs-phase route). Each debt-only phase is either already covered by a live docs phase
+    (`docs_phase_covered=`, nothing proposed for it) or part of the one proposal for the rest;
+    phases blocked for any other reason are never proposed."""
+    phases = all_active_phases()
+    debt_only = [p for p in phases if _debt_only(ROOT / p["path"])]
+    if not debt_only:
+        print("docs_phase=none")
+        return
+    cover = consolidation_cover(phases)
+    debt_ids = [p["id"] for p in debt_only]
+    covered_by = {}  # covering phase id -> the debt-only ids it pays
+    for pid in debt_ids:
+        for docs_phase in cover.get(pid, []):
+            covered_by.setdefault(docs_phase["id"], []).append(pid)
+    for docs_phase_id, pays in covered_by.items():
+        print(f"docs_phase_covered={docs_phase_id} (pays {', '.join(pays)})")
+    uncovered = [p for p in debt_only if not cover.get(p["id"])]
+    if not uncovered:
+        return
+    ids = sorted((p["id"] for p in uncovered), key=lambda i: int(i[1:]))
+    docs = sorted(d for d in stale_docs(uncovered) if d != UNASSIGNED_DOC)
+    listing = ", ".join(ids)
+    name = f"Consolidate the doc impact of {_phase_range_label(ids)}"
+    objective = (f"consolidate the '## Doc impact' notes from {listing} into new versions of "
+                 f"{', '.join(docs) if docs else 'the docs their notes name'}")
+    phase_id = next_phase_id()
+    print(f"docs_phase_proposal={listing}")
+    print(f"phase={phase_id}")
+    print(f"name={name}")
+    print(f"objective={objective}")
+    print(f"create: {WORKFLOW_CMD} new-phase --phase {phase_id} --name {_shell_arg(name)} --objective {_shell_arg(objective)} --consolidates {','.join(ids)}")
+    print(f"scope: {WORKFLOW_CMD} docs-debt")
+    print("proposal only: nothing was created -- confirm the name and objective with the operator first (create-phase's docs-phase route)")
+
+
 def rotate_backlog(args: argparse.Namespace) -> None:
     # Partial rotation: archive every phase that is cleanly archivable right now
     # (all slices done with a passing review) and leave the rest active, then
     # rebuild the dashboards. This is the partial sweep archive-all cannot do,
     # since archive-all refuses unless EVERY active phase is done.
+    # Since v51 it then PROPOSES (prints, never creates) the docs phase for the phases held back
+    # only by doc debt, on every exit path; --archive-only keeps the archive-and-report behavior.
+    propose = not getattr(args, "archive_only", False)
     pdirs = phase_dirs()
     if not pdirs:
         print("no active phases to rotate")
+        if propose:
+            _print_docs_phase_proposal()
         return
     ready, blocked = [], []
     for pdir in pdirs:
@@ -3437,6 +3619,8 @@ def rotate_backlog(args: argparse.Namespace) -> None:
     if not ready:
         rebuild_index_and_state()
         print(f"no done phases to rotate; {len(blocked)} phase(s) still active: {', '.join(p for p, _ in blocked)}")
+        if propose:
+            _print_docs_phase_proposal()
         return
     archived = []
     for phase_id, pdir in ready:
@@ -3448,6 +3632,8 @@ def rotate_backlog(args: argparse.Namespace) -> None:
         print(f"- {phase_id}: {shown(dest)}")
     if blocked:
         print(f"left {len(blocked)} phase(s) active: {', '.join(p for p, _ in blocked)}")
+    if propose:
+        _print_docs_phase_proposal()
 
 
 # ---------------------------------------------------------------------------
@@ -4235,6 +4421,8 @@ def main(argv=None) -> int:
     p.add_argument("--order", type=float, help="sort position among phases; a fractional value (e.g. 4.5) inserts between two neighbors without renumbering")
     p.add_argument("--on-main", action="store_true", dest="on_main",
                    help="no-op since v43 (the default stream is the default); accepted so v42 habits and scripts keep working")
+    p.add_argument("--consolidates", metavar="P26,P27",
+                   help="docs phase: the comma-separated ids of active phases whose doc consolidation debt this phase pays; refused (nothing written) for an id that is not an active phase owing consolidation. Stored as `consolidates` in phase.json -- the only docs-phase marker; `docs-debt` shows it as 'paid by' and `rotate-backlog` proposes no second docs phase for what it covers")
     p.set_defaults(func=new_phase)
 
     p = sub.add_parser("new-slice", help="Create a new slice folder with slice.json + markdown files")
@@ -4406,7 +4594,9 @@ def main(argv=None) -> int:
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=archive_all)
 
-    p = sub.add_parser("rotate-backlog", help="Archive every currently-done phase and leave in-progress phases active, then rebuild (partial archive-all)")
+    p = sub.add_parser("rotate-backlog", help="Archive every currently-done phase and leave in-progress phases active, then rebuild (partial archive-all); then propose the docs phase that pays the phases held back only by doc debt (read-only: nothing is created)")
+    p.add_argument("--archive-only", action="store_true", dest="archive_only",
+                   help="archive only: print no docs-phase proposal (the pre-v51 behavior)")
     p.set_defaults(func=rotate_backlog)
 
     args = parser.parse_args(argv)

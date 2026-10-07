@@ -6,8 +6,8 @@
 ## Pointer
 
 - Current phase: `P30`
-- Current slice: `P30.S1`
-- Next slice: `P30.S2`
+- Current slice: `P30.S2`
+- Next slice: `P30.REVIEW`
 - Waiting on operator: `none`
 - Open deferred jobs: `34`
 
@@ -20,7 +20,7 @@
 | [x] `P27` | `done` | `pass` | Choose the design tool per phase: drafter or Claude Design | `none` | `works/phases/active/P27` |
 | [x] `P28` | `done` | `pass` | Nested personal install | `none` | `works/phases/active/P28` |
 | [x] `P29` | `done` | `pass` | Nested install by default | `none` | `works/phases/active/P29` |
-| [ ] `P30` | `planned` | `pending` | Rotate-backlog creates the docs phase by default | `P30.S1` | `works/phases/active/P30` |
+| [ ] `P30` | `planned` | `pending` | Rotate-backlog creates the docs phase by default | `P30.S2` | `works/phases/active/P30` |
 
 ## Phase P25: Research a replacement for Claude Design in design-cowork
 
@@ -82,6 +82,6 @@
 | Slice | Status | Name | Kind | Path |
 |---|---|---|---|---|
 | [x] `P30.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P30/slices/P30.DECOMP` |
-| [ ] `P30.S1` | `todo` | Engine: rotate-backlog proposes the docs phase | `implementation` | `works/phases/active/P30/slices/P30.S1` |
+| [x] `P30.S1` | `done` | Engine: rotate-backlog proposes the docs phase | `implementation` | `works/phases/active/P30/slices/P30.S1` |
 | [ ] `P30.S2` | `todo` | Skills, texts and release v51 | `implementation` | `works/phases/active/P30/slices/P30.S2` |
 | [ ] `P30.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P30/slices/P30.REVIEW` |

@@ -885,6 +885,32 @@ after_debt=$( cd "$F" && find works docs -type f | sort | xargs cat | sha_stdin 
 [ -n "$before_debt" ] && [ "$before_debt" = "$after_debt" ] \
   && ok "docs-debt writes nothing (the workspace tree is unchanged after it runs)" \
   || bad "docs-debt modified the workspace"
+# v51 rotate-backlog proposes the docs phase for the phases held back only by doc debt. Probed on a
+# COPY of the fixture while P2 still owes (the probe adds a phase, and the original's later
+# assertions -- docs_debt=none, the STALE clear, archiving -- must stay untouched).
+newtmp ROT; cp -R "$F/." "$ROT/"
+rot_out=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
+rot_pid=$(printf '%s\n' "$rot_out" | sed -n 's/^phase=//p')
+rot_create=$(printf '%s\n' "$rot_out" | sed -n 's/^create: //p')
+printf '%s\n' "$rot_out" | grep -q "^docs_phase_proposal=P2$" \
+  && printf '%s' "$rot_create" | grep -q -- "new-phase --phase $rot_pid .*--consolidates P2$" \
+  && [ -d "$ROT/works/phases/active/P2" ] && [ ! -d "$ROT/works/phases/active/$rot_pid" ] \
+  && ok "rotate-backlog proposes the docs phase for a debt-only phase (the create command named, nothing created, P2 still active)" \
+  || bad "rotate-backlog did not propose the docs phase for the debt-only phase"
+( cd "$ROT" && eval "$rot_create" >/dev/null 2>&1 ) && grep -q '"consolidates": \[' "$ROT/works/phases/active/$rot_pid/phase.json"
+rot_again=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
+printf '%s\n' "$rot_again" | grep -q "^docs_phase_covered=$rot_pid (pays P2)$" \
+  && ! printf '%s\n' "$rot_again" | grep -q "^docs_phase_proposal=" \
+  && ok "once a live docs phase covers it, rotate-backlog reports it covered and proposes no second docs phase" \
+  || bad "rotate-backlog proposed a duplicate docs phase (or did not report the covering one)"
+rot_before=$(ls "$ROT/works/phases/active" | wc -l | tr -d ' ')
+( cd "$ROT" && python3 scripts/workflow.py new-phase --phase P9 --name "Wrong docs phase" --objective "pays a phase that owes nothing" --consolidates P1 2>&1 | grep -q "owes no doc consolidation" ) \
+  && [ "$(ls "$ROT/works/phases/active" | wc -l | tr -d ' ')" = "$rot_before" ] && [ ! -d "$ROT/works/phases/active/P9" ] \
+  && ok "new-phase --consolidates refuses a phase that owes nothing and writes nothing" \
+  || bad "new-phase --consolidates accepted (or half-created) a phase that owes no consolidation"
+( cd "$ROT" && python3 scripts/workflow.py rotate-backlog --archive-only 2>&1 | grep -q "docs_phase" ) \
+  && bad "rotate-backlog --archive-only printed a docs-phase line" \
+  || ok "rotate-backlog --archive-only prints no docs-phase proposal"
 # v39 doc staleness (D14): the `docs` listing carries every doc's last-updated marker, and a doc
 # named by an unconsolidated '## Doc impact' note is flagged STALE there and named in `validate`.
 # Advisory only -- operator-paced consolidation is the design, so staleness must be loud, not fatal.

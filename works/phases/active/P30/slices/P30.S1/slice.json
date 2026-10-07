@@ -3,12 +3,12 @@
   "phase_id": "P30",
   "name": "Engine: rotate-backlog proposes the docs phase",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 10,
   "depends_on": [],
   "created_at": "2026-10-07T15:49:14+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-10-07T15:51:23+09:00",
+  "completed_at": "2026-10-07T15:56:38+09:00",
   "risk": "low",
   "source": {
     "type": "manual",
@@ -18,7 +18,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "rotate-backlog prints a read-only docs-phase proposal (--archive-only skips it), new-phase --consolidates marks the covering phase, docs-debt shows paid by; smoke 239/0",
   "validation": {
     "required": [],
     "last_run": null,
