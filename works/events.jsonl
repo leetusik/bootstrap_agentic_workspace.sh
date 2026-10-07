@@ -817,3 +817,7 @@
 {"ts": "2026-10-07T17:36:16+09:00", "type": "slice_status_changed", "slice": "P31.F2", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-10-07T17:38:37+09:00", "type": "doc_version_created", "doc": "operations", "version": "v0038_p31_fix_workflow_refusal_gated_cli_reviews_here_rounds_inside_a_design_slice", "source": "P31.REVIEW"}
 {"ts": "2026-10-07T17:42:20+09:00", "type": "slice_status_changed", "slice": "P31.F2", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-10-07T17:42:30+09:00", "type": "slice_status_changed", "slice": "P31.REVIEW", "old_status": "changes_requested", "new_status": "in_progress"}
+{"ts": "2026-10-07T17:47:30+09:00", "type": "deferred_created", "deferred": "D54", "source": "P31.REVIEW"}
+{"ts": "2026-10-07T17:47:30+09:00", "type": "slice_status_changed", "slice": "P31.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-10-07T17:47:30+09:00", "type": "phase_reviewed", "phase": "P31", "verdict": "pass", "reviewer": "slice-executor-high"}

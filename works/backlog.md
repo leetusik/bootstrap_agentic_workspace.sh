@@ -5,11 +5,11 @@
 
 ## Pointer
 
-- Current phase: `P31`
-- Current slice: `P31.REVIEW`
+- Current phase: `none`
+- Current slice: `none`
 - Next slice: `none`
 - Waiting on operator: `none`
-- Open deferred jobs: `41`
+- Open deferred jobs: `42`
 
 ## Active Phases
 
@@ -20,7 +20,7 @@
 | [x] `P28` | `done` | `pass` | Nested personal install | `none` | `works/phases/active/P28` |
 | [x] `P29` | `done` | `pass` | Nested install by default | `none` | `works/phases/active/P29` |
 | [x] `P30` | `done` | `pass` | Rotate-backlog creates the docs phase by default | `none` | `works/phases/active/P30` |
-| [ ] `P31` | `in_progress` | `changes_requested` | Consolidate the doc impact of P26–P30 | `P31.REVIEW` | `works/phases/active/P31` |
+| [x] `P31` | `done` | `pass` | Consolidate the doc impact of P26–P30 | `none` | `works/phases/active/P31` |
 
 ## Phase P26: Replace the Claude Design loop with a repo-file design contract and a design subagent
 
@@ -88,4 +88,4 @@
 | [x] `P31.S4` | `done` | Decisions: P26–P30 notes | `docs` | `works/phases/active/P31/slices/P31.S4` |
 | [x] `P31.F1` | `done` | Architecture fix: narrow the workflow/ refusal | `docs` | `works/phases/active/P31/slices/P31.F1` |
 | [x] `P31.F2` | `done` | Operations fix: workflow/ refusal, gated reviews here, rounds inside a design slice | `docs` | `works/phases/active/P31/slices/P31.F2` |
-| [ ] `P31.REVIEW` | `changes_requested` | phase review | `review` | `works/phases/active/P31/slices/P31.REVIEW` |
+| [x] `P31.REVIEW` | `done` | phase review | `review` | `works/phases/active/P31/slices/P31.REVIEW` |

@@ -4,7 +4,7 @@
 
 ## Summary
 
-- Open: `41`
+- Open: `42`
 - Promoted: `1`
 - Dropped: `11`
 
@@ -51,6 +51,7 @@
 | `D51` | `deferred` | Bring decisions' and operations' executor-tier text and Status up to v45/v46 | P31.REVIEW | the next docs phase | `works/deferred/open/D51` |
 | `D52` | `deferred` | Recount Test 0's pins in qa | P31.REVIEW | the next docs phase, or the next Test 0 edit | `works/deferred/open/D52` |
 | `D53` | `deferred` | Fill operations' Local Development stub | P31.REVIEW | the next docs phase | `works/deferred/open/D53` |
+| `D54` | `deferred` | Mark decisions' P16 'machinery-only repository is unaffected' line as superseded | P31.REVIEW | the next docs phase (could fold into D51) | `works/deferred/open/D54` |
 | `D6` | `deferred` | Widen installer/main.py flag_stale_skills() ownership heuristic beyond the disable-model-invocation marker | P17.REVIEW | If a model-invocable skill is retired upstream, or when flag_stale_skills() is next touched. | `works/deferred/open/D6` |
 | `D7` | `deferred` | Qualify review-phase gate stage 4 for a phase whose only surface is a throwaway mockup | P17.REVIEW | Before the first design-only or mockup-shipping phase reaches its review. | `works/deferred/open/D7` |
 

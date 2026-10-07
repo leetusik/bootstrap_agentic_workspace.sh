@@ -2,16 +2,16 @@
   "id": "P31",
   "name": "Consolidate the doc impact of P26–P30",
   "objective": "consolidate the '## Doc impact' notes from P26, P27, P28, P29, P30 into new versions of architecture, decisions, operations, qa",
-  "status": "in_progress",
+  "status": "done",
   "order": 7,
   "created_at": "2026-10-07T16:40:16+09:00",
   "started_at": null,
-  "completed_at": null,
+  "completed_at": "2026-10-07T17:47:30+09:00",
   "review": {
-    "status": "changes_requested",
-    "reviewed_at": "2026-10-07T17:32:58+09:00",
+    "status": "pass",
+    "reviewed_at": "2026-10-07T17:47:30+09:00",
     "reviewer": "slice-executor-high",
-    "note": "4 findings: workflow/ refusal overstated in architecture v0010 and operations v0037; operations says gate stages never fire here; operations keeps one co-work slice per round; S1's shape line missing from Decisions. Fix: P31.F1 architecture, P31.F2 operations (docs/high)"
+    "note": "round 2 pass: all 52 P26-P30 notes landed in architecture v0011, operations v0038, qa v0013, decisions v0043; D50 Operator Runtime filled; round-1 findings 1-4 fixed by F1/F2; docs-debt none, no STALE; gate waived; D51-D54 filed"
   },
   "acceptance": {
     "required": false,

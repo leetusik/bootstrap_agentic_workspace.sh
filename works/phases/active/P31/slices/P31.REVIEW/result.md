@@ -1,5 +1,108 @@
 - status: done
 - tier: high
+- summary: Re-reviewed P31 after P31.F1-F2 (round 2, gate waived). Findings 1-4 are fixed: architecture v0011, operations v0038 and decisions v0043 now state the same `workflow/` refusal, and it matches `resolve_layout()`. Operations has no "gate stages never fire" or machinery-only claim left. Design slices are counted at `DECOMP`, with revisions as rounds inside a slice. S1's shape line is in `## Decisions`. Each fix version changes only the fixed passages, and F2's three deviations hold up, so the verdict is **pass**.
+- files_changed:
+  - `works/phases/active/P31/slices/P31.REVIEW/result.md` (this file; round 1 kept below)
+  - `works/phases/active/P31/phase.md`: `## Now` rewritten, and the consumed `(from P31.F2, for P31.REVIEW)` note removed from `## Notes for later slices`
+- validation:
+  - `python3 scripts/workflow.py validate`: PASS ("Workflow validation passed."). The only warning is `oversized_doc_sections=8`, which D25 covers and which F1/F2 left unchanged
+  - `python3 scripts/workflow.py docs-debt`: PASS (`docs_debt=none`)
+  - `python3 scripts/workflow.py docs`: PASS, 0 STALE flags. The latest versions are architecture v0011, operations v0038, qa v0013 and decisions v0043. `docs/current/architecture.md` and `docs/current/operations.md` are byte-equal to v0011 and v0038
+  - `python3 installer/build.py --check`: PASS ("in sync with installer/ source")
+  - `git diff dfd171c..HEAD --stat -- . ':!docs' ':!works'`: PASS (empty). `phase-scope P31` reports `product_files=0`, range `dfd171c..7a75e8f`, 9 commits
+  - `git diff --name-status dfd171c..HEAD -- docs/versions`: six `A` lines and nothing else, so no old version was patched
+  - F1/F2's own commands: `validate`, `docs` and `docs-debt` were re-run, as above, and F2's leftover grep was re-run with no hits. `doc-new-version` and `rebuild-docs` were not re-run: the first is not idempotent, the second writes, and `docs` plus the byte-equal check already confirm their output
+  - body diffs: architecture v0010 → v0011 changes one sentence. Operations v0037 → v0038 has seven hunks, and every one is an edit F2 recorded
+- deviations: none from `plan.md`. One addition from the executor contract: I removed the `(from P31.F2, for P31.REVIEW)` note, because this review consumed it.
+- doc_versions: none — deferred to a docs phase. This phase is the docs phase, and its six versions are the slices' own work. The review writes no gate section: the gate is waived, nothing operator-visible changed, and the Regression Checklist gains nothing.
+- review_verdict: **pass**
+- walkthrough: n/a (gate waived)
+- explain: not written — run /explain for this phase
+- deferred-job candidates: new ones only, since D51-D53 are already filed. Title · reason · trigger:
+  1. *Mark decisions' P16 "machinery-only repository — this one — is unaffected" as superseded*
+     - Reason: the P16 entry in decisions `## Decision Log` (*Put the product owner back in the loop…*, current line 1220) still says the acceptance gate leaves "a machinery-only repository — this one" unaffected. P29 and P30 took required gates here, as operations v0038 now says.
+     - Why it is not a finding: the line predates P31 (v0042 has it), it sits in a dated history entry, and no owed note touched it.
+     - Optional rider: operations' gate paragraph says "P29's and P30's reviews … went on precedent". P29 was the first gated review in this repo, and it went on its plan's direction. Only P30 followed P29's precedent.
+     - Trigger: the next docs phase. It could fold into D51, which marks other stale decision-log text.
+- still to relay to the operator (unchanged, out of scope): the "next docs phase" triggers of D17, D21, D23, D24 and D25.
+
+# P31.REVIEW round 2: re-review after P31.F1-F2
+
+Round 1 (below) returned `changes_requested` with findings 1-4. P31.F1 cut architecture v0011 (finding 1 for architecture, plus finding 4's notebook line). P31.F2 cut operations v0038 (findings 1-3, both riders, and one extra `## Status` leftover). Per the plan's round-2 section, this pass does not redo round 1. It re-runs the checks, confirms each finding is fixed, judges F2's deviations, and checks that the fix diffs stay inside their scope.
+
+## 1. Checks
+
+All pass; see the verdict block. `phase-scope` now spans 9 commits (`dfd171c..7a75e8f`), with `product_files=0`. The three new commits are the round-1 verdict record, F1 and F2. They touched only `docs/` (one new version each, `docs/current`, `docs/index.json`) and `works/`.
+
+## 2. The four findings
+
+1. **Fixed: the `workflow/` refusal.** The core phrase "a bare install or `--update` run on a nested install's own `workflow/` directory" is word for word the same in architecture (current lines 141-143), operations *Install modes* (lines 754-756) and decisions' P29 entry (lines 118-119). Architecture and operations add "`--into-existing`, and `--at-root` without `--update`, are not covered by that refusal". Decisions omits that clause, which narrows nothing and contradicts nothing. Checked against `installer/main.py`:
+   - `resolve_layout()` (lines 97-129) returns at-root on `RETROFIT` (`INTO_EXISTING=1`, line 29) before the marker check. It refuses on the marker only when `UPDATE or not AT_ROOT_FLAG`.
+   - So a bare install refuses (with or without the no-op `--nested`), and so does any `--update`, `--update --at-root` included. `--at-root` alone passes, and `--into-existing` never reaches the check.
+   - The sentence's first half also holds: "a bare install over an at-root workspace refuses" is `nested_preflight()` (lines 623-625).
+   - `grep -i "any run"` over `docs/current/*.md` has no hits.
+2. **Fixed: "gate stages never fire" and "machinery-only repo".**
+   - `grep -i "never fire|machinery-only|legacy-shaped|stages never|no such manifest"` over operations has no hits. Operations `## Status` v32 (lines 57-58) and the *This repository's manifest* paragraph (lines 1310-1325) now both say P29 and P30 were gated here.
+   - Architecture and qa have no such claim.
+   - One hit remains, in decisions' P16 Decision Log entry (line 1220). It predates P31 and is dated history, so it is a deferred candidate (see the verdict block), not a residue of finding 2. Finding 2 was operations-only.
+3. **Fixed: design slices and rounds.** `grep -i "slice per round|equals the round count|round count|rounds there are"` has no hits in operations. The only hit in the current docs is decisions line 252's "there is no 'one co-work slice per round'", which is the correct statement.
+   - The styles section says it now. *In every style* (lines 258-263): how many design slices there are is decided at `DECOMP`, and "A slice's revisions are **superseding rounds inside it** … never cut in advance".
+   - `paired` (lines 251-253): "the apply-slice count equals the design-slice count".
+   - `build-after` (lines 238-239): "`co-work` design slice(s), and `DECOMP2`, ordered right after the last design slice".
+   - All three match `design-cowork` (lines 227-230, 259-262, 287-291).
+   - F2 left two phrasings as they were: the arrow line "design round(s)" and `paired`'s "the rounds are independent surfaces". Both are `design-cowork`'s own wording (lines 223 and 266), so leaving them is right.
+4. **Fixed: S1's shape line.** `phase.md` `## Decisions` has an "Architecture v0010 shape (P31.S1), fixed in v0011 (P31.F1)" line. It lists the three new H2s and the three edits beyond the notes that round 1 judged correct, and it quotes the v0011 sentence.
+
+## 3. F2's three deviations, judged
+
+1. **"can take" a required gate, not "takes": correct.** The `phase.json` `acceptance` blocks show that "takes" would be false:
+   - P26 and P27: `required: false`, "workspace machinery only: no running product surface", though both changed skills.
+   - P28: `required: false`, "operator (2026-10-07): the review walks a fake host repo itself…", though it changed the installer CLI.
+   - P29 and P30: `required: true`, both with `cleared_at` set.
+   - P31: waived as a docs phase.
+   - No other phase in `works/phases/` has `required: true`.
+
+   v0038 also gives each waiver the reason its note records, and its count of four `(P29)` and four `(P30)` checklist lines matches qa lines 343-350.
+   - A nit, and not a finding: "P29's and P30's reviews predate the section and went on precedent". The part that matters, that both reviews predate `## Operator Runtime`, is true (P30.REVIEW stage 1 says the H2 was absent). But P29 was the first gated review here. Its stage 1 went on its plan ("as the plan specifies"; P29.REVIEW `plan.md` line 41), and only P30 followed P29's precedent. This is filed as an optional rider of the new deferred candidate.
+2. **The `## Status` v32 fix: correct and in scope.** v0037's "so a machinery-only repo — this one included — is untouched" repeated finding 2's claim. v0038 says "a waived or legacy phase is untouched", which is the switch's real rule, and that this repo "still declares per phase: P29 and P30 were gated, their reviews walking the CLI". Both are true: P29.REVIEW stage 2 ran the built installer in scratch, and P30.REVIEW ran the engine in scratch copies.
+3. **"the round just signed": correct.** It is `design-cowork`'s `paired` wording (line 262). Under rounds-inside-a-slice, a superseded round also "lands", so v0037's "the round that just landed" had become ambiguous. "Signed" is the round the apply plan must follow.
+
+Both riders were verified too:
+- `installer/wrapper.sh` lines 88-89 refuse `--at-root` with `--nested`, and `--nested` with `--into-existing`, as mutually exclusive.
+- `design-cowork` lines 786-790 put the mockup path in `phase.md` and in the round's `SIGNOFF.md` at close. Under `drafter` that file sits in the round folder (tree at line 492). Under `claude-design` it is the root `claude-design/SIGNOFF.md` entry.
+
+## 4. The fix diffs (frontmatter aside)
+
+- **architecture v0010 → v0011:** one hunk, lines 141-142 → 141-143, the refusal sentence. Nothing else.
+- **operations v0037 → v0038:** seven hunks, each one of F2's recorded edits:
+  1. `## Status` v32 (deviation 2);
+  2. `build-after` (finding 3);
+  3. `paired` (finding 3, deviation 3);
+  4. *In every style* (finding 3);
+  5. the mockup route bullet (rider 2);
+  6. *Install modes*, the `--nested` bullet and the refusal bullet (rider 1, finding 1);
+  7. the gate paragraph (finding 2, deviation 1).
+
+  There is no unrecorded change.
+- Both versions carry `source: P31.REVIEW` and the right `previous:`. `docs/index.json` adds exactly the two entries and moves the two `latest` pointers.
+
+## 5. Notebook cross-check (round 2)
+
+- `## Decisions` records F1's sentence (the S1 shape line), F2's fixes and its three deviations (the S2 shape line's v0038 sub-bullet), and the fix cut. Every decision in F1's and F2's `result.md` is there.
+- `## Doc impact` and `## Operator Questions` are still empty. F1 and F2 raised no question, so nothing is unrouted.
+- The one `(for P31.REVIEW)` note is consumed and removed.
+- `phase.json` `status` now reads `in_progress` (`phase-scope`), so round 1's D22 remark no longer applies here.
+
+## Dead ends
+
+None. No installer or engine command that writes was run.
+
+---
+
+# Round 1 (verdict `changes_requested`, superseded by round 2 above; kept as the log)
+
+- status: done
+- tier: high
 - summary: Reviewed P31 (gate waived) against its objective. All 52 P26-P30 notes landed in architecture v0010, operations v0037, qa v0013 and decisions v0043, and D50's `## Operator Runtime` is real. Every mechanical check passes. Verdict **changes_requested**: three false or stale statements survive in architecture v0010 and operations v0037, and S1's in-remit choices are missing from `## Decisions`. Two `docs / high` fix slices re-version those two docs.
 - files_changed:
   - `works/phases/active/P31/slices/P31.REVIEW/result.md` (this file)

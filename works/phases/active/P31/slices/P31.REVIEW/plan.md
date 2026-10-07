@@ -69,3 +69,23 @@ Each is diffed against its predecessor (v0009, v0036, v0012, v0042).
   Merge these where they overlap. Add any others you find outside the notes' scope.
 
 Write `result.md` with the verdict block first, and edit `phase.md` `## Now`. Do not commit. Do not run `review-phase`, `accept-gate`, `set-*-status`, `doc-new-version` or `docs-consolidated`. Edit no doc.
+
+## Re-review after P31.F1–F2 (round 2)
+
+The first pass (its `result.md`) returned `changes_requested` with findings 1–4. F1 cut **architecture v0011** (finding 1 for architecture, plus finding 4's shape line in `## Decisions`). F2 cut **operations v0038** (findings 1–3, both riders, and one extra leftover in `## Status`).
+
+Do not redo the whole first pass. Do this:
+1. **Re-run section 1's checks:** `validate`, `docs-debt` = none, `docs` has no STALE flag, `build.py --check`, and the product diff (`dfd171c..HEAD`, excluding `docs` and `works`) is empty.
+2. **Confirm each finding is fixed:**
+   - 1: the same `workflow/` refusal sentence appears in architecture, operations and decisions, and it matches `resolve_layout()`.
+   - 2: no "gate stages never fire here" or "machinery-only repo" claim is left.
+   - 3: design slices are counted at `DECOMP`, revisions are rounds inside a slice, and no "one `co-work` slice per round" text remains.
+   - 4: the S1 shape line is in `## Decisions`.
+3. **Judge F2's three deviations against `phase.json` records and `design-cowork`:**
+   - "can take" a required gate, rather than "takes";
+   - the `## Status` v32 fix;
+   - "the round just signed".
+4. **Check the F1/F2 diffs.** Each version differs from its predecessor only in the fixed passages; anything else is a finding.
+5. **Return the verdict, as in section 3.** On a pass, deferred jobs D51–D53 are already filed; list only new candidates.
+
+Rewrite `result.md` with the round-2 verdict block first, keeping round 1 below it. Edit `phase.md` `## Now`.
