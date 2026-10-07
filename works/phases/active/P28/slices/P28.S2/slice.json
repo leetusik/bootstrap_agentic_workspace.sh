@@ -3,14 +3,14 @@
   "phase_id": "P28",
   "name": "Installer --nested: zero-footprint install, rewrite, clash map, update",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 2,
   "depends_on": [
     "P28.S1"
   ],
   "created_at": "2026-10-07T11:47:11+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-10-07T12:48:16+09:00",
+  "completed_at": "2026-10-07T13:11:20+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "--nested / --update --nested install: nested workflow/ repo, rewritten + clash-renamed host .claude files, settings.local.json, CLAUDE.local.md import, one info/exclude block; host status untouched; marker .agentic-nested.json; live probe confirmed the import",
   "validation": {
     "required": [],
     "last_run": null,

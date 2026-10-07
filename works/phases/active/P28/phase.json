@@ -14,11 +14,11 @@
     "note": null
   },
   "acceptance": {
-    "required": true,
+    "required": false,
     "walkthrough": null,
     "requested_at": null,
     "cleared_at": null,
-    "note": null
+    "note": "operator (2026-10-07): the review walks a fake host repo itself and passes without a stop; the operator reports real-repo problems later as fix work"
   },
   "paths": {
     "phase_md": "phase.md",

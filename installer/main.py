@@ -9,6 +9,7 @@ import difflib
 import json
 import os
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -42,6 +43,23 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # repos — which have no installer/ — still get it stamped into their marker below.
 WORKSPACE_VERSION = 48
 ROOT = TARGET.resolve()
+# Nested personal install (--nested, P28): TARGET is a HOST repo the operator does not own. The
+# engine and all workflow state go to the nested git repo <host>/workflow (ROOT, so every ROOT-
+# relative write below lands there); skills and agents go to the host's .claude/ as untracked
+# files, beside .claude/settings.local.json and CLAUDE.local.md, all hidden by the host's
+# info/exclude. Nothing tracked in the host changes. Every nested branch is gated on NESTED, so
+# the at-root installs (fresh, --into-existing, --update) are byte-for-byte unchanged.
+NESTED = os.environ.get("NESTED") == "1"
+HOST = None
+if NESTED:
+    HOST, ROOT = ROOT, ROOT / "workflow"
+NESTED_DIR = "workflow"
+NESTED_MARKER = ".agentic-nested.json"   # == scripts/workflow.py NESTED_MARKER (the engine owns its schema)
+NESTED_CONTRACT = "CLAUDE.workspace.md"  # never CLAUDE.md under workflow/: Claude Code would auto-load a second copy
+NESTED_RENAME_PREFIX = "wf-"
+NESTED_LOCAL_BEGIN, NESTED_LOCAL_END = "<!-- BEGIN agentic-workspace (nested) -->", "<!-- END agentic-workspace (nested) -->"
+NESTED_EXCLUDE_BEGIN, NESTED_EXCLUDE_END = "# BEGIN agentic-workspace (nested)", "# END agentic-workspace (nested)"
+SHOWN_PREFIX = f"{NESTED_DIR}/" if NESTED else ""   # change-list paths as typed from the host root
 
 DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
 
@@ -91,6 +109,11 @@ MANAGED_FILES = [
 for name in CLAUDE_SKILLS:
     MANAGED_DIRS.append(f".claude/skills/{name}")
     MANAGED_FILES.append(f".claude/skills/{name}/SKILL.md")
+if NESTED:
+    # Under workflow/ there is no .claude/ (its skills would load on demand as duplicates) and no
+    # CLAUDE.md (the contract is CLAUDE.workspace.md); the host-side files are written separately.
+    MANAGED_DIRS = [d for d in MANAGED_DIRS if not d.startswith(".claude")]
+    MANAGED_FILES = [f for f in MANAGED_FILES if not f.startswith(".claude") and f != "CLAUDE.md"]
 
 
 
@@ -274,6 +297,8 @@ def _retrofit_handle(path: str, text: str) -> bool:
 def _is_machinery(path: str) -> bool:
     if path == "scripts/workflow.py":
         return True
+    if NESTED and path == NESTED_CONTRACT:
+        return True  # the nested install's contract (rewritten) is machinery, refreshed like the skills
     return path.startswith((".claude/agents/", ".claude/skills/", "works/templates/"))
 
 
@@ -378,7 +403,483 @@ def write_json(path, data) -> None:
     write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
 
 
+# ---- Nested personal install (--nested): rewrite, clash map, host-side plan ------------------
+# Everything here runs only when NESTED. The host-side files (skills, agents, settings.local.json,
+# CLAUDE.local.md, the info/exclude block) and the rewritten engine-side texts (the contract as
+# workflow/CLAUDE.workspace.md, works/templates/*) are rendered IN MEMORY by nested_plan() and
+# post-checked before anything is written; nested_apply() writes them after the engine side.
+NESTED_AGENTS = ["slice-executor-mid", "slice-executor-high", "design-drafter"]
+NESTED_KINDS = ("skills", "agents")
+# The engine's subcommands, read from the embedded engine: a hyphenated skill name that is not one
+# of them only ever names the skill, so its plain backticked form is renamed too.
+_ENGINE_SUBCOMMANDS = set(re.findall(r'add_parser\(\s*"([a-z][a-z0-9-]*)"', PAYLOADS["scripts/workflow.py"]))
+NESTED_SKILL_ONLY = {n for n in CLAUDE_SKILLS if "-" in n and n not in _ENGINE_SUBCOMMANDS}
+# Token-bounded: never preceded by a word character, `.`, `/` or `-`, so `workflow/works/`, a URL,
+# `<repo>/scripts/...` and words such as `networks/` are left alone (and a second pass is a no-op).
+NESTED_ENGINE_RE = re.compile(r"(?<![\w./-])scripts/workflow\.py(?![\w-])")
+NESTED_PATH_RE = re.compile(
+    r"(?<![\w./-])(?:works/|docs/(?:current|versions|reference)(?![\w-])|docs/index\.json(?![\w-]|\.\w)"
+    r"|docs/README\.md(?![\w-]|\.\w)|executors\.toml(?![\w-]|\.\w)|\.env(?![\w-]|\.\w))")
+# The contract named as `CLAUDE.md`: after "read"/"see", inside "contract (" / "contract — ", or as a
+# bare list item. Every other `CLAUDE.md` stays: in a host repo that is the team's own contract (the
+# executors' "repo-specific safety rule" pointer) or the retrofit/update texts about that file.
+NESTED_CONTRACT_REF_RE = re.compile(
+    r"(?:(?<=\bread )|(?<=\bRead )|(?<=\bsee )|(?<=\bSee )|(?<=contract \()|(?<=contract — )|(?<=^- ))`CLAUDE\.md`", re.M)
+# A `workflow.py ...` command, up to its closing backtick or the end of the line: renames never touch it.
+NESTED_PROTECT_RE = re.compile(r"(workflow\.py[^`\n]*)")
+
+
+def nested_rewrite(text: str, renames: dict) -> str:
+    """Rewrite one SOURCE payload text for a nested install. Applied to the upstream payload only,
+    never to an installed copy, so a rerun or --update cannot double-prefix (and a second pass would
+    change nothing anyway: every prefixed token is preceded by `/`).
+
+    1. Engine paths: `scripts/workflow.py` -> `workflow/scripts/workflow.py` -- so `python3
+       scripts/workflow.py`, the skills' allowed-tools and the settings allowlist too.
+    2. Workspace paths -> under `workflow/`: works/, docs/current, docs/versions, docs/reference,
+       docs/index.json, docs/README.md, executors.toml, .env.
+    3. The contract named as `CLAUDE.md` (NESTED_CONTRACT_REF_RE) -> `workflow/CLAUDE.workspace.md`.
+    4. Renames (`renames` = {"skills": {X: Y}, "agents": {X: Y}}), never inside a `workflow.py ...`
+       command: a skill in `/X`, `.claude/skills/X/`, "`X` skill" (bold too), its own `name:`
+       frontmatter and -- a hyphenated skill-only name -- `X` in backticks; an agent wherever its
+       (always hyphenated, never a subcommand) name appears as a token: `name:`, `subagent_type: X`,
+       `.claude/agents/X.md`, prose."""
+    text = NESTED_ENGINE_RE.sub(f"{NESTED_DIR}/scripts/workflow.py", text)
+    text = NESTED_PATH_RE.sub(lambda m: f"{NESTED_DIR}/{m.group(0)}", text)
+    text = NESTED_CONTRACT_REF_RE.sub(f"`{NESTED_DIR}/{NESTED_CONTRACT}`", text)
+    skills, agents = renames.get("skills") or {}, renames.get("agents") or {}
+    if not (skills or agents):
+        return text
+    parts = NESTED_PROTECT_RE.split(text)  # odd indices are the protected workflow.py commands
+    for i in range(0, len(parts), 2):
+        part = parts[i]
+        for x, y in skills.items():
+            e = re.escape(x)
+            part = re.sub(r"(?<![\w./-])/" + e + r"(?![\w-])", f"/{y}", part)
+            part = re.sub(r"(?<![\w-])\.claude/skills/" + e + r"(?=/)", f".claude/skills/{y}", part)
+            bare = r"`" + e + r"`" if x in NESTED_SKILL_ONLY else r"`" + e + r"`(?=\**\s+skill\b)"
+            part = re.sub(bare, f"`{y}`", part)
+        for x, y in agents.items():
+            part = re.sub(r"(?<![\w-])" + re.escape(x) + r"(?![\w-])", y, part)
+        parts[i] = part
+    text = "".join(parts)
+    if skills and text.startswith("---\n"):
+        end = text.find("\n---", 4)
+        if end > 0:
+            head = re.sub(r"(?m)^name: (\S+)$", lambda m: "name: " + skills.get(m.group(1), m.group(1)), text[:end])
+            text = head + text[end:]
+    return text
+
+
+def _nested_refuse(*lines: str) -> None:
+    for i, line in enumerate(lines):
+        print(("Error: " if i == 0 else "") + line, file=sys.stderr)
+    sys.exit(1)
+
+
+def _host_git(*args: str):
+    """(returncode, stdout) of git run in the host repo -- read-only queries only."""
+    proc = subprocess.run(["git", "-C", str(HOST), *args], capture_output=True)
+    return proc.returncode, proc.stdout.decode("utf-8", errors="replace")
+
+
+def nested_preflight() -> None:
+    """Refuse (exit 1, nothing written) unless HOST is the root of a git work tree whose workflow/ is
+    ours to use; a fresh install over an existing nested install is an idempotent exit 0."""
+    if shutil.which("git") is None:
+        _nested_refuse("--nested needs git on PATH (the host is a git repo, and workflow/ becomes a nested one).")
+    if not HOST.is_dir():
+        _nested_refuse(f"--nested installs into an existing host git repo; {TARGET} is not a directory.")
+    rc, out = _host_git("rev-parse", "--is-inside-work-tree")
+    if rc != 0 or out.strip() != "true":
+        _nested_refuse(f"--nested needs TARGET_DIR to be the root of a git work tree (the host repo); {HOST} is not inside one.")
+    rc, out = _host_git("rev-parse", "--show-toplevel")
+    top = Path(out.strip()).resolve() if rc == 0 and out.strip() else None
+    if top != HOST:
+        _nested_refuse(f"--nested installs at the host repo's root: re-run with {top} as TARGET_DIR.")
+    rc, out = _host_git("ls-files", "--", NESTED_DIR)
+    if out.strip():
+        _nested_refuse(f"the host repo tracks a path named {NESTED_DIR}: a nested install needs <host>/{NESTED_DIR}/ for itself (nothing written).")
+    if UPDATE:
+        if not ((ROOT / NESTED_MARKER).is_file() and (ROOT / "scripts/workflow.py").is_file()):
+            _nested_refuse(f"no nested agentic workspace found here to update (needs {NESTED_DIR}/{NESTED_MARKER} and {NESTED_DIR}/scripts/workflow.py).",
+                           "Install it first with --nested (without --update).")
+        return
+    if os.path.lexists(ROOT / NESTED_MARKER):
+        print(f"This host already has a nested agentic workspace ({NESTED_DIR}/{NESTED_MARKER}): already installed -- use --update --nested to refresh it.")
+        sys.exit(0)
+    if os.path.lexists(ROOT) and not ROOT.is_dir():
+        _nested_refuse(f"<host>/{NESTED_DIR} exists and is not a directory; a nested install needs it absent or empty.")
+    if ROOT.is_dir():
+        extra = sorted(e.name for e in ROOT.iterdir() if e.name != ".git")
+        if extra:
+            _nested_refuse(f"<host>/{NESTED_DIR}/ is not empty ({', '.join(extra[:5])}{', ...' if len(extra) > 5 else ''}); "
+                           "a nested install needs it absent or empty (an existing .git is fine).")
+
+
+def _frontmatter_name(path: Path):
+    """The `name:` in a markdown file's leading frontmatter, or None."""
+    try:
+        head = path.read_text(encoding="utf-8", errors="replace")[:4096]
+    except OSError:
+        return None
+    if not head.startswith("---"):
+        return None
+    end = head.find("\n---", 3)
+    m = re.search(r"(?m)^name:[ \t]*['\"]?([^'\"\n]*?)['\"]?[ \t]*$", head[:end] if end > 0 else head)
+    return (m.group(1).strip() or None) if m else None
+
+
+def _host_taken(kind: str, ours: set) -> dict:
+    """{name: where} for every name the HOST's own skills or agents use -- the directory or file
+    name and the `name:` frontmatter (Claude Code keys on `name:`) -- skipping the workspace's own
+    installed copies (`ours`). For skills, `.claude/commands/` counts too: a skill of the same
+    name would shadow the team's command."""
+    taken = {}
+    base = HOST / ".claude" / kind
+    for entry in (sorted(base.iterdir()) if base.is_dir() else []):
+        stem = entry.name[:-3] if kind == "agents" and entry.name.endswith(".md") else entry.name
+        if stem in ours:
+            continue
+        names = [stem]
+        frontmatter = entry / "SKILL.md" if kind == "skills" else entry
+        if frontmatter.is_file():
+            names.append(_frontmatter_name(frontmatter))
+        for name in names:
+            if name:
+                taken.setdefault(name, f".claude/{kind}/{entry.name}")
+    commands = HOST / ".claude" / "commands"
+    if kind == "skills" and commands.is_dir():
+        for f in sorted(commands.rglob("*.md")):
+            taken.setdefault(f.stem, f.relative_to(HOST).as_posix())
+    return taken
+
+
+def nested_infer_convention():
+    """The host's commit convention, inferred non-interactively from its recent history and any
+    CONTRIBUTING file -- one line for the operator to confirm (`nested-convention --confirm`), or
+    None when the host has neither."""
+    rc, out = _host_git("log", "-n", "50", "--no-merges", "--format=%s")
+    subjects = [s.strip() for s in out.splitlines() if s.strip()] if rc == 0 else []
+    rc, bodies = _host_git("log", "-n", "50", "--no-merges", "--format=%B%x00")
+    trailers = sum(1 for b in bodies.split("\x00") if re.search(r"(?im)^co-authored-by:", b)) if rc == 0 else 0
+    mentions = []
+    for f in sorted(HOST.glob("CONTRIBUTING*")) + sorted((HOST / ".github").glob("CONTRIBUTING*")):
+        try:
+            head = f.read_bytes()[:4096].decode("utf-8", errors="replace") if f.is_file() else ""
+        except OSError:
+            continue
+        for line in head.splitlines():
+            s = re.sub(r"^[\s>*#-]+", "", line).strip()
+            if s and "commit" in s.lower() and s[:140] not in mentions:
+                mentions.append(s[:140])
+    mentions = mentions[:3]
+
+    def eg(s: str) -> str:
+        return s if len(s) <= 72 else s[:69] + "..."
+
+    n, parts = len(subjects), []
+    if n:
+        cc = [s for s in subjects if re.match(r"\w+(\([^)]*\))?!?: ", s)]
+        ticket = [s for s in subjects if re.match(r"\[?[A-Z][A-Z0-9]+-\d+", s)]
+        if len(cc) >= 0.6 * n:
+            parts.append(f'Conventional Commits "type(scope): summary" ({len(cc)}/{n} recent subjects, e.g. "{eg(cc[0])}")')
+        elif len(ticket) >= 0.6 * n:
+            parts.append(f'ticket-prefixed "ABC-123 summary" ({len(ticket)}/{n} recent subjects, e.g. "{eg(ticket[0])}")')
+        else:
+            parts.append(f'free-form subjects, no dominant pattern ({n} recent, e.g. "{eg(subjects[0])}")')
+    elif mentions:
+        parts.append("no commits yet")
+    else:
+        return None
+    if mentions:
+        parts.append("CONTRIBUTING mentions: " + " / ".join(mentions))
+    if n:
+        parts.append(f"Co-Authored-By trailers in {trailers}/{n} recent commits")
+    return "; ".join(parts)
+
+
+def _with_block(existing: str, begin: str, end: str, block: list) -> str:
+    """`existing` with exactly one managed block (the `begin` ... `end` lines): earlier copies
+    removed, the new one in the first copy's place, else appended after the operator's own text,
+    which is kept. A stray or unterminated marker is an error (ValueError), never a guess."""
+    lines, out, first, i = existing.splitlines(), [], None, 0
+    while i < len(lines):
+        if lines[i].strip() == begin:
+            j = next((k for k in range(i + 1, len(lines)) if lines[k].strip() == end), None)
+            if j is None:
+                raise ValueError(f"an unterminated {begin!r} line")
+            first = len(out) if first is None else first
+            i = j + 1
+            continue
+        if lines[i].strip() == end:
+            raise ValueError(f"a stray {end!r} line")
+        out.append(lines[i])
+        i += 1
+    if first is None:
+        out = out + ([""] if out and out[-1].strip() else []) + block
+    else:
+        out = out[:first] + block + out[first:]
+    return "\n".join(out) + "\n"
+
+
+def _nested_local_block(renames: dict) -> list:
+    """The managed CLAUDE.local.md block: what this is, the contract import (on its own line,
+    outside any code span or fence, or Claude Code will not expand it) and the nested rules."""
+    cmd = f"python3 {NESTED_DIR}/scripts/workflow.py"
+    lines = [
+        NESTED_LOCAL_BEGIN,
+        f"This is a private install of the agentic workspace, never committed to this repo: `{NESTED_DIR}/`, this file and the workspace's own `.claude/` files are hidden by this clone's `.git/info/exclude`.",
+        "",
+        f"@{NESTED_DIR}/{NESTED_CONTRACT}",
+        "",
+        "Nested-install rules (they win over the contract above where the two differ):",
+        f"- Start Claude Code at this repo's root, never inside `{NESTED_DIR}/`. Run the engine from here: `{cmd} <command>`.",
+        f"- Two commits per slice. The product change goes to this repo in the host's commit convention: `{cmd} nested-convention` prints it and whether Claude `Co-Authored-By` trailers are allowed here (`forbidden`: add none). The workflow state goes to the nested repo (`git -C {NESTED_DIR} ...`) in the contract's Commit Convention.",
+        f"- While `next` prints `host_commit_convention=UNCONFIRMED`, confirm the convention with the operator before the first product commit, then record it: `{cmd} nested-convention --confirm --text \"<convention>\" --trailers allowed|forbidden`.",
+        "- No parallel worktrees: the `parallel-*` commands refuse in a nested install.",
+        f"- A pull request carries no phase IDs, no `{NESTED_DIR}/` paths and no workspace files.",
+        f"- Never `git add` `{NESTED_DIR}/`, `CLAUDE.local.md`, `.claude/settings.local.json` or the workspace's skills and agents (the exclude block lists them) to this repo.",
+    ]
+    pairs = [f"skill `{x}` is `/{y}`" for x, y in sorted((renames.get("skills") or {}).items())]
+    pairs += [f"agent `{x}` is `{y}`" for x, y in sorted((renames.get("agents") or {}).items())]
+    if pairs:
+        lines.append("- Renamed at install, so this repo's own skills and agents stay untouched: " + "; ".join(pairs) + ".")
+    lines.append(NESTED_LOCAL_END)
+    return lines
+
+
+def nested_plan() -> dict:
+    """Render and check everything the nested install writes, IN MEMORY, before any write: the
+    clash map (merged into the existing marker on --update), the rewritten host-side skills and
+    agents, the engine-side contract and templates, settings.local.json, CLAUDE.local.md, the
+    info/exclude block and the marker. Refuses (exit 1, nothing written) on an unresolvable clash,
+    a tracked target, an unmergeable settings.local.json / CLAUDE.local.md / exclude file, or a
+    failed post-check."""
+    old = {}
+    if UPDATE:
+        try:
+            old = json.loads((ROOT / NESTED_MARKER).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            _nested_refuse(f"{NESTED_DIR}/{NESTED_MARKER} cannot be read as JSON ({exc}); fix it, then re-run (nothing written).")
+        if not isinstance(old, dict):
+            _nested_refuse(f"{NESTED_DIR}/{NESTED_MARKER} is not a JSON object; fix it, then re-run (nothing written).")
+    raw_renames = old.get("renames") if isinstance(old.get("renames"), dict) else {}
+    raw_installed = old.get("installed") if isinstance(old.get("installed"), dict) else {}
+    shipped = {"skills": CLAUDE_SKILLS, "agents": NESTED_AGENTS}
+    renames, installed, stale = {k: {} for k in NESTED_KINDS}, {k: [] for k in NESTED_KINDS}, []
+    for kind in NESTED_KINDS:
+        table = raw_renames.get(kind) if isinstance(raw_renames.get(kind), dict) else {}
+        old_renames = {x: y for x, y in table.items() if isinstance(y, str) and y}
+        listed = raw_installed.get(kind) if isinstance(raw_installed.get(kind), list) else []
+        prev = [n for n in listed if isinstance(n, str) and n]
+        taken = _host_taken(kind, set(prev))
+        for x in shipped[kind]:
+            if x in old_renames:            # --update keeps every existing rename
+                y = old_renames[x]
+            elif x in prev:                 # ... and every name it installed unrenamed
+                y = x
+            else:                           # a newly shipped name (or a fresh install): clash check
+                y = x
+                if x in taken:
+                    y = NESTED_RENAME_PREFIX + x
+                    if y in taken:
+                        _nested_refuse(f"cannot install the workspace's {kind[:-1]} {x}: the host's {taken[x]} takes {x!r} and its {taken[y]} takes {y!r} (nothing written).")
+            if y != x:
+                renames[kind][x] = y
+            installed[kind].append(y)
+        # The workspace's own copies that this version no longer ships stay recognised (and
+        # excluded) while they exist; they are reported as stale, never deleted.
+        for name in prev:
+            rel = f".claude/skills/{name}" if kind == "skills" else f".claude/agents/{name}.md"
+            if name not in installed[kind] and os.path.lexists(HOST / rel):
+                installed[kind].append(name)
+                stale.append(rel)
+
+    files = {}
+    for x in CLAUDE_SKILLS:
+        files[f".claude/skills/{renames['skills'].get(x, x)}/SKILL.md"] = nested_rewrite(PAYLOADS[f".claude/skills/{x}/SKILL.md"], renames)
+    for x in NESTED_AGENTS:
+        files[f".claude/agents/{renames['agents'].get(x, x)}.md"] = nested_rewrite(PAYLOADS[f".claude/agents/{x}.md"], renames)
+    engine_side = {NESTED_CONTRACT: nested_rewrite(f"# CLAUDE.md\n\n{CONTRACT_BODY}", renames)}
+    for name in ("deferred_brief.md", "intent.md", "phase.md"):
+        engine_side[f"works/templates/{name}"] = nested_rewrite(PAYLOADS[f"works/templates/{name}"], renames)
+    settings_ours = nested_rewrite(PAYLOADS[".claude/settings.json"], renames)
+    local_block = _nested_local_block(renames)
+
+    # Post-check: nothing the rewrite should have caught is left. Our own texts only -- never the
+    # operator's part of CLAUDE.local.md or settings.local.json.
+    problems = []
+    checked = {**files, **{f"{NESTED_DIR}/{k}": v for k, v in engine_side.items()},
+               "CLAUDE.local.md (managed block)": "\n".join(local_block), ".claude/settings.local.json (ours)": settings_ours}
+    for label, text in sorted(checked.items()):
+        if "python3 scripts/workflow.py" in text or NESTED_ENGINE_RE.search(text):
+            problems.append(f"{label}: an unprefixed scripts/workflow.py")
+        m = NESTED_PATH_RE.search(text)
+        if m:
+            problems.append(f"{label}: an unprefixed workspace path {m.group(0)!r}")
+        free = "".join(NESTED_PROTECT_RE.split(text)[0::2])
+        for x in renames["skills"]:
+            if re.search(r"(?<![\w./-])/" + re.escape(x) + r"(?![\w-])", free):
+                problems.append(f"{label}: the renamed skill still appears as /{x}")
+        for x in renames["agents"]:
+            if re.search(r"subagent_type:\s*" + re.escape(x) + r"(?![\w-])", text):
+                problems.append(f"{label}: the renamed agent still appears as subagent_type: {x}")
+    if problems:
+        _nested_refuse("the nested rewrite left unprefixed or un-renamed references; nothing was written:", *[f"  - {p}" for p in problems[:12]])
+
+    # Tracked-target refusal: info/exclude cannot hide a tracked file, so writing one would leak.
+    targets = sorted({f".claude/skills/{n}" for n in installed["skills"]} | {f".claude/agents/{n}.md" for n in installed["agents"]}
+                     | {"CLAUDE.local.md", ".claude/settings.local.json"})
+    rc, out = _host_git("--literal-pathspecs", "ls-files", "--", *targets)
+    tracked = [ln for ln in out.splitlines() if ln.strip()]
+    if rc != 0 or tracked:
+        _nested_refuse("the host repo tracks a file the nested install would write, and info/exclude cannot hide a tracked file "
+                       "(nothing written):", *([f"  - {t}" for t in tracked[:10]] or [f"  (git ls-files failed with exit {rc})"]))
+
+    settings_path = HOST / ".claude" / "settings.local.json"
+    settings_text = settings_ours
+    if os.path.lexists(settings_path):
+        try:
+            existing = settings_path.read_text(encoding="utf-8")
+            theirs = json.loads(existing)
+            if not isinstance(theirs, dict) or not isinstance(theirs.get("permissions", {}), dict):
+                raise ValueError("not a JSON object with an object `permissions`")
+            merged = json.loads(existing)
+            perms = merged.setdefault("permissions", {})
+            for key in ("allow", "deny"):
+                current = perms.get(key) or []
+                if not isinstance(current, list):
+                    raise ValueError(f"permissions.{key} is not a list")
+                perms[key] = list(current) + [x for x in json.loads(settings_ours)["permissions"].get(key, []) if x not in current]
+        except (OSError, ValueError) as exc:
+            _nested_refuse(f".claude/settings.local.json exists but cannot be merged ({exc}); fix or move it, then re-run (nothing written).")
+        settings_text = existing if merged == theirs else json.dumps(merged, ensure_ascii=False, indent=2) + "\n"
+
+    rc, out = _host_git("rev-parse", "--git-path", "info/exclude")
+    if rc != 0 or not out.strip():
+        _nested_refuse("cannot locate the host repo's info/exclude (git rev-parse --git-path info/exclude failed); nothing written.")
+    exclude_path = Path(out.strip()) if os.path.isabs(out.strip()) else HOST / out.strip()
+    exclude_entries = [f"/{NESTED_DIR}/", "/CLAUDE.local.md", "/.claude/settings.local.json"]
+    exclude_entries += [f"/.claude/skills/{n}/" for n in sorted(installed["skills"])]
+    exclude_entries += [f"/.claude/agents/{n}.md" for n in sorted(installed["agents"])]
+    local_path = HOST / "CLAUDE.local.md"
+    try:
+        local_text = _with_block(local_path.read_text(encoding="utf-8") if local_path.is_file() else "",
+                                 NESTED_LOCAL_BEGIN, NESTED_LOCAL_END, local_block)
+    except (OSError, ValueError) as exc:
+        _nested_refuse(f"CLAUDE.local.md cannot take the managed block ({exc}); fix it, then re-run (nothing written).")
+    try:
+        exclude_text = _with_block(exclude_path.read_text(encoding="utf-8") if exclude_path.is_file() else "",
+                                   NESTED_EXCLUDE_BEGIN, NESTED_EXCLUDE_END, [NESTED_EXCLUDE_BEGIN, *exclude_entries, NESTED_EXCLUDE_END])
+    except (OSError, ValueError) as exc:
+        _nested_refuse(f"{exclude_path} cannot take the managed block ({exc}); fix it, then re-run (nothing written).")
+
+    # The marker, to the engine's schema 1 (+ `installed`). --update merges: a confirmed convention
+    # and the existing renames are kept; an unconfirmed convention is re-inferred.
+    inferred = nested_infer_convention()
+    old_conv = old.get("commit_convention") if isinstance(old.get("commit_convention"), dict) else {}
+    conv = old_conv if old_conv.get("confirmed") is True else {"inferred": inferred, "confirmed": False, "text": None, "coauthor_trailers": "unknown"}
+    marker = dict(old)
+    marker.update({"schema": 1, "host_root": "..", "commit_convention": conv, "renames": renames,
+                   "installed": {k: sorted(installed[k]) for k in NESTED_KINDS}})
+    home_skills = Path(os.path.expanduser("~")) / ".claude" / "skills"
+    try:
+        exclude_label = exclude_path.resolve().relative_to(HOST).as_posix()
+    except ValueError:
+        exclude_label = str(exclude_path)
+    return {
+        "renames": renames, "installed": installed, "stale": stale, "convention": conv,
+        "shadowed": [n for n in installed["skills"] if os.path.lexists(home_skills / n)],
+        "engine_side": engine_side,
+        "host_writes": [(HOST / rel, text, rel) for rel, text in sorted(files.items())]
+                       + [(settings_path, settings_text, ".claude/settings.local.json"), (local_path, local_text, "CLAUDE.local.md"),
+                          (exclude_path, exclude_text, exclude_label)],
+        "marker_text": json.dumps(marker, ensure_ascii=False, indent=2) + "\n",
+        "exclude_label": exclude_label,
+    }
+
+
+HOST_SUMMARY = {"updated": [], "added": [], "unchanged": []}
+
+
+def nested_apply(plan: dict) -> None:
+    """Write the host side and the marker (--dry-run: only record what would change). A file that
+    already existed (the operator's CLAUDE.local.md, settings.local.json, info/exclude) keeps its mode."""
+    for path, text, label in plan["host_writes"]:
+        try:
+            old = path.read_text(encoding="utf-8") if path.is_file() else None
+        except (OSError, UnicodeDecodeError):
+            old = ""
+        if old == text:
+            HOST_SUMMARY["unchanged"].append(label)
+            continue
+        HOST_SUMMARY["added" if old is None else "updated"].append(label)
+        if not DRY_RUN:
+            mode = stat.S_IMODE(path.stat().st_mode) if old is not None else None
+            _atomic_write(path, text)
+            if mode is not None:
+                os.chmod(path, mode)
+    if not DRY_RUN:
+        _atomic_write(ROOT / NESTED_MARKER, plan["marker_text"])
+
+
+def _nested_renames_line(plan: dict) -> str:
+    pairs = [f"/{x} -> /{y}" for x, y in sorted(plan["renames"]["skills"].items())]
+    pairs += [f"agent {x} -> {y}" for x, y in sorted(plan["renames"]["agents"].items())]
+    return ("renamed to leave the host's own alone: " + ", ".join(pairs)) if pairs else "no name clashes with the host's own skills, commands or agents"
+
+
+def print_nested_banner(plan: dict) -> None:
+    cmd = f"python3 {NESTED_DIR}/scripts/workflow.py"
+    if DRY_RUN or UPDATE:
+        print(f"{'DRY RUN (--update --nested --dry-run)' if DRY_RUN else 'Update complete (--update --nested)'} at {HOST}"
+              f"{' -- nothing written.' if DRY_RUN else ''}")
+        print(f"  engine side ({NESTED_DIR}/):")
+        print_change_list()
+        print(f"  host side (untracked, hidden by {plan['exclude_label']}): updated {len(HOST_SUMMARY['updated'])}, "
+              f"added {len(HOST_SUMMARY['added'])}, unchanged {len(HOST_SUMMARY['unchanged'])}")
+        for label in HOST_SUMMARY["updated"]:
+            print(f"    ~ {label}")
+        for label in HOST_SUMMARY["added"]:
+            print(f"    + {label}")
+    else:
+        print(f"Installed the agentic workspace privately (--nested) into the host repo at {HOST}")
+        print(f"  engine + state: {NESTED_DIR}/ (a nested git repo; the contract is {NESTED_DIR}/{NESTED_CONTRACT})")
+        print(f"  Claude Code: {len(plan['installed']['skills'])} skills in .claude/skills/, {len(NESTED_AGENTS)} agents in .claude/agents/, "
+              ".claude/settings.local.json, and CLAUDE.local.md importing the contract -- all untracked")
+        print(f"  hidden by {plan['exclude_label']}: the host's git status stays clean (no tracked file, CI, .gitattributes or docs/ touched)")
+    print(f"  {_nested_renames_line(plan)}")
+    for name in plan["shadowed"]:
+        print(f"  warning: your personal skill ~/.claude/skills/{name} shadows the workspace's /{name} in this repo (rename or remove one)")
+    conv = plan["convention"]
+    if conv.get("confirmed") is True:
+        print(f"  host commit convention: confirmed (coauthor_trailers={conv.get('coauthor_trailers')})")
+    else:
+        print(f"  host commit convention: UNCONFIRMED (inferred: {conv.get('inferred') or 'nothing -- the host has no history yet'})")
+    if DRY_RUN:
+        print("Re-run without --dry-run to apply.")
+        return
+    print("The installer made no git commits, and nothing tracked in the host changed.")
+    print(f"Next (start Claude Code at the host root, {HOST} -- never inside {NESTED_DIR}/):")
+    if UPDATE:
+        print(f"  1. Review and commit the refresh in the nested repo: git -C {NESTED_DIR} status, then git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: update the agentic workspace\"")
+        print(f"  2. Re-apply your executor tiers: {cmd} sync-agents")
+    else:
+        print(f"  1. First commit in the nested repo: git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: install the agentic workspace\"")
+        print(f"  2. Then: {cmd} next, and /{plan['renames']['skills'].get('create-phase', 'create-phase')} for the first phase")
+    if conv.get("confirmed") is not True:
+        print(f"  3. Confirm the commit convention: {cmd} nested-convention (then --confirm --text \"<convention>\" --trailers allowed|forbidden)")
+    print(f"  Any remote for {NESTED_DIR}/ stays inside your company's org.")
+
+
 # ---- Guards -----------------------------------------------------------------
+NESTED_PLAN = None
+if NESTED:
+    # Before anything is written, workflow/ included: the host checks, then the whole host-side
+    # render with its post-check and the tracked-target refusal.
+    nested_preflight()
+    NESTED_PLAN = nested_plan()
 ROOT.mkdir(parents=True, exist_ok=True)
 for rel in MANAGED_DIRS:
     p = ROOT / rel
@@ -390,8 +891,10 @@ if UPDATE:
     works_present = (ROOT / "works/state.json").exists() or any(
         (ROOT / "works/phases/active").glob("*/phase.json")
     )
-    if not ((ROOT / "scripts/workflow.py").exists() and works_present):
+    if not NESTED and not ((ROOT / "scripts/workflow.py").exists() and works_present):
         print("Error: no agentic workspace found here to update.", file=sys.stderr)
+        if (ROOT / NESTED_DIR / NESTED_MARKER).exists():
+            print(f"This is a host repo with a nested personal install in {NESTED_DIR}/: re-run with --update --nested.", file=sys.stderr)
         print("Install fresh into an empty dir, or adopt an existing repo with --into-existing.", file=sys.stderr)
         sys.exit(1)
     # Rebuild docs only when THIS repo uses the workspace's OWN docs system —
@@ -459,10 +962,19 @@ for rel in MANAGED_DIRS:
         continue  # don't scaffold a docs/ tree the target opted out of
     (ROOT / rel).mkdir(parents=True, exist_ok=True)
 
+if NESTED and not UPDATE and not DRY_RUN and not (ROOT / ".git").exists():
+    # The nested repo that versions the workflow state. The installer never commits; the banner
+    # names the operator's first commit there.
+    subprocess.run(["git", "init", "-q"], cwd=str(ROOT), check=True)
+
 created_at = now_iso()
 
 # ---- Routing contract (CLAUDE.md) -------------------------------------------
-write_text("CLAUDE.md", f"# CLAUDE.md\n\n{CONTRACT_BODY}")
+if NESTED:
+    # workflow/CLAUDE.workspace.md, rewritten; CLAUDE.local.md at the host root imports it.
+    write_text(NESTED_CONTRACT, NESTED_PLAN["engine_side"][NESTED_CONTRACT])
+else:
+    write_text("CLAUDE.md", f"# CLAUDE.md\n\n{CONTRACT_BODY}")
 
 # ---- Versioned docs ---------------------------------------------------------
 
@@ -525,9 +1037,11 @@ Doc updates happen in a **docs phase the operator creates** — never per slice.
 # No plan.md or result.md template: the orchestrator writes its free-form native plan
 # into plan.md at the slice's turn, and the executor writes a free-form result.md at
 # slice end. Scaffolded seeds: the phase notebook, the phase intent, and the deferred brief.
-write_text("works/templates/deferred_brief.md", PAYLOADS["works/templates/deferred_brief.md"])
-write_text("works/templates/intent.md", PAYLOADS["works/templates/intent.md"])
-write_text("works/templates/phase.md", PAYLOADS["works/templates/phase.md"])
+# Nested: rewritten, because agents at the host root read the phase files made from them.
+_TEMPLATES = NESTED_PLAN["engine_side"] if NESTED else PAYLOADS
+write_text("works/templates/deferred_brief.md", _TEMPLATES["works/templates/deferred_brief.md"])
+write_text("works/templates/intent.md", _TEMPLATES["works/templates/intent.md"])
+write_text("works/templates/phase.md", _TEMPLATES["works/templates/phase.md"])
 
 # ---- Works state: starts with NO phases --------------------------------------
 # The workspace intentionally bootstraps empty: the operator's first real task is
@@ -539,28 +1053,39 @@ write_text("works/events.jsonl", json.dumps({"ts": created_at, "type": "bootstra
 write_text("scripts/workflow.py", PAYLOADS["scripts/workflow.py"], executable=True)
 
 # ---- Agent surfaces: Claude Code skills -------------------------------------
-for name in CLAUDE_SKILLS:
+# (Nested: none under workflow/ -- the host-side copies are written by nested_apply below.)
+for name in ([] if NESTED else CLAUDE_SKILLS):
     write_text(f".claude/skills/{name}/SKILL.md", PAYLOADS[f".claude/skills/{name}/SKILL.md"])
 
 # Subagents: full-permission workers that implement one already-planned slice, in two
 # capability tiers picked by the slice's risk (embedded verbatim from the live repo), plus
 # the design subagent that drafts one design round (it follows the high tier's model).
-for tier in ("mid", "high"):
-    write_text(f".claude/agents/slice-executor-{tier}.md", PAYLOADS[f".claude/agents/slice-executor-{tier}.md"])
-write_text(".claude/agents/design-drafter.md", PAYLOADS[".claude/agents/design-drafter.md"])
+if not NESTED:
+    for tier in ("mid", "high"):
+        write_text(f".claude/agents/slice-executor-{tier}.md", PAYLOADS[f".claude/agents/slice-executor-{tier}.md"])
+    write_text(".claude/agents/design-drafter.md", PAYLOADS[".claude/agents/design-drafter.md"])
 
 # ---- Executor-tier config (seeded once — commented defaults; operator-owned) ----
 write_text("executors.toml", PAYLOADS["executors.toml"])
 
 # ---- Claude Code project settings: pre-approve the workflow manager ----------
-write_text(".claude/settings.json", PAYLOADS[".claude/settings.json"])
+# (Nested: the host's settings.json is never touched; nested_apply writes settings.local.json.)
+if not NESTED:
+    write_text(".claude/settings.json", PAYLOADS[".claude/settings.json"])
 
 # ---- Repo-level policy files: CI workflow (seed-once) + .gitattributes (merge) ----
-emit_policy_files()
+# Never in a nested install: no CI file and no .gitattributes anywhere, host or workflow/.
+if not NESTED:
+    emit_policy_files()
+
+# ---- Nested install: the host side and the marker (rendered and checked up front) ----
+if NESTED:
+    nested_apply(NESTED_PLAN)
 
 # ---- Generate dashboards/state from the source of truth, then self-check ----
 def run_workflow(*workflow_args: str) -> None:
-    subprocess.run([sys.executable, str(ROOT / "scripts" / "workflow.py"), *workflow_args], cwd=str(ROOT), check=True)
+    # Nested: from the host root, the way every nested session runs it (python3 workflow/scripts/workflow.py).
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "workflow.py"), *workflow_args], cwd=str(HOST or ROOT), check=True)
 
 
 def write_version_marker() -> None:
@@ -597,14 +1122,21 @@ def flag_obsolete_machinery() -> None:
     # (.agents, .codex) as well as files.
     for rel in OBSOLETE_MACHINERY:
         if (ROOT / rel).exists():
-            UPDATE_SUMMARY["stale"].append(rel)
+            UPDATE_SUMMARY["stale"].append(f"{SHOWN_PREFIX}{rel}")
 
 
 def flag_stale_skills() -> None:
     """Surface workspace-managed skill dirs that this version no longer ships, so
     the operator can remove them. A dir is "ours" only by our marker (a shipped
     SKILL.md sets `disable-model-invocation: true`) — so the operator's own skills
-    are not mislabeled. Never deletes."""
+    are not mislabeled. Never deletes.
+
+    Nested: the host's .claude/skills holds the TEAM's skills, so a marker heuristic could mislabel
+    them; only the workspace's own copies (the marker's `installed` record) that this version no
+    longer ships are stale -- nested_plan() lists them, and our installed or renamed names never are."""
+    if NESTED:
+        UPDATE_SUMMARY["stale"].extend(NESTED_PLAN["stale"])
+        return
     expected = set(CLAUDE_SKILLS)
     base = ".claude/skills"
     d = ROOT / base
@@ -625,13 +1157,13 @@ def print_change_list() -> None:
     upd, add, mrg = UPDATE_SUMMARY["updated"], UPDATE_SUMMARY["added"], UPDATE_SUMMARY["merged"]
     print(f"  machinery updated: {len(upd)} file(s)")
     for path, added, removed in upd:
-        print(f"    ~ {path}  (+{added}/-{removed})")
+        print(f"    ~ {SHOWN_PREFIX}{path}  (+{added}/-{removed})")
     if add:
         print(f"  added: {len(add)} file(s)")
         for path in add:
-            print(f"    + {path}")
+            print(f"    + {SHOWN_PREFIX}{path}")
     if mrg:
-        print(f"  merged (additive): {', '.join(mrg)}")
+        print(f"  merged (additive): {', '.join(SHOWN_PREFIX + m for m in mrg)}")
     print(f"  preserved (your work + docs, untouched): {len(UPDATE_SUMMARY['preserved'])} file(s)")
     print(f"  unchanged: {len(UPDATE_SUMMARY['unchanged'])} file(s)")
     if UPDATE_SUMMARY["stale"]:
@@ -662,7 +1194,9 @@ else:
     run_workflow("validate")
     write_version_marker()
 
-if DRY_RUN:
+if NESTED:
+    print_nested_banner(NESTED_PLAN)
+elif DRY_RUN:
     print(f"DRY RUN (--update --dry-run) at {TARGET} — nothing written.")
     print_change_list()
     print("Re-run without --dry-run to apply.")

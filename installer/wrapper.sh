@@ -13,6 +13,11 @@ Options:
   --into-existing             Non-destructively retrofit into an existing repo (see docs/retrofit-guide.md)
   --update                    Update an already-installed workspace's machinery to this version
   --dry-run                   With --update, preview the change-list without writing anything
+  --nested                    Private install into a host repo you don't own: TARGET_DIR is the
+                              host repo's root; the engine and state go to <host>/workflow/ (a
+                              nested git repo), skills and agents to the host's .claude/ untracked,
+                              all hidden by the host's .git/info/exclude (no tracked file changes).
+                              Combine with --update (and --dry-run) to refresh a nested install
   -h, --help                  Show this help
 
 TARGET_DIR defaults to the current directory.
@@ -46,6 +51,7 @@ force_empty_ok=0
 into_existing=0
 update=0
 dry_run=0
+nested=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -58,6 +64,7 @@ while [ $# -gt 0 ]; do
     --into-existing) into_existing=1; shift ;;
     --update) update=1; shift ;;
     --dry-run) dry_run=1; shift ;;
+    --nested) nested=1; shift ;;
     --) shift; while [ $# -gt 0 ]; do [ -z "$target_dir" ] || die "only one TARGET_DIR may be provided"; target_dir=$1; shift; done ;;
     -*) die "unknown option $1" ;;
     *) [ -z "$target_dir" ] || die "only one TARGET_DIR may be provided"; target_dir=$1; shift ;;
@@ -68,6 +75,8 @@ done
 [ -e "$target_dir" ] && [ ! -d "$target_dir" ] && die "target exists but is not a directory: $target_dir"
 [ "$update" = 1 ] && [ "$into_existing" = 1 ] && die "--update and --into-existing are mutually exclusive"
 [ "$dry_run" = 1 ] && [ "$update" = 0 ] && die "--dry-run is only valid with --update"
+[ "$nested" = 1 ] && [ "$into_existing" = 1 ] && die "--nested and --into-existing are mutually exclusive (--nested installs into a host repo without changing any tracked file)"
+[ "$nested" = 1 ] && [ "$force_empty_ok" = 1 ] && die "--force-empty-ok does not apply to --nested (the install goes to <host>/workflow/, which must be absent or empty)"
 
 # Fixed non-interactive defaults.
 [ -n "$project_name" ] || project_name="New Project"
@@ -82,6 +91,7 @@ export FORCE_EMPTY_OK="$force_empty_ok"
 export INTO_EXISTING="$into_existing"
 export UPDATE="$update"
 export DRY_RUN="$dry_run"
+export NESTED="$nested"
 
 python3 - <<'INSTALLER_PY'
 #@@PYTHON_BODY@@

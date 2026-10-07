@@ -14,20 +14,23 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-# Nested personal install (P28). The marker `nested.json` beside `scripts/` says the engine and all
+# Nested personal install (P28). The marker `.agentic-nested.json` beside `scripts/` says the engine and all
 # workflow state live in a nested repo (`<host>/workflow`, ROOT) inside a host repo the operator does
 # not own (HOST_ROOT): product code, git history for phase-scope, and `.claude/agents` are the
 # host's, while works/, docs/, executors.toml and the templates stay under ROOT. EVERY nested
-# branch below is gated on that marker: with no `nested.json`, NESTED is None, HOST_ROOT is None and
+# branch below is gated on that marker: with no `.agentic-nested.json`, NESTED is None, HOST_ROOT is None and
 # behaviour and output are byte-for-byte the at-root engine's. A marker that exists but is malformed
 # is never read as at-root mode -- `validate` reports it as an error and every other command refuses
 # (see `main`). The installer writes the marker; this file owns its schema (NESTED_* below).
-NESTED_MARKER = "nested.json"
+NESTED_MARKER = ".agentic-nested.json"
 NESTED_SCHEMA = 1
 NESTED_KEYS = ("schema", "host_root", "commit_convention", "renames")
 NESTED_CONVENTION_KEYS = ("inferred", "confirmed", "text", "coauthor_trailers")
 NESTED_TRAILERS = ("allowed", "forbidden", "unknown")
 NESTED_RENAME_KINDS = ("skills", "agents")
+# Optional, but strict when present: the installer's record of which host-side skill directories
+# and agent files are the workspace's own (so `--update --nested` never mistakes them for a clash).
+NESTED_OPTIONAL_KEYS = ("installed",)
 NESTED_PARALLEL_OFF = "parallel worktrees are disabled in a nested personal install"
 # phase.json `host_anchors` (nested only): the host HEAD at new-phase and at the passing review --
 # phase-scope's range in the host repo, whose commits the nested repo never sees.
@@ -35,18 +38,22 @@ HOST_ANCHOR_KEYS = ("created", "review_pass")
 
 
 def nested_marker_problems(data) -> list:
-    """Every way a parsed `nested.json` breaks schema 1 -- empty when it is well-formed.
+    """Every way a parsed `.agentic-nested.json` breaks schema 1 -- empty when it is well-formed.
 
         {"schema": 1,
          "host_root": "..",                       # relative to the engine root; the host repo's root
          "commit_convention": {"inferred": "<text>" | null, "confirmed": false,
                                "text": "<text>" | null, "coauthor_trailers": "allowed" | "forbidden" | "unknown"},
-         "renames": {"skills": {"<original>": "<installed>"}, "agents": {"<original>": "<installed>"}}}
+         "renames": {"skills": {"<original>": "<installed>"}, "agents": {"<original>": "<installed>"}},
+         "installed": {"skills": ["<installed>", ...], "agents": ["<installed>", ...]}}   # optional
 
     A confirmed convention carries its text and a decided trailer rule; an installed name is a bare
-    file/directory name. Unknown top-level keys are not problems (`validate` warns about them)."""
+    file/directory name. `installed` (written by the installer) lists the host-side skill directories
+    and agent files that are the workspace's own; when present it has exactly those two lists of
+    distinct bare names, and every renamed name appears in it. Other unknown top-level keys are not
+    problems (`validate` warns about them)."""
     if not isinstance(data, dict):
-        return ["nested.json is not a JSON object"]
+        return [f"{NESTED_MARKER} is not a JSON object"]
     problems = []
     missing = [k for k in NESTED_KEYS if k not in data]
     if missing:
@@ -94,14 +101,39 @@ def nested_marker_problems(data) -> list:
                     problems.append(f"renames.{kind} must be an object mapping an original name to its installed name")
                     continue
                 for original, installed in table.items():
-                    if not (original and isinstance(installed, str) and installed.strip() and installed == installed.strip()
-                            and "/" not in installed and "\\" not in installed and not installed.startswith(".")):
+                    if not (original and _bare_installed_name(installed)):
                         problems.append(f"renames.{kind}: {original!r} -> {installed!r} is not a bare installed name")
+    if "installed" in data:
+        inst = data["installed"]
+        if not isinstance(inst, dict) or sorted(inst) != sorted(NESTED_RENAME_KINDS):
+            problems.append(f"installed must be an object with exactly {' and '.join(NESTED_RENAME_KINDS)} (lists of installed names)")
+        else:
+            for kind in NESTED_RENAME_KINDS:
+                names = inst[kind]
+                if not isinstance(names, list):
+                    problems.append(f"installed.{kind} must be a list of installed names")
+                    continue
+                bad = [n for n in names if not _bare_installed_name(n)]
+                if bad:
+                    problems.append(f"installed.{kind}: {', '.join(repr(n) for n in bad)} is not a bare installed name")
+                elif len(set(names)) != len(names):
+                    problems.append(f"installed.{kind} lists a name twice")
+                table = data.get("renames", {}).get(kind) if isinstance(data.get("renames"), dict) else None
+                if isinstance(table, dict) and not bad:
+                    missing = sorted(v for v in table.values() if isinstance(v, str) and v not in names)
+                    if missing:
+                        problems.append(f"installed.{kind} does not list the renamed {', '.join(missing)}")
     return problems
 
 
+def _bare_installed_name(name) -> bool:
+    """A skill directory or agent file stem as installed in the host: one plain path segment."""
+    return (isinstance(name, str) and bool(name.strip()) and name == name.strip()
+            and "/" not in name and "\\" not in name and not name.startswith("."))
+
+
 def _load_nested() -> tuple:
-    """(marker, problems): (None, []) when ROOT holds no `nested.json` -- at-root mode, the only
+    """(marker, problems): (None, []) when ROOT holds no `.agentic-nested.json` -- at-root mode, the only
     case that touches nothing. A marker that cannot be read or parsed comes back as `{}` with its
     problem, so it still counts as nested (never silently at-root)."""
     path = ROOT / NESTED_MARKER
@@ -405,7 +437,7 @@ DESIGN_DRAFTER_FOLLOWS = "high"
 def installed_agent_name(name: str) -> str:
     """The name a managed agent is installed under: its canonical name, or -- in a nested install
     whose host already has an agent of that name -- the rename the installer recorded in
-    `nested.json` `renames.agents`. The installed file is `<installed name>.md` and its `name:`
+    `.agentic-nested.json` `renames.agents`. The installed file is `<installed name>.md` and its `name:`
     frontmatter (the `subagent_type`) is the installed name too; the installer writes both."""
     if NESTED is None:
         return name
@@ -1219,7 +1251,10 @@ def operator_wait_target(phases: list, current_phase, current_slice):
 
 SLICES_BEGIN = "<!-- slices:begin -->"
 SLICES_END = "<!-- slices:end -->"
-SLICES_GUIDANCE = "_Generated by `python3 scripts/workflow.py rebuild` from each slice's `slice.json`; never hand-edit this block._"
+# WORKFLOW_CMD is the literal `python3 scripts/workflow.py` at root (so this line stays byte-identical to
+# works/templates/phase.md); a nested install's template is installed with the host-relative prefix, so
+# its regenerated line carries the same one.
+SLICES_GUIDANCE = f"_Generated by `{WORKFLOW_CMD} rebuild` from each slice's `slice.json`; never hand-edit this block._"
 
 
 def render_slices_block(pdir: Path, phase: dict) -> str:
@@ -1530,9 +1565,9 @@ def validate() -> int:
     if NESTED is not None:
         marker = shown(ROOT / NESTED_MARKER)
         errors.extend(f"{marker}: {problem}" for problem in NESTED_PROBLEMS)
-        unknown = sorted(set(NESTED) - set(NESTED_KEYS))
+        unknown = sorted(set(NESTED) - set(NESTED_KEYS) - set(NESTED_OPTIONAL_KEYS))
         if unknown:
-            warnings.append(f"{marker}: unknown field(s) {', '.join(unknown)} (schema {NESTED_SCHEMA} reads only {', '.join(NESTED_KEYS)})")
+            warnings.append(f"{marker}: unknown field(s) {', '.join(unknown)} (schema {NESTED_SCHEMA} reads only {', '.join(NESTED_KEYS + NESTED_OPTIONAL_KEYS)})")
         if HOST_ROOT is not None and HOST_ROOT.is_dir():
             try:
                 proc = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=str(HOST_ROOT), capture_output=True, text=True, timeout=10)
@@ -3105,7 +3140,7 @@ def cmd_nested_convention(args: argparse.Namespace) -> None:
     The installer cannot ask (it runs non-interactively), so it records what it inferred from the
     host's git log and CONTRIBUTING with `confirmed: false`; the orchestrator asks the operator
     before the first product commit and records the answer here -- the convention text and whether
-    Claude `Co-Authored-By` trailers are allowed in the host repo. Writes only `nested.json`."""
+    Claude `Co-Authored-By` trailers are allowed in the host repo. Writes only `.agentic-nested.json`."""
     if NESTED is None:
         raise SystemExit(f"nested-convention: refused -- this is not a nested personal install (no {NESTED_MARKER} beside scripts/); "
                          "commits here follow the workspace's own Commit Convention")

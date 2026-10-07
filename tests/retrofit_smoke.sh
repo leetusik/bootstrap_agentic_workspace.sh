@@ -28,9 +28,11 @@
 # writes only the env-overridden registry, never the operator's ~/.config; v48: design-check skips claude-design/,
 # design-migrate moves all-or-nothing and a pre-v47 root is steered to it, design-register prints the deck hint), the v48 design-tool
 # invariants (design-cowork carries both loops, drafter and claude-design, with P26's governance
-# shared), the P28 nested-engine invariants (workflow/nested.json: host anchors, host-side
+# shared), the P28 nested-engine invariants (workflow/.agentic-nested.json: host anchors, host-side
 # phase-scope, parallel off, the convention gate, the agent rename map, a malformed marker is an
-# error), and the v31 Codex-removal negatives. Re-runnable; self-cleaning.
+# error), the P28 nested-install invariants (--nested: a clean host status/HEAD/config, the clash rename,
+# the workflow/ prefix, the contract import, the tracked-target refusal, --update --nested), and the v31
+# Codex-removal negatives. Re-runnable; self-cleaning.
 #
 # Usage:  bash tests/retrofit_smoke.sh
 # Exit 0 if every check passes; non-zero otherwise.
@@ -1489,7 +1491,7 @@ conflict_before=$(mig_sig); out=$(mw design-migrate --apply 2>&1); rc=$?
   || bad "design-migrate moved something past a conflict, or did not name every conflict (rc=$rc) -- $out"
 
 # ---------------------------------------------------------------------------
-echo "== Test 14: P28 nested engine -- workflow/nested.json: host anchors, host-side phase-scope, parallel off, the convention gate, the agent rename map, a malformed marker fails validate =="
+echo "== Test 14: P28 nested engine -- workflow/.agentic-nested.json: host anchors, host-side phase-scope, parallel off, the convention gate, the agent rename map, a malformed marker fails validate =="
 # A host repo with one product commit, and the live engine + templates (+ a seed install's docs) in a
 # nested git repo at host/workflow/ beside the marker. Every command runs from the host root, the way
 # a nested session does. The at-root invariant is every earlier test passing unchanged.
@@ -1503,7 +1505,7 @@ mkdir -p "$NH/src" "$NH/workflow/scripts" "$NH/workflow/works" \
   && cp "$REPO_ROOT/scripts/workflow.py" "$NH/workflow/scripts/" && cp -R "$REPO_ROOT/works/templates" "$NH/workflow/works/" \
   && cp -R "$NS/seed/docs" "$NH/workflow/" && ( cd "$NH/workflow" && git init -q . ) \
   || bad "nested probe: could not build the host + workflow/ fixture"
-cat > "$NH/workflow/nested.json" <<'NESTED'
+cat > "$NH/workflow/.agentic-nested.json" <<'NESTED'
 {"schema": 1, "host_root": "..",
  "commit_convention": {"inferred": "type(scope): summary", "confirmed": false, "text": null, "coauthor_trailers": "unknown"},
  "renames": {"skills": {}, "agents": {"design-drafter": "wf-design-drafter"}}}
@@ -1539,7 +1541,7 @@ printf '%s\n' "$nx" | grep -q "^nested_host=/" && printf '%s\n' "$nx" | grep -q 
 nw nested-convention --confirm --text "type(scope): summary" --trailers forbidden >/dev/null 2>&1 || bad "nested probe: nested-convention --confirm failed"
 nx=$(nw next 2>&1)
 if printf '%s\n' "$nx" | grep -q "^host_commit_convention=confirmed (coauthor_trailers=forbidden)" && ! printf '%s\n' "$nx" | grep -q "UNCONFIRMED" \
-    && python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["commit_convention"]; assert c["confirmed"] is True and c["text"] == "type(scope): summary" and c["inferred"] == "type(scope): summary", c' "$NH/workflow/nested.json"; then
+    && python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["commit_convention"]; assert c["confirmed"] is True and c["text"] == "type(scope): summary" and c["inferred"] == "type(scope): summary", c' "$NH/workflow/.agentic-nested.json"; then
   ok "nested-convention --confirm records the text and the trailer rule, and next stops flagging it"; else bad "nested-convention --confirm did not flip the convention -- $nx"; fi
 # The agent rename map: design-drafter is installed as wf-design-drafter in the host's .claude/agents.
 mkdir -p "$NH/.claude/agents" && cp "$REPO_ROOT/.claude/agents/slice-executor-mid.md" "$REPO_ROOT/.claude/agents/slice-executor-high.md" "$NH/.claude/agents/" \
@@ -1550,12 +1552,75 @@ if nw sync-agents --check >/dev/null 2>&1 && grep -qx "name: wf-design-drafter" 
   ok "sync-agents resolves agents in the host's .claude/agents through the rename map and keeps the renamed name:"
 else bad "sync-agents missed the host agent dir or the rename map, or rewrote name:"; fi
 nw validate >/dev/null 2>&1 && ok "validate passes on a well-formed nested install" || bad "validate failed on a well-formed nested install -- $(nw validate 2>&1)"
-printf '{"schema": 1, "host_root": ".."' > "$NH/workflow/nested.json"
+printf '{"schema": 1, "host_root": ".."' > "$NH/workflow/.agentic-nested.json"
 val_out=$(nw validate 2>&1); val_rc=$?; nx_out=$(nw next 2>&1); nx_rc=$?
-[ "$val_rc" -ne 0 ] && printf '%s\n' "$val_out" | grep -q "nested.json: cannot be read as JSON" \
-  && [ "$nx_rc" -ne 0 ] && printf '%s\n' "$nx_out" | grep -q "nested.json is malformed" \
-  && ok "a malformed nested.json fails validate and stops every other command (never read as at-root mode)" \
-  || bad "a malformed nested.json passed validate or ran next (rc=$val_rc/$nx_rc) -- $val_out $nx_out"
+[ "$val_rc" -ne 0 ] && printf '%s\n' "$val_out" | grep -Fq ".agentic-nested.json: cannot be read as JSON" \
+  && [ "$nx_rc" -ne 0 ] && printf '%s\n' "$nx_out" | grep -Fq ".agentic-nested.json is malformed" \
+  && ok "a malformed .agentic-nested.json fails validate and stops every other command (never read as at-root mode)" \
+  || bad "a malformed .agentic-nested.json passed validate or ran next (rc=$val_rc/$nx_rc) -- $val_out $nx_out"
+
+# ---------------------------------------------------------------------------
+echo "== Test 15: P28 nested install -- --nested leaves the host clean (status, HEAD, config), renames a clashing skill, prefixes every engine path, imports the contract, and refreshes in place with --update --nested =="
+# A host with a tracked team contract, settings.json, .gitattributes, CI and its own `commit` skill
+# (a clash with ours), plus Conventional-Commit history. Every workflow command runs from the host root.
+newtmp NI
+IH="$NI/host"
+mkdir -p "$IH/.claude/skills/commit" "$IH/.github/workflows" "$IH/src" && ( cd "$IH" && { git init -q -b main . 2>/dev/null || git init -q .; } \
+  && git config user.email smoke@example.invalid && git config user.name smoke && printf '# Team contract\n' > CLAUDE.md \
+  && printf '{"permissions": {"allow": ["Bash(npm test:*)"]}}\n' > .claude/settings.json && printf '*.png binary\n' > .gitattributes \
+  && printf 'name: ci\non: push\njobs: {}\n' > .github/workflows/ci.yml \
+  && printf -- '---\nname: commit\ndescription: the team commit skill\n---\n\nTeam rules.\n' > .claude/skills/commit/SKILL.md \
+  && git add -A && git commit -qm "chore: initial import" \
+  && for s in "feat(api): add users" "fix(api): empty body" "docs: setup" "refactor(core): split"; do printf '%s\n' "$s" >> src/log.txt && git add -A && git commit -qm "$s" || exit 1; done ) >/dev/null 2>&1 \
+  || bad "nested install: could not build the host fixture"
+ih_head=$(cd "$IH" && git rev-parse HEAD); ih_skill=$(sha "$IH/.claude/skills/commit/SKILL.md")
+iw() { ( cd "$IH" && python3 workflow/scripts/workflow.py "$@" ); }
+ih_clean() { [ -z "$(cd "$IH" && git status --porcelain)" ]; }
+out=$(sh "$BOOT" "$IH" --nested 2>&1); rc=$?
+[ "$rc" -eq 0 ] && ok "--nested installs into the host repo (exit 0)" || bad "--nested install failed (rc=$rc) -- $out"
+ih_clean && [ "$(cd "$IH" && git rev-parse HEAD)" = "$ih_head" ] && ! ( cd "$IH" && git config --local --get core.hooksPath >/dev/null ) \
+  && ok "the host is untouched: git status --porcelain empty, HEAD unchanged, core.hooksPath unset" || bad "the nested install left a host footprint -- $(cd "$IH" && git status --porcelain)"
+[ -d "$IH/workflow/.git" ] && [ ! -e "$IH/workflow/.claude" ] && [ ! -e "$IH/workflow/CLAUDE.md" ] && [ -f "$IH/workflow/CLAUDE.workspace.md" ] \
+  && ok "workflow/ is a nested git repo holding the contract as CLAUDE.workspace.md, with no CLAUDE.md and no .claude/" || bad "workflow/ layout is wrong (.git, CLAUDE.md, .claude/)"
+python3 -c 'import json,sys; r=json.load(open(sys.argv[1]))["renames"]; assert r == {"skills": {"commit": "wf-commit"}, "agents": {}}, r' "$IH/workflow/.agentic-nested.json" >/dev/null 2>&1 \
+  && grep -qx "name: wf-commit" "$IH/.claude/skills/wf-commit/SKILL.md" && [ "$(sha "$IH/.claude/skills/commit/SKILL.md")" = "$ih_skill" ] \
+  && ok "the clashing commit skill installs as wf-commit (marker rename + name:), and the host's own commit skill is byte-identical" || bad "the commit clash was not renamed cleanly"
+left=$(cd "$IH" && grep -rlF "python3 scripts/workflow.py" .claude CLAUDE.local.md workflow/CLAUDE.workspace.md workflow/works/templates 2>/dev/null)
+[ -z "$left" ] && grep -qF "python3 workflow/scripts/workflow.py" "$IH/.claude/skills/do-next-slice/SKILL.md" "$IH/.claude/settings.local.json" \
+  && ok "no unprefixed python3 scripts/workflow.py in the host's .claude/, CLAUDE.local.md, the contract or the templates" || bad "unprefixed engine command left in: $left"
+if python3 - "$IH/CLAUDE.local.md" <<'PY'
+import sys
+fence = found = False
+for line in open(sys.argv[1], encoding="utf-8"):
+    fence = (not fence) if line.lstrip().startswith(("```", "~~~")) else fence
+    found = found or (line.strip() == "@workflow/CLAUDE.workspace.md" and not fence)
+assert found
+PY
+then ok "CLAUDE.local.md imports @workflow/CLAUDE.workspace.md on its own line, outside any fence"; else bad "CLAUDE.local.md lacks the import line outside fences"; fi
+nx=$(iw next 2>&1)
+iw validate >/dev/null 2>&1 && printf '%s\n' "$nx" | grep -qF 'host_commit_convention=UNCONFIRMED (inferred: Conventional Commits "type(scope): summary" (5/5 recent subjects' \
+  && ok "from the host, validate passes and next shows the UNCONFIRMED inferred Conventional-Commits convention" || bad "nested validate / next wrong -- $nx"
+iw new-phase --phase P1 --name "Nested install probe" --objective "probe" >/dev/null 2>&1; scope=$(iw phase-scope P1 2>&1)
+printf '%s\n' "$scope" | grep -q "^product_files=0 " && ! printf '%s\n' "$scope" | grep -q "uncommitted_product_files=" && ih_clean \
+  && ok "right after install, new-phase then phase-scope lists nothing (info/exclude hides every host-side file)" || bad "phase-scope sees the install as product -- $scope"
+out=$(sh "$BOOT" "$IH" --nested 2>&1); rc=$?
+[ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q "already installed" && ih_clean && ok "re-running --nested is an idempotent exit 0" || bad "re-running --nested was not a clean no-op (rc=$rc) -- $out"
+iw nested-convention --confirm --text "type(scope): summary" --trailers forbidden >/dev/null 2>&1 || bad "nested install: nested-convention --confirm failed"
+out=$(sh "$BOOT" "$IH" --update --nested 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && ih_clean && [ ! -e "$IH/workflow/workflow" ] && ! grep -rqF "workflow/workflow/" "$IH/.claude/skills" "$IH/workflow/CLAUDE.workspace.md" \
+    && [ "$(grep -cx '# BEGIN agentic-workspace (nested)' "$IH/.git/info/exclude")" -eq 1 ] && [ "$(grep -cx '<!-- BEGIN agentic-workspace (nested) -->' "$IH/CLAUDE.local.md")" -eq 1 ] \
+    && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); c=d["commit_convention"]; assert c["confirmed"] is True and c["coauthor_trailers"] == "forbidden" and d["renames"]["skills"] == {"commit": "wf-commit"}, d' "$IH/workflow/.agentic-nested.json" >/dev/null 2>&1; then
+  ok "--update --nested keeps the confirmed convention and the renames, the host stays clean, no workflow/workflow/, one exclude block"
+else bad "--update --nested lost state or left a footprint (rc=$rc) -- $out"; fi
+out=$(sh "$BOOT" "$IH" --nested --into-existing 2>&1); rc=$?
+[ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -q "mutually exclusive" && ok "--nested --into-existing is rejected" || bad "--nested --into-existing was accepted (rc=$rc) -- $out"
+IT="$NI/tracked"
+mkdir -p "$IT" && ( cd "$IT" && { git init -q -b main . 2>/dev/null || git init -q .; } && git config user.email smoke@example.invalid && git config user.name smoke \
+  && printf 'team notes\n' > CLAUDE.local.md && git add -A && git commit -qm "chore: team local notes" ) >/dev/null 2>&1 || bad "nested install: could not build the tracked-target fixture"
+it_sig() { ( cd "$IT" && find . -path ./.git/objects -prune -o -print | LC_ALL=C sort; cat .git/info/exclude 2>/dev/null ) | sha_stdin; }
+it_before=$(it_sig); out=$(sh "$BOOT" "$IT" --nested 2>&1); rc=$?
+[ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -q "  - CLAUDE.local.md" && [ ! -e "$IT/workflow" ] && [ "$(it_sig)" = "$it_before" ] \
+  && ok "a host that tracks CLAUDE.local.md is refused, naming it, with nothing written" || bad "a tracked CLAUDE.local.md was not refused cleanly (rc=$rc) -- $out"
 
 # ---------------------------------------------------------------------------
 echo
