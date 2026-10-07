@@ -29,7 +29,7 @@
       ]
     },
     "architecture": {
-      "latest": "v0010_p26-p30_design_contract_and_drafter_design_tool_choice_nested_install_default_rotate_docs-phase_proposal",
+      "latest": "v0011_p31_fix_a_nested_install_s_workflow_refuses_only_a_bare_install_or_--update",
       "current_path": "docs/current/architecture.md",
       "versions": [
         {
@@ -116,6 +116,15 @@
           "source": "P26.REVIEW, P27.REVIEW, P28.REVIEW, P29.REVIEW, P30.REVIEW",
           "summary": "P26-P30 design contract and drafter, design tool choice, nested install default, rotate docs-phase proposal",
           "previous": "v0009_p24_fix_the_parallel_execution_block_still_carries_and_mirrors_the_consolidation_debt"
+        },
+        {
+          "id": "v0011_p31_fix_a_nested_install_s_workflow_refuses_only_a_bare_install_or_--update",
+          "path": "docs/versions/architecture/v0011_p31_fix_a_nested_install_s_workflow_refuses_only_a_bare_install_or_--update.md",
+          "created_at": "2026-10-07T17:34:27+09:00",
+          "commit": "228f407d78c23e31c20545c638926c59df97aa0b",
+          "source": "P31.REVIEW",
+          "summary": "P31 fix: a nested install's workflow/ refuses only a bare install or --update",
+          "previous": "v0010_p26-p30_design_contract_and_drafter_design_tool_choice_nested_install_default_rotate_docs-phase_proposal"
         }
       ]
     },
@@ -968,5 +977,5 @@
       ]
     }
   },
-  "last_rebuilt_at": "2026-10-07T17:22:56+09:00"
+  "last_rebuilt_at": "2026-10-07T17:34:44+09:00"
 }
