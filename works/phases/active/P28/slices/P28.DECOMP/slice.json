@@ -1,0 +1,32 @@
+{
+  "id": "P28.DECOMP",
+  "phase_id": "P28",
+  "name": "decompose phase",
+  "kind": "decomposition",
+  "status": "done",
+  "order": 0,
+  "depends_on": [],
+  "created_at": "2026-10-07T11:23:01+09:00",
+  "started_at": "2026-10-07T11:43:45+09:00",
+  "completed_at": "2026-10-07T11:49:40+09:00",
+  "risk": "high",
+  "source": {
+    "type": "new_phase",
+    "id": "P28"
+  },
+  "paths": {
+    "plan": "plan.md",
+    "result": "result.md"
+  },
+  "outcome": "verified CLAUDE.local.md/@imports/subagent loading; cut S1 engine (high), S2 installer --nested (high), S3 text+v49 (low)",
+  "validation": {
+    "required": [],
+    "last_run": null,
+    "last_status": "pending"
+  },
+  "archive": {
+    "archived": false,
+    "archived_at": null,
+    "archive_path": null
+  }
+}
