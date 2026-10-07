@@ -32,7 +32,9 @@
 # phase-scope, parallel off, the convention gate, the agent rename map, a malformed marker is an
 # error), the P28 nested-install invariants (--nested: a clean host status/HEAD/config, the clash rename,
 # the workflow/ prefix, the contract import, the tracked-target refusal, --update --nested, the self-hiding
-# skill dirs and the refusal when a host .gitignore re-includes a target), and the v31
+# skill dirs and the refusal when a host .gitignore re-includes a target), the P29 nested-by-default
+# invariants (a bare install nests and git-inits a new dir, --update detects the layout, --at-root
+# keeps the at-root path, a bare install over an at-root workspace refuses), and the v31
 # Codex-removal negatives. Re-runnable; self-cleaning.
 #
 # Usage:  bash tests/retrofit_smoke.sh
@@ -760,9 +762,9 @@ printf '%s\n' "$out" | grep -q "docs subsystem: skipped" && ok "docs subsystem s
 [ -f "$E/works/state.json" ] && ok "works subsystem still installed" || bad "works subsystem missing"
 
 # ---------------------------------------------------------------------------
-echo "== Test 5: fresh-install regression (the no-flag path is unchanged) =="
+echo "== Test 5: fresh-install regression (the at-root path, behind --at-root since P29, is unchanged) =="
 newtmp F
-out=$(sh "$BOOT" "$F" --name "Fresh" --summary "fresh" 2>&1); rc=$?
+out=$(sh "$BOOT" "$F" --at-root --name "Fresh" --summary "fresh" 2>&1); rc=$?
 [ "$rc" -eq 0 ] && ok "fresh install exits 0" || bad "fresh install exit=$rc"
 ( cd "$F" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) && ok "fresh workspace validates" || bad "fresh workspace failed validate"
 nphf=$(find "$F/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
@@ -1086,7 +1088,7 @@ grep -q "knowledge:setup" "$F/.claude/skills/explain/SKILL.md" && bad "vendored 
 newtmp H
 printf '# Their cross-tool contract\n' > "$H/AGENTS.md"
 AGH=$(sha "$H/AGENTS.md")
-out=$(sh "$BOOT" "$H" --force-empty-ok --name "Fresh" --summary "fresh" 2>&1); rc=$?
+out=$(sh "$BOOT" "$H" --at-root --force-empty-ok --name "Fresh" --summary "fresh" 2>&1); rc=$?
 [ "$rc" -eq 0 ] && [ -f "$H/CLAUDE.md" ] \
   && ok "--force-empty-ok installs beside a repo's own AGENTS.md" || bad "--force-empty-ok beside AGENTS.md exit=$rc -- $out"
 [ "$(sha "$H/AGENTS.md")" = "$AGH" ] && ok "install leaves a pre-existing AGENTS.md byte-identical" || bad "install rewrote the repo's own AGENTS.md"
@@ -1262,7 +1264,7 @@ nogit_scope=$( cd "$F" && PATH="/var/empty" "$nogit_py" scripts/workflow.py phas
 # ---------------------------------------------------------------------------
 echo "== Test 12: v43 worktree on request -- nothing unasked, parallel-start on a dirty tree, the nested worktree, the exclude line, the retired pins =="
 newtmp W
-sh "$BOOT" "$W" --name "Worktree" --summary "worktree probe" >/dev/null 2>&1 || bad "v43 probe: fresh install failed"
+sh "$BOOT" "$W" --at-root --name "Worktree" --summary "worktree probe" >/dev/null 2>&1 || bad "v43 probe: fresh install failed"
 ( cd "$W" && git init -q -b main . 2>/dev/null || git init -q . ; git config user.email smoke@example.invalid && git config user.name smoke \
     && git add -A >/dev/null 2>&1 && git commit -qm "worktree baseline" >/dev/null 2>&1 ) || bad "v43 probe: no baseline commit"
 # (0) creating and selecting a phase says nothing about worktrees: the default stream is the default.
@@ -1498,7 +1500,7 @@ echo "== Test 14: P28 nested engine -- workflow/.agentic-nested.json: host ancho
 # a nested session does. The at-root invariant is every earlier test passing unchanged.
 newtmp NS
 NH="$NS/host"
-sh "$BOOT" "$NS/seed" --name "Nested seed" --summary "nested probe" >/dev/null 2>&1 || bad "nested probe: seed install failed"
+sh "$BOOT" "$NS/seed" --at-root --name "Nested seed" --summary "nested probe" >/dev/null 2>&1 || bad "nested probe: seed install failed"
 mkdir -p "$NH/src" "$NH/workflow/scripts" "$NH/workflow/works" \
   && ( cd "$NH" && { git init -q -b main . 2>/dev/null || git init -q .; } && git config user.email smoke@example.invalid \
        && git config user.name smoke && printf 'print("host")\n' > src/app.py && git add -A >/dev/null 2>&1 \
@@ -1637,6 +1639,55 @@ IE="$NI/ign-claude"; ign_host "$IE" '!CLAUDE*.md\n'; ie_before=$(ign_sig "$IE");
 IA="$NI/ign-allow"; ign_host "$IA" '*\n!*/\n!*.md\n'; ia_before=$(ign_sig "$IA"); out=$(sh "$BOOT" "$IA" --nested 2>&1); rc=$?
 [ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -qF "  - workflow/: re-included by .gitignore:2:!*/" && [ ! -e "$IA/workflow" ] && [ "$(ign_sig "$IA")" = "$ia_before" ] \
   && ok "an allowlist host (* / !*/ / !*.md) is refused, naming workflow/ and the deciding line, with nothing written" || bad "an allowlist host was not refused cleanly (rc=$rc) -- $out"
+
+# ---------------------------------------------------------------------------
+echo "== Test 16: P29 nested by default -- a bare install nests (a new dir is git init-ed with a confirmed convention), a bare --update detects either layout, a bare install over an at-root workspace refuses, and contradictory flags refuse =="
+newtmp ND
+tree_sig() { ( cd "$1" && find . -path ./.git/objects -prune -o -print | LC_ALL=C sort; find . -path ./.git -prune -o -type f -print0 | LC_ALL=C sort -z | xargs -0 cat ) | sha_stdin; }
+# (a) a new, non-existent dir: git init-ed as the host, nested install, convention confirmed, status clean, no UNCONFIRMED.
+NA="$ND/new/proj"; out=$(sh "$BOOT" "$NA" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && [ -d "$NA/.git" ] && [ -d "$NA/workflow/.git" ] && [ ! -e "$NA/CLAUDE.md" ] \
+    && python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["commit_convention"]; assert c["confirmed"] is True and c["coauthor_trailers"] == "allowed" and c["inferred"] is None and c["text"], c' "$NA/workflow/.agentic-nested.json" \
+    && [ -z "$(cd "$NA" && git status --porcelain --untracked-files=all)" ] \
+    && nxa=$(cd "$NA" && python3 workflow/scripts/workflow.py next 2>&1) && ! printf '%s\n' "$nxa" | grep -q "UNCONFIRMED"; then
+  ok "a bare install into a new dir git-inits it and nests: workflow/.git, a confirmed convention (trailers allowed), a clean host status, next without UNCONFIRMED"
+else bad "a bare install into a new dir did not init + nest cleanly (rc=$rc) -- $out $(cd "$NA" 2>/dev/null && git status --porcelain --untracked-files=all)"; fi
+# (b) an existing git repo with one commit: nested, and its status stays clean.
+NB="$ND/repo"; mkdir -p "$NB" && ( cd "$NB" && { git init -q -b main . 2>/dev/null || git init -q .; } && git config user.email smoke@example.invalid \
+  && git config user.name smoke && printf 'print("app")\n' > app.py && git add -A && git commit -qm "feat: app" ) >/dev/null 2>&1 || bad "P29 probe: could not build the repo fixture"
+nb_head=$(cd "$NB" && git rev-parse HEAD); out=$(sh "$BOOT" "$NB" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ -f "$NB/workflow/.agentic-nested.json" ] && [ ! -e "$NB/CLAUDE.md" ] && [ ! -e "$NB/scripts" ] \
+  && [ -z "$(cd "$NB" && git status --porcelain --untracked-files=all)" ] && [ "$(cd "$NB" && git rev-parse HEAD)" = "$nb_head" ] \
+  && ok "a bare install into an existing git repo installs nested and leaves its status and HEAD unchanged" || bad "a bare install into a git repo did not nest cleanly (rc=$rc) -- $out"
+# (c) a bare --update on that nested host detects it; --update --nested still works.
+out=$(sh "$BOOT" "$NB" --update 2>&1); rc=$?; out2=$(sh "$BOOT" "$NB" --update --nested 2>&1); rc2=$?
+[ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q "^Update complete (--update) at .* (nested, detected)$" && [ "$rc2" -eq 0 ] \
+  && [ ! -e "$NB/workflow/workflow" ] && [ -z "$(cd "$NB" && git status --porcelain --untracked-files=all)" ] \
+  && ok "a bare --update refreshes the nested install and says so (nested, detected); --update --nested still works" || bad "bare --update on a nested host failed (rc=$rc/$rc2) -- $out $out2"
+# (d) a bare --update on an at-root install stays at-root and refreshes its machinery.
+NR="$ND/atroot"; sh "$BOOT" "$NR" --at-root --name "At root" --summary "at-root probe" >/dev/null 2>&1 || bad "P29 probe: --at-root install failed"
+printf 'stale\n' >> "$NR/.claude/skills/explain/SKILL.md"; out=$(sh "$BOOT" "$NR" --update 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ ! -e "$NR/workflow" ] && printf '%s\n' "$out" | grep -q "^Update complete (--update) at " && ! printf '%s\n' "$out" | grep -q "nested" \
+  && diff -q "$REPO_ROOT/.claude/skills/explain/SKILL.md" "$NR/.claude/skills/explain/SKILL.md" >/dev/null \
+  && ok "a bare --update on an at-root install stays at-root (no workflow/) and refreshes its machinery" || bad "bare --update on an at-root install misrouted (rc=$rc) -- $out"
+# (e) a bare install over that at-root workspace refuses and writes nothing.
+nr_before=$(tree_sig "$NR"); out=$(sh "$BOOT" "$NR" 2>&1); rc=$?
+[ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -q "already holds an at-root agentic workspace: use --update" && [ "$(tree_sig "$NR")" = "$nr_before" ] \
+  && [ ! -e "$NR/workflow" ] && [ ! -e "$NR/.git" ] \
+  && ok "a bare install over an at-root workspace exits 1 pointing to --update, the tree unchanged" || bad "a bare install over an at-root workspace was not refused cleanly (rc=$rc) -- $out"
+# (f) contradictory flags, and a non-empty non-git dir, each exit 1.
+nb_sig=$(tree_sig "$NB"); out=$(sh "$BOOT" "$NB" --update --at-root 2>&1); rc=$?
+[ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -q -- "--at-root given, but .* holds a nested install" && [ "$(tree_sig "$NB")" = "$nb_sig" ] \
+  && ok "--update --at-root on a nested host exits 1 and writes nothing" || bad "--update --at-root on a nested host was not refused (rc=$rc) -- $out"
+out=$(sh "$BOOT" "$ND/flags" --at-root --nested 2>&1); rc=$?
+[ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -q -- "--at-root and --nested are mutually exclusive" && [ ! -e "$ND/flags" ] \
+  && ok "--at-root --nested exits 1" || bad "--at-root --nested was accepted (rc=$rc) -- $out"
+out=$(sh "$BOOT" "$ND/flags" --force-empty-ok 2>&1); rc=$?
+[ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -q -- "--force-empty-ok applies to the at-root install; add --at-root" && [ ! -e "$ND/flags" ] \
+  && ok "--force-empty-ok without --at-root exits 1" || bad "--force-empty-ok without --at-root was accepted (rc=$rc) -- $out"
+NN="$ND/plain"; mkdir -p "$NN" && printf 'notes\n' > "$NN/notes.txt"; out=$(sh "$BOOT" "$NN" 2>&1); rc=$?
+[ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -q "is not a git repo and is not empty: run git init there first" && [ ! -e "$NN/.git" ] && [ ! -e "$NN/workflow" ] \
+  && ok "a bare install into a non-empty non-git dir exits 1 and writes nothing (no .git, no workflow/)" || bad "a non-empty non-git dir was not refused cleanly (rc=$rc) -- $out"
 
 # ---------------------------------------------------------------------------
 echo

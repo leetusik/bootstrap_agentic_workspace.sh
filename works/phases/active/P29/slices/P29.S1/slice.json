@@ -3,12 +3,12 @@
   "phase_id": "P29",
   "name": "Installer: nested by default",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 1,
   "depends_on": [],
   "created_at": "2026-10-07T15:07:47+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-10-07T15:10:16+09:00",
+  "completed_at": "2026-10-07T15:22:53+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -18,7 +18,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "installer nests by default: git init for new/empty targets with confirmed convention, --at-root for the committed layout, --update detects layout; smoke 235/0",
   "validation": {
     "required": [],
     "last_run": null,

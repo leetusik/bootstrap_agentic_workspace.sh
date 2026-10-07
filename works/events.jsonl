@@ -734,3 +734,5 @@
 {"ts": "2026-10-07T15:07:47+09:00", "type": "slice_created", "phase": "P29", "slice": "P29.S2"}
 {"ts": "2026-10-07T15:09:03+09:00", "type": "slice_status_changed", "slice": "P29.DECOMP", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-10-07T15:09:03+09:00", "type": "acceptance_required", "phase": "P29"}
+{"ts": "2026-10-07T15:10:16+09:00", "type": "slice_status_changed", "slice": "P29.S1", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-10-07T15:22:53+09:00", "type": "slice_status_changed", "slice": "P29.S1", "old_status": "in_progress", "new_status": "done"}

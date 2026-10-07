@@ -6,18 +6,24 @@ usage() {
 Usage:
   bootstrap_agentic_workspace.sh [TARGET_DIR] [options]
 
+By default the install is private and nested: TARGET_DIR is a git repo's root
+(a new or empty dir is git init-ed as that host repo). The engine and its state
+go to <target>/workflow/, a nested git repo; skills, agents,
+.claude/settings.local.json and CLAUDE.local.md go to the host untracked, all
+hidden by the host's .git/info/exclude, so no tracked file changes.
+
 Options:
   --name NAME                 Optional project name override
   --summary TEXT              Optional one-sentence summary override
-  --force-empty-ok            Allow bootstrapping into a repo with extra non-managed files
-  --into-existing             Non-destructively retrofit into an existing repo (see docs/retrofit-guide.md)
-  --update                    Update an already-installed workspace's machinery to this version
+  --at-root                   Install the committed, team-visible layout instead, into a
+                              fresh dir (CLAUDE.md, .claude/, scripts/, works/, docs/ at its root)
+  --force-empty-ok            With --at-root: allow a target with extra non-managed files
+  --into-existing             At-root retrofit into an existing repo, non-destructively
+                              (see docs/retrofit-guide.md)
+  --update                    Update an installed workspace's machinery to this version; the
+                              layout (nested or at-root) is detected from what is installed
   --dry-run                   With --update, preview the change-list without writing anything
-  --nested                    Private install into a host repo you don't own: TARGET_DIR is the
-                              host repo's root; the engine and state go to <host>/workflow/ (a
-                              nested git repo), skills and agents to the host's .claude/ untracked,
-                              all hidden by the host's .git/info/exclude (no tracked file changes).
-                              Combine with --update (and --dry-run) to refresh a nested install
+  --nested                    Accepted and redundant: the nested layout is the default
   -h, --help                  Show this help
 
 TARGET_DIR defaults to the current directory.
@@ -25,7 +31,8 @@ TARGET_DIR defaults to the current directory.
 This bootstrap creates a compact, scalable agentic workspace tuned for
 Claude Code:
 
-- CLAUDE.md is the compact routing contract every agent reads.
+- CLAUDE.md is the compact routing contract every agent reads (nested:
+  workflow/CLAUDE.workspace.md, imported by the host's CLAUDE.local.md).
 - Operations ship as Agent Skills in .claude/skills/ (Claude Code: /slash +
   auto-invocation).
 - works/backlog.md and works/deferred.md are generated dashboards, never the
@@ -37,7 +44,8 @@ Claude Code:
 - Docs are versioned fullstack categories: agents create
   docs/versions/<doc>/vNNNN_*.md and regenerate docs/current/*.md.
 
-Requires python3 (>= 3.8). Safe to re-run only into a fresh workspace.
+Requires python3 (>= 3.8), and git for the default nested install. A fresh
+install never overwrites an installed workspace: refresh one with --update.
 USAGE
 }
 
@@ -52,6 +60,7 @@ into_existing=0
 update=0
 dry_run=0
 nested=0
+at_root=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -65,6 +74,7 @@ while [ $# -gt 0 ]; do
     --update) update=1; shift ;;
     --dry-run) dry_run=1; shift ;;
     --nested) nested=1; shift ;;
+    --at-root) at_root=1; shift ;;
     --) shift; while [ $# -gt 0 ]; do [ -z "$target_dir" ] || die "only one TARGET_DIR may be provided"; target_dir=$1; shift; done ;;
     -*) die "unknown option $1" ;;
     *) [ -z "$target_dir" ] || die "only one TARGET_DIR may be provided"; target_dir=$1; shift ;;
@@ -75,8 +85,9 @@ done
 [ -e "$target_dir" ] && [ ! -d "$target_dir" ] && die "target exists but is not a directory: $target_dir"
 [ "$update" = 1 ] && [ "$into_existing" = 1 ] && die "--update and --into-existing are mutually exclusive"
 [ "$dry_run" = 1 ] && [ "$update" = 0 ] && die "--dry-run is only valid with --update"
+[ "$at_root" = 1 ] && [ "$nested" = 1 ] && die "--at-root and --nested are mutually exclusive"
 [ "$nested" = 1 ] && [ "$into_existing" = 1 ] && die "--nested and --into-existing are mutually exclusive (--nested installs into a host repo without changing any tracked file)"
-[ "$nested" = 1 ] && [ "$force_empty_ok" = 1 ] && die "--force-empty-ok does not apply to --nested (the install goes to <host>/workflow/, which must be absent or empty)"
+[ "$force_empty_ok" = 1 ] && [ "$at_root" = 0 ] && [ "$into_existing" = 0 ] && die "--force-empty-ok applies to the at-root install; add --at-root"
 
 # Fixed non-interactive defaults.
 [ -n "$project_name" ] || project_name="New Project"
@@ -92,6 +103,7 @@ export INTO_EXISTING="$into_existing"
 export UPDATE="$update"
 export DRY_RUN="$dry_run"
 export NESTED="$nested"
+export AT_ROOT="$at_root"
 
 python3 - <<'INSTALLER_PY'
 # -*- coding: utf-8 -*-
@@ -139,18 +151,95 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # repos — which have no installer/ — still get it stamped into their marker below.
 WORKSPACE_VERSION = 49
 ROOT = TARGET.resolve()
-# Nested personal install (--nested, P28): TARGET is a HOST repo the operator does not own. The
-# engine and all workflow state go to the nested git repo <host>/workflow (ROOT, so every ROOT-
-# relative write below lands there); skills and agents go to the host's .claude/ as untracked
-# files, beside .claude/settings.local.json and CLAUDE.local.md, all hidden by the host's
-# info/exclude. Nothing tracked in the host changes. Every nested branch is gated on NESTED, so
-# the at-root installs (fresh, --into-existing, --update) are byte-for-byte unchanged.
-NESTED = os.environ.get("NESTED") == "1"
-HOST = None
-if NESTED:
-    HOST, ROOT = ROOT, ROOT / "workflow"
+# Nested personal install (P28; the default layout since P29): TARGET is a HOST git repo -- one the
+# operator may not own, or a new/empty dir this run `git init`s. The engine and all workflow state go
+# to the nested git repo <host>/workflow (ROOT, so every ROOT-relative write below lands there);
+# skills and agents go to the host's .claude/ as untracked files, beside .claude/settings.local.json
+# and CLAUDE.local.md, all hidden by the host's info/exclude. Nothing tracked in the host changes.
+# Every nested branch is gated on NESTED, so the at-root installs (--at-root, --into-existing, and
+# --update of an at-root workspace) are byte-for-byte unchanged. resolve_layout() decides NESTED.
 NESTED_DIR = "workflow"
 NESTED_MARKER = ".agentic-nested.json"   # == scripts/workflow.py NESTED_MARKER (the engine owns its schema)
+EXPLICIT_NESTED = os.environ.get("NESTED") == "1"   # --nested: accepted, redundant (must match on --update)
+AT_ROOT_FLAG = os.environ.get("AT_ROOT") == "1"     # --at-root: the committed, team-visible layout
+# A fresh nested install into a new or empty, non-git target runs `git init` there (P29). Until the
+# first write, a refusal undoes that init (_nested_undo_init); from the first write on it is kept.
+HOST_INITED = False
+_HOST_INIT_UNDO = None   # (the .git this run created, [dirs this run created, deepest first]) or None
+# The commit convention recorded for a host this installer just `git init`ed: it has no history to
+# infer from and is the operator's own repo, so it takes this workspace's own Commit Convention.
+NESTED_INIT_CONVENTION = {"inferred": None, "confirmed": True,
+                          "text": "type(scope): summary -- imperative, no trailing period",
+                          "coauthor_trailers": "allowed"}
+
+
+def _nested_undo_init() -> None:
+    """Remove what this run's `git init` of a new or empty host created -- its .git, then each
+    directory it created if it is empty again -- and nothing else. A no-op once writing started."""
+    global _HOST_INIT_UNDO
+    undo, _HOST_INIT_UNDO = _HOST_INIT_UNDO, None
+    if not undo:
+        return
+    git_dir, created = undo
+    shutil.rmtree(git_dir, ignore_errors=True)
+    for d in created:
+        try:
+            d.rmdir()
+        except OSError:
+            pass
+
+
+def _nested_refuse(*lines: str) -> None:
+    _nested_undo_init()   # every pre-write refusal leaves an initialised host as it found it
+    for i, line in enumerate(lines):
+        print(("Error: " if i == 0 else "") + line, file=sys.stderr)
+    sys.exit(1)
+
+
+def _at_root_workspace_in(t: Path) -> bool:
+    """An at-root agentic workspace lives at `t`: the engine plus works/ state (the --update guard's test)."""
+    works_present = (t / "works/state.json").exists() or any((t / "works/phases/active").glob("*/phase.json"))
+    return (t / "scripts/workflow.py").exists() and works_present
+
+
+def resolve_layout() -> bool:
+    """True for the nested layout (P29: the default), False for at-root. --into-existing and
+    --at-root are at-root. --update detects the installed layout at the target: the nested marker
+    (workflow/.agentic-nested.json) or an at-root workspace (scripts/workflow.py + works/); both is
+    ambiguous unless a flag picks one, a flag that contradicts the one found refuses, and neither
+    falls to at-root, whose "no agentic workspace found here" error then fires. Anything else -- a
+    fresh install, with or without --nested -- is nested. Refuses (exit 1, nothing written)."""
+    if RETROFIT:
+        return False
+    t = ROOT
+    if os.path.lexists(t / NESTED_MARKER) and (UPDATE or not AT_ROOT_FLAG):
+        # The target is a nested install's own workflow/: refreshing it at-root would write
+        # CLAUDE.md and .claude/ into workflow/, and a fresh install would nest a second one inside.
+        _nested_refuse(f"{t} is the {NESTED_DIR}/ directory of a nested install (it holds {NESTED_MARKER}): "
+                       f"run the installer on the host repo's root, {t.parent}, instead (nothing written).")
+    if not UPDATE:
+        return not AT_ROOT_FLAG
+    marker = t / NESTED_DIR / NESTED_MARKER
+    nested_here, root_here = os.path.lexists(marker), _at_root_workspace_in(t)
+    if nested_here and root_here:
+        if EXPLICIT_NESTED or AT_ROOT_FLAG:
+            return EXPLICIT_NESTED
+        _nested_refuse(f"{t} holds both a nested install ({marker}) and an at-root workspace ({t / 'scripts/workflow.py'} "
+                       "plus works/): the layout to update is ambiguous.",
+                       "Re-run with --update --nested or --update --at-root to say which one to refresh (nothing written).")
+    if nested_here:
+        if AT_ROOT_FLAG:
+            _nested_refuse(f"--at-root given, but {t} holds a nested install ({NESTED_DIR}/{NESTED_MARKER}); drop the flag.")
+        return True
+    if root_here and EXPLICIT_NESTED:
+        _nested_refuse(f"--nested given, but {t} holds an at-root workspace (scripts/workflow.py plus works/); drop the flag.")
+    return False
+
+
+NESTED = resolve_layout()
+HOST = None
+if NESTED:
+    HOST, ROOT = ROOT, ROOT / NESTED_DIR
 NESTED_CONTRACT = "CLAUDE.workspace.md"  # never CLAUDE.md under workflow/: Claude Code would auto-load a second copy
 NESTED_RENAME_PREFIX = "wf-"
 NESTED_LOCAL_BEGIN, NESTED_LOCAL_END = "<!-- BEGIN agentic-workspace (nested) -->", "<!-- END agentic-workspace (nested) -->"
@@ -549,7 +638,7 @@ def write_json(path, data) -> None:
     write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
 
 
-# ---- Nested personal install (--nested): rewrite, clash map, host-side plan ------------------
+# ---- Nested personal install (the default layout): rewrite, clash map, host-side plan ---------
 # Everything here runs only when NESTED. The host-side files (skills, agents, settings.local.json,
 # CLAUDE.local.md, the info/exclude block) and the rewritten engine-side texts (the contract as
 # workflow/CLAUDE.workspace.md, works/templates/*) are rendered IN MEMORY by nested_plan() and
@@ -620,42 +709,106 @@ def nested_rewrite(text: str, renames: dict) -> str:
     return text
 
 
-def _nested_refuse(*lines: str) -> None:
-    for i, line in enumerate(lines):
-        print(("Error: " if i == 0 else "") + line, file=sys.stderr)
-    sys.exit(1)
-
-
 def _host_git(*args: str):
     """(returncode, stdout) of git run in the host repo -- read-only queries only."""
     proc = subprocess.run(["git", "-C", str(HOST), *args], capture_output=True)
     return proc.returncode, proc.stdout.decode("utf-8", errors="replace")
 
 
+def _work_tree_top(path: Path):
+    """The root of the git work tree `path` is inside, or None when it is in none."""
+    proc = subprocess.run(["git", "-C", str(path), "rev-parse", "--is-inside-work-tree", "--show-toplevel"], capture_output=True)
+    lines = proc.stdout.decode("utf-8", errors="replace").splitlines()
+    if proc.returncode != 0 or len(lines) < 2 or lines[0].strip() != "true" or not lines[1].strip():
+        return None
+    return Path(lines[1].strip()).resolve()
+
+
+def _host_empty_or_absent() -> bool:
+    """HOST is absent, or a directory with no entry outside EMPTY_OK_ALLOWLIST and no .git."""
+    if not os.path.lexists(HOST):
+        return True
+    return (HOST.is_dir() and not os.path.lexists(HOST / ".git")
+            and not any(e.name not in EMPTY_OK_ALLOWLIST for e in HOST.iterdir()))
+
+
+def _nested_refuse_inside(top) -> None:
+    """HOST sits below the root of the work tree `top`: today's refusal, naming --at-root too."""
+    _nested_refuse(f"the nested install goes at a git repo's root, and {HOST} is inside the work tree of {top}: "
+                   f"re-run with {top} as TARGET_DIR, or install the committed at-root layout with --at-root.",
+                   *([f"To make {HOST} a repo of its own instead, run git init there first (then re-run)."] if _host_empty_or_absent() else []))
+
+
+def nested_init_host() -> None:
+    """A fresh nested install into a target that is absent, or a directory that is empty in the
+    EMPTY_OK_ALLOWLIST sense and in no git work tree: `mkdir -p` + `git init -q` it as the host
+    (P29), recording what to undo should a refusal come before the first write. Any other target
+    is left to nested_preflight's checks; an absent one inside a work tree refuses as a directory
+    there would."""
+    global HOST_INITED, _HOST_INIT_UNDO
+    created = []
+    if os.path.lexists(HOST):
+        if not _host_empty_or_absent() or _work_tree_top(HOST) is not None:
+            return
+    else:
+        anc = HOST
+        while not os.path.lexists(anc):
+            created.append(anc)   # deepest first: the undo order
+            anc = anc.parent
+        if not anc.is_dir():
+            _nested_refuse(f"cannot create {HOST}: {anc} exists and is not a directory.")
+        top = _work_tree_top(anc)
+        if top is not None:
+            _nested_refuse_inside(top)
+    try:
+        HOST.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        _nested_refuse(f"cannot create {HOST} ({exc}); nothing written.")
+    _HOST_INIT_UNDO = (HOST / ".git", created)
+    HOST_INITED = True
+    proc = subprocess.run(["git", "init", "-q", str(HOST)], capture_output=True)
+    if proc.returncode != 0:
+        _nested_refuse(f"git init in {HOST} failed (exit {proc.returncode}: {proc.stderr.decode('utf-8', 'replace').strip()}); nothing written.")
+
+
 def nested_preflight() -> None:
     """Refuse (exit 1, nothing written) unless HOST is the root of a git work tree whose workflow/ is
-    ours to use; a fresh install over an existing nested install is an idempotent exit 0."""
+    ours to use -- a fresh install first `git init`s a new or empty host (nested_init_host) -- and,
+    on a fresh install, unless the target holds no at-root workspace already. A fresh install over an
+    existing nested install is an idempotent exit 0."""
+    if not UPDATE and _at_root_workspace_in(HOST):
+        _nested_refuse(f"{HOST} already holds an at-root agentic workspace: use --update to refresh it "
+                       "(a fresh install would put a second, nested one beside it).")
     if shutil.which("git") is None:
-        _nested_refuse("--nested needs git on PATH (the host is a git repo, and workflow/ becomes a nested one).")
-    if not HOST.is_dir():
-        _nested_refuse(f"--nested installs into an existing host git repo; {TARGET} is not a directory.")
-    rc, out = _host_git("rev-parse", "--is-inside-work-tree")
-    if rc != 0 or out.strip() != "true":
-        _nested_refuse(f"--nested needs TARGET_DIR to be the root of a git work tree (the host repo); {HOST} is not inside one.")
-    rc, out = _host_git("rev-parse", "--show-toplevel")
-    top = Path(out.strip()).resolve() if rc == 0 and out.strip() else None
+        _nested_refuse("the default (nested) install needs git on PATH (the host is a git repo, and workflow/ becomes a nested one): "
+                       + ("install git, then re-run." if UPDATE else "install git, or use --at-root."))
+    if os.path.lexists(HOST) and not HOST.is_dir():
+        _nested_refuse(f"{TARGET} exists and is not a directory.")
+    if not UPDATE:
+        nested_init_host()
+    top = _work_tree_top(HOST)
+    if top is None:
+        if UPDATE:
+            _nested_refuse(f"a nested install's host must be the root of a git work tree, and {HOST} is not inside one (nothing written).")
+        if os.path.lexists(HOST / ".git"):
+            _nested_refuse(f"{HOST}/.git exists, but git does not read {HOST} as a work tree: repair the repo (then re-run), "
+                           "or install the committed at-root layout with --at-root")
+        _nested_refuse(f"{HOST} is not a git repo and is not empty: run git init there first (then re-run), "
+                       "or install the committed at-root layout with --at-root")
     if top != HOST:
-        _nested_refuse(f"--nested installs at the host repo's root: re-run with {top} as TARGET_DIR.")
+        if UPDATE:
+            _nested_refuse(f"a nested install's host must be the root of a git work tree, and {HOST} is inside the work tree of {top} (nothing written).")
+        _nested_refuse_inside(top)
     rc, out = _host_git("ls-files", "--", NESTED_DIR)
     if out.strip():
         _nested_refuse(f"the host repo tracks a path named {NESTED_DIR}: a nested install needs <host>/{NESTED_DIR}/ for itself (nothing written).")
     if UPDATE:
         if not ((ROOT / NESTED_MARKER).is_file() and (ROOT / "scripts/workflow.py").is_file()):
-            _nested_refuse(f"no nested agentic workspace found here to update (needs {NESTED_DIR}/{NESTED_MARKER} and {NESTED_DIR}/scripts/workflow.py).",
-                           "Install it first with --nested (without --update).")
+            _nested_refuse(f"the nested install here is incomplete (an update needs {NESTED_DIR}/{NESTED_MARKER} and {NESTED_DIR}/scripts/workflow.py).",
+                           f"Restore them from the nested repo's own history (git -C {NESTED_DIR} status), then re-run (nothing written).")
         return
     if os.path.lexists(ROOT / NESTED_MARKER):
-        print(f"This host already has a nested agentic workspace ({NESTED_DIR}/{NESTED_MARKER}): already installed -- use --update --nested to refresh it.")
+        print(f"This host already has a nested agentic workspace ({NESTED_DIR}/{NESTED_MARKER}): already installed -- use --update to refresh it.")
         sys.exit(0)
     if os.path.lexists(ROOT) and not ROOT.is_dir():
         _nested_refuse(f"<host>/{NESTED_DIR} exists and is not a directory; a nested install needs it absent or empty.")
@@ -1054,10 +1207,16 @@ def nested_plan() -> dict:
         _nested_refuse(f"{exclude_path} cannot take the managed block ({exc}); fix it, then re-run (nothing written).")
 
     # The marker, to the engine's schema 1 (+ `installed`). --update merges: a confirmed convention
-    # and the existing renames are kept; an unconfirmed convention is re-inferred.
-    inferred = nested_infer_convention()
+    # and the existing renames are kept; an unconfirmed convention is re-inferred. A host this run
+    # `git init`ed (P29) has no history to infer from and is the operator's own: it starts confirmed
+    # on this workspace's own Commit Convention (NESTED_INIT_CONVENTION).
     old_conv = old.get("commit_convention") if isinstance(old.get("commit_convention"), dict) else {}
-    conv = old_conv if old_conv.get("confirmed") is True else {"inferred": inferred, "confirmed": False, "text": None, "coauthor_trailers": "unknown"}
+    if HOST_INITED:
+        conv = dict(NESTED_INIT_CONVENTION)
+    elif old_conv.get("confirmed") is True:
+        conv = old_conv
+    else:
+        conv = {"inferred": nested_infer_convention(), "confirmed": False, "text": None, "coauthor_trailers": "unknown"}
     marker = dict(old)
     marker.update({"schema": 1, "host_root": "..", "commit_convention": conv, "renames": renames,
                    "installed": {k: sorted(installed[k]) for k in NESTED_KINDS}})
@@ -1115,7 +1274,7 @@ def _nested_renames_line(plan: dict) -> str:
 def print_nested_banner(plan: dict) -> None:
     cmd = f"python3 {NESTED_DIR}/scripts/workflow.py"
     if DRY_RUN or UPDATE:
-        print(f"{'DRY RUN (--update --nested --dry-run)' if DRY_RUN else 'Update complete (--update --nested)'} at {HOST}"
+        print(f"{'DRY RUN (--update --dry-run)' if DRY_RUN else 'Update complete (--update)'} at {HOST} (nested, detected)"
               f"{' -- nothing written.' if DRY_RUN else ''}")
         print(f"  engine side ({NESTED_DIR}/):")
         print_change_list()
@@ -1130,7 +1289,9 @@ def print_nested_banner(plan: dict) -> None:
         else:
             print("  checked: git will ignore every host-side file once written")
     else:
-        print(f"Installed the agentic workspace privately (--nested) into the host repo at {HOST}")
+        print(f"Installed the agentic workspace privately into the host repo at {HOST}")
+        if HOST_INITED:
+            print("  host: a new git repo -- the installer ran git init there, and it has no commits yet")
         print(f"  engine + state: {NESTED_DIR}/ (a nested git repo; the contract is {NESTED_DIR}/{NESTED_CONTRACT})")
         print(f"  Claude Code: {len(plan['installed']['skills'])} skills in .claude/skills/ (each dir hides itself with a .gitignore of *), "
               f"{len(NESTED_AGENTS)} agents in .claude/agents/, .claude/settings.local.json, and CLAUDE.local.md importing the contract -- all untracked")
@@ -1140,14 +1301,19 @@ def print_nested_banner(plan: dict) -> None:
     for name in plan["shadowed"]:
         print(f"  warning: your personal skill ~/.claude/skills/{name} shadows the workspace's /{name} in this repo (rename or remove one)")
     conv = plan["convention"]
-    if conv.get("confirmed") is True:
+    if HOST_INITED:
+        print(f"  host commit convention: confirmed for the new repo -- this workspace's own ({conv.get('text')}), coauthor_trailers={conv.get('coauthor_trailers')}")
+    elif conv.get("confirmed") is True:
         print(f"  host commit convention: confirmed (coauthor_trailers={conv.get('coauthor_trailers')})")
     else:
         print(f"  host commit convention: UNCONFIRMED (inferred: {conv.get('inferred') or 'nothing -- the host has no history yet'})")
     if DRY_RUN:
         print("Re-run without --dry-run to apply.")
         return
-    print("The installer made no git commits, and nothing tracked in the host changed.")
+    if HOST_INITED:
+        print("The installer made no git commits: the host has no commits yet, and the workspace's files in it stay untracked.")
+    else:
+        print("The installer made no git commits, and nothing tracked in the host changed.")
     print(f"Next (start Claude Code at the host root, {HOST} -- never inside {NESTED_DIR}/):")
     if UPDATE:
         print(f"  1. Review and commit the refresh in the nested repo: git -C {NESTED_DIR} status, then git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: update agentic workspace (nested)\"")
@@ -1157,18 +1323,27 @@ def print_nested_banner(plan: dict) -> None:
         print(f"  2. Start Claude Code at the host root and accept the trust dialog on the first run, then: /{plan['renames']['skills'].get('create-phase', 'create-phase')} for the first phase ({cmd} next shows the state)")
     if conv.get("confirmed") is not True:
         print(f"  3. Confirm the commit convention before the first product commit: {cmd} nested-convention (then --confirm --text \"<convention>\" --trailers allowed|forbidden)")
+    elif HOST_INITED:
+        print(f"  The new repo's commit convention is recorded; {cmd} nested-convention shows it (--confirm --text \"...\" --trailers allowed|forbidden changes it).")
     else:
         print(f"  The host's commit convention is recorded; {cmd} nested-convention shows it.")
-    print(f"  Any remote for {NESTED_DIR}/ stays inside your company's org: its phase and slice files describe the company's code.")
+    if not HOST_INITED:
+        print(f"  Any remote for {NESTED_DIR}/ stays inside your company's org: its phase and slice files describe the company's code.")
 
 
 # ---- Guards -----------------------------------------------------------------
 NESTED_PLAN = None
 if NESTED:
-    # Before anything is written, workflow/ included: the host checks, then the whole host-side
-    # render with its post-check and the tracked-target refusal.
-    nested_preflight()
-    NESTED_PLAN = nested_plan()
+    # Before anything is written, workflow/ included: the host checks (a fresh install into a new or
+    # empty target `git init`s it first), then the whole host-side render with its post-check, the
+    # tracked-target refusal and the ignore preflight. A refusal or a crash up to here undoes that init.
+    try:
+        nested_preflight()
+        NESTED_PLAN = nested_plan()
+    except BaseException:
+        _nested_undo_init()
+        raise
+    _HOST_INIT_UNDO = None   # the first write is next: from here on the initialised host is kept
 ROOT.mkdir(parents=True, exist_ok=True)
 for rel in MANAGED_DIRS:
     p = ROOT / rel
@@ -1182,9 +1357,8 @@ if UPDATE:
     )
     if not NESTED and not ((ROOT / "scripts/workflow.py").exists() and works_present):
         print("Error: no agentic workspace found here to update.", file=sys.stderr)
-        if (ROOT / NESTED_DIR / NESTED_MARKER).exists():
-            print(f"This is a host repo with a nested personal install in {NESTED_DIR}/: re-run with --update --nested.", file=sys.stderr)
-        print("Install fresh into an empty dir, or adopt an existing repo with --into-existing.", file=sys.stderr)
+        print("A new install is just: sh bootstrap_agentic_workspace.sh <dir> (the private nested layout, the default), "
+              "or --at-root / --into-existing for the committed at-root layout.", file=sys.stderr)
         sys.exit(1)
     # Rebuild docs only when THIS repo uses the workspace's OWN docs system —
     # index.json plus our versioned doc-type dirs. A repo adopted over its own
