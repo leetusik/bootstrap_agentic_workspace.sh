@@ -4,7 +4,7 @@
 
 ## Summary
 
-- Open: `29`
+- Open: `30`
 - Promoted: `0`
 - Dropped: `11`
 
@@ -38,6 +38,7 @@
 | `D38` | `deferred` | Engine texts that skip a clash rename or the host prefix | P28.REVIEW | The next nested engine change | `works/deferred/open/D38` |
 | `D39` | `deferred` | A private-install route for a host whose .gitignore refuses --nested | P28.REVIEW | The real company repo refuses the nested install | `works/deferred/open/D39` |
 | `D40` | `deferred` | Nested validate/next re-checks the ignore guarantee after install | P28.REVIEW | The next nested engine change, or an operator report | `works/deferred/open/D40` |
+| `D41` | `deferred` | Nested install wires a host's AGENTS.md and .agents/skills into Claude Code | operator | The next nested-installer change, or a second host that uses AGENTS.md | `works/deferred/open/D41` |
 | `D5` | `deferred` | Confirm: ## Design Style is appended by create-phase only when visual, not scaffolded into every intent.md | P17.REVIEW | Before the first design-bearing phase runs under v34, or the next time works/templates/intent.md is edited. | `works/deferred/open/D5` |
 | `D6` | `deferred` | Widen installer/main.py flag_stale_skills() ownership heuristic beyond the disable-model-invocation marker | P17.REVIEW | If a model-invocable skill is retired upstream, or when flag_stale_skills() is next touched. | `works/deferred/open/D6` |
 | `D7` | `deferred` | Qualify review-phase gate stage 4 for a phase whose only surface is a throwaway mockup | P17.REVIEW | Before the first design-only or mockup-shipping phase reaches its review. | `works/deferred/open/D7` |

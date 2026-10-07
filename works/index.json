@@ -52,8 +52,8 @@
       "consolidation": "pending"
     }
   ],
-  "deferred_open_count": 29,
+  "deferred_open_count": 30,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 11,
-  "last_rebuilt_at": "2026-10-07T13:57:09+09:00"
+  "last_rebuilt_at": "2026-10-07T14:19:14+09:00"
 }

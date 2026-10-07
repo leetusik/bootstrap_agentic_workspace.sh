@@ -727,3 +727,4 @@
 {"ts": "2026-10-07T13:57:09+09:00", "type": "slice_status_changed", "slice": "P28.REVIEW", "old_status": "changes_requested", "new_status": "done"}
 {"ts": "2026-10-07T13:57:09+09:00", "type": "phase_reviewed", "phase": "P28", "verdict": "pass", "reviewer": "slice-executor-high"}
 {"ts": "2026-10-07T13:57:09+09:00", "type": "phase_consolidation_owed", "phase": "P28", "notes": 12}
+{"ts": "2026-10-07T14:19:14+09:00", "type": "deferred_created", "deferred": "D41", "source": "operator"}
