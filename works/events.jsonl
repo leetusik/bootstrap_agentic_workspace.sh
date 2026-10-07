@@ -795,3 +795,11 @@
 {"ts": "2026-10-07T17:11:21+09:00", "type": "slice_status_changed", "slice": "P31.S3", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-10-07T17:11:34+09:00", "type": "doc_version_created", "doc": "qa", "version": "v0013_p26-p30_smoke_baseline_239_design_and_nested-install_pins_fragile_installer_tokenizer", "source": "P26.REVIEW, P27.REVIEW, P28.REVIEW, P29.REVIEW, P30.REVIEW"}
 {"ts": "2026-10-07T17:15:42+09:00", "type": "slice_status_changed", "slice": "P31.S3", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-10-07T17:15:59+09:00", "type": "slice_status_changed", "slice": "P31.S4", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-10-07T17:16:15+09:00", "type": "doc_version_created", "doc": "decisions", "version": "v0043_p26-p30_repo-file_design_contract_per-phase_design_tool_nested_install_default_rotate_docs-phase_proposal", "source": "P26.REVIEW, P27.REVIEW, P28.REVIEW, P29.REVIEW, P30.REVIEW"}
+{"ts": "2026-10-07T17:23:23+09:00", "type": "slice_status_changed", "slice": "P31.S4", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-10-07T17:23:23+09:00", "type": "phase_consolidated", "phase": "P26"}
+{"ts": "2026-10-07T17:23:23+09:00", "type": "phase_consolidated", "phase": "P27"}
+{"ts": "2026-10-07T17:23:23+09:00", "type": "phase_consolidated", "phase": "P28"}
+{"ts": "2026-10-07T17:23:23+09:00", "type": "phase_consolidated", "phase": "P29"}
+{"ts": "2026-10-07T17:23:23+09:00", "type": "phase_consolidated", "phase": "P30"}

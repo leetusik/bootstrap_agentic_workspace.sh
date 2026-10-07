@@ -614,7 +614,7 @@
       ]
     },
     "decisions": {
-      "latest": "v0042_p21-p23_docs_phases_pay_the_doc_debt_explicit_staleness_and_the_12_kb_routing_contract",
+      "latest": "v0043_p26-p30_repo-file_design_contract_per-phase_design_tool_nested_install_default_rotate_docs-phase_proposal",
       "current_path": "docs/current/decisions.md",
       "versions": [
         {
@@ -955,9 +955,18 @@
           "source": "P21.REVIEW, P22.REVIEW, P23.REVIEW",
           "summary": "P21-P23: docs phases pay the doc debt, explicit staleness, and the 12 KB routing contract",
           "previous": "v0041_v43_put_the_phase_worktree_back_to_opt-in_the_default_stream_is_the_default_again"
+        },
+        {
+          "id": "v0043_p26-p30_repo-file_design_contract_per-phase_design_tool_nested_install_default_rotate_docs-phase_proposal",
+          "path": "docs/versions/decisions/v0043_p26-p30_repo-file_design_contract_per-phase_design_tool_nested_install_default_rotate_docs-phase_proposal.md",
+          "created_at": "2026-10-07T17:16:15+09:00",
+          "commit": "bb79aa8ff62bf427e55d44f76adbe0dbfe486d77",
+          "source": "P26.REVIEW, P27.REVIEW, P28.REVIEW, P29.REVIEW, P30.REVIEW",
+          "summary": "P26-P30 repo-file design contract, per-phase design tool, nested install default, rotate docs-phase proposal",
+          "previous": "v0042_p21-p23_docs_phases_pay_the_doc_debt_explicit_staleness_and_the_12_kb_routing_contract"
         }
       ]
     }
   },
-  "last_rebuilt_at": "2026-10-07T17:14:06+09:00"
+  "last_rebuilt_at": "2026-10-07T17:22:56+09:00"
 }
