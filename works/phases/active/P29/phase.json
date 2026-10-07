@@ -2,7 +2,7 @@
   "id": "P29",
   "name": "Nested install by default",
   "objective": "Make the nested personal install the installer's default layout everywhere (existing repos and fresh dirs, which get git init + nested workflow/); the at-root layout only on --at-root (or --into-existing); --update auto-detects the installed layout from its marker so /update-workspace needs no --nested; existing at-root installs keep updating at-root with no migration; ship as v50.",
-  "status": "planned",
+  "status": "pending",
   "order": 5,
   "created_at": "2026-10-07T15:04:33+09:00",
   "started_at": null,
@@ -15,8 +15,8 @@
   },
   "acceptance": {
     "required": true,
-    "walkthrough": null,
-    "requested_at": null,
+    "walkthrough": "Scratch walkthrough (~5 min, throwaway dir): B=<repo>/bootstrap_agentic_workspace.sh; T=$(mktemp -d); cd \"$T\". (1) sh \"$B\" new/proj -> installs privately, host git-inited, convention confirmed; in new/proj: ls -A shows .claude .git CLAUDE.local.md workflow, git status --porcelain --untracked-files=all is empty, python3 workflow/scripts/workflow.py next shows no UNCONFIRMED. (2) sh \"$B\" new/proj --update --dry-run and --update --nested --dry-run -> both \"(nested, detected)\". (3) sh \"$B\" ar --at-root -> committed layout, no workflow/; sh \"$B\" ar --update --dry-run stays at-root; bare sh \"$B\" ar -> refuses \"use --update\", exit 1. (4) Refusals writing nothing: sh \"$B\" x --force-empty-ok; a non-empty non-git dir; sh \"$B\" new/proj/sub/x (inside another repo). Decision D1 (operator question): a new dir inside another repo work tree is refused (recommended: keep; escape is git init <dir>) or auto-init? Frictions W1-W4 are filed as deferred jobs. Clear with: accept-gate P29 --clear.",
+    "requested_at": "2026-10-07T15:40:31+09:00",
     "cleared_at": null,
     "note": null
   },

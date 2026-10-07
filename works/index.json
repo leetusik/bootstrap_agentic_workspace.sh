@@ -55,7 +55,7 @@
       "id": "P29",
       "name": "Nested install by default",
       "objective": "Make the nested personal install the installer's default layout everywhere (existing repos and fresh dirs, which get git init + nested workflow/); the at-root layout only on --at-root (or --into-existing); --update auto-detects the installed layout from its marker so /update-workspace needs no --nested; existing at-root installs keep updating at-root with no migration; ship as v50.",
-      "status": "planned",
+      "status": "pending",
       "order": 5,
       "path": "works/phases/active/P29",
       "review_status": "pending",
@@ -64,8 +64,8 @@
       "done_slice_count": 3
     }
   ],
-  "deferred_open_count": 30,
+  "deferred_open_count": 34,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 11,
-  "last_rebuilt_at": "2026-10-07T15:29:27+09:00"
+  "last_rebuilt_at": "2026-10-07T15:40:31+09:00"
 }

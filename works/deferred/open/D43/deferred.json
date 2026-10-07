@@ -1,0 +1,11 @@
+{
+  "id": "D43",
+  "title": "--update --force-empty-ok gives circular advice on a nested install",
+  "status": "deferred",
+  "source": "P29.REVIEW",
+  "reason": "wrapper says 'add --at-root', which then refuses with 'drop the flag'; on --update it should say 'drop --force-empty-ok' (P29.REVIEW W1)",
+  "trigger": "next wrapper change",
+  "created_at": "2026-10-07T15:40:31+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

@@ -1,0 +1,11 @@
+{
+  "id": "D44",
+  "title": "Update banner of an installer-initialised host keeps the company-org remote line",
+  "status": "deferred",
+  "source": "P29.REVIEW",
+  "reason": "the update cannot tell the installer git-inited the host; record host_inited in the marker or reword the line (P29.REVIEW W2)",
+  "trigger": "next nested-banner change",
+  "created_at": "2026-10-07T15:40:31+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

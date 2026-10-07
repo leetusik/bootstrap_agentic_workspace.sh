@@ -1,0 +1,11 @@
+{
+  "id": "D45",
+  "title": "Engine comment still names --update --nested",
+  "status": "deferred",
+  "source": "P29.REVIEW",
+  "reason": "scripts/workflow.py line 32 comment mentions --update --nested; still true but dated since v50 (P29.REVIEW, outside boundary)",
+  "trigger": "next engine change",
+  "created_at": "2026-10-07T15:40:31+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

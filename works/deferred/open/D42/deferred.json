@@ -1,0 +1,11 @@
+{
+  "id": "D42",
+  "title": "A refused --update creates its missing target dir",
+  "status": "deferred",
+  "source": "P29.REVIEW",
+  "reason": "ROOT.mkdir runs before the 'no agentic workspace found' error, even on --dry-run; v49 at-root behaviour now also reached by a bare --update with no install and by --update --nested on a missing path (P29.REVIEW)",
+  "trigger": "next installer change or an operator report",
+  "created_at": "2026-10-07T15:40:31+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

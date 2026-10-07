@@ -480,7 +480,7 @@
       ]
     },
     "qa": {
-      "latest": "v0010_p21-p23_core-only_tests_and_the_smoke_baseline_at_180",
+      "latest": "v0011_p29_review_regression_checklist_gains_the_nested-default_--at-root_update-detection_and_bare-install-over-at-root_checks",
       "current_path": "docs/current/qa.md",
       "versions": [
         {
@@ -565,6 +565,15 @@
           "source": "P21.REVIEW, P22.REVIEW, P23.REVIEW",
           "summary": "P21-P23: core-only tests and the smoke baseline at 180",
           "previous": "v0009_v42_the_mockup_exemption_applies_only_to_rounds_where_the_operator_asked_for_a_mockup"
+        },
+        {
+          "id": "v0011_p29_review_regression_checklist_gains_the_nested-default_--at-root_update-detection_and_bare-install-over-at-root_checks",
+          "path": "docs/versions/qa/v0011_p29_review_regression_checklist_gains_the_nested-default_--at-root_update-detection_and_bare-install-over-at-root_checks.md",
+          "created_at": "2026-10-07T15:36:44+09:00",
+          "commit": "3dbe2d274c8ce1d3ba5a00f1182f78dc7b0b6b6b",
+          "source": "P29.REVIEW",
+          "summary": "P29 review: Regression Checklist gains the nested-default, --at-root, update-detection and bare-install-over-at-root checks",
+          "previous": "v0010_p21-p23_core-only_tests_and_the_smoke_baseline_at_180"
         }
       ]
     },
@@ -914,5 +923,5 @@
       ]
     }
   },
-  "last_rebuilt_at": "2026-09-30T02:51:57+09:00"
+  "last_rebuilt_at": "2026-10-07T15:36:57+09:00"
 }

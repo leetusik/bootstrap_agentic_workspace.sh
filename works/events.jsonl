@@ -738,3 +738,11 @@
 {"ts": "2026-10-07T15:22:53+09:00", "type": "slice_status_changed", "slice": "P29.S1", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-10-07T15:23:24+09:00", "type": "slice_status_changed", "slice": "P29.S2", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-10-07T15:29:27+09:00", "type": "slice_status_changed", "slice": "P29.S2", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-10-07T15:30:01+09:00", "type": "slice_status_changed", "slice": "P29.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-10-07T15:36:44+09:00", "type": "doc_version_created", "doc": "qa", "version": "v0011_p29_review_regression_checklist_gains_the_nested-default_--at-root_update-detection_and_bare-install-over-at-root_checks", "source": "P29.REVIEW"}
+{"ts": "2026-10-07T15:40:31+09:00", "type": "phase_status_changed", "phase": "P29", "old_status": "planned", "new_status": "pending"}
+{"ts": "2026-10-07T15:40:31+09:00", "type": "acceptance_opened", "phase": "P29"}
+{"ts": "2026-10-07T15:40:31+09:00", "type": "deferred_created", "deferred": "D42", "source": "P29.REVIEW"}
+{"ts": "2026-10-07T15:40:31+09:00", "type": "deferred_created", "deferred": "D43", "source": "P29.REVIEW"}
+{"ts": "2026-10-07T15:40:31+09:00", "type": "deferred_created", "deferred": "D44", "source": "P29.REVIEW"}
+{"ts": "2026-10-07T15:40:31+09:00", "type": "deferred_created", "deferred": "D45", "source": "P29.REVIEW"}
