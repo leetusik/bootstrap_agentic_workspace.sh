@@ -1,143 +1,177 @@
-# Result — P28.REVIEW (review / high)
+# Result — P28.REVIEW (review / high), re-review after P28.F1
 
 - **status:** done
 - **tier:** high
-- **summary:** Reviewed P28 inside its boundary: validation (Tests 0–15, 223 checks), an at-root differential against v48, and a fake-host walk from install to a pushed ticket branch with `--update --nested`. Everything the phase claims holds, but one footprint gap is real. When a host's tracked `.gitignore` re-includes a path the install writes, the negation outranks `info/exclude`, so our files show as untracked. `git add -A` would then stage them. The installer still prints "the host's git status stays clean". Verdict `changes_requested`, with one fix slice.
-- **review_verdict:** `changes_requested`
-  1. **(blocking) The no-footprint guarantee fails silently when the host's `.gitignore` re-includes an install target.**
-     - **Cause:** Git ranks a matching `.gitignore` pattern above `.git/info/exclude`, so a negation such as `!.claude/skills/**`, an allowlist-style `*` / `!*/` / `!*.md`, or `!CLAUDE*.md` un-hides what our exclude block lists.
-     - **Evidence:** three scratch hosts.
-       - Host H: `.claude/*`, `!.claude/skills/`, `!.claude/skills/**`. All 18 skill files show as `??` after install, and `git check-ignore -v --no-index` names `.gitignore:3:!.claude/skills/**` as the deciding line.
-       - Host D: allowlist-style. 23 untracked entries; after the first `workflow/` commit, `git add -A --dry-run` would add our skills, `CLAUDE.local.md` and `workflow/` (as an embedded-repo gitlink).
-       - Host E: `!CLAUDE*.md`. `CLAUDE.local.md` is visible.
-     - **What is wrong:** in all three the banner still says "the host's git status stays clean". Nothing checks or warns before or after the write, on install or on `--update --nested`.
-     - **Proposed fix:** `P28.F1`, below.
-- **proposed fix slices:**
-  - **`P28.F1`: make the nested install verify that every host-side target is actually ignored.** Kind `fix`, risk **high**. The trigger is a **core invariant**: the phase's no-footprint guarantee, which DECOMP named as S2's core invariant; S2 ran at `tier: high`.
-    - Scope, in `installer/main.py` `nested_plan()`, before any write, on install and `--update --nested` alike: run `git check-ignore -v --no-index --non-matching` over every host target (each installed skill dir's `SKILL.md`, each agent file, `CLAUDE.local.md`, `.claude/settings.local.json`, and `workflow/`). A target whose deciding pattern is a negation (`!…`) from a file other than `info/exclude` cannot be hidden, so refuse with nothing written, naming each target and its deciding `file:line:pattern`. That is the default the intent implies ("after install, `git status` in the host repo is clean").
-    - Optionally, a per-directory `.gitignore` containing `*` inside our own skill dirs. A lower-level `.gitignore` outranks the parent's negation and hides itself. The plan decides; files directly in team directories cannot use it.
-    - Add a post-write belt-and-braces assert that `git status --porcelain --untracked-files=all -- <targets>` is empty. Print the "stays clean" line only when that holds.
-    - One Test 15 assert: host H's `.gitignore` is refused with nothing written.
-    - Adjust the claim in both READMEs' `--nested` section and in the v49 CHANGELOG entry ("One `.git/info/exclude` block hides all of it"). Whether to edit v49 in place or bump is the orchestrator's call; the standing note says the version stays 49 unless the operator asks.
-    - Then `python3 installer/build.py` and `--check`.
-- **files_changed:** `works/phases/active/P28/slices/P28.REVIEW/result.md`, `works/phases/active/P28/phase.md`
+- **summary:** Re-reviewed P28 after `P28.F1`. F1 closes the first pass's only finding. Host H installs clean, and hosts D and E refuse with nothing written. Seven further host shapes built to break the preflight all refuse cleanly or install clean, and so does `--update --nested` after a teammate's negation. The post-write `git status` assert is what gates the "stays clean" line. Smoke (226 checks), `validate`, `build.py --check` and the at-root differential all pass. Verdict `pass`. F1's operator question is routed as a deferred-job candidate.
+- **review_verdict:** `pass`
+- **files_changed:**
+  - `works/phases/active/P28/slices/P28.REVIEW/result.md`, this file, rewritten;
+  - `works/phases/active/P28/phase.md`: one `## Doc impact` line appended, the F1 question's routing appended under `## Operator Questions`, the consumed note removed, `## Now` rewritten.
 - **validation:**
-  - `bash tests/retrofit_smoke.sh`, alone in the foreground: PASS, `ALL RETROFIT SMOKE TESTS PASSED`, 223 checks, Tests 0–15.
-  - `python3 scripts/workflow.py validate`: PASS. The only warnings are the P26/P27 consolidation debt, stale docs and oversized sections, none from P28.
+  - `bash tests/retrofit_smoke.sh`, alone in its own foreground call: PASS, `ALL RETROFIT SMOKE TESTS PASSED`. 226 PASS, 0 FAIL across Tests 0–15, including F1's three new Test 15 asserts.
+  - `python3 scripts/workflow.py validate`: PASS (`Workflow validation passed.`). The only warnings are the P26/P27 consolidation debt, stale docs and oversized sections, none from P28.
   - `python3 installer/build.py --check`: PASS (`OK: bootstrap_agentic_workspace.sh is in sync with installer/ source`).
-  - `python3 scripts/workflow.py phase-scope P28`: range `dc42380..d8c187d`, 4 commits, 11 product files. The 12th changed file, `docs/retrofit-guide.md`, sits under `docs/`, which phase-scope excludes, so I reviewed it by hand.
-  - At-root differential, fake-host walk and footprint scrutiny: below.
-- **deviations:** none from `plan.md`.
-  - The `claude -p` probe ran once and was not denied.
-  - I did not run `review-phase` even inside the fake host, per the dispatch. The host `review_pass` anchor is covered by S1's hand check and a code read: the gate check runs before any write, and the anchor is written after it.
-- **doc_versions:** none. The verdict is `changes_requested`, so the pass-only doc duties did not run; the gate is waived, so there are no gate sections.
-- **explain:** not written — run /explain for this phase
+  - `python3 scripts/workflow.py phase-scope P28`: range `dc42380..6b55ace`, 6 commits. The same 11 product files as the first pass; F1 adds no new file to the list. `docs/retrofit-guide.md` sits under the excluded `docs/`, so I reviewed it by hand.
+  - Scratch hosts and the at-root differential: see "Re-review detail" below. The scripts are `rr/lib.sh`, `rr/t1_hde.sh` … `rr/t5_atroot.sh`, and the smoke log is `smoke_rr.log`, all in this session's scratchpad.
+- **deviations:**
+  - Per the re-review plan, I did not redo the first pass's full fake-host walk or its `claude -p` loading probe: F1 touched neither the walk's flow nor loading.
+  - **One cross-check correction, not a finding.** `## Doc impact` had no `decisions.md` line for F1's decision. F1's architecture/operations line carries the mechanism, but P26.F1 set the precedent of logging a fix's decision there. I appended one line, tagged as the review's cross-check.
+- **doc_versions:** none — deferred to a docs phase. The gate is waived, so there is no stage-4 checklist append, and this phase did not change `## Operator Runtime`.
 - **walkthrough:** none (acceptance waived by the operator, 2026-10-07: "for the review, just use fake repo. I'll report if any problem with real one.")
+- **explain:** not written — run /explain for this phase
 - **deferred-job candidates** (title · reason · trigger), for the orchestrator to file with `defer-job`:
-  1. *Nested `phase-scope` over-reports after the ticket branch is rebased or merged onto a newer `origin/main`.* Reason: `created..HEAD` then includes teammates' commits. Verified: a teammate's `src/app.py` appeared, and `--base $(git merge-base HEAD origin/main)` gives the right two files. It over-reports and never hides anything. Fix by measuring from the merge-base with the branch's upstream, or at least documenting the `--base` form in the README per-ticket flow. Trigger: the first real ticket that rebases before its PR, or an operator report.
-  2. *README caveats the private install should state.* Reason:
-     - `git clean -fdx` in the host deletes our ignored host-side files (skills, agents, `CLAUDE.local.md`, `settings.local.json`); `workflow/` survives as a nested repo, and `--update --nested` restores the rest;
-     - tools that read the working tree rather than git, such as a local `docker build` with `COPY .` or `npm publish`, do not honour `info/exclude`.
-
-     Trigger: the next README touch (F1 may absorb it) or an operator report.
-  3. *The `claude-design` round's `git push` step in a nested install pushes the host's ticket branch, not `workflow/`.* Reason: the skills are mode-neutral apart from the path rewrite, so in a nested install that push lands on the host branch. Trigger: the first design phase run in a nested install.
-  4. *Engine texts that ignore a clash rename or the host prefix.* Reason: engine messages name a skill by its original name (already a README caveat). `sync-agents` prints `config source: executors.toml`, not `workflow/executors.toml`. The installed `wf-commit` keeps its `# commit` H1. Trigger: the next nested engine change or an operator report from a host with a clash.
+  1. **A private-install route for a host whose `.gitignore` refuses `--nested`.** This routes F1's operator question.
+     - **Reason:** a host whose tracked `.gitignore` re-includes an agent file, `CLAUDE.local.md`, `.claude/settings.local.json` or `workflow/` now refuses with nothing written, and there is no override. An allowlist repo (`*` / `!*/` / `!*.md`) always refuses.
+     - **Recommended shape, not decided:** first, narrow workarounds that keep `git status` empty, chosen per target:
+       - a self-hiding, untracked `.claude/agents/.gitignore` of `*` when the team tracks nothing in `.claude/agents/`;
+       - the engine repo kept outside the work tree, e.g. beside the clone and reached by an absolute `@import`, if Claude Code's external-import approval allows it.
+     - **Only if no workaround fits:** an explicit opt-in such as `--allow-visible`. It installs, lists every path that stays visible, and relies on `/commit`'s never-stage rule. It is never the default.
+     - Option (a) from the question, accepting that no private install is possible there, stays open to the operator.
+     - **Trigger:** the real company repo refuses the nested install.
+  2. **Nested mode never re-checks the ignore guarantee after install.**
+     - **Reason:** I verified this on scratch hosts Ua and Ub. A teammate's later `.gitignore` negation (`.claude/.gitignore` with `!agents/*.md`, or a root `!CLAUDE*.md`) shows our files as `??` as soon as the operator pulls. `validate` and `next` still pass without a word, and only `--update --nested` notices. It refuses with nothing written, but its message says the files *would* stay visible when they already are.
+     - **Why it is not blocking:** `/commit` never uses `git add -A` and repeats the never-stage rule, so a slice will not stage them. A manual `git add -A` or an IDE's "stage all" would. The intent's promise is a clean status after install, and that holds.
+     - **Fix shape:** nested `validate` (or `next`) runs the same `check-ignore` or `status` over the marker's `installed` targets and warns, naming the deciding line. The update refusal says the files are visible now.
+     - **Trigger:** the next nested engine change, or an operator report.
 - **items for the operator to watch in the real repo:**
-  - the host's `.gitignore` shape: until F1 lands, run `git status --porcelain` right after install, and it must be empty;
-  - whether a company-managed policy disables `bypassPermissions`, which the three agents set;
-  - whether the first interactive run's trust dialog appears and the import is approved;
-  - rebasing the ticket branch before a PR: use `phase-scope <P> --base $(git merge-base HEAD origin/main)`;
-  - `git clean -fdx` removes the host-side files, and `--update --nested` restores them.
+  - **If `--nested` refuses there,** that is candidate 1's trigger: report the refusal lines; do not work around them by hand.
+  - **Right after install,** `git status --porcelain --untracked-files=all` must be empty, and the banner must say "verified".
+  - **After pulling a teammate's `.gitignore` change,** `git status` must stay empty. If our files show up, stage nothing and report it (candidate 2).
+  - Whether a company-managed policy disables `bypassPermissions`, which the three agents set.
+  - Whether the first interactive run shows the trust dialog and the import is approved.
+  - **Rebasing before a PR:** run `phase-scope <P> --base $(git merge-base HEAD origin/main)` (D35).
+  - `git clean -fdx` removes the host-side files, and `--update --nested` restores them (D36).
 
-## Stage 1: all slices validated together
+## Re-review detail
 
-All three commands above were run fresh in this slice. The smoke log is in the session scratchpad (`smoke.log`). The Test 14 (8 checks) and Test 15 (12 checks) lines all PASS, and Tests 0–13 are unchanged.
+### 1. Does F1 close the finding? Yes
 
-## Stage 2: the at-root invariant (confirmed, not re-derived)
+**The first pass's three reproductions**, on the current artifact (`t1_hde.sh`). A bare `origin.git`, a clone as `host`, and a team commit holding the `.gitignore`.
+- **"Nothing written"** means four checks hold: the host signature is unchanged (whole-tree listing without objects, `info/exclude`, HEAD, status and local config), HEAD is unchanged, there is no `workflow/`, and the exit is non-zero.
+- **"Status"** means `git status --porcelain --untracked-files=all`.
 
-I installed the v48 artifact (`git show dc42380:bootstrap_agentic_workspace.sh`) and the current v49 artifact fresh into two scratch dirs.
-- **Installer output:** identical after normalising the target path.
-- **Tree (`diff -rq`):** differs only in `.claude/skills/{commit,retrofit,update-workspace}/SKILL.md`, `scripts/workflow.py` and `works/.workspace-version.json` (49).
-- **`--help`:** differs only by the five `--nested` lines.
-- **Engine:** `next`, `validate`, `parallel-status`, `docs`, `new-phase` and `phase-scope` give identical output on both trees. The only difference is the argparse choices list, which gains `nested-convention`, and the `--help` entry for it.
+| Host | `.gitignore` | Result |
+|---|---|---|
+| H | `.claude/*`, `!.claude/skills/`, `!.claude/skills/**` | rc 0, HEAD unchanged, status empty, `git add -A --dry-run` empty. The banner prints "each dir hides itself with a .gitignore of \*" and "verified: the host's git status stays clean". `check-ignore` names `.claude/skills/explain/.gitignore:1:*` for `SKILL.md` and for the file itself |
+| D | `*`, `!*/`, `!*.md` | rc 1, nothing written. Names the 3 agents and `CLAUDE.local.md` (`.gitignore:3:!*.md`), and `workflow/` (`.gitignore:2:!*/`) |
+| E | `!CLAUDE*.md` | rc 1, nothing written: `CLAUDE.local.md: re-included by .gitignore:1:!CLAUDE*.md` |
 
-## Stage 3: fake-host walk (instrument: shell scripts over git, no browser)
+**Attempts to break the preflight** (`t2_break.sh`). Every case below either refused with nothing written, HEAD unchanged and status empty, or installed with an empty status and `git add -A --dry-run`.
 
-**The fake host.** A bare `origin.git`, seeded with three Conventional Commits. The team tree tracks:
-- `CLAUDE.md`, `.claude/settings.json`, `.github/workflows/ci.yml`, `.gitattributes` and `CONTRIBUTING.md` (which says "No AI co-author trailers");
-- a team `commit` skill (`name: commit`) and a team `reviewer` agent;
-- `src/app.py` and the host's own `docs/guide.md`.
+| Case | Host shape | Result |
+|---|---|---|
+| B1a | `.claude/agents/*` + `!.claude/agents/slice-executor-mid.md` (one of our agents only) | refused, naming only that file and `.gitignore:2` |
+| B1b | `!.claude/agents/slice-executor-high.md` alone | refused, naming it |
+| B1c | the team tracks its own `slice-executor-mid` agent, so ours becomes `wf-slice-executor-mid`, plus `!.claude/agents/wf-*.md` | refused, naming `.claude/agents/wf-slice-executor-mid.md`: the preflight asks about the **renamed** name |
+| B2a | tracked `.claude/.gitignore` = `!agents/*.md` | refused, naming the 3 agents and `.claude/.gitignore:1` |
+| B2b | tracked `.claude/.gitignore` = `*` / `!.gitignore` / `!settings.local.json` | refused, naming `.claude/settings.local.json` and `.claude/.gitignore:3` |
+| B2c | tracked `.claude/.gitignore` = `*` / `!.gitignore` / `!skills/` / `!skills/**` | installs, status empty (self-hiding skill dirs) |
+| B2d | tracked `.claude/skills/.gitignore` = `!**` | installs, status empty (the per-dir file is deeper) |
+| B2e | tracked `.claude/agents/.gitignore` = `!*.md` | refused, naming the 3 agents and `.claude/agents/.gitignore:1` |
+| B3a | `*` / `!.claude/` / `!.claude/**` / `!.gitignore` | refused, naming the agents and `settings.local.json` (`.gitignore:3:!.claude/**`); the skills self-hide |
+| B3b | `!/workflow` (no slash) | refused: `workflow/: re-included by .gitignore:1:!/workflow` |
+| B4 | `!claude.local.md` (case differs; macOS clone, `core.ignorecase=true`) | refused, naming `CLAUDE.local.md`: `check-ignore` honours `ignorecase` exactly as `status` does |
+| B5 | `.claude` is a tracked symlink to `tools/claude` | refused with "cannot check … (git check-ignore exit 128: … beyond a symbolic link); nothing written". Safe, though the message is technical |
 
-It is cloned as `host`. After every step the host's `git status --porcelain --untracked-files=all` was empty. HEAD, local config, hooks, `core.hooksPath` and the tracked-content hash were unchanged, except my deliberate product commits.
+**`--update --nested` after a team commit adds a negation** (`t3_update.sh`). Each host is a clean install with a first `workflow/` commit. A teammate then pushes a change to `origin`, and the host pulls it.
 
-1. **Fresh install.** `--nested` exits 0, and the host snapshot is byte-identical.
-   - `info/exclude` holds one block with `/workflow/`, `/CLAUDE.local.md`, `/.claude/settings.local.json`, 18 skill dirs and 3 agent files.
-   - `workflow/` is a nested repo with `CLAUDE.workspace.md`, no `CLAUDE.md` and no `.claude/`.
-   - `commit` is renamed to `wf-commit` (`name: wf-commit`), and the team's `commit` skill is unchanged.
-   - Scanning 28 installed texts, plus `CLAUDE.local.md`, the contract, the templates, `executors.toml` and `docs/README.md`, finds no unprefixed `scripts/workflow.py` or workspace path and no `workflow/workflow/`.
-   - `settings.local.json` allows `Bash(python3 workflow/scripts/workflow.py:*)`.
-   - The inferred convention quotes both CONTRIBUTING lines, including the no-trailers rule.
-2. **One ticket.**
-   - Setup: the first `git -C workflow` commit, then `git switch -c ticket2 origin/main`. `next` shows `UNCONFIRMED (inferred: …)`, and `nested-convention --confirm --text … --trailers forbidden` flips it to `confirmed (coauthor_trailers=forbidden)`.
-   - `new-phase --phase P1` records `host_anchors.created` as the host HEAD. `phase-scope` lists nothing right after `new-phase`, then shows an uncommitted `src/gadget.py` in the working-tree list.
-   - After two product commits plus one state commit, `phase-scope P1` (text and `--json`, `mode=nested`) lists exactly `A src/gadget.py` and `M docs/guide.md`: nothing under `workflow/` and none of the untracked host files.
-   - `parallel-start` refuses (rc 1). `parallel-status` prints the line (rc 0). `validate` passes. `next` prints `slice_path=workflow/works/...`.
-   - **What the team receives:** I pushed the first ticket branch to the fake `origin`. The tree on `origin/ticket` is the team's files plus `src/widget.py`. `main..ticket` changes one file, the commit message is `feat(APP-3): add the widget`, and grepping the pushed patch for `workflow/`, `P1`, `CLAUDE.local` or `agentic` finds nothing.
-   - **Rebase probe:** after a teammate commit to `origin/main` and `git rebase origin/main`, `phase-scope` also lists the teammate's `src/app.py`. That is deferred-job candidate 1.
-3. **Update.**
-   - Before updating, I added an operator note to `CLAUDE.local.md` and an `env` key plus an allow rule to `settings.local.json`.
-   - `--update --nested --dry-run` reports host side updated 0, added 0, unchanged 24, and the whole-tree hash is identical before and after.
-   - `--update --nested` exits 0 with HEAD unchanged. It keeps the confirmed convention and the `commit→wf-commit` rename, the operator's note, `env` key and allow rule, and the engine allow entry. One exclude block and one `CLAUDE.local.md` block remain, there is no `workflow/workflow`, and the version marker reads 49.
-   - A second `--update --nested` changes nothing on the host side.
-   - A plain `--update` refuses with "re-run with --update --nested" (rc 1). Re-running `--nested` says "already installed" (rc 0). `sync-agents` from the host root reports "already in sync".
-4. **Loading (one `claude -p` probe, CLI 2.1.292, from the host root).** The main session dispatched `slice-executor-mid` with a read-only prompt. The executor reported both `CLAUDE.local.md` and the imported `workflow/CLAUDE.workspace.md` as loaded. It quoted Read Order item 1 verbatim (`python3 workflow/scripts/workflow.py next`) and the first nested rule verbatim. The main session confirmed both were also in its own context.
-   - The executor self-labelled `tier: high`. That is its own mislabel: no personal agent shadows ours (`~/.claude/agents` holds only `ocx-*`).
-   - As in S2, the untrusted workspace ignored the host's `settings.json` allow entry.
-   - The host status stayed empty after the probe.
-5. **First-time read.** For the start-to-PR flow, the banner, the `CLAUDE.local.md` block and the README section (both languages, same structure) are enough. Banner and README give the same order: first `workflow/` commit, start at the host root, accept trust, confirm the convention. What is missing is the three caveats above (rebase → `--base`, `git clean -fdx`, build tools), and the false "stays clean" claim in negating hosts, which is F1.
+| Case | Teammate's change | Result |
+|---|---|---|
+| Ua | adds `.claude/.gitignore` = `!agents/*.md` | `--dry-run` and the real update both exit 1, naming the 3 agents. Host signature, HEAD and the `workflow/` content hash are unchanged. Before the update, status already showed the 3 agents as `??` while `validate` passed: candidate 2 |
+| Ub | appends `!CLAUDE*.md` to `.gitignore` | same: both refuse, nothing written. Status already showed `?? CLAUDE.local.md` before the update |
+| Uc | `.claude/*` + `!.claude/skills/` + `!.claude/skills/**` | the dry run gives rc 0, "unchanged 42" and "checked: …", and writes nothing. The update gives rc 0, "verified", status empty. It changes only `workflow/`'s generated files: the version marker, the indexes and `state.json`, plus a re-inferred unconfirmed convention |
 
-## Footprint and security scrutiny
+**Upgrading a pre-F1 install.** I installed the `d8c187d` artifact into host H: 18 untracked skill files, and it still printed "stays clean" (the old bug). The current `--update --nested` reports "added 18, unchanged 24" and "verified", and the untracked count drops to 0.
 
-| Case | Result |
-|---|---|
-| Tracked target (`git add -f .claude/settings.local.json`) | refused, naming it; no `workflow/`, no `CLAUDE.local.md`, `info/exclude` byte-identical. Pass |
-| Host agent file `slice-executor-mid.md` + a team skill whose `name:` is `explain` | both renamed (`wf-slice-executor-mid`, `wf-explain`, `name:` lines right), `do-next-slice` names `wf-slice-executor-mid` 5×, no bare old name left, `sync-agents --check` in sync, team files untouched. Pass |
-| Team adds a tracked `.claude/skills/explain/` after install | `--update --nested` refuses, naming it, nothing written. Safe, but the operator has to hand-edit the marker to proceed (the decision "only newly shipped names are clash-checked"); an observation, no fix proposed |
-| `.claude/*` + `!.claude/skills/` + `!.claude/agents/` (common shape) | clean. Pass |
-| `.claude/*` + `!.claude/skills/` + `!.claude/skills/**` (host H) | **18 skills visible**; finding 1 |
-| allowlist `*` / `!*/` / `!*.md` (host D) | **23 entries visible; `git add -A` would stage skills, `CLAUDE.local.md` and `workflow/` as a gitlink**; finding 1 |
-| `!CLAUDE*.md` (host E) | **`CLAUDE.local.md` visible**; finding 1 |
-| Wrapper: `--nested --force-empty-ok`, `--nested --dry-run` without `--update`, a non-git dir | all refused, the non-git dir left empty. Pass |
-| Render-then-write ordering | by construction: `nested_preflight()` and `nested_plan()` run before `ROOT.mkdir` and only read (git queries, file reads). Every refusal, including post-check and tracked-target, exits before the first write; shown live by the tracked-target case. Pass |
-| Engine writes into the host | only `CLAUDE_AGENTS` (our own agent files, through the rename map) for `sync-agents`/`executor-mode`; no host git writes, no config, no hooks. Pass |
-| `/commit` pre-approvals | `git -C workflow status/diff/log/add/reset/commit` only, no push; `git -C workflow add ../x` cannot reach host paths (git refuses paths outside the repo); no broader than the plan intended. Pass |
+**The post-write assert gates the clean line** (`t4_postcheck.sh`, a scratch copy of the artifact with the one preflight call replaced by `unignored = []`):
+- **Install on host E:** exit 1, `Error: the nested install is written, but the host's git can see these paths …`, `?? CLAUDE.local.md`, and the `Next:` line. Neither "stays clean" nor "verified" is printed.
+- **`--update --nested` after a negation:** exit 1, listing `?? CLAUDE.local.md`; "verified" is not printed.
+- **Dry run:** prints only "checked: …". It never claims "verified".
+- **Code read** (`installer/main.py` L1313–1316, L656–669, L983–996):
+  - `nested_verify_clean` runs on every non-dry nested path before the banner, and exits on failure;
+  - `verified_clean` is set only on an empty status;
+  - the install banner prints the clean line only when it is true;
+  - re-running `--nested` exits 0 at "already installed" from `nested_preflight` with no clean claim.
 
-## Stage 5: cross-checks
+**F1's code, read against the diff.**
+- **The `check-ignore -z -v --non-matching` parse** (four fields per path) and the negation test (`pattern.startswith("!")`) are right.
+- **Ordering:** the tracked-target refusal runs before the preflight, and both run before `ROOT.mkdir`.
+- **The temporary `workflow/`** is created only when absent and is removed in a `finally`.
+- **The self-hiding files** come first in the write order, since `.gitignore` sorts before `SKILL.md`.
+- **`status_paths`** covers every host write: each skill dir (and its `.gitignore`), each agent file, `CLAUDE.local.md`, `settings.local.json` and `workflow`. `info/exclude` sits under `.git`.
+- **Test 15's three asserts** check rc, the deciding-line text, the absence of `workflow/` and an unchanged signature.
 
-- **`## Decisions` vs the results.** Every decision and constraint in `P28.DECOMP`, `S1`, `S2` and `S3`'s `result.md` appears in `## Decisions` or `## Doc impact`. Four small implementation constraints were only implicit, and I added them in one line under "Engine contract" (`phase.md`). Not findings:
-  - S1: `validate` errors when the host is not a git work tree, and the nested `new-phase` suppresses the busy hint;
-  - S2: convention inference uses `--no-merges`, and `git init` runs on a fresh install only.
-- **`## Doc impact`.** It is complete: architecture (S1, S2, S3), operations (S1, S2, S3), qa (Tests 14 and 15), decisions (S3).
-  - `product`, `security` and `experience` are unfilled seeds in this repo, so nothing is owed there.
-  - READMEs, CHANGELOG and the retrofit guide are product files, not versioned docs.
-  - The S1 architecture line still says `workflow/nested.json`. The S2 line records the rename to `.agentic-nested.json` and supersedes it, so the docs phase must use the new name. The list is append-only, so I left it as is.
-- **Operator Questions.** The one entry, the marker name, was answered by the operator before S2 ("Rename to .agentic-nested.json"), implemented in S2, and observed live in the fake host. It is routed and needs no walkthrough line.
-- **`EXPECTED_SKILL_COUNT`.** It is 18 in `installer/build.py` and `installer/main.py`, with 18 skill dirs; Test 0 and Test 5 pass.
-- **The v49 CHANGELOG entry** matches what shipped, item by item. I checked the refusals, the rename, the `phase-scope` host anchors, `nested-convention`, `--update --nested`, the three skills, and the at-root claim against the differential. The one exception is "One `.git/info/exclude` block hides all of it", which is false in negating hosts and is part of F1.
+### 2. Regressions: none
 
-## Regression Checklist (`docs/current/qa.md`, 6 lines). Classified against `phase-scope P28`
+- **Smoke, `validate`, `--check`:** see the verdict block.
+- **At-root differential** (`t5_atroot.sh`): fresh at-root installs from the `dc42380` (v48), `d8c187d` (pre-F1) and `HEAD` artifacts.
+  - **`d8c187d` vs `HEAD`:** identical installer output, an identical tree (`diff -rq`, no differences) and identical `--help`. F1 is invisible at root.
+  - **`dc42380` vs `HEAD`:** identical installer output. Ignoring timestamps, the trees differ only in `.claude/skills/{commit,retrofit,update-workspace}/SKILL.md`, `scripts/workflow.py` and `workspace_version` 48→49. `--help` differs by the 5 `--nested` lines. That is the same as the first pass.
 
-| Line | Surface | Inside? (fed by) | Result |
+### 3. Boundary and the corrected claims
+
+F1's diff is `installer/main.py`, the rebuilt artifact, `tests/retrofit_smoke.sh`, both READMEs, `CHANGELOG.md` and `docs/retrofit-guide.md`, all nested-only. Every claim below matches observed behaviour.
+- **Both READMEs**, the Korean one with the same structure:
+  - the new list item says each skill dir holds a `.gitignore` of `*`;
+  - the paragraph says a host `.gitignore` ranks above `info/exclude`, that the installer checks before writing and refuses naming the file and the deciding line, that `--update --nested` checks the same way, and that it confirms an empty status before saying clean.
+- **`docs/retrofit-guide.md`:** the old unconditional "stays clean" now reads "a successful install leaves the host's git status clean", after the refusal sentence.
+- **CHANGELOG v49**, amended in place: per-dir `.gitignore`, the preflight with the deciding line on install and update, and the post-write check. `WORKSPACE_VERSION` stays 49, per Invariant (d).
+- **A wording nit, not a finding:** README.en's lead-in still says "all hidden by the host's `.git/info/exclude` (never its `.gitignore`)". "Its" means the host's tracked `.gitignore`, which is never edited, so it stays true. The very next list item names our own per-dir `.gitignore` files.
+
+### 4. Operator Questions, routed
+
+- **(P28.S1) marker name:** answered by the operator, implemented in S2, routed in the first pass.
+- **(P28.F1) a host that refuses has no way forward:** routed as deferred-job candidate 1, with the trigger "the real company repo refuses the nested install" and a recommended shape, not a decision. The routing line is appended under the entry in `phase.md`.
+
+No entry is unrouted.
+
+### 5. Cross-checks
+
+- **`## Decisions` vs F1's `result.md`:** "Ignore guarantee (P28.F1)" carries every F1 decision:
+  - the self-hiding dirs, their write order and their counting;
+  - the per-dir file, neither rewritten nor in the marker (F1's recorded deviation);
+  - the preflight's method, its targets and the temporary `workflow/`;
+  - the refusal rule with no override, the non-0/1 exit refusal, and the one safe approximation;
+  - the post-write check and the three banner lines;
+  - the release handling.
+
+  The only detail it omits is why `GIT_OPTIONAL_LOCKS` is an env var (older git); that stays in F1's `result.md`. Nothing is dropped.
+- **`## Doc impact`:** F1's two lines cover architecture, operations and qa (Test 15's three asserts, 226 checks). I appended the `decisions.md` line for F1's decision (see deviations). The first pass's coverage of S1–S3 stands.
+- **D35–D38**, the first pass's candidates, are filed. Neither new candidate duplicates one of them.
+
+### Regression Checklist (`docs/current/qa.md` L20–25, 6 lines), classified against `phase-scope P28`
+
+| Line | Surface | Inside? (fed by) | Result, this pass |
 |---|---|---|---|
-| L20 fresh install validates + stamps `workspace_version` (P16) | installer | inside (`installer/main.py`, the artifact) | pass: Test 5 "fresh workspace validates", "release version agrees…"; the differential's fresh marker reads 49 |
-| L21 undeclared/uncleared gate refuses `review-phase --verdict pass` (P16) | engine | inside (`scripts/workflow.py`) | pass: Test 5 "refuses an undeclared acceptance gate". The uncleared branch is unchanged apart from its printed `WORKFLOW_CMD` (byte-identical at root), and it is checked before any write (code read, L1877–1879) |
-| L22 Test 0 invariants incl. tier body parity (P16) | machinery text | inside (three skills) | pass: Test 0 |
-| L23 `## Slices` renders, `finish-slice --outcome` fills its row (P18) | engine | inside | pass: Test 9 |
-| L24 marker-less notebook byte-identical; `next` twice does not dirty dashboards (P18) | engine | inside | pass: Tests 9 and 10 |
-| L25 `new-slice --kind research` / closed-set error (P19) | engine | inside | pass: Test 5 |
+| L20 fresh install validates and stamps `workspace_version` (P16) | installer | inside (`installer/main.py`, the artifact) | pass: Test 5 "fresh workspace validates" and "release version agrees …"; the differential's fresh marker reads 49 |
+| L21 an undeclared or uncleared gate refuses `review-phase --verdict pass` (P16) | engine | inside (`scripts/workflow.py`) | pass: Test 5 "refuses an undeclared acceptance gate". F1 did not touch the engine |
+| L22 Test 0 invariants, incl. tier body parity (P16) | machinery text | inside (three skills) | pass: Test 0 |
+| L23 `## Slices` renders, and `finish-slice --outcome` fills its row (P18) | engine | inside | pass: Test 9 |
+| L24 a marker-less notebook stays byte-identical, and `next` twice does not dirty the dashboards (P18) | engine | inside | pass: Tests 9 and 10 |
+| L25 `new-slice --kind research`, and the closed-set error (P19) | engine | inside | pass: Test 5 |
 
-Inside: 6. Outside: 0. Every line's surface is fed by a file in the diff. No append: the gate is waived and the verdict is not `pass`.
+Inside: 6. Outside: 0. The diff (`phase-scope P28`, 11 files) feeds every line's surface. Nothing is appended, because the gate is waived.
 
-## Notebook
+### Notebook
 
-`phase.md`: I consumed the REVIEW note, added the `P28.F1` note, added the one Decisions line, and rewrote `## Now`. Doc impact and Operator Questions are untouched: the review adds no durable truth on `changes_requested`, and no new operator question. The scratch scripts (`walk_setup.sh`, `walk_step2.sh`, `walk_step2b.sh`, `walk_rebase.sh`, `walk_step3.sh`, `walk_sec.sh`, `walk_sec2.sh`, `rootdiff.sh`) are in this session's scratchpad. The F1 note carries the reproduction recipe inline, because the scratchpad does not outlive the session.
+`phase.md` changes:
+- **`## Doc impact`:** one `decisions.md` line appended.
+- **`## Operator Questions`:** the F1 entry's routing appended.
+- **`## Notes for later slices`:** the "(from P28.S3, for any fix slice)" note removed. F1 consumed it, and Invariant (d) carries the rule.
+- **`## Now`:** rewritten.
+- **`## Decisions`:** untouched; this pass settled nothing new.
+
+## First pass (2026-10-07, before P28.F1), kept for the record
+
+- **Verdict `changes_requested`, with one blocking finding.** A tracked host `.gitignore` negation outranks `.git/info/exclude`. On hosts H (`!.claude/skills/**`), D (allowlist) and E (`!CLAUDE*.md`), the install's files showed as untracked, and `git add -A` would have staged them, while the banner said "the host's git status stays clean".
+- **Fix:** `P28.F1` (fix, high, core invariant): an ignore preflight before any write on install and update, optional self-hiding skill dirs, a post-write status assert, a Test 15 assert, and corrected README/CHANGELOG claims. It landed as 6b55ace.
+- **Everything else passed and still stands:**
+  - validation (223 checks then);
+  - the v48 at-root differential;
+  - the fake-host walk from install through one ticket to a pushed branch, whose patch carried no workflow traces;
+  - `phase-scope` on the host diff, `--update --nested` keeping the convention, renames and operator text;
+  - the clash renames, the tracked-target refusal, the wrapper refusals and render-then-write ordering;
+  - the `/commit` pre-approvals (`git -C workflow` status/diff/log/add/reset/commit, no push);
+  - the `claude -p` probe, which showed an executor loading `CLAUDE.local.md` and the imported contract.
+- **Its four deferred-job candidates are filed as D35–D38:** rebase/merge-base `phase-scope`, README caveats (`git clean`, working-tree tools), the `claude-design` push target in a nested install, and engine texts that skip a rename or the host prefix.
+- **Observation, no fix proposed:** a team adding a tracked skill whose name is one of ours, after install, makes `--update --nested` refuse safely, and the operator must hand-edit the marker to proceed.

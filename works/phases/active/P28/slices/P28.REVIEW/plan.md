@@ -58,3 +58,19 @@ Review only this boundary. Anything you notice outside it is an observation for 
 - Deferred-job candidates (observations outside the boundary, e.g. engine messages that don't follow a clash rename) go back to the orchestrator to file.
 
 Write `result.md` with the verdict block first, update `phase.md` (`## Now`; consume the REVIEW note) and return your structured verdict.
+
+## Re-review after P28.F1
+
+The first review returned `changes_requested` with one blocking finding: a tracked host `.gitignore` negation outranks `info/exclude`. `P28.F1` (fix, high) has landed and is committed (6b55ace). D35–D38, the first review's deferred candidates, are filed.
+
+This pass is **focused**:
+1. **Does F1 close the finding?**
+   - Re-run the first review's three reproductions (hosts H, D and E) on the current artifact: H installs clean; D and E refuse with **nothing written**.
+   - Try to break the preflight: a negation that targets only `.claude/agents/<ours>.md`, a nested `.gitignore` in `.claude/`, and `--update --nested` after a team commit adds a negation.
+   - Confirm the post-write status assert gates the "stays clean" line.
+2. **Regressions:** run `bash tests/retrofit_smoke.sh` alone in the foreground (226 checks), `validate` and `build.py --check`. Spot-check that at-root installs are unchanged versus `dc42380`.
+3. **Boundary:** `phase-scope P28` now includes F1's files. Review F1's diff and the corrected claims (both READMEs, `docs/retrofit-guide.md`, the v49 CHANGELOG entry).
+4. **Route the new Operator Question** (F1: a repo whose `.gitignore` refuses the install has no private-install route). The gate is waived, so route it as a **deferred-job candidate** for the orchestrator to file, with the trigger "the real company repo refuses the nested install". Recommend a shape (e.g. an opt-in override that accepts visible untracked files, or an out-of-tree layout) without deciding it.
+5. **Cross-check:** the Doc impact list covers F1, and `## Decisions` carries F1's preflight rule.
+
+Do not redo the first review's full fake-host walk; its results stand except where F1 touched the code. Return `review_verdict` as before. On pass: `doc_versions: none — deferred to a docs phase`, the explain pointer, and any deferred-job candidates.

@@ -1,0 +1,11 @@
+{
+  "id": "D40",
+  "title": "Nested validate/next re-checks the ignore guarantee after install",
+  "status": "deferred",
+  "source": "P28.REVIEW",
+  "reason": "A teammate's later .gitignore negation makes our host-side files untracked-visible as soon as the operator pulls; validate and next stay silent and only --update --nested notices. Run the same check over the installed targets in nested validate/next and warn.",
+  "trigger": "The next nested engine change, or an operator report",
+  "created_at": "2026-10-07T13:57:09+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

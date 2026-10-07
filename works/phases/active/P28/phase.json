@@ -2,16 +2,16 @@
   "id": "P28",
   "name": "Nested personal install",
   "objective": "Let one engineer run this workspace privately inside a host repo they don't own, with no team-visible footprint. The engine and state live in a nested git repo at /workflow, hidden by .git/info/exclude. Skills and executors go into the host's .claude/ as untracked files, with clashing names detected and prefixed at install. Personal settings go in settings.local.json and the contract pointer in CLAUDE.local.md. Nothing is written to CI, .gitattributes or docs/. Slice commits split in two: product code to the host repo in its recorded commit convention (asked once at install), state to /workflow. phase-scope reads the host repo's base commit. Parallel worktrees are off in nested mode. Contract and skill paths carry the /workflow prefix, and an --update path covers nested installs. The acceptance walkthrough waits for a run in the real company repo.",
-  "status": "in_progress",
+  "status": "done",
   "order": 4,
   "created_at": "2026-10-07T11:23:01+09:00",
   "started_at": null,
-  "completed_at": null,
+  "completed_at": "2026-10-07T13:57:09+09:00",
   "review": {
-    "status": "changes_requested",
-    "reviewed_at": "2026-10-07T13:33:08+09:00",
+    "status": "pass",
+    "reviewed_at": "2026-10-07T13:57:09+09:00",
     "reviewer": "slice-executor-high",
-    "note": "one blocking finding: a tracked host .gitignore negation outranks info/exclude, so nested install files can show untracked while the installer reports clean; fix slice P28.F1 (high)"
+    "note": "re-review after P28.F1: the gitignore finding is closed (H clean, D/E refuse with nothing written, 12 more shapes held); smoke 226 pass; at-root unchanged; gate waived by the operator"
   },
   "acceptance": {
     "required": false,
@@ -29,5 +29,6 @@
     "archived": false,
     "archived_at": null,
     "archive_path": null
-  }
+  },
+  "consolidation": "pending"
 }
