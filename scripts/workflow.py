@@ -14,6 +14,139 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# Nested personal install (P28). The marker `nested.json` beside `scripts/` says the engine and all
+# workflow state live in a nested repo (`<host>/workflow`, ROOT) inside a host repo the operator does
+# not own (HOST_ROOT): product code, git history for phase-scope, and `.claude/agents` are the
+# host's, while works/, docs/, executors.toml and the templates stay under ROOT. EVERY nested
+# branch below is gated on that marker: with no `nested.json`, NESTED is None, HOST_ROOT is None and
+# behaviour and output are byte-for-byte the at-root engine's. A marker that exists but is malformed
+# is never read as at-root mode -- `validate` reports it as an error and every other command refuses
+# (see `main`). The installer writes the marker; this file owns its schema (NESTED_* below).
+NESTED_MARKER = "nested.json"
+NESTED_SCHEMA = 1
+NESTED_KEYS = ("schema", "host_root", "commit_convention", "renames")
+NESTED_CONVENTION_KEYS = ("inferred", "confirmed", "text", "coauthor_trailers")
+NESTED_TRAILERS = ("allowed", "forbidden", "unknown")
+NESTED_RENAME_KINDS = ("skills", "agents")
+NESTED_PARALLEL_OFF = "parallel worktrees are disabled in a nested personal install"
+# phase.json `host_anchors` (nested only): the host HEAD at new-phase and at the passing review --
+# phase-scope's range in the host repo, whose commits the nested repo never sees.
+HOST_ANCHOR_KEYS = ("created", "review_pass")
+
+
+def nested_marker_problems(data) -> list:
+    """Every way a parsed `nested.json` breaks schema 1 -- empty when it is well-formed.
+
+        {"schema": 1,
+         "host_root": "..",                       # relative to the engine root; the host repo's root
+         "commit_convention": {"inferred": "<text>" | null, "confirmed": false,
+                               "text": "<text>" | null, "coauthor_trailers": "allowed" | "forbidden" | "unknown"},
+         "renames": {"skills": {"<original>": "<installed>"}, "agents": {"<original>": "<installed>"}}}
+
+    A confirmed convention carries its text and a decided trailer rule; an installed name is a bare
+    file/directory name. Unknown top-level keys are not problems (`validate` warns about them)."""
+    if not isinstance(data, dict):
+        return ["nested.json is not a JSON object"]
+    problems = []
+    missing = [k for k in NESTED_KEYS if k not in data]
+    if missing:
+        problems.append(f"missing field(s) {', '.join(missing)}")
+    if "schema" in data and (data["schema"] is True or data["schema"] != NESTED_SCHEMA):
+        problems.append(f"schema {data['schema']!r} is not {NESTED_SCHEMA}")
+    if "host_root" in data:
+        raw = data["host_root"]
+        if not (isinstance(raw, str) and raw.strip()) or os.path.isabs(raw):
+            problems.append(f"host_root {raw!r} must be a non-empty path relative to the engine root (normally \"..\")")
+        else:
+            host = (ROOT / raw).resolve()
+            if not host.is_dir():
+                problems.append(f"host_root {raw!r} resolves to {host}, which is not a directory")
+            elif host == ROOT or host not in ROOT.parents:
+                problems.append(f"host_root {raw!r} resolves to {host}, which does not contain the engine root {ROOT}")
+    if "commit_convention" in data:
+        conv = data["commit_convention"]
+        if not isinstance(conv, dict):
+            problems.append("commit_convention is not an object")
+        else:
+            gone = [k for k in NESTED_CONVENTION_KEYS if k not in conv]
+            if gone:
+                problems.append(f"commit_convention: missing field(s) {', '.join(gone)}")
+            for key in ("inferred", "text"):
+                if key in conv and conv[key] is not None and not isinstance(conv[key], str):
+                    problems.append(f"commit_convention.{key} must be a string or null")
+            if "confirmed" in conv and not isinstance(conv["confirmed"], bool):
+                problems.append("commit_convention.confirmed must be true or false")
+            if "coauthor_trailers" in conv and conv["coauthor_trailers"] not in NESTED_TRAILERS:
+                problems.append(f"commit_convention.coauthor_trailers {conv['coauthor_trailers']!r} is not one of {', '.join(NESTED_TRAILERS)}")
+            if conv.get("confirmed") is True:
+                if not (isinstance(conv.get("text"), str) and conv["text"].strip()):
+                    problems.append("commit_convention: a confirmed convention records its text")
+                if conv.get("coauthor_trailers") not in ("allowed", "forbidden"):
+                    problems.append("commit_convention: a confirmed convention records coauthor_trailers allowed or forbidden")
+    if "renames" in data:
+        renames = data["renames"]
+        if not isinstance(renames, dict):
+            problems.append("renames is not an object")
+        else:
+            for kind in NESTED_RENAME_KINDS:
+                table = renames.get(kind)
+                if not isinstance(table, dict):
+                    problems.append(f"renames.{kind} must be an object mapping an original name to its installed name")
+                    continue
+                for original, installed in table.items():
+                    if not (original and isinstance(installed, str) and installed.strip() and installed == installed.strip()
+                            and "/" not in installed and "\\" not in installed and not installed.startswith(".")):
+                        problems.append(f"renames.{kind}: {original!r} -> {installed!r} is not a bare installed name")
+    return problems
+
+
+def _load_nested() -> tuple:
+    """(marker, problems): (None, []) when ROOT holds no `nested.json` -- at-root mode, the only
+    case that touches nothing. A marker that cannot be read or parsed comes back as `{}` with its
+    problem, so it still counts as nested (never silently at-root)."""
+    path = ROOT / NESTED_MARKER
+    if not os.path.lexists(path):
+        return None, []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return {}, [f"cannot be read as JSON ({exc})"]
+    return (data if isinstance(data, dict) else {}), nested_marker_problems(data)
+
+
+NESTED, NESTED_PROBLEMS = _load_nested()
+HOST_ROOT = None
+if NESTED is not None and isinstance(NESTED.get("host_root"), str) and NESTED["host_root"].strip() and not os.path.isabs(NESTED["host_root"]):
+    HOST_ROOT = (ROOT / NESTED["host_root"]).resolve()
+# The command prefix every printed hint uses: from the host root when nested (cwd = <host>), from
+# the workspace root otherwise -- so at root it is exactly the literal the hints always printed. A
+# nested marker too broken to name its host gets the absolute path, right from any cwd.
+if HOST_ROOT is not None:
+    WORKFLOW_CMD = f"python3 {Path(os.path.relpath(ROOT, HOST_ROOT)).as_posix()}/scripts/workflow.py"
+elif NESTED is not None:
+    WORKFLOW_CMD = f"python3 {ROOT / 'scripts' / 'workflow.py'}"
+else:
+    WORKFLOW_CMD = "python3 scripts/workflow.py"
+
+
+def shown(path: Path) -> str:
+    """A path as the operator's shell must type it: relative to the host root when nested (so
+    `workflow/works/...` resolves from a session started at the host), else today's ROOT-relative
+    string. OUTPUT ONLY -- a path persisted into index.json, slice.json, phase.json or events.jsonl
+    stays ROOT-relative, because the state it points into lives in the nested repo."""
+    if HOST_ROOT is not None:
+        return os.path.relpath(path, HOST_ROOT)
+    if NESTED is not None:  # a marker too broken to name its host: absolute, right from any cwd
+        return str(path)
+    return str(path.relative_to(ROOT))
+
+
+def shown_rel(rel: str) -> str:
+    """`shown` for a ROOT-relative string read back from stored state (an index or phase path):
+    host-relative when nested, and at root the stored string itself, untouched."""
+    return shown(ROOT / rel) if HOST_ROOT is not None else rel
+
+
 WORKS = ROOT / "works"
 DOCS = ROOT / "docs"
 ACTIVE = WORKS / "phases" / "active"
@@ -99,7 +232,10 @@ BUSY_PHASE_STATUSES = ("in_progress", "in_review", "pending", "blocked")
 # Regenerated from works/phases/** and docs/versions/** by `parallel-merge-finish`;
 # never merged by hand (see .gitattributes).
 GENERATED_FILES = ("works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "docs/current/*.md")
-CLAUDE_AGENTS = ROOT / ".claude" / "agents"
+# The executor agent files Claude Code loads: the host's `.claude/agents` when nested (Claude Code
+# finds agents walking up from the session's cwd, the host root), the workspace's otherwise.
+# executors.toml and .env stay at ROOT either way.
+CLAUDE_AGENTS = (HOST_ROOT or ROOT) / ".claude" / "agents"
 EXECUTOR_TIERS = ("mid", "high")
 RETIRED_EXECUTOR_TIERS = ("low",)  # dropped in workspace v23 — routing is two-tier (mid/high)
 # Shipped presets for the slice-executor tiers. A top-level mode = "<preset>" key in
@@ -246,7 +382,9 @@ def executor_config() -> dict:
 
 
 def _patched_agent_md(text: str, model: str, effort: str) -> str:
-    """Rewrite only the model:/effort: frontmatter lines of a .claude agent file."""
+    """Rewrite only the model:/effort: frontmatter lines of a .claude agent file. Every other line
+    is kept verbatim -- `name:` included, which for a renamed agent in a nested install is its
+    installed name (the `subagent_type`), so sync-agents never undoes a rename."""
     if not text.startswith("---\n"):
         raise SystemExit("agent file has no frontmatter")
     end = text.find("\n---\n", 4)
@@ -264,15 +402,29 @@ def _patched_agent_md(text: str, model: str, effort: str) -> str:
 DESIGN_DRAFTER_FOLLOWS = "high"
 
 
+def installed_agent_name(name: str) -> str:
+    """The name a managed agent is installed under: its canonical name, or -- in a nested install
+    whose host already has an agent of that name -- the rename the installer recorded in
+    `nested.json` `renames.agents`. The installed file is `<installed name>.md` and its `name:`
+    frontmatter (the `subagent_type`) is the installed name too; the installer writes both."""
+    if NESTED is None:
+        return name
+    renames = NESTED.get("renames")
+    table = renames.get("agents") if isinstance(renames, dict) else None
+    installed = table.get(name) if isinstance(table, dict) else None
+    return installed if isinstance(installed, str) and installed else name
+
+
 def executor_agent_files(config: dict) -> list:
     """(label, path, model, effort) for the 3 managed agent files: the 2 slice-executor tiers plus
-    design-drafter, which tracks the high tier (label "design-drafter"; it is not a tier)."""
+    design-drafter, which tracks the high tier (label "design-drafter"; it is not a tier). Labels
+    stay canonical; paths resolve through the nested rename map (`installed_agent_name`)."""
     files = [
-        (tier, CLAUDE_AGENTS / f"slice-executor-{tier}.md", config[tier]["model"], config[tier]["effort"])
+        (tier, CLAUDE_AGENTS / f"{installed_agent_name(f'slice-executor-{tier}')}.md", config[tier]["model"], config[tier]["effort"])
         for tier in EXECUTOR_TIERS
     ]
     followed = config[DESIGN_DRAFTER_FOLLOWS]
-    files.append(("design-drafter", CLAUDE_AGENTS / "design-drafter.md", followed["model"], followed["effort"]))
+    files.append(("design-drafter", CLAUDE_AGENTS / f"{installed_agent_name('design-drafter')}.md", followed["model"], followed["effort"]))
     return files
 
 
@@ -302,8 +454,9 @@ def sync_agents(args: argparse.Namespace) -> None:
     if not args.check:
         for path, desired in drift:
             write_text(path, desired)
-    changed = [str(path.relative_to(ROOT)) for path, _ in drift]
-    missing = [str(path.relative_to(ROOT)) for path in missing_paths]
+    # Agent files live in the host when nested, so they are named from there (identical at root).
+    changed = [shown(path) for path, _ in drift]
+    missing = [shown(path) for path in missing_paths]
     for tier in EXECUTOR_TIERS:
         cfg = config[tier]
         print(f"{tier:<5} {cfg['model']} @ {cfg['effort'] or '(no effort line)'}")
@@ -370,9 +523,9 @@ def show_executor_mode() -> None:
         print(f"{tier:<5} {cfg['model']} @ {cfg['effort'] or '(no effort line)'}")
     print(f"overrides: {_overrides_listing(overrides, mode) or 'none'}")
     drift, missing = executor_agent_drift(config)
-    stale = [str(path.relative_to(ROOT)) for path, _ in drift] + [f"{path.relative_to(ROOT)} (missing)" for path in missing]
+    stale = [shown(path) for path, _ in drift] + [f"{shown(path)} (missing)" for path in missing]
     if stale:
-        print(f"agent files: out of sync: {', '.join(stale)} (run: python3 scripts/workflow.py sync-agents)")
+        print(f"agent files: out of sync: {', '.join(stale)} (run: {WORKFLOW_CMD} sync-agents)")
     else:
         print("agent files: in sync")
     presets = ", ".join(
@@ -445,9 +598,12 @@ def head_commit() -> str:
     semantics: this is the commit the version was *created at* -- the version file itself lands
     in a later commit -- so the sha is provenance, while `created_at` and `source` are the
     staleness keys a reader actually judges by.
+
+    Nested install: the HOST's HEAD -- the product state the doc describes -- never the nested
+    repo's, which only holds workflow state. The same helper stamps a nested phase's host anchors.
     """
     try:
-        proc = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(ROOT), capture_output=True, text=True, timeout=10)
+        proc = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(HOST_ROOT or ROOT), capture_output=True, text=True, timeout=10)
     except Exception:  # noqa: BLE001 - git is optional; a doc version must still be writable without it
         return ""
     sha = proc.stdout.strip()
@@ -518,8 +674,8 @@ def new_doc_version(args: argparse.Namespace) -> None:
     rebuild_docs()
     append_event("doc_version_created", doc=doc_id, version=version_id, source=args.source)
     print(f"created doc version {doc_id}/{version_id}")
-    print(f"edit_path={rel}")
-    print("after editing, run: python3 scripts/workflow.py rebuild-docs")
+    print(f"edit_path={shown(dest)}")
+    print(f"after editing, run: {WORKFLOW_CMD} rebuild-docs")
     # The split can only happen in a new version, and this is one -- so say it here, not only in
     # `validate`, where the reader is nowhere near an editable file.
     hint = oversized_sections_line(oversized_doc_sections([doc_id]))
@@ -536,7 +692,7 @@ def cmd_docs(args: argparse.Namespace) -> None:
     for doc_id in sorted(index["docs"]):
         info = index["docs"][doc_id]
         latest = next(v for v in info["versions"] if v["id"] == info["latest"])
-        print(f"{doc_id}: latest={info['latest']} current={info['current_path']} latest_path={latest['path']}")
+        print(f"{doc_id}: latest={info['latest']} current={shown_rel(info['current_path'])} latest_path={shown_rel(latest['path'])}")
         line = f"  {doc_marker(latest)}"
         owed = stale.get(doc_id)
         if owed:
@@ -997,7 +1153,10 @@ def current_stream(phases: list) -> str:
     `execution.branch` -- which works identically in a `git worktree` and in a plain
     clone on another machine, and needs no marker file. Git is consulted only when at
     least one active phase is actually opted in, so an untouched workspace never shells out.
+    A nested install has no parallel mode, so it is always the default stream.
     """
+    if NESTED is not None:
+        return None
     branches = set()
     for phase in phases:
         execution = phase_execution(phase)
@@ -1269,6 +1428,18 @@ def validate() -> int:
                         errors.append(f"phase {p['id']} has invalid acceptance.{field} {value!r}; expected a string or null")
                 if p["status"] == "done" and required is True and not acceptance.get("cleared_at"):
                     errors.append(f"phase {p['id']} is done but its operator acceptance gate was never cleared; the operator must walk the running product (accept-gate {p['id']} --open/--clear)")
+        # Optional host anchors (P28): written only by a nested install's new-phase / passing review.
+        # Absent = an at-root or pre-nested phase = nothing to check.
+        if "host_anchors" in p:
+            anchors = p.get("host_anchors")
+            if not isinstance(anchors, dict):
+                errors.append(f"phase {p['id']} has a non-object host_anchors block: {anchors!r}")
+            else:
+                for key, value in anchors.items():
+                    if key not in HOST_ANCHOR_KEYS:
+                        errors.append(f"phase {p['id']} has unknown host_anchors.{key}; expected only {', '.join(HOST_ANCHOR_KEYS)}")
+                    elif value is not None and not (isinstance(value, str) and re.fullmatch(r"[0-9a-f]{7,64}", value)):
+                        errors.append(f"phase {p['id']} has invalid host_anchors.{key} {value!r}; expected a host commit sha or null")
         if not (ACTIVE / p["id"] / "intent.md").exists():
             warnings.append(f"phase {p['id']} has no intent.md (expected {p['id']}/intent.md); capture operator intent via the create-phase skill")
         # Bounded notebook (v35). Warnings only: `validate` prints them and still exits 0.
@@ -1313,13 +1484,13 @@ def validate() -> int:
                 continue
             djson = ddir / "deferred.json"
             if not djson.exists():
-                errors.append(f"missing deferred.json: {ddir.relative_to(ROOT)}")
+                errors.append(f"missing deferred.json: {shown(ddir)}")
                 continue
             data = read_json(djson)
             if data.get("status") not in DEFERRED_STATUSES:
                 errors.append(f"invalid deferred status {data.get('id')}: {data.get('status')}")
             if data.get("status") not in allowed:
-                errors.append(f"deferred job in wrong folder: {data.get('id')} status {data.get('status')} under {base.relative_to(ROOT)}")
+                errors.append(f"deferred job in wrong folder: {data.get('id')} status {data.get('status')} under {shown(base)}")
     # Deferred doc consolidation. A WARNING, never an error: the debt is expected operator-paced
     # state (a passing review defers consolidation to a docs phase), so it must not fail CI or
     # block the loop -- it must only stop being silent.
@@ -1341,17 +1512,35 @@ def validate() -> int:
         warnings.append(oversized)
     # Executor-tier drift is advisory only: warn (never error, never crash) when the agent
     # files disagree with executors.toml/defaults, so a foreign or partial workspace still validates.
+    # Skipped when a broken nested marker names no host: the agent files live there, not under ROOT.
     try:
-        for tier, path, model, effort in executor_agent_files(executor_config()):
+        for tier, path, model, effort in ([] if NESTED is not None and HOST_ROOT is None else executor_agent_files(executor_config())):
             if not path.exists():
-                warnings.append(f"missing executor agent file: {path.relative_to(ROOT)} (run: python3 scripts/workflow.py sync-agents)")
+                warnings.append(f"missing executor agent file: {shown(path)} (run: {WORKFLOW_CMD} sync-agents)")
                 continue
             current = path.read_text(encoding="utf-8")
             desired = _patched_agent_md(current, model, effort)
             if desired != current:
-                warnings.append(f"executor agent file out of sync with executors.toml/defaults: {path.relative_to(ROOT)} (run: python3 scripts/workflow.py sync-agents)")
+                warnings.append(f"executor agent file out of sync with executors.toml/defaults: {shown(path)} (run: {WORKFLOW_CMD} sync-agents)")
     except (SystemExit, Exception) as exc:  # noqa: BLE001 - advisory check must not fail validate
         warnings.append(f"executor tier config check failed: {exc}")
+    # Nested personal install (P28): a malformed marker is an ERROR, so a broken nested install is
+    # never mistaken for at-root mode; the host must be a git work tree (phase-scope and the
+    # product commits read it). Silent at root -- no marker, nothing checked.
+    if NESTED is not None:
+        marker = shown(ROOT / NESTED_MARKER)
+        errors.extend(f"{marker}: {problem}" for problem in NESTED_PROBLEMS)
+        unknown = sorted(set(NESTED) - set(NESTED_KEYS))
+        if unknown:
+            warnings.append(f"{marker}: unknown field(s) {', '.join(unknown)} (schema {NESTED_SCHEMA} reads only {', '.join(NESTED_KEYS)})")
+        if HOST_ROOT is not None and HOST_ROOT.is_dir():
+            try:
+                proc = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=str(HOST_ROOT), capture_output=True, text=True, timeout=10)
+            except Exception:  # noqa: BLE001 - no git binary: say so, never fail on it
+                warnings.append(f"git is not available, so the nested install's host {HOST_ROOT} cannot be confirmed as a git work tree")
+            else:
+                if proc.returncode != 0 or proc.stdout.strip() != "true":
+                    errors.append(f"nested install: the host {HOST_ROOT} is not a git work tree (phase-scope and the host product commits need one)")
     validate_docs(errors)
     for w in warnings:
         print(f"warning: {w}")
@@ -1470,6 +1659,26 @@ def create_slice(phase_id: str, slice_id: str, name: str, kind: str, order, risk
     return sdir
 
 
+def _with_host_anchors(data: dict, anchors: dict) -> dict:
+    """`data` with `anchors` merged into its `host_anchors` block, the block placed right after
+    `acceptance` (or appended) when it is new, so phase.json keeps reading naturally."""
+    current = data.get("host_anchors")
+    merged = dict(current) if isinstance(current, dict) else {}
+    merged.update(anchors)
+    if "host_anchors" in data:
+        data["host_anchors"] = merged
+        return data
+    ordered = {}
+    for key, value in data.items():
+        ordered[key] = value
+        if key == "acceptance":
+            ordered["host_anchors"] = merged
+    ordered.setdefault("host_anchors", merged)
+    data.clear()
+    data.update(ordered)
+    return data
+
+
 def new_phase(args: argparse.Namespace) -> None:
     phase_id = args.phase
     if not re.fullmatch(r"P[0-9]+", phase_id):
@@ -1486,6 +1695,10 @@ def new_phase(args: argparse.Namespace) -> None:
         "paths": {"phase_md": "phase.md", "intent_md": "intent.md", "slices_dir": "slices"},
         "archive": {"archived": False, "archived_at": None, "archive_path": None},
     }
+    if NESTED is not None:
+        # The nested repo never sees the host's commits, so phase-scope's base is the host HEAD now
+        # (null while the host has no commit). At root this key is never written.
+        phase_data = _with_host_anchors(phase_data, {"created": head_commit() or None})
     write_json(pdir / "phase.json", phase_data)
     # Seed the notebook from the template: fixed sections plus an empty generated ## Slices
     # block, which the rebuild at the end of this function fills immediately.
@@ -1495,16 +1708,17 @@ def new_phase(args: argparse.Namespace) -> None:
     create_slice(phase_id, f"{phase_id}.REVIEW", "phase review", "review", 9999, "high", source={"type": "new_phase", "id": phase_id})
     append_event("phase_created", phase=phase_id)
     rebuild_index_and_state()
-    print(f"created phase {phase_id}: {pdir.relative_to(ROOT)}")
+    print(f"created phase {phase_id}: {shown(pdir)}")
     # v43: a phase runs on this stream unless the operator asks for a worktree, so creation
     # stamps nothing and says nothing -- except where a worktree would actually buy something.
     if getattr(args, "on_main", False):
         print(f"note: --on-main is a no-op since v43 -- the default stream IS the default, so {phase_id} already runs here; nothing was stamped")
     # Proactive opt-in suggestion: a phase created while another one is mid-flight is the
     # first of the two moments a worktree becomes relevant. Suggestion only, never a default.
-    busy = next((p for p in all_active_phases() if p["id"] != phase_id and p.get("status") == "in_progress" and phase_execution(p) is None), None)
+    # Never in a nested install, where parallel worktrees are off.
+    busy = None if NESTED is not None else next((p for p in all_active_phases() if p["id"] != phase_id and p.get("status") == "in_progress" and phase_execution(p) is None), None)
     if busy:
-        print(f"hint: {busy['id']} is in progress -- this phase can run in parallel on its own branch: python3 scripts/workflow.py parallel-start {phase_id}")
+        print(f"hint: {busy['id']} is in progress -- this phase can run in parallel on its own branch: {WORKFLOW_CMD} parallel-start {phase_id}")
 
 
 def _clean_order(value):
@@ -1526,7 +1740,7 @@ def new_slice(args: argparse.Namespace) -> None:
     sdir = create_slice(args.phase, args.slice, args.name, args.kind, order, args.risk, source={"type": "manual", "id": None}, depends_on=args.depends_on or [])
     append_event("slice_created", phase=args.phase, slice=args.slice)
     rebuild_index_and_state()
-    print(f"created slice {args.slice}: {sdir.relative_to(ROOT)}")
+    print(f"created slice {args.slice}: {shown(sdir)}")
 
 
 def _set_slice_status(sdir: Path, status: str) -> str:
@@ -1603,7 +1817,7 @@ def _require_acceptance_cleared(phase_id: str, data: dict) -> None:
     acceptance = phase_acceptance(data)
     if acceptance is None:
         if "acceptance" in data:
-            print(f"acceptance: phase {phase_id} has a malformed gate block -- treated as legacy (run: python3 scripts/workflow.py validate)")
+            print(f"acceptance: phase {phase_id} has a malformed gate block -- treated as legacy (run: {WORKFLOW_CMD} validate)")
         else:
             print("acceptance: legacy phase (no gate block) -- pass recorded without an operator acceptance gate")
         return
@@ -1611,13 +1825,13 @@ def _require_acceptance_cleared(phase_id: str, data: dict) -> None:
     if required is None:
         raise SystemExit(
             f"phase {phase_id} has not declared whether the operator must accept it; a pass cannot be recorded yet:\n"
-            f"  python3 scripts/workflow.py accept-gate {phase_id} --require                     (operator-visible: the operator walks the running product)\n"
-            f"  python3 scripts/workflow.py accept-gate {phase_id} --waive --note \"why\"          (nothing the operator can see)")
+            f"  {WORKFLOW_CMD} accept-gate {phase_id} --require                     (operator-visible: the operator walks the running product)\n"
+            f"  {WORKFLOW_CMD} accept-gate {phase_id} --waive --note \"why\"          (nothing the operator can see)")
     if required is True and not acceptance.get("cleared_at"):
         raise SystemExit(
             f"phase {phase_id} requires operator acceptance and the gate is not cleared; show the operator the running product first:\n"
-            f"  python3 scripts/workflow.py accept-gate {phase_id} --open --walkthrough \"...\"    (orchestrator, after the review executor's validation and judgment)\n"
-            f"  python3 scripts/workflow.py accept-gate {phase_id} --clear --note \"...\"          (after the operator walks it; --note is optional)")
+            f"  {WORKFLOW_CMD} accept-gate {phase_id} --open --walkthrough \"...\"    (orchestrator, after the review executor's validation and judgment)\n"
+            f"  {WORKFLOW_CMD} accept-gate {phase_id} --clear --note \"...\"          (after the operator walks it; --note is optional)")
 
 
 def review_phase(args: argparse.Namespace) -> None:
@@ -1641,6 +1855,9 @@ def review_phase(args: argparse.Namespace) -> None:
     if new_status == "done":
         data["completed_at"] = now_iso()
     data["status"] = new_status
+    if args.verdict == "pass" and NESTED is not None:
+        # The end of the phase's host range: phase-scope reads base..review_pass in the host.
+        _with_host_anchors(data, {"review_pass": head_commit() or None})
     write_json(pdir / "phase.json", data)
     # Drive the phase's REVIEW slice from the same verdict so the phase and its
     # review slice never diverge (a pass no longer leaves REVIEW stuck in_progress).
@@ -1654,7 +1871,7 @@ def review_phase(args: argparse.Namespace) -> None:
     rebuild_index_and_state()
     print(f"phase {args.phase} review: {args.verdict} (status -> {new_status})")
     if args.verdict == "changes_requested":
-        print("create fix slices, e.g.: python3 scripts/workflow.py new-slice --phase {0} --slice {0}.F1 --name \"...\" --kind fix".format(args.phase))
+        print(f"create fix slices, e.g.: {WORKFLOW_CMD} new-slice --phase {args.phase} --slice {args.phase}.F1 --name \"...\" --kind fix")
     elif args.verdict == "pass":
         notes = phase_doc_impact_notes(pdir)
         if notes:
@@ -1668,7 +1885,7 @@ def review_phase(args: argparse.Namespace) -> None:
             done_cmd = "parallel-consolidated" if phase_execution(data) else "docs-consolidated"
             print(f"docs: {len(notes)} '## Doc impact' note(s) recorded -- durable docs are NOT versioned here.")
             print("  consolidation is deferred: the operator creates a docs phase for it (doc-new-version per note, then rebuild-docs).")
-            print(f"  when those versions land: python3 scripts/workflow.py {done_cmd} {args.phase}   (until then {args.phase} is held out of archiving)")
+            print(f"  when those versions land: {WORKFLOW_CMD} {done_cmd} {args.phase}   (until then {args.phase} is held out of archiving)")
         print(f"phase {args.phase} is done and stays in active/. Do NOT archive a single phase now.")
         print("Archive all phases together with `archive-all` only once every active phase is done (the last review slice is complete).")
 
@@ -1698,7 +1915,7 @@ def _print_acceptance(phase_id: str, acceptance) -> None:
     print(f"phase={phase_id}")
     if acceptance is None:
         print("acceptance=none (legacy phase: no gate block, so review-phase --verdict pass is allowed)")
-        print(f"declare one with: python3 scripts/workflow.py accept-gate {phase_id} --require | --waive --note \"why\"")
+        print(f"declare one with: {WORKFLOW_CMD} accept-gate {phase_id} --require | --waive --note \"why\"")
         return
     print(f"required={json.dumps(acceptance.get('required'))}")
     print(f"requested_at={acceptance.get('requested_at') or 'none'}")
@@ -1722,7 +1939,7 @@ def accept_gate(args: argparse.Namespace) -> None:
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
     if args.walkthrough is not None and not args.open_gate:
-        raise SystemExit(f"--walkthrough belongs to --open: python3 scripts/workflow.py accept-gate {args.phase} --open --walkthrough \"...\"")
+        raise SystemExit(f"--walkthrough belongs to --open: {WORKFLOW_CMD} accept-gate {args.phase} --open --walkthrough \"...\"")
     if not (args.require or args.waive or args.open_gate or args.clear):
         _print_acceptance(args.phase, phase_acceptance(data))  # show only: writes nothing
         return
@@ -1745,7 +1962,7 @@ def accept_gate(args: argparse.Namespace) -> None:
         if acceptance is None or acceptance.get("required") is not True:
             raise SystemExit(
                 f"phase {args.phase} has not declared that the operator must accept it; declare it first:\n"
-                f"  python3 scripts/workflow.py accept-gate {args.phase} --require")
+                f"  {WORKFLOW_CMD} accept-gate {args.phase} --require")
         if not (args.walkthrough or "").strip():
             raise SystemExit(f"accept-gate {args.phase} --open requires --walkthrough \"the concrete script: URLs to open, actions to try, in the operator runtime\"")
         acceptance["walkthrough"] = args.walkthrough
@@ -1756,7 +1973,7 @@ def accept_gate(args: argparse.Namespace) -> None:
         if acceptance is None or not acceptance.get("requested_at"):
             raise SystemExit(
                 f"phase {args.phase} has no open acceptance gate (requested_at is unset); nothing to clear:\n"
-                f"  python3 scripts/workflow.py accept-gate {args.phase} --open --walkthrough \"...\"")
+                f"  {WORKFLOW_CMD} accept-gate {args.phase} --open --walkthrough \"...\"")
         acceptance["cleared_at"] = now_iso()
         if args.note:
             acceptance["note"] = args.note
@@ -1773,7 +1990,7 @@ def accept_gate(args: argparse.Namespace) -> None:
         print(f"phase {args.phase}: acceptance gate OPEN -- phase is pending [~]; do not start, finish, or advance past it")
         print("WALKTHROUGH (the operator runs this against the running product):")
         print(args.walkthrough)
-        print(f"Then clear it: python3 scripts/workflow.py accept-gate {args.phase} --clear")
+        print(f"Then clear it: {WORKFLOW_CMD} accept-gate {args.phase} --clear")
         print("Add --note \"...\" to record what the operator reported.")
     elif args.clear:
         print(f"phase {args.phase}: acceptance gate CLEARED -- phase is in_progress again; review-phase --verdict pass is now allowed")
@@ -1804,11 +2021,11 @@ def _branch_exists(branch: str) -> bool:
     return _git(["rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"], check=False).returncode == 0
 
 
-def _git_available() -> bool:
-    """True when this workspace sits inside a usable git work tree. Never raises: a
-    workspace without git (or outside a repo) must keep working exactly as before."""
+def _git_available(cwd=None) -> bool:
+    """True when this workspace (or `cwd`: a nested install's host) sits inside a usable git work
+    tree. Never raises: a workspace without git (or outside a repo) must keep working exactly as before."""
     try:
-        proc = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=str(ROOT), capture_output=True, text=True)
+        proc = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=str(cwd or ROOT), capture_output=True, text=True)
     except Exception:  # noqa: BLE001 - git is optional
         return False
     return proc.returncode == 0 and proc.stdout.strip() == "true"
@@ -1938,6 +2155,14 @@ def _phase_branch(phase_id: str, name: str, slug_override=None) -> str:
     return f"phase/{phase_id}-{slug}"
 
 
+def _refuse_parallel_when_nested() -> None:
+    """Parallel worktrees are off in a nested personal install: the untracked host-side files
+    (CLAUDE.local.md, the .claude/ additions, workflow/ itself) do not exist in a host worktree.
+    One line, non-zero exit, before anything is read or written. Silent at root."""
+    if NESTED is not None:
+        raise SystemExit(NESTED_PARALLEL_OFF)
+
+
 def parallel_start(args: argparse.Namespace) -> None:
     """Move a planned phase into its own worktree: stamp it, commit the stamp, cut branch + worktree.
 
@@ -1954,12 +2179,13 @@ def parallel_start(args: argparse.Namespace) -> None:
     commit ("start from the latest commit"). Stamping and asking the operator to commit cannot
     achieve that by construction; this can.
     """
+    _refuse_parallel_when_nested()
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
     if data.get("status") != "planned":
         raise SystemExit(f"phase {args.phase} is {data.get('status')!r}; a phase enters its worktree before it starts (parallel-start needs status 'planned') -- a phase already in flight finishes on this stream")
     if phase_pinned(data):
-        raise SystemExit(f"phase {args.phase} carries v42's legacy pin to the default stream (execution.mode=default, written by the old parallel-skip / new-phase --on-main); it was pinned deliberately, so un-pin it by hand: delete the execution block from {pdir.relative_to(ROOT)}/phase.json first")
+        raise SystemExit(f"phase {args.phase} carries v42's legacy pin to the default stream (execution.mode=default, written by the old parallel-skip / new-phase --on-main); it was pinned deliberately, so un-pin it by hand: delete the execution block from {shown(pdir)}/phase.json first")
     if data.get("execution") is not None:
         raise SystemExit(f"phase {args.phase} already carries an execution block: {json.dumps(data['execution'], ensure_ascii=False)}")
     _require_git_repo()
@@ -2008,11 +2234,11 @@ def parallel_start(args: argparse.Namespace) -> None:
     print(f"phase {args.phase} now runs in its own worktree")
     print(f"branch={branch}")
     print(f"worktree={worktree}")
-    print(f"stamp committed here: chore(works): opt {args.phase} into parallel execution -- only {pdir.relative_to(ROOT)}/ plus the regenerated works/ files "
+    print(f"stamp committed here: chore(works): opt {args.phase} into parallel execution -- only {shown(pdir)}/ plus the regenerated works/ files "
           f"(a phase not yet committed goes in whole); everything else dirty or staged stayed behind in this checkout, uncommitted")
     print(f"the worktree starts from that commit (HEAD); {WORKTREES_DIR}/ is excluded via the repo's .git/info/exclude")
     print(f"next: enter the worktree in this session (Claude Code: EnterWorktree with path={worktree}) or open a session there, run next, and drive the phase from that checkout")
-    print(f"this stream's pointer now skips {args.phase}; after the branch is merged back, run: python3 scripts/workflow.py parallel-teardown {args.phase}")
+    print(f"this stream's pointer now skips {args.phase}; after the branch is merged back, run: {WORKFLOW_CMD} parallel-teardown {args.phase}")
 
 
 def parallel_skip(args: argparse.Namespace) -> None:
@@ -2028,18 +2254,21 @@ def parallel_skip(args: argparse.Namespace) -> None:
     exits 0. Phases still carrying v42's pin keep it: `parallel-start` honours it, so an old
     deliberate pin is never silently overridden.
     """
+    if NESTED is not None:
+        print(NESTED_PARALLEL_OFF)
+        return
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
     execution = phase_execution(data)
     print(f"note: parallel-skip is a no-op since v43 -- the default stream IS the default; nothing was stamped and nothing was written")
     if execution:
         print(f"phase {args.phase} is not on the default stream: it runs in its own worktree on {execution.get('branch')} (asked for with parallel-start)")
-        print(f"to bring it back here, merge and retire it: python3 scripts/workflow.py parallel-teardown {args.phase}")
+        print(f"to bring it back here, merge and retire it: {WORKFLOW_CMD} parallel-teardown {args.phase}")
     elif phase_pinned(data):
         print(f"phase {args.phase} carries v42's legacy pin (execution.mode=default) and runs on the default stream -- as it would with no block at all")
     else:
         print(f"phase {args.phase} already runs on the default stream")
-        print(f"to run it in its own worktree instead, ask for one: python3 scripts/workflow.py parallel-start {args.phase}")
+        print(f"to run it in its own worktree instead, ask for one: {WORKFLOW_CMD} parallel-start {args.phase}")
 
 
 def parallel_teardown(args: argparse.Namespace) -> None:
@@ -2048,6 +2277,7 @@ def parallel_teardown(args: argparse.Namespace) -> None:
     Refuses while the branch is unmerged (merging is a separate step). Keeps `mode`/`branch`/
     `consolidation` as history and only nulls `worktree`, which is informational anyway.
     """
+    _refuse_parallel_when_nested()
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
     execution = phase_execution(data)
@@ -2061,7 +2291,7 @@ def parallel_teardown(args: argparse.Namespace) -> None:
         raise SystemExit(f"this checkout is on {branch}; run parallel-teardown from the default stream (a worktree cannot remove itself)")
     branch_exists = _branch_exists(branch)
     if branch_exists and _git(["merge-base", "--is-ancestor", branch, "HEAD"], check=False).returncode != 0:
-        raise SystemExit(f"branch {branch} is not merged into HEAD; merge it first, then run: python3 scripts/workflow.py parallel-teardown {args.phase}")
+        raise SystemExit(f"branch {branch} is not merged into HEAD; merge it first, then run: {WORKFLOW_CMD} parallel-teardown {args.phase}")
     removed = []
     worktree = execution.get("worktree")
     if worktree and Path(worktree).exists():
@@ -2102,6 +2332,7 @@ def parallel_gate(args: argparse.Namespace) -> None:
 
     Read-only and CI-shaped: `GATE OPEN` + exit 0, or `GATE CLOSED` + numbered reasons + exit 1.
     """
+    _refuse_parallel_when_nested()
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
     execution = phase_execution(data)
@@ -2180,7 +2411,7 @@ def parallel_gate(args: argparse.Namespace) -> None:
             print(f"{i}. {reason}")
         raise SystemExit(1)
     print("GATE OPEN")
-    print(f"next: merge {branch_ref} into the default stream, then run: python3 scripts/workflow.py parallel-merge-finish")
+    print(f"next: merge {branch_ref} into the default stream, then run: {WORKFLOW_CMD} parallel-merge-finish")
 
 
 def parallel_merge_finish(args: argparse.Namespace) -> None:
@@ -2193,12 +2424,13 @@ def parallel_merge_finish(args: argparse.Namespace) -> None:
     travel with the repo). Makes no commit: the regenerated files belong to the merge commit's
     cleanup, which the orchestrator owns.
     """
+    _refuse_parallel_when_nested()
     git_ok = _git_available()
     if git_ok and _git(["rev-parse", "-q", "--verify", "MERGE_HEAD"], check=False).returncode == 0:
         raise SystemExit(
             "this checkout is mid-merge (MERGE_HEAD exists) -- finish the merge first, then re-run.\n"
             f"generated files ({', '.join(GENERATED_FILES)}) are regenerated by this command, so resolve any conflict in them by taking EITHER side.\n"
-            "then: python3 scripts/workflow.py parallel-merge-finish")
+            f"then: {WORKFLOW_CMD} parallel-merge-finish")
     phases = all_active_phases()
     stream = current_stream(phases)
     if stream:
@@ -2222,11 +2454,11 @@ def parallel_merge_finish(args: argparse.Namespace) -> None:
     else:
         print(f"{len(awaiting)} merged phase(s) await doc consolidation -- do them ONE AT A TIME, on this stream (doc versions are allocated from a single index):")
         for p, execution in awaiting:
-            print(f"- {p['id']}: doc impact notes in {p['path']}/phase.md (section '## Doc impact')")
-            print(f"    per note: python3 scripts/workflow.py doc-new-version --doc <doc> --summary \"...\" --source {p['id']}.REVIEW -> edit the returned edit_path -> python3 scripts/workflow.py rebuild-docs")
-            print(f"    when that phase's notes are all consolidated: python3 scripts/workflow.py parallel-consolidated {p['id']}")
+            print(f"- {p['id']}: doc impact notes in {shown_rel(p['path'])}/phase.md (section '## Doc impact')")
+            print(f"    per note: {WORKFLOW_CMD} doc-new-version --doc <doc> --summary \"...\" --source {p['id']}.REVIEW -> edit the returned edit_path -> {WORKFLOW_CMD} rebuild-docs")
+            print(f"    when that phase's notes are all consolidated: {WORKFLOW_CMD} parallel-consolidated {p['id']}")
             if execution.get("worktree") or (git_ok and execution.get("branch") and _branch_exists(execution["branch"])):
-                print(f"    then retire its branch + worktree: python3 scripts/workflow.py parallel-teardown {p['id']}")
+                print(f"    then retire its branch + worktree: {WORKFLOW_CMD} parallel-teardown {p['id']}")
     print("no commit made -- commit the regenerated files with the merge cleanup")
 
 
@@ -2237,11 +2469,12 @@ def parallel_consolidated(args: argparse.Namespace) -> None:
     default stream and then calls this to flip `execution.consolidation` to "done", which is also
     what unblocks archiving the phase.
     """
+    _refuse_parallel_when_nested()
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
     execution = phase_execution(data)
     if not execution:
-        raise SystemExit(f"phase {args.phase} is not running in its own worktree (no parallel execution block); record its consolidation with: python3 scripts/workflow.py docs-consolidated {args.phase}")
+        raise SystemExit(f"phase {args.phase} is not running in its own worktree (no parallel execution block); record its consolidation with: {WORKFLOW_CMD} docs-consolidated {args.phase}")
     stream = current_stream(all_active_phases())
     if stream:
         raise SystemExit(f"this checkout is on parallel stream {stream}; run parallel-consolidated on the default stream, after the branch is merged")
@@ -2263,7 +2496,7 @@ def parallel_consolidated(args: argparse.Namespace) -> None:
     print("phase.json changed -- commit it together with the new doc versions")
     branch = execution.get("branch")
     if execution.get("worktree") or (branch and _git_available() and _branch_exists(branch)):
-        print(f"next: python3 scripts/workflow.py parallel-teardown {args.phase}")
+        print(f"next: {WORKFLOW_CMD} parallel-teardown {args.phase}")
     print(f"{args.phase} is now archivable (archive-phase/rotate-backlog no longer block on pending consolidation)")
 
 
@@ -2297,10 +2530,10 @@ def docs_debt(args: argparse.Namespace) -> None:
     print(f"docs_debt={', '.join(p['id'] for p in owing)} ({len(owing)} phase(s), {notes_total} note(s), {len(docs_hit)} doc(s))")
     for phase, notes in blocks:
         print()
-        print(f"{phase['id']} {phase.get('name', '')} -- {phase['path']}/phase.md '## Doc impact'")
+        print(f"{phase['id']} {phase.get('name', '')} -- {shown_rel(phase['path'])}/phase.md '## Doc impact'")
         pay = consolidation_command(phase)
         tail = "   (merged parallel phase)" if pay == "parallel-consolidated" else ""
-        print(f"  pay: python3 scripts/workflow.py {pay} {phase['id']}{tail}")
+        print(f"  pay: {WORKFLOW_CMD} {pay} {phase['id']}{tail}")
         if not notes:
             print("  - (no notes in the notebook; the debt was stamped from a list since compressed -- check git history)")
         for note in notes:
@@ -2314,8 +2547,8 @@ def docs_debt(args: argparse.Namespace) -> None:
     if UNASSIGNED_DOC in per_doc:
         print(f"  {UNASSIGNED_DOC} = the note names no doc from the known set; read it in the notebook and decide")
     print()
-    print('per note: python3 scripts/workflow.py doc-new-version --doc <doc> --summary "..." --source <P>.REVIEW')
-    print("          -> edit only the returned edit_path -> python3 scripts/workflow.py rebuild-docs")
+    print(f'per note: {WORKFLOW_CMD} doc-new-version --doc <doc> --summary "..." --source <P>.REVIEW')
+    print(f"          -> edit only the returned edit_path -> {WORKFLOW_CMD} rebuild-docs")
     print("per phase, once all of its notes are consolidated: the pay command above (that is also what unblocks archiving)")
     print("read-only: this command wrote nothing")
 
@@ -2394,6 +2627,9 @@ def parallel_status(args: argparse.Namespace) -> None:
     its branch with `git show` / `git ls-tree` -- no checkout switching, no fetching, and (unlike
     every other command here) no rebuild: nothing on disk is written.
     """
+    if NESTED is not None:
+        print(NESTED_PARALLEL_OFF)
+        return
     phases = all_active_phases()
     stream = current_stream(phases)
     # The same in-memory pointer computation `rebuild_index_and_state` does, minus the writes.
@@ -2413,7 +2649,7 @@ def parallel_status(args: argparse.Namespace) -> None:
     parallel = [(p, phase_execution(p)) for p in phases if phase_execution(p)]
     if not parallel:
         print("no phase is in its own worktree right now -- every active phase runs on the default stream, which is where a phase runs unless asked otherwise")
-        print("to run one in its own worktree instead, ask for it: python3 scripts/workflow.py parallel-start <P>")
+        print(f"to run one in its own worktree instead, ask for it: {WORKFLOW_CMD} parallel-start <P>")
         return
     if not _git_available():
         raise SystemExit(
@@ -2480,9 +2716,9 @@ def parallel_start_hint(state: dict, index: dict) -> str:
     is still `planned` -- exactly the moment a second phase would otherwise queue behind a live
     one. Suggestion only, never a default: the ordinary one-phase-at-a-time run stays silent,
     and so does a worktree checkout. v42's trigger (every planned phase, because the worktree
-    was the default) is gone with the default that justified it.
+    was the default) is gone with the default that justified it. Never in a nested install.
     """
-    if state.get("stream"):
+    if NESTED is not None or state.get("stream"):
         return None
     current = state.get("current_phase")
     phases = index.get("active_phases", [])  # already ordered by phase order
@@ -2496,7 +2732,7 @@ def parallel_start_hint(state: dict, index: dict) -> str:
     if not waiting:
         return None
     return (f"hint: {waiting['id']} is waiting behind {current} -- it can run in parallel on its own branch: "
-            f"python3 scripts/workflow.py parallel-start {waiting['id']}")
+            f"{WORKFLOW_CMD} parallel-start {waiting['id']}")
 
 
 # ---------------------------------------------------------------------------
@@ -2566,14 +2802,14 @@ def _default_branch():
     return None
 
 
-def _rev_parse(ref: str):
-    proc = _git(["rev-parse", "-q", "--verify", f"{ref}^{{commit}}"], check=False)
+def _rev_parse(ref: str, cwd=None):
+    proc = _git(["rev-parse", "-q", "--verify", f"{ref}^{{commit}}"], cwd=cwd, check=False)
     return proc.stdout.strip() if proc.returncode == 0 and proc.stdout.strip() else None
 
 
-def _diff_product_files(base: str, head: str) -> list:
+def _diff_product_files(base: str, head: str, cwd=None, pathspec=PRODUCT_PATHSPEC) -> list:
     """`[{status, path[, from]}]` for the product files that differ between two commits."""
-    proc = _git(["diff", "--name-status", "--relative", "-M", base, head, "--", *PRODUCT_PATHSPEC], check=False)
+    proc = _git(["diff", "--name-status", "--relative", "-M", base, head, "--", *pathspec], cwd=cwd, check=False)
     files = []
     for line in proc.stdout.splitlines():
         parts = line.split("\t")
@@ -2587,10 +2823,11 @@ def _diff_product_files(base: str, head: str) -> list:
     return files
 
 
-def _status_product_files() -> list:
-    """`[{status, path}]` for the uncommitted product changes in this checkout (untracked included)."""
-    proc = _git(["status", "--porcelain", "--untracked-files=all", "--", *PRODUCT_PATHSPEC], check=False)
-    prefix = _repo_prefix()
+def _status_product_files(cwd=None, pathspec=PRODUCT_PATHSPEC) -> list:
+    """`[{status, path}]` for the uncommitted product changes in this checkout (untracked included).
+    Porcelain paths are repo-root-relative, so the prefix of the directory measured is stripped."""
+    proc = _git(["status", "--porcelain", "--untracked-files=all", "--", *pathspec], cwd=cwd, check=False)
+    prefix = _repo_prefix() if cwd is None else _git(["rev-parse", "--show-prefix"], cwd=cwd, check=False).stdout.strip()
     files = []
     for line in proc.stdout.splitlines():
         if len(line) < 4:
@@ -2644,6 +2881,9 @@ def phase_scope(args: argparse.Namespace) -> None:
                 print(ln)
 
     header = [f"phase={args.phase} status={data.get('status')} archived={str(archived).lower()}"]
+    if NESTED is not None:
+        _phase_scope_nested(args, data, out, header, emit)
+        return
     if not _git_available():
         out["mode"] = "no-git"
         out["hint"] = "phase-scope: no git history readable here -- derive the boundary from the slices' result.md files"
@@ -2735,9 +2975,178 @@ def phase_scope(args: argparse.Namespace) -> None:
     emit(lines)
 
 
+def _host_pathspec() -> list:
+    """The host's product: everything but the nested workflow repo. Unlike at root, the host's own
+    works/ or docs/ ARE product, so only the nested repo's folder is excluded."""
+    return [".", f":(exclude){Path(os.path.relpath(ROOT, HOST_ROOT)).as_posix()}"]
+
+
+def _phase_scope_nested(args: argparse.Namespace, data: dict, out: dict, header: list, emit) -> None:
+    """phase-scope in a nested install: the same answer in the same format, read from the HOST repo.
+
+    The nested repo holding works/ never sees the host's commits, so the range comes from the host
+    anchors `new-phase` and the passing review stamped into phase.json: base = `--base`, else
+    `host_anchors.created` (the host HEAD at creation, so base..head with no `^`); head = `--head`,
+    else `host_anchors.review_pass` once the review passed, else the host HEAD. A phase with no
+    usable anchor lists the host working tree only, mirroring the uncommitted-phase path at root."""
+    host = HOST_ROOT
+    spec = _host_pathspec()
+    nested_dir = spec[1].split(")", 1)[1]
+    out["mode"] = "nested"
+    if not _git_available(cwd=host):
+        out["mode"] = "no-git"
+        out["hint"] = f"phase-scope: no git history readable in the host {host} -- derive the boundary from the slices' result.md files"
+        emit([out["hint"]])
+        return
+    anchors = data.get("host_anchors") if isinstance(data.get("host_anchors"), dict) else {}
+    created = anchors.get("created")
+    out["creation_commit"] = created
+    base = base_kind = None
+    missing = None
+    if args.base:
+        base = _rev_parse(args.base, cwd=host)
+        if not base:
+            raise SystemExit(f"--base {args.base}: not a commit in the host repo {host}")
+        base_kind = f"from --base {args.base}"
+    elif created:
+        base = _rev_parse(created, cwd=host)
+        if base:
+            base_kind = "the host HEAD when the phase was created: phase.json host_anchors.created"
+        else:
+            missing = f"host_anchors.created {created} is not a commit in the host repo (rewritten history, or a shallow clone)"
+    elif "created" in anchors:  # recorded as null: the host had no commit yet when the phase was created
+        if _rev_parse("HEAD", cwd=host):
+            base, base_kind = EMPTY_TREE, "the empty tree: the host had no commit when the phase was created"
+        else:
+            missing = "the host had no commit when the phase was created, and still has none"
+    else:
+        missing = "phase.json carries no host_anchors.created (a phase created at root, or before the nested engine)"
+    if base is None:
+        out["uncommitted"] = _status_product_files(cwd=host, pathspec=spec)
+        lines = header + [f"mode={out['mode']}",
+                          f"creation_commit=none ({missing} -- pass --base <host-sha> to measure a range)",
+                          f"uncommitted_product_files={len(out['uncommitted'])} (host working tree; {nested_dir}/ excluded)"]
+        lines += [f"  {f['status']} {f['path']}" for f in out["uncommitted"]]
+        lines += [f"note: {n}" for n in out["notes"]] + [SCOPE_HINT]
+        emit(lines)
+        return
+    host_head = _rev_parse("HEAD", cwd=host)
+    if args.head:
+        head = _rev_parse(args.head, cwd=host)
+        if not head:
+            raise SystemExit(f"--head {args.head}: not a commit in the host repo {host}")
+        head_kind = f"from --head {args.head}"
+    else:
+        head, head_kind = None, None
+        passed = anchors.get("review_pass")
+        if (data.get("review") or {}).get("status") == "pass" and passed:
+            head = _rev_parse(passed, cwd=host)
+            if head:
+                head_kind = "the host HEAD when the review passed: phase.json host_anchors.review_pass; pass --head HEAD to read to the tip"
+            else:
+                out["notes"].append(f"host_anchors.review_pass {passed} is not a commit in the host repo -- read to the host's tip instead")
+        if not head:
+            head, head_kind = host_head, "the tip of the host's HEAD"
+    if not head:
+        raise SystemExit(f"cannot resolve the host's HEAD to a commit in {host}")
+    rng = head if base == EMPTY_TREE else f"{base}..{head}"
+    count = _git(["rev-list", "--count", rng], cwd=host, check=False).stdout.strip() or "0"
+    files = _diff_product_files(base, head, cwd=host, pathspec=spec)
+    uncommitted = _status_product_files(cwd=host, pathspec=spec) if head == host_head else []
+    out.update({"base": base, "base_kind": base_kind, "head": head, "head_kind": head_kind,
+                "range": f"{base[:7]}..{head[:7]}", "commits": int(count), "files": files, "uncommitted": uncommitted})
+    tally = {k: sum(1 for f in files if f["status"] == k) for k in ("A", "M", "D", "R")}
+    lines = header + [f"mode={out['mode']}"]
+    if created:
+        lines.append(f"creation_commit={created}  (the host HEAD at new-phase)")
+    elif "created" in anchors and not args.base:
+        lines.append("creation_commit=none (the host had no commit at new-phase)")
+    else:
+        lines.append("creation_commit=none (measured from --base)")
+    lines.append(f"base={base} ({base_kind})")
+    lines.append(f"head={head} ({head_kind})")
+    lines.append(f"range={out['range']} commits={count}")
+    lines.append(f"product_files={len(files)} (added {tally['A']}, modified {tally['M']}, deleted {tally['D']}, renamed {tally['R']}; read from the host repo, {nested_dir}/ excluded)")
+    for f in files:
+        lines.append(f"  {f['status']} {f['from']} -> {f['path']}" if f.get("from") else f"  {f['status']} {f['path']}")
+    if uncommitted:
+        lines.append(f"uncommitted_product_files={len(uncommitted)} (host working tree, not in the range above)")
+        lines += [f"  {f['status']} {f['path']}" for f in uncommitted]
+    lines += [f"note: {n}" for n in out["notes"]] + [SCOPE_HINT]
+    emit(lines)
+
+
+def _one_line(text) -> str:
+    """A stored free-text value collapsed onto one printable line."""
+    return " ".join(str(text).split())
+
+
+def nested_next_lines() -> list:
+    """`next`'s nested-install lines: the host, and the host commit convention's state -- loud
+    while it is unconfirmed, because the first product commit must wait for the operator. Empty
+    at root, so an at-root `next` prints exactly what it always printed."""
+    if NESTED is None:
+        return []
+    conv = NESTED.get("commit_convention") if isinstance(NESTED.get("commit_convention"), dict) else {}
+    lines = [f"nested_host={HOST_ROOT}"]
+    if conv.get("confirmed") is True:
+        lines.append(f"host_commit_convention=confirmed (coauthor_trailers={conv.get('coauthor_trailers')}) "
+                     f"-- follow it in every host product commit; read it with: {WORKFLOW_CMD} nested-convention")
+    else:
+        inferred = _one_line(conv.get("inferred")) if conv.get("inferred") else "nothing"
+        lines.append(f"host_commit_convention=UNCONFIRMED (inferred: {inferred}) -- confirm with the operator before the first product commit, "
+                     f"then: {WORKFLOW_CMD} nested-convention --confirm --text \"<convention>\" --trailers allowed|forbidden")
+    return lines
+
+
+def cmd_nested_convention(args: argparse.Namespace) -> None:
+    """Show (bare) or record (--confirm) a nested install's host commit convention.
+
+    The installer cannot ask (it runs non-interactively), so it records what it inferred from the
+    host's git log and CONTRIBUTING with `confirmed: false`; the orchestrator asks the operator
+    before the first product commit and records the answer here -- the convention text and whether
+    Claude `Co-Authored-By` trailers are allowed in the host repo. Writes only `nested.json`."""
+    if NESTED is None:
+        raise SystemExit(f"nested-convention: refused -- this is not a nested personal install (no {NESTED_MARKER} beside scripts/); "
+                         "commits here follow the workspace's own Commit Convention")
+    if (args.text is not None or args.trailers is not None) and not args.confirm:
+        raise SystemExit(f"--text and --trailers belong to --confirm: {WORKFLOW_CMD} nested-convention --confirm --text \"...\" --trailers allowed|forbidden")
+    path = ROOT / NESTED_MARKER
+    if args.confirm:
+        if not (args.text or "").strip():
+            raise SystemExit("nested-convention --confirm needs --text \"<the host's commit convention, as the operator confirmed it>\"")
+        if args.trailers is None:
+            raise SystemExit("nested-convention --confirm needs --trailers allowed|forbidden (may Claude Co-Authored-By trailers appear in host commits?)")
+        data = read_json(path)
+        previous = dict(data["commit_convention"])
+        data["commit_convention"] = dict(previous, text=args.text, confirmed=True, coauthor_trailers=args.trailers)
+        problems = nested_marker_problems(data)
+        if problems:  # cannot happen from a valid marker, but never write a marker validate would reject
+            raise SystemExit(f"nested-convention: refused -- the result would be malformed: {'; '.join(problems)}")
+        write_json(path, data)
+        append_event("nested_convention_confirmed", coauthor_trailers=args.trailers, previously_confirmed=previous.get("confirmed") is True)
+        print(f"nested-convention: confirmed{' (replacing the earlier confirmation)' if previous.get('confirmed') is True else ''} -- written to {shown(path)}")
+        conv = data["commit_convention"]
+    else:
+        conv = NESTED["commit_convention"]
+    print(f"nested_host={HOST_ROOT}")
+    print(f"commit_convention={'confirmed' if conv.get('confirmed') is True else 'UNCONFIRMED'}")
+    print(f"coauthor_trailers={conv.get('coauthor_trailers')}")
+    print("inferred:")
+    print(conv.get("inferred") or "(nothing inferred)")
+    print("text:")
+    print(conv.get("text") or "(none -- not confirmed yet)")
+    if conv.get("confirmed") is not True:
+        print(f"confirm with the operator before the first product commit, then: {WORKFLOW_CMD} nested-convention --confirm --text \"<convention>\" --trailers allowed|forbidden")
+
+
 def cmd_next(args: argparse.Namespace) -> None:
     rebuild_index_and_state()
     state = read_json(WORKS / "state.json")
+    # Nested install: name the host, and hold the first product commit until the operator has
+    # confirmed the host's commit convention. Printed before every return below; silent at root.
+    for line in nested_next_lines():
+        print(line)
     # Stream context. Both lines are silent on the default stream with no parallel
     # phases, so an untouched workspace sees exactly the output it saw before.
     stream = state.get("stream")
@@ -2776,7 +3185,7 @@ def cmd_next(args: argparse.Namespace) -> None:
             print(f"acceptance_gate=open (requested_at={gate.get('requested_at')}) -- the operator must walk the running product before this phase's review can pass.")
             print("WALKTHROUGH:")
             print(gate.get("walkthrough") or "(none recorded)")
-        print(f"After the operator approves, clear it: python3 scripts/workflow.py {clear}")
+        print(f"After the operator approves, clear it: {WORKFLOW_CMD} {clear}")
         if gate:
             print("Add --note \"...\" to record what the operator reported.")
         return
@@ -2791,7 +3200,7 @@ def cmd_next(args: argparse.Namespace) -> None:
     sdir = require_slice(current_slice)
     print(f"current_phase={current_slice.split('.', 1)[0]}")
     print(f"current_slice={current_slice}")
-    print(f"slice_path={sdir.relative_to(ROOT)}")
+    print(f"slice_path={shown(sdir)}")
     print(f"next_slice={state.get('next_slice') or 'none'}")
     hint = parallel_start_hint(state, index)
     if hint:
@@ -2804,7 +3213,7 @@ def cmd_deferred(args: argparse.Namespace) -> None:
     print(f"open={len(groups.get('open', []))}")
     print(f"promoted={len(groups.get('promoted', []))}")
     print(f"dropped={len(groups.get('dropped', []))}")
-    print("dashboard=works/deferred.md")
+    print(f"dashboard={shown(WORKS / 'deferred.md')}")
 
 
 def next_deferred_id() -> str:
@@ -2833,7 +3242,7 @@ def defer_job(args: argparse.Namespace) -> None:
     write_text(ddir / "brief.md", text)
     append_event("deferred_created", deferred=did, source=args.source)
     rebuild_index_and_state()
-    print(f"created deferred job {did}: {ddir.relative_to(ROOT)}")
+    print(f"created deferred job {did}: {shown(ddir)}")
 
 
 def promote_deferred(args: argparse.Namespace) -> None:
@@ -2862,11 +3271,11 @@ def promote_deferred(args: argparse.Namespace) -> None:
     write_json(ddir / "deferred.json", data)
     target = DEFERRED_PROMOTED / did
     if target.exists():
-        raise SystemExit(f"promoted destination already exists: {target.relative_to(ROOT)}")
+        raise SystemExit(f"promoted destination already exists: {shown(target)}")
     shutil.move(str(ddir), str(target))
     append_event("deferred_promoted", deferred=did, phase=args.phase, slice=args.slice)
     rebuild_index_and_state()
-    print(f"promoted {did} -> {args.slice}: {sdir.relative_to(ROOT)}")
+    print(f"promoted {did} -> {args.slice}: {shown(sdir)}")
 
 
 def drop_deferred(args: argparse.Namespace) -> None:
@@ -2880,11 +3289,11 @@ def drop_deferred(args: argparse.Namespace) -> None:
     write_json(ddir / "deferred.json", data)
     target = DEFERRED_DROPPED / did
     if target.exists():
-        raise SystemExit(f"dropped destination already exists: {target.relative_to(ROOT)}")
+        raise SystemExit(f"dropped destination already exists: {shown(target)}")
     shutil.move(str(ddir), str(target))
     append_event("deferred_dropped", deferred=did, reason=args.reason)
     rebuild_index_and_state()
-    print(f"dropped {did}: {target.relative_to(ROOT)}")
+    print(f"dropped {did}: {shown(target)}")
 
 
 def _phase_blockers(pdir: Path) -> list:
@@ -2903,7 +3312,7 @@ def _phase_blockers(pdir: Path) -> list:
     # blocks (parallel teardown only warns, because teardown is reversible).
     if phase_consolidation(phase) == "pending":
         cmd = consolidation_command(phase)
-        reasons.append(f"docs not consolidated -- run a docs phase over its '## Doc impact' notes, then: python3 scripts/workflow.py {cmd} {phase['id']}")
+        reasons.append(f"docs not consolidated -- run a docs phase over its '## Doc impact' notes, then: {WORKFLOW_CMD} {cmd} {phase['id']}")
     return reasons
 
 
@@ -2945,7 +3354,7 @@ def archive_phase(args: argparse.Namespace) -> None:
             raise SystemExit(f"phase {args.phase} is not archivable ({'; '.join(reasons)}). Finish/review it, or use --force for exceptional cleanup.")
     dest = _archive_one(pdir, forced=args.force)
     rebuild_index_and_state()
-    print(f"archived phase {args.phase}: {dest.relative_to(ROOT)}")
+    print(f"archived phase {args.phase}: {shown(dest)}")
 
 
 def archive_all(args: argparse.Namespace) -> None:
@@ -2974,7 +3383,7 @@ def archive_all(args: argparse.Namespace) -> None:
     rebuild_index_and_state()
     print(f"archived {len(archived)} phase(s):")
     for phase_id, dest in archived:
-        print(f"- {phase_id}: {dest.relative_to(ROOT)}")
+        print(f"- {phase_id}: {shown(dest)}")
 
 
 def rotate_backlog(args: argparse.Namespace) -> None:
@@ -3001,7 +3410,7 @@ def rotate_backlog(args: argparse.Namespace) -> None:
     rebuild_index_and_state()
     print(f"rotated {len(archived)} done phase(s) to archived:")
     for phase_id, dest in archived:
-        print(f"- {phase_id}: {dest.relative_to(ROOT)}")
+        print(f"- {phase_id}: {shown(dest)}")
     if blocked:
         print(f"left {len(blocked)} phase(s) active: {', '.join(p for p, _ in blocked)}")
 
@@ -3022,6 +3431,9 @@ def rotate_backlog(args: argparse.Namespace) -> None:
 # under DESIGN_LEGACY_DIR, which the scan never reads, and `design-migrate` moves a pre-v47 root
 # there (moves only, all-or-nothing, never a delete, never git).
 DESIGN_ROOT_REL = "docs/reference/design"
+# The design root as printed: under the nested repo when nested (`workflow/docs/reference/design`,
+# where the record stays -- private workflow files, never the host's docs/), identical at root.
+DESIGN_ROOT_SHOWN = shown_rel(DESIGN_ROOT_REL)
 # The `claude-design` tool's record home, in the pre-v47 layout, never read by the engine.
 DESIGN_LEGACY_DIR = "claude-design"
 DESIGN_SCHEMA = 1
@@ -3082,7 +3494,7 @@ def design_legacy_hint(root: Path) -> str:
     if not design_legacy_record(root):
         return ""
     then = "" if (root / "design.json").exists() else ", then design-init if this repo will use the drafter"
-    return f"pre-v47 record: run python3 scripts/workflow.py design-migrate (dry run first){then}"
+    return f"pre-v47 record: run {WORKFLOW_CMD} design-migrate (dry run first){then}"
 
 
 def design_number(text: str):
@@ -3244,12 +3656,12 @@ def design_scan(root: Path) -> dict:
     problems: list = []
     scan = {"manifest": None, "cards": [], "rounds": [], "problems": problems}
     if not root.is_dir():
-        problems.append(f"no design root at {DESIGN_ROOT_REL}/ (run: python3 scripts/workflow.py design-init)")
+        problems.append(f"no design root at {DESIGN_ROOT_SHOWN}/ (run: {WORKFLOW_CMD} design-init)")
         return scan
     mpath = root / "design.json"
     hint = design_legacy_hint(root)  # said once, on the first legacy-related problem
     if not mpath.exists():
-        problems.append(f"design.json missing; {hint}" if hint else "design.json missing (run: python3 scripts/workflow.py design-init)")
+        problems.append(f"design.json missing; {hint}" if hint else f"design.json missing (run: {WORKFLOW_CMD} design-init)")
         hint = ""
     else:
         try:
@@ -3365,11 +3777,12 @@ def design_expected_problems(scan: dict, paths: list) -> list:
         return ["card paths were named, but there is no single open round to check them against"]
     address = opened[0]["data"]["slice"]
     by_rel = {c["rel"]: c for c in scan["cards"]}
-    prefix = DESIGN_ROOT_REL + "/"
+    prefixes = (DESIGN_ROOT_REL + "/", DESIGN_ROOT_SHOWN + "/")  # the same string at root
     named, problems = set(), []
     for raw in paths:
         rel = raw[2:] if raw.startswith("./") else raw
-        rel = rel[len(prefix):] if rel.startswith(prefix) else rel
+        prefix = next((pre for pre in prefixes if rel.startswith(pre)), "")
+        rel = rel[len(prefix):]
         if not DESIGN_CARD_REL_RE.match(rel):
             problems.append(f"{raw}: not a numbered card path (cards/NN-slug.html)")
             continue
@@ -3392,7 +3805,7 @@ def design_check(args: argparse.Namespace) -> int:
     if args.paths:
         problems.extend(design_expected_problems(scan, args.paths))
     if problems:
-        print(f"design-check: {len(problems)} problem(s) in {DESIGN_ROOT_REL}/")
+        print(f"design-check: {len(problems)} problem(s) in {DESIGN_ROOT_SHOWN}/")
         for problem in problems:
             print(f"- {problem}")
         return 1
@@ -3443,7 +3856,7 @@ def design_require(scan: dict, what: str) -> None:
 def design_init(args: argparse.Namespace) -> None:
     root = design_root()
     mpath = root / "design.json"
-    rel = f"{DESIGN_ROOT_REL}/design.json"
+    rel = f"{DESIGN_ROOT_SHOWN}/design.json"
     if not mpath.exists() and design_legacy_hint(root):  # a refusal only: nothing moves, nothing is written
         raise SystemExit(f"design-init: refused -- {design_legacy_hint(root)}")
     if mpath.exists():
@@ -3454,8 +3867,9 @@ def design_init(args: argparse.Namespace) -> None:
         wanted = dict(current)
     else:
         current = None
-        default_id = re.sub(r"[^a-z0-9]+", "-", ROOT.name.lower()).strip("-")[:63].strip("-") or "design"
-        wanted = {"schema": DESIGN_SCHEMA, "id": default_id, "name": ROOT.name}
+        repo = HOST_ROOT or ROOT  # nested: the project is the host, not the `workflow` folder
+        default_id = re.sub(r"[^a-z0-9]+", "-", repo.name.lower()).strip("-")[:63].strip("-") or "design"
+        wanted = {"schema": DESIGN_SCHEMA, "id": default_id, "name": repo.name}
     if args.id:
         wanted["id"] = args.id
     if args.name:
@@ -3476,8 +3890,8 @@ def design_open(args: argparse.Namespace) -> None:
     scan = design_scan(root)
     hint = design_legacy_hint(root)
     if scan["manifest"] is None:
-        raise SystemExit(f"design-open: refused -- no valid {DESIGN_ROOT_REL}/design.json; {hint}" if hint else
-                         f"design-open: refused -- no valid {DESIGN_ROOT_REL}/design.json (run: python3 scripts/workflow.py design-init)")
+        raise SystemExit(f"design-open: refused -- no valid {DESIGN_ROOT_SHOWN}/design.json; {hint}" if hint else
+                         f"design-open: refused -- no valid {DESIGN_ROOT_SHOWN}/design.json (run: {WORKFLOW_CMD} design-init)")
     if not DESIGN_SLUG_RE.match(args.slug):
         raise SystemExit(f"design-open: --slug {args.slug!r} is not lowercase words joined by hyphens")
     if not DESIGN_SLICE_RE.match(args.slice):
@@ -3506,7 +3920,7 @@ def design_open(args: argparse.Namespace) -> None:
         "cards": [], "supersedes": [], "signoff_words": None,
     }
     write_json(root / "rounds" / rid / "round.json", data)
-    print(f"design-open: opened {DESIGN_ROOT_REL}/rounds/{rid}/ for {args.slice}")
+    print(f"design-open: opened {DESIGN_ROOT_SHOWN}/rounds/{rid}/ for {args.slice}")
     print(f"next: write rounds/{rid}/handoff.md; this round's cards carry "
           f"group=\"{DESIGN_REVIEW_MARK} {args.slice} · <Group>\" on line 1 until design-close")
 
@@ -3519,7 +3933,7 @@ def design_close(args: argparse.Namespace) -> None:
     scan = design_scan(root)
     rnd = next((r for r in scan["rounds"] if r["id"] == args.round), None)
     if rnd is None:
-        raise SystemExit(f"design-close: no round {args.round!r} under {DESIGN_ROOT_REL}/rounds/")
+        raise SystemExit(f"design-close: no round {args.round!r} under {DESIGN_ROOT_SHOWN}/rounds/")
     data = rnd["data"]
     if data is not None and data["status"] == status:
         print(f"design-close: {args.round} is already {status} (nothing written)")
@@ -3580,7 +3994,7 @@ def design_close(args: argparse.Namespace) -> None:
                 signoff_words=args.words if status == "signed" else None)
     write_json(jpath, data)
     print(f"design-close: {args.round} {status} -- {len(touched)} card(s) snapshotted to "
-          f"{DESIGN_ROOT_REL}/rounds/{args.round}/cards/"
+          f"{DESIGN_ROOT_SHOWN}/rounds/{args.round}/cards/"
           + (f", {regrouped} regrouped (line 1 only)" if status == "signed" else ", left under review for the slice's next round"))
     if data["supersedes"]:
         print(f"supersedes: {', '.join(data['supersedes'])}")
@@ -3600,8 +4014,8 @@ def design_register(args: argparse.Namespace) -> None:
         manifest = None
     if manifest is None or design_manifest_problems(manifest):
         hint = design_legacy_hint(root)
-        raise SystemExit(f"design-register: refused -- no valid {DESIGN_ROOT_REL}/design.json; {hint}" if hint else
-                         f"design-register: refused -- no valid {DESIGN_ROOT_REL}/design.json (run: python3 scripts/workflow.py design-init)")
+        raise SystemExit(f"design-register: refused -- no valid {DESIGN_ROOT_SHOWN}/design.json; {hint}" if hint else
+                         f"design-register: refused -- no valid {DESIGN_ROOT_SHOWN}/design.json (run: {WORKFLOW_CMD} design-init)")
     path = design_registry_path()
     registry = {"schema": DESIGN_SCHEMA, "projects": []}
     if path.exists():
@@ -3614,7 +4028,8 @@ def design_register(args: argparse.Namespace) -> None:
         projects = registry.get("projects")
         if not (isinstance(projects, list) and all(isinstance(p, dict) for p in projects)):
             raise SystemExit(f"design-register: refused -- the registry {path} has no projects list; fix or remove it by hand")
-    entry = {"id": manifest["id"], "name": manifest["name"], "repo": str(ROOT), "root": str(root)}
+    # Nested: the registered repo is the host (the record itself stays under the nested repo).
+    entry = {"id": manifest["id"], "name": manifest["name"], "repo": str(HOST_ROOT or ROOT), "root": str(root)}
     projects = registry["projects"]
     holder = next((p for p in projects if p.get("id") == entry["id"]), None)
     if holder and holder.get("root") != entry["root"] and Path(str(holder.get("root"))).exists():
@@ -3648,7 +4063,7 @@ def design_deck_hint() -> None:
     projects = Path(os.path.expanduser(os.environ.get("DECK_PROJECTS_DIR", "").strip() or "~/projects")).resolve()
     print(f"design-deck only sees repos under its mounted projects folder ({projects})")
     try:
-        ROOT.resolve().relative_to(projects)
+        (HOST_ROOT or ROOT).resolve().relative_to(projects)
     except ValueError:
         print(f"warning: this repo is outside {projects}, so design-deck will show it as unavailable")
 
@@ -3661,10 +4076,10 @@ def design_migrate(args: argparse.Namespace) -> None:
     nothing); a dry run unless --apply; never a delete (only an empty rounds/ is rmdir'ed), never git."""
     root = design_root()
     if not root.is_dir():
-        raise SystemExit(f"design-migrate: refused -- no design root at {DESIGN_ROOT_REL}/; nothing to migrate")
+        raise SystemExit(f"design-migrate: refused -- no design root at {DESIGN_ROOT_SHOWN}/; nothing to migrate")
     legacy = root / DESIGN_LEGACY_DIR
     rounds_dir = root / "rounds"
-    rel = lambda p: p.relative_to(ROOT).as_posix()
+    rel = lambda p: Path(shown(p)).as_posix()
     moves, left, problems = [], [], []
     outside = "not part of either contract; move it by hand if it belongs to the old record"
     if not (root / "design.json").exists():
@@ -3871,6 +4286,12 @@ def main(argv=None) -> int:
     p.add_argument("phase")
     p.set_defaults(func=parallel_teardown)
 
+    p = sub.add_parser("nested-convention", help="Nested personal install only: show the host repo's commit convention (bare), or record the operator's confirmation of it -- the text and whether Claude Co-Authored-By trailers are allowed in host commits (--confirm --text ... --trailers allowed|forbidden); refuses outside a nested install")
+    p.add_argument("--confirm", action="store_true", help="record the operator-confirmed convention (needs --text and --trailers)")
+    p.add_argument("--text", default=None, help="the host's commit convention as the operator confirmed it")
+    p.add_argument("--trailers", default=None, choices=("allowed", "forbidden"), help="may Claude Co-Authored-By trailers appear in host product commits")
+    p.set_defaults(func=cmd_nested_convention)
+
     p = sub.add_parser("phase-scope", help="Read-only: the phase's boundary from git -- creation commit, base..head range and the product files it changed (works/ and docs/ excluded); advisory, exit 0 without git")
     p.add_argument("phase")
     p.add_argument("--base", default=None, help="use this ref as the range base verbatim (skips creation-commit / merge-base detection)")
@@ -3954,6 +4375,10 @@ def main(argv=None) -> int:
     p.set_defaults(func=rotate_backlog)
 
     args = parser.parse_args(argv)
+    if NESTED is not None and NESTED_PROBLEMS and args.cmd != "validate":
+        # Never fall back to at-root mode on a broken marker: refuse, and let validate list it all.
+        raise SystemExit(f"{shown(ROOT / NESTED_MARKER)} is malformed, so this nested install cannot run {args.cmd}: "
+                         f"{'; '.join(NESTED_PROBLEMS)} -- fix the file (run: {WORKFLOW_CMD} validate)")
     result = args.func(args)
     if isinstance(result, tuple):
         return 0

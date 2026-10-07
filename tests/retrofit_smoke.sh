@@ -28,7 +28,9 @@
 # writes only the env-overridden registry, never the operator's ~/.config; v48: design-check skips claude-design/,
 # design-migrate moves all-or-nothing and a pre-v47 root is steered to it, design-register prints the deck hint), the v48 design-tool
 # invariants (design-cowork carries both loops, drafter and claude-design, with P26's governance
-# shared), and the v31 Codex-removal negatives. Re-runnable; self-cleaning.
+# shared), the P28 nested-engine invariants (workflow/nested.json: host anchors, host-side
+# phase-scope, parallel off, the convention gate, the agent rename map, a malformed marker is an
+# error), and the v31 Codex-removal negatives. Re-runnable; self-cleaning.
 #
 # Usage:  bash tests/retrofit_smoke.sh
 # Exit 0 if every check passes; non-zero otherwise.
@@ -1485,6 +1487,75 @@ conflict_before=$(mig_sig); out=$(mw design-migrate --apply 2>&1); rc=$?
   && printf '%s\n' "$out" | grep -Fq 'schema-1 round(s) 02-b' \
   && ok "design-migrate refuses an existing destination and a round.json in a design.json-less root, naming both, and moves nothing (not even the free BRIEF.md)" \
   || bad "design-migrate moved something past a conflict, or did not name every conflict (rc=$rc) -- $out"
+
+# ---------------------------------------------------------------------------
+echo "== Test 14: P28 nested engine -- workflow/nested.json: host anchors, host-side phase-scope, parallel off, the convention gate, the agent rename map, a malformed marker fails validate =="
+# A host repo with one product commit, and the live engine + templates (+ a seed install's docs) in a
+# nested git repo at host/workflow/ beside the marker. Every command runs from the host root, the way
+# a nested session does. The at-root invariant is every earlier test passing unchanged.
+newtmp NS
+NH="$NS/host"
+sh "$BOOT" "$NS/seed" --name "Nested seed" --summary "nested probe" >/dev/null 2>&1 || bad "nested probe: seed install failed"
+mkdir -p "$NH/src" "$NH/workflow/scripts" "$NH/workflow/works" \
+  && ( cd "$NH" && { git init -q -b main . 2>/dev/null || git init -q .; } && git config user.email smoke@example.invalid \
+       && git config user.name smoke && printf 'print("host")\n' > src/app.py && git add -A >/dev/null 2>&1 \
+       && git commit -qm "host baseline" >/dev/null 2>&1 ) \
+  && cp "$REPO_ROOT/scripts/workflow.py" "$NH/workflow/scripts/" && cp -R "$REPO_ROOT/works/templates" "$NH/workflow/works/" \
+  && cp -R "$NS/seed/docs" "$NH/workflow/" && ( cd "$NH/workflow" && git init -q . ) \
+  || bad "nested probe: could not build the host + workflow/ fixture"
+cat > "$NH/workflow/nested.json" <<'NESTED'
+{"schema": 1, "host_root": "..",
+ "commit_convention": {"inferred": "type(scope): summary", "confirmed": false, "text": null, "coauthor_trailers": "unknown"},
+ "renames": {"skills": {}, "agents": {"design-drafter": "wf-design-drafter"}}}
+NESTED
+nw() { ( cd "$NH" && python3 workflow/scripts/workflow.py "$@" ); }
+{ nw rebuild && nw new-phase --phase P1 --name "Nested probe" --objective "probe the host"; } >/dev/null 2>&1 \
+  || bad "nested probe: rebuild / new-phase failed"
+host_head=$( cd "$NH" && git rev-parse HEAD )
+if python3 - "$NH/workflow/works/phases/active/P1/phase.json" "$host_head" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1]))
+assert data.get("host_anchors") == {"created": sys.argv[2]}, data.get("host_anchors")
+PY
+then ok "new-phase records host_anchors.created = the host HEAD in phase.json"; else bad "phase.json carries no host anchor equal to the host HEAD"; fi
+# The host's own docs/ is product; an untracked file inside the nested repo is not.
+mkdir -p "$NH/docs" && printf 'guide\n' > "$NH/docs/guide.md" && printf 'print("feature")\n' > "$NH/src/feature.py"
+( cd "$NH" && git add src docs >/dev/null 2>&1 && git commit -qm "product change" >/dev/null 2>&1 ) || bad "nested probe: could not commit the product change"
+printf 'scratch\n' > "$NH/workflow/scratch.txt"
+scope_out=$(nw phase-scope P1 2>&1); scope_rc=$?
+[ "$scope_rc" -eq 0 ] && printf '%s\n' "$scope_out" | grep -q "^mode=nested$" \
+  && printf '%s\n' "$scope_out" | grep -q "^base=$host_head (" \
+  && printf '%s\n' "$scope_out" | grep -qx "  A src/feature.py" && printf '%s\n' "$scope_out" | grep -qx "  A docs/guide.md" \
+  && ! printf '%s\n' "$scope_out" | grep -qE "^  [AMDR] (workflow/|src/app.py)" \
+  && ok "phase-scope reads the host repo from the anchor: the product commit's files (the host's docs/ included), nothing under workflow/" \
+  || bad "nested phase-scope did not read the host boundary (rc=$scope_rc) -- $scope_out"
+ps_out=$(nw parallel-start P1 2>&1); ps_rc=$?
+[ "$ps_rc" -ne 0 ] && printf '%s\n' "$ps_out" | grep -qx "parallel worktrees are disabled in a nested personal install" \
+  && ok "parallel-start refuses with one line in a nested install" || bad "nested parallel-start did not refuse (rc=$ps_rc) -- $ps_out"
+nx=$(nw next 2>&1)
+printf '%s\n' "$nx" | grep -q "^nested_host=/" && printf '%s\n' "$nx" | grep -q "^host_commit_convention=UNCONFIRMED (inferred: type(scope): summary)" \
+  && printf '%s\n' "$nx" | grep -qx "slice_path=workflow/works/phases/active/P1/slices/P1.DECOMP" \
+  && ok "next names the host, holds the unconfirmed convention, and prints host-relative paths" || bad "nested next lines missing -- $nx"
+nw nested-convention --confirm --text "type(scope): summary" --trailers forbidden >/dev/null 2>&1 || bad "nested probe: nested-convention --confirm failed"
+nx=$(nw next 2>&1)
+if printf '%s\n' "$nx" | grep -q "^host_commit_convention=confirmed (coauthor_trailers=forbidden)" && ! printf '%s\n' "$nx" | grep -q "UNCONFIRMED" \
+    && python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["commit_convention"]; assert c["confirmed"] is True and c["text"] == "type(scope): summary" and c["inferred"] == "type(scope): summary", c' "$NH/workflow/nested.json"; then
+  ok "nested-convention --confirm records the text and the trailer rule, and next stops flagging it"; else bad "nested-convention --confirm did not flip the convention -- $nx"; fi
+# The agent rename map: design-drafter is installed as wf-design-drafter in the host's .claude/agents.
+mkdir -p "$NH/.claude/agents" && cp "$REPO_ROOT/.claude/agents/slice-executor-mid.md" "$REPO_ROOT/.claude/agents/slice-executor-high.md" "$NH/.claude/agents/" \
+  && sed 's/^name: design-drafter$/name: wf-design-drafter/' "$REPO_ROOT/.claude/agents/design-drafter.md" > "$NH/.claude/agents/wf-design-drafter.md"
+nw sync-agents >/dev/null 2>&1
+if nw sync-agents --check >/dev/null 2>&1 && grep -qx "name: wf-design-drafter" "$NH/.claude/agents/wf-design-drafter.md" \
+    && [ ! -e "$NH/.claude/agents/design-drafter.md" ] && [ ! -e "$NH/workflow/.claude" ]; then
+  ok "sync-agents resolves agents in the host's .claude/agents through the rename map and keeps the renamed name:"
+else bad "sync-agents missed the host agent dir or the rename map, or rewrote name:"; fi
+nw validate >/dev/null 2>&1 && ok "validate passes on a well-formed nested install" || bad "validate failed on a well-formed nested install -- $(nw validate 2>&1)"
+printf '{"schema": 1, "host_root": ".."' > "$NH/workflow/nested.json"
+val_out=$(nw validate 2>&1); val_rc=$?; nx_out=$(nw next 2>&1); nx_rc=$?
+[ "$val_rc" -ne 0 ] && printf '%s\n' "$val_out" | grep -q "nested.json: cannot be read as JSON" \
+  && [ "$nx_rc" -ne 0 ] && printf '%s\n' "$nx_out" | grep -q "nested.json is malformed" \
+  && ok "a malformed nested.json fails validate and stops every other command (never read as at-root mode)" \
+  || bad "a malformed nested.json passed validate or ran next (rc=$val_rc/$nx_rc) -- $val_out $nx_out"
 
 # ---------------------------------------------------------------------------
 echo
