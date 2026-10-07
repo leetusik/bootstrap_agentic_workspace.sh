@@ -15,7 +15,7 @@ One shell script scaffolds a complete workspace: a compact agent **contract**, a
 
 - [What is this?](#what-is-this)
 - [Quickstart](#quickstart)
-- [Private use in a repo you don't own (`--nested`)](#private-use-in-a-repo-you-dont-own---nested)
+- [Private use in a repo you don't own (the default install)](#private-use-in-a-repo-you-dont-own-the-default-install)
 - [Example workflow](#example-workflow)
 - [How it works](#how-it-works)
 - [Project structure](#project-structure)
@@ -65,8 +65,9 @@ one-time bootstrap below, the only command you might ever type yourself.
 
 ## Quickstart
 
-**Prerequisites:** `python3 >= 3.8` and a POSIX shell (`sh`, `bash`, or `zsh`). `git` is optional
-(only needed to clone). No other dependencies.
+**Prerequisites:** `python3 >= 3.8`, a POSIX shell (`sh`, `bash`, or `zsh`), and `git` (the default
+install makes the target a git repo, so it needs git on `PATH`; with `--at-root`, `git` is only
+needed to clone). No other dependencies.
 
 > **You never type a `python3` command yourself.** The one-time bootstrap below is the only
 > command you ever run; every workflow command (`python3 scripts/workflow.py …`) is typed and
@@ -78,7 +79,7 @@ one-time bootstrap below, the only command you might ever type yourself.
 # get the script
 git clone https://github.com/leetusik/bootstrap_agentic_workspace.sh.git
 
-# scaffold a fresh workspace into an empty directory
+# scaffold a workspace into a new or empty directory
 mkdir my-project && cd my-project
 sh ../bootstrap_agentic_workspace.sh/bootstrap_agentic_workspace.sh . \
   --name "My Project" \
@@ -88,10 +89,32 @@ sh ../bootstrap_agentic_workspace.sh/bootstrap_agentic_workspace.sh . \
 `TARGET_DIR` (the `.` above) is where the workspace is created; it defaults to the current
 directory.
 
+**With no flag, the install is private and nested.** A new or empty directory is `git init`-ed as
+the **host** repo, and the engine and all workflow state go to a nested git repo inside it,
+`workflow/`. The skills and agents sit untracked in the host's `.claude/`, and the installer makes
+no commit and writes no tracked file. A host the installer just created gets this workspace's own
+commit convention (`type(scope): summary`, imperative, no trailing period) recorded as confirmed,
+with Claude `Co-Authored-By` trailers allowed. Details are in
+[Private use in a repo you don't own](#private-use-in-a-repo-you-dont-own-the-default-install).
+
+To get the **committed, team-visible layout** instead (`CLAUDE.md`, `.claude/`, `scripts/`,
+`works/` and `docs/` at the root of the repo, for everyone who clones it), add `--at-root`:
+
+```sh
+mkdir my-project && cd my-project
+sh ../bootstrap_agentic_workspace.sh/bootstrap_agentic_workspace.sh . --at-root \
+  --name "My Project" \
+  --summary "What this project is, in one sentence."
+```
+
+`--at-root` is for an empty directory; add `--force-empty-ok` for one that holds extra files
+(`--force-empty-ok` is accepted only together with `--at-root` or `--into-existing`). Parallel
+worktrees (`parallel-*`) work only on an `--at-root` install.
+
 ### Or, the one-liner convenience
 
 Pipes the script straight from GitHub into your shell — convenient, but read it first if you're
-cautious about piping remote scripts:
+cautious about piping remote scripts (use `sh -s -- . --at-root` for the committed layout):
 
 ```sh
 mkdir my-project && cd my-project
@@ -100,10 +123,12 @@ curl -fsSL https://raw.githubusercontent.com/leetusik/bootstrap_agentic_workspac
 
 ### Already have a project? Retrofit it
 
-The plain bootstrap is for an **empty** directory. To add the workspace to a repo
-that already has code, docs, or git history, use the **non-destructive retrofit**
-path — it only adds the workspace's files, skips anything you already have, and
-never clobbers your work:
+The plain bootstrap also works in a repo that already has code, docs, or git history: run from
+the repo's root, it installs the private, nested layout and changes no tracked file, which is right
+when only you will use the workspace. To put the workspace's files **in the repo itself**, so
+everyone who clones it gets them, use the **non-destructive retrofit** path (the at-root
+retrofit) — it only adds the workspace's files, skips anything you already have, and never
+clobbers your work:
 
 ```sh
 # from the root of your existing repo
@@ -113,8 +138,8 @@ sh /path/to/bootstrap_agentic_workspace.sh . --into-existing \
 
 or drive it with an agent via the `/retrofit` skill. See the
 **[Retrofit Guide](docs/retrofit-guide.md)** for the full procedure and collision
-policy. (Want it for yourself in a repo you don't own, with nothing the team can see? That is
-[`--nested`](#private-use-in-a-repo-you-dont-own---nested).)
+policy. (Want it for yourself in a repo you don't own, with nothing the team can see? That is the
+default bare install, [described below](#private-use-in-a-repo-you-dont-own-the-default-install).)
 
 ### Keeping an adopted workspace up to date
 
@@ -132,19 +157,26 @@ sh /path/to/bootstrap_agentic_workspace.sh . --update --dry-run
 sh /path/to/bootstrap_agentic_workspace.sh . --update
 ```
 
+`--update` **detects the installed layout** (nested or at-root) and refreshes it in that layout, so
+the same command serves both and neither `--nested` nor `--at-root` is needed. Run it from the
+host repo's root for a nested install. If a directory holds both layouts, so the layout is
+ambiguous, or a flag you add contradicts the one found, it refuses and writes nothing. An existing
+at-root workspace keeps updating at-root; nothing migrates it.
+
 Or drive it with an agent via the `/update-workspace` skill: it clones the latest
 upstream, shows you the dry-run change-list, applies on your approval, runs
 `validate`, and records the synced commit in `works/.workspace-version.json`. It
 never commits — you review the diff and commit when ready. Updates preserve your
 existing `executors.toml` but refresh the generated `slice-executor` agent files, so
 run `python3 scripts/workflow.py sync-agents` after every update to re-apply your
-selected preset and overrides. (For *first-time* adoption use `--into-existing` /
-`/retrofit` instead.)
+selected preset and overrides. (For *first-time* adoption use a bare install, or
+`--into-existing` / `/retrofit` for the committed layout, instead.)
 
 ### 2. Hand it to your agent
 
 Setup was the last time you needed a terminal. The workspace starts with **no phases** — open the
-directory in Claude Code and create your first one:
+directory in Claude Code (for the default nested install, **at the host root**; see
+[First run](#private-use-in-a-repo-you-dont-own-the-default-install)) and create your first one:
 
 ```
 /create-phase <your first task>
@@ -158,19 +190,25 @@ commits at slice boundaries, and stops at `pending` hand-offs for your review. S
 
 | Option | Default | Purpose |
 |---|---|---|
-| `[TARGET_DIR]` | current directory | Where to scaffold the workspace |
+| `[TARGET_DIR]` | current directory | Where to scaffold the workspace (the host repo's root, for the default nested install) |
 | `--name NAME` | `New Project` | Project name |
 | `--summary TEXT` | placeholder | One-sentence project summary |
-| `--force-empty-ok` | off | Allow scaffolding into a directory that has extra, non-managed files |
-| `--into-existing` | off | Non-destructively retrofit into an existing repo (see the [Retrofit Guide](docs/retrofit-guide.md)) |
-| `--update` | off | Update an already-installed workspace's machinery to this version (preserves your `works/` and `docs/`) |
-| `--nested` | off | Private install into a host repo you don't own: the workspace lives in an untracked nested repo `workflow/`, and the host's tracked files never change (see [Private use](#private-use-in-a-repo-you-dont-own---nested)); combine with `--update` to refresh it, never with `--into-existing` |
+| *(default)* | — | The private, nested install: the workspace lives in an untracked nested repo `workflow/` and the host's tracked files never change; a new or empty directory is `git init`-ed as the host (see [Private use](#private-use-in-a-repo-you-dont-own-the-default-install)) |
+| `--at-root` | off | Install the committed, team-visible layout into a fresh directory instead (`CLAUDE.md`, `.claude/`, `scripts/`, `works/`, `docs/` at its root); never with `--nested` |
+| `--force-empty-ok` | off | With `--at-root` (or `--into-existing`): allow scaffolding into a directory that has extra, non-managed files; refused without one of them, on `--update` too |
+| `--into-existing` | off | Non-destructively retrofit into an existing repo, in the at-root layout (see the [Retrofit Guide](docs/retrofit-guide.md)) |
+| `--update` | off | Update an already-installed workspace's machinery to this version (preserves your `works/` and `docs/`); the layout, nested or at-root, is detected |
+| `--nested` | — | Accepted and redundant: the nested layout is the default. On `--update` it must match the layout found; never with `--at-root` or `--into-existing` |
 | `--dry-run` | off | With `--update`, preview the change-list without writing anything |
 | `-h`, `--help` | — | Show help and exit |
 
 Both `--flag value` and `--flag=value` forms work.
 
 ### What gets created
+
+This is the **`--at-root`** layout. The default nested install puts the engine, `works/` and `docs/`
+under `workflow/` instead and the skills and agents untracked in the host's `.claude/` (see
+[Private use](#private-use-in-a-repo-you-dont-own-the-default-install)).
 
 - [`CLAUDE.md`](CLAUDE.md) — the compact routing contract every agent session works under.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
@@ -184,25 +222,41 @@ Both `--flag value` and `--flag=value` forms work.
   generated dashboards, and `state.json`. You create the first phase by talking to your agent
   (`/create-phase`).
 
-**Safety.** The script refuses to scaffold into a non-empty directory unless you pass
+**Safety.** A fresh install never overwrites an installed workspace: a bare install over an
+at-root workspace refuses (use `--update`), and so does a bare install or an `--update` on a nested
+install's own `workflow/` directory. The at-root install refuses to scaffold into a non-empty directory unless you pass
 `--force-empty-ok` (a few harmless files like `.git`, `README`, and `LICENSE` are tolerated), and
-it refuses to overwrite managed workflow files that already exist. It is safe to re-run only into a
-fresh workspace. To add the workspace to a repo that *already* has content, use the
-non-destructive `--into-existing` retrofit instead — see the
-[Retrofit Guide](docs/retrofit-guide.md).
+it refuses to overwrite managed workflow files that already exist. The default nested install
+refuses a non-empty directory that is not a git repo (`git init` it yourself, or use `--at-root`),
+and writes nothing when it refuses. To add the workspace's files to a repo that *already* has
+content, in the committed layout, use the non-destructive `--into-existing` retrofit instead — see
+the [Retrofit Guide](docs/retrofit-guide.md).
 
-## Private use in a repo you don't own (`--nested`)
+## Private use in a repo you don't own (the default install)
 
-**When to use it.** You work in a company or team repo whose team does not use this workspace, and
-you want to use it strictly for yourself. `--nested` leaves **no footprint**: no branch, no tracked
-file, no CI file, no `.gitattributes`, no `docs/`, and nothing in any PR diff. (Retrofit, by
-contrast, adds the workspace's files to the repo for everyone who clones it.)
+**This is the default install.** You work in a company or team repo whose team does not use this
+workspace, and you want to use it strictly for yourself: run the bare command. It leaves **no
+footprint**: no branch, no tracked file, no CI file, no `.gitattributes`, no `docs/`, and nothing
+in any PR diff. (Retrofit, by contrast, adds the workspace's files to the repo for everyone who
+clones it.) `--nested` is what v49 used to pick this install; it is still accepted, but it is the
+default now, so you never need to add it.
+
+**A new personal project is nested too, and private by default.** Install into a new or empty
+directory with no flag and the installer `git init`s it as the host repo and puts `workflow/` inside
+it. If collaborators should receive the workspace through the repo, install with `--at-root`
+instead. Parallel worktrees work only on an `--at-root` install.
 
 **Install.** Point the installer at the host repo's root (a git work tree):
 
 ```sh
-sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo --nested
+sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo
 ```
+
+A directory that holds extra files and is not a git repo is refused with nothing written (`git init`
+it yourself and re-run, or use `--at-root`). So is a new directory inside another repo's work tree:
+name that repo's root instead, or `git init` the directory first and re-run. A bare install over a
+directory that already holds an at-root workspace is refused (use `--update`), and so is a bare
+install or an `--update` on a nested install's own `workflow/` directory (run it at the host root).
 
 It writes only untracked files, all hidden by the host's `.git/info/exclude` (never its
 `.gitignore`):
@@ -224,7 +278,7 @@ it would write, it refuses and names it. A host `.gitignore` ranks above `.git/i
 before writing anything the installer asks git whether every file it would write will be ignored.
 If the host's `.gitignore` would re-include one (for example `!CLAUDE*.md`, or an allowlist such as
 `*` / `!*/` / `!*.md`), it refuses with nothing written and names each file with the deciding
-`.gitignore` line; `--update --nested` checks the same way. After writing, it confirms that the
+`.gitignore` line; `--update` checks the same way. After writing, it confirms that the
 host's `git status` lists none of its files before it reports the status clean.
 
 If a skill or agent name clashes with one of the host's own (skills, commands or agents), ours
@@ -235,14 +289,19 @@ file is left byte for byte as it was.
 
 1. Make the first commit in the nested repo:
    `git -C workflow add -A && git -C workflow commit -m "chore: install agentic workspace (nested)"`.
+   (A host the installer `git init`-ed has no commits yet. The installer makes no commit in the
+   host, and the workspace's files stay untracked there, so a `git add -A` in the host stages only
+   your own files.)
 2. Start Claude Code **at the host root**, never inside `workflow/` or a subdirectory, and
    accept the trust dialog on the first run.
-3. Confirm the commit convention. The installer infers it from the host's `git log` and
-   `CONTRIBUTING*` and records it as unconfirmed: `python3 workflow/scripts/workflow.py
+3. Confirm the commit convention. For an existing host the installer infers it from the host's
+   `git log` and `CONTRIBUTING*` and records it as unconfirmed: `python3 workflow/scripts/workflow.py
    nested-convention` shows it, and `nested-convention --confirm --text "<convention>" --trailers
    allowed|forbidden` records yours, including whether Claude `Co-Authored-By` trailers may appear
    in host commits. Until then `next` prints `host_commit_convention=UNCONFIRMED` and the agent
-   asks before the first product commit.
+   asks before the first product commit. A host the installer `git init`-ed starts out confirmed
+   with this workspace's own convention and trailers allowed, so `next` never prints
+   `UNCONFIRMED` there; use the same command only to change it.
 
 **One ticket, from branch to PR.**
 
@@ -258,15 +317,17 @@ file is left byte for byte as it was.
    slice in the same phase) and repeat from step 3.
 
 **Updating.** `/update-workspace`, or
-`sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo --update --nested` (preview with
-`--dry-run`). It keeps your confirmed convention, your renames and everything under `workflow/works/`
-and `workflow/docs/`; a plain `--update` at a nested host refuses and points you here. Run
-`sync-agents` afterwards and commit the refresh in `workflow/`.
+`sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo --update` (preview with
+`--dry-run`). The installer detects the layout, so `--nested` is not needed (the v49 form,
+`--update --nested`, still works). It keeps your confirmed convention, your renames and everything
+under `workflow/works/` and `workflow/docs/`. Run `sync-agents` afterwards and commit the refresh in
+`workflow/`.
 
 **Caveats.**
 
 - **Parallel worktrees are off** (`parallel-*` refuse): a host worktree would not contain the
-  untracked files.
+  untracked files. Because the default install is nested, they are off unless you installed with
+  `--at-root`.
 - A company-managed Claude Code policy may disable `bypassPermissions`, which the three subagents
   set. Check that before you rely on unattended runs such as `/do-whole-phase`.
 - Engine messages may name a renamed skill by its original name (for example `validate` pointing
@@ -274,8 +335,8 @@ and `workflow/docs/`; a plain `--update` at a nested host refuses and points you
 - The seeded text under `workflow/docs/` describes paths relative to `workflow/`.
 - If you give `workflow/` a remote, keep it **inside your company's organization**: its phase and
   slice files describe the company's code.
-- Check your company's AI-tool policy first. `--nested` keeps your use private; it does not make it
-  permitted.
+- Check your company's AI-tool policy first. The private (nested) install keeps your use private; it
+  does not make it permitted.
 
 ## Example workflow
 
@@ -477,7 +538,9 @@ phase it pays. A docs phase always runs on the default stream,
 
 A phase runs **on the checkout you are already in** — `main`, normally. There is no flag to pass
 and nothing to set up. When you want two phases moving at once, **you ask**, and that phase moves
-into its own git worktree. Asking looks like either of these:
+into its own git worktree. (This needs an `--at-root` install: the default nested install keeps its
+state in an untracked `workflow/` that a worktree would not contain, so `parallel-*` refuse there.)
+Asking looks like either of these:
 
 - the word **`worktree`** alongside the command — `/do-whole-phase worktree`, `/do-next-slice
   worktree` — or the same thing in your own words ("in a worktree", "in parallel", "on its own

@@ -46,11 +46,13 @@ register it once per clone: `git config core.hooksPath .githooks`.
   still starts with `CLAUDE_HDR` before slicing the contract body off it.
   **It only `compile()`s the artifact — it never runs it**, so a change to what
   `main.py` reads out of `PAYLOADS` needs a real install into a temp dir to verify.
-- **`wrapper.sh`** — the POSIX-sh wrapper (arg parsing, env export) ending in the
+- **`wrapper.sh`** — the POSIX-sh wrapper (arg parsing, the cross-flag refusals, env
+  export, and the usage text `--help` prints) ending in the
   `python3 - <<'INSTALLER_PY'` heredoc with a `#@@PYTHON_BODY@@` marker where the
   python driver is spliced.
-- **`main.py`** — the python driver: config/env, write engine, retrofit/update
-  policies, guards, docs seeding logic, finalizers, dispatch. It carries a
+- **`main.py`** — the python driver: config/env, layout resolution
+  (`resolve_layout()`, see *Install modes and flags*), write engine, retrofit/update
+  policies, the nested install, guards, docs seeding logic, finalizers, dispatch. It carries a
   `#@@GENERATED_PAYLOADS@@` marker where `build.py` splices the generated constants
   (`PAYLOADS`, `CONTRACT_BODY`, `DOC_BODIES`). The workspace bootstraps with **no
   phases** — the operator's first task is captured via the create-phase flow, so
@@ -59,6 +61,34 @@ register it once per clone: `git config core.hooksPath .githooks`.
   the repo (so there is nothing to mirror):
   - `doc_bodies/<doc>.md` — the 11 initial `docs/current/*.md` bodies. Runtime
     tokens `__PROJECT_NAME__` / `__PROJECT_SUMMARY__` are substituted by `main.py`.
+
+## Install modes and flags
+
+The default layout is **nested** (since v50); the at-root layout is reached explicitly. One
+function, `resolve_layout()` at the top of `main.py` (before `HOST, ROOT` are set), picks the
+layout of a run, and the wrapper rejects contradictory flags first:
+
+- **No flag: the private nested install.** `TARGET_DIR` is a git repo's root (the *host*); the
+  engine and all state go to `<host>/workflow/`, a nested git repo, and the skills, agents,
+  `settings.local.json` and `CLAUDE.local.md` go to the host untracked, hidden by the host's
+  `.git/info/exclude`. A new or empty target is `git init`-ed as the host, with this workspace's own
+  commit convention recorded as confirmed (trailers allowed), and that init is undone if a refusal
+  comes before the first write. A non-empty non-git target, a new directory inside another repo's
+  work tree, a bare install over an at-root workspace, and a bare install or `--update` on a nested install's
+  own `workflow/` are refused with nothing written.
+- **`--at-root`**: the committed, team-visible layout into a fresh directory (`CLAUDE.md`,
+  `.claude/`, `scripts/`, `works/`, `docs/` at its root). Its behaviour and output are the v49
+  default, unchanged. `--force-empty-ok` is accepted only with `--at-root` or `--into-existing`
+  (on `--update` too).
+- **`--into-existing`**: the at-root retrofit (`--at-root` with it is allowed and redundant).
+- **`--update [--dry-run]`**: detects the installed layout at the target, the nested marker
+  `workflow/.agentic-nested.json` versus an at-root workspace (`scripts/workflow.py` plus
+  `works/`), and refreshes it in that layout. Both found is ambiguous and refuses unless
+  `--nested` or `--at-root` picks one; a flag that contradicts the layout found refuses.
+- **`--nested`**: accepted and redundant (on `--update` it must match the layout found).
+
+Nothing migrates an at-root install. This upstream repo stays at-root, and
+`tests/retrofit_smoke.sh` passes `--at-root` wherever a test expects the at-root layout.
 
 ## Source of truth = live repo files
 

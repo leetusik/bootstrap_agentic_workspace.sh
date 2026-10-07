@@ -4,12 +4,14 @@ This guide walks you through adding the agentic workspace to a repository that
 **already has code, a README, `scripts/`, `docs/`, or git history** — not just a
 fresh, empty directory.
 
-The plain bootstrap (`bootstrap_agentic_workspace.sh <dir>`) intentionally
-refuses to touch a non-empty repo or overwrite existing files. Retrofit is the
-**safe, non-destructive** path for an existing repo: it only ever *adds* the
-workspace's own files, *skips* anything you already have, and *additively merges*
-a small, well-known set (your existing `CLAUDE.md` and `.claude/settings.json`)
-without deleting or rewriting your content.
+The plain bootstrap (`bootstrap_agentic_workspace.sh <dir>`) installs the
+**private, nested** layout (the default; see below), and its committed form,
+`--at-root`, intentionally refuses to touch a non-empty repo or overwrite
+existing files. Retrofit (`--into-existing`) is the **safe, non-destructive**
+way to put the workspace's own files into an existing repo's tree, team-visible:
+it only ever *adds* the workspace's own files, *skips* anything you already
+have, and *additively merges* a small, well-known set (your existing `CLAUDE.md`
+and `.claude/settings.json`) without deleting or rewriting your content.
 
 > **One-line promise:** retrofit never clobbers a file you already have. If it
 > cannot add the workspace without overwriting something load-bearing, it stops
@@ -21,18 +23,19 @@ without deleting or rewriting your content.
 
 | Situation | Use |
 |---|---|
-| Brand-new / empty directory | the plain bootstrap (see the README Quickstart) |
-| A repo that already has code/docs/history, **no** workspace yet | **this guide** (`--into-existing` or the `/retrofit` skill) |
+| Brand-new / empty directory | the plain bootstrap (see the README Quickstart): private and nested by default, `--at-root` for the committed layout |
+| A repo that already has code/docs/history, **no** workspace yet, and the workspace's files should be **team-visible** | **this guide** (`--into-existing` or the `/retrofit` skill) |
 | A repo that already has the workspace | nothing — retrofit is a no-op; use `/do-next-slice` instead |
-| A repo **you don't own**, where only you will use the workspace and the team must see nothing | **not retrofit** — the private `--nested` install (below) |
+| A repo **you don't own**, where only you will use the workspace and the team must see nothing | **not retrofit** — the private install, which is the default bare command (below) |
 
-### Private use in a repo you don't own (`--nested`)
+### Private use in a repo you don't own (the default install)
 
 Retrofit is **team-visible**: its files land in the repo's own tree for everyone who clones it. To
-use the workspace privately in a company or team repo instead, install with `--nested`:
+use the workspace privately in a company or team repo instead, run the installer with no flag, the
+default (`--nested`, the v49 spelling, is still accepted but redundant):
 
 ```sh
-sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo --nested
+sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo
 ```
 
 The engine and all workflow state live in an untracked nested git repo `workflow/`, the skills
@@ -42,9 +45,11 @@ all of it (each skill directory also hides itself with a `.gitignore` of `*`). B
 be re-included by it, and refuses, writing nothing, when one would; a successful install leaves
 the host's `git status` clean, and no PR ever shows a trace. `--nested
 --into-existing` is refused: the two routes are different on purpose. Update a private install
-with `/update-workspace` or `--update --nested`, never a plain `--update`. The full flow (install,
-first run, one ticket from branch to PR, updates and caveats) is in the README, section
-[Private use in a repo you don't own](../README.en.md#private-use-in-a-repo-you-dont-own---nested).
+with `/update-workspace` or a plain `--update`, which detects the installed layout (no `--nested`
+needed). A new or empty directory gets the same install and is `git init`-ed as the host; add
+`--at-root` there to get the committed layout instead. The full flow (install, first run, one
+ticket from branch to PR, updates and caveats) is in the README, section
+[Private use in a repo you don't own](../README.en.md#private-use-in-a-repo-you-dont-own-the-default-install).
 
 ## Prerequisites
 
@@ -299,8 +304,8 @@ This is the **no-agent escape hatch** — the one genuinely by-hand path. If you
 can't or don't want to use `--into-existing` (or an agent), retrofit by hand
 using a throwaway staging copy — the same idea the flag automates:
 
-1. Bootstrap a fresh workspace into an **empty temp dir**:
-   `sh bootstrap_agentic_workspace.sh /tmp/ws-stage --name "…" --summary "…"`.
+1. Bootstrap a fresh at-root workspace into an **empty temp dir**:
+   `sh bootstrap_agentic_workspace.sh /tmp/ws-stage --at-root --name "…" --summary "…"`.
 2. Copy the workspace files that you **don't already have** into your repo —
    never overwriting: `scripts/workflow.py`, `.claude/`, `executors.toml`,
    `docs/` (only if you have no `docs/index.json`), `works/`, and — if you already

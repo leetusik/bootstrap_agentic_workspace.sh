@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 Adopt the agentic workspace into the CURRENT existing repository, non-destructively. Explicit-invocation only. The full procedure and collision policy are in `docs/retrofit-guide.md`; this skill drives it.
 
-This is the **team-visible** adoption route: the workspace's files land in the repo's own tree for everyone who clones it. To use the workspace **privately** in a repo you don't own, with nothing tracked and nothing the team can see, do not use this skill: run `sh <path>/bootstrap_agentic_workspace.sh <host-root> --nested` instead (`--nested --into-existing` is refused). The README section "Private use in a repo you don't own (`--nested`)" covers it.
+This is the **team-visible** adoption route: the workspace's files land in the repo's own tree for everyone who clones it. To use the workspace **privately** in a repo you don't own, with nothing tracked and nothing the team can see, do not use this skill: run the default bare install, `sh <path>/bootstrap_agentic_workspace.sh <host-root>` with no flag, instead (`--nested --into-existing` is refused). The README section "Private use in a repo you don't own (the default install)" covers it.
 
 Preflight (read-only):
 

@@ -15,8 +15,9 @@
 
 ## 빠른 시작
 
-**준비물:** `python3` 3.8 이상, POSIX 셸(`sh`, `bash`, `zsh`).
-`git`은 스크립트를 내려받을 때만 필요합니다.
+**준비물:** `python3` 3.8 이상, POSIX 셸(`sh`, `bash`, `zsh`), 그리고 `git`.
+기본 설치는 호스트가 git 저장소여야 하므로 `git`이 필요합니다(`--at-root`로 설치한다면 스크립트를
+내려받을 때만 필요합니다).
 
 > **직접 입력하는 명령은 아래 설치 한 번뿐입니다.** 설치가 끝나면
 > `python3 scripts/workflow.py …` 같은 워크플로우 명령은 전부 에이전트가 실행합니다.
@@ -28,15 +29,37 @@
 # 스크립트 내려받기
 git clone https://github.com/leetusik/bootstrap_agentic_workspace.sh.git
 
-# 빈 디렉터리에 워크스페이스 만들기
+# 새 디렉터리(또는 빈 디렉터리)에 워크스페이스 만들기
 mkdir my-project && cd my-project
 sh ../bootstrap_agentic_workspace.sh/bootstrap_agentic_workspace.sh . \
   --name "My Project" \
   --summary "이 프로젝트가 무엇인지, 한 문장."
 ```
 
+옵션 없이 실행하면 **비공개 nested 레이아웃**으로 설치됩니다. 새 디렉터리나 빈 디렉터리는
+설치 프로그램이 `git init`으로 호스트 저장소로 만들고, 엔진과 작업 상태는 그 안의 `workflow/`
+(중첩 git 저장소)에 들어갑니다. 스킬과 에이전트는 호스트의 `.claude/`에 untracked로 들어가고,
+호스트에는 커밋이 하나도 만들어지지 않습니다. 새 저장소의 커밋 컨벤션은 이 워크스페이스의
+컨벤션(`type(scope): summary`, 명령형, 마침표 없음)으로 확정해 기록하고, Claude `Co-Authored-By`
+트레일러도 허용으로 둡니다. 자세한 내용은
+[비공개 설치](#내-것이-아닌-저장소에서-혼자-쓰기-기본-설치)에 있습니다.
+
+팀과 함께 쓰려고 워크스페이스를 저장소에 **커밋되는 레이아웃**(`CLAUDE.md`, `.claude/`,
+`scripts/`, `works/`, `docs/`가 루트에 놓입니다)으로 두고 싶다면 `--at-root`를 붙이세요.
+
+```sh
+mkdir my-project && cd my-project
+sh ../bootstrap_agentic_workspace.sh/bootstrap_agentic_workspace.sh . --at-root \
+  --name "My Project" \
+  --summary "이 프로젝트가 무엇인지, 한 문장."
+```
+
+`--at-root`는 빈 디렉터리 전용입니다. 추가 파일이 있는 디렉터리에는 `--force-empty-ok`를 함께
+쓰세요(`--force-empty-ok`는 `--at-root` 또는 `--into-existing`과 함께만 받아들여집니다).
+`--at-root`로 설치한 워크스페이스에서만 병렬 worktree(`parallel-*`)를 쓸 수 있습니다.
+
 한 줄로 설치할 수도 있습니다. 원격 스크립트를 셸에 바로 연결하는 방식이 꺼려진다면
-스크립트를 먼저 읽어 보세요.
+스크립트를 먼저 읽어 보세요. 커밋되는 레이아웃이 필요하면 `sh -s -- . --at-root`로 바꾸세요.
 
 ```sh
 mkdir my-project && cd my-project
@@ -45,9 +68,11 @@ curl -fsSL https://raw.githubusercontent.com/leetusik/bootstrap_agentic_workspac
 
 ### 이미 코드가 있는 프로젝트라면
 
-위의 기본 설치는 빈 디렉터리 전용입니다. 코드나 git 기록이 이미 있는 저장소에는
-`--into-existing` 옵션을 쓰세요. 워크스페이스 파일만 새로 추가하고, 이미 있는 파일은
-건너뜁니다. 기존 작업물을 절대 덮어쓰지 않습니다.
+코드나 git 기록이 이미 있는 저장소에도 위의 기본 설치(옵션 없음)를 그대로 쓸 수 있습니다.
+저장소의 루트에서 실행하면 nested로 들어가고, tracked 파일은 하나도 바뀌지 않으며 팀에는
+아무것도 보이지 않습니다. 반대로 워크스페이스 파일을 저장소 안에 두어 저장소를 받는 모든
+사람이 보게 하려면 `--into-existing` 옵션(at-root retrofit)을 쓰세요. 워크스페이스 파일만 새로
+추가하고, 이미 있는 파일은 건너뜁니다. 기존 작업물을 절대 덮어쓰지 않습니다.
 
 ```sh
 sh /path/to/bootstrap_agentic_workspace.sh . --into-existing \
@@ -56,8 +81,8 @@ sh /path/to/bootstrap_agentic_workspace.sh . --into-existing \
 
 에이전트에게 `/retrofit`이라고 입력해 맡겨도 됩니다.
 자세한 절차는 [Retrofit Guide](docs/retrofit-guide.md)에 있습니다.
-(팀 저장소처럼 내 것이 아닌 저장소에서 나만 쓰고 싶다면 retrofit 대신
-[`--nested`](#내-것이-아닌-저장소에서-혼자-쓰기---nested)를 쓰세요.)
+(팀 저장소처럼 내 것이 아닌 저장소에서 나만 쓰고 싶다면 retrofit 대신 옵션 없는 기본 설치,
+[비공개 nested 설치](#내-것이-아닌-저장소에서-혼자-쓰기-기본-설치)를 쓰세요.)
 
 ### 설치한 워크스페이스 업데이트하기
 
@@ -69,6 +94,12 @@ sh /path/to/bootstrap_agentic_workspace.sh . --update --dry-run   # 바뀔 내�
 sh /path/to/bootstrap_agentic_workspace.sh . --update             # 실제 적용
 ```
 
+`--update`는 설치된 레이아웃(nested 또는 at-root)을 스스로 감지해서 그 레이아웃 그대로
+갱신합니다. 어떤 레이아웃이든 같은 명령이고 `--nested`도 `--at-root`도 필요 없습니다. nested
+설치에서는 호스트 저장소의 루트에서 실행하세요. 두 레이아웃이 한 디렉터리에 함께 있어 감지가
+모호하거나, 붙인 플래그가 감지된 레이아웃과 어긋나면 아무것도 쓰지 않고 멈춥니다. 이미 설치된
+at-root 워크스페이스는 마이그레이션 없이 그대로 at-root로 갱신됩니다.
+
 에이전트에게는 `/update-workspace`라고 입력하면 됩니다.
 업데이트는 기존 `executors.toml`을 보존하지만 생성된 `slice-executor` 에이전트 파일은 최신
 기본값으로 바꾸므로, 적용 뒤 `python3 scripts/workflow.py sync-agents`를 실행해 선택한
@@ -78,20 +109,36 @@ sh /path/to/bootstrap_agentic_workspace.sh . --update             # 실제 적�
 
 터미널이 필요한 일은 여기까지입니다. 이제 Claude Code로 이 디렉터리를 열고,
 `/create-phase`로 첫 phase를 만드는 것부터 시작하세요. 전체 흐름은 바로 아래
-사용 예시에 있습니다.
+사용 예시에 있습니다. (기본 설치(nested)라면 Claude Code를 **호스트 루트에서** 시작하고 중첩
+저장소에 첫 커밋을 만드는 순서가 먼저입니다.
+[처음 실행할 때](#내-것이-아닌-저장소에서-혼자-쓰기-기본-설치)를 보세요.)
 
-## 내 것이 아닌 저장소에서 혼자 쓰기 (`--nested`)
+## 내 것이 아닌 저장소에서 혼자 쓰기 (기본 설치)
 
-**언제 쓰나요?** 회사나 팀 저장소에서 일하는데, 팀은 이 워크스페이스를 쓰지 않고 나만 쓰고
-싶을 때입니다. `--nested`는 **흔적을 남기지 않습니다.** 새 branch도, tracked 파일도, CI
-파일도, `.gitattributes`도, `docs/`도 없고, PR diff에는 아무것도 섞이지 않습니다.
-(retrofit은 반대로 저장소를 받는 모든 사람에게 워크스페이스 파일이 보입니다.)
+**이것이 기본 설치입니다.** 회사나 팀 저장소에서 일하는데, 팀은 이 워크스페이스를 쓰지 않고
+나만 쓰고 싶다면 옵션 없이 실행하면 됩니다. 이 설치는 **흔적을 남기지 않습니다.** 새 branch도,
+tracked 파일도, CI 파일도, `.gitattributes`도, `docs/`도 없고, PR diff에는 아무것도 섞이지
+않습니다. (retrofit은 반대로 저장소를 받는 모든 사람에게 워크스페이스 파일이 보입니다.)
+`--nested`는 v49에서 이 설치를 고르던 옵션입니다. 지금도 받아들이지만 기본값과 같으므로 붙일
+필요가 없습니다.
+
+**새 개인 프로젝트도 똑같이 nested이고 기본적으로 비공개입니다.** 새 디렉터리나 빈 디렉터리에
+옵션 없이 설치하면 설치 프로그램이 그 디렉터리를 `git init`으로 호스트 저장소로 만들고
+`workflow/`를 안에 둡니다. 협업하는 사람이 워크스페이스를 저장소에서 받아야 한다면 `--at-root`로
+설치하세요. 병렬 worktree는 `--at-root` 설치에서만 동작합니다.
 
 **설치.** 호스트 저장소의 루트(git work tree)를 지정합니다.
 
 ```sh
-sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo --nested
+sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo
 ```
+
+추가 파일이 있는데 git 저장소가 아닌 디렉터리는 아무것도 쓰지 않고 거부합니다(직접 `git init`한
+뒤 다시 실행하거나 `--at-root`를 쓰세요). 다른 저장소의 work tree 안에 있는 새 디렉터리도
+거부합니다. 그 저장소의 루트를 지정하거나, 그 디렉터리에서 먼저 `git init`한 뒤 다시 실행하세요.
+이미 at-root 워크스페이스가 있는 디렉터리에 옵션 없이 설치해도 거부하며(`--update`를 쓰세요),
+nested 설치의 `workflow/` 디렉터리 자체에서 옵션 없는 설치나 `--update`를 실행하는 것도
+거부합니다(호스트 루트에서 실행하세요).
 
 만들어지는 파일은 모두 untracked이고, 호스트의 `.git/info/exclude`(`.gitignore`가 아닙니다)로
 가려집니다.
@@ -113,7 +160,7 @@ tracked 파일은 하나도 건드리지 않습니다. `CLAUDE.md`, `.claude/set
 `.gitignore`는 `.git/info/exclude`보다 우선하므로, 설치는 무엇이든 쓰기 전에 쓸 파일이 모두
 git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하나를 다시 포함시키면(예:
 `!CLAUDE*.md`, 또는 `*` / `!*/` / `!*.md` 같은 허용 목록) 아무것도 쓰지 않고 멈추며, 파일마다
-결정한 `.gitignore` 줄을 알려 줍니다. `--update --nested`도 똑같이 확인합니다. 쓰고 난 뒤에는
+결정한 `.gitignore` 줄을 알려 줍니다. `--update`도 똑같이 확인합니다. 쓰고 난 뒤에는
 호스트의 `git status`에 설치한 파일이 하나도 보이지 않는지 확인한 다음에만 깨끗하다고 알립니다.
 
 호스트의 스킬, 명령, 에이전트와 이름이 겹치면 우리 쪽이 `wf-<이름>`(예: `/wf-commit`)으로
@@ -123,10 +170,16 @@ git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하�
 
 1. 중첩 저장소에 첫 커밋을 만듭니다.
    `git -C workflow add -A && git -C workflow commit -m "chore: install agentic workspace (nested)"`
+   (설치 프로그램이 `git init`한 새 호스트에는 커밋이 아직 없습니다. 설치 프로그램은 호스트에
+   커밋을 만들지 않으며, 워크스페이스 파일은 untracked로 남아 호스트의 `git add -A`에는 내 파일만
+   들어갑니다.)
 2. Claude Code는 **호스트 루트에서** 시작하세요. `workflow/` 안이나 하위 디렉터리에서 시작하면
    안 됩니다. 처음 실행할 때 나오는 신뢰(trust) 대화상자는 수락합니다.
-3. 커밋 컨벤션을 확인합니다. 설치 때 호스트의 `git log`와 `CONTRIBUTING*`로 추정해 "미확인"으로
-   기록해 둡니다. `python3 workflow/scripts/workflow.py nested-convention`으로 보고,
+3. 커밋 컨벤션을 확인합니다. 기존 호스트라면 설치 때 호스트의 `git log`와 `CONTRIBUTING*`로
+   추정해 "미확인"으로 기록해 둡니다. (설치 프로그램이 `git init`한 새 호스트는 이 워크스페이스의
+   컨벤션으로 이미 확정되어 있고 트레일러는 허용으로 기록되므로 `next`가 `UNCONFIRMED`를 보여
+   주지 않습니다. 바꾸고 싶을 때만 아래 명령을 쓰세요.)
+   `python3 workflow/scripts/workflow.py nested-convention`으로 보고,
    `nested-convention --confirm --text "<컨벤션>" --trailers allowed|forbidden`으로 확정하세요.
    호스트 커밋에 Claude `Co-Authored-By` 트레일러를 넣어도 되는지도 함께 기록합니다. 확정
    전에는 `next`가 `host_commit_convention=UNCONFIRMED`를 보여 주고, 에이전트는 첫 제품 커밋 전에
@@ -147,15 +200,17 @@ git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하�
    3번부터 다시 진행합니다.
 
 **업데이트.** `/update-workspace`, 또는
-`sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo --update --nested`(먼저
-`--dry-run`으로 미리 보기). 확정한 컨벤션, 이름 변경(`wf-`), `workflow/works/`와
-`workflow/docs/`의 내용은 그대로 남습니다. nested 호스트에서 일반 `--update`를 실행하면 거부하고
-이 방법을 안내합니다. 끝난 뒤 `sync-agents`를 실행하고, 바뀐 내용은 `workflow/`에 커밋하세요.
+`sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo --update`(먼저
+`--dry-run`으로 미리 보기). 설치된 레이아웃을 스스로 감지하므로 `--nested`는 필요 없습니다(v49에서
+쓰던 `--update --nested`도 그대로 동작합니다). 확정한 컨벤션, 이름 변경(`wf-`),
+`workflow/works/`와 `workflow/docs/`의 내용은 그대로 남습니다. 끝난 뒤 `sync-agents`를 실행하고,
+바뀐 내용은 `workflow/`에 커밋하세요.
 
 **알아 둘 점.**
 
 - **병렬 worktree는 꺼져 있습니다**(`parallel-*`는 거부). 호스트 worktree에는 untracked 파일이
-  없기 때문입니다.
+  없기 때문입니다. 기본 설치가 nested이므로 병렬 worktree는 기본적으로 꺼져 있고, `--at-root`로
+  설치한 워크스페이스에서만 쓸 수 있습니다.
 - 회사가 관리하는 Claude Code 정책이 `bypassPermissions`를 막을 수 있습니다. 세 에이전트가 이
   모드를 쓰므로, `/do-whole-phase`처럼 사람 없이 도는 실행을 믿기 전에 확인하세요.
 - 이름이 바뀐 스킬을 엔진 메시지가 원래 이름으로 부를 수 있습니다(예: `wf-create-phase`로
@@ -163,8 +218,8 @@ git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하�
 - `workflow/docs/`에 미리 들어 있는 문서 글은 `workflow/` 기준 경로로 적혀 있습니다.
 - `workflow/`에 remote를 붙인다면 **회사 조직 안**에 두세요. phase와 slice 파일에는 회사 코드에
   대한 내용이 들어 있습니다.
-- 먼저 회사의 AI 도구 사용 정책을 확인하세요. `--nested`는 내 사용을 비공개로 유지해 줄 뿐,
-  허용해 주지는 않습니다.
+- 먼저 회사의 AI 도구 사용 정책을 확인하세요. 기본 설치(nested)는 내 사용을 비공개로 유지해
+  줄 뿐, 허용해 주지는 않습니다.
 
 ## 사용 예시
 
@@ -342,7 +397,9 @@ CLI 명령 전체는 `python3 scripts/workflow.py --help`로 확인할 수 있�
 
 phase는 **기본적으로 지금 있는 checkout(`main`)에서** 진행됩니다. 따로 할 일도, 붙일 옵션도
 없습니다. 한 번에 두 phase를 돌리고 싶을 때만 **여러분이 요청**하면, 그 phase가 자기만의 git
-worktree로 옮겨갑니다. 요청하는 방법은 둘 중 하나입니다.
+worktree로 옮겨갑니다. (`--at-root`로 설치한 워크스페이스에서만 됩니다. 기본 nested 설치는 상태를
+untracked `workflow/`에 두는데 worktree에는 그 폴더가 없으므로 `parallel-*`는 거부합니다.) 요청하는
+방법은 둘 중 하나입니다.
 
 - `/do-whole-phase worktree` 또는 `/do-next-slice worktree`처럼 **`worktree`라는 말을 붙여**
   실행하기 (같은 뜻의 다른 표현도 됩니다 — "worktree에서", "병렬로", "자기 branch에서")

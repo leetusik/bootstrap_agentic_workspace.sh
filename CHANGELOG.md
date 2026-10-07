@@ -9,6 +9,68 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v50 — 2026-10-07
+
+- **The nested install is now the default.** `sh bootstrap_agentic_workspace.sh <dir>` with no flag
+  installs the private, nested layout v49 reached only through `--nested`: the engine and state go to
+  an untracked nested git repo `<dir>/workflow/`, the skills and agents go to the host's `.claude/`
+  untracked, and no tracked file changes. It holds for an existing git repo and for a new or empty
+  directory alike. A new or empty directory is `git init`-ed as the host repo (with the workspace's own
+  commit convention, `type(scope): summary`, imperative, no trailing period, recorded as confirmed and
+  Claude `Co-Authored-By` trailers allowed, so `next` never asks `UNCONFIRMED` about it), and that init
+  is undone when a refusal comes before the first write. The installer makes no commit in the host.
+
+- **`--at-root` is the committed layout.** It installs the team-visible layout into a fresh directory
+  (`CLAUDE.md`, `.claude/`, `scripts/`, `works/`, `docs/` at its root) and keeps the writes, guards and
+  output of a bare install through v49 (only the flag name in the hints differs). `--into-existing` is the at-root retrofit, unchanged (`--at-root` with it is
+  allowed and redundant).
+
+- **`--update` detects the layout.** It reads what is installed at the target, the nested marker
+  `workflow/.agentic-nested.json` versus an at-root workspace (`scripts/workflow.py` plus `works/`),
+  and refreshes it in that layout, so `--update` and `--update --dry-run` need no `--nested`. It
+  refuses, writing nothing, when the layout is ambiguous (both found, no flag to choose) or when a flag
+  contradicts the layout found (`--at-root` on a nested install, `--nested` on an at-root workspace).
+  A matching `--nested` is a no-op, so v49's `--update --nested` keeps working. At-root updates
+  behave exactly as before.
+
+- **New refusals** (each exits non-zero with nothing written):
+  - a bare install over an at-root workspace (use `--update`);
+  - a bare install or an `--update` on a nested install's own `workflow/` directory (run it at the
+    host root; v49's plain `--update` there would have written `CLAUDE.md` and `.claude/` into
+    `workflow/`);
+  - a non-empty directory that is not a git repo (`git init` it yourself, or use `--at-root`);
+  - a new directory inside another repo's work tree (name that repo's root, or `git init` the
+    directory first);
+  - `--at-root` together with `--nested`;
+  - `--force-empty-ok` without `--at-root` or `--into-existing`, on `--update` as well.
+
+- **`/update-workspace` runs a plain `--update`.** Its two `(nested)` command variants collapse into
+  the one command from the host root (the installer detects the layout), and the sentence saying a
+  plain `--update` at a nested host refuses is gone. A downstream still holding v49's skill text can
+  keep running `--update --nested`. `/retrofit` now points a private install at the default bare
+  command.
+
+- **Docs.** Both READMEs and the retrofit guide present the nested install as the default and
+  `--at-root` as the committed layout, and say `--update` detects the layout. The README section on
+  private use is retitled "Private use in a repo you don't own (the default install)" (its anchor
+  changes), and the options table gains `--at-root`. `installer/README.md` lists the install modes.
+  The smoke test passes `--at-root` wherever a test expects the at-root layout and gains Test 16.
+
+- **Migration notes.** Existing installs are unaffected and nothing migrates them: an at-root
+  workspace keeps updating at-root and a nested install keeps updating nested, with no new flag.
+  Changes to habits and scripts:
+  - A script or habit that ran a bare install expecting the committed at-root layout must now add
+    `--at-root`; without it the install is nested and needs `git`.
+  - `--nested` is now redundant; leave it or drop it.
+  - `--force-empty-ok` needs `--at-root` (or `--into-existing`), and that now applies to `--update`
+    too, where v49 silently ignored it, so an `--update --force-empty-ok` line must lose the flag or
+    gain `--at-root`.
+  - New personal projects are private by default: their skills and agents are untracked in the host's
+    `.claude/` and the phase history lives in `workflow/`. Install with `--at-root` if collaborators
+    should receive the workspace through the repo.
+  - Parallel worktrees (`parallel-*`) refuse on a nested install, so they are off by default and need
+    an `--at-root` install.
+
 ## v49 — 2026-10-07
 
 - **A nested personal install: `--nested`.** `sh bootstrap_agentic_workspace.sh <host-root> --nested`

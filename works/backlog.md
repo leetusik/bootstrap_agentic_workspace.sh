@@ -6,8 +6,8 @@
 ## Pointer
 
 - Current phase: `P29`
-- Current slice: `P29.S2`
-- Next slice: `P29.REVIEW`
+- Current slice: `P29.REVIEW`
+- Next slice: `none`
 - Waiting on operator: `none`
 - Open deferred jobs: `30`
 
@@ -19,7 +19,7 @@
 | [x] `P26` | `done` | `pass` | Replace the Claude Design loop with a repo-file design contract and a design subagent | `none` | `works/phases/active/P26` |
 | [x] `P27` | `done` | `pass` | Choose the design tool per phase: drafter or Claude Design | `none` | `works/phases/active/P27` |
 | [x] `P28` | `done` | `pass` | Nested personal install | `none` | `works/phases/active/P28` |
-| [ ] `P29` | `planned` | `pending` | Nested install by default | `P29.S2` | `works/phases/active/P29` |
+| [ ] `P29` | `planned` | `pending` | Nested install by default | `P29.REVIEW` | `works/phases/active/P29` |
 
 ## Phase P25: Research a replacement for Claude Design in design-cowork
 
@@ -73,5 +73,5 @@
 |---|---|---|---|---|
 | [x] `P29.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P29/slices/P29.DECOMP` |
 | [x] `P29.S1` | `done` | Installer: nested by default | `implementation` | `works/phases/active/P29/slices/P29.S1` |
-| [ ] `P29.S2` | `todo` | Texts, /update-workspace and release v50 | `implementation` | `works/phases/active/P29/slices/P29.S2` |
+| [x] `P29.S2` | `done` | Texts, /update-workspace and release v50 | `implementation` | `works/phases/active/P29/slices/P29.S2` |
 | [ ] `P29.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P29/slices/P29.REVIEW` |
