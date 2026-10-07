@@ -155,6 +155,10 @@ NESTED_CONTRACT = "CLAUDE.workspace.md"  # never CLAUDE.md under workflow/: Clau
 NESTED_RENAME_PREFIX = "wf-"
 NESTED_LOCAL_BEGIN, NESTED_LOCAL_END = "<!-- BEGIN agentic-workspace (nested) -->", "<!-- END agentic-workspace (nested) -->"
 NESTED_EXCLUDE_BEGIN, NESTED_EXCLUDE_END = "# BEGIN agentic-workspace (nested)", "# END agentic-workspace (nested)"
+# Each of our skill dirs also gets this as its own .gitignore (P28.F1): the deepest .gitignore wins,
+# so it hides the dir's files (itself included) even where a host .gitignore re-includes
+# .claude/skills/** -- which info/exclude, ranked below every .gitignore, cannot override.
+NESTED_SKILL_GITIGNORE = "*\n"
 SHOWN_PREFIX = f"{NESTED_DIR}/" if NESTED else ""   # change-list paths as typed from the host root
 
 DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
@@ -550,6 +554,9 @@ def write_json(path, data) -> None:
 # CLAUDE.local.md, the info/exclude block) and the rewritten engine-side texts (the contract as
 # workflow/CLAUDE.workspace.md, works/templates/*) are rendered IN MEMORY by nested_plan() and
 # post-checked before anything is written; nested_apply() writes them after the engine side.
+# Before any write, nested_plan() also asks git whether every host-side target WILL be ignored
+# (a host .gitignore negation outranks info/exclude); after the writes, nested_verify_clean()
+# asserts the host's git status lists none of them.
 NESTED_AGENTS = ["slice-executor-mid", "slice-executor-high", "design-drafter"]
 NESTED_KINDS = ("skills", "agents")
 # The engine's subcommands, read from the embedded engine: a hyphenated skill name that is not one
@@ -741,6 +748,69 @@ def nested_infer_convention():
     return "; ".join(parts)
 
 
+def _nested_unignored(check_paths: list, exclude_entries: list) -> list:
+    """[(target, reason)] for each host path in `check_paths` that git would NOT ignore once our
+    exclude block is in place -- decided before any write (P28.F1). The block goes into a temporary
+    core.excludesFile, which ranks below the host's .gitignore files and its current info/exclude,
+    and matches every target: so the answer is "ignored" unless a .gitignore (or an operator line
+    already in info/exclude) decides otherwise, which is exactly what can override the block once
+    it is in info/exclude (it has no negations). The one approximation errs safe: an operator's own
+    info/exclude negation of a target refuses even where our block would come after it. A target
+    that does not exist yet is matched as a file, so `workflow/` is checked as a directory that
+    must exist: it is created empty for the check and removed again if it was absent. Refuses
+    (exit 1, nothing written) when the check itself cannot run."""
+    fd, tmp = tempfile.mkstemp(prefix="agentic-nested-", suffix=".exclude")
+    made_root = False
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write("\n".join(exclude_entries) + "\n")
+        if NESTED_DIR in check_paths and not os.path.lexists(ROOT):
+            ROOT.mkdir()
+            made_root = True
+        proc = subprocess.run(["git", "-C", str(HOST), "-c", f"core.excludesFile={tmp}", "check-ignore", "-v", "-z",
+                               "--no-index", "--non-matching", "--stdin"],
+                              input="".join(p + "\0" for p in check_paths).encode("utf-8"), capture_output=True)
+    finally:
+        if made_root:
+            try:
+                ROOT.rmdir()
+            except OSError:
+                pass
+        os.unlink(tmp)
+    if proc.returncode not in (0, 1):
+        _nested_refuse("cannot check that the host's git will ignore the install's files "
+                       f"(git check-ignore exit {proc.returncode}: {proc.stderr.decode('utf-8', 'replace').strip()}); nothing written.")
+    fields = proc.stdout.decode("utf-8", errors="replace").split("\0")
+    decided = {fields[i + 3]: fields[i:i + 3] for i in range(0, len(fields) - 3, 4)}
+    unignored = []
+    for path in check_paths:
+        shown = f"{path}/" if path == NESTED_DIR else path
+        source, line, pattern = decided.get(path, ["", "", ""])
+        if path not in decided:
+            unignored.append((shown, "git check-ignore gave no answer for it"))
+        elif not pattern:
+            unignored.append((shown, "no ignore pattern matches it"))
+        elif pattern.startswith("!"):
+            unignored.append((shown, f"re-included by {source}:{line}:{pattern}"))
+    return unignored
+
+
+def nested_verify_clean(plan: dict) -> None:
+    """After every write (P28.F1, belt and braces behind the preflight): the host's git status lists
+    none of the install's paths, or the install exits 1 naming them."""
+    # GIT_OPTIONAL_LOCKS=0: status must not refresh the host's index (an env var, so an older git ignores it).
+    proc = subprocess.run(["git", "-C", str(HOST), "--literal-pathspecs", "status", "--porcelain", "--untracked-files=all",
+                           "--", *plan["status_paths"]], capture_output=True, env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})
+    rc, out = proc.returncode, proc.stdout.decode("utf-8", errors="replace")
+    if rc == 0 and not out.strip():
+        plan["verified_clean"] = True
+        return
+    _nested_refuse("the nested install is written, but the host's git can see these paths, so `git add` could stage them:",
+                   *([f"  {ln}" for ln in out.splitlines()[:20] if ln.strip()] or [f"  (git status failed with exit {rc})"]),
+                   "Next: stage nothing in the host. `git check-ignore -v --no-index <path>` names the rule that re-includes each "
+                   "path; move the listed paths out of the repo before your next `git add`, and report this.")
+
+
 def _with_block(existing: str, begin: str, end: str, block: list) -> str:
     """`existing` with exactly one managed block (the `begin` ... `end` lines): earlier copies
     removed, the new one in the first copy's place, else appended after the operator's own text,
@@ -832,10 +902,11 @@ Doc updates happen in a **docs phase the operator creates** — never per slice.
 def nested_plan() -> dict:
     """Render and check everything the nested install writes, IN MEMORY, before any write: the
     clash map (merged into the existing marker on --update), the rewritten host-side skills and
-    agents, the engine-side contract and templates, settings.local.json, CLAUDE.local.md, the
-    info/exclude block and the marker. Refuses (exit 1, nothing written) on an unresolvable clash,
-    a tracked target, an unmergeable settings.local.json / CLAUDE.local.md / exclude file, or a
-    failed post-check."""
+    agents (each skill dir with its own `*` .gitignore), the engine-side contract and templates,
+    settings.local.json, CLAUDE.local.md, the info/exclude block and the marker. Refuses (exit 1,
+    nothing written) on an unresolvable clash, a tracked target, a target the host's .gitignore
+    would keep visible (the ignore preflight), an unmergeable settings.local.json / CLAUDE.local.md /
+    exclude file, or a failed post-check."""
     old = {}
     if UPDATE:
         try:
@@ -922,6 +993,31 @@ def nested_plan() -> dict:
         _nested_refuse("the host repo tracks a file the nested install would write, and info/exclude cannot hide a tracked file "
                        "(nothing written):", *([f"  - {t}" for t in tracked[:10]] or [f"  (git ls-files failed with exit {rc})"]))
 
+    # Ignore preflight (P28.F1): a .gitignore ranks above info/exclude, so a host negation such as
+    # `!.claude/skills/**`, `!CLAUDE*.md` or an allowlist (`*` / `!*/` / `!*.md`) re-includes what
+    # our block hides. Every skill dir we own (absent or a real directory) gets its own .gitignore
+    # of `*`, the deepest pattern list for every path inside it, so its files are ignored by
+    # construction: that file is MODELLED here, not written first. Every other target -- the agent
+    # files, CLAUDE.local.md, settings.local.json, workflow/ as a directory, and an odd skill entry
+    # that is not a directory -- is asked of git, and one that would stay visible refuses the
+    # install, on --update too, before anything is written.
+    exclude_entries = [f"/{NESTED_DIR}/", "/CLAUDE.local.md", "/.claude/settings.local.json"]
+    exclude_entries += [f"/.claude/skills/{n}/" for n in sorted(installed["skills"])]
+    exclude_entries += [f"/.claude/agents/{n}.md" for n in sorted(installed["agents"])]
+    def _real_dir_or_absent(p: Path) -> bool:
+        return not os.path.lexists(p) or (p.is_dir() and not p.is_symlink())
+    self_hiding = [n for n in sorted(installed["skills"]) if _real_dir_or_absent(HOST / ".claude" / "skills" / n)]
+    skill_ignores = {f".claude/skills/{n}/.gitignore": NESTED_SKILL_GITIGNORE for n in self_hiding}
+    skill_targets = [f".claude/skills/{n}" for n in sorted(installed["skills"])]
+    other_targets = [f".claude/agents/{n}.md" for n in sorted(installed["agents"])] + ["CLAUDE.local.md", ".claude/settings.local.json", NESTED_DIR]
+    check_paths = [t for t in skill_targets if t.rsplit("/", 1)[1] not in self_hiding] + other_targets
+    unignored = _nested_unignored(check_paths, exclude_entries)
+    if unignored:
+        _nested_refuse("the host's ignore rules would leave files of the nested install visible to git, so it cannot stay private (nothing written):",
+                       *[f"  - {target}: {why}" for target, why in unignored],
+                       "Why: a .gitignore in the host re-includes these paths, and .git/info/exclude, where this install hides its files, "
+                       "ranks below every .gitignore and cannot override it.")
+
     settings_path = HOST / ".claude" / "settings.local.json"
     settings_text = settings_ours
     if os.path.lexists(settings_path):
@@ -945,9 +1041,6 @@ def nested_plan() -> dict:
     if rc != 0 or not out.strip():
         _nested_refuse("cannot locate the host repo's info/exclude (git rev-parse --git-path info/exclude failed); nothing written.")
     exclude_path = Path(out.strip()) if os.path.isabs(out.strip()) else HOST / out.strip()
-    exclude_entries = [f"/{NESTED_DIR}/", "/CLAUDE.local.md", "/.claude/settings.local.json"]
-    exclude_entries += [f"/.claude/skills/{n}/" for n in sorted(installed["skills"])]
-    exclude_entries += [f"/.claude/agents/{n}.md" for n in sorted(installed["agents"])]
     local_path = HOST / "CLAUDE.local.md"
     try:
         local_text = _with_block(local_path.read_text(encoding="utf-8") if local_path.is_file() else "",
@@ -977,11 +1070,15 @@ def nested_plan() -> dict:
         "renames": renames, "installed": installed, "stale": stale, "convention": conv,
         "shadowed": [n for n in installed["skills"] if os.path.lexists(home_skills / n)],
         "engine_side": engine_side,
-        "host_writes": [(HOST / rel, text, rel) for rel, text in sorted(files.items())]
+        # Sorted, so each skill dir's .gitignore is written before its SKILL.md.
+        "host_writes": [(HOST / rel, text, rel) for rel, text in sorted({**files, **skill_ignores}.items())]
                        + [(settings_path, settings_text, ".claude/settings.local.json"), (local_path, local_text, "CLAUDE.local.md"),
                           (exclude_path, exclude_text, exclude_label)],
         "marker_text": json.dumps(marker, ensure_ascii=False, indent=2) + "\n",
         "exclude_label": exclude_label,
+        # nested_verify_clean() asks git status about exactly these after the writes.
+        "status_paths": skill_targets + other_targets,
+        "verified_clean": False,
     }
 
 
@@ -1028,12 +1125,17 @@ def print_nested_banner(plan: dict) -> None:
             print(f"    ~ {label}")
         for label in HOST_SUMMARY["added"]:
             print(f"    + {label}")
+        if plan["verified_clean"]:
+            print("  verified: the host's git status lists none of the workspace's files")
+        else:
+            print("  checked: git will ignore every host-side file once written")
     else:
         print(f"Installed the agentic workspace privately (--nested) into the host repo at {HOST}")
         print(f"  engine + state: {NESTED_DIR}/ (a nested git repo; the contract is {NESTED_DIR}/{NESTED_CONTRACT})")
-        print(f"  Claude Code: {len(plan['installed']['skills'])} skills in .claude/skills/, {len(NESTED_AGENTS)} agents in .claude/agents/, "
-              ".claude/settings.local.json, and CLAUDE.local.md importing the contract -- all untracked")
-        print(f"  hidden by {plan['exclude_label']}: the host's git status stays clean (no tracked file, CI, .gitattributes or docs/ touched)")
+        print(f"  Claude Code: {len(plan['installed']['skills'])} skills in .claude/skills/ (each dir hides itself with a .gitignore of *), "
+              f"{len(NESTED_AGENTS)} agents in .claude/agents/, .claude/settings.local.json, and CLAUDE.local.md importing the contract -- all untracked")
+        if plan["verified_clean"]:
+            print(f"  hidden by {plan['exclude_label']}, verified: the host's git status stays clean (no tracked file, CI, .gitattributes or docs/ touched)")
     print(f"  {_nested_renames_line(plan)}")
     for name in plan["shadowed"]:
         print(f"  warning: your personal skill ~/.claude/skills/{name} shadows the workspace's /{name} in this repo (rename or remove one)")
@@ -1351,6 +1453,8 @@ else:
     write_version_marker()
 
 if NESTED:
+    if not DRY_RUN:
+        nested_verify_clean(NESTED_PLAN)
     print_nested_banner(NESTED_PLAN)
 elif DRY_RUN:
     print(f"DRY RUN (--update --dry-run) at {TARGET} — nothing written.")

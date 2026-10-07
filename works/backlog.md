@@ -6,8 +6,8 @@
 ## Pointer
 
 - Current phase: `P28`
-- Current slice: `P28.F1`
-- Next slice: `P28.REVIEW`
+- Current slice: `P28.REVIEW`
+- Next slice: `none`
 - Waiting on operator: `none`
 - Open deferred jobs: `27`
 
@@ -18,7 +18,7 @@
 | [x] `P25` | `done` | `pass` | Research a replacement for Claude Design in design-cowork | `none` | `works/phases/active/P25` |
 | [x] `P26` | `done` | `pass` | Replace the Claude Design loop with a repo-file design contract and a design subagent | `none` | `works/phases/active/P26` |
 | [x] `P27` | `done` | `pass` | Choose the design tool per phase: drafter or Claude Design | `none` | `works/phases/active/P27` |
-| [ ] `P28` | `in_progress` | `changes_requested` | Nested personal install | `P28.F1` | `works/phases/active/P28` |
+| [ ] `P28` | `in_progress` | `changes_requested` | Nested personal install | `P28.REVIEW` | `works/phases/active/P28` |
 
 ## Phase P25: Research a replacement for Claude Design in design-cowork
 
@@ -63,5 +63,5 @@
 | [x] `P28.S1` | `done` | Engine: nested awareness | `implementation` | `works/phases/active/P28/slices/P28.S1` |
 | [x] `P28.S2` | `done` | Installer --nested: zero-footprint install, rewrite, clash map, update | `implementation` | `works/phases/active/P28/slices/P28.S2` |
 | [x] `P28.S3` | `done` | Text, /update-workspace, docs and release v49 | `implementation` | `works/phases/active/P28/slices/P28.S3` |
-| [ ] `P28.F1` | `todo` | Nested install verifies every host target is actually ignored | `fix` | `works/phases/active/P28/slices/P28.F1` |
+| [x] `P28.F1` | `done` | Nested install verifies every host target is actually ignored | `fix` | `works/phases/active/P28/slices/P28.F1` |
 | [ ] `P28.REVIEW` | `changes_requested` | phase review | `review` | `works/phases/active/P28/slices/P28.REVIEW` |

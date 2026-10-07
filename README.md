@@ -100,6 +100,8 @@ sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo --nested
   들어가는 **중첩 git 저장소**입니다. 호스트와 따로 버전 관리됩니다.
 - 호스트의 `.claude/skills/`, `.claude/agents/`에 들어가는 스킬 18개와 에이전트 3개. 경로는
   `workflow/`를 가리키도록 바뀌어 있습니다(`python3 workflow/scripts/workflow.py …`).
+- 각 스킬 디렉터리 안의 `.gitignore`(내용은 `*`). 호스트의 `.gitignore`가 `.claude/skills/`를
+  다시 포함시키더라도 스킬 디렉터리가 스스로를 가립니다.
 - `.claude/settings.local.json`: 내 개인 권한 설정. 파일이 이미 있으면 합칩니다.
 - `CLAUDE.local.md`의 관리 블록 하나: 규칙 문서를 import하고 nested 규칙을 적습니다. 직접 쓴
   내용은 그대로 둡니다.
@@ -108,8 +110,14 @@ sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo --nested
 tracked 파일은 하나도 건드리지 않습니다. `CLAUDE.md`, `.claude/settings.json`, CI,
 `.gitattributes`, `core.hooksPath`도 그대로이고 커밋도 만들지 않습니다. 호스트가 이미 tracked로
 가진 파일을 써야 하는 경우에는 그 파일을 알려 주고 아무것도 쓰지 않은 채 멈춥니다. 호스트의
-스킬, 명령, 에이전트와 이름이 겹치면 우리 쪽이 `wf-<이름>`(예: `/wf-commit`)으로 설치되고
-설치 결과에 표시됩니다. 호스트 쪽 파일은 한 바이트도 바뀌지 않습니다.
+`.gitignore`는 `.git/info/exclude`보다 우선하므로, 설치는 무엇이든 쓰기 전에 쓸 파일이 모두
+git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하나를 다시 포함시키면(예:
+`!CLAUDE*.md`, 또는 `*` / `!*/` / `!*.md` 같은 허용 목록) 아무것도 쓰지 않고 멈추며, 파일마다
+결정한 `.gitignore` 줄을 알려 줍니다. `--update --nested`도 똑같이 확인합니다. 쓰고 난 뒤에는
+호스트의 `git status`에 설치한 파일이 하나도 보이지 않는지 확인한 다음에만 깨끗하다고 알립니다.
+
+호스트의 스킬, 명령, 에이전트와 이름이 겹치면 우리 쪽이 `wf-<이름>`(예: `/wf-commit`)으로
+설치되고 설치 결과에 표시됩니다. 호스트 쪽 파일은 한 바이트도 바뀌지 않습니다.
 
 **처음 실행할 때.**
 

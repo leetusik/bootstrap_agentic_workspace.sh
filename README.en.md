@@ -211,6 +211,8 @@ It writes only untracked files, all hidden by the host's `.git/info/exclude` (ne
   the contract (as `CLAUDE.workspace.md`). It is versioned there, separately from the host.
 - the 18 skills and 3 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
   path rewritten to reach `workflow/` (`python3 workflow/scripts/workflow.py …`);
+- a `.gitignore` of `*` in each of those skill directories, so a skill directory hides itself
+  even where the host's `.gitignore` re-includes `.claude/skills/`;
 - `.claude/settings.local.json`: your personal permissions, merged into any file already there;
 - one managed block in `CLAUDE.local.md` that imports the contract and states the nested rules
   (it keeps whatever else you wrote there);
@@ -218,9 +220,16 @@ It writes only untracked files, all hidden by the host's `.git/info/exclude` (ne
 
 It never touches a tracked file: not `CLAUDE.md`, not `.claude/settings.json`, no CI, no
 `.gitattributes`, no `core.hooksPath`, and it makes no commit. If the host already tracks a file
-it would write, it refuses and names it. If a skill or agent name clashes with one of the host's
-own (skills, commands or agents), ours installs as `wf-<name>` (for example `/wf-commit`) and
-the installer reports it; the host's own file is left byte for byte as it was.
+it would write, it refuses and names it. A host `.gitignore` ranks above `.git/info/exclude`, so
+before writing anything the installer asks git whether every file it would write will be ignored.
+If the host's `.gitignore` would re-include one (for example `!CLAUDE*.md`, or an allowlist such as
+`*` / `!*/` / `!*.md`), it refuses with nothing written and names each file with the deciding
+`.gitignore` line; `--update --nested` checks the same way. After writing, it confirms that the
+host's `git status` lists none of its files before it reports the status clean.
+
+If a skill or agent name clashes with one of the host's own (skills, commands or agents), ours
+installs as `wf-<name>` (for example `/wf-commit`) and the installer reports it; the host's own
+file is left byte for byte as it was.
 
 **First run.**
 

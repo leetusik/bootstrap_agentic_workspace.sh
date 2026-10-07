@@ -37,7 +37,10 @@ sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo --nested
 
 The engine and all workflow state live in an untracked nested git repo `workflow/`, the skills
 and agents go into the host's `.claude/` as untracked files, and one `info/exclude` block hides
-all of it, so the host's `git status` stays clean and no PR ever shows a trace. `--nested
+all of it (each skill directory also hides itself with a `.gitignore` of `*`). Because a host
+`.gitignore` outranks `info/exclude`, the installer first checks that none of these files would
+be re-included by it, and refuses, writing nothing, when one would; a successful install leaves
+the host's `git status` clean, and no PR ever shows a trace. `--nested
 --into-existing` is refused: the two routes are different on purpose. Update a private install
 with `/update-workspace` or `--update --nested`, never a plain `--update`. The full flow (install,
 first run, one ticket from branch to PR, updates and caveats) is in the README, section

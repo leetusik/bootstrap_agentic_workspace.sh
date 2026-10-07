@@ -18,9 +18,14 @@ history.
   agents go to the host's `.claude/` as untracked files, with every path rewritten once, at install,
   to reach `workflow/` (`python3 workflow/scripts/workflow.py …`). Your permissions go to
   `.claude/settings.local.json`, and one managed block in `CLAUDE.local.md` imports the contract and
-  states the nested rules. One `.git/info/exclude` block hides all of it. The installer writes no CI
-  file, no `.gitattributes`, no host `docs/`, no `settings.json`, no `core.hooksPath` and no commit,
-  and it refuses, writing nothing, when the host tracks a file it would write. A skill or agent name
+  states the nested rules. One `.git/info/exclude` block hides all of it, and each skill directory
+  also hides itself with a `.gitignore` of `*`, because a host `.gitignore` that re-includes a path
+  outranks `info/exclude`. The installer writes no CI file, no `.gitattributes`, no host `docs/`, no
+  `settings.json`, no `core.hooksPath` and no commit, and it refuses, writing nothing, when the host
+  tracks a file it would write. Before writing, it asks git whether every file it would write will
+  be ignored, and refuses, writing nothing, when the host's `.gitignore` would expose one (naming
+  the file and the deciding `.gitignore` line, on install and `--update --nested` alike). After
+  writing, it checks that the host's `git status` lists none of its files. A skill or agent name
   that clashes with one of the host's own installs as `wf-<name>` (the host's file stays
   byte-identical). `--nested` is refused with `--into-existing` and `--force-empty-ok`.
 

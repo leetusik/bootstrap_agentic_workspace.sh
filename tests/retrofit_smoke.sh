@@ -31,7 +31,8 @@
 # shared), the P28 nested-engine invariants (workflow/.agentic-nested.json: host anchors, host-side
 # phase-scope, parallel off, the convention gate, the agent rename map, a malformed marker is an
 # error), the P28 nested-install invariants (--nested: a clean host status/HEAD/config, the clash rename,
-# the workflow/ prefix, the contract import, the tracked-target refusal, --update --nested), and the v31
+# the workflow/ prefix, the contract import, the tracked-target refusal, --update --nested, the self-hiding
+# skill dirs and the refusal when a host .gitignore re-includes a target), and the v31
 # Codex-removal negatives. Re-runnable; self-cleaning.
 #
 # Usage:  bash tests/retrofit_smoke.sh
@@ -1560,7 +1561,7 @@ val_out=$(nw validate 2>&1); val_rc=$?; nx_out=$(nw next 2>&1); nx_rc=$?
   || bad "a malformed .agentic-nested.json passed validate or ran next (rc=$val_rc/$nx_rc) -- $val_out $nx_out"
 
 # ---------------------------------------------------------------------------
-echo "== Test 15: P28 nested install -- --nested leaves the host clean (status, HEAD, config), renames a clashing skill, prefixes every engine path, imports the contract, and refreshes in place with --update --nested =="
+echo "== Test 15: P28 nested install -- --nested leaves the host clean (status, HEAD, config), renames a clashing skill, prefixes every engine path, imports the contract, refreshes in place with --update --nested, and refuses a host whose .gitignore would expose a target =="
 # A host with a tracked team contract, settings.json, .gitattributes, CI and its own `commit` skill
 # (a clash with ours), plus Conventional-Commit history. Every workflow command runs from the host root.
 newtmp NI
@@ -1621,6 +1622,21 @@ it_sig() { ( cd "$IT" && find . -path ./.git/objects -prune -o -print | LC_ALL=C
 it_before=$(it_sig); out=$(sh "$BOOT" "$IT" --nested 2>&1); rc=$?
 [ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -q "  - CLAUDE.local.md" && [ ! -e "$IT/workflow" ] && [ "$(it_sig)" = "$it_before" ] \
   && ok "a host that tracks CLAUDE.local.md is refused, naming it, with nothing written" || bad "a tracked CLAUDE.local.md was not refused cleanly (rc=$rc) -- $out"
+# P28.F1: a tracked .gitignore negation outranks info/exclude. Our skill dirs hide themselves (a per-dir
+# .gitignore of *); any other target a host .gitignore re-includes refuses the install before any write.
+ign_host() { mkdir -p "$1" && ( cd "$1" && { git init -q -b main . 2>/dev/null || git init -q .; } && git config user.email smoke@example.invalid \
+  && git config user.name smoke && printf '%b' "$2" > .gitignore && printf 'notes\n' > README.md && git add -f .gitignore README.md \
+  && git commit -qm "chore: init" ) >/dev/null 2>&1 || bad "nested install: could not build the $1 fixture"; }
+ign_sig() { ( cd "$1" && find . -path ./.git/objects -prune -o -print | LC_ALL=C sort; cat .git/info/exclude 2>/dev/null ) | sha_stdin; }
+IG="$NI/ign-skills"; ign_host "$IG" '.claude/*\n!.claude/skills/\n!.claude/skills/**\n'; out=$(sh "$BOOT" "$IG" --nested 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ -z "$(cd "$IG" && git status --porcelain --untracked-files=all)" ] && [ "$(cat "$IG/.claude/skills/explain/.gitignore")" = "*" ] \
+  && ok "a host .gitignore re-including .claude/skills/** still installs clean: each skill dir hides itself with a .gitignore of *" || bad "a !.claude/skills/** host was not installed clean (rc=$rc) -- $(cd "$IG" && git status --porcelain) $out"
+IE="$NI/ign-claude"; ign_host "$IE" '!CLAUDE*.md\n'; ie_before=$(ign_sig "$IE"); out=$(sh "$BOOT" "$IE" --nested 2>&1); rc=$?
+[ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -qF "  - CLAUDE.local.md: re-included by .gitignore:1:!CLAUDE*.md" && [ ! -e "$IE/workflow" ] && [ "$(ign_sig "$IE")" = "$ie_before" ] \
+  && ok "a host whose .gitignore re-includes CLAUDE*.md is refused, naming CLAUDE.local.md and the deciding line, with nothing written" || bad "a !CLAUDE*.md host was not refused cleanly (rc=$rc) -- $out"
+IA="$NI/ign-allow"; ign_host "$IA" '*\n!*/\n!*.md\n'; ia_before=$(ign_sig "$IA"); out=$(sh "$BOOT" "$IA" --nested 2>&1); rc=$?
+[ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -qF "  - workflow/: re-included by .gitignore:2:!*/" && [ ! -e "$IA/workflow" ] && [ "$(ign_sig "$IA")" = "$ia_before" ] \
+  && ok "an allowlist host (* / !*/ / !*.md) is refused, naming workflow/ and the deciding line, with nothing written" || bad "an allowlist host was not refused cleanly (rc=$rc) -- $out"
 
 # ---------------------------------------------------------------------------
 echo
