@@ -9,6 +9,59 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v51 — 2026-10-07
+
+- **`/rotate-backlog` proposes the docs phase by default.** It still archives every clean phase
+  first, exactly as before. It then collects the phases held back only by unpaid doc consolidation
+  (every slice done, review `pass`, `consolidation: pending`, and no other blocker) and prints a
+  read-only proposal: `docs_phase_proposal=P26, P27, P28, P29`, `phase=P31` (one above the highest
+  phase number, active or archived), a `name=` and an `objective=` naming the phases it pays, the
+  exact `create:` line (`new-phase … --consolidates P26,P27,P28,P29`), and a `scope:` pointer to
+  `docs-debt`. The skill presents it, asks the operator **once**, and on the yes runs the `create:`
+  line and fills `intent.md` through `create-phase`'s docs-phase route (the verbatim words, the
+  `docs-debt` scope, and the one-`--kind docs`-slice-per-doc cut for the phase's `DECOMP`), then
+  stops. Nothing is decomposed, and `new-phase` still never runs before the operator confirms the
+  name and objective. The operator may edit the name or objective or narrow the phase list; a phase
+  left out keeps owing and stays active.
+
+- **Opt out with `archive-only`.** `/rotate-backlog archive-only` (the engine's
+  `rotate-backlog --archive-only`) keeps the pre-v51 archive-and-report behaviour and prints no
+  proposal. Every other default run ends in one of three lines, so the output is never silent about
+  the debt: `docs_phase=none`, `docs_phase_covered=<P> (pays …)`, or the proposal.
+
+- **No second docs phase, and no phase for other blockers.** When an active, not-done docs phase
+  already covers a debt-only phase, rotate prints `docs_phase_covered=<P> (pays …)` and proposes
+  nothing for it (one run can print covered lines and a proposal for the rest). A phase blocked for
+  any other reason (unfinished, unreviewed, an unmerged parallel branch) is reported as before and
+  never proposed. The archive gate, the archive manifest, `archive-all` and `archive-phase` behave
+  exactly as before, with the same refusal text.
+
+- **`new-phase --consolidates P26,P27`.** It marks the new phase as the docs phase that pays those
+  phases, by writing an optional top-level `"consolidates": [...]` key into its `phase.json`. It is
+  the only docs-phase marker (nothing reads a phase's name or `intent.md` to guess), it tolerates
+  spaces and duplicates, and it refuses with nothing written when an id is not an active phase owing
+  consolidation. `create-phase`'s docs-phase route passes it.
+
+- **`docs-debt` shows who pays.** Each owing phase a live docs phase covers gets one extra line,
+  `  paid by: P31 (in progress)`, beneath its `pay:` line. It stays read-only.
+
+- **`validate` checks the shape.** A `consolidates` that is not a non-empty list of `P<N>` ids is an
+  error. Phases without the key are valid.
+
+- **Skills and docs.** The `rotate-backlog` skill is rewritten around the propose-then-confirm flow
+  (its `allowed-tools` gains `Read`, `Edit` and `Write` for `intent.md`, and it takes an
+  `archive-only` argument; it stays `disable-model-invocation: true`). The `create-phase` docs-phase
+  route names `/rotate-backlog` as the default entry point and passes `--consolidates`. The
+  `archive-phase` skill says rotate leaves a debt-owing phase active and proposes the docs phase
+  that pays it, and names `--archive-only`. The README's skill table says so too. The smoke test
+  gains four asserts beside the `docs-debt` fixture.
+
+- **Migration notes.** None required. A phase created before v51 carries no `consolidates` key, and
+  that is valid. A docs phase created before v51 (by hand, through `create-phase`) is simply not
+  seen as covering the phases it pays, so `/rotate-backlog` may propose a docs phase for debt a live
+  one already pays. Decline it (or answer no), or run `archive-only`. Nothing else changes for an
+  adopting repo.
+
 ## v50 — 2026-10-07
 
 - **The nested install is now the default.** `sh bootstrap_agentic_workspace.sh <dir>` with no flag

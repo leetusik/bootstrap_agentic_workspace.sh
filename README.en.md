@@ -451,7 +451,7 @@ commands in Claude Code:
 | `deferred` | Rebuild and show the deferred-jobs dashboard |
 | `promote-deferred` | Promote a deferred job into an active phase or slice |
 | `archive-phase` | Archive review-passed phases whose doc debt is paid (normally batched via `archive-all`) |
-| `rotate-backlog` | Archive every currently-done phase with no doc debt, leaving the rest active |
+| `rotate-backlog` | Archive every currently-done phase with no doc debt, leaving the rest active, then propose the docs phase that pays the held-back debt (one confirmation; `archive-only` skips it) |
 | `rebuild-workflow` | Rebuild generated dashboards, indexes, and doc snapshots, then validate |
 | `executor-mode` | Show the executor mode (`economy` / `flex`), or switch it in one step (`/executor-mode flex`) |
 | `commit` | Group pending changes into focused conventional commits |

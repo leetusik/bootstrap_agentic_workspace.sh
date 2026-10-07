@@ -17,11 +17,13 @@ python3 scripts/workflow.py archive-all
 
 `archive-all` refuses unless every active phase is `done` with a passing review — and, for any phase still owing its deferred doc consolidation, unless that has landed too.
 
-**Rotate the done phases — partial sweep.** When only some phases are done, archive exactly those and leave the in-progress ones active:
+**Rotate the done phases — partial sweep.** When only some phases are done, archive exactly those and leave the in-progress ones active. By default it then **proposes the docs phase** that pays the doc debt of the phases it left active (a read-only proposal; the `/rotate-backlog` skill asks once and runs `create-phase`'s docs-phase route on the operator's yes):
 
 ```sh
 python3 scripts/workflow.py rotate-backlog
 ```
+
+Add `--archive-only` to skip the proposal and keep the plain archive-and-report behaviour: `python3 scripts/workflow.py rotate-backlog --archive-only`.
 
 **Archive one phase.** Archive a single review-passed phase by id:
 
@@ -29,4 +31,4 @@ python3 scripts/workflow.py rotate-backlog
 python3 scripts/workflow.py archive-phase <P>
 ```
 
-All three gate on the same rule: a phase must be `done` with a passing review to archive. **A phase owing docs has one more gate:** the engine blocks it while `consolidation` is still `"pending"` (`archive-phase` refuses, `archive-all` lists it, `rotate-backlog` leaves it active) — that debt is stamped by a passing review whose phase left "Doc impact" notes, and archiving is exactly what would move those notes out of `active/`. Run the docs phase (`docs-debt` for the worklist, `doc-new-version` per note), then `python3 scripts/workflow.py docs-consolidated <P>`; a phase the operator ran in its own worktree merges first and uses `parallel-consolidated <P>` (see the `parallel-phase` skill). Use `--force` (on `archive-all`/`archive-phase`) only for exceptional cleanup of an unfinished phase.
+All three gate on the same rule: a phase must be `done` with a passing review to archive. **A phase owing docs has one more gate:** the engine blocks it while `consolidation` is still `"pending"` (`archive-phase` refuses, `archive-all` lists it, `rotate-backlog` leaves it active **and proposes the docs phase that pays it**) — that debt is stamped by a passing review whose phase left "Doc impact" notes, and archiving is exactly what would move those notes out of `active/`. Run the docs phase (`docs-debt` for the worklist, `doc-new-version` per note), then `python3 scripts/workflow.py docs-consolidated <P>`; a phase the operator ran in its own worktree merges first and uses `parallel-consolidated <P>` (see the `parallel-phase` skill). Use `--force` (on `archive-all`/`archive-phase`) only for exceptional cleanup of an unfinished phase.
