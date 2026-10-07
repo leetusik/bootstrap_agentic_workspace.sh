@@ -9,6 +9,63 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v49 — 2026-10-07
+
+- **A nested personal install: `--nested`.** `sh bootstrap_agentic_workspace.sh <host-root> --nested`
+  installs the workspace privately into a repo you don't own, with no team-visible footprint. The
+  engine and all state go to an untracked nested git repo `<host>/workflow/` (its contract is
+  `CLAUDE.workspace.md`, never `CLAUDE.md`, so Claude Code loads one copy). The 18 skills and the 3
+  agents go to the host's `.claude/` as untracked files, with every path rewritten once, at install,
+  to reach `workflow/` (`python3 workflow/scripts/workflow.py …`). Your permissions go to
+  `.claude/settings.local.json`, and one managed block in `CLAUDE.local.md` imports the contract and
+  states the nested rules. One `.git/info/exclude` block hides all of it. The installer writes no CI
+  file, no `.gitattributes`, no host `docs/`, no `settings.json`, no `core.hooksPath` and no commit,
+  and it refuses, writing nothing, when the host tracks a file it would write. A skill or agent name
+  that clashes with one of the host's own installs as `wf-<name>` (the host's file stays
+  byte-identical). `--nested` is refused with `--into-existing` and `--force-empty-ok`.
+
+- **The engine has a nested mode.** It is gated on one marker, `workflow/.agentic-nested.json`
+  (`host_root`, the host's commit convention, the rename map, and what the installer installed); with
+  no marker nothing changes, and a malformed marker fails `validate` and stops every other command.
+  Printed paths and hints are host-relative while stored paths stay relative to `workflow/`.
+  `parallel-*` refuse (`parallel worktrees are disabled in a nested personal install`). Doc
+  provenance and design identity come from the host.
+
+- **`phase-scope` reads the host.** A nested phase records the host's HEAD at `new-phase` and at a
+  passing review in `phase.json` (`host_anchors`), and `phase-scope` measures that range in the host
+  repo, excluding `workflow/`. An absent anchor lists only the working tree and suggests `--base`.
+
+- **`nested-convention` records the host's commit convention.** The installer infers it from the
+  host's `git log` and `CONTRIBUTING*` and records it as unconfirmed; the new command shows it
+  (bare) or records yours (`--confirm --text "<convention>" --trailers allowed|forbidden`, including
+  whether Claude `Co-Authored-By` trailers may appear in host commits). `next` prints
+  `nested_host=` and `host_commit_convention=UNCONFIRMED|confirmed`, and the agent asks before the
+  first product commit.
+
+- **`--update --nested` refreshes a nested install** with the same guarantees: it keeps a confirmed
+  convention and every rename, clash-checks only newly shipped names, reports (never deletes)
+  skills the version no longer ships, and leaves one exclude block and one `CLAUDE.local.md` block.
+  A plain `--update` at a nested host refuses and points to `--update --nested`.
+
+- **Skills.** `/update-workspace` detects a nested install (`workflow/.agentic-nested.json` under
+  the current directory) and runs `--update --nested` (and its `--dry-run`); `sync-agents` and `next`
+  run as usual. `/retrofit` says it is the team-visible route and points to `--nested` for a private
+  install. `/commit` explains the two-repo split: product changes in the host in the host's
+  convention, state with `git -C workflow`, nothing from `workflow/` staged into the host.
+
+- **Docs.** Both READMEs gain "Private use in a repo you don't own (`--nested`)" (install, first
+  run, one ticket from branch to PR, updates, caveats) and `--nested` in the options table; the
+  retrofit guide points to it. The smoke test gains Tests 14 (nested engine) and 15 (nested install).
+  At-root installs are unchanged: no marker, no difference in behaviour or generated files.
+
+- **Migration notes.** None required for an at-root workspace: nested mode is opt-in, and an
+  existing install behaves as before. `/update-workspace` picks up the nested branch automatically.
+  To try it, install with `--nested` into a host repo (see the README), start Claude Code at the host
+  root and accept the trust dialog on the first run, make the first commit in `workflow/`, then
+  confirm the commit convention with `nested-convention`. Keep any remote for `workflow/` inside
+  your company's organization, and check a company-managed policy does not disable
+  `bypassPermissions`, which the three agents set.
+
 ## v48 — 2026-09-30
 
 - **The design tool is a per-phase choice.** `/create-phase` asks it beside the style and the

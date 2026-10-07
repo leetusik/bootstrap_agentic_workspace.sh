@@ -3,14 +3,14 @@
   "phase_id": "P28",
   "name": "Text, /update-workspace, docs and release v49",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 3,
   "depends_on": [
     "P28.S2"
   ],
   "created_at": "2026-10-07T11:47:11+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-10-07T13:12:16+09:00",
+  "completed_at": "2026-10-07T13:19:09+09:00",
   "risk": "low",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "CLAUDE.local.md block + banners polished, rewrite covers executors.toml and docs/README.md, update-workspace/retrofit/commit nested paragraphs, README + guide private-use section, v49 shipped",
   "validation": {
     "required": [],
     "last_run": null,

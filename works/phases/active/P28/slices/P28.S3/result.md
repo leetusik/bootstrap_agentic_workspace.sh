@@ -1,0 +1,53 @@
+- status: done
+- tier: mid
+- summary: Finished the nested personal install for the operator and shipped it as v49. The `CLAUDE.local.md` block and both banners are polished, and the nested rewrite now covers `executors.toml` and `docs/README.md`. `/update-workspace`, `/retrofit` and `/commit` gained their nested paragraphs, both READMEs and the retrofit guide gained the private-use section, and the installer is rebuilt (`WORKSPACE_VERSION` 49, `## v49` in the CHANGELOG).
+- files_changed: installer/main.py; bootstrap_agentic_workspace.sh (rebuilt); .claude/skills/update-workspace/SKILL.md; .claude/skills/retrofit/SKILL.md; .claude/skills/commit/SKILL.md; CHANGELOG.md; README.en.md; README.md; docs/retrofit-guide.md; works/phases/active/P28/phase.md; works/phases/active/P28/slices/P28.S3/result.md
+- validation:
+  - `python3 installer/build.py` then `python3 installer/build.py --check`: passed (twice, after the last skill edit too).
+  - `bash tests/retrofit_smoke.sh` (own foreground call): ALL RETROFIT SMOKE TESTS PASSED (Tests 0-15, including the v49 release-agreement pin and the dual-apply of the three edited skills). No test added, no pin changed.
+  - `python3 scripts/workflow.py validate`: passed (only the existing stale-doc and oversized-section warnings).
+  - Live render in the session scratchpad (instrument: shell scripts over a fake host, no browser involved), below.
+- deviations: none from the plan's scope. Two small implementation choices the plan left open are recorded below (the `commit` skill's `allowed-tools`, and rewriting `docs/README.md` on `--update --nested`).
+- doc_impact: appended three lines to `## Doc impact` in phase.md: operations.md (the nested per-ticket runbook, first run and update), decisions.md (P28's decisions), architecture.md (rewrite coverage, the three skills' nested branches, the unrenamed-engine-message limit).
+- escalation / blocker / operator_need: none.
+
+# What was done
+
+## 1. Installer texts (`installer/main.py`)
+
+- **`_nested_local_block()`** is now a short, scannable rule set, in the plan's order: what it is (never committed, invisible to the team); the `@workflow/CLAUDE.workspace.md` import on its own line; start Claude at the host root; two commits per slice (a nested bullet pair: product code to the host on the ticket branch in the convention `nested-convention` prints, trailers only when it says `allowed`; workflow state to `workflow/` via `git -C workflow` in the contract's Commit Convention); confirm an `UNCONFIRMED` convention with the operator before the first product commit; no parallel worktrees; a PR's title, body and commits carry no phase or slice IDs, `workflow/` paths or workspace files; never stage `workflow/`, `CLAUDE.local.md`, `.claude/settings.local.json` or our skills and agents; and the rename note. Both S2 constraints hold: the import stands alone outside backticks and fences, and renames read "skill `X` is `/Y`" (checked in the clash probe: ``skill `commit` is `/wf-commit` ``). The block text avoids a bare `` `works/` `` (the post-check would flag it).
+- **`print_nested_banner()`**: the placeholder first commit is now `git -C workflow add -A && git -C workflow commit -m "chore: install agentic workspace (nested)"`; the update banner's message is `chore: update agentic workspace (nested)`. The fresh banner says to start Claude at the host root and accept the trust dialog on the first run, points to `nested-convention` (or says the convention is recorded and `nested-convention` shows it), and ends "Any remote for workflow/ stays inside your company's org: its phase and slice files describe the company's code."
+- **Rewrite coverage (S2 left it to S3):** `nested_plan()` now renders `executors.toml` and `docs/README.md` through `nested_rewrite` into `engine_side`, which feeds the existing post-check automatically. To do that the docs-README f-string moved out of the main flow into `_docs_readme()` (byte-identical text; at root it is called exactly as before). The main flow writes the rewritten copies only when `NESTED`. `executors.toml` stays seed-once (`_update_handle` keeps an existing one), so an existing file is never touched. Choice the plan left open: `docs/README.md` is rewritten on `--update --nested` too, because `--update` refreshes it as machinery and an unrewritten refresh would undo the rewrite on every update. Result: a rerun of `--update --nested` right after an install changes nothing (`machinery updated: 0`, host side `unchanged 24`).
+- **Engine messages naming skills unrenamed** are left as is, per the plan, and noted in the README caveats and `phase.md`.
+
+## 2. Skills (upstream source stays root-relative)
+
+- **`/update-workspace`**: one nested paragraph (detects `workflow/.agentic-nested.json` under cwd; run from the host root; a nested update merges `settings.local.json`, refreshes `workflow/CLAUDE.workspace.md` and the `CLAUDE.local.md` block; plain `--update` refuses and points to `--update --nested`), plus `(nested)` variants of steps 1 (dirty check on `git -C workflow status`), 2 (also the marker), 5 (`--update --nested --dry-run`), 7 (`SYNCED_COMMIT="$ref" sh … . --update --nested`) and 9 (`git -C workflow status` for the refresh, and the host's `git status --porcelain` unchanged). Step 8's `sync-agents` and `next`, and the version marker `works/.workspace-version.json`, are written root-relative and get their prefix from the rewrite.
+- **`/retrofit`**: one paragraph. It is the team-visible route; for a private install use `sh <path>/bootstrap_agentic_workspace.sh <host-root> --nested` (`--nested --into-existing` is refused); points to the README section.
+- **`/commit`**: one short paragraph (two repos, the convention `nested-convention` prints and its trailer rule, `git -C workflow` for state, nothing from `workflow/` staged into the host). The skill stays flat; `EXPECTED_SKILL_COUNT` is 18. Implementation choice the plan left open: the skill's `allowed-tools` gains `Bash(git -C workflow status|diff|log|add|reset|commit:*)`, because `Bash(git commit:*)` does not match `git -C workflow commit`, so the nested path would prompt on every call. There is no `push` entry.
+- `CLAUDE.md` is not edited (the nested rules live in the `CLAUDE.local.md` block).
+
+## 3. READMEs and the retrofit guide
+
+- `README.en.md`: a new `## Private use in a repo you don't own (`--nested`)` section (when to use; install and what it writes and never touches; first run; the six-step per-ticket flow; updating; caveats), an entry in Contents, a pointer from the retrofit paragraph, and `--nested` in `### Options`.
+- `README.md` (Korean): the same section in natural Korean in the file's tone, with a pointer from the retrofit paragraph.
+- `docs/retrofit-guide.md`: a table row and a short subsection pointing to the README section.
+- Caveats, in both READMEs (the guide only points to them): parallel worktrees off (and host worktrees lack the untracked files), `bypassPermissions` may be disabled by a company policy, engine messages may name a renamed skill by its original name, the seeded `workflow/docs/` text is relative to `workflow/`, keep any `workflow/` remote inside the company org, and check the company's AI-tool policy.
+
+## 4. Release v49
+
+`WORKSPACE_VERSION = 49`; `## v49 — 2026-10-07` at the top of `CHANGELOG.md` in the v48 house style (the nested install, the engine's nested mode and marker, `phase-scope` host anchors and parallel off, `nested-convention`, `--update --nested`, the three skills, the docs). **Migration notes:** none required for an at-root workspace; nested mode is opt-in; `/update-workspace` picks up the nested branch automatically. `python3 installer/build.py` and `--check` both pass.
+
+# Live render check (scratchpad scripts `s3render.sh`, `s3render2.sh`, `s3diff.sh`, `s3clash.sh`)
+
+- **Fake host** (git init, tracked `CLAUDE.md`, a team `commit` skill, Conventional-Commit history) + `sh bootstrap_agentic_workspace.sh <host> --nested`: exit 0; host `git status --porcelain` empty and `HEAD` unchanged after the install.
+- Read from the install: `CLAUDE.local.md` (import on its own line, rules as above, `skill `commit` is `/wf-commit``); `update-workspace/SKILL.md` (every path prefixed: `workflow/scripts/workflow.py`, `workflow/works/state.json`, `workflow/works/.workspace-version.json`, `workflow/executors.toml`, the nested lines intact, `Bash(python3 workflow/scripts/workflow.py:*)`); `wf-commit/SKILL.md` (`name: wf-commit`, `git -C workflow` paragraph, `python3 workflow/scripts/workflow.py nested-convention`); `retrofit/SKILL.md`; `workflow/executors.toml` (its two comment commands now `python3 workflow/scripts/workflow.py …`); `workflow/docs/README.md` (all `workflow/docs/…` and prefixed commands). `grep -rn "workflow/workflow"` over `.claude`, the contract, templates, `executors.toml`, `docs/README.md` and `CLAUDE.local.md`: nothing. No remaining unprefixed `scripts/workflow.py` (one upstream `<repo>/scripts/workflow.py` mention in parallel-phase, as designed).
+- **Idempotence:** `--update --nested --dry-run` wrote nothing (sha of all files identical); `--update --nested` then changed nothing (`machinery updated: 0`, host side `updated 0, added 0, unchanged 24`), host status empty, `HEAD` unchanged, exactly one exclude block and one `CLAUDE.local.md` block. A plain `--update` there refuses and points to `--update --nested`; `--nested --into-existing` is rejected as mutually exclusive.
+- **Clash probe:** a host with its own `update-workspace`, `retrofit`, `commit` skills and a `design-drafter` agent installs cleanly (`wf-` for all four), the post-check passes, the rename note lists all four, and the renamed copies' `name:` lines are right.
+- **At-root differential** (HEAD's v48 installer vs the new one, fresh install): same file list; the only differing files (besides the version stamp and the timestamped state files) are the three edited skills. `executors.toml` and `docs/README.md` at root are byte-identical.
+- **Not driven:** no real browser was used or needed (no UI); the main-session `CLAUDE.local.md` import was confirmed by S2's `claude -p` probe and was not re-run here.
+
+# Notes
+
+- `phase.md` holds the decisions (`## Decisions` → Nested texts and release), the Doc impact lines, the REVIEW walk-list note, and the rewritten `## Now`; the consumed S3 notes were removed. No operator question was raised.
+- Seed doc bodies (`doc_bodies`) still describe paths relative to the workspace root (e.g. `works/state.json` in the architecture doc); the plan left them out of the rewrite. The README caveat names `workflow/docs/` for this.

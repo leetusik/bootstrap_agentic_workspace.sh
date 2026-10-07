@@ -41,7 +41,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 48
+WORKSPACE_VERSION = 49
 ROOT = TARGET.resolve()
 # Nested personal install (--nested, P28): TARGET is a HOST repo the operator does not own. The
 # engine and all workflow state go to the nested git repo <host>/workflow (ROOT, so every ROOT-
@@ -629,17 +629,19 @@ def _nested_local_block(renames: dict) -> list:
     cmd = f"python3 {NESTED_DIR}/scripts/workflow.py"
     lines = [
         NESTED_LOCAL_BEGIN,
-        f"This is a private install of the agentic workspace, never committed to this repo: `{NESTED_DIR}/`, this file and the workspace's own `.claude/` files are hidden by this clone's `.git/info/exclude`.",
+        f"This is a private install of the agentic workspace. It is never committed to this repo and the team cannot see it: `{NESTED_DIR}/` (its own git repo), this file and the workspace's own `.claude/` files are hidden by this clone's `.git/info/exclude`.",
         "",
         f"@{NESTED_DIR}/{NESTED_CONTRACT}",
         "",
         "Nested-install rules (they win over the contract above where the two differ):",
         f"- Start Claude Code at this repo's root, never inside `{NESTED_DIR}/`. Run the engine from here: `{cmd} <command>`.",
-        f"- Two commits per slice. The product change goes to this repo in the host's commit convention: `{cmd} nested-convention` prints it and whether Claude `Co-Authored-By` trailers are allowed here (`forbidden`: add none). The workflow state goes to the nested repo (`git -C {NESTED_DIR} ...`) in the contract's Commit Convention.",
-        f"- While `next` prints `host_commit_convention=UNCONFIRMED`, confirm the convention with the operator before the first product commit, then record it: `{cmd} nested-convention --confirm --text \"<convention>\" --trailers allowed|forbidden`.",
+        "- Two commits per slice, in two repos:",
+        f"  - product code goes to this repo, on the operator's ticket branch, in the host's commit convention, which `{cmd} nested-convention` prints. Add Claude `Co-Authored-By` trailers only when it says `allowed`;",
+        f"  - workflow state goes to the nested repo (`git -C {NESTED_DIR} ...`) in the contract's Commit Convention.",
+        f"- If `next` shows `host_commit_convention=UNCONFIRMED`, confirm the convention with the operator before the first product commit, then record it: `{cmd} nested-convention --confirm --text \"<convention>\" --trailers allowed|forbidden`.",
         "- No parallel worktrees: the `parallel-*` commands refuse in a nested install.",
-        f"- A pull request carries no phase IDs, no `{NESTED_DIR}/` paths and no workspace files.",
-        f"- Never `git add` `{NESTED_DIR}/`, `CLAUDE.local.md`, `.claude/settings.local.json` or the workspace's skills and agents (the exclude block lists them) to this repo.",
+        f"- A pull request's title, body and commits (and every product commit) carry no phase or slice IDs, no `{NESTED_DIR}/` paths and no workspace files.",
+        f"- Never stage `{NESTED_DIR}/`, `CLAUDE.local.md`, `.claude/settings.local.json` or the workspace's skills and agents into this repo (the exclude block lists them).",
     ]
     pairs = [f"skill `{x}` is `/{y}`" for x, y in sorted((renames.get("skills") or {}).items())]
     pairs += [f"agent `{x}` is `{y}`" for x, y in sorted((renames.get("agents") or {}).items())]
@@ -647,6 +649,42 @@ def _nested_local_block(renames: dict) -> list:
         lines.append("- Renamed at install, so this repo's own skills and agents stay untouched: " + "; ".join(pairs) + ".")
     lines.append(NESTED_LOCAL_END)
     return lines
+
+
+def _docs_readme() -> str:
+    return f"""# Docs
+
+Durable docs are versioned. Do not patch old versions.
+
+## Categories
+
+{chr(10).join(f"- `docs/current/{doc_id}.md`" for doc_id in DOC_TYPES)}
+
+## Rules
+
+Doc updates happen in a **docs phase the operator creates** — never per slice. A slice that changes durable truth appends a one-line note to its phase's `## Doc impact` list instead; `python3 scripts/workflow.py docs-debt` prints what is owed, and the docs phase runs the commands below over those notes.
+
+- Read latest docs from `docs/current/*.md`.
+- The agent creates updates with `python3 scripts/workflow.py doc-new-version --doc <doc> --summary "..." --source <phase-or-slice>`.
+- Edit only the newly created version file under `docs/versions/<doc>/`.
+- The agent runs `python3 scripts/workflow.py rebuild-docs` after editing the new version.
+- `docs/current/*.md` is generated from the latest version and should not be manually edited.
+- When a phase's notes are all consolidated: `python3 scripts/workflow.py docs-consolidated <P>` (that is also what unblocks archiving it).
+
+## Update Triggers
+
+- `product`: goals, users, scope, terminology, business direction
+- `experience`: routes, journeys, UI behavior, copy, UX states
+- `architecture`: system boundaries, components, runtime, integrations
+- `frontend`: routing, components, state, data fetching, browser auth
+- `backend`: server modules, services, jobs, auth/session, logging/errors
+- `data`: schema, migrations, entities, indexes, storage, retention
+- `api`: REST/RPC/webhook/event contracts and error shapes
+- `operations`: env, deployment, local commands, jobs, monitoring, backups
+- `security`: permissions, secrets, customer data boundaries, abuse controls
+- `qa`: test commands, QA missions, regression checklist, acceptance style
+- `decisions`: meaningful choices, tradeoffs, rejected alternatives
+"""
 
 
 def nested_plan() -> dict:
@@ -704,6 +742,11 @@ def nested_plan() -> dict:
     engine_side = {NESTED_CONTRACT: nested_rewrite(f"# CLAUDE.md\n\n{CONTRACT_BODY}", renames)}
     for name in ("deferred_brief.md", "intent.md", "phase.md"):
         engine_side[f"works/templates/{name}"] = nested_rewrite(PAYLOADS[f"works/templates/{name}"], renames)
+    # Agents at the host root read both of these, and their comments and text name the engine and
+    # workspace paths. Rendered whenever written: executors.toml is seed-once (an existing one is
+    # never overwritten), and docs/README.md is machinery whose refresh must not undo the rewrite.
+    engine_side["executors.toml"] = nested_rewrite(PAYLOADS["executors.toml"], renames)
+    engine_side["docs/README.md"] = nested_rewrite(_docs_readme(), renames)
     settings_ours = nested_rewrite(PAYLOADS[".claude/settings.json"], renames)
     local_block = _nested_local_block(renames)
 
@@ -863,14 +906,16 @@ def print_nested_banner(plan: dict) -> None:
     print("The installer made no git commits, and nothing tracked in the host changed.")
     print(f"Next (start Claude Code at the host root, {HOST} -- never inside {NESTED_DIR}/):")
     if UPDATE:
-        print(f"  1. Review and commit the refresh in the nested repo: git -C {NESTED_DIR} status, then git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: update the agentic workspace\"")
+        print(f"  1. Review and commit the refresh in the nested repo: git -C {NESTED_DIR} status, then git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: update agentic workspace (nested)\"")
         print(f"  2. Re-apply your executor tiers: {cmd} sync-agents")
     else:
-        print(f"  1. First commit in the nested repo: git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: install the agentic workspace\"")
-        print(f"  2. Then: {cmd} next, and /{plan['renames']['skills'].get('create-phase', 'create-phase')} for the first phase")
+        print(f"  1. First commit in the nested repo: git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: install agentic workspace (nested)\"")
+        print(f"  2. Start Claude Code at the host root and accept the trust dialog on the first run, then: /{plan['renames']['skills'].get('create-phase', 'create-phase')} for the first phase ({cmd} next shows the state)")
     if conv.get("confirmed") is not True:
-        print(f"  3. Confirm the commit convention: {cmd} nested-convention (then --confirm --text \"<convention>\" --trailers allowed|forbidden)")
-    print(f"  Any remote for {NESTED_DIR}/ stays inside your company's org.")
+        print(f"  3. Confirm the commit convention before the first product commit: {cmd} nested-convention (then --confirm --text \"<convention>\" --trailers allowed|forbidden)")
+    else:
+        print(f"  The host's commit convention is recorded; {cmd} nested-convention shows it.")
+    print(f"  Any remote for {NESTED_DIR}/ stays inside your company's org: its phase and slice files describe the company's code.")
 
 
 # ---- Guards -----------------------------------------------------------------
@@ -999,39 +1044,8 @@ for doc_id in DOC_TYPES:
         "versions": [{"id": version_id, "path": rel, "created_at": created_at, "source": "bootstrap", "summary": summary, "previous": None}],
     }
 write_json("docs/index.json", {"docs": index_docs, "last_rebuilt_at": created_at})
-write_text("docs/README.md", f"""# Docs
-
-Durable docs are versioned. Do not patch old versions.
-
-## Categories
-
-{chr(10).join(f"- `docs/current/{doc_id}.md`" for doc_id in DOC_TYPES)}
-
-## Rules
-
-Doc updates happen in a **docs phase the operator creates** — never per slice. A slice that changes durable truth appends a one-line note to its phase's `## Doc impact` list instead; `python3 scripts/workflow.py docs-debt` prints what is owed, and the docs phase runs the commands below over those notes.
-
-- Read latest docs from `docs/current/*.md`.
-- The agent creates updates with `python3 scripts/workflow.py doc-new-version --doc <doc> --summary "..." --source <phase-or-slice>`.
-- Edit only the newly created version file under `docs/versions/<doc>/`.
-- The agent runs `python3 scripts/workflow.py rebuild-docs` after editing the new version.
-- `docs/current/*.md` is generated from the latest version and should not be manually edited.
-- When a phase's notes are all consolidated: `python3 scripts/workflow.py docs-consolidated <P>` (that is also what unblocks archiving it).
-
-## Update Triggers
-
-- `product`: goals, users, scope, terminology, business direction
-- `experience`: routes, journeys, UI behavior, copy, UX states
-- `architecture`: system boundaries, components, runtime, integrations
-- `frontend`: routing, components, state, data fetching, browser auth
-- `backend`: server modules, services, jobs, auth/session, logging/errors
-- `data`: schema, migrations, entities, indexes, storage, retention
-- `api`: REST/RPC/webhook/event contracts and error shapes
-- `operations`: env, deployment, local commands, jobs, monitoring, backups
-- `security`: permissions, secrets, customer data boundaries, abuse controls
-- `qa`: test commands, QA missions, regression checklist, acceptance style
-- `decisions`: meaningful choices, tradeoffs, rejected alternatives
-""")
+# Nested: rewritten (agents at the host root read it), like the contract and the templates.
+write_text("docs/README.md", NESTED_PLAN["engine_side"]["docs/README.md"] if NESTED else _docs_readme())
 
 # ---- Templates --------------------------------------------------------------
 # No plan.md or result.md template: the orchestrator writes its free-form native plan
@@ -1066,7 +1080,7 @@ if not NESTED:
     write_text(".claude/agents/design-drafter.md", PAYLOADS[".claude/agents/design-drafter.md"])
 
 # ---- Executor-tier config (seeded once — commented defaults; operator-owned) ----
-write_text("executors.toml", PAYLOADS["executors.toml"])
+write_text("executors.toml", NESTED_PLAN["engine_side"]["executors.toml"] if NESTED else PAYLOADS["executors.toml"])
 
 # ---- Claude Code project settings: pre-approve the workflow manager ----------
 # (Nested: the host's settings.json is never touched; nested_apply writes settings.local.json.)

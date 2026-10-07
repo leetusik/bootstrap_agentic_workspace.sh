@@ -24,6 +24,24 @@ without deleting or rewriting your content.
 | Brand-new / empty directory | the plain bootstrap (see the README Quickstart) |
 | A repo that already has code/docs/history, **no** workspace yet | **this guide** (`--into-existing` or the `/retrofit` skill) |
 | A repo that already has the workspace | nothing — retrofit is a no-op; use `/do-next-slice` instead |
+| A repo **you don't own**, where only you will use the workspace and the team must see nothing | **not retrofit** — the private `--nested` install (below) |
+
+### Private use in a repo you don't own (`--nested`)
+
+Retrofit is **team-visible**: its files land in the repo's own tree for everyone who clones it. To
+use the workspace privately in a company or team repo instead, install with `--nested`:
+
+```sh
+sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo --nested
+```
+
+The engine and all workflow state live in an untracked nested git repo `workflow/`, the skills
+and agents go into the host's `.claude/` as untracked files, and one `info/exclude` block hides
+all of it, so the host's `git status` stays clean and no PR ever shows a trace. `--nested
+--into-existing` is refused: the two routes are different on purpose. Update a private install
+with `/update-workspace` or `--update --nested`, never a plain `--update`. The full flow (install,
+first run, one ticket from branch to PR, updates and caveats) is in the README, section
+[Private use in a repo you don't own](../README.en.md#private-use-in-a-repo-you-dont-own---nested).
 
 ## Prerequisites
 

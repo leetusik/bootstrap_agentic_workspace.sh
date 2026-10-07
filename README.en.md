@@ -15,6 +15,7 @@ One shell script scaffolds a complete workspace: a compact agent **contract**, a
 
 - [What is this?](#what-is-this)
 - [Quickstart](#quickstart)
+- [Private use in a repo you don't own (`--nested`)](#private-use-in-a-repo-you-dont-own---nested)
 - [Example workflow](#example-workflow)
 - [How it works](#how-it-works)
 - [Project structure](#project-structure)
@@ -112,7 +113,8 @@ sh /path/to/bootstrap_agentic_workspace.sh . --into-existing \
 
 or drive it with an agent via the `/retrofit` skill. See the
 **[Retrofit Guide](docs/retrofit-guide.md)** for the full procedure and collision
-policy.
+policy. (Want it for yourself in a repo you don't own, with nothing the team can see? That is
+[`--nested`](#private-use-in-a-repo-you-dont-own---nested).)
 
 ### Keeping an adopted workspace up to date
 
@@ -162,6 +164,7 @@ commits at slice boundaries, and stops at `pending` hand-offs for your review. S
 | `--force-empty-ok` | off | Allow scaffolding into a directory that has extra, non-managed files |
 | `--into-existing` | off | Non-destructively retrofit into an existing repo (see the [Retrofit Guide](docs/retrofit-guide.md)) |
 | `--update` | off | Update an already-installed workspace's machinery to this version (preserves your `works/` and `docs/`) |
+| `--nested` | off | Private install into a host repo you don't own: the workspace lives in an untracked nested repo `workflow/`, and the host's tracked files never change (see [Private use](#private-use-in-a-repo-you-dont-own---nested)); combine with `--update` to refresh it, never with `--into-existing` |
 | `--dry-run` | off | With `--update`, preview the change-list without writing anything |
 | `-h`, `--help` | — | Show help and exit |
 
@@ -187,6 +190,83 @@ it refuses to overwrite managed workflow files that already exist. It is safe to
 fresh workspace. To add the workspace to a repo that *already* has content, use the
 non-destructive `--into-existing` retrofit instead — see the
 [Retrofit Guide](docs/retrofit-guide.md).
+
+## Private use in a repo you don't own (`--nested`)
+
+**When to use it.** You work in a company or team repo whose team does not use this workspace, and
+you want to use it strictly for yourself. `--nested` leaves **no footprint**: no branch, no tracked
+file, no CI file, no `.gitattributes`, no `docs/`, and nothing in any PR diff. (Retrofit, by
+contrast, adds the workspace's files to the repo for everyone who clones it.)
+
+**Install.** Point the installer at the host repo's root (a git work tree):
+
+```sh
+sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo --nested
+```
+
+It writes only untracked files, all hidden by the host's `.git/info/exclude` (never its
+`.gitignore`):
+
+- `workflow/`: a **nested git repo** holding the engine, `works/`, `docs/`, `executors.toml` and
+  the contract (as `CLAUDE.workspace.md`). It is versioned there, separately from the host.
+- the 18 skills and 3 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
+  path rewritten to reach `workflow/` (`python3 workflow/scripts/workflow.py …`);
+- `.claude/settings.local.json`: your personal permissions, merged into any file already there;
+- one managed block in `CLAUDE.local.md` that imports the contract and states the nested rules
+  (it keeps whatever else you wrote there);
+- one managed block in `.git/info/exclude`.
+
+It never touches a tracked file: not `CLAUDE.md`, not `.claude/settings.json`, no CI, no
+`.gitattributes`, no `core.hooksPath`, and it makes no commit. If the host already tracks a file
+it would write, it refuses and names it. If a skill or agent name clashes with one of the host's
+own (skills, commands or agents), ours installs as `wf-<name>` (for example `/wf-commit`) and
+the installer reports it; the host's own file is left byte for byte as it was.
+
+**First run.**
+
+1. Make the first commit in the nested repo:
+   `git -C workflow add -A && git -C workflow commit -m "chore: install agentic workspace (nested)"`.
+2. Start Claude Code **at the host root**, never inside `workflow/` or a subdirectory, and
+   accept the trust dialog on the first run.
+3. Confirm the commit convention. The installer infers it from the host's `git log` and
+   `CONTRIBUTING*` and records it as unconfirmed: `python3 workflow/scripts/workflow.py
+   nested-convention` shows it, and `nested-convention --confirm --text "<convention>" --trailers
+   allowed|forbidden` records yours, including whether Claude `Co-Authored-By` trailers may appear
+   in host commits. Until then `next` prints `host_commit_convention=UNCONFIRMED` and the agent
+   asks before the first product commit.
+
+**One ticket, from branch to PR.**
+
+1. `git switch -c <branch> origin/main`, the team's way.
+2. `/create-phase <the ticket>`. The phase records the host's current commit as its base.
+3. `/do-whole-phase`. **Two commits per slice**: product code goes to the host in its own
+   convention, with no phase or slice IDs in the message, and the workflow state goes to
+   `workflow/` in this workspace's convention.
+4. `/review-phase`. `phase-scope` reads the **host** diff from the recorded base, never `workflow/`.
+5. Push and open the PR the usual way. It carries only product commits: no workflow paths and no
+   phase or slice IDs.
+6. When the team's review asks for changes, turn them into fix slices (`/create-phase`, or a fix
+   slice in the same phase) and repeat from step 3.
+
+**Updating.** `/update-workspace`, or
+`sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo --update --nested` (preview with
+`--dry-run`). It keeps your confirmed convention, your renames and everything under `workflow/works/`
+and `workflow/docs/`; a plain `--update` at a nested host refuses and points you here. Run
+`sync-agents` afterwards and commit the refresh in `workflow/`.
+
+**Caveats.**
+
+- **Parallel worktrees are off** (`parallel-*` refuse): a host worktree would not contain the
+  untracked files.
+- A company-managed Claude Code policy may disable `bypassPermissions`, which the three subagents
+  set. Check that before you rely on unattended runs such as `/do-whole-phase`.
+- Engine messages may name a renamed skill by its original name (for example `validate` pointing
+  at "the create-phase skill" when it installed as `wf-create-phase`).
+- The seeded text under `workflow/docs/` describes paths relative to `workflow/`.
+- If you give `workflow/` a remote, keep it **inside your company's organization**: its phase and
+  slice files describe the company's code.
+- Check your company's AI-tool policy first. `--nested` keeps your use private; it does not make it
+  permitted.
 
 ## Example workflow
 

@@ -56,6 +56,8 @@ sh /path/to/bootstrap_agentic_workspace.sh . --into-existing \
 
 에이전트에게 `/retrofit`이라고 입력해 맡겨도 됩니다.
 자세한 절차는 [Retrofit Guide](docs/retrofit-guide.md)에 있습니다.
+(팀 저장소처럼 내 것이 아닌 저장소에서 나만 쓰고 싶다면 retrofit 대신
+[`--nested`](#내-것이-아닌-저장소에서-혼자-쓰기---nested)를 쓰세요.)
 
 ### 설치한 워크스페이스 업데이트하기
 
@@ -77,6 +79,84 @@ sh /path/to/bootstrap_agentic_workspace.sh . --update             # 실제 적�
 터미널이 필요한 일은 여기까지입니다. 이제 Claude Code로 이 디렉터리를 열고,
 `/create-phase`로 첫 phase를 만드는 것부터 시작하세요. 전체 흐름은 바로 아래
 사용 예시에 있습니다.
+
+## 내 것이 아닌 저장소에서 혼자 쓰기 (`--nested`)
+
+**언제 쓰나요?** 회사나 팀 저장소에서 일하는데, 팀은 이 워크스페이스를 쓰지 않고 나만 쓰고
+싶을 때입니다. `--nested`는 **흔적을 남기지 않습니다.** 새 branch도, tracked 파일도, CI
+파일도, `.gitattributes`도, `docs/`도 없고, PR diff에는 아무것도 섞이지 않습니다.
+(retrofit은 반대로 저장소를 받는 모든 사람에게 워크스페이스 파일이 보입니다.)
+
+**설치.** 호스트 저장소의 루트(git work tree)를 지정합니다.
+
+```sh
+sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo --nested
+```
+
+만들어지는 파일은 모두 untracked이고, 호스트의 `.git/info/exclude`(`.gitignore`가 아닙니다)로
+가려집니다.
+
+- `workflow/`: 엔진, `works/`, `docs/`, `executors.toml`, 규칙 문서(`CLAUDE.workspace.md`)가
+  들어가는 **중첩 git 저장소**입니다. 호스트와 따로 버전 관리됩니다.
+- 호스트의 `.claude/skills/`, `.claude/agents/`에 들어가는 스킬 18개와 에이전트 3개. 경로는
+  `workflow/`를 가리키도록 바뀌어 있습니다(`python3 workflow/scripts/workflow.py …`).
+- `.claude/settings.local.json`: 내 개인 권한 설정. 파일이 이미 있으면 합칩니다.
+- `CLAUDE.local.md`의 관리 블록 하나: 규칙 문서를 import하고 nested 규칙을 적습니다. 직접 쓴
+  내용은 그대로 둡니다.
+- `.git/info/exclude`의 관리 블록 하나.
+
+tracked 파일은 하나도 건드리지 않습니다. `CLAUDE.md`, `.claude/settings.json`, CI,
+`.gitattributes`, `core.hooksPath`도 그대로이고 커밋도 만들지 않습니다. 호스트가 이미 tracked로
+가진 파일을 써야 하는 경우에는 그 파일을 알려 주고 아무것도 쓰지 않은 채 멈춥니다. 호스트의
+스킬, 명령, 에이전트와 이름이 겹치면 우리 쪽이 `wf-<이름>`(예: `/wf-commit`)으로 설치되고
+설치 결과에 표시됩니다. 호스트 쪽 파일은 한 바이트도 바뀌지 않습니다.
+
+**처음 실행할 때.**
+
+1. 중첩 저장소에 첫 커밋을 만듭니다.
+   `git -C workflow add -A && git -C workflow commit -m "chore: install agentic workspace (nested)"`
+2. Claude Code는 **호스트 루트에서** 시작하세요. `workflow/` 안이나 하위 디렉터리에서 시작하면
+   안 됩니다. 처음 실행할 때 나오는 신뢰(trust) 대화상자는 수락합니다.
+3. 커밋 컨벤션을 확인합니다. 설치 때 호스트의 `git log`와 `CONTRIBUTING*`로 추정해 "미확인"으로
+   기록해 둡니다. `python3 workflow/scripts/workflow.py nested-convention`으로 보고,
+   `nested-convention --confirm --text "<컨벤션>" --trailers allowed|forbidden`으로 확정하세요.
+   호스트 커밋에 Claude `Co-Authored-By` 트레일러를 넣어도 되는지도 함께 기록합니다. 확정
+   전에는 `next`가 `host_commit_convention=UNCONFIRMED`를 보여 주고, 에이전트는 첫 제품 커밋 전에
+   먼저 물어봅니다.
+
+**티켓 하나, branch부터 PR까지.**
+
+1. `git switch -c <branch> origin/main`: 팀이 하는 방식 그대로 branch를 만듭니다.
+2. `/create-phase <티켓 내용>`: phase가 호스트의 현재 커밋을 기준점으로 기록합니다.
+3. `/do-whole-phase`: slice마다 **커밋이 두 개**입니다. 제품 코드는 호스트에 호스트의 컨벤션대로
+   (메시지에 phase나 slice ID 없이), 워크플로우 상태는 `workflow/`에 이 워크스페이스의
+   컨벤션대로 들어갑니다.
+4. `/review-phase`: `phase-scope`가 기록해 둔 기준점부터 **호스트** diff를 읽습니다(`workflow/`는
+   보지 않습니다).
+5. 평소처럼 push하고 PR을 엽니다. PR에는 제품 커밋만 들어가고, 워크플로우 경로나 phase/slice
+   ID는 없습니다.
+6. 팀 리뷰에서 수정 요청이 오면 fix slice로 만들어(`/create-phase` 또는 같은 phase의 fix slice)
+   3번부터 다시 진행합니다.
+
+**업데이트.** `/update-workspace`, 또는
+`sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo --update --nested`(먼저
+`--dry-run`으로 미리 보기). 확정한 컨벤션, 이름 변경(`wf-`), `workflow/works/`와
+`workflow/docs/`의 내용은 그대로 남습니다. nested 호스트에서 일반 `--update`를 실행하면 거부하고
+이 방법을 안내합니다. 끝난 뒤 `sync-agents`를 실행하고, 바뀐 내용은 `workflow/`에 커밋하세요.
+
+**알아 둘 점.**
+
+- **병렬 worktree는 꺼져 있습니다**(`parallel-*`는 거부). 호스트 worktree에는 untracked 파일이
+  없기 때문입니다.
+- 회사가 관리하는 Claude Code 정책이 `bypassPermissions`를 막을 수 있습니다. 세 에이전트가 이
+  모드를 쓰므로, `/do-whole-phase`처럼 사람 없이 도는 실행을 믿기 전에 확인하세요.
+- 이름이 바뀐 스킬을 엔진 메시지가 원래 이름으로 부를 수 있습니다(예: `wf-create-phase`로
+  설치됐는데 `validate`가 "create-phase 스킬"이라고 안내).
+- `workflow/docs/`에 미리 들어 있는 문서 글은 `workflow/` 기준 경로로 적혀 있습니다.
+- `workflow/`에 remote를 붙인다면 **회사 조직 안**에 두세요. phase와 slice 파일에는 회사 코드에
+  대한 내용이 들어 있습니다.
+- 먼저 회사의 AI 도구 사용 정책을 확인하세요. `--nested`는 내 사용을 비공개로 유지해 줄 뿐,
+  허용해 주지는 않습니다.
 
 ## 사용 예시
 
