@@ -4,7 +4,7 @@
 
 ## Summary
 
-- Open: `34`
+- Open: `39`
 - Promoted: `0`
 - Dropped: `11`
 
@@ -43,7 +43,12 @@
 | `D43` | `deferred` | --update --force-empty-ok gives circular advice on a nested install | P29.REVIEW | next wrapper change | `works/deferred/open/D43` |
 | `D44` | `deferred` | Update banner of an installer-initialised host keeps the company-org remote line | P29.REVIEW | next nested-banner change | `works/deferred/open/D44` |
 | `D45` | `deferred` | Engine comment still names --update --nested | P29.REVIEW | next engine change | `works/deferred/open/D45` |
+| `D46` | `deferred` | Tighten the rotate-backlog skill's relay and covered-only wording | P30.REVIEW | the next edit of the rotate-backlog skill or of new-phase | `works/deferred/open/D46` |
+| `D47` | `deferred` | No parallel-run hint and no parallel-start for a docs phase | P30.REVIEW | the next engine change to new-phase or parallel-start | `works/deferred/open/D47` |
+| `D48` | `deferred` | Harden the P30 smoke asserts | P30.REVIEW | the next smoke edit near the docs-debt fixture | `works/deferred/open/D48` |
+| `D49` | `deferred` | Warn when rotate-backlog proposes a docs phase on a parallel stream | P30.REVIEW | the next rotate-backlog or parallel-phase change | `works/deferred/open/D49` |
 | `D5` | `deferred` | Confirm: ## Design Style is appended by create-phase only when visual, not scaffolded into every intent.md | P17.REVIEW | Before the first design-bearing phase runs under v34, or the next time works/templates/intent.md is edited. | `works/deferred/open/D5` |
+| `D50` | `deferred` | Record an Operator Runtime section in this repo's operations doc | P30.REVIEW | the next docs phase | `works/deferred/open/D50` |
 | `D6` | `deferred` | Widen installer/main.py flag_stale_skills() ownership heuristic beyond the disable-model-invocation marker | P17.REVIEW | If a model-invocable skill is retired upstream, or when flag_stale_skills() is next touched. | `works/deferred/open/D6` |
 | `D7` | `deferred` | Qualify review-phase gate stage 4 for a phase whose only surface is a throwaway mockup | P17.REVIEW | Before the first design-only or mockup-shipping phase reaches its review. | `works/deferred/open/D7` |
 

@@ -2,23 +2,23 @@
   "id": "P30",
   "name": "Rotate-backlog creates the docs phase by default",
   "objective": "Change /rotate-backlog so it still archives every clean phase first, then by default turns the phases held back only by doc-consolidation debt into a proposed docs phase: it drafts that phase's name, objective and scope from docs-debt and asks the operator to confirm once; the yes runs new-phase and fills intent.md through create-phase's docs-phase route. An opt-out word (e.g. /rotate-backlog archive-only) keeps today's archive-and-report behavior.",
-  "status": "planned",
+  "status": "done",
   "order": 6,
   "created_at": "2026-10-07T15:46:03+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-10-07T16:19:32+09:00",
+  "completed_at": "2026-10-07T16:19:54+09:00",
   "review": {
-    "status": "pending",
-    "reviewed_at": null,
-    "reviewer": null,
-    "note": null
+    "status": "pass",
+    "reviewed_at": "2026-10-07T16:19:54+09:00",
+    "reviewer": "slice-executor-high",
+    "note": "pass: smoke 239/0, build --check and validate pass; rotate proposal, --archive-only, --consolidates covering and docs-debt paid-by verified live in scratch copies and a nested install; refusal/archive output identical to 0f69039; qa v0012 gains 4 checks; operator accepted the gate; N-1..N-6 and one observation filed as D46-D50"
   },
   "acceptance": {
     "required": true,
-    "walkthrough": null,
-    "requested_at": null,
-    "cleared_at": null,
-    "note": null
+    "walkthrough": "In a throwaway copy (D=$(mktemp -d); cp -R <repo> \"$D/ws\"; cd \"$D/ws\"), never in this repo: (1) python3 scripts/workflow.py rotate-backlog -> P25 archived, then docs_phase_proposal=P26, P27, P28, P29 / phase=P31 / name / objective / a create: line / scope: docs-debt / proposal only: nothing was created; no P31 folder. (2) paste the create: line -> created phase P31, consolidates=P26, P27, P28, P29. (3) rotate-backlog again -> docs_phase_covered=P31 (pays P26, P27, P28, P29), no proposal; docs-debt | grep \"paid by\" shows P31 four times. (4) rotate-backlog --archive-only -> no docs_phase line. (5) optional: /rotate-backlog in Claude Code in a fresh copy asks once; no creates nothing, yes creates P31 with --consolidates and fills intent.md, then stops. Delete $D.",
+    "requested_at": "2026-10-07T16:19:32+09:00",
+    "cleared_at": "2026-10-07T16:19:32+09:00",
+    "note": "operator: accept (findings N-1/N-2/N-5 accepted as a deferred job; review's deferred jobs filed)"
   },
   "paths": {
     "phase_md": "phase.md",
@@ -29,5 +29,6 @@
     "archived": false,
     "archived_at": null,
     "archive_path": null
-  }
+  },
+  "consolidation": "pending"
 }

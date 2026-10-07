@@ -480,7 +480,7 @@
       ]
     },
     "qa": {
-      "latest": "v0011_p29_review_regression_checklist_gains_the_nested-default_--at-root_update-detection_and_bare-install-over-at-root_checks",
+      "latest": "v0012_p30_review_regression_checklist_gains_the_rotate-backlog_docs-phase_proposal_--archive-only_the_--consolidates_covering_mark_and_the_docs-debt_paid-by_checks",
       "current_path": "docs/current/qa.md",
       "versions": [
         {
@@ -574,6 +574,15 @@
           "source": "P29.REVIEW",
           "summary": "P29 review: Regression Checklist gains the nested-default, --at-root, update-detection and bare-install-over-at-root checks",
           "previous": "v0010_p21-p23_core-only_tests_and_the_smoke_baseline_at_180"
+        },
+        {
+          "id": "v0012_p30_review_regression_checklist_gains_the_rotate-backlog_docs-phase_proposal_--archive-only_the_--consolidates_covering_mark_and_the_docs-debt_paid-by_checks",
+          "path": "docs/versions/qa/v0012_p30_review_regression_checklist_gains_the_rotate-backlog_docs-phase_proposal_--archive-only_the_--consolidates_covering_mark_and_the_docs-debt_paid-by_checks.md",
+          "created_at": "2026-10-07T16:11:09+09:00",
+          "commit": "ecb943e9cb61ea036b7b4f9e1d47c56507d831e6",
+          "source": "P30.REVIEW",
+          "summary": "P30 review: Regression Checklist gains the rotate-backlog docs-phase proposal, --archive-only, the --consolidates covering mark and the docs-debt paid-by checks",
+          "previous": "v0011_p29_review_regression_checklist_gains_the_nested-default_--at-root_update-detection_and_bare-install-over-at-root_checks"
         }
       ]
     },
@@ -923,5 +932,5 @@
       ]
     }
   },
-  "last_rebuilt_at": "2026-10-07T15:36:57+09:00"
+  "last_rebuilt_at": "2026-10-07T16:19:24+09:00"
 }

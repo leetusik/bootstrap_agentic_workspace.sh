@@ -1,0 +1,11 @@
+{
+  "id": "D50",
+  "title": "Record an Operator Runtime section in this repo's operations doc",
+  "status": "deferred",
+  "source": "P30.REVIEW",
+  "reason": "P30.REVIEW observation (outside the boundary): operations.md has no ## Operator Runtime section; gate stage 1 relies on the P29 precedent that the product is the CLI with no browser",
+  "trigger": "the next docs phase",
+  "created_at": "2026-10-07T16:19:49+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

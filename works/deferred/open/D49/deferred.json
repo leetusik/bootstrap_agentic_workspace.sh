@@ -1,0 +1,11 @@
+{
+  "id": "D49",
+  "title": "Warn when rotate-backlog proposes a docs phase on a parallel stream",
+  "status": "deferred",
+  "source": "P30.REVIEW",
+  "reason": "P30.REVIEW N-6: docs-debt warns on a parallel stream, rotate-backlog's proposal does not, though the docs phase must run on the default stream",
+  "trigger": "the next rotate-backlog or parallel-phase change",
+  "created_at": "2026-10-07T16:19:49+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

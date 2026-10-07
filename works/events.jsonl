@@ -761,3 +761,19 @@
 {"ts": "2026-10-07T15:56:38+09:00", "type": "slice_status_changed", "slice": "P30.S1", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-10-07T15:57:11+09:00", "type": "slice_status_changed", "slice": "P30.S2", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-10-07T16:01:15+09:00", "type": "slice_status_changed", "slice": "P30.S2", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-10-07T16:01:48+09:00", "type": "slice_status_changed", "slice": "P30.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-10-07T16:11:09+09:00", "type": "doc_version_created", "doc": "qa", "version": "v0012_p30_review_regression_checklist_gains_the_rotate-backlog_docs-phase_proposal_--archive-only_the_--consolidates_covering_mark_and_the_docs-debt_paid-by_checks", "source": "P30.REVIEW"}
+{"ts": "2026-10-07T16:15:04+09:00", "type": "slice_status_changed", "slice": "P30.REVIEW", "old_status": "in_progress", "new_status": "pending"}
+{"ts": "2026-10-07T16:19:24+09:00", "type": "slice_status_changed", "slice": "P30.REVIEW", "old_status": "pending", "new_status": "in_progress"}
+{"ts": "2026-10-07T16:19:32+09:00", "type": "phase_status_changed", "phase": "P30", "old_status": "planned", "new_status": "pending"}
+{"ts": "2026-10-07T16:19:32+09:00", "type": "acceptance_opened", "phase": "P30"}
+{"ts": "2026-10-07T16:19:32+09:00", "type": "phase_status_changed", "phase": "P30", "old_status": "pending", "new_status": "in_progress"}
+{"ts": "2026-10-07T16:19:32+09:00", "type": "acceptance_cleared", "phase": "P30"}
+{"ts": "2026-10-07T16:19:49+09:00", "type": "deferred_created", "deferred": "D46", "source": "P30.REVIEW"}
+{"ts": "2026-10-07T16:19:49+09:00", "type": "deferred_created", "deferred": "D47", "source": "P30.REVIEW"}
+{"ts": "2026-10-07T16:19:49+09:00", "type": "deferred_created", "deferred": "D48", "source": "P30.REVIEW"}
+{"ts": "2026-10-07T16:19:49+09:00", "type": "deferred_created", "deferred": "D49", "source": "P30.REVIEW"}
+{"ts": "2026-10-07T16:19:49+09:00", "type": "deferred_created", "deferred": "D50", "source": "P30.REVIEW"}
+{"ts": "2026-10-07T16:19:54+09:00", "type": "slice_status_changed", "slice": "P30.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-10-07T16:19:54+09:00", "type": "phase_reviewed", "phase": "P30", "verdict": "pass", "reviewer": "slice-executor-high"}
+{"ts": "2026-10-07T16:19:54+09:00", "type": "phase_consolidation_owed", "phase": "P30", "notes": 6}

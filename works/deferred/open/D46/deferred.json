@@ -1,0 +1,11 @@
+{
+  "id": "D46",
+  "title": "Tighten the rotate-backlog skill's relay and covered-only wording",
+  "status": "deferred",
+  "source": "P30.REVIEW",
+  "reason": "P30.REVIEW N-1/N-2/N-5: the skill says to relay a reason per left-active phase but the engine prints only ids; no explicit STOP when only docs_phase_covered= lines print; a --consolidates refusal shows the Python repr 'consolidation is None'",
+  "trigger": "the next edit of the rotate-backlog skill or of new-phase",
+  "created_at": "2026-10-07T16:19:49+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

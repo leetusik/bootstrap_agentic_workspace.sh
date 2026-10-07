@@ -1,0 +1,11 @@
+{
+  "id": "D47",
+  "title": "No parallel-run hint and no parallel-start for a docs phase",
+  "status": "deferred",
+  "source": "P30.REVIEW",
+  "reason": "P30.REVIEW N-3: new-phase --consolidates still prints the parallel-start hint when another phase is in progress, and parallel-start would accept a docs phase, though doc consolidation runs only on the default stream (pre-existing)",
+  "trigger": "the next engine change to new-phase or parallel-start",
+  "created_at": "2026-10-07T16:19:49+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}
