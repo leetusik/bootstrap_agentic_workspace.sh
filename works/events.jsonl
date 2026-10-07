@@ -779,3 +779,10 @@
 {"ts": "2026-10-07T16:19:54+09:00", "type": "phase_consolidation_owed", "phase": "P30", "notes": 6}
 {"ts": "2026-10-07T16:37:17+09:00", "type": "phase_archived", "phase": "P25", "archive_path": "works/phases/archived/20261007_163717_P25_research_a_replacement_for_claude_design_in_design-cowork"}
 {"ts": "2026-10-07T16:40:16+09:00", "type": "phase_created", "phase": "P31"}
+{"ts": "2026-10-07T16:51:10+09:00", "type": "slice_status_changed", "slice": "P31.DECOMP", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-10-07T16:51:10+09:00", "type": "deferred_promoted", "deferred": "D50", "phase": "P31", "slice": "P31.S2"}
+{"ts": "2026-10-07T16:52:05+09:00", "type": "slice_created", "phase": "P31", "slice": "P31.S1"}
+{"ts": "2026-10-07T16:52:06+09:00", "type": "slice_created", "phase": "P31", "slice": "P31.S3"}
+{"ts": "2026-10-07T16:52:06+09:00", "type": "slice_created", "phase": "P31", "slice": "P31.S4"}
+{"ts": "2026-10-07T16:54:28+09:00", "type": "slice_status_changed", "slice": "P31.DECOMP", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-10-07T16:54:28+09:00", "type": "acceptance_waived", "phase": "P31"}
