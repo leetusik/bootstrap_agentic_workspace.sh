@@ -1,0 +1,33 @@
+{
+  "id": "P30",
+  "name": "Rotate-backlog creates the docs phase by default",
+  "objective": "Change /rotate-backlog so it still archives every clean phase first, then by default turns the phases held back only by doc-consolidation debt into a proposed docs phase: it drafts that phase's name, objective and scope from docs-debt and asks the operator to confirm once; the yes runs new-phase and fills intent.md through create-phase's docs-phase route. An opt-out word (e.g. /rotate-backlog archive-only) keeps today's archive-and-report behavior.",
+  "status": "planned",
+  "order": 6,
+  "created_at": "2026-10-07T15:46:03+09:00",
+  "started_at": null,
+  "completed_at": null,
+  "review": {
+    "status": "pending",
+    "reviewed_at": null,
+    "reviewer": null,
+    "note": null
+  },
+  "acceptance": {
+    "required": true,
+    "walkthrough": null,
+    "requested_at": null,
+    "cleared_at": null,
+    "note": null
+  },
+  "paths": {
+    "phase_md": "phase.md",
+    "intent_md": "intent.md",
+    "slices_dir": "slices"
+  },
+  "archive": {
+    "archived": false,
+    "archived_at": null,
+    "archive_path": null
+  }
+}

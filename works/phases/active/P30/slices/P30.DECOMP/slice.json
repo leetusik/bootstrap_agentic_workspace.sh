@@ -1,0 +1,32 @@
+{
+  "id": "P30.DECOMP",
+  "phase_id": "P30",
+  "name": "decompose phase",
+  "kind": "decomposition",
+  "status": "done",
+  "order": 0,
+  "depends_on": [],
+  "created_at": "2026-10-07T15:46:03+09:00",
+  "started_at": "2026-10-07T15:48:33+09:00",
+  "completed_at": "2026-10-07T15:50:52+09:00",
+  "risk": "high",
+  "source": {
+    "type": "new_phase",
+    "id": "P30"
+  },
+  "paths": {
+    "plan": "plan.md",
+    "result": "result.md"
+  },
+  "outcome": "cut into S1 (engine: rotate proposes the docs phase) and S2 (skills, texts, v51), both implementation/low",
+  "validation": {
+    "required": [],
+    "last_run": null,
+    "last_status": "pending"
+  },
+  "archive": {
+    "archived": false,
+    "archived_at": null,
+    "archive_path": null
+  }
+}
