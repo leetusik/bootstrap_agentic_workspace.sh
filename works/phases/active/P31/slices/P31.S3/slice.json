@@ -3,14 +3,14 @@
   "phase_id": "P31",
   "name": "QA: P26–P30 notes",
   "kind": "docs",
-  "status": "todo",
+  "status": "done",
   "order": 30,
   "depends_on": [
     "P31.S2"
   ],
   "created_at": "2026-10-07T16:52:06+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-10-07T17:11:21+09:00",
+  "completed_at": "2026-10-07T17:15:42+09:00",
   "risk": "low",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "qa v0013 folds the 13 P26-P30 notes: smoke baseline 239 at v51, Tests 0-16 described, --at-root fresh-install, installer tokenizer fragile area",
   "validation": {
     "required": [],
     "last_run": null,

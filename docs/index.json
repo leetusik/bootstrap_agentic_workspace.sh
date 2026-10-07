@@ -498,7 +498,7 @@
       ]
     },
     "qa": {
-      "latest": "v0012_p30_review_regression_checklist_gains_the_rotate-backlog_docs-phase_proposal_--archive-only_the_--consolidates_covering_mark_and_the_docs-debt_paid-by_checks",
+      "latest": "v0013_p26-p30_smoke_baseline_239_design_and_nested-install_pins_fragile_installer_tokenizer",
       "current_path": "docs/current/qa.md",
       "versions": [
         {
@@ -601,6 +601,15 @@
           "source": "P30.REVIEW",
           "summary": "P30 review: Regression Checklist gains the rotate-backlog docs-phase proposal, --archive-only, the --consolidates covering mark and the docs-debt paid-by checks",
           "previous": "v0011_p29_review_regression_checklist_gains_the_nested-default_--at-root_update-detection_and_bare-install-over-at-root_checks"
+        },
+        {
+          "id": "v0013_p26-p30_smoke_baseline_239_design_and_nested-install_pins_fragile_installer_tokenizer",
+          "path": "docs/versions/qa/v0013_p26-p30_smoke_baseline_239_design_and_nested-install_pins_fragile_installer_tokenizer.md",
+          "created_at": "2026-10-07T17:11:34+09:00",
+          "commit": "1d107b5b1c047f1da7338852e882142394785950",
+          "source": "P26.REVIEW, P27.REVIEW, P28.REVIEW, P29.REVIEW, P30.REVIEW",
+          "summary": "P26-P30 smoke baseline 239, design and nested-install pins, fragile installer tokenizer",
+          "previous": "v0012_p30_review_regression_checklist_gains_the_rotate-backlog_docs-phase_proposal_--archive-only_the_--consolidates_covering_mark_and_the_docs-debt_paid-by_checks"
         }
       ]
     },
@@ -950,5 +959,5 @@
       ]
     }
   },
-  "last_rebuilt_at": "2026-10-07T17:09:17+09:00"
+  "last_rebuilt_at": "2026-10-07T17:14:06+09:00"
 }

@@ -6,8 +6,8 @@
 ## Pointer
 
 - Current phase: `P31`
-- Current slice: `P31.S3`
-- Next slice: `P31.S4`
+- Current slice: `P31.S4`
+- Next slice: `P31.REVIEW`
 - Waiting on operator: `none`
 - Open deferred jobs: `38`
 
@@ -20,7 +20,7 @@
 | [x] `P28` | `done` | `pass` | Nested personal install | `none` | `works/phases/active/P28` |
 | [x] `P29` | `done` | `pass` | Nested install by default | `none` | `works/phases/active/P29` |
 | [x] `P30` | `done` | `pass` | Rotate-backlog creates the docs phase by default | `none` | `works/phases/active/P30` |
-| [ ] `P31` | `planned` | `pending` | Consolidate the doc impact of P26–P30 | `P31.S3` | `works/phases/active/P31` |
+| [ ] `P31` | `planned` | `pending` | Consolidate the doc impact of P26–P30 | `P31.S4` | `works/phases/active/P31` |
 
 ## Phase P26: Replace the Claude Design loop with a repo-file design contract and a design subagent
 
@@ -84,6 +84,6 @@
 | [x] `P31.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P31/slices/P31.DECOMP` |
 | [x] `P31.S1` | `done` | Architecture: P26–P30 notes | `docs` | `works/phases/active/P31/slices/P31.S1` |
 | [x] `P31.S2` | `done` | Operations: P26–P30 notes and the Operator Runtime section | `docs` | `works/phases/active/P31/slices/P31.S2` |
-| [ ] `P31.S3` | `todo` | QA: P26–P30 notes | `docs` | `works/phases/active/P31/slices/P31.S3` |
+| [x] `P31.S3` | `done` | QA: P26–P30 notes | `docs` | `works/phases/active/P31/slices/P31.S3` |
 | [ ] `P31.S4` | `todo` | Decisions: P26–P30 notes | `docs` | `works/phases/active/P31/slices/P31.S4` |
 | [ ] `P31.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P31/slices/P31.REVIEW` |
