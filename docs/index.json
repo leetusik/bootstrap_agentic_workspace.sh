@@ -185,7 +185,7 @@
       ]
     },
     "operations": {
-      "latest": "v0037_p26-p30_design_loop_runbook_nested_install_default_rotate_docs-phase_proposal_operator_runtime",
+      "latest": "v0038_p31_fix_workflow_refusal_gated_cli_reviews_here_rounds_inside_a_design_slice",
       "current_path": "docs/current/operations.md",
       "versions": [
         {
@@ -489,6 +489,15 @@
           "source": "P26.REVIEW, P27.REVIEW, P28.REVIEW, P29.REVIEW, P30.REVIEW",
           "summary": "P26-P30 design loop runbook, nested install default, rotate docs-phase proposal, Operator Runtime",
           "previous": "v0036_p24_fix_the_parallel_execution_block_still_carries_and_mirrors_the_consolidation_debt"
+        },
+        {
+          "id": "v0038_p31_fix_workflow_refusal_gated_cli_reviews_here_rounds_inside_a_design_slice",
+          "path": "docs/versions/operations/v0038_p31_fix_workflow_refusal_gated_cli_reviews_here_rounds_inside_a_design_slice.md",
+          "created_at": "2026-10-07T17:38:37+09:00",
+          "commit": "fe1cf076dc48ad5dd228e5cffbea1cbd57fae75f",
+          "source": "P31.REVIEW",
+          "summary": "P31 fix: workflow/ refusal, gated CLI reviews here, rounds inside a design slice",
+          "previous": "v0037_p26-p30_design_loop_runbook_nested_install_default_rotate_docs-phase_proposal_operator_runtime"
         }
       ]
     },
@@ -977,5 +986,5 @@
       ]
     }
   },
-  "last_rebuilt_at": "2026-10-07T17:34:44+09:00"
+  "last_rebuilt_at": "2026-10-07T17:40:16+09:00"
 }
