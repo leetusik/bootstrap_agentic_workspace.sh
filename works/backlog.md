@@ -5,9 +5,9 @@
 
 ## Pointer
 
-- Current phase: `none`
-- Current slice: `none`
-- Next slice: `none`
+- Current phase: `P31`
+- Current slice: `P31.DECOMP`
+- Next slice: `P31.REVIEW`
 - Waiting on operator: `none`
 - Open deferred jobs: `39`
 
@@ -15,21 +15,12 @@
 
 | Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
-| [x] `P25` | `done` | `pass` | Research a replacement for Claude Design in design-cowork | `none` | `works/phases/active/P25` |
 | [x] `P26` | `done` | `pass` | Replace the Claude Design loop with a repo-file design contract and a design subagent | `none` | `works/phases/active/P26` |
 | [x] `P27` | `done` | `pass` | Choose the design tool per phase: drafter or Claude Design | `none` | `works/phases/active/P27` |
 | [x] `P28` | `done` | `pass` | Nested personal install | `none` | `works/phases/active/P28` |
 | [x] `P29` | `done` | `pass` | Nested install by default | `none` | `works/phases/active/P29` |
 | [x] `P30` | `done` | `pass` | Rotate-backlog creates the docs phase by default | `none` | `works/phases/active/P30` |
-
-## Phase P25: Research a replacement for Claude Design in design-cowork
-
-| Slice | Status | Name | Kind | Path |
-|---|---|---|---|---|
-| [x] `P25.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P25/slices/P25.DECOMP` |
-| [x] `P25.S1` | `done` | verify the baseline and screen a replacement longlist | `research` | `works/phases/active/P25/slices/P25.S1` |
-| [x] `P25.S2` | `done` | evaluate the shortlist and rank the top 3 | `research` | `works/phases/active/P25/slices/P25.S2` |
-| [x] `P25.REVIEW` | `done` | phase review | `review` | `works/phases/active/P25/slices/P25.REVIEW` |
+| [ ] `P31` | `planned` | `pending` | Consolidate the doc impact of P26–P30 | `P31.DECOMP` | `works/phases/active/P31` |
 
 ## Phase P26: Replace the Claude Design loop with a repo-file design contract and a design subagent
 
@@ -85,3 +76,10 @@
 | [x] `P30.S1` | `done` | Engine: rotate-backlog proposes the docs phase | `implementation` | `works/phases/active/P30/slices/P30.S1` |
 | [x] `P30.S2` | `done` | Skills, texts and release v51 | `implementation` | `works/phases/active/P30/slices/P30.S2` |
 | [x] `P30.REVIEW` | `done` | phase review | `review` | `works/phases/active/P30/slices/P30.REVIEW` |
+
+## Phase P31: Consolidate the doc impact of P26–P30
+
+| Slice | Status | Name | Kind | Path |
+|---|---|---|---|---|
+| [ ] `P31.DECOMP` | `todo` | decompose phase | `decomposition` | `works/phases/active/P31/slices/P31.DECOMP` |
+| [ ] `P31.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P31/slices/P31.REVIEW` |

@@ -777,3 +777,5 @@
 {"ts": "2026-10-07T16:19:54+09:00", "type": "slice_status_changed", "slice": "P30.REVIEW", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-10-07T16:19:54+09:00", "type": "phase_reviewed", "phase": "P30", "verdict": "pass", "reviewer": "slice-executor-high"}
 {"ts": "2026-10-07T16:19:54+09:00", "type": "phase_consolidation_owed", "phase": "P30", "notes": 6}
+{"ts": "2026-10-07T16:37:17+09:00", "type": "phase_archived", "phase": "P25", "archive_path": "works/phases/archived/20261007_163717_P25_research_a_replacement_for_claude_design_in_design-cowork"}
+{"ts": "2026-10-07T16:40:16+09:00", "type": "phase_created", "phase": "P31"}
