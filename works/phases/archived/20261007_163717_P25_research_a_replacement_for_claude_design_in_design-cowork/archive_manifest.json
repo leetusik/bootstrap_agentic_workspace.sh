@@ -1,0 +1,14 @@
+{
+  "phase_id": "P25",
+  "archived_at": "2026-10-07T16:37:17+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P25",
+  "archive_path": "works/phases/archived/20261007_163717_P25_research_a_replacement_for_claude_design_in_design-cowork",
+  "slices": [
+    "P25.DECOMP",
+    "P25.S1",
+    "P25.S2",
+    "P25.REVIEW"
+  ]
+}
