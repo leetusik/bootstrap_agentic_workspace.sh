@@ -42,17 +42,17 @@
       "id": "P28",
       "name": "Nested personal install",
       "objective": "Let one engineer run this workspace privately inside a host repo they don't own, with no team-visible footprint. The engine and state live in a nested git repo at /workflow, hidden by .git/info/exclude. Skills and executors go into the host's .claude/ as untracked files, with clashing names detected and prefixed at install. Personal settings go in settings.local.json and the contract pointer in CLAUDE.local.md. Nothing is written to CI, .gitattributes or docs/. Slice commits split in two: product code to the host repo in its recorded commit convention (asked once at install), state to /workflow. phase-scope reads the host repo's base commit. Parallel worktrees are off in nested mode. Contract and skill paths carry the /workflow prefix, and an --update path covers nested installs. The acceptance walkthrough waits for a run in the real company repo.",
-      "status": "planned",
+      "status": "in_progress",
       "order": 4,
       "path": "works/phases/active/P28",
-      "review_status": "pending",
-      "current_slice": "P28.REVIEW",
-      "slice_count": 5,
+      "review_status": "changes_requested",
+      "current_slice": "P28.F1",
+      "slice_count": 6,
       "done_slice_count": 4
     }
   ],
-  "deferred_open_count": 23,
+  "deferred_open_count": 27,
   "deferred_promoted_count": 0,
   "deferred_dropped_count": 11,
-  "last_rebuilt_at": "2026-10-07T13:19:09+09:00"
+  "last_rebuilt_at": "2026-10-07T13:33:22+09:00"
 }

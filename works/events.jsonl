@@ -712,3 +712,11 @@
 {"ts": "2026-10-07T13:11:20+09:00", "type": "acceptance_waived", "phase": "P28"}
 {"ts": "2026-10-07T13:12:16+09:00", "type": "slice_status_changed", "slice": "P28.S3", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-10-07T13:19:09+09:00", "type": "slice_status_changed", "slice": "P28.S3", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-10-07T13:19:40+09:00", "type": "slice_status_changed", "slice": "P28.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-10-07T13:33:08+09:00", "type": "slice_status_changed", "slice": "P28.REVIEW", "old_status": "in_progress", "new_status": "changes_requested"}
+{"ts": "2026-10-07T13:33:08+09:00", "type": "phase_reviewed", "phase": "P28", "verdict": "changes_requested", "reviewer": "slice-executor-high"}
+{"ts": "2026-10-07T13:33:22+09:00", "type": "slice_created", "phase": "P28", "slice": "P28.F1"}
+{"ts": "2026-10-07T13:33:22+09:00", "type": "deferred_created", "deferred": "D35", "source": "P28.REVIEW"}
+{"ts": "2026-10-07T13:33:22+09:00", "type": "deferred_created", "deferred": "D36", "source": "P28.REVIEW"}
+{"ts": "2026-10-07T13:33:22+09:00", "type": "deferred_created", "deferred": "D37", "source": "P28.REVIEW"}
+{"ts": "2026-10-07T13:33:22+09:00", "type": "deferred_created", "deferred": "D38", "source": "P28.REVIEW"}

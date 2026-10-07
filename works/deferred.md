@@ -4,7 +4,7 @@
 
 ## Summary
 
-- Open: `23`
+- Open: `27`
 - Promoted: `0`
 - Dropped: `11`
 
@@ -32,6 +32,10 @@
 | `D32` | `deferred` | Widen design-check's reference scan beyond src, href and url() | P26.REVIEW | A drafted card passes design-check but loads a resource through a form the scan does not read, or the dashboard build asks for a stricter check | `works/deferred/open/D32` |
 | `D33` | `deferred` | Point design-drafter at the claude-design/ record as design memory | P27.REVIEW | The first drafter phase in a repo that holds a claude-design/ record, or the next edit to design-drafter.md | `works/deferred/open/D33` |
 | `D34` | `deferred` | design-migrate: refuse or flag a round-number collision with an existing claude-design/rounds/ when design.json is present | P27.REVIEW | The next edit to design-migrate, or the first repo found with a design.json on a legacy root | `works/deferred/open/D34` |
+| `D35` | `deferred` | Nested phase-scope measures from the merge-base after a rebase | P28.REVIEW | The first real ticket rebased before its PR | `works/deferred/open/D35` |
+| `D36` | `deferred` | README caveats for the private install: git clean and working-tree tools | P28.REVIEW | The next README edit or an operator report | `works/deferred/open/D36` |
+| `D37` | `deferred` | claude-design round push targets the host branch in a nested install | P28.REVIEW | The first design phase run in a nested install | `works/deferred/open/D37` |
+| `D38` | `deferred` | Engine texts that skip a clash rename or the host prefix | P28.REVIEW | The next nested engine change | `works/deferred/open/D38` |
 | `D5` | `deferred` | Confirm: ## Design Style is appended by create-phase only when visual, not scaffolded into every intent.md | P17.REVIEW | Before the first design-bearing phase runs under v34, or the next time works/templates/intent.md is edited. | `works/deferred/open/D5` |
 | `D6` | `deferred` | Widen installer/main.py flag_stale_skills() ownership heuristic beyond the disable-model-invocation marker | P17.REVIEW | If a model-invocable skill is retired upstream, or when flag_stale_skills() is next touched. | `works/deferred/open/D6` |
 | `D7` | `deferred` | Qualify review-phase gate stage 4 for a phase whose only surface is a throwaway mockup | P17.REVIEW | Before the first design-only or mockup-shipping phase reaches its review. | `works/deferred/open/D7` |
