@@ -1,0 +1,16 @@
+{
+  "phase_id": "P28",
+  "archived_at": "2026-10-08T13:00:06+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P28",
+  "archive_path": "works/phases/archived/20261008_130006_P28_nested_personal_install",
+  "slices": [
+    "P28.DECOMP",
+    "P28.S1",
+    "P28.S2",
+    "P28.S3",
+    "P28.F1",
+    "P28.REVIEW"
+  ]
+}

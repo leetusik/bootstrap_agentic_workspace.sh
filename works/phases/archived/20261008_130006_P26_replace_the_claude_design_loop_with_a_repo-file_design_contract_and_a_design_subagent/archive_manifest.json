@@ -1,0 +1,18 @@
+{
+  "phase_id": "P26",
+  "archived_at": "2026-10-08T13:00:06+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P26",
+  "archive_path": "works/phases/archived/20261008_130006_P26_replace_the_claude_design_loop_with_a_repo-file_design_contract_and_a_design_subagent",
+  "slices": [
+    "P26.DECOMP",
+    "P26.S1",
+    "P26.S2",
+    "P26.S3",
+    "P26.S4",
+    "P26.F1",
+    "P26.F2",
+    "P26.REVIEW"
+  ]
+}

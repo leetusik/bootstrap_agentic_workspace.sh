@@ -1,0 +1,14 @@
+{
+  "phase_id": "P29",
+  "archived_at": "2026-10-08T13:00:06+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P29",
+  "archive_path": "works/phases/archived/20261008_130006_P29_nested_install_by_default",
+  "slices": [
+    "P29.DECOMP",
+    "P29.S1",
+    "P29.S2",
+    "P29.REVIEW"
+  ]
+}

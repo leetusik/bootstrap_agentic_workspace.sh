@@ -1,0 +1,18 @@
+{
+  "phase_id": "P31",
+  "archived_at": "2026-10-08T13:00:06+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P31",
+  "archive_path": "works/phases/archived/20261008_130006_P31_consolidate_the_doc_impact_of_p26_p30",
+  "slices": [
+    "P31.DECOMP",
+    "P31.S1",
+    "P31.S2",
+    "P31.S3",
+    "P31.S4",
+    "P31.F1",
+    "P31.F2",
+    "P31.REVIEW"
+  ]
+}

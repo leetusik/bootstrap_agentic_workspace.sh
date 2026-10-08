@@ -821,3 +821,9 @@
 {"ts": "2026-10-07T17:47:30+09:00", "type": "deferred_created", "deferred": "D54", "source": "P31.REVIEW"}
 {"ts": "2026-10-07T17:47:30+09:00", "type": "slice_status_changed", "slice": "P31.REVIEW", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-10-07T17:47:30+09:00", "type": "phase_reviewed", "phase": "P31", "verdict": "pass", "reviewer": "slice-executor-high"}
+{"ts": "2026-10-08T13:00:06+09:00", "type": "phase_archived", "phase": "P26", "archive_path": "works/phases/archived/20261008_130006_P26_replace_the_claude_design_loop_with_a_repo-file_design_contract_and_a_design_subagent"}
+{"ts": "2026-10-08T13:00:06+09:00", "type": "phase_archived", "phase": "P27", "archive_path": "works/phases/archived/20261008_130006_P27_choose_the_design_tool_per_phase_drafter_or_claude_design"}
+{"ts": "2026-10-08T13:00:06+09:00", "type": "phase_archived", "phase": "P28", "archive_path": "works/phases/archived/20261008_130006_P28_nested_personal_install"}
+{"ts": "2026-10-08T13:00:06+09:00", "type": "phase_archived", "phase": "P29", "archive_path": "works/phases/archived/20261008_130006_P29_nested_install_by_default"}
+{"ts": "2026-10-08T13:00:06+09:00", "type": "phase_archived", "phase": "P30", "archive_path": "works/phases/archived/20261008_130006_P30_rotate-backlog_creates_the_docs_phase_by_default"}
+{"ts": "2026-10-08T13:00:06+09:00", "type": "phase_archived", "phase": "P31", "archive_path": "works/phases/archived/20261008_130006_P31_consolidate_the_doc_impact_of_p26_p30"}

@@ -1,0 +1,18 @@
+{
+  "phase_id": "P27",
+  "archived_at": "2026-10-08T13:00:06+09:00",
+  "archive_reason": "phase_review_passed",
+  "review_verdict": "pass",
+  "source_path": "works/phases/active/P27",
+  "archive_path": "works/phases/archived/20261008_130006_P27_choose_the_design_tool_per_phase_drafter_or_claude_design",
+  "slices": [
+    "P27.DECOMP",
+    "P27.S1",
+    "P27.S2",
+    "P27.S3",
+    "P27.F3",
+    "P27.F1",
+    "P27.F2",
+    "P27.REVIEW"
+  ]
+}
