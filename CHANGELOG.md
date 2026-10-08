@@ -9,6 +9,23 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v52 — 2026-10-08
+
+- **`/explain` gains a research mode for general, non-code research.** Alongside topic and
+  change mode, a third mode covers a question about the world (a market, a technology
+  landscape, a vendor comparison, a decision, the findings of a research phase). It is
+  auto-detected when the subject has no grounding in the repo's code, and the trailing word
+  `general` forces it (`research` / `no-research` keep their old meaning). Research mode
+  keeps the same self-contained HTML page contract and the 5-question quiz, but drops the
+  fixed Background / Intuition / Code / Best-practices outline for a **free-form outline**
+  the agent designs from the question, bookended by the table of contents at the top and a
+  **Sources** section plus the quiz at the bottom. Web research is the body, not an
+  add-on: every claim cites a page that was opened, and fact is kept apart from the
+  agent's own assessment. For a workspace phase or slice it reads `intent.md`, `phase.md`
+  and the research slices' `result.md` first. With no web access and too little prior
+  material it stops rather than write an ungrounded document. Topic and change mode are
+  unchanged.
+
 ## v51 — 2026-10-07
 
 - **`/rotate-backlog` proposes the docs phase by default.** It still archives every clean phase
