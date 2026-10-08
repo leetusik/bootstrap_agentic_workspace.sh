@@ -26,6 +26,10 @@ history.
   material it stops rather than write an ungrounded document. Topic and change mode are
   unchanged.
 
+- **Migration notes.** None required. `--update` overwrites `.claude/skills/explain/SKILL.md` as
+  machinery, as it has since v26; a hand-edited local copy loses its edits, so re-apply them after
+  the sync.
+
 ## v51 — 2026-10-07
 
 - **`/rotate-backlog` proposes the docs phase by default.** It still archives every clean phase
