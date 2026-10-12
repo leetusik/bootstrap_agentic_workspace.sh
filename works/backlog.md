@@ -26,7 +26,7 @@
 | [x] `P32.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P32/slices/P32.DECOMP` |
 | [x] `P32.S1` | `done` | Engine: route table, executors.toml rows, sync-agents, executor-route; retire the presets and executor-mode | `implementation` | `works/phases/active/P32/slices/P32.S1` |
 | [x] `P32.S2` | `done` | Engine: record-dispatch and dispatch-summary | `implementation` | `works/phases/active/P32/slices/P32.S2` |
-| [ ] `P32.S3` | `todo` | Agents: Agent tool and delegation paragraph in both tiers, model/effort in the verdict block, new Explore.md | `implementation` | `works/phases/active/P32/slices/P32.S3` |
+| [ ] `P32.S3` | `blocked` | Agents: Agent tool and delegation paragraph in both tiers, model/effort in the verdict block, new Explore.md | `implementation` | `works/phases/active/P32/slices/P32.S3` |
 | [ ] `P32.S4` | `todo` | Skills and contract: dispatch through executor-route, Explore for lookups, attribution by recorded model; executor-route skill replaces executor-mode | `implementation` | `works/phases/active/P32/slices/P32.S4` |
 | [ ] `P32.S5` | `todo` | Installer and release: v53, Explore.md managed, executors.toml seed derivation, rebuild, full smoke run and new baseline | `implementation` | `works/phases/active/P32/slices/P32.S5` |
 | [ ] `P32.S6` | `todo` | CHANGELOG v53 entry with Migration notes; README.md and README.en.md executor sections | `docs` | `works/phases/active/P32/slices/P32.S6` |
