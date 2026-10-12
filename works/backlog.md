@@ -16,6 +16,8 @@
 | Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
 | [ ] `P32` | `planned` | `pending` | One executor route table: dispatch-time model and effort, no presets, Haiku cheap route | `P32.DECOMP` | `works/phases/active/P32` |
+| [ ] `P33` | `planned` | `pending` | One-shot /rotate-backlog: consolidate the doc debt, then archive | `P33.DECOMP` | `works/phases/active/P33` |
+| [ ] `P34` | `planned` | `pending` | Boundary-gated compaction: veto mid-process, resume at the slice boundary | `P34.DECOMP` | `works/phases/active/P34` |
 
 ## Phase P32: One executor route table: dispatch-time model and effort, no presets, Haiku cheap route
 
@@ -23,3 +25,17 @@
 |---|---|---|---|---|
 | [ ] `P32.DECOMP` | `todo` | decompose phase | `decomposition` | `works/phases/active/P32/slices/P32.DECOMP` |
 | [ ] `P32.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P32/slices/P32.REVIEW` |
+
+## Phase P33: One-shot /rotate-backlog: consolidate the doc debt, then archive
+
+| Slice | Status | Name | Kind | Path |
+|---|---|---|---|---|
+| [ ] `P33.DECOMP` | `todo` | decompose phase | `decomposition` | `works/phases/active/P33/slices/P33.DECOMP` |
+| [ ] `P33.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P33/slices/P33.REVIEW` |
+
+## Phase P34: Boundary-gated compaction: veto mid-process, resume at the slice boundary
+
+| Slice | Status | Name | Kind | Path |
+|---|---|---|---|---|
+| [ ] `P34.DECOMP` | `todo` | decompose phase | `decomposition` | `works/phases/active/P34/slices/P34.DECOMP` |
+| [ ] `P34.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P34/slices/P34.REVIEW` |

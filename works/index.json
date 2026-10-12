@@ -11,10 +11,34 @@
       "current_slice": "P32.DECOMP",
       "slice_count": 2,
       "done_slice_count": 0
+    },
+    {
+      "id": "P33",
+      "name": "One-shot /rotate-backlog: consolidate the doc debt, then archive",
+      "objective": "Rework /rotate-backlog so one invocation does the whole clean-up: check docs-debt first and archive nothing up front; when any phase owes consolidation, create the docs phase through create-phase's docs-phase route (the invocation is the operator's yes for the engine-drafted name, objective and docs-debt scope; the proposal is still printed) and run it end to end through do-whole-phase in auto on the default stream (gate as the opt-in word), then archive every done phase, the docs phase included; when nothing owes, archive the done phases right away. The docs phase jumps the queue ahead of planned work when every other slice on the stream is at a boundary, and /rotate-backlog stops and reports when a slice is mid-flight (in_progress or pending). A stop (pending, blocked, needs_operator, a failed review) ends the run and the next /rotate-backlog resumes from the live docs phase; archive-only keeps the archive-and-report path. Ships as workspace v54 (P32 ships v53).",
+      "status": "planned",
+      "order": 2,
+      "path": "works/phases/active/P33",
+      "review_status": "pending",
+      "current_slice": "P33.DECOMP",
+      "slice_count": 2,
+      "done_slice_count": 0
+    },
+    {
+      "id": "P34",
+      "name": "Boundary-gated compaction: veto mid-process, resume at the slice boundary",
+      "objective": "Make context compaction land only at slice boundaries and recover cleanly when it does. A PreCompact hook on auto-compaction calls an engine command that blocks while the current slice is in progress or the tree is dirty, and allows at a clean boundary (slice done, pending or review done, with a clean tree), with two fail-safes: allow above a hard fill ceiling read from the transcript's usage, and after a cap of consecutive blocks; manual /compact is never blocked. A SessionStart hook on the compact source re-injects the workflow pointer and a resume line (re-read the running skill from disk, the active slice folder and the notebook's ## Now). CLAUDE.md gains a short compact-instructions section naming what the summary keeps and drops. The two execution skills are reordered so the loop invariants and the resume line sit within the first 5,000 tokens. Both hooks ship on for everyone through the installer's settings merge. The auto-compact window stays the operator's personal setting, with the recommended value of about 300k recorded in the operations doc. Runs after P32, which rewrites the same skills. Ships as workspace v54.",
+      "status": "planned",
+      "order": 3,
+      "path": "works/phases/active/P34",
+      "review_status": "pending",
+      "current_slice": "P34.DECOMP",
+      "slice_count": 2,
+      "done_slice_count": 0
     }
   ],
   "deferred_open_count": 42,
   "deferred_promoted_count": 1,
   "deferred_dropped_count": 11,
-  "last_rebuilt_at": "2026-10-12T16:07:23+09:00"
+  "last_rebuilt_at": "2026-10-12T16:30:49+09:00"
 }
