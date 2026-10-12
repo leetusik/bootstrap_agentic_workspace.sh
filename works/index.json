@@ -4,13 +4,14 @@
       "id": "P32",
       "name": "One executor route table: dispatch-time model and effort, no presets, Haiku cheap route",
       "objective": "Replace the economy/flex presets with one engine-owned executor route table and move model and effort selection to dispatch time. The orchestrator passes model and effort on every executor dispatch from the resolved table (engine defaults overlaid by per-row overrides in executors.toml), the two tier agent files' frontmatter staying synced as the fallback only. Shipped rows: review, decomposition, risk-high slices and every second attempt -> opus @ high; research -> opus @ medium; implementation and fix rated low -> sonnet @ high; docs and qa rated low -> haiku @ high (the cheap route: on in this repo, seeded commented-out for adopters, falling back to the mid row's model under ocx claude); design-drafter follows the review row. A project Explore agent runs read-only lookups on haiku @ high, upgraded per call to sonnet or opus for judgment; executors on both tiers get the Agent tool for such read-only lookups only, never for result.md, phase.md, code or validation. Every dispatch leaves a machine-readable record (slice, tier, model, effort, duration, tokens, verdict) through an engine command, with a summary by route, so the table is tuned from this workspace's own runs. Executors record model and effort beside tier in the verdict block and commit attribution follows the recorded model. The orchestrator's effort stays at the session level. Ships as workspace v53.",
-      "status": "planned",
+      "status": "done",
       "order": 1,
       "path": "works/phases/active/P32",
-      "review_status": "pending",
-      "current_slice": "P32.REVIEW",
+      "review_status": "pass",
+      "current_slice": null,
       "slice_count": 8,
-      "done_slice_count": 7
+      "done_slice_count": 8,
+      "consolidation": "pending"
     },
     {
       "id": "P33",
@@ -44,8 +45,8 @@
       "done_slice_count": 0
     }
   ],
-  "deferred_open_count": 42,
+  "deferred_open_count": 43,
   "deferred_promoted_count": 1,
   "deferred_dropped_count": 11,
-  "last_rebuilt_at": "2026-10-12T17:39:52+09:00"
+  "last_rebuilt_at": "2026-10-12T17:49:19+09:00"
 }

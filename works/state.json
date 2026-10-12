@@ -1,8 +1,8 @@
 {
-  "current_phase": "P32",
-  "current_slice": "P32.REVIEW",
-  "next_slice": null,
+  "current_phase": "P34",
+  "current_slice": "P34.DECOMP",
+  "next_slice": "P34.REVIEW",
   "waiting_on_operator": null,
   "mode": "phase",
-  "updated_at": "2026-10-12T17:39:52+09:00"
+  "updated_at": "2026-10-12T17:49:19+09:00"
 }

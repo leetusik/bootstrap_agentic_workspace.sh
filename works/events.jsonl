@@ -863,3 +863,9 @@
 {"ts": "2026-10-12T17:36:10+09:00", "type": "slice_status_changed", "slice": "P32.S6", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-10-12T17:39:52+09:00", "type": "slice_status_changed", "slice": "P32.S6", "old_status": "in_progress", "new_status": "done"}
 {"ts": "2026-10-12T17:40:05+09:00", "type": "executor_dispatched", "slice": "P32.S6", "phase": "P32", "kind": "docs", "risk": "low", "route": "cheap", "tier": "mid", "agent": "slice-executor-mid", "model": "haiku", "effort": "high", "attribution": "Claude Haiku 5.5", "attempt": 1, "verdict": "done", "duration_ms": 188293, "tokens": 96449, "tool_uses": 19, "note": "the cheap route's first live dispatch"}
+{"ts": "2026-10-12T17:41:41+09:00", "type": "slice_status_changed", "slice": "P32.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-10-12T17:49:07+09:00", "type": "slice_status_changed", "slice": "P32.REVIEW", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-10-12T17:49:07+09:00", "type": "phase_reviewed", "phase": "P32", "verdict": "pass", "reviewer": "slice-executor-high"}
+{"ts": "2026-10-12T17:49:07+09:00", "type": "phase_consolidation_owed", "phase": "P32", "notes": 13}
+{"ts": "2026-10-12T17:49:19+09:00", "type": "deferred_created", "deferred": "D55", "source": "P32.REVIEW"}
+{"ts": "2026-10-12T17:49:19+09:00", "type": "executor_dispatched", "slice": "P32.REVIEW", "phase": "P32", "kind": "review", "risk": "high", "route": "high", "tier": "high", "agent": "slice-executor-high", "model": "opus", "effort": "high", "attribution": "Claude Opus 5.5", "attempt": 1, "verdict": "done", "duration_ms": 410303, "tokens": 136237, "tool_uses": 53, "note": "review; pass"}
