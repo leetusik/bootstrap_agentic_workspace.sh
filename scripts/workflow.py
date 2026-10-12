@@ -697,6 +697,134 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
         print(line)
 
 
+def cmd_record_dispatch(args: argparse.Namespace) -> None:
+    """Append one `executor_dispatched` event to works/events.jsonl: the route, model and effort an
+    executor ran on (copied from `executor-route`), the measured duration / tokens / tool uses from the
+    Agent completion notification, and its verdict. A record, never a route validation: nothing else is
+    written, no state changes."""
+    sdata = read_json(require_slice(args.slice) / "slice.json")
+    if not args.model.strip():
+        raise SystemExit("record-dispatch: --model must be a non-empty model (the model= line executor-route printed)")
+    tier = args.tier if args.tier is not None else ROUTE_TIER[args.route]
+    if args.agent is not None:
+        agent = args.agent
+    elif tier is not None:
+        agent = installed_agent_name(ROUTE_AGENT[tier])
+    else:
+        agent = installed_agent_name(ROUTE_AGENT[args.route])
+    rec = {
+        "slice": args.slice, "phase": sdata.get("phase_id") or args.slice.split(".", 1)[0],
+        "kind": sdata.get("kind"), "risk": sdata.get("risk"),
+        "route": args.route, "tier": tier, "agent": agent,
+        "model": args.model, "effort": args.effort,
+        "attribution": MODEL_ATTRIBUTION.get(args.model, args.model),
+        "attempt": args.attempt, "verdict": args.verdict,
+        "duration_ms": args.duration_ms, "tokens": args.tokens, "tool_uses": args.tool_uses,
+        "note": args.note,
+    }
+    append_event("executor_dispatched", **rec)
+    print("recorded=executor_dispatched")
+    for key in ("slice", "route", "tier", "model", "effort", "attempt", "verdict", "duration_ms", "tokens", "tool_uses"):
+        v = rec[key]
+        print(f"{key}={'' if v is None else v}")
+
+
+_DISPATCH_VERDICTS = ("done", "escalate", "needs_operator", "blocked", "failed")
+
+
+def _dispatch_agg(records: list) -> dict:
+    """Counts and sums over a group of executor_dispatched records."""
+    durs = [r["duration_ms"] for r in records if isinstance(r.get("duration_ms"), (int, float))]
+    toks = [r["tokens"] for r in records if isinstance(r.get("tokens"), (int, float))]
+    agg = {"n": len(records)}
+    for v in _DISPATCH_VERDICTS:
+        agg[v] = sum(1 for r in records if r.get("verdict") == v)
+    agg["retries"] = sum(1 for r in records if isinstance(r.get("attempt"), int) and r["attempt"] >= 2)
+    agg["mean_min"] = round(sum(durs) / len(durs) / 60000, 1) if durs else None
+    agg["total_min"] = round(sum(durs) / 60000, 1) if durs else None
+    agg["tokens"] = sum(toks) if toks else None
+    return agg
+
+
+def _dispatch_groups(records: list, keyfn, order=None) -> dict:
+    groups: dict = {}
+    for r in records:
+        groups.setdefault(keyfn(r), []).append(r)
+    keys = [k for k in order if k in groups] if order else sorted(groups, key=lambda k: (-len(groups[k]), str(k)))
+    return {k: _dispatch_agg(groups[k]) for k in keys}
+
+
+def _dispatch_table(title: str, groups: dict, cols: list) -> list:
+    header = [title] + [c[0] for c in cols]
+    rows = [header]
+    for key, agg in groups.items():
+        rows.append([str(key)] + [("-" if agg[c[1]] is None else str(agg[c[1]])) for c in cols])
+    widths = [max(len(r[i]) for r in rows) for i in range(len(header))]
+    return ["  ".join(c.ljust(w) if i == 0 else c.rjust(w) for i, (c, w) in enumerate(zip(r, widths))).rstrip() for r in rows]
+
+
+def cmd_dispatch_summary(args: argparse.Namespace) -> None:
+    """Read works/events.jsonl back: the executor_dispatched records by route, by model @ effort and by
+    kind (or, with --slice, one line per attempt). Read-only; blank and malformed lines are skipped."""
+    records: list = []
+    skipped = 0
+    ev = WORKS / "events.jsonl"
+    if ev.exists():
+        for line in ev.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not line.strip():
+                continue
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                skipped += 1
+                continue
+            if isinstance(obj, dict) and obj.get("type") == "executor_dispatched":
+                records.append(obj)
+    if args.phase is not None:
+        known = (ACTIVE / args.phase).is_dir() or any(r.get("phase") == args.phase for r in records) \
+            or (ARCHIVED.is_dir() and any(ARCHIVED.glob(f"**/{args.phase}")))
+        if not known:
+            raise SystemExit(f"dispatch-summary: no such phase: {args.phase}")
+        records = [r for r in records if r.get("phase") == args.phase]
+    if args.slice is not None:
+        if not any(r.get("slice") == args.slice for r in records) and not (ACTIVE / args.slice.split(".", 1)[0] / "slices" / args.slice).is_dir():
+            raise SystemExit(f"dispatch-summary: no such slice: {args.slice}")
+        records = [r for r in records if r.get("slice") == args.slice]
+    by_route = _dispatch_groups(records, lambda r: r.get("route") or "?", order=EXECUTOR_ROUTES)
+    by_model = _dispatch_groups(records, lambda r: f"{r.get('model') or '?'} @ {r.get('effort') or '(none)'}")
+    by_kind = _dispatch_groups(records, lambda r: r.get("kind") or "unset")
+    if args.json:
+        print(json.dumps({"records": len(records), "by_route": by_route, "by_model_effort": by_model, "by_kind": by_kind,
+                          "skipped_lines": skipped}, ensure_ascii=False, indent=2))
+        return
+    phases = sorted({r.get("phase") for r in records if r.get("phase")})
+    stamps = [r.get("ts") for r in records if r.get("ts")]
+    print(f"records={len(records)}")
+    if not records:
+        if skipped:
+            print(f"skipped_lines={skipped}")
+        print(f"hint=record a dispatch with: {WORKFLOW_CMD} record-dispatch <slice_id> --route … --model … --effort … --verdict …")
+        return
+    print(f"phases={','.join(phases)}")
+    print(f"since={stamps[0] if stamps else '-'}")
+    print(f"until={stamps[-1] if stamps else '-'}")
+    if skipped:
+        print(f"skipped_lines={skipped}")
+    if args.slice is not None:
+        for r in records:
+            print(f"attempt={r.get('attempt')} route={r.get('route')} model={r.get('model')} effort={r.get('effort') or '(none)'} "
+                  f"verdict={r.get('verdict')} duration_ms={r.get('duration_ms')} tokens={r.get('tokens')} ts={r.get('ts')}")
+        return
+    full = [("n", "n"), ("done", "done"), ("escalate", "escalate"), ("needs_op", "needs_operator"), ("blocked", "blocked"),
+            ("failed", "failed"), ("retries", "retries"), ("mean_min", "mean_min"), ("total_min", "total_min"), ("tokens", "tokens")]
+    short = [("n", "n"), ("done", "done"), ("escalate", "escalate"), ("retries", "retries"), ("tokens", "tokens")]
+    for label, title, groups, cols in (("by route", "route", by_route, full), ("by model @ effort", "model @ effort", by_model, full),
+                                       ("by kind", "kind", by_kind, short)):
+        print()
+        print(f"[{label}]")
+        print("\n".join(_dispatch_table(title, groups, cols)))
+
+
 def doc_index() -> dict:
     return read_json(DOCS / "index.json")
 
@@ -4519,6 +4647,27 @@ def main(argv=None) -> int:
     p.add_argument("--drafter", action="store_true", help="the design-drafter's dispatch (it follows the high row)")
     p.add_argument("--explore", action="store_true", help="the read-only Explore lookup agent's dispatch (the explore row)")
     p.set_defaults(func=cmd_executor_route)
+
+    p = sub.add_parser("record-dispatch", help="Append one executor_dispatched record to works/events.jsonl (slice, kind, risk, route, tier, agent, model, effort, attribution, attempt, verdict, and the measured duration / tokens / tool uses from the Agent completion notification); copy route / model / effort from executor-route; writes nothing else")
+    p.add_argument("slice", help="the slice that was dispatched")
+    p.add_argument("--route", required=True, choices=EXECUTOR_ROUTES, help="the route row dispatched on (the route= line executor-route printed)")
+    p.add_argument("--model", required=True, help="the model the dispatch ran on (the model= line)")
+    p.add_argument("--effort", required=True, help="the effort the dispatch ran on (the effort= line; empty when none was passed)")
+    p.add_argument("--verdict", required=True, choices=_DISPATCH_VERDICTS, help="how the executor returned; failed = an empty or failed return")
+    p.add_argument("--attempt", type=int, default=1, help="1 for the first dispatch, 2 for the retry (default 1)")
+    p.add_argument("--tier", choices=EXECUTOR_TIERS, help="the tier (default: the route's tier; none for explore)")
+    p.add_argument("--agent", help="the subagent_type dispatched (default: the tier's installed agent; --agent design-drafter for the drafter span)")
+    p.add_argument("--duration-ms", type=int, dest="duration_ms", help="duration_ms from the completion notification")
+    p.add_argument("--tokens", type=int, help="subagent_tokens from the completion notification")
+    p.add_argument("--tool-uses", type=int, dest="tool_uses", help="tool_uses from the completion notification")
+    p.add_argument("--note", help="free text, e.g. back-filled from the completion notification")
+    p.set_defaults(func=cmd_record_dispatch)
+
+    p = sub.add_parser("dispatch-summary", help="Read-only: summarize the executor_dispatched records in works/events.jsonl by route, by model @ effort and by kind (dispatches, verdict counts, retries, mean / total minutes, tokens); --slice lists one slice's attempts; --json for tooling")
+    p.add_argument("--phase", help="keep one phase's records")
+    p.add_argument("--slice", help="keep one slice's records (its attempts, in order) and print them one per line")
+    p.add_argument("--json", action="store_true", help="print the aggregates as one JSON object")
+    p.set_defaults(func=cmd_dispatch_summary)
 
     p = sub.add_parser("next", help="Print the current phase/slice selection")
     p.set_defaults(func=cmd_next)

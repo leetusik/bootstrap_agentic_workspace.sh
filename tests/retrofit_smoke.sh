@@ -1075,6 +1075,36 @@ printf '%s\n' "$er_out" | grep -qE '^cheap +mid +haiku +high +executors\.toml$' 
   && ok "the repo's executors.toml turns the cheap route on (haiku@high from executors.toml), agent files in sync" || bad "executor-route on the repo's executors.toml wrong: $er_out"
 ( cd "$F" && python3 scripts/workflow.py executor-mode 2>&1 | grep -q 'invalid choice' ) \
   && ok "executor-mode is gone from the engine (v53: executor-route replaces it)" || bad "the engine still accepts executor-mode"
+# v53 dispatch record (P32.S2): record-dispatch appends one executor_dispatched event to works/events.jsonl,
+# dispatch-summary is its first reader (by route, model @ effort, kind; skips malformed lines; read-only).
+rd() { ( cd "$F" && python3 scripts/workflow.py "$@" 2>&1 ); }
+rd_out=$(rd record-dispatch P1.DECOMP --route high --model opus --effort high --verdict done --duration-ms 60000 --tokens 1000 --tool-uses 5); rd_last=$(tail -1 "$F/works/events.jsonl")
+printf '%s\n' "$rd_out" | grep -qx 'recorded=executor_dispatched' && printf '%s\n' "$rd_last" | grep -q '"type": "executor_dispatched"' \
+  && printf '%s\n' "$rd_last" | grep -q '"route": "high"' && printf '%s\n' "$rd_last" | grep -q '"attribution": "Claude Opus 5.5"' \
+  && ok "record-dispatch appends an executor_dispatched event (route, model, attribution Claude Opus 5.5) to events.jsonl" || bad "record-dispatch wrong: $rd_out / $rd_last"
+rd record-dispatch P1.S9 --route cheap --model haiku --effort high --verdict escalate --attempt 1 >/dev/null
+rd record-dispatch P1.S9 --route high --model opus --effort high --verdict done --attempt 2 --tier high >/dev/null
+ds_out=$(rd dispatch-summary)
+printf '%s\n' "$ds_out" | grep -qE '^cheap +1 +0 +1 ' && printf '%s\n' "$ds_out" | grep -qE '^high +2 +2 +0 +0 +0 +0 +1 ' \
+  && ok "dispatch-summary counts a cheap escalate and a high retry by route" || bad "dispatch-summary by route wrong: $ds_out"
+ds_out=$(rd dispatch-summary --slice P1.S9)
+[ "$(printf '%s\n' "$ds_out" | grep -c '^attempt=')" = "2" ] && [ "$(printf '%s\n' "$ds_out" | grep '^attempt=' | head -1 | cut -c1-9)" = "attempt=1" ] \
+  && ok "dispatch-summary --slice lists the slice's attempts in order" || bad "dispatch-summary --slice wrong: $ds_out"
+rd record-dispatch P1.S9 --route bogus --model opus --effort high --verdict done >/dev/null; rc1=$?
+rd record-dispatch P9.S1 --route high --model opus --effort high --verdict done >/dev/null; rc2=$?
+[ "$rc1" -ne 0 ] && [ "$rc2" -ne 0 ] && ok "record-dispatch refuses an unknown route and an unknown slice" || bad "record-dispatch accepted a bad route or slice (rc=$rc1/$rc2)"
+rd dispatch-summary --json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["records"]==3 and d["by_route"]["high"]["n"]==2' \
+  && ok "dispatch-summary --json prints the aggregates" || bad "dispatch-summary --json wrong"
+rd dispatch-summary --phase P7 >/dev/null; rc1=$?
+rd dispatch-summary --phase P1 | grep -qx 'records=3'; rc2=$?
+[ "$rc1" -eq 1 ] && [ "$rc2" -eq 0 ] && ok "dispatch-summary --phase: an unknown phase exits 1, P1 reports its 3 records" || bad "dispatch-summary --phase wrong (rc=$rc1/$rc2)"
+printf 'not json\n' >> "$F/works/events.jsonl"
+ds_out=$(rd dispatch-summary); ds_rc=$?
+[ "$ds_rc" -eq 0 ] && printf '%s\n' "$ds_out" | grep -qx 'skipped_lines=1' \
+  && ok "dispatch-summary skips a malformed events.jsonl line and reports skipped_lines=1" || bad "dispatch-summary on a malformed line wrong (rc=$ds_rc): $ds_out"
+rd record-dispatch P1.DECOMP --route high --model opus --effort "" --verdict done >/dev/null
+rd dispatch-summary | grep -q '^opus @ (none)' \
+  && ok "record-dispatch accepts --effort \"\" (shown as opus @ (none))" || bad "an empty effort was not recorded/shown"
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed re-applying the fable override"
 rm -rf "$F/.claude/skills/do-whole-phase"
