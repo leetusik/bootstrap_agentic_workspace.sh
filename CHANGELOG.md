@@ -9,6 +9,26 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v56 — 2026-10-13
+
+- **The 300k auto-compact window ships in project settings.** `.claude/settings.json` now carries
+  `"autoCompactWindow": 300000`, so every clone and every machine compacts 1M-context models at
+  300k without a per-machine `/autocompact`. Claude Code resolves the window user → project →
+  local, and a file's top-level value replaces the earlier default and per-model entries, so the
+  project value wins over a user-level setting; override it per checkout in
+  `.claude/settings.local.json`. 200k-context models are unaffected. This reverses v55's "the
+  window is the operator's personal setting": the veto makes 300k mean "the earliest allowed
+  point", and a repo that runs on several machines wants that point committed.
+
+- **The installer fills the key, never overwrites it.** `_merge_settings_dict` copies
+  `autoCompactWindow` from the payload only when the target has no such key, on `--update`,
+  retrofit and the nested `settings.local.json` present-file path. Smoke: 289 to 292 PASS.
+
+- **Migration notes.** `/update-workspace` sets `autoCompactWindow` to 300000 in the project
+  `.claude/settings.json` (nested installs: `settings.local.json`) unless you already set one
+  there. Relaunch Claude Code to pick it up; `/autocompact` with no argument shows the window in
+  effect. Nothing else to run.
+
 ## v55 — 2026-10-12
 
 - **Compaction waits for a slice boundary.** A `PreCompact` hook on auto-compaction calls the new

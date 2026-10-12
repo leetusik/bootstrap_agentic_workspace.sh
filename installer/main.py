@@ -42,7 +42,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 55
+WORKSPACE_VERSION = 56
 ROOT = TARGET.resolve()
 # Nested personal install (P28; the default layout since P29): TARGET is a HOST git repo -- one the
 # operator may not own, or a new/empty dir this run `git init`s. The engine and all workflow state go
@@ -307,6 +307,8 @@ def _merge_settings_dict(theirs: dict, ours: dict) -> dict:
       target's group with the same `matcher` (creating the event list / group when
       absent) unless a handler with the same `command` already exists anywhere
       under that event. Never removes, reorders or rewrites an adopter's entries.
+    - autoCompactWindow (v56): copied from `ours` only when the target has no such
+      key; a value the adopter chose is never overwritten.
     Idempotent. Raises ValueError on a malformed target shape (a non-object
     `permissions`/`hooks`, a non-list `allow`/`deny`/event/`hooks`, a non-object
     group) so callers can sidecar / refuse instead of clobbering."""
@@ -344,11 +346,13 @@ def _merge_settings_dict(theirs: dict, ours: dict) -> dict:
                         groups.append(target)
                     target.setdefault("hooks", []).append(copy.deepcopy(oh))
                     have.add(oh.get("command"))
+    if "autoCompactWindow" in ours and "autoCompactWindow" not in merged:
+        merged["autoCompactWindow"] = ours["autoCompactWindow"]
     return merged
 
 
 def _merge_settings_json(text: str) -> None:
-    """Merge our settings payload (permissions union + hooks) into an existing
+    """Merge our settings payload (permissions union + hooks + autoCompactWindow when absent) into an existing
     .claude/settings.json, preserving every key the target already has. Idempotent."""
     p = ROOT / ".claude/settings.json"
     ours = json.loads(text)

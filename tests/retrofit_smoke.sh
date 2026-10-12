@@ -738,6 +738,10 @@ assert h["SessionStart"] == [{"matcher": "compact", "hooks": [{"type": "command"
 assert json.load(open(sys.argv[1]))["env"]["FOO"] == "bar"
 PY
 then ok "retrofit merges the two compaction hooks additively: foreign PreCompact/PostToolUse handlers survive in place (foreign first), ours present exactly once"; else bad "retrofit hooks merge incorrect"; fi
+# v56: the project-level auto-compact window ships with the payload; retrofit fills it when the
+# adopter's file has none, and a second --update leaves it alone.
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["autoCompactWindow"] == 300000, d' "$R/.claude/settings.json" \
+  && ok "retrofit sets autoCompactWindow=300000 when the adopter's settings.json has none" || bad "retrofit did not set autoCompactWindow"
 
 ( cd "$R" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) && ok "validate passes in target" || bad "validate failed in target"
 nph=$(find "$R/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
@@ -814,6 +818,8 @@ assert h["PreCompact"] == [{"matcher": "auto", "hooks": [{"type": "command", "co
 assert h["SessionStart"] == [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}], h
 PY
 then ok "a fresh at-root install ships both compaction hooks (PreCompact auto -> compact-gate, SessionStart compact -> compact-resume, timeout 15)"; else bad "fresh install settings.json lacks the exact compaction hooks"; fi
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 300000' "$F/.claude/settings.json" \
+  && ok "a fresh at-root install ships autoCompactWindow=300000 in project settings (v56)" || bad "fresh install settings.json lacks autoCompactWindow=300000"
 nphf=$(find "$F/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
 [ "$nphf" = "0" ] && ok "fresh install seeds no phases (empty start)" || bad "fresh install seeded $nphf phase(s)"
 if python3 - "$REPO_ROOT" "$F/works/.workspace-version.json" <<'PY'
@@ -1945,8 +1951,10 @@ sh "$BOOT" "$IH" --update --nested >/dev/null 2>&1
 [ "$(sha "$IH/.claude/settings.local.json")" = "$lset_a" ] && ih_clean \
   && ok "nested: a second --update --nested leaves settings.local.json byte-identical" || bad "nested --update rewrote settings.local.json"
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["PreCompact"][0]["hooks"].insert(0,{"type":"command","command":"echo foreign-nested"}); d["hooks"]["Stop"]=[{"hooks":[{"type":"command","command":"echo stop"}]}]; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$IH/.claude/settings.local.json"
-python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["SessionStart"][0]["hooks"]=[]; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$IH/.claude/settings.local.json"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["SessionStart"][0]["hooks"]=[]; d["autoCompactWindow"]=500000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$IH/.claude/settings.local.json"
 sh "$BOOT" "$IH" --update --nested >/dev/null 2>&1
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 500000' "$IH/.claude/settings.local.json" \
+  && ok "nested: --update --nested never overwrites an autoCompactWindow the adopter chose (v56)" || bad "nested --update overwrote the adopter's autoCompactWindow"
 if python3 - "$IH/.claude/settings.local.json" <<'PY'
 import json, sys
 h = json.load(open(sys.argv[1]))["hooks"]
