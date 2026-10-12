@@ -71,3 +71,7 @@ Keep the five existing bullets; add:
 ## Dispatch
 
 Dispatched by today's rule (D12): `slice-executor-mid` on its frontmatter, `sonnet @ high`. Record those in the verdict block as `- model: sonnet` / `- effort: high`.
+
+## Resume (attempt 2)
+
+The first attempt was denied by the auto-mode permission classifier when editing `.claude/agents/slice-executor-high.md` (flagged as self-modification) and returned `blocked` with nothing landed; its `result.md` recorded that. The operator has since allowed edits to the agent files for this dispatch. Execute the plan above unchanged; overwrite `result.md`. If a denial recurs on any agent file, stop at once, revert any half-applied edit so the two tier bodies stay identical, and return `blocked` naming the exact file and tool denied.

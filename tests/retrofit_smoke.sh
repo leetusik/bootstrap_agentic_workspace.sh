@@ -550,10 +550,26 @@ for tier in ("mid", "high"):
         assert required in body, (tier, required)
     for gone in ("the light tier", "essentially all code writing"):
         assert gone not in body, (tier, gone)
-    assert "tools: Read, Edit, Write, Glob, Grep, Bash, WebSearch, WebFetch\n" in body, tier
+    assert "tools: Read, Edit, Write, Glob, Grep, Bash, WebSearch, WebFetch, Agent\n" in body, tier
+    # v53 (P32.S3): the Agent tool is for read-only Explore lookups only; the verdict block
+    # records model and effort beside tier.
+    for required in ("## Delegate reads, never writes", "subagent_type: Explore",
+                     "- `model`:", "- `effort`:", "delegate nothing",
+                     "never to spawn another executor"):
+        assert required in body, (tier, required)
+    assert "never an executor tier" not in body, tier
     bodies[tier] = body.split("---\n", 2)[2]
 # The tiers differ in frontmatter only, so a body diff is the drift detector.
 assert bodies["mid"] == bodies["high"], "slice-executor tier bodies drifted"
+
+# v53 (P32.S3): the Explore agent's final body, and no Agent tool on it (it never nests).
+explore = (root / ".claude/agents/Explore.md").read_text()
+explore_fm = explore.split("---\n", 2)[1]
+assert "tools: Read, Grep, Glob\n" in explore_fm and "omitClaudeMd: true\n" in explore_fm
+assert "Agent" not in [ln for ln in explore_fm.splitlines() if ln.startswith("tools:")][0]
+for required in ("not read / possibly stale", "Never recommend, judge, decide, edit or run anything",
+                 "needs judgment"):
+    assert required in explore, required
 
 # One contract file now, so nothing to compare it against: assert the whole text.
 # v44 (P23) cut the contract to a <= 12 KB routing layer: seven sections of short
