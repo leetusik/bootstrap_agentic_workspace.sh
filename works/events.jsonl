@@ -832,3 +832,11 @@
 {"ts": "2026-10-12T16:29:49+09:00", "type": "phase_created", "phase": "P34"}
 {"ts": "2026-10-12T16:44:40+09:00", "type": "slice_status_changed", "slice": "P32.DECOMP", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-10-12T16:45:46+09:00", "type": "phase_parallel_started", "phase": "P33", "branch": "phase/P33-one-shot_rotate-backlog_consolidate_the", "worktree": "/Users/sugang/projects/personal/bootstrap_agentic_workspace.sh/.claude/worktrees/P33-one-shot_rotate-backlog_consolidate_the"}
+{"ts": "2026-10-12T16:48:31+09:00", "type": "slice_created", "phase": "P32", "slice": "P32.S1"}
+{"ts": "2026-10-12T16:48:31+09:00", "type": "slice_created", "phase": "P32", "slice": "P32.S2"}
+{"ts": "2026-10-12T16:48:31+09:00", "type": "slice_created", "phase": "P32", "slice": "P32.S3"}
+{"ts": "2026-10-12T16:48:31+09:00", "type": "slice_created", "phase": "P32", "slice": "P32.S4"}
+{"ts": "2026-10-12T16:48:31+09:00", "type": "slice_created", "phase": "P32", "slice": "P32.S5"}
+{"ts": "2026-10-12T16:48:31+09:00", "type": "slice_created", "phase": "P32", "slice": "P32.S6"}
+{"ts": "2026-10-12T16:53:17+09:00", "type": "slice_status_changed", "slice": "P32.DECOMP", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-10-12T16:53:18+09:00", "type": "acceptance_waived", "phase": "P32"}
