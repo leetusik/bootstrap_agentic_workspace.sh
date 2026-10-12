@@ -516,7 +516,7 @@
       ]
     },
     "qa": {
-      "latest": "v0013_p26-p30_smoke_baseline_239_design_and_nested-install_pins_fragile_installer_tokenizer",
+      "latest": "v0014_p33_review_regression_checklist_rotate-backlog_decides_the_chain_rotate_branches_queue-jump_order_resume_re-assert_stop_midflight_archive_last_refused_smoke_247",
       "current_path": "docs/current/qa.md",
       "versions": [
         {
@@ -628,6 +628,15 @@
           "source": "P26.REVIEW, P27.REVIEW, P28.REVIEW, P29.REVIEW, P30.REVIEW",
           "summary": "P26-P30 smoke baseline 239, design and nested-install pins, fragile installer tokenizer",
           "previous": "v0012_p30_review_regression_checklist_gains_the_rotate-backlog_docs-phase_proposal_--archive-only_the_--consolidates_covering_mark_and_the_docs-debt_paid-by_checks"
+        },
+        {
+          "id": "v0014_p33_review_regression_checklist_rotate-backlog_decides_the_chain_rotate_branches_queue-jump_order_resume_re-assert_stop_midflight_archive_last_refused_smoke_247",
+          "path": "docs/versions/qa/v0014_p33_review_regression_checklist_rotate-backlog_decides_the_chain_rotate_branches_queue-jump_order_resume_re-assert_stop_midflight_archive_last_refused_smoke_247.md",
+          "created_at": "2026-10-12T18:22:30+09:00",
+          "commit": "b2c90d6255b924a5294397d6a3886d09737fb776",
+          "source": "P33.REVIEW",
+          "summary": "P33 review regression checklist: rotate-backlog decides the chain (rotate= branches, queue-jump order, resume re-assert, stop_midflight, archive last, refused; smoke 247)",
+          "previous": "v0013_p26-p30_smoke_baseline_239_design_and_nested-install_pins_fragile_installer_tokenizer"
         }
       ]
     },
@@ -986,5 +995,5 @@
       ]
     }
   },
-  "last_rebuilt_at": "2026-10-12T18:21:24+09:00"
+  "last_rebuilt_at": "2026-10-12T18:22:51+09:00"
 }

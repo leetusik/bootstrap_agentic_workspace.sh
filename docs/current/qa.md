@@ -1,11 +1,11 @@
 ---
 doc_id: qa
-version: v0013
-created_at: 2026-10-07T17:11:34+09:00
-commit: 1d107b5b1c047f1da7338852e882142394785950
-source: P26.REVIEW, P27.REVIEW, P28.REVIEW, P29.REVIEW, P30.REVIEW
-summary: P26-P30 smoke baseline 239, design and nested-install pins, fragile installer tokenizer
-previous: v0012_p30_review_regression_checklist_gains_the_rotate-backlog_docs-phase_proposal_--archive-only_the_--consolidates_covering_mark_and_the_docs-debt_paid-by_checks
+version: v0014
+created_at: 2026-10-12T18:22:30+09:00
+commit: b2c90d6255b924a5294397d6a3886d09737fb776
+source: P33.REVIEW
+summary: P33 review regression checklist: rotate-backlog decides the chain (rotate= branches, queue-jump order, resume re-assert, stop_midflight, archive last, refused; smoke 247)
+previous: v0013_p26-p30_smoke_baseline_239_design_and_nested-install_pins_fragile_installer_tokenizer
 ---
 
 # QA
@@ -344,10 +344,17 @@ behaviour and it is re-run by `bash tests/retrofit_smoke.sh` plus
 - [ ] installer: `--at-root` installs the committed at-root layout (`CLAUDE.md`, `scripts/`, `works/` at the root, no `workflow/`) and the workspace validates (P29)
 - [ ] installer: a bare `--update` detects the layout: `(nested, detected)` on a nested host, at-root with no `workflow/` created on an at-root workspace (P29)
 - [ ] installer: a bare install over an at-root workspace exits 1 pointing to `--update`, with nothing written (P29)
-- [ ] engine: `rotate-backlog` archives the clean phases, then prints a read-only docs-phase proposal for the phases held back only by doc debt (`docs_phase_proposal=`, `phase=`, a copy-pasteable `create:` line) and creates nothing (P30)
+- [ ] engine: `rotate-backlog` checks the doc debt first and prints its decision as the first line, `rotate=<refused|archive|stop_midflight|resume|create>`; for a debt-only phase with no live docs phase it prints `rotate=create` and the proposal (`docs_phase_proposal=`, `phase=`, a `create:` line carrying the queue-jump `--order`), and creates and archives nothing (P30, P33)
 - [ ] engine: `rotate-backlog --archive-only` prints exactly the pre-v51 archive-and-report output, with no `docs_phase` line (P30)
 - [ ] engine: once the printed `create:` line runs, `new-phase --consolidates` marks the docs phase and the next `rotate-backlog` prints `docs_phase_covered=<P> (pays …)` and no second proposal; `--consolidates` naming a phase that owes nothing refuses and writes nothing (P30)
 - [ ] engine: `docs-debt` prints `paid by: <P> (<status>)` under each owing phase a live docs phase covers (P30)
+- [ ] engine: with nothing owed, `rotate-backlog` prints `rotate=archive`, sweeps the done phases and ends `docs_phase=none`; while any debt is uncovered or a docs phase is live it archives nothing (P33)
+- [ ] engine: the `create:` line's `--order` is one below the lowest open default-stream phase, and once it runs as printed `next` points at the docs phase ahead of planned work (P33)
+- [ ] engine: with a live docs phase `rotate-backlog` prints `rotate=resume docs_phase=<P>`, also after that phase has paid its debt but before its review passes; a docs phase that does not sort first is moved ahead (`docs_phase_order=<P> <old> -> <new>`, a `phase_reordered` event) and a second run writes no order (P33)
+- [ ] engine: a default-stream slice that is not `todo`, `ready` or `done`, or a phase that is `pending`, `blocked` or `in_review`, makes `rotate-backlog` print `rotate=stop_midflight midflight=<id>:<status>, …` and write nothing; the docs phase's own slices never stop it (P33)
+- [ ] engine: once the docs phase is `done` and every phase it covers is paid, `rotate=archive` archives them and the docs phase together, leaving open phases active (P33)
+- [ ] engine: on a parallel-stream checkout `rotate-backlog` prints `rotate=refused stream=<branch>`, exits 1 and writes nothing, while `rotate-backlog --archive-only` stays byte-identical to the pre-v54 sweep and report (P33)
+- [ ] machinery: `bash tests/retrofit_smoke.sh` reports ALL RETROFIT SMOKE TESTS PASSED with no FAIL line (247 PASS at P33) (P33)
 
 ## Known Fragile Areas
 
