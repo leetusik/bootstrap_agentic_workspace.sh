@@ -9,6 +9,63 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v54 — 2026-10-12
+
+- **`/rotate-backlog` is one invocation that pays the doc debt, then archives.** It checks the
+  doc debt **first** and archives nothing while any stands. When a phase owes consolidation it
+  creates the docs phase that pays it, runs that phase end to end on the default stream, and only
+  then archives every done phase, the docs phase included. When nothing owes, it archives the done
+  phases right away, as before. It is safe to re-run at any point: a stop (`pending`, `blocked`,
+  `needs_operator`, a failed review) ends the run and the next `/rotate-backlog` resumes from the
+  live docs phase. One docs phase per invocation keeps the chain finite.
+
+- **The engine prints one decision, `rotate=<branch>`, as its first stdout line.** The skill
+  branches on it. `refused` (a parallel stream: doc consolidation and archiving run on the default
+  stream only; exits 1, writes nothing). `archive` (no live docs phase and nothing uncovered owes:
+  the sweep runs, last, and the report ends `docs_phase=none`). `stop_midflight` (the debt stands
+  but default-stream work is off a boundary: nothing is archived, created or reordered). `resume` (a
+  docs phase is live: it continues it, even when it has paid everything but has not passed its
+  review). `create` (the proposal, with the queue-jump `--order`). A docs phase on another stream
+  that pays the debt is named in `docs_phase_elsewhere=` and does not block the sweep.
+
+- **The docs phase jumps the queue.** The printed `create:` line carries `--order` one below the
+  lowest open default-stream phase, so `next` selects the docs phase ahead of planned work. `resume`
+  re-asserts that order on a live docs phase that does not already sort first (one `order` write, a
+  `phase_reordered` event, printed as `docs_phase_order=<P> <old> -> <new>`). No new phase state;
+  `next`, `resolve_current` and `validate` are unchanged.
+
+- **It stops for mid-flight work.** The docs phase never interleaves with a running slice: any
+  default-stream slice that is not `todo`, `ready` or `done`, or any phase that is `pending`,
+  `blocked` or `in_review`, stops `/rotate-backlog` (`rotate=stop_midflight`, listing each as
+  `<id>:<status>`). The docs phase's own slices are excluded. A re-run once those clear goes on.
+
+- **The invocation is the yes, for this route only.** `create-phase`'s confirmation gate is
+  unchanged for every other phase. In the docs-phase route, typing `/rotate-backlog` confirms the
+  engine-drafted name, objective and `docs-debt` scope: the skill shows the proposal, runs the
+  `create:` line as printed (no pause, no narrowing), fills `intent.md`, and runs the phase through
+  `do-whole-phase` in `auto` (the invocation is the explicit `auto` the contract's decomposition
+  carve-out asks for; the docs phase's acceptance gate is normally `--waive`d at its `DECOMP`).
+
+- **Two words.** `gate` restores the approval loop for the embedded run. `archive-only` keeps the
+  pre-v54 archive-and-report sweep (`rotate-backlog --archive-only`), byte-identical, creating and
+  running nothing, and still allowed on a parallel stream.
+
+- **Skills, contract and docs.** The `rotate-backlog` skill is rewritten to the chain (its
+  `allowed-tools` gains `Glob`, `Grep`, `Bash` and `Agent`; it takes `archive-only` and `gate`; it
+  stays `disable-model-invocation: true`). `create-phase` names the invocation as the confirmation
+  for the docs-phase route only, `archive-phase`, `do-whole-phase`, `do-next-slice` and
+  `review-phase` say archiving is `/rotate-backlog`'s (or `archive-all` / `archive-phase <P>`), the
+  contract's exception, decomposition carve-out, *Making a phase ≠ executing it* and archiving lines
+  follow, and the README's skill table row is rewritten. The review's pass message points at
+  `rotate-backlog`. The smoke baseline rises from 239 to 247 PASS (Test 5's v51 rotate block is
+  rewritten to the `rotate=` branches).
+
+- **Migration notes.** Nothing to run. A docs phase created under v51 to v53 sits behind planned
+  work (default order one above the highest phase) until the first `/rotate-backlog` re-asserts its
+  order on `resume`. `archive-only` is unchanged. `/update-workspace` overwrites the
+  `rotate-backlog` skill as machinery; a hand-edited local copy loses its edits, so re-apply them
+  after the sync.
+
 ## v52 — 2026-10-08
 
 - **`/explain` gains a research mode for general, non-code research.** Alongside topic and
