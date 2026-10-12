@@ -3,12 +3,12 @@
   "phase_id": "P32",
   "name": "Skills and contract: dispatch through executor-route, Explore for lookups, attribution by recorded model; executor-route skill replaces executor-mode",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 4,
   "depends_on": [],
   "created_at": "2026-10-12T16:48:31+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-10-12T17:22:23+09:00",
+  "completed_at": "2026-10-12T17:31:56+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -18,7 +18,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Both do-* skills dispatch through executor-route (resolve, pin ## Dispatch, pass model/effort per pass_* lines, record-dispatch every return), use Explore for planning lookups and attribute commits to the recorded model; review-phase and design-cowork follow; CLAUDE.md at 12,284 B; /executor-route replaces /executor-mode; smoke 253/0",
   "validation": {
     "required": [],
     "last_run": null,

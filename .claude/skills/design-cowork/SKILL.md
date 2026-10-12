@@ -212,7 +212,7 @@ as always.
 
 ## Shape — three styles
 
-- **The design slice:** `--kind co-work --risk high`. Never `low` — the slice runs inline, and its dispatched spans run at the high tier: under `drafter` the drafting on `design-drafter`, which follows it, and under both tools the mockup, when one was requested, on `slice-executor-high`, because it is the operator's approval surface.
+- **The design slice:** `--kind co-work --risk high`. Never `low` — the slice runs inline, and its dispatched spans run on the route table's high row: under `drafter` the drafting on `design-drafter` (`executor-route --drafter`), and under both tools the mockup, when one was requested, on `slice-executor-high`, because it is the operator's approval surface.
 - **A design slice writes no *product* implementation code.** It ends at SIGNOFF, and **the real
   implementation is always its own slice.** The only code that can exist inside it is a mockup —
   throwaway, stubbed, dispatched, and built only when the operator asked for one (*The mockup*, below).
@@ -807,9 +807,10 @@ like, you are designing — stop, and raise it.
   `pending`. Never assume localhost, never assume headless. Drive it with the same instrument
   *Verifying* prescribes (**Aside**, the `repl` surface over Bash): the mockup's exemption is from
   the sweep, never from the runtime and never from the tooling.
-- **Dispatched to `slice-executor-high`** — the one span a `co-work` slice dispatches to a slice
-  executor, and it exists only when a mockup was requested. The read-back and the close stay inline;
-  the mockup is real code, and the orchestrator does not write code.
+- **Dispatched to `slice-executor-high`** (the high row; model and effort from `executor-route
+  <slice_id>`, a `co-work` slice being the high row by kind) — the one span a `co-work` slice
+  dispatches to a slice executor, and it exists only when a mockup was requested. The read-back and
+  the close stay inline; the mockup is real code, and the orchestrator does not write code.
   - **drafter:** the drafting goes to `design-drafter`, which builds no mockup. `build-prompt.md` plus
     the round's record on disk, its cards included, are the whole source of truth the executor has —
     exactly as for the implement slice. A card shows what a state looks like; if the executor has to
@@ -930,8 +931,11 @@ the fourth under `claude-design`. **Implementation is a separate slice in every 
 - **Dispatching the drafter.** The Agent tool with `subagent_type: design-drafter`, as a **background**
   task (never pass `run_in_background: false`), one at a time like any executor. The prompt carries
   **only** the round folder (`docs/reference/design/rounds/<NN-slug>/`) and the `co-work` slice id: the
-  drafter reads `handoff.md`, the system and the prior rounds itself, so paste none of them. It follows
-  the high tier's model and effort (`sync-agents`) and is not a tier of its own. It returns a verdict
+  drafter reads `handoff.md`, the system and the prior rounds itself, so paste none of them. It runs on
+  the route table's high row and is not a tier of its own: pass the `model` / `effort` that
+  `executor-route --drafter` prints on the Agent call, pin nothing in the round folder (the design
+  record is the operator's), and record its return with `record-dispatch <slice_id> --agent
+  design-drafter --route high …` like every executor return. It returns a verdict
   block — `status` (`done | needs_operator | blocked`), `round`, `cards_written`, `tokens_changed`,
   `frontend_design`, `departures`, `design_check`, `open_questions`, `blocker` — and commits nothing.
 - **Who writes what under `docs/reference/design/`.** You: `handoff.md`, `feedback.md`, `SIGNOFF.md`,
