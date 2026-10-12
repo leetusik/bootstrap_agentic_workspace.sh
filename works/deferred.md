@@ -4,7 +4,7 @@
 
 ## Summary
 
-- Open: `44`
+- Open: `45`
 - Promoted: `1`
 - Dropped: `11`
 
@@ -54,6 +54,7 @@
 | `D54` | `deferred` | Mark decisions' P16 'machinery-only repository is unaffected' line as superseded | P31.REVIEW | the next docs phase (could fold into D51) | `works/deferred/open/D54` |
 | `D55` | `deferred` | Integrate P33's v54 over P32's v53 (and renumber P34) | P32.REVIEW | P33's gate clears and its branch merges, or P34 starts, whichever comes first | `works/deferred/open/D55` |
 | `D56` | `deferred` | Tighten the one-shot rotate-backlog wording | P33.REVIEW | the next phase that edits the rotate-backlog or create-phase skill or CLAUDE.md, or the first /rotate-backlog gate run that hits a plan-mode permission prompt | `works/deferred/open/D56` |
+| `D57` | `deferred` | next still lists merged P33 as a parallel phase elsewhere | P34.REVIEW | P33's parallel-consolidated is paid, or the next parallel-phase work, whichever comes first | `works/deferred/open/D57` |
 | `D6` | `deferred` | Widen installer/main.py flag_stale_skills() ownership heuristic beyond the disable-model-invocation marker | P17.REVIEW | If a model-invocable skill is retired upstream, or when flag_stale_skills() is next touched. | `works/deferred/open/D6` |
 | `D7` | `deferred` | Qualify review-phase gate stage 4 for a phase whose only surface is a throwaway mockup | P17.REVIEW | Before the first design-only or mockup-shipping phase reaches its review. | `works/deferred/open/D7` |
 

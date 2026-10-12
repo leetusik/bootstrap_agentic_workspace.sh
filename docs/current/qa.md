@@ -1,11 +1,11 @@
 ---
 doc_id: qa
-version: v0014
-created_at: 2026-10-12T18:22:30+09:00
-commit: b2c90d6255b924a5294397d6a3886d09737fb776
-source: P33.REVIEW
-summary: P33 review regression checklist: rotate-backlog decides the chain (rotate= branches, queue-jump order, resume re-assert, stop_midflight, archive last, refused; smoke 247)
-previous: v0013_p26-p30_smoke_baseline_239_design_and_nested-install_pins_fragile_installer_tokenizer
+version: v0015
+created_at: 2026-10-12T20:59:58+09:00
+commit: 50cea9dc9f9851e583ecb0ca8c7e2a351dd19787
+source: P34.REVIEW
+summary: P34 review: regression checklist for boundary-gated compaction (compact-gate, compact-resume, hooks install and merge, contract cap, smoke 289)
+previous: v0014_p33_review_regression_checklist_rotate-backlog_decides_the_chain_rotate_branches_queue-jump_order_resume_re-assert_stop_midflight_archive_last_refused_smoke_247
 ---
 
 # QA
@@ -355,6 +355,13 @@ behaviour and it is re-run by `bash tests/retrofit_smoke.sh` plus
 - [ ] engine: once the docs phase is `done` and every phase it covers is paid, `rotate=archive` archives them and the docs phase together, leaving open phases active (P33)
 - [ ] engine: on a parallel-stream checkout `rotate-backlog` prints `rotate=refused stream=<branch>`, exits 1 and writes nothing, while `rotate-backlog --archive-only` stays byte-identical to the pre-v54 sweep and report (P33)
 - [ ] machinery: `bash tests/retrofit_smoke.sh` reports ALL RETROFIT SMOKE TESTS PASSED with no FAIL line (247 PASS at P33) (P33)
+- [ ] engine: `compact-gate` on an `auto` trigger prints `{"decision": "block", "reason": …}` on stdout while the current slice is `in_progress`/`in_review` or the tree is dirty (generated dashboards and `docs/index.json` excluded), and prints nothing (allow, `rule=boundary`) at a clean slice boundary; every run exits 0 (P34)
+- [ ] engine: `compact-gate` allows, silent on stdout at exit 0, a `manual` trigger, a hook carrying `agent_id`, a transcript fill at or above the ceiling, the request after 8 consecutive blocks (the counter then resets), garbage stdin and a block it cannot count; its one stderr trace line names the `rule=` (P34)
+- [ ] engine: `compact-resume` prints `compaction=done source=compact`, the `next` pointer and the resume line, under 10,000 characters, at exit 0 (P34)
+- [ ] installer: a fresh install's `.claude/settings.json` carries `PreCompact` (`auto`) → `cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-gate || true` and `SessionStart` (`compact`) → `… compact-resume || true`, timeout 15 (P34)
+- [ ] installer: retrofit, `--update` and the nested `settings.local.json` merge add the two hooks once, keep an adopter's own handlers first, re-add a removed one, send a malformed shape to the sidecar (root) or refuse (nested), and a second run is byte-identical (P34)
+- [ ] machinery text: `CLAUDE.md` is at most 12,288 B with every Test 0 pin kept, and `do-whole-phase` / `do-next-slice` carry the post-compaction resume line inside their first 16 KB (P34)
+- [ ] machinery: `bash tests/retrofit_smoke.sh` reports ALL RETROFIT SMOKE TESTS PASSED with no FAIL line (289 PASS at P34) (P34)
 
 ## Known Fragile Areas
 

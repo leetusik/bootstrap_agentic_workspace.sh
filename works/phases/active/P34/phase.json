@@ -2,7 +2,7 @@
   "id": "P34",
   "name": "Boundary-gated compaction: veto mid-process, resume at the slice boundary",
   "objective": "Make context compaction land only at slice boundaries and recover cleanly when it does. A PreCompact hook on auto-compaction calls an engine command that blocks while the current slice is in progress or the tree is dirty, and allows at a clean boundary (slice done, pending or review done, with a clean tree), with two fail-safes: allow above a hard fill ceiling read from the transcript's usage, and after a cap of consecutive blocks; manual /compact is never blocked. A SessionStart hook on the compact source re-injects the workflow pointer and a resume line (re-read the running skill from disk, the active slice folder and the notebook's ## Now). CLAUDE.md gains a short compact-instructions section naming what the summary keeps and drops. The two execution skills are reordered so the loop invariants and the resume line sit within the first 5,000 tokens. Both hooks ship on for everyone through the installer's settings merge. The auto-compact window stays the operator's personal setting, with the recommended value of about 300k recorded in the operations doc. Runs after P32, which rewrites the same skills. Ships as workspace v54.",
-  "status": "planned",
+  "status": "pending",
   "order": 3,
   "created_at": "2026-10-12T16:29:49+09:00",
   "started_at": null,
@@ -15,8 +15,8 @@
   },
   "acceptance": {
     "required": true,
-    "walkthrough": null,
-    "requested_at": null,
+    "walkthrough": "In the terminal, in this checkout:\n(a) Relaunch Claude Code here, then run /hooks. Both should be listed: PreCompact / auto -> cd \"$CLAUDE_PROJECT_DIR\" && python3 scripts/workflow.py compact-gate || true, and SessionStart / compact -> ... compact-resume || true.\n(b) Run /compact once; manual compaction is never blocked. The resumed context should show compaction=done source=compact, the next pointer and the resume line, and the summary should keep what ## Compact Instructions lists.\n(c) Optional: run printf '{\"trigger\":\"auto\",\"session_id\":\"me\"}' | python3 scripts/workflow.py compact-gate once mid-slice (a block message naming the slice) and once at a committed boundary (no output). Delete $TMPDIR/agentic-compact-gate-me.json if one is left.\n(d) Decide: set /autocompact 300k now (recommended now that the veto is live; it is your own setting), or keep autoCompactWindow: 500000.\n(e) Decide on the review's two minor findings: A -- do-next-slice's worktree paragraph moved after step 7 and nothing before step 1 points to it; B -- neither README mentions the compaction hooks (README.en.md l.267 / README.md l.152 call nested settings.local.json \"your personal permissions\"; README.en.md l.616's settings.json comment is incomplete). Fix as one small P34.F1 (rated high: S3/S4 were mid-tier work), file as a deferred job, or accept as is.\n(f) Accept with: python3 scripts/workflow.py accept-gate P34 --clear [--note \"...\"]",
+    "requested_at": "2026-10-13T00:22:47+09:00",
     "cleared_at": null,
     "note": null
   },

@@ -911,3 +911,9 @@
 {"ts": "2026-10-12T20:51:02+09:00", "type": "slice_status_changed", "slice": "P34.S4", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-10-12T20:53:34+09:00", "type": "executor_dispatched", "slice": "P34.S4", "phase": "P34", "kind": "implementation", "risk": "low", "route": "mid", "tier": "mid", "agent": "slice-executor-mid", "model": "sonnet", "effort": "high", "attribution": "Claude Sonnet 5.5", "attempt": 1, "verdict": "done", "duration_ms": 129838, "tokens": 52435, "tool_uses": 12, "note": null}
 {"ts": "2026-10-12T20:53:34+09:00", "type": "slice_status_changed", "slice": "P34.S4", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-10-12T20:54:31+09:00", "type": "slice_status_changed", "slice": "P34.REVIEW", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-10-12T20:59:58+09:00", "type": "doc_version_created", "doc": "qa", "version": "v0015_p34_review_regression_checklist_for_boundary-gated_compaction_compact-gate_compact-resume_hooks_install_and_merge_contract_cap_smoke_289", "source": "P34.REVIEW"}
+{"ts": "2026-10-13T00:22:34+09:00", "type": "executor_dispatched", "slice": "P34.REVIEW", "phase": "P34", "kind": "review", "risk": "high", "route": "high", "tier": "high", "agent": "slice-executor-high", "model": "opus", "effort": "high", "attribution": "Claude Opus 5.5", "attempt": 1, "verdict": "done", "duration_ms": 487336, "tokens": 148998, "tool_uses": 59, "note": null}
+{"ts": "2026-10-13T00:22:47+09:00", "type": "phase_status_changed", "phase": "P34", "old_status": "planned", "new_status": "pending"}
+{"ts": "2026-10-13T00:22:47+09:00", "type": "acceptance_opened", "phase": "P34"}
+{"ts": "2026-10-13T00:22:47+09:00", "type": "deferred_created", "deferred": "D57", "source": "P34.REVIEW"}
