@@ -6,8 +6,8 @@
 ## Pointer
 
 - Current phase: `P34`
-- Current slice: `P34.DECOMP`
-- Next slice: `P34.REVIEW`
+- Current slice: `P34.S1`
+- Next slice: `P34.S2`
 - Waiting on operator: `none`
 - Open deferred jobs: `44`
 
@@ -17,7 +17,7 @@
 |---|---|---|---|---|---|
 | [x] `P32` | `done` | `pass` | One executor route table: dispatch-time model and effort, no presets, Haiku cheap route | `none` | `works/phases/active/P32` |
 | [x] `P33` | `done` | `pass` | One-shot /rotate-backlog: consolidate the doc debt, then archive | `none` · parallel: `phase/P33-one-shot_rotate-backlog_consolidate_the` | `works/phases/active/P33` |
-| [ ] `P34` | `planned` | `pending` | Boundary-gated compaction: veto mid-process, resume at the slice boundary | `P34.DECOMP` | `works/phases/active/P34` |
+| [ ] `P34` | `planned` | `pending` | Boundary-gated compaction: veto mid-process, resume at the slice boundary | `P34.S1` | `works/phases/active/P34` |
 
 ## Phase P32: One executor route table: dispatch-time model and effort, no presets, Haiku cheap route
 
@@ -45,5 +45,9 @@
 
 | Slice | Status | Name | Kind | Path |
 |---|---|---|---|---|
-| [ ] `P34.DECOMP` | `todo` | decompose phase | `decomposition` | `works/phases/active/P34/slices/P34.DECOMP` |
+| [x] `P34.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P34/slices/P34.DECOMP` |
+| [ ] `P34.S1` | `todo` | Engine: compact-gate and compact-resume | `implementation` | `works/phases/active/P34/slices/P34.S1` |
+| [ ] `P34.S2` | `todo` | Ship the hooks: settings, installer hooks merge, smoke | `implementation` | `works/phases/active/P34/slices/P34.S2` |
+| [ ] `P34.S3` | `todo` | Texts: Compact Instructions, skill reorder, doc notes | `implementation` | `works/phases/active/P34/slices/P34.S3` |
+| [ ] `P34.S4` | `todo` | Release v55 | `implementation` | `works/phases/active/P34/slices/P34.S4` |
 | [ ] `P34.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P34/slices/P34.REVIEW` |
