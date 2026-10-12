@@ -3569,6 +3569,215 @@ def cmd_next(args: argparse.Namespace) -> None:
         print(hint)
 
 
+# Boundary-gated compaction (P34, v55). Two hook commands: `compact-gate` (the PreCompact hook, matcher
+# `auto`) vetoes an auto-compaction while a slice is open or the tree is dirty, so compaction lands at a
+# slice boundary; `compact-resume` (the SessionStart hook, matcher `compact`) re-injects the pointer and a
+# resume line after one. The gate FAILS OPEN: every path exits 0, a block is only ever the stdout JSON
+# `{"decision": "block", ...}` (exit 2 would also block, so it is never used), anything unexpected allows,
+# and two fail-safes bound the veto -- the fill ceiling (the transcript's last usage) and the cap on
+# consecutive blocks per session. It writes nothing in the tree (a counter there would itself be dirt).
+COMPACT_CEILING_ENV = "AGENTIC_COMPACT_CEILING"
+COMPACT_CAP_ENV = "AGENTIC_COMPACT_BLOCK_CAP"
+COMPACT_CEILING_1M = 850_000   # 85% of a 1M window
+COMPACT_CEILING_200K = 170_000  # 85% of a 200k window
+COMPACT_BLOCK_CAP = 8
+# The 1M-window family: every Claude 5 model id as the transcript records it (`claude-opus-5-5`,
+# `claude-fable-5-1`, `claude-opus-5`, `claude-haiku-5-5`, `claude-opus-5-5[1m]`); anything else
+# (a Claude 4 id, `<synthetic>`) gets the 200k ceiling. A wrong guess only moves the ceiling: the cap
+# still releases the veto.
+COMPACT_1M_MODEL_RE = re.compile(r"^claude-[a-z]+-5(?:[-\[]|$)")
+# Generated files a read-only command (next, rebuild) may rewrite with no real change; they never make
+# the tree dirty for the gate. `docs/index.json` because `rebuild`/`rebuild-docs` restamp its
+# `last_rebuilt_at` on every run; a real doc change also writes docs/versions/ and docs/current/.
+COMPACT_DIRTY_EXCLUDE = ("works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "docs/index.json")
+COMPACT_TRANSCRIPT_TAIL = 4 * 1024 * 1024
+COMPACT_RESUME_LINE = (
+    "Context was compacted. Re-read the running skill's SKILL.md from disk (.claude/skills/<name>/SKILL.md -- only "
+    "its first 5,000 tokens were re-injected), the active slice folder (plan.md, result.md) and phase.md's `## Now`; "
+    "executors still running are listed by the harness."
+)
+
+
+def _compact_env_int(name: str):
+    raw = os.environ.get(name, "").strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def _compact_last_usage(transcript_path):
+    """(fill, model) from the last main-thread assistant line in the transcript that carries a non-zero
+    `message.usage`, or (None, None) when the file or the usage cannot be read. Reads the file's tail
+    first (transcripts run to tens of MB) and the whole file only when the tail holds no such line."""
+    if not transcript_path or not isinstance(transcript_path, str):
+        return None, None
+    path = Path(transcript_path)
+    try:
+        size = path.stat().st_size
+        starts = [max(0, size - COMPACT_TRANSCRIPT_TAIL)] + ([0] if size > COMPACT_TRANSCRIPT_TAIL else [])
+        for start in starts:
+            with path.open("rb") as f:
+                f.seek(start)
+                lines = f.read().splitlines()
+            if start:
+                lines = lines[1:]  # the first line of a tail read is cut mid-way
+            for raw in reversed(lines):
+                try:
+                    entry = json.loads(raw)
+                except ValueError:
+                    continue
+                if not isinstance(entry, dict) or entry.get("type") != "assistant" or entry.get("isSidechain") is True:
+                    continue
+                message = entry.get("message")
+                usage = message.get("usage") if isinstance(message, dict) else None
+                if not isinstance(usage, dict):
+                    continue
+                fill = 0
+                for key in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"):
+                    value = usage.get(key)
+                    fill += value if isinstance(value, int) else 0
+                if fill <= 0:  # a synthetic or errored turn: no reading, keep looking
+                    continue
+                model = message.get("model")
+                return fill, (model if isinstance(model, str) else "")
+    except OSError:
+        return None, None
+    return None, None
+
+
+def _compact_counter_path(hook: dict) -> Path:
+    """The per-session block counter: never inside the tree (an untracked file there is dirt)."""
+    sid = re.sub(r"[^A-Za-z0-9_.-]", "_", str(hook.get("session_id") or "")) or "nosession"
+    base = hook.get("scratchpad_dir")
+    base = Path(base) if isinstance(base, str) and base.strip() and Path(base).is_dir() else Path(tempfile.gettempdir())
+    return base / f"agentic-compact-gate-{sid}.json"
+
+
+def _compact_read_blocks(path: Path) -> int:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8")).get("blocks")
+    except (OSError, ValueError, AttributeError):
+        return 0
+    return value if isinstance(value, int) and value > 0 else 0
+
+
+def _compact_dirty_count():
+    """How many files are uncommitted where the workspace lives, or None when there is no git to ask.
+    At root: this repo, minus the generated dashboards. Nested: the workspace repo the same way, plus the
+    host's product (everything but the nested folder)."""
+    checks = []
+    if _git_available(cwd=ROOT):
+        checks.append((ROOT, [".", *(f":(exclude){p}" for p in COMPACT_DIRTY_EXCLUDE)]))
+    if HOST_ROOT is not None and _git_available(cwd=HOST_ROOT):
+        checks.append((HOST_ROOT, _host_pathspec()))
+    if not checks:
+        return None
+    paths = set()
+    for cwd, spec in checks:
+        proc = subprocess.run(["git", "status", "--porcelain", "--untracked-files=all", "--", *spec],
+                              cwd=str(cwd), capture_output=True, text=True, timeout=10)
+        if proc.returncode != 0:
+            continue
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=str(cwd), capture_output=True, text=True, timeout=10).stdout.strip()
+        paths.update(f"{top}/{line[3:]}" for line in proc.stdout.splitlines() if len(line) > 3)
+    return len(paths)
+
+
+def cmd_compact_gate(args: argparse.Namespace) -> None:
+    """PreCompact hook: block an auto-compaction mid-slice, allow it at a clean slice boundary.
+    Decision order: (a) not `auto` -> allow; (a') fired inside a subagent (`agent_id`) -> allow; (b) fill >=
+    ceiling -> allow; (c) consecutive blocks >= cap -> allow; (d) current slice in_progress/in_review -> block,
+    dirty tree -> block, else allow. A block prints the JSON and counts (a block it cannot count allows
+    instead); an allow prints nothing and resets the count. Fails open: exit 0 always."""
+    trace = {"decision": "allow", "rule": "error", "slice": "-", "status": "-", "dirty": "-", "fill": "-", "ceiling": "-"}
+    cap, blocks, counter, reason, error = COMPACT_BLOCK_CAP, 0, None, None, None
+    try:
+        try:
+            hook = json.loads(sys.stdin.read() or "null")
+        except ValueError:
+            hook = None
+        if not isinstance(hook, dict):
+            raise ValueError("stdin is not a hook JSON object")
+        cap = _compact_env_int(COMPACT_CAP_ENV) or COMPACT_BLOCK_CAP
+        counter = _compact_counter_path(hook)
+        blocks = _compact_read_blocks(counter)
+        if hook.get("trigger") != "auto":  # (a) a manual /compact is never blocked
+            trace["rule"] = "manual"
+        elif isinstance(hook.get("agent_id"), str) and hook["agent_id"].strip():
+            # (a') a subagent's own compaction (an executor, an Explore lookup): its slice is in_progress for
+            # its whole life, so the veto would only defer it to the cap -- the boundary is the main thread's.
+            # It leaves the main thread's block count alone (the subagent shares the session id).
+            trace["rule"], counter = "subagent", None
+        else:
+            fill, model = _compact_last_usage(hook.get("transcript_path"))  # (b)
+            ceiling = _compact_env_int(COMPACT_CEILING_ENV) or (COMPACT_CEILING_1M if model and COMPACT_1M_MODEL_RE.match(model) else COMPACT_CEILING_200K)
+            trace["fill"], trace["ceiling"] = ("-" if fill is None else fill), ceiling
+            if fill is not None and fill >= ceiling:
+                trace["rule"] = "ceiling"
+            elif blocks >= cap:  # (c)
+                trace["rule"] = "cap"
+            else:  # (d) the pointer `next` prints, read without next's rewrite of the dashboards
+                phases = all_active_phases()
+                _phase, current, _next = resolve_current(stream_phases(phases, current_stream(phases)))
+                status = None
+                if current:
+                    status = next((s.get("status") for p in phases for s in p["slices"] if s.get("id") == current), None)
+                    trace["slice"], trace["status"] = current, status or "-"
+                release = (f"block {blocks + 1}/{cap}; compaction is allowed at a clean slice boundary, "
+                           f"above {ceiling} tokens, or after {cap} blocks in a row")
+                if status in ("in_progress", "in_review"):
+                    trace["rule"], trace["decision"] = "slice_in_progress", "block"
+                    reason = f"slice {current} {status} -- compaction waits for the slice boundary ({release})"
+                else:
+                    dirty = _compact_dirty_count()
+                    trace["dirty"] = "-" if dirty is None else dirty
+                    if dirty:
+                        trace["rule"], trace["decision"] = "dirty", "block"
+                        reason = (f"dirty: {dirty} file{'s' if dirty != 1 else ''} uncommitted (your own uncommitted work counts too) "
+                                  f"-- compaction waits for a committed boundary ({release})")
+                    else:
+                        trace["rule"] = "boundary"
+    except Exception as exc:  # noqa: BLE001 - the gate fails open, always
+        trace.update(decision="allow", rule="error")
+        reason, error = None, f"{type(exc).__name__}: {exc}"
+    try:
+        if trace["decision"] == "block":
+            try:
+                counter.write_text(json.dumps({"blocks": blocks + 1, "updated_at": now_iso()}) + "\n", encoding="utf-8")
+                blocks += 1
+            except Exception as exc:  # noqa: BLE001 - a block the cap cannot count could repeat forever: allow
+                trace.update(decision="allow", rule="error")
+                error = f"block counter unwritable ({type(exc).__name__}: {exc})"
+        if trace["decision"] == "block":
+            print(json.dumps({"decision": "block", "reason": reason}))
+        elif counter is not None:  # every allow resets the count, bar a subagent's
+            blocks = 0
+            try:
+                counter.unlink()
+            except Exception:  # noqa: BLE001 - nothing to reset
+                pass
+        line = "compact-gate: " + " ".join(f"{k}={v}" for k, v in trace.items()) + f" blocks={blocks}/{cap}"
+        if error:
+            line += f" error={_one_line(error)}"
+        print(line, file=sys.stderr)
+    except Exception:  # noqa: BLE001 - never fail the request
+        pass
+
+
+def cmd_compact_resume(args: argparse.Namespace) -> None:
+    """SessionStart hook (source `compact`): print the pointer and the resume line as facts. Always exit 0."""
+    try:
+        sys.stdin.read()
+    except Exception:  # noqa: BLE001 - the input is informational only
+        pass
+    print("compaction=done source=compact")
+    try:
+        cmd_next(args)
+    except BaseException as exc:  # noqa: BLE001 - SystemExit included: the hook must never fail
+        print(f"pointer unavailable: {_one_line(str(exc)) or type(exc).__name__}")
+    print(COMPACT_RESUME_LINE)
 def cmd_deferred(args: argparse.Namespace) -> None:
     rebuild_index_and_state()
     groups = deferred_jobs()
@@ -4787,6 +4996,12 @@ def main(argv=None) -> int:
     p = sub.add_parser("next", help="Print the current phase/slice selection")
     p.set_defaults(func=cmd_next)
 
+    p = sub.add_parser("compact-gate", help="The PreCompact hook (matcher auto): read the hook JSON on stdin and veto an auto-compaction while this checkout's current slice is in_progress or in_review or the tree is dirty, so compaction lands at a slice boundary; fails open -- a manual /compact, a fill at or above the ceiling (AGENTIC_COMPACT_CEILING), the cap of consecutive blocks (AGENTIC_COMPACT_BLOCK_CAP) and any error all allow, a block is only the stdout {\"decision\": \"block\"} JSON, and it always exits 0 (one trace line on stderr)")
+    p.set_defaults(func=cmd_compact_gate)
+
+    p = sub.add_parser("compact-resume", help="The SessionStart hook (matcher compact): print the next pointer and the resume line (re-read the running skill, the active slice folder and phase.md's ## Now) after a compaction; never fails, always exits 0")
+    p.set_defaults(func=cmd_compact_resume)
+
     p = sub.add_parser("deferred", help="Rebuild and print deferred jobs dashboard summary")
     p.set_defaults(func=cmd_deferred)
 
@@ -4976,7 +5191,7 @@ def main(argv=None) -> int:
     p.set_defaults(func=rotate_backlog)
 
     args = parser.parse_args(argv)
-    if NESTED is not None and NESTED_PROBLEMS and args.cmd != "validate":
+    if NESTED is not None and NESTED_PROBLEMS and args.cmd not in ("validate", "compact-gate", "compact-resume"):  # the hooks fail open
         # Never fall back to at-root mode on a broken marker: refuse, and let validate list it all.
         raise SystemExit(f"{shown(ROOT / NESTED_MARKER)} is malformed, so this nested install cannot run {args.cmd}: "
                          f"{'; '.join(NESTED_PROBLEMS)} -- fix the file (run: {WORKFLOW_CMD} validate)")

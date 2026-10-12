@@ -1193,6 +1193,73 @@ ds_out=$(rd dispatch-summary); ds_rc=$?
 rd record-dispatch P1.DECOMP --route high --model opus --effort "" --verdict done >/dev/null
 rd dispatch-summary | grep -q '^opus @ (none)' \
   && ok "record-dispatch accepts --effort \"\" (shown as opus @ (none))" || bad "an empty effort was not recorded/shown"
+# v55 boundary-gated compaction (P34.S1): compact-gate (the PreCompact hook) vetoes an auto-compaction while
+# the current slice is open or the tree is dirty, fails open (manual, the fill ceiling, the block cap, an
+# unreadable transcript or stdin) and always exits 0; compact-resume re-injects the pointer and a resume line.
+# Driven with fabricated hook JSON on a git fixture of its own (a fresh install + P1, committed).
+newtmp CGT
+CG="$CGT/ws"
+sh "$BOOT" "$CG" --at-root --name "Gate" --summary "gate probe" >/dev/null 2>&1 \
+  && ( cd "$CG" && { git init -q -b main . 2>/dev/null || git init -q .; } && git config user.email smoke@example.invalid && git config user.name smoke \
+       && python3 scripts/workflow.py new-phase --phase P1 --name "Gate probe" --objective "probe the compaction gate" >/dev/null 2>&1 \
+       && git add -A >/dev/null 2>&1 && git commit -qm seed >/dev/null 2>&1 ) \
+  || bad "compact-gate: could not build the committed git fixture"
+CG_TR="$CGT/transcript.jsonl"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":"hi"}}' \
+  '{"type":"assistant","message":{"model":"claude-opus-5-5","usage":{"input_tokens":1000,"cache_read_input_tokens":200000,"cache_creation_input_tokens":500}}}' > "$CG_TR"
+CGENV=""
+cg() { # cg <trigger> [transcript_path] -- stdout is the decision, the stderr trace lands in $CGT/err, $? is the exit code
+  printf '{"session_id":"s1","trigger":"%s","transcript_path":"%s","scratchpad_dir":"%s","cwd":"%s"}' "$1" "${2:-$CG_TR}" "$CGT" "$CG" \
+    | ( cd "$CG" && env -u AGENTIC_COMPACT_CEILING -u AGENTIC_COMPACT_BLOCK_CAP $CGENV python3 scripts/workflow.py compact-gate 2>"$CGT/err" )
+}
+cg_out=$(cg manual); cg_rc=$?
+[ "$cg_rc" -eq 0 ] && [ -z "$cg_out" ] && grep -q 'decision=allow rule=manual' "$CGT/err" \
+  && ok "compact-gate: a manual /compact is never blocked (no stdout, exit 0)" || bad "compact-gate manual wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err")"
+cg_out=$(cg auto); cg_rc=$?
+[ "$cg_rc" -eq 0 ] && [ -z "$cg_out" ] && grep -q 'decision=allow rule=boundary slice=P1.DECOMP status=todo dirty=0' "$CGT/err" \
+  && ok "compact-gate: a todo slice on a clean tree is a boundary (allow, no stdout)" || bad "compact-gate clean boundary wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err")"
+( cd "$CG" && python3 scripts/workflow.py start-slice P1.DECOMP >/dev/null 2>&1 ) || bad "compact-gate: start-slice failed on the fixture"
+cg_out=$(cg auto); cg_rc=$?
+[ "$cg_rc" -eq 0 ] && printf '%s\n' "$cg_out" | grep -q '"decision": "block"' && printf '%s\n' "$cg_out" | grep -q 'slice P1.DECOMP in_progress' \
+  && grep -q 'decision=block rule=slice_in_progress .* fill=201500 ceiling=850000 blocks=1/8' "$CGT/err" \
+  && ok "compact-gate: an in_progress slice blocks with the JSON on stdout at exit 0, the reason naming the slice (5-family ceiling 850000)" \
+  || bad "compact-gate mid-slice block wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err")"
+cg_out=$(printf '{"session_id":"s1","agent_id":"a1","agent_type":"slice-executor-high","trigger":"auto","transcript_path":"%s","scratchpad_dir":"%s"}' "$CG_TR" "$CGT" \
+  | ( cd "$CG" && env -u AGENTIC_COMPACT_CEILING -u AGENTIC_COMPACT_BLOCK_CAP python3 scripts/workflow.py compact-gate 2>"$CGT/err" )); cg_rc=$?
+[ "$cg_rc" -eq 0 ] && [ -z "$cg_out" ] && grep -q 'decision=allow rule=subagent .* blocks=1/8' "$CGT/err" \
+  && ok "compact-gate: a subagent's own auto-compaction (agent_id set) is allowed mid-slice and leaves the main thread's block count alone" || bad "compact-gate subagent wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err")"
+CGENV="AGENTIC_COMPACT_CEILING=1000"; cg_out=$(cg auto); cg_rc=$?; CGENV=""
+[ "$cg_rc" -eq 0 ] && [ -z "$cg_out" ] && grep -q 'decision=allow rule=ceiling .* blocks=0/8' "$CGT/err" && [ ! -e "$CGT/agentic-compact-gate-s1.json" ] \
+  && ok "compact-gate: a fill at or above AGENTIC_COMPACT_CEILING allows even mid-slice and resets the count" || bad "compact-gate ceiling wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err")"
+CGENV="AGENTIC_COMPACT_BLOCK_CAP=2"; cg_seq=""
+for _i in 1 2 3 4; do cg_out=$(cg auto); case "$cg_out" in *'"decision": "block"'*) cg_seq="$cg_seq block";; '') cg_seq="$cg_seq allow";; *) cg_seq="$cg_seq ?";; esac; done; CGENV=""
+[ "$cg_seq" = " block block allow block" ] \
+  && ok "compact-gate: AGENTIC_COMPACT_BLOCK_CAP=2 releases the third consecutive block, then the count starts over" || bad "compact-gate cap sequence wrong:$cg_seq"
+mkdir -p "$CGT/ro/agentic-compact-gate-s1.json"  # a directory where the counter goes: the block cannot be counted
+cg_out=$(printf '{"session_id":"s1","trigger":"auto","transcript_path":"","scratchpad_dir":"%s"}' "$CGT/ro" \
+  | ( cd "$CG" && env -u AGENTIC_COMPACT_CEILING -u AGENTIC_COMPACT_BLOCK_CAP python3 scripts/workflow.py compact-gate 2>"$CGT/err" )); cg_rc=$?
+[ "$cg_rc" -eq 0 ] && [ -z "$cg_out" ] && grep -q 'decision=allow rule=error .* error=block counter unwritable' "$CGT/err" \
+  && ok "compact-gate: a block the cap cannot count (counter unwritable) allows instead -- never an endless veto" || bad "compact-gate unwritable counter wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err")"
+cg_out=$(cg auto "$CGT/no-such-transcript.jsonl"); cg_rc=$?
+[ "$cg_rc" -eq 0 ] && printf '%s\n' "$cg_out" | grep -q '"decision": "block"' && grep -q 'rule=slice_in_progress .* fill=- ceiling=170000' "$CGT/err" \
+  && ok "compact-gate: an unreadable transcript skips the ceiling and still decides by the boundary" || bad "compact-gate missing transcript wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err")"
+cg_out=$(printf 'not json' | ( cd "$CG" && python3 scripts/workflow.py compact-gate 2>"$CGT/err" )); cg_rc=$?
+[ "$cg_rc" -eq 0 ] && [ -z "$cg_out" ] && grep -q 'decision=allow rule=error' "$CGT/err" \
+  && ok "compact-gate: garbage stdin fails open (no stdout, exit 0, rule=error)" || bad "compact-gate garbage stdin wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err")"
+( cd "$CG" && python3 scripts/workflow.py finish-slice P1.DECOMP --outcome "probe" >/dev/null 2>&1 && git add -A >/dev/null 2>&1 && git commit -qm "finish P1.DECOMP" >/dev/null 2>&1 \
+  && python3 scripts/workflow.py next >/dev/null 2>&1 && python3 scripts/workflow.py rebuild >/dev/null 2>&1 ) || bad "compact-gate: finish-slice / commit / next / rebuild failed on the fixture"
+cg_out=$(cg auto); cg_rc=$?
+[ "$cg_rc" -eq 0 ] && [ -z "$cg_out" ] && grep -q 'decision=allow rule=boundary slice=P1.REVIEW status=todo dirty=0' "$CGT/err" \
+  && ok "compact-gate: after finish-slice + commit, the dashboards and docs/index.json next/rebuild restamp are not dirt (allow)" || bad "compact-gate after the boundary commit wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err") -- $(cd "$CG" && git status --porcelain)"
+mkdir -p "$CG/src" && printf 'print("wip")\n' > "$CG/src/wip.py"
+cg_out=$(cg auto); cg_rc=$?
+[ "$cg_rc" -eq 0 ] && printf '%s\n' "$cg_out" | grep -q '"decision": "block"' && printf '%s\n' "$cg_out" | grep -q 'dirty: 1 file uncommitted' \
+  && ok "compact-gate: an untracked product file blocks at the boundary (dirty: 1 file)" || bad "compact-gate dirty tree wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err")"
+rm -f "$CG/src/wip.py"
+cr_out=$( cd "$CG" && printf '{"source":"compact"}' | python3 scripts/workflow.py compact-resume 2>&1 ); cr_rc=$?
+[ "$cr_rc" -eq 0 ] && printf '%s\n' "$cr_out" | grep -qx 'current_slice=P1.REVIEW' && printf '%s\n' "$cr_out" | grep -q 'Re-read the running skill' \
+  && [ "${#cr_out}" -lt 10000 ] \
+  && ok "compact-resume prints the pointer and the resume line, under 10,000 characters" || bad "compact-resume wrong (rc=$cr_rc): $cr_out"
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed re-applying the fable override"
 rm -rf "$F/.claude/skills/do-whole-phase"
@@ -1740,12 +1807,24 @@ if nw sync-agents --check >/dev/null 2>&1 && grep -qx "name: wf-design-drafter" 
   ok "sync-agents resolves agents in the host's .claude/agents through the rename map and keeps the renamed name:"
 else bad "sync-agents missed the host agent dir or the rename map, or rewrote name:"; fi
 nw validate >/dev/null 2>&1 && ok "validate passes on a well-formed nested install" || bad "validate failed on a well-formed nested install -- $(nw validate 2>&1)"
+# compact-gate from the host (P34.S1): the nested workspace repo was never committed, so the gate reads it
+# (and the host's product) as dirty and blocks at the todo P1.DECOMP boundary; exit 0 either way.
+cg_out=$(printf '{"session_id":"nested","trigger":"auto","transcript_path":"","scratchpad_dir":"%s"}' "$NS" | nw compact-gate 2>"$NS/cg_err"); cg_rc=$?
+[ "$cg_rc" -eq 0 ] && printf '%s\n' "$cg_out" | grep -q '"decision": "block"' && printf '%s\n' "$cg_out" | grep -q '"reason": "dirty: ' \
+  && grep -q 'decision=block rule=dirty slice=P1.DECOMP status=todo' "$NS/cg_err" \
+  && ok "nested: compact-gate runs from the host and blocks on the uncommitted workspace repo (dirty:), exit 0" || bad "nested compact-gate wrong (rc=$cg_rc): $cg_out $(cat "$NS/cg_err")"
 printf '{"schema": 1, "host_root": ".."' > "$NH/workflow/.agentic-nested.json"
 val_out=$(nw validate 2>&1); val_rc=$?; nx_out=$(nw next 2>&1); nx_rc=$?
 [ "$val_rc" -ne 0 ] && printf '%s\n' "$val_out" | grep -Fq ".agentic-nested.json: cannot be read as JSON" \
   && [ "$nx_rc" -ne 0 ] && printf '%s\n' "$nx_out" | grep -Fq ".agentic-nested.json is malformed" \
   && ok "a malformed .agentic-nested.json fails validate and stops every other command (never read as at-root mode)" \
   || bad "a malformed .agentic-nested.json passed validate or ran next (rc=$val_rc/$nx_rc) -- $val_out $nx_out"
+cg_out=$(printf '{"session_id":"nested","trigger":"manual"}' | nw compact-gate 2>"$NS/cg_err"); cg_rc=$?
+cr_out=$(printf '{}' | nw compact-resume 2>&1); cr_rc=$?
+[ "$cg_rc" -eq 0 ] && [ -z "$cg_out" ] && grep -q '^compact-gate: decision=allow rule=manual' "$NS/cg_err" \
+  && [ "$cr_rc" -eq 0 ] && printf '%s\n' "$cr_out" | grep -q 'Re-read the running skill' \
+  && ok "a malformed marker never stops the compaction hooks: compact-gate and compact-resume still run and exit 0" \
+  || bad "the compaction hooks refused on a malformed marker (rc=$cg_rc/$cr_rc): $cg_out $(cat "$NS/cg_err") $cr_out"
 
 # ---------------------------------------------------------------------------
 echo "== Test 15: P28 nested install -- --nested leaves the host clean (status, HEAD, config), renames a clashing skill, prefixes every engine path, imports the contract, refreshes in place with --update --nested, and refuses a host whose .gitignore would expose a target =="
