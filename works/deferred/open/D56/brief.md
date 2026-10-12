@@ -1,4 +1,4 @@
-# Deferred: D55 Tighten the one-shot rotate-backlog wording
+# Deferred: D56 Tighten the one-shot rotate-backlog wording
 
 ## Context
 
