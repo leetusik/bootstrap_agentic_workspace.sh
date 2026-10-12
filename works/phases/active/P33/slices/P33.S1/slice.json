@@ -1,0 +1,32 @@
+{
+  "id": "P33.S1",
+  "phase_id": "P33",
+  "name": "Engine: rotate-backlog decides the chain, archives last",
+  "kind": "implementation",
+  "status": "done",
+  "order": 10,
+  "depends_on": [],
+  "created_at": "2026-10-12T16:55:44+09:00",
+  "started_at": "2026-10-12T17:00:24+09:00",
+  "completed_at": "2026-10-12T17:16:27+09:00",
+  "risk": "high",
+  "source": {
+    "type": "manual",
+    "id": null
+  },
+  "paths": {
+    "plan": "plan.md",
+    "result": "result.md"
+  },
+  "outcome": "rotate-backlog checks the debt first and prints rotate=<refused|archive|stop_midflight|resume|create> as its first line, archives only when nothing owes, create carries a queue-jump --order and resume re-asserts it; --archive-only unchanged; smoke 247/0",
+  "validation": {
+    "required": [],
+    "last_run": null,
+    "last_status": "pending"
+  },
+  "archive": {
+    "archived": false,
+    "archived_at": null,
+    "archive_path": null
+  }
+}
