@@ -837,6 +837,19 @@ grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '
 grep -q '^works/events\.jsonl merge=union$' "$F/.gitattributes" && ok "fresh install seeds .gitattributes with the union rule" || bad "fresh install missing the .gitattributes union rule"
 [ ! -f "$F/.env.example" ] && [ ! -f "$F/executors.toml.example" ] && ok "legacy .env.example / executors.toml.example retired (absent on fresh install)" || bad "a legacy tier-config example should be retired but is present"
 ( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && ok "sync-agents --check: seeded route config matches live agents" || bad "sync-agents --check failed on a fresh install"
+# v53 (P32.S5): the adopter seed of executors.toml is derived from the live file with the cheap-route block
+# commented out -- a fresh install inherits the mid row until the adopter opts in.
+grep -qx '# \[claude\.cheap\]' "$F/executors.toml" && grep -qx '# model = "haiku"' "$F/executors.toml" && grep -qx '# effort = "high"' "$F/executors.toml" \
+  && ! grep -q '^\[claude\.cheap\]' "$F/executors.toml" && [ "$(grep -c 'cheap-route: begin' "$F/executors.toml")" = "1" ] && [ "$(grep -c 'cheap-route: end' "$F/executors.toml")" = "1" ] \
+  && ok "the fresh install's executors.toml seeds the cheap-route block commented out, markers intact" || bad "the seeded executors.toml does not comment out the cheap-route block"
+seed_er=$(cd "$F" && python3 scripts/workflow.py executor-route 2>&1)
+printf '%s\n' "$seed_er" | grep -qE '^cheap +mid +sonnet +high +mid row$' \
+  && ok "a fresh install's cheap row inherits the mid row (sonnet high, source mid row)" || bad "a fresh install's cheap row is not the mid row: $seed_er"
+newtmp SEEDT
+python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from build import derive_executors_seed; print(derive_executors_seed(open(sys.argv[2]).read()), end="")' "$REPO_ROOT/installer" "$REPO_ROOT/executors.toml" > "$SEEDT/executors.seed.toml"
+python3 -c 'import sys; L=open(sys.argv[1]).read().split("\n"); b=L.index("# cheap-route: begin"); e=L.index("# cheap-route: end"); L[b+1:e]=[l[2:] if l.startswith("# ") else l for l in L[b+1:e]]; print("\n".join(L), end="")' "$F/executors.toml" > "$SEEDT/executors.uncommented.toml"
+cmp -s "$SEEDT/executors.uncommented.toml" "$REPO_ROOT/executors.toml" && diff -q "$F/executors.toml" "$SEEDT/executors.seed.toml" >/dev/null \
+  && ok "uncommenting the seed's cheap block reproduces the live executors.toml byte-for-byte (single source)" || bad "the seeded executors.toml and the live one disagree beyond the cheap block"
 # v32 operator acceptance gate, probed once against a real engine (throwaway workspace).
 ( cd "$F" && python3 scripts/workflow.py new-phase --phase P1 --name "Gate probe" --objective "probe the gate" >/dev/null 2>&1 ) \
   && grep -q '"acceptance"' "$F/works/phases/active/P1/phase.json" && ok "new-phase stamps the acceptance gate block" || bad "new-phase did not stamp the acceptance block"
@@ -1124,6 +1137,7 @@ rd dispatch-summary | grep -q '^opus @ (none)' \
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed re-applying the fable override"
 rm -rf "$F/.claude/skills/do-whole-phase"
+mkdir -p "$F/.claude/skills/executor-mode" && printf -- '---\nname: executor-mode\ndisable-model-invocation: true\n---\nstale v45 skill\n' > "$F/.claude/skills/executor-mode/SKILL.md"
 printf '%s\n' '# stale pre-v31 visual skill' > "$F/.claude/skills/design-cowork/SKILL.md"
 # Seed the pre-v31 Codex shape so the v31 migration flagging has something to find.
 mkdir -p "$F/.agents/skills/do-next-slice" "$F/.codex/agents"
@@ -1154,6 +1168,8 @@ done
 [ -z "$stale_bad" ] \
   && ok "--update flags each pre-v31 Codex path as stale exactly once" \
   || bad "v31 stale-machinery line is wrong ($stale_bad) -- $stale_line"
+printf '%s\n' "$stale_line" | grep -q '\.claude/skills/executor-mode' && [ -f "$F/.claude/skills/executor-mode/SKILL.md" ] \
+  && ok "--update flags the retired executor-mode skill dir as stale and never deletes it" || bad "--update did not flag the retired executor-mode skill: $stale_line"
 [ -f "$F/.agents/skills/do-next-slice/SKILL.md" ] && [ -f "$F/.codex/agents/slice-executor.toml" ] \
   && [ -f "$F/AGENTS.md" ] && [ -f "$F/AGENTS.workspace.md" ] \
   && ok "--update never deletes the flagged pre-v31 machinery" || bad "--update deleted machinery it only flags"
@@ -1224,8 +1240,12 @@ works/templates/intent.md
 works/templates/phase.md
 .github/workflows/workspace-ci.yml
 .gitattributes"
+# executors.toml is the one derived payload: the adopter seed (cheap-route block commented out), not the live file.
+newtmp DUALT
+python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from build import derive_executors_seed; print(derive_executors_seed(open(sys.argv[2]).read()), end="")' "$REPO_ROOT/installer" "$REPO_ROOT/executors.toml" > "$DUALT/executors.seed.toml"
 for rel in $DUAL_FIXED CLAUDE.md; do
-  diff -q "$REPO_ROOT/$rel" "$F/$rel" >/dev/null \
+  src="$REPO_ROOT/$rel"; [ "$rel" = "executors.toml" ] && src="$DUALT/executors.seed.toml"
+  diff -q "$src" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
     || bad "DRIFT: $rel differs from the bootstrap-embedded copy"
 done
@@ -1723,6 +1743,19 @@ if [ "$rc" -eq 0 ] && ih_clean && [ ! -e "$IH/workflow/workflow" ] && ! grep -rq
 else bad "--update --nested lost state or left a footprint (rc=$rc) -- $out"; fi
 out=$(sh "$BOOT" "$IH" --nested --into-existing 2>&1); rc=$?
 [ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -q "mutually exclusive" && ok "--nested --into-existing is rejected" || bad "--nested --into-existing was accepted (rc=$rc) -- $out"
+# v53 (P32.S5): a host that already has its own .claude/agents/Explore.md gets ours renamed like any clash.
+IX="$NI/explore-host"
+mkdir -p "$IX/.claude/agents" && ( cd "$IX" && { git init -q -b main . 2>/dev/null || git init -q .; } && git config user.email smoke@example.invalid && git config user.name smoke \
+  && printf -- '---\nname: Explore\ndescription: the host explore agent\n---\n\nHost rules.\n' > .claude/agents/Explore.md && git add -A && git commit -qm "chore: host explore" ) >/dev/null 2>&1 \
+  || bad "nested install: could not build the Explore-clash host fixture"
+ix_explore=$(sha "$IX/.claude/agents/Explore.md"); out=$(sh "$BOOT" "$IX" --nested 2>&1); rc=$?
+python3 -c 'import json,sys; r=json.load(open(sys.argv[1]))["renames"]["agents"]; assert r.get("Explore") == "wf-Explore", r' "$IX/workflow/.agentic-nested.json" >/dev/null 2>&1 \
+  && [ "$rc" -eq 0 ] && grep -qx "name: wf-Explore" "$IX/.claude/agents/wf-Explore.md" && [ "$(sha "$IX/.claude/agents/Explore.md")" = "$ix_explore" ] \
+  && grep -q 'subagent_type: wf-Explore' "$IX/.claude/skills/do-next-slice/SKILL.md" "$IX/.claude/agents/slice-executor-mid.md" "$IX/.claude/agents/slice-executor-high.md" \
+  && ( cd "$IX" && python3 workflow/scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) \
+  && ok "a host with its own Explore.md: ours installs as wf-Explore (marker rename + name:), the host's is byte-identical, the executors and skill call wf-Explore" \
+  || bad "the Explore clash was not renamed cleanly (rc=$rc) -- $out"
+echo "NOTE: wf-Explore occurrences: executor-mid=$(grep -o 'wf-Explore' "$IX/.claude/agents/slice-executor-mid.md" | wc -l | tr -d ' ') executor-high=$(grep -o 'wf-Explore' "$IX/.claude/agents/slice-executor-high.md" | wc -l | tr -d ' ')"
 IT="$NI/tracked"
 mkdir -p "$IT" && ( cd "$IT" && { git init -q -b main . 2>/dev/null || git init -q .; } && git config user.email smoke@example.invalid && git config user.name smoke \
   && printf 'team notes\n' > CLAUDE.local.md && git add -A && git commit -qm "chore: team local notes" ) >/dev/null 2>&1 || bad "nested install: could not build the tracked-target fixture"

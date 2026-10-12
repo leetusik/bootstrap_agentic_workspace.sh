@@ -13,6 +13,8 @@ Source of truth:
       .claude/settings.json, executors.toml, works/templates/*,
       .github/workflows/workspace-ci.yml, .gitattributes, and the CLAUDE.md
       contract body (header stripped, embedded once).
+    One exception: executors.toml is embedded as the adopter seed, the live file
+    with its cheap-route block commented out (derive_executors_seed).
   * installer/payloads/  (fresh-install-only seeds, no live counterpart):
       doc_bodies/<doc>.md, sentinel-templated (__PROJECT_NAME__ / __PROJECT_SUMMARY__
       substituted by main.py at install time).
@@ -74,11 +76,31 @@ def read(rel: str, base: Path = REPO) -> str:
     return p.read_text(encoding="utf-8")
 
 
+CHEAP_BEGIN, CHEAP_END = "# cheap-route: begin", "# cheap-route: end"
+
+
+def derive_executors_seed(text: str) -> str:
+    """The adopter seed of executors.toml: the live file with the cheap-route block's
+    non-comment lines commented out, so a fresh install inherits the mid row until the
+    adopter opts in. Markers must both exist, once, in order; anything else is a build error."""
+    lines = text.split("\n")
+    begin = [i for i, l in enumerate(lines) if l.strip() == CHEAP_BEGIN]
+    end = [i for i, l in enumerate(lines) if l.strip() == CHEAP_END]
+    if len(begin) != 1 or len(end) != 1 or begin[0] >= end[0]:
+        die("executors.toml: expected exactly one '# cheap-route: begin' … '# cheap-route: end' block")
+    for i in range(begin[0] + 1, end[0]):
+        if lines[i].strip() and not lines[i].lstrip().startswith("#"):
+            lines[i] = "# " + lines[i]
+    return "\n".join(lines)
+
+
 def collect_live_payloads() -> "dict":
-    """target-path -> content for every verbatim live file (deterministic ordering)."""
+    """target-path -> content for every live file (deterministic ordering); verbatim
+    except executors.toml, which is the derived adopter seed."""
     payloads: dict = {}
     for rel in FIXED_LIVE_FILES:
         payloads[rel] = read(rel)
+    payloads["executors.toml"] = derive_executors_seed(read("executors.toml"))
     # Skills are discovered from disk (sorted) so adding/removing a skill needs no code change.
     for skill in sorted((REPO / ".claude/skills").glob("*/SKILL.md")):
         payloads[str(skill.relative_to(REPO))] = skill.read_text(encoding="utf-8")

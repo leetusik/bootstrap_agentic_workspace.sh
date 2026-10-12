@@ -9,6 +9,31 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v53 — 2026-10-12
+
+- **One executor route table replaces the economy/flex presets.** The engine owns five rows (`high`,
+  `research`, `mid`, `cheap`, `explore`); `executors.toml` overrides them per row (`[claude.<row>]`,
+  keys `model` / `effort`). The orchestrator resolves each dispatch with the new `executor-route`
+  command (`/executor-route` skill, replacing `/executor-mode`) and passes the row's model and effort
+  on the Agent call; the agent files' frontmatter is only the fallback. Verdict blocks record `model`
+  and `effort` beside `tier`, and commit attribution follows the recorded model.
+- **The cheap route.** `docs` and `qa` slices rated `low` run the mid executor file on Haiku at high.
+  On in the upstream repo; the `executors.toml` seed ships with the block commented out (the `haiku`
+  alias is Haiku 4.5 on Bedrock, Vertex and Foundry), so an unset `cheap` row is the mid row.
+- **The instrument.** `record-dispatch` appends an `executor_dispatched` event to `works/events.jsonl`
+  after every executor return; `dispatch-summary` reads it back by route, model @ effort and kind.
+- **`Explore.md` and the Agent tool.** `.claude/agents/Explore.md` (haiku @ high, read-only, managed
+  like the other agent files) overrides the built-in Explore; both executor tiers gain the Agent tool
+  for read-only lookups only, never for `result.md`, `phase.md`, code or validation.
+
+- **Migration notes.** Delete any `mode = "..."` line from `executors.toml`: the engine refuses it and
+  says how to keep flex (`effort = "xhigh"` under `[claude.mid]` and `[claude.high]`). Re-run
+  `python3 scripts/workflow.py sync-agents` after `--update` (updates reset the agent files to the
+  upstream defaults). To opt in to the cheap route on the Anthropic API, uncomment the
+  `# cheap-route: begin` block in `executors.toml`. The retired skill directory
+  `.claude/skills/executor-mode/` is flagged for removal. A nested install whose host already has
+  `.claude/agents/Explore.md` gets ours renamed `wf-Explore`.
+
 ## v52 — 2026-10-08
 
 - **`/explain` gains a research mode for general, non-code research.** Alongside topic and

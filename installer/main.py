@@ -41,7 +41,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 52
+WORKSPACE_VERSION = 53
 ROOT = TARGET.resolve()
 # Nested personal install (P28; the default layout since P29): TARGET is a HOST git repo -- one the
 # operator may not own, or a new/empty dir this run `git init`s. The engine and all workflow state go
@@ -1509,7 +1509,7 @@ elif RETROFIT:
 else:
     print(f"Bootstrapped agentic workspace at {TARGET}")
     print("Contract: CLAUDE.md")
-    print("Claude Code: 18 skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{mid,high}.md, design subagent .claude/agents/design-drafter.md, settings .claude/settings.json")
+    print("Claude Code: 18 skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{mid,high}.md, design subagent .claude/agents/design-drafter.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
     print("Visual design: design-cowork fires automatically; per phase the operator picks the tool — drafter (default: the design-drafter subagent drafts each round as plain files under docs/reference/design/: numbered cards, tokens, round records) or claude-design (they design in Claude Design; records under docs/reference/design/claude-design/) — and decides: picks a style (build-after / design-only / paired) and signs on the cards, or on a runnable mockup they ask for, before separate implementation and browser fidelity; python3 scripts/workflow.py design-register lists a drafter repo for a design dashboard")
     print("Executor tiers are routed by kind, then risk, then attempt (mid is the default tier, real code included; high for decomposition, research, review, named triggers and retries), through one route table whose rows set each dispatch's model and effort; python3 scripts/workflow.py executor-route shows it (and executor-route <slice> the decision for one slice); override a row in executors.toml, then run sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
