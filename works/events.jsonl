@@ -908,3 +908,6 @@
 {"ts": "2026-10-12T20:33:45+09:00", "type": "slice_status_changed", "slice": "P34.S3", "old_status": "in_progress", "new_status": "blocked"}
 {"ts": "2026-10-12T20:41:25+09:00", "type": "slice_status_changed", "slice": "P34.S3", "old_status": "blocked", "new_status": "in_progress"}
 {"ts": "2026-10-12T20:50:23+09:00", "type": "slice_status_changed", "slice": "P34.S3", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-10-12T20:51:02+09:00", "type": "slice_status_changed", "slice": "P34.S4", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-10-12T20:53:34+09:00", "type": "executor_dispatched", "slice": "P34.S4", "phase": "P34", "kind": "implementation", "risk": "low", "route": "mid", "tier": "mid", "agent": "slice-executor-mid", "model": "sonnet", "effort": "high", "attribution": "Claude Sonnet 5.5", "attempt": 1, "verdict": "done", "duration_ms": 129838, "tokens": 52435, "tool_uses": 12, "note": null}
+{"ts": "2026-10-12T20:53:34+09:00", "type": "slice_status_changed", "slice": "P34.S4", "old_status": "in_progress", "new_status": "done"}

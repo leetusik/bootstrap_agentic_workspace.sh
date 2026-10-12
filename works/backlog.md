@@ -6,8 +6,8 @@
 ## Pointer
 
 - Current phase: `P34`
-- Current slice: `P34.S4`
-- Next slice: `P34.REVIEW`
+- Current slice: `P34.REVIEW`
+- Next slice: `none`
 - Waiting on operator: `none`
 - Open deferred jobs: `44`
 
@@ -17,7 +17,7 @@
 |---|---|---|---|---|---|
 | [x] `P32` | `done` | `pass` | One executor route table: dispatch-time model and effort, no presets, Haiku cheap route | `none` | `works/phases/active/P32` |
 | [x] `P33` | `done` | `pass` | One-shot /rotate-backlog: consolidate the doc debt, then archive | `none` · parallel: `phase/P33-one-shot_rotate-backlog_consolidate_the` | `works/phases/active/P33` |
-| [ ] `P34` | `planned` | `pending` | Boundary-gated compaction: veto mid-process, resume at the slice boundary | `P34.S4` | `works/phases/active/P34` |
+| [ ] `P34` | `planned` | `pending` | Boundary-gated compaction: veto mid-process, resume at the slice boundary | `P34.REVIEW` | `works/phases/active/P34` |
 
 ## Phase P32: One executor route table: dispatch-time model and effort, no presets, Haiku cheap route
 
@@ -49,5 +49,5 @@
 | [x] `P34.S1` | `done` | Engine: compact-gate and compact-resume | `implementation` | `works/phases/active/P34/slices/P34.S1` |
 | [x] `P34.S2` | `done` | Ship the hooks: settings, installer hooks merge, smoke | `implementation` | `works/phases/active/P34/slices/P34.S2` |
 | [x] `P34.S3` | `done` | Texts: Compact Instructions, skill reorder, doc notes | `implementation` | `works/phases/active/P34/slices/P34.S3` |
-| [ ] `P34.S4` | `todo` | Release v55 | `implementation` | `works/phases/active/P34/slices/P34.S4` |
+| [x] `P34.S4` | `done` | Release v55 | `implementation` | `works/phases/active/P34/slices/P34.S4` |
 | [ ] `P34.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P34/slices/P34.REVIEW` |

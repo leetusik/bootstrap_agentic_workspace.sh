@@ -135,8 +135,10 @@ nothing:
 
 - **`.claude/settings.json`** — the workspace's permission entries
   (`Bash(python3 scripts/workflow.py:*)`, `Read`, `Edit`, …) are **unioned** into
-  your existing `permissions.allow` / `permissions.deny`. All your other keys are
-  preserved. (`.claude/settings.local.json` is never touched.) Without this, every
+  your existing `permissions.allow` / `permissions.deny`, and its two compaction
+  hooks (`PreCompact` and `SessionStart`) are **added** to your `hooks` (matched by
+  exact `command`; your own hooks are kept first, and re-running adds nothing). All
+  your other keys are preserved. (`.claude/settings.local.json` is never touched.) Without this, every
   workflow command would prompt for permission.
 - **`CLAUDE.md`** — your file is kept, and a short, clearly delimited workspace
   section is appended between markers:
@@ -207,7 +209,7 @@ finish these steps (or do them by hand):
 
 1. **Review the diff** *(operator)*. `git status` should show only **added**
    files (plus the additive merge into `.claude/settings.json`, where your
-   custom entries survive and only workspace entries were added). Nothing you
+   custom entries and hooks survive and only workspace entries and hooks were added). Nothing you
    had is deleted or rewritten.
 2. **Reconcile the contract** *(agent — you decide the calls)*. If you had a
    `CLAUDE.md`, have the agent read `CLAUDE.workspace.md` and fold what you want
@@ -305,7 +307,7 @@ using a throwaway staging copy — the same idea the flag automates:
    have a `CLAUDE.md` — the staged contract as `CLAUDE.workspace.md`. A safe copy
    is `rsync -a --ignore-existing /tmp/ws-stage/ .` followed by a `git status`
    review.
-3. Union the staged `.claude/settings.json` permissions into yours by hand.
+3. Union the staged `.claude/settings.json` permissions and hooks into yours by hand.
 4. From your repo, run `python3 scripts/workflow.py rebuild` then `validate`.
 5. Delete the temp dir.
 
@@ -328,5 +330,5 @@ versioned system when you want it to be durable, regenerated truth.
 | "target already has scripts/workflow.py" (abort) | Tier-4 collision | Rename/relocate your `workflow.py`, then re-run. |
 | "this repo already contains an agentic workspace" | `works/state.json` present | Nothing to do — use the workspace directly. |
 | docs system not installed | you already have `docs/index.json` | Intended (Tier 2). Adopt manually if you want it. |
-| Every workflow command prompts for permission | `.claude/settings.json` merge skipped or your tool ignores it | Confirm the workspace permission entries are present in `.claude/settings.json`. |
-| `git status` shows a modified file you had | should not happen for Tier 1/2/4 | The only intended modifications are the additive `.claude/settings.json` merge, the marked `CLAUDE.md` section, and the `.gitattributes` line-merge (the `works/events.jsonl merge=union` rule appended below a comment — your existing rules are left untouched, and re-running adds nothing); report anything else as a bug. |
+| Every workflow command prompts for permission | `.claude/settings.json` merge skipped or your tool ignores it | Confirm the workspace permission entries (and hooks) are present in `.claude/settings.json`. |
+| `git status` shows a modified file you had | should not happen for Tier 1/2/4 | The only intended modifications are the additive `.claude/settings.json` merge (permissions and hooks), the marked `CLAUDE.md` section, and the `.gitattributes` line-merge (the `works/events.jsonl merge=union` rule appended below a comment — your existing rules are left untouched, and re-running adds nothing); report anything else as a bug. |

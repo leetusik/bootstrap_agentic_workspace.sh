@@ -9,6 +9,59 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v55 — 2026-10-12
+
+- **Compaction waits for a slice boundary.** A `PreCompact` hook on auto-compaction calls the new
+  engine command `compact-gate`, which vetoes the compaction while the work is mid-process: the
+  current slice is `in_progress` or `in_review`, or the tree is dirty (your own uncommitted work
+  counts too). At a clean boundary it allows, so the loop becomes commit, then compact, then plan
+  the next slice. Manual `/compact` is never blocked. The block's `reason` tells you which rule
+  held it and how it releases.
+
+- **The gate's order, and it always fails open.** Rules in order: manual trigger allows; a
+  subagent's own compaction allows (an executor's slice is `in_progress` for its whole life, so the
+  boundary is the main thread's); fill at or above the ceiling allows (850,000 tokens for the
+  Claude 5 family, 170,000 otherwise, read from the transcript's last assistant usage); 8 blocks in
+  a row allow and reset; slice `in_progress`/`in_review` blocks; a dirty tree blocks (the generated
+  dashboards and `docs/index.json` are excluded, as `next` and `rebuild` restamp them); otherwise
+  allow. Garbage stdin, an unreadable transcript, any exception or a block it cannot count all
+  allow, and the command never exits 2. Allow is silent on stdout; a block prints
+  `{"decision":"block","reason":…}` at exit 0; one trace line goes to stderr. Tune with
+  `AGENTIC_COMPACT_CEILING` and `AGENTIC_COMPACT_BLOCK_CAP` (positive integers).
+
+- **A `SessionStart` hook on the `compact` source re-orients the resumed session.** The new
+  `compact-resume` prints `compaction=done source=compact`, the `next` output (the workflow
+  pointer, `WAITING ON OPERATOR` if any) and one resume line: re-read the running skill's
+  `SKILL.md` from disk (only its first 5,000 tokens were re-injected), the active slice folder and
+  `phase.md`'s `## Now`. Both hooks are `cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py
+  <command> || true`, timeout 15, on for everyone.
+
+- **The contract and the execution skills are shaped for the compaction window.** `CLAUDE.md`
+  gains `## Compact Instructions` (what the summary keeps and drops) and is back under its
+  12,288 B cap (12,274 B; phrasing trims only, no rule dropped). `do-whole-phase` and
+  `do-next-slice` are reordered so the loop invariants and a post-compaction resume line sit in the
+  first 16 KB of each file, inside the 5,000 tokens a compaction re-injects; text moved, nothing
+  dropped or duplicated.
+
+- **The installer merges the hooks additively.** `.claude/settings.json` now carries a `hooks` key.
+  On `--update`, retrofit and the nested `settings.local.json` present-file path, a handler is
+  appended unless one with the same exact `command` already exists under that event; an adopter's
+  own hooks are kept first and re-running adds nothing. A malformed `permissions` or `hooks` shape
+  goes to the `.claude/settings.workspace.json` sidecar at the root, and a nested install refuses
+  with nothing written.
+
+- **The auto-compact window is still your own setting.** With the veto in place about 300k is the
+  recommended window (`/autocompact 300k`; the window then means the earliest allowed point, not
+  "compact here"). The workspace records the guidance in the operations doc and never writes it.
+
+- **Smoke: 266 to 289 PASS** (14 asserts for the two commands, 9 for the hooks merge).
+
+- **Migration notes.** `/update-workspace` adds the two hooks to the project
+  `.claude/settings.json` (nested installs: `settings.local.json`); an adopter's own hooks are
+  kept and ours are added once. Relaunch Claude Code (or review `/hooks`) to load them. Optionally
+  set `/autocompact 300k`. `AGENTIC_COMPACT_CEILING` and `AGENTIC_COMPACT_BLOCK_CAP` tune the gate.
+  Nothing else to run.
+
 ## v54 — 2026-10-12
 
 - **`/rotate-backlog` is one invocation that pays the doc debt, then archives.** It checks the
