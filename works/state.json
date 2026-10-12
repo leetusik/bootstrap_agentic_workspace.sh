@@ -1,9 +1,9 @@
 {
-  "current_phase": "P33",
+  "current_phase": null,
   "current_slice": null,
   "next_slice": null,
-  "waiting_on_operator": "P33",
-  "mode": "waiting",
+  "waiting_on_operator": null,
+  "mode": "idle",
   "stream": "phase/P33-one-shot_rotate-backlog_consolidate_the",
-  "updated_at": "2026-10-12T17:33:30+09:00"
+  "updated_at": "2026-10-12T18:19:20+09:00"
 }
