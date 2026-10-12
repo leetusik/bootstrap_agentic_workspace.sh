@@ -6,9 +6,9 @@
 ## Pointer
 
 - Current phase: `P33`
-- Current slice: `P33.REVIEW`
+- Current slice: `none`
 - Next slice: `none`
-- Waiting on operator: `none`
+- Waiting on operator: `P33`
 - Stream: `phase/P33-one-shot_rotate-backlog_consolidate_the` (parallel phase checkout; the pointer above is scoped to it)
 - Open deferred jobs: `42`
 
@@ -17,7 +17,7 @@
 | Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
 | [ ] `P32` | `planned` | `pending` | One executor route table: dispatch-time model and effort, no presets, Haiku cheap route | `P32.DECOMP` | `works/phases/active/P32` |
-| [ ] `P33` | `planned` | `pending` | One-shot /rotate-backlog: consolidate the doc debt, then archive | `P33.REVIEW` · parallel: `phase/P33-one-shot_rotate-backlog_consolidate_the` | `works/phases/active/P33` |
+| [~] `P33` | `pending` | `pending` | One-shot /rotate-backlog: consolidate the doc debt, then archive | `P33.REVIEW` · parallel: `phase/P33-one-shot_rotate-backlog_consolidate_the` | `works/phases/active/P33` |
 | [ ] `P34` | `planned` | `pending` | Boundary-gated compaction: veto mid-process, resume at the slice boundary | `P34.DECOMP` | `works/phases/active/P34` |
 
 ## Phase P32: One executor route table: dispatch-time model and effort, no presets, Haiku cheap route
@@ -34,7 +34,7 @@
 | [x] `P33.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P33/slices/P33.DECOMP` |
 | [x] `P33.S1` | `done` | Engine: rotate-backlog decides the chain, archives last | `implementation` | `works/phases/active/P33/slices/P33.S1` |
 | [x] `P33.S2` | `done` | Skills, contract and release v54: the one-shot chain | `implementation` | `works/phases/active/P33/slices/P33.S2` |
-| [ ] `P33.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P33/slices/P33.REVIEW` |
+| [ ] `P33.REVIEW` | `in_progress` | phase review | `review` | `works/phases/active/P33/slices/P33.REVIEW` |
 
 ## Phase P34: Boundary-gated compaction: veto mid-process, resume at the slice boundary
 
