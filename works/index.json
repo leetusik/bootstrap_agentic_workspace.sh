@@ -36,17 +36,18 @@
       "id": "P34",
       "name": "Boundary-gated compaction: veto mid-process, resume at the slice boundary",
       "objective": "Make context compaction land only at slice boundaries and recover cleanly when it does. A PreCompact hook on auto-compaction calls an engine command that blocks while the current slice is in progress or the tree is dirty, and allows at a clean boundary (slice done, pending or review done, with a clean tree), with two fail-safes: allow above a hard fill ceiling read from the transcript's usage, and after a cap of consecutive blocks; manual /compact is never blocked. A SessionStart hook on the compact source re-injects the workflow pointer and a resume line (re-read the running skill from disk, the active slice folder and the notebook's ## Now). CLAUDE.md gains a short compact-instructions section naming what the summary keeps and drops. The two execution skills are reordered so the loop invariants and the resume line sit within the first 5,000 tokens. Both hooks ship on for everyone through the installer's settings merge. The auto-compact window stays the operator's personal setting, with the recommended value of about 300k recorded in the operations doc. Runs after P32, which rewrites the same skills. Ships as workspace v54.",
-      "status": "pending",
+      "status": "done",
       "order": 3,
       "path": "works/phases/active/P34",
-      "review_status": "pending",
-      "current_slice": "P34.REVIEW",
+      "review_status": "pass",
+      "current_slice": null,
       "slice_count": 6,
-      "done_slice_count": 5
+      "done_slice_count": 6,
+      "consolidation": "pending"
     }
   ],
-  "deferred_open_count": 45,
+  "deferred_open_count": 46,
   "deferred_promoted_count": 1,
   "deferred_dropped_count": 11,
-  "last_rebuilt_at": "2026-10-13T00:22:47+09:00"
+  "last_rebuilt_at": "2026-10-13T00:38:39+09:00"
 }

@@ -4,7 +4,7 @@
 
 ## Summary
 
-- Open: `45`
+- Open: `46`
 - Promoted: `1`
 - Dropped: `11`
 
@@ -55,6 +55,7 @@
 | `D55` | `deferred` | Integrate P33's v54 over P32's v53 (and renumber P34) | P32.REVIEW | P33's gate clears and its branch merges, or P34 starts, whichever comes first | `works/deferred/open/D55` |
 | `D56` | `deferred` | Tighten the one-shot rotate-backlog wording | P33.REVIEW | the next phase that edits the rotate-backlog or create-phase skill or CLAUDE.md, or the first /rotate-backlog gate run that hits a plan-mode permission prompt | `works/deferred/open/D56` |
 | `D57` | `deferred` | next still lists merged P33 as a parallel phase elsewhere | P34.REVIEW | P33's parallel-consolidated is paid, or the next parallel-phase work, whichever comes first | `works/deferred/open/D57` |
+| `D58` | `deferred` | P34 review findings A and B: worktree pointer before step 1 of do-next-slice; READMEs name the compaction hooks | P34.REVIEW | the next phase that edits do-next-slice or the READMEs, or the P32-P34 docs phase | `works/deferred/open/D58` |
 | `D6` | `deferred` | Widen installer/main.py flag_stale_skills() ownership heuristic beyond the disable-model-invocation marker | P17.REVIEW | If a model-invocable skill is retired upstream, or when flag_stale_skills() is next touched. | `works/deferred/open/D6` |
 | `D7` | `deferred` | Qualify review-phase gate stage 4 for a phase whose only surface is a throwaway mockup | P17.REVIEW | Before the first design-only or mockup-shipping phase reaches its review. | `works/deferred/open/D7` |
 
