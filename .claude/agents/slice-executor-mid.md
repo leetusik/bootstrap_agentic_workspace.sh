@@ -3,7 +3,7 @@ name: slice-executor-mid
 description: Executes exactly one already-planned slice in an isolated context; returns a structured verdict. Never commits and never transitions slice/phase status. Default tier for implementation, fix, docs and qa slices rated risk low, real code and multi-file changes included; escalates once when a slice needs a design decision the plan did not make, hits a high trigger the rating missed, or stalls.
 tools: Read, Edit, Write, Glob, Grep, Bash, WebSearch, WebFetch
 model: sonnet
-effort: xhigh
+effort: high
 permissionMode: bypassPermissions
 ---
 

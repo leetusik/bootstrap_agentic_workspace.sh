@@ -1,49 +1,64 @@
-# Executor-tier configuration for the slice-executor subagents.
-# To switch the mode below in one step (rewrites the mode line and syncs the
-# agent files), or run it bare to show the current mode:
+# Executor route table: per-row overrides of the engine's defaults.
 #
-#   python3 scripts/workflow.py executor-mode <economy|flex>
+# The engine owns one route table; this file overrides it row by row. The
+# orchestrator passes each dispatch the row's model and effort; the agent
+# files' frontmatter is only the fallback. Show the resolved table, or the
+# routing decision for one slice, with
 #
-# For anything else, uncomment/edit what you want to change, then apply:
+#   python3 scripts/workflow.py executor-route [<slice_id> [--retry]]
+#
+# and apply an edit to the agent files with
 #
 #   python3 scripts/workflow.py sync-agents
 #
-# With no active mode or overrides, the engine uses economy. The seed selects
-# flex below, and the commented per-tier values show that preset. Two
-# knobs, lowest precedence first:
+# The rows (default; what each serves):
+#   high      opus @ high    review, decomposition, the co-work mockup span,
+#                            any risk but low, every second attempt; the
+#                            design-drafter follows it (slice-executor-high)
+#   research  opus @ medium  research slices, by kind (slice-executor-high)
+#   mid       sonnet @ high  implementation and fix rated low (slice-executor-mid)
+#   cheap     = the mid row  docs and qa rated low; inherits the mid row unless
+#                            overridden (slice-executor-mid)
+#   explore   haiku @ high   read-only lookups (.claude/agents/Explore.md)
 #
-#   1. mode — a named preset for both tiers (top level, before any table):
-#        economy (default)  sonnet@high / opus@high
-#        flex               sonnet@xhigh / opus@xhigh
-#   2. Per-tier [claude.<tier>] tables — override the active preset field by
-#      field.
+# Grammar: [claude.<row>] tables holding model = "..." and effort = "...",
+# double-quoted. effort is low, medium, high, xhigh or max, or "" to write no
+# effort line and pass no effort (for a model that rejects the parameter).
+# mid, high and explore own an agent file, so they also take a full model id
+# or "inherit"; research and cheap run another row's file, so they take an
+# Agent-tool alias only (opus, sonnet, haiku, fable).
 #
-# There are two tiers, and `mid` is the default (v46): it takes implementation,
-# fix, docs and qa slices rated `low`, real code and multi-file work included.
-# `high` takes decomposition, research, the phase review, a slice rated `high`
-# for a named trigger (open design, a core invariant, an unlocated root cause,
-# a wide blast radius) and every second attempt after mid. A slice's `risk`
-# picks between them (`low` -> mid, anything else -> high).
+# From v52 or earlier: a top-level mode = "..." line is refused since v53 —
+# delete it. flex was xhigh on both tiers; to keep it, set effort = "xhigh"
+# under [claude.mid] and [claude.high].
 #
-# Values are written verbatim into the agent files, so model aliases
-# (opus/sonnet), full model IDs, or "inherit" all work without code changes;
-# haiku is deliberately never an executor tier. Set effort = "" to omit the
-# effort line entirely — required for a model that rejects the effort
-# parameter. Models may not be empty.
 # This file is yours: the installer seeds it once and updates never overwrite
-# it; deleting it is also fine (defaults live in the engine). It holds no
-# secrets, so committing it is fine when the whole team should share the tier
-# config. After /update-workspace, re-run sync-agents (updates reset the
-# agent files to upstream defaults; `validate` warns while they drift).
+# it; deleting it is also fine (the defaults live in the engine). It holds no
+# secrets, so committing it is fine when the whole team should share it. After
+# /update-workspace, re-run sync-agents (updates reset the agent files to
+# upstream defaults; `validate` warns while they drift).
 
-mode = "flex"
+# The cheap route: docs and qa slices rated low run on Haiku 5.5 at high. On in this
+# repository; the installer seeds it commented out because the `haiku` alias is Haiku 4.5
+# on Bedrock, Vertex and Foundry — uncomment to opt in on the Anthropic API. Unset, the
+# cheap row inherits the mid row. Under a loopback ANTHROPIC_BASE_URL (ocx/Kiro, no
+# Haiku 5.5) executor-route falls back to the mid row's model by itself.
+# cheap-route: begin
+[claude.cheap]
+model = "haiku"
+effort = "high"
+# cheap-route: end
 
-# Claude Code (.claude/agents/slice-executor-{mid,high}.md) — flex values shown.
-# The design subagent (.claude/agents/design-drafter.md) is not a tier of its own:
-# sync-agents writes it the `high` values, so [claude.high] governs it too.
-#[claude.mid]
-#model = "sonnet"
-#effort = "xhigh"
-#[claude.high]
-#model = "opus"    # e.g. "fable", or "claude-mythos-5" once available
-#effort = "xhigh"
+# The other rows at their defaults: uncomment and edit to override.
+# [claude.high]
+# model = "opus"    # e.g. "fable"; design-drafter follows this row
+# effort = "high"
+# [claude.research]
+# model = "opus"
+# effort = "medium"
+# [claude.mid]
+# model = "sonnet"
+# effort = "high"
+# [claude.explore]
+# model = "haiku"
+# effort = "high"

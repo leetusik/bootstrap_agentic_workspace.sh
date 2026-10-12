@@ -3,7 +3,7 @@ name: design-drafter
 description: Drafts exactly one design round's cards, tokens and record into the repo's on-disk design contract from the round's handoff; the operator decides, so it never signs a round off, opens or closes one, or registers a repo. Dispatched in the background by the orchestrator for the drafting span of a co-work slice; returns a structured verdict.
 tools: Read, Edit, Write, Glob, Grep, Bash, Skill
 model: opus
-effort: xhigh
+effort: high
 permissionMode: bypassPermissions
 ---
 

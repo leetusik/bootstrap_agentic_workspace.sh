@@ -13,6 +13,7 @@ import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 # Nested personal install (P28). The marker `.agentic-nested.json` beside `scripts/` says the engine and all
@@ -211,13 +212,14 @@ REVIEW_VERDICTS = {"pass", "changes_requested", "blocked"}
 # on slices it cannot change. Note `--risk` next door is deliberately NOT validated:
 # unrecognized values route to the high tier, which is the safe direction -- do not
 # "fix" that asymmetry for symmetry's sake.
-# Three kinds route to `slice-executor-high` by KIND, whatever `risk` says:
-# `decomposition`, `review`, and `research` (added in workspace v36). A `research`
-# slice is findings-only -- it writes no product code, and what it learned lands in
-# the phase notebook for the `DECOMP2` that usually follows -- so a weak read is
-# expensive and it must never be routable to the mid tier by a `low` rating. Set
-# `--risk high` on one so the recorded rating cannot contradict the routing; if the
-# two ever disagree, the kind wins.
+# Kinds route by KIND before `risk` is read (`slice_route`; `executor-route <slice>` prints the
+# decision): `decomposition`, `review` and `co-work` (its mockup span) to the `high` row, and
+# `research` (added in workspace v36) to the `research` row -- both on `slice-executor-high`, never
+# the mid or cheap rows. A `research` slice is findings-only -- it writes no product code, and what
+# it learned lands in the phase notebook for the `DECOMP2` that usually follows -- so a weak read
+# is expensive and it must never be routable to the mid tier by a `low` rating. Set `--risk high`
+# on one so the recorded rating cannot contradict the routing; if the two ever disagree, the kind
+# wins.
 SLICE_KINDS = {"implementation", "review", "decomposition", "research", "fix", "docs", "qa", "co-work"}
 # Phase-notebook budget (v35; re-shaped in v39): ONE generous byte cap, ~100k tokens of
 # text. The v35 pair (200 lines / 16 KB) was measured in P21 and the line half never bound
@@ -271,24 +273,52 @@ GENERATED_FILES = ("works/state.json", "works/index.json", "works/backlog.md", "
 CLAUDE_AGENTS = (HOST_ROOT or ROOT) / ".claude" / "agents"
 EXECUTOR_TIERS = ("mid", "high")
 RETIRED_EXECUTOR_TIERS = ("low",)  # dropped in workspace v23 — routing is two-tier (mid/high)
-# Shipped presets for the slice-executor tiers. A top-level mode = "<preset>" key in
-# the repo-root executors.toml picks one (absent file or key -> economy); per-tier
-# [claude.<tier>] tables with model/effort keys override the active preset field by
-# field; apply with `sync-agents`. An empty effort means "write no effort line" — the
-# escape hatch for a model that rejects the effort parameter. Models may not be
-# empty. Haiku is deliberately never an executor tier (v46): both presets stay on
-# sonnet (mid, the default tier) and opus (high).
-DEFAULT_EXECUTOR_MODE = "economy"
-EXECUTOR_PRESETS = {
-    "flex": {
-        "mid": {"model": "sonnet", "effort": "xhigh"},
-        "high": {"model": "opus", "effort": "xhigh"},
-    },
-    "economy": {
-        "mid": {"model": "sonnet", "effort": "high"},
-        "high": {"model": "opus", "effort": "high"},
-    },
+# The executor route table (workspace v53): ONE table, owned here, that the orchestrator dispatches
+# from. A row is a (model, effort) pair the dispatch passes per call; `executor-route` prints the
+# resolved row for a slice and `sync-agents` writes the rows that own an agent file into that
+# file's frontmatter, which is only the fallback. Each row is overridable, key by key, under
+# [claude.<row>] in the repo-root executors.toml. `cheap` has no defaults of its own: it inherits
+# the RESOLVED mid row for every key it does not override, so an unset cheap row is the mid row.
+# `explore` is the read-only lookup agent (.claude/agents/Explore.md), not a slice route.
+# `research` and `cheap` run another row's agent file (slice-executor-high / -mid) with their model
+# passed per call, and the Agent tool's `model` is an enum, so those two rows take an alias only;
+# a full model id or "inherit" works only on mid, high and explore, whose frontmatter carries it.
+# effort = "" is the escape hatch for a model that rejects the parameter: no effort line in the
+# agent file and no per-dispatch effort. Rows, never tiers: two tiers stay (EXECUTOR_TIERS), and the
+# cheap row runs the mid file -- which supersedes v46's "haiku is never an executor tier". The
+# named modes of v29-v52 (a top-level `mode` key) are retired; read_executors_toml refuses one.
+EXECUTOR_ROUTES = ("high", "research", "mid", "cheap", "explore")  # print order
+ROUTE_DEFAULTS = {
+    "high": {"model": "opus", "effort": "high"},
+    "research": {"model": "opus", "effort": "medium"},
+    "mid": {"model": "sonnet", "effort": "high"},
+    "cheap": None,  # inherits the resolved mid row
+    "explore": {"model": "haiku", "effort": "high"},
 }
+ROUTE_TIER = {"high": "high", "research": "high", "mid": "mid", "cheap": "mid", "explore": None}
+# Rows that own an agent file (sync-agents writes their frontmatter). research and cheap dispatch
+# to another row's file, so their model must be an Agent-tool alias the dispatch can pass.
+ROUTE_AGENT = {"high": "slice-executor-high", "mid": "slice-executor-mid", "explore": "Explore"}
+# The design subagent is not a tier and has no row: it follows the high row's model and effort, so
+# one [claude.high] override governs it too and design work never lands on the mid row.
+DESIGN_DRAFTER_FOLLOWS = "high"
+# (label, canonical agent name, row) for the four agent files sync-agents manages, in print order.
+MANAGED_AGENT_FILES = (
+    ("mid", ROUTE_AGENT["mid"], "mid"),
+    ("high", ROUTE_AGENT["high"], "high"),
+    ("design-drafter", "design-drafter", DESIGN_DRAFTER_FOLLOWS),
+    ("Explore", ROUTE_AGENT["explore"], "explore"),
+)
+AGENT_MODEL_ALIASES = ("opus", "sonnet", "haiku", "fable")  # the Agent tool's `model` enum
+EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")  # the Agent tool's `effort` enum
+# Commit attribution follows the model a slice actually ran on; anything else prints verbatim.
+MODEL_ATTRIBUTION = {"opus": "Claude Opus 5.5", "sonnet": "Claude Sonnet 5.5",
+                     "haiku": "Claude Haiku 5.5", "fable": "Claude Fable 5.1"}
+# A loopback ANTHROPIC_BASE_URL is a local proxy (ocx's Kiro sidecar listens on 127.0.0.1:10100)
+# that serves no Haiku 5.5: there the cheap row falls back to the mid row's model and the explore
+# row to EXPLORE_PROXY_MODEL, printed as a `fallback=` line by executor-route.
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+EXPLORE_PROXY_MODEL = "sonnet"
 
 
 def now_iso() -> str:
@@ -344,74 +374,101 @@ def strip_frontmatter(text: str) -> str:
     return text
 
 
-def read_executors_toml() -> tuple:
-    """(mode, {(tier, key): value}) from the repo-root executors.toml.
+def read_executors_toml() -> dict:
+    """{(row, key): value} from the repo-root executors.toml: the per-row overrides of the route table.
 
-    Strict subset of TOML — an optional top-level mode = "<preset>" line (before
-    any section) plus [claude.<tier>] tables holding model/effort keys with
-    double-quoted string values; '#' comments and blanks ignored. Anything else
-    is an error, so typos surface instead of silently keeping a default."""
+    Strict subset of TOML -- [claude.<row>] tables (a row of EXECUTOR_ROUTES) holding model/effort
+    keys with double-quoted string values; '#' comments and blanks ignored. Anything else is an
+    error naming its line, so a typo surfaces instead of silently keeping a default. A retired shape
+    (the v29-v52 `mode` key, [claude.low], [codex.*]) is refused with its migration."""
     path = ROOT / "executors.toml"
-    mode = None
     values: dict = {}
     if not path.exists():
-        return mode, values
+        return values
     section = None
+    rows = ", ".join(sorted(EXECUTOR_ROUTES))
     for n, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        m = re.match(r'^mode\s*=\s*"([^"]*)"\s*(?:#.*)?$', line)
-        if m:
-            if section is not None:
-                raise SystemExit(f"executors.toml line {n}: mode must be set at the top level, before any [claude.*] section")
-            if mode is not None:
-                raise SystemExit(f"executors.toml line {n}: duplicate mode")
-            if m.group(1) not in EXECUTOR_PRESETS:
-                raise SystemExit(f"executors.toml line {n}: unknown mode {m.group(1)!r} (valid: {', '.join(sorted(EXECUTOR_PRESETS))})")
-            mode = m.group(1)
-            continue
-        m = re.match(r"^\[\s*claude\s*\.\s*(mid|high)\s*\]\s*(?:#.*)?$", line)
-        if m:
-            section = m.group(1)
-            continue
-        m = re.match(r"^\[\s*claude\s*\.\s*(" + "|".join(RETIRED_EXECUTOR_TIERS) + r")\s*\]\s*(?:#.*)?$", line)
-        if m:
+        if re.match(r"^mode\s*=", line):
             raise SystemExit(
-                f"executors.toml line {n}: the {m.group(1)} executor tier was retired in workspace v23 — "
-                "routing is two-tier now, so drop this section or move its settings to [claude.mid]"
+                f"executors.toml line {n}: the economy/flex presets were retired in workspace v53 — delete this line; "
+                "the route table replaces them (flex was xhigh on both tiers: set effort = \"xhigh\" under [claude.mid] "
+                f"and [claude.high] to keep it); run: {WORKFLOW_CMD} executor-route"
             )
         if re.match(r"^\[\s*codex\s*\.\s*[^\]]*\]\s*(?:#.*)?$", line):
             raise SystemExit(
                 f"executors.toml line {n}: Codex support was removed in workspace v31 — "
                 "this workspace ships Claude Code only, so drop this section"
             )
+        m = re.match(r"^\[\s*claude\s*\.\s*([^\]\s]*)\s*\]\s*(?:#.*)?$", line)
+        if m:
+            name = m.group(1)
+            if name in RETIRED_EXECUTOR_TIERS:
+                raise SystemExit(
+                    f"executors.toml line {n}: the {name} executor tier was retired in workspace v23 — "
+                    "routing is two-tier now, so drop this section or move its settings to [claude.mid]"
+                )
+            if name not in EXECUTOR_ROUTES:
+                raise SystemExit(f"executors.toml line {n}: unknown route {name} (valid: {rows})")
+            section = name
+            continue
         m = re.match(r'^(model|effort)\s*=\s*"([^"]*)"\s*(?:#.*)?$', line)
         if m:
+            key, value = m.group(1), m.group(2)
             if section is None:
-                raise SystemExit(f"executors.toml line {n}: key outside a section — put it under [claude.<tier>]")
-            key = (section, m.group(1))
-            if key in values:
-                raise SystemExit(f"executors.toml line {n}: duplicate {m.group(1)} for [claude.{section}]")
-            values[key] = m.group(2)
+                raise SystemExit(f"executors.toml line {n}: key outside a section — put it under [claude.<row>] ({rows})")
+            if (section, key) in values:
+                raise SystemExit(f"executors.toml line {n}: duplicate {key} for [claude.{section}]")
+            if key == "model" and not value:
+                raise SystemExit(f"executors.toml line {n}: [claude.{section}] model must not be empty (efforts may be empty; models may not)")
+            if key == "effort" and value and value not in EFFORT_LEVELS:
+                raise SystemExit(
+                    f"executors.toml line {n}: [claude.{section}] effort must be one of {', '.join(EFFORT_LEVELS)} "
+                    f"— or \"\" to write no effort line (got {value!r})"
+                )
+            if key == "model" and section not in ROUTE_AGENT and value not in AGENT_MODEL_ALIASES:
+                raise SystemExit(
+                    f"executors.toml line {n}: [claude.{section}] model {value!r}: route {section} dispatches to another row's "
+                    f"agent file, so its model must be an Agent-tool alias ({', '.join(AGENT_MODEL_ALIASES)}); a full model id "
+                    f"or inherit works only on {', '.join(r for r in EXECUTOR_ROUTES if r in ROUTE_AGENT)}, whose agent files carry it"
+                )
+            values[(section, key)] = value
             continue
-        if re.match(r"^(model|effort|mode)\s*=", line):
-            raise SystemExit(f'executors.toml line {n}: values must be double-quoted TOML strings, e.g. model = "sonnet"')
-        raise SystemExit(f"executors.toml line {n}: cannot parse {line!r} (expected mode = \"...\", [claude.<mid|high>], or model/effort = \"...\")")
-    return mode, values
+        if re.match(r"^(model|effort)\s*=", line):
+            raise SystemExit(f'executors.toml line {n}: values must be double-quoted TOML strings, e.g. model = "sonnet" under [claude.<row>]')
+        raise SystemExit(f"executors.toml line {n}: cannot parse {line!r} (expected [claude.<row>] with row one of {rows}, or model/effort = \"...\")")
+    return values
 
 
-def executor_config() -> dict:
-    """The active preset (top-level mode in executors.toml; default economy) overlaid with any per-tier overrides; values pass through verbatim."""
-    mode, overrides = read_executors_toml()
-    preset = EXECUTOR_PRESETS[mode or DEFAULT_EXECUTOR_MODE]
-    config = {tier: dict(preset[tier]) for tier in EXECUTOR_TIERS}
-    for (tier, key), value in overrides.items():
-        config[tier][key] = value
-    for tier in EXECUTOR_TIERS:
-        if not config[tier]["model"]:
-            raise SystemExit(f"executors.toml: [claude.{tier}] model must not be empty (efforts may be empty; models may not)")
-    return config
+def resolve_routes(overrides=None) -> dict:
+    """{row: {model, effort, model_source, effort_source}} in EXECUTOR_ROUTES order: the engine
+    defaults overlaid key by key with executors.toml. A source is `default`, `executors.toml`, or
+    -- for a cheap key it does not override -- `mid row`; cheap resolves after mid, from mid's
+    resolved values, so a [claude.mid] override carries over to an unset cheap row."""
+    if overrides is None:
+        overrides = read_executors_toml()
+    resolved: dict = {}
+    for row in sorted(EXECUTOR_ROUTES, key=lambda r: ROUTE_DEFAULTS[r] is None):  # inheriting rows last
+        default = ROUTE_DEFAULTS[row]
+        entry: dict = {}
+        for key in ("model", "effort"):
+            if (row, key) in overrides:
+                entry[key], entry[f"{key}_source"] = overrides[(row, key)], "executors.toml"
+            elif default is None:
+                entry[key], entry[f"{key}_source"] = resolved["mid"][key], "mid row"
+            else:
+                entry[key], entry[f"{key}_source"] = default[key], "default"
+        resolved[row] = entry
+    return {row: resolved[row] for row in EXECUTOR_ROUTES}
+
+
+def route_source(entry: dict) -> str:
+    """One source for a resolved row, or `model <s> / effort <s>` when its two keys differ."""
+    if entry["model_source"] == entry["effort_source"]:
+        return entry["model_source"]
+    return f"model {entry['model_source']} / effort {entry['effort_source']}"
 
 
 def _patched_agent_md(text: str, model: str, effort: str) -> str:
@@ -429,12 +486,6 @@ def _patched_agent_md(text: str, model: str, effort: str) -> str:
     return "---\n" + "\n".join(lines) + text[end:]
 
 
-# The design subagent is not a third tier: it follows the high tier's model and effort, so the one
-# economy/flex knob (and any [claude.high] override) governs every agent file and design work never
-# lands on the mid tier. It gets no EXECUTOR_TIERS entry, no executors.toml table and no preset row.
-DESIGN_DRAFTER_FOLLOWS = "high"
-
-
 def installed_agent_name(name: str) -> str:
     """The name a managed agent is installed under: its canonical name, or -- in a nested install
     whose host already has an agent of that name -- the rename the installer recorded in
@@ -448,23 +499,21 @@ def installed_agent_name(name: str) -> str:
     return installed if isinstance(installed, str) and installed else name
 
 
-def executor_agent_files(config: dict) -> list:
-    """(label, path, model, effort) for the 3 managed agent files: the 2 slice-executor tiers plus
-    design-drafter, which tracks the high tier (label "design-drafter"; it is not a tier). Labels
-    stay canonical; paths resolve through the nested rename map (`installed_agent_name`)."""
-    files = [
-        (tier, CLAUDE_AGENTS / f"{installed_agent_name(f'slice-executor-{tier}')}.md", config[tier]["model"], config[tier]["effort"])
-        for tier in EXECUTOR_TIERS
+def executor_agent_files(routes: dict) -> list:
+    """(label, path, model, effort) for the 4 managed agent files (MANAGED_AGENT_FILES): the two
+    slice-executor tiers from the mid and high rows, design-drafter from the high row (it is not a
+    tier), and Explore from the explore row. research and cheap own no file. Labels stay canonical;
+    paths resolve through the nested rename map (`installed_agent_name`)."""
+    return [
+        (label, CLAUDE_AGENTS / f"{installed_agent_name(agent)}.md", routes[row]["model"], routes[row]["effort"])
+        for label, agent, row in MANAGED_AGENT_FILES
     ]
-    followed = config[DESIGN_DRAFTER_FOLLOWS]
-    files.append(("design-drafter", CLAUDE_AGENTS / f"{installed_agent_name('design-drafter')}.md", followed["model"], followed["effort"]))
-    return files
 
 
-def executor_agent_drift(config: dict) -> tuple:
-    """([(path, desired text)] for agent files that disagree with config, [missing paths]); writes nothing."""
+def executor_agent_drift(routes: dict) -> tuple:
+    """([(path, desired text)] for agent files that disagree with the routes, [missing paths]); writes nothing."""
     changed, missing = [], []
-    for tier, path, model, effort in executor_agent_files(config):
+    for _label, path, model, effort in executor_agent_files(routes):
         if not path.exists():
             missing.append(path)
             continue
@@ -476,25 +525,24 @@ def executor_agent_drift(config: dict) -> tuple:
 
 
 def sync_agents(args: argparse.Namespace) -> None:
-    config = executor_config()
+    overrides = read_executors_toml()
+    routes = resolve_routes(overrides)
     config_present = (ROOT / "executors.toml").exists()
-    mode, overrides = read_executors_toml()
-    override_count = len(overrides)
     legacy_env = ROOT / ".env"
     if legacy_env.exists() and "SLICE_EXECUTOR" in legacy_env.read_text(encoding="utf-8"):
         print("warning: .env holds SLICE_EXECUTOR_* keys, but tier config moved to executors.toml in v8 — .env is no longer read")
-    drift, missing_paths = executor_agent_drift(config)
+    drift, missing_paths = executor_agent_drift(routes)
     if not args.check:
         for path, desired in drift:
             write_text(path, desired)
     # Agent files live in the host when nested, so they are named from there (identical at root).
     changed = [shown(path) for path, _ in drift]
     missing = [shown(path) for path in missing_paths]
-    for tier in EXECUTOR_TIERS:
-        cfg = config[tier]
-        print(f"{tier:<5} {cfg['model']} @ {cfg['effort'] or '(no effort line)'}")
-    mode_str = f"mode {mode}" if mode else f"mode {DEFAULT_EXECUTOR_MODE} (default)"
-    print(f"config source: {f'executors.toml ({mode_str}, {override_count} override(s))' if config_present else f'{DEFAULT_EXECUTOR_MODE} defaults (no executors.toml)'}")
+    for row in EXECUTOR_ROUTES:
+        entry = routes[row]
+        value = f"{entry['model']} @ {entry['effort'] or '(no effort line)'}"
+        print(f"{row:<9} {value:<16} ({route_source(entry)})")
+    print(f"config source: {f'executors.toml ({len(overrides)} override(s))' if config_present else 'defaults (no executors.toml)'}")
     for m in missing:
         print(f"missing agent file: {m}")
     if args.check:
@@ -516,77 +564,137 @@ def sync_agents(args: argparse.Namespace) -> None:
         raise SystemExit(1)
 
 
-def _overrides_listing(overrides: dict, mode) -> str:
-    """`high.model = "fable" (preset opus)`, … for the per-tier overrides, in tier order."""
-    preset = EXECUTOR_PRESETS[mode or DEFAULT_EXECUTOR_MODE]
-    return ", ".join(
-        f'{tier}.{key} = "{overrides[(tier, key)]}" (preset {preset[tier][key] or "no effort line"})'
-        for tier in EXECUTOR_TIERS for key in ("model", "effort") if (tier, key) in overrides
-    )
+def _loopback_base_url():
+    """ANTHROPIC_BASE_URL when its host is loopback (a local proxy such as ocx's Kiro sidecar), else None."""
+    url = os.environ.get("ANTHROPIC_BASE_URL", "").strip()
+    if not url:
+        return None
+    try:
+        host = urlparse(url if "://" in url else f"http://{url}").hostname
+    except ValueError:
+        return None
+    return url if host in LOOPBACK_HOSTS else None
 
 
-def _with_executor_mode(text: str, mode: str) -> str:
-    """executors.toml text with its top-level mode set to `mode`: the value rewritten in place
-    (trailing comment kept) or, when there is no mode line, one inserted before the first section.
-    Only called on text read_executors_toml() already accepted, so any mode line is top-level."""
-    lines = text.splitlines(keepends=True)
-    for i, raw in enumerate(lines):
-        if raw.strip().startswith("["):
-            lines[i:i] = [f'mode = "{mode}"\n', "\n"]
-            return "".join(lines)
-        m = re.match(r'^(\s*mode\s*=\s*")[^"]*(".*)$', raw, re.S)
-        if m:
-            lines[i] = m.group(1) + mode + m.group(2)
-            return "".join(lines)
-    if text and not text.endswith("\n"):
-        text += "\n"
-    return text + ("\n" if text.strip() else "") + f'mode = "{mode}"\n'
+def _route_fallback(row: str, model: str, routes: dict, proxy):
+    """(model to dispatch, `fallback=` line or None) for one row under the environment: behind a
+    loopback proxy (no Haiku 5.5) cheap takes the mid row's model and explore EXPLORE_PROXY_MODEL."""
+    if proxy is None or row not in ("cheap", "explore"):
+        return model, None
+    target = routes["mid"]["model"] if row == "cheap" else EXPLORE_PROXY_MODEL
+    if target == model:
+        return model, None
+    return target, f"fallback={row} model {model} -> {target} (loopback ANTHROPIC_BASE_URL {proxy}: ocx/Kiro serves no Haiku 5.5)"
 
 
-def show_executor_mode() -> None:
-    mode, overrides = read_executors_toml()
-    config = executor_config()
-    if mode:
-        print(f"mode: {mode} (executors.toml)")
+def _route_env_warnings() -> list:
+    """`warning=` lines for the environment variables that outrank a per-dispatch model or effort."""
+    lines = []
+    level = os.environ.get("CLAUDE_CODE_EFFORT_LEVEL", "").strip()
+    if level:
+        lines.append(f"warning=CLAUDE_CODE_EFFORT_LEVEL={level} is set and outranks every per-dispatch effort "
+                     "(and every agent file's effort line); unset it for the route table's efforts to apply")
+    force = os.environ.get("CLAUDE_CODE_SUBAGENT_MODEL_FORCE", "").strip()
+    if force and force.lower() not in ("0", "false", "no"):
+        lines.append(f"warning=CLAUDE_CODE_SUBAGENT_MODEL_FORCE={force} is set and overrides every model "
+                     "(per-dispatch and frontmatter alike); unset it for the route table's models to apply")
+    return lines
+
+
+def slice_route(kind, risk, retry: bool) -> tuple:
+    """(row, reason) for one dispatch: kind first, then risk, then attempt -- bump up, never down.
+    A second attempt is always the high row; review, decomposition and co-work (the mockup span)
+    route high by kind and research to the research row, whatever `risk` says; otherwise only a
+    risk of exactly `low` reaches the mid row (implementation, fix) or the cheap row (docs, qa)."""
+    if retry:
+        return "high", "second attempt"
+    if kind in ("review", "decomposition", "co-work"):
+        return "high", f"kind {kind}"
+    if kind == "research":
+        return "research", "kind research"
+    if risk != "low":
+        return "high", f"risk {risk if risk not in (None, '') else 'unset'} (not low)"
+    if kind in ("implementation", "fix"):
+        return "mid", f"kind {kind} rated low"
+    if kind in ("docs", "qa"):
+        return "cheap", f"kind {kind} rated low"
+    return "high", f"unknown kind {kind if kind not in (None, '') else 'unset'}"
+
+
+def _dispatch_lines(row: str, routes: dict, proxy) -> tuple:
+    """(the model..attribution lines for one dispatch on `row`, its fallback line or None)."""
+    entry = routes[row]
+    model, fallback = _route_fallback(row, entry["model"], routes, proxy)
+    effort = entry["effort"]
+    lines = [
+        f"model={model}",
+        f"pass_model={'yes' if model in AGENT_MODEL_ALIASES else 'no'}",
+        f"effort={effort}",
+        f"pass_effort={'yes' if effort else 'no'}",
+        f"attribution={MODEL_ATTRIBUTION.get(model, model)}",
+    ]
+    return lines, fallback
+
+
+def cmd_executor_route(args: argparse.Namespace) -> None:
+    """Print the deterministic routing decision the orchestrator dispatches from, one key=value per
+    line: bare, the resolved route table and the agent files' sync state; with a slice id, that
+    slice's route (--retry: its second attempt); --drafter / --explore, the design subagent's and the
+    lookup agent's. Reads executors.toml (a malformed one errors here) and writes nothing."""
+    forms = [f for f, on in (("<slice_id>", args.slice is not None), ("--drafter", args.drafter), ("--explore", args.explore)) if on]
+    if len(forms) > 1:
+        raise SystemExit(f"executor-route: {' and '.join(forms)} are mutually exclusive; give at most one")
+    if args.retry and args.slice is None:
+        raise SystemExit("executor-route: --retry needs a <slice_id> (a second attempt is a slice's)")
+    routes = resolve_routes()
+    proxy = _loopback_base_url()
+    if args.slice is not None:
+        sdata = read_json(require_slice(args.slice) / "slice.json")
+        kind, risk = sdata.get("kind"), sdata.get("risk")
+        row, reason = slice_route(kind, risk, args.retry)
+        tier = ROUTE_TIER[row]
+        lines, fallback = _dispatch_lines(row, routes, proxy)
+        print(f"slice={args.slice}")
+        print(f"phase={args.slice.split('.', 1)[0]}")
+        print(f"kind={kind if kind not in (None, '') else 'unset'}")
+        print(f"risk={risk if risk not in (None, '') else 'unset'}")
+        print(f"attempt={2 if args.retry else 1}")
+        print(f"route={row}")
+        print(f"reason={reason}")
+        print(f"tier={tier}")
+        print(f"subagent_type={installed_agent_name(ROUTE_AGENT[tier])}")
+        print("\n".join(lines))
+        extra = [fallback] if fallback else []
+    elif args.drafter or args.explore:
+        agent, row = ("design-drafter", DESIGN_DRAFTER_FOLLOWS) if args.drafter else (ROUTE_AGENT["explore"], "explore")
+        lines, fallback = _dispatch_lines(row, routes, proxy)
+        print(f"agent={agent}")
+        print(f"route={row}")
+        print(f"tier={ROUTE_TIER[row] or '-'}")
+        print(f"subagent_type={installed_agent_name(agent)}")
+        print("\n".join(lines))
+        extra = [fallback] if fallback else []
     else:
-        where = "executors.toml sets no mode" if (ROOT / "executors.toml").exists() else "no executors.toml"
-        print(f"mode: {DEFAULT_EXECUTOR_MODE} (default; {where})")
-    for tier in EXECUTOR_TIERS:
-        cfg = config[tier]
-        print(f"{tier:<5} {cfg['model']} @ {cfg['effort'] or '(no effort line)'}")
-    print(f"overrides: {_overrides_listing(overrides, mode) or 'none'}")
-    drift, missing = executor_agent_drift(config)
-    stale = [shown(path) for path, _ in drift] + [f"{shown(path)} (missing)" for path in missing]
-    if stale:
-        print(f"agent files: out of sync: {', '.join(stale)} (run: {WORKFLOW_CMD} sync-agents)")
-    else:
-        print("agent files: in sync")
-    presets = ", ".join(
-        f"{name} ({' / '.join(EXECUTOR_PRESETS[name][t]['model'] + '@' + EXECUTOR_PRESETS[name][t]['effort'] for t in EXECUTOR_TIERS)})"
-        for name in sorted(EXECUTOR_PRESETS)
-    )
-    print(f"presets: {presets}")
-
-
-def cmd_executor_mode(args: argparse.Namespace) -> None:
-    """Bare: show the executor mode. With a preset: set it in executors.toml and sync the agent files."""
-    if args.mode is None:
-        show_executor_mode()
-        return
-    path = ROOT / "executors.toml"
-    previous, overrides = read_executors_toml()  # a malformed file errors here, before anything is written
-    text = path.read_text(encoding="utf-8") if path.exists() else ""
-    updated = _with_executor_mode(text, args.mode)
-    if updated != text:
-        write_text(path, updated)
-    if previous == args.mode:
-        print(f"mode: {args.mode} (already set)")
-    else:
-        print(f"mode: {previous or DEFAULT_EXECUTOR_MODE + ' (default)'} -> {args.mode}")
-        append_event("executor_mode_set", previous=previous, mode=args.mode)
-    if overrides:
-        print(f"note: per-tier overrides in executors.toml still win over the {args.mode} preset: {_overrides_listing(overrides, args.mode)}")
-    sync_agents(argparse.Namespace(check=False))
+        table = [("route", "tier", "model", "effort", "source")] + [
+            (row, ROUTE_TIER[row] or "-", routes[row]["model"], routes[row]["effort"] or "(no effort line)", route_source(routes[row]))
+            for row in EXECUTOR_ROUTES
+        ]
+        widths = [max(len(r[i]) for r in table) for i in range(4)]
+        for r in table:
+            print("  ".join(c.ljust(w) for c, w in zip(r, widths)) + "  " + r[4])
+        drift, missing = executor_agent_drift(routes)
+        stale = [shown(path) for path, _ in drift] + [f"{shown(path)} (missing)" for path in missing]
+        if stale:
+            print(f"agent files: out of sync: {', '.join(stale)} (run: {WORKFLOW_CMD} sync-agents)")
+        else:
+            print("agent files: in sync")
+        extra = [f for f in (_route_fallback(row, routes[row]["model"], routes, proxy)[1] for row in EXECUTOR_ROUTES) if f]
+        if proxy is None:
+            extra.insert(0, "proxy=none")
+        else:
+            extra.insert(0, f"proxy={proxy} (loopback)")
+    for line in extra + _route_env_warnings():
+        print(line)
 
 
 def doc_index() -> dict:
@@ -1603,11 +1711,12 @@ def validate() -> int:
     oversized = oversized_sections_line(oversized_doc_sections())
     if oversized:
         warnings.append(oversized)
-    # Executor-tier drift is advisory only: warn (never error, never crash) when the agent
-    # files disagree with executors.toml/defaults, so a foreign or partial workspace still validates.
-    # Skipped when a broken nested marker names no host: the agent files live there, not under ROOT.
+    # Agent-file drift is advisory only: warn (never error, never crash) when the four managed agent
+    # files disagree with the route table (executors.toml/defaults), so a foreign or partial
+    # workspace still validates. Skipped when a broken nested marker names no host: the agent files
+    # live there, not under ROOT.
     try:
-        for tier, path, model, effort in ([] if NESTED is not None and HOST_ROOT is None else executor_agent_files(executor_config())):
+        for _label, path, model, effort in ([] if NESTED is not None and HOST_ROOT is None else executor_agent_files(resolve_routes())):
             if not path.exists():
                 warnings.append(f"missing executor agent file: {shown(path)} (run: {WORKFLOW_CMD} sync-agents)")
                 continue
@@ -4400,13 +4509,16 @@ def main(argv=None) -> int:
     p = sub.add_parser("validate", help="Validate workflow and docs structure")
     p.set_defaults(func=lambda args: sys.exit(validate()))
 
-    p = sub.add_parser("sync-agents", help="Apply the repo-root executors.toml executor-tier config (models/efforts) to the slice-executor agent files")
+    p = sub.add_parser("sync-agents", help="Write the route table's rows (engine defaults overlaid by the repo-root executors.toml) into the model/effort frontmatter of the four managed agent files: slice-executor-mid, slice-executor-high, design-drafter (the high row) and Explore (the explore row)")
     p.add_argument("--check", action="store_true", help="Report drift without writing; exit 1 if out of sync")
     p.set_defaults(func=sync_agents)
 
-    p = sub.add_parser("executor-mode", help="Show the executor mode -- the economy/flex preset for both slice-executor tiers -- (bare), or switch it in one step: `executor-mode <preset>` sets the mode in executors.toml and syncs the agent files")
-    p.add_argument("mode", nargs="?", choices=sorted(EXECUTOR_PRESETS), help="The preset to switch to; omit to show the current mode, tiers, overrides and sync state")
-    p.set_defaults(func=cmd_executor_mode)
+    p = sub.add_parser("executor-route", help="Print the executor routing decision, one key=value per line, writing nothing: bare, the resolved route table (high, research, mid, cheap, explore) and the agent files' sync state; with a slice id, the route, tier, subagent_type, model, effort and attribution its dispatch uses (kind first, then risk, then attempt); plus fallback= and warning= lines for the environment")
+    p.add_argument("slice", nargs="?", help="the slice to route; omit for the table")
+    p.add_argument("--retry", action="store_true", help="the slice's second attempt (an escalation, a failed or empty return, a fix of mid-row work): always the high row")
+    p.add_argument("--drafter", action="store_true", help="the design-drafter's dispatch (it follows the high row)")
+    p.add_argument("--explore", action="store_true", help="the read-only Explore lookup agent's dispatch (the explore row)")
+    p.set_defaults(func=cmd_executor_route)
 
     p = sub.add_parser("next", help="Print the current phase/slice selection")
     p.set_defaults(func=cmd_next)
@@ -4429,8 +4541,8 @@ def main(argv=None) -> int:
     p.add_argument("--phase", required=True)
     p.add_argument("--slice", required=True)
     p.add_argument("--name", required=True)
-    p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work (closed set; unknown kinds are rejected). research is findings-only: no product code, findings land in phase.md, and it always routes to slice-executor-high")
-    p.add_argument("--risk", default="high", help="low (slice-executor-mid, the default tier since v46: implementation, fix, docs and qa work, real code included) or high (slice-executor-high: only for a named trigger -- open design, a core invariant, an unlocated root cause, a wide blast radius -- or a fix to mid-tier work); unset or unrecognized values route to high; kind decomposition, review and research route to high whatever this says")
+    p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work (closed set; unknown kinds are rejected). research is findings-only: no product code, findings land in phase.md, and it always routes to the research row on slice-executor-high")
+    p.add_argument("--risk", default="high", help="low (the mid row for implementation and fix, the cheap row for docs and qa -- both on slice-executor-mid, the default tier since v46, real code included) or high (the high row on slice-executor-high: only for a named trigger -- open design, a core invariant, an unlocated root cause, a wide blast radius -- or a fix to mid-row work); unset or unrecognized values route to high; kind decomposition, review, co-work and research route by kind whatever this says; `executor-route <slice>` prints the decision")
     p.add_argument("--order", type=float, help="sort position within the phase; a fractional value (e.g. 4.5) inserts between two neighbors without renumbering (default: 10 past the last non-review slice)")
     p.add_argument("--depends-on", action="append", help="advisory: validate checks only that the named slice exists; selection still follows --order")
     p.set_defaults(func=new_slice)
@@ -4571,8 +4683,8 @@ def main(argv=None) -> int:
     p.add_argument("--phase", required=True)
     p.add_argument("--slice", required=True)
     p.add_argument("--name")
-    p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work (closed set; unknown kinds are rejected). research is findings-only: no product code, findings land in phase.md, and it always routes to slice-executor-high")
-    p.add_argument("--risk", default="high", help="low (slice-executor-mid, the default tier since v46: implementation, fix, docs and qa work, real code included) or high (slice-executor-high: only for a named trigger -- open design, a core invariant, an unlocated root cause, a wide blast radius -- or a fix to mid-tier work); unset or unrecognized values route to high; kind decomposition, review and research route to high whatever this says")
+    p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work (closed set; unknown kinds are rejected). research is findings-only: no product code, findings land in phase.md, and it always routes to the research row on slice-executor-high")
+    p.add_argument("--risk", default="high", help="low (the mid row for implementation and fix, the cheap row for docs and qa -- both on slice-executor-mid, the default tier since v46, real code included) or high (the high row on slice-executor-high: only for a named trigger -- open design, a core invariant, an unlocated root cause, a wide blast radius -- or a fix to mid-row work); unset or unrecognized values route to high; kind decomposition, review, co-work and research route by kind whatever this says; `executor-route <slice>` prints the decision")
     p.add_argument("--order", type=float, help="sort position within the phase; a fractional value (e.g. 4.5) inserts between two neighbors without renumbering (default: 10 past the last non-review slice)")
     p.add_argument("--depends-on", action="append", help="advisory: validate checks only that the named slice exists; selection still follows --order")
     p.add_argument("--create-phase", action="store_true")
