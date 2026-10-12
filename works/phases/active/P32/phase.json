@@ -1,0 +1,33 @@
+{
+  "id": "P32",
+  "name": "One executor route table: dispatch-time model and effort, no presets, Haiku cheap route",
+  "objective": "Replace the economy/flex presets with one engine-owned executor route table and move model and effort selection to dispatch time. The orchestrator passes model and effort on every executor dispatch from the resolved table (engine defaults overlaid by per-row overrides in executors.toml), the two tier agent files' frontmatter staying synced as the fallback only. Shipped rows: review, decomposition, risk-high slices and every second attempt -> opus @ high; research -> opus @ medium; implementation and fix rated low -> sonnet @ high; docs and qa rated low -> haiku @ high (the cheap route: on in this repo, seeded commented-out for adopters, falling back to the mid row's model under ocx claude); design-drafter follows the review row. A project Explore agent runs read-only lookups on haiku @ high, upgraded per call to sonnet or opus for judgment; executors on both tiers get the Agent tool for such read-only lookups only, never for result.md, phase.md, code or validation. Every dispatch leaves a machine-readable record (slice, tier, model, effort, duration, tokens, verdict) through an engine command, with a summary by route, so the table is tuned from this workspace's own runs. Executors record model and effort beside tier in the verdict block and commit attribution follows the recorded model. The orchestrator's effort stays at the session level. Ships as workspace v53.",
+  "status": "planned",
+  "order": 1,
+  "created_at": "2026-10-12T15:49:28+09:00",
+  "started_at": null,
+  "completed_at": null,
+  "review": {
+    "status": "pending",
+    "reviewed_at": null,
+    "reviewer": null,
+    "note": null
+  },
+  "acceptance": {
+    "required": null,
+    "walkthrough": null,
+    "requested_at": null,
+    "cleared_at": null,
+    "note": null
+  },
+  "paths": {
+    "phase_md": "phase.md",
+    "intent_md": "intent.md",
+    "slices_dir": "slices"
+  },
+  "archive": {
+    "archived": false,
+    "archived_at": null,
+    "archive_path": null
+  }
+}
