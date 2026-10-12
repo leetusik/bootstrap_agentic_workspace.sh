@@ -885,32 +885,91 @@ after_debt=$( cd "$F" && find works docs -type f | sort | xargs cat | sha_stdin 
 [ -n "$before_debt" ] && [ "$before_debt" = "$after_debt" ] \
   && ok "docs-debt writes nothing (the workspace tree is unchanged after it runs)" \
   || bad "docs-debt modified the workspace"
-# v51 rotate-backlog proposes the docs phase for the phases held back only by doc debt. Probed on a
-# COPY of the fixture while P2 still owes (the probe adds a phase, and the original's later
-# assertions -- docs_debt=none, the STALE clear, archiving -- must stay untouched).
+# v54 one-shot rotate-backlog (P33; v51 made it propose the docs phase): the doc debt is checked FIRST,
+# nothing is archived while it stands, and the first stdout line is the decision, rotate=<branch>.
+# Probed on COPIES of the fixture while P2 still owes (the probe adds phases and archives, and the
+# original's later assertions -- docs_debt=none, the STALE clear, archiving -- must stay untouched).
+# rotate=refused (a parallel-stream checkout) needs a git branch stamped on a phase; P33.S1's
+# result.md walks it on a scratch copy instead.
 newtmp ROT; cp -R "$F/." "$ROT/"
+rot_p1_order=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['order'])" "$ROT/works/phases/active/P1/phase.json")
 rot_out=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
 rot_pid=$(printf '%s\n' "$rot_out" | sed -n 's/^phase=//p')
 rot_create=$(printf '%s\n' "$rot_out" | sed -n 's/^create: //p')
-printf '%s\n' "$rot_out" | grep -q "^docs_phase_proposal=P2$" \
+rot_jump=$(printf '%s' "$rot_create" | sed -n 's/.* --order \([^ ]*\) --consolidates .*/\1/p')
+[ "$(printf '%s\n' "$rot_out" | head -1)" = "rotate=create" ] \
+  && printf '%s\n' "$rot_out" | grep -q "^docs_phase_proposal=P2$" \
   && printf '%s' "$rot_create" | grep -q -- "new-phase --phase $rot_pid .*--consolidates P2$" \
   && [ -d "$ROT/works/phases/active/P2" ] && [ ! -d "$ROT/works/phases/active/$rot_pid" ] \
-  && ok "rotate-backlog proposes the docs phase for a debt-only phase (the create command named, nothing created, P2 still active)" \
-  || bad "rotate-backlog did not propose the docs phase for the debt-only phase"
-( cd "$ROT" && eval "$rot_create" >/dev/null 2>&1 ) && grep -q '"consolidates": \[' "$ROT/works/phases/active/$rot_pid/phase.json"
+  && ok "rotate-backlog checks the debt first: rotate=create names the create command, creates and archives nothing (P2 still active)" \
+  || bad "rotate-backlog did not open with rotate=create for the debt-only phase (or created/archived something)"
+[ -n "$rot_jump" ] && python3 -c "import sys; sys.exit(0 if float(sys.argv[1]) < float(sys.argv[2]) else 1)" "$rot_jump" "$rot_p1_order" \
+  && ok "the create: line carries the queue-jump --order ahead of the planned phase ($rot_jump < $rot_p1_order)" \
+  || bad "the create: line carries no --order ahead of the planned phase (got '$rot_jump', planned at $rot_p1_order)"
+( cd "$ROT" && eval "$rot_create" >/dev/null 2>&1 ) && grep -q '"consolidates": \[' "$ROT/works/phases/active/$rot_pid/phase.json" \
+  && ( cd "$ROT" && python3 scripts/workflow.py next 2>&1 | grep -q "^current_phase=$rot_pid$" ) \
+  && ok "the create: line runs as is and the docs phase jumps the queue (next points at $rot_pid)" \
+  || bad "the create: line failed, or the docs phase does not sort ahead of the planned phase"
 rot_again=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
-printf '%s\n' "$rot_again" | grep -q "^docs_phase_covered=$rot_pid (pays P2)$" \
+[ "$(printf '%s\n' "$rot_again" | head -1)" = "rotate=resume docs_phase=$rot_pid" ] \
+  && printf '%s\n' "$rot_again" | grep -q "^docs_phase_covered=$rot_pid (pays P2)$" \
   && ! printf '%s\n' "$rot_again" | grep -q "^docs_phase_proposal=" \
-  && ok "once a live docs phase covers it, rotate-backlog reports it covered and proposes no second docs phase" \
-  || bad "rotate-backlog proposed a duplicate docs phase (or did not report the covering one)"
+  && ! printf '%s\n' "$rot_again" | grep -q "^docs_phase_order=" \
+  && ok "re-run with a live docs phase: rotate=resume reports it covering P2, proposes no second docs phase, rewrites no order" \
+  || bad "rotate-backlog did not resume the live docs phase (or proposed a duplicate, or rewrote an order already first)"
 rot_before=$(ls "$ROT/works/phases/active" | wc -l | tr -d ' ')
 ( cd "$ROT" && python3 scripts/workflow.py new-phase --phase P9 --name "Wrong docs phase" --objective "pays a phase that owes nothing" --consolidates P1 2>&1 | grep -q "owes no doc consolidation" ) \
   && [ "$(ls "$ROT/works/phases/active" | wc -l | tr -d ' ')" = "$rot_before" ] && [ ! -d "$ROT/works/phases/active/P9" ] \
   && ok "new-phase --consolidates refuses a phase that owes nothing and writes nothing" \
   || bad "new-phase --consolidates accepted (or half-created) a phase that owes no consolidation"
-( cd "$ROT" && python3 scripts/workflow.py rotate-backlog --archive-only 2>&1 | grep -q "docs_phase" ) \
-  && bad "rotate-backlog --archive-only printed a docs-phase line" \
-  || ok "rotate-backlog --archive-only prints no docs-phase proposal"
+( cd "$ROT" && python3 scripts/workflow.py rotate-backlog --archive-only 2>&1 | grep -qE "docs_phase|^rotate=" ) \
+  && bad "rotate-backlog --archive-only printed a rotate= or docs-phase line" \
+  || ok "rotate-backlog --archive-only prints no rotate= line and no docs-phase line"
+( cd "$ROT" && python3 scripts/workflow.py set-phase-status P1 pending >/dev/null 2>&1 \
+  && python3 scripts/workflow.py set-slice-status P1.S1 in_progress >/dev/null 2>&1 ) || bad "rotate probe: could not put P1 mid-flight"
+rot_mid=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
+[ "$(printf '%s\n' "$rot_mid" | head -1)" = "rotate=stop_midflight midflight=P1:pending, P1.S1:in_progress" ] \
+  && printf '%s\n' "$rot_mid" | grep -q "^stopped_before=resume docs_phase=$rot_pid$" \
+  && [ -d "$ROT/works/phases/active/P2" ] \
+  && ok "a pending phase and an in_progress slice elsewhere stop the run: rotate=stop_midflight lists both, nothing archived" \
+  || bad "rotate-backlog did not stop for another phase's mid-flight work"
+( cd "$ROT" && python3 scripts/workflow.py set-slice-status P1.S1 todo >/dev/null 2>&1 \
+  && python3 scripts/workflow.py set-phase-status P1 planned >/dev/null 2>&1 \
+  && python3 scripts/workflow.py set-slice-status "$rot_pid.DECOMP" in_progress >/dev/null 2>&1 ) || bad "rotate probe: could not start the docs phase's DECOMP"
+rot_own=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
+[ "$(printf '%s\n' "$rot_own" | head -1)" = "rotate=resume docs_phase=$rot_pid" ] \
+  && ok "the docs phase's own in_progress slice is not mid-flight (rotate=resume)" \
+  || bad "the docs phase's own in_progress slice stopped the run"
+( cd "$ROT" && python3 scripts/workflow.py set-slice-status "$rot_pid.DECOMP" done >/dev/null 2>&1 \
+  && python3 scripts/workflow.py docs-consolidated P2 >/dev/null 2>&1 ) || bad "rotate probe: docs-consolidated P2 failed"
+rot_paid=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
+[ "$(printf '%s\n' "$rot_paid" | head -1)" = "rotate=resume docs_phase=$rot_pid" ] && [ -d "$ROT/works/phases/active/P2" ] \
+  && ok "a docs phase that has paid its debt but not passed its review still resumes; nothing is archived yet" \
+  || bad "a paid docs phase short of its review did not resume (or rotate archived early)"
+( cd "$ROT" && python3 scripts/workflow.py accept-gate "$rot_pid" --waive --note "docs phase" >/dev/null 2>&1 \
+  && python3 scripts/workflow.py set-slice-status "$rot_pid.REVIEW" done >/dev/null 2>&1 \
+  && python3 scripts/workflow.py review-phase "$rot_pid" --verdict pass >/dev/null 2>&1 ) || bad "rotate probe: could not pass the docs phase's review"
+rot_arch=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
+[ "$(printf '%s\n' "$rot_arch" | head -1)" = "rotate=archive" ] && [ "$(printf '%s\n' "$rot_arch" | tail -1)" = "docs_phase=none" ] \
+  && [ ! -d "$ROT/works/phases/active/P2" ] && [ ! -d "$ROT/works/phases/active/$rot_pid" ] && [ -d "$ROT/works/phases/active/P1" ] \
+  && ok "once the debt is paid and the docs phase is done, rotate=archive archives both last and leaves the open phase" \
+  || bad "rotate-backlog did not archive the paid phase and the done docs phase at the end"
+# A docs phase created before the queue jump (no --order: the default max + 1, behind planned work)
+# is moved ahead on resume: one order write, printed and logged, then idempotent.
+newtmp ROT2; cp -R "$F/." "$ROT2/"
+( cd "$ROT2" && python3 scripts/workflow.py new-phase --phase P7 --name "Docs phase behind planned work" --objective "pays P2" --consolidates P2 >/dev/null 2>&1 ) || bad "rotate probe: new-phase --consolidates P2 failed"
+rot2_old=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['order'])" "$ROT2/works/phases/active/P7/phase.json")
+rot2_out=$( cd "$ROT2" && python3 scripts/workflow.py rotate-backlog 2>&1 )
+[ "$(printf '%s\n' "$rot2_out" | head -1)" = "rotate=resume docs_phase=P7" ] \
+  && printf '%s\n' "$rot2_out" | grep -q "^docs_phase_order=P7 $rot2_old -> 0$" \
+  && grep -q '"order": 0,' "$ROT2/works/phases/active/P7/phase.json" \
+  && grep -q '"type": "phase_reordered", "phase": "P7"' "$ROT2/works/events.jsonl" \
+  && ( cd "$ROT2" && python3 scripts/workflow.py next 2>&1 | grep -q "^current_phase=P7$" ) \
+  && ok "resume re-asserts the queue jump on a docs phase behind planned work (order $rot2_old -> 0, logged, next points at it)" \
+  || bad "resume did not move the docs phase ahead of the planned phase"
+( cd "$ROT2" && python3 scripts/workflow.py rotate-backlog 2>&1 | grep -q "^docs_phase_order=" ) \
+  && bad "the queue-jump re-assert rewrote an order that already sorts first" \
+  || ok "the queue-jump re-assert is idempotent (no second order write)"
 # v39 doc staleness (D14): the `docs` listing carries every doc's last-updated marker, and a doc
 # named by an unconsolidated '## Doc impact' note is flagged STALE there and named in `validate`.
 # Advisory only -- operator-paced consolidation is the design, so staleness must be loud, not fatal.
