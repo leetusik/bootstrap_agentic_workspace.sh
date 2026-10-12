@@ -33,7 +33,7 @@
   "execution": {
     "mode": "parallel",
     "branch": "phase/P33-one-shot_rotate-backlog_consolidate_the",
-    "worktree": "/Users/sugang/projects/personal/bootstrap_agentic_workspace.sh/.claude/worktrees/P33-one-shot_rotate-backlog_consolidate_the",
+    "worktree": null,
     "consolidation": "pending"
   },
   "consolidation": "pending"

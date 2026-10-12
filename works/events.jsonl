@@ -888,3 +888,4 @@
 {"ts": "2026-10-12T18:19:20+09:00", "type": "phase_consolidation_owed", "phase": "P33", "notes": 9}
 {"ts": "2026-10-12T18:19:20+09:00", "type": "deferred_created", "deferred": "D55", "source": "P33.REVIEW"}
 {"ts": "2026-10-12T18:22:30+09:00", "type": "doc_version_created", "doc": "qa", "version": "v0014_p33_review_regression_checklist_rotate-backlog_decides_the_chain_rotate_branches_queue-jump_order_resume_re-assert_stop_midflight_archive_last_refused_smoke_247", "source": "P33.REVIEW"}
+{"ts": "2026-10-12T18:23:04+09:00", "type": "phase_parallel_torndown", "phase": "P33", "branch": "phase/P33-one-shot_rotate-backlog_consolidate_the"}
