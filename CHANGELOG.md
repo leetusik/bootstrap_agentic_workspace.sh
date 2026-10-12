@@ -9,6 +9,21 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v57 — 2026-10-13
+
+- **The shipped auto-compact window is 500k.** `.claude/settings.json` now carries
+  `"autoCompactWindow": 500000` (v56 shipped 300000). 300k was a judgment call, not a documented
+  figure: Claude Code's docs recommend no window for 1M-context models, and Claude 4.6 and later
+  bill the full window at standard rates, so there is no cost step to stay under. With the
+  boundary veto in place the window is still "the earliest allowed point"; 500k keeps 350k of
+  headroom under the gate's 850,000 fill ceiling, enough for a full slice cycle, and halves how
+  often compaction fires.
+
+- **Migration notes.** `/update-workspace` sets `autoCompactWindow` to 500000 only when your
+  project `.claude/settings.json` (nested installs: `settings.local.json`) has no such key. A
+  checkout that took 300000 from v56 keeps it: edit the value yourself if you want 500000.
+  Relaunch Claude Code to pick it up; `/autocompact` with no argument shows the window in effect.
+
 ## v56 — 2026-10-13
 
 - **The 300k auto-compact window ships in project settings.** `.claude/settings.json` now carries

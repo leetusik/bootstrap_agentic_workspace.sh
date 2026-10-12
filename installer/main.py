@@ -42,7 +42,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 56
+WORKSPACE_VERSION = 57
 ROOT = TARGET.resolve()
 # Nested personal install (P28; the default layout since P29): TARGET is a HOST git repo -- one the
 # operator may not own, or a new/empty dir this run `git init`s. The engine and all workflow state go
@@ -307,7 +307,7 @@ def _merge_settings_dict(theirs: dict, ours: dict) -> dict:
       target's group with the same `matcher` (creating the event list / group when
       absent) unless a handler with the same `command` already exists anywhere
       under that event. Never removes, reorders or rewrites an adopter's entries.
-    - autoCompactWindow (v56): copied from `ours` only when the target has no such
+    - autoCompactWindow (v56; 500000 since v57): copied from `ours` only when the target has no such
       key; a value the adopter chose is never overwritten.
     Idempotent. Raises ValueError on a malformed target shape (a non-object
     `permissions`/`hooks`, a non-list `allow`/`deny`/event/`hooks`, a non-object
