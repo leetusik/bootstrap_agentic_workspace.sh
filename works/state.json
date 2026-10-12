@@ -1,8 +1,9 @@
 {
-  "current_phase": "P32",
-  "current_slice": "P32.DECOMP",
-  "next_slice": "P32.REVIEW",
+  "current_phase": "P33",
+  "current_slice": "P33.S1",
+  "next_slice": "P33.S2",
   "waiting_on_operator": null,
   "mode": "phase",
-  "updated_at": "2026-10-12T16:45:46+09:00"
+  "stream": "phase/P33-one-shot_rotate-backlog_consolidate_the",
+  "updated_at": "2026-10-12T16:59:21+09:00"
 }
