@@ -3,14 +3,14 @@
   "phase_id": "P34",
   "name": "Ship the hooks: settings, installer hooks merge, smoke",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 2,
   "depends_on": [
     "P34.S1"
   ],
   "created_at": "2026-10-12T19:47:44+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-10-12T20:04:38+09:00",
+  "completed_at": "2026-10-12T20:07:57+09:00",
   "risk": "low",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "PreCompact(auto)->compact-gate and SessionStart(compact)->compact-resume hooks in .claude/settings.json; installer merges hooks additively on retrofit, --update and nested settings.local.json; 9 smoke asserts, 289 PASS",
   "validation": {
     "required": [],
     "last_run": null,

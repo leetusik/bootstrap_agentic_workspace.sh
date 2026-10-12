@@ -680,7 +680,7 @@ printf 'print("hello")\n'                            > "$R/src/app.py"
 printf 'def util():\n    return 1\n'                  > "$R/scripts/util.py"
 printf '# Their Contract\n\nUse 4-space indent.\n'    > "$R/CLAUDE.md"
 printf '# Their Contract\n\nUse 4-space indent.\n'    > "$R/AGENTS.md"
-printf '{\n  "permissions": {\n    "allow": ["Bash(make:*)"]\n  },\n  "env": {"FOO": "bar"}\n}\n' > "$R/.claude/settings.json"
+printf '{\n  "permissions": {\n    "allow": ["Bash(make:*)"]\n  },\n  "env": {"FOO": "bar"},\n  "hooks": {\n    "PreCompact": [{"matcher": "auto", "hooks": [{"type": "command", "command": "echo foreign-precompact"}]}],\n    "PostToolUse": [{"matcher": "Edit", "hooks": [{"type": "command", "command": "echo foreign-post"}]}]\n  }\n}\n' > "$R/.claude/settings.json"
 printf '*.py text\n'                                  > "$R/.gitattributes"
 git -C "$R" init -q
 git -C "$R" add -A
@@ -725,6 +725,19 @@ assert "Bash(python3 scripts/workflow.py:*)" in allow, "workspace permission not
 assert d.get("env", {}).get("FOO") == "bar", "unrelated key lost"
 PY
 then ok "settings.json additively merged (custom perm + env survive)"; else bad "settings.json merge incorrect"; fi
+if python3 - "$R/.claude/settings.json" <<'PY'
+import json, sys
+h = json.load(open(sys.argv[1]))["hooks"]
+gate = 'cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-gate || true'
+resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-resume || true'
+pc = h["PreCompact"]
+assert len(pc) == 1 and pc[0]["matcher"] == "auto", pc
+assert pc[0]["hooks"] == [{"type": "command", "command": "echo foreign-precompact"}, {"type": "command", "command": gate, "timeout": 15}], pc
+assert h["PostToolUse"] == [{"matcher": "Edit", "hooks": [{"type": "command", "command": "echo foreign-post"}]}], h["PostToolUse"]
+assert h["SessionStart"] == [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}], h["SessionStart"]
+assert json.load(open(sys.argv[1]))["env"]["FOO"] == "bar"
+PY
+then ok "retrofit merges the two compaction hooks additively: foreign PreCompact/PostToolUse handlers survive in place (foreign first), ours present exactly once"; else bad "retrofit hooks merge incorrect"; fi
 
 ( cd "$R" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) && ok "validate passes in target" || bad "validate failed in target"
 nph=$(find "$R/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
@@ -776,6 +789,15 @@ printf '%s\n' "$out" | grep -q "docs subsystem: skipped" && ok "docs subsystem s
 [ -z "$(find "$E/docs" -name 'v0001_bootstrap.md')" ] && ok "no workspace doc files scattered" || bad "workspace doc files scattered into their docs/"
 [ ! -d "$E/docs/current" ] && ok "no docs/current scaffolded" || bad "docs/current scaffolded"
 [ -f "$E/works/state.json" ] && ok "works subsystem still installed" || bad "works subsystem missing"
+# A settings.json whose `hooks` is not an object is never clobbered: the payload goes to a sidecar.
+newtmp HM
+mkdir -p "$HM/.claude"
+printf '{"permissions": {"allow": ["Bash(make:*)"]}, "hooks": "not-an-object"}\n' > "$HM/.claude/settings.json"
+HMS=$(sha "$HM/.claude/settings.json")
+out=$(sh "$BOOT" "$HM" --into-existing 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ "$(sha "$HM/.claude/settings.json")" = "$HMS" ] && [ -f "$HM/.claude/settings.workspace.json" ] \
+  && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert "PreCompact" in d["hooks"] and "SessionStart" in d["hooks"]' "$HM/.claude/settings.workspace.json" \
+  && ok "a settings.json whose hooks is not an object is left byte-identical and the payload goes to settings.workspace.json" || bad "malformed hooks was clobbered or not sidecarred (rc=$rc) -- $out"
 
 # ---------------------------------------------------------------------------
 echo "== Test 5: fresh-install regression (the at-root path, behind --at-root since P29, is unchanged) =="
@@ -783,6 +805,15 @@ newtmp F
 out=$(sh "$BOOT" "$F" --at-root --name "Fresh" --summary "fresh" 2>&1); rc=$?
 [ "$rc" -eq 0 ] && ok "fresh install exits 0" || bad "fresh install exit=$rc"
 ( cd "$F" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) && ok "fresh workspace validates" || bad "fresh workspace failed validate"
+if python3 - "$F/.claude/settings.json" <<'PY'
+import json, sys
+h = json.load(open(sys.argv[1]))["hooks"]
+gate = 'cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-gate || true'
+resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-resume || true'
+assert h["PreCompact"] == [{"matcher": "auto", "hooks": [{"type": "command", "command": gate, "timeout": 15}]}], h
+assert h["SessionStart"] == [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}], h
+PY
+then ok "a fresh at-root install ships both compaction hooks (PreCompact auto -> compact-gate, SessionStart compact -> compact-resume, timeout 15)"; else bad "fresh install settings.json lacks the exact compaction hooks"; fi
 nphf=$(find "$F/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
 [ "$nphf" = "0" ] && ok "fresh install seeds no phases (empty start)" || bad "fresh install seeded $nphf phase(s)"
 if python3 - "$REPO_ROOT" "$F/works/.workspace-version.json" <<'PY'
@@ -1324,6 +1355,26 @@ printf '# hand-edited\n' >> "$F/.github/workflows/workspace-ci.yml"
 sh "$BOOT" "$F" --update >/dev/null 2>&1
 grep -q '^# hand-edited$' "$F/.github/workflows/workspace-ci.yml" && ok "--update preserves an edited CI workflow (seed-once)" || bad "--update clobbered an edited CI workflow"
 [ "$(grep -c '^works/events\.jsonl merge=union$' "$F/.gitattributes")" -eq 1 ] && ok "--update .gitattributes merge is idempotent (one union rule)" || bad ".gitattributes union rule duplicated on re-update"
+# --update merges the compaction hooks additively and idempotently (a pre-v55 settings.json gains them).
+set_a=$(sha "$F/.claude/settings.json")
+sh "$BOOT" "$F" --update >/dev/null 2>&1
+[ "$(sha "$F/.claude/settings.json")" = "$set_a" ] \
+  && ok "--update on a workspace that already has the hooks leaves settings.json byte-identical (idempotent)" || bad "--update changed an up-to-date settings.json"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d.pop("hooks"); d["hooks"]={"PreCompact":[{"matcher":"auto","hooks":[{"type":"command","command":"echo foreign"}]}]}; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$F/.claude/settings.json"
+upd_out=$(sh "$BOOT" "$F" --update 2>&1)
+if python3 - "$F/.claude/settings.json" <<'PY'
+import json, sys
+h = json.load(open(sys.argv[1]))["hooks"]
+cmds = [x["command"] for g in h["PreCompact"] for x in g["hooks"]]
+assert cmds == ["echo foreign", 'cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-gate || true'], cmds
+assert [x["command"] for g in h["SessionStart"] for x in g["hooks"]] == ['cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-resume || true']
+PY
+then ok "--update adds the hooks to a pre-v55 settings.json beside a foreign PreCompact handler, which stays first"; else bad "--update did not merge the hooks additively -- $upd_out"; fi
+set_b=$(sha "$F/.claude/settings.json")
+sh "$BOOT" "$F" --update >/dev/null 2>&1
+[ "$(sha "$F/.claude/settings.json")" = "$set_b" ] \
+  && ok "a second --update after the merge leaves settings.json byte-identical" || bad "--update hooks merge is not idempotent"
+cp "$REPO_ROOT/.claude/settings.json" "$F/.claude/settings.json"   # drop the probe's foreign handler before the Test 6 diff
 rm -f "$F/.github/workflows/workspace-ci.yml" "$F/.gitattributes"
 sh "$BOOT" "$F" --update >/dev/null 2>&1   # restore both verbatim for the Test 6 diff
 [ ! -f "$F/.claude/agents/phase-reviewer.md" ] && ok "phase-reviewer retired (absent on fresh install)" || bad "phase-reviewer should be retired but is present"
@@ -1879,6 +1930,32 @@ if [ "$rc" -eq 0 ] && ih_clean && [ ! -e "$IH/workflow/workflow" ] && ! grep -rq
     && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); c=d["commit_convention"]; assert c["confirmed"] is True and c["coauthor_trailers"] == "forbidden" and d["renames"]["skills"] == {"commit": "wf-commit"}, d' "$IH/workflow/.agentic-nested.json" >/dev/null 2>&1; then
   ok "--update --nested keeps the confirmed convention and the renames, the host stays clean, no workflow/workflow/, one exclude block"
 else bad "--update --nested lost state or left a footprint (rc=$rc) -- $out"; fi
+# P34.S2: the nested settings.local.json carries both hooks, command rewritten to the nested engine path.
+if python3 - "$IH/.claude/settings.local.json" <<'PY'
+import json, sys
+h = json.load(open(sys.argv[1]))["hooks"]
+gate = 'cd "$CLAUDE_PROJECT_DIR" && python3 workflow/scripts/workflow.py compact-gate || true'
+resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 workflow/scripts/workflow.py compact-resume || true'
+assert h["PreCompact"] == [{"matcher": "auto", "hooks": [{"type": "command", "command": gate, "timeout": 15}]}], h
+assert h["SessionStart"] == [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}], h
+PY
+then ok "nested: settings.local.json carries both compaction hooks with the workflow/scripts/workflow.py command path, and --update --nested kept exactly one of each"; else bad "nested settings.local.json hooks wrong"; fi
+lset_a=$(sha "$IH/.claude/settings.local.json")
+sh "$BOOT" "$IH" --update --nested >/dev/null 2>&1
+[ "$(sha "$IH/.claude/settings.local.json")" = "$lset_a" ] && ih_clean \
+  && ok "nested: a second --update --nested leaves settings.local.json byte-identical" || bad "nested --update rewrote settings.local.json"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["PreCompact"][0]["hooks"].insert(0,{"type":"command","command":"echo foreign-nested"}); d["hooks"]["Stop"]=[{"hooks":[{"type":"command","command":"echo stop"}]}]; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$IH/.claude/settings.local.json"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["SessionStart"][0]["hooks"]=[]; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$IH/.claude/settings.local.json"
+sh "$BOOT" "$IH" --update --nested >/dev/null 2>&1
+if python3 - "$IH/.claude/settings.local.json" <<'PY'
+import json, sys
+h = json.load(open(sys.argv[1]))["hooks"]
+cmds = [x["command"] for g in h["PreCompact"] for x in g["hooks"]]
+assert cmds == ["echo foreign-nested", 'cd "$CLAUDE_PROJECT_DIR" && python3 workflow/scripts/workflow.py compact-gate || true'], cmds
+assert [x["command"] for g in h["SessionStart"] for x in g["hooks"]] == ['cd "$CLAUDE_PROJECT_DIR" && python3 workflow/scripts/workflow.py compact-resume || true'], h["SessionStart"]
+assert h["Stop"] == [{"hooks": [{"type": "command", "command": "echo stop"}]}]
+PY
+then ok "nested: --update --nested keeps a foreign hook in the present settings.local.json, re-adds a removed one and never duplicates ours"; else bad "nested present-file hooks merge wrong"; fi
 out=$(sh "$BOOT" "$IH" --nested --into-existing 2>&1); rc=$?
 [ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -q "mutually exclusive" && ok "--nested --into-existing is rejected" || bad "--nested --into-existing was accepted (rc=$rc) -- $out"
 # v53 (P32.S5): a host that already has its own .claude/agents/Explore.md gets ours renamed like any clash.

@@ -5,6 +5,7 @@
 # lines straddles its ~1 KB read-chunk boundary. The cookie turns that per-chunk check off (P27.F3).
 from __future__ import annotations
 
+import copy
 import difflib
 import json
 import os
@@ -298,26 +299,70 @@ def emit_policy_files() -> None:
 # ---- Retrofit (--into-existing) write policy --------------------------------
 # In retrofit mode the workspace is added non-destructively: an existing file is
 # never overwritten. A small, known set is additively, idempotently merged.
+def _merge_settings_dict(theirs: dict, ours: dict) -> dict:
+    """Pure additive merge of our settings payload into a parsed target. Returns a
+    new dict (`theirs` is not mutated); every key we do not own is untouched.
+    - permissions.allow/deny: union, the adopter's entries first.
+    - hooks: for each event and matcher group in `ours`, append our handler to the
+      target's group with the same `matcher` (creating the event list / group when
+      absent) unless a handler with the same `command` already exists anywhere
+      under that event. Never removes, reorders or rewrites an adopter's entries.
+    Idempotent. Raises ValueError on a malformed target shape (a non-object
+    `permissions`/`hooks`, a non-list `allow`/`deny`/event/`hooks`, a non-object
+    group) so callers can sidecar / refuse instead of clobbering."""
+    merged = copy.deepcopy(theirs)
+    perms = merged.setdefault("permissions", {})
+    if not isinstance(perms, dict):
+        raise ValueError("`permissions` is not an object")
+    for key in ("allow", "deny"):
+        current = perms.get(key) or []
+        if not isinstance(current, list):
+            raise ValueError(f"permissions.{key} is not a list")
+        additions = (ours.get("permissions") or {}).get(key) or []
+        perms[key] = list(current) + [x for x in additions if x not in current]
+    our_hooks = ours.get("hooks") or {}
+    if our_hooks:
+        hooks = merged.setdefault("hooks", {})
+        if not isinstance(hooks, dict):
+            raise ValueError("`hooks` is not an object")
+        for event, our_groups in our_hooks.items():
+            groups = hooks.setdefault(event, [])
+            if not isinstance(groups, list) or not all(isinstance(g, dict) for g in groups):
+                raise ValueError(f"hooks.{event} is not a list of objects")
+            for g in groups:
+                if not isinstance(g.get("hooks", []), list) or not all(isinstance(h, dict) for h in g.get("hooks", [])):
+                    raise ValueError(f"hooks.{event}[].hooks is not a list of objects")
+            have = {h.get("command") for g in groups for h in g.get("hooks", [])}
+            for og in our_groups:
+                for oh in og.get("hooks", []):
+                    if oh.get("command") in have:
+                        continue
+                    target = next((g for g in groups if g.get("matcher") == og.get("matcher")), None)
+                    if target is None:
+                        target = {k: v for k, v in og.items() if k != "hooks"}
+                        target["hooks"] = []
+                        groups.append(target)
+                    target.setdefault("hooks", []).append(copy.deepcopy(oh))
+                    have.add(oh.get("command"))
+    return merged
+
+
 def _merge_settings_json(text: str) -> None:
-    """Union our permission entries into an existing .claude/settings.json,
-    preserving every key the target already has. Idempotent."""
+    """Merge our settings payload (permissions union + hooks) into an existing
+    .claude/settings.json, preserving every key the target already has. Idempotent."""
     p = ROOT / ".claude/settings.json"
     ours = json.loads(text)
     try:
         theirs = json.loads(p.read_text(encoding="utf-8"))
         if not isinstance(theirs, dict):
             raise ValueError("settings.json is not a JSON object")
+        merged = _merge_settings_dict(theirs, ours)
     except Exception:
-        # Never clobber an unparseable file — drop a sidecar instead.
+        # Never clobber an unparseable / malformed file — drop a sidecar instead.
         _atomic_write(ROOT / ".claude/settings.workspace.json", text)
         RETROFIT_SUMMARY["skipped"].append(".claude/settings.json (unparseable; wrote .claude/settings.workspace.json)")
         return
-    perms = theirs.setdefault("permissions", {})
-    for key in ("allow", "deny"):
-        current = perms.get(key) or []
-        additions = (ours.get("permissions") or {}).get(key) or []
-        perms[key] = list(current) + [x for x in additions if x not in current]
-    _atomic_write(p, json.dumps(theirs, ensure_ascii=False, indent=2) + "\n")
+    _atomic_write(p, json.dumps(merged, ensure_ascii=False, indent=2) + "\n")
     RETROFIT_SUMMARY["merged"].append(".claude/settings.json")
 
 
@@ -1026,13 +1071,7 @@ def nested_plan() -> dict:
             theirs = json.loads(existing)
             if not isinstance(theirs, dict) or not isinstance(theirs.get("permissions", {}), dict):
                 raise ValueError("not a JSON object with an object `permissions`")
-            merged = json.loads(existing)
-            perms = merged.setdefault("permissions", {})
-            for key in ("allow", "deny"):
-                current = perms.get(key) or []
-                if not isinstance(current, list):
-                    raise ValueError(f"permissions.{key} is not a list")
-                perms[key] = list(current) + [x for x in json.loads(settings_ours)["permissions"].get(key, []) if x not in current]
+            merged = _merge_settings_dict(theirs, json.loads(settings_ours))
         except (OSError, ValueError) as exc:
             _nested_refuse(f".claude/settings.local.json exists but cannot be merged ({exc}); fix or move it, then re-run (nothing written).")
         settings_text = existing if merged == theirs else json.dumps(merged, ensure_ascii=False, indent=2) + "\n"
