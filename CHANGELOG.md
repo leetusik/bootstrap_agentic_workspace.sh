@@ -11,28 +11,48 @@ history.
 
 ## v53 — 2026-10-12
 
-- **One executor route table replaces the economy/flex presets.** The engine owns five rows (`high`,
-  `research`, `mid`, `cheap`, `explore`); `executors.toml` overrides them per row (`[claude.<row>]`,
-  keys `model` / `effort`). The orchestrator resolves each dispatch with the new `executor-route`
-  command (`/executor-route` skill, replacing `/executor-mode`) and passes the row's model and effort
-  on the Agent call; the agent files' frontmatter is only the fallback. Verdict blocks record `model`
-  and `effort` beside `tier`, and commit attribution follows the recorded model.
-- **The cheap route.** `docs` and `qa` slices rated `low` run the mid executor file on Haiku at high.
-  On in the upstream repo; the `executors.toml` seed ships with the block commented out (the `haiku`
-  alias is Haiku 4.5 on Bedrock, Vertex and Foundry), so an unset `cheap` row is the mid row.
-- **The instrument.** `record-dispatch` appends an `executor_dispatched` event to `works/events.jsonl`
-  after every executor return; `dispatch-summary` reads it back by route, model @ effort and kind.
-- **`Explore.md` and the Agent tool.** `.claude/agents/Explore.md` (haiku @ high, read-only, managed
-  like the other agent files) overrides the built-in Explore; both executor tiers gain the Agent tool
-  for read-only lookups only, never for `result.md`, `phase.md`, code or validation.
+- **One executor route table replaces the `economy` / `flex` presets.** The engine owns five rows —
+  `high` (`opus @ high`: review, decomposition, the co-work mockup span, any risk but `low`, every
+  second attempt; `design-drafter` follows it), `research` (`opus @ medium`), `mid` (`sonnet @ high`:
+  implementation and fix rated `low`), `cheap` (docs and qa rated `low`; inherits `mid` unless
+  overridden) and `explore` (`haiku @ high`, the read-only lookup agent). `executors.toml` overrides
+  them row by row (`[claude.<row>]`, keys `model` / `effort`); `sync-agents` writes four agent files
+  from the rows; `executor-mode` is gone.
+- **Model and effort are chosen at dispatch time.** `python3 scripts/workflow.py executor-route
+  <slice_id> [--retry]` prints the deterministic decision (kind first, then risk, then attempt), one
+  `key=value` per line; the orchestrator pins it as a `## Dispatch` section in the slice's `plan.md`,
+  passes `model` and `effort` on the Agent call, and the agent files' frontmatter is only the
+  fallback. `--drafter` and `--explore` resolve the design subagent and the lookup agent. A loopback
+  `ANTHROPIC_BASE_URL` (ocx/Kiro) makes the cheap row fall back to the mid model and `explore` to
+  `sonnet`; `CLAUDE_CODE_EFFORT_LEVEL` and `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` print a warning, because
+  they outrank the per-dispatch values.
+- **The cheap route.** Docs and qa slices rated `low` run on Haiku 5.5 at `high`. It is on in this
+  repository's `executors.toml` and **seeded commented-out** for adopters, because the `haiku` alias
+  is Haiku 4.5 on Bedrock, Vertex and Foundry. Unset, the row inherits `mid`.
+- **The instrument.** `record-dispatch <slice_id> --route … --model … --effort … --verdict …
+  [--attempt N] [--duration-ms N] [--tokens N] [--tool-uses N]` appends an `executor_dispatched` event
+  to `works/events.jsonl`; `dispatch-summary [--phase P] [--slice S] [--json]` reads it back by route,
+  model @ effort and kind. The table is tuned from this workspace's own runs.
+- **`Explore`, the read-only lookup agent, and the `Agent` tool in both executor tiers.**
+  `.claude/agents/Explore.md` (Read / Grep / Glob, `haiku @ high`, `omitClaudeMd: true`) overrides
+  Claude Code's built-in Explore in the repo. The orchestrator uses it for planning lookups; executors
+  may hand it bulky read-only reads and upgrade the model per call for a lookup that needs judgment —
+  never `result.md`, `phase.md`, code, validation or the verdict. Executors record `model` and `effort`
+  beside `tier` in the verdict block, and the slice commit's `Co-Authored-By` follows the recorded model.
+- **`/executor-route` replaces `/executor-mode`.** Bare, it shows the route table and the dispatch
+  summary; with a slice id, that slice's dispatch decision. The orchestrator's own effort stays at the
+  session level.
 
-- **Migration notes.** Delete any `mode = "..."` line from `executors.toml`: the engine refuses it and
-  says how to keep flex (`effort = "xhigh"` under `[claude.mid]` and `[claude.high]`). Re-run
-  `python3 scripts/workflow.py sync-agents` after `--update` (updates reset the agent files to the
-  upstream defaults). To opt in to the cheap route on the Anthropic API, uncomment the
-  `# cheap-route: begin` block in `executors.toml`. The retired skill directory
-  `.claude/skills/executor-mode/` is flagged for removal. A nested install whose host already has
-  `.claude/agents/Explore.md` gets ours renamed `wf-Explore`.
+- **Migration notes.** (a) `sync-agents` refuses a leftover `mode = "…"` line in `executors.toml` —
+  delete it; `flex` was `xhigh` on both tiers, so set `effort = "xhigh"` under `[claude.mid]` and
+  `[claude.high]` to keep it. (b) After `--update`, re-run `python3 scripts/workflow.py sync-agents`
+  (the agent files reset to upstream defaults, now `opus @ high` / `sonnet @ high`). (c) To opt into
+  the cheap route on the Anthropic API, uncomment the `[claude.cheap]` block in `executors.toml`.
+  (d) `--update` flags `.claude/skills/executor-mode/` as stale — remove it by hand. (e)
+  `.claude/agents/Explore.md` overrides the built-in Explore for every session in the repo; in a
+  nested install whose host already has an `Explore.md`, ours is installed renamed (`wf-Explore`) and
+  no longer overrides the built-in, and the rename also rewrites the word "Explore" in the shipped
+  agent bodies. (f) `CLAUDE_CODE_EFFORT_LEVEL`, if set, flattens every row's effort.
 
 ## v52 — 2026-10-08
 

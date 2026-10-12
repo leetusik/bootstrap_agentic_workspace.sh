@@ -329,19 +329,22 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
   결과(`result.md`)를 쓰고 phase 노트(`phase.md`)를 크기 제한 안에서 갱신한 뒤 판정만
   돌려줍니다. 커밋과 상태 변경은 하지 않습니다.
 
-실행자는 slice의 위험도(`risk`)에 따라 두 티어 중 하나가 선택됩니다. 위험도 표시가 곧
-비용 조절 장치입니다 — 대부분의 일은 기본 티어인 `mid`가 맡고, 정말 어려운 일과 `mid`가 한 번
-실패한 일만 `high`가 맡습니다(v46부터).
+실행자는 slice의 종류(`kind`)와 위험도(`risk`)에 따라 엔진의 **라우트 표**에서 한 행이 선택되고, 그
+행이 정한 모델과 노력 수준(effort)이 매 dispatch마다 전달됩니다(v53부터). 위험도 표시가 곧 비용 조절
+장치입니다 — 대부분의 일은 기본 티어인 `mid`가 맡고, 정말 어려운 일과 `mid`가 한 번 실패한 일만
+`high`가 맡습니다(v46부터).
 
-| 티어 | `economy` | `flex` | 맡는 일 |
+| 행(route) | 기본값 | 실행 에이전트 | 맡는 일 |
 |---|---|---|---|
-| `slice-executor-mid` | Sonnet@high | Sonnet@xhigh | 기본 티어 — `risk: low`인 구현·수정(`fix`)·문서·QA slice. 실제 코드 작성과 여러 파일에 걸친 변경도 포함 |
-| `slice-executor-high` | Opus@high | Opus@xhigh | 일 나누기(`DECOMP`), 조사(`research`), 최종 리뷰(`REVIEW`), 이유를 적어 `risk: high`로 매긴 slice, 그리고 `mid`가 한 번 실패한 일 |
+| `high` | Opus@high | `slice-executor-high` | 일 나누기(`DECOMP`), 최종 리뷰(`REVIEW`), 이유를 적어 `risk: high`로 매긴 slice, 그리고 두 번째 시도(에스컬레이션, `mid`가 한 번 실패한 일). 디자인 하위 에이전트 `design-drafter`도 이 행을 따름 |
+| `research` | Opus@medium | `slice-executor-high` | 조사(`research`) slice |
+| `mid` | Sonnet@high | `slice-executor-mid` | 기본 — `risk: low`인 구현·수정(`fix`) slice. 실제 코드 작성과 여러 파일에 걸친 변경도 포함 |
+| `cheap` | `mid` 행을 상속(이 저장소: Haiku@high) | `slice-executor-mid` | `risk: low`인 문서(`docs`)·QA slice — 싼 경로. 설정하지 않으면 `mid` 행과 같음 |
+| `explore` | Haiku@high | `Explore` | 읽기 전용 조회(계획 조사, 실행자의 큰 읽기). slice 라우트는 아님 |
 
 `high`는 네 가지 이유 중 하나가 있을 때만 붙습니다: **열린 설계**(계획이 접근법을 정해 둘 수
 없음), **핵심 불변식**(저장 데이터·스키마, 상태 전이, 인증, 돈, 삭제, 동시성), **원인을 모르는
-버그**, **넓은 영향 범위**(호출하는 곳이 코드 곳곳에 퍼진 공유 인터페이스). Haiku는 실행자
-티어로 쓰지 않습니다.
+버그**, **넓은 영향 범위**(호출하는 곳이 코드 곳곳에 퍼진 공유 인터페이스).
 
 `risk`는 `low`와 `high` 두 값이고 기본값은 `high`입니다. 정확히 `low`일 때만 `mid`로 가므로,
 값을 안 줬거나 알아볼 수 없는 값이면 항상 `high`로 떨어집니다 — 그래서 `DECOMP`는 모든 slice의
@@ -355,13 +358,17 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 
 이렇게 나누는 이유는 두 가지입니다. 오케스트레이터의 컨텍스트가 구현 세부사항으로 채워지지
 않아 긴 phase도 끝까지 안정적으로 진행되고, slice마다 새 컨텍스트에서 시작하니 앞 작업의
-잔상이 다음 작업을 오염시키지 않습니다. 티어별 모델과 노력 수준은 저장소 루트의
-[`executors.toml`](executors.toml)에서 바꿀 수 있습니다 — 에이전트에게 말하면 수정하고
-`sync-agents`로 적용해 줍니다. 모델 매핑은 `mode` 프리셋으로 한 번에 바꿀 수 있습니다 —
-모드를 고르지 않으면 `economy`(Sonnet@high / Opus@high)이고, `mode = "flex"`는
-Sonnet@xhigh / Opus@xhigh를 씁니다. 티어별 `[claude.<tier>]` 표로 항목마다 덮어쓸 수도 있습니다.
-모드는 명령 하나로 바꿉니다: `python3 scripts/workflow.py executor-mode flex`(또는 `/executor-mode flex`)가
-`mode` 줄을 고치고 에이전트 파일까지 맞춰 주며, 인자 없이 실행하면 지금 모드를 보여 줍니다.
+잔상이 다음 작업을 오염시키지 않습니다. 행별 모델과 노력 수준은 저장소 루트의
+[`executors.toml`](executors.toml)에서 `[claude.<row>]` 표로 행마다 덮어쓸 수 있습니다 — 에이전트에게
+말하면 수정하고 `sync-agents`로 에이전트 파일에 적용해 줍니다. 프리셋(`economy`/`flex`)은 v53에서
+없어졌고, 남아 있는 `mode = "..."` 줄은 삭제 안내와 함께 거부됩니다.
+`python3 scripts/workflow.py executor-route`(또는 `/executor-route`)는 현재 라우트 표를,
+`executor-route <slice_id>`는 그 slice의 dispatch 결정(행·모델·노력 수준·에이전트)을 보여 줍니다. 모든
+dispatch는 `record-dispatch`로 `works/events.jsonl`에 기록되고 `dispatch-summary`가 라우트별로
+요약합니다 — 라우트 표는 이 워크스페이스 자신의 실행 기록으로 조정합니다. 싼 경로(`cheap`)는 이
+저장소에서는 켜져 있고(Haiku 5.5), 설치 시드에서는 주석 처리되어 있습니다 — `haiku` 별칭이
+Bedrock·Vertex·Foundry에서는 Haiku 4.5이기 때문입니다. 실행자는 큰 읽기 전용 조회를 `Explore`(Haiku)
+하위 에이전트에 맡길 수 있지만, `result.md`·`phase.md`·코드·검증·판정은 절대 맡기지 않습니다.
 
 ## 문서 통합: docs phase
 
@@ -386,7 +393,7 @@ Claude Code에서 `/이름`으로 입력합니다.
 | `do-whole-phase` | phase를 리뷰까지 끝까지 실행 |
 | `review-phase` | phase를 리뷰하고 `pass` / `changes_requested` / `blocked` 기록 |
 | `parallel-phase` | 요청했을 때 phase를 자기 worktree에서 실행하고 로컬 merge로 다시 합치기 |
-| `executor-mode` | 실행기 모드(`economy` / `flex`) 확인, `/executor-mode flex`처럼 한 번에 전환 |
+| `executor-route` | 라우트 표와 dispatch 요약 확인; `/executor-route <slice_id>`로 한 slice의 dispatch 결정 확인 |
 | `retrofit` | 기존 저장소에 워크스페이스 추가 |
 | `update-workspace` | 설치된 워크스페이스의 시스템 파일만 최신으로 교체 |
 

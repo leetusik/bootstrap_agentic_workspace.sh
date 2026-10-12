@@ -6,8 +6,8 @@
 ## Pointer
 
 - Current phase: `P32`
-- Current slice: `P32.S6`
-- Next slice: `P32.REVIEW`
+- Current slice: `P32.REVIEW`
+- Next slice: `none`
 - Waiting on operator: `none`
 - Open deferred jobs: `42`
 
@@ -15,7 +15,7 @@
 
 | Phase | Status | Review | Name | Current Slice | Path |
 |---|---|---|---|---|---|
-| [ ] `P32` | `planned` | `pending` | One executor route table: dispatch-time model and effort, no presets, Haiku cheap route | `P32.S6` | `works/phases/active/P32` |
+| [ ] `P32` | `planned` | `pending` | One executor route table: dispatch-time model and effort, no presets, Haiku cheap route | `P32.REVIEW` | `works/phases/active/P32` |
 | [ ] `P33` | `planned` | `pending` | One-shot /rotate-backlog: consolidate the doc debt, then archive | `P33.DECOMP` · parallel: `phase/P33-one-shot_rotate-backlog_consolidate_the` | `works/phases/active/P33` |
 | [ ] `P34` | `planned` | `pending` | Boundary-gated compaction: veto mid-process, resume at the slice boundary | `P34.DECOMP` | `works/phases/active/P34` |
 
@@ -29,7 +29,7 @@
 | [x] `P32.S3` | `done` | Agents: Agent tool and delegation paragraph in both tiers, model/effort in the verdict block, new Explore.md | `implementation` | `works/phases/active/P32/slices/P32.S3` |
 | [x] `P32.S4` | `done` | Skills and contract: dispatch through executor-route, Explore for lookups, attribution by recorded model; executor-route skill replaces executor-mode | `implementation` | `works/phases/active/P32/slices/P32.S4` |
 | [x] `P32.S5` | `done` | Installer and release: v53, Explore.md managed, executors.toml seed derivation, rebuild, full smoke run and new baseline | `implementation` | `works/phases/active/P32/slices/P32.S5` |
-| [ ] `P32.S6` | `todo` | CHANGELOG v53 entry with Migration notes; README.md and README.en.md executor sections | `docs` | `works/phases/active/P32/slices/P32.S6` |
+| [x] `P32.S6` | `done` | CHANGELOG v53 entry with Migration notes; README.md and README.en.md executor sections | `docs` | `works/phases/active/P32/slices/P32.S6` |
 | [ ] `P32.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P32/slices/P32.REVIEW` |
 
 ## Phase P33: One-shot /rotate-backlog: consolidate the doc debt, then archive

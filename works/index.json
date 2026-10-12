@@ -8,9 +8,9 @@
       "order": 1,
       "path": "works/phases/active/P32",
       "review_status": "pending",
-      "current_slice": "P32.S6",
+      "current_slice": "P32.REVIEW",
       "slice_count": 8,
-      "done_slice_count": 6
+      "done_slice_count": 7
     },
     {
       "id": "P33",
@@ -47,5 +47,5 @@
   "deferred_open_count": 42,
   "deferred_promoted_count": 1,
   "deferred_dropped_count": 11,
-  "last_rebuilt_at": "2026-10-12T17:35:54+09:00"
+  "last_rebuilt_at": "2026-10-12T17:39:52+09:00"
 }

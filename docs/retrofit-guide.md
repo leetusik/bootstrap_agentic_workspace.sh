@@ -170,14 +170,7 @@ collision means a clean abort — never a half-installed repo.
 At the end, retrofit prints a **summary** of what it created, skipped, merged,
 and which subsystems it installed vs. left alone.
 
-The installed command surface is complete: 17 Agent Skills under
-`.claude/skills/`, plus the two risk-routed `slice-executor` tier subagents under
-`.claude/agents/`. `do-next-slice` and `do-whole-phase` execute automatically by
-default; `gate` and `plan only` are opt-in words you add to the invocation, and an
-existing `ready` slice remains executable for upgrade compatibility. Executor
-selection comes from `executors.toml`: no selected mode falls back to `economy`
-(Sonnet/Opus at `high`), while this upstream seed selects `flex` (Sonnet/Opus at
-`xhigh`).
+The installed command surface is complete: 18 Agent Skills under `.claude/skills/`, plus the two risk-routed `slice-executor` tier subagents, the `design-drafter` design subagent and the read-only `Explore` lookup agent under `.claude/agents/`. `do-next-slice` and `do-whole-phase` execute automatically by default; `gate` and `plan only` are opt-in words you add to the invocation, and an existing `ready` slice remains executable for upgrade compatibility. Executor dispatch follows the engine's route table (`python3 scripts/workflow.py executor-route` shows it), overridden row by row in `executors.toml`; the seed ships every row at its default with the cheap route (Haiku for low-risk docs and qa slices) commented out — uncomment it to opt in on the Anthropic API.
 
 Retrofit also installs the `design-cowork` visual workflow when those paths do not already exist:
 the `design-drafter` subagent drafts each round as plain files under `docs/reference/design/` and the
@@ -294,7 +287,7 @@ any more. One thing does hard-fail: a leftover `[codex.*]` table in
 `executors.toml` makes `sync-agents` abort with
 `executors.toml line <n>: Codex support was removed in workspace v31 — this
 workspace ships Claude Code only, so drop this section` (`validate` reports the
-same thing as a warning). Delete that block and re-run `sync-agents`.
+same thing as a warning). Delete that block and re-run `sync-agents`. Likewise from a pre-v53 workspace: a leftover top-level `mode = "…"` line makes `sync-agents` abort with `executors.toml line <n>: the economy/flex presets were retired in workspace v53 — …`; delete the line (set `effort = "xhigh"` under `[claude.mid]` and `[claude.high]` if you want the old flex behaviour) and re-run `sync-agents`.
 
 ---
 

@@ -169,7 +169,7 @@ upstream, shows you the dry-run change-list, applies on your approval, runs
 never commits — you review the diff and commit when ready. Updates preserve your
 existing `executors.toml` but refresh the generated `slice-executor` agent files, so
 run `python3 scripts/workflow.py sync-agents` after every update to re-apply your
-selected preset and overrides. (For *first-time* adoption use a bare install, or
+per-row overrides. (For *first-time* adoption use a bare install, or
 `--into-existing` / `/retrofit` for the committed layout, instead.)
 
 ### 2. Hand it to your agent
@@ -212,10 +212,7 @@ under `workflow/` instead and the skills and agents untracked in the host's `.cl
 
 - [`CLAUDE.md`](CLAUDE.md) — the compact routing contract every agent session works under.
 - [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` — the 18 Agent Skills (`/slash` commands), the two risk-routed `slice-executor` tier
-  subagents (`.claude/agents/slice-executor-{mid,high}.md`, with economy/flex model matrices
-  selected by `executors.toml` and applied with `sync-agents`), the `design-drafter` design
-  subagent (it follows the high tier), and a `settings.json` that pre-approves the workflow script.
+- `.claude/` — the 18 Agent Skills (`/slash` commands), the two risk-routed `slice-executor` tier subagents (`.claude/agents/slice-executor-{mid,high}.md`, dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (it follows the high row), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - [`works/`](works/) — the state machine, starting with **no phases**: a `deferred/` area,
@@ -427,8 +424,10 @@ another agent, CI — drives the workspace with the exact same commands:
 | `docs-consolidated P1` | Record that a phase's doc debt is paid |
 | `defer-job --title … --reason … --trigger …` | Park a deferred job |
 | `promote-deferred D1 --phase P1 --slice P1.S2` | Promote a deferred job into a slice |
-| `sync-agents` | Apply the `executors.toml` executor-tier mode/model/effort config to the agent files |
-| `executor-mode` / `executor-mode flex` | Show the executor mode, or switch it in one step (sets `mode` in `executors.toml` and syncs the agent files) |
+| `sync-agents` | Apply the `executors.toml` per-row model/effort overrides to the four agent files |
+| `executor-route` / `executor-route <slice_id> [--retry]` | Show the resolved route table and the agent files' sync state, or the dispatch decision for one slice (`--drafter`, `--explore` for the two agents) |
+| `record-dispatch <slice_id> --route … --model … --effort … --verdict …` | Record one executor dispatch (duration, tokens, verdict) in `works/events.jsonl` |
+| `dispatch-summary [--phase P] [--json]` | Summarize the recorded dispatches by route, model @ effort and kind |
 | `parallel-start <P>` … `parallel-teardown <P>` | Move a phase into its own branch + worktree when you ask for one, then integrate it back with a local merge (see the `parallel-phase` skill) |
 | `validate` | Check workspace integrity |
 
@@ -453,7 +452,7 @@ commands in Claude Code:
 | `archive-phase` | Archive review-passed phases whose doc debt is paid (normally batched via `archive-all`) |
 | `rotate-backlog` | Archive every currently-done phase with no doc debt, leaving the rest active, then propose the docs phase that pays the held-back debt (one confirmation; `archive-only` skips it) |
 | `rebuild-workflow` | Rebuild generated dashboards, indexes, and doc snapshots, then validate |
-| `executor-mode` | Show the executor mode (`economy` / `flex`), or switch it in one step (`/executor-mode flex`) |
+| `executor-route` | Show the route table and the dispatch summary, or one slice's dispatch decision (`/executor-route P1.S2`) |
 | `commit` | Group pending changes into focused conventional commits |
 | `retrofit` | Non-destructively adopt this workspace into an existing repo |
 | `update-workspace` | Update an adopted workspace's machinery to the latest upstream, preserving your work |
@@ -489,20 +488,26 @@ runs in a fresh context that never edits source, validating the phase and — on
 verifying its doc-impact list and writing its two gate sections, leaving the docs themselves to a
 docs phase; a `changes_requested` or `blocked` verdict stops there and hands the findings back), a
 slice rated `risk: high` for a named trigger (open design, a core invariant, an unlocated root
-cause, a wide blast radius), and every second attempt after mid. Haiku is never an executor tier.
-Risk is two values, `low` and `high`, defaulting to `high` — only an exact `low` routes down, so an
+cause, a wide blast radius), and every second attempt after mid. Risk is two values, `low` and `high`, defaulting to `high` — only an exact `low` routes down, so an
 unset or unrecognized value always lands on the thorough tier, and the decomposition rates every
 slice explicitly. When the mid executor needs a design decision the plan did not make, hits a
 trigger its rating missed, or fails the same validation twice, it returns an `escalate` verdict; the
 orchestrator folds the findings into the plan and re-dispatches to `slice-executor-high` (once per
 slice), and a review finding against mid-tier work gets a `high` fix slice — so most slices run on
-sonnet while opus takes what is genuinely hard or has already failed once. Tier models and efforts are configurable via the repo-root
-`executors.toml` — a top-level `mode` preset (`economy`, the default, at
-sonnet@high / opus@high; `flex` uses sonnet@xhigh / opus@xhigh) plus
-per-tier `[claude.<tier>]` overrides (seed-once —
-updates never overwrite it), applied with `python3 scripts/workflow.py sync-agents`. To change the preset
-in one step, run `python3 scripts/workflow.py executor-mode <economy|flex>` (or `/executor-mode flex`): it
-rewrites the `mode` line and syncs the agent files, and run bare it shows the current mode. Workflow skills are
+sonnet while opus takes what is genuinely hard or has already failed once. Model and effort come from one engine-owned **route table**, resolved per slice at dispatch time:
+`high` (opus @ high — review, decomposition, the mockup span, any risk but `low`, every second
+attempt), `research` (opus @ medium), `mid` (sonnet @ high — implementation and fix rated `low`),
+`cheap` (docs and qa rated `low`; inherits `mid` unless overridden — this repository runs it on Haiku
+5.5 at `high`, and the seed ships it commented out because the `haiku` alias is Haiku 4.5 on Bedrock,
+Vertex and Foundry) and `explore` (haiku @ high, the read-only `Explore` lookup agent). The repo-root
+`executors.toml` overrides rows one by one (`[claude.<row>]`, seed-once — updates never overwrite it),
+applied to the agent files with `python3 scripts/workflow.py sync-agents`; the presets are gone, and a
+leftover `mode = "…"` line is refused with the migration step. `python3 scripts/workflow.py
+executor-route <slice_id>` prints the decision the orchestrator dispatches from (kind first, then
+risk, then attempt; `/executor-route` shows the table), every dispatch is recorded with
+`record-dispatch` and summarized by `dispatch-summary`, so the table is tuned from this workspace's
+own runs; executors may hand bulky read-only lookups to `Explore` but never their `result.md`,
+`phase.md`, code, validation or verdict. Workflow skills are
 **explicit-invocation only** — agents don't fire them on their own. They are the **operator's
 interface**: you invoke the slash command; the agent does everything it implies.
 
