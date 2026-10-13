@@ -1,8 +1,8 @@
-# Python bytecode from running scripts/workflow.py
+# Python bytecode from running installer/build.py or the engine
 __pycache__/
 *.pyc
 
-# Executor-tier config (executors.toml, seeded with commented defaults) is
-# deliberately tracked, not ignored — it holds no secrets and committing it
-# shares the tier setup. In this upstream repo keep it at the commented
-# defaults: a non-default sync-agents run mutates the committed agent files.
+# payload/executors.toml is only the source of the adopter seed (build.py comments
+# out its cheap-route block); it is never live here. This repo's live executor-tier
+# config is workflow/executors.toml, inside the git-excluded nested install, so a
+# sync-agents run there never touches the tracked sources under payload/.

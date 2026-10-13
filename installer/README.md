@@ -10,7 +10,7 @@ artifact; edit the source here and rebuild.**
 
 To change anything the installer emits:
 
-1. Edit the **live repo file** (or the fresh-only payload — see below).
+1. Edit the **source under `payload/`** (or the fresh-only payload — see below).
 2. Run `python3 installer/build.py` to reassemble the root artifact.
 3. Commit the rebuilt `bootstrap_agentic_workspace.sh` together with your edit.
 
@@ -19,30 +19,31 @@ old double-maintenance (edit a skill *and* mirror it into a heredoc) is gone.
 
 **Release rule (version + changelog).** When the edit ships a machinery change to
 targets — anything an adopting repo receives via `curl … | sh` or `/update-workspace`
-(a skill, agent def, `scripts/workflow.py`, the contract, settings, templates, …) —
+(a skill, agent def, `scripts/workflow.py`, the contract, settings, templates, …;
+their sources are under `payload/`) —
 bump `WORKSPACE_VERSION` in `installer/main.py` **and** add the matching
 `## v<N> — <date>` entry to the root `CHANGELOG.md`, in the **same commit** as the
 change and the rebuilt artifact. `/update-workspace` reads that changelog from the
 upstream clone to tell adopters what a sync brings, so a version bump without a
 changelog entry (or vice versa) leaves them blind. Repo-only edits that never reach a
-target (this README, `tests/`, `LICENSE`) do not need a bump.
+target (this README, `tests/`, `LICENSE`, the root `CLAUDE.md`) do not need a bump.
 
 `python3 installer/build.py --check` fails (non-zero) if the committed artifact has
 drifted from source; it runs in `tests/retrofit_smoke.sh` (Test 7) so CI catches a
 stale artifact. The tracked `.githooks/pre-commit` hook runs the same check whenever
-staged files touch machinery, blocking a commit that would ship a stale artifact —
+staged files touch `installer/`, `payload/` or the artifact, blocking a commit that would ship a stale artifact —
 register it once per clone: `git config core.hooksPath .githooks`.
 
 ## What lives where
 
-- **`build.py`** — deterministic assembler. Reads the live files + `payloads/`,
+- **`build.py`** — deterministic assembler. Reads `payload/` + `payloads/`,
   generates a payload manifest, splices it into `main.py`, wraps the result in the
   `wrapper.sh` heredoc, and writes the root artifact (preserving the executable
   bit). Determinism = sorted walks + sorted dict keys + `repr()` literals, no
   timestamps → same inputs produce a byte-identical artifact. Safety checks:
   `compile()` the assembled python body, `sh -n` the assembled artifact, assert no
   body line collides with the heredoc delimiter (`INSTALLER_PY`), assert the skill
-  inventory is exactly `EXPECTED_SKILL_COUNT` (18) packages, and assert `CLAUDE.md`
+  inventory is exactly `EXPECTED_SKILL_COUNT` (18) packages, and assert `payload/contract.md`
   still starts with `CLAUDE_HDR` before slicing the contract body off it.
   **It only `compile()`s the artifact — it never runs it**, so a change to what
   `main.py` reads out of `PAYLOADS` needs a real install into a temp dir to verify.
@@ -57,8 +58,8 @@ register it once per clone: `git config core.hooksPath .githooks`.
   (`PAYLOADS`, `CONTRACT_BODY`, `DOC_BODIES`). The workspace bootstraps with **no
   phases** — the operator's first task is captured via the create-phase flow, so
   there is no phase scaffold to seed.
-- **`payloads/`** — fresh-install-only seeds that have **no live counterpart** in
-  the repo (so there is nothing to mirror):
+- **`payloads/`** — fresh-install-only seeds that have **no `payload/`
+  counterpart** (so there is nothing to mirror):
   - `doc_bodies/<doc>.md` — the 11 initial `docs/current/*.md` bodies. Runtime
     tokens `__PROJECT_NAME__` / `__PROJECT_SUMMARY__` are substituted by `main.py`.
 
@@ -87,16 +88,23 @@ layout of a run, and the wrapper rejects contradictory flags first:
   `--nested` or `--at-root` picks one; a flag that contradicts the layout found refuses.
 - **`--nested`**: accepted and redundant (on `--update` it must match the layout found).
 
-Nothing migrates an at-root install. This upstream repo stays at-root, and
-`tests/retrofit_smoke.sh` passes `--at-root` wherever a test expects the at-root layout.
+Nothing migrates an at-root install. This upstream repo was itself converted to the nested
+layout by hand, once, on 2026-10-13 (no migration command ships): its sources live under
+`payload/` and its workspace in the git-excluded `workflow/`. `tests/retrofit_smoke.sh` passes
+`--at-root` wherever a test expects the at-root layout.
 
-## Source of truth = live repo files
+## Source of truth = `payload/`
 
-`build.py` embeds these live files **verbatim** (target path == repo-relative
-path), so editing them and rebuilding is all that is needed:
+`build.py` embeds these shipped sources **verbatim**, so editing them and rebuilding is all
+that is needed. Each source sits under `payload/` at its **emit path** (where the installer
+writes it) with the first path component undotted (`build.py`'s `src_rel()`), and the
+contract is `payload/contract.md`. No source sits at a path Claude Code or GitHub would load
+in this repo (`.claude/`, `.github/`, `CLAUDE.md`), because this repo is driven by a nested
+install whose copies own `.claude/`; never add a dotted name or a `CLAUDE.md` under `payload/`.
+Below, each entry is the source, then the emit path where it differs:
 
-- `scripts/workflow.py`
-- `.claude/skills/*/SKILL.md` (skills are discovered from disk; the build asserts the release
+- `payload/scripts/workflow.py`
+- `payload/claude/skills/*/SKILL.md` → `.claude/skills/…` (skills are discovered from disk; the build asserts the release
   inventory is exactly 18 packages — `EXPECTED_SKILL_COUNT` in both `build.py` and `main.py`, so
   adding or removing a skill means moving both). Only `*/SKILL.md` is embedded: a skill needing a
   `references/` or `scripts/` subdir would be **silently dropped**, so keep skills flat.
@@ -105,20 +113,22 @@ path), so editing them and rebuilding is all that is needed:
   de-plugin-ified here (self-service onboarding replaces `/knowledge:setup`, and the
   offline local-file fallback is removed) and further trimmed of its Codex-only passages.
   Nothing syncs the two; re-vendor by hand, and read the divergence comment in the file first.
-- `.claude/agents/slice-executor-{mid,high}.md`, `.claude/agents/design-drafter.md` (the design subagent; `sync-agents` keeps it on the high tier's model)
-- `executors.toml` (seed-once executor-tier config — created if absent, never overwritten on update)
-- `.claude/settings.json`
-- `works/templates/{deferred_brief,intent}.md`
-- `.github/workflows/workspace-ci.yml` (**seed-once** repo policy file — created when
+- `payload/claude/agents/slice-executor-{mid,high}.md`, `payload/claude/agents/design-drafter.md`,
+  `payload/claude/agents/Explore.md` → `.claude/agents/…` (the design subagent; `sync-agents` keeps it on the high tier's model)
+- `payload/executors.toml` → `executors.toml` (seed-once executor-tier config — created if absent,
+  never overwritten on update; embedded as the adopter seed, with its cheap-route block commented out)
+- `payload/claude/settings.json` → `.claude/settings.json`
+- `payload/works/templates/{deferred_brief,intent,phase}.md` → `works/templates/…`
+- `payload/github/workflows/workspace-ci.yml` → `.github/workflows/workspace-ci.yml` (**seed-once** repo policy file — created when
   absent, never overwritten, on install/retrofit/update alike; one generic workflow
   that runs `validate` everywhere and shell-guards the upstream-only checks
   `installer/build.py --check` + `tests/retrofit_smoke.sh` on the presence of those
   files, plus a `parallel-gate` job on `phase/*` pull requests)
-- `.gitattributes` (**line-merged** repo policy file — the
+- `payload/gitattributes` → `.gitattributes` (**line-merged** repo policy file — the
   `works/events.jsonl merge=union` rule is appended when missing and existing content
   is never rewritten; skipping a repo's existing `.gitattributes` would silently drop
   the union rule)
-- the `CLAUDE.md` contract body (the `# CLAUDE.md\n\n` header stripped, embedded once as
+- `payload/contract.md`, the shipped `CLAUDE.md` contract body (the `# CLAUDE.md\n\n` header stripped, embedded once as
   `CONTRACT_BODY`; the header literal is pinned as `CLAUDE_HDR` in `build.py` **and** in the
   `main.py` write — change the contract's first line and both must move with it)
 

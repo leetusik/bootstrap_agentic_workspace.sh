@@ -271,7 +271,7 @@ slice에서 승인된 디자인을 그대로 따라 진행하고 실제 브라�
 저장소는 `python3 scripts/workflow.py design-migrate`(먼저 미리보기, `--apply`로 이동)로 그 기록을
 `claude-design/` 아래로 옮길 수 있습니다.
 
-진행 상황은 [`works/backlog.md`](works/backlog.md)에서 확인할 수 있습니다.
+진행 상황은 `works/backlog.md`에서 확인할 수 있습니다.
 아니면 에이전트에게 "지금 어디까지 했어?"라고 물어보세요.
 
 ## 왜 필요한가요?
@@ -281,7 +281,7 @@ slice에서 승인된 디자인을 그대로 따라 진행하고 실제 브라�
 평소에 없는 세 가지를 줍니다.
 
 - **다음 할 일이 항상 명확합니다.** "다음에 뭘 하지?"의 답이
-  [`works/state.json`](works/state.json) 파일에 기록되어 있어서, 어느 세션에서 열어도
+  `works/state.json` 파일에 기록되어 있어서, 어느 세션에서 열어도
   같은 답이 나옵니다.
 - **배운 것이 남습니다.** 각 단계에서 알게 된 내용을 노트(`phase.md`)와 버전 문서에
   기록해서, 다음 단계가 이어받습니다. 이 노트는 계속 덧붙이기만 하는 기록이 아니라 정해진
@@ -357,7 +357,7 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 이렇게 나누는 이유는 두 가지입니다. 오케스트레이터의 컨텍스트가 구현 세부사항으로 채워지지
 않아 긴 phase도 끝까지 안정적으로 진행되고, slice마다 새 컨텍스트에서 시작하니 앞 작업의
 잔상이 다음 작업을 오염시키지 않습니다. 행별 모델과 노력 수준은 저장소 루트의
-[`executors.toml`](executors.toml)에서 `[claude.<row>]` 표로 행마다 덮어쓸 수 있습니다 — 에이전트에게
+[`executors.toml`](payload/executors.toml)에서 `[claude.<row>]` 표로 행마다 덮어쓸 수 있습니다 — 에이전트에게
 말하면 수정하고 `sync-agents`로 에이전트 파일에 적용해 줍니다. 프리셋(`economy`/`flex`)은 v53에서
 없어졌고, 남아 있는 `mode = "..."` 줄은 삭제 안내와 함께 거부됩니다.
 `python3 scripts/workflow.py executor-route`(또는 `/executor-route`)는 현재 라우트 표를,
@@ -446,12 +446,12 @@ merge도 하지 않습니다. 정리(`parallel-teardown`)는 호스트 branch를
 branch만 지웁니다). worktree는 파일만 격리하므로 docker 컨테이너, 포트, 로컬 DB와 캐시는 stream끼리
 공유된다는 점은 직접 조율하세요.
 
-자세한 규칙과 절차는 [`parallel-phase`](.claude/skills/parallel-phase/SKILL.md) 스킬(`/parallel-phase`)과
+자세한 규칙과 절차는 [`parallel-phase`](payload/claude/skills/parallel-phase/SKILL.md) 스킬(`/parallel-phase`)과
 [English README](README.en.md#phase-worktrees-on-request)에 있습니다.
 
 ## ⭐ 에이전트와 일하는 6가지 습관
 
-이 워크스페이스를 만든 이유이자, 규칙 문서([`CLAUDE.md`](CLAUDE.md))가 강제하는 것들입니다.
+이 워크스페이스를 만든 이유이자, 규칙 문서([`CLAUDE.md`](payload/contract.md))가 강제하는 것들입니다.
 
 1. **만들기 전에 나눕니다.** 모든 phase의 첫걸음은 코드가 아니라 일을 나누는 것입니다.
    나눌 수 없는 일은 아직 이해하지 못한 일입니다.
@@ -471,7 +471,7 @@ branch만 지웁니다). worktree는 파일만 격리하므로 docker 컨테이�
 ## 더 알아보기
 
 - 전체 문서 (설치 옵션, CLI 명령 전체, 프로젝트 구조, 스킬 18종): [English README](README.en.md)
-- 에이전트 규칙 문서: [CLAUDE.md](CLAUDE.md)
+- 에이전트 규칙 문서: [CLAUDE.md](payload/contract.md)
 - 기존 저장소에 추가하는 절차: [Retrofit Guide](docs/retrofit-guide.md)
 - 기여하기: 이 저장소는 자기 워크플로우로 개발됩니다. phase를 열고 slice 단위로 기여해
   주세요. 방법은 [English README의 Contributing](README.en.md#contributing)에 있습니다.

@@ -1,0 +1,22 @@
+# Upstream CI for the bootstrap_agentic_workspace.sh product repo.
+# This repo is driven by a private nested install (workflow/, git-excluded), so CI sees
+# no workspace state: it checks the product only. The shipped adopter CI seed lives at
+# payload/github/workflows/workspace-ci.yml and never runs here.
+name: upstream-ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  product:
+    name: build parity and retrofit smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: installer artifact parity
+        run: python3 installer/build.py --check
+
+      - name: retrofit smoke
+        run: bash tests/retrofit_smoke.sh

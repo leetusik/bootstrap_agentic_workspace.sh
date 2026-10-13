@@ -45,6 +45,7 @@ export PYTHONDONTWRITEBYTECODE=1   # keep target repos free of __pycache__/
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BOOT="$REPO_ROOT/bootstrap_agentic_workspace.sh"
+SRC="$REPO_ROOT/payload"   # the shipped sources: emit path .x/... lives at $SRC/x/..., CLAUDE.md at $SRC/contract.md
 
 FAILS=0
 TMPDIRS=()
@@ -73,7 +74,7 @@ from pathlib import Path
 import sys
 
 root = Path(sys.argv[1])
-skills = {p.parent.name for p in (root / ".claude/skills").glob("*/SKILL.md")}
+skills = {p.parent.name for p in (root / "payload/claude/skills").glob("*/SKILL.md")}
 assert len(skills) == 18, len(skills)
 
 # v31 dropped Codex: the mirrored skill tree, the Codex agent config, and the
@@ -88,10 +89,10 @@ for gone in ("AGENTS.md", ".agents", ".codex"):
 # (The Claude analogue of the retired allow_implicit_invocation metadata.)
 model_invocable = {"design-cowork", "create-phase"}
 for name in sorted(skills):
-    body = (root / ".claude/skills" / name / "SKILL.md").read_text()
+    body = (root / "payload/claude/skills" / name / "SKILL.md").read_text()
     marker = "disable-model-invocation: true"
     assert (marker in body) == (name not in model_invocable), name
-create_phase = (root / ".claude/skills/create-phase/SKILL.md").read_text()
+create_phase = (root / "payload/claude/skills/create-phase/SKILL.md").read_text()
 assert "the agent when instructed" in create_phase
 assert "Never on the agent's own initiative" in create_phase
 assert "Invocation is not the gate; confirmation is." in create_phase
@@ -112,14 +113,14 @@ assert "DesignSync" not in create_phase
 
 # Only skills that *document the removal* may still say "Codex": update-workspace's
 # pre-v31 migration step and explain's re-vendor note. Anywhere else it is a regression.
-codex_prose = {n for n in skills if "Codex" in (root / ".claude/skills" / n / "SKILL.md").read_text()}
+codex_prose = {n for n in skills if "Codex" in (root / "payload/claude/skills" / n / "SKILL.md").read_text()}
 assert codex_prose <= {"update-workspace", "explain"}, sorted(codex_prose)
 assert "Codex support was removed in workspace v31" in (
-    root / ".claude/skills/update-workspace/SKILL.md").read_text()
+    root / "payload/claude/skills/update-workspace/SKILL.md").read_text()
 
 # Safety-critical orchestration rules only -- not the whole skill body, which would be brittle.
 for name in ("do-next-slice", "do-whole-phase"):
-    body = (root / ".claude/skills" / name / "SKILL.md").read_text()
+    body = (root / "payload/claude/skills" / name / "SKILL.md").read_text()
     for required in (
         "WAITING ON OPERATOR", "`kind: co-work`",
         "never pass `run_in_background: false`", "never glob `~/.claude/plans/`",
@@ -195,7 +196,7 @@ for name in ("do-next-slice", "do-whole-phase"):
 
 # The spec hard-wraps its prose, so match against a whitespace-flattened copy: these
 # assertions are about the wording, not about where a line happens to break.
-design = " ".join((root / ".claude/skills/design-cowork/SKILL.md").read_text().split())
+design = " ".join((root / "payload/claude/skills/design-cowork/SKILL.md").read_text().split())
 for required in (
     "**You never design.**", "Claude Design", "handoff.md",
     "@dsCard", "tokens.css", "--kind co-work --risk high",
@@ -313,7 +314,7 @@ for gone in ("cuts the build slices once the design has landed", "one `co-work` 
 # v47 (P26.S3): the frontmatter. The skill still auto-fires on the same trigger, says who drafts and
 # who decides, and keeps no unquoted ": " in its description. v48 (P27.S2): it asks for the DesignSync
 # tool again (the claude-design loop's read-back and regroup) and names both design partners.
-raw_design = (root / ".claude/skills/design-cowork/SKILL.md").read_text()
+raw_design = (root / "payload/claude/skills/design-cowork/SKILL.md").read_text()
 front = raw_design.split("---\n", 2)[1]
 allowed = next(ln for ln in front.splitlines() if ln.startswith("allowed-tools:"))
 assert "DesignSync" in allowed and "Agent" in allowed, allowed
@@ -328,7 +329,7 @@ assert "Claude Design + the operator" not in desc, desc
 # the registry's default path the skill states are the engine's own constants. v48 (P27.S1/S2): so
 # are the claude-design record's folder name and the design-deck URL variable.
 import re
-workflow_src = (root / "scripts/workflow.py").read_text()
+workflow_src = (root / "payload/scripts/workflow.py").read_text()
 for const in ("DESIGN_ROOT_REL", "DESIGN_REGISTRY_ENV", "DESIGN_REGISTRY_DEFAULT",
               "DESIGN_LEGACY_DIR", "DESIGN_DECK_URL_ENV"):
     value = re.search(r'^' + const + r' = "([^"]+)"$', workflow_src, re.M).group(1)
@@ -340,7 +341,7 @@ refs = re.search(r'^DESIGN_ALLOWED_REFS = \(([^)]*)\)$', workflow_src, re.M).gro
 refs = [r.strip().strip('"') for r in refs.split(",") if r.strip()]
 assert refs and all(refs), refs
 bullet = design.split("- **Self-contained.**", 1)[1].split(" - **", 1)[0]
-drafter_rule = " ".join((root / ".claude/agents/design-drafter.md").read_text().split())
+drafter_rule = " ".join((root / "payload/claude/agents/design-drafter.md").read_text().split())
 drafter_rule = drafter_rule.split("**Keep every card self-contained.**", 1)[1].split(" 3. **", 1)[0]
 for text in (bullet, drafter_rule):
     for ref in refs + ["../tokens.css"]:
@@ -350,7 +351,7 @@ for text in (bullet, drafter_rule):
 assert "A card references nothing relative except `../tokens.css`. " not in design
 # P26.F1: the drafter's frontend-design licence is the handoff's `new visual direction` line, the
 # operator's call; a missing line is an open question, and the drafter never infers the licence.
-drafter = " ".join((root / ".claude/agents/design-drafter.md").read_text().split())
+drafter = " ".join((root / "payload/claude/agents/design-drafter.md").read_text().split())
 for required in ("the `new visual direction: yes` or `no` line", "your **only** licence to load it",
                  "If the line is missing, do not load it, and name the missing line in `open_questions`.",
                  "You never infer the licence yourself"):
@@ -374,7 +375,7 @@ for gone in ('{"mcpServers"', "Prefer the **MCP** surface", "MCP first",
 # pins live here now, whitespace-flattened like design-cowork's: rule 1 is "only when
 # asked", rule 8 retires the v42 pins, a hint is relayed and never acted on, and a closed
 # gate is never merged past. D-3: `parallel-start` itself runs only on the operator's word.
-parallel = " ".join((root / ".claude/skills/parallel-phase/SKILL.md").read_text().split())
+parallel = " ".join((root / "payload/claude/skills/parallel-phase/SKILL.md").read_text().split())
 for required in ("Worktree rules", "**When — only when asked**", "retired no-ops",
                  "Relay a hint to the operator; never act on it.",
                  "Never merge a parallel phase whose `parallel-gate` is closed",
@@ -388,7 +389,7 @@ for gone in ("runs in its own worktree by default", "enters its worktree at **fi
 
 # v32 review procedure: the gate stages, the returned walkthrough, and the two
 # workflow commands a review slice must never run.
-review = (root / ".claude/skills/review-phase/SKILL.md").read_text()
+review = (root / "payload/claude/skills/review-phase/SKILL.md").read_text()
 for required in ("## Gate stages", "`walkthrough`", "`## Operator Runtime`", "`## Regression Checklist`",
                  # v36: the review opens the product with the prescribed instrument.
                  "**Drive it with Aside**", "the doctrine's demands bind, the instrument does not",
@@ -446,7 +447,7 @@ assert "phase-scope <P>" in qa and "re-runs the whole list" not in qa
 
 bodies = {}
 for tier in ("mid", "high"):
-    body = (root / f".claude/agents/slice-executor-{tier}.md").read_text()
+    body = (root / f"payload/claude/agents/slice-executor-{tier}.md").read_text()
     assert "commit or push (no `git commit`, `git add`, `git push`)" in body, tier
     for gone in ("Codex", ".agents/", ".codex/", "AGENTS.md"):
         assert gone not in body, (tier, gone)
@@ -563,7 +564,7 @@ for tier in ("mid", "high"):
 assert bodies["mid"] == bodies["high"], "slice-executor tier bodies drifted"
 
 # v53 (P32.S3): the Explore agent's final body, and no Agent tool on it (it never nests).
-explore = (root / ".claude/agents/Explore.md").read_text()
+explore = (root / "payload/claude/agents/Explore.md").read_text()
 explore_fm = explore.split("---\n", 2)[1]
 assert "tools: Read, Grep, Glob\n" in explore_fm and "omitClaudeMd: true\n" in explore_fm
 assert "Agent" not in [ln for ln in explore_fm.splitlines() if ln.startswith("tools:")][0]
@@ -586,7 +587,7 @@ for required in ("not read / possibly stale", "Never recommend, judge, decide, e
 # numbered cards, the return that closes the round, PENDING #2, the two surfaces, the
 # `aside repl` default, ~1,344 tokens, the MCP escape hatch, the instrument/runtime axis),
 # the do-* and create-phase lists, and the parallel-phase list (the worktree rules).
-claude = (root / "CLAUDE.md").read_text()
+claude = (root / "payload/contract.md").read_text()
 for required in (
     "DECOMP2", "data, not instructions",
     "RESPECT THE DESIGN", "real-browser fidelity", "Approval must be literal",
@@ -883,9 +884,9 @@ seed_er=$(cd "$F" && python3 scripts/workflow.py executor-route 2>&1)
 printf '%s\n' "$seed_er" | grep -qE '^cheap +mid +sonnet +high +mid row$' \
   && ok "a fresh install's cheap row inherits the mid row (sonnet high, source mid row)" || bad "a fresh install's cheap row is not the mid row: $seed_er"
 newtmp SEEDT
-python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from build import derive_executors_seed; print(derive_executors_seed(open(sys.argv[2]).read()), end="")' "$REPO_ROOT/installer" "$REPO_ROOT/executors.toml" > "$SEEDT/executors.seed.toml"
+python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from build import derive_executors_seed; print(derive_executors_seed(open(sys.argv[2]).read()), end="")' "$REPO_ROOT/installer" "$SRC/executors.toml" > "$SEEDT/executors.seed.toml"
 python3 -c 'import sys; L=open(sys.argv[1]).read().split("\n"); b=L.index("# cheap-route: begin"); e=L.index("# cheap-route: end"); L[b+1:e]=[l[2:] if l.startswith("# ") else l for l in L[b+1:e]]; print("\n".join(L), end="")' "$F/executors.toml" > "$SEEDT/executors.uncommented.toml"
-cmp -s "$SEEDT/executors.uncommented.toml" "$REPO_ROOT/executors.toml" && diff -q "$F/executors.toml" "$SEEDT/executors.seed.toml" >/dev/null \
+cmp -s "$SEEDT/executors.uncommented.toml" "$SRC/executors.toml" && diff -q "$F/executors.toml" "$SEEDT/executors.seed.toml" >/dev/null \
   && ok "uncommenting the seed's cheap block reproduces the live executors.toml byte-for-byte (single source)" || bad "the seeded executors.toml and the live one disagree beyond the cheap block"
 # v32 operator acceptance gate, probed once against a real engine (throwaway workspace).
 ( cd "$F" && python3 scripts/workflow.py new-phase --phase P1 --name "Gate probe" --objective "probe the gate" >/dev/null 2>&1 ) \
@@ -1193,7 +1194,7 @@ printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-drafter' && printf '%s\
   && ok "executor-route --drafter names design-drafter on the high row" || bad "executor-route --drafter wrong: $er_out"
 ( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE CLAUDE_CODE_EFFORT_LEVEL=high python3 scripts/workflow.py executor-route P1.DECOMP 2>&1 | grep -q '^warning=CLAUDE_CODE_EFFORT_LEVEL' ) \
   && ok "executor-route warns that CLAUDE_CODE_EFFORT_LEVEL outranks every per-dispatch effort" || bad "executor-route did not warn on CLAUDE_CODE_EFFORT_LEVEL"
-cp "$REPO_ROOT/executors.toml" "$F/executors.toml"
+cp "$SRC/executors.toml" "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed on the repo's own executors.toml"
 er_out=$(er)
 printf '%s\n' "$er_out" | grep -qE '^cheap +mid +haiku +high +executors\.toml$' && printf '%s\n' "$er_out" | grep -qx 'agent files: in sync' \
@@ -1316,7 +1317,7 @@ update_out=$(sh "$BOOT" "$F" --update 2>&1); update_rc=$?
   && ok "--update restores a deleted skill package" || bad "--update did not restore the deleted skill package"
 printf '%s\n' "$update_out" | grep -q 'stale workspace.*\.claude/skills/do-whole-phase' \
   && bad "--update incorrectly flags do-whole-phase as stale" || ok "--update does not flag do-whole-phase as stale"
-diff -q "$REPO_ROOT/.claude/skills/design-cowork/SKILL.md" "$F/.claude/skills/design-cowork/SKILL.md" >/dev/null \
+diff -q "$SRC/claude/skills/design-cowork/SKILL.md" "$F/.claude/skills/design-cowork/SKILL.md" >/dev/null \
   && ok "--update refreshes a stale design-cowork skill body" || bad "--update did not refresh design-cowork"
 printf '%s\n' "$update_out" | grep -q 'stale workspace.*\.claude/skills/design-cowork' \
   && bad "--update incorrectly flags current design-cowork as stale" || ok "--update keeps design-cowork in the current inventory"
@@ -1380,7 +1381,7 @@ set_b=$(sha "$F/.claude/settings.json")
 sh "$BOOT" "$F" --update >/dev/null 2>&1
 [ "$(sha "$F/.claude/settings.json")" = "$set_b" ] \
   && ok "a second --update after the merge leaves settings.json byte-identical" || bad "--update hooks merge is not idempotent"
-cp "$REPO_ROOT/.claude/settings.json" "$F/.claude/settings.json"   # drop the probe's foreign handler before the Test 6 diff
+cp "$SRC/claude/settings.json" "$F/.claude/settings.json"   # drop the probe's foreign handler before the Test 6 diff
 rm -f "$F/.github/workflows/workspace-ci.yml" "$F/.gitattributes"
 sh "$BOOT" "$F" --update >/dev/null 2>&1   # restore both verbatim for the Test 6 diff
 [ ! -f "$F/.claude/agents/phase-reviewer.md" ] && ok "phase-reviewer retired (absent on fresh install)" || bad "phase-reviewer should be retired but is present"
@@ -1401,14 +1402,14 @@ out=$(sh "$BOOT" "$H" --at-root --force-empty-ok --name "Fresh" --summary "fresh
 echo "== Test 6: dual-apply -- live files match the bootstrap-embedded copies =="
 # The fresh install in $F is generated straight from the bootstrap payload, so it
 # is the source of truth to diff the live repo against.
-diff -q "$REPO_ROOT/scripts/workflow.py" "$F/scripts/workflow.py" >/dev/null \
+diff -q "$SRC/scripts/workflow.py" "$F/scripts/workflow.py" >/dev/null \
   && ok "scripts/workflow.py == bootstrap-embedded WORKFLOW_PY" \
   || bad "DRIFT: scripts/workflow.py differs from the bootstrap-embedded copy"
-skill_rels=$(cd "$REPO_ROOT" && find .claude/skills -type f -name SKILL.md | LC_ALL=C sort)
+skill_rels=$(cd "$SRC" && find claude/skills -type f -name SKILL.md | sed 's|^|.|' | LC_ALL=C sort)
 nskill=$(printf '%s\n' "$skill_rels" | grep -c .)
 [ "$nskill" -eq 18 ] && ok "dual-apply covers all 18 skill bodies" || bad "expected 18 SKILL.md files to diff, found $nskill"
 for rel in $skill_rels; do
-  diff -q "$REPO_ROOT/$rel" "$F/$rel" >/dev/null \
+  diff -q "$SRC/${rel#.}" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
     || bad "DRIFT: $rel differs from the bootstrap-embedded copy"
 done
@@ -1425,9 +1426,9 @@ works/templates/phase.md
 .gitattributes"
 # executors.toml is the one derived payload: the adopter seed (cheap-route block commented out), not the live file.
 newtmp DUALT
-python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from build import derive_executors_seed; print(derive_executors_seed(open(sys.argv[2]).read()), end="")' "$REPO_ROOT/installer" "$REPO_ROOT/executors.toml" > "$DUALT/executors.seed.toml"
+python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from build import derive_executors_seed; print(derive_executors_seed(open(sys.argv[2]).read()), end="")' "$REPO_ROOT/installer" "$SRC/executors.toml" > "$DUALT/executors.seed.toml"
 for rel in $DUAL_FIXED CLAUDE.md; do
-  src="$REPO_ROOT/$rel"; [ "$rel" = "executors.toml" ] && src="$DUALT/executors.seed.toml"
+  src="$SRC/${rel#.}"; [ "$rel" = "executors.toml" ] && src="$DUALT/executors.seed.toml"; [ "$rel" = "CLAUDE.md" ] && src="$SRC/contract.md"
   diff -q "$src" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
     || bad "DRIFT: $rel differs from the bootstrap-embedded copy"
@@ -1502,10 +1503,10 @@ import ast, sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
-tree = ast.parse((root / "scripts/workflow.py").read_text())
+tree = ast.parse((root / "payload/scripts/workflow.py").read_text())
 fallback = next(n.value.value for n in ast.walk(tree) if isinstance(n, ast.Assign)
                 and any(getattr(t, "id", "") == "PHASE_MD_TEMPLATE_FALLBACK" for t in n.targets))
-assert fallback == (root / "works/templates/phase.md").read_text(), "fallback drifted from the shipped template"
+assert fallback == (root / "payload/works/templates/phase.md").read_text(), "fallback drifted from the shipped template"
 FALLBACK
 then ok "new_phase's embedded fallback is byte-identical to works/templates/phase.md"; else bad "PHASE_MD_TEMPLATE_FALLBACK drifted from works/templates/phase.md"; fi
 
@@ -1814,7 +1815,7 @@ mkdir -p "$NH/src" "$NH/workflow/scripts" "$NH/workflow/works" \
   && ( cd "$NH" && { git init -q -b main . 2>/dev/null || git init -q .; } && git config user.email smoke@example.invalid \
        && git config user.name smoke && printf 'print("host")\n' > src/app.py && git add -A >/dev/null 2>&1 \
        && git commit -qm "host baseline" >/dev/null 2>&1 ) \
-  && cp "$REPO_ROOT/scripts/workflow.py" "$NH/workflow/scripts/" && cp -R "$REPO_ROOT/works/templates" "$NH/workflow/works/" \
+  && cp "$SRC/scripts/workflow.py" "$NH/workflow/scripts/" && cp -R "$SRC/works/templates" "$NH/workflow/works/" \
   && cp -R "$NS/seed/docs" "$NH/workflow/" && ( cd "$NH/workflow" && git init -q . ) \
   || bad "nested probe: could not build the host + workflow/ fixture"
 cat > "$NH/workflow/.agentic-nested.json" <<'NESTED'
@@ -1857,8 +1858,8 @@ if printf '%s\n' "$nx" | grep -q "^host_commit_convention=confirmed (coauthor_tr
     && python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["commit_convention"]; assert c["confirmed"] is True and c["text"] == "type(scope): summary" and c["inferred"] == "type(scope): summary", c' "$NH/workflow/.agentic-nested.json"; then
   ok "nested-convention --confirm records the text and the trailer rule, and next stops flagging it"; else bad "nested-convention --confirm did not flip the convention -- $nx"; fi
 # The agent rename map: design-drafter is installed as wf-design-drafter in the host's .claude/agents.
-mkdir -p "$NH/.claude/agents" && cp "$REPO_ROOT/.claude/agents/slice-executor-mid.md" "$REPO_ROOT/.claude/agents/slice-executor-high.md" "$REPO_ROOT/.claude/agents/Explore.md" "$NH/.claude/agents/" \
-  && sed 's/^name: design-drafter$/name: wf-design-drafter/' "$REPO_ROOT/.claude/agents/design-drafter.md" > "$NH/.claude/agents/wf-design-drafter.md"
+mkdir -p "$NH/.claude/agents" && cp "$SRC/claude/agents/slice-executor-mid.md" "$SRC/claude/agents/slice-executor-high.md" "$SRC/claude/agents/Explore.md" "$NH/.claude/agents/" \
+  && sed 's/^name: design-drafter$/name: wf-design-drafter/' "$SRC/claude/agents/design-drafter.md" > "$NH/.claude/agents/wf-design-drafter.md"
 nw sync-agents >/dev/null 2>&1
 if nw sync-agents --check >/dev/null 2>&1 && grep -qx "name: wf-design-drafter" "$NH/.claude/agents/wf-design-drafter.md" \
     && [ ! -e "$NH/.claude/agents/design-drafter.md" ] && [ ! -e "$NH/workflow/.claude" ]; then
@@ -2083,7 +2084,7 @@ out=$(sh "$BOOT" "$NB" --update 2>&1); rc=$?; out2=$(sh "$BOOT" "$NB" --update -
 NR="$ND/atroot"; sh "$BOOT" "$NR" --at-root --name "At root" --summary "at-root probe" >/dev/null 2>&1 || bad "P29 probe: --at-root install failed"
 printf 'stale\n' >> "$NR/.claude/skills/explain/SKILL.md"; out=$(sh "$BOOT" "$NR" --update 2>&1); rc=$?
 [ "$rc" -eq 0 ] && [ ! -e "$NR/workflow" ] && printf '%s\n' "$out" | grep -q "^Update complete (--update) at " && ! printf '%s\n' "$out" | grep -q "nested" \
-  && diff -q "$REPO_ROOT/.claude/skills/explain/SKILL.md" "$NR/.claude/skills/explain/SKILL.md" >/dev/null \
+  && diff -q "$SRC/claude/skills/explain/SKILL.md" "$NR/.claude/skills/explain/SKILL.md" >/dev/null \
   && ok "a bare --update on an at-root install stays at-root (no workflow/) and refreshes its machinery" || bad "bare --update on an at-root install misrouted (rc=$rc) -- $out"
 # (e) a bare install over that at-root workspace refuses and writes nothing.
 nr_before=$(tree_sig "$NR"); out=$(sh "$BOOT" "$NR" 2>&1); rc=$?

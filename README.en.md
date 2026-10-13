@@ -28,7 +28,7 @@ One shell script scaffolds a complete workspace: a compact agent **contract**, a
 
 `bootstrap_agentic_workspace.sh` is a single, dependency-light script that turns any empty
 directory into a structured home for agent-driven work. Inside, a coding agent doesn't just get a
-prompt and improvise — it works under a compact contract ([`CLAUDE.md`](CLAUDE.md)) that says how to
+prompt and improvise — it works under a compact contract ([`CLAUDE.md`](payload/contract.md)) that says how to
 break work down, where to write things, and what "done" means.
 
 **The problem it solves.** Coding agents are capable but forgetful. Across a long task they lose
@@ -209,8 +209,8 @@ This is the **`--at-root`** layout. The default nested install puts the engine, 
 under `workflow/` instead and the skills and agents untracked in the host's `.claude/` (see
 [Private use](#private-use-in-a-repo-you-dont-own-the-default-install)).
 
-- [`CLAUDE.md`](CLAUDE.md) — the compact routing contract every agent session works under.
-- [`scripts/workflow.py`](scripts/workflow.py) — the one manager that drives all state.
+- [`CLAUDE.md`](payload/contract.md) — the compact routing contract every agent session works under.
+- [`scripts/workflow.py`](payload/scripts/workflow.py) — the one manager that drives all state.
 - `.claude/` — the 18 Agent Skills (`/slash` commands), the two risk-routed `slice-executor` tier subagents (`.claude/agents/slice-executor-{mid,high}.md`, dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (it follows the high row), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
@@ -382,7 +382,7 @@ round's `import/` folder, but nothing requires it. A repo whose `docs/reference/
 old Claude Design layout (from before v47) moves it under `claude-design/` with
 `python3 scripts/workflow.py design-migrate` (a dry run; `--apply` moves it).
 
-Track progress in [`works/backlog.md`](works/backlog.md) (the generated dashboard) and the active
+Track progress in `works/backlog.md` (the generated dashboard) and the active
 phase folder under `works/phases/active/` (the phase notebook and slice folders) — or just ask the
 agent, *"where are we?"*.
 
@@ -404,7 +404,7 @@ The contract boils down to one line:
 
 ### One manager
 
-Every operation runs through [`scripts/workflow.py`](scripts/workflow.py) — typed by the
+Every operation runs through [`scripts/workflow.py`](payload/scripts/workflow.py) — typed by the
 **agent**, not by you. The bare CLI is the universal fallback: anything that can run a shell —
 another agent, CI — drives the workspace with the exact same commands:
 
@@ -513,11 +513,11 @@ interface**: you invoke the slash command; the agent does everything it implies.
 
 When an agent picks up work, it reads just in time, in this order — and no further by default:
 
-1. [`works/state.json`](works/state.json) and `next` — the pointer
+1. `works/state.json` and `next` — the pointer
 2. The **active** phase folder (`intent.md` and the bounded `phase.md`) and **active** slice folder
    only
-3. Only the [`docs/current/`](docs/current/) **sections** the work touches — never the whole doc set
-   up front, and never [`docs/index.json`](docs/index.json). A doc that `workflow.py docs` flags
+3. Only the `docs/current/` **sections** the work touches — never the whole doc set
+   up front, and never `docs/index.json`. A doc that `workflow.py docs` flags
    **STALE** is evidence to check against the notes that outran it, never current truth
 
 Archived phases and old doc versions are history; they're not read by default.
@@ -595,7 +595,7 @@ CI (`.github/workflows/workspace-ci.yml`) runs `validate` on every push and PR p
 `parallel-gate` check on `phase/*` pull requests for it. A closed gate stops the sequence with a
 report instead of merging.
 
-See the [`parallel-phase`](.claude/skills/parallel-phase/SKILL.md) skill (`/parallel-phase`) for the
+See the [`parallel-phase`](payload/claude/skills/parallel-phase/SKILL.md) skill (`/parallel-phase`) for the
 eight worktree rules and the full lifecycle, and `python3 scripts/workflow.py --help` for the command reference.
 (v42 made the worktree the default for every phase; v43 put it back on request, because one phase at
 a time is the normal shape of this workspace and a branch per phase made every ordinary run pay for
@@ -633,7 +633,7 @@ parallelism it never used. The mechanism itself is unchanged.)
 
 I don't hand an agent a vague task and hope. The whole reason this workspace exists is to force a
 few habits that make agents reliable on long, real work — not just impressive in a demo. These are
-the ones I lean on; the [contract in `CLAUDE.md`](CLAUDE.md) is how they're actually enforced.
+the ones I lean on; the [contract in `CLAUDE.md`](payload/contract.md) is how they're actually enforced.
 
 1. **Decompose before you build.** The first move on any phase is a decomposition slice, not code.
    I make the agent break the work into small, ordered slices and write the plan down — planning is
@@ -715,14 +715,18 @@ A few house rules:
   `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `build`, `perf`, `revert`). Commit per completed
   slice; branch off `main` first.
 - **Rebuild the artifact whenever you touch machinery.** `bootstrap_agentic_workspace.sh` is a
-  build product: after editing `scripts/workflow.py`, `.claude/**`, [`CLAUDE.md`](CLAUDE.md),
-  `executors.toml`, `works/templates/**`, or `installer/`, run `python3 installer/build.py` and
-  commit the rebuilt artifact in the same commit (`python3 installer/build.py --check` must pass;
-  register the tracked hook once with `git config core.hooksPath .githooks`).
+  build product: the shipped sources live under `payload/` (`payload/scripts/workflow.py`,
+  `payload/claude/**`, the contract [`payload/contract.md`](payload/contract.md), `payload/executors.toml`,
+  `payload/works/templates/**`, …). After editing `payload/**` or `installer/**`, run
+  `python3 installer/build.py` and commit the rebuilt artifact in the same commit
+  (`python3 installer/build.py --check` must pass; register the tracked hook once with
+  `git config core.hooksPath .githooks`). This repo drives its own workspace as a private nested
+  install, so its `.claude/skills`, `.claude/agents` and `workflow/` are installed copies: never
+  edit them; see the root [`CLAUDE.md`](CLAUDE.md) for the dev loop.
 - **Never hand-edit `docs/current/*.md`** (they're generated) and never patch old files under
   `docs/versions/`. Create a new version with `doc-new-version` instead, in a docs phase.
 
-The contract in [`CLAUDE.md`](CLAUDE.md) is the source of truth; this README only points at it.
+The contract in [`CLAUDE.md`](payload/contract.md) (installed as `CLAUDE.md`) is the source of truth; this README only points at it.
 
 ## License
 

@@ -4,18 +4,22 @@
 The distributable is a build product: a self-contained POSIX-sh file at the repo
 root that consumers `curl … | sh` (and /update-workspace clones + runs). It is
 committed. This script reassembles it deterministically from source so editing a
-live skill/agent/contract file + rebuilding is the whole workflow — no heredoc
-mirroring.
+shipped skill/agent/contract source under payload/ + rebuilding is the whole
+workflow — no heredoc mirroring.
 
 Source of truth:
-  * Live repo files (embedded verbatim, killing the double-maintenance):
-      scripts/workflow.py, .claude/skills/*, the .claude subagents,
-      .claude/settings.json, executors.toml, works/templates/*,
-      .github/workflows/workspace-ci.yml, .gitattributes, and the CLAUDE.md
-      contract body (header stripped, embedded once).
-    One exception: executors.toml is embedded as the adopter seed, the live file
+  * payload/ (the shipped sources, embedded verbatim, killing the double-maintenance).
+    Each sits at its EMIT path with the first component undotted, and the contract is
+    payload/contract.md, so no source lives at a path Claude Code or GitHub would load
+    in this repo (it is driven by a nested install, whose copies own .claude/):
+      payload/scripts/workflow.py, payload/claude/skills/*, the payload/claude
+      subagents, payload/claude/settings.json, payload/executors.toml,
+      payload/works/templates/*, payload/github/workflows/workspace-ci.yml,
+      payload/gitattributes, and the payload/contract.md contract body (header
+      stripped, embedded once).
+    One exception: executors.toml is embedded as the adopter seed, the source file
     with its cheap-route block commented out (derive_executors_seed).
-  * installer/payloads/  (fresh-install-only seeds, no live counterpart):
+  * installer/payloads/  (fresh-install-only seeds, no payload/ counterpart):
       doc_bodies/<doc>.md, sentinel-templated (__PROJECT_NAME__ / __PROJECT_SUMMARY__
       substituted by main.py at install time).
 
@@ -36,13 +40,16 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent          # installer/
 REPO = HERE.parent                              # repo root
 ARTIFACT = REPO / "bootstrap_agentic_workspace.sh"
+SRC = REPO / "payload"                          # the shipped sources (never live paths in this repo)
 
 HEREDOC_DELIM = "INSTALLER_PY"                  # distinctive: no payload/body line may equal it
 PAYLOAD_MARKER = "#@@GENERATED_PAYLOADS@@"      # in main.py — replaced by generated constants
 BODY_MARKER = "#@@PYTHON_BODY@@\n"              # in wrapper.sh — replaced by the python body
 EXPECTED_SKILL_COUNT = 18
 
-# Live repo files embedded verbatim (path relative to repo root == emit target path).
+# Shipped files embedded verbatim, keyed by EMIT path (where the installer writes them). The
+# source lives under payload/ at src_rel(emit): the first path component undotted, so no source
+# sits at a path Claude Code or GitHub would load (.claude/, .github/, CLAUDE.md).
 FIXED_LIVE_FILES = [
     "scripts/workflow.py",
     ".claude/settings.json",
@@ -54,7 +61,7 @@ FIXED_LIVE_FILES = [
     "works/templates/deferred_brief.md",
     "works/templates/intent.md",
     "works/templates/phase.md",
-    # Repo-level policy files. Embedded like any other live file; main.py emits them
+    # Repo-level policy files. Embedded like any other shipped file; main.py emits them
     # through their own write policy (CI seed-once, .gitattributes line-merge) so an
     # adopting repo's own CI / attributes are never clobbered.
     ".github/workflows/workspace-ci.yml",
@@ -69,7 +76,12 @@ def die(msg: str) -> "None":
     raise SystemExit(1)
 
 
-def read(rel: str, base: Path = REPO) -> str:
+def src_rel(emit: str) -> str:
+    """payload/-relative source of an emit path: .claude/x -> claude/x, .gitattributes -> gitattributes."""
+    return emit[1:] if emit.startswith(".") else emit
+
+
+def read(rel: str, base: Path = SRC) -> str:
     p = base / rel
     if not p.is_file():
         die(f"missing source file: {p}")
@@ -80,7 +92,7 @@ CHEAP_BEGIN, CHEAP_END = "# cheap-route: begin", "# cheap-route: end"
 
 
 def derive_executors_seed(text: str) -> str:
-    """The adopter seed of executors.toml: the live file with the cheap-route block's
+    """The adopter seed of executors.toml: the source file with the cheap-route block's
     non-comment lines commented out, so a fresh install inherits the mid row until the
     adopter opts in. Markers must both exist, once, in order; anything else is a build error."""
     lines = text.split("\n")
@@ -95,15 +107,15 @@ def derive_executors_seed(text: str) -> str:
 
 
 def collect_live_payloads() -> "dict":
-    """target-path -> content for every live file (deterministic ordering); verbatim
+    """emit-path -> content for every shipped file (deterministic ordering); verbatim
     except executors.toml, which is the derived adopter seed."""
     payloads: dict = {}
     for rel in FIXED_LIVE_FILES:
-        payloads[rel] = read(rel)
+        payloads[rel] = read(src_rel(rel))
     payloads["executors.toml"] = derive_executors_seed(read("executors.toml"))
     # Skills are discovered from disk (sorted) so adding/removing a skill needs no code change.
-    for skill in sorted((REPO / ".claude/skills").glob("*/SKILL.md")):
-        payloads[str(skill.relative_to(REPO))] = skill.read_text(encoding="utf-8")
+    for skill in sorted((SRC / "claude/skills").glob("*/SKILL.md")):
+        payloads["." + str(skill.relative_to(SRC))] = skill.read_text(encoding="utf-8")
     claude_skills = {
         Path(k).parts[2]
         for k in payloads
@@ -116,9 +128,9 @@ def collect_live_payloads() -> "dict":
 
 
 def collect_contract_body() -> str:
-    claude = read("CLAUDE.md")
+    claude = read("contract.md")
     if not claude.startswith(CLAUDE_HDR):
-        die("CLAUDE.md header changed — update CLAUDE_HDR in build.py")
+        die("payload/contract.md header changed — update CLAUDE_HDR in build.py")
     return claude[len(CLAUDE_HDR):]
 
 
