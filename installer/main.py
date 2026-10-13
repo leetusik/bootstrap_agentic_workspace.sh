@@ -278,21 +278,26 @@ def _apply_gitattributes(text: str, action: str) -> None:
     _atomic_write(p, existing + sep + GITATTRIBUTES_APPEND_NOTE + GITATTRIBUTES_MERGE_LINE + "\n")
 
 
-def emit_policy_files() -> None:
+def emit_policy_files(ci: bool = True) -> None:
     """Emit the CI workflow (seed-once) and .gitattributes (line-merge) under every
-    install mode, recording the outcome in whichever summary the mode reports."""
+    install mode, recording the outcome in whichever summary the mode reports.
+    ci=False (a nested install, where ROOT is workflow/) emits the .gitattributes alone:
+    the nested repo needs the union rule for events.jsonl when a phase branch merges,
+    but the CI file is the host's business and is never written there."""
     ci_exists = (ROOT / CI_WORKFLOW_PATH).exists()
     ga_action = _gitattributes_action()
     if not DRY_RUN:
-        if not ci_exists:
+        if ci and not ci_exists:
             _atomic_write(ROOT / CI_WORKFLOW_PATH, PAYLOADS[CI_WORKFLOW_PATH])
         if ga_action != "unchanged":
             _apply_gitattributes(PAYLOADS[GITATTRIBUTES_PATH], ga_action)
     if UPDATE:
-        UPDATE_SUMMARY["preserved" if ci_exists else "added"].append(CI_WORKFLOW_PATH)
+        if ci:
+            UPDATE_SUMMARY["preserved" if ci_exists else "added"].append(CI_WORKFLOW_PATH)
         UPDATE_SUMMARY[{"create": "added", "merge": "merged", "unchanged": "unchanged"}[ga_action]].append(GITATTRIBUTES_PATH)
     elif RETROFIT:
-        RETROFIT_SUMMARY["skipped" if ci_exists else "created"].append(CI_WORKFLOW_PATH)
+        if ci:
+            RETROFIT_SUMMARY["skipped" if ci_exists else "created"].append(CI_WORKFLOW_PATH)
         RETROFIT_SUMMARY[{"create": "created", "merge": "merged", "unchanged": "skipped"}[ga_action]].append(GITATTRIBUTES_PATH)
 
 
@@ -897,10 +902,10 @@ def _nested_local_block(renames: dict) -> list:
         "Nested-install rules (they win over the contract above where the two differ):",
         f"- Start Claude Code at this repo's root, never inside `{NESTED_DIR}/`. Run the engine from here: `{cmd} <command>`.",
         "- Two commits per slice, in two repos:",
-        f"  - product code goes to this repo, on the operator's ticket branch, in the host's commit convention, which `{cmd} nested-convention` prints. Add Claude `Co-Authored-By` trailers only when it says `allowed`;",
+        f"  - product code goes to this repo, on the operator's ticket branch, in the host's conventions for commits, branches and pull requests, which `{cmd} nested-convention` prints. Add Claude `Co-Authored-By` trailers only when it says `allowed`;",
         f"  - workflow state goes to the nested repo (`git -C {NESTED_DIR} ...`) in the contract's Commit Convention.",
-        f"- If `next` shows `host_commit_convention=UNCONFIRMED`, confirm the convention with the operator before the first product commit, then record it: `{cmd} nested-convention --confirm --text \"<convention>\" --trailers allowed|forbidden`.",
-        "- No parallel worktrees: the `parallel-*` commands refuse in a nested install.",
+        f"- If `next` shows `host_commit_convention=UNCONFIRMED`, confirm the host's conventions (commits, branches and pull requests) with the operator before the first product commit, then record them: `{cmd} nested-convention --confirm --text \"<conventions>\" --trailers allowed|forbidden`.",
+        f"- **Parallel phases, only on the operator's word:** `{cmd} parallel-start <P> --host-branch <name> [--host-base <ref>]` cuts a pair: a host worktree under `.claude/worktrees/` on the host branch, with the nested worktree at its `{NESTED_DIR}/`. Propose the branch name from the host's recorded custom and let the operator confirm it. The host side follows that custom; the engine never pushes, opens a PR or merges into the host's default branch.",
         f"- A pull request's title, body and commits (and every product commit) carry no phase or slice IDs, no `{NESTED_DIR}/` paths and no workspace files.",
         f"- Never stage `{NESTED_DIR}/`, `CLAUDE.local.md`, `.claude/settings.local.json` or the workspace's skills and agents into this repo (the exclude block lists them).",
     ]
@@ -1050,7 +1055,7 @@ def nested_plan() -> dict:
     # files, CLAUDE.local.md, settings.local.json, workflow/ as a directory, and an odd skill entry
     # that is not a directory -- is asked of git, and one that would stay visible refuses the
     # install, on --update too, before anything is written.
-    exclude_entries = [f"/{NESTED_DIR}/", "/CLAUDE.local.md", "/.claude/settings.local.json"]
+    exclude_entries = [f"/{NESTED_DIR}/", "/CLAUDE.local.md", "/.claude/settings.local.json", "/.claude/worktrees/"]
     exclude_entries += [f"/.claude/skills/{n}/" for n in sorted(installed["skills"])]
     exclude_entries += [f"/.claude/agents/{n}.md" for n in sorted(installed["agents"])]
     def _real_dir_or_absent(p: Path) -> bool:
@@ -1212,11 +1217,11 @@ def print_nested_banner(plan: dict) -> None:
         print(f"  1. First commit in the nested repo: git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: install agentic workspace (nested)\"")
         print(f"  2. Start Claude Code at the host root and accept the trust dialog on the first run, then: /{plan['renames']['skills'].get('create-phase', 'create-phase')} for the first phase ({cmd} next shows the state)")
     if conv.get("confirmed") is not True:
-        print(f"  3. Confirm the commit convention before the first product commit: {cmd} nested-convention (then --confirm --text \"<convention>\" --trailers allowed|forbidden)")
+        print(f"  3. Confirm the host's conventions (commits, branches and pull requests) before the first product commit: {cmd} nested-convention (then --confirm --text \"<conventions>\" --trailers allowed|forbidden)")
     elif HOST_INITED:
-        print(f"  The new repo's commit convention is recorded; {cmd} nested-convention shows it (--confirm --text \"...\" --trailers allowed|forbidden changes it).")
+        print(f"  The new repo's conventions are recorded; {cmd} nested-convention shows them (--confirm --text \"...\" --trailers allowed|forbidden changes it).")
     else:
-        print(f"  The host's commit convention is recorded; {cmd} nested-convention shows it.")
+        print(f"  The host's conventions (commits, branches, pull requests) are recorded; {cmd} nested-convention shows them.")
     if not HOST_INITED:
         print(f"  Any remote for {NESTED_DIR}/ stays inside your company's org: its phase and slice files describe the company's code.")
 
@@ -1398,9 +1403,9 @@ if not NESTED:
     write_text(".claude/settings.json", PAYLOADS[".claude/settings.json"])
 
 # ---- Repo-level policy files: CI workflow (seed-once) + .gitattributes (merge) ----
-# Never in a nested install: no CI file and no .gitattributes anywhere, host or workflow/.
-if not NESTED:
-    emit_policy_files()
+# A nested install writes only workflow/.gitattributes (the union rule for works/events.jsonl, which a
+# phase-branch merge needs in the nested repo); no CI file anywhere, and nothing in the host repo.
+emit_policy_files(ci=not NESTED)
 
 # ---- Nested install: the host side and the marker (rendered and checked up front) ----
 if NESTED:

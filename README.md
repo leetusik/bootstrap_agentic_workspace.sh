@@ -56,7 +56,6 @@ sh ../bootstrap_agentic_workspace.sh/bootstrap_agentic_workspace.sh . --at-root 
 
 `--at-root`는 빈 디렉터리 전용입니다. 추가 파일이 있는 디렉터리에는 `--force-empty-ok`를 함께
 쓰세요(`--force-empty-ok`는 `--at-root` 또는 `--into-existing`과 함께만 받아들여집니다).
-`--at-root`로 설치한 워크스페이스에서만 병렬 worktree(`parallel-*`)를 쓸 수 있습니다.
 
 한 줄로 설치할 수도 있습니다. 원격 스크립트를 셸에 바로 연결하는 방식이 꺼려진다면
 스크립트를 먼저 읽어 보세요. 커밋되는 레이아웃이 필요하면 `sh -s -- . --at-root`로 바꾸세요.
@@ -125,7 +124,7 @@ tracked 파일도, CI 파일도, `.gitattributes`도, `docs/`도 없고, PR diff
 **새 개인 프로젝트도 똑같이 nested이고 기본적으로 비공개입니다.** 새 디렉터리나 빈 디렉터리에
 옵션 없이 설치하면 설치 프로그램이 그 디렉터리를 `git init`으로 호스트 저장소로 만들고
 `workflow/`를 안에 둡니다. 협업하는 사람이 워크스페이스를 저장소에서 받아야 한다면 `--at-root`로
-설치하세요. 병렬 worktree는 `--at-root` 설치에서만 동작합니다.
+설치하세요. 병렬 worktree는 nested 설치에서도 동작합니다([phase별 worktree](#phase별-worktree-요청할-때만) 참고).
 
 **설치.** 호스트 저장소의 루트(git work tree)를 지정합니다.
 
@@ -208,9 +207,8 @@ git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하�
 
 **알아 둘 점.**
 
-- **병렬 worktree는 꺼져 있습니다**(`parallel-*`는 거부). 호스트 worktree에는 untracked 파일이
-  없기 때문입니다. 기본 설치가 nested이므로 병렬 worktree는 기본적으로 꺼져 있고, `--at-root`로
-  설치한 워크스페이스에서만 쓸 수 있습니다.
+- **병렬 worktree는 요청할 때만 씁니다.** nested 설치에서는 호스트 worktree와 그 안의 `workflow/`
+  worktree가 한 쌍으로 만들어집니다([phase별 worktree](#phase별-worktree-요청할-때만) 참고).
 - 회사가 관리하는 Claude Code 정책이 `bypassPermissions`를 막을 수 있습니다. 세 에이전트가 이
   모드를 쓰므로, `/do-whole-phase`처럼 사람 없이 도는 실행을 믿기 전에 확인하세요.
 - 이름이 바뀐 스킬을 엔진 메시지가 원래 이름으로 부를 수 있습니다(예: `wf-create-phase`로
@@ -404,9 +402,8 @@ CLI 명령 전체는 `python3 scripts/workflow.py --help`로 확인할 수 있�
 
 phase는 **기본적으로 지금 있는 checkout(`main`)에서** 진행됩니다. 따로 할 일도, 붙일 옵션도
 없습니다. 한 번에 두 phase를 돌리고 싶을 때만 **여러분이 요청**하면, 그 phase가 자기만의 git
-worktree로 옮겨갑니다. (`--at-root`로 설치한 워크스페이스에서만 됩니다. 기본 nested 설치는 상태를
-untracked `workflow/`에 두는데 worktree에는 그 폴더가 없으므로 `parallel-*`는 거부합니다.) 요청하는
-방법은 둘 중 하나입니다.
+worktree로 옮겨갑니다. (at-root 설치와 nested 설치 모두에서 됩니다. nested 설치는 아래 "nested 설치에서는"
+문단을 보세요.) 요청하는 방법은 둘 중 하나입니다.
 
 - `/do-whole-phase worktree` 또는 `/do-next-slice worktree`처럼 **`worktree`라는 말을 붙여**
   실행하기 (같은 뜻의 다른 표현도 됩니다 — "worktree에서", "병렬로", "자기 branch에서")
@@ -434,7 +431,20 @@ worktree에서 진행한 phase의 리뷰가 통과하면 에이전트가 통합�
 (로컬 merge) → `parallel-merge-finish` → 리뷰가 남긴 두 게이트 섹션의 문서 버전 →
 `parallel-teardown <P>`. **push와 PR은 여러분이 요청할 때만** 합니다(원격 변형: push → PR →
 CI → merge). 나머지 문서 버전 작업은 평소처럼 나중에 docs phase에서 한 번에 처리합니다.
-어느 checkout에서든 `parallel-status`로 모든 stream의 진행 상황을 볼 수 있습니다.
+어느 checkout에서든 `parallel-status`로 모든 stream의 진행 상황을 볼 수 있고, `works/backlog.md`의
+`## Streams` 표에는 기본 stream과 진행 중인 모든 worktree phase가 각자의 branch에서 바로 읽은
+상태로 나열됩니다(nested에서는 호스트 branch 열이 함께 나옵니다).
+
+**nested 설치에서는.** `parallel-start <P> --host-branch <이름> [--host-base <ref>]`가 한 쌍을
+만듭니다. `.claude/worktrees/` 아래의 호스트 worktree(여러분의 호스트 branch)와, 그 안의
+`workflow/` worktree(`phase/P<N>-<slug>`)입니다. `--host-branch`의 이름은 `nested-convention`에
+기록해 둔 여러분 팀의 관례로 에이전트가 제안하고, 확정은 여러분이 합니다. base는 기본적으로 호스트의
+기본 branch이고(`--host-base`로 바꿀 수 있습니다), 관례가 "최신 main에서 시작"이라면 에이전트가
+먼저 `git fetch`를 합니다. 호스트 쪽 통합(티켓당 PR 하나, 또는 한 티켓의 phase들을 rebase로 한
+branch에 합치기)은 기록해 둔 관례를 따르며, 워크스페이스는 push도, PR 열기도, 호스트 기본 branch로의
+merge도 하지 않습니다. 정리(`parallel-teardown`)는 호스트 branch를 남겨 둡니다(엔진이 만든 빈
+branch만 지웁니다). worktree는 파일만 격리하므로 docker 컨테이너, 포트, 로컬 DB와 캐시는 stream끼리
+공유된다는 점은 직접 조율하세요.
 
 자세한 규칙과 절차는 [`parallel-phase`](.claude/skills/parallel-phase/SKILL.md) 스킬(`/parallel-phase`)과
 [English README](README.en.md#phase-worktrees-on-request)에 있습니다.

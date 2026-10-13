@@ -108,8 +108,7 @@ sh ../bootstrap_agentic_workspace.sh/bootstrap_agentic_workspace.sh . --at-root 
 ```
 
 `--at-root` is for an empty directory; add `--force-empty-ok` for one that holds extra files
-(`--force-empty-ok` is accepted only together with `--at-root` or `--into-existing`). Parallel
-worktrees (`parallel-*`) work only on an `--at-root` install.
+(`--force-empty-ok` is accepted only together with `--at-root` or `--into-existing`).
 
 ### Or, the one-liner convenience
 
@@ -241,7 +240,7 @@ default now, so you never need to add it.
 **A new personal project is nested too, and private by default.** Install into a new or empty
 directory with no flag and the installer `git init`s it as the host repo and puts `workflow/` inside
 it. If collaborators should receive the workspace through the repo, install with `--at-root`
-instead. Parallel worktrees work only on an `--at-root` install.
+instead. Parallel worktrees work in a nested install too (see [Phase worktrees](#phase-worktrees-on-request)).
 
 **Install.** Point the installer at the host repo's root (a git work tree):
 
@@ -322,9 +321,8 @@ under `workflow/works/` and `workflow/docs/`. Run `sync-agents` afterwards and c
 
 **Caveats.**
 
-- **Parallel worktrees are off** (`parallel-*` refuse): a host worktree would not contain the
-  untracked files. Because the default install is nested, they are off unless you installed with
-  `--at-root`.
+- **Parallel worktrees are opt-in.** In a nested install a phase worktree is a pair: a host worktree
+  with the `workflow/` worktree inside it (see [Phase worktrees](#phase-worktrees-on-request)).
 - A company-managed Claude Code policy may disable `bypassPermissions`, which the three subagents
   set. Check that before you rely on unattended runs such as `/do-whole-phase`.
 - Engine messages may name a renamed skill by its original name (for example `validate` pointing
@@ -543,9 +541,8 @@ phase it pays. A docs phase always runs on the default stream,
 
 A phase runs **on the checkout you are already in** — `main`, normally. There is no flag to pass
 and nothing to set up. When you want two phases moving at once, **you ask**, and that phase moves
-into its own git worktree. (This needs an `--at-root` install: the default nested install keeps its
-state in an untracked `workflow/` that a worktree would not contain, so `parallel-*` refuse there.)
-Asking looks like either of these:
+into its own git worktree. (This works on an at-root install and on a nested one; the nested
+install is described in its own paragraph below.) Asking looks like either of these:
 
 - the word **`worktree`** alongside the command — `/do-whole-phase worktree`, `/do-next-slice
   worktree` — or the same thing in your own words ("in a worktree", "in parallel", "on its own
@@ -572,7 +569,20 @@ worktree on a docs phase**, because `doc-new-version` and `docs-consolidated` on
 default stream (doc versions come from one shared index). `parallel-skip <P>` and `new-phase
 --on-main`, which pinned a phase back when v42 made the worktree the default, are now no-ops kept
 only so older habits and scripts still run; they write nothing. `parallel-status` shows every
-stream's state from any checkout.
+stream's state from any checkout. `works/backlog.md`'s `## Streams` table lists the default stream and
+every in-flight worktree phase, read live from its branch (with the host branch in a nested install).
+
+**In a nested install**, `parallel-start <P> --host-branch <name> [--host-base <ref>]` cuts a pair: a
+host worktree under `.claude/worktrees/` on your host branch, with the `workflow/` worktree
+(`phase/P<N>-<slug>`) inside it. The agent proposes the branch name from your team's custom, which you
+record with `nested-convention` (commits, branches and pull requests), and you confirm it. The base
+defaults to the host's default branch (`--host-base` overrides it), and the agent runs `git fetch`
+first when your custom says to branch from fresh main. The host side follows your custom (one PR per
+ticket or per phase, or several phases folded onto one branch by rebase, with the checks re-run on the
+combined commit); the workspace never pushes, opens a PR or merges into the host's default branch.
+Teardown keeps your host branch (it deletes only an empty branch the engine created). A worktree
+isolates files only: docker containers, ports, local databases and caches stay shared across streams,
+so coordinate them yourself.
 
 **Integrating back.** Once the branch review passes, the agent runs the integration itself:
 `parallel-gate <P>` checks the quiet point (the branch's phase done + `main` between phases), then it

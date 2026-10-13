@@ -3954,7 +3954,7 @@ def _phase_scope_nested(args: argparse.Namespace, data: dict, out: dict, header:
     elif created:
         base = _rev_parse(created, cwd=host)
         if base:
-            base_kind = "the host HEAD when the phase was created: phase.json host_anchors.created"
+            base_kind = "the host HEAD when the phase was created (or the host worktree's base after parallel-start): phase.json host_anchors.created"
         else:
             missing = f"host_anchors.created {created} is not a commit in the host repo (rewritten history, or a shallow clone)"
     elif "created" in anchors:  # recorded as null: the host had no commit yet when the phase was created
@@ -4001,7 +4001,7 @@ def _phase_scope_nested(args: argparse.Namespace, data: dict, out: dict, header:
     tally = {k: sum(1 for f in files if f["status"] == k) for k in ("A", "M", "D", "R")}
     lines = header + [f"mode={out['mode']}"]
     if created:
-        lines.append(f"creation_commit={created}  (the host HEAD at new-phase)")
+        lines.append(f"creation_commit={created}  (the host HEAD at new-phase, or the host worktree's base after parallel-start)")
     elif "created" in anchors and not args.base:
         lines.append("creation_commit=none (the host had no commit at new-phase)")
     else:
@@ -4025,7 +4025,7 @@ def _one_line(text) -> str:
 
 
 def nested_next_lines() -> list:
-    """`next`'s nested-install lines: the host, and the host commit convention's state -- loud
+    """`next`'s nested-install lines: the host, and the host conventions' state (commits, branches, PRs) -- loud
     while it is unconfirmed, because the first product commit must wait for the operator. Empty
     at root, so an at-root `next` prints exactly what it always printed."""
     if NESTED is None:
@@ -4034,16 +4034,16 @@ def nested_next_lines() -> list:
     lines = [f"nested_host={HOST_ROOT}"]
     if conv.get("confirmed") is True:
         lines.append(f"host_commit_convention=confirmed (coauthor_trailers={conv.get('coauthor_trailers')}) "
-                     f"-- follow it in every host product commit; read it with: {WORKFLOW_CMD} nested-convention")
+                     f"-- follow it for host commits, branches and pull requests; read it with: {WORKFLOW_CMD} nested-convention")
     else:
         inferred = _one_line(conv.get("inferred")) if conv.get("inferred") else "nothing"
-        lines.append(f"host_commit_convention=UNCONFIRMED (inferred: {inferred}) -- confirm with the operator before the first product commit, "
-                     f"then: {WORKFLOW_CMD} nested-convention --confirm --text \"<convention>\" --trailers allowed|forbidden")
+        lines.append(f"host_commit_convention=UNCONFIRMED (inferred: {inferred}) -- confirm the host's conventions (commits, branches and pull requests) with the operator before the first product commit, "
+                     f"then: {WORKFLOW_CMD} nested-convention --confirm --text \"<conventions>\" --trailers allowed|forbidden")
     return lines
 
 
 def cmd_nested_convention(args: argparse.Namespace) -> None:
-    """Show (bare) or record (--confirm) a nested install's host commit convention.
+    """Show (bare) or record (--confirm) a nested install's host conventions for commits, branches and pull requests.
 
     The installer cannot ask (it runs non-interactively), so it records what it inferred from the
     host's git log and CONTRIBUTING with `confirmed: false`; the orchestrator asks the operator
@@ -4057,7 +4057,7 @@ def cmd_nested_convention(args: argparse.Namespace) -> None:
     path = ROOT / NESTED_MARKER
     if args.confirm:
         if not (args.text or "").strip():
-            raise SystemExit("nested-convention --confirm needs --text \"<the host's commit convention, as the operator confirmed it>\"")
+            raise SystemExit("nested-convention --confirm needs --text \"<the host's conventions for commits, branches and pull requests, as the operator confirmed them>\"")
         if args.trailers is None:
             raise SystemExit("nested-convention --confirm needs --trailers allowed|forbidden (may Claude Co-Authored-By trailers appear in host commits?)")
         data = read_json(path)
@@ -4080,7 +4080,7 @@ def cmd_nested_convention(args: argparse.Namespace) -> None:
     print("text:")
     print(conv.get("text") or "(none -- not confirmed yet)")
     if conv.get("confirmed") is not True:
-        print(f"confirm with the operator before the first product commit, then: {WORKFLOW_CMD} nested-convention --confirm --text \"<convention>\" --trailers allowed|forbidden")
+        print(f"confirm the host's conventions (commits, branches and pull requests) with the operator before the first product commit, then: {WORKFLOW_CMD} nested-convention --confirm --text \"<conventions>\" --trailers allowed|forbidden")
 
 
 def cmd_next(args: argparse.Namespace) -> None:
@@ -5739,9 +5739,9 @@ def main(argv=None) -> int:
     p.add_argument("--discard-ignored", action="store_true", help="nested install only: delete the ignored, worktree-only files the paired teardown lists (it refuses without this flag)")
     p.set_defaults(func=parallel_teardown)
 
-    p = sub.add_parser("nested-convention", help="Nested personal install only: show the host repo's commit convention (bare), or record the operator's confirmation of it -- the text and whether Claude Co-Authored-By trailers are allowed in host commits (--confirm --text ... --trailers allowed|forbidden); refuses outside a nested install")
-    p.add_argument("--confirm", action="store_true", help="record the operator-confirmed convention (needs --text and --trailers)")
-    p.add_argument("--text", default=None, help="the host's commit convention as the operator confirmed it")
+    p = sub.add_parser("nested-convention", help="Nested personal install only: show the host repo's conventions for commits, branches and pull requests (bare), or record the operator's confirmation of them -- the text and whether Claude Co-Authored-By trailers are allowed in host commits (--confirm --text ... --trailers allowed|forbidden); refuses outside a nested install")
+    p.add_argument("--confirm", action="store_true", help="record the operator-confirmed conventions (needs --text and --trailers)")
+    p.add_argument("--text", default=None, help="the host's conventions as the operator confirmed them: commit subjects and trailers; branch naming and base (e.g. from fresh main); PR shape (one per ticket or per phase) and who merges")
     p.add_argument("--trailers", default=None, choices=("allowed", "forbidden"), help="may Claude Co-Authored-By trailers appear in host product commits")
     p.set_defaults(func=cmd_nested_convention)
 
