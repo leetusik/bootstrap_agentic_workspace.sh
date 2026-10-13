@@ -473,7 +473,7 @@ branch만 지웁니다). worktree는 파일만 격리하므로 docker 컨테이�
 - 전체 문서 (설치 옵션, CLI 명령 전체, 프로젝트 구조, 스킬 18종): [English README](README.en.md)
 - 에이전트 규칙 문서: [CLAUDE.md](payload/contract.md)
 - 기존 저장소에 추가하는 절차: [Retrofit Guide](docs/retrofit-guide.md)
-- 기여하기: 이 저장소는 자기 워크플로우로 개발됩니다. phase를 열고 slice 단위로 기여해
+- 기여하기: 기여할 때는 클론에 비공개 워크스페이스를 설치해 같은 방식으로 작업합니다. phase를 열고 slice 단위로 기여해
   주세요. 방법은 [English README의 Contributing](README.en.md#contributing)에 있습니다.
 
 ## License

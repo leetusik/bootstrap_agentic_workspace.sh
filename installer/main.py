@@ -42,7 +42,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 57
+WORKSPACE_VERSION = 58
 ROOT = TARGET.resolve()
 # Nested personal install (P28; the default layout since P29): TARGET is a HOST git repo -- one the
 # operator may not own, or a new/empty dir this run `git init`s. The engine and all workflow state go
@@ -268,14 +268,21 @@ def _gitattributes_action() -> str:
     return "merge"
 
 
+def _nested_engine_cmd(text: str) -> str:
+    """In a nested install, spell the engine command as the host-root path. Only the
+    command changes: the works/... names in the comment are relative to workflow/ (the
+    file's own directory), so nested_rewrite must not be used here."""
+    return NESTED_ENGINE_RE.sub(f"{NESTED_DIR}/scripts/workflow.py", text) if NESTED else text
+
+
 def _apply_gitattributes(text: str, action: str) -> None:
     p = ROOT / GITATTRIBUTES_PATH
     if action == "create":
-        _atomic_write(p, text)
+        _atomic_write(p, _nested_engine_cmd(text))
         return
     existing = p.read_text(encoding="utf-8")
     sep = "" if (not existing or existing.endswith("\n")) else "\n"
-    _atomic_write(p, existing + sep + GITATTRIBUTES_APPEND_NOTE + GITATTRIBUTES_MERGE_LINE + "\n")
+    _atomic_write(p, existing + sep + _nested_engine_cmd(GITATTRIBUTES_APPEND_NOTE) + GITATTRIBUTES_MERGE_LINE + "\n")
 
 
 def emit_policy_files(ci: bool = True) -> None:

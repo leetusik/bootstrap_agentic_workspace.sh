@@ -9,6 +9,45 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v58 — 2026-10-13
+
+- **A nested install can run a phase in its own worktree, as a pair.** `parallel-start <P>
+  --host-branch <name> [--host-base <ref>]` cuts a host worktree under `.claude/worktrees/` on the
+  host branch, with the nested worktree inside it at `workflow/`. The orchestrator proposes the
+  branch name from the host's recorded custom and the operator confirms it; the engine never
+  invents one. `--host-base` defaults to the host's default branch (`origin/HEAD`, else the local
+  default branch). Teardown is nested-first and checks before it removes anything (uncommitted
+  work, ignored worktree-only files unless `--discard-ignored`, orphaned detached host commits),
+  and keeps the host branch unless the engine created it and it is empty.
+  `parallel-merge-finish` and `parallel-consolidated` run in the nested repo. The engine never
+  pushes, opens a pull request or merges into the host's default branch: that is the host's custom.
+
+- **The compaction hooks follow the session's own directory.** `compact-gate` and
+  `compact-resume` walk up from the hook's stdin `cwd` to the engine that owns it and re-run it, so
+  a session in a phase worktree resumes on its own stream and the gate judges its own slice, at
+  root and nested. The hook commands in `settings.json` are unchanged.
+
+- **`works/backlog.md` gains a `## Streams` section,** and `next` lists only phases in flight. The
+  section shows the default stream and every in-flight worktree phase, read live from its branch
+  (a `Host branch` column in nested installs). `next` no longer lists a done phase whose worktree
+  is torn down, nor a started phase that owes no consolidation yet (D57).
+
+- **Smaller changes.** `nested-convention` now records the host's conventions for commits,
+  branches and pull requests. A nested install writes `/.claude/worktrees/` into its exclude block
+  and a `workflow/.gitattributes` (the union rule for `events.jsonl`, no CI file). `do-whole-phase`
+  prepares slice N+1 only during an idle window, never N+2 or later. The shipped contract drops its
+  "upstream repo only" rule, and the seeded `workspace-ci.yml` drops its two upstream-only steps
+  (artifact parity, smoke); both live in this repo's own dev contract and `upstream-ci.yml`.
+
+- **Upstream only.** This repo now runs as a nested install itself: its sources live under
+  `payload/`, its workspace is the git-excluded `workflow/`, and the built artifact is byte-identical.
+
+- **Migration notes.** At-root installs need nothing beyond `/update-workspace`. Nested installs get
+  the `/.claude/worktrees/` exclude line and `workflow/.gitattributes` on `--update`. Existing
+  adopters keep their seeded `workspace-ci.yml` (seed-once); delete its two `(upstream only)`
+  steps if you want them gone. Relaunch Claude Code so the refreshed hooks and skills load. Smoke:
+  292 to 297 PASS.
+
 ## v57 — 2026-10-13
 
 - **The shipped auto-compact window is 500k.** `.claude/settings.json` now carries

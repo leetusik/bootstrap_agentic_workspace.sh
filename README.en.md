@@ -694,14 +694,20 @@ scorecard, and star counts move too fast to quote.)
 
 ## Contributing
 
-This repo dogfoods its own workflow, so contributing means *using* it — through your agent:
+This repo is developed with its own workflow, so contributing means *using* it, through your
+agent. The maintainer's workspace is a private install (`workflow/`, git-excluded), so a clone has
+none: install your own private one at the clone root with the default (nested) install,
+`sh bootstrap_agentic_workspace.sh`. Then drive it as described below, with
+`python3 workflow/scripts/workflow.py …`. You edit `payload/` and `installer/` (never the
+installed copies; see the root [`CLAUDE.md`](CLAUDE.md)).
 
 1. Open a phase: ask your agent — *"make a phase for \<your change\>"*. It runs
-   `python3 scripts/workflow.py new-phase …`, which seeds only `DECOMP` + `REVIEW`, and stops there.
+   `python3 workflow/scripts/workflow.py new-phase …`, which seeds only `DECOMP` + `REVIEW`, and
+   stops there.
 2. Execute it: type `/do-next-slice` or `/do-whole-phase`, or let any agent run the `workflow.py`
    commands directly. The `DECOMP` slice breaks the phase into slices.
 3. Review it: the phase closes only on a passing review — the agent records it with
-   `python3 scripts/workflow.py review-phase P2 --verdict …`; you read the result and approve.
+   `python3 workflow/scripts/workflow.py review-phase P2 --verdict …`; you read the result and approve.
    On a phase that changes what you can see, the review stops one step earlier: it ends with the
    phase `pending` and a concrete walkthrough, and the pass is recorded only after you have walked
    the running product yourself and cleared the gate (`accept-gate P2 --clear`).
@@ -713,7 +719,8 @@ A few house rules:
 
 - **Commits** follow `type(scope): summary` — imperative mood, no trailing period (types: `feat`,
   `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `build`, `perf`, `revert`). Commit per completed
-  slice; branch off `main` first.
+  slice; branch off `main` first. Host commits carry no phase or slice IDs (those live in
+  your private workspace's own repo).
 - **Rebuild the artifact whenever you touch machinery.** `bootstrap_agentic_workspace.sh` is a
   build product: the shipped sources live under `payload/` (`payload/scripts/workflow.py`,
   `payload/claude/**`, the contract [`payload/contract.md`](payload/contract.md), `payload/executors.toml`,
