@@ -3,14 +3,14 @@
   "phase_id": "P35",
   "name": "do-whole-phase prepares slice N+1 only",
   "kind": "docs",
-  "status": "todo",
+  "status": "done",
   "order": 10,
   "depends_on": [
     "P35.DECOMP"
   ],
   "created_at": "2026-10-13T15:55:38+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-10-13T15:57:19+09:00",
+  "completed_at": "2026-10-13T15:58:36+09:00",
   "risk": "low",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "do-whole-phase prep now names slice N+1 alone and forbids N+2 or later (SKILL.md dispatch bullet, the idle-window bullet and a new first limit; CLAUDE.md's prep sentence); bootstrap rebuilt",
   "validation": {
     "required": [],
     "last_run": null,

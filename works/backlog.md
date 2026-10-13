@@ -6,8 +6,8 @@
 ## Pointer
 
 - Current phase: `P35`
-- Current slice: `P35.S1`
-- Next slice: `P35.S2`
+- Current slice: `P35.S2`
+- Next slice: `P35.S3`
 - Waiting on operator: `none`
 - Open deferred jobs: `46`
 
@@ -18,7 +18,7 @@
 | [x] `P32` | `done` | `pass` | One executor route table: dispatch-time model and effort, no presets, Haiku cheap route | `none` | `works/phases/active/P32` |
 | [x] `P33` | `done` | `pass` | One-shot /rotate-backlog: consolidate the doc debt, then archive | `none` · parallel: `phase/P33-one-shot_rotate-backlog_consolidate_the` | `works/phases/active/P33` |
 | [x] `P34` | `done` | `pass` | Boundary-gated compaction: veto mid-process, resume at the slice boundary | `none` | `works/phases/active/P34` |
-| [ ] `P35` | `planned` | `pending` | nested-install parallel worktrees and one-slice prep | `P35.S1` | `works/phases/active/P35` |
+| [ ] `P35` | `planned` | `pending` | nested-install parallel worktrees and one-slice prep | `P35.S2` | `works/phases/active/P35` |
 
 ## Phase P32: One executor route table: dispatch-time model and effort, no presets, Haiku cheap route
 
@@ -58,7 +58,7 @@
 | Slice | Status | Name | Kind | Path |
 |---|---|---|---|---|
 | [x] `P35.DECOMP` | `done` | decompose phase | `decomposition` | `works/phases/active/P35/slices/P35.DECOMP` |
-| [ ] `P35.S1` | `todo` | do-whole-phase prepares slice N+1 only | `docs` | `works/phases/active/P35/slices/P35.S1` |
+| [x] `P35.S1` | `done` | do-whole-phase prepares slice N+1 only | `docs` | `works/phases/active/P35/slices/P35.S1` |
 | [ ] `P35.S2` | `todo` | research: paired worktrees for a nested install | `research` | `works/phases/active/P35/slices/P35.S2` |
 | [ ] `P35.S3` | `todo` | research: converting this repo to the nested layout | `research` | `works/phases/active/P35/slices/P35.S3` |
 | [ ] `P35.DECOMP2` | `todo` | cut the build from the S2/S3 findings | `decomposition` | `works/phases/active/P35/slices/P35.DECOMP2` |
