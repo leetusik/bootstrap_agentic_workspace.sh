@@ -1632,6 +1632,10 @@ Two problems seen on a nested personal install (glide-ilab, reachable as `ssh no
 
 The phase also runs `installer/build.py`, bumps the version and smoke-tests against a nested install.
 
+4. **Convert this upstream repo to the nested layout** (added 2026-10-13, after creation; see Clarifications). The engine, skills, installer and `CLAUDE.md` stay tracked here as the product source. The workspace's own state (`works/`, `docs/`, `executors.toml`) moves into a private, git-excluded `workflow/` repo set up by the installer, and the workspace is driven through that installed copy, updated with `--update` after each release. The `works/` history and the docs leave this repo's tracked tree; the nested repo keeps their history. It runs after the nested worktree work lands, so this repo dogfoods nested parallel runs.
+
+Worktrees stay opt-in on the operator's word (v43). The operator's "parallel" / "parallely" already counts as that word (the `parallel-phase` skill), so after P35 `/do-whole-phase <P> parallely` in a nested install gets its own worktree.
+
 Out of scope: the improvised same-checkout arrangement, which worktrees replace, and any change to glide-ilab itself (it updates later through `--update`).
 
 ## Clarifications Resolved
@@ -1639,7 +1643,10 @@ Out of scope: the improvised same-checkout arrangement, which worktrees replace,
 - Q: What should a "parallel" request do in a nested install: a guarded same-checkout mode, real worktrees for nested, or a clear refusal? — A: "2. it would be great to see the backlog that shows all the worktree run + main run at the main backlog." (real worktrees for nested, plus the main backlog showing every run)
 - Q: The slice prep while an executor runs: enforce N+1 only, or allow further prep? — A: Enforce N+1 only.
 - Q: One phase or two? — A: One phase.
-- Q: Create P35 with the proposed name and objective? — A: "yes." 
+- Q: Create P35 with the proposed name and objective? — A: "yes."
+- Operator, mid-run after creation: "and one more thing. make the nested repo style as a default."
+- Q: The installer already defaults to nested (v50): convert this repo, default parallel to a worktree, docs only, or already done? — A: "4. and do 1, 2  also. 2 is what p35 is for isn't it?" (the installer default stands as is; convert this upstream repo; parallel in nested = P35's worktree work, still opt-in, where "parallel" is the opt-in word)
+- Q: Convert this upstream repo to nested as described (product source stays tracked; works/, docs/, executors.toml move into a private git-excluded workflow/ repo driven through the installed copy and updated with --update; works/ history and docs leave the tracked tree)? — A: "Yes, as described" (in P35, after the nested worktree work lands)
 
 ## Notes
 
