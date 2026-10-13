@@ -1647,6 +1647,7 @@ Out of scope: the improvised same-checkout arrangement, which worktrees replace,
 - Operator, mid-run after creation: "and one more thing. make the nested repo style as a default."
 - Q: The installer already defaults to nested (v50): convert this repo, default parallel to a worktree, docs only, or already done? — A: "4. and do 1, 2  also. 2 is what p35 is for isn't it?" (the installer default stands as is; convert this upstream repo; parallel in nested = P35's worktree work, still opt-in, where "parallel" is the opt-in word)
 - Q: Convert this upstream repo to nested as described (product source stays tracked; works/, docs/, executors.toml move into a private git-excluded workflow/ repo driven through the installed copy and updated with --update; works/ history and docs leave the tracked tree)? — A: "Yes, as described" (in P35, after the nested worktree work lands)
+- Operator, mid-run during DECOMP planning: "yeah do-whole-phase phase parallel means the operator wants the phase needed to be ran in another worktreee." (the "parallel" word on `/do-whole-phase` asks for the phase's own worktree, in a nested install too)
 
 ## Notes
 

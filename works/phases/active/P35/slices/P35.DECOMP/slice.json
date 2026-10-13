@@ -3,12 +3,12 @@
   "phase_id": "P35",
   "name": "decompose phase",
   "kind": "decomposition",
-  "status": "todo",
+  "status": "done",
   "order": 0,
   "depends_on": [],
   "created_at": "2026-10-13T15:47:04+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-10-13T15:55:06+09:00",
+  "completed_at": "2026-10-13T15:56:47+09:00",
   "risk": "high",
   "source": {
     "type": "new_phase",
@@ -18,7 +18,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Cut P35 into S1 (docs/low: prep N+1 only), S2 and S3 (research/high: nested paired worktrees; this repo's nested conversion dry run) and DECOMP2 (cuts the build from S2+S3); Decisions 1-9, the superseded-at-root Doc impact note",
   "validation": {
     "required": [],
     "last_run": null,
