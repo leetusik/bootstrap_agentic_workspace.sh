@@ -33,7 +33,6 @@ NESTED_RENAME_KINDS = ("skills", "agents")
 # Optional, but strict when present: the installer's record of which host-side skill directories
 # and agent files are the workspace's own (so `--update --nested` never mistakes them for a clash).
 NESTED_OPTIONAL_KEYS = ("installed",)
-NESTED_PARALLEL_OFF = "parallel worktrees are disabled in a nested personal install"
 # P35: a nested phase worktree is a pair, and its host half needs a branch the operator names.
 NESTED_HOST_BRANCH_REQUIRED = (
     "parallel-start in a nested install needs --host-branch <name>: the host repo's branch for this phase's product commits, "
@@ -2608,15 +2607,6 @@ def _phase_branch(phase_id: str, name: str, slug_override=None) -> str:
     return f"phase/{phase_id}-{slug}"
 
 
-def _refuse_parallel_when_nested() -> None:
-    """The nested refusal for the parallel commands that do not yet handle the host + nested
-    worktree pair (P35: start, status, gate and skip run in nested; teardown, merge-finish and
-    consolidated still refuse here). One line, non-zero exit, before anything is read or written.
-    Silent at root."""
-    if NESTED is not None:
-        raise SystemExit(NESTED_PARALLEL_OFF)
-
-
 def parallel_start(args: argparse.Namespace) -> None:
     """Move a planned phase into its own worktree: stamp it, commit the stamp, cut branch + worktree.
 
@@ -2907,8 +2897,14 @@ def parallel_teardown(args: argparse.Namespace) -> None:
 
     Refuses while the branch is unmerged (merging is a separate step). Keeps `mode`/`branch`/
     `consolidation` as history and only nulls `worktree`, which is informational anyway.
+
+    In a nested personal install (P35) the phase has a worktree PAIR -- see `_parallel_teardown_nested`;
+    `--discard-ignored` belongs to it and is refused at root.
     """
-    _refuse_parallel_when_nested()
+    discard_ignored = getattr(args, "discard_ignored", False)
+    if NESTED is None and discard_ignored:
+        raise SystemExit("--discard-ignored is for a nested personal install's paired teardown only; "
+                         "at root, teardown removes the worktree as it always has -- nothing was removed")
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
     execution = phase_execution(data)
@@ -2923,6 +2919,9 @@ def parallel_teardown(args: argparse.Namespace) -> None:
     branch_exists = _branch_exists(branch)
     if branch_exists and _git(["merge-base", "--is-ancestor", branch, "HEAD"], check=False).returncode != 0:
         raise SystemExit(f"branch {branch} is not merged into HEAD; merge it first, then run: {WORKFLOW_CMD} parallel-teardown {args.phase}")
+    if NESTED is not None:
+        _parallel_teardown_nested(args, pdir, data, execution, branch, branch_exists, discard_ignored)
+        return
     removed = []
     worktree = execution.get("worktree")
     if worktree and Path(worktree).exists():
@@ -2949,6 +2948,184 @@ def parallel_teardown(args: argparse.Namespace) -> None:
     if phase_consolidation(data) == "pending":
         print(f"warning: {args.phase} doc consolidation is still 'pending' -- run the post-merge consolidation on this stream (teardown does not gate on it)")
     print("phase.json changed -- commit it with the rest of the merge cleanup")
+
+
+def _ignored_worktree_files(path, skip=()) -> list:
+    """The ignored, worktree-only files and directories in the checkout at `path`, as git lists them
+    (`ls-files --others --ignored --exclude-standard --directory`), minus the entries in `skip`.
+    `git worktree remove` deletes these without asking, so the paired teardown lists them first.
+    git also lists a directory holding only ignored entries beside those entries; the directory
+    line is dropped then, so each path is named once."""
+    proc = _git(["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"], cwd=path)
+    entries = [entry for entry in proc.stdout.split("\0") if entry and entry not in skip]
+    return [entry for entry in entries
+            if not (entry.endswith("/") and any(other != entry and other.startswith(entry) for other in entries))]
+
+
+def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, execution: dict,
+                              branch: str, branch_exists: bool, discard_ignored: bool) -> None:
+    """`parallel-teardown` in a nested personal install (P35): retire the host + nested worktree pair.
+
+    Run from the default stream of the nested repo, after `phase/...` is merged there (the caller
+    checked it). Order (P35.S2 (d), (e); Decisions 11, 19):
+
+    1. every guard first, in one combined report, with nothing touched: uncommitted work in the
+       nested worktree; ignored, worktree-only files in either worktree (`git worktree remove`
+       deletes them silently, so they are listed and refused unless `--discard-ignored`); uncommitted
+       work in the host worktree; a detached host worktree holding commits no ref keeps (orphaned
+       at removal);
+    2. the nested worktree, ALWAYS first -- removing the host worktree first exits 0 and silently
+       deletes the nested worktree inside it, untracked state included;
+    3. the host worktree;
+    4. the host branch: deleted (`-D`; `-d` measures against HEAD) only when the engine created it
+       and it has 0 commits beyond `host_base_sha`; otherwise kept -- it is the operator's, integrated
+       by the host's own custom (Decision 18), and the engine never pushes, opens or merges it;
+    5. the nested `phase/...` branch, as at root; a registration left in either repo is pruned.
+
+    `worktree` and `host_worktree` become null; the other host keys and `base_branch` stay as
+    history. A failure after the first removal prints the exact remaining commands; a re-run of
+    this command resumes too, since every step skips what is already gone."""
+    q = shlex.quote
+    host = HOST_ROOT
+    nested_wt = execution.get("worktree")
+    host_wt = execution.get("host_worktree")
+    host_branch = execution.get("host_branch")
+    base_sha = execution.get("host_base_sha")
+    created = execution.get("host_branch_created") is True
+    nested_live = bool(nested_wt) and Path(nested_wt).exists()
+    host_live = bool(host_wt) and Path(host_wt).exists()
+    host_git = host is not None and _git_available(cwd=host)
+    if (host_live or host_branch) and not host_git:
+        raise SystemExit(f"the nested install's host {host} is not a git work tree; the paired teardown needs it to retire the host worktree "
+                         f"and branch -- nothing was removed")
+
+    # 1. Every guard, before anything is removed.
+    problems, ignored = [], []
+    if nested_live:
+        dirty = _git(["status", "--porcelain", "--untracked-files=normal"], cwd=nested_wt).stdout.splitlines()
+        if dirty:
+            problems.append(f"the nested worktree {nested_wt} has uncommitted work (commit it on {branch} and merge again, or discard it):\n"
+                            + "\n".join(f"      {line}" for line in dirty))
+        ignored += [(nested_wt, entry) for entry in _ignored_worktree_files(nested_wt)]
+    if host_live:
+        rel = os.path.relpath(ROOT, host)
+        skip = {"CLAUDE.local.md", f"{Path(rel).as_posix().rstrip('/')}/"}  # the engine's copy; the nested worktree (step 2)
+        ignored += [(host_wt, entry) for entry in _ignored_worktree_files(host_wt, skip)]
+        dirty = _git(["status", "--porcelain", "--untracked-files=normal"], cwd=host_wt).stdout.splitlines()
+        if dirty:
+            problems.append(f"the host worktree {host_wt} has uncommitted work (commit it on {host_branch}, or move or discard it):\n"
+                            + "\n".join(f"      {line}" for line in dirty))
+        if _git(["symbolic-ref", "-q", "HEAD"], cwd=host_wt, check=False).returncode != 0:
+            keep = [base_sha] if base_sha else []
+            proc = _git(["rev-list", "--count", "HEAD", "--not", *keep, "--branches", "--tags", "--remotes"], cwd=host_wt, check=False)
+            orphans = int(proc.stdout.strip() or 0) if proc.returncode == 0 else 0
+            if orphans:
+                head = _git(["rev-parse", "--short", "HEAD"], cwd=host_wt, check=False).stdout.strip()
+                problems.append(f"the host worktree {host_wt} is detached at {head} with {orphans} commit(s) beyond the base that no branch, tag or "
+                                f"remote ref holds; removing it would orphan them -- put them on a branch first "
+                                f"(git -C {q(host_wt)} switch -c <name>, or switch {host_branch} to them)")
+    if ignored and not discard_ignored:
+        problems.append("ignored, worktree-only files would be deleted with the worktrees (git worktree remove does not ask):\n"
+                        + "\n".join(f"      {os.path.join(where, entry)}" for where, entry in ignored)
+                        + f"\n    move them out first, or re-run with --discard-ignored to delete them: {WORKFLOW_CMD} parallel-teardown {args.phase} --discard-ignored")
+    if problems:
+        lines = [f"parallel-teardown {args.phase} refused -- nothing was removed:"]
+        lines += [f"{i}. {problem}" for i, problem in enumerate(problems, 1)]
+        raise SystemExit("\n".join(lines))
+
+    # The host branch's fate is decided before any removal (its commits do not change).
+    delete_host_branch, keep_reason = False, None
+    host_branch_exists = bool(host_branch) and host_git and _git(
+        ["rev-parse", "--verify", "--quiet", f"refs/heads/{host_branch}"], cwd=host, check=False).returncode == 0
+    if host_branch_exists:
+        holders = [path for path, ref in _worktree_entries(cwd=host) if ref == f"refs/heads/{host_branch}"
+                   and not (host_wt and os.path.realpath(path) == os.path.realpath(host_wt))]
+        ahead = None
+        if base_sha:
+            proc = _git(["rev-list", "--count", f"{base_sha}..refs/heads/{host_branch}"], cwd=host, check=False)
+            ahead = int(proc.stdout.strip()) if proc.returncode == 0 and proc.stdout.strip().isdigit() else None
+        if holders:
+            keep_reason = f"it is checked out in {holders[0]}"
+        elif not created:
+            keep_reason = "it existed before parallel-start, which reused it"
+        elif ahead is None:
+            keep_reason = f"its commits beyond the base {base_sha} could not be counted"
+        elif ahead:
+            keep_reason = f"it has {ahead} commit(s) beyond its base {execution.get('host_base')} ({base_sha[:12]})"
+        else:
+            delete_host_branch = True
+
+    # 2-5. The removals, nested half first. Each entry: (label, git args, cwd). A worktree already
+    # gone from disk but still registered is pruned instead, before the branches: a stale
+    # registration still holds its branch, so `branch -D`/`-d` would refuse.
+    def registered(repo, path):
+        return any(os.path.realpath(p) == os.path.realpath(path) for p, _ref in _worktree_entries(cwd=repo))
+
+    steps = []
+    if nested_live:
+        steps.append((f"nested worktree {nested_wt}", ["worktree", "remove", str(nested_wt)], ROOT))
+    elif nested_wt and registered(ROOT, nested_wt):
+        steps.append((f"the stale registration of {nested_wt} (git worktree prune in {ROOT})", ["worktree", "prune"], ROOT))
+    if host_live:
+        steps.append((f"host worktree {host_wt}", ["worktree", "remove", str(host_wt)], host))
+    elif host_wt and host_git and registered(host, host_wt):
+        steps.append((f"the stale registration of {host_wt} (git worktree prune in {host})", ["worktree", "prune"], host))
+    if delete_host_branch:
+        steps.append((f"host branch {host_branch} (created by parallel-start, no commits beyond its base)",
+                      ["branch", "-D", host_branch], host))
+    if branch_exists:
+        steps.append((f"branch {branch}", ["branch", "-d", branch], ROOT))  # -d refuses an unmerged branch: a free second check
+
+    def command(git_args, cwd):
+        return f"git -C {q(str(cwd))} " + " ".join(q(part) for part in git_args)
+
+    removed = []
+    for i, (label, git_args, cwd) in enumerate(steps):
+        proc = _git(git_args, cwd=cwd, check=False)
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout).strip() or f"exit {proc.returncode}"
+            done = "".join(f"\nremoved {item}" for item in removed) or "\nnothing was removed yet"
+            rest = "\n".join(f"  {command(a, c)}" for _l, a, c in steps[i:])
+            raise SystemExit(
+                f"{command(git_args, cwd)} failed: {detail}{done}\n"
+                f"fix the cause, then re-run {WORKFLOW_CMD} parallel-teardown {args.phase} (it resumes), or finish by hand, in this order:\n{rest}\n"
+                f"  then set execution.worktree and execution.host_worktree to null in {shown(pdir)}/phase.json")
+        removed.append(label)
+
+    pruned = []  # a registration a successful `worktree remove` still left behind
+    for repo, path in ((ROOT, nested_wt), (host, host_wt)):
+        if not path or (repo is host and not host_git):
+            continue
+        if registered(repo, path):
+            _git(["worktree", "prune"], cwd=repo, check=False)
+            pruned.append(str(repo))
+
+    data["execution"]["worktree"] = None
+    data["execution"]["host_worktree"] = None
+    write_json(pdir / "phase.json", data)
+    append_event("phase_parallel_torndown", phase=args.phase, branch=branch, host_branch=host_branch)
+    rebuild_index_and_state()
+    print(f"phase {args.phase} parallel checkout pair retired (nested install)")
+    for item in removed:
+        print(f"removed {item}")
+    if not removed:
+        print("nothing to remove (both worktrees and the branch were already gone)")
+    for repo in pruned:
+        print(f"pruned a stale worktree registration in {repo}")
+    if ignored:
+        print(f"deleted {len(ignored)} ignored, worktree-only path(s) with the worktrees (--discard-ignored)")
+    if host_branch and not delete_host_branch:
+        if host_branch_exists:
+            print(f"kept host branch {host_branch}: {keep_reason}")
+            print(f"the host side follows the host's own custom (nested-convention): the branch is yours for the PR; "
+                  f"the engine pushed, opened and merged nothing")
+        else:
+            print(f"host branch {host_branch} is already gone; nothing to keep")
+    print(f"execution.worktree=null, execution.host_worktree=null; mode/branch/consolidation and host_branch/host_base/host_base_sha/"
+          f"host_branch_created/base_branch kept as history (branch={branch}, host_branch={host_branch}, consolidation={phase_consolidation(data)})")
+    if phase_consolidation(data) == "pending":
+        print(f"warning: {args.phase} doc consolidation is still 'pending' -- run the post-merge consolidation on this stream (teardown does not gate on it)")
+    print("phase.json changed -- commit it in the nested repo with the rest of the merge cleanup")
 
 
 def parallel_gate(args: argparse.Namespace) -> None:
@@ -3053,9 +3230,10 @@ def parallel_merge_finish(args: argparse.Namespace) -> None:
     them is resolved by taking either side and regenerating here -- which is why parallel mode
     needs no custom git merge driver (a driver would need per-clone `git config` and would not
     travel with the repo). Makes no commit: the regenerated files belong to the merge commit's
-    cleanup, which the orchestrator owns.
+    cleanup, which the orchestrator owns. In a nested install (P35) it runs in the nested repo,
+    where `phase/...` was merged (`git -C workflow merge`), and never touches the host repo: the
+    host branch is integrated by the host's own custom, never by the engine.
     """
-    _refuse_parallel_when_nested()
     git_ok = _git_available()
     if git_ok and _git(["rev-parse", "-q", "--verify", "MERGE_HEAD"], check=False).returncode == 0:
         raise SystemExit(
@@ -3095,9 +3273,9 @@ def parallel_consolidated(args: argparse.Namespace) -> None:
 
     The engine cannot write the prose: an agent runs `doc-new-version` per "Doc impact" note on the
     default stream and then calls this to flip `execution.consolidation` to "done", which is also
-    what unblocks archiving the phase.
+    what unblocks archiving the phase. In a nested install (P35) the same flip runs on the nested
+    repo's default stream; the host repo is not read or written.
     """
-    _refuse_parallel_when_nested()
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
     execution = phase_execution(data)
@@ -5374,6 +5552,7 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("parallel-teardown", help="Retire a merged parallel phase's worktree and branch; run from the default stream")
     p.add_argument("phase")
+    p.add_argument("--discard-ignored", action="store_true", help="nested install only: delete the ignored, worktree-only files the paired teardown lists (it refuses without this flag)")
     p.set_defaults(func=parallel_teardown)
 
     p = sub.add_parser("nested-convention", help="Nested personal install only: show the host repo's commit convention (bare), or record the operator's confirmation of it -- the text and whether Claude Co-Authored-By trailers are allowed in host commits (--confirm --text ... --trailers allowed|forbidden); refuses outside a nested install")
