@@ -1844,8 +1844,9 @@ scope_out=$(nw phase-scope P1 2>&1); scope_rc=$?
   && ok "phase-scope reads the host repo from the anchor: the product commit's files (the host's docs/ included), nothing under workflow/" \
   || bad "nested phase-scope did not read the host boundary (rc=$scope_rc) -- $scope_out"
 ps_out=$(nw parallel-start P1 2>&1); ps_rc=$?
-[ "$ps_rc" -ne 0 ] && printf '%s\n' "$ps_out" | grep -qx "parallel worktrees are disabled in a nested personal install" \
-  && ok "parallel-start refuses with one line in a nested install" || bad "nested parallel-start did not refuse (rc=$ps_rc) -- $ps_out"
+[ "$ps_rc" -ne 0 ] && printf '%s\n' "$ps_out" | grep -q "^parallel-start in a nested install needs --host-branch <name>" \
+  && ! grep -q '"execution"' "$NH/workflow/works/phases/active/P1/phase.json" \
+  && ok "nested parallel-start without --host-branch refuses and writes nothing" || bad "nested parallel-start did not refuse a missing --host-branch (rc=$ps_rc) -- $ps_out"
 nx=$(nw next 2>&1)
 printf '%s\n' "$nx" | grep -q "^nested_host=/" && printf '%s\n' "$nx" | grep -q "^host_commit_convention=UNCONFIRMED (inferred: type(scope): summary)" \
   && printf '%s\n' "$nx" | grep -qx "slice_path=workflow/works/phases/active/P1/slices/P1.DECOMP" \

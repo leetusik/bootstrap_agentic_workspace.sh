@@ -6,8 +6,8 @@
 ## Pointer
 
 - Current phase: `P35`
-- Current slice: `P35.S4`
-- Next slice: `P35.S5`
+- Current slice: `P35.S5`
+- Next slice: `P35.S6`
 - Waiting on operator: `none`
 - Open deferred jobs: `47`
 
@@ -18,7 +18,7 @@
 | [x] `P32` | `done` | `pass` | One executor route table: dispatch-time model and effort, no presets, Haiku cheap route | `none` | `works/phases/active/P32` |
 | [x] `P33` | `done` | `pass` | One-shot /rotate-backlog: consolidate the doc debt, then archive | `none` · parallel: `phase/P33-one-shot_rotate-backlog_consolidate_the` | `works/phases/active/P33` |
 | [x] `P34` | `done` | `pass` | Boundary-gated compaction: veto mid-process, resume at the slice boundary | `none` | `works/phases/active/P34` |
-| [ ] `P35` | `planned` | `pending` | nested-install parallel worktrees and one-slice prep | `P35.S4` | `works/phases/active/P35` |
+| [ ] `P35` | `planned` | `pending` | nested-install parallel worktrees and one-slice prep | `P35.S5` | `works/phases/active/P35` |
 
 ## Phase P32: One executor route table: dispatch-time model and effort, no presets, Haiku cheap route
 
@@ -62,7 +62,7 @@
 | [x] `P35.S2` | `done` | research: paired worktrees for a nested install | `research` | `works/phases/active/P35/slices/P35.S2` |
 | [x] `P35.S3` | `done` | research: converting this repo to the nested layout | `research` | `works/phases/active/P35/slices/P35.S3` |
 | [x] `P35.DECOMP2` | `done` | cut the build from the S2/S3 findings | `decomposition` | `works/phases/active/P35/slices/P35.DECOMP2` |
-| [ ] `P35.S4` | `todo` | nested paired parallel-start, stream claim and host wiring | `implementation` | `works/phases/active/P35/slices/P35.S4` |
+| [x] `P35.S4` | `done` | nested paired parallel-start, stream claim and host wiring | `implementation` | `works/phases/active/P35/slices/P35.S4` |
 | [ ] `P35.S5` | `todo` | nested paired teardown, merge-finish and consolidation | `implementation` | `works/phases/active/P35/slices/P35.S5` |
 | [ ] `P35.S6` | `todo` | compaction hooks follow the session's cwd | `implementation` | `works/phases/active/P35/slices/P35.S6` |
 | [ ] `P35.S7` | `todo` | Streams view in backlog.md and the in-flight filter for next (D57) | `implementation` | `works/phases/active/P35/slices/P35.S7` |

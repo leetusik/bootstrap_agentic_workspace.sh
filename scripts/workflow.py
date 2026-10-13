@@ -34,6 +34,11 @@ NESTED_RENAME_KINDS = ("skills", "agents")
 # and agent files are the workspace's own (so `--update --nested` never mistakes them for a clash).
 NESTED_OPTIONAL_KEYS = ("installed",)
 NESTED_PARALLEL_OFF = "parallel worktrees are disabled in a nested personal install"
+# P35: a nested phase worktree is a pair, and its host half needs a branch the operator names.
+NESTED_HOST_BRANCH_REQUIRED = (
+    "parallel-start in a nested install needs --host-branch <name>: the host repo's branch for this phase's product commits, "
+    "named by the host's own convention for branches (see nested-convention), with no workspace phase/slice IDs in it; "
+    "an existing branch is reused when no host worktree has it checked out -- nothing was written")
 # phase.json `host_anchors` (nested only): the host HEAD at new-phase and at the passing review --
 # phase-scope's range in the host repo, whose commits the nested repo never sees.
 HOST_ANCHOR_KEYS = ("created", "review_pass")
@@ -161,6 +166,9 @@ elif NESTED is not None:
     WORKFLOW_CMD = f"python3 {ROOT / 'scripts' / 'workflow.py'}"
 else:
     WORKFLOW_CMD = "python3 scripts/workflow.py"
+# Appended to every printed `parallel-start <P>` hint: a nested install's start needs the host branch
+# (P35), which the operator names; at root it is empty, so the hints print exactly as before.
+NESTED_HOST_BRANCH_ARG = " --host-branch <name>" if NESTED is not None else ""
 
 
 def shown(path: Path) -> str:
@@ -270,7 +278,26 @@ GENERATED_FILES = ("works/state.json", "works/index.json", "works/backlog.md", "
 # The executor agent files Claude Code loads: the host's `.claude/agents` when nested (Claude Code
 # finds agents walking up from the session's cwd, the host root), the workspace's otherwise.
 # executors.toml and .env stay at ROOT either way.
-CLAUDE_AGENTS = (HOST_ROOT or ROOT) / ".claude" / "agents"
+
+
+def _main_host_checkout_agents(host: Path) -> Path:
+    """Nested only (P35): the MAIN host checkout's `.claude/agents`, even when HOST_ROOT is a host
+    worktree. A phase worktree pair has no `.claude/` of its own (Claude Code reads agents and
+    skills through from the main checkout), so `<host-wt>/.claude/agents` never exists. The main
+    checkout is the parent of the host's common git dir when that dir is a plain `.git`; anything
+    else (no git, a submodule's `.git/modules/<name>`, a separate GIT_DIR) falls back to `host`."""
+    try:
+        proc = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                              cwd=str(host), capture_output=True, text=True, timeout=10)
+    except Exception:  # noqa: BLE001 - git is optional; the host's own folder is the honest fallback
+        return host / ".claude" / "agents"
+    common = Path(proc.stdout.strip()) if proc.returncode == 0 and proc.stdout.strip() else None
+    if common is None or common.name != ".git":
+        return host / ".claude" / "agents"
+    return common.parent / ".claude" / "agents"
+
+
+CLAUDE_AGENTS = _main_host_checkout_agents(HOST_ROOT) if HOST_ROOT is not None else (HOST_ROOT or ROOT) / ".claude" / "agents"
 EXECUTOR_TIERS = ("mid", "high")
 RETIRED_EXECUTOR_TIERS = ("low",)  # dropped in workspace v23 — routing is two-tier (mid/high)
 # The executor route table (workspace v53): ONE table, owned here, that the orchestrator dispatches
@@ -1171,6 +1198,10 @@ def phase_execution(data) -> dict:
           "consolidation": "pending"       # "pending" until the post-merge doc consolidation, then "done"
         }
 
+    A nested install (P35) adds the host half of the worktree pair: `host_worktree`, `host_branch`,
+    `host_base`, `host_base_sha`, `host_branch_created` and `base_branch`; there `worktree` is the
+    NESTED worktree (`<host_worktree>/workflow`). See `_nested_execution_problems`.
+
     Read the block only through this helper so every caller agrees on what "parallel" means.
     """
     if not isinstance(data, dict):
@@ -1179,6 +1210,53 @@ def phase_execution(data) -> dict:
     if not isinstance(execution, dict) or execution.get("mode") not in EXECUTION_MODES:
         return None
     return execution
+
+
+NESTED_EXECUTION_HOST_KEYS = ("host_worktree", "host_branch", "host_base", "host_base_sha", "host_branch_created")
+
+
+def _nested_execution_problems(phase_id: str, execution: dict) -> list:
+    """`validate`'s checks on the host half of a parallel execution block (P35), [] when sound.
+
+    A nested `parallel-start` stamps five host keys -- `host_worktree` (the host worktree; null once
+    torn down), `host_branch`, `host_base` (the ref as resolved), `host_base_sha`, `host_branch_created`
+    -- plus `base_branch` (the nested repo's branch at start). The five appear together, and only in a
+    nested install; `base_branch` comes with them there, and is otherwise only type-checked (a root
+    stamp of it is additive). `worktree` is the nested worktree: `<host_worktree>/<workflow>` while
+    both are set. A block without any of them (every at-root block, and a legacy one) is untouched."""
+    problems = []
+    present = [k for k in NESTED_EXECUTION_HOST_KEYS if k in execution]
+    if "base_branch" in execution:
+        value = execution.get("base_branch")
+        if value is not None and not (isinstance(value, str) and value.strip()):
+            problems.append(f"phase {phase_id} has invalid execution.base_branch {value!r}; expected the nested repo's branch name or null")
+    if not present:
+        return problems
+    if NESTED is None:
+        problems.append(f"phase {phase_id} has nested-only execution keys ({', '.join(present)}) in an at-root install; they are written only by a nested parallel-start")
+        return problems
+    missing = [k for k in (*NESTED_EXECUTION_HOST_KEYS, "base_branch") if k not in execution]
+    if missing:
+        problems.append(f"phase {phase_id} has a partial nested execution block: missing {', '.join(missing)} (parallel-start writes all six together)")
+    for key in ("host_branch", "host_base"):
+        value = execution.get(key)
+        if key in execution and not (isinstance(value, str) and value.strip()):
+            problems.append(f"phase {phase_id} has invalid execution.{key} {value!r}; expected a non-empty string")
+    sha = execution.get("host_base_sha")
+    if "host_base_sha" in execution and not (isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{7,64}", sha)):
+        problems.append(f"phase {phase_id} has invalid execution.host_base_sha {sha!r}; expected a host commit sha")
+    created = execution.get("host_branch_created")
+    if "host_branch_created" in execution and not isinstance(created, bool):
+        problems.append(f"phase {phase_id} has invalid execution.host_branch_created {created!r}; expected true or false")
+    host_wt = execution.get("host_worktree")
+    if host_wt is not None and not isinstance(host_wt, str):
+        problems.append(f"phase {phase_id} has invalid execution.host_worktree {host_wt!r}; expected a path string or null")
+    worktree = execution.get("worktree")
+    if isinstance(host_wt, str) and isinstance(worktree, str) and HOST_ROOT is not None:
+        expected = os.path.normpath(os.path.join(host_wt, os.path.relpath(ROOT, HOST_ROOT)))
+        if os.path.normpath(worktree) != expected:
+            problems.append(f"phase {phase_id} has execution.worktree {worktree!r}, but the nested worktree of host_worktree {host_wt!r} is {expected!r}")
+    return problems
 
 
 def phase_pinned(data) -> bool:
@@ -1474,10 +1552,10 @@ def current_stream(phases: list) -> str:
     `execution.branch` -- which works identically in a `git worktree` and in a plain
     clone on another machine, and needs no marker file. Git is consulted only when at
     least one active phase is actually opted in, so an untouched workspace never shells out.
-    A nested install has no parallel mode, so it is always the default stream.
+    In a nested install (P35) the key is the NESTED repo's branch -- `git_current_branch()` reads
+    ROOT, the repo that owns the state -- never the host's, whose branch names follow the host's
+    custom and carry no workspace IDs.
     """
-    if NESTED is not None:
-        return None
     branches = set()
     for phase in phases:
         execution = phase_execution(phase)
@@ -1741,6 +1819,7 @@ def validate() -> int:
                     consolidation = execution.get("consolidation")
                     if consolidation is not None and consolidation not in CONSOLIDATION_STATES:
                         errors.append(f"phase {p['id']} has invalid execution.consolidation {consolidation!r}; expected one of {sorted(CONSOLIDATION_STATES)} or null")
+                    errors.extend(_nested_execution_problems(p["id"], execution))
         # Optional operator acceptance gate. Absent = legacy phase = nothing to check and
         # NO warning: nagging every pre-v32 phase on every run would clutter the dashboards.
         if "acceptance" in p:
@@ -2077,10 +2156,10 @@ def new_phase(args: argparse.Namespace) -> None:
         print(f"note: --on-main is a no-op since v43 -- the default stream IS the default, so {phase_id} already runs here; nothing was stamped")
     # Proactive opt-in suggestion: a phase created while another one is mid-flight is the
     # first of the two moments a worktree becomes relevant. Suggestion only, never a default.
-    # Never in a nested install, where parallel worktrees are off.
-    busy = None if NESTED is not None else next((p for p in all_active_phases() if p["id"] != phase_id and p.get("status") == "in_progress" and phase_execution(p) is None), None)
+    # In a nested install (P35) the command also names the host branch the operator must choose.
+    busy = next((p for p in all_active_phases() if p["id"] != phase_id and p.get("status") == "in_progress" and phase_execution(p) is None), None)
     if busy:
-        print(f"hint: {busy['id']} is in progress -- this phase can run in parallel on its own branch: {WORKFLOW_CMD} parallel-start {phase_id}")
+        print(f"hint: {busy['id']} is in progress -- this phase can run in parallel on its own branch: {WORKFLOW_CMD} parallel-start {phase_id}{NESTED_HOST_BRANCH_ARG}")
 
 
 def _clean_order(value):
@@ -2393,34 +2472,46 @@ def _git_available(cwd=None) -> bool:
     return proc.returncode == 0 and proc.stdout.strip() == "true"
 
 
-def _git_dir(common: bool = False) -> Path:
+def _git_dir(common: bool = False, cwd=None) -> Path:
     """This checkout's git dir (per-worktree state: HEAD, index, MERGE_HEAD, rebase-*) or, with
     `common`, the dir every worktree shares (refs, info/exclude). Absolute either way: git prints
     `.git` relative to the cwd in the main checkout and an absolute path from a linked worktree,
-    and joining onto ROOT is right in both cases."""
+    and joining onto the cwd (ROOT, or `cwd`: a nested install's host) is right in both cases."""
     flag = "--git-common-dir" if common else "--git-dir"
-    return (ROOT / _git(["rev-parse", flag]).stdout.strip()).resolve()
+    base = Path(cwd) if cwd is not None else ROOT
+    return (base / _git(["rev-parse", flag], cwd=cwd).stdout.strip()).resolve()
 
 
-def _git_operation_in_progress():
+def _git_operation_in_progress(cwd=None):
     """'merge' / 'rebase' while this checkout is mid-operation, else None. `git commit -- <paths>`
-    refuses a partial commit during either, so the stamp commit needs a plain HEAD."""
-    gd = _git_dir()
+    refuses a partial commit during either, so the stamp commit needs a plain HEAD. With `cwd` (a
+    nested install's host, P35) a cherry-pick or a bisect counts too: the host is never touched
+    mid-operation, and its branch and worktree are cut only from a plain HEAD."""
+    gd = _git_dir(cwd=cwd)
     if (gd / "MERGE_HEAD").exists():
         return "merge"
     if (gd / "rebase-merge").exists() or (gd / "rebase-apply").exists():
         return "rebase"
+    if cwd is not None:
+        if (gd / "CHERRY_PICK_HEAD").exists():
+            return "cherry-pick"
+        if (gd / "BISECT_LOG").exists():
+            return "bisect"
     return None
 
 
-def _ensure_worktrees_excluded() -> None:
+def _ensure_worktrees_excluded(cwd=None) -> None:
     """Put `.claude/worktrees/` in the common `info/exclude` once, so a nested phase worktree never
     shows as untracked (or gets swept into `git add -A` as an embedded repo) in any checkout of this
-    repo. Never `.gitignore`: that file is the adopter's, tracked, and theirs to edit."""
-    exclude = _git_dir(common=True) / "info" / "exclude"
-    line = f"{WORKTREES_DIR}/"
+    repo. Never `.gitignore`: that file is the adopter's, tracked, and theirs to edit.
+
+    With `cwd` (a nested install's host, P35) the line goes into the HOST's common exclude, anchored
+    as `/.claude/worktrees/` like the installer's managed block, and either form counts as present."""
+    exclude = _git_dir(common=True, cwd=cwd) / "info" / "exclude"
+    line = f"{WORKTREES_DIR}/" if cwd is None else f"/{WORKTREES_DIR}/"
+    present = {line} if cwd is None else {line, f"{WORKTREES_DIR}/"}
     existing = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
-    if line in {l.strip() for l in existing.splitlines()}:
+    if present & {l.strip() for l in existing.splitlines()}:
         return
     sep = "" if not existing or existing.endswith("\n") else "\n"
     exclude.parent.mkdir(parents=True, exist_ok=True)
@@ -2518,9 +2609,10 @@ def _phase_branch(phase_id: str, name: str, slug_override=None) -> str:
 
 
 def _refuse_parallel_when_nested() -> None:
-    """Parallel worktrees are off in a nested personal install: the untracked host-side files
-    (CLAUDE.local.md, the .claude/ additions, workflow/ itself) do not exist in a host worktree.
-    One line, non-zero exit, before anything is read or written. Silent at root."""
+    """The nested refusal for the parallel commands that do not yet handle the host + nested
+    worktree pair (P35: start, status, gate and skip run in nested; teardown, merge-finish and
+    consolidated still refuse here). One line, non-zero exit, before anything is read or written.
+    Silent at root."""
     if NESTED is not None:
         raise SystemExit(NESTED_PARALLEL_OFF)
 
@@ -2540,8 +2632,18 @@ def parallel_start(args: argparse.Namespace) -> None:
     files go in, everything else stays behind in this checkout, and the worktree is cut from that
     commit ("start from the latest commit"). Stamping and asking the operator to commit cannot
     achieve that by construction; this can.
+
+    In a nested personal install (P35) the phase gets a worktree PAIR instead -- see
+    `_parallel_start_nested`; `--host-branch` is required there and refused at root.
     """
-    _refuse_parallel_when_nested()
+    host_branch = getattr(args, "host_branch", None)
+    host_base = getattr(args, "host_base", None)
+    if NESTED is None:
+        if host_branch is not None or host_base is not None:
+            raise SystemExit("--host-branch and --host-base are for a nested personal install only (they name the host repo's branch and base); "
+                             "at root the phase branch is the only branch -- nothing was written")
+    elif not (host_branch or "").strip():
+        raise SystemExit(NESTED_HOST_BRANCH_REQUIRED)
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
     if data.get("status") != "planned":
@@ -2565,6 +2667,9 @@ def parallel_start(args: argparse.Namespace) -> None:
         execution = phase_execution(p)
         if execution and execution.get("branch") == branch:
             raise SystemExit(f"branch {branch} is already stamped on phase {p['id']}")
+    if NESTED is not None:
+        _parallel_start_nested(args, pdir, data, branch, host_branch.strip(), host_base)
+        return
     if args.worktree:
         worktree = Path(os.path.abspath(str(Path(args.worktree).expanduser())))
         if not worktree.parent.exists():
@@ -2603,6 +2708,173 @@ def parallel_start(args: argparse.Namespace) -> None:
     print(f"this stream's pointer now skips {args.phase}; after the branch is merged back, run: {WORKFLOW_CMD} parallel-teardown {args.phase}")
 
 
+def _worktree_entries(cwd=None) -> list:
+    """`[(path, ref-or-None)]` for every worktree git registers in the repo at `cwd` (ROOT by default),
+    from `git worktree list --porcelain`; `ref` is `refs/heads/<name>`, or None when detached/bare."""
+    entries, path, ref = [], None, None
+    for line in _git(["worktree", "list", "--porcelain"], cwd=cwd).stdout.splitlines() + [""]:
+        if line.startswith("worktree "):
+            path, ref = line[len("worktree "):], None
+        elif line.startswith("branch "):
+            ref = line[len("branch "):]
+        elif not line.strip() and path is not None:
+            entries.append((path, ref))
+            path, ref = None, None
+    return entries
+
+
+def _resolve_host_base(host: Path, explicit):
+    """`(ref, sha)` for the host worktree's base (P35, Decision 19), resolved inside the host repo
+    with no fetch: `--host-base` when given; else `origin/HEAD`'s target, else `init.defaultBranch`
+    when that branch exists locally, else a local `main`, then `master`. Refuses (nothing written)
+    when nothing resolves to a commit."""
+    def local_branch(name):
+        return bool(name) and _git(["rev-parse", "--verify", "--quiet", f"refs/heads/{name}"], cwd=host, check=False).returncode == 0
+
+    if explicit is not None:
+        ref = explicit.strip()
+        sha = _rev_parse(ref, cwd=host) if ref else None
+        if not sha:
+            raise SystemExit(f"--host-base {explicit!r} does not resolve to a commit in the host repo {host} "
+                             f"(the engine never fetches: fetch first if the ref is remote) -- nothing was written")
+        return ref, sha
+    ref = None
+    proc = _git(["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"], cwd=host, check=False)
+    if proc.returncode == 0 and proc.stdout.strip():
+        ref = proc.stdout.strip()
+    if ref is None:
+        configured = _git(["config", "--get", "init.defaultBranch"], cwd=host, check=False).stdout.strip()
+        if local_branch(configured):
+            ref = configured
+    if ref is None:
+        ref = next((cand for cand in ("main", "master") if local_branch(cand)), None)
+    sha = _rev_parse(ref, cwd=host) if ref else None
+    if not sha:
+        tried = f"{ref!r} does not resolve to a commit" if ref else "no origin/HEAD, no local init.defaultBranch, main or master"
+        raise SystemExit(f"cannot resolve the host's default branch for the host worktree's base ({tried}); "
+                         f"pass --host-base <ref> (e.g. --host-base HEAD, or another phase's host branch to stack on it) -- nothing was written")
+    return ref, sha
+
+
+def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, branch: str, host_branch: str, host_base_arg) -> None:
+    """`parallel-start` in a nested personal install (P35): a host worktree with the nested worktree inside.
+
+    The pair is `<host>/.claude/worktrees/P<N>-<slug>` on `host_branch` (the operator names it, by the
+    host's custom), with `<host-wt>/workflow` on `phase/P<N>-<slug>` in the nested repo, which owns the
+    state and the stream key. Order (P35.S2 (a)): every guard first; the host's common exclude; the
+    execution block plus the re-stamped `host_anchors.created`, rebuilt; the nested stamp commit; the
+    host worktree; the nested worktree; the copied `CLAUDE.local.md`. Nothing is ever created under
+    `<host-wt>/.claude/` (Claude Code reads skills, agents and settings.local.json through from the main
+    checkout), and nothing is fetched. A failure after the stamp commit prints the exact remaining
+    commands. `execution.worktree` is the NESTED worktree, so removal stays in the repo that owns it."""
+    host = HOST_ROOT
+    if host is None or not _git_available(cwd=host):
+        raise SystemExit(f"the nested install's host {host} is not a git work tree; parallel-start cuts a host worktree, so it needs one -- nothing was written")
+    busy = _git_operation_in_progress(cwd=host)
+    if busy:
+        raise SystemExit(f"a {busy} is in progress in the host checkout {host}; finish or abort it first -- nothing was written")
+    if host_branch.startswith("-") or _git(["check-ref-format", "--branch", host_branch], cwd=host, check=False).returncode != 0:
+        raise SystemExit(f"--host-branch {host_branch!r} is not a valid branch name in the host repo -- nothing was written")
+    host_entries = _worktree_entries(cwd=host)
+    holder = next((path for path, ref in host_entries if ref == f"refs/heads/{host_branch}"), None)
+    if holder:
+        raise SystemExit(f"host branch {host_branch} is checked out in {holder}; a branch lives in one worktree at a time, so pick another --host-branch "
+                         f"or switch that checkout off it -- nothing was written")
+    host_branch_created = _git(["rev-parse", "--verify", "--quiet", f"refs/heads/{host_branch}"], cwd=host, check=False).returncode != 0
+    rel = Path(os.path.relpath(ROOT, host))
+    if args.worktree:
+        host_wt = Path(os.path.abspath(str(Path(args.worktree).expanduser())))
+        if not host_wt.parent.exists():
+            raise SystemExit(f"worktree parent directory does not exist: {host_wt.parent}")
+    else:
+        host_wt = host / WORKTREES_DIR / branch.split("/", 1)[1]  # P<N>-<slug>: the phase branch's own tail
+    nested_wt = host_wt / rel
+    if host_wt.exists():
+        raise SystemExit(f"host worktree path already exists: {host_wt} (pass --slug or --worktree to pick another path) -- nothing was written")
+    registered = {os.path.realpath(path) for path, _ref in host_entries} | {os.path.realpath(path) for path, _ref in _worktree_entries()}
+    for path in (host_wt, nested_wt):
+        if os.path.realpath(str(path)) in registered:
+            raise SystemExit(f"{path} is still registered as a git worktree (a stale entry); run `git worktree prune` in that repo first -- nothing was written")
+    base_ref, base_sha = _resolve_host_base(host, host_base_arg)
+    if host_branch_created:
+        anchor = base_sha
+    else:
+        proc = _git(["merge-base", base_sha, f"refs/heads/{host_branch}"], cwd=host, check=False)
+        anchor = proc.stdout.strip()
+        if proc.returncode != 0 or not anchor:
+            raise SystemExit(f"host branch {host_branch} shares no history with the base {base_ref} ({base_sha}); pass another --host-base -- nothing was written")
+    base_branch = git_current_branch()
+
+    # Every guard is above this line. The exclude line is not repo content and is idempotent.
+    _ensure_worktrees_excluded(cwd=host)
+    if not args.worktree:
+        host_wt.parent.mkdir(parents=True, exist_ok=True)
+    data["execution"] = {
+        "mode": "parallel", "branch": branch, "worktree": str(nested_wt), "consolidation": "pending",
+        "host_worktree": str(host_wt), "host_branch": host_branch, "host_base": base_ref, "host_base_sha": base_sha,
+        "host_branch_created": host_branch_created, "base_branch": base_branch,
+    }
+    # phase-scope's base must be where the host worktree starts, not the host HEAD at new-phase
+    # (P35.S2 (f)); stamped before the commit so both branches carry it.
+    data = _with_host_anchors(data, {"created": anchor})
+    write_json(pdir / "phase.json", data)
+    append_event("phase_parallel_started", phase=args.phase, branch=branch, worktree=str(nested_wt),
+                 host_branch=host_branch, host_worktree=str(host_wt))
+    rebuild_index_and_state()
+    stamp_paths = [str(pdir.relative_to(ROOT)), *STAMP_WORKS_FILES]
+    _git(["add", "--", *stamp_paths])
+    _git(["commit", "--only", "-m", f"chore(works): opt {args.phase} into parallel execution", "--", *stamp_paths])
+
+    q = shlex.quote
+    host_add = (["worktree", "add", "-b", host_branch, str(host_wt), base_sha] if host_branch_created
+                else ["worktree", "add", str(host_wt), host_branch])
+    steps = [
+        (["git", "-C", str(host), *host_add], host),
+        (["git", "-C", str(ROOT), "worktree", "add", "-b", branch, str(nested_wt), "HEAD"], ROOT),
+    ]
+    local_md = host / "CLAUDE.local.md"
+    copy_cmd = f"cp {q(str(local_md))} {q(str(host_wt / 'CLAUDE.local.md'))}"
+
+    def remaining(i):
+        cmds = [" ".join(q(part) for part in cmd) for cmd, _cwd in steps[i:]]
+        if local_md.is_file():
+            cmds.append(copy_cmd)
+        return "\n".join(f"  {c}" for c in cmds)
+
+    for i, (cmd, cwd) in enumerate(steps):
+        proc = _git(cmd[3:], cwd=cwd, check=False)
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout).strip() or f"exit {proc.returncode}"
+            undo = (f"\nor give up on the pair: git -C {q(str(host))} worktree remove {q(str(host_wt))}, then un-stamp {args.phase} by hand "
+                    f"(delete the execution block from {shown(pdir)}/phase.json and commit)" if i == 1 else "")
+            raise SystemExit(
+                f"{' '.join(cmd[3:5])} failed: {detail}\n"
+                f"the stamp for {args.phase} is already committed in the nested repo; fix the cause and finish by hand, in this order:\n"
+                f"{remaining(i)}{undo}")
+    copied = False
+    if local_md.is_file():
+        try:
+            shutil.copyfile(local_md, host_wt / "CLAUDE.local.md")
+            copied = True
+        except OSError as exc:
+            raise SystemExit(f"copying CLAUDE.local.md failed: {exc}\nboth worktrees exist; without the copy a session there loads no workspace contract. Finish by hand:\n  {copy_cmd}")
+    print(f"phase {args.phase} now runs in its own worktree pair (nested install)")
+    print(f"branch={branch}")
+    print(f"worktree={nested_wt}")
+    print(f"host_worktree={host_wt}")
+    print(f"host_branch={host_branch} ({'created by parallel-start' if host_branch_created else 'reused: it existed and was not checked out'})")
+    print(f"host_base={base_ref} ({base_sha})")
+    print(f"host_anchors.created={anchor} ({'the base' if host_branch_created else 'merge-base of the base and the reused branch'}) -- phase-scope's base")
+    print(f"stamp committed in the nested repo: chore(works): opt {args.phase} into parallel execution -- only {shown(pdir)}/ plus the regenerated works/ files; "
+          f"everything else dirty or staged stayed behind, uncommitted")
+    print(f"the nested worktree starts from that commit (HEAD); /{WORKTREES_DIR}/ is excluded via the host's .git/info/exclude")
+    print("CLAUDE.local.md copied into the host worktree" if copied else f"note: no {local_md} to copy -- a session in the host worktree loads no workspace contract")
+    print(f"next: enter the host worktree in this session (Claude Code: EnterWorktree with path={host_wt}) or open a session there, run "
+          f"{WORKFLOW_CMD} next (it prints stream={branch}), and drive the phase from that checkout")
+    print(f"there: product commits go to {host_branch} in the host worktree; workflow commits go to git -C {rel.as_posix()} (the nested worktree, on {branch})")
+    print(f"this stream's pointer now skips {args.phase}; the host branch is integrated by the host's own custom (nested-convention), never merged by the engine")
+
+
 def parallel_skip(args: argparse.Namespace) -> None:
     """Retired in v43: a no-op that explains itself and writes nothing.
 
@@ -2616,9 +2888,6 @@ def parallel_skip(args: argparse.Namespace) -> None:
     exits 0. Phases still carrying v42's pin keep it: `parallel-start` honours it, so an old
     deliberate pin is never silently overridden.
     """
-    if NESTED is not None:
-        print(NESTED_PARALLEL_OFF)
-        return
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
     execution = phase_execution(data)
@@ -2630,7 +2899,7 @@ def parallel_skip(args: argparse.Namespace) -> None:
         print(f"phase {args.phase} carries v42's legacy pin (execution.mode=default) and runs on the default stream -- as it would with no block at all")
     else:
         print(f"phase {args.phase} already runs on the default stream")
-        print(f"to run it in its own worktree instead, ask for one: {WORKFLOW_CMD} parallel-start {args.phase}")
+        print(f"to run it in its own worktree instead, ask for one: {WORKFLOW_CMD} parallel-start {args.phase}{NESTED_HOST_BRANCH_ARG}")
 
 
 def parallel_teardown(args: argparse.Namespace) -> None:
@@ -2693,8 +2962,8 @@ def parallel_gate(args: argparse.Namespace) -> None:
       `done`. Merging into a live phase is what this gate exists to prevent.
 
     Read-only and CI-shaped: `GATE OPEN` + exit 0, or `GATE CLOSED` + numbered reasons + exit 1.
+    In a nested install (P35) both sides are read in the nested repo, which owns the state.
     """
-    _refuse_parallel_when_nested()
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
     execution = phase_execution(data)
@@ -2989,9 +3258,6 @@ def parallel_status(args: argparse.Namespace) -> None:
     its branch with `git show` / `git ls-tree` -- no checkout switching, no fetching, and (unlike
     every other command here) no rebuild: nothing on disk is written.
     """
-    if NESTED is not None:
-        print(NESTED_PARALLEL_OFF)
-        return
     phases = all_active_phases()
     stream = current_stream(phases)
     # The same in-memory pointer computation `rebuild_index_and_state` does, minus the writes.
@@ -3011,7 +3277,7 @@ def parallel_status(args: argparse.Namespace) -> None:
     parallel = [(p, phase_execution(p)) for p in phases if phase_execution(p)]
     if not parallel:
         print("no phase is in its own worktree right now -- every active phase runs on the default stream, which is where a phase runs unless asked otherwise")
-        print(f"to run one in its own worktree instead, ask for it: {WORKFLOW_CMD} parallel-start <P>")
+        print(f"to run one in its own worktree instead, ask for it: {WORKFLOW_CMD} parallel-start <P>{NESTED_HOST_BRANCH_ARG}")
         return
     if not _git_available():
         raise SystemExit(
@@ -3054,6 +3320,13 @@ def parallel_status(args: argparse.Namespace) -> None:
         print(f"== {pid}: {phase.get('name', '')} ==")
         print(f"  branch={branch or '- (stamped parallel with no branch; fix phase.json)'}")
         print(f"  worktree={worktree or '- (plain clone, or already torn down)'}")
+        if NESTED is not None:  # P35: the host half of the pair, as stamped at parallel-start
+            if execution.get("host_branch"):
+                print(f"  host_branch={execution['host_branch']}" + (" (created by parallel-start)" if execution.get("host_branch_created") else " (reused)"))
+                print(f"  host_base={execution.get('host_base') or '-'} ({execution.get('host_base_sha') or '-'})")
+                print(f"  host_worktree={execution.get('host_worktree') or '- (already torn down)'}")
+            else:
+                print("  host_branch=- (no host half stamped: an execution block written at root, before the nested pair)")
         print(f"  consolidation={phase_consolidation(phase) or '-'}")
         print(f"  source={source}")
         if note:
@@ -3078,9 +3351,10 @@ def parallel_start_hint(state: dict, index: dict) -> str:
     is still `planned` -- exactly the moment a second phase would otherwise queue behind a live
     one. Suggestion only, never a default: the ordinary one-phase-at-a-time run stays silent,
     and so does a worktree checkout. v42's trigger (every planned phase, because the worktree
-    was the default) is gone with the default that justified it. Never in a nested install.
+    was the default) is gone with the default that justified it. In a nested install (P35) the
+    printed command also carries `--host-branch <name>`, which the operator names.
     """
-    if NESTED is not None or state.get("stream"):
+    if state.get("stream"):
         return None
     current = state.get("current_phase")
     phases = index.get("active_phases", [])  # already ordered by phase order
@@ -3094,7 +3368,7 @@ def parallel_start_hint(state: dict, index: dict) -> str:
     if not waiting:
         return None
     return (f"hint: {waiting['id']} is waiting behind {current} -- it can run in parallel on its own branch: "
-            f"{WORKFLOW_CMD} parallel-start {waiting['id']}")
+            f"{WORKFLOW_CMD} parallel-start {waiting['id']}{NESTED_HOST_BRANCH_ARG}")
 
 
 # ---------------------------------------------------------------------------
@@ -5074,6 +5348,8 @@ def main(argv=None) -> int:
     p.add_argument("phase")
     p.add_argument("--worktree", default=None, help="worktree path (default: <repo>/.claude/worktrees/P<N>-<slug>, which EnterWorktree can enter in the same session; elsewhere means opening a second session there)")
     p.add_argument("--slug", default=None, help="branch slug override (default: slugified phase name); branch is phase/<phase>-<slug>")
+    p.add_argument("--host-branch", default=None, help="nested install only, and required there: the host repo's branch for this phase's product commits, named by the host's convention (no workspace IDs); reused when it exists and no host worktree has it checked out. In nested the pair is <host>/.claude/worktrees/P<N>-<slug> on this branch, with the nested worktree inside it (--worktree overrides the host worktree's path)")
+    p.add_argument("--host-base", default=None, help="nested install only: the host ref the host branch starts from (default: origin/HEAD, else init.defaultBranch if it exists locally, else main, then master; never fetched)")
     p.set_defaults(func=parallel_start)
 
     p = sub.add_parser("parallel-skip", help="No-op since v43 (the default stream is the default, so there is nothing to pin): reports where the phase runs and writes nothing")

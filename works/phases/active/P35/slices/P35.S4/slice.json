@@ -3,14 +3,14 @@
   "phase_id": "P35",
   "name": "nested paired parallel-start, stream claim and host wiring",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 50,
   "depends_on": [
     "P35.DECOMP2"
   ],
   "created_at": "2026-10-13T16:43:34+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-10-13T16:47:01+09:00",
+  "completed_at": "2026-10-13T16:57:04+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Nested parallel-start --host-branch [--host-base] cuts the host + nested worktree pair (guards first, host exclude, six nested execution keys, re-stamped anchor, stamp commit, both worktrees, copied CLAUDE.local.md); current_stream/status/gate/skip/hints run in nested; CLAUDE_AGENTS reads the main checkout; smoke 292/292 unchanged",
   "validation": {
     "required": [],
     "last_run": null,
