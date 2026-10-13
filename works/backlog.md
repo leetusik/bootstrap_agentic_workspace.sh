@@ -6,10 +6,10 @@
 ## Pointer
 
 - Current phase: `P35`
-- Current slice: `P35.DECOMP2`
-- Next slice: `P35.REVIEW`
+- Current slice: `P35.S4`
+- Next slice: `P35.S5`
 - Waiting on operator: `none`
-- Open deferred jobs: `46`
+- Open deferred jobs: `47`
 
 ## Active Phases
 
@@ -18,7 +18,7 @@
 | [x] `P32` | `done` | `pass` | One executor route table: dispatch-time model and effort, no presets, Haiku cheap route | `none` | `works/phases/active/P32` |
 | [x] `P33` | `done` | `pass` | One-shot /rotate-backlog: consolidate the doc debt, then archive | `none` · parallel: `phase/P33-one-shot_rotate-backlog_consolidate_the` | `works/phases/active/P33` |
 | [x] `P34` | `done` | `pass` | Boundary-gated compaction: veto mid-process, resume at the slice boundary | `none` | `works/phases/active/P34` |
-| [ ] `P35` | `planned` | `pending` | nested-install parallel worktrees and one-slice prep | `P35.DECOMP2` | `works/phases/active/P35` |
+| [ ] `P35` | `planned` | `pending` | nested-install parallel worktrees and one-slice prep | `P35.S4` | `works/phases/active/P35` |
 
 ## Phase P32: One executor route table: dispatch-time model and effort, no presets, Haiku cheap route
 
@@ -61,5 +61,13 @@
 | [x] `P35.S1` | `done` | do-whole-phase prepares slice N+1 only | `docs` | `works/phases/active/P35/slices/P35.S1` |
 | [x] `P35.S2` | `done` | research: paired worktrees for a nested install | `research` | `works/phases/active/P35/slices/P35.S2` |
 | [x] `P35.S3` | `done` | research: converting this repo to the nested layout | `research` | `works/phases/active/P35/slices/P35.S3` |
-| [ ] `P35.DECOMP2` | `todo` | cut the build from the S2/S3 findings | `decomposition` | `works/phases/active/P35/slices/P35.DECOMP2` |
+| [x] `P35.DECOMP2` | `done` | cut the build from the S2/S3 findings | `decomposition` | `works/phases/active/P35/slices/P35.DECOMP2` |
+| [ ] `P35.S4` | `todo` | nested paired parallel-start, stream claim and host wiring | `implementation` | `works/phases/active/P35/slices/P35.S4` |
+| [ ] `P35.S5` | `todo` | nested paired teardown, merge-finish and consolidation | `implementation` | `works/phases/active/P35/slices/P35.S5` |
+| [ ] `P35.S6` | `todo` | compaction hooks follow the session's cwd | `implementation` | `works/phases/active/P35/slices/P35.S6` |
+| [ ] `P35.S7` | `todo` | Streams view in backlog.md and the in-flight filter for next (D57) | `implementation` | `works/phases/active/P35/slices/P35.S7` |
+| [ ] `P35.S8` | `todo` | skills, installer and text for nested parallel and the host custom | `implementation` | `works/phases/active/P35/slices/P35.S8` |
+| [ ] `P35.S9` | `todo` | smoke tests for the nested lifecycle and the hook redirect | `implementation` | `works/phases/active/P35/slices/P35.S9` |
+| [ ] `P35.S10` | `todo` | convert this repo to the nested layout | `implementation` | `works/phases/active/P35/slices/P35.S10` |
+| [ ] `P35.S11` | `todo` | v58 release in the new layout | `implementation` | `works/phases/active/P35/slices/P35.S11` |
 | [ ] `P35.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P35/slices/P35.REVIEW` |

@@ -1,0 +1,11 @@
+{
+  "id": "D59",
+  "title": "Shared scratch paths linked into phase worktrees",
+  "status": "deferred",
+  "source": "P35.DECOMP2",
+  "reason": "A worktree starts without the main checkout's excluded scratch (e.g. an operator-excluded temp/). A symlinked temp shows as '?? temp', which blocks git worktree remove, counts as compact-gate dirt and is swept up by git add -A; a list of shared paths would need a non-directory exclude line per path and belongs in the nested marker, not executors.toml (P35.S2 (e)).",
+  "trigger": "An operator asks to see the main checkout's temp/ (or other excluded scratch) from a phase worktree",
+  "created_at": "2026-10-13T16:46:36+09:00",
+  "promoted_to": null,
+  "dropped_reason": null
+}

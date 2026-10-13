@@ -941,3 +941,15 @@
 {"ts": "2026-10-13T16:17:21+09:00", "type": "slice_status_changed", "slice": "P35.S3", "old_status": "todo", "new_status": "in_progress"}
 {"ts": "2026-10-13T16:38:14+09:00", "type": "executor_dispatched", "slice": "P35.S3", "phase": "P35", "kind": "research", "risk": "high", "route": "research", "tier": "high", "agent": "slice-executor-high", "model": "opus", "effort": "medium", "attribution": "Claude Opus 5.5", "attempt": 1, "verdict": "done", "duration_ms": 1193463, "tokens": 181159, "tool_uses": 82, "note": null}
 {"ts": "2026-10-13T16:38:14+09:00", "type": "slice_status_changed", "slice": "P35.S3", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-10-13T16:42:46+09:00", "type": "slice_status_changed", "slice": "P35.DECOMP2", "old_status": "todo", "new_status": "in_progress"}
+{"ts": "2026-10-13T16:43:34+09:00", "type": "slice_created", "phase": "P35", "slice": "P35.S4"}
+{"ts": "2026-10-13T16:43:34+09:00", "type": "slice_created", "phase": "P35", "slice": "P35.S5"}
+{"ts": "2026-10-13T16:43:34+09:00", "type": "slice_created", "phase": "P35", "slice": "P35.S6"}
+{"ts": "2026-10-13T16:43:34+09:00", "type": "slice_created", "phase": "P35", "slice": "P35.S7"}
+{"ts": "2026-10-13T16:43:35+09:00", "type": "slice_created", "phase": "P35", "slice": "P35.S8"}
+{"ts": "2026-10-13T16:43:35+09:00", "type": "slice_created", "phase": "P35", "slice": "P35.S9"}
+{"ts": "2026-10-13T16:43:35+09:00", "type": "slice_created", "phase": "P35", "slice": "P35.S10"}
+{"ts": "2026-10-13T16:43:35+09:00", "type": "slice_created", "phase": "P35", "slice": "P35.S11"}
+{"ts": "2026-10-13T16:46:35+09:00", "type": "executor_dispatched", "slice": "P35.DECOMP2", "phase": "P35", "kind": "decomposition", "risk": "high", "route": "high", "tier": "high", "agent": "slice-executor-high", "model": "opus", "effort": "high", "attribution": "Claude Opus 5.5", "attempt": 1, "verdict": "done", "duration_ms": 202520, "tokens": 83122, "tool_uses": 22, "note": null}
+{"ts": "2026-10-13T16:46:36+09:00", "type": "slice_status_changed", "slice": "P35.DECOMP2", "old_status": "in_progress", "new_status": "done"}
+{"ts": "2026-10-13T16:46:36+09:00", "type": "deferred_created", "deferred": "D59", "source": "P35.DECOMP2"}

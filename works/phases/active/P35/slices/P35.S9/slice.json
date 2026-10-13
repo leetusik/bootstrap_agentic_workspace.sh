@@ -1,0 +1,34 @@
+{
+  "id": "P35.S9",
+  "phase_id": "P35",
+  "name": "smoke tests for the nested lifecycle and the hook redirect",
+  "kind": "implementation",
+  "status": "todo",
+  "order": 100,
+  "depends_on": [
+    "P35.S8"
+  ],
+  "created_at": "2026-10-13T16:43:35+09:00",
+  "started_at": null,
+  "completed_at": null,
+  "risk": "low",
+  "source": {
+    "type": "manual",
+    "id": null
+  },
+  "paths": {
+    "plan": "plan.md",
+    "result": "result.md"
+  },
+  "outcome": null,
+  "validation": {
+    "required": [],
+    "last_run": null,
+    "last_status": "pending"
+  },
+  "archive": {
+    "archived": false,
+    "archived_at": null,
+    "archive_path": null
+  }
+}
