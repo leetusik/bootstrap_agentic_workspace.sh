@@ -5,9 +5,9 @@
 
 ## Pointer
 
-- Current phase: `none`
-- Current slice: `none`
-- Next slice: `none`
+- Current phase: `P35`
+- Current slice: `P35.DECOMP`
+- Next slice: `P35.REVIEW`
 - Waiting on operator: `none`
 - Open deferred jobs: `46`
 
@@ -18,6 +18,7 @@
 | [x] `P32` | `done` | `pass` | One executor route table: dispatch-time model and effort, no presets, Haiku cheap route | `none` | `works/phases/active/P32` |
 | [x] `P33` | `done` | `pass` | One-shot /rotate-backlog: consolidate the doc debt, then archive | `none` · parallel: `phase/P33-one-shot_rotate-backlog_consolidate_the` | `works/phases/active/P33` |
 | [x] `P34` | `done` | `pass` | Boundary-gated compaction: veto mid-process, resume at the slice boundary | `none` | `works/phases/active/P34` |
+| [ ] `P35` | `planned` | `pending` | nested-install parallel worktrees and one-slice prep | `P35.DECOMP` | `works/phases/active/P35` |
 
 ## Phase P32: One executor route table: dispatch-time model and effort, no presets, Haiku cheap route
 
@@ -51,3 +52,10 @@
 | [x] `P34.S3` | `done` | Texts: Compact Instructions, skill reorder, doc notes | `implementation` | `works/phases/active/P34/slices/P34.S3` |
 | [x] `P34.S4` | `done` | Release v55 | `implementation` | `works/phases/active/P34/slices/P34.S4` |
 | [x] `P34.REVIEW` | `done` | phase review | `review` | `works/phases/active/P34/slices/P34.REVIEW` |
+
+## Phase P35: nested-install parallel worktrees and one-slice prep
+
+| Slice | Status | Name | Kind | Path |
+|---|---|---|---|---|
+| [ ] `P35.DECOMP` | `todo` | decompose phase | `decomposition` | `works/phases/active/P35/slices/P35.DECOMP` |
+| [ ] `P35.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P35/slices/P35.REVIEW` |

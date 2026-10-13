@@ -44,10 +44,22 @@
       "slice_count": 6,
       "done_slice_count": 6,
       "consolidation": "pending"
+    },
+    {
+      "id": "P35",
+      "name": "nested-install parallel worktrees and one-slice prep",
+      "objective": "Let a nested personal install run a phase in its own worktree (parallel-start and the full lifecycle working on both the nested workflow repo and the host repo), show every in-flight phase -- worktree runs and the main run -- in the main stream's backlog, and tighten do-whole-phase's idle-window prep to slice N+1 only",
+      "status": "planned",
+      "order": 4,
+      "path": "works/phases/active/P35",
+      "review_status": "pending",
+      "current_slice": "P35.DECOMP",
+      "slice_count": 2,
+      "done_slice_count": 0
     }
   ],
   "deferred_open_count": 46,
   "deferred_promoted_count": 1,
   "deferred_dropped_count": 11,
-  "last_rebuilt_at": "2026-10-13T00:53:30+09:00"
+  "last_rebuilt_at": "2026-10-13T15:47:04+09:00"
 }
