@@ -3,14 +3,14 @@
   "phase_id": "P35",
   "name": "research: converting this repo to the nested layout",
   "kind": "research",
-  "status": "todo",
+  "status": "done",
   "order": 30,
   "depends_on": [
     "P35.S2"
   ],
   "created_at": "2026-10-13T15:55:38+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-10-13T16:17:21+09:00",
+  "completed_at": "2026-10-13T16:38:14+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "Proved this repo's nested conversion on scratch clones: sources to payload/ (undotted, artifact byte-identical), state history via filter-branch (331→292) attached under a fresh install by reset --soft, nested engine/--update/upstream CI pass (smoke 292/0), mv-only rollback proven twice; host commit must precede the install (Decisions 15-16, runbook, three operator questions)",
   "validation": {
     "required": [],
     "last_run": null,
