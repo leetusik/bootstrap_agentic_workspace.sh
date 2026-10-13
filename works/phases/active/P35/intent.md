@@ -1654,6 +1654,9 @@ Out of scope: the improvised same-checkout arrangement, which worktrees replace,
 - Q: Where should the PR policy for parallel phases live? — A: "Host custom (Recommended)": the engine stays policy-neutral and the custom is recorded in `nested-convention`'s text, broadened to commits, branches and PRs.
 - Q: How should the host branch be named when a nested phase starts its worktree? — A: "Proposed, you confirm (Recommended)"
 - Q: What should a nested phase's host worktree start from by default? — A: "Host default branch (Recommended)": `origin/HEAD`, else the local default branch, with `--host-base` to override.
+- Q: What should the folder holding the shipped sources be called? — A: "payload/ (Recommended)"
+- Q: Who runs the layout switch itself (steps 3-8)? — A: "Orchestrator, you present (Recommended)": an executor does the moves and build edits, and the orchestrator runs the switch inline from S3's runbook in gate mode, as a one-time exception to "every slice is delegated".
+- Q: After the conversion, should this repo's product commit subjects drop phase IDs? — A: "Drop phase IDs (Recommended)"
 
 ## Notes
 
