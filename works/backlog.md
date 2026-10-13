@@ -74,6 +74,6 @@
 | [x] `P35.S7` | `done` | Streams view in backlog.md and the in-flight filter for next (D57) | `implementation` | `works/phases/active/P35/slices/P35.S7` |
 | [x] `P35.S8` | `done` | skills, installer and text for nested parallel and the host custom | `implementation` | `works/phases/active/P35/slices/P35.S8` |
 | [x] `P35.S9` | `done` | smoke tests for the nested lifecycle and the hook redirect | `implementation` | `works/phases/active/P35/slices/P35.S9` |
-| [ ] `P35.S10` | `todo` | convert this repo to the nested layout | `implementation` | `works/phases/active/P35/slices/P35.S10` |
+| [ ] `P35.S10` | `in_progress` | convert this repo to the nested layout | `implementation` | `works/phases/active/P35/slices/P35.S10` |
 | [ ] `P35.S11` | `todo` | v58 release in the new layout | `implementation` | `works/phases/active/P35/slices/P35.S11` |
 | [ ] `P35.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P35/slices/P35.REVIEW` |
