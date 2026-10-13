@@ -29,7 +29,7 @@
 # design-migrate moves all-or-nothing and a pre-v47 root is steered to it, design-register prints the deck hint), the v48 design-tool
 # invariants (design-cowork carries both loops, drafter and claude-design, with P26's governance
 # shared), the P28 nested-engine invariants (workflow/.agentic-nested.json: host anchors, host-side
-# phase-scope, parallel off, the convention gate, the agent rename map, a malformed marker is an
+# phase-scope, the paired worktree lifecycle, the convention gate, the agent rename map, a malformed marker is an
 # error), the P28 nested-install invariants (--nested: a clean host status/HEAD/config, the clash rename,
 # the workflow/ prefix, the contract import, the tracked-target refusal, --update --nested, the self-hiding
 # skill dirs and the refusal when a host .gitignore re-includes a target), the P29 nested-by-default
@@ -1803,7 +1803,7 @@ conflict_before=$(mig_sig); out=$(mw design-migrate --apply 2>&1); rc=$?
   || bad "design-migrate moved something past a conflict, or did not name every conflict (rc=$rc) -- $out"
 
 # ---------------------------------------------------------------------------
-echo "== Test 14: P28 nested engine -- workflow/.agentic-nested.json: host anchors, host-side phase-scope, parallel off, the convention gate, the agent rename map, a malformed marker fails validate =="
+echo "== Test 14: P28 nested engine -- workflow/.agentic-nested.json: host anchors, host-side phase-scope, the paired worktree lifecycle, the convention gate, the agent rename map, a malformed marker fails validate =="
 # A host repo with one product commit, and the live engine + templates (+ a seed install's docs) in a
 # nested git repo at host/workflow/ beside the marker. Every command runs from the host root, the way
 # a nested session does. The at-root invariant is every earlier test passing unchanged.
@@ -1883,6 +1883,58 @@ cr_out=$(printf '{}' | nw compact-resume 2>&1); cr_rc=$?
   && [ "$cr_rc" -eq 0 ] && printf '%s\n' "$cr_out" | grep -q 'Re-read the running skill' \
   && ok "a malformed marker never stops the compaction hooks: compact-gate and compact-resume still run and exit 0" \
   || bad "the compaction hooks refused on a malformed marker (rc=$cg_rc/$cr_rc): $cg_out $(cat "$NS/cg_err") $cr_out"
+# The paired worktree lifecycle (P35): a nested phase runs in a host worktree with the nested worktree inside,
+# claims its own stream, shows in the main backlog's Streams view, resumes through the compaction hook's cwd, is
+# guarded at teardown and is retired nested-first, keeping the host branch. It runs last: it restores a valid
+# marker (the truncated one above is the previous assertion's) and commits the fixture's nested repo.
+cat > "$NH/workflow/.agentic-nested.json" <<'NESTED'
+{"schema": 1, "host_root": "..",
+ "commit_convention": {"inferred": "type(scope): summary", "confirmed": true, "text": "type(scope): summary", "coauthor_trailers": "forbidden"},
+ "renames": {"skills": {}, "agents": {"design-drafter": "wf-design-drafter"}}}
+NESTED
+NW="$NH/workflow"
+printf '/workflow/\n/.claude/agents/\n' >> "$NH/.git/info/exclude"
+printf 'temp/\n' >> "$NW/.git/info/exclude"
+( cd "$NW" && git config user.email smoke@example.invalid && git config user.name smoke && git branch -M main >/dev/null 2>&1 \
+    && git add -A >/dev/null 2>&1 && git commit -qm "nested baseline" >/dev/null 2>&1 ) || bad "paired lifecycle: could not commit the nested fixture"
+nw rebuild >/dev/null 2>&1; ( cd "$NW" && git add -A >/dev/null 2>&1 && git commit -qm "rebuild" >/dev/null 2>&1 )
+ps_out=$(nw parallel-start P1 --host-branch feat/side 2>&1); ps_rc=$?
+HWT=$(printf '%s\n' "$ps_out" | sed -n 's/^host_worktree=//p'); PBR=$(printf '%s\n' "$ps_out" | sed -n 's/^branch=//p')
+if [ "$ps_rc" -eq 0 ] && [ -d "$HWT/workflow" ] && git -C "$NH" worktree list | grep -qF "$HWT" && git -C "$NW" worktree list | grep -qF "$HWT/workflow" \
+    && [ -z "$(git -C "$NH" status --short)" ]; then
+  ok "paired parallel-start: both repos list the new worktree, <host-wt>/workflow exists and the host's git status is empty"
+else bad "paired parallel-start (rc=$ps_rc) -- $ps_out -- host status: $(git -C "$NH" status --short)"; fi
+wt_next=$( cd "$HWT" && python3 workflow/scripts/workflow.py next 2>&1 ); main_next=$(nw next 2>&1)
+nw rebuild >/dev/null 2>&1
+if printf '%s\n' "$wt_next" | grep -q "^stream=phase/P1-" && ! printf '%s\n' "$main_next" | grep -q "^current_phase=P1" \
+    && grep -A8 '^## Streams' "$NW/works/backlog.md" | grep -E '^\|' | grep -F 'P1' | grep -qF 'feat/side'; then
+  ok "the worktree's next prints stream=phase/P1-..., the main checkout skips P1, and backlog.md's ## Streams row carries P1 with feat/side"
+else bad "stream claim or Streams row wrong -- worktree: $wt_next -- main: $main_next -- $(grep -A8 '^## Streams' "$NW/works/backlog.md")"; fi
+hook_out=$(printf '{"session_id":"t","source":"compact","cwd":"%s"}' "$HWT" | python3 "$NH/workflow/scripts/workflow.py" compact-resume 2>&1)
+printf '%s\n' "$hook_out" | grep -q "^stream=phase/P1-" && printf '%s\n' "$hook_out" | grep -q "^current_phase=P1" \
+  && ok "compact-resume replayed from the main checkout with the worktree's cwd redirects to the worktree's own stream" \
+  || bad "the compaction hook did not follow the worktree cwd -- $hook_out"
+printf 'product\n' > "$HWT/src/side.py" && git -C "$HWT" add src/side.py >/dev/null 2>&1 && git -C "$HWT" commit -qm "side" >/dev/null 2>&1
+mkdir -p "$HWT/workflow/temp" && printf 'note\n' > "$HWT/workflow/temp/note.txt"
+git -C "$HWT/workflow" checkout -q -- . >/dev/null 2>&1   # drop the regenerated works/ files `next` rewrote
+printf 'merged\n' > "$HWT/workflow/merged.txt" && git -C "$HWT/workflow" add -A >/dev/null 2>&1 && git -C "$HWT/workflow" commit -qm "phase work" >/dev/null 2>&1
+git -C "$NW" add -A >/dev/null 2>&1 && git -C "$NW" commit -qm "regenerated works" >/dev/null 2>&1
+git -C "$NW" merge --no-ff -q -m "merge phase" "$PBR" >/dev/null 2>&1 || bad "paired lifecycle: could not merge $PBR into the nested default branch"
+td_out=$(nw parallel-teardown P1 2>&1); td_rc=$?
+[ "$td_rc" -ne 0 ] && printf '%s\n' "$td_out" | grep -qF "parallel-teardown P1 refused -- nothing was removed:" \
+  && printf '%s\n' "$td_out" | grep -qF "ignored, worktree-only files would be deleted" && printf '%s\n' "$td_out" | grep -qF "temp/" \
+  && [ -d "$HWT/workflow" ] && git -C "$NH" worktree list | grep -qF "$HWT" \
+  && ok "paired parallel-teardown refuses first on the ignored worktree-only temp/ and removes nothing" \
+  || bad "the teardown guard did not refuse (rc=$td_rc) -- $td_out"
+td_out=$(nw parallel-teardown P1 --discard-ignored 2>&1); td_rc=$?
+nested_at=$(printf '%s\n' "$td_out" | grep -n '^removed nested worktree' | head -1 | cut -d: -f1); host_at=$(printf '%s\n' "$td_out" | grep -n '^removed host worktree' | head -1 | cut -d: -f1)
+if [ "$td_rc" -eq 0 ] && [ -n "$nested_at" ] && [ -n "$host_at" ] && [ "$nested_at" -lt "$host_at" ] && printf '%s\n' "$td_out" | grep -q "^kept host branch feat/side:" \
+    && [ -n "$(git -C "$NH" branch --list feat/side)" ] && [ ! -e "$HWT" ] \
+    && ! git -C "$NH" worktree list | grep -qF "$HWT" && ! git -C "$NW" worktree list | grep -qF "$HWT" \
+    && ! git -C "$NH" worktree list --porcelain | grep -q '^prunable' && ! git -C "$NW" worktree list --porcelain | grep -q '^prunable'; then
+  ok "paired parallel-teardown --discard-ignored removes the nested worktree before the host worktree and keeps the host branch feat/side"
+else bad "paired teardown wrong (rc=$td_rc) -- $td_out"; fi
+
 
 # ---------------------------------------------------------------------------
 echo "== Test 15: P28 nested install -- --nested leaves the host clean (status, HEAD, config), renames a clashing skill, prefixes every engine path, imports the contract, refreshes in place with --update --nested, and refuses a host whose .gitignore would expose a target =="

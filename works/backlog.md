@@ -6,8 +6,8 @@
 ## Pointer
 
 - Current phase: `P35`
-- Current slice: `P35.S9`
-- Next slice: `P35.S10`
+- Current slice: `P35.S10`
+- Next slice: `P35.S11`
 - Waiting on operator: `none`
 - Open deferred jobs: `46`
 
@@ -15,7 +15,7 @@
 
 | Stream | Phase | Status | Current slice | Done | Worktree | Source |
 |---|---|---|---|---|---|---|
-| `default` | `P35` | planned | `P35.S9` | 10/14 | - | working tree |
+| `default` | `P35` | planned | `P35.S10` | 11/14 | - | working tree |
 
 ## Active Phases
 
@@ -24,7 +24,7 @@
 | [x] `P32` | `done` | `pass` | One executor route table: dispatch-time model and effort, no presets, Haiku cheap route | `none` | `works/phases/active/P32` |
 | [x] `P33` | `done` | `pass` | One-shot /rotate-backlog: consolidate the doc debt, then archive | `none` · parallel: `phase/P33-one-shot_rotate-backlog_consolidate_the` | `works/phases/active/P33` |
 | [x] `P34` | `done` | `pass` | Boundary-gated compaction: veto mid-process, resume at the slice boundary | `none` | `works/phases/active/P34` |
-| [ ] `P35` | `planned` | `pending` | nested-install parallel worktrees and one-slice prep | `P35.S9` | `works/phases/active/P35` |
+| [ ] `P35` | `planned` | `pending` | nested-install parallel worktrees and one-slice prep | `P35.S10` | `works/phases/active/P35` |
 
 ## Phase P32: One executor route table: dispatch-time model and effort, no presets, Haiku cheap route
 
@@ -73,7 +73,7 @@
 | [x] `P35.S6` | `done` | compaction hooks follow the session's cwd | `implementation` | `works/phases/active/P35/slices/P35.S6` |
 | [x] `P35.S7` | `done` | Streams view in backlog.md and the in-flight filter for next (D57) | `implementation` | `works/phases/active/P35/slices/P35.S7` |
 | [x] `P35.S8` | `done` | skills, installer and text for nested parallel and the host custom | `implementation` | `works/phases/active/P35/slices/P35.S8` |
-| [ ] `P35.S9` | `todo` | smoke tests for the nested lifecycle and the hook redirect | `implementation` | `works/phases/active/P35/slices/P35.S9` |
+| [x] `P35.S9` | `done` | smoke tests for the nested lifecycle and the hook redirect | `implementation` | `works/phases/active/P35/slices/P35.S9` |
 | [ ] `P35.S10` | `todo` | convert this repo to the nested layout | `implementation` | `works/phases/active/P35/slices/P35.S10` |
 | [ ] `P35.S11` | `todo` | v58 release in the new layout | `implementation` | `works/phases/active/P35/slices/P35.S11` |
 | [ ] `P35.REVIEW` | `todo` | phase review | `review` | `works/phases/active/P35/slices/P35.REVIEW` |
