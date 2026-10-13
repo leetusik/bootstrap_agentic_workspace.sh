@@ -3,14 +3,14 @@
   "phase_id": "P35",
   "name": "compaction hooks follow the session's cwd",
   "kind": "implementation",
-  "status": "todo",
+  "status": "done",
   "order": 70,
   "depends_on": [
     "P35.S5"
   ],
   "created_at": "2026-10-13T16:43:34+09:00",
-  "started_at": null,
-  "completed_at": null,
+  "started_at": "2026-10-13T17:05:07+09:00",
+  "completed_at": "2026-10-13T17:09:37+09:00",
   "risk": "high",
   "source": {
     "type": "manual",
@@ -20,7 +20,7 @@
     "plan": "plan.md",
     "result": "result.md"
   },
-  "outcome": null,
+  "outcome": "compact-gate and compact-resume walk up from the hook's stdin cwd to the owning engine and re-run it (same stdin, recursion guard, 12 s timeout, fail-open), so a worktree session resumes on its own stream and the gate judges its own slice, at root and nested; hook commands unchanged; smoke 292/292",
   "validation": {
     "required": [],
     "last_run": null,

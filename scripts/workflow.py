@@ -4048,6 +4048,60 @@ COMPACT_RESUME_LINE = (
     "its first 5,000 tokens were re-injected), the active slice folder (plan.md, result.md) and phase.md's `## Now`; "
     "executors still running are listed by the harness."
 )
+# The hooks follow the session (P35): `$CLAUDE_PROJECT_DIR` stays at the main checkout after EnterWorktree,
+# but the hook's stdin `cwd` follows the session into the worktree. So each hook first walks up from that
+# `cwd` to the engine that owns it -- `d/workflow/scripts/workflow.py` (nested) or `d/scripts/workflow.py`
+# (at root), with `works/` beside it -- and, when that is another copy of the engine, re-runs it with the
+# same stdin and relays its output. The env var is the recursion guard; every failure falls back to today.
+HOOK_REDIRECT_ENV = "AGENTIC_HOOK_REDIRECTED"
+HOOK_REDIRECT_TIMEOUT = 12  # the hooks' own timeout is 15 s
+
+
+def _hook_owning_engine(cwd: str):
+    """(engine, run_dir) for the first ancestor of `cwd` (itself included) that holds a workspace engine with
+    `works/` beside it -- nested (`workflow/`) checked before at root at each level -- or None."""
+    start = Path(cwd).resolve()
+    if not start.is_dir():
+        return None
+    for d in (start, *start.parents):
+        for base in (d / "workflow", d):
+            engine = base / "scripts" / "workflow.py"
+            if engine.is_file() and (base / "works").is_dir():
+                return engine, d
+    return None
+
+
+def _hook_stdin_or_redirect(subcommand: str):
+    """Read the hook's stdin once. Return its text for this engine to handle, or None when the engine that
+    owns the hook's `cwd` is another copy and already answered (its stdout/stderr relayed unchanged). Never
+    raises: a missing or bad `cwd`, no engine, this engine, the guard set, a timeout, an error or a
+    non-zero exit all return the text, and the caller carries on as before."""
+    try:
+        raw = sys.stdin.read()
+    except Exception:  # noqa: BLE001 - the hooks never fail
+        return ""
+    try:
+        if os.environ.get(HOOK_REDIRECT_ENV):
+            return raw
+        hook = json.loads(raw or "null")
+        cwd = hook.get("cwd") if isinstance(hook, dict) else None
+        if not isinstance(cwd, str) or not cwd.strip():
+            return raw
+        found = _hook_owning_engine(cwd)
+        if found is None or found[0].resolve() == Path(__file__).resolve():
+            return raw
+        engine, run_dir = found
+        proc = subprocess.run([sys.executable, str(engine), subcommand], input=raw, capture_output=True, text=True,
+                              cwd=str(run_dir), env={**os.environ, HOOK_REDIRECT_ENV: "1"}, timeout=HOOK_REDIRECT_TIMEOUT)
+        if proc.returncode != 0:
+            return raw
+        sys.stdout.write(proc.stdout)
+        sys.stderr.write(proc.stderr)
+        sys.stdout.flush()
+        sys.stderr.flush()
+        return None
+    except Exception:  # noqa: BLE001 - fail open: this engine answers instead
+        return raw
 
 
 def _compact_env_int(name: str):
@@ -4145,9 +4199,12 @@ def cmd_compact_gate(args: argparse.Namespace) -> None:
     instead); an allow prints nothing and resets the count. Fails open: exit 0 always."""
     trace = {"decision": "allow", "rule": "error", "slice": "-", "status": "-", "dirty": "-", "fill": "-", "ceiling": "-"}
     cap, blocks, counter, reason, error = COMPACT_BLOCK_CAP, 0, None, None, None
+    raw = _hook_stdin_or_redirect("compact-gate")
+    if raw is None:  # the engine that owns the session's cwd answered
+        return
     try:
         try:
-            hook = json.loads(sys.stdin.read() or "null")
+            hook = json.loads(raw or "null")
         except ValueError:
             hook = None
         if not isinstance(hook, dict):
@@ -4220,10 +4277,8 @@ def cmd_compact_gate(args: argparse.Namespace) -> None:
 
 def cmd_compact_resume(args: argparse.Namespace) -> None:
     """SessionStart hook (source `compact`): print the pointer and the resume line as facts. Always exit 0."""
-    try:
-        sys.stdin.read()
-    except Exception:  # noqa: BLE001 - the input is informational only
-        pass
+    if _hook_stdin_or_redirect("compact-resume") is None:  # the engine that owns the session's cwd answered
+        return
     print("compaction=done source=compact")
     try:
         cmd_next(args)
