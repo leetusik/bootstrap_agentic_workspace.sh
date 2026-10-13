@@ -1211,6 +1211,21 @@ def phase_execution(data) -> dict:
     return execution
 
 
+def phase_in_flight(data) -> bool:
+    """True when a phase is stamped for its own worktree and is still running there (P35.S7, closes D57).
+
+    It has a parallel execution block (`phase_execution`) AND either still holds a worktree
+    (`execution.worktree` is not null: running, or merged but not yet torn down) or has not reached
+    `done`. A stamped phase that is `done` with its worktree torn down is history: it is not in
+    flight, so `## Streams` and `next`'s `parallel_phases_elsewhere` skip it. Accepts a phase record
+    or a `works/index.json` entry; both carry `status` and `execution`.
+    """
+    execution = phase_execution(data)
+    if not execution:
+        return False
+    return execution.get("worktree") is not None or data.get("status") != "done"
+
+
 NESTED_EXECUTION_HOST_KEYS = ("host_worktree", "host_branch", "host_base", "host_base_sha", "host_branch_created")
 
 
@@ -1470,7 +1485,9 @@ def consolidation_debt_line(phases: list) -> str:
     Accepts either phase records or `works/index.json` entries; both are read through
     `phase_consolidation()` / `phase_execution()`, never off a raw field.
     """
-    owing = phases_owing_consolidation(phases)
+    # A stamped phase still running (not `done`) has stamped `execution.consolidation: "pending"` since
+    # parallel-start but owes nothing until its review passes (P35.S7); a `done` one owes, as before.
+    owing = [p for p in phases_owing_consolidation(phases) if not (phase_execution(p) and p.get("status") != "done")]
     if len(owing) < CONSOLIDATION_DEBT_MIN_PHASES:
         return ""
     ids = ", ".join(p["id"] for p in owing)
@@ -1723,6 +1740,106 @@ def rebuild_index_and_state() -> None:
         refresh_phase_md_slices(ROOT / p["path"], p)
 
 
+def _phase_progress(phase_like: dict, slices: list) -> tuple:
+    """`(current slice id or "none", "n/m")` for one phase as read from some source."""
+    slices = slices or []
+    cur = next((x.get("id") for x in slices if x.get("status") != "done"), None)
+    return (cur or "none", f"{sum(1 for x in slices if x.get('status') == 'done')}/{len(slices)}")
+
+
+def streams_section(phases: list, state: dict) -> list:
+    """The `## Streams` table for `works/backlog.md` (P35.S7): the default stream plus every stamped
+    phase still in flight, each read live from where its slices actually advance.
+
+    A parallel phase's slice progress lives on its own branch, so the stamp-time copy in the
+    `## Active Phases` table stands still until the merge. Rows: this checkout's own stream first
+    when it is a parallel one (from its working tree), then the `default` row (this checkout's
+    pointer on the default stream; on a parallel stream the base branch's pointer, from
+    `execution.base_branch`, else the local copy), then one row per other in-flight phase, read
+    from its branch, then `origin/<branch>`, else the local copy -- labelled so. Git is touched
+    only when a stamped phase is in flight (the same gate as `current_stream`); with none, this is
+    a single working-tree default row and no git call is made. The Host branch column is nested only.
+    """
+    nested = NESTED is not None
+    stream = state.get("stream")
+    own = next((p for p in phases if stream and (phase_execution(p) or {}).get("branch") == stream), None)
+    others = [p for p in phases if phase_in_flight(p) and p is not own]
+    use_git = bool((own or others) and _git_available())
+    rows = []
+
+    base_dir = str(HOST_ROOT or ROOT)
+
+    def where(worktree):  # the default homes sit under the checkout's root: print them relative to it, keeping the tracked file free of home paths
+        if worktree and os.path.isabs(worktree) and os.path.commonpath([base_dir, worktree]) == base_dir:
+            return os.path.relpath(worktree, base_dir)
+        return worktree
+
+    def add(stream_cell, phase_id, status, cur, done, host, worktree, source):
+        worktree = where(worktree)
+        cells = [f"`{clean_cell(stream_cell)}`", f"`{clean_cell(phase_id)}`" if phase_id else "-", clean_cell(status) or "-",
+                 f"`{clean_cell(cur)}`" if cur else "-", done or "-"]
+        if nested:
+            cells.append(f"`{clean_cell(host)}`" if host else "-")
+        cells += [f"`{clean_cell(worktree)}`" if worktree else "-", clean_cell(source)]
+        rows.append("| " + " | ".join(cells) + " |")
+
+    if own is not None:
+        execution = phase_execution(own)
+        cur, done = _phase_progress(own, own["slices"])
+        short = _parallel_verdict_pair(own["id"], own.get("status"), (own.get("review") or {}).get("status"), own["slices"],
+                                       phase_consolidation(own), None, False, True)[0]
+        add(stream, own["id"], short, cur, done, execution.get("host_branch"), execution.get("worktree"), "working tree")
+
+    # The default row.
+    if own is None:
+        pid, cur_slice = state.get("current_phase"), state.get("current_slice")
+        phase = next((p for p in phases if p["id"] == pid), None)
+        if phase is None:
+            add("default", None, "idle", None, None, None, None, "working tree")
+        else:
+            _, done = _phase_progress(phase, phase["slices"])
+            add("default", pid, phase.get("status"), cur_slice or "none", done, None, None, "working tree")
+    else:
+        base = (phase_execution(own) or {}).get("base_branch")
+        plist, source = None, "local copy"
+        if base and use_git:
+            plist = _phases_at_ref(base)
+            if plist is not None:
+                source = f"branch {base}"
+        sel = stream_phases(plist if plist is not None else phases, None)
+        target = next((q for q in sel if q.get("status") != "done"), None)
+        if target is None:
+            add("default", None, "idle", None, None, None, None, source)
+        else:
+            if plist is not None:
+                target["slices"] = _slices_at_ref(base, target["id"]) or []
+            cur_slice = resolve_current([target])[1]
+            _, done = _phase_progress(target, target["slices"])
+            add("default", target["id"], target.get("status"), cur_slice or "none", done, None, None, source)
+
+    for p in others:
+        execution = phase_execution(p)
+        branch = execution.get("branch")
+        data, slices, source = p, p["slices"], "local copy"
+        branch_gone, merged = False, None
+        if use_git and branch:
+            for candidate in (branch, f"origin/{branch}"):
+                found = _phase_json_at_ref(candidate, p["id"])
+                if found is not None:
+                    data, slices, source = found, _slices_at_ref(candidate, p["id"]) or [], f"branch {candidate}"
+                    break
+            branch_gone = not _branch_exists(branch)
+            if not branch_gone:
+                merged = _git(["merge-base", "--is-ancestor", branch, "HEAD"], check=False).returncode == 0
+        short = _parallel_verdict_pair(p["id"], data.get("status"), (data.get("review") or {}).get("status"), slices,
+                                       phase_consolidation(p), merged, branch_gone, False)[0]
+        cur, done = _phase_progress(data, slices)
+        add(branch or "-", p["id"], short, cur, done, execution.get("host_branch"), execution.get("worktree"), source)
+
+    head = ["Stream", "Phase", "Status", "Current slice", "Done"] + (["Host branch"] if nested else []) + ["Worktree", "Source"]
+    return ["## Streams", "", "| " + " | ".join(head) + " |", "|" + "---|" * len(head)] + rows + [""]
+
+
 def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
     lines = [
         "# Backlog", "", "> Generated dashboard. Do not put detailed task context here; edit phase/slice/deferred folders instead.",
@@ -1737,6 +1854,7 @@ def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
         lines.append(f"- Stream: `{clean_cell(state['stream'])}` (parallel phase checkout; the pointer above is scoped to it)")
     lines += [
         f"- Open deferred jobs: `{index.get('deferred_open_count', 0)}`", "",
+        *streams_section(phases, state),
         "## Active Phases", "", "| Phase | Status | Review | Name | Current Slice | Path |", "|---|---|---|---|---|---|",
     ]
     if not phases:
@@ -2674,7 +2792,9 @@ def parallel_start(args: argparse.Namespace) -> None:
     if not args.worktree:
         worktree.parent.mkdir(parents=True, exist_ok=True)
 
-    data["execution"] = {"mode": "parallel", "branch": branch, "worktree": str(worktree), "consolidation": "pending"}
+    # base_branch (P35.S7, additive): the branch the stamp commit lands on, so a worktree checkout's
+    # Streams view can read the default stream's row from it.
+    data["execution"] = {"mode": "parallel", "branch": branch, "worktree": str(worktree), "consolidation": "pending", "base_branch": git_current_branch()}
     write_json(pdir / "phase.json", data)
     append_event("phase_parallel_started", phase=args.phase, branch=branch, worktree=str(worktree))
     rebuild_index_and_state()
@@ -3399,8 +3519,14 @@ def _parallel_verdict(phase_id: str, status, review, slices, consolidation, merg
     trivially contains its own branch); `branch_gone` means the branch was deleted, which implies
     the phase was merged first -- `parallel-teardown` refuses an unmerged branch.
     """
+    return _parallel_verdict_pair(phase_id, status, review, slices, consolidation, merged, branch_gone, own_stream)[1]
+
+
+def _parallel_verdict_pair(phase_id: str, status, review, slices, consolidation, merged, branch_gone: bool, own_stream: bool) -> tuple:
+    """`(short, long)`: the cell `## Streams` shows, and the sentence `parallel-status` prints. One
+    decision tree, so the dashboard and the command can never disagree about where a phase stands."""
     if status is None:
-        return "unknown -- neither the phase branch nor a local copy could be read"
+        return ("unknown", "unknown -- neither the phase branch nor a local copy could be read")
     slices = slices or []
     total = len(slices)
     done = sum(1 for s in slices if s.get("status") == "done")
@@ -3409,23 +3535,26 @@ def _parallel_verdict(phase_id: str, status, review, slices, consolidation, merg
     if status == "done" and review == "pass":
         if consolidation == "pending":
             if integrated:
-                return (f"merged, docs still awaiting consolidation -- run on the default stream: "
+                return ("merged \u2014 awaiting consolidation",
+                        f"merged, docs still awaiting consolidation -- run on the default stream: "
                         f"parallel-merge-finish, then parallel-consolidated {phase_id}")
-            return f"ready to merge -- check the quiet point first: parallel-gate {phase_id} (from the default stream)"
+            return ("ready to merge",
+                    f"ready to merge -- check the quiet point first: parallel-gate {phase_id} (from the default stream)")
         if integrated:
             if not branch_gone:
-                return f"merged + consolidated -- retire the branch and worktree: parallel-teardown {phase_id}"
-            return f"merged, consolidated and torn down -- nothing left but archiving ({phase_id} is archivable)"
-        return f"ready to merge -- check the quiet point first: parallel-gate {phase_id} (from the default stream)"
+                return ("merged + consolidated", f"merged + consolidated -- retire the branch and worktree: parallel-teardown {phase_id}")
+            return ("torn down", f"merged, consolidated and torn down -- nothing left but archiving ({phase_id} is archivable)")
+        return ("ready to merge",
+                f"ready to merge -- check the quiet point first: parallel-gate {phase_id} (from the default stream)")
     if status == "done":
-        return f"slices done but review is {review!r} -- record a passing review on its branch (review-phase {phase_id} --verdict pass)"
+        return ("review not passed", f"slices done but review is {review!r} -- record a passing review on its branch (review-phase {phase_id} --verdict pass)")
     if status == "pending":
-        return "waiting on the operator (phase is pending [~]) -- it halts only its own stream"
+        return ("pending", "waiting on the operator (phase is pending [~]) -- it halts only its own stream")
     if status == "blocked":
-        return "blocked on its own stream -- resolve the impediment there"
+        return ("blocked", "blocked on its own stream -- resolve the impediment there")
     where = " on this checkout's own stream" if own_stream else " on its branch"
     tail = f"; current slice {open_slice}" if open_slice else ""
-    return f"in flight{where} -- {done}/{total} slices done{tail}"
+    return (f"in flight {done}/{total}", f"in flight{where} -- {done}/{total} slices done{tail}")
 
 
 def parallel_status(args: argparse.Namespace) -> None:
@@ -3970,7 +4099,7 @@ def cmd_next(args: argparse.Namespace) -> None:
     elsewhere = [
         f"{p['id']}:{p['execution'].get('branch')}"
         for p in index.get("active_phases", [])
-        if p.get("execution") and p["execution"].get("branch") != stream
+        if phase_in_flight(p) and p["execution"].get("branch") != stream
     ]
     if elsewhere:
         print(f"parallel_phases_elsewhere={', '.join(elsewhere)} (not in this stream; each runs from its own branch)")

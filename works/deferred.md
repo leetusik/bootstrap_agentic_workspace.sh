@@ -4,9 +4,9 @@
 
 ## Summary
 
-- Open: `47`
+- Open: `46`
 - Promoted: `1`
-- Dropped: `11`
+- Dropped: `12`
 
 ## Open
 
@@ -54,7 +54,6 @@
 | `D54` | `deferred` | Mark decisions' P16 'machinery-only repository is unaffected' line as superseded | P31.REVIEW | the next docs phase (could fold into D51) | `works/deferred/open/D54` |
 | `D55` | `deferred` | Integrate P33's v54 over P32's v53 (and renumber P34) | P32.REVIEW | P33's gate clears and its branch merges, or P34 starts, whichever comes first | `works/deferred/open/D55` |
 | `D56` | `deferred` | Tighten the one-shot rotate-backlog wording | P33.REVIEW | the next phase that edits the rotate-backlog or create-phase skill or CLAUDE.md, or the first /rotate-backlog gate run that hits a plan-mode permission prompt | `works/deferred/open/D56` |
-| `D57` | `deferred` | next still lists merged P33 as a parallel phase elsewhere | P34.REVIEW | P33's parallel-consolidated is paid, or the next parallel-phase work, whichever comes first | `works/deferred/open/D57` |
 | `D58` | `deferred` | P34 review findings A and B: worktree pointer before step 1 of do-next-slice; READMEs name the compaction hooks | P34.REVIEW | the next phase that edits do-next-slice or the READMEs, or the P32-P34 docs phase | `works/deferred/open/D58` |
 | `D59` | `deferred` | Shared scratch paths linked into phase worktrees | P35.DECOMP2 | An operator asks to see the main checkout's temp/ (or other excluded scratch) from a phase worktree | `works/deferred/open/D59` |
 | `D6` | `deferred` | Widen installer/main.py flag_stale_skills() ownership heuristic beyond the disable-model-invocation marker | P17.REVIEW | If a model-invocable skill is retired upstream, or when flag_stale_skills() is next touched. | `works/deferred/open/D6` |
@@ -79,5 +78,6 @@
 | `D2` | `dropped` | slice-executor-mid has no co-work refusal clause | fixed in P16.S4 — slice-executor-mid now carries the co-work refusal clause | `works/deferred/dropped/D2` |
 | `D27` | `dropped` | Adopt the chosen Claude Design replacement in design-cowork | superseded by P26 (operator chose an own-repo dashboard over repo design files + a design subagent) | `works/deferred/dropped/D27` |
 | `D4` | `dropped` | Retrofit guide Troubleshooting omits the .gitattributes line-merge | fixed in P16.S6 — the retrofit guide's Troubleshooting row now lists the .gitattributes line-merge | `works/deferred/dropped/D4` |
+| `D57` | `dropped` | next still lists merged P33 as a parallel phase elsewhere | Resolved by P35.S7 (folded in per P35 Decision 21): next's parallel_phases_elsewhere now lists only in-flight phases, so a done, torn-down P33 is no longer shown; consolidation_owed still names it until it is paid. | `works/deferred/dropped/D57` |
 | `D8` | `dropped` | Slim CLAUDE.md to <= 12 KB | resolved by P23: CLAUDE.md slimmed from 50,048 B to 12,259 B (<= 12 KB) with all 58 never-rules kept; shipped as workspace v44 | `works/deferred/dropped/D8` |
 | `D9` | `dropped` | Decide whether the Aside fallback wording stands, or Aside becomes a hard requirement | Answered at P20/v37: the fallback stands unchanged -- the doctrine's demands bind, the instrument does not (intent.md part 4). CLAUDE.md's fallback sentence is byte-identical to v36; design-cowork's gained one generalizing clause only. | `works/deferred/dropped/D9` |
