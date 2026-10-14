@@ -355,29 +355,30 @@ Then execute it at whichever pace you prefer:
 Automatic execution is the default; `gate` (approve each slice's plan) and `plan only` (write the
 plan, stop before running it) are opt-in words you add to the command.
 
-### Visual work: one design signoff
+### Visual work: you sign each design job
 
 `design-cowork` fires automatically when the work changes a product's visual appearance. **The agent
-never designs** — a dedicated design subagent (`design-drafter`) drafts each round, a separate critic (`design-critic`) judges the draft, and you make
-every visual decision. The design lives in your repo as plain files under `docs/reference/design/`
-(numbered cards such as `cards/01-nav.html`, a `tokens.css`, and a record per round), so no account,
-push or external service is involved. The `drafter` is the only design tool; the earlier
-`claude-design` tool and the design dashboard are retired, and you view a round by opening its card
-files directly in a browser. The agent opens a round and writes one `handoff.md` asking for
-a reviewable card set — every card path numbered in reading order (`01-nav.html`, `02-hero.html`,
-…) so you see the design in the right order — then has the drafter draft it and checks the result
-itself with `design-check` (the numbered cards, and whether a builder would have any design
-decisions left to invent). It stops so you can open the card files in a browser. You sign the round
-in your own words when you come back; anything short of a literal approval is recorded as feedback
-and a new round of the same slice re-drafts it. If you want to see it running first, ask for a
-mockup: the agent builds a throwaway, stubbed route in the project's own frontend and stops again
-for you to open it. Approval must be literal, a revision becomes a new round, and implementation is
-always a separate slice that follows the approved design faithfully and checks the running result
-in a real browser. A design exported from Claude Design can still be brought in through a
-round's `import/` folder, but nothing requires it, and records from the retired tool under
-`docs/reference/design/claude-design/` stay readable as history. A repo whose `docs/reference/design/` still has the
-old Claude Design layout (from before v47) moves it under `claude-design/` with
-`python3 scripts/workflow.py design-migrate` (a dry run; `--apply` moves it).
+never designs** — a dedicated design subagent (`design-drafter`) drafts, a separate critic
+(`design-critic`) judges the draft when it is switched on, and you make every visual decision. Design
+work is cut into **jobs**, one surface each (a flow or a small cluster of screens), and a design slice
+can draft a **wave** of 3–4 jobs in parallel. Each job is a **working canvas** written as plain files
+under `docs/reference/design/jobs/`: every screen as a clickable Page with real or realistic data, and
+every component on its own board in all its states. The agent writes each job's handoff from your
+repo (every screen and state with a check, the data, the components, your taste words quoted), the
+drafter builds the canvas and checks it with a local render, and — when the decomposition turned
+critique on for that job — the critic renders it, scores it and sends it back until it passes (a
+stronger judge rules on the calls the critic is unsure of). The agent then publishes each job to its
+own Design canvas Artifact, which you open in the Claude app, and stops once for the whole wave.
+You sign each job in your own words in the session; anything short of a literal approval — including
+comments you send to Claude and edits you make in the canvas, copied word for word — becomes the next
+round, a new version of the same canvas. If you want to see it running inside your product first, ask
+for a mockup: the agent builds a throwaway, stubbed route in the project's own frontend and stops
+again. Implementation is always a separate slice that follows the signed design faithfully and checks
+the running result in a real browser; built canvases are offered for deletion at the phase review.
+The `drafter` is the only design tool; the earlier `claude-design` tool and its viewer are retired.
+Older records stay readable as history: a v47 card record moves under `schema1/` with
+`python3 scripts/workflow.py design-migrate --to 2`, and a pre-v47 Claude Design layout under
+`claude-design/` with `python3 scripts/workflow.py design-migrate` (each a dry run; `--apply` moves it).
 
 Track progress in `works/backlog.md` (the generated dashboard) and the active
 phase folder under `works/phases/active/` (the phase notebook and slice folders) — or just ask the

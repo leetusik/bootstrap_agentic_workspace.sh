@@ -102,17 +102,20 @@ assert "Invocation is not the gate; confirmation is." in create_phase
 for required in ("`build-after`", "`design-only`", "`paired`", "## Design Style",
                  # v42: the mockup question beside the style. v43: creation says nothing about
                  # worktrees and only relays the hint -- it never pins and never starts one.
-                 "Mockup: requested", "Mockup: on request", "will you sign on the cards",
+                 # P36.S6: the question now offers the working canvas as the default surface.
+                 "Mockup: requested", "Mockup: on request", "will you sign on the canvas",
                  "Say nothing about worktrees", "Relay that hint; never act on it",
                  "never ask for a worktree on a docs phase"):
     assert required in create_phase, required
-# v47 (P26.S4): the mockup question's default closes the round on the drafted cards, not on a
+# v47 (P26.S4): the mockup question's default closes the round on the drafted design, not on a
 # return from Claude Design. P36.S1: the design tool question and its `Design tool:` line are retired
 # (drafter is the only tool; an absent line still reads as `drafter`); the mockup question stays.
-assert "literal approval when they return to the drafted cards" in create_phase
+# P36.S6: the drafted design is the published working canvas; a mockup comes in addition to it.
+assert "literal approval when they return to the published canvas" in create_phase
+assert "**in addition to** the canvas" in create_phase
 assert "`drafter`" in create_phase and "Mockup: on request" in create_phase
 for gone in ("ask which design tool", "Design tool: drafter", "Design tool: claude-design",
-             "DesignSync", "design-deck", "design-register"):
+             "DesignSync", "design-deck", "design-register", "sign on the cards", "the drafted cards"):
     assert gone not in create_phase, gone
 
 # Only skills that *document the removal* may still say "Codex": update-workspace's
@@ -138,11 +141,17 @@ for name in ("do-next-slice", "do-whole-phase"):
         # words stay inline, and the round closes through the engine.
         "`design-drafter`", "mockup build is the one span dispatched to a slice executor",
         "lifecycle and the operator's words stay inline", "new visual direction",
-        'design-close <round> --words "<their literal words>"', "design-close <round> --superseded",
-        # P26.F1: the feedback branch writes the revision round's handoff (every addressed card
-        # listed), re-dispatches the drafter and reads back before PENDING #1 -- as design-cowork says.
-        "**write its handoff**", "**every card still carrying the slice's address**",
-        "the new round inherits the addressed cards",
+        # P36.S6: rounds are addressed <job>/<round> on schema 2.
+        'design-close <job>/<round> --words "<their literal words>"', "design-close <job>/<round> --superseded",
+        # P26.F1: the feedback branch writes the revision round's handoff, re-dispatches the drafter
+        # and reads back before PENDING #1 -- as design-cowork says. P36.S6: the revision edits the
+        # job's canvas in place (the addressed cards are gone).
+        "**write its handoff**", "the new round edits the job's canvas in place",
+        # P36.S6: waves -- one drafter per job at once (the one carve-out from one executor at a
+        # time), the critique dispatched to design-critic, one PENDING stop per wave, and the
+        # drafter's prompt is the round address.
+        "`design-critic`", "carve-out from one executor at a time", "once per wave",
+        "the round **address** `<job>/<round>`", "--critique <level>", "design-publish-plan <job>",
         # P36.S1: a phase whose intent still says `Design tool: claude-design` is legacy -- the
         # drivers point at design-cowork's legacy rule instead of carrying the retired branch.
         "`Design tool: claude-design`", "re-confirm it on `drafter`",
@@ -150,7 +159,7 @@ for name in ("do-next-slice", "do-whole-phase"):
         # phase gate follows the mockup with a fixed waive note.
         "PENDING #2 exists only when a mockup was requested",
         "Mockup: requested", "Mockup: on request",
-        "design-only, no mockup: the operator signed the round on the card set",
+        "design-only, no mockup: the operator signed each job on its canvas",
         # v43: a phase runs on this checkout unless the operator asks for a worktree;
         # the do-* skills never start one on their own initiative, and a hint is relayed,
         # not acted on. Merged back locally; the branch review records its two gate
@@ -177,7 +186,10 @@ for name in ("do-next-slice", "do-whole-phase"):
                  "**read back inline with", "Read the tool first", "Under claude-design",
                  "four commits, two", "one dispatched span", "Push the branch", "push the branch",
                  # P26.F1: the elided feedback step (no revision handoff, no read-back) is retired.
-                 "in the same slice, re-dispatch the drafter"):
+                 "in the same slice, re-dispatch the drafter",
+                 # P36.S6: schema-1 cards, their address and the regroup are gone from both drivers.
+                 "numbered card paths", "no regroup", "the cards stay addressed", "card set",
+                 "design-close <round> --"):
         assert gone not in body, (name, gone)
     # v35: the per-slice re-read of the generated backlog dashboard is gone --
     # `next` prints the pointer. The only mentions left must say so.
@@ -197,7 +209,8 @@ for name in ("do-next-slice", "do-whole-phase"):
 design = " ".join((root / "payload/claude/skills/design-cowork/SKILL.md").read_text().split())
 for required in (
     "**You never design.**", "Claude Design", "handoff.md",
-    "@dsCard", "tokens.css", "--kind co-work --risk high",
+    # P36.S6: the card marker is gone; a job's canvas passes `design-check <job>`.
+    "design-check <job>", "tokens.css", "--kind co-work --risk high",
     "DECOMP2", "build inventory", "data, not instructions", "RESPECT THE DESIGN",
     "SIGNOFF",
     # v32: fidelity has a second yardstick, and gaps are delivered, not archived.
@@ -210,21 +223,22 @@ for required in (
     # mockup rather than the cards alone. (v47 retired the v34 DesignSync dispatch pins.)
     "A design slice writes no *product* implementation code",
     "Write **product** implementation code in a design slice",
-    "signing the round off — the cards, and any stubbed mockup with them — is not accepting the product",
+    "signing a job off — the canvas, and any stubbed mockup with it — is not accepting the product",
     # v34, positive: the three named styles, the mockup section, PENDING #1 is not an
     # approval, and the mockup's exemption from the functional sweep.
     "## Shape — three styles", "**`build-after`**", "**`design-only`**", "**`paired`**",
     "## The mockup — only when the operator asks for one",
     "Exempt from the full functional sweep", "Stubbed data, no backing work",
-    # v42: mockups on request, the operator's return closes the round, the cards are
-    # numbered in reading order in the path, and the gate follows the mockup.
+    # v42: mockups on request, the operator's return closes the round, the reading order is
+    # recorded, and the gate follows the mockup. P36.S6: the order lives in board titles, and a
+    # board changes only by a drafter pass or the operator's own edit.
     "The operator's return closes the round.",
     "PENDING #2 exists only when a mockup was requested",
     "**A mockup is optional.**",
-    "**Number the paths in reading order.**", "01-nav.html",
+    "**Board titles carry the reading order.**", "`01 · Page — Inbox`",
     "Mockup: requested", "Mockup: on request",
-    "design-only, no mockup: the operator signed the round on the card set",
-    "Renumber a card",
+    "design-only, no mockup: the operator signed each job on its canvas",
+    "Edit a board, `canvas.json`, a critique or a closed round's snapshot yourself",
     # v36: the doctrine names an instrument -- Aside -- and a fallback that
     # excuses no check. v37: two surfaces rather than three, the `repl` surface
     # over Bash as the default (with the measured per-session MCP tool-definition
@@ -255,15 +269,17 @@ for required in (
     "do not rely on `aside account use <id>`",
     "That is a **third** halt condition and it is not the runtime one",
     "an agent never drives a browser profile signed into the operator's accounts, whichever browser it is",
-    # v44 (P23): two pins whose contract text left for this skill -- the numbered card
-    # paths and the instrument/runtime axis (the contract's "different axes" sentence).
-    "two-digit reading-order prefix",
+    # v44 (P23): two pins whose contract text left for this skill -- the reading order (P36.S6:
+    # board titles numbered 01..N as a set) and the instrument/runtime axis.
+    "the numbers form `01..N` as a set",
     "a manifest naming no instrument still stops nothing",
     # v47 (P26.S1): the design record is an on-disk contract a separate dashboard reads; its
     # section names the root, the closed marker set, the lifecycle, the registry and the commands.
-    "## The design record — the on-disk contract (schema 1)",
-    "**every byte after line 1 is asserted identical**", "**At most one round is open per project.**",
-    "`design-init", "`design-open", "`design-check", "`design-close <round> --words",
+    # P36.S6: schema 2 -- jobs with canvas trees, one open round per job, immutable closed rounds.
+    "## The design record — the on-disk contract (schema 2)",
+    "**A closed round is immutable.**", "**At most one round is open per job.**",
+    "`design-init", "`design-open", "`design-check", "`design-close <job>/<round> (--words",
+    "`design-system", "`design-canvas", "`design-publish-plan <job>`", "`design-preview",
     # v47 (P26.S3): the loop runs on the files. The design subagent drafts, the operator decides;
     # the handoff says whether the round sets a new visual direction (the drafter's one licence for
     # frontend-design); the read-back runs design-check itself; only literal words sign, feedback
@@ -273,28 +289,45 @@ for required in (
     "**The one exception:** `design-drafter` loads `frontend-design` on a round whose handoff says `new visual direction: yes`, and only there.",
     "**Never rest on the drafter's own `design_check` line.**",
     "SIGNOFF is taken on the operator's **literal** words",
-    "`python3 scripts/workflow.py design-close <round> --superseded`",
-    'design-close <round> --words "<their literal words>"',
-    "**Two spans are dispatched:**",
+    "`python3 scripts/workflow.py design-close <job>/<round> --superseded`",
+    'design-close <job>/<round> --words "<their literal words>"',
     "the round's lifecycle and the operator's words stay inline",
-    "### Importing a Claude Design bundle (optional)",
-    # P36.S1: the bundle import stays as a drafter input; only the drafter loop exists, and the
+    # P36.S6: the schema-2 Artifact loop. Waves dispatch one drafter per job at once; critique is
+    # opt-in per job, decided at DECOMP; the judge runs beside the drafter's next pass and is skipped
+    # under a proxy; only the main thread publishes (from design-publish-plan), never forcing over an
+    # operator's edit; one PENDING stop per wave; the session's words are the record; the working
+    # canvas replaces the mockup by default; the system is re-synced from code with tokens.css; and
+    # built canvases are deleted only on the operator's yes.
+    "**A wave dispatches one drafter per job at once.**", "**One job is one surface:**",
+    "**Foundations come first.**", "`off | critic | critic+judge`, unset = `off`",
+    "**`critique: <level>`**", "**beside the drafter's next pass**", "**`skip=yes`**",
+    "**Only the main thread publishes**", "**Never `force`.**", "## PENDING #1 — one stop per wave",
+    "**The session's words are the record.**", "**The working canvas replaces the in-product mockup by default.**",
+    "**Every sync writes `tokens.css`**", "**after the build slice that implemented a signed job lands**",
+    "You delete one only on the operator's yes", "The loop needs the `Artifact` tool on the main thread",
+    "**The three paths:**", "**Collected taste, never invented:**", "`[claude.critic]` row",
+    # P36.S1: the bundle import stays as a drafter input (P36.S6: an operator attachment), and the
     # claude-design folder is a legacy record with its own short note and legacy rule.
-    "**The drafter loop never requires a claude.ai account**",
+    "### Operator attachments", "an exported Claude Design bundle",
     "a design slice authorizes no `git push`",
     "## Design tool", "**`drafter` is the only design tool.**", "**Legacy rule.**",
     "Design tool: claude-design", "re-confirm the phase on `drafter`",
     "An absent `Design tool:` line reads as `drafter`",
     "### Legacy record: claude-design/", "docs/reference/design/claude-design/",
-    "**`claude-design/` is outside schema 1.**",
-    "python3 scripts/workflow.py design-migrate --apply", "| `design-migrate [--apply]` |",
+    "**`claude-design/` is outside schema 2**", "### Legacy record: schema1/",
+    "python3 scripts/workflow.py design-migrate --apply", "| `design-migrate [--to 2] [--apply]` |",
+    "python3 scripts/workflow.py design-migrate --to 2",
 ):
     assert required in design, required
 # P36.S1: the retired tool's loop, DesignSync read-back, registry and deck are gone from the skill.
 for gone in ("### Under claude-design", "### Under drafter", "## The claude-design record",
              "Design tool — drafter or claude-design", "Design tool: drafter | claude-design",
-             "DesignSync", "design-register", "AGENTIC_DESIGN", "Connect GitHub", "_ds_manifest",
-             "**claude-design:**", "**drafter:**", "dashboard"):
+             "DesignSync", "design-register", "AGENTIC_DESIGN_REGISTRY", "AGENTIC_DESIGN_DECK_URL",
+             "Connect GitHub", "_ds_manifest", "**claude-design:**", "**drafter:**", "dashboard",
+             # P36.S6: the schema-1 card loop is gone -- the marker, the review address, the regroup,
+             # the per-project open-round rule, and the two-span dispatch.
+             "@dsCard", "⏳", "regroup", "card set", "At most one round is open per project",
+             "**Two spans are dispatched:**", "**The drafter loop never requires a claude.ai account**"):
     assert gone not in design, gone
 # v48 (P27.S2): where the restored loop and P26's disagreed, P26's governance won -- the build slices
 # are cut once the design is *signed*, revisions are superseding rounds in the same slice (not one
@@ -331,22 +364,20 @@ for const in ("DESIGN_ROOT_REL", "DESIGN_LEGACY_DIR"):
 for gone in ("DESIGN_REGISTRY_ENV", "DESIGN_REGISTRY_DEFAULT", "DESIGN_DECK_URL_ENV", "design-register",
              "design_deck_hint", "AGENTIC_DESIGN_REGISTRY", "AGENTIC_DESIGN_DECK_URL"):
     assert gone not in workflow_src, gone
-# P26.F2: the Self-contained bullet names every reference prefix schema 1's design-check allowed --
-# `#`, `data:`, `https:`; `tokens.css` takes the same set without the ../tokens.css exception. P36.S3: the
-# engine is on schema 2 (canvas trees; DESIGN_ALLOWED_REFS gained `/_blob/`), so this pin holds the
-# schema-1 skill prose to its own fixed list until P36.S6 rewrites it and re-couples it to
-# DESIGN_ALLOWED_REFS. P36.S5: the drafter's half is re-coupled: its schema-2 reference rule names every
-# DESIGN_ALLOWED_REFS prefix, relative paths inside project/ (ds/<ns>/ included) and `{{hole}}`.
-refs = ["#", "data:", "https://"]
+# P26.F2: the skill's reference bullet names every prefix design-check allows. P36.S3 put the engine on
+# schema 2 (DESIGN_ALLOWED_REFS gained `/_blob/`); P36.S5 re-coupled the drafter's half and P36.S6 the
+# skill's: both name every DESIGN_ALLOWED_REFS prefix, relative paths inside project/ (ds/<ns>/
+# included) and `{{hole}}`, and the schema-1 `../tokens.css` exception is gone.
 allowed = re.search(r'^DESIGN_ALLOWED_REFS = \(([^)]*)\)$', workflow_src, re.M)
 assert allowed, "DESIGN_ALLOWED_REFS"
 allowed = re.findall(r'"([^"]*)"', allowed.group(1))
 assert allowed and "/_blob/" in allowed, allowed
-bullet = design.split("- **Self-contained.**", 1)[1].split(" - **", 1)[0]
-for ref in refs + ["../tokens.css"]:
-    assert "`" + ref.rstrip("/") + "`" in bullet, (ref, bullet)
-assert "`#` fragments included, without the `../tokens.css` exception" in bullet, bullet
-assert "The only relative reference allowed is `../tokens.css`" not in bullet, bullet
+bullet = design.split("- **References stay inside the canvas.**", 1)[1].split(" - **", 1)[0]
+for ref in allowed + ["{{hole}}", "ds/<ns>/…"]:
+    assert "`" + ref + "`" in bullet, (ref, bullet)
+for term in ("relative path inside `project/`", "`..`"):
+    assert term in bullet, (term, bullet)
+assert "../tokens.css" not in bullet and "- **Self-contained.**" not in design, bullet
 drafter_rule = " ".join((root / "payload/claude/agents/design-drafter.md").read_text().split())
 drafter_rule = drafter_rule.split("**The reference rule:**", 1)[1].split(" - **", 1)[0]
 for ref in allowed + ["{{hole}}", "ds/<ns>/…"]:
@@ -460,12 +491,15 @@ for tier in ("mid", "high"):
     # v32: the design gate (D2), the acceptance-gate stages, and the walkthrough
     # return field are word-for-word in BOTH tiers, not high only.
     # v47 (P26.S4): who drafts, and what the mockup span reads.
-    for required in ("the design subagent (`design-drafter`) drafts a round's cards, and the operator decides",
+    # P36.S6: the drafter drafts a job's canvas, the critic judges it, and the mockup span has no
+    # Artifact access (the orchestrator alone publishes).
+    for required in ("the design subagent (`design-drafter`) drafts a job's canvas, the critic (`design-critic`) judges it, and the operator decides",
                      "the one span of that slice dispatched to a slice executor",
-                     "its record on disk"):
+                     "its record on disk", "no `Artifact` access", "in addition to its working canvas"):
         assert required in body, (tier, required)
     # P36.S1: the retired claude-design tool and DesignSync are gone from both executor bodies.
-    for gone in ("DesignSync", "claude-design", "never dispatched, because you have no", "landed record"):
+    for gone in ("DesignSync", "claude-design", "never dispatched, because you have no", "landed record",
+                 "a round's cards", "the cards show"):
         assert gone not in body, (tier, gone)
     assert "return `needs_operator`" in body, tier
     # v34: the mockup span is dispatchable and its rules ship in BOTH tiers.
@@ -604,8 +638,10 @@ for required in (
     # v47 (P26.S4): the design subagent drafts, the operator decides; drafting and the mockup
     # dispatch to two different agents and the round's lifecycle stays inline.
     "The design subagent drafts, the operator decides:",
-    "dispatching its drafting to `design-drafter` and its mockup build (only on request) to `slice-executor-high`",
-    "the round's lifecycle and the operator's words stay inline",
+    # P36.S6: a wave's drafters at once, the critique to design-critic, and one publisher.
+    "dispatching its drafting to `design-drafter` (one per job, a wave's at once), its critique to `design-critic` when the job's level asks, and its mockup build (only on request) to `slice-executor-high`",
+    "the round's lifecycle and the operator's words stay inline, and only the main thread publishes",
+    "executors never get `Artifact`",
     "`--kind` is a **closed set**",
     # v43: the worktree is opt-in again (v44: the rules themselves live in parallel-phase).
     "unless the operator asks for a worktree (v43)",
@@ -658,9 +694,10 @@ assert "the one design tool, `drafter`" in claude
 # v47 (P26.S4): the installer's closing banner names the file loop and the drafter; P36.S1: one tool,
 # no claude-design and no register hook.
 banner = next(ln for ln in (root / "installer/main.py").read_text().splitlines() if "Visual design:" in ln)
-for required in ("design-drafter", "docs/reference/design/"):
+# P36.S6: the banner names the critic and the canvas Artifact; the numbered cards are gone.
+for required in ("design-drafter", "docs/reference/design/", "design-critic", "Design canvas Artifact"):
     assert required in banner, required
-for gone in ("claude-design", "design-register", "DesignSync", "dashboard"):
+for gone in ("claude-design", "design-register", "DesignSync", "dashboard", "numbered cards"):
     assert gone not in banner, gone
 # v35 negatives: the pre-v35 read order and the append-only notebook verb are gone.
 for gone in ("for the fullstack doc set", "appends phase notes/doc impact",
@@ -674,7 +711,7 @@ for gone in ("design exception", "never approval", "no other pending gate"):
 for gone in ("Codex", "AGENTS.md", ".agents/", ".codex/"):
     assert gone not in claude, gone
 PY
-then ok "18 Claude skills and their invocation metadata; the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, mockups on request, numbered cards, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
+then ok "18 Claude skills and their invocation metadata; the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with waves and opt-in critique, mockups on request, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="

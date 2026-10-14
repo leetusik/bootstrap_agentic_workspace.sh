@@ -172,7 +172,7 @@ Then review the changed boards in depth, and make one look across all boards for
 - each standoff;
 - at pass 03, every must-fix still open.
 
-**Repeats.** Count the must-fixes you raised last pass that stand unchanged on a board the drafter did not change, or with a rebuttal you already upheld. The orchestrator ends the loop early when the same findings repeat.
+**Repeats.** Count the must-fixes you raised last pass that stand unchanged on a board the drafter did not change, or with a rebuttal you already upheld. Never count an item the judge ruled on since your last pass: the drafter held it for that ruling. The orchestrator ends the loop early when the same findings repeat.
 
 ## Judge mode
 
