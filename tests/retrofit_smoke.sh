@@ -23,7 +23,8 @@
 # on a dirty tree commits only the phase folder plus the regenerated works/ files and cuts a
 # nested .claude/worktrees/ checkout hidden by the repo's info/exclude; parallel-skip and
 # new-phase --on-main are no-ops that stamp nothing), the design-contract invariants on schema 2
-# (P36.S3: one job per co-work slice and one open round per project; design-check names a missing
+# (P36.S3; P36.S5C: several jobs per co-work slice, one open round per job, --new-job / --job, a per-round
+# critique level and design-check's size warning; design-check names a missing
 # board, a missing support line, a .. reference and a title gap in a canvas tree; design-canvas,
 # design-system and the read-only design-publish-plan; P36.S4: design-preview with no browser is an honest skip
 # that writes nothing, with --click too (P36.S5A); design-close snapshots byte-identical, signs the
@@ -1701,7 +1702,7 @@ if ( cd "$W" && python3 scripts/workflow.py parallel-start P2 2>&1 | grep -q "le
   || bad "merge, merge-finish or teardown failed"
 
 # ---------------------------------------------------------------------------
-echo "== Test 13: schema-2 design record -- design-open makes a job and refuses a second open round, design-check names a missing board, a missing support line, a .. reference and a title gap, design-canvas / design-system / design-publish-plan, design-preview skips honestly without a browser, design-close snapshots and signs, a superseded round's slice reuses its job, design-migrate --to 2; claude-design/ is skipped, the pre-v47 design-migrate, design-register is gone =="
+echo "== Test 13: schema-2 design record -- design-open makes a job and refuses a second open round of it, a wave of several jobs in one slice (--new-job / --job, --critique, size warnings), design-check names a missing board, a missing support line, a .. reference and a title gap, design-canvas / design-system / design-publish-plan, design-preview skips honestly without a browser, design-close snapshots and signs, a superseded round's slice reuses its job, design-migrate --to 2; claude-design/ is skipped, the pre-v47 design-migrate, design-register is gone =="
 # Runs in the fresh workspace $F.
 newtmp DZ
 DR="$F/docs/reference/design"
@@ -1709,14 +1710,15 @@ JD="$DR/jobs/01-signin"
 CP="$JD/canvas/project"
 dw() { ( cd "$F" && python3 scripts/workflow.py "$@" ); }
 tree_sig() { ( cd "${1:-$DR}" && find . -type f | LC_ALL=C sort | while read -r f; do printf '%s %s\n' "$f" "$(sha "$f")"; done ); }
-# 1. One job per co-work slice; at most one open round per project.
+# 1. The slice's first round creates its job; at most one open round per job (P36.S5C: per job, not per project).
 dw design-init --id smoke-design --name "Smoke design" >/dev/null 2>&1 || bad "design probe: design-init failed"
 open_out=$(dw design-open --slug signin --slice P9.S1 2>&1); open_rc=$?
-out=$(dw design-open --slug other --slice P9.S2 2>&1); rc=$?
+out=$(dw design-open --slug other --slice P9.S1 2>&1); rc=$?
 if [ "$open_rc" -eq 0 ] && [ -f "$JD/job.json" ] && [ -f "$JD/rounds/01-signin/round.json" ] \
-    && [ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -Fq 'refused -- 01-signin/01-signin is open' && [ ! -e "$DR/jobs/02-other" ]; then
-  ok "design-open creates job 01-signin with round 01-signin, and a second design-open while it is open refuses and creates nothing"
-else bad "design-open did not create the job and round, or a second open was not refused (rc=$open_rc/$rc) -- $open_out $out"; fi
+    && [ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -Fq 'refused -- 01-signin/01-signin is open' \
+    && [ ! -e "$JD/rounds/02-other" ] && [ ! -e "$DR/jobs/02-other" ]; then
+  ok "design-open creates job 01-signin with round 01-signin, and a second round of the same job while one is open refuses and creates nothing"
+else bad "design-open did not create the job and round, or a second round of the open job was not refused (rc=$open_rc/$rc) -- $open_out $out"; fi
 # 2. A minimal valid canvas tree passes; one broken variant names each kind of break.
 python3 - "$JD" <<'CANVAS' || bad "design probe: could not write the canvas tree"
 import json, pathlib, sys
@@ -1908,6 +1910,50 @@ if [ "$rc" -eq 0 ] && [ "$(ls -A "$SD" | tr '\n' ' ')" = "design.json schema1 " 
     && sw design-check >/dev/null 2>&1; then
   ok "design-migrate --to 2 --apply moves cards/, tokens.css and rounds/ under schema1/ byte-identical, rewrites design.json to schema 2, and design-check passes after"
 else bad "design-migrate --to 2 lost, changed or left an entry, or did not rewrite design.json (rc=$rc) -- $out"; fi
+
+# 6. P36.S5C: a wave -- several jobs in one co-work slice, each with its own open round, and a critique level per round.
+WV="$DZ/wave"; WR="$WV/docs/reference/design"
+mkdir -p "$WV/scripts" && cp "$F/scripts/workflow.py" "$WV/scripts/"
+ww() { ( cd "$WV" && HOME="$DZ/home" python3 scripts/workflow.py "$@" ); }
+ww design-init --id wave >/dev/null 2>&1 || bad "wave probe: design-init failed"
+a_out=$(ww design-open --slug checkout --slice P9.S4 --critique critic 2>&1); a_rc=$?
+b_out=$(ww design-open --slug settings --slice P9.S4 --new-job 2>&1); b_rc=$?
+bad_out=$(ww design-open --slug loud --slice P9.S4 --new-job --critique judge 2>&1); bad_rc=$?
+printf '# handoff\n\ncritique: critic\n' > "$WR/jobs/01-checkout/rounds/01-checkout/handoff.md"
+printf '# handoff\n\ncritique: off\n' > "$WR/jobs/02-settings/rounds/01-settings/handoff.md"
+chk=$(ww design-check 2>&1); chk_rc=$?
+if [ "$a_rc" -eq 0 ] && [ "$b_rc" -eq 0 ] && [ -f "$WR/jobs/02-settings/rounds/01-settings/round.json" ] \
+    && python3 -c 'import json, sys; assert [json.load(open(p)).get("critique") for p in sys.argv[1:]] == ["critic", "off"]' \
+         "$WR/jobs/01-checkout/rounds/01-checkout/round.json" "$WR/jobs/02-settings/rounds/01-settings/round.json" \
+    && [ "$bad_rc" -ne 0 ] && printf '%s\n' "$bad_out" | grep -Fq -e "--critique 'judge' is not one of off, critic, critic+judge" \
+    && [ ! -e "$WR/jobs/03-loud" ] \
+    && [ "$chk_rc" -eq 0 ] && printf '%s\n' "$chk" | grep -Fq 'open rounds: 01-checkout/01-checkout, 02-settings/01-settings'; then
+  ok "--new-job opens a second job's round in the same slice and design-check passes with both open; --critique critic is stored, a bad level is refused and creates nothing"
+else bad "the wave's second job, the critique level or design-check with two open rounds failed (rc=$a_rc/$b_rc/$bad_rc/$chk_rc) -- $a_out $b_out $bad_out $chk"; fi
+bare=$(ww design-open --slug again --slice P9.S4 2>&1); bare_rc=$?
+{ ww design-close 02-settings/01-settings --superseded \
+    && ww design-open --slug settings-v2 --slice P9.S4 --job 02-settings; } >/dev/null 2>&1; job_rc=$?
+if [ "$bare_rc" -ne 0 ] && printf '%s\n' "$bare" | grep -Fq 'P9.S4 has 2 jobs (01-checkout, 02-settings); name the one this round belongs to with --job <job>' \
+    && [ "$job_rc" -eq 0 ] && [ ! -e "$WR/jobs/03-again" ] \
+    && python3 -c 'import json, sys; d = json.load(open(sys.argv[1])); assert d["status"] == "open" and d["supersedes"] == ["01-settings"] and d["critique"] == "off", d' \
+         "$WR/jobs/02-settings/rounds/02-settings-v2/round.json"; then
+  ok "a bare design-open in a slice with two jobs refuses and asks for --job, and --job opens the job's next round after a close"
+else bad "the bare design-open was not refused, or --job did not open the superseding round (rc=$bare_rc/$job_rc) -- $bare"; fi
+printf '# handoff\n' > "$WR/jobs/02-settings/rounds/02-settings-v2/handoff.md"
+python3 - "$WR/jobs/02-settings/canvas/project" <<'PAGES' || bad "wave probe: could not write the seven-Page canvas"
+import json, pathlib, sys
+project = pathlib.Path(sys.argv[1]); project.mkdir(parents=True, exist_ok=True)
+names = ["Main"] + [f"Step{n}" for n in range(2, 8)]
+boards = {f"{n}.dc.html": {"x": i * 1500, "y": 0, "w": 1440, "h": 900, "title": f"{i + 1:02d} · {n}", "expand": "fill"}
+          for i, n in enumerate(names)}
+(project / "canvas.json").write_text(json.dumps({"v": 3, "createdOnFiles": {"v": 1}, "boards": boards, "order": list(boards)}))
+for name in boards:
+    (project / name).write_text('<!doctype html>\n<script src="./support.js"></script>\n<p>page</p>\n')
+PAGES
+out=$(ww design-check 2>&1); rc=$?
+[ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -Fq 'warning: job 02-settings has 7 Pages / 7 boards — too big for one review; split it into jobs by surface' \
+  && ok "a job past the size threshold (7 Pages) makes design-check warn, exit 0" \
+  || bad "design-check did not warn on a seven-Page job, or failed on it (rc=$rc) -- $out"
 
 # ---------------------------------------------------------------------------
 echo "== Test 14: P28 nested engine -- workflow/.agentic-nested.json: host anchors, host-side phase-scope, the paired worktree lifecycle, the convention gate, the agent rename map, a malformed marker fails validate =="

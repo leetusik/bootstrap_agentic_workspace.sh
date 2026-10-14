@@ -4967,6 +4967,17 @@ DESIGN_JOB_KEYS = ("schema", "job", "slice", "title", "canvas", "status")
 DESIGN_JOB_CANVAS_KEYS = ("url", "version", "published")
 DESIGN_ROUND_KEYS = ("schema", "round", "title", "slice", "status", "opened_at", "closed_at",
                      "supersedes", "signoff_words", "canvas_version")
+# Optional round.json keys: `critique`, the round's critique level (design-open --critique). A round
+# written before waves (P36.S5C) has none, and it reads as "off".
+DESIGN_ROUND_OPTIONAL_KEYS = ("critique",)
+DESIGN_CRITIQUE_LEVELS = ("off", "critic", "critic+judge")
+# A wave: one co-work slice holds several jobs (about 3-4), each with its own open round, drafted in
+# parallel. design-open warns past DESIGN_WAVE_OPEN_MAX open rounds in one slice; never a refusal.
+DESIGN_WAVE_OPEN_MAX = 4
+# One job is one surface, sized for one review sitting: design-check warns when an open job's canvas
+# holds more than DESIGN_JOB_PAGES_MAX Pages (boards with expand: "fill") or DESIGN_JOB_BOARDS_MAX boards.
+DESIGN_JOB_PAGES_MAX = 6
+DESIGN_JOB_BOARDS_MAX = 16
 # The keys the Design canvas type requires of project/canvas.json (its index).
 DESIGN_CANVAS_INDEX_KEYS = ("v", "boards", "order", "createdOnFiles")
 DESIGN_SLUG = r"[a-z0-9]+(?:-[a-z0-9]+)*"
@@ -5158,7 +5169,7 @@ def design_round_problems(rid: str, data, rdir: Path) -> list:
     if not isinstance(data, dict):
         return ["round.json is not a JSON object"]
     missing = [k for k in DESIGN_ROUND_KEYS if k not in data]
-    extra = sorted(set(data) - set(DESIGN_ROUND_KEYS))
+    extra = sorted(set(data) - set(DESIGN_ROUND_KEYS) - set(DESIGN_ROUND_OPTIONAL_KEYS))
     problems = []
     if missing:
         problems.append(f"round.json: missing field(s) {', '.join(missing)}")
@@ -5197,6 +5208,8 @@ def design_round_problems(rid: str, data, rdir: Path) -> list:
     sup = data["supersedes"]
     if not (isinstance(sup, list) and all(isinstance(s, str) and DESIGN_NN_RE.match(s) for s in sup)):
         problems.append("round.json: supersedes must be a list of round ids (NN-slug)")
+    if "critique" in data and data["critique"] not in DESIGN_CRITIQUE_LEVELS:
+        problems.append(f"round.json: critique {data['critique']!r} is not one of {', '.join(DESIGN_CRITIQUE_LEVELS)} (absent reads as off)")
     if not (rdir / "handoff.md").exists():
         problems.append("handoff.md missing (every round has its brief)")
     if status == "signed" and not (rdir / "SIGNOFF.md").exists():
@@ -5247,16 +5260,17 @@ def design_reference_problems(text: str, rel: str) -> list:
 
 
 def design_canvas_problems(project: Path, system: dict) -> tuple:
-    """(problems, warnings, board count) for one job's canvas tree, each path under project/."""
+    """(problems, warnings, board count, Page count) for one job's canvas tree, each path under
+    project/. A Page is a board with expand: "fill"."""
     files = design_tree_files(project)
     if "canvas.json" not in files:
-        return ["canvas.json missing (the canvas index: v, boards, order, createdOnFiles)"], [], 0
+        return ["canvas.json missing (the canvas index: v, boards, order, createdOnFiles)"], [], 0, 0
     try:
         index = read_json(project / "canvas.json")
     except (ValueError, OSError) as exc:
-        return [f"canvas.json is not valid JSON: {exc}"], [], 0
+        return [f"canvas.json is not valid JSON: {exc}"], [], 0, 0
     if not isinstance(index, dict):
-        return ["canvas.json is not a JSON object"], [], 0
+        return ["canvas.json is not a JSON object"], [], 0, 0
     problems, warnings = [], []
     missing = [k for k in DESIGN_CANVAS_INDEX_KEYS if k not in index]
     if missing:
@@ -5329,14 +5343,15 @@ def design_canvas_problems(project: Path, system: dict) -> tuple:
                 name = rec.get("namespace") if isinstance(rec, dict) else rec
                 warnings.append(f"canvas.json: designSystems {name!r} pins version {pinned!r}, but design.json's system is "
                                 f"{system['version']!r} (reinstall when the round changes the look)")
-    return problems, warnings, len(boards)
+    pages = sum(1 for board in boards.values() if isinstance(board, dict) and board.get("expand") == "fill")
+    return problems, warnings, len(boards), pages
 
 
 def design_read_job(entry: Path, number: int, system: dict) -> dict:
     """One job folder: job.json, its rounds and its canvas tree, each with its own problems."""
     rel = f"jobs/{entry.name}"
     job = {"id": entry.name, "number": number, "path": entry, "data": None, "rounds": [],
-           "problems": [], "warnings": [], "boards": 0, "drafted": False}
+           "problems": [], "warnings": [], "boards": 0, "pages": 0, "drafted": False}
     problems = job["problems"]
     jpath = entry / "job.json"
     if not jpath.is_file():
@@ -5390,14 +5405,20 @@ def design_read_job(entry: Path, number: int, system: dict) -> dict:
         for sid in (rnd["data"] or {}).get("supersedes", []):
             if known.get(sid, rnd["number"]) >= rnd["number"]:
                 problems.append(f"{rel}/rounds/{rnd['id']}: supersedes {sid!r}, which is not an earlier round of this job")
-    if job["data"] and job["data"]["status"] != "open" and any(r["data"] and r["data"]["status"] == "open" for r in job["rounds"]):
+    opened = [r["id"] for r in job["rounds"] if r["data"] and r["data"]["status"] == "open"]
+    if len(opened) > 1:  # several jobs may be open at once (a wave), but one job has one open round
+        problems.append(f"{rel}: more than one open round: {', '.join(opened)} (at most one round is open per job)")
+    if job["data"] and job["data"]["status"] != "open" and opened:
         problems.append(f"{rel}: job.json status is {job['data']['status']} but a round is open (an open round belongs to an open job)")
     project = entry / "canvas" / "project"
     if project.is_dir():
         job["drafted"] = True
-        found, warned, job["boards"] = design_canvas_problems(project, system)
+        found, warned, job["boards"], job["pages"] = design_canvas_problems(project, system)
         problems.extend(f"{rel}/canvas/project/{p}" if not p.startswith("gap ") else f"{rel}: {p}" for p in found)
         job["warnings"].extend(f"{rel}/canvas/project/{w}" for w in warned)
+        if (job["data"] or {}).get("status") == "open" and (job["pages"] > DESIGN_JOB_PAGES_MAX or job["boards"] > DESIGN_JOB_BOARDS_MAX):
+            job["warnings"].append(f"job {entry.name} has {job['pages']} Pages / {job['boards']} boards — too big for one review; "
+                                   "split it into jobs by surface")
     elif job["data"] and job["data"]["status"] != "open":
         problems.append(f"{rel}: a {job['data']['status']} job has no canvas tree (canvas/project/)")
     return job
@@ -5462,15 +5483,7 @@ def design_scan(root: Path, only: str = None) -> dict:
         warnings.extend(job["warnings"])
     problems.extend(f"gap in the job numbering: no job numbered {n:02d}"
                     for n in range(1, max(jnumbers, default=0) + 1) if n not in jnumbers)
-    slices: dict = {}
-    for job in scan["jobs"]:
-        if job["data"]:
-            slices.setdefault(job["data"]["slice"], []).append(job["id"])
-    problems.extend(f"jobs {', '.join(ids)} all belong to {sid} (one job per co-work slice)"
-                    for sid, ids in sorted(slices.items()) if len(ids) > 1)
-    opened = design_open_rounds(scan)
-    if len(opened) > 1:
-        problems.append(f"more than one open round: {', '.join(design_address(j, r) for j, r in opened)} (at most one round is open per project)")
+    # A co-work slice may hold several jobs (a wave), each with at most one open round (design_read_job).
     # Parts that are not schema 2: a pre-v47 record, and a schema-1 record left outside schema1/.
     if hint:
         problems.append(f"pre-v47 parts at the root; {hint}")
@@ -5517,7 +5530,7 @@ def design_check(args: argparse.Namespace) -> int:
     jobs = [j for j in scan["jobs"] if args.job is None or j["id"] == args.job]
     opened = [design_address(j, r) for j, r in design_open_rounds(scan) if j in jobs]
     print(f"design-check: OK -- {len(jobs)} job(s), {sum(len(j['rounds']) for j in jobs)} round(s), "
-          f"{sum(j['boards'] for j in jobs)} board(s), open round: {opened[0] if opened else 'none'}"
+          f"{sum(j['boards'] for j in jobs)} board(s), open rounds: {', '.join(opened) if opened else 'none'}"
           + (f", {len(warnings)} warning(s)" if warnings else ""))
     return 0
 
@@ -5626,6 +5639,35 @@ def design_system(args: argparse.Namespace) -> None:
     print(json.dumps(system, ensure_ascii=False, indent=2))
 
 
+def design_open_target(scan: dict, args: argparse.Namespace):
+    """The job a design-open opens its round in, or None for a new job. A slice may hold several
+    jobs (a wave): --job names one of them, --new-job asks for another, and with neither the slice's
+    only job is reused (its first round creates it). Returns (job, note): note says why a --new-job
+    resumes an existing job (a half-landed open, or a re-run)."""
+    mine = [j for j in scan["jobs"] if j["data"]["slice"] == args.slice]
+    if args.job is not None:
+        job = next((j for j in scan["jobs"] if j["id"] == args.job), None)
+        if job is None:
+            raise SystemExit(f"design-open: no job {args.job!r} under {DESIGN_ROOT_SHOWN}/jobs/"
+                             + (f" ({args.slice} has {', '.join(j['id'] for j in mine)})" if mine else ""))
+        if job["data"]["slice"] != args.slice:
+            raise SystemExit(f"design-open: refused -- job {args.job} belongs to {job['data']['slice']}, not {args.slice}")
+        return job
+    if args.new_job:
+        same = [j for j in mine if j["id"].split("-", 1)[1] == args.slug]
+        if not same:
+            return None
+        job = same[-1]
+        if job["rounds"] and not any(r["data"]["status"] == "open" and r["id"].split("-", 1)[1] == args.slug for r in job["rounds"]):
+            raise SystemExit(f"design-open: refused -- {args.slice} already has job {job['id']}; open its next round with "
+                             f"--job {job['id']}, or give the new job another --slug")
+        return job  # a re-run (its round is open: nothing written) or a half-landed open (no round yet)
+    if len(mine) > 1:
+        raise SystemExit(f"design-open: refused -- {args.slice} has {len(mine)} jobs ({', '.join(j['id'] for j in mine)}); "
+                         f"name the one this round belongs to with --job <job>, or pass --new-job for another")
+    return mine[0] if mine else None
+
+
 def design_open(args: argparse.Namespace) -> None:
     root = design_root()
     scan = design_scan(root)
@@ -5634,25 +5676,28 @@ def design_open(args: argparse.Namespace) -> None:
         raise SystemExit(f"design-open: --slug {args.slug!r} is not lowercase words joined by hyphens")
     if not DESIGN_SLICE_RE.match(args.slice):
         raise SystemExit(f"design-open: --slice {args.slice!r} is not a slice id (P<N>.<ID>)")
+    if args.critique not in DESIGN_CRITIQUE_LEVELS:
+        raise SystemExit(f"design-open: --critique {args.critique!r} is not one of {', '.join(DESIGN_CRITIQUE_LEVELS)}")
     broken = [f"jobs/{j['id']}" for j in scan["jobs"] if j["data"] is None]
     broken += [f"jobs/{j['id']}/rounds/{r['id']}" for j in scan["jobs"] for r in j["rounds"] if r["data"] is None]
     if broken:
         raise SystemExit(f"design-open: refused -- {', '.join(broken)} have no well-formed job.json / round.json (run design-check)")
-    job = next((j for j in scan["jobs"] if j["data"]["slice"] == args.slice), None)
-    opened = design_open_rounds(scan)
-    for ojob, rnd in opened:
-        if ojob is job and rnd["id"].split("-", 1)[1] == args.slug:
-            print(f"design-open: {design_address(ojob, rnd)} is already open for {args.slice} (nothing written)")
+    job = design_open_target(scan, args)
+    # One open round per job; other jobs' rounds (the rest of a wave) may be open at the same time.
+    opened = [r for r in (job or {}).get("rounds", []) if r["data"]["status"] == "open"]
+    for rnd in opened:
+        if rnd["id"].split("-", 1)[1] == args.slug:
+            print(f"design-open: {design_address(job, rnd)} is already open for {args.slice} (nothing written)")
             return
     if opened:
-        address = design_address(*opened[0])
+        address = design_address(job, opened[0])
         raise SystemExit(f"design-open: refused -- {address} is open; close it first "
                          f"(design-close {address} --words \"…\" when signed, --superseded when a design question replaces it)")
     if job is not None and job["data"]["status"] == "implemented":
         raise SystemExit(f"design-open: refused -- job {job['id']} of {args.slice} is implemented (built, its canvas history); "
-                         f"new design work is a new co-work slice, so a new job")
+                         f"new design work is a new job (--new-job, or a new co-work slice)")
     title = args.title or args.slug.replace("-", " ")
-    if job is None:  # the slice's first round: its job, written before the round so a half-landed open resumes
+    if job is None:  # a new job: written before its round so a half-landed open resumes
         number = max((j["number"] for j in scan["jobs"]), default=0) + 1
         jid = f"{number:02d}-{args.slug}"
         jdata = {"schema": DESIGN_SCHEMA, "job": jid, "slice": args.slice, "title": title,
@@ -5668,13 +5713,18 @@ def design_open(args: argparse.Namespace) -> None:
     data = {
         "schema": DESIGN_SCHEMA, "round": rid, "title": title, "slice": args.slice, "status": "open",
         "opened_at": now_iso(), "closed_at": None, "supersedes": [rounds[-1]["id"]] if rounds else [],
-        "signoff_words": None, "canvas_version": None,
+        "signoff_words": None, "canvas_version": None, "critique": args.critique,
     }
     write_json(job["path"] / "rounds" / rid / "round.json", data)
     print(f"design-open: opened {DESIGN_ROOT_SHOWN}/jobs/{job['id']}/rounds/{rid}/ for {args.slice}"
-          + (f" (supersedes {rounds[-1]['id']})" if rounds else ""))
-    print(f"next: write jobs/{job['id']}/rounds/{rid}/handoff.md; the drafter writes the canvas tree in "
-          f"jobs/{job['id']}/canvas/project/; close with design-close {job['id']}/{rid}")
+          + (f" (supersedes {rounds[-1]['id']})" if rounds else "") + f", critique {args.critique}")
+    print(f"next: write jobs/{job['id']}/rounds/{rid}/handoff.md (with the line critique: {args.critique}); the drafter writes "
+          f"the canvas tree in jobs/{job['id']}/canvas/project/; close with design-close {job['id']}/{rid}")
+    wave = [design_address(j, r) for j, r in design_open_rounds(scan)
+            if j["data"]["slice"] == args.slice and j["id"] != job["id"]] + [f"{job['id']}/{rid}"]
+    if len(wave) > DESIGN_WAVE_OPEN_MAX:
+        print(f"design-open: warning: {args.slice} now has {len(wave)} open rounds ({', '.join(wave)}) -- a wave is about "
+              f"3-4 jobs; consider drafting the rest in a later wave")
 
 
 def design_find_round(scan: dict, ref: str) -> tuple:
@@ -5739,7 +5789,7 @@ def design_close(args: argparse.Namespace) -> None:
         write_json(job["path"] / "job.json", dict(jdata, status="signed"))
     print(f"design-close: {address} {status} -- {len(files)} file(s) snapshotted to "
           f"{DESIGN_ROOT_SHOWN}/jobs/{job['id']}/rounds/{rnd['id']}/canvas/project/, canvas_version {version or 'null'}"
-          + (f"; job {job['id']} signed" if status == "signed" else "; the slice's next round supersedes it"))
+          + (f"; job {job['id']} signed" if status == "signed" else "; the job's next round supersedes it"))
 
 
 def design_canvas(args: argparse.Namespace) -> None:
@@ -7129,15 +7179,19 @@ def main(argv=None) -> int:
     p.add_argument("--files", default=None, help="comma-separated system files a canvas installs (replaces the recorded list)")
     p.set_defaults(func=design_system)
 
-    p = sub.add_parser("design-open", help=f"Open the next design round of a co-work slice's job: {DESIGN_ROOT_REL}/jobs/NN-<slug>/ (job.json, created on the slice's first round and reused after) and jobs/<job>/rounds/NN-<slug>/round.json, status open; refuses while any round is open",
-                       description="One job per co-work slice: the slice's first round creates its job (numbered after the highest job), later rounds reuse it and supersede the job's previous round (a signed job is reopened; an implemented one refuses). Rounds number inside the job; at most one round is open per project. The orchestrator writes the round's handoff.md next; the drafter writes the canvas tree in jobs/<job>/canvas/project/.")
-    p.add_argument("--slug", required=True, help="the round's slug (and the job's, on the slice's first round): lowercase words joined by hyphens")
+    p = sub.add_parser("design-open", help=f"Open the next design round of a job in a co-work slice: {DESIGN_ROOT_REL}/jobs/NN-<slug>/ (job.json, created on the slice's first round, or by --new-job for another job of the slice) and jobs/<job>/rounds/NN-<slug>/round.json, status open, with its critique level; refuses only while the target job has an open round",
+                       description=f"A co-work slice holds one job or several (a wave, about 3-4, drafted in parallel), each with at most one open round; rounds of different jobs may be open at once. The target: with neither flag, the slice's only job (its first round creates it; two or more jobs refuse and ask for --job); --new-job creates another job for the slice (re-running it with the same --slug resumes that job); --job <job> opens the next round of that job, which must belong to --slice. A later round supersedes the job's previous one (a signed job is reopened; an implemented one refuses). Rounds number inside the job. Re-running an open with the open round's slug writes nothing. --critique records the round's critique level in round.json (absent in an older round reads as off). More than {DESIGN_WAVE_OPEN_MAX} open rounds in one slice prints a warning, never a refusal. The orchestrator writes the round's handoff.md next (with a critique: line); the drafter writes the canvas tree in jobs/<job>/canvas/project/.")
+    p.add_argument("--slug", required=True, help="the round's slug (and the job's, when the round creates its job): lowercase words joined by hyphens")
     p.add_argument("--slice", required=True, help="the co-work slice that owns the job (e.g. P48.S1)")
     p.add_argument("--title", default=None, help="display title (default: the slug)")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--new-job", action="store_true", help="create another job for a slice that already has one (a wave's next surface)")
+    g.add_argument("--job", default=None, help="open the next round of this job (e.g. 02-settings); it must belong to --slice")
+    p.add_argument("--critique", default="off", metavar="{" + ",".join(DESIGN_CRITIQUE_LEVELS) + "}", help=f"the round's critique level: {' | '.join(DESIGN_CRITIQUE_LEVELS)} (default off)")
     p.set_defaults(func=design_open)
 
-    p = sub.add_parser("design-check", help=f"Check {DESIGN_ROOT_REL}/ against the design contract -- well-formed design.json, job.json and round.json, one open round at most, and each job's canvas tree (canvas.json keys, boards listed and present, Main.dc.html, path rules, the ./support.js line, board titles numbered 01..N, references inside project/), no stray HTML; warnings exit 0, problems exit 1",
-                       description=f"Read-only. With a job id, only design.json and that job. Board titles start \"NN · \" with NN forming 01..N as a set (the layout is free). A canvas pinning another system version than design.json's is a warning. {DESIGN_LEGACY_DIR}/ and {DESIGN_SCHEMA1_DIR}/ are legacy records and never read.")
+    p = sub.add_parser("design-check", help=f"Check {DESIGN_ROOT_REL}/ against the design contract -- well-formed design.json, job.json and round.json (a critique level, when present, is off, critic or critic+judge), at most one open round per job, and each job's canvas tree (canvas.json keys, boards listed and present, Main.dc.html, path rules, the ./support.js line, board titles numbered 01..N, references inside project/), no stray HTML; warnings exit 0, problems exit 1",
+                       description=f"Read-only. With a job id, only design.json and that job. Board titles start \"NN · \" with NN forming 01..N as a set (the layout is free). A canvas pinning another system version than design.json's is a warning, and so is an open job past {DESIGN_JOB_PAGES_MAX} Pages (boards with expand: fill) or {DESIGN_JOB_BOARDS_MAX} boards (one job is one surface, sized for one review). A co-work slice may hold several jobs. The OK line lists every open round. {DESIGN_LEGACY_DIR}/ and {DESIGN_SCHEMA1_DIR}/ are legacy records and never read.")
     p.add_argument("job", nargs="?", default=None, help="a job id, e.g. 01-signin (default: every job)")
     p.set_defaults(func=design_check)
 
@@ -7175,7 +7229,7 @@ def main(argv=None) -> int:
     p.add_argument("--click", action="store_true", help=f"also click through: print the link graph (link from= to= lines; a PAGE no link chain from Main.dc.html reaches is an issue) and, on each is_interactive board, click every control breadth first and screenshot each new state (state lines, <stem>.frame.state-NN.png), at most {DESIGN_PREVIEW_STATES} states, {DESIGN_PREVIEW_DEPTH} clicks deep, {DESIGN_PREVIEW_CLICKS} clicks and {DESIGN_PREVIEW_BOARD_SECONDS}s per board, in the frame view only")
     p.set_defaults(func=design_preview)
 
-    p = sub.add_parser("design-close", help="Close the open design round: snapshot the job's canvas tree (ds/ left out) into the round folder, record canvas_version, then with --words mark the round and its job signed, or with --superseded mark the round superseded; idempotent",
+    p = sub.add_parser("design-close", help="Close an open design round of a job: snapshot the job's canvas tree (ds/ left out) into the round folder, record canvas_version, then with --words mark the round and its job signed, or with --superseded mark the round superseded; idempotent",
                        description="--words needs jobs/<job>/rounds/<round>/SIGNOFF.md written first and a passing design-check of the job. --canvas-version defaults to the job's recorded canvas.version. Re-run a half-landed close; a closed round is never rewritten.")
     p.add_argument("round", help="the round: <job>/<round> (e.g. 01-signin/02-revise), or the bare round id when only one job has it")
     g = p.add_mutually_exclusive_group(required=True)
