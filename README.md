@@ -331,8 +331,9 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 
 | 행(route) | 기본값 | 실행 에이전트 | 맡는 일 |
 |---|---|---|---|
-| `high` | Opus@high | `slice-executor-high` | 일 나누기(`DECOMP`), 최종 리뷰(`REVIEW`), 이유를 적어 `risk: high`로 매긴 slice, 그리고 두 번째 시도(에스컬레이션, `mid`가 한 번 실패한 일). 디자인 하위 에이전트 `design-drafter`도 이 행을 따름 |
+| `high` | Opus@high | `slice-executor-high` | 일 나누기(`DECOMP`), 최종 리뷰(`REVIEW`), 이유를 적어 `risk: high`로 매긴 slice, 그리고 두 번째 시도(에스컬레이션, `mid`가 한 번 실패한 일). |
 | `research` | Opus@medium | `slice-executor-high` | 조사(`research`) slice |
+| `design` | Opus@xhigh | `design-drafter` | 디자인 하위 에이전트의 라운드 초안(`executor-route --drafter`). slice 티어가 아니며 `high` 행을 따르지 않음 |
 | `mid` | Sonnet@high | `slice-executor-mid` | 기본 — `risk: low`인 구현·수정(`fix`) slice. 실제 코드 작성과 여러 파일에 걸친 변경도 포함 |
 | `cheap` | `mid` 행을 상속(이 저장소: Haiku@high) | `slice-executor-mid` | `risk: low`인 문서(`docs`)·QA slice — 싼 경로. 설정하지 않으면 `mid` 행과 같음 |
 | `explore` | Haiku@high | `Explore` | 읽기 전용 조회(계획 조사, 실행자의 큰 읽기). slice 라우트는 아님 |

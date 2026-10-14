@@ -105,7 +105,7 @@ always.
 
 ## Shape — three styles
 
-- **The design slice:** `--kind co-work --risk high`. Never `low` — the slice runs inline, and its dispatched spans run on the route table's high row: the drafting on `design-drafter` (`executor-route --drafter`) and the mockup, when one was requested, on `slice-executor-high`, because it is the operator's approval surface.
+- **The design slice:** `--kind co-work --risk high`. Never `low` — the slice runs inline, and its dispatched spans run high: the drafting on `design-drafter`, on the route table's own design row (`executor-route --drafter`), and the mockup, when one was requested, on `slice-executor-high` (the high row), because it is the operator's approval surface.
 - **A design slice writes no *product* implementation code.** It ends at SIGNOFF, and **the real
   implementation is always its own slice.** The only code that can exist inside it is a mockup —
   throwaway, stubbed, dispatched, and built only when the operator asked for one (*The mockup*, below).
@@ -624,10 +624,10 @@ Then `finish-slice` and the last commit — the second, or with a mockup the thi
   task (never pass `run_in_background: false`), one at a time like any executor. The prompt carries
   **only** the round folder (`docs/reference/design/rounds/<NN-slug>/`) and the `co-work` slice id: the
   drafter reads `handoff.md`, the system and the prior rounds itself, so paste none of them. It runs on
-  the route table's high row and is not a tier of its own: pass the `model` / `effort` that
+  the route table's own design row (`[claude.design]`) and is not a tier: pass the `model` / `effort` that
   `executor-route --drafter` prints on the Agent call, pin nothing in the round folder (the design
   record is the operator's), and record its return with `record-dispatch <slice_id> --agent
-  design-drafter --route high …` like every executor return. It returns a verdict
+  design-drafter --route design --tier - …` like every executor return. It returns a verdict
   block — `status` (`done | needs_operator | blocked`), `round`, `cards_written`, `tokens_changed`,
   `frontend_design`, `departures`, `design_check`, `open_questions`, `blocker` — and commits nothing.
 - **Who writes what under `docs/reference/design/`.** You: `handoff.md`, `feedback.md`, `SIGNOFF.md`,

@@ -13,9 +13,11 @@
 #
 # The rows (default; what each serves):
 #   high      opus @ high    review, decomposition, the co-work mockup span,
-#                            any risk but low, every second attempt; the
-#                            design-drafter follows it (slice-executor-high)
+#                            any risk but low, every second attempt
+#                            (slice-executor-high)
 #   research  opus @ medium  research slices, by kind (slice-executor-high)
+#   design    opus @ xhigh   design-drafter (its own agent file); not a slice
+#                            tier: executor-route --drafter
 #   mid       sonnet @ high  implementation and fix rated low (slice-executor-mid)
 #   cheap     = the mid row  docs and qa rated low; inherits the mid row unless
 #                            overridden (slice-executor-mid)
@@ -24,7 +26,7 @@
 # Grammar: [claude.<row>] tables holding model = "..." and effort = "...",
 # double-quoted. effort is low, medium, high, xhigh or max, or "" to write no
 # effort line and pass no effort (for a model that rejects the parameter).
-# mid, high and explore own an agent file, so they also take a full model id
+# mid, high, design and explore own an agent file, so they also take a full model id
 # or "inherit"; research and cheap run another row's file, so they take an
 # Agent-tool alias only (opus, sonnet, haiku, fable).
 #
@@ -51,11 +53,14 @@ effort = "high"
 
 # The other rows at their defaults: uncomment and edit to override.
 # [claude.high]
-# model = "opus"    # e.g. "fable"; design-drafter follows this row
+# model = "opus"    # e.g. "fable"
 # effort = "high"
 # [claude.research]
 # model = "opus"
 # effort = "medium"
+# [claude.design]
+# model = "opus"    # design-drafter's own row
+# effort = "xhigh"
 # [claude.mid]
 # model = "sonnet"
 # effort = "high"

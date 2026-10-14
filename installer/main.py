@@ -1393,7 +1393,7 @@ for name in ([] if NESTED else CLAUDE_SKILLS):
 
 # Subagents: full-permission workers that implement one already-planned slice, in two
 # capability tiers picked by the slice's risk (embedded verbatim from the live repo), plus
-# the design subagent that drafts one design round (it follows the high row's model) and the
+# the design subagent that drafts one design round (its own design row, [claude.design]) and the
 # read-only Explore lookup agent (the explore row).
 if not NESTED:
     for tier in ("mid", "high"):

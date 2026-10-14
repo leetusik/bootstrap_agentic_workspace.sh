@@ -308,33 +308,35 @@ RETIRED_EXECUTOR_TIERS = ("low",)  # dropped in workspace v23 — routing is two
 # [claude.<row>] in the repo-root executors.toml. `cheap` has no defaults of its own: it inherits
 # the RESOLVED mid row for every key it does not override, so an unset cheap row is the mid row.
 # `explore` is the read-only lookup agent (.claude/agents/Explore.md), not a slice route.
+# `design` is the design subagent's own row (.claude/agents/design-drafter.md, workspace v60): not a
+# slice tier and never a slice's route -- only `executor-route --drafter` dispatches on it.
 # `research` and `cheap` run another row's agent file (slice-executor-high / -mid) with their model
 # passed per call, and the Agent tool's `model` is an enum, so those two rows take an alias only;
-# a full model id or "inherit" works only on mid, high and explore, whose frontmatter carries it.
+# a full model id or "inherit" works only on mid, high, design and explore, whose frontmatter carries it.
 # effort = "" is the escape hatch for a model that rejects the parameter: no effort line in the
 # agent file and no per-dispatch effort. Rows, never tiers: two tiers stay (EXECUTOR_TIERS), and the
 # cheap row runs the mid file -- which supersedes v46's "haiku is never an executor tier". The
 # named modes of v29-v52 (a top-level `mode` key) are retired; read_executors_toml refuses one.
-EXECUTOR_ROUTES = ("high", "research", "mid", "cheap", "explore")  # print order
+EXECUTOR_ROUTES = ("high", "research", "design", "mid", "cheap", "explore")  # print order
 ROUTE_DEFAULTS = {
     "high": {"model": "opus", "effort": "high"},
     "research": {"model": "opus", "effort": "medium"},
+    "design": {"model": "opus", "effort": "xhigh"},
     "mid": {"model": "sonnet", "effort": "high"},
     "cheap": None,  # inherits the resolved mid row
     "explore": {"model": "haiku", "effort": "high"},
 }
-ROUTE_TIER = {"high": "high", "research": "high", "mid": "mid", "cheap": "mid", "explore": None}
+ROUTE_TIER = {"high": "high", "research": "high", "design": None, "mid": "mid", "cheap": "mid", "explore": None}
 # Rows that own an agent file (sync-agents writes their frontmatter). research and cheap dispatch
-# to another row's file, so their model must be an Agent-tool alias the dispatch can pass.
-ROUTE_AGENT = {"high": "slice-executor-high", "mid": "slice-executor-mid", "explore": "Explore"}
-# The design subagent is not a tier and has no row: it follows the high row's model and effort, so
-# one [claude.high] override governs it too and design work never lands on the mid row.
-DESIGN_DRAFTER_FOLLOWS = "high"
+# to another row's file, so their model must be an Agent-tool alias the dispatch can pass. The
+# design row owns design-drafter: it is not a tier and follows no other row, so one [claude.design]
+# override governs it alone (before v60 it followed the high row).
+ROUTE_AGENT = {"high": "slice-executor-high", "mid": "slice-executor-mid", "design": "design-drafter", "explore": "Explore"}
 # (label, canonical agent name, row) for the four agent files sync-agents manages, in print order.
 MANAGED_AGENT_FILES = (
     ("mid", ROUTE_AGENT["mid"], "mid"),
     ("high", ROUTE_AGENT["high"], "high"),
-    ("design-drafter", "design-drafter", DESIGN_DRAFTER_FOLLOWS),
+    ("design-drafter", ROUTE_AGENT["design"], "design"),
     ("Explore", ROUTE_AGENT["explore"], "explore"),
 )
 AGENT_MODEL_ALIASES = ("opus", "sonnet", "haiku", "fable")  # the Agent tool's `model` enum
@@ -529,8 +531,8 @@ def installed_agent_name(name: str) -> str:
 
 def executor_agent_files(routes: dict) -> list:
     """(label, path, model, effort) for the 4 managed agent files (MANAGED_AGENT_FILES): the two
-    slice-executor tiers from the mid and high rows, design-drafter from the high row (it is not a
-    tier), and Explore from the explore row. research and cheap own no file. Labels stay canonical;
+    slice-executor tiers from the mid and high rows, design-drafter from its own design row (it is
+    not a tier), and Explore from the explore row. research and cheap own no file. Labels stay canonical;
     paths resolve through the nested rename map (`installed_agent_name`)."""
     return [
         (label, CLAUDE_AGENTS / f"{installed_agent_name(agent)}.md", routes[row]["model"], routes[row]["effort"])
@@ -553,6 +555,9 @@ def executor_agent_drift(routes: dict) -> tuple:
 
 
 def sync_agents(args: argparse.Namespace) -> None:
+    """Write the resolved route table into the four managed agent files' model/effort frontmatter:
+    slice-executor-mid/-high from the mid/high rows, design-drafter from the design row, Explore from
+    the explore row (--check: report drift, write nothing, exit 1 when out of sync)."""
     overrides = read_executors_toml()
     routes = resolve_routes(overrides)
     config_present = (ROOT / "executors.toml").exists()
@@ -667,8 +672,8 @@ def _dispatch_lines(row: str, routes: dict, proxy) -> tuple:
 def cmd_executor_route(args: argparse.Namespace) -> None:
     """Print the deterministic routing decision the orchestrator dispatches from, one key=value per
     line: bare, the resolved route table and the agent files' sync state; with a slice id, that
-    slice's route (--retry: its second attempt); --drafter / --explore, the design subagent's and the
-    lookup agent's. Reads executors.toml (a malformed one errors here) and writes nothing."""
+    slice's route (--retry: its second attempt); --drafter / --explore, the design subagent's (the
+    design row, tier -) and the lookup agent's (the explore row). Reads executors.toml (a malformed one errors here) and writes nothing."""
     forms = [f for f, on in (("<slice_id>", args.slice is not None), ("--drafter", args.drafter), ("--explore", args.explore)) if on]
     if len(forms) > 1:
         raise SystemExit(f"executor-route: {' and '.join(forms)} are mutually exclusive; give at most one")
@@ -694,7 +699,8 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
         print("\n".join(lines))
         extra = [fallback] if fallback else []
     elif args.drafter or args.explore:
-        agent, row = ("design-drafter", DESIGN_DRAFTER_FOLLOWS) if args.drafter else (ROUTE_AGENT["explore"], "explore")
+        row = "design" if args.drafter else "explore"
+        agent = ROUTE_AGENT[row]
         lines, fallback = _dispatch_lines(row, routes, proxy)
         print(f"agent={agent}")
         print(f"route={row}")
@@ -733,7 +739,7 @@ def cmd_record_dispatch(args: argparse.Namespace) -> None:
     sdata = read_json(require_slice(args.slice) / "slice.json")
     if not args.model.strip():
         raise SystemExit("record-dispatch: --model must be a non-empty model (the model= line executor-route printed)")
-    tier = args.tier if args.tier is not None else ROUTE_TIER[args.route]
+    tier = ROUTE_TIER[args.route] if args.tier is None else (None if args.tier == "-" else args.tier)
     if args.agent is not None:
         agent = args.agent
     elif tier is not None:
@@ -6315,14 +6321,14 @@ def main(argv=None) -> int:
     p = sub.add_parser("validate", help="Validate workflow and docs structure")
     p.set_defaults(func=lambda args: sys.exit(validate()))
 
-    p = sub.add_parser("sync-agents", help="Write the route table's rows (engine defaults overlaid by the repo-root executors.toml) into the model/effort frontmatter of the four managed agent files: slice-executor-mid, slice-executor-high, design-drafter (the high row) and Explore (the explore row)")
+    p = sub.add_parser("sync-agents", help="Write the route table's rows (engine defaults overlaid by the repo-root executors.toml) into the model/effort frontmatter of the four managed agent files: slice-executor-mid, slice-executor-high, design-drafter (its own design row) and Explore (the explore row)")
     p.add_argument("--check", action="store_true", help="Report drift without writing; exit 1 if out of sync")
     p.set_defaults(func=sync_agents)
 
-    p = sub.add_parser("executor-route", help="Print the executor routing decision, one key=value per line, writing nothing: bare, the resolved route table (high, research, mid, cheap, explore) and the agent files' sync state; with a slice id, the route, tier, subagent_type, model, effort and attribution its dispatch uses (kind first, then risk, then attempt); plus fallback= and warning= lines for the environment")
+    p = sub.add_parser("executor-route", help="Print the executor routing decision, one key=value per line, writing nothing: bare, the resolved route table (high, research, design, mid, cheap, explore) and the agent files' sync state; with a slice id, the route, tier, subagent_type, model, effort and attribution its dispatch uses (kind first, then risk, then attempt); plus fallback= and warning= lines for the environment")
     p.add_argument("slice", nargs="?", help="the slice to route; omit for the table")
     p.add_argument("--retry", action="store_true", help="the slice's second attempt (an escalation, a failed or empty return, a fix of mid-row work): always the high row")
-    p.add_argument("--drafter", action="store_true", help="the design-drafter's dispatch (it follows the high row)")
+    p.add_argument("--drafter", action="store_true", help="the design-drafter's dispatch (its own design row, [claude.design]; not a slice tier)")
     p.add_argument("--explore", action="store_true", help="the read-only Explore lookup agent's dispatch (the explore row)")
     p.set_defaults(func=cmd_executor_route)
 
@@ -6333,8 +6339,8 @@ def main(argv=None) -> int:
     p.add_argument("--effort", required=True, help="the effort the dispatch ran on (the effort= line; empty when none was passed)")
     p.add_argument("--verdict", required=True, choices=_DISPATCH_VERDICTS, help="how the executor returned; failed = an empty or failed return")
     p.add_argument("--attempt", type=int, default=1, help="1 for the first dispatch, 2 for the retry (default 1)")
-    p.add_argument("--tier", choices=EXECUTOR_TIERS, help="the tier (default: the route's tier; none for explore)")
-    p.add_argument("--agent", help="the subagent_type dispatched (default: the tier's installed agent; --agent design-drafter for the drafter span)")
+    p.add_argument("--tier", choices=EXECUTOR_TIERS + ("-",), help="the tier (default: the route's tier; none for design and explore; - is none, as executor-route prints it)")
+    p.add_argument("--agent", help="the subagent_type dispatched (default: the route's installed agent -- the tier's, or the design row's design-drafter)")
     p.add_argument("--duration-ms", type=int, dest="duration_ms", help="duration_ms from the completion notification")
     p.add_argument("--tokens", type=int, help="subagent_tokens from the completion notification")
     p.add_argument("--tool-uses", type=int, dest="tool_uses", help="tool_uses from the completion notification")

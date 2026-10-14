@@ -211,7 +211,7 @@ under `workflow/` instead and the skills and agents untracked in the host's `.cl
 
 - [`CLAUDE.md`](payload/contract.md) — the compact routing contract every agent session works under.
 - [`scripts/workflow.py`](payload/scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` — the 18 Agent Skills (`/slash` commands), the two risk-routed `slice-executor` tier subagents (`.claude/agents/slice-executor-{mid,high}.md`, dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (it follows the high row), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
+- `.claude/` — the 18 Agent Skills (`/slash` commands), the two risk-routed `slice-executor` tier subagents (`.claude/agents/slice-executor-{mid,high}.md`, dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ xhigh), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - [`works/`](works/) — the state machine, starting with **no phases**: a `deferred/` area,

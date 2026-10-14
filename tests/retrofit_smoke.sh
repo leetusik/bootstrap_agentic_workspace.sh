@@ -330,21 +330,29 @@ for const in ("DESIGN_ROOT_REL", "DESIGN_LEGACY_DIR"):
 for gone in ("DESIGN_REGISTRY_ENV", "DESIGN_REGISTRY_DEFAULT", "DESIGN_DECK_URL_ENV", "design-register",
              "design_deck_hint", "AGENTIC_DESIGN_REGISTRY", "AGENTIC_DESIGN_DECK_URL"):
     assert gone not in workflow_src, gone
-# P26.F2: the Self-contained bullet (and the drafter's mirror of it) names every reference prefix
-# schema 1's design-check allowed -- `#`, `data:`, `https:`; `tokens.css` takes the same set without the
-# ../tokens.css exception. P36.S3: the engine is on schema 2 (canvas trees; DESIGN_ALLOWED_REFS gained
-# `/_blob/`), so this pin holds the schema-1 prose to its own fixed list until P36.S6 rewrites that prose
-# and re-couples the pin to DESIGN_ALLOWED_REFS.
+# P26.F2: the Self-contained bullet names every reference prefix schema 1's design-check allowed --
+# `#`, `data:`, `https:`; `tokens.css` takes the same set without the ../tokens.css exception. P36.S3: the
+# engine is on schema 2 (canvas trees; DESIGN_ALLOWED_REFS gained `/_blob/`), so this pin holds the
+# schema-1 skill prose to its own fixed list until P36.S6 rewrites it and re-couples it to
+# DESIGN_ALLOWED_REFS. P36.S5: the drafter's half is re-coupled: its schema-2 reference rule names every
+# DESIGN_ALLOWED_REFS prefix, relative paths inside project/ (ds/<ns>/ included) and `{{hole}}`.
 refs = ["#", "data:", "https://"]
-assert re.search(r'^DESIGN_ALLOWED_REFS = \(([^)]*)\)$', workflow_src, re.M), "DESIGN_ALLOWED_REFS"
+allowed = re.search(r'^DESIGN_ALLOWED_REFS = \(([^)]*)\)$', workflow_src, re.M)
+assert allowed, "DESIGN_ALLOWED_REFS"
+allowed = re.findall(r'"([^"]*)"', allowed.group(1))
+assert allowed and "/_blob/" in allowed, allowed
 bullet = design.split("- **Self-contained.**", 1)[1].split(" - **", 1)[0]
+for ref in refs + ["../tokens.css"]:
+    assert "`" + ref.rstrip("/") + "`" in bullet, (ref, bullet)
+assert "`#` fragments included, without the `../tokens.css` exception" in bullet, bullet
+assert "The only relative reference allowed is `../tokens.css`" not in bullet, bullet
 drafter_rule = " ".join((root / "payload/claude/agents/design-drafter.md").read_text().split())
-drafter_rule = drafter_rule.split("**Keep every card self-contained.**", 1)[1].split(" 3. **", 1)[0]
-for text in (bullet, drafter_rule):
-    for ref in refs + ["../tokens.css"]:
-        assert "`" + ref.rstrip("/") + "`" in text, (ref, text)
-    assert "`#` fragments included, without the `../tokens.css` exception" in text, text
-    assert "The only relative reference allowed is `../tokens.css`" not in text, text
+drafter_rule = drafter_rule.split("**The reference rule:**", 1)[1].split(" - **", 1)[0]
+for ref in allowed + ["{{hole}}", "ds/<ns>/…"]:
+    assert "`" + ref + "`" in drafter_rule, (ref, drafter_rule)
+for term in ("relative path inside `project/`", "`..`"):
+    assert term in drafter_rule, (term, drafter_rule)
+assert "../tokens.css" not in drafter_rule and "**Keep every card self-contained.**" not in drafter_rule, drafter_rule
 assert "A card references nothing relative except `../tokens.css`. " not in design
 # P26.F1: the drafter's frontend-design licence is the handoff's `new visual direction` line, the
 # operator's call; a missing line is an open question, and the drafter never infers the licence.
@@ -855,7 +863,7 @@ then ok "every changelog release section carries a Migration notes line"; else b
 [ -f "$F/.claude/agents/slice-executor-mid.md" ] && [ -f "$F/.claude/agents/slice-executor-high.md" ] && ok "fresh install ships the 2 Claude slice-executor tiers" || bad "fresh install missing Claude slice-executor tier(s)"
 grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-mid.md" \
   && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-high.md" \
-  && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: high$' "$F/.claude/agents/design-drafter.md" \
+  && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/design-drafter.md" \
   && [ -f "$F/.claude/agents/Explore.md" ] && grep -q '^model: haiku$' "$F/.claude/agents/Explore.md" \
   && grep -q '^effort: high$' "$F/.claude/agents/Explore.md" && grep -qx 'tools: Read, Grep, Glob' "$F/.claude/agents/Explore.md" \
   && ok "fresh install follows the route defaults: mid sonnet@high, high opus@high, explore haiku@high" || bad "fresh install agent files do not follow the route defaults"
@@ -1126,14 +1134,18 @@ rm -f "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) \
   && grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-mid.md" \
   && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-high.md" \
-  && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: high$' "$F/.claude/agents/design-drafter.md" \
+  && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/design-drafter.md" \
   && grep -q '^model: haiku$' "$F/.claude/agents/Explore.md" && grep -q '^effort: high$' "$F/.claude/agents/Explore.md" \
-  && ok "no executors.toml: sync-agents writes the route defaults (mid sonnet@high, high and design-drafter opus@high, Explore haiku@high)" \
+  && ok "no executors.toml: sync-agents writes the route defaults (mid sonnet@high, high opus@high, design-drafter opus@xhigh, Explore haiku@high)" \
   || bad "the route defaults matrix is wrong"
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: fable$' "$F/.claude/agents/slice-executor-high.md" \
-  && grep -q '^model: fable$' "$F/.claude/agents/design-drafter.md" \
-  && ok "a [claude.high] override patches the high tier and design-drafter, which follows the high row" || bad "a [claude.high] override did not reach slice-executor-high and design-drafter"
+  && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" \
+  && ok "a [claude.high] override patches the high tier and no longer reaches design-drafter (its own design row)" || bad "a [claude.high] override missed slice-executor-high or still reached design-drafter"
+printf '[claude.design]\nmodel = "fable"\neffort = "max"\n' > "$F/executors.toml"
+( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: fable$' "$F/.claude/agents/design-drafter.md" \
+  && grep -q '^effort: max$' "$F/.claude/agents/design-drafter.md" && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" \
+  && ok "a [claude.design] override patches design-drafter alone" || bad "a [claude.design] override did not reach design-drafter, or reached the high tier"
 printf 'mode = "flex"\n' > "$F/executors.toml"
 mode_out=$( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 ); mode_rc=$?
 [ "$mode_rc" -ne 0 ] && printf '%s\n' "$mode_out" | grep -q 'retired in workspace v53' \
@@ -1154,8 +1166,9 @@ printf '[claude.nope]\nmodel = "opus"\n' > "$F/executors.toml"
 rm -f "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed restoring the route defaults"
 er_out=$(er)
-[ "$(printf '%s\n' "$er_out" | grep -cE '^(high|research|mid|cheap|explore) ')" = "5" ] && printf '%s\n' "$er_out" | grep -qx 'proxy=none' \
-  && ok "executor-route (bare) prints the five-row route table and proxy=none" || bad "executor-route bare table wrong: $er_out"
+[ "$(printf '%s\n' "$er_out" | grep -cE '^(high|research|design|mid|cheap|explore) ')" = "6" ] && printf '%s\n' "$er_out" | grep -qx 'proxy=none' \
+  && printf '%s\n' "$er_out" | grep -qE '^design +- +opus +xhigh +default$' \
+  && ok "executor-route (bare) prints the six-row route table (design: tier -, opus@xhigh) and proxy=none" || bad "executor-route bare table wrong: $er_out"
 er_out=$(er P1.DECOMP)
 printf '%s\n' "$er_out" | grep -qx 'route=high' && printf '%s\n' "$er_out" | grep -qx 'tier=high' \
   && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor-high' && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
@@ -1185,8 +1198,10 @@ er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MOD
 printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=Explore' \
   && ok "behind the same proxy executor-route --explore falls back to sonnet" || bad "executor-route --explore proxy fallback wrong: $er_out"
 er_out=$(er --drafter)
-printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-drafter' && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
-  && ok "executor-route --drafter names design-drafter on the high row" || bad "executor-route --drafter wrong: $er_out"
+printf '%s\n' "$er_out" | grep -qx 'agent=design-drafter' && printf '%s\n' "$er_out" | grep -qx 'route=design' \
+  && printf '%s\n' "$er_out" | grep -qx 'tier=-' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-drafter' \
+  && printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'effort=xhigh' \
+  && ok "executor-route --drafter names design-drafter on its own design row (tier -, opus@xhigh)" || bad "executor-route --drafter wrong: $er_out"
 ( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE CLAUDE_CODE_EFFORT_LEVEL=high python3 scripts/workflow.py executor-route P1.DECOMP 2>&1 | grep -q '^warning=CLAUDE_CODE_EFFORT_LEVEL' ) \
   && ok "executor-route warns that CLAUDE_CODE_EFFORT_LEVEL outranks every per-dispatch effort" || bad "executor-route did not warn on CLAUDE_CODE_EFFORT_LEVEL"
 cp "$SRC/executors.toml" "$F/executors.toml"
