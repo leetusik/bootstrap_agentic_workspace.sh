@@ -12,6 +12,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -5709,6 +5710,406 @@ def design_publish_plan(args: argparse.Namespace) -> int:
     return 0
 
 
+# design-preview (v60): the drafter's own eyes on a job's canvas, so its render -> critique -> revise
+# loop never touches the published (private) canvas. It serves the job's canvas/project/ tree read-only
+# over http on 127.0.0.1 -- the tree's files as they are, its ds/<namespace>/ system cache, and the Design
+# canvas type's real runtime (artifact-type/dc-runtime.js, which the orchestrator saves per job and the
+# engine never vendors) as ./support.js -- and screenshots each board in a throwaway headless
+# Chrome/Chromium profile. The real runtime renders standalone, with no editor frame around it:
+# x-import, dc-import, {{holes}} from data-props defaults and renderVals(), sc-if/sc-for and <helmet> all
+# run (P36.S4), so no stand-in shim ships. http, never file://: a <dc-import> fetches its sibling board,
+# which a file:// page cannot. The browser is driven over the DevTools protocol on a pipe
+# (--remote-debugging-pipe, fds 3/4; no port is opened): the CLI's --window-size/--screenshot cannot give
+# an exact viewport (a headless window is at least 500 px wide and its page ~100 px shorter than the
+# window, so a 390 px render came out as a 500 px layout cropped), while Emulation.setDeviceMetricsOverride
+# can. With no browser it prints an honest skip and writes nothing.
+DESIGN_PREVIEW_BROWSER_ENV = "AGENTIC_DESIGN_BROWSER"
+DESIGN_PREVIEW_BROWSERS = (
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    "~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "~/Applications/Chromium.app/Contents/MacOS/Chromium",
+    "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser",
+    "/snap/bin/chromium",
+)
+DESIGN_PREVIEW_PATH_NAMES = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser")
+DESIGN_PREVIEW_PHONE = (390, 844)  # the phone render: 390 px wide, at least 844 tall, growing to its content
+DESIGN_PREVIEW_MAX = 8000  # the type's largest frame side; a longer page is cut there (and said so)
+DESIGN_PREVIEW_SETTLE = 8.0  # seconds a board gets to settle (fonts, images, the runtime's mounts)
+DESIGN_PREVIEW_TIMEOUT = 30.0  # seconds for one protocol reply
+# Polled until it repeats: the DOM, the content size and the images stop changing once fonts are in.
+DESIGN_PREVIEW_SETTLED_JS = ("(async()=>{await document.fonts.ready;const d=document.documentElement;"
+                             "return [d.outerHTML.length,d.scrollWidth,d.scrollHeight,"
+                             "[...document.images].every(i=>i.complete)].join(',');})()")
+# What the runtime leaves in the DOM when a part does not render: an x-import whose global is missing,
+# or a dc-import whose board is missing, stays a .sc-placeholder titled with its name; a throwing
+# renderVals() shows its message in a .sc-logic-error overlay.
+DESIGN_PREVIEW_MEASURE_JS = ("(()=>{const d=document.documentElement,b=document.body;const t=e=>(e.textContent||'').trim().slice(0,300);"
+                             "return {w:Math.max(d.scrollWidth,b?b.scrollWidth:0),h:Math.max(d.scrollHeight,b?b.scrollHeight:0),"
+                             "unmounted:[...document.querySelectorAll('.sc-placeholder')].map(e=>e.getAttribute('title')||'?'),"
+                             "errors:[...document.querySelectorAll('.sc-logic-error,.sc-placeholder-error')].map(t)};})()")
+
+
+def design_preview_browser(given):
+    """The browser executable: --browser, else $AGENTIC_DESIGN_BROWSER (either one, when named, is the
+    only candidate: a named browser that is not there is no browser), else the known Chrome/Chromium
+    paths on macOS and Linux, else chromium/google-chrome on PATH. None when there is none."""
+    for value in (given, os.environ.get(DESIGN_PREVIEW_BROWSER_ENV)):
+        if value:
+            path = os.path.expanduser(value)
+            return shutil.which(path) or (path if os.path.isfile(path) and os.access(path, os.X_OK) else None)
+    for candidate in DESIGN_PREVIEW_BROWSERS:
+        path = os.path.expanduser(candidate)
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    for name in DESIGN_PREVIEW_PATH_NAMES:
+        if shutil.which(name):
+            return shutil.which(name)
+    return None
+
+
+def design_preview_server(project: Path, runtime: bytes, misses: list):
+    """A read-only http server for one canvas tree on 127.0.0.1 at a free port: any */support.js is the
+    runtime, everything else is the tree's file as it is; a missing file is noted in `misses`."""
+    import http.server
+    import threading
+    from urllib.parse import unquote
+
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=str(project), **kwargs)
+
+        def log_message(self, *args):
+            pass
+
+        def end_headers(self):
+            self.send_header("Cache-Control", "no-store")
+            super().end_headers()
+
+        def do_GET(self):
+            path = unquote(urlparse(self.path).path)
+            if posixpath.basename(path) == "support.js":
+                self.send_response(200)
+                self.send_header("Content-Type", "text/javascript; charset=utf-8")
+                self.send_header("Content-Length", str(len(runtime)))
+                self.end_headers()
+                self.wfile.write(runtime)
+                return
+            if not Path(self.translate_path(self.path)).exists() and path != "/favicon.ico":
+                misses.append(path)
+            super().do_GET()
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+class DesignBrowser:
+    """A headless Chrome/Chromium in a throwaway profile, driven over the DevTools protocol on a pipe:
+    the browser reads commands on its fd 3 and writes replies on fd 4, each a JSON message ended by NUL.
+    Spawned with posix_spawn (no fork with live threads); one page, one session."""
+
+    def __init__(self, browser: str, profile: str):
+        import fcntl
+        ends = []
+        for fd in os.pipe() + os.pipe():  # cmd_r, cmd_w, resp_r, resp_w -- moved above fd 9 so the dup2s cannot collide
+            high = fcntl.fcntl(fd, fcntl.F_DUPFD_CLOEXEC, 10)
+            os.close(fd)
+            ends.append(high)
+        cmd_r, self.cmd_w, self.resp_r, resp_w = ends
+        args = [browser, "--headless=new", "--remote-debugging-pipe", f"--user-data-dir={profile}", "--no-first-run",
+                "--no-default-browser-check", "--disable-extensions", "--disable-sync", "--mute-audio",
+                "--hide-scrollbars", "--force-device-scale-factor=1", "about:blank"]
+        if sys.platform.startswith("linux") and os.geteuid() == 0:
+            args.insert(1, "--no-sandbox")  # Chromium refuses to run as root otherwise (a CI container)
+        actions = [(os.POSIX_SPAWN_OPEN, 0, os.devnull, os.O_RDONLY, 0),
+                   (os.POSIX_SPAWN_OPEN, 1, os.devnull, os.O_WRONLY, 0),
+                   (os.POSIX_SPAWN_OPEN, 2, os.devnull, os.O_WRONLY, 0),
+                   (os.POSIX_SPAWN_DUP2, cmd_r, 3), (os.POSIX_SPAWN_DUP2, resp_w, 4)]
+        try:
+            self.pid = os.posix_spawn(browser, args, dict(os.environ), file_actions=actions)
+        finally:
+            os.close(cmd_r)
+            os.close(resp_w)
+        self.buffer, self.events, self.next_id, self.session = b"", [], 0, None
+        target = self.call("Target.createTarget", {"url": "about:blank"})["targetId"]
+        self.session = self.call("Target.attachToTarget", {"targetId": target, "flatten": True})["sessionId"]
+        for domain in ("Page.enable", "Runtime.enable"):
+            self.call(domain)
+
+    def read(self, deadline: float) -> dict:
+        import select
+        while b"\0" not in self.buffer:
+            left = deadline - time.monotonic()
+            if left <= 0 or not select.select([self.resp_r], [], [], left)[0]:
+                raise RuntimeError("the browser did not answer in time")
+            chunk = os.read(self.resp_r, 1 << 20)
+            if not chunk:
+                raise RuntimeError("the browser exited")
+            self.buffer += chunk
+        message, self.buffer = self.buffer.split(b"\0", 1)
+        return json.loads(message.decode("utf-8", errors="replace"))
+
+    def call(self, method: str, params: dict = None, timeout: float = DESIGN_PREVIEW_TIMEOUT) -> dict:
+        self.next_id += 1
+        message = {"id": self.next_id, "method": method, "params": params or {}}
+        if self.session:
+            message["sessionId"] = self.session
+        data = json.dumps(message).encode("utf-8") + b"\0"
+        while data:
+            data = data[os.write(self.cmd_w, data):]
+        deadline = time.monotonic() + timeout
+        while True:
+            reply = self.read(deadline)
+            if reply.get("id") == self.next_id:
+                if "error" in reply:
+                    raise RuntimeError(f"{method}: {reply['error'].get('message', reply['error'])}")
+                return reply.get("result", {})
+            if "method" in reply:
+                self.events.append(reply)
+
+    def wait_event(self, method: str, timeout: float) -> bool:
+        deadline = time.monotonic() + timeout
+        while True:
+            if any(e["method"] == method for e in self.events):
+                return True
+            try:
+                reply = self.read(deadline)
+            except RuntimeError:
+                return False
+            if "method" in reply:
+                self.events.append(reply)
+
+    def evaluate(self, expression: str):
+        result = self.call("Runtime.evaluate", {"expression": expression, "returnByValue": True, "awaitPromise": True})
+        if "exceptionDetails" in result:
+            raise RuntimeError(result["exceptionDetails"].get("text", "evaluate failed"))
+        return result.get("result", {}).get("value")
+
+    def settle(self) -> bool:
+        """Wait until the page stops changing: the same DOM size, content size and image state three polls running."""
+        deadline, last, same = time.monotonic() + DESIGN_PREVIEW_SETTLE, None, 0
+        while time.monotonic() < deadline:
+            now = self.evaluate(DESIGN_PREVIEW_SETTLED_JS)
+            same = same + 1 if now == last else 0
+            if same >= 2:
+                return True
+            last = now
+            time.sleep(0.15)
+        return False
+
+    def errors(self) -> list:
+        """The page's uncaught exceptions and console.error lines since the last navigation."""
+        found = []
+        for event in self.events:
+            params = event.get("params", {})
+            if event["method"] == "Runtime.exceptionThrown":
+                details = params.get("exceptionDetails", {})
+                found.append((details.get("exception") or {}).get("description") or details.get("text", "exception"))
+            elif event["method"] == "Runtime.consoleAPICalled" and params.get("type") == "error":
+                found.append(" ".join(str(a.get("value", a.get("description", ""))) for a in params.get("args", [])))
+        lines = [line.strip().splitlines()[0][:300] if line.strip() else "(empty)" for line in found]
+        return list(dict.fromkeys(lines))  # once each, in order
+
+    def close(self) -> None:
+        try:
+            self.session = None
+            self.call("Browser.close", timeout=5)
+        except (RuntimeError, OSError, ValueError):
+            pass
+        for _ in range(50):
+            if os.waitpid(self.pid, os.WNOHANG)[0]:
+                break
+            time.sleep(0.1)
+        else:
+            try:
+                os.kill(self.pid, 9)
+                os.waitpid(self.pid, 0)
+            except OSError:
+                pass
+        for fd in (self.cmd_w, self.resp_r):
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
+def design_preview_render(page: "DesignBrowser", url: str, width: int, height: int, grow: bool) -> dict:
+    """Lay the board out in an exact width x height viewport, let it settle, measure it, and -- when it
+    grows (a PAGE, or the phone render) and its content is taller -- relayout at the content height."""
+    page.call("Emulation.setDeviceMetricsOverride", {"width": width, "height": height, "deviceScaleFactor": 1, "mobile": False})
+    page.events.clear()
+    page.call("Page.navigate", {"url": url})
+    loaded = page.wait_event("Page.loadEventFired", DESIGN_PREVIEW_SETTLE)
+    settled = page.settle()
+    shape = page.evaluate(DESIGN_PREVIEW_MEASURE_JS)
+    if grow and shape["h"] > height:
+        height = min(shape["h"], DESIGN_PREVIEW_MAX)
+        page.call("Emulation.setDeviceMetricsOverride", {"width": width, "height": height, "deviceScaleFactor": 1, "mobile": False})
+        settled = page.settle() and settled
+        shape = page.evaluate(DESIGN_PREVIEW_MEASURE_JS)
+    import base64
+    png = base64.b64decode(page.call("Page.captureScreenshot", {"format": "png"})["data"])
+    return {"png": png, "width": width, "height": height, "shape": shape, "loaded": loaded, "settled": settled,
+            "errors": page.errors()}
+
+
+def design_preview_view(ctx: dict, rel: str, board: dict, view: str) -> int:
+    """Render one board in one view and print its line and its issues; returns the issue count, or -1
+    when no screenshot came out. frame = the board's w x h (a PAGE grows to its content), phone = 390
+    wide, growing to its content."""
+    page_board = board.get("expand") == "fill"
+    width, height = (board["w"], board["h"]) if view == "frame" else DESIGN_PREVIEW_PHONE
+    grow = page_board or view == "phone"
+    png = ctx["out"] / f"{rel[:-len(DESIGN_BOARD_SUFFIX)].replace('/', '__')}.{view}.png"
+    ctx["misses"].clear()
+    try:
+        shot = design_preview_render(ctx["page"], f"{ctx['base']}/{rel}", width, height, grow)
+    except (RuntimeError, OSError, ValueError, KeyError, TypeError) as exc:
+        print(f"board={rel} png=none w={width} h={height} view={view} error=browser")
+        print(f"issue board={rel} view={view}: no screenshot: {exc}")
+        return -1
+    png.write_bytes(shot["png"])
+    shape, issues = shot["shape"], []
+    if not shot["loaded"]:
+        issues.append("the page never fired its load event (a script or file that never arrived?)")
+    if not shot["settled"]:
+        issues.append(f"the page was still changing after {DESIGN_PREVIEW_SETTLE:g}s (an animation, or a slow font or image)")
+    if grow and shape["h"] > DESIGN_PREVIEW_MAX:
+        issues.append(f"the page is {shape['h']}px tall: the screenshot stops at {DESIGN_PREVIEW_MAX}px")
+    elif not grow and shape["h"] > height:
+        issues.append(f"content is {shape['h']}px tall in a {height}px frame: the canvas clips the rest")
+    if shape["w"] > width:
+        issues.append(f"content is {shape['w']}px wide at {width}px: it does not fit the width (clipped, or a sideways scroll)")
+    unmounted = shape["unmounted"]
+    for title in sorted(set(unmounted)):
+        issues.append(f"not mounted: {title} x{unmounted.count(title)} (an x-import whose system global is missing, "
+                      "or a dc-import whose board is missing)")
+    issues.extend(f"runtime error: {text}" for text in shape["errors"])
+    issues.extend(f"script error: {text}" for text in shot["errors"])
+    for miss in sorted(set(ctx["misses"])):
+        why = " (a canvas upload; it is not on disk)" if miss.startswith("/_blob/") else \
+            " (the system cache lacks it)" if miss.startswith("/ds/") else ""
+        issues.append(f"not found: {miss}{why}")
+    print(f"board={rel} png={png} w={shot['width']} h={shot['height']} view={view} content={shape['w']}x{shape['h']} "
+          f"unmounted={len(unmounted)} errors={len(shape['errors']) + len(shot['errors'])} issues={len(issues)}")
+    for issue in issues:
+        print(f"issue board={rel} view={view}: {issue}")
+    return len(issues)
+
+
+def design_preview(args: argparse.Namespace) -> int:
+    """Render each board of a job's canvas locally and print where the screenshots are."""
+    root = design_root()
+    scan = design_scan(root, args.job)
+    design_require_manifest(scan, root, "design-preview")
+    job = design_find_job(scan, args.job, "design-preview")
+    project = job["path"] / "canvas" / "project"
+    try:
+        index = read_json(project / "canvas.json")
+    except (ValueError, OSError) as exc:
+        raise SystemExit(f"design-preview: refused -- jobs/{args.job}/canvas/project/canvas.json is not readable "
+                         f"({exc}); the drafter writes the canvas tree first")
+    boards = index.get("boards") if isinstance(index, dict) else None
+    if not isinstance(boards, dict) or not boards:
+        raise SystemExit(f"design-preview: refused -- jobs/{args.job}/canvas/project/canvas.json lists no boards")
+    unknown = [b for b in args.board or [] if b not in boards]
+    if unknown:
+        raise SystemExit(f"design-preview: no board {', '.join(map(repr, unknown))} in canvas.json "
+                         f"(boards: {', '.join(sorted(boards))})")
+    runtime = Path(args.runtime).expanduser()
+    if not runtime.is_file():
+        raise SystemExit(f"design-preview: refused -- no runtime at {runtime} (the orchestrator saves the Design canvas "
+                         "type's artifact-type/dc-runtime.js for the job; pass that path)")
+    out = Path(args.out).expanduser().resolve() if args.out else None
+    if out is not None:
+        try:
+            out.relative_to(root.resolve())
+        except ValueError:
+            pass
+        else:
+            raise SystemExit(f"design-preview: refused -- --out {out} is inside {DESIGN_ROOT_SHOWN}/; screenshots stay out of the design record")
+    browser = design_preview_browser(args.browser)
+    if browser is None:  # an honest skip: a verdict, not an error, and never a claimed render
+        print("preview=skipped reason=no-browser")
+        print(f"hint: nothing was rendered or written; install Chrome or Chromium, or name one with --browser or ${DESIGN_PREVIEW_BROWSER_ENV}")
+        return 0
+    if not hasattr(os, "posix_spawn"):  # the DevTools pipe needs posix_spawn's fd mapping (macOS, Linux)
+        print("preview=skipped reason=unsupported-platform")
+        print("hint: nothing was rendered or written; design-preview drives the browser over a pipe that needs os.posix_spawn")
+        return 0
+    runtime_bytes = runtime.read_bytes()
+    if b"DCLogic" not in runtime_bytes:
+        print(f"warning: {runtime} does not look like the Design canvas runtime (no DCLogic in it)")
+    if job["problems"]:
+        print(f"warning: design-check finds {len(job['problems'])} problem(s) in this job (run: {WORKFLOW_CMD} design-check {args.job})")
+    ds = project / "ds"
+    if ds.is_dir() and not (ds / ".gitignore").exists():  # the system cache is never committed
+        (ds / ".gitignore").write_text("*\n", encoding="utf-8")
+        print(f"wrote {DESIGN_ROOT_SHOWN}/jobs/{args.job}/canvas/project/ds/.gitignore (the system cache stays out of git)")
+    system = scan["manifest"]["system"]
+    for rec in index.get("designSystems") or []:
+        ns = rec.get("namespace") if isinstance(rec, dict) else None
+        if not isinstance(ns, str) or not ns:
+            continue
+        if not (ds / ns).is_dir():
+            print(f"warning: system {ns} not cached -- x-import components will not mount "
+                  f"(the orchestrator saves the system's files under canvas/project/ds/{ns}/)")
+        elif ns == system.get("namespace"):
+            for name in system.get("files") or []:
+                if not (ds / ns / name).is_file():
+                    print(f"warning: system {ns} cache lacks {name}")
+    if out is None:
+        out = Path(tempfile.mkdtemp(prefix=f"design-preview-{args.job}-"))
+    out.mkdir(parents=True, exist_ok=True)
+
+    def reading(key):
+        title = boards[key].get("title") if isinstance(boards[key], dict) else None
+        match = DESIGN_TITLE_RE.match(title) if isinstance(title, str) else None
+        return (design_number(match.group(1)) if match else 10 ** 6, key)
+
+    print(f"runtime=real path={runtime}")
+    misses: list = []
+    profile = tempfile.mkdtemp(prefix="design-preview-profile-")
+    try:
+        page = DesignBrowser(browser, profile)
+    except (RuntimeError, OSError, ValueError, KeyError) as exc:
+        shutil.rmtree(profile, ignore_errors=True)
+        print(f"issue: the browser {browser} did not start under the DevTools pipe: {exc}")
+        print(f"preview=failed pngs=0 failed=1 issues=1 out={out}")
+        return 1
+    server = design_preview_server(project, runtime_bytes, misses)
+    ctx = {"page": page, "out": out, "misses": misses, "base": f"http://127.0.0.1:{server.server_address[1]}"}
+    shots = issues = failed = 0
+    try:
+        for rel in sorted(args.board or boards, key=reading):
+            board = boards[rel]
+            try:
+                w, h = int(board["w"]), int(board["h"])
+            except (KeyError, TypeError, ValueError):
+                w = h = 0
+            if not (1 <= w <= DESIGN_PREVIEW_MAX and 1 <= h <= DESIGN_PREVIEW_MAX):
+                print(f"issue board={rel}: canvas.json gives no usable w/h (1..{DESIGN_PREVIEW_MAX}); not rendered")
+                issues += 1
+                continue
+            board = dict(board, w=w, h=h)
+            views = ["frame"] + (["phone"] if board.get("expand") == "fill" or args.phone else [])
+            for view in views:
+                found = design_preview_view(ctx, rel, board, view)
+                if found < 0:
+                    failed += 1
+                else:
+                    shots += 1
+                    issues += found
+    finally:
+        page.close()
+        server.shutdown()
+        server.server_close()
+        shutil.rmtree(profile, ignore_errors=True)
+    print(f"preview={'failed' if failed and not shots else 'done'} pngs={shots} failed={failed} issues={issues} out={out}")
+    return 1 if failed else 0
+
+
 def design_migrate(args: argparse.Namespace) -> None:
     if args.to == "2":
         design_migrate_schema2(args)
@@ -6109,6 +6510,16 @@ def main(argv=None) -> int:
                        description="The engine never calls claude.ai: the orchestrator passes this JSON to its Artifact publish. root is the job's canvas/ folder (it holds project/); ds/ is never sent from disk -- with design.json's system set, each system file maps as \"project/ds/<namespace>/<file>\": {\"artifact\": <system>, \"path\": \"project/<file>\"}, a server-side copy.")
     p.add_argument("job", help="the job id, e.g. 01-signin")
     p.set_defaults(func=design_publish_plan)
+
+    p = sub.add_parser("design-preview", help="Render each board of a job's canvas locally for the drafter's self-check: serve canvas/project/ (its ds/ system cache included) with the Design canvas type's real runtime as ./support.js over http on 127.0.0.1, screenshot every board in an exact viewport with a throwaway headless Chrome/Chromium profile driven over the DevTools pipe (no port), print one board=<file> png=<path> w= h= line per screenshot plus its issues; no browser prints preview=skipped reason=no-browser, writes nothing and exits 0",
+                       description=f"Never views the published canvas and never calls claude.ai. --runtime is the type's artifact-type/dc-runtime.js, which the orchestrator saves per job (never vendored); it renders standalone, so no stand-in ships. A board renders at its canvas.json w x h; a PAGE (expand: fill) grows to its content and also renders {DESIGN_PREVIEW_PHONE[0]} px wide (--phone: every board). Each line also gives the content size, unmounted parts (an x-import whose system global is missing, a dc-import whose board is missing), script errors and the issue count; issue lines name a clipped frame, a sideways overflow, runtime errors and files not found. Browser: --browser, else ${DESIGN_PREVIEW_BROWSER_ENV} (a named one is the only candidate), else the known Chrome/Chromium paths, else chromium/google-chrome on PATH. Writes only the PNGs (outside the design record) and, once, canvas/project/ds/.gitignore (*) when ds/ exists; a system the canvas installs but ds/<namespace>/ lacks is a warning (the engine never fetches it). Exit 1 only when a screenshot failed.")
+    p.add_argument("job", help="the job id, e.g. 01-signin")
+    p.add_argument("--runtime", required=True, help="the path of the Design canvas type's runtime (artifact-type/dc-runtime.js) the orchestrator saved for this job")
+    p.add_argument("--out", default=None, help="the folder for the PNGs (default: a fresh temp folder); never inside the design root")
+    p.add_argument("--browser", default=None, help=f"the Chrome/Chromium executable (default: ${DESIGN_PREVIEW_BROWSER_ENV}, then the known paths)")
+    p.add_argument("--board", action="append", default=None, help="render only this board (its canvas.json key, e.g. Main.dc.html); repeatable")
+    p.add_argument("--phone", action="store_true", help=f"also render every board {DESIGN_PREVIEW_PHONE[0]} px wide (a PAGE always is)")
+    p.set_defaults(func=design_preview)
 
     p = sub.add_parser("design-close", help="Close the open design round: snapshot the job's canvas tree (ds/ left out) into the round folder, record canvas_version, then with --words mark the round and its job signed, or with --superseded mark the round superseded; idempotent",
                        description="--words needs jobs/<job>/rounds/<round>/SIGNOFF.md written first and a passing design-check of the job. --canvas-version defaults to the job's recorded canvas.version. Re-run a half-landed close; a closed round is never rewritten.")

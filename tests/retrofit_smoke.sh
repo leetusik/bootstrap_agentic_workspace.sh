@@ -25,7 +25,8 @@
 # new-phase --on-main are no-ops that stamp nothing), the design-contract invariants on schema 2
 # (P36.S3: one job per co-work slice and one open round per project; design-check names a missing
 # board, a missing support line, a .. reference and a title gap in a canvas tree; design-canvas,
-# design-system and the read-only design-publish-plan; design-close snapshots byte-identical, signs the
+# design-system and the read-only design-publish-plan; P36.S4: design-preview with no browser is an honest skip
+# that writes nothing; design-close snapshots byte-identical, signs the
 # job and is idempotent; design-migrate --to 2 moves a schema-1 record into schema1/ and a schema-1 root is
 # steered to it; v48: design-check skips claude-design/, design-migrate moves all-or-nothing and a pre-v47
 # root is steered to it; P36.S1: design-register is gone, an unknown command), the P36 design-tool invariants (design-cowork carries the drafter loop only, with a legacy
@@ -319,14 +320,15 @@ for gone in ("the operator designs in Claude Design", "claude-design", "DesignSy
 assert "Claude Design + the operator" not in desc, desc
 # v47: the contract section and the engine move together -- the root the skill states is the
 # engine's own constant. v48 (P27.S1/S2): so is the claude-design record's folder name. P36.S1: the
-# registry and design-deck constants are gone from the engine.
+# registry and design-deck constants are gone from the engine (P36.S4: named exactly, since
+# design-preview's AGENTIC_DESIGN_BROWSER shares their prefix).
 import re
 workflow_src = (root / "payload/scripts/workflow.py").read_text()
 for const in ("DESIGN_ROOT_REL", "DESIGN_LEGACY_DIR"):
     value = re.search(r'^' + const + r' = "([^"]+)"$', workflow_src, re.M).group(1)
     assert value in design, (const, value)
 for gone in ("DESIGN_REGISTRY_ENV", "DESIGN_REGISTRY_DEFAULT", "DESIGN_DECK_URL_ENV", "design-register",
-             "design_deck_hint", "AGENTIC_DESIGN_"):
+             "design_deck_hint", "AGENTIC_DESIGN_REGISTRY", "AGENTIC_DESIGN_DECK_URL"):
     assert gone not in workflow_src, gone
 # P26.F2: the Self-contained bullet (and the drafter's mirror of it) names every reference prefix
 # schema 1's design-check allowed -- `#`, `data:`, `https:`; `tokens.css` takes the same set without the
@@ -1659,7 +1661,7 @@ if ( cd "$W" && python3 scripts/workflow.py parallel-start P2 2>&1 | grep -q "le
   || bad "merge, merge-finish or teardown failed"
 
 # ---------------------------------------------------------------------------
-echo "== Test 13: schema-2 design record -- design-open makes a job and refuses a second open round, design-check names a missing board, a missing support line, a .. reference and a title gap, design-canvas / design-system / design-publish-plan, design-close snapshots and signs, a superseded round's slice reuses its job, design-migrate --to 2; claude-design/ is skipped, the pre-v47 design-migrate, design-register is gone =="
+echo "== Test 13: schema-2 design record -- design-open makes a job and refuses a second open round, design-check names a missing board, a missing support line, a .. reference and a title gap, design-canvas / design-system / design-publish-plan, design-preview skips honestly without a browser, design-close snapshots and signs, a superseded round's slice reuses its job, design-migrate --to 2; claude-design/ is skipped, the pre-v47 design-migrate, design-register is gone =="
 # Runs in the fresh workspace $F.
 newtmp DZ
 DR="$F/docs/reference/design"
@@ -1750,6 +1752,14 @@ assert plan["files"] == {"project/Main.dc.html": "project/Main.dc.html", "projec
 ' >/dev/null 2>&1; then
   ok "design-publish-plan maps each project file to itself, a board removed since the last publish to null, and the system files to server-side install copies"
 else bad "design-publish-plan printed the wrong plan -- $plan"; fi
+# P36.S4: design-preview with no browser is an honest skip -- it says so, exits 0 and writes nothing.
+printf '/* a stand-in runtime path; never run */\n' > "$DZ/dc-runtime.js"
+before=$(tree_sig)
+out=$( export AGENTIC_DESIGN_BROWSER=/nonexistent; dw design-preview 01-signin --runtime "$DZ/dc-runtime.js" 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -qx 'preview=skipped reason=no-browser' && ! printf '%s\n' "$out" | grep -q '^board=' \
+  && [ "$(tree_sig)" = "$before" ] \
+  && ok "design-preview with no browser prints preview=skipped reason=no-browser, exits 0 and leaves the design root byte-identical" \
+  || bad "design-preview did not skip honestly without a browser (rc=$rc) -- $out"
 # 4. design-close snapshots the tree byte for byte and signs the job; a superseded round's slice reuses it.
 pre=$(tree_sig "$CP")
 printf 'Signed: "ship it"\n' > "$JD/rounds/01-signin/SIGNOFF.md"
