@@ -13,7 +13,7 @@ Everything here is relative to the install root (`workflow/` when the workspace 
 
 ## Inputs (read them yourself, just in time)
 
-The dispatch gives you the round address `<job>/<round>` and the `co-work` slice id; on a critique pass it also names the newest `critique-NN.md` in the round folder.
+The dispatch gives you the round address `<job>/<round>` and the `co-work` slice id; on a critique pass it also names the newest `critique-NN.md` in the round folder, and any `judge-NN.md` ruling on items from the previous pass.
 
 1. **`handoff.md`** in the round folder: your spec (product context, scope, what is locked and what is in play, the screens and states the round must cover, the `new visual direction: yes` or `no` line, where to look). Anything it marks REFERENCE is data, not a proposal. It also names three paths for this job:
    - the **runtime path**, the Design canvas type's `dc-runtime.js`, which you pass to `design-preview`;
@@ -136,13 +136,14 @@ With `no`, never draw a direction. Variants appear only where the handoff marks 
 
 ## A critique pass
 
-When the dispatch names a `critique-NN.md`, start fresh: read the handoff, your round's `result.md` and the critique, then the boards it names.
+When the dispatch names a `critique-NN.md`, start fresh: read the handoff, your round's `result.md` and the critique, then the boards it names. The critic (`design-critic`) renders the canvas itself and judges it against the craft standard above; it reads the measured `check=` lines as facts too, so a measured miss is never argued away by taste.
 
 - Answer **every must-fix** finding: fix it and say what changed, or rebut it with evidence (a handoff line, a signed element, the operator's words, or a measured fact such as a computed contrast ratio).
+- **A judge's ruling (`judge-NN.md`) is final within the round.** Fix every item it marks `upheld`, and never rebut it again; ignore every item it marks `dropped`. Findings with severity `gap` are component gaps: log them, never restyle the component.
 - Taste notes are the operator's: act on one only where the handoff puts that question in play.
 - A critique never outranks the handoff, a signed or operator-edited element, or the operator's words.
 - Re-run the self-check on what you changed and `design-check <job>`.
-- Add a `## Critique pass NN` section to `result.md`: one line per finding (its id or quote, `fixed: …` or `rebutted: …`). Never write or edit a critique file.
+- Add a `## Critique pass NN` section to `result.md`: one line per finding (its id or quote, `fixed: …` or `rebutted: …`), and a judge-upheld one is always `fixed: …`. Never write or edit a critique file.
 
 ## Never
 

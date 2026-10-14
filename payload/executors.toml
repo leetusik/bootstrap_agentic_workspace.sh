@@ -18,6 +18,10 @@
 #   research  opus @ medium  research slices, by kind (slice-executor-high)
 #   design    opus @ xhigh   design-drafter (its own agent file); not a slice
 #                            tier: executor-route --drafter
+#   critic    sonnet @ max   design-critic (its own agent file), judging each
+#                            drafted round: executor-route --critic
+#   judge     fable @ high   design-critic in judge mode, ruling on the items
+#                            the critic escalates (alias only): --judge
 #   mid       sonnet @ high  implementation and fix rated low (slice-executor-mid)
 #   cheap     = the mid row  docs and qa rated low; inherits the mid row unless
 #                            overridden (slice-executor-mid)
@@ -26,9 +30,11 @@
 # Grammar: [claude.<row>] tables holding model = "..." and effort = "...",
 # double-quoted. effort is low, medium, high, xhigh or max, or "" to write no
 # effort line and pass no effort (for a model that rejects the parameter).
-# mid, high, design and explore own an agent file, so they also take a full model id
-# or "inherit"; research and cheap run another row's file, so they take an
-# Agent-tool alias only (opus, sonnet, haiku, fable).
+# mid, high, design, critic and explore own an agent file, so they also take a
+# full model id or "inherit"; research, cheap and judge run another row's file,
+# so they take an Agent-tool alias only (opus, sonnet, haiku, fable).
+# Fairness: critic and judge must each be a different model from design's; an
+# equal pair (an alias and its full id count as one) is refused by executor-route.
 #
 # From v52 or earlier: a top-level mode = "..." line is refused since v53 —
 # delete it. flex was xhigh on both tiers; to keep it, set effort = "xhigh"
@@ -61,6 +67,12 @@ effort = "high"
 # [claude.design]
 # model = "opus"    # design-drafter's own row
 # effort = "xhigh"
+# [claude.critic]
+# model = "sonnet"  # design-critic; never the design row's model
+# effort = "max"
+# [claude.judge]
+# model = "fable"   # alias only; e.g. "opus" when the drafter runs on fable
+# effort = "high"
 # [claude.mid]
 # model = "sonnet"
 # effort = "high"

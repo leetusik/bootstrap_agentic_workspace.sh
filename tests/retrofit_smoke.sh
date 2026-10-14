@@ -871,6 +871,11 @@ grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '
 [ -f "$F/.claude/agents/design-drafter.md" ] && grep -Eq '^tools: (.*, )?Skill(,.*)?$' "$F/.claude/agents/design-drafter.md" \
   && ! grep -q '^tools: .*DesignSync' "$F/.claude/agents/design-drafter.md" \
   && ok "fresh install ships the design-drafter subagent (Skill in tools, no DesignSync)" || bad "fresh install design-drafter missing, lacks Skill, or carries DesignSync"
+# P36.S5B: the design critic ships on the critic row (sonnet @ max) and can write only its own file: no Edit.
+[ -f "$F/.claude/agents/design-critic.md" ] && grep -q '^model: sonnet$' "$F/.claude/agents/design-critic.md" \
+  && grep -q '^effort: max$' "$F/.claude/agents/design-critic.md" && grep -q '^tools: ' "$F/.claude/agents/design-critic.md" \
+  && ! grep -Eq '^tools: (.*, )?Edit(,.*)?$' "$F/.claude/agents/design-critic.md" \
+  && ok "fresh install ships the design-critic subagent (sonnet@max, no Edit in tools)" || bad "fresh install design-critic missing, off its row defaults, or carries Edit"
 [ ! -f "$F/.claude/agents/slice-executor.md" ] && ok "legacy untiered slice-executor retired (absent on fresh install)" || bad "legacy untiered slice-executor should be retired but is present"
 [ ! -f "$F/.claude/agents/slice-executor-low.md" ] && ok "low tier retired in v23 (absent on fresh install)" || bad "slice-executor-low should be retired but is present"
 [ -f "$F/executors.toml" ] && ok "fresh install seeds the tracked executors.toml selection" || bad "fresh install missing executors.toml"
@@ -1126,7 +1131,7 @@ d = json.load(open(p)); d["kind"] = "co-work"
 json.dump(d, open(p, "w"), indent=2)
 PY2
 # v53 route table (P32.S1): executors.toml overrides the engine's rows key by key, sync-agents
-# writes the four managed agent files from them, and executor-route prints the routing decision,
+# writes the five managed agent files from them, and executor-route prints the routing decision,
 # writing nothing. Its probes unset the three environment variables it reports on, so a run inside
 # an ocx session (a loopback ANTHROPIC_BASE_URL) still sees the plain table.
 er() { ( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE python3 scripts/workflow.py executor-route "$@" 2>&1 ); }
@@ -1136,7 +1141,8 @@ rm -f "$F/executors.toml"
   && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-high.md" \
   && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/design-drafter.md" \
   && grep -q '^model: haiku$' "$F/.claude/agents/Explore.md" && grep -q '^effort: high$' "$F/.claude/agents/Explore.md" \
-  && ok "no executors.toml: sync-agents writes the route defaults (mid sonnet@high, high opus@high, design-drafter opus@xhigh, Explore haiku@high)" \
+  && grep -q '^model: sonnet$' "$F/.claude/agents/design-critic.md" && grep -q '^effort: max$' "$F/.claude/agents/design-critic.md" \
+  && ok "no executors.toml: sync-agents writes the route defaults (mid sonnet@high, high opus@high, design-drafter opus@xhigh, design-critic sonnet@max, Explore haiku@high)" \
   || bad "the route defaults matrix is wrong"
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: fable$' "$F/.claude/agents/slice-executor-high.md" \
@@ -1166,9 +1172,11 @@ printf '[claude.nope]\nmodel = "opus"\n' > "$F/executors.toml"
 rm -f "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed restoring the route defaults"
 er_out=$(er)
-[ "$(printf '%s\n' "$er_out" | grep -cE '^(high|research|design|mid|cheap|explore) ')" = "6" ] && printf '%s\n' "$er_out" | grep -qx 'proxy=none' \
+[ "$(printf '%s\n' "$er_out" | grep -cE '^(high|research|design|critic|judge|mid|cheap|explore) ')" = "8" ] && printf '%s\n' "$er_out" | grep -qx 'proxy=none' \
   && printf '%s\n' "$er_out" | grep -qE '^design +- +opus +xhigh +default$' \
-  && ok "executor-route (bare) prints the six-row route table (design: tier -, opus@xhigh) and proxy=none" || bad "executor-route bare table wrong: $er_out"
+  && printf '%s\n' "$er_out" | grep -qE '^critic +- +sonnet +max +default$' && printf '%s\n' "$er_out" | grep -qE '^judge +- +fable +high +default$' \
+  && ! printf '%s\n' "$er_out" | grep -q '^warning=fairness' \
+  && ok "executor-route (bare) prints the eight-row route table (design opus@xhigh, critic sonnet@max, judge fable@high, tier -) and proxy=none" || bad "executor-route bare table wrong: $er_out"
 er_out=$(er P1.DECOMP)
 printf '%s\n' "$er_out" | grep -qx 'route=high' && printf '%s\n' "$er_out" | grep -qx 'tier=high' \
   && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor-high' && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
@@ -1202,6 +1210,22 @@ printf '%s\n' "$er_out" | grep -qx 'agent=design-drafter' && printf '%s\n' "$er_
   && printf '%s\n' "$er_out" | grep -qx 'tier=-' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-drafter' \
   && printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'effort=xhigh' \
   && ok "executor-route --drafter names design-drafter on its own design row (tier -, opus@xhigh)" || bad "executor-route --drafter wrong: $er_out"
+# P36.S5B: the critic and the judge both run design-critic; each must be a different model from the drafter's.
+er_out=$(er --critic); er_j=$(er --judge)
+printf '%s\n' "$er_out" | grep -qx 'route=critic' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-critic' \
+  && printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && printf '%s\n' "$er_out" | grep -qx 'effort=max' \
+  && printf '%s\n' "$er_j" | grep -qx 'route=judge' && printf '%s\n' "$er_j" | grep -qx 'subagent_type=design-critic' \
+  && printf '%s\n' "$er_j" | grep -qx 'model=fable' && printf '%s\n' "$er_j" | grep -qx 'tier=-' \
+  && ok "executor-route --critic (sonnet@max) and --judge (fable) both dispatch design-critic" || bad "executor-route --critic/--judge wrong: $er_out / $er_j"
+printf '[claude.critic]\nmodel = "opus"\n' > "$F/executors.toml"
+er_out=$( cd "$F" && env -u ANTHROPIC_BASE_URL python3 scripts/workflow.py executor-route --critic 2>&1 ); er_rc=$?
+[ "$er_rc" -eq 1 ] && printf '%s\n' "$er_out" | grep -q "is the design row's model" \
+  && printf '%s\n' "$(er)" | grep -q '^warning=fairness: the critic row' \
+  && ok "a critic on the drafter's model is refused (exit 1), and the bare table warns" || bad "the critic fairness refusal failed (rc=$er_rc): $er_out"
+rm -f "$F/executors.toml"
+er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 scripts/workflow.py executor-route --judge 2>&1 ); er_rc=$?
+[ "$er_rc" -eq 0 ] && printf '%s\n' "$er_out" | grep -q '^skip=yes reason=loopback ' \
+  && ok "behind a loopback proxy (no Fable) executor-route --judge prints skip=yes and exits 0" || bad "executor-route --judge proxy skip wrong (rc=$er_rc): $er_out"
 ( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE CLAUDE_CODE_EFFORT_LEVEL=high python3 scripts/workflow.py executor-route P1.DECOMP 2>&1 | grep -q '^warning=CLAUDE_CODE_EFFORT_LEVEL' ) \
   && ok "executor-route warns that CLAUDE_CODE_EFFORT_LEVEL outranks every per-dispatch effort" || bad "executor-route did not warn on CLAUDE_CODE_EFFORT_LEVEL"
 cp "$SRC/executors.toml" "$F/executors.toml"
@@ -1426,6 +1450,7 @@ done
 DUAL_FIXED=".claude/agents/slice-executor-mid.md
 .claude/agents/slice-executor-high.md
 .claude/agents/design-drafter.md
+.claude/agents/design-critic.md
 .claude/agents/Explore.md
 .claude/settings.json
 executors.toml
@@ -1939,7 +1964,7 @@ if printf '%s\n' "$nx" | grep -q "^host_commit_convention=confirmed (coauthor_tr
     && python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["commit_convention"]; assert c["confirmed"] is True and c["text"] == "type(scope): summary" and c["inferred"] == "type(scope): summary", c' "$NH/workflow/.agentic-nested.json"; then
   ok "nested-convention --confirm records the text and the trailer rule, and next stops flagging it"; else bad "nested-convention --confirm did not flip the convention -- $nx"; fi
 # The agent rename map: design-drafter is installed as wf-design-drafter in the host's .claude/agents.
-mkdir -p "$NH/.claude/agents" && cp "$SRC/claude/agents/slice-executor-mid.md" "$SRC/claude/agents/slice-executor-high.md" "$SRC/claude/agents/Explore.md" "$NH/.claude/agents/" \
+mkdir -p "$NH/.claude/agents" && cp "$SRC/claude/agents/slice-executor-mid.md" "$SRC/claude/agents/slice-executor-high.md" "$SRC/claude/agents/design-critic.md" "$SRC/claude/agents/Explore.md" "$NH/.claude/agents/" \
   && sed 's/^name: design-drafter$/name: wf-design-drafter/' "$SRC/claude/agents/design-drafter.md" > "$NH/.claude/agents/wf-design-drafter.md"
 nw sync-agents >/dev/null 2>&1
 if nw sync-agents --check >/dev/null 2>&1 && grep -qx "name: wf-design-drafter" "$NH/.claude/agents/wf-design-drafter.md" \

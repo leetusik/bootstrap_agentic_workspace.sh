@@ -244,7 +244,7 @@ git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하�
 ### 시각 디자인 작업: 승인 한 번
 
 제품의 화면 모양을 바꾸는 일이면 `design-cowork` 스킬이 자동으로 작동합니다. **에이전트는
-디자인하지 않습니다** — 라운드마다 전용 디자인 서브에이전트(`design-drafter`)가 초안을 쓰고,
+디자인하지 않습니다** — 라운드마다 전용 디자인 서브에이전트(`design-drafter`)가 초안을 쓰고 별도의 비평가(`design-critic`)가 그 초안을 평가하며,
 시각적 결정은 여러분이 내립니다. 디자인은 외부 서비스가 아니라 저장소 안의
 `docs/reference/design/`에 일반 파일로 남습니다(번호가 매겨진 카드 `cards/01-nav.html`,
 `02-hero.html`, …, `tokens.css`, 라운드별 기록). 계정도 푸시도 필요 없습니다. 디자인 도구는
@@ -334,6 +334,8 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 | `high` | Opus@high | `slice-executor-high` | 일 나누기(`DECOMP`), 최종 리뷰(`REVIEW`), 이유를 적어 `risk: high`로 매긴 slice, 그리고 두 번째 시도(에스컬레이션, `mid`가 한 번 실패한 일). |
 | `research` | Opus@medium | `slice-executor-high` | 조사(`research`) slice |
 | `design` | Opus@xhigh | `design-drafter` | 디자인 하위 에이전트의 라운드 초안(`executor-route --drafter`). slice 티어가 아니며 `high` 행을 따르지 않음 |
+| `critic` | Sonnet@max | `design-critic` | 초안 라운드를 새 눈으로 평가하는 디자인 비평가(`executor-route --critic`). `design` 행과 다른 모델이어야 함 |
+| `judge` | Fable@high | `design-critic` | 비평가가 확신하지 못한 항목만 판정하는 판정 모드(`executor-route --judge`, 별칭만). `design` 행과 다른 모델이어야 하며, 루프백 프록시에서는 건너뜀 |
 | `mid` | Sonnet@high | `slice-executor-mid` | 기본 — `risk: low`인 구현·수정(`fix`) slice. 실제 코드 작성과 여러 파일에 걸친 변경도 포함 |
 | `cheap` | `mid` 행을 상속(이 저장소: Haiku@high) | `slice-executor-mid` | `risk: low`인 문서(`docs`)·QA slice — 싼 경로. 설정하지 않으면 `mid` 행과 같음 |
 | `explore` | Haiku@high | `Explore` | 읽기 전용 조회(계획 조사, 실행자의 큰 읽기). slice 라우트는 아님 |

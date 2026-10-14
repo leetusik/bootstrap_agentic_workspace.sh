@@ -185,7 +185,7 @@ MANAGED_FILES = [
     *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md", "phase.md")],
     "scripts/workflow.py",
     ".claude/agents/slice-executor-mid.md", ".claude/agents/slice-executor-high.md", ".claude/agents/design-drafter.md",
-    ".claude/agents/Explore.md",
+    ".claude/agents/design-critic.md", ".claude/agents/Explore.md",
     ".claude/settings.json",
     "executors.toml",
 ]
@@ -554,7 +554,7 @@ def write_json(path, data) -> None:
 # Before any write, nested_plan() also asks git whether every host-side target WILL be ignored
 # (a host .gitignore negation outranks info/exclude); after the writes, nested_verify_clean()
 # asserts the host's git status lists none of them.
-NESTED_AGENTS = ["slice-executor-mid", "slice-executor-high", "design-drafter", "Explore"]
+NESTED_AGENTS = ["slice-executor-mid", "slice-executor-high", "design-drafter", "design-critic", "Explore"]
 NESTED_KINDS = ("skills", "agents")
 # The engine's subcommands, read from the embedded engine: a hyphenated skill name that is not one
 # of them only ever names the skill, so its plain backticked form is renamed too.
@@ -1393,12 +1393,14 @@ for name in ([] if NESTED else CLAUDE_SKILLS):
 
 # Subagents: full-permission workers that implement one already-planned slice, in two
 # capability tiers picked by the slice's risk (embedded verbatim from the live repo), plus
-# the design subagent that drafts one design round (its own design row, [claude.design]) and the
+# the design subagent that drafts one design round (its own design row, [claude.design]), the design
+# critic that judges a drafted round (the critic row; the judge row runs it in judge mode) and the
 # read-only Explore lookup agent (the explore row).
 if not NESTED:
     for tier in ("mid", "high"):
         write_text(f".claude/agents/slice-executor-{tier}.md", PAYLOADS[f".claude/agents/slice-executor-{tier}.md"])
     write_text(".claude/agents/design-drafter.md", PAYLOADS[".claude/agents/design-drafter.md"])
+    write_text(".claude/agents/design-critic.md", PAYLOADS[".claude/agents/design-critic.md"])
     write_text(".claude/agents/Explore.md", PAYLOADS[".claude/agents/Explore.md"])
 
 # ---- Executor-tier config (seeded once — commented defaults; operator-owned) ----
@@ -1564,7 +1566,7 @@ elif RETROFIT:
 else:
     print(f"Bootstrapped agentic workspace at {TARGET}")
     print("Contract: CLAUDE.md")
-    print("Claude Code: 18 skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{mid,high}.md, design subagent .claude/agents/design-drafter.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
+    print("Claude Code: 18 skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{mid,high}.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
     print("Visual design: design-cowork fires automatically; the design-drafter subagent drafts each round as plain files under docs/reference/design/ (numbered cards, tokens, round records) and the operator decides: picks a style (build-after / design-only / paired) and signs on the cards, or on a runnable mockup they ask for, before separate implementation and browser fidelity")
     print("Executor tiers are routed by kind, then risk, then attempt (mid is the default tier, real code included; high for decomposition, research, review, named triggers and retries), through one route table whose rows set each dispatch's model and effort; python3 scripts/workflow.py executor-route shows it (and executor-route <slice> the decision for one slice); override a row in executors.toml, then run sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")

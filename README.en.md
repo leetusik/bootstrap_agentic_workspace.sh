@@ -211,7 +211,7 @@ under `workflow/` instead and the skills and agents untracked in the host's `.cl
 
 - [`CLAUDE.md`](payload/contract.md) — the compact routing contract every agent session works under.
 - [`scripts/workflow.py`](payload/scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` — the 18 Agent Skills (`/slash` commands), the two risk-routed `slice-executor` tier subagents (`.claude/agents/slice-executor-{mid,high}.md`, dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ xhigh), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
+- `.claude/` — the 18 Agent Skills (`/slash` commands), the two risk-routed `slice-executor` tier subagents (`.claude/agents/slice-executor-{mid,high}.md`, dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ xhigh), the `design-critic` that judges each draft (the `critic` row, sonnet @ max; in judge mode the `judge` row, fable @ high), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - [`works/`](works/) — the state machine, starting with **no phases**: a `deferred/` area,
@@ -358,7 +358,7 @@ plan, stop before running it) are opt-in words you add to the command.
 ### Visual work: one design signoff
 
 `design-cowork` fires automatically when the work changes a product's visual appearance. **The agent
-never designs** — a dedicated design subagent (`design-drafter`) drafts each round and you make
+never designs** — a dedicated design subagent (`design-drafter`) drafts each round, a separate critic (`design-critic`) judges the draft, and you make
 every visual decision. The design lives in your repo as plain files under `docs/reference/design/`
 (numbered cards such as `cards/01-nav.html`, a `tokens.css`, and a record per round), so no account,
 push or external service is involved. The `drafter` is the only design tool; the earlier
@@ -420,7 +420,7 @@ another agent, CI — drives the workspace with the exact same commands:
 | `defer-job --title … --reason … --trigger …` | Park a deferred job |
 | `promote-deferred D1 --phase P1 --slice P1.S2` | Promote a deferred job into a slice |
 | `sync-agents` | Apply the `executors.toml` per-row model/effort overrides to the four agent files |
-| `executor-route` / `executor-route <slice_id> [--retry]` | Show the resolved route table and the agent files' sync state, or the dispatch decision for one slice (`--drafter`, `--explore` for the two agents) |
+| `executor-route` / `executor-route <slice_id> [--retry]` | Show the resolved route table and the agent files' sync state, or the dispatch decision for one slice (`--drafter`, `--critic`, `--judge`, `--explore` for the non-slice agents) |
 | `record-dispatch <slice_id> --route … --model … --effort … --verdict …` | Record one executor dispatch (duration, tokens, verdict) in `works/events.jsonl` |
 | `dispatch-summary [--phase P] [--json]` | Summarize the recorded dispatches by route, model @ effort and kind |
 | `parallel-start <P>` … `parallel-teardown <P>` | Move a phase into its own branch + worktree when you ask for one, then integrate it back with a local merge (see the `parallel-phase` skill) |
@@ -494,7 +494,7 @@ sonnet while opus takes what is genuinely hard or has already failed once. Model
 attempt), `research` (opus @ medium), `mid` (sonnet @ high — implementation and fix rated `low`),
 `cheap` (docs and qa rated `low`; inherits `mid` unless overridden — this repository runs it on Haiku
 5.5 at `high`, and the seed ships it commented out because the `haiku` alias is Haiku 4.5 on Bedrock,
-Vertex and Foundry) and `explore` (haiku @ high, the read-only `Explore` lookup agent). The repo-root
+Vertex and Foundry) and `explore` (haiku @ high, the read-only `Explore` lookup agent). Three rows serve design, never a slice: `design` (opus @ xhigh, `design-drafter`), `critic` (sonnet @ max, `design-critic`) and `judge` (fable @ high, alias only, the same critic file in judge mode); the critic and the judge must each run on a different model from the drafter's, and `executor-route --critic` / `--judge` refuse an equal pair. The repo-root
 `executors.toml` overrides rows one by one (`[claude.<row>]`, seed-once — updates never overwrite it),
 applied to the agent files with `python3 scripts/workflow.py sync-agents`; the presets are gone, and a
 leftover `mode = "…"` line is refused with the migration step. `python3 scripts/workflow.py
@@ -619,7 +619,7 @@ parallelism it never used. The mechanism itself is unchanged.)
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
 │   ├── skills/                    # 18 Agent Skills (/slash commands)
-│   ├── agents/                    # slice-executor tiers mid/high + design-drafter (models from executors.toml)
+│   ├── agents/                    # slice-executor tiers mid/high + design-drafter + design-critic (models from executors.toml)
 │   └── settings.json              # pre-approves workflow.py; denies force-push & rm -rf
 └── .github/
     └── workflows/
