@@ -22,11 +22,13 @@
 # worktree-on-request invariants (nothing enters a worktree unhinted or unasked; parallel-start
 # on a dirty tree commits only the phase folder plus the regenerated works/ files and cuts a
 # nested .claude/worktrees/ checkout hidden by the repo's info/exclude; parallel-skip and
-# new-phase --on-main are no-ops that stamp nothing), the v47 design-contract invariants
-# (design-check names a gap, an unnumbered card and a // or http:// reference; design-close's
-# regroup rewrites line 1 only, keeps a pre-close snapshot and is idempotent; v48: design-check skips claude-design/,
-# design-migrate moves all-or-nothing and a pre-v47 root is steered to it; P36: design-register is gone, an
-# unknown command), the P36 design-tool invariants (design-cowork carries the drafter loop only, with a legacy
+# new-phase --on-main are no-ops that stamp nothing), the design-contract invariants on schema 2
+# (P36.S3: one job per co-work slice and one open round per project; design-check names a missing
+# board, a missing support line, a .. reference and a title gap in a canvas tree; design-canvas,
+# design-system and the read-only design-publish-plan; design-close snapshots byte-identical, signs the
+# job and is idempotent; design-migrate --to 2 moves a schema-1 record into schema1/ and a schema-1 root is
+# steered to it; v48: design-check skips claude-design/, design-migrate moves all-or-nothing and a pre-v47
+# root is steered to it; P36.S1: design-register is gone, an unknown command), the P36 design-tool invariants (design-cowork carries the drafter loop only, with a legacy
 # rule for a `Design tool: claude-design` intent and a Legacy record note for claude-design/), the P28 nested-engine invariants (workflow/.agentic-nested.json: host anchors, host-side
 # phase-scope, the paired worktree lifecycle, the convention gate, the agent rename map, a malformed marker is an
 # error), the P28 nested-install invariants (--nested: a clean host status/HEAD/config, the clash rename,
@@ -327,11 +329,12 @@ for gone in ("DESIGN_REGISTRY_ENV", "DESIGN_REGISTRY_DEFAULT", "DESIGN_DECK_URL_
              "design_deck_hint", "AGENTIC_DESIGN_"):
     assert gone not in workflow_src, gone
 # P26.F2: the Self-contained bullet (and the drafter's mirror of it) names every reference prefix
-# design-check allows -- `#`, `data:`, `https:` -- read from DESIGN_ALLOWED_REFS so text and engine
-# cannot drift; `tokens.css` takes the same set without the ../tokens.css exception.
-refs = re.search(r'^DESIGN_ALLOWED_REFS = \(([^)]*)\)$', workflow_src, re.M).group(1)
-refs = [r.strip().strip('"') for r in refs.split(",") if r.strip()]
-assert refs and all(refs), refs
+# schema 1's design-check allowed -- `#`, `data:`, `https:`; `tokens.css` takes the same set without the
+# ../tokens.css exception. P36.S3: the engine is on schema 2 (canvas trees; DESIGN_ALLOWED_REFS gained
+# `/_blob/`), so this pin holds the schema-1 prose to its own fixed list until P36.S6 rewrites that prose
+# and re-couples the pin to DESIGN_ALLOWED_REFS.
+refs = ["#", "data:", "https://"]
+assert re.search(r'^DESIGN_ALLOWED_REFS = \(([^)]*)\)$', workflow_src, re.M), "DESIGN_ALLOWED_REFS"
 bullet = design.split("- **Self-contained.**", 1)[1].split(" - **", 1)[0]
 drafter_rule = " ".join((root / "payload/claude/agents/design-drafter.md").read_text().split())
 drafter_rule = drafter_rule.split("**Keep every card self-contained.**", 1)[1].split(" 3. **", 1)[0]
@@ -1656,62 +1659,120 @@ if ( cd "$W" && python3 scripts/workflow.py parallel-start P2 2>&1 | grep -q "le
   || bad "merge, merge-finish or teardown failed"
 
 # ---------------------------------------------------------------------------
-echo "== Test 13: v47 design contract -- design-check names a gap, an unnumbered card and a // or http:// reference, design-close regroups line 1 only (idempotent), design-register is gone (unknown command); claude-design/ is skipped, design-migrate =="
+echo "== Test 13: schema-2 design record -- design-open makes a job and refuses a second open round, design-check names a missing board, a missing support line, a .. reference and a title gap, design-canvas / design-system / design-publish-plan, design-close snapshots and signs, a superseded round's slice reuses its job, design-migrate --to 2; claude-design/ is skipped, the pre-v47 design-migrate, design-register is gone =="
 # Runs in the fresh workspace $F.
 newtmp DZ
 DR="$F/docs/reference/design"
+JD="$DR/jobs/01-signin"
+CP="$JD/canvas/project"
 dw() { ( cd "$F" && python3 scripts/workflow.py "$@" ); }
-tree_sig() { ( cd "$DR" && find . -type f | LC_ALL=C sort | while read -r f; do printf '%s %s\n' "$f" "$(sha "$f")"; done ); }
-{ dw design-init --id smoke-design --name "Smoke design" && dw design-open --slug signin --slice P9.S1; } >/dev/null 2>&1 \
-  || bad "design probe: design-init / design-open failed"
-python3 - "$DR" <<'CARDS' || bad "design probe: could not write the round"
-import pathlib, sys
-d = pathlib.Path(sys.argv[1])
-(d / "cards").mkdir(exist_ok=True)
-(d / "tokens.css").write_text(":root { --ink: #111; }\n")
-(d / "rounds/01-signin/handoff.md").write_text("# handoff\n")
-for name in ("01-colors", "02-type", "03-button"):
-    (d / "cards" / f"{name}.html").write_text(
-        '<!-- @dsCard group="⏳ P9.S1 · Components" viewport="480x200" -->\n'
-        f'<link rel="stylesheet" href="../tokens.css">\n<p>{name}</p>\n'
-        # the contract's allowed references besides ../tokens.css: an in-page fragment, data:, https
-        '<a href="#top"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt=""></a>'
-        '<a href="https://example.com/">more</a>\n', encoding="utf-8")
-CARDS
-# P26.F1: a protocol-relative and a plain-http reference break the contract's "absolute https" rule.
-cp "$DR/cards/03-button.html" "$DZ/03-button.keep"
-printf '<img src="//cdn.example.com/x.png"><link rel="stylesheet" href="http://x.example/y.css">\n' >> "$DR/cards/03-button.html"
-mv "$DR/cards/02-type.html" "$DR/cards/type.html"
-out=$(dw design-check 2>&1); rc=$?
-mv "$DR/cards/type.html" "$DR/cards/02-type.html"
-cp "$DZ/03-button.keep" "$DR/cards/03-button.html"
-ok_out=$(dw design-check cards/01-colors.html cards/02-type.html cards/03-button.html 2>&1); ok_rc=$?
-if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -q 'gap in the card numbering: no card numbered 02' \
-    && printf '%s\n' "$out" | grep -q 'cards/type.html: unnumbered card path' \
-    && printf '%s\n' "$out" | grep -Fq "cards/03-button.html: references '//cdn.example.com/x.png' (protocol-relative" \
-    && printf '%s\n' "$out" | grep -Fq "cards/03-button.html: references 'http://x.example/y.css' (plain http" \
-    && [ "$ok_rc" -eq 0 ]; then
-  ok "design-check names a gap, an unnumbered card, a // and an http:// reference (exit 1) and passes the numbered set with ../tokens.css, #, data: and https references"
-else bad "design-check missed the gap, the unnumbered card, or a // / http:// reference, or failed the allowed set (rc=$rc, restored rc=$ok_rc) -- $out $ok_out"; fi
-mkdir -p "$DZ/pre" && cp "$DR"/cards/*.html "$DZ/pre/" && printf 'Signed: "ship it"\n' > "$DR/rounds/01-signin/SIGNOFF.md"
-dw design-close 01-signin --words "ship it" >/dev/null 2>&1 || bad "design probe: design-close failed"
-if python3 - "$DR" "$DZ/pre" <<'REGROUP'
+tree_sig() { ( cd "${1:-$DR}" && find . -type f | LC_ALL=C sort | while read -r f; do printf '%s %s\n' "$f" "$(sha "$f")"; done ); }
+# 1. One job per co-work slice; at most one open round per project.
+dw design-init --id smoke-design --name "Smoke design" >/dev/null 2>&1 || bad "design probe: design-init failed"
+open_out=$(dw design-open --slug signin --slice P9.S1 2>&1); open_rc=$?
+out=$(dw design-open --slug other --slice P9.S2 2>&1); rc=$?
+if [ "$open_rc" -eq 0 ] && [ -f "$JD/job.json" ] && [ -f "$JD/rounds/01-signin/round.json" ] \
+    && [ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -Fq 'refused -- 01-signin/01-signin is open' && [ ! -e "$DR/jobs/02-other" ]; then
+  ok "design-open creates job 01-signin with round 01-signin, and a second design-open while it is open refuses and creates nothing"
+else bad "design-open did not create the job and round, or a second open was not refused (rc=$open_rc/$rc) -- $open_out $out"; fi
+# 2. A minimal valid canvas tree passes; one broken variant names each kind of break.
+python3 - "$JD" <<'CANVAS' || bad "design probe: could not write the canvas tree"
 import json, pathlib, sys
-d, pre = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
-for old in sorted(pre.iterdir()):
-    new = (d / "cards" / old.name).read_bytes()
-    before = old.read_bytes()
-    assert new.split(b"\n", 1)[1] == before.split(b"\n", 1)[1], old.name  # every byte after line 1
-    assert new.split(b"\n", 1)[0] == b'<!-- @dsCard group="Components" viewport="480x200" -->', old.name
-    assert (d / "rounds/01-signin/cards" / old.name).read_bytes() == before, old.name  # the snapshot
-rnd = json.loads((d / "rounds/01-signin/round.json").read_text())
-assert rnd["status"] == "signed" and rnd["signoff_words"] == "ship it" and len(rnd["cards"]) == 3, rnd
-REGROUP
-then ok "design-close regroups line 1 only: the address comes off, every later byte is identical, the snapshot keeps the pre-close bytes"
-else bad "design-close changed more than the group on line 1, or lost the snapshot"; fi
+job = pathlib.Path(sys.argv[1])
+project = job / "canvas/project"
+(job / "rounds/01-signin/handoff.md").write_text("# handoff\n")
+project.mkdir(parents=True, exist_ok=True)
+boards = {"Main.dc.html": {"x": 0, "y": 0, "w": 880, "h": 560, "title": "01 · Sign-in"},
+          "Error.dc.html": {"x": 960, "y": 0, "w": 880, "h": 560, "title": "02 · Error"}}
+index = {"v": 3, "createdOnFiles": {"v": 1, "at": "2026-10-14T00:00:00Z"}, "title": "Sign-in", "launch": {"view": "canvas"},
+         "pages": [], "boards": boards, "order": list(boards), "notes": {}, "designSystems": []}
+(project / "canvas.json").write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+for name, board in boards.items():
+    (project / name).write_text(
+        '<!doctype html>\n<html><head>\n<script src="./support.js"></script>\n'
+        '<link rel="stylesheet" href="ds/smoke/tokens.css">\n</head>\n'
+        # the allowed references besides a relative path inside project/: #, data:, https, /_blob/, a {{hole}}
+        '<body><x-dc><a href="#top"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt=""></a>'
+        '<a href="https://example.com/">more</a><img src="/_blob/abc123" alt=""><img src="{{logo}}" alt="">'
+        f'<p>{board["title"]}</p></x-dc></body></html>\n', encoding="utf-8")
+CANVAS
+mkdir -p "$DZ/good" && cp -R "$CP/." "$DZ/good/"
+python3 - "$CP" <<'BREAK' || bad "design probe: could not break the canvas tree"
+import json, pathlib, sys
+project = pathlib.Path(sys.argv[1])
+index = json.loads((project / "canvas.json").read_text(encoding="utf-8"))
+index["boards"]["Gone.dc.html"] = {"x": 0, "y": 680, "w": 400, "h": 300, "title": "04 · Gone"}  # no file, and no 03
+index["order"].append("Gone.dc.html")
+(project / "canvas.json").write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+main = (project / "Main.dc.html").read_text(encoding="utf-8")
+main = main.replace('<script src="./support.js"></script>\n', "").replace('href="ds/smoke/tokens.css"', 'href="../escape.css"')
+(project / "Main.dc.html").write_text(main, encoding="utf-8")
+BREAK
+out=$(dw design-check 01-signin 2>&1); rc=$?
+cp -R "$DZ/good/." "$CP/"
+ok_out=$(dw design-check 2>&1); ok_rc=$?
+if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -Fq "board 'Gone.dc.html' is listed but its file is missing" \
+    && printf '%s\n' "$out" | grep -Fq 'Main.dc.html: missing the exact line <script src="./support.js"></script>' \
+    && printf '%s\n' "$out" | grep -Fq "Main.dc.html: references '../escape.css' (" \
+    && printf '%s\n' "$out" | grep -Fq 'no board titled "03 · …"' && [ "$ok_rc" -eq 0 ]; then
+  ok "design-check names a missing listed board, a missing support line, a .. reference and a title gap (exit 1), and passes the valid tree with #, data:, https, /_blob/ and {{hole}} references"
+else bad "design-check missed a break in the canvas tree, or failed the valid tree (rc=$rc, valid rc=$ok_rc) -- $out $ok_out"; fi
+# 3. The canvas record and the publish plan: null for a removed board, the system install entries.
+url_out=$(dw design-canvas 01-signin --url https://example.com/artifact/abc 2>&1); url_rc=$?
+dw design-canvas 01-signin --url https://claude.ai/artifact/SmokeCanvas1 --version 1700000000-aaaa >/dev/null 2>&1 \
+  || bad "design probe: design-canvas --url --version failed"
+published=$(python3 -c 'import json, sys; print(" ".join(json.load(open(sys.argv[1]))["canvas"]["published"]))' "$JD/job.json")
+[ "$url_rc" -ne 0 ] && printf '%s\n' "$url_out" | grep -Fq 'is not an Artifact address' \
+  && [ "$published" = "project/Error.dc.html project/Main.dc.html project/canvas.json" ] \
+  && ok "design-canvas rejects a non-claude host and --version records the published file list" \
+  || bad "design-canvas accepted a foreign host or recorded the wrong published list (rc=$url_rc) -- $url_out / $published"
+mv "$CP/Error.dc.html" "$DZ/Error.dc.html"
+python3 - "$CP/canvas.json" <<'DROP' || bad "design probe: could not drop the board from canvas.json"
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+index = json.loads(path.read_text(encoding="utf-8"))
+del index["boards"]["Error.dc.html"]
+index["order"].remove("Error.dc.html")
+path.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+DROP
+dw design-system --artifact https://claude.ai/artifact/SmokeSystem1 --namespace smoke --version 5-sys \
+  --files tokens.json,tokens.css >/dev/null 2>&1 || bad "design probe: design-system failed"
+plan=$(dw design-publish-plan 01-signin 2>&1)
+if printf '%s' "$plan" | python3 -c '
+import json, sys
+plan = json.load(sys.stdin)
+system = "https://claude.ai/artifact/SmokeSystem1"
+assert plan["url"] == "https://claude.ai/artifact/SmokeCanvas1", plan
+assert plan["root"].endswith("/jobs/01-signin/canvas") and plan["file_path"].endswith("/jobs/01-signin/canvas/project/canvas.json"), plan
+assert plan["files"] == {"project/Main.dc.html": "project/Main.dc.html", "project/Error.dc.html": None,
+                         "project/ds/smoke/tokens.json": {"artifact": system, "path": "project/tokens.json"},
+                         "project/ds/smoke/tokens.css": {"artifact": system, "path": "project/tokens.css"}}, plan["files"]
+' >/dev/null 2>&1; then
+  ok "design-publish-plan maps each project file to itself, a board removed since the last publish to null, and the system files to server-side install copies"
+else bad "design-publish-plan printed the wrong plan -- $plan"; fi
+# 4. design-close snapshots the tree byte for byte and signs the job; a superseded round's slice reuses it.
+pre=$(tree_sig "$CP")
+printf 'Signed: "ship it"\n' > "$JD/rounds/01-signin/SIGNOFF.md"
+dw design-close 01-signin/01-signin --words "ship it" >/dev/null 2>&1 || bad "design probe: design-close --words failed"
+if [ "$(tree_sig "$JD/rounds/01-signin/canvas/project")" = "$pre" ] && python3 - "$JD" <<'SIGNED'
+import json, pathlib, sys
+job = pathlib.Path(sys.argv[1])
+rnd = json.loads((job / "rounds/01-signin/round.json").read_text())
+assert rnd["status"] == "signed" and rnd["signoff_words"] == "ship it" and rnd["canvas_version"] == "1700000000-aaaa", rnd
+assert json.loads((job / "job.json").read_text())["status"] == "signed"
+SIGNED
+then ok "design-close --words snapshots the canvas tree byte-identical, records canvas_version and signs the job"
+else bad "design-close lost the snapshot, the canvas_version or the job's signed status"; fi
 before=$(tree_sig); again=$(dw design-close 01-signin --words "ship it" 2>&1); rc=$?
 [ "$rc" -eq 0 ] && printf '%s\n' "$again" | grep -q 'already signed' && [ "$(tree_sig)" = "$before" ] \
   && ok "design-close is idempotent: a second run writes nothing" || bad "a second design-close was not a no-op (rc=$rc) -- $again"
+{ dw design-open --slug revise --slice P9.S1 && printf '# handoff\n' > "$JD/rounds/02-revise/handoff.md" \
+    && dw design-close 01-signin/02-revise --superseded && dw design-open --slug third --slice P9.S1 \
+    && printf '# handoff\n' > "$JD/rounds/03-third/handoff.md"; } >/dev/null 2>&1 || bad "design probe: the superseding rounds failed"
+[ "$(ls "$DR/jobs")" = "01-signin" ] && [ "$(ls "$JD/rounds" | tr '\n' ' ')" = "01-signin 02-revise 03-third " ] \
+  && python3 -c 'import json, sys; assert json.load(open(sys.argv[1]))["supersedes"] == ["02-revise"]' "$JD/rounds/03-third/round.json" \
+  && ok "a superseded round's slice reuses its job: rounds 02 and 03 open in job 01-signin, each superseding the last" \
+  || bad "design-open after --superseded did not reuse the slice's job -- $(ls -R "$DR/jobs")"
 # P36.S1: design-register and its registry / design-deck hint are retired -- the command is unknown.
 out=$(dw design-register 2>&1); rc=$?
 [ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -q 'invalid choice' \
@@ -1730,7 +1791,7 @@ mkdir -p "$DR/rounds/02-legacy" && printf '# legacy\n' > "$DR/rounds/02-legacy/h
 printf 'Signed: "old"\n' > "$DR/SIGNOFF.md" && printf 'notes\n' > "$DR/notes.txt"
 out=$(dw design-migrate --apply 2>&1); rc=$?
 [ "$rc" -eq 0 ] && [ -f "$DR/claude-design/rounds/02-legacy/handoff.md" ] && [ -f "$DR/claude-design/SIGNOFF.md" ] \
-  && [ ! -e "$DR/rounds/02-legacy" ] && [ ! -e "$DR/SIGNOFF.md" ] && [ -f "$DR/rounds/01-signin/round.json" ] && [ -f "$DR/notes.txt" ] \
+  && [ ! -e "$DR/rounds" ] && [ ! -e "$DR/SIGNOFF.md" ] && [ -f "$JD/rounds/01-signin/round.json" ] && [ -f "$DR/notes.txt" ] \
   && printf '%s\n' "$out" | grep -Fq 'left in place docs/reference/design/notes.txt' && dw design-check >/dev/null 2>&1 \
   && ok "design-migrate beside design.json moves only a round without round.json and the root SIGNOFF.md, lists other files as left in place, and design-check passes after" \
   || bad "design-migrate beside design.json moved the wrong entries (rc=$rc) -- $out"
@@ -1768,6 +1829,29 @@ conflict_before=$(mig_sig); out=$(mw design-migrate --apply 2>&1); rc=$?
   && printf '%s\n' "$out" | grep -Fq 'schema-1 round(s) 02-b' \
   && ok "design-migrate refuses an existing destination and a round.json in a design.json-less root, naming both, and moves nothing (not even the free BRIEF.md)" \
   || bad "design-migrate moved something past a conflict, or did not name every conflict (rc=$rc) -- $out"
+# 5. P36.S3: a schema-1 (v47 card) record is legacy -- design-open refuses it with the migrate hint, and
+# design-migrate --to 2 moves cards/, tokens.css and rounds/ into schema1/ byte-identical (a dry run first).
+S1="$DZ/schema1"; SD="$S1/docs/reference/design"
+mkdir -p "$S1/scripts" "$SD/cards" "$SD/rounds/01-a/cards" && cp "$F/scripts/workflow.py" "$S1/scripts/"
+printf '{"schema": 1, "id": "old-cards", "name": "Old cards"}\n' > "$SD/design.json"
+printf '<!-- @dsCard group="Components" viewport="480x200" -->\n<p>a</p>\n' > "$SD/cards/01-a.html"
+cp "$SD/cards/01-a.html" "$SD/rounds/01-a/cards/01-a.html" && printf ':root { --ink: #111; }\n' > "$SD/tokens.css"
+printf '{"schema": 1, "round": "01-a", "status": "signed"}\n' > "$SD/rounds/01-a/round.json"
+sw() { ( cd "$S1" && HOME="$DZ/home" python3 scripts/workflow.py "$@" ); }
+s1_before=$(tree_sig "$SD")
+open_out=$(sw design-open --slug b --slice P9.S1 2>&1); open_rc=$?
+dry=$(sw design-migrate --to 2 2>&1); dry_rc=$?
+if [ "$open_rc" -ne 0 ] && printf '%s\n' "$open_out" | grep -Fq 'is schema 1; schema-1 record (numbered cards): run python3 scripts/workflow.py design-migrate --to 2' \
+    && [ "$dry_rc" -eq 0 ] && printf '%s\n' "$dry" | grep -q 'dry run -- nothing moved' && [ "$(tree_sig "$SD")" = "$s1_before" ]; then
+  ok "an unmigrated schema-1 root makes design-open refuse with the design-migrate --to 2 hint, and the dry run moves nothing"
+else bad "a schema-1 root was not refused with the hint, or the dry run moved something (open rc=$open_rc, dry rc=$dry_rc) -- $open_out $dry"; fi
+out=$(sw design-migrate --to 2 --apply 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && [ "$(ls -A "$SD" | tr '\n' ' ')" = "design.json schema1 " ] \
+    && [ "$(tree_sig "$SD/schema1")" = "$(printf '%s\n' "$s1_before" | grep -v '^\./design\.json ')" ] \
+    && python3 -c 'import json, sys; d = json.load(open(sys.argv[1])); assert d["schema"] == 2 and d["id"] == "old-cards" and d["name"] == "Old cards" and d["system"]["artifact"] is None, d' "$SD/design.json" \
+    && sw design-check >/dev/null 2>&1; then
+  ok "design-migrate --to 2 --apply moves cards/, tokens.css and rounds/ under schema1/ byte-identical, rewrites design.json to schema 2, and design-check passes after"
+else bad "design-migrate --to 2 lost, changed or left an entry, or did not rewrite design.json (rc=$rc) -- $out"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 14: P28 nested engine -- workflow/.agentic-nested.json: host anchors, host-side phase-scope, the paired worktree lifecycle, the convention gate, the agent rename map, a malformed marker fails validate =="

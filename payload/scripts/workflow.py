@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import posixpath
 import re
 import shlex
 import shutil
@@ -4834,50 +4835,70 @@ def rotate_backlog(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
-# The design contract (workspace v47). A product repo keeps its visual design as plain files under
-# DESIGN_ROOT_REL -- a project manifest, a numbered card library, tokens, and one folder per design
-# round. The contract itself (paths, manifest fields, the @dsCard grammar, the round lifecycle) is
-# written out in design-cowork/SKILL.md "The design record"; that section and these commands must
-# move together. The commands are the only writers of the machine-readable parts (design.json,
-# round.json, the close-time snapshots), and `design-check` enforces the rest. One invariant carries
-# the weight: the regroup rewrites ONE label on line 1 of a card and asserts every byte after line 1
-# identical. Stdlib only. The retired `claude-design` tool's records sit under DESIGN_LEGACY_DIR,
-# which the scan never reads, and `design-migrate` moves a pre-v47 root there (moves only,
-# all-or-nothing, never a delete, never git).
+# The design contract, schema 2 (workspace v60; v47 started the contract). A product repo keeps its
+# visual design as plain files under DESIGN_ROOT_REL: a project manifest (design.json, which also
+# records the product's Design System Artifact), and one JOB per `co-work` slice -- jobs/<NN-slug>/
+# with job.json, the job's Design canvas as its publish root's project/ tree (canvas/project/:
+# canvas.json plus one .dc.html per artboard), and the job's rounds (rounds/<NN-slug>/, each
+# snapshotting the tree at close). The orchestrator publishes canvas/ to the job's own canvas Artifact
+# as a plain copy; the engine only prints that plan (design-publish-plan) and never calls claude.ai.
+# The contract is written out in design-cowork/SKILL.md "The design record"; that section and these
+# commands must move together. The commands are the only writers of the machine-readable parts
+# (design.json, job.json, round.json, the close-time snapshots), and `design-check` enforces the
+# rest. Stdlib only. Two legacy records sit beside the live one and the scan never reads them:
+# claude-design/ (the retired claude-design tool's pre-v47 record; `design-migrate` moves it there)
+# and schema1/ (the v47 card record -- numbered cards/, tokens.css, rounds/; `design-migrate --to 2`
+# moves it there). Both moves are moves only, all-or-nothing, never a delete, never git. Schema 2 is
+# the only writable schema: a schema-1 design.json is recognised only to steer it to the migration.
 DESIGN_ROOT_REL = "docs/reference/design"
 # The design root as printed: under the nested repo when nested (`workflow/docs/reference/design`,
 # where the record stays -- private workflow files, never the host's docs/), identical at root.
 DESIGN_ROOT_SHOWN = shown_rel(DESIGN_ROOT_REL)
 # The retired `claude-design` tool's legacy record home, in the pre-v47 layout, never read by the engine.
 DESIGN_LEGACY_DIR = "claude-design"
-DESIGN_SCHEMA = 1
+# The v47 card record's legacy home after `design-migrate --to 2`, never read by the engine.
+DESIGN_SCHEMA1_DIR = "schema1"
+DESIGN_SCHEMA = 2
+DESIGN_JOB_STATUSES = ("open", "signed", "implemented")
 DESIGN_ROUND_STATUSES = ("open", "signed", "superseded")
-DESIGN_MANIFEST_KEYS = ("schema", "id", "name")
+DESIGN_MANIFEST_KEYS = ("schema", "id", "name", "system")
+DESIGN_SYSTEM_KEYS = ("artifact", "namespace", "version", "source", "files")
+DESIGN_JOB_KEYS = ("schema", "job", "slice", "title", "canvas", "status")
+DESIGN_JOB_CANVAS_KEYS = ("url", "version", "published")
 DESIGN_ROUND_KEYS = ("schema", "round", "title", "slice", "status", "opened_at", "closed_at",
-                     "cards", "supersedes", "signoff_words")
-DESIGN_MARKER_KEYS = ("group", "viewport", "title")
+                     "supersedes", "signoff_words", "canvas_version")
+# The keys the Design canvas type requires of project/canvas.json (its index).
+DESIGN_CANVAS_INDEX_KEYS = ("v", "boards", "order", "createdOnFiles")
 DESIGN_SLUG = r"[a-z0-9]+(?:-[a-z0-9]+)*"
 DESIGN_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 DESIGN_SLUG_RE = re.compile(rf"^{DESIGN_SLUG}$")
-DESIGN_CARD_RE = re.compile(rf"^(\d{{2,}})-({DESIGN_SLUG})\.html$")
-DESIGN_ROUND_RE = re.compile(rf"^(\d{{2,}})-({DESIGN_SLUG})$")
-DESIGN_CARD_REL_RE = re.compile(rf"^cards/(\d{{2,}})-{DESIGN_SLUG}\.html$")
+DESIGN_NN_RE = re.compile(rf"^(\d{{2,}})-({DESIGN_SLUG})$")  # a job folder or a round folder
 DESIGN_SLICE_RE = re.compile(r"^P\d+\.[A-Z][A-Z0-9]*$")
-DESIGN_MARKER_RE = re.compile(r'^<!-- @dsCard((?: [a-z]+="[^"]*")+) -->$')
-DESIGN_ATTR_RE = re.compile(r' ([a-z]+)="([^"]*)"')
-DESIGN_VIEWPORT_RE = re.compile(r"^[1-9]\d*x[1-9]\d*$")
-DESIGN_REVIEW_MARK = "⏳"  # the hourglass that opens a review-time group
-DESIGN_ADDRESS_RE = re.compile("^⏳ (\\S+) · (.+)$")
+# An Artifact address as the Artifact tool takes it: https, claude.ai or claude.com (preview. allowed),
+# /artifact/<id> or /code/artifact/<id>, and nothing after the id (the type's "cut after its id").
+DESIGN_ARTIFACT_RE = re.compile(r"^https://(?:preview\.)?claude\.(?:ai|com)/(?:code/)?artifact/[A-Za-z0-9_-]+$")
+# The type's folder rule for a design system's namespace under project/ds/ (else the page skips it).
+DESIGN_NAMESPACE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+DESIGN_VERSION_RE = re.compile(r"^\S{1,200}$")  # an Artifact version id, e.g. 1791963598-b7da
+# The type's path rule for a canvas file: each segment starts with a letter, digit or _, then only
+# those and . - (no spaces); an artboard's path ends .dc.html and its stem is unique.
+DESIGN_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
+DESIGN_BOARD_SUFFIX = ".dc.html"
+DESIGN_ENTRY_BOARD = "Main.dc.html"
+DESIGN_SUPPORT_LINE = '<script src="./support.js"></script>'  # the type's runtime, served by the canvas
+# Reading order lives in board titles, never in canvas.json `order` (that is z-order, back to front):
+# every board's title starts with its two-digit reading number, "01 · Sign-in".
+DESIGN_TITLE_RE = re.compile(r"^(\d{2,}) · \S")
 DESIGN_REF_RE = re.compile(r"""\b(?:src|href)\s*=\s*["']([^"']*)["']|url\(\s*["']?([^"')]+?)["']?\s*\)""", re.I)
-# What a card may reference besides ../tokens.css -- exactly the contract's "inline SVG or `data:`, and
-# anything else an absolute `https:` URL", plus in-page `#` fragments (a same-document reference
-# resolves inside the card's own bytes wherever it is opened, and inline SVG's url(#id) / <use
-# href="#id"> rely on it). Nothing else: a protocol-relative `//host/x` resolves against file:// when
-# the operator opens a card file directly, and `http:`, `mailto:`, `tel:`, `javascript:` or `about:`
-# are not what the contract names.
-DESIGN_ALLOWED_REFS = ("#", "data:", "https://")
-DESIGN_REF_WHY = (("//", "protocol-relative: it resolves against file:// when a card file is opened directly"),
+# What a canvas file may reference besides a relative path inside project/ (ds/<ns>/... included): an
+# in-page `#` fragment (inline SVG's url(#id) / <use href="#id"> rely on it), `data:`, an absolute
+# `https:` URL, and the canvas's own uploads at /_blob/<id>. Nothing else: a protocol-relative
+# `//host/x` and plain `http:` are named, an absolute filesystem path or any other scheme is refused,
+# and a relative path that climbs out of project/ with `..` escapes the publish root.
+DESIGN_ALLOWED_REFS = ("#", "data:", "https://", "/_blob/")
+DESIGN_REF_WHY = (("//", "protocol-relative: it does not resolve inside the canvas"),
                   ("http://", "plain http, not https"))
+DESIGN_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 
 
 def design_root() -> Path:
@@ -4907,75 +4928,69 @@ def design_legacy_hint(root: Path) -> str:
     return f"pre-v47 record: run {WORKFLOW_CMD} design-migrate (dry run first){then}"
 
 
+def design_schema1_hint() -> str:
+    """The steer for an unmigrated schema-1 (v47 card) record, the same pattern as design_legacy_hint."""
+    return (f"schema-1 record (numbered cards): run {WORKFLOW_CMD} design-migrate --to 2 (dry run first), "
+            f"which moves cards/, tokens.css and rounds/ into {DESIGN_SCHEMA1_DIR}/ and rewrites design.json to schema {DESIGN_SCHEMA}")
+
+
+def design_is_schema(data, number: int) -> bool:
+    return isinstance(data, dict) and type(data.get("schema")) is int and data["schema"] == number
+
+
 def design_number(text: str):
     """The integer behind a canonical NN prefix (01, 42, 100), or None for 0, 1-digit or extra zeros."""
     number = int(text)
     return number if number >= 1 and f"{number:02d}" == text else None
 
 
-def design_line1(data: bytes):
-    head = data.split(b"\n", 1)[0]
-    if head.endswith(b"\r"):
-        head = head[:-1]
-    try:
-        return head.decode("utf-8")
-    except UnicodeDecodeError:
-        return None
+def design_artifact_problem(url) -> str:
+    """"" for an Artifact address the Artifact tool takes, else why not."""
+    if isinstance(url, str) and DESIGN_ARTIFACT_RE.match(url):
+        return ""
+    return (f"{url!r} is not an Artifact address (https://claude.ai/artifact/<id> or https://claude.ai/code/artifact/<id>; "
+            "claude.ai or claude.com, preview. allowed; nothing after the id)")
 
 
-def design_parse_marker(line) -> tuple:
-    """(attrs, None) for a valid line-1 @dsCard marker, else (None, why)."""
-    match = DESIGN_MARKER_RE.match(line or "")
-    if not match:
-        return None, 'line 1 is not an @dsCard marker (<!-- @dsCard group="…" viewport="WxH" -->)'
-    attrs: dict = {}
-    for key, value in DESIGN_ATTR_RE.findall(match.group(1)):
-        if key in attrs:
-            return None, f"duplicate attribute {key!r}"
-        attrs[key] = value
-    unknown = sorted(set(attrs) - set(DESIGN_MARKER_KEYS))
-    if unknown:
-        return None, f"unknown attribute(s) {', '.join(unknown)} (the set is closed: group, viewport, title)"
-    for key in ("group", "viewport"):
-        if key not in attrs:
-            return None, f"missing {key}"
-    for key, value in attrs.items():
-        if not value or value != value.strip():
-            return None, f"{key} is empty or padded with spaces"
-        if any(bad in value for bad in ("<", ">", "--")):
-            return None, f"{key} contains <, > or --"
-    if not DESIGN_VIEWPORT_RE.match(attrs["viewport"]):
-        return None, f"viewport {attrs['viewport']!r} is not WxH in positive integers"
-    return attrs, None
+def design_path_ok(rel) -> bool:
+    """A relative canvas path whose every segment follows the type's rule (no `.`/`..`, no spaces)."""
+    return isinstance(rel, str) and bool(rel) and all(DESIGN_SEGMENT_RE.match(part) for part in rel.split("/"))
 
 
-def design_address(group: str):
-    """Split a card's group: (slice, library group) under review, (None, group) in the library,
-    None when it opens with the review mark but is not a well-formed address."""
-    if not group.startswith(DESIGN_REVIEW_MARK):
-        return None, group
-    match = DESIGN_ADDRESS_RE.match(group)
-    if not match or not DESIGN_SLICE_RE.match(match.group(1)) or match.group(2) != match.group(2).strip():
-        return None
-    return match.group(1), match.group(2)
+def design_null_system() -> dict:
+    return {key: ([] if key == "files" else None) for key in DESIGN_SYSTEM_KEYS}
 
 
-def design_reference_problems(data: bytes, root: Path, allow_tokens: bool) -> list:
-    """A card is self-contained except for ../tokens.css; tokens.css is self-contained outright."""
-    problems = set()
-    for first, second in DESIGN_REF_RE.findall(data.decode("utf-8", errors="replace")):
-        ref = (first or second).strip()
-        if not ref or ref.lower().startswith(DESIGN_ALLOWED_REFS):
-            continue
-        if allow_tokens and ref == "../tokens.css":
-            if not (root / "tokens.css").exists():
-                problems.add("links ../tokens.css but the design root has no tokens.css")
-            continue
-        why = next((f" ({text})" for prefix, text in DESIGN_REF_WHY if ref.lower().startswith(prefix)), "")
-        allowed = "../tokens.css, an in-page `#` fragment, `data:` or an absolute https URL" if allow_tokens \
-            else "an in-page `#` fragment, `data:` or an absolute https URL"
-        problems.add(f"references {ref!r}{why}: only {allowed} may be referenced (the same bytes must render from a round snapshot)")
-    return sorted(problems)
+def design_system_problems(system) -> list:
+    if not isinstance(system, dict):
+        return [f"design.json: system must be an object ({', '.join(DESIGN_SYSTEM_KEYS)})"]
+    missing = [k for k in DESIGN_SYSTEM_KEYS if k not in system]
+    extra = sorted(set(system) - set(DESIGN_SYSTEM_KEYS))
+    problems = []
+    if missing:
+        problems.append(f"design.json: system is missing field(s) {', '.join(missing)}")
+    if extra:
+        problems.append(f"design.json: system has unknown field(s) {', '.join(extra)} (schema {DESIGN_SCHEMA} is closed)")
+    if missing:
+        return problems
+    artifact, namespace, version, source, files = (system[k] for k in DESIGN_SYSTEM_KEYS)
+    if artifact is not None and design_artifact_problem(artifact):
+        problems.append(f"design.json: system.artifact {design_artifact_problem(artifact)}")
+    if namespace is not None and not (isinstance(namespace, str) and DESIGN_NAMESPACE_RE.match(namespace)):
+        problems.append(f"design.json: system.namespace {namespace!r} does not fit [a-z0-9][a-z0-9_-]{{0,63}}")
+    if version is not None and not (isinstance(version, str) and DESIGN_VERSION_RE.match(version)):
+        problems.append(f"design.json: system.version {version!r} is not a version id (non-empty, no spaces)")
+    if source is not None and not (isinstance(source, str) and source.strip()):
+        problems.append("design.json: system.source is null or a non-empty string")
+    if len({artifact is None, namespace is None, version is None}) != 1:
+        problems.append("design.json: system.artifact, namespace and version are set together (design-system) or all null")
+    if not (isinstance(files, list) and all(design_path_ok(f) for f in files)):
+        problems.append("design.json: system.files must be a list of paths relative to the system's project/ (e.g. tokens.css, components/bundle.js)")
+    elif len(set(files)) != len(files):
+        problems.append("design.json: system.files lists a path twice")
+    elif files and artifact is None:
+        problems.append("design.json: system.files names the files of a system that is not set")
+    return problems
 
 
 def design_manifest_problems(data) -> list:
@@ -4988,12 +5003,53 @@ def design_manifest_problems(data) -> list:
         problems.append(f"design.json: missing field(s) {', '.join(missing)}")
     if extra:
         problems.append(f"design.json: unknown field(s) {', '.join(extra)} (schema {DESIGN_SCHEMA} is closed)")
-    if "schema" in data and (data["schema"] is True or data["schema"] != DESIGN_SCHEMA):
+    if "schema" in data and not design_is_schema(data, DESIGN_SCHEMA):
         problems.append(f"design.json: schema {data['schema']!r} is not {DESIGN_SCHEMA}")
     if "id" in data and not (isinstance(data["id"], str) and DESIGN_ID_RE.match(data["id"])):
         problems.append(f"design.json: id {data['id']!r} is not lowercase [a-z0-9-], starting alphanumeric, at most 63 characters")
     if "name" in data and not (isinstance(data["name"], str) and data["name"].strip()):
         problems.append("design.json: name must be a non-empty string")
+    if "system" in data:
+        problems.extend(design_system_problems(data["system"]))
+    return problems
+
+
+def design_job_problems(jid: str, data) -> list:
+    """Problems with one job's job.json, read as `data`."""
+    if not isinstance(data, dict):
+        return ["job.json is not a JSON object"]
+    missing = [k for k in DESIGN_JOB_KEYS if k not in data]
+    extra = sorted(set(data) - set(DESIGN_JOB_KEYS))
+    problems = []
+    if missing:
+        problems.append(f"job.json: missing field(s) {', '.join(missing)}")
+    if extra:
+        problems.append(f"job.json: unknown field(s) {', '.join(extra)} (schema {DESIGN_SCHEMA} is closed)")
+    if missing:
+        return problems
+    if not design_is_schema(data, DESIGN_SCHEMA):
+        problems.append(f"job.json: schema {data['schema']!r} is not {DESIGN_SCHEMA}")
+    if data["job"] != jid:
+        problems.append(f"job.json: job {data['job']!r} does not match its folder name")
+    if not (isinstance(data["slice"], str) and DESIGN_SLICE_RE.match(data["slice"])):
+        problems.append(f"job.json: slice {data['slice']!r} is not a slice id (P<N>.<ID>)")
+    if not (isinstance(data["title"], str) and data["title"].strip()):
+        problems.append("job.json: title must be a non-empty string")
+    if data["status"] not in DESIGN_JOB_STATUSES:
+        problems.append(f"job.json: status {data['status']!r} is not one of {', '.join(DESIGN_JOB_STATUSES)}")
+    canvas = data["canvas"]
+    if not (isinstance(canvas, dict) and set(canvas) == set(DESIGN_JOB_CANVAS_KEYS)):
+        problems.append(f"job.json: canvas must be an object with exactly {', '.join(DESIGN_JOB_CANVAS_KEYS)}")
+        return problems
+    if canvas["url"] is not None and design_artifact_problem(canvas["url"]):
+        problems.append(f"job.json: canvas.url {design_artifact_problem(canvas['url'])}")
+    if canvas["version"] is not None and not (isinstance(canvas["version"], str) and DESIGN_VERSION_RE.match(canvas["version"])):
+        problems.append(f"job.json: canvas.version {canvas['version']!r} is not a version id (non-empty, no spaces)")
+    if canvas["version"] is not None and canvas["url"] is None:
+        problems.append("job.json: canvas.version is recorded but canvas.url is null")
+    published = canvas["published"]
+    if not (isinstance(published, list) and all(isinstance(p, str) and p.startswith("project/") and design_path_ok(p) for p in published)):
+        problems.append("job.json: canvas.published must be a list of project/<path> canvas paths")
     return problems
 
 
@@ -5011,7 +5067,7 @@ def design_round_problems(rid: str, data, rdir: Path) -> list:
     if missing:
         return problems
     status = data["status"]
-    if data["schema"] is True or data["schema"] != DESIGN_SCHEMA:
+    if not design_is_schema(data, DESIGN_SCHEMA):
         problems.append(f"round.json: schema {data['schema']!r} is not {DESIGN_SCHEMA}")
     if data["round"] != rid:
         problems.append(f"round.json: round {data['round']!r} does not match its folder name")
@@ -5033,38 +5089,226 @@ def design_round_problems(rid: str, data, rdir: Path) -> list:
         problems.append("round.json: a signed round records the operator's literal signoff_words")
     if status != "signed" and words is not None:
         problems.append("round.json: signoff_words is null unless the round is signed")
-    cards = data["cards"]
-    if not (isinstance(cards, list) and all(isinstance(c, str) and DESIGN_CARD_REL_RE.match(c) for c in cards)):
-        problems.append("round.json: cards must be a list of cards/NN-slug.html paths")
-        cards = []
-    elif len(set(cards)) != len(cards):
-        problems.append("round.json: cards lists a path twice")
+    version = data["canvas_version"]
+    if version is not None and not (isinstance(version, str) and DESIGN_VERSION_RE.match(version)):
+        problems.append(f"round.json: canvas_version {version!r} is not a version id (non-empty, no spaces)")
+    if status == "open" and version is not None:
+        problems.append("round.json: an open round has canvas_version null (design-close records it)")
     sup = data["supersedes"]
-    if not (isinstance(sup, list) and all(isinstance(s, str) and DESIGN_ROUND_RE.match(s) for s in sup)):
+    if not (isinstance(sup, list) and all(isinstance(s, str) and DESIGN_NN_RE.match(s) for s in sup)):
         problems.append("round.json: supersedes must be a list of round ids (NN-slug)")
-    if status == "signed" and not cards:
-        problems.append("round.json: a signed round lists the cards it touched")
     if not (rdir / "handoff.md").exists():
         problems.append("handoff.md missing (every round has its brief)")
     if status == "signed" and not (rdir / "SIGNOFF.md").exists():
         problems.append("SIGNOFF.md missing (a signed round records the operator's literal words)")
-    if closed:
-        for rel in cards:
-            snap = rdir / rel
-            if not snap.is_file():
-                problems.append(f"snapshot {rel} missing (a closed round keeps its cards as they were at close)")
-                continue
-            attrs, _ = design_parse_marker(design_line1(snap.read_bytes()))
-            split = design_address(attrs["group"]) if attrs else None
-            if not split or split[0] != data["slice"]:
-                problems.append(f"snapshot {rel}: line 1 does not carry the round address \"{DESIGN_REVIEW_MARK} {data['slice']} · …\"")
+    if status == "signed" and not (rdir / "canvas" / "project" / "canvas.json").is_file():
+        problems.append("snapshot canvas/project/canvas.json missing (a signed round keeps the canvas tree as it was at close)")
     return problems
 
 
-def design_scan(root: Path) -> dict:
-    """Read the whole design root once: the manifest, the cards, the rounds, and every problem."""
+def design_tree_files(project: Path) -> list:
+    """Every file of a canvas tree as a path under project/, sorted: ds/ (the design system the
+    publish installs server-side, or a local preview's copy of it) and dot-entries left out."""
+    if not project.is_dir():
+        return []
+    files = []
+    for path in project.rglob("*"):
+        parts = path.relative_to(project).parts
+        if parts[0] == "ds" or any(part.startswith(".") for part in parts) or not path.is_file():
+            continue
+        files.append("/".join(parts))
+    return sorted(files)
+
+
+def design_reference_problems(text: str, rel: str) -> list:
+    """A canvas file's src/href/url() references stay inside project/ (ds/<ns>/... included)."""
+    base = posixpath.dirname(rel)
+    problems = set()
+    for first, second in DESIGN_REF_RE.findall(text):
+        ref = (first or second).strip()
+        low = ref.lower()
+        if not ref or "{{" in ref or low.startswith(DESIGN_ALLOWED_REFS):  # {{hole}}: filled at render
+            continue
+        why = next((text for prefix, text in DESIGN_REF_WHY if low.startswith(prefix)), "")
+        if not why:
+            if ref.startswith(("/", "\\")):
+                why = "an absolute path: only the canvas's /_blob/<id> uploads are absolute"
+            elif DESIGN_SCHEME_RE.match(ref):
+                why = "a scheme other than https: or data:"
+            else:
+                path = re.split(r"[?#]", ref, maxsplit=1)[0]
+                resolved = posixpath.normpath(posixpath.join(base, path)) if path else "."
+                if resolved != ".." and not resolved.startswith("../"):
+                    continue
+                why = "`..` climbs out of project/"
+        problems.add(f"references {ref!r} ({why}): only a relative path inside project/ (ds/<ns>/… included), "
+                     "an in-page `#` fragment, `data:`, an https URL or /_blob/<id> may be referenced")
+    return sorted(problems)
+
+
+def design_canvas_problems(project: Path, system: dict) -> tuple:
+    """(problems, warnings, board count) for one job's canvas tree, each path under project/."""
+    files = design_tree_files(project)
+    if "canvas.json" not in files:
+        return ["canvas.json missing (the canvas index: v, boards, order, createdOnFiles)"], [], 0
+    try:
+        index = read_json(project / "canvas.json")
+    except (ValueError, OSError) as exc:
+        return [f"canvas.json is not valid JSON: {exc}"], [], 0
+    if not isinstance(index, dict):
+        return ["canvas.json is not a JSON object"], [], 0
+    problems, warnings = [], []
+    missing = [k for k in DESIGN_CANVAS_INDEX_KEYS if k not in index]
+    if missing:
+        problems.append(f"canvas.json: missing field(s) {', '.join(missing)} (the type requires {', '.join(DESIGN_CANVAS_INDEX_KEYS)})")
+    boards, order = index.get("boards", {}), index.get("order", [])
+    if not isinstance(boards, dict):
+        problems.append("canvas.json: boards must be an object keyed by each artboard's path under project/")
+        boards = {}
+    if not (isinstance(order, list) and all(isinstance(o, str) for o in order)):
+        problems.append("canvas.json: order must be a list of board paths (z-order, back to front)")
+        order = []
+    present = [f for f in files if f.endswith(DESIGN_BOARD_SUFFIX)]
+    stems: dict = {}
+    for rel in files:
+        if not design_path_ok(rel):
+            problems.append(f"{rel}: a path segment breaks the type's rule (start with a letter, digit or _, then only those and . -; no spaces)")
+    for rel in present:
+        stem = rel.rsplit("/", 1)[-1][:-len(DESIGN_BOARD_SUFFIX)]
+        if stem in stems:
+            problems.append(f"{rel}: stem {stem!r} is also {stems[stem]}'s (stems are unique)")
+        else:
+            stems[stem] = rel
+        if rel not in boards:
+            problems.append(f"{rel}: not listed in canvas.json boards (every .dc.html outside ds/ is a board)")
+        if rel not in order:
+            problems.append(f"{rel}: not listed in canvas.json order")
+    for key in boards:
+        if not key.endswith(DESIGN_BOARD_SUFFIX):
+            problems.append(f"canvas.json: board {key!r} does not end {DESIGN_BOARD_SUFFIX}")
+        elif key.split("/", 1)[0] == "ds":
+            problems.append(f"canvas.json: board {key!r} is under ds/, which only the system install writes")
+        elif key not in present:
+            problems.append(f"canvas.json: board {key!r} is listed but its file is missing")
+    for key in sorted(set(order) - set(boards)):
+        problems.append(f"canvas.json: order lists {key!r}, which is not a board")
+    if len(set(order)) != len(order):
+        problems.append("canvas.json: order lists a board twice")
+    if DESIGN_ENTRY_BOARD not in present:
+        problems.append(f"{DESIGN_ENTRY_BOARD} missing (the canvas's entry artboard)")
+    # Reading order: the titles' NN form 01..N as a set (the layout is free; the numbers are not).
+    numbers: dict = {}
+    for key, board in boards.items():
+        title = board.get("title") if isinstance(board, dict) else None
+        match = DESIGN_TITLE_RE.match(title) if isinstance(title, str) else None
+        number = design_number(match.group(1)) if match else None
+        if not isinstance(board, dict):
+            problems.append(f"canvas.json: board {key!r} is not an object (x, y, w, h, title, …)")
+        elif number is None:
+            problems.append(f"canvas.json: board {key!r} title {title!r} does not start with its reading number \"NN · \" (01 · …)")
+        elif number in numbers:
+            problems.append(f"canvas.json: board {key!r} repeats reading number {number:02d} (also {numbers[number]!r})")
+        else:
+            numbers[number] = key
+    problems.extend(f"gap in the board titles' reading numbers: no board titled \"{n:02d} · …\""
+                    for n in range(1, max(numbers, default=0) + 1) if n not in numbers)
+    for rel in files:
+        if not rel.lower().endswith((".html", ".htm", ".css")):
+            continue
+        text = (project / rel).read_bytes().decode("utf-8", errors="replace")
+        if rel.endswith(DESIGN_BOARD_SUFFIX) and not any(line.strip() == DESIGN_SUPPORT_LINE for line in text.splitlines()):
+            problems.append(f"{rel}: missing the exact line {DESIGN_SUPPORT_LINE} (the type's runtime)")
+        problems.extend(f"{rel}: {p}" for p in design_reference_problems(text, rel))
+    records = index.get("designSystems", [])
+    if not isinstance(records, list):
+        problems.append("canvas.json: designSystems must be a list of install records")
+    elif system.get("version"):
+        for rec in records:
+            pinned = rec.get("version") if isinstance(rec, dict) else None
+            if pinned != system["version"]:
+                name = rec.get("namespace") if isinstance(rec, dict) else rec
+                warnings.append(f"canvas.json: designSystems {name!r} pins version {pinned!r}, but design.json's system is "
+                                f"{system['version']!r} (reinstall when the round changes the look)")
+    return problems, warnings, len(boards)
+
+
+def design_read_job(entry: Path, number: int, system: dict) -> dict:
+    """One job folder: job.json, its rounds and its canvas tree, each with its own problems."""
+    rel = f"jobs/{entry.name}"
+    job = {"id": entry.name, "number": number, "path": entry, "data": None, "rounds": [],
+           "problems": [], "warnings": [], "boards": 0, "drafted": False}
+    problems = job["problems"]
+    jpath = entry / "job.json"
+    if not jpath.is_file():
+        problems.append(f"{rel}: job.json missing")
+    else:
+        try:
+            data = read_json(jpath)
+        except (ValueError, OSError) as exc:
+            problems.append(f"{rel}: job.json is not valid JSON: {exc}")
+        else:
+            found = design_job_problems(entry.name, data)
+            problems.extend(f"{rel}: {p}" for p in found)
+            if not found:
+                job["data"] = data
+    rnumbers: dict = {}
+    rounds_dir = entry / "rounds"
+    for rentry in sorted(rounds_dir.iterdir()) if rounds_dir.is_dir() else []:
+        if rentry.name.startswith("."):
+            continue
+        rrel = f"{rel}/rounds/{rentry.name}"
+        match = DESIGN_NN_RE.match(rentry.name)
+        rnumber = design_number(match.group(1)) if match else None
+        if not rentry.is_dir() or rnumber is None:
+            problems.append(f"{rrel}: not a round folder (a job's rounds/ holds NN-slug/ folders only)")
+            continue
+        if rnumber in rnumbers:
+            problems.append(f"{rrel}: duplicate round number {rnumber:02d} (also {rnumbers[rnumber]})")
+            continue
+        rnumbers[rnumber] = rrel
+        rnd = {"number": rnumber, "id": rentry.name, "path": rentry, "data": None}
+        rpath = rentry / "round.json"
+        if not rpath.is_file():
+            problems.append(f"{rrel}: round.json missing")
+        else:
+            try:
+                rdata = read_json(rpath)
+            except (ValueError, OSError) as exc:
+                problems.append(f"{rrel}: round.json is not valid JSON: {exc}")
+            else:
+                found = design_round_problems(rentry.name, rdata, rentry)
+                problems.extend(f"{rrel}: {p}" for p in found)
+                if not any(p.startswith("round.json:") for p in found):
+                    rnd["data"] = rdata
+                    if job["data"] and rdata["slice"] != job["data"]["slice"]:
+                        problems.append(f"{rrel}: round.json slice {rdata['slice']!r} is not its job's ({job['data']['slice']})")
+        job["rounds"].append(rnd)
+    problems.extend(f"{rel}: gap in the round numbering: no round numbered {n:02d}"
+                    for n in range(1, max(rnumbers, default=0) + 1) if n not in rnumbers)
+    known = {r["id"]: r["number"] for r in job["rounds"]}
+    for rnd in job["rounds"]:
+        for sid in (rnd["data"] or {}).get("supersedes", []):
+            if known.get(sid, rnd["number"]) >= rnd["number"]:
+                problems.append(f"{rel}/rounds/{rnd['id']}: supersedes {sid!r}, which is not an earlier round of this job")
+    if job["data"] and job["data"]["status"] != "open" and any(r["data"] and r["data"]["status"] == "open" for r in job["rounds"]):
+        problems.append(f"{rel}: job.json status is {job['data']['status']} but a round is open (an open round belongs to an open job)")
+    project = entry / "canvas" / "project"
+    if project.is_dir():
+        job["drafted"] = True
+        found, warned, job["boards"] = design_canvas_problems(project, system)
+        problems.extend(f"{rel}/canvas/project/{p}" if not p.startswith("gap ") else f"{rel}: {p}" for p in found)
+        job["warnings"].extend(f"{rel}/canvas/project/{w}" for w in warned)
+    elif job["data"] and job["data"]["status"] != "open":
+        problems.append(f"{rel}: a {job['data']['status']} job has no canvas tree (canvas/project/)")
+    return job
+
+
+def design_scan(root: Path, only: str = None) -> dict:
+    """Read the whole design root once: the manifest, the jobs with their rounds and canvas trees, and
+    every problem and warning -- or, with `only` (a job id), the manifest's and that job's alone."""
     problems: list = []
-    scan = {"manifest": None, "cards": [], "rounds": [], "problems": problems}
+    warnings: list = []
+    scan = {"manifest": None, "schema1": False, "jobs": [], "problems": problems, "warnings": warnings}
     if not root.is_dir():
         problems.append(f"no design root at {DESIGN_ROOT_SHOWN}/ (run: {WORKFLOW_CMD} design-init)")
         return scan
@@ -5079,149 +5323,102 @@ def design_scan(root: Path) -> dict:
         except (ValueError, OSError) as exc:
             problems.append(f"design.json is not valid JSON: {exc}")
         else:
+            if design_is_schema(manifest, 1):  # recognised only to steer it to the migration
+                scan["schema1"] = True
+                problems.append(f"design.json is schema 1; {design_schema1_hint()}")
+                return scan
             found = design_manifest_problems(manifest)
             problems.extend(found)
             if not found:
                 scan["manifest"] = manifest
-    numbers: dict = {}
-    cards_dir = root / "cards"
-    for entry in sorted(cards_dir.iterdir()) if cards_dir.is_dir() else []:
+    system = (scan["manifest"] or {}).get("system") or {}
+    jobs_dir = root / "jobs"
+    jnumbers: dict = {}
+    loose: list = []
+    for entry in sorted(jobs_dir.iterdir()) if jobs_dir.is_dir() else []:
         if entry.name.startswith("."):
             continue
-        rel = f"cards/{entry.name}"
-        match = DESIGN_CARD_RE.match(entry.name)
-        if entry.is_dir() or not match:
-            kind = "unnumbered card path" if entry.suffix.lower() in (".html", ".htm") else "not a card file"
-            problems.append(f"{rel}: {kind} (cards/ holds NN-slug.html files only)")
+        match = DESIGN_NN_RE.match(entry.name)
+        number = design_number(match.group(1)) if match else None
+        if not entry.is_dir() or number is None:
+            loose.append(f"jobs/{entry.name}: not a job folder (jobs/ holds NN-slug/ folders only)")
             continue
-        number = design_number(match.group(1))
-        if number is None:
-            problems.append(f"{rel}: non-canonical number {match.group(1)!r} (01, 02, … 99, 100: zero-padded to two digits, from 01)")
+        if number in jnumbers:
+            loose.append(f"jobs/{entry.name}: duplicate job number {number:02d} (also {jnumbers[number]})")
             continue
-        if number in numbers:
-            problems.append(f"{rel}: duplicate card number {number:02d} (also {numbers[number]})")
-            continue
-        numbers[number] = rel
-        data = entry.read_bytes()
-        card = {"number": number, "rel": rel, "path": entry, "attrs": None, "address": None}
-        attrs, why = design_parse_marker(design_line1(data))
-        if why:
-            problems.append(f"{rel}: invalid @dsCard marker: {why}")
+        jnumbers[number] = f"jobs/{entry.name}"
+        scan["jobs"].append(design_read_job(entry, number, system))
+    if only is not None:
+        job = next((j for j in scan["jobs"] if j["id"] == only), None)
+        if job is None:
+            problems.append(f"no job {only!r} under {DESIGN_ROOT_SHOWN}/jobs/")
         else:
-            split = design_address(attrs["group"])
-            if split is None:
-                problems.append(f"{rel}: malformed round address in group {attrs['group']!r} (expected \"{DESIGN_REVIEW_MARK} <slice> · <Group>\")")
-            else:
-                card["attrs"], card["address"] = attrs, split[0]
-        problems.extend(f"{rel}: {p}" for p in design_reference_problems(data, root, allow_tokens=True))
-        scan["cards"].append(card)
-    problems.extend(f"gap in the card numbering: no card numbered {n:02d}"
-                    for n in range(1, max(numbers, default=0) + 1) if n not in numbers)
-    if (root / "tokens.css").is_file():
-        problems.extend(f"tokens.css: {p}" for p in design_reference_problems((root / "tokens.css").read_bytes(), root, allow_tokens=False))
+            problems.extend(job["problems"])
+            warnings.extend(job["warnings"])
+        return scan
+    problems.extend(loose)
+    for job in scan["jobs"]:
+        problems.extend(job["problems"])
+        warnings.extend(job["warnings"])
+    problems.extend(f"gap in the job numbering: no job numbered {n:02d}"
+                    for n in range(1, max(jnumbers, default=0) + 1) if n not in jnumbers)
+    slices: dict = {}
+    for job in scan["jobs"]:
+        if job["data"]:
+            slices.setdefault(job["data"]["slice"], []).append(job["id"])
+    problems.extend(f"jobs {', '.join(ids)} all belong to {sid} (one job per co-work slice)"
+                    for sid, ids in sorted(slices.items()) if len(ids) > 1)
+    opened = design_open_rounds(scan)
+    if len(opened) > 1:
+        problems.append(f"more than one open round: {', '.join(design_address(j, r) for j, r in opened)} (at most one round is open per project)")
+    # Parts that are not schema 2: a pre-v47 record, and a schema-1 record left outside schema1/.
+    if hint:
+        problems.append(f"pre-v47 parts at the root; {hint}")
+    leftovers = [name for name in ("cards", "tokens.css") if os.path.lexists(root / name)]
+    rounds_dir = root / "rounds"
+    if rounds_dir.is_dir() and any((e / "round.json").exists() for e in rounds_dir.iterdir()):
+        leftovers.append("rounds")
+    problems.extend(f"{name}: a schema-1 part outside {DESIGN_SCHEMA1_DIR}/ (schema {DESIGN_SCHEMA} keeps no card library, "
+                    f"root tokens or root rounds; move it into {DESIGN_SCHEMA1_DIR}/ by hand)" for name in leftovers)
     for page in sorted(root.rglob("*.htm*")):
         parts = page.relative_to(root).parts
-        if parts[0] == DESIGN_LEGACY_DIR:  # the claude-design tool's record, whatever it holds
+        if parts[0] in (DESIGN_LEGACY_DIR, DESIGN_SCHEMA1_DIR):  # legacy records, whatever they hold
             continue
         if any(part.startswith(".") for part in parts) or page.suffix.lower() not in (".html", ".htm"):
             continue
-        if (parts[0] == "cards" and len(parts) == 2) or (parts[0] == "rounds" and len(parts) >= 4 and parts[2] in ("cards", "import")):
+        if parts[0] == "jobs" and len(parts) >= 5 and parts[2:4] == ("canvas", "project"):
             continue
-        problems.append(f"{'/'.join(parts)}: HTML outside cards/ -- a monolith or a stray page (one numbered card per reviewable unit)")
-    rnumbers: dict = {}
-    rounds_dir = root / "rounds"
-    for entry in sorted(rounds_dir.iterdir()) if rounds_dir.is_dir() else []:
-        if entry.name.startswith("."):
+        if parts[0] == "jobs" and len(parts) >= 7 and parts[2] == "rounds" and parts[4:6] == ("canvas", "project"):
             continue
-        rel = f"rounds/{entry.name}"
-        match = DESIGN_ROUND_RE.match(entry.name)
-        number = design_number(match.group(1)) if match else None
-        if not entry.is_dir() or number is None:
-            problems.append(f"{rel}: not a round folder (rounds/ holds NN-slug/ folders only)")
-            continue
-        if number in rnumbers:
-            problems.append(f"{rel}: duplicate round number {number:02d} (also {rnumbers[number]})")
-            continue
-        rnumbers[number] = rel
-        rnd = {"number": number, "id": entry.name, "path": entry, "data": None}
-        jpath = entry / "round.json"
-        if not jpath.is_file():
-            problems.append(f"{rel}: round.json missing" + (f"; {hint}" if hint else ""))
-            hint = ""
-        else:
-            try:
-                data = read_json(jpath)
-            except (ValueError, OSError) as exc:
-                problems.append(f"{rel}: round.json is not valid JSON: {exc}")
-            else:
-                found = design_round_problems(entry.name, data, entry)
-                problems.extend(f"{rel}: {p}" for p in found)
-                if not any(p.startswith("round.json:") for p in found):
-                    rnd["data"] = data
-        scan["rounds"].append(rnd)
-    problems.extend(f"gap in the round numbering: no round numbered {n:02d}"
-                    for n in range(1, max(rnumbers, default=0) + 1) if n not in rnumbers)
-    known = {r["id"]: r["number"] for r in scan["rounds"]}
-    for rnd in scan["rounds"]:
-        for sid in (rnd["data"] or {}).get("supersedes", []):
-            if known.get(sid, rnd["number"]) >= rnd["number"]:
-                problems.append(f"rounds/{rnd['id']}: supersedes {sid!r}, which is not an earlier round")
-    opened = design_open_rounds(scan)
-    if len(opened) > 1:
-        problems.append(f"more than one open round: {', '.join(r['id'] for r in opened)} (at most one round is open per project)")
-    open_slices = {r["data"]["slice"] for r in opened}
-    for card in scan["cards"]:
-        if card["address"] and card["address"] not in open_slices:
-            problems.append(f"{card['rel']}: carries the review address of {card['address']}, which has no open round (sign it with design-close, or open that slice's next round)")
+        problems.append(f"{'/'.join(parts)}: HTML outside a job's canvas tree -- a stray page (artboards live in jobs/<job>/canvas/project/)")
     return scan
 
 
 def design_open_rounds(scan: dict) -> list:
-    return [r for r in scan["rounds"] if r["data"] and r["data"]["status"] == "open"]
+    return [(job, rnd) for job in scan["jobs"] for rnd in job["rounds"] if rnd["data"] and rnd["data"]["status"] == "open"]
 
 
-def design_expected_problems(scan: dict, paths: list) -> list:
-    """The read-back half: the handoff's numbered card list against the open round."""
-    opened = design_open_rounds(scan)
-    if len(opened) != 1:
-        return ["card paths were named, but there is no single open round to check them against"]
-    address = opened[0]["data"]["slice"]
-    by_rel = {c["rel"]: c for c in scan["cards"]}
-    prefixes = (DESIGN_ROOT_REL + "/", DESIGN_ROOT_SHOWN + "/")  # the same string at root
-    named, problems = set(), []
-    for raw in paths:
-        rel = raw[2:] if raw.startswith("./") else raw
-        prefix = next((pre for pre in prefixes if rel.startswith(pre)), "")
-        rel = rel[len(prefix):]
-        if not DESIGN_CARD_REL_RE.match(rel):
-            problems.append(f"{raw}: not a numbered card path (cards/NN-slug.html)")
-            continue
-        named.add(rel)
-        card = by_rel.get(rel)
-        if card is None:
-            problems.append(f"{rel}: named by the handoff but missing")
-        elif card["address"] != address:
-            problems.append(f"{rel}: named by the handoff but its group does not carry the round address \"{DESIGN_REVIEW_MARK} {address} · …\"")
-    top = max((by_rel[r]["number"] for r in named if r in by_rel), default=0)
-    for card in scan["cards"]:
-        if card["address"] == address and card["rel"] not in named and card["number"] < top:
-            problems.append(f"{card['rel']}: added beyond the handoff's list but numbered before its last card ({top:02d}); added cards take the next numbers")
-    return problems
+def design_address(job: dict, rnd: dict) -> str:
+    """A round's unambiguous address: <job>/<round> (rounds number inside their job)."""
+    return f"{job['id']}/{rnd['id']}"
 
 
 def design_check(args: argparse.Namespace) -> int:
-    scan = design_scan(design_root())
-    problems = list(scan["problems"])
-    if args.paths:
-        problems.extend(design_expected_problems(scan, args.paths))
+    scan = design_scan(design_root(), args.job)
+    problems, warnings = scan["problems"], scan["warnings"]
+    where = f"{DESIGN_ROOT_SHOWN}/" + (f"jobs/{args.job}/" if args.job else "")
+    for warning in warnings:
+        print(f"design-check: warning: {warning}")
     if problems:
-        print(f"design-check: {len(problems)} problem(s) in {DESIGN_ROOT_SHOWN}/")
+        print(f"design-check: {len(problems)} problem(s) in {where}")
         for problem in problems:
             print(f"- {problem}")
         return 1
-    opened = design_open_rounds(scan)
-    print(f"design-check: OK -- {len(scan['cards'])} card(s), {len(scan['rounds'])} round(s), "
-          f"open round: {opened[0]['id'] if opened else 'none'}")
+    jobs = [j for j in scan["jobs"] if args.job is None or j["id"] == args.job]
+    opened = [design_address(j, r) for j, r in design_open_rounds(scan) if j in jobs]
+    print(f"design-check: OK -- {len(jobs)} job(s), {sum(len(j['rounds']) for j in jobs)} round(s), "
+          f"{sum(j['boards'] for j in jobs)} board(s), open round: {opened[0] if opened else 'none'}"
+          + (f", {len(warnings)} warning(s)" if warnings else ""))
     return 0
 
 
@@ -5244,23 +5441,30 @@ def design_write_bytes(path: Path, data: bytes) -> None:
         raise
 
 
-def design_readdress(data: bytes, old_group: str, new_group: str) -> bytes:
-    """Rewrite the group value on line 1 and nothing else -- asserted, not assumed."""
-    head, sep, rest = data.partition(b"\n")
-    old_attr = f'group="{old_group}"'.encode("utf-8")
-    if head.count(old_attr) != 1:
-        raise SystemExit(f"design: line 1 does not carry {old_attr.decode('utf-8')} exactly once; nothing written")
-    new = head.replace(old_attr, f'group="{new_group}"'.encode("utf-8")) + sep + rest
-    new_head = new.partition(b"\n")[0]
-    if new[len(new_head):] != data[len(head):] or new_head.replace(f'group="{new_group}"'.encode("utf-8"), old_attr) != head:
-        raise SystemExit("design: the regroup would change more than the group label on line 1; nothing written")
-    return new
-
-
 def design_require(scan: dict, what: str) -> None:
     if scan["problems"]:
         lines = "\n".join(f"- {p}" for p in scan["problems"])
         raise SystemExit(f"{what}: refused -- design-check finds {len(scan['problems'])} problem(s):\n{lines}")
+
+
+def design_require_manifest(scan: dict, root: Path, what: str) -> None:
+    """Schema 2 is the only writable schema: a schema-1 root is steered to design-migrate --to 2, a
+    root with no valid manifest to design-migrate (pre-v47) or design-init."""
+    if scan["schema1"]:
+        raise SystemExit(f"{what}: refused -- {DESIGN_ROOT_SHOWN}/design.json is schema 1; {design_schema1_hint()}")
+    if scan["manifest"] is None:
+        hint = design_legacy_hint(root)
+        raise SystemExit(f"{what}: refused -- no valid {DESIGN_ROOT_SHOWN}/design.json; {hint}" if hint else
+                         f"{what}: refused -- no valid {DESIGN_ROOT_SHOWN}/design.json (run: {WORKFLOW_CMD} design-init)")
+
+
+def design_find_job(scan: dict, jid: str, what: str) -> dict:
+    job = next((j for j in scan["jobs"] if j["id"] == jid), None)
+    if job is None:
+        raise SystemExit(f"{what}: no job {jid!r} under {DESIGN_ROOT_SHOWN}/jobs/")
+    if job["data"] is None:
+        raise SystemExit(f"{what}: refused -- jobs/{jid}/job.json is not well-formed (run design-check {jid})")
+    return job
 
 
 def design_init(args: argparse.Namespace) -> None:
@@ -5274,12 +5478,14 @@ def design_init(args: argparse.Namespace) -> None:
             current = read_json(mpath)
         except (ValueError, OSError) as exc:
             raise SystemExit(f"design-init: {rel} is not valid JSON ({exc}); fix it by hand")
+        if design_is_schema(current, 1):
+            raise SystemExit(f"design-init: refused -- {rel} is schema 1; {design_schema1_hint()}")
         wanted = dict(current)
     else:
         current = None
         repo = HOST_ROOT or ROOT  # nested: the project is the host, not the `workflow` folder
         default_id = re.sub(r"[^a-z0-9]+", "-", repo.name.lower()).strip("-")[:63].strip("-") or "design"
-        wanted = {"schema": DESIGN_SCHEMA, "id": default_id, "name": repo.name}
+        wanted = {"schema": DESIGN_SCHEMA, "id": default_id, "name": repo.name, "system": design_null_system()}
     if args.id:
         wanted["id"] = args.id
     if args.name:
@@ -5295,44 +5501,92 @@ def design_init(args: argparse.Namespace) -> None:
     print(json.dumps(wanted, ensure_ascii=False, indent=2))
 
 
+def design_system(args: argparse.Namespace) -> None:
+    """Record the product's Design System Artifact in design.json (the orchestrator's sync procedure)."""
+    root = design_root()
+    scan = design_scan(root)
+    design_require_manifest(scan, root, "design-system")
+    manifest = scan["manifest"]
+    system = dict(manifest["system"], artifact=args.artifact, namespace=args.namespace, version=args.version)
+    if args.source is not None:
+        system["source"] = args.source
+    if args.files is not None:
+        files = [f.strip() for f in args.files.split(",") if f.strip()]
+        system["files"] = list(dict.fromkeys(files))
+    wanted = dict(manifest, system=system)
+    problems = design_system_problems(system)
+    if problems:
+        raise SystemExit("design-system: refused -- " + "; ".join(problems))
+    rel = f"{DESIGN_ROOT_SHOWN}/design.json"
+    if wanted == manifest:
+        print(f"design-system: {rel} unchanged (system version {system['version']})")
+        return
+    write_json(root / "design.json", wanted)
+    print(f"design-system: updated {rel}")
+    print(json.dumps(system, ensure_ascii=False, indent=2))
+
+
 def design_open(args: argparse.Namespace) -> None:
     root = design_root()
     scan = design_scan(root)
-    hint = design_legacy_hint(root)
-    if scan["manifest"] is None:
-        raise SystemExit(f"design-open: refused -- no valid {DESIGN_ROOT_SHOWN}/design.json; {hint}" if hint else
-                         f"design-open: refused -- no valid {DESIGN_ROOT_SHOWN}/design.json (run: {WORKFLOW_CMD} design-init)")
+    design_require_manifest(scan, root, "design-open")
     if not DESIGN_SLUG_RE.match(args.slug):
         raise SystemExit(f"design-open: --slug {args.slug!r} is not lowercase words joined by hyphens")
     if not DESIGN_SLICE_RE.match(args.slice):
         raise SystemExit(f"design-open: --slice {args.slice!r} is not a slice id (P<N>.<ID>)")
-    broken = [r["id"] for r in scan["rounds"] if r["data"] is None]
+    broken = [f"jobs/{j['id']}" for j in scan["jobs"] if j["data"] is None]
+    broken += [f"jobs/{j['id']}/rounds/{r['id']}" for j in scan["jobs"] for r in j["rounds"] if r["data"] is None]
     if broken:
-        raise SystemExit(f"design-open: refused -- round(s) {', '.join(broken)} have no well-formed round.json; {hint}" if hint else
-                         f"design-open: refused -- round(s) {', '.join(broken)} have no well-formed round.json (run design-check)")
+        raise SystemExit(f"design-open: refused -- {', '.join(broken)} have no well-formed job.json / round.json (run design-check)")
+    job = next((j for j in scan["jobs"] if j["data"]["slice"] == args.slice), None)
     opened = design_open_rounds(scan)
-    for rnd in opened:
-        if rnd["id"].split("-", 1)[1] == args.slug and rnd["data"]["slice"] == args.slice:
-            print(f"design-open: {rnd['id']} is already open for {args.slice} (nothing written)")
+    for ojob, rnd in opened:
+        if ojob is job and rnd["id"].split("-", 1)[1] == args.slug:
+            print(f"design-open: {design_address(ojob, rnd)} is already open for {args.slice} (nothing written)")
             return
     if opened:
-        raise SystemExit(f"design-open: refused -- {opened[0]['id']} is open; close it first "
-                         f"(design-close {opened[0]['id']} --words \"…\" when signed, --superseded when a design question replaces it)")
-    stale = sorted({c["address"] for c in scan["cards"] if c["address"] and c["address"] != args.slice})
-    if stale:
-        raise SystemExit(f"design-open: refused -- cards still carry the review address of {', '.join(stale)}; "
-                         f"a superseded round's cards are taken over by the next round of the same slice")
-    number = max((r["number"] for r in scan["rounds"]), default=0) + 1
-    rid = f"{number:02d}-{args.slug}"
+        address = design_address(*opened[0])
+        raise SystemExit(f"design-open: refused -- {address} is open; close it first "
+                         f"(design-close {address} --words \"…\" when signed, --superseded when a design question replaces it)")
+    if job is not None and job["data"]["status"] == "implemented":
+        raise SystemExit(f"design-open: refused -- job {job['id']} of {args.slice} is implemented (built, its canvas history); "
+                         f"new design work is a new co-work slice, so a new job")
+    title = args.title or args.slug.replace("-", " ")
+    if job is None:  # the slice's first round: its job, written before the round so a half-landed open resumes
+        number = max((j["number"] for j in scan["jobs"]), default=0) + 1
+        jid = f"{number:02d}-{args.slug}"
+        jdata = {"schema": DESIGN_SCHEMA, "job": jid, "slice": args.slice, "title": title,
+                 "canvas": {"url": None, "version": None, "published": []}, "status": "open"}
+        write_json(root / "jobs" / jid / "job.json", jdata)
+        job = {"id": jid, "path": root / "jobs" / jid, "data": jdata, "rounds": []}
+        print(f"design-open: created job {DESIGN_ROOT_SHOWN}/jobs/{jid}/ for {args.slice}")
+    elif job["data"]["status"] == "signed":  # a revision after signoff: a superseding round of the same job
+        write_json(job["path"] / "job.json", dict(job["data"], status="open"))
+        print(f"design-open: job {job['id']} reopened (signed -> open) for a superseding round")
+    rounds = sorted(job["rounds"], key=lambda r: r["number"])
+    rid = f"{(rounds[-1]['number'] if rounds else 0) + 1:02d}-{args.slug}"
     data = {
-        "schema": DESIGN_SCHEMA, "round": rid, "title": args.title or args.slug.replace("-", " "),
-        "slice": args.slice, "status": "open", "opened_at": now_iso(), "closed_at": None,
-        "cards": [], "supersedes": [], "signoff_words": None,
+        "schema": DESIGN_SCHEMA, "round": rid, "title": title, "slice": args.slice, "status": "open",
+        "opened_at": now_iso(), "closed_at": None, "supersedes": [rounds[-1]["id"]] if rounds else [],
+        "signoff_words": None, "canvas_version": None,
     }
-    write_json(root / "rounds" / rid / "round.json", data)
-    print(f"design-open: opened {DESIGN_ROOT_SHOWN}/rounds/{rid}/ for {args.slice}")
-    print(f"next: write rounds/{rid}/handoff.md; this round's cards carry "
-          f"group=\"{DESIGN_REVIEW_MARK} {args.slice} · <Group>\" on line 1 until design-close")
+    write_json(job["path"] / "rounds" / rid / "round.json", data)
+    print(f"design-open: opened {DESIGN_ROOT_SHOWN}/jobs/{job['id']}/rounds/{rid}/ for {args.slice}"
+          + (f" (supersedes {rounds[-1]['id']})" if rounds else ""))
+    print(f"next: write jobs/{job['id']}/rounds/{rid}/handoff.md; the drafter writes the canvas tree in "
+          f"jobs/{job['id']}/canvas/project/; close with design-close {job['id']}/{rid}")
+
+
+def design_find_round(scan: dict, ref: str) -> tuple:
+    """(job, round) for `<job>/<round>`, or for a bare round id when exactly one job has it."""
+    jid, _, rid = ref.rpartition("/")
+    found = [(j, r) for j in scan["jobs"] if not jid or j["id"] == jid for r in j["rounds"] if r["id"] == rid]
+    if not found:
+        raise SystemExit(f"design-close: no round {ref!r} under {DESIGN_ROOT_SHOWN}/jobs/*/rounds/")
+    if len(found) > 1:
+        raise SystemExit(f"design-close: round {ref!r} is in more than one job; name it as "
+                         + " or ".join(design_address(j, r) for j, r in found))
+    return found[0]
 
 
 def design_close(args: argparse.Namespace) -> None:
@@ -5340,77 +5594,211 @@ def design_close(args: argparse.Namespace) -> None:
     status = "signed" if args.words is not None else "superseded"
     if args.words is not None and not args.words.strip():
         raise SystemExit("design-close: --words must carry the operator's literal words")
+    if args.canvas_version is not None and not DESIGN_VERSION_RE.match(args.canvas_version):
+        raise SystemExit(f"design-close: --canvas-version {args.canvas_version!r} is not a version id (non-empty, no spaces)")
     scan = design_scan(root)
-    rnd = next((r for r in scan["rounds"] if r["id"] == args.round), None)
-    if rnd is None:
-        raise SystemExit(f"design-close: no round {args.round!r} under {DESIGN_ROOT_SHOWN}/rounds/")
-    data = rnd["data"]
-    if data is not None and data["status"] == status:
-        print(f"design-close: {args.round} is already {status} (nothing written)")
+    design_require_manifest(scan, root, "design-close")
+    job, rnd = design_find_round(scan, args.round)
+    address = design_address(job, rnd)
+    if job["data"] is None or rnd["data"] is None:
+        raise SystemExit(f"design-close: refused -- jobs/{job['id']} or its round {rnd['id']} has no well-formed job.json / round.json (run design-check {job['id']})")
+    data, jdata = rnd["data"], job["data"]
+    latest = max(job["rounds"], key=lambda r: r["number"]) is rnd
+    if data["status"] == status:
+        if status == "signed" and latest and jdata["status"] == "open":  # a half-landed close: finish the job
+            write_json(job["path"] / "job.json", dict(jdata, status="signed"))
+            print(f"design-close: {address} is already signed; job {job['id']} marked signed")
+            return
+        print(f"design-close: {address} is already {status} (nothing written)")
         return
-    if data is not None and data["status"] != "open":
-        raise SystemExit(f"design-close: {args.round} is already {data['status']}; a closed round is immutable")
-    design_require(scan, "design-close")
-    rdir, address = rnd["path"], data["slice"]
-    if status == "signed" and not (rdir / "SIGNOFF.md").is_file():
-        raise SystemExit(f"design-close: write rounds/{args.round}/SIGNOFF.md (the operator's literal words) first")
-    touched = {c["rel"] for c in scan["cards"] if c["address"] == address} | set(data["cards"])
-    order = {c["rel"]: c["number"] for c in scan["cards"]}
-    missing = sorted(rel for rel in touched if rel not in order)
-    if missing:
-        raise SystemExit(f"design-close: refused -- listed card(s) no longer in the library: {', '.join(missing)}")
-    touched = sorted(touched, key=order.__getitem__)
-    if status == "signed" and not touched:
-        raise SystemExit(f"design-close: no card carries the address \"{DESIGN_REVIEW_MARK} {address} · …\"; nothing to sign")
-    jpath = rdir / "round.json"
-    if data["cards"] != touched:  # persist the list before any card moves, so a half-landed close resumes
-        data = dict(data, cards=touched)
-        write_json(jpath, data)
-    # 1. The snapshot: every touched card as it is under review, address on, plus the tokens.
-    by_rel = {c["rel"]: c for c in scan["cards"]}
-    for rel in touched:
-        card, snap = by_rel[rel], rdir / rel
-        live = card["path"].read_bytes()
-        if card["address"] == address:
-            if not snap.is_file() or snap.read_bytes() != live:
-                design_write_bytes(snap, live)
-        elif not snap.is_file():  # already regrouped by a half-landed run: put the address back exactly
-            group = card["attrs"]["group"]
-            design_write_bytes(snap, design_readdress(live, group, f"{DESIGN_REVIEW_MARK} {address} · {group}"))
-    if (root / "tokens.css").is_file():
-        tokens = (root / "tokens.css").read_bytes()
-        if not (rdir / "tokens.css").is_file() or (rdir / "tokens.css").read_bytes() != tokens:
-            design_write_bytes(rdir / "tokens.css", tokens)
-    # 2. The regroup (signed only): the review address comes off line 1, every later byte identical.
-    regrouped = 0
+    if data["status"] != "open":
+        raise SystemExit(f"design-close: {address} is already {data['status']}; a closed round is immutable")
+    rdir, project = rnd["path"], job["path"] / "canvas" / "project"
     if status == "signed":
-        for rel in touched:
-            card = by_rel[rel]
-            if card["address"] != address:
-                continue
-            group = card["attrs"]["group"]
-            live = card["path"].read_bytes()
-            design_write_bytes(card["path"], design_readdress(live, group, design_address(group)[1]))
-            regrouped += 1
-    # 3. The manifest: supersedes is derived -- the latest earlier closed round that listed each card.
-    earlier = sorted((r for r in scan["rounds"] if r["number"] < rnd["number"] and r["data"]
-                      and r["data"]["status"] != "open"), key=lambda r: r["number"])
-    supersedes = set()
-    for rel in touched:
-        last = [r["id"] for r in earlier if rel in r["data"]["cards"]]
-        if last:
-            supersedes.add(last[-1])
-    data = dict(data, status=status, closed_at=now_iso(), cards=touched, supersedes=sorted(supersedes),
-                signoff_words=args.words if status == "signed" else None)
-    write_json(jpath, data)
-    print(f"design-close: {args.round} {status} -- {len(touched)} card(s) snapshotted to "
-          f"{DESIGN_ROOT_SHOWN}/rounds/{args.round}/cards/"
-          + (f", {regrouped} regrouped (line 1 only)" if status == "signed" else ", left under review for the slice's next round"))
-    if data["supersedes"]:
-        print(f"supersedes: {', '.join(data['supersedes'])}")
+        if not (rdir / "SIGNOFF.md").is_file():
+            raise SystemExit(f"design-close: write jobs/{job['id']}/rounds/{rnd['id']}/SIGNOFF.md (the operator's literal words) first")
+        design_require(design_scan(root, job["id"]), "design-close")
+        if not (project / "canvas.json").is_file():
+            raise SystemExit(f"design-close: jobs/{job['id']}/canvas/project/ holds no canvas; nothing to sign")
+    # 1. The snapshot: the canvas tree as the operator reviewed it (ds/ left out), byte for byte.
+    files = design_tree_files(project)
+    snap = rdir / "canvas" / "project"
+    for rel in files:
+        live = (project / rel).read_bytes()
+        target = snap / rel
+        if not target.is_file() or target.read_bytes() != live:
+            design_write_bytes(target, live)
+    for rel in design_tree_files(snap):  # a half-landed close of a tree that changed since: same files only
+        if rel not in files:
+            (snap / rel).unlink()
+    # 2. The round, then the job (a re-run of a half-landed signed close finishes the job above).
+    version = args.canvas_version or jdata["canvas"]["version"]
+    write_json(rdir / "round.json", dict(data, status=status, closed_at=now_iso(), canvas_version=version,
+                                         signoff_words=args.words if status == "signed" else None))
+    if status == "signed":
+        write_json(job["path"] / "job.json", dict(jdata, status="signed"))
+    print(f"design-close: {address} {status} -- {len(files)} file(s) snapshotted to "
+          f"{DESIGN_ROOT_SHOWN}/jobs/{job['id']}/rounds/{rnd['id']}/canvas/project/, canvas_version {version or 'null'}"
+          + (f"; job {job['id']} signed" if status == "signed" else "; the slice's next round supersedes it"))
+
+
+def design_canvas(args: argparse.Namespace) -> None:
+    """Record a job's canvas Artifact: its url after creation, its version after each publish (with
+    the published file list the next publish plan diffs against), and `implemented` once built."""
+    if args.url is None and args.version is None and not args.implemented:
+        raise SystemExit("design-canvas: name at least one of --url, --version, --implemented")
+    root = design_root()
+    scan = design_scan(root)
+    design_require_manifest(scan, root, "design-canvas")
+    job = design_find_job(scan, args.job, "design-canvas")
+    jdata = job["data"]
+    canvas = dict(jdata["canvas"])
+    status = jdata["status"]
+    if (args.url is not None or args.version is not None) and status == "implemented":
+        raise SystemExit(f"design-canvas: refused -- job {args.job} is implemented; its canvas record is history")
+    if args.url is not None:
+        if design_artifact_problem(args.url):
+            raise SystemExit(f"design-canvas: --url {design_artifact_problem(args.url)}")
+        canvas["url"] = args.url
+    if args.version is not None:
+        if not DESIGN_VERSION_RE.match(args.version):
+            raise SystemExit(f"design-canvas: --version {args.version!r} is not a version id (non-empty, no spaces)")
+        if canvas["url"] is None:
+            raise SystemExit(f"design-canvas: refused -- job {args.job} has no canvas url yet (pass --url)")
+        files = design_tree_files(job["path"] / "canvas" / "project")
+        if "canvas.json" not in files:
+            raise SystemExit(f"design-canvas: refused -- jobs/{args.job}/canvas/project/ holds no canvas to have published")
+        canvas["version"], canvas["published"] = args.version, [f"project/{f}" for f in files]
+    if args.implemented and status != "implemented":
+        if status != "signed":
+            raise SystemExit(f"design-canvas: refused -- job {args.job} is {status}; only a signed job is marked implemented")
+        status = "implemented"
+    wanted = dict(jdata, canvas=canvas, status=status)
+    if wanted == jdata:
+        print(f"design-canvas: jobs/{args.job}/job.json unchanged")
+        return
+    write_json(job["path"] / "job.json", wanted)
+    print(f"design-canvas: updated {DESIGN_ROOT_SHOWN}/jobs/{args.job}/job.json")
+    print(json.dumps({"canvas": canvas, "status": status}, ensure_ascii=False, indent=2))
+
+
+def design_publish_plan(args: argparse.Namespace) -> int:
+    """Print the Artifact publish call's {url, root, file_path, files} for a job's canvas -- read-only."""
+    root = design_root()
+    scan = design_scan(root, args.job)
+    design_require_manifest(scan, root, "design-publish-plan")
+    job = design_find_job(scan, args.job, "design-publish-plan")
+    canvas = job["data"]["canvas"]
+    if canvas["url"] is None:
+        raise SystemExit(f"design-publish-plan: refused -- job {args.job} has no canvas url "
+                         f"(create the canvas, then design-canvas {args.job} --url <url>)")
+    design_require(scan, "design-publish-plan")
+    publish_root = job["path"] / "canvas"
+    live = [f"project/{f}" for f in design_tree_files(publish_root / "project")]
+    files: dict = {path: path for path in live if path != "project/canvas.json"}
+    for path in canvas["published"]:  # removed since the last publish
+        if path not in live and not path.startswith("project/ds/"):
+            files[path] = None
+    system = scan["manifest"]["system"]
+    if system["artifact"]:  # the server copies the system's files into the canvas (the install)
+        for name in system["files"]:
+            files[f"project/ds/{system['namespace']}/{name}"] = {"artifact": system["artifact"], "path": f"project/{name}"}
+    print(json.dumps({"url": canvas["url"], "root": str(publish_root.resolve()),
+                      "file_path": str((publish_root / "project" / "canvas.json").resolve()), "files": files},
+                     ensure_ascii=False, indent=2))
+    return 0
 
 
 def design_migrate(args: argparse.Namespace) -> None:
+    if args.to == "2":
+        design_migrate_schema2(args)
+        return
+    design_migrate_pre_v47(args)
+
+
+def design_migrate_schema2(args: argparse.Namespace) -> None:
+    """Move a schema-1 (v47 card) record -- cards/, tokens.css, rounds/ with every snapshot under them
+    -- into DESIGN_SCHEMA1_DIR, unchanged, then rewrite design.json to schema 2 (id and name kept, a
+    null-filled system). Every check runs before the first move (a refusal moves nothing); a dry run
+    unless --apply; all-or-nothing; never a delete, never git."""
+    root = design_root()
+    mpath = root / "design.json"
+    rel = lambda p: Path(shown(p)).as_posix()
+    if not mpath.is_file():
+        raise SystemExit(f"design-migrate --to 2: refused -- no {DESIGN_ROOT_SHOWN}/design.json; nothing to migrate "
+                         f"(a new design record starts on schema {DESIGN_SCHEMA} with design-init)")
+    try:
+        manifest = read_json(mpath)
+    except (ValueError, OSError) as exc:
+        raise SystemExit(f"design-migrate --to 2: refused -- design.json is not valid JSON ({exc}); fix it by hand")
+    if design_is_schema(manifest, DESIGN_SCHEMA):
+        print(f"design-migrate --to 2: design.json is already schema {DESIGN_SCHEMA}; nothing to migrate")
+        return
+    if not design_is_schema(manifest, 1):
+        schema = manifest.get("schema") if isinstance(manifest, dict) else None
+        raise SystemExit(f"design-migrate --to 2: refused -- design.json schema {schema!r} is not 1")
+    target = root / DESIGN_SCHEMA1_DIR
+    rounds_dir = root / "rounds"
+    problems = []
+    if design_legacy_record(root):
+        problems.append(f"a pre-v47 record is still at the root; run {WORKFLOW_CMD} design-migrate (no --to) first, which moves it into {DESIGN_LEGACY_DIR}/")
+    if os.path.lexists(target):
+        problems.append(f"{rel(target)} already exists (a schema-1 record was migrated before; move it aside by hand)")
+    opened = []
+    for entry in sorted(rounds_dir.iterdir()) if rounds_dir.is_dir() else []:
+        try:
+            if (entry / "round.json").is_file() and read_json(entry / "round.json").get("status") == "open":
+                opened.append(entry.name)
+        except (ValueError, OSError, AttributeError):
+            problems.append(f"{rel(entry / 'round.json')} is not readable JSON; fix it by hand")
+    if opened:
+        problems.append(f"schema-1 round(s) {', '.join(opened)} still open: close each with the engine it was opened on before "
+                        f"updating, or, if abandoned, set its round.json status to \"superseded\" with a closed_at by hand")
+    wanted = {"schema": DESIGN_SCHEMA, "id": manifest.get("id"), "name": manifest.get("name"), "system": design_null_system()}
+    problems.extend(design_manifest_problems(wanted))
+    if problems:
+        raise SystemExit("design-migrate --to 2: refused -- nothing moved:\n" + "\n".join(f"- {p}" for p in problems))
+    moves = [(root / name, target / name) for name in ("cards", "tokens.css", "rounds") if os.path.lexists(root / name)]
+    keep = {"design.json", "cards", "tokens.css", "rounds", "jobs", DESIGN_LEGACY_DIR, DESIGN_SCHEMA1_DIR}
+    stayed = [f"design-migrate --to 2: left in place {rel(e)} (not part of the schema-1 record; move it by hand if it belongs there)"
+              for e in sorted(root.iterdir()) if e.name not in keep and not e.name.startswith(".")]
+    if not args.apply:
+        print("\n".join([f"design-migrate --to 2: would move {rel(src)} -> {rel(dst)}" for src, dst in moves]
+                        + [f"design-migrate --to 2: would rewrite {rel(mpath)} to schema {DESIGN_SCHEMA} (id and name kept, system null)"]
+                        + stayed + ["design-migrate --to 2: dry run -- nothing moved; re-run with --apply"]))
+        return
+    done, made = [], False
+    try:
+        if moves:
+            target.mkdir()
+            made = True
+        for src, dst in moves:
+            os.replace(src, dst)
+            done.append((src, dst))
+        write_json(mpath, wanted)
+    except OSError as exc:  # all-or-nothing: put back what already moved, then drop the folder made here
+        undo = []
+        for src, dst in reversed(done):
+            try:
+                os.replace(dst, src)
+            except OSError as again:
+                undo.append(f"- could not move {rel(dst)} back to {rel(src)}: {again}")
+        if made:
+            try:
+                target.rmdir()
+            except OSError:
+                pass
+        raise SystemExit(f"design-migrate --to 2: failed -- {exc}; " + (
+            "rolled back, nothing moved" if not undo else "rollback incomplete:\n" + "\n".join(undo)))
+    for src, dst in moves:
+        print(f"design-migrate --to 2: moved {rel(src)} -> {rel(dst)}")
+    print(f"design-migrate --to 2: rewrote {rel(mpath)} to schema {DESIGN_SCHEMA}")
+    if stayed:
+        print("\n".join(stayed))
+    print("commit the move yourself (git sees it as renames)")
+
+
+def design_migrate_pre_v47(args: argparse.Namespace) -> None:
     """Move a pre-v47 design record into DESIGN_LEGACY_DIR, unchanged. With no design.json the whole
     root is the old record, so every top-level entry moves (dot-entries stay); with design.json the
     repo already uses the drafter, so only the old record's parts move -- rounds without round.json,
@@ -5429,8 +5817,11 @@ def design_migrate(args: argparse.Namespace) -> None:
         if mixed:
             problems.append(f"{rel(rounds_dir)} holds schema-1 round(s) {', '.join(mixed)} (they carry a round.json) but there is "
                             f"no design.json; if this repo uses the drafter, restore it with design-init first")
+        jobs_dir = root / "jobs"
+        if jobs_dir.is_dir() and any((e / "job.json").exists() for e in jobs_dir.iterdir()):
+            problems.append(f"{rel(jobs_dir)} holds schema-{DESIGN_SCHEMA} job(s) but there is no design.json; restore it with design-init first")
         for entry in sorted(root.iterdir()):
-            if entry.name == DESIGN_LEGACY_DIR:
+            if entry.name in (DESIGN_LEGACY_DIR, DESIGN_SCHEMA1_DIR):
                 continue
             if entry.name.startswith("."):
                 left.append((entry, "a dot-entry"))
@@ -5441,9 +5832,11 @@ def design_migrate(args: argparse.Namespace) -> None:
                     if not e.name.startswith(".") and not e.is_dir())
         moves.extend((part, legacy / part.relative_to(root)) for part in design_legacy_record(root))
         if moves and (root / "tokens.css").is_file():  # schema 1's own file: kept, but said out loud
-            left.append((root / "tokens.css", "kept as schema 1's tokens.css; if it belongs to the old record, move it into claude-design/ by hand"))
-        schema1 = {"design.json", "cards", "tokens.css", "rounds", DESIGN_LEGACY_DIR, "SIGNOFF.md", "grounding"}
-        left.extend((e, outside) for e in sorted(root.iterdir()) if e.name not in schema1 and not e.name.startswith("."))
+            left.append((root / "tokens.css", "kept as schema 1's tokens.css (design-migrate --to 2 moves it into schema1/); "
+                                              "if it belongs to the old record, move it into claude-design/ by hand"))
+        contract = {"design.json", "cards", "tokens.css", "rounds", "jobs", DESIGN_LEGACY_DIR, DESIGN_SCHEMA1_DIR,
+                    "SIGNOFF.md", "grounding"}
+        left.extend((e, outside) for e in sorted(root.iterdir()) if e.name not in contract and not e.name.startswith("."))
     folders = [legacy] + ([legacy / "rounds"] if any(dst.parent == legacy / "rounds" for _, dst in moves) else [])
     for folder in folders:
         if os.path.lexists(folder) and not folder.is_dir():
@@ -5676,35 +6069,59 @@ def main(argv=None) -> int:
     p.add_argument("--json", action="store_true", help="print the same answer as one JSON object")
     p.set_defaults(func=phase_scope)
 
-    # The design contract (v47): the on-disk layout lives in design-cowork/SKILL.md "The design record".
-    p = sub.add_parser("design-init", help=f"Write the design project manifest {DESIGN_ROOT_REL}/design.json (schema {DESIGN_SCHEMA}: id, name); idempotent -- an unchanged manifest is not rewritten",
-                       description=f"Create or update {DESIGN_ROOT_REL}/design.json, the one design project this repo holds. Defaults: id = the repo folder's name, slugified; name = the folder's name.")
+    # The design contract, schema 2 (v60): the on-disk layout lives in design-cowork/SKILL.md "The design record".
+    p = sub.add_parser("design-init", help=f"Write the design project manifest {DESIGN_ROOT_REL}/design.json (schema {DESIGN_SCHEMA}: id, name, a null-filled system); idempotent -- an unchanged manifest is not rewritten; a schema-1 manifest is refused (design-migrate --to 2)",
+                       description=f"Create or update {DESIGN_ROOT_REL}/design.json, the one design project this repo holds. Defaults: id = the repo folder's name, slugified; name = the folder's name. The system record stays as it is (design-system sets it).")
     p.add_argument("--id", default=None, help="the project id: lowercase [a-z0-9-], starting alphanumeric, at most 63 characters")
     p.add_argument("--name", default=None, help="the project display name")
     p.set_defaults(func=design_init)
 
-    p = sub.add_parser("design-open", help=f"Open the next design round: {DESIGN_ROOT_REL}/rounds/NN-<slug>/round.json, status open; refuses while another round is open or a card still carries another slice's review address",
-                       description="Open the next design round (numbered max + 1). Its cards carry the review address on line 1 -- group=\"\u23f3 <slice> \u00b7 <Group>\" -- until design-close. The orchestrator writes the round's handoff.md next.")
-    p.add_argument("--slug", required=True, help="the round's slug: lowercase words joined by hyphens")
-    p.add_argument("--slice", required=True, help="the co-work slice that owns the round (e.g. P48.S1); its id is the review address the round's cards carry")
+    p = sub.add_parser("design-system", help=f"Record the product's Design System Artifact in {DESIGN_ROOT_REL}/design.json (system: artifact, namespace, version, source, files); the orchestrator runs it after each system sync; idempotent",
+                       description="--artifact is the system's address (https://claude.ai/artifact/<id> or /code/artifact/<id>, on claude.ai or claude.com, preview. allowed, nothing after the id). --namespace is the folder a canvas installs it under, project/ds/<namespace>/ ([a-z0-9][a-z0-9_-]{0,63}). --files names the system files a canvas installs, relative to the system's project/ (e.g. tokens.json,tokens.css,components/bundle.js,components/bundle.css); omitted, the recorded list is kept.")
+    p.add_argument("--artifact", required=True, help="the Design System Artifact's address")
+    p.add_argument("--namespace", required=True, help="the install folder under a canvas's project/ds/")
+    p.add_argument("--version", required=True, help="the system version id the repo is synced to")
+    p.add_argument("--source", default=None, help="where the system came from (e.g. the code path it was synced from)")
+    p.add_argument("--files", default=None, help="comma-separated system files a canvas installs (replaces the recorded list)")
+    p.set_defaults(func=design_system)
+
+    p = sub.add_parser("design-open", help=f"Open the next design round of a co-work slice's job: {DESIGN_ROOT_REL}/jobs/NN-<slug>/ (job.json, created on the slice's first round and reused after) and jobs/<job>/rounds/NN-<slug>/round.json, status open; refuses while any round is open",
+                       description="One job per co-work slice: the slice's first round creates its job (numbered after the highest job), later rounds reuse it and supersede the job's previous round (a signed job is reopened; an implemented one refuses). Rounds number inside the job; at most one round is open per project. The orchestrator writes the round's handoff.md next; the drafter writes the canvas tree in jobs/<job>/canvas/project/.")
+    p.add_argument("--slug", required=True, help="the round's slug (and the job's, on the slice's first round): lowercase words joined by hyphens")
+    p.add_argument("--slice", required=True, help="the co-work slice that owns the job (e.g. P48.S1)")
     p.add_argument("--title", default=None, help="display title (default: the slug)")
     p.set_defaults(func=design_open)
 
-    p = sub.add_parser("design-check", help=f"Check {DESIGN_ROOT_REL}/ against the design contract -- numbered contiguous cards, no unnumbered card or monolith, valid @dsCard markers, self-contained cards, well-formed design.json and round.json, snapshots of closed rounds; exit 1 with every problem named",
-                       description="Read-only. With card paths (the handoff's numbered list), also check that each is present and carries the open round's address, and that cards added beyond the list are numbered after it.")
-    p.add_argument("paths", nargs="*", help="card paths the handoff named, e.g. cards/03-button.html (optional)")
+    p = sub.add_parser("design-check", help=f"Check {DESIGN_ROOT_REL}/ against the design contract -- well-formed design.json, job.json and round.json, one open round at most, and each job's canvas tree (canvas.json keys, boards listed and present, Main.dc.html, path rules, the ./support.js line, board titles numbered 01..N, references inside project/), no stray HTML; warnings exit 0, problems exit 1",
+                       description=f"Read-only. With a job id, only design.json and that job. Board titles start \"NN · \" with NN forming 01..N as a set (the layout is free). A canvas pinning another system version than design.json's is a warning. {DESIGN_LEGACY_DIR}/ and {DESIGN_SCHEMA1_DIR}/ are legacy records and never read.")
+    p.add_argument("job", nargs="?", default=None, help="a job id, e.g. 01-signin (default: every job)")
     p.set_defaults(func=design_check)
 
-    p = sub.add_parser("design-close", help="Close the open design round: snapshot its cards and tokens.css into the round folder (address on), then with --words regroup the live cards (line 1 only, every later byte asserted identical) and mark it signed, or with --superseded mark it superseded; idempotent",
-                       description="--words needs rounds/<round>/SIGNOFF.md written first. A superseded round's cards stay under review for the same slice's next round. Re-run a half-landed close; a closed round is never rewritten.")
-    p.add_argument("round", help="the round id, e.g. 03-signin")
+    p = sub.add_parser("design-canvas", help="Record a job's canvas Artifact in its job.json: --url after creating it, --version after each publish (also records the published file list), --implemented once the signed job is built",
+                       description="--url takes the same Artifact address rule as design-system. --version records canvas.version and sets canvas.published to the files under canvas/project/ (ds/ left out), which the next design-publish-plan diffs against. --implemented needs the job signed.")
+    p.add_argument("job", help="the job id, e.g. 01-signin")
+    p.add_argument("--url", default=None, help="the canvas Artifact's address")
+    p.add_argument("--version", default=None, help="the version id the last publish returned")
+    p.add_argument("--implemented", action="store_true", help="mark the signed job implemented (its design is built)")
+    p.set_defaults(func=design_canvas)
+
+    p = sub.add_parser("design-publish-plan", help="Read-only: print the Artifact publish call for a job's canvas as JSON -- {url, root, file_path, files}: canvas.json as file_path, every other project/ file mapped to itself, files removed since the last publish mapped to null, and the system install entries once design-system is set; refuses without a canvas url or on a failing design-check",
+                       description="The engine never calls claude.ai: the orchestrator passes this JSON to its Artifact publish. root is the job's canvas/ folder (it holds project/); ds/ is never sent from disk -- with design.json's system set, each system file maps as \"project/ds/<namespace>/<file>\": {\"artifact\": <system>, \"path\": \"project/<file>\"}, a server-side copy.")
+    p.add_argument("job", help="the job id, e.g. 01-signin")
+    p.set_defaults(func=design_publish_plan)
+
+    p = sub.add_parser("design-close", help="Close the open design round: snapshot the job's canvas tree (ds/ left out) into the round folder, record canvas_version, then with --words mark the round and its job signed, or with --superseded mark the round superseded; idempotent",
+                       description="--words needs jobs/<job>/rounds/<round>/SIGNOFF.md written first and a passing design-check of the job. --canvas-version defaults to the job's recorded canvas.version. Re-run a half-landed close; a closed round is never rewritten.")
+    p.add_argument("round", help="the round: <job>/<round> (e.g. 01-signin/02-revise), or the bare round id when only one job has it")
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--words", default=None, help="the operator's literal signoff words, recorded verbatim in round.json")
-    g.add_argument("--superseded", action="store_true", help="a design question replaces the round before it is signed: snapshot and close it, no regroup")
+    g.add_argument("--superseded", action="store_true", help="a design question replaces the round before it is signed: snapshot and close it")
+    p.add_argument("--canvas-version", default=None, help="the canvas version id the operator reviewed (default: job.json canvas.version)")
     p.set_defaults(func=design_close)
 
-    p = sub.add_parser("design-migrate", help=f"Move a pre-v47 (Claude Design) design record into {DESIGN_ROOT_REL}/{DESIGN_LEGACY_DIR}/, unchanged: with no design.json every top-level entry, else only rounds without round.json, SIGNOFF.md and grounding/; a dry run unless --apply",
-                       description=f"All-or-nothing: every check runs before the first move, and an existing destination, or a design.json-less root whose rounds/ holds a round.json, refuses with nothing moved. Dot-entries, and with design.json anything outside both contracts, are listed as left in place. Never deletes (only an emptied rounds/ is rmdir'ed), never runs git, never writes design.json (design-init stays separate). The engine never reads {DESIGN_LEGACY_DIR}/.")
+    p = sub.add_parser("design-migrate", help=f"Move a legacy design record aside, unchanged; a dry run unless --apply. Two migrations: with no --to, a pre-v47 (Claude Design) record into {DESIGN_ROOT_REL}/{DESIGN_LEGACY_DIR}/ (with no design.json every top-level entry, else only rounds without round.json, SIGNOFF.md and grounding/); with --to 2, a schema-1 (v47 card) record -- cards/, tokens.css, rounds/ -- into {DESIGN_ROOT_REL}/{DESIGN_SCHEMA1_DIR}/, rewriting design.json to schema 2",
+                       description=f"All-or-nothing: every check runs before the first move, and a refusal moves nothing. Never deletes (only an emptied rounds/ is rmdir'ed), never runs git. Without --to (pre-v47 -> {DESIGN_LEGACY_DIR}/): an existing destination, or a design.json-less root whose rounds/ holds a round.json, refuses; dot-entries, and with design.json anything outside the contracts, are listed as left in place; design.json is never written (design-init stays separate). With --to 2 (schema 1 -> {DESIGN_SCHEMA1_DIR}/): refuses while a schema-1 round is open, while a pre-v47 record is at the root (migrate it first), or when {DESIGN_SCHEMA1_DIR}/ exists; keeps design.json's id and name and adds a null-filled system. The engine never reads {DESIGN_LEGACY_DIR}/ or {DESIGN_SCHEMA1_DIR}/.")
+    p.add_argument("--to", choices=["2"], default=None, help="2: migrate a schema-1 record to schema 2 (default: the pre-v47 move into claude-design/)")
     p.add_argument("--apply", action="store_true", help="perform the moves (default: print them and move nothing)")
     p.set_defaults(func=design_migrate)
 
