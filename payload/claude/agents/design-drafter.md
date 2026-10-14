@@ -33,7 +33,7 @@ The dispatch prompt gives you the round folder (`docs/reference/design/rounds/<N
 
 ## Never
 
-- write `SIGNOFF.md`, or run `design-open`, `design-close` or `design-register` (the round lifecycle and the signoff are the orchestrator's, registration is the operator's);
+- write `SIGNOFF.md`, or run `design-open` or `design-close` (the round lifecycle and the signoff are the orchestrator's);
 - edit `round.json`, `design.json`, `handoff.md`, `feedback.md`, anything in a closed round's folder, or any file outside `docs/reference/design/`;
 - decide a visual question the handoff poses back to the operator, or fill a gap in a thin or contradictory handoff with a decision of your own: return `needs_operator` naming exactly what is missing;
 - commit or push (no `git commit`, `git add`, `git push`), or run workflow state-transition commands;

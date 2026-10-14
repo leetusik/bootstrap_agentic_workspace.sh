@@ -4836,29 +4836,21 @@ def rotate_backlog(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 # The design contract (workspace v47). A product repo keeps its visual design as plain files under
 # DESIGN_ROOT_REL -- a project manifest, a numbered card library, tokens, and one folder per design
-# round -- and a separate, READ-ONLY web dashboard (its own repo, served from the operator's Mac)
-# reads them straight from disk, finding repos through a registry that lives OUTSIDE every repo.
-# The contract itself (paths, manifest fields, the @dsCard grammar, the round lifecycle, the
-# registry) is written out in design-cowork/SKILL.md "The design record"; that section and these
-# commands must move together. The commands are the only writers of the machine-readable parts
-# (design.json, round.json, the close-time snapshots, the registry), and `design-check` enforces
-# the rest. Two invariants carry the weight: the regroup rewrites ONE label on line 1 of a card
-# and asserts every byte after line 1 identical, and `design-register` writes only the registry
-# path (env-overridable, so tests never touch the operator's real one), atomically. Stdlib only.
-# Since v48 a phase may pick the `claude-design` tool instead; its records keep the pre-v47 layout
-# under DESIGN_LEGACY_DIR, which the scan never reads, and `design-migrate` moves a pre-v47 root
-# there (moves only, all-or-nothing, never a delete, never git).
+# round. The contract itself (paths, manifest fields, the @dsCard grammar, the round lifecycle) is
+# written out in design-cowork/SKILL.md "The design record"; that section and these commands must
+# move together. The commands are the only writers of the machine-readable parts (design.json,
+# round.json, the close-time snapshots), and `design-check` enforces the rest. One invariant carries
+# the weight: the regroup rewrites ONE label on line 1 of a card and asserts every byte after line 1
+# identical. Stdlib only. The retired `claude-design` tool's records sit under DESIGN_LEGACY_DIR,
+# which the scan never reads, and `design-migrate` moves a pre-v47 root there (moves only,
+# all-or-nothing, never a delete, never git).
 DESIGN_ROOT_REL = "docs/reference/design"
 # The design root as printed: under the nested repo when nested (`workflow/docs/reference/design`,
 # where the record stays -- private workflow files, never the host's docs/), identical at root.
 DESIGN_ROOT_SHOWN = shown_rel(DESIGN_ROOT_REL)
-# The `claude-design` tool's record home, in the pre-v47 layout, never read by the engine.
+# The retired `claude-design` tool's legacy record home, in the pre-v47 layout, never read by the engine.
 DESIGN_LEGACY_DIR = "claude-design"
 DESIGN_SCHEMA = 1
-DESIGN_REGISTRY_ENV = "AGENTIC_DESIGN_REGISTRY"
-DESIGN_REGISTRY_DEFAULT = "~/.config/agentic-workspace/design-registry.json"
-# The design-deck URL design-register prints when set; the engine never guesses one.
-DESIGN_DECK_URL_ENV = "AGENTIC_DESIGN_DECK_URL"
 DESIGN_ROUND_STATUSES = ("open", "signed", "superseded")
 DESIGN_MANIFEST_KEYS = ("schema", "id", "name")
 DESIGN_ROUND_KEYS = ("schema", "round", "title", "slice", "status", "opened_at", "closed_at",
@@ -5418,74 +5410,6 @@ def design_close(args: argparse.Namespace) -> None:
         print(f"supersedes: {', '.join(data['supersedes'])}")
 
 
-def design_registry_path() -> Path:
-    raw = os.environ.get(DESIGN_REGISTRY_ENV, "").strip()
-    return Path(os.path.abspath(os.path.expanduser(raw or DESIGN_REGISTRY_DEFAULT)))
-
-
-def design_register(args: argparse.Namespace) -> None:
-    root = design_root()
-    mpath = root / "design.json"
-    try:
-        manifest = read_json(mpath)
-    except (ValueError, OSError):
-        manifest = None
-    if manifest is None or design_manifest_problems(manifest):
-        hint = design_legacy_hint(root)
-        raise SystemExit(f"design-register: refused -- no valid {DESIGN_ROOT_SHOWN}/design.json; {hint}" if hint else
-                         f"design-register: refused -- no valid {DESIGN_ROOT_SHOWN}/design.json (run: {WORKFLOW_CMD} design-init)")
-    path = design_registry_path()
-    registry = {"schema": DESIGN_SCHEMA, "projects": []}
-    if path.exists():
-        try:
-            registry = read_json(path)
-        except (ValueError, OSError) as exc:
-            raise SystemExit(f"design-register: refused -- the registry {path} is not valid JSON ({exc}); fix or remove it by hand")
-        if not isinstance(registry, dict) or registry.get("schema") != DESIGN_SCHEMA:
-            raise SystemExit(f"design-register: refused -- the registry {path} is not a schema-{DESIGN_SCHEMA} object; fix or remove it by hand")
-        projects = registry.get("projects")
-        if not (isinstance(projects, list) and all(isinstance(p, dict) for p in projects)):
-            raise SystemExit(f"design-register: refused -- the registry {path} has no projects list; fix or remove it by hand")
-    # Nested: the registered repo is the host (the record itself stays under the nested repo).
-    entry = {"id": manifest["id"], "name": manifest["name"], "repo": str(HOST_ROOT or ROOT), "root": str(root)}
-    projects = registry["projects"]
-    holder = next((p for p in projects if p.get("id") == entry["id"]), None)
-    if holder and holder.get("root") != entry["root"] and Path(str(holder.get("root"))).exists():
-        raise SystemExit(f"design-register: refused -- id {entry['id']!r} is already registered to {holder.get('root')}; "
-                         f"give this project another id (design-init --id <new-id>)")
-    same_root = next((p for p in projects if p.get("root") == entry["root"]), None)
-    kept = {**same_root, **entry} if same_root else dict(entry)
-    kept["registered_at"] = (same_root or {}).get("registered_at") or now_iso()
-    replaced = [p for p in projects if p is not same_root and (p.get("id") == entry["id"] or p.get("root") == entry["root"])]
-    rest = [p for p in projects if p is not same_root and p not in replaced]
-    updated = dict(registry, schema=DESIGN_SCHEMA, projects=sorted(rest + [kept], key=lambda p: str(p.get("id"))))
-    if updated == registry:
-        print(f"design-register: {entry['id']} already registered in {path} (nothing written)")
-        design_deck_hint()
-        return
-    write_json(path, updated)
-    print(f"design-register: wrote {path}")
-    for gone in replaced:
-        print(f"replaced a stale entry: {gone.get('id')} at {gone.get('root')}")
-    print(json.dumps(kept, ensure_ascii=False, indent=2))
-    design_deck_hint()
-
-
-def design_deck_hint() -> None:
-    """design-register's closing hint: the dashboard reads this registry, where it is served, and
-    which repos it can see -- design-deck's own mounted projects folder, $DECK_PROJECTS_DIR (its
-    deck.sh variable), default ~/projects. Prints only; the engine never guesses a URL."""
-    url = os.environ.get(DESIGN_DECK_URL_ENV, "").strip()
-    print(f"design-deck reads this registry: {url}" if url
-          else f"design-deck reads this registry (set ${DESIGN_DECK_URL_ENV} to print its URL here)")
-    projects = Path(os.path.expanduser(os.environ.get("DECK_PROJECTS_DIR", "").strip() or "~/projects")).resolve()
-    print(f"design-deck only sees repos under its mounted projects folder ({projects})")
-    try:
-        (HOST_ROOT or ROOT).resolve().relative_to(projects)
-    except ValueError:
-        print(f"warning: this repo is outside {projects}, so design-deck will show it as unavailable")
-
-
 def design_migrate(args: argparse.Namespace) -> None:
     """Move a pre-v47 design record into DESIGN_LEGACY_DIR, unchanged. With no design.json the whole
     root is the old record, so every top-level entry moves (dot-entries stay); with design.json the
@@ -5755,8 +5679,8 @@ def main(argv=None) -> int:
     # The design contract (v47): the on-disk layout lives in design-cowork/SKILL.md "The design record".
     p = sub.add_parser("design-init", help=f"Write the design project manifest {DESIGN_ROOT_REL}/design.json (schema {DESIGN_SCHEMA}: id, name); idempotent -- an unchanged manifest is not rewritten",
                        description=f"Create or update {DESIGN_ROOT_REL}/design.json, the one design project this repo holds. Defaults: id = the repo folder's name, slugified; name = the folder's name.")
-    p.add_argument("--id", default=None, help="the project id: lowercase [a-z0-9-], starting alphanumeric, at most 63 characters; unique across the operator's registry")
-    p.add_argument("--name", default=None, help="the display name the dashboard shows")
+    p.add_argument("--id", default=None, help="the project id: lowercase [a-z0-9-], starting alphanumeric, at most 63 characters")
+    p.add_argument("--name", default=None, help="the project display name")
     p.set_defaults(func=design_init)
 
     p = sub.add_parser("design-open", help=f"Open the next design round: {DESIGN_ROOT_REL}/rounds/NN-<slug>/round.json, status open; refuses while another round is open or a card still carries another slice's review address",
@@ -5778,10 +5702,6 @@ def main(argv=None) -> int:
     g.add_argument("--words", default=None, help="the operator's literal signoff words, recorded verbatim in round.json")
     g.add_argument("--superseded", action="store_true", help="a design question replaces the round before it is signed: snapshot and close it, no regroup")
     p.set_defaults(func=design_close)
-
-    p = sub.add_parser("design-register", help=f"Register this repo's design project with the operator's dashboard: upsert it into the registry OUTSIDE the repo (${DESIGN_REGISTRY_ENV}, default {DESIGN_REGISTRY_DEFAULT}) with absolute paths; idempotent, atomic, prints what it wrote and a design-deck hint (its URL from ${DESIGN_DECK_URL_ENV} when set)",
-                       description=f"Writes only the registry file: ${DESIGN_REGISTRY_ENV} when set, else {DESIGN_REGISTRY_DEFAULT}. Refuses an id another live repo holds; replaces an entry whose root has vanished (a moved repo). Tests must point ${DESIGN_REGISTRY_ENV} at a scratch path. On success it also prints a design-deck hint: the deck URL from ${DESIGN_DECK_URL_ENV} when set (never guessed), and a warning when this repo is outside the deck's mounted projects folder ($DECK_PROJECTS_DIR, default ~/projects).")
-    p.set_defaults(func=design_register)
 
     p = sub.add_parser("design-migrate", help=f"Move a pre-v47 (Claude Design) design record into {DESIGN_ROOT_REL}/{DESIGN_LEGACY_DIR}/, unchanged: with no design.json every top-level entry, else only rounds without round.json, SIGNOFF.md and grounding/; a dry run unless --apply",
                        description=f"All-or-nothing: every check runs before the first move, and an existing destination, or a design.json-less root whose rounds/ holds a round.json, refuses with nothing moved. Dot-entries, and with design.json anything outside both contracts, are listed as left in place. Never deletes (only an emptied rounds/ is rmdir'ed), never runs git, never writes design.json (design-init stays separate). The engine never reads {DESIGN_LEGACY_DIR}/.")

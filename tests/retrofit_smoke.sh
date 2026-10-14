@@ -24,11 +24,10 @@
 # nested .claude/worktrees/ checkout hidden by the repo's info/exclude; parallel-skip and
 # new-phase --on-main are no-ops that stamp nothing), the v47 design-contract invariants
 # (design-check names a gap, an unnumbered card and a // or http:// reference; design-close's
-# regroup rewrites line 1 only, keeps a pre-close snapshot and is idempotent; design-register
-# writes only the env-overridden registry, never the operator's ~/.config; v48: design-check skips claude-design/,
-# design-migrate moves all-or-nothing and a pre-v47 root is steered to it, design-register prints the deck hint), the v48 design-tool
-# invariants (design-cowork carries both loops, drafter and claude-design, with P26's governance
-# shared), the P28 nested-engine invariants (workflow/.agentic-nested.json: host anchors, host-side
+# regroup rewrites line 1 only, keeps a pre-close snapshot and is idempotent; v48: design-check skips claude-design/,
+# design-migrate moves all-or-nothing and a pre-v47 root is steered to it; P36: design-register is gone, an
+# unknown command), the P36 design-tool invariants (design-cowork carries the drafter loop only, with a legacy
+# rule for a `Design tool: claude-design` intent and a Legacy record note for claude-design/), the P28 nested-engine invariants (workflow/.agentic-nested.json: host anchors, host-side
 # phase-scope, the paired worktree lifecycle, the convention gate, the agent rename map, a malformed marker is an
 # error), the P28 nested-install invariants (--nested: a clean host status/HEAD/config, the clash rename,
 # the workflow/ prefix, the contract import, the tracked-target refusal, --update --nested, the self-hiding
@@ -104,12 +103,13 @@ for required in ("`build-after`", "`design-only`", "`paired`", "## Design Style"
                  "never ask for a worktree on a docs phase"):
     assert required in create_phase, required
 # v47 (P26.S4): the mockup question's default closes the round on the drafted cards, not on a
-# return from Claude Design. v48 (P27.S3): the design tool is asked in the same breath and recorded
-# as a `Design tool:` line; the DesignSync loop stays out of the skill itself.
+# return from Claude Design. P36.S1: the design tool question and its `Design tool:` line are retired
+# (drafter is the only tool; an absent line still reads as `drafter`); the mockup question stays.
 assert "literal approval when they return to the drafted cards" in create_phase
-for required in ("Design tool:", "`claude-design`", "`drafter`", "reads as `drafter`"):
-    assert required in create_phase, required
-assert "DesignSync" not in create_phase
+assert "`drafter`" in create_phase and "Mockup: on request" in create_phase
+for gone in ("ask which design tool", "Design tool: drafter", "Design tool: claude-design",
+             "DesignSync", "design-deck", "design-register"):
+    assert gone not in create_phase, gone
 
 # Only skills that *document the removal* may still say "Codex": update-workspace's
 # pre-v31 migration step and explain's re-vendor note. Anywhere else it is a regression.
@@ -139,13 +139,9 @@ for name in ("do-next-slice", "do-whole-phase"):
         # listed), re-dispatches the drafter and reads back before PENDING #1 -- as design-cowork says.
         "**write its handoff**", "**every card still carrying the slice's address**",
         "the new round inherits the addressed cards",
-        # v48 (P27.S3): the design tool is read from `## Design Style`, and the claude-design
-        # branch is compact: the DesignSync read-back is inline, the record lands under
-        # claude-design/, and a round costs two commits without a mockup, four with one.
-        "`Design tool:` under `## Design Style`", "an absent line reads as `drafter`",
-        "**`claude-design`**", "**read back inline with `DesignSync`**",
-        "`docs/reference/design/claude-design/rounds/<NN-slug>/`",
-        "**two commits without a mockup, four with one**",
+        # P36.S1: a phase whose intent still says `Design tool: claude-design` is legacy -- the
+        # drivers point at design-cowork's legacy rule instead of carrying the retired branch.
+        "`Design tool: claude-design`", "re-confirm it on `drafter`",
         # v42: the mockup is on request, the operator's return closes the round, the
         # phase gate follows the mockup with a fixed waive note.
         "PENDING #2 exists only when a mockup was requested",
@@ -171,16 +167,14 @@ for name in ("do-next-slice", "do-whole-phase"):
     for gone in ("mechanical wait", "can no longer be waived", "suggestion, never a default",
                  "Four commits and two `pending` stops", "where opting the phase in was the ask",
                  # v47 (P26.S4): the DesignSync loop's push and manifest phrases stay out of both
-                 # drivers. v48 (P27.S3): DesignSync and Claude Design come back beside claude-design.
-                 "_ds_manifest", "never dispatched",
+                 # drivers. P36.S1: the claude-design branch and every DesignSync / design-register
+                 # mention are retired from both drivers again.
+                 "_ds_manifest", "never dispatched", "DesignSync", "design-register", "**`claude-design`**",
+                 "**read back inline with", "Read the tool first", "Under claude-design",
                  "four commits, two", "one dispatched span", "Push the branch", "push the branch",
                  # P26.F1: the elided feedback step (no revision handoff, no read-back) is retired.
                  "in the same slice, re-dispatch the drafter"):
         assert gone not in body, (name, gone)
-    # P27.F1: the claude-design branch routes the operator's words first -- feedback reaches
-    # feedback.md before any DesignSync read-back, which gates only approval and the mockup.
-    cd_branch = body[body.index("**`claude-design`** (*Under claude-design*"):]
-    assert cd_branch.index("feedback.md") < cd_branch.index("DesignSync"), name
     # v35: the per-slice re-read of the generated backlog dashboard is gone --
     # `next` prints the pointer. The only mentions left must say so.
     for ln in body.splitlines():
@@ -265,7 +259,7 @@ for required in (
     # section names the root, the closed marker set, the lifecycle, the registry and the commands.
     "## The design record — the on-disk contract (schema 1)",
     "**every byte after line 1 is asserted identical**", "**At most one round is open per project.**",
-    "`design-init", "`design-open", "`design-check", "`design-close <round> --words", "`design-register`",
+    "`design-init", "`design-open", "`design-check", "`design-close <round> --words",
     # v47 (P26.S3): the loop runs on the files. The design subagent drafts, the operator decides;
     # the handoff says whether the round sets a new visual direction (the drafter's one licence for
     # frontend-design); the read-back runs design-check itself; only literal words sign, feedback
@@ -277,32 +271,27 @@ for required in (
     "SIGNOFF is taken on the operator's **literal** words",
     "`python3 scripts/workflow.py design-close <round> --superseded`",
     'design-close <round> --words "<their literal words>"',
-    "**The mockup build is the one span dispatched to a slice executor:**",
+    "**Two spans are dispatched:**",
     "the round's lifecycle and the operator's words stay inline",
     "### Importing a Claude Design bundle (optional)",
-    # v48 (P27.S2): the bundle import is a drafter-mode input, and only the drafter loop is account-free.
-    "**The drafter loop never requires a claude.ai account and does not use `DesignSync`**",
+    # P36.S1: the bundle import stays as a drafter input; only the drafter loop exists, and the
+    # claude-design folder is a legacy record with its own short note and legacy rule.
+    "**The drafter loop never requires a claude.ai account**",
     "a design slice authorizes no `git push`",
-    # v48 (P27.S2): the design tool is a per-phase choice read from `## Design Style` -- `drafter`
-    # (P26's loop) or `claude-design` (the pre-P26 loop, restored) -- and `drafter` when the line is
-    # absent. The claude-design record lives under claude-design/, which design-* and design-deck skip.
-    "## Design tool — drafter or claude-design", "Design tool: drafter | claude-design",
-    "**An absent line reads as `drafter`**", "**design-deck shows `drafter` rounds only.**",
-    "**Governance is shared.**", "docs/reference/design/claude-design/",
-    "## The claude-design record — the original layout", "**`claude-design/` is outside schema 1.**",
+    "## Design tool", "**`drafter` is the only design tool.**", "**Legacy rule.**",
+    "Design tool: claude-design", "re-confirm the phase on `drafter`",
+    "An absent `Design tool:` line reads as `drafter`",
+    "### Legacy record: claude-design/", "docs/reference/design/claude-design/",
+    "**`claude-design/` is outside schema 1.**",
     "python3 scripts/workflow.py design-migrate --apply", "| `design-migrate [--apply]` |",
-    "### Under drafter", "### Under claude-design", "**two without a mockup, four with one**",
-    # ... and the restored loop's own mechanics come back, each labelled with its tool (v47's absence
-    # pins for these phrases are swapped for presence pins).
-    "**Claude Design reads the real repo itself**", "**Connect GitHub**", "The Design System pane",
-    "`_ds_manifest.json`", "**DesignSync is main-thread only.**", "**the DesignSync work is never dispatched**",
-    "**Read back with the `DesignSync` tool**", "`list_files` → `get_file` each card",
-    "**`finalize_plan`**", "`write_files`", "**Target the project by id, never by name** — `get_project` to verify",
-    "`register_assets`", "**`/design-sync`**", "**the cards appear in the pane**",
-    "**Push the branch** so Claude Design reads current code",
-    "**claude-design only:** the pane's own grammar, which never overrides schema 1",
 ):
     assert required in design, required
+# P36.S1: the retired tool's loop, DesignSync read-back, registry and deck are gone from the skill.
+for gone in ("### Under claude-design", "### Under drafter", "## The claude-design record",
+             "Design tool — drafter or claude-design", "Design tool: drafter | claude-design",
+             "DesignSync", "design-register", "AGENTIC_DESIGN", "Connect GitHub", "_ds_manifest",
+             "**claude-design:**", "**drafter:**", "dashboard"):
+    assert gone not in design, gone
 # v48 (P27.S2): where the restored loop and P26's disagreed, P26's governance won -- the build slices
 # are cut once the design is *signed*, revisions are superseding rounds in the same slice (not one
 # co-work slice per round), the mockup route goes into phase.md and SIGNOFF.md (not "the round's
@@ -312,28 +301,31 @@ for gone in ("cuts the build slices once the design has landed", "one `co-work` 
              "**The workspace never requires a claude.ai account"):
     assert gone not in design, gone
 # v47 (P26.S3): the frontmatter. The skill still auto-fires on the same trigger, says who drafts and
-# who decides, and keeps no unquoted ": " in its description. v48 (P27.S2): it asks for the DesignSync
-# tool again (the claude-design loop's read-back and regroup) and names both design partners.
+# who decides, and keeps no unquoted ": " in its description. P36.S1: no DesignSync tool and no
+# claude-design wording in the frontmatter.
 raw_design = (root / "payload/claude/skills/design-cowork/SKILL.md").read_text()
 front = raw_design.split("---\n", 2)[1]
 allowed = next(ln for ln in front.splitlines() if ln.startswith("allowed-tools:"))
-assert "DesignSync" in allowed and "Agent" in allowed, allowed
+assert "DesignSync" not in allowed and "Agent" in allowed, allowed
 desc = next(ln for ln in front.splitlines() if ln.startswith("description:"))[len("description: "):]
 assert ": " not in desc, desc
 for required in ("the design subagent drafts, the operator decides",
-                 "the operator designs in Claude Design", "claude-design", "DesignSync",
                  "Use when a phase or slice touches a design system, a redesign, mockups"):
     assert required in desc, required
+for gone in ("the operator designs in Claude Design", "claude-design", "DesignSync"):
+    assert gone not in desc, gone
 assert "Claude Design + the operator" not in desc, desc
-# v47: the contract section and the engine move together -- the root, the registry variable and
-# the registry's default path the skill states are the engine's own constants. v48 (P27.S1/S2): so
-# are the claude-design record's folder name and the design-deck URL variable.
+# v47: the contract section and the engine move together -- the root the skill states is the
+# engine's own constant. v48 (P27.S1/S2): so is the claude-design record's folder name. P36.S1: the
+# registry and design-deck constants are gone from the engine.
 import re
 workflow_src = (root / "payload/scripts/workflow.py").read_text()
-for const in ("DESIGN_ROOT_REL", "DESIGN_REGISTRY_ENV", "DESIGN_REGISTRY_DEFAULT",
-              "DESIGN_LEGACY_DIR", "DESIGN_DECK_URL_ENV"):
+for const in ("DESIGN_ROOT_REL", "DESIGN_LEGACY_DIR"):
     value = re.search(r'^' + const + r' = "([^"]+)"$', workflow_src, re.M).group(1)
     assert value in design, (const, value)
+for gone in ("DESIGN_REGISTRY_ENV", "DESIGN_REGISTRY_DEFAULT", "DESIGN_DECK_URL_ENV", "design-register",
+             "design_deck_hint", "AGENTIC_DESIGN_"):
+    assert gone not in workflow_src, gone
 # P26.F2: the Self-contained bullet (and the drafter's mirror of it) names every reference prefix
 # design-check allows -- `#`, `data:`, `https:` -- read from DESIGN_ALLOWED_REFS so text and engine
 # cannot drift; `tokens.css` takes the same set without the ../tokens.css exception.
@@ -458,10 +450,9 @@ for tier in ("mid", "high"):
                      "the one span of that slice dispatched to a slice executor",
                      "its record on disk"):
         assert required in body, (tier, required)
-    # v48 (P27.S2): the claude-design tool's words may come back into the bodies, but only beside
-    # that tool's name -- the drafter loop's text stays DesignSync-free.
-    for gated in ("DesignSync", "never dispatched, because you have no", "landed record"):
-        assert gated not in body or "claude-design" in body, (tier, gated)
+    # P36.S1: the retired claude-design tool and DesignSync are gone from both executor bodies.
+    for gone in ("DesignSync", "claude-design", "never dispatched, because you have no", "landed record"):
+        assert gone not in body, (tier, gone)
     assert "return `needs_operator`" in body, tier
     # v34: the mockup span is dispatchable and its rules ship in BOTH tiers.
     for required in (
@@ -646,18 +637,17 @@ for gone in ("Prefer the **MCP** surface", "scripted Playwright-style automation
              # v43 negatives: the worktree-by-default framing is retired from the contract.
              "runs in its own worktree by default", "enters its worktree at **first execution**",
              # v47 (P26.S4): the DesignSync dispatch wording is gone from the contract.
-             # v48 (P27.S3): Claude Design + DesignSync are back as the claude-design tool's
-             # partner, so only the old dispatch phrases stay out.
-             "never dispatched", "one dispatched span"):
+             # P36.S1: the claude-design tool, Claude Design and DesignSync are retired from it too.
+             "never dispatched", "one dispatched span", "claude-design", "Claude Design", "DesignSync"):
     assert gone not in claude, gone
-assert "`claude-design`" in claude and "the operator designing in Claude Design" in claude
-# v47 (P26.S4): the installer's closing banner names the file loop, the drafter and the register hook.
+assert "the one design tool, `drafter`" in claude
+# v47 (P26.S4): the installer's closing banner names the file loop and the drafter; P36.S1: one tool,
+# no claude-design and no register hook.
 banner = next(ln for ln in (root / "installer/main.py").read_text().splitlines() if "Visual design:" in ln)
-for required in ("design-drafter", "docs/reference/design/", "design-register"):
+for required in ("design-drafter", "docs/reference/design/"):
     assert required in banner, required
-for required in ("claude-design", "drafter"):
-    assert required in banner, required
-assert "DesignSync" not in banner
+for gone in ("claude-design", "design-register", "DesignSync", "dashboard"):
+    assert gone not in banner, gone
 # v35 negatives: the pre-v35 read order and the append-only notebook verb are gone.
 for gone in ("for the fullstack doc set", "appends phase notes/doc impact",
              "appends durable cross-slice notes"):
@@ -670,7 +660,7 @@ for gone in ("design exception", "never approval", "no other pending gate"):
 for gone in ("Codex", "AGENTS.md", ".agents/", ".codex/"):
     assert gone not in claude, gone
 PY
-then ok "18 Claude skills and their invocation metadata; the prose invariants of the do-*, create-phase, design-cowork (both design tools, styles, mockups on request, numbered cards, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
+then ok "18 Claude skills and their invocation metadata; the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, mockups on request, numbered cards, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
@@ -1666,15 +1656,11 @@ if ( cd "$W" && python3 scripts/workflow.py parallel-start P2 2>&1 | grep -q "le
   || bad "merge, merge-finish or teardown failed"
 
 # ---------------------------------------------------------------------------
-echo "== Test 13: v47 design contract -- design-check names a gap, an unnumbered card and a // or http:// reference, design-close regroups line 1 only (idempotent), design-register writes only the env-overridden registry; v48: claude-design/ is skipped, design-migrate, the deck hint =="
-# Runs in the fresh workspace $F. Every design command gets a scratch HOME as well as a scratch
-# $AGENTIC_DESIGN_REGISTRY, so even a broken override could never reach the operator's ~/.config.
+echo "== Test 13: v47 design contract -- design-check names a gap, an unnumbered card and a // or http:// reference, design-close regroups line 1 only (idempotent), design-register is gone (unknown command); claude-design/ is skipped, design-migrate =="
+# Runs in the fresh workspace $F.
 newtmp DZ
 DR="$F/docs/reference/design"
-REAL_REG="$HOME/.config/agentic-workspace/design-registry.json"
-real_reg_sig() { if [ -e "$REAL_REG" ]; then sig "$REAL_REG"; else echo absent; fi; }
-real_before=$(real_reg_sig)
-dw() { ( cd "$F" && HOME="$DZ/home" AGENTIC_DESIGN_REGISTRY="$DZ/reg/design-registry.json" python3 scripts/workflow.py "$@" ); }
+dw() { ( cd "$F" && python3 scripts/workflow.py "$@" ); }
 tree_sig() { ( cd "$DR" && find . -type f | LC_ALL=C sort | while read -r f; do printf '%s %s\n' "$f" "$(sha "$f")"; done ); }
 { dw design-init --id smoke-design --name "Smoke design" && dw design-open --slug signin --slice P9.S1; } >/dev/null 2>&1 \
   || bad "design probe: design-init / design-open failed"
@@ -1726,31 +1712,11 @@ else bad "design-close changed more than the group on line 1, or lost the snapsh
 before=$(tree_sig); again=$(dw design-close 01-signin --words "ship it" 2>&1); rc=$?
 [ "$rc" -eq 0 ] && printf '%s\n' "$again" | grep -q 'already signed' && [ "$(tree_sig)" = "$before" ] \
   && ok "design-close is idempotent: a second run writes nothing" || bad "a second design-close was not a no-op (rc=$rc) -- $again"
-dw design-register >/dev/null 2>&1 || bad "design probe: design-register failed"
-REG="$DZ/reg/design-registry.json"
-reg_before=$( [ -f "$REG" ] && sha "$REG" ); again=$(dw design-register 2>&1)
-if python3 - "$REG" "$F" <<'REG_OK' && [ -n "$reg_before" ] && [ "$(sha "$REG")" = "$reg_before" ] \
-    && printf '%s\n' "$again" | grep -q 'nothing written'; then
-import json, os, sys
-reg = json.load(open(sys.argv[1]))
-assert reg["schema"] == 1 and [p["id"] for p in reg["projects"]] == ["smoke-design"], reg
-entry = reg["projects"][0]
-assert os.path.isabs(entry["repo"]) and os.path.isabs(entry["root"]), entry
-assert os.path.samefile(entry["root"], os.path.join(sys.argv[2], "docs/reference/design")), entry
-REG_OK
-  ok "design-register writes absolute paths to the env-overridden registry, and a second run writes nothing"
-else bad "design-register wrote the wrong entry or was not idempotent -- $again"; fi
-# v48 (P27.S1): design-register ends with the design-deck hint -- the URL only from the env, never guessed.
-out=$( cd "$F" && HOME="$DZ/home" AGENTIC_DESIGN_REGISTRY="$DZ/reg/design-registry.json" \
-       AGENTIC_DESIGN_DECK_URL="http://100.64.0.1:8765/" DECK_PROJECTS_DIR="$DZ/home/projects" \
-       python3 scripts/workflow.py design-register 2>&1 ); rc=$?
-[ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -Fqx 'design-deck reads this registry: http://100.64.0.1:8765/' \
-  && printf '%s\n' "$out" | grep -q '^warning: this repo is outside .*, so design-deck will show it as unavailable$' \
-  && ok "design-register prints the design-deck hint: the URL from \$AGENTIC_DESIGN_DECK_URL, and a warning for a repo outside the deck's projects folder" \
-  || bad "design-register printed no deck URL or no outside-folder warning (rc=$rc) -- $out"
-[ ! -e "$DZ/home/.config" ] && [ "$(real_reg_sig)" = "$real_before" ] \
-  && ok "design-register touched neither the scratch HOME's ~/.config nor the operator's real registry" \
-  || bad "design-register wrote outside \$AGENTIC_DESIGN_REGISTRY"
+# P36.S1: design-register and its registry / design-deck hint are retired -- the command is unknown.
+out=$(dw design-register 2>&1); rc=$?
+[ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -q 'invalid choice' \
+  && ok "design-register is gone: the engine rejects it as an unknown command (exit $rc)" \
+  || bad "design-register still answers (rc=$rc) -- $out"
 # v48 (P27.S1): the claude-design tool's records live in claude-design/, which the scan never reads.
 mkdir -p "$DR/claude-design/grounding/previews" "$DR/claude-design/rounds/01-old"
 printf '<p>preview</p>\n' > "$DR/claude-design/grounding/previews/x.html"

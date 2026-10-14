@@ -247,11 +247,9 @@ git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하�
 디자인하지 않습니다** — 라운드마다 전용 디자인 서브에이전트(`design-drafter`)가 초안을 쓰고,
 시각적 결정은 여러분이 내립니다. 디자인은 외부 서비스가 아니라 저장소 안의
 `docs/reference/design/`에 일반 파일로 남습니다(번호가 매겨진 카드 `cards/01-nav.html`,
-`02-hero.html`, …, `tokens.css`, 라운드별 기록). 계정도 푸시도 필요 없습니다. 이것이 기본 도구인
-`drafter`의 흐름입니다. 다른 하나인 `claude-design`은 예전 방식을 되살린 것으로, Claude Design에서
-직접 디자인하고(claude.ai 로그인이 필요하며 `ocx claude`에서는 동작하지 않습니다) 저장소에는 아무것도
-복사하지 않으며, 기록은 `docs/reference/design/claude-design/`에 남고 디자인 대시보드에는 보이지
-않습니다. 도구는 `/create-phase`에서 phase마다 고릅니다(`Design tool: drafter | claude-design`).
+`02-hero.html`, …, `tokens.css`, 라운드별 기록). 계정도 푸시도 필요 없습니다. 디자인 도구는
+`drafter` 하나뿐이며, 예전의 `claude-design` 도구와 디자인 대시보드는 없어졌습니다. 카드는 파일을
+브라우저로 직접 열어 봅니다.
 에이전트는 라운드를 열고, 검토할 수 있는 카드 세트를 요구하는 `handoff.md` 하나를 쓰되 카드 경로마다 읽는
 순서 번호를 붙여 요구합니다 — 그래서 결과를 여러분이 순서대로 볼 수 있습니다. 초안이 오면
 `design-check`로 번호가 매겨진 카드와 구체성을 직접 확인하고(문제가 있으면 정확히 그 부분만
@@ -264,10 +262,9 @@ git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하�
 (디자인 방식은 `build-after` / `design-only` / `paired` 중에서 여러분이 고릅니다.)
 승인은 명시적이어야 하고, 수정은 새 라운드가 되며, 구현은 언제나 별도
 slice에서 승인된 디자인을 그대로 따라 진행하고 실제 브라우저로 결과를 확인합니다.
-디자인 대시보드에 저장소를 등록하려면 프로젝트마다 한 번
-`python3 scripts/workflow.py design-register`를 실행하세요(대시보드는 이 저장소 밖의 별도
-프로젝트입니다). Claude Design에서 만든 결과가 있다면 라운드의 `import/`에 넣어 가져올 수
-있지만, 필수는 아닙니다. `docs/reference/design/`에 예전(v47 이전) Claude Design 구조가 남아 있는
+Claude Design에서 만든 결과가 있다면 라운드의 `import/`에 넣어 가져올 수
+있지만, 필수는 아닙니다. 예전 Claude Design 기록(`docs/reference/design/claude-design/`)은 읽을 수 있는
+이력으로 남습니다. `docs/reference/design/`에 예전(v47 이전) Claude Design 구조가 남아 있는
 저장소는 `python3 scripts/workflow.py design-migrate`(먼저 미리보기, `--apply`로 이동)로 그 기록을
 `claude-design/` 아래로 옮길 수 있습니다.
 
