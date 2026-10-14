@@ -9,6 +9,21 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v59 — 2026-10-14
+
+- **A slice that spends money plans at the operator's gate by default.** Spend means calls to a
+  vendor LLM or model API, paid third-party APIs, or cloud resources billed per use. The
+  workspace's own executor dispatches do not count. Under the bare default, `do-next-slice` and
+  `do-whole-phase` plan such a slice through plan mode for the operator's approval, the way they
+  plan a decomposition. The plan names what the slice calls and a rough volume or cost estimate.
+  An explicit `auto` (or "run unattended") waives this gate too.
+
+- **The executors stop before unplanned spend.** `slice-executor-mid` and `slice-executor-high`
+  return `needs_operator` rather than spend money `plan.md` does not cover, or more volume than its
+  estimate.
+
+- **Migration notes.** None beyond `/update-workspace`.
+
 ## v58 — 2026-10-13
 
 - **A nested install can run a phase in its own worktree, as a pair.** `parallel-start <P>
