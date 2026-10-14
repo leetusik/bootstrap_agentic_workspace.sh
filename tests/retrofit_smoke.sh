@@ -26,7 +26,7 @@
 # (P36.S3: one job per co-work slice and one open round per project; design-check names a missing
 # board, a missing support line, a .. reference and a title gap in a canvas tree; design-canvas,
 # design-system and the read-only design-publish-plan; P36.S4: design-preview with no browser is an honest skip
-# that writes nothing; design-close snapshots byte-identical, signs the
+# that writes nothing, with --click too (P36.S5A); design-close snapshots byte-identical, signs the
 # job and is idempotent; design-migrate --to 2 moves a schema-1 record into schema1/ and a schema-1 root is
 # steered to it; v48: design-check skips claude-design/, design-migrate moves all-or-nothing and a pre-v47
 # root is steered to it; P36.S1: design-register is gone, an unknown command), the P36 design-tool invariants (design-cowork carries the drafter loop only, with a legacy
@@ -1775,6 +1775,12 @@ out=$( export AGENTIC_DESIGN_BROWSER=/nonexistent; dw design-preview 01-signin -
   && [ "$(tree_sig)" = "$before" ] \
   && ok "design-preview with no browser prints preview=skipped reason=no-browser, exits 0 and leaves the design root byte-identical" \
   || bad "design-preview did not skip honestly without a browser (rc=$rc) -- $out"
+# P36.S5A: --click skips the same way: no state or link line, no --out folder, no preview.json.
+out=$( export AGENTIC_DESIGN_BROWSER=/nonexistent; dw design-preview 01-signin --runtime "$DZ/dc-runtime.js" --click --out "$DZ/pv" 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -qx 'preview=skipped reason=no-browser' && ! printf '%s\n' "$out" | grep -Eq '^(board=|state |link )' \
+  && [ ! -e "$DZ/pv" ] && [ "$(tree_sig)" = "$before" ] \
+  && ok "design-preview --click with no browser prints preview=skipped reason=no-browser, exits 0 and writes nothing" \
+  || bad "design-preview --click did not skip honestly without a browser (rc=$rc) -- $out"
 # 4. design-close snapshots the tree byte for byte and signs the job; a superseded round's slice reuses it.
 pre=$(tree_sig "$CP")
 printf 'Signed: "ship it"\n' > "$JD/rounds/01-signin/SIGNOFF.md"
