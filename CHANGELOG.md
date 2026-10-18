@@ -9,6 +9,103 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v60 — 2026-10-18
+
+- **The design loop moves to Claude-app Design canvases.** Each design job is drafted as files in
+  the repo and published by the main thread to its own Design canvas Artifact, with the product's
+  Design System Artifact installed in it; the operator views and checks it in the Claude app. The
+  `claude-design` design tool (DesignSync read-back, per-round push, regroup) and design-deck
+  (the Tailscale dashboard, `design-register` and its deck hint) are retired. `drafter` is the only
+  design tool, and existing `claude-design/` records stay readable as history.
+
+- **Design record schema 2.** One job per surface, each with its own canvas tree
+  (`jobs/<job>/canvas/project/`: `canvas.json` and one `.dc.html` per board) and its rounds inside
+  it, each round snapshotting the tree at its close. New commands: `design-system` (records the
+  synced Design System), `design-canvas` (the canvas url, each published version, a built job),
+  the read-only `design-publish-plan <job>` (the `Artifact` publish call as JSON) and
+  `design-migrate --to 2` (moves a v47 card record into `schema1/`). Board titles are numbered
+  `NN · ` and the regroup and card markers are gone.
+
+- **`design-preview` renders a job's canvas locally.** It serves the canvas with the Design type's
+  real runtime, saved per job and never vendored, and screenshots every board in an exact viewport
+  with a throwaway headless Chrome, at phone width too for Pages. With no browser it prints an honest
+  skip.
+  - **Measured checks:** contrast, target size, clipped text, dead links, broken images and missing
+    names, as `check=` issue lines plus a `preview.json` sidecar. The opt-in `--click` prints the
+    link graph and screenshots every state each interactive board reaches.
+  - **Interaction checks:** `layout-shift`, `same-target`, `page-clip` and `hover-contrast`. The walk
+    explores each page's state-bar presets first, samples long lists, runs a type pass that fills
+    forms, and with `--phone-click` walks at 390 px too. Caps: 48 states, 300 steps, 120 s per board
+    and view.
+
+- **design-drafter is remade as a design specialist** on its own `[claude.design]` row (opus @
+  xhigh), no longer following `high`. It drafts a working canvas, every screen working on fake or
+  real data plus a board per component with all its states, checks it with `design-preview`, and
+  answers a critic's findings once. It now carries the operator's approved recipe:
+  - flow boards that carry the clicked item across screens, and a canvas-only state bar on every
+    interactive page listing that page's states;
+  - one direction by default, options only when asked;
+  - links that stay inside the prototype;
+  - detail rules and a Toss-level bar for care, with decorative SVG on the slop list;
+  - frontend-design's useful lines carried in its own craft text (Apache-2.0 credit), and the
+    plugin not loaded.
+
+- **design-critic judges a drafted round with fresh eyes.** Critic mode runs on `[claude.critic]`
+  (sonnet @ max) and judge mode, for the items it is unsure of, on `[claude.judge]` (fable @ high).
+  It gives one pass on a rubric built from the operator's bar, with an interaction pass that hovers,
+  types and clicks every row at desktop and phone width, and writes `critique-NN.md`. Both rows must
+  be a different model family from the drafter's; the judge is skipped under a loopback proxy.
+
+- **Design waves.** One co-work slice may hold several jobs (about 3–4), drafted in parallel, one
+  open round per job, with one operator stop per wave. Critique is opt-in per job (`off | critic |
+  critic+judge`), decided at `DECOMP` and recorded per round (`design-open --critique`).
+
+- **design-cowork is rewritten for the canvas loop:** the handoff's accuracy checklist and collected
+  taste, the drafter-critic-judge loop, publish, the stop, the operator's session words as the record,
+  the system sync from code and canvas cleanup at the phase review. The operator's standing rules live
+  in `bar.md` at the design root and reach every handoff under `## The operator's bar`. The type links
+  now come from `Artifact` `quickstart`, a canvas opened in the app saving a new version is no edit,
+  and the system's namespace is its lowercase install folder.
+
+- **`design-publish-plan` stops re-sending the system copies.** They ride only a job's first publish
+  or a change of the system version its `canvas.json` pins; the server keeps files a publish leaves
+  out. `design-canvas --version` records the installed version in `job.json`'s new optional
+  `canvas.system`. Re-sending them was refused as unseen server-side copies on every republish.
+
+- **`design-check` lints boards.** New warnings: `leaves-canvas` (a link that leaves the prototype)
+  and `same-target-list` (every row of a list opening the same board), and the board-count warning no
+  longer counts boards another board mounts.
+
+- **Migration notes.**
+  - **`Design tool: claude-design` phases:** at their first design slice the orchestrator asks you to
+    re-confirm on `drafter`; nothing runs on the retired tool. design-deck and `design-register`
+    are gone.
+  - **Schema-1 records:** close any open schema-1 round before updating (v60 cannot close one; an
+    abandoned round can be set `superseded` with a `closed_at` by hand), then run `design-migrate
+    --to 2`, a dry run first.
+  - **Agents and rows:** run `sync-agents` after `--update`; it now manages five agent files,
+    `design-critic` included. New rows: `[claude.design]`, `[claude.critic]`, `[claude.judge]`. If
+    your `[claude.design]` row is sonnet or fable, move the critic or judge row, or
+    `executor-route --critic` / `--judge` refuses.
+  - **Publishing needs the `Artifact` tool on the main thread** (a claude.ai login). design-cowork
+    pre-approves its publish and comment calls (`Artifact`, `ArtifactComments`); deletes are still
+    confirmed by the tool.
+  - **`Mockup: requested`** now means an in-product route in addition to the working canvas, which
+    is the default review surface.
+  - **The `design-only` waive note** is now `design-only, no mockup: the operator signed each job on
+    its canvas`; phases already waived keep theirs.
+  - **No round `import/` folder:** file an exported design holding HTML outside the design root (or
+    zipped), since HTML outside a canvas tree fails `design-check`.
+  - **design-drafter loses `Skill`** and no longer loads frontend-design.
+  - **One critic pass** plus one drafter answer pass: no cap, and critique files lose the `repeated`
+    line.
+  - **`bar.md`** at the design root holds your standing design rules.
+  - **New checks and warnings:** design-check `leaves-canvas` and `same-target-list`; design-preview
+    `layout-shift`, `same-target`, `page-clip`, `hover-contrast`, the type pass and `--phone-click`;
+    `preview.json`'s `click` is keyed by view.
+  - **`job.json`** gains the optional `canvas.system`. A job published before v60 has none, and its
+    next publish leaves the system copies out; nothing to do.
+
 ## v59 — 2026-10-14
 
 - **A slice that spends money plans at the operator's gate by default.** Spend means calls to a

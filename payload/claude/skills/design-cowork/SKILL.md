@@ -1,7 +1,7 @@
 ---
 name: design-cowork
 description: "How to run product visual design in this workspace — the design subagent drafts, the operator decides. Each design job is a working canvas (interactive Pages and component boards) written as files in the repo, optionally critiqued by a separate critic, published by you to its own Design canvas Artifact, and signed only by the operator's literal words in the session. You open rounds, write the handoffs, run the drafters (several at once in a wave), publish, stop for the operator, record their words and close. Use when a phase or slice touches a design system, a redesign, mockups, a design gate, brand/palette/typography, or the look of user-facing pages. NOT for non-visual design (schema, API, architecture)."
-allowed-tools: Bash(python3 scripts/workflow.py:*), Read, Edit, Write, Glob, Grep, Bash, Agent
+allowed-tools: Bash(python3 scripts/workflow.py:*), Read, Edit, Write, Glob, Grep, Bash, Agent, Artifact, ArtifactComments
 ---
 
 # design-cowork
@@ -217,8 +217,9 @@ docs/reference/design/
   `source`, `files`), all null until the first system sync.
 - **`bar.md`**: the operator's own standing design rules, beyond the bar the drafter ships with (*The
   handoff*). You maintain it; `design-check` never reads it.
-- **`job.json`**: `job`, `slice`, `title`, `canvas` (`url`, `version`, `published`) and `status`,
-  `open → signed → implemented`. A signed job reopens on its next round; an implemented one refuses
+- **`job.json`**: `job`, `slice`, `title`, `canvas` (`url`, `version`, `published`, and the optional
+  `system`: the system version the last publish installed, absent on a job published before v60) and
+  `status`, `open → signed → implemented`. A signed job reopens on its next round; an implemented one refuses
   a new round, and its canvas record is history.
 - **`round.json`**: `round`, `slice`, `status` (`open → signed | superseded`), `critique` (absent
   reads
@@ -282,7 +283,8 @@ For each job of the slice, in the order the breakdown lists them:
    open refuses once the slice holds two jobs). The level is the one `DECOMP` recorded, unless the
    operator overrode it. It prints the round's address.
 3. **The canvas, on a job's first round.** Create it from the Design (canvas) type: one `Artifact`
-   `publish` with `type_url` (the type's link) and `title`, no files. Then `design-canvas <job> --url
+   `publish` with `type_url` (the type's link) and `title`, no files. The link comes from `Artifact`
+   `quickstart` with `intent: design`, which names the Design type. Then `design-canvas <job> --url
    <url>`. A later round reuses it.
 4. **Preview prep**, per round, into a scratch folder outside the design root (the session
    scratchpad):
@@ -330,7 +332,9 @@ Fill it **from the repo**, before dispatch:
   non-ASCII). Where nothing real exists, say so: the drafter makes up realistic data, **never lorem**,
   and an unknown real fact stays a visible placeholder (`[PRICE]`). Name any data the canvas must not
   carry (secrets, real personal or production data).
-- **The system inventory:** its components, their states and props, known gaps.
+- **The system inventory:** the system's **title as the Design System Artifact shows it** (the
+  drafter copies it into `canvas.json`'s `designSystems` record; `design.json` records no title), its
+  components, their states and props, known gaps.
 - **Constraints:** phone width, the accessibility bar, platforms.
 - **Locked vs. in play.** In play: tokens, type, spacing, motion, layout, expression. Locked: system
   structure, data contracts, copy, brand spirit, the accessibility floor, and every signed or
@@ -460,13 +464,17 @@ notification.
 
 1. **Read back first, from the second round on.** `read` the canvas's files with `out_dir` and diff
    them against `jobs/<job>/canvas/project/`. A difference is an operator edit (*The operator's
-   words*): record it before you send anything.
-2. **`design-publish-plan <job>`** prints `{url, root, file_path, files}`: the changed files, removed
-   ones mapped to `null`, and the system files as server-side copies from the system Artifact
-   (`ds/` is
-   never sent from disk). Pass it to `Artifact` `publish` as is, with a per-round `label` (`round
-   02-revise`).
-3. **`design-canvas <job> --version <id>`** with the version id the publish returned.
+   words*): record it before you send anything. **Opening a canvas in the app saves a new version**
+   with no board change, so a newer version whose `project/` files are unchanged is normal, not an
+   edit.
+2. **`design-publish-plan <job>`** prints `{url, root, file_path, files}`: the changed files and
+   removed ones mapped to `null`. The system files, as server-side copies from the system Artifact
+   (`ds/` is never sent from disk), are in it only on the job's **first publish** or when the system
+   version its `canvas.json` pins has changed since the last publish (`job.json` `canvas.system`);
+   otherwise they are left out, and the server keeps them. Pass the plan to `Artifact` `publish` as
+   is, with a per-round `label` (`round 02-revise`); never trim it.
+3. **`design-canvas <job> --version <id>`** with the version id the publish returned. It also records
+   the system version the publish installed (`canvas.system`), which the next plan compares against.
 4. **A publish refused over the operator's in-app edit:** `read` the file it names, diff it, copy it
    into the repo tree and record it verbatim in `feedback.md` as their decision, then republish.
    **Never `force`.**
@@ -499,7 +507,8 @@ critique files and the closes of superseded rounds. The report, per job:
 
 **The session's words are the record.** On the operator's return, per job:
 
-1. **In-app edits.** `read` the canvas back with `out_dir` and diff it against the repo tree. Each
+1. **In-app edits.** `read` the canvas back with `out_dir` and diff it against the repo tree. A newer
+   version with unchanged `project/` files is only the app saving on open, not an edit. Each
    changed file is copied into `jobs/<job>/canvas/project/` as the operator's work and listed in
    `feedback.md` under `## Operator edits` (board, file, what changed). Their edits are their
    decisions; a signed job includes them, because the close snapshots the tree after the copy-in.
@@ -544,7 +553,8 @@ signed or dropped**: then `finish-slice`. **Implementation is a separate slice i
 - **A stable reference, never a review surface.** Each job's canvas installs it; no round file is ever
   published to it, and the drafter never names it as a target.
 - **It comes from code.** You sync it, inline (the first sync creates it: one `publish` with the
-  Design System type's `type_url` and a `title`), on the type's from-code route (read the Design
+  Design System type's `type_url`, which `Artifact` `quickstart` with `intent: other` lists, and a
+  `title`), on the type's from-code route (read the Design
   System
   type's `artifact-type/reference/from-code.md` live): the **built route** (the component library's
   IIFE `bundle.js`, `bundle.css`, an `index.d.ts` sent as `text/plain`) when the product has one
@@ -556,7 +566,8 @@ signed or dropped**: then `finish-slice`. **Implementation is a separate slice i
   a signed job lands**, so it describes what exists; and on the operator's word.
 - **Then:** read the system's file list back against the expected set (`tokens.json`, `tokens.css`,
   `components/*`, README, cover), and run `design-system --artifact <url> --namespace <ns> --version
-  <id> --source <code path> --files <the files a canvas installs>`. Commit.
+  <id> --source <code path> --files <the files a canvas installs>`. `<ns>` is the **lowercase install
+  folder** under `ds/` (`fernway`), not the global the bundle defines (`window.Fernway`). Commit.
 - **A product with no code yet** has no system: its first job carries its own `tokens.css` and a
   Foundations board, and only after that job is signed is it **promoted** into a new system, the one
   exception to "from code".

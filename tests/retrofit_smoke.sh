@@ -26,7 +26,8 @@
 # (P36.S3; P36.S5C: several jobs per co-work slice, one open round per job, --new-job / --job, a per-round
 # critique level and design-check's size warning; design-check names a missing
 # board, a missing support line, a .. reference and a title gap in a canvas tree; design-canvas,
-# design-system and the read-only design-publish-plan; P36.S4: design-preview with no browser is an honest skip
+# design-system and the read-only design-publish-plan (v60: the system copies only on a first publish or a
+# changed pin, canvas.system optional); P36.S4: design-preview with no browser is an honest skip
 # that writes nothing, with --click too (P36.S5A); design-close snapshots byte-identical, signs the
 # job and is idempotent; design-migrate --to 2 moves a schema-1 record into schema1/ and a schema-1 root is
 # steered to it; v48: design-check skips claude-design/, design-migrate moves all-or-nothing and a pre-v47
@@ -358,6 +359,9 @@ raw_design = (root / "payload/claude/skills/design-cowork/SKILL.md").read_text()
 front = raw_design.split("---\n", 2)[1]
 allowed = next(ln for ln in front.splitlines() if ln.startswith("allowed-tools:"))
 assert "DesignSync" not in allowed and "Agent" in allowed, allowed
+# v60 (P36.S9): the operator pre-approved the design loop's publish and comment calls ("Pre-approve both").
+tools = [t.strip() for t in allowed.split(":", 1)[1].split(",")]
+assert "Artifact" in tools and "ArtifactComments" in tools, allowed
 desc = next(ln for ln in front.splitlines() if ln.startswith("description:"))[len("description: "):]
 assert ": " not in desc, desc
 for required in ("the design subagent drafts, the operator decides",
@@ -1782,7 +1786,7 @@ if ( cd "$W" && python3 scripts/workflow.py parallel-start P2 2>&1 | grep -q "le
   || bad "merge, merge-finish or teardown failed"
 
 # ---------------------------------------------------------------------------
-echo "== Test 13: schema-2 design record -- design-open makes a job and refuses a second open round of it, a wave of several jobs in one slice (--new-job / --job, --critique, size warnings, mounted boards not counted), the board lint (leaves-canvas, same-target-list), design-check names a missing board, a missing support line, a .. reference and a title gap, design-canvas / design-system / design-publish-plan, design-preview skips honestly without a browser, design-close snapshots and signs, a superseded round's slice reuses its job, design-migrate --to 2; claude-design/ is skipped, the pre-v47 design-migrate, design-register is gone =="
+echo "== Test 13: schema-2 design record -- design-open makes a job and refuses a second open round of it, a wave of several jobs in one slice (--new-job / --job, --critique, size warnings, mounted boards not counted), the board lint (leaves-canvas, same-target-list), design-check names a missing board, a missing support line, a .. reference and a title gap, design-canvas / design-system / design-publish-plan (system copies on a first publish or a changed pin only), design-preview skips honestly without a browser, design-close snapshots and signs, a superseded round's slice reuses its job, design-migrate --to 2; claude-design/ is skipped, the pre-v47 design-migrate, design-register is gone =="
 # Runs in the fresh workspace $F.
 newtmp DZ
 DR="$F/docs/reference/design"
@@ -1841,15 +1845,44 @@ if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -Fq "board 'Gone.dc.html' is l
     && printf '%s\n' "$out" | grep -Fq 'no board titled "03 · …"' && [ "$ok_rc" -eq 0 ]; then
   ok "design-check names a missing listed board, a missing support line, a .. reference and a title gap (exit 1), and passes the valid tree with #, data:, https, /_blob/ and {{hole}} references"
 else bad "design-check missed a break in the canvas tree, or failed the valid tree (rc=$rc, valid rc=$ok_rc) -- $out $ok_out"; fi
-# 3. The canvas record and the publish plan: null for a removed board, the system install entries.
+# 3. The canvas record and the publish plan: null for a removed board; v60 (P36.S9): the system install
+# copies only on a first publish or a changed system pin (canvas.system), never on a plain republish.
 url_out=$(dw design-canvas 01-signin --url https://example.com/artifact/abc 2>&1); url_rc=$?
-dw design-canvas 01-signin --url https://claude.ai/artifact/SmokeCanvas1 --version 1700000000-aaaa >/dev/null 2>&1 \
-  || bad "design probe: design-canvas --url --version failed"
-published=$(python3 -c 'import json, sys; print(" ".join(json.load(open(sys.argv[1]))["canvas"]["published"]))' "$JD/job.json")
+dw design-canvas 01-signin --url https://claude.ai/artifact/SmokeCanvas1 >/dev/null 2>&1 \
+  || bad "design probe: design-canvas --url failed"
+dw design-system --artifact https://claude.ai/artifact/SmokeSystem1 --namespace smoke --version 5-sys \
+  --files tokens.json,tokens.css >/dev/null 2>&1 || bad "design probe: design-system failed"
+pin() { python3 - "$CP/canvas.json" "$1" <<'PIN'
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+index = json.loads(path.read_text(encoding="utf-8"))
+index["designSystems"] = [{"title": "Smoke", "namespace": "smoke", "artifact": "https://claude.ai/artifact/SmokeSystem1",
+                           "version": sys.argv[2], "copiedAt": "2026-10-18T00:00:00Z"}]
+path.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+PIN
+}
+# plan_is <expect-system-copies: 1|0> <expect Error.dc.html: live|null>
+plan_is() { dw design-publish-plan 01-signin 2>&1 | python3 -c '
+import json, sys
+plan = json.load(sys.stdin)
+system = "https://claude.ai/artifact/SmokeSystem1"
+assert plan["url"] == "https://claude.ai/artifact/SmokeCanvas1", plan
+assert plan["root"].endswith("/jobs/01-signin/canvas") and plan["file_path"].endswith("/jobs/01-signin/canvas/project/canvas.json"), plan
+want = {"project/Main.dc.html": "project/Main.dc.html",
+        "project/Error.dc.html": "project/Error.dc.html" if sys.argv[2] == "live" else None}
+if sys.argv[1] == "1":
+    want.update({"project/ds/smoke/tokens.json": {"artifact": system, "path": "project/tokens.json"},
+                 "project/ds/smoke/tokens.css": {"artifact": system, "path": "project/tokens.css"}})
+assert plan["files"] == want, plan["files"]
+' "$1" "$2" >/dev/null 2>&1; }
+pin 5-sys || bad "design probe: could not pin the system in canvas.json"
+plan_is 1 live && first_ok=1 || first_ok=0
+dw design-canvas 01-signin --version 1700000000-aaaa >/dev/null 2>&1 || bad "design probe: design-canvas --version failed"
+published=$(python3 -c 'import json, sys; c = json.load(open(sys.argv[1]))["canvas"]; print(" ".join(c["published"]), c["system"])' "$JD/job.json")
 [ "$url_rc" -ne 0 ] && printf '%s\n' "$url_out" | grep -Fq 'is not an Artifact address' \
-  && [ "$published" = "project/Error.dc.html project/Main.dc.html project/canvas.json" ] \
-  && ok "design-canvas rejects a non-claude host and --version records the published file list" \
-  || bad "design-canvas accepted a foreign host or recorded the wrong published list (rc=$url_rc) -- $url_out / $published"
+  && [ "$published" = "project/Error.dc.html project/Main.dc.html project/canvas.json 5-sys" ] \
+  && ok "design-canvas rejects a non-claude host, and --version records the published file list and the installed system pin (canvas.system)" \
+  || bad "design-canvas accepted a foreign host or recorded the wrong published list or system pin (rc=$url_rc) -- $url_out / $published"
 mv "$CP/Error.dc.html" "$DZ/Error.dc.html"
 python3 - "$CP/canvas.json" <<'DROP' || bad "design probe: could not drop the board from canvas.json"
 import json, pathlib, sys
@@ -1859,21 +1892,22 @@ del index["boards"]["Error.dc.html"]
 index["order"].remove("Error.dc.html")
 path.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
 DROP
-dw design-system --artifact https://claude.ai/artifact/SmokeSystem1 --namespace smoke --version 5-sys \
-  --files tokens.json,tokens.css >/dev/null 2>&1 || bad "design probe: design-system failed"
-plan=$(dw design-publish-plan 01-signin 2>&1)
-if printf '%s' "$plan" | python3 -c '
-import json, sys
-plan = json.load(sys.stdin)
-system = "https://claude.ai/artifact/SmokeSystem1"
-assert plan["url"] == "https://claude.ai/artifact/SmokeCanvas1", plan
-assert plan["root"].endswith("/jobs/01-signin/canvas") and plan["file_path"].endswith("/jobs/01-signin/canvas/project/canvas.json"), plan
-assert plan["files"] == {"project/Main.dc.html": "project/Main.dc.html", "project/Error.dc.html": None,
-                         "project/ds/smoke/tokens.json": {"artifact": system, "path": "project/tokens.json"},
-                         "project/ds/smoke/tokens.css": {"artifact": system, "path": "project/tokens.css"}}, plan["files"]
-' >/dev/null 2>&1; then
-  ok "design-publish-plan maps each project file to itself, a board removed since the last publish to null, and the system files to server-side install copies"
-else bad "design-publish-plan printed the wrong plan -- $plan"; fi
+plan_is 0 null && again_ok=1 || again_ok=0
+dw design-system --artifact https://claude.ai/artifact/SmokeSystem1 --namespace smoke --version 6-sys \
+  --files tokens.json,tokens.css >/dev/null 2>&1 && pin 6-sys || bad "design probe: could not move the system to 6-sys"
+plan_is 1 null && moved_ok=1 || moved_ok=0
+python3 - "$JD/job.json" <<'PRE60' || bad "design probe: could not write a pre-v60 job.json"
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+job = json.loads(path.read_text(encoding="utf-8"))
+del job["canvas"]["system"]
+path.write_text(json.dumps(job, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PRE60
+pre60_chk=$(dw design-check 01-signin 2>&1); pre60_rc=$?
+plan_is 0 null && pre60_ok=1 || pre60_ok=0
+if [ "$first_ok$again_ok$moved_ok$pre60_ok" = "1111" ] && [ "$pre60_rc" -eq 0 ]; then
+  ok "design-publish-plan maps each project file to itself and a board removed since the last publish to null; the system install copies ride a first publish, are left out of a republish, come back when canvas.json's pin moves, and a pre-v60 job.json without canvas.system is valid and leaves them out"
+else bad "design-publish-plan sent or dropped the system copies at the wrong time (first=$first_ok republish=$again_ok moved=$moved_ok pre-v60=$pre60_ok check rc=$pre60_rc) -- $(dw design-publish-plan 01-signin 2>&1) $pre60_chk"; fi
 # P36.S4: design-preview with no browser is an honest skip -- it says so, exits 0 and writes nothing.
 printf '/* a stand-in runtime path; never run */\n' > "$DZ/dc-runtime.js"
 before=$(tree_sig)

@@ -4965,6 +4965,12 @@ DESIGN_MANIFEST_KEYS = ("schema", "id", "name", "system")
 DESIGN_SYSTEM_KEYS = ("artifact", "namespace", "version", "source", "files")
 DESIGN_JOB_KEYS = ("schema", "job", "slice", "title", "canvas", "status")
 DESIGN_JOB_CANVAS_KEYS = ("url", "version", "published")
+# Optional job.json canvas key (v60): `system`, the system version the last publish installed -- the
+# version the job's canvas.json pinned (designSystems[], the record of design.json's namespace) when
+# design-canvas --version ran, or null when it pinned none. design-publish-plan re-sends the system
+# copies only when that pin has changed since. A job published before v60 has no `system`, and it reads
+# as "the version canvas.json pins now": its first publish already installed the system.
+DESIGN_JOB_CANVAS_OPTIONAL_KEYS = ("system",)
 DESIGN_ROUND_KEYS = ("schema", "round", "title", "slice", "status", "opened_at", "closed_at",
                      "supersedes", "signoff_words", "canvas_version")
 # Optional round.json keys: `critique`, the round's critique level (design-open --critique). A round
@@ -5159,9 +5165,13 @@ def design_job_problems(jid: str, data) -> list:
     if data["status"] not in DESIGN_JOB_STATUSES:
         problems.append(f"job.json: status {data['status']!r} is not one of {', '.join(DESIGN_JOB_STATUSES)}")
     canvas = data["canvas"]
-    if not (isinstance(canvas, dict) and set(canvas) == set(DESIGN_JOB_CANVAS_KEYS)):
-        problems.append(f"job.json: canvas must be an object with exactly {', '.join(DESIGN_JOB_CANVAS_KEYS)}")
+    if not (isinstance(canvas, dict) and set(DESIGN_JOB_CANVAS_KEYS) <= set(canvas)
+            <= set(DESIGN_JOB_CANVAS_KEYS + DESIGN_JOB_CANVAS_OPTIONAL_KEYS)):
+        problems.append(f"job.json: canvas must be an object with exactly {', '.join(DESIGN_JOB_CANVAS_KEYS)}"
+                        f" (plus optionally {', '.join(DESIGN_JOB_CANVAS_OPTIONAL_KEYS)})")
         return problems
+    if canvas.get("system") is not None and not (isinstance(canvas["system"], str) and DESIGN_VERSION_RE.match(canvas["system"])):
+        problems.append(f"job.json: canvas.system {canvas['system']!r} is not a version id (non-empty, no spaces) or null")
     if canvas["url"] is not None and design_artifact_problem(canvas["url"]):
         problems.append(f"job.json: canvas.url {design_artifact_problem(canvas['url'])}")
     if canvas["version"] is not None and not (isinstance(canvas["version"], str) and DESIGN_VERSION_RE.match(canvas["version"])):
@@ -5878,6 +5888,9 @@ def design_canvas(args: argparse.Namespace) -> None:
         if "canvas.json" not in files:
             raise SystemExit(f"design-canvas: refused -- jobs/{args.job}/canvas/project/ holds no canvas to have published")
         canvas["version"], canvas["published"] = args.version, [f"project/{f}" for f in files]
+        # the system version this publish installed: the pin the next publish plan compares against
+        canvas["system"] = design_canvas_pinned_system(job["path"] / "canvas" / "project",
+                                                       scan["manifest"]["system"].get("namespace"))
     if args.implemented and status != "implemented":
         if status != "signed":
             raise SystemExit(f"design-canvas: refused -- job {args.job} is {status}; only a signed job is marked implemented")
@@ -5889,6 +5902,21 @@ def design_canvas(args: argparse.Namespace) -> None:
     write_json(job["path"] / "job.json", wanted)
     print(f"design-canvas: updated {DESIGN_ROOT_SHOWN}/jobs/{args.job}/job.json")
     print(json.dumps({"canvas": canvas, "status": status}, ensure_ascii=False, indent=2))
+
+
+def design_canvas_pinned_system(project: Path, namespace) -> "str | None":
+    """The system version a canvas tree's canvas.json pins for `namespace` (its designSystems record of
+    that namespace), or None when it pins none or the index is unreadable."""
+    try:
+        index = read_json(project / "canvas.json")
+    except (OSError, ValueError):
+        return None
+    records = index.get("designSystems") if isinstance(index, dict) else None
+    for rec in records if isinstance(records, list) else []:
+        if isinstance(rec, dict) and namespace and rec.get("namespace") == namespace:
+            version = rec.get("version")
+            return version if isinstance(version, str) and version else None
+    return None
 
 
 def design_publish_plan(args: argparse.Namespace) -> int:
@@ -5909,7 +5937,13 @@ def design_publish_plan(args: argparse.Namespace) -> int:
         if path not in live and not path.startswith("project/ds/"):
             files[path] = None
     system = scan["manifest"]["system"]
-    if system["artifact"]:  # the server copies the system's files into the canvas (the install)
+    # The server copies the system's files into the canvas (the install) -- only on the job's first
+    # publish, or when the version its canvas.json pins differs from the one the last publish installed
+    # (canvas.system; absent on a pre-v60 job, which reads as the pin now). Files left out of a publish are
+    # kept by the server, and re-sending them every round was refused as unseen server-side copies (P36.S8).
+    pinned = design_canvas_pinned_system(publish_root / "project", system.get("namespace"))
+    install = canvas["version"] is None or canvas.get("system", pinned) != pinned
+    if system["artifact"] and install:
         for name in system["files"]:
             files[f"project/ds/{system['namespace']}/{name}"] = {"artifact": system["artifact"], "path": f"project/{name}"}
     print(json.dumps({"url": canvas["url"], "root": str(publish_root.resolve()),
@@ -7568,15 +7602,15 @@ def main(argv=None) -> int:
     p.set_defaults(func=design_check)
 
     p = sub.add_parser("design-canvas", help="Record a job's canvas Artifact in its job.json: --url after creating it, --version after each publish (also records the published file list), --implemented once the signed job is built",
-                       description="--url takes the same Artifact address rule as design-system. --version records canvas.version and sets canvas.published to the files under canvas/project/ (ds/ left out), which the next design-publish-plan diffs against. --implemented needs the job signed.")
+                       description="--url takes the same Artifact address rule as design-system. --version records canvas.version and sets canvas.published to the files under canvas/project/ (ds/ left out), which the next design-publish-plan diffs against, and canvas.system to the system version canvas.json pins for design.json's namespace (null when it pins none): the version that publish installed. --implemented needs the job signed.")
     p.add_argument("job", help="the job id, e.g. 01-signin")
     p.add_argument("--url", default=None, help="the canvas Artifact's address")
     p.add_argument("--version", default=None, help="the version id the last publish returned")
     p.add_argument("--implemented", action="store_true", help="mark the signed job implemented (its design is built)")
     p.set_defaults(func=design_canvas)
 
-    p = sub.add_parser("design-publish-plan", help="Read-only: print the Artifact publish call for a job's canvas as JSON -- {url, root, file_path, files}: canvas.json as file_path, every other project/ file mapped to itself, files removed since the last publish mapped to null, and the system install entries once design-system is set; refuses without a canvas url or on a failing design-check",
-                       description="The engine never calls claude.ai: the orchestrator passes this JSON to its Artifact publish. root is the job's canvas/ folder (it holds project/); ds/ is never sent from disk -- with design.json's system set, each system file maps as \"project/ds/<namespace>/<file>\": {\"artifact\": <system>, \"path\": \"project/<file>\"}, a server-side copy.")
+    p = sub.add_parser("design-publish-plan", help="Read-only: print the Artifact publish call for a job's canvas as JSON -- {url, root, file_path, files}: canvas.json as file_path, every other project/ file mapped to itself, files removed since the last publish mapped to null, and the system install entries on a first publish or a changed system pin; refuses without a canvas url or on a failing design-check",
+                       description="The engine never calls claude.ai: the orchestrator passes this JSON to its Artifact publish. root is the job's canvas/ folder (it holds project/); ds/ is never sent from disk -- with design.json's system set, each system file maps as \"project/ds/<namespace>/<file>\": {\"artifact\": <system>, \"path\": \"project/<file>\"}, a server-side copy. Those copies are in the plan only on the job's first publish (canvas.version null) or when the version canvas.json pins for that namespace differs from job.json canvas.system, the version the last publish installed (absent on a job published before v60, which reads as the pin now); files left out of a publish are kept by the server.")
     p.add_argument("job", help="the job id, e.g. 01-signin")
     p.set_defaults(func=design_publish_plan)
 

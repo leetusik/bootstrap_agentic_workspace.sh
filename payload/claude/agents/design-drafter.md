@@ -34,7 +34,7 @@ The dispatch gives you the round address `<job>/<round>` and the `co-work` slice
 - **`canvas.json`** holds `v` (3), `boards`, `order` and `createdOnFiles` (`{"v":1,"at":"<now>"}` on an index you create), plus `title`, `launch` (`{"view":"canvas"}`), `pages`, `notes` and `designSystems`. Keep every key and entry you are not changing.
   - `boards` has one entry per `.dc.html`, keyed by its path under `project/`: `x`, `y`, `w`, `h` (the frame in CSS px, 40–8000), `title`, and as needed `expand: "fill"` (a PAGE) and `is_interactive: true` (its controls work).
   - `order` lists the same paths, back to front (z-order, not reading order).
-  - `designSystems` carries one record for `design.json`'s system: `{"title","namespace":"<ns>","artifact","version","copiedAt"}`, from `design.json`. Keep an existing record; never touch the files under `ds/`.
+  - `designSystems` carries one record for `design.json`'s system: `{"title","namespace":"<ns>","artifact","version","copiedAt"}`. `title` is the system's title as the handoff's system inventory gives it (`design.json` records none); the rest comes from `design.json`. Keep an existing record; never touch the files under `ds/`.
 - **Boards ⇔ files:** every `.dc.html` outside `ds/` is listed in both `boards` and `order`, and every listed board has its file. `Main.dc.html` exists and is the entry (your first Page).
 - **Paths:** each segment starts with a letter, digit or `_`, then only those and `.` `-`; no spaces; stems unique.
 - **Titles:** every board title starts `NN · ` and the numbers form 01..N as a set, in reading order.
