@@ -362,12 +362,15 @@ never designs** — a dedicated design subagent (`design-drafter`) drafts, a sep
 (`design-critic`) judges the draft when it is switched on, and you make every visual decision. Design
 work is cut into **jobs**, one surface each (a flow or a small cluster of screens), and a design slice
 can draft a **wave** of 3–4 jobs in parallel. Each job is a **working canvas** written as plain files
-under `docs/reference/design/jobs/`: every screen as a clickable Page with real or realistic data, and
-every component on its own board in all its states. The agent writes each job's handoff from your
-repo (every screen and state with a check, the data, the components, your taste words quoted), the
-drafter builds the canvas and checks it with a local render, and — when the decomposition turned
-critique on for that job — the critic renders it, scores it and sends it back until it passes (a
-stronger judge rules on the calls the critic is unsure of). The agent then publishes each job to its
+under `docs/reference/design/jobs/`: a prototype first, every screen as a clickable Page with real or
+realistic data (a flow carries the item you clicked onto the next screen, and a grey "Prototype only"
+bar on each Page jumps to that page's other states), and every component on its own board in all its
+states, in one direction unless you ask for options. The agent writes each job's handoff from your
+repo (every screen and state with a check, the data, the components, your taste words and your
+standing design rules quoted), the drafter builds the canvas and checks it with a local render that
+clicks, types and hovers through it, and — when the decomposition turned critique on for that job —
+the critic gives it one fresh-eyed pass against your bar and the drafter fixes or rebuts each finding
+once (a stronger judge rules on the calls the critic is unsure of). The agent then publishes each job to its
 own Design canvas Artifact, which you open in the Claude app, and stops once for the whole wave.
 You sign each job in your own words in the session; anything short of a literal approval — including
 comments you send to Claude and edits you make in the canvas, copied word for word — becomes the next

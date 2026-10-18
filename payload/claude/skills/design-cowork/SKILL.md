@@ -62,10 +62,11 @@ longer asks it.
 
 ```
 per co-work slice (one wave of 1–4 jobs; every job runs this, in parallel)
-design-open → canvas + preview prep → handoff.md                                [INLINE]
-  → drafter pass                                       [DISPATCHED, design-drafter]
-  → critique on?  critic pass ⇄ drafter pass, judge beside it   [DISPATCHED, design-critic]
-      until pass / cap 3 / repeated findings
+design-open → canvas + preview prep → handoff.md (with the operator's bar)       [INLINE]
+  → drafter pass, self-checked with design-preview --click  [DISPATCHED, design-drafter]
+  → critique on?  one critic pass                          [DISPATCHED, design-critic]
+      → any must-fix open?  one drafter answer pass
+        (critic+judge: the judge rules beside it; its upheld items get one short drafter pass)
   → read back → publish → design-canvas --version                              [INLINE]
 → commit → PENDING #1, once for the whole wave       [the operator opens the canvases]
 → per job, the operator's words:
@@ -145,7 +146,8 @@ requested.**
 - **One job is one surface:** a user flow or a small screen cluster, about 5 Pages or fewer plus the
   components they use, so one review sitting covers it. Cut design work by surface from the build
   inventory. `design-check` warns on an open job past 6 Pages or 16 boards (a warning, never an
-  error): split it into jobs by surface.
+  error; a board another board mounts, such as a flow board's screen, is not counted): split it into
+  jobs by surface.
 - **Foundations come first.** A greenfield product's first job settles the look on its own (a
   Foundations board, the core components, one key page); with a design system, the system is the
   foundation. Later jobs build on signed ones, and the most central surface goes first.
@@ -162,8 +164,10 @@ requested.**
   not how, one line per candidate, plus each co-work slice's jobs with their critique levels. The
   handoff's scope is written from it, and `paired` counts its apply slices from it; the design may
   add to it and cut from it.
-- **The working canvas replaces the in-product mockup by default.** Every job's canvas has Pages that
-  work when clicked through, with real or realistic data, and a board per component with every state.
+- **The working canvas replaces the in-product mockup by default.** Every job's canvas is a prototype
+  first: Pages that work when clicked through (flow boards that carry the clicked item, a canvas-only
+  state bar on each interactive Page), with real or realistic data, and a board per component with
+  every state.
   `Mockup: requested` now means an in-product route **in addition to** the canvas.
 - **Expect the read-back to re-shape the phase.** In `build-after`, `DECOMP2` **is** that re-shaping;
   elsewhere cut new slices at fractional orders. **Do not over-plan before the gate.**
@@ -188,6 +192,7 @@ engine's `design-*` commands write the machine-readable parts, and `design-check
 ```
 docs/reference/design/
 ├── design.json                    # the project and its Design System record   design-init / design-system
+├── bar.md                         # the operator's standing design rules         you
 └── jobs/
     └── 01-inbox/                  # one job per surface: NN-slug
         ├── job.json               # the job, its canvas url/version, its status  design-open / design-canvas / design-close
@@ -210,6 +215,8 @@ docs/reference/design/
 
 - **`design.json`**: `schema` 2, `id`, `name`, and `system` (`artifact`, `namespace`, `version`,
   `source`, `files`), all null until the first system sync.
+- **`bar.md`**: the operator's own standing design rules, beyond the bar the drafter ships with (*The
+  handoff*). You maintain it; `design-check` never reads it.
 - **`job.json`**: `job`, `slice`, `title`, `canvas` (`url`, `version`, `published`) and `status`,
   `open → signed → implemented`. A signed job reopens on its next round; an implemented one refuses
   a new round, and its canvas record is history.
@@ -228,8 +235,8 @@ docs/reference/design/
     `project/` (`ds/<ns>/…` and another board included), `#`, `data:`, `https://`, `/_blob/` or a
     `{{hole}}`; never `http://`, `//`, an absolute path or a `..` out of `project/`.
   - Any HTML under the design root outside a job's canvas tree or a round snapshot is a stray.
-- **Who writes what.** You: `handoff.md`, `feedback.md`, `SIGNOFF.md`, an operator's in-app edits
-  copied in, and the `ds/<ns>/` cache. The drafter: the job's `canvas/project/` (minus `ds/`) and the
+- **Who writes what.** You: `bar.md`, `handoff.md`, `feedback.md`, `SIGNOFF.md`, an operator's in-app
+  edits copied in, and the `ds/<ns>/` cache. The drafter: the job's `canvas/project/` (minus `ds/`) and the
   round's `result.md` and `build-prompt.md`. The critic: its `critique-NN.md` and `judge-NN.md`. The
   engine: `design.json`, `job.json`, `round.json` and the snapshots. The mockup span and the build
   slices only read the record.
@@ -301,11 +308,23 @@ One `handoff.md` per round, in the round folder: the drafter's whole brief and t
 Fill it **from the repo**, before dispatch:
 
 - **Product context:** what this is, who uses it, what it is for.
+- **`## The operator's bar`**, a heading of its own. The shipped bar (the drafter's *working canvas*,
+  *state bar* and *craft* sections: prototype first, the canvas-only state bar, one direction, no
+  decorative SVG, every link staying in the prototype, the detail rules, Toss-level care) is the
+  drafter's standard and binds every round without being pasted. Under the heading go **the operator's
+  own standing rules beyond it**, quoted verbatim with their date and source, copied from **`bar.md`**
+  at the design root, or the line `none beyond the shipped bar`. When the operator states a rule meant
+  for every design ("I want it from every mockup"), add it to `bar.md` then, quoted with its date and
+  source, and it reaches every later handoff.
 - **Scope boundary:** the surface this job covers, and a **not this job** list naming what belongs to
   another job (its id). In a wave, name the **sibling jobs** and their surfaces.
 - **Screens × states**, from the product's routes and code: every screen and every state (empty,
   loading, error, success, the long and the many), each with a **one-line check** the critic can hold
-  it to.
+  it to. **Prototype first:** say that every screen × state must be reachable on an interactive Page,
+  by a click or, where no click reaches it, by that page's state bar.
+- **Every link has a target in scope.** Name where each destination the screens show goes: a screen of
+  this job, or an in-canvas "another job" state (sign in, house rules, a sibling job's surface). A
+  destination with nowhere to go is left out, never linked off the prototype.
 - **Data:** the real sources (fixtures, seed data, real copy) and the edge cases (longest, empty,
   many,
   non-ASCII). Where nothing real exists, say so: the drafter makes up realistic data, **never lorem**,
@@ -321,8 +340,11 @@ Fill it **from the repo**, before dispatch:
   with the operator's answers.
 - **`new visual direction: yes` or `no`**, on a line of its own. `yes` for a product's first job, a
   redesign or a new surface family; `no` when the job extends the signed system. It is the drafter's
-  only licence for `frontend-design`, and the operator's call: take it from what they asked for, and
-  ask when that does not settle it.
+  licence to set a new look (built as one direction), and the operator's call: take it from what they
+  asked for, and ask when that does not settle it.
+- **One direction unless the operator asked for options.** Ask for Direction boards or variants only
+  when the operator asked for them, and then quote their words; otherwise the drafter builds one
+  direction and logs its open questions.
 - **`critique: <level>`**, the same level `design-open` recorded.
 - **The three paths:** the runtime (`…/artifact-type/dc-runtime.js`), the type-reference folder, and
   the system namespace `<ns>`.
@@ -367,59 +389,49 @@ the
 wave run on, and raise exactly what it named at the wave's stop. The operator's answer amends that
 open round's handoff, and the job is drafted again from there. `blocked` → `design-check` problems
 it could not fix: same, reported as named. Fields to read: `boards_written`, `render_loop`,
-`component_gaps`, `departures`, `open_questions`, `frontend_design`, `design_check`.
+`component_gaps`, `departures`, `open_questions`, `design_check`.
 
 **When the job's critique is `off`,** go straight to the read-back.
 
 **When it is `critic` or `critic+judge`, run the inner loop per job, before the operator sees
-anything:**
+anything:** one critic pass, then at most one drafter answer pass. There is no second critic pass.
 
-1. **Critic pass NN** (`executor-route --critic`; its `model` / `effort` per call). The prompt:
-   `mode: critic`, the round address, `pass: NN`, a scratch directory outside the design root, and on
-   passes 02–03 the drafter's last `boards_written`. In a multi-job wave add `wave: <the wave's
-   other jobs
-   with an open round>` from pass 02 on (pass 01 would see the siblings as first drafts; a signed
-   sibling is design memory the critic reads anyway). It writes
-   `rounds/<round>/critique-NN.md`; read **only its verdict block**: `verdict`, `confidence`,
-   `must_fix`, `escalate`, `repeated`, `wave`.
-2. **Stop, or go round again.** The loop ends when:
-   - **pass:** `verdict: pass` at `high` confidence. Below `high`, under `critic+judge` the judge
-     confirms it first (`pass-rejected` sends its new must-fixes into the next drafter pass); under
-     `critic` the loop ends and the report says how sure the critic was;
-   - **the cap:** pass 03 has returned;
-   - **repeats:** `repeated` equals the open must-fix count.
-
-   Otherwise dispatch the **drafter's next pass** with this critique.
-3. **The judge, under `critic+judge` only** (`executor-route --judge`; its `model` / `effort` per
-   call). When the critique lists ids
-   under `escalate`, dispatch the judge **beside the drafter's next pass**: the drafter takes the
-   confident must-fixes (tell it the escalated ids are held for a judge), while the judge rules on the
-   rest; with nothing confident left, the judge runs first and the drafter takes its upheld items.
-   The judge's prompt: `mode: judge`, the round, `pass: NN` (the critique it rules on), the
-   critique path, the escalated ids, and the critic's `--out` path so it reuses the render. It writes
-   `judge-NN.md`. Upheld items join the drafter's pass after that; dropped ones are gone. The next
-   critic pass waits for both returns, since it carries the rulings. When the loop stops with items
-   still listed for the judge (the cap, repeats, a shaky pass), the judge rules once more before the
-   operator's stop: it blocks only at the end. Its upheld items then reach the operator as must-fixes
-   left open; dropped ones are gone.
+1. **The critic pass** (`executor-route --critic`; its `model` / `effort` per call). The prompt:
+   `mode: critic`, the round address, `pass: 01` and a scratch directory outside the design root. In a
+   multi-job wave add `wave: <the wave's other jobs whose drafter has returned>`. It renders the
+   canvas itself, hovers, types and clicks every row at desktop and phone width, checks the bar line
+   by line, and writes `rounds/<round>/critique-01.md`; read **only its verdict block**: `verdict`,
+   `confidence`, `must_fix`, `escalate`, `wave`.
+2. **The answer pass.** With no must-fix open, go to the read-back. Otherwise dispatch the drafter
+   once with `critique-01.md`; it fixes or rebuts each must-fix, and what it leaves open (a rebuttal,
+   a fix that did not hold) reaches the operator with both sides.
+3. **What the critic was unsure of** (its `escalate` ids: a low-confidence must-fix, a `pass` below
+   `high`, a standoff over a logged departure, a wave choice):
+   - **under `critic`**, nothing is ruled: the items go to the operator marked **unsure**, with their
+     reasons, and the drafter's answer pass leaves them alone (name them as held);
+   - **under `critic+judge`** (`executor-route --judge`; its `model` / `effort` per call), dispatch
+     the judge **beside the drafter's answer pass**, which holds those ids. The judge's prompt:
+     `mode: judge`, the round, `pass: 01`, the critique path, the escalated ids, and the critic's
+     `--out` path so it reuses the render. It writes `judge-01.md`, ruling once. Its **upheld** items
+     get **one more short drafter pass** (with `judge-01.md`); dropped ones are gone. A
+     `pass-rejected` sends the must-fixes it names into that same short pass. With no confident
+     must-fix for the answer pass, the judge runs first and the drafter takes its upheld items in
+     its one pass.
    - **`skip=yes`** (a loopback proxy, no Fable): dispatch no judge; the escalated items go to the
      operator marked **low confidence**.
    - **Exit 1** (fairness: the critic or judge row names the drafter's model family): stop and tell
      the operator the row conflict. The rows are the knob.
-   - Under `critic` alone nothing is escalated: the items a critique lists for the judge go to the
-     operator as they are, with their reasons.
 4. **A wave choice** (a `choice` finding, a cross-job conflict) never blocks. Copy it onto the other
    job too. Under `critic+judge` the judge rules: `upheld` means this job takes the other's version,
-   in its next pass (reported at the stop when its loop has ended); `dropped` means the other job
-   changes, which you report on that job at the stop
+   in its short pass; `dropped` means the other job changes, which you report on that job at the stop
    as the judge's ruling, for its next round when the operator agrees. Under `critic` it reaches the
    operator unruled.
 
-**Cost.** One live critic pass took about 18 minutes on six boards, and the judge about 2 minutes per
-item. The critic's model and effort are the `[claude.critic]` row's (`max` by default, `xhigh` the
-step
-down) and the judge's the `[claude.judge]` row's: the operator tunes them in `executors.toml`, never
-in a prompt.
+**Cost** (measured in P36.S8B, critic at sonnet @ max): a critic pass took 25–36 minutes on a
+flow-board job, and the judge about 2 minutes per item. A job took about 55–100 agent-minutes with a
+critic and about 30 without. The drafter's `--click` self-check takes a few minutes of that. The
+critic's model and effort are the `[claude.critic]` row's (`max` by default, `xhigh` the step down) and
+the judge's the `[claude.judge]` row's: the operator tunes them in `executors.toml`, never in a prompt.
 
 **Record every span**, whatever its verdict: `record-dispatch <slice> --route design|critic|judge
 --tier -
@@ -471,13 +483,13 @@ STOP. The commit is `feat(design): <slice> drafted — <job>/<round>, …` (a su
 critique files and the closes of superseded rounds. The report, per job:
 
 - **the canvas link** to open, and what each Page is for;
-- **the scorecard** when critique was on: the open Part 1 / 2a items, **Holds** and **Not seen**;
+- **the scorecard** when critique was on: the open Part 1 / 2a items, the bar line by line, **Holds**
+  and **Not seen**;
 - the **2b taste notes**, each a decision to take;
 - **open wave choices**, on both jobs;
-- **disagreements left at the cap** or by repeats, with both sides;
-- **low-confidence items** when the judge was skipped;
-- the drafter's departures, `component_gaps` and `open_questions`, and whether it used
-  `frontend-design`;
+- **what the answer pass left open**: each rebuttal and each fix that did not hold, with both sides;
+- **unsure items** under `critic`, and **low-confidence items** when the judge was skipped;
+- the drafter's departures, `component_gaps` and `open_questions`;
 - a held job's exact need (`needs_operator`, `blocked`, a failed read-back);
 - **what their words will do:** literal approval signs that job (or starts its mockup, when one was
   requested); anything else is feedback, and a superseding round re-drafts it. Comments they send to
@@ -747,8 +759,8 @@ slice, never something to argue away with the record.
   said, never a new decision.
 - Answer a design question. **Pose it back** in the handoff; only the operator's words settle it.
 - Load `artifact-design` or `frontend-design` for product design co-work: they will make you design.
-- Stretch the one exception to the `frontend-design` ban. **The one exception:** `design-drafter`
-  loads `frontend-design` on a round whose handoff says `new visual direction: yes`, and only there.
+  The drafter loads neither: the useful lines of `frontend-design` are carried, credited, in its own
+  craft text.
 - Port another product's design and call it a design system, or publish a round file to the Design
   System Artifact.
 - Edit a board, `canvas.json`, a critique or a closed round's snapshot yourself. A board changes only

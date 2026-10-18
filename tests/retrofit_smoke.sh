@@ -281,12 +281,13 @@ for required in (
     "`design-init", "`design-open", "`design-check", "`design-close <job>/<round> (--words",
     "`design-system", "`design-canvas", "`design-publish-plan <job>`", "`design-preview",
     # v47 (P26.S3): the loop runs on the files. The design subagent drafts, the operator decides;
-    # the handoff says whether the round sets a new visual direction (the drafter's one licence for
-    # frontend-design); the read-back runs design-check itself; only literal words sign, feedback
-    # supersedes, and the round's lifecycle stays inline while the drafting is dispatched.
+    # the handoff says whether the round sets a new visual direction; the read-back runs design-check
+    # itself; only literal words sign, feedback supersedes, and the round's lifecycle stays inline
+    # while the drafting is dispatched. P36.S8C: frontend-design is retired from the drafter (its
+    # useful lines carried, credited, in the drafter's craft), and the orchestrator still never loads it.
     "**The design subagent drafts, the operator decides.**", "subagent_type: design-drafter",
     "`new visual direction: yes` or `no`",
-    "**The one exception:** `design-drafter` loads `frontend-design` on a round whose handoff says `new visual direction: yes`, and only there.",
+    "Load `artifact-design` or `frontend-design` for product design co-work: they will make you design. The drafter loads neither",
     "**Never rest on the drafter's own `design_check` line.**",
     "SIGNOFF is taken on the operator's **literal** words",
     "`python3 scripts/workflow.py design-close <job>/<round> --superseded`",
@@ -300,7 +301,7 @@ for required in (
     # built canvases are deleted only on the operator's yes.
     "**A wave dispatches one drafter per job at once.**", "**One job is one surface:**",
     "**Foundations come first.**", "`off | critic | critic+judge`, unset = `off`",
-    "**`critique: <level>`**", "**beside the drafter's next pass**", "**`skip=yes`**",
+    "**`critique: <level>`**", "**beside the drafter's answer pass**", "**`skip=yes`**",
     "**Only the main thread publishes**", "**Never `force`.**", "## PENDING #1 — one stop per wave",
     "**The session's words are the record.**", "**The working canvas replaces the in-product mockup by default.**",
     "**Every sync writes `tokens.css`**", "**after the build slice that implemented a signed job lands**",
@@ -317,8 +318,21 @@ for required in (
     "**`claude-design/` is outside schema 2**", "### Legacy record: schema1/",
     "python3 scripts/workflow.py design-migrate --apply", "| `design-migrate [--to 2] [--apply]` |",
     "python3 scripts/workflow.py design-migrate --to 2",
+    # P36.S8C: the approved design recipe. One critic pass, then one drafter answer pass (the judge
+    # beside it, its upheld items one short pass); the handoff carries the operator's bar from bar.md,
+    # prototype first, a target for every link, and one direction unless the operator asked.
+    "one critic pass, then at most one drafter answer pass. There is no second critic pass.",
+    "Its **upheld** items get **one more short drafter pass**",
+    "**`## The operator's bar`**, a heading of its own.", "`none beyond the shipped bar`",
+    "├── bar.md", "**Prototype first:**", "**Every link has a target in scope.**",
+    "**One direction unless the operator asked for options.**",
+    "a critic pass took 25–36 minutes on a flow-board job",
 ):
     assert required in design, required
+# P36.S8C: the old multi-pass loop and the drafter's frontend-design licence are gone from the skill.
+for gone in ("cap 3", "repeated findings", "**the cap:**", "`repeated`", "**The one exception:**",
+             "only licence for `frontend-design`", "whether it used", "passes 02–03"):
+    assert gone not in design, gone
 # P36.S1: the retired tool's loop, DesignSync read-back, registry and deck are gone from the skill.
 for gone in ("### Under claude-design", "### Under drafter", "## The claude-design record",
              "Design tool — drafter or claude-design", "Design tool: drafter | claude-design",
@@ -386,14 +400,41 @@ for term in ("relative path inside `project/`", "`..`"):
     assert term in drafter_rule, (term, drafter_rule)
 assert "../tokens.css" not in drafter_rule and "**Keep every card self-contained.**" not in drafter_rule, drafter_rule
 assert "A card references nothing relative except `../tokens.css`. " not in design
-# P26.F1: the drafter's frontend-design licence is the handoff's `new visual direction` line, the
-# operator's call; a missing line is an open question, and the drafter never infers the licence.
+# P26.F1, re-pinned by P36.S8C: the handoff's `new visual direction` line is the operator's call and
+# licenses a new look only, built as one direction; a missing line is an open question. The drafter
+# draws options only when the handoff quotes the operator asking, loads no skill, and carries
+# frontend-design's useful lines with their Apache-2.0 credit.
 drafter = " ".join((root / "payload/claude/agents/design-drafter.md").read_text().split())
-for required in ("the `new visual direction: yes` or `no` line", "your **only** licence to load it",
-                 "If the line is missing, do not load it, and name the missing line in `open_questions`.",
-                 "You never infer the licence yourself"):
+for required in ("`new visual direction: yes` in the handoff licenses setting a new look; you still build it as **one** direction.",
+                 "If the `new visual direction` line is missing, extend the established look and name the missing line in `open_questions`.",
+                 "appear only when the handoff quotes the operator asking for options",
+                 "licensed under the Apache License, Version 2.0", "That skill is not loaded.",
+                 # P36.S8C: the recipe -- flow boards, the per-page state bar, links in the prototype,
+                 # no decorative SVG, the detail and Toss rules, and the checks run with --click.
+                 "**Flow boards: the clicked item is the item shown.**", "### The state bar (on every interactive Page)",
+                 "**only that page's presets**", "A preset never moves to another page",
+                 "**Every link stays in the prototype.**", "Decorative SVG artwork",
+                 "**Controls never change size or move what is around them when they show state**",
+                 "Scope page link colors to text links (`a:not([class])`)",
+                 "**Toss-level care (the rules, never Toss's look).**",
+                 "**Fix every `check=` line before you return**", "--click`. It prints",
+                 "**never a reason to fold a component's states into a static board**"):
     assert required in drafter, required
-assert "**only** on a round that sets a new visual direction" not in drafter
+for gone in ("your **only** licence to load it", "load it through `Skill`", "`frontend_design`",
+             "A **direction round** is one whose handoff says"):
+    assert gone not in drafter, gone
+# P36.S8C: the critic gives one pass on the bar rubric, hovers, types and clicks at desktop and 390 px
+# with the engine's checks and a harness recipe for the rest, never restyles the state bar, and
+# follows the handoff on directions; passes 02-03, the cap and `repeated` are gone.
+critic = " ".join((root / "payload/claude/agents/design-critic.md").read_text().split())
+for required in ("**You get one pass**", "**The bar, line by line**", "**The state bar is on every interactive Page, lists only that page's states**",
+                 "**The state-bar exemption.**", "**The direction rule follows the handoff.**",
+                 "**The interaction pass is yours too.**", "**What it still cannot do**",
+                 "w.DesignBrowser(w.design_preview_browser(None), tempfile.mkdtemp())", "--phone-click",
+                 "You rule once, beside the drafter's answer pass"):
+    assert required in critic, required
+for gone in ("passes 02 and 03", "Passes 02 and 03", "- repeated: N", "`repeated`:", "at pass 03"):
+    assert gone not in critic, gone
 # v37 negatives: the MCP-first prescription is retired -- no config block to copy,
 # no surface preference, and no "Playwright-style automation" framing anywhere.
 for gone in ('{"mcpServers"', "Prefer the **MCP** surface", "MCP first",
@@ -905,10 +946,12 @@ grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '
   && [ -f "$F/.claude/agents/Explore.md" ] && grep -q '^model: haiku$' "$F/.claude/agents/Explore.md" \
   && grep -q '^effort: high$' "$F/.claude/agents/Explore.md" && grep -qx 'tools: Read, Grep, Glob' "$F/.claude/agents/Explore.md" \
   && ok "fresh install follows the route defaults: mid sonnet@high, high opus@high, explore haiku@high" || bad "fresh install agent files do not follow the route defaults"
-# P26.S2: the design subagent ships with the Skill tool (frontend-design) and never DesignSync.
-[ -f "$F/.claude/agents/design-drafter.md" ] && grep -Eq '^tools: (.*, )?Skill(,.*)?$' "$F/.claude/agents/design-drafter.md" \
+# P26.S2, re-pinned by P36.S8C: the design subagent loads no skill (frontend-design is retired from
+# it, its useful lines carried in its craft), so it ships without the Skill tool, and never DesignSync.
+[ -f "$F/.claude/agents/design-drafter.md" ] && grep -q '^tools: Read, Edit, Write, Glob, Grep, Bash$' "$F/.claude/agents/design-drafter.md" \
+  && ! grep -Eq '^tools: (.*, )?Skill(,.*)?$' "$F/.claude/agents/design-drafter.md" \
   && ! grep -q '^tools: .*DesignSync' "$F/.claude/agents/design-drafter.md" \
-  && ok "fresh install ships the design-drafter subagent (Skill in tools, no DesignSync)" || bad "fresh install design-drafter missing, lacks Skill, or carries DesignSync"
+  && ok "fresh install ships the design-drafter subagent (no Skill tool, no DesignSync)" || bad "fresh install design-drafter missing, still carries Skill, or carries DesignSync"
 # P36.S5B: the design critic ships on the critic row (sonnet @ max) and can write only its own file: no Edit.
 [ -f "$F/.claude/agents/design-critic.md" ] && grep -q '^model: sonnet$' "$F/.claude/agents/design-critic.md" \
   && grep -q '^effort: max$' "$F/.claude/agents/design-critic.md" && grep -q '^tools: ' "$F/.claude/agents/design-critic.md" \
@@ -1739,7 +1782,7 @@ if ( cd "$W" && python3 scripts/workflow.py parallel-start P2 2>&1 | grep -q "le
   || bad "merge, merge-finish or teardown failed"
 
 # ---------------------------------------------------------------------------
-echo "== Test 13: schema-2 design record -- design-open makes a job and refuses a second open round of it, a wave of several jobs in one slice (--new-job / --job, --critique, size warnings), design-check names a missing board, a missing support line, a .. reference and a title gap, design-canvas / design-system / design-publish-plan, design-preview skips honestly without a browser, design-close snapshots and signs, a superseded round's slice reuses its job, design-migrate --to 2; claude-design/ is skipped, the pre-v47 design-migrate, design-register is gone =="
+echo "== Test 13: schema-2 design record -- design-open makes a job and refuses a second open round of it, a wave of several jobs in one slice (--new-job / --job, --critique, size warnings, mounted boards not counted), the board lint (leaves-canvas, same-target-list), design-check names a missing board, a missing support line, a .. reference and a title gap, design-canvas / design-system / design-publish-plan, design-preview skips honestly without a browser, design-close snapshots and signs, a superseded round's slice reuses its job, design-migrate --to 2; claude-design/ is skipped, the pre-v47 design-migrate, design-register is gone =="
 # Runs in the fresh workspace $F.
 newtmp DZ
 DR="$F/docs/reference/design"
@@ -1991,6 +2034,33 @@ out=$(ww design-check 2>&1); rc=$?
 [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -Fq 'warning: job 02-settings has 7 Pages / 7 boards — too big for one review; split it into jobs by surface' \
   && ok "a job past the size threshold (7 Pages) makes design-check warn, exit 0" \
   || bad "design-check did not warn on a seven-Page job, or failed on it (rc=$rc) -- $out"
+# 7. P36.S8C: the board lint and the board count. A link to an outside https page (Google Fonts CSS
+# excepted) and a <sc-for> whose every row links to one board are warnings; a board another board
+# <dc-import>s is not counted (18 boards, 3 mounted: no size warning); bar.md at the root is no stray.
+python3 - "$WR" <<'LINT' || bad "lint probe: could not write the canvas"
+import json, pathlib, sys
+root = pathlib.Path(sys.argv[1]); project = root / "jobs/01-checkout/canvas/project"; project.mkdir(parents=True, exist_ok=True)
+(root / "bar.md").write_text("# The operator's bar\n\n- none beyond the shipped bar\n")
+names = ["Main", "Item"] + [f"Part{n}" for n in range(1, 17)]
+boards = {f"{n}.dc.html": {"x": i * 500, "y": 0, "w": 400, "h": 300, "title": f"{i + 1:02d} · {n}"} for i, n in enumerate(names)}
+(project / "canvas.json").write_text(json.dumps({"v": 3, "createdOnFiles": {"v": 1}, "boards": boards, "order": list(boards)}))
+head = '<!doctype html>\n<script src="./support.js"></script>\n'
+for name in boards:
+    (project / name).write_text(head + "<p>board</p>\n")
+(project / "Main.dc.html").write_text(head + '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter">\n'
+    '<sc-for list="{{ rows }}" as="r"><a href="Item.dc.html">{{ r.name }}</a></sc-for>\n'
+    '<a href="https://elsewhere.example/sign-in">Sign in</a>\n'
+    '<dc-import name="Part1"></dc-import><dc-import name="Part2"></dc-import><dc-import name="Part3"></dc-import>\n')
+LINT
+out=$(ww design-check 01-checkout 2>&1); rc=$?
+all_out=$(ww design-check 2>&1); all_rc=$?
+if [ "$rc" -eq 0 ] && [ "$all_rc" -eq 0 ] && ! printf '%s\n' "$all_out" | grep -Fq 'bar.md' \
+    && printf '%s\n' "$out" | grep -Fq 'Main.dc.html: 1 link(s) leave the prototype (check=leaves-canvas): https://elsewhere.example/sign-in' \
+    && ! printf '%s\n' "$out" | grep -Fq 'fonts.googleapis.com' \
+    && printf '%s\n' "$out" | grep -Fq 'Main.dc.html: every row of a <sc-for> list links to Item.dc.html (check=same-target-list)' \
+    && ! printf '%s\n' "$out" | grep -Fq 'too big for one review' && ! printf '%s\n' "$out" | grep -Fq 'bar.md'; then
+  ok "design-check warns on a link leaving the prototype (not Google Fonts) and on a list whose rows all link to one board, exit 0; boards another board mounts are not counted (18 boards, 3 mounted: no size warning); bar.md is no stray"
+else bad "the board lint, the mounted-board count or bar.md is wrong (rc=$rc/$all_rc) -- $out $all_out"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 14: P28 nested engine -- workflow/.agentic-nested.json: host anchors, host-side phase-scope, the paired worktree lifecycle, the convention gate, the agent rename map, a malformed marker fails validate =="

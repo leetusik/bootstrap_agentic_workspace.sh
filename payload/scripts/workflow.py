@@ -4976,8 +4976,18 @@ DESIGN_CRITIQUE_LEVELS = ("off", "critic", "critic+judge")
 DESIGN_WAVE_OPEN_MAX = 4
 # One job is one surface, sized for one review sitting: design-check warns when an open job's canvas
 # holds more than DESIGN_JOB_PAGES_MAX Pages (boards with expand: "fill") or DESIGN_JOB_BOARDS_MAX boards.
+# A board another board mounts with <dc-import name="..."> (a flow board's screen, a component gap's
+# one-instance board) is reviewed through the board that mounts it, so the board count leaves it out
+# (v60, P36.S8C): the flow-board recipe draws each screen twice, alone and in its flow.
 DESIGN_JOB_PAGES_MAX = 6
 DESIGN_JOB_BOARDS_MAX = 16
+# design-check's static lint on a canvas's boards (warnings, never problems; v60, P36.S8C): a link that
+# leaves the prototype, and a repeated list whose every row links to the same board.
+DESIGN_FONT_CSS = ("https://fonts.googleapis.com/", "https://fonts.gstatic.com/")  # Google Fonts: the one outside href allowed
+DESIGN_HREF_RE = re.compile(r"""\bhref\s*=\s*["']([^"']*)["']""", re.I)
+DESIGN_DC_IMPORT_RE = re.compile(r"""<dc-import\b[^>]*?\bname\s*=\s*["']([^"'{}]+)["']""", re.I)
+DESIGN_SC_FOR_RE = re.compile(r"<(/?)sc-for\b", re.I)
+DESIGN_ROW_LINK_RE = re.compile(r"""<(?:a|x-import|dc-import)\b[^>]*?\bhref\s*=\s*["']([^"'{}]+?\.dc\.html[^"'{}]*)["']""", re.I)
 # The keys the Design canvas type requires of project/canvas.json (its index).
 DESIGN_CANVAS_INDEX_KEYS = ("v", "boards", "order", "createdOnFiles")
 DESIGN_SLUG = r"[a-z0-9]+(?:-[a-z0-9]+)*"
@@ -5259,18 +5269,56 @@ def design_reference_problems(text: str, rel: str) -> list:
     return sorted(problems)
 
 
+def design_sc_for_bodies(text: str) -> list:
+    """The bodies of the outermost <sc-for> loops of a board (nested loops stay inside their parent's)."""
+    bodies, depth, start = [], 0, 0
+    for match in DESIGN_SC_FOR_RE.finditer(text):
+        if match.group(1):
+            if depth:
+                depth -= 1
+                if not depth:
+                    bodies.append(text[start:match.start()])
+        else:
+            if not depth:
+                start = match.end()
+            depth += 1
+    if depth:
+        bodies.append(text[start:])
+    return bodies
+
+
+def design_board_lint(text: str, rel: str) -> list:
+    """The static lint of one board, as design-check warnings: leaves-canvas (an https href other than
+    Google Fonts CSS: Play would leave the prototype) and same-target-list (a link with a literal
+    .dc.html target inside a <sc-for>: every row opens the same board, which cannot know the row)."""
+    found = []
+    outside = sorted({ref for ref in (m.group(1).strip() for m in DESIGN_HREF_RE.finditer(text))
+                      if ref.lower().startswith("https://") and "{{" not in ref and not ref.lower().startswith(DESIGN_FONT_CSS)})
+    if outside:
+        count = sum(1 for m in DESIGN_HREF_RE.finditer(text) if m.group(1).strip() in outside)
+        found.append(f"{rel}: {count} link(s) leave the prototype (check=leaves-canvas): {', '.join(outside[:4])}"
+                     + (f" (+{len(outside) - 4} more)" if len(outside) > 4 else "")
+                     + " -- point each at a board or an in-canvas state, or leave it out")
+    targets = sorted({m.group(1) for body in design_sc_for_bodies(text) for m in DESIGN_ROW_LINK_RE.finditer(body)})
+    for target in targets:
+        found.append(f"{rel}: every row of a <sc-for> list links to {target} (check=same-target-list) -- a linked board "
+                     "cannot know which row was clicked; carry the item in a flow board's state")
+    return found
+
+
 def design_canvas_problems(project: Path, system: dict) -> tuple:
-    """(problems, warnings, board count, Page count) for one job's canvas tree, each path under
-    project/. A Page is a board with expand: "fill"."""
+    """(problems, warnings, board count, Page count, lint, mounted count) for one job's canvas tree,
+    each path under project/. A Page is a board with expand: "fill". lint is the static board lint
+    (design_board_lint); mounted counts the boards another board <dc-import>s."""
     files = design_tree_files(project)
     if "canvas.json" not in files:
-        return ["canvas.json missing (the canvas index: v, boards, order, createdOnFiles)"], [], 0, 0
+        return ["canvas.json missing (the canvas index: v, boards, order, createdOnFiles)"], [], 0, 0, [], 0
     try:
         index = read_json(project / "canvas.json")
     except (ValueError, OSError) as exc:
-        return [f"canvas.json is not valid JSON: {exc}"], [], 0, 0
+        return [f"canvas.json is not valid JSON: {exc}"], [], 0, 0, [], 0
     if not isinstance(index, dict):
-        return ["canvas.json is not a JSON object"], [], 0, 0
+        return ["canvas.json is not a JSON object"], [], 0, 0, [], 0
     problems, warnings = [], []
     missing = [k for k in DESIGN_CANVAS_INDEX_KEYS if k not in index]
     if missing:
@@ -5326,6 +5374,7 @@ def design_canvas_problems(project: Path, system: dict) -> tuple:
             numbers[number] = key
     problems.extend(f"gap in the board titles' reading numbers: no board titled \"{n:02d} · …\""
                     for n in range(1, max(numbers, default=0) + 1) if n not in numbers)
+    lint, mounts = [], set()
     for rel in files:
         if not rel.lower().endswith((".html", ".htm", ".css")):
             continue
@@ -5333,6 +5382,10 @@ def design_canvas_problems(project: Path, system: dict) -> tuple:
         if rel.endswith(DESIGN_BOARD_SUFFIX) and not any(line.strip() == DESIGN_SUPPORT_LINE for line in text.splitlines()):
             problems.append(f"{rel}: missing the exact line {DESIGN_SUPPORT_LINE} (the type's runtime)")
         problems.extend(f"{rel}: {p}" for p in design_reference_problems(text, rel))
+        if rel.endswith(DESIGN_BOARD_SUFFIX):
+            lint.extend(design_board_lint(text, rel))
+            stem = rel.rsplit("/", 1)[-1][:-len(DESIGN_BOARD_SUFFIX)]
+            mounts.update(name.strip() for name in DESIGN_DC_IMPORT_RE.findall(text) if name.strip() != stem)
     records = index.get("designSystems", [])
     if not isinstance(records, list):
         problems.append("canvas.json: designSystems must be a list of install records")
@@ -5344,14 +5397,15 @@ def design_canvas_problems(project: Path, system: dict) -> tuple:
                 warnings.append(f"canvas.json: designSystems {name!r} pins version {pinned!r}, but design.json's system is "
                                 f"{system['version']!r} (reinstall when the round changes the look)")
     pages = sum(1 for board in boards.values() if isinstance(board, dict) and board.get("expand") == "fill")
-    return problems, warnings, len(boards), pages
+    mounted = sum(1 for key in boards if key.rsplit("/", 1)[-1][:-len(DESIGN_BOARD_SUFFIX)] in mounts)
+    return problems, warnings, len(boards), pages, lint, mounted
 
 
 def design_read_job(entry: Path, number: int, system: dict) -> dict:
     """One job folder: job.json, its rounds and its canvas tree, each with its own problems."""
     rel = f"jobs/{entry.name}"
     job = {"id": entry.name, "number": number, "path": entry, "data": None, "rounds": [],
-           "problems": [], "warnings": [], "boards": 0, "pages": 0, "drafted": False}
+           "problems": [], "warnings": [], "lint": [], "boards": 0, "pages": 0, "drafted": False}
     problems = job["problems"]
     jpath = entry / "job.json"
     if not jpath.is_file():
@@ -5413,11 +5467,14 @@ def design_read_job(entry: Path, number: int, system: dict) -> dict:
     project = entry / "canvas" / "project"
     if project.is_dir():
         job["drafted"] = True
-        found, warned, job["boards"], job["pages"] = design_canvas_problems(project, system)
+        found, warned, job["boards"], job["pages"], lint, mounted = design_canvas_problems(project, system)
         problems.extend(f"{rel}/canvas/project/{p}" if not p.startswith("gap ") else f"{rel}: {p}" for p in found)
         job["warnings"].extend(f"{rel}/canvas/project/{w}" for w in warned)
-        if (job["data"] or {}).get("status") == "open" and (job["pages"] > DESIGN_JOB_PAGES_MAX or job["boards"] > DESIGN_JOB_BOARDS_MAX):
-            job["warnings"].append(f"job {entry.name} has {job['pages']} Pages / {job['boards']} boards — too big for one review; "
+        job["lint"] = [f"{rel}/canvas/project/{w}" for w in lint]
+        counted = job["boards"] - mounted  # a board another board mounts is reviewed through it
+        if (job["data"] or {}).get("status") == "open" and (job["pages"] > DESIGN_JOB_PAGES_MAX or counted > DESIGN_JOB_BOARDS_MAX):
+            more = f" (+{mounted} mounted by another board, not counted)" if mounted else ""
+            job["warnings"].append(f"job {entry.name} has {job['pages']} Pages / {counted} boards{more} — too big for one review; "
                                    "split it into jobs by surface")
     elif job["data"] and job["data"]["status"] != "open":
         problems.append(f"{rel}: a {job['data']['status']} job has no canvas tree (canvas/project/)")
@@ -5469,18 +5526,20 @@ def design_scan(root: Path, only: str = None) -> dict:
             continue
         jnumbers[number] = f"jobs/{entry.name}"
         scan["jobs"].append(design_read_job(entry, number, system))
+    # The board lint is said for an open job, or for any job named by id: a signed canvas is history, and
+    # the all-jobs check would repeat its lines forever.
     if only is not None:
         job = next((j for j in scan["jobs"] if j["id"] == only), None)
         if job is None:
             problems.append(f"no job {only!r} under {DESIGN_ROOT_SHOWN}/jobs/")
         else:
             problems.extend(job["problems"])
-            warnings.extend(job["warnings"])
+            warnings.extend(job["warnings"] + job["lint"])
         return scan
     problems.extend(loose)
     for job in scan["jobs"]:
         problems.extend(job["problems"])
-        warnings.extend(job["warnings"])
+        warnings.extend(job["warnings"] + (job["lint"] if (job["data"] or {}).get("status") == "open" else []))
     problems.extend(f"gap in the job numbering: no job numbered {n:02d}"
                     for n in range(1, max(jnumbers, default=0) + 1) if n not in jnumbers)
     # A co-work slice may hold several jobs (a wave), each with at most one open round (design_read_job).
@@ -5898,13 +5957,16 @@ DESIGN_PREVIEW_MEASURE_JS = ("(()=>{const d=document.documentElement,b=document.
                              "unmounted:[...document.querySelectorAll('.sc-placeholder')].map(e=>e.getAttribute('title')||'?'),"
                              "errors:[...document.querySelectorAll('.sc-logic-error,.sc-placeholder-error')].map(t)};})()")
 DESIGN_PREVIEW_TARGET = 44  # px: the smallest box an interactive element may have (WCAG 2.5.5, Apple's HIG)
-DESIGN_PREVIEW_STATES = 24  # --click: at most this many states per board (the initial one included)
+DESIGN_PREVIEW_STATES = 48  # --click: at most this many states per board and view (the initial one included)
 DESIGN_PREVIEW_DEPTH = 8  # --click: at most this many clicks from the initial state
-DESIGN_PREVIEW_CLICKS = 150  # --click: at most this many clicks per board
-DESIGN_PREVIEW_BOARD_SECONDS = 60  # --click: a board's click-through stops after this long (and says so)
+DESIGN_PREVIEW_CLICKS = 300  # --click: at most this many clicks (and typed fields) per board and view
+DESIGN_PREVIEW_BOARD_SECONDS = 120  # --click: a board's click-through stops after this long (and says so)
+DESIGN_PREVIEW_SHIFT = 4  # px: a control resized, or a header/nav/main moved, by more than this is a layout shift
+DESIGN_PREVIEW_LIST_SAMPLE = 4  # --click: a list of this many rows or more is sampled (first, second, last), not clicked row by row
 # The check names the measured pass gives its issue lines (beside the render's own: load, settle,
-# too-tall, frame-clip, overflow, unmounted, runtime-error, script-error, not-found, screenshot, size,
-# browser; and --click's unreachable, click-error, click).
+# too-tall, frame-clip, page-clip, overflow, unmounted, runtime-error, script-error, not-found,
+# screenshot, size, browser; and --click's unreachable, click-error, click, layout-shift, same-target,
+# hover-contrast).
 DESIGN_PREVIEW_CHECKS = ("contrast", "unmeasured", "target", "clipped", "dead-link", "image", "name", "checks")
 # Shared by the two in-page scripts below: a short element label (<= 40 chars), the text a control
 # shows (aria-hidden text left out), and the interactive set (the target check, and the click set).
@@ -5929,13 +5991,10 @@ const off = e => e.disabled || e.getAttribute('aria-disabled') === 'true' || !!e
 const controls = () => [...document.querySelectorAll(SEL + ',[tabindex]')].filter(e =>
   (e.matches(SEL) || parseInt(e.getAttribute('tabindex'), 10) >= 0) && !e.closest('head') && boxed(e) && !off(e));
 """
-# The measured checks, run on the settled page right before its screenshot. Raw facts only; the engine
-# words them. contrast: every visible text run (one per element) against the background its ancestors
-# paint under it, alpha-composited (color alpha, background alpha, ancestor opacity) over the white
-# canvas; colors in any syntax are read by painting them on a 1x1 canvas. A background image, gradient,
-# filter or blend mode in the way makes it unmeasured, never a guess.
-DESIGN_PREVIEW_CHECKS_JS = "(()=>{" + DESIGN_PREVIEW_JS_HELPERS + r"""
-const out = {contrast: [], unmeasured: [], target: [], clipped: [], links: [], images: [], names: [], texts: 0, targets: 0, fields: 0};
+# The contrast pass, shared by the measured checks (the whole body) and the hover pass (one hovered
+# control): contrastIn(root, out) pushes each failing text run under root into out.contrast, each run it
+# cannot measure into out.unmeasured, and counts the runs in out.texts.
+DESIGN_PREVIEW_CONTRAST_JS = r"""
 const cv = document.createElement('canvas'); cv.width = cv.height = 1;
 const cx = cv.getContext('2d', {willReadFrequently: true}); const memo = new Map();
 const color = c => { if (memo.has(c)) return memo.get(c); let v = null;
@@ -5950,7 +6009,8 @@ const over = (s, d) => { const a = s[3] + d[3] * (1 - s[3]);
 const lin = v => (v /= 255) <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
 const lum = c => 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
 const hex = c => '#' + c.slice(0, 3).map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
-const seen = new Set(), range = document.createRange(), walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+const contrastIn = (root, out) => {
+const seen = new Set(), range = document.createRange(), walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
 while (walker.nextNode()) {
   const n = walker.currentNode, e = n.parentElement;
   if (!e || !n.data.trim() || seen.has(e) || e.closest('script,style,template,noscript,svg,head') || hiddenIn(e)) continue;
@@ -5984,13 +6044,24 @@ while (walker.nextNode()) {
     fg = over([fg[0], fg[1], fg[2], fg[3] * g[1]], g[0]); bg = over([bg[0], bg[1], bg[2], bg[3] * g[1]], g[0]); }
   const l1 = lum(fg), l2 = lum(bg), ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
   if (ratio < item.need) out.contrast.push(Object.assign(item, {ratio: Math.floor(ratio * 100) / 100, fg: hex(fg), bg: hex(bg)}));
-}
+} };
+"""
+# The measured checks, run on the settled page right before its screenshot. Raw facts only; the engine
+# words them. contrast: every visible text run (one per element) against the background its ancestors
+# paint under it, alpha-composited (color alpha, background alpha, ancestor opacity) over the white
+# canvas; colors in any syntax are read by painting them on a 1x1 canvas. A background image, gradient,
+# filter or blend mode in the way makes it unmeasured, never a guess. The canvas-only prototype chrome
+# ([data-proto]: the state bar, the board-link strip) is exempt from the target check, never from the
+# others: it must still read, name its buttons and link somewhere real.
+DESIGN_PREVIEW_CHECKS_JS = "(()=>{" + DESIGN_PREVIEW_JS_HELPERS + DESIGN_PREVIEW_CONTRAST_JS + r"""
+const out = {contrast: [], unmeasured: [], target: [], clipped: [], links: [], images: [], names: [], texts: 0, targets: 0, fields: 0};
+contrastIn(document.body, out);
 const inRun = e => { if (!e.matches('a[href],[role=link]') || cs(e).display !== 'inline') return false;
   let p = e.parentElement; while (p && cs(p).display === 'inline') p = p.parentElement;
   return !!p && (p.innerText || '').replace(e.innerText || '', '').trim().length > 0; };
 for (const e of controls()) {
   out.targets++;
-  if (inRun(e)) continue;
+  if (inRun(e) || e.closest('[data-proto]')) continue;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const b of [e, ...(e.labels || [])]) { const r = b.getBoundingClientRect(); if (!r.width && !r.height) continue;
     x0 = Math.min(x0, r.left); y0 = Math.min(y0, r.top); x1 = Math.max(x1, r.right); y1 = Math.max(y1, r.bottom); }
@@ -6028,9 +6099,22 @@ return out; })()"""
 # --click: the visible DOM's identity (each shown element's tag, class, style, its open/expanded/
 # selected/current/disabled attributes and every shown text run, hashed; a checkbox's checked state and
 # a field's value are left out: a state is a different screen, not a different value, so independent
-# toggles do not multiply into combinations) and the controls a click can try: the interactive set
+# toggles do not multiply into combinations -- the one bit kept is whether every visible text field
+# holds text, since a complete form leads somewhere an empty one does not) and the controls a click can try: the interactive set
 # minus links that leave the board (a link is not a state) and fields that need typing or a native
-# picker, each visible, enabled, inside the viewport and topmost at its centre.
+# picker, each visible, enabled, inside the viewport and topmost at its centre. Beside them (v60, P36.S8C):
+# - page: which page of the board is on screen, so a click that moves to another screen of a flow board
+#   is told apart from a state change on the same page. It is the name of the visible group in the
+#   canvas-only state bar ([data-proto="state-bar"] [role=group], by aria-label or aria-labelledby),
+#   else the text of the first visible h1 outside [data-proto], else "" (one page);
+# - anchors: the document position of each visible header, nav and main (by element or role) outside
+#   [data-proto], for the layout-shift check;
+# - each click's box (w, h), tag and first class (t), whether it is prototype chrome (proto) or a state-bar preset (bar), and
+#   its list: a control repeated in three or more alike siblings (same tag and class, as a <sc-for>
+#   renders them) carries the list's id, its index and the list's length, so rows can be sampled and
+#   compared;
+# - fields: the visible, enabled text fields outside [data-proto] the type pass fills, each with a
+#   realistic sample string chosen from its type, autocomplete, name and label, and whether it is empty.
 DESIGN_PREVIEW_STATE_JS = "(()=>{" + DESIGN_PREVIEW_JS_HELPERS + r"""
 const range = document.createRange(), parts = [];
 const walk = e => { for (const c of e.childNodes) {
@@ -6041,22 +6125,97 @@ const walk = e => { for (const c of e.childNodes) {
     + ['aria-expanded', 'aria-selected', 'aria-current', 'open', 'disabled'].map(a => c.hasAttribute(a) ? a + '=' + c.getAttribute(a) : '').join(','));
   walk(c); parts.push('>'); } };
 walk(document.body);
-const str = parts.join('\n'); let h1 = 0x811c9dc5, h2 = 0x9747b28c;
-for (let i = 0; i < str.length; i++) { const k = str.charCodeAt(i); h1 = Math.imul(h1 ^ k, 0x01000193); h2 = Math.imul(h2 ^ k, 0x5bd1e995); h2 ^= h2 >>> 15; }
 const key = e => { const p = []; for (; e && e.parentElement; e = e.parentElement) p.unshift([...e.parentElement.children].indexOf(e)); return p.join('.'); };
+const proto = e => !!e.closest('[data-proto]');
+const nameOf = g => (g.getAttribute('aria-label') || '').trim() || (g.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean)
+  .map(id => { const r = document.getElementById(id); return r ? textOf(r) : ''; }).join(' ').trim();
+let page = '';
+for (const g of document.querySelectorAll('[data-proto="state-bar"] [role=group]')) if (boxed(g) && nameOf(g)) { page = 'bar:' + clip(nameOf(g), 60); break; }
+if (!page) { const t = [...document.querySelectorAll('h1')].find(e => boxed(e) && !proto(e)); if (t) page = 'h1:' + clip(textOf(t), 60); }
+const anchors = [];
+for (const e of document.querySelectorAll('header,nav,main,[role=banner],[role=navigation],[role=main]')) {
+  if (proto(e) || !boxed(e)) continue;
+  const r = e.getBoundingClientRect();
+  anchors.push({key: key(e), el: tagOf(e), x: Math.round(r.left + scrollX), y: Math.round(r.top + scrollY)}); }
+const sig = a => a.tagName + '.' + (a.getAttribute('class') || '');
+const listOf = e => { for (let a = e; a.parentElement && a !== document.body; a = a.parentElement) {
+    const p = a.parentElement, s = sig(a), alike = [...p.children].filter(c => sig(c) === s);
+    if (alike.length < 3) continue;
+    const rel = []; for (let x = e; x !== a; x = x.parentElement) rel.unshift([...x.parentElement.children].indexOf(x));
+    return {list: key(p) + '/' + s + '/' + rel.join('.'), idx: alike.indexOf(a), of: alike.length}; }
+  return null; };
+const topAt = e => { const r = e.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+  if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return 'outside';
+  const top = document.elementFromPoint(x, y); return top && (top === e || e.contains(top)) ? [x, y, r] : 'covered'; };
 const skip = 'a[href]:not([href^="#"]),select,textarea,input:not([type=checkbox]):not([type=radio]):not([type=submit]):not([type=button]):not([type=reset]):not([type=image])';
 const clicks = []; let covered = 0, outside = 0;
 for (const e of controls()) {
   if (e.matches(skip) || e.closest('a[href]:not([href^="#"])')) continue;
-  const r = e.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
-  if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) { outside++; continue; }
-  const top = document.elementFromPoint(x, y);
-  if (!top || !(top === e || e.contains(top))) { covered++; continue; }
+  const at = topAt(e);
+  if (at === 'outside') { outside++; continue; }
+  if (at === 'covered') { covered++; continue; }
+  const [x, y, r] = at, chrome = proto(e);
   const named = textOf(e) || [...(e.labels || [])].map(textOf).join(' ') || e.getAttribute('aria-label') || e.getAttribute('title')
     || (e.matches('input[type=submit],input[type=button],input[type=reset]') ? e.value : '') || tagOf(e) + (e.type ? '[' + e.type + ']' : '');
-  clicks.push({key: key(e), label: clip(named, 32).replace(/"/g, "'"), x: x, y: y}); }
-return {hash: (h1 >>> 0).toString(16) + (h2 >>> 0).toString(16) + ':' + str.length, clicks: clicks, covered: covered, outside: outside};
+  const c = {key: key(e), label: clip(named, 32).replace(/"/g, "'"), x: x, y: y, w: Math.round(r.width * 10) / 10, h: Math.round(r.height * 10) / 10,
+             t: e.tagName + '.' + ((e.getAttribute('class') || '').trim().split(/\s+/)[0] || ''), proto: chrome, bar: chrome && !!e.closest('[data-proto="state-bar"]')};
+  const l = chrome || e.matches('input,label') || e.closest('label') ? null : listOf(e);
+  if (l) Object.assign(c, l);
+  clicks.push(c); }
+const word = () => { for (const li of document.querySelectorAll('li,[role=listitem],[role=row]')) { if (!boxed(li) || proto(li)) continue;
+    const m = /[\p{L}]{4,}/u.exec(textOf(li)); if (m) return m[0].slice(0, 4).toLowerCase(); } return 'a'; };
+const sample = e => { const t = (e.getAttribute('type') || 'text').toLowerCase();
+  const h = [e.getAttribute('name'), e.id, e.getAttribute('autocomplete'), e.getAttribute('placeholder'), e.getAttribute('aria-label'),
+             ...[...(e.labels || [])].map(textOf)].join(' ').toLowerCase();
+  if (t === 'email' || /e-?mail/.test(h)) return 'sam.okafor@example.com';
+  if (t === 'tel' || /phone|mobile|\btel\b/.test(h)) return '020 7946 0958';
+  if (t === 'number') return '2';
+  if (t === 'url' || /website|\burl\b/.test(h)) return 'https://example.com';
+  if (t === 'password') return 'correct-horse-7';
+  if (t === 'search' || e.getAttribute('role') === 'searchbox' || /search|find|filter/.test(h)) return word();
+  if (/post|zip/.test(h)) return '10115';
+  if (/name/.test(h)) return 'Sam Okafor';
+  if (e.tagName === 'TEXTAREA') return 'Could I pick it up after work, around six?';
+  return 'Sample text'; };
+const fields = []; let pickers = 0;
+for (const e of controls()) {
+  if (proto(e) || e.readOnly) continue;
+  if (e.matches('select,input[type=date],input[type=time],input[type=datetime-local],input[type=month],input[type=week],input[type=color],input[type=file],input[type=range]')) { pickers++; continue; }
+  if (!e.matches('textarea,input:not([type]),input[type=text],input[type=email],input[type=password],input[type=search],input[type=tel],input[type=url],input[type=number]')) continue;
+  const at = topAt(e); if (!Array.isArray(at)) continue;
+  const named = [...(e.labels || [])].map(textOf).join(' ') || e.getAttribute('aria-label') || e.getAttribute('placeholder') || tagOf(e);
+  fields.push({key: key(e), label: clip(named, 32).replace(/"/g, "'"), x: at[0], y: at[1], text: sample(e), empty: !e.value}); }
+if (fields.length && fields.every(f => !f.empty)) parts.push('|every field filled');
+const str = parts.join('\n'); let h1 = 0x811c9dc5, h2 = 0x9747b28c;
+for (let i = 0; i < str.length; i++) { const k = str.charCodeAt(i); h1 = Math.imul(h1 ^ k, 0x01000193); h2 = Math.imul(h2 ^ k, 0x5bd1e995); h2 ^= h2 >>> 15; }
+return {hash: (h1 >>> 0).toString(16) + (h2 >>> 0).toString(16) + ':' + str.length, clicks: clicks, fields: fields, pickers: pickers,
+        page: page, anchors: anchors, covered: covered, outside: outside};
 })()"""
+# The hover pass (with --click, on PAGE boards, in the frame view): list the buttons and links a pointer
+# can rest on (visible, enabled, outside [data-proto], inside the viewport and topmost at the centre),
+# each with a signature (tag, class, text) so a control seen in an earlier state is hovered once, and
+# the contrast failures its text already has. Transitions are switched off for the pass, so the hover
+# style is the computed style at once; DESIGN_PREVIEW_HOVER_DONE_JS switches them back.
+DESIGN_PREVIEW_HOVER_JS = "(()=>{" + DESIGN_PREVIEW_JS_HELPERS + DESIGN_PREVIEW_CONTRAST_JS + r"""
+const key = e => { const p = []; for (; e && e.parentElement; e = e.parentElement) p.unshift([...e.parentElement.children].indexOf(e)); return p.join('.'); };
+const byKey = k => { let e = document.documentElement; for (const i of k.split('.')) { if (i === '') continue; e = e && e.children[+i]; } return e || null; };
+const fails = e => { const out = {contrast: [], unmeasured: [], texts: 0}; contrastIn(e, out); return out.contrast; };
+window.__dcHover = k => { const e = byKey(k); return e ? fails(e) : []; };
+if (!document.getElementById('__dc-hover-style')) { const st = document.createElement('style'); st.id = '__dc-hover-style';
+  st.textContent = '*,*::before,*::after{transition:none!important;animation-duration:0s!important}'; document.head.appendChild(st); }
+const out = [];
+for (const e of document.querySelectorAll('a[href],button,[role=button],[role=link],summary')) {
+  if (!boxed(e) || off(e) || e.closest('[data-proto]') || hiddenIn(e)) continue;
+  const r = e.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+  if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) continue;
+  const top = document.elementFromPoint(x, y); if (!top || !(top === e || e.contains(top))) continue;
+  out.push({key: key(e), el: desc(e), sig: e.tagName + '|' + (e.getAttribute('class') || '') + '|' + clip(textOf(e), 40), x: x, y: y,
+            before: fails(e).map(f => f.el + '|' + f.fg + '|' + f.bg)}); }
+return out; })()"""
+DESIGN_PREVIEW_HOVER_DONE_JS = "(()=>{const s=document.getElementById('__dc-hover-style');if(s)s.remove();delete window.__dcHover;return 1;})()"
+# The type pass: focus the field with this key and select its text, so the sample typed next replaces it.
+DESIGN_PREVIEW_FOCUS_JS = ("(k=>{let e=document.documentElement;for(const i of k.split('.')){if(i==='')continue;e=e&&e.children[+i];}"
+                           "if(!e)return 0;e.focus();if(e.select)e.select();return 1;})")
 # Run after every load in --click: a mark that tells a navigation away apart, and a form submit that
 # never leaves the board (the design's own submit handler still runs).
 DESIGN_PREVIEW_GUARD_JS = ("(()=>{window.__dcPreview=1;if(!window.__dcGuard){window.__dcGuard=1;"
@@ -6371,9 +6530,11 @@ def design_preview_measured(ctx: dict, rel: str, checks: dict) -> list:
     return [(check, message, count) for (check, _), (message, count) in folded.items()]
 
 
-def design_preview_issues(ctx: dict, rel: str, shot: dict, grow: bool, height: int) -> list:
+def design_preview_issues(ctx: dict, rel: str, shot: dict, grow: bool, height: int, clip_h: int = None) -> list:
     """Every (check, message) issue of one screenshot: the render's own (load, settle, size, mounts,
-    errors, files not found) and the measured checks."""
+    errors, files not found) and the measured checks. clip_h is a PAGE's frame h in the frame view: the
+    render grows a PAGE to its content, but the canvas frame does not, so a state taller than h is cut
+    there (page-clip)."""
     shape, issues = shot["shape"], []
     if not shot.get("loaded", True):
         issues.append(("load", "the page never fired its load event (a script or file that never arrived?)"))
@@ -6383,6 +6544,9 @@ def design_preview_issues(ctx: dict, rel: str, shot: dict, grow: bool, height: i
         issues.append(("too-tall", f"the page is {shape['h']}px tall: the screenshot stops at {DESIGN_PREVIEW_MAX}px"))
     elif not grow and shape["h"] > height:
         issues.append(("frame-clip", f"content is {shape['h']}px tall in a {height}px frame: the canvas clips the rest"))
+    if clip_h and shape["h"] > clip_h + 1:
+        issues.append(("page-clip", f"content is {shape['h']}px tall but the PAGE frame h is {clip_h}px: the canvas cuts the rest "
+                                    "(h holds the tallest state a click reaches)"))
     if shape["w"] > shot["width"]:
         issues.append(("overflow", f"content is {shape['w']}px wide at {shot['width']}px: it does not fit the width (clipped, or a sideways scroll)"))
     unmounted = shape["unmounted"]
@@ -6420,7 +6584,8 @@ def design_preview_view(ctx: dict, rel: str, board: dict, view: str) -> int:
         return -1
     png.write_bytes(shot["png"])
     shape = shot["shape"]
-    issues, repeated = design_preview_issues(ctx, rel, shot, grow, height), 0
+    issues = design_preview_issues(ctx, rel, shot, grow, height, height if page_board and view == "frame" else None)
+    repeated = 0
     if view != "frame" and "frame" in record["views"]:  # a measured finding the frame view already named is not repeated
         named = {(i["check"], design_preview_fold(i["message"])) for i in record["views"]["frame"]["issues"]}
         kept = [(c, m) for c, m in issues if c not in DESIGN_PREVIEW_CHECKS or (c, design_preview_fold(m)) not in named]
@@ -6455,23 +6620,116 @@ def design_preview_click(page: "DesignBrowser", x: float, y: float) -> None:
     page.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": 0, "y": 0})
 
 
-def design_preview_explore(ctx: dict, rel: str, board: dict) -> int:
-    """--click on an interactive board, frame view: from the settled initial state, click each control
-    (breadth first) and record every state whose visible DOM is new, with its screenshot, its line and
-    its issues. A state's path is a recipe from a fresh load, and its screenshot is taken on exactly
-    that recipe: a click is tried on the page as it stands when it already shows the state's DOM (most
-    clicks change nothing, so this saves a reload each), else after a reload and a replay of the path;
-    and a new state reached with other clicks behind it (a ticked box the DOM identity ignores) is
-    replayed from a fresh load before its screenshot, so no leftover value leaks into it. Returns the
-    issue count of the states."""
+def design_preview_note(ctx: dict, rel: str, view: str, state, check: str, message: str) -> None:
+    """Print and record one --click finding that belongs to a move between states, not to one
+    screenshot (layout-shift, same-target, hover-contrast): preview.json keeps it on the board and in
+    its issues list, and it counts in issues=."""
+    where = f" state={state:02d}" if state is not None else ""
+    print(f"issue board={rel} view={view}{where} check={check}: {message}")
+    item = {"view": view, "state": state, "check": check, "message": message}
+    ctx["report"]["boards"][rel].setdefault("interaction", []).append(item)
+    ctx["report"]["issues"].append(dict(item, board=rel))
+
+
+def design_preview_hover(ctx: dict, rel: str, view: str, state: int, hovered: set) -> int:
+    """The hover pass on the page as it stands: rest the pointer on each button and link not hovered
+    yet on this board (by its signature), and re-run the contrast check on the hovered control's own
+    text. A run that newly fails is a hover-contrast issue (the "green-out": a skeleton a:hover color
+    beating a system Button rendered as <a>). Returns the issue count."""
+    page, found = ctx["page"], 0
+    try:
+        targets = page.evaluate(DESIGN_PREVIEW_HOVER_JS) or []
+        for t in targets:
+            if t["sig"] in hovered:
+                continue
+            hovered.add(t["sig"])
+            page.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": t["x"], "y": t["y"]})
+            now = page.evaluate(f"window.__dcHover({json.dumps(t['key'])})") or []
+            for f in now:
+                if f"{f['el']}|{f['fg']}|{f['bg']}" in t["before"]:
+                    continue
+                design_preview_note(ctx, rel, view, state, "hover-contrast",
+                                    f"hovering {t['el']} turns {f['el']} to {f['ratio']:.2f}:1, needs "
+                                    f"{design_preview_num(f['need'])}:1 (text {f['fg']} on {f['bg']}; keep hover restrained "
+                                    "and scope page link colors to text links, e.g. a:not([class]))")
+                found += 1
+                break
+        page.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": 0, "y": 0})
+        page.evaluate(DESIGN_PREVIEW_HOVER_DONE_JS)
+    except (RuntimeError, KeyError, TypeError) as exc:
+        design_preview_note(ctx, rel, view, state, "click", f"the hover pass stopped: {exc}")
+        found += 1
+    return found
+
+
+def design_preview_shifts(before: dict, after: dict, control: dict) -> list:
+    """Layout-shift messages for one click that stayed on the same page: a control (outside
+    [data-proto]) whose box changed by more than DESIGN_PREVIEW_SHIFT px -- matched by its place and
+    label, and the clicked one also by its place, tag and first class when its label changed ("Send"
+    to "Sending...") -- and a header, nav or main that moved."""
+    limit, out = DESIGN_PREVIEW_SHIFT, []
+    old = {(c["key"], c["label"]): c for c in before["clicks"] if not c.get("proto")}
+    for c in after["clicks"]:
+        if c.get("proto"):
+            continue
+        was = old.get((c["key"], c["label"]))
+        if was is None and c["key"] == control["key"]:
+            was = next((o for o in before["clicks"] if o["key"] == c["key"] and o.get("t") == c.get("t") and not o.get("proto")), None)
+        if was and (abs(was["w"] - c["w"]) > limit or abs(was["h"] - c["h"]) > limit):
+            name = f"'{c['label']}'" if was["label"] == c["label"] else f"'{was['label']}' (now '{c['label']}')"
+            out.append(f"clicking '{control['label']}' resizes {name} {was['w']:g}x{was['h']:g} -> {c['w']:g}x{c['h']:g}px "
+                       "(a control keeps its size when it shows its state)")
+    moved = []
+    old_anchors = {a["key"]: a for a in before.get("anchors", [])}
+    for a in after.get("anchors", []):
+        was = old_anchors.get(a["key"])
+        if was and was["el"] == a["el"] and (abs(was["x"] - a["x"]) > limit or abs(was["y"] - a["y"]) > limit):
+            axis = f"y {was['y']}->{a['y']}" if abs(was["y"] - a["y"]) > limit else f"x {was['x']}->{a['x']}"
+            moved.append(f"{a['el']} {axis}")
+    if moved:
+        out.append(f"clicking '{control['label']}' moves the page: {', '.join(moved[:4])}"
+                   + (f" (+{len(moved) - 4} more)" if len(moved) > 4 else "")
+                   + " (the header and content stay put while the page shows a state)")
+    return out
+
+
+def design_preview_explore(ctx: dict, rel: str, board: dict, view: str = "frame") -> int:
+    """--click on an interactive board, in one view (frame, or phone with --phone): from the settled
+    initial state, try each control (breadth first) and record every state whose visible DOM is new,
+    with its screenshot, its line and its issues. A state's path is a recipe from a fresh load, and its
+    screenshot is taken on exactly that recipe: a click is tried on the page as it stands when it
+    already shows the state's DOM (most clicks change nothing, so this saves a reload each), else after
+    a reload and a replay of the path; and a new state reached with other clicks behind it (a ticked box
+    the DOM identity ignores) is replayed from a fresh load before its screenshot, so no leftover value
+    leaks into it.
+
+    v60 (P36.S8C), for the flow-board recipe:
+    - the canvas-only state bar's presets are tried first, once per page: a preset sets the page's
+      complete state, so trying them from a second state of the same page gives nothing new; a state
+      on a page not met before is explored ahead of the rest, so every page's presets are reached;
+    - a list of DESIGN_PREVIEW_LIST_SAMPLE rows or more is sampled (its first, second and last row);
+      rows of one list that open the same state of another page are a same-target issue;
+    - every visible text field gets a realistic sample typed into it, a step of the path like a click,
+      and a form with two or more empty fields is also filled whole in one step;
+    - every move that stays on the same page compares the boxes of the controls and the positions of
+      the header, nav and main (layout-shift); a move to another page (the state bar's page name, else
+      the h1, changes) is navigation, never a shift;
+    - a PAGE's states are checked against its frame h (page-clip), and in the frame view each PAGE
+      state gets the hover pass.
+    Returns the issue count of the states."""
     page, url = ctx["page"], f"{ctx['base']}/{rel}"
-    width, height, grow = board["w"], board["h"], board.get("expand") == "fill"
+    if view == "phone":
+        width, height, grow = DESIGN_PREVIEW_PHONE[0], DESIGN_PREVIEW_PHONE[1], True
+    else:
+        width, height, grow = board["w"], board["h"], board.get("expand") == "fill"
+    page_board = board.get("expand") == "fill"
+    clip_h = height if page_board and view == "frame" else None
     record = ctx["report"]["boards"][rel]
     fold = design_preview_fold
-    frame = {(i["check"], fold(i["message"])) for i in record["views"].get("frame", {}).get("issues", [])}
+    frame = {(i["check"], fold(i["message"])) for i in record["views"].get(view, {}).get("issues", [])}
     stem = rel[:-len(DESIGN_BOARD_SUFFIX)].replace("/", "__")
 
-    history: list = []  # the clicks since the last load
+    history: list = []  # the steps since the last load
     quick = {"poll": 0.04, "need": 1}  # a replay that misses its state is retried once with the render's settle
 
     def load() -> None:
@@ -6486,15 +6744,33 @@ def design_preview_explore(ctx: dict, rel: str, board: dict) -> int:
     def look() -> dict:
         return page.evaluate(DESIGN_PREVIEW_STATE_JS)
 
-    def press(target: dict) -> bool:
-        """Click the control with this key and label in the current page; False when it is not there."""
-        here = next((c for c in look()["clicks"] if c["key"] == target["key"] and c["label"] == target["label"]), None)
+    def press(target: dict):
+        """Click the control (or type the sample into the field) with this key and label in the current
+        page; the look before it, or None when it is not there."""
+        before = look()
+        if target.get("fill"):
+            here = [f for f in before["fields"] if f["empty"]] or None
+        else:
+            pool = before["fields"] if "text" in target else before["clicks"]
+            here = next((c for c in pool if c["key"] == target["key"] and c["label"] == target["label"]), None)
         if here is None:
-            return False
+            return None
         page.events.clear()
         mark = page.evaluate("window.__dcTimers ? window.__dcTimers.seq() : 0")
-        design_preview_click(page, here["x"], here["y"])
-        history.append({"key": target["key"], "label": target["label"]})
+        step = {"key": target["key"], "label": target["label"]}
+        if target.get("fill"):  # every empty field gets its sample, as one step
+            for f in here:
+                if page.evaluate(f"{DESIGN_PREVIEW_FOCUS_JS}({json.dumps(f['key'])})"):
+                    page.call("Input.insertText", {"text": f["text"]})
+            step["fill"] = True
+        elif "text" in target:
+            if not page.evaluate(f"{DESIGN_PREVIEW_FOCUS_JS}({json.dumps(target['key'])})"):
+                return None
+            page.call("Input.insertText", {"text": target["text"]})
+            step["text"] = target["text"]
+        else:
+            design_preview_click(page, here["x"], here["y"])
+        history.append(step)
         page.settle(**quick)
         if page.evaluate(f"window.__dcTimers ? window.__dcTimers.after({int(mark)}) : 0"):
             timed.add(target["label"])
@@ -6505,10 +6781,10 @@ def design_preview_explore(ctx: dict, rel: str, board: dict) -> int:
             page.evaluate(DESIGN_PREVIEW_ANIMATIONS_JS)
         except RuntimeError:
             pass
-        return True
+        return before
 
     def replay(path: list, want: str = None) -> str:
-        """Reload and click `path` again; the DOM identity it ends on, or "" when a step is missing. When
+        """Reload and run `path` again; the DOM identity it ends on, or "" when a step is missing. When
         it does not end on `want`, it is tried once more with the render's slower settle."""
         for slow in (False, True):
             quick.update(poll=0.15, need=2) if slow else quick.update(poll=0.04, need=1)
@@ -6528,18 +6804,41 @@ def design_preview_explore(ctx: dict, rel: str, board: dict) -> int:
             pass
         return replay(state["path"], state["hash"]) == state["hash"]
 
+    def shown_path(path: list) -> str:
+        return " > ".join(f"{step['label']} <- \"{step['text']}\"" if "text" in step else step["label"] for step in path)
+
     timed: set = set()  # controls whose click set a short timer that was waited for
-    page.evaluate(DESIGN_PREVIEW_GUARD_JS)  # the frame view just rendered: this is the initial state
-    if not page.evaluate("!!window.__dcTimers"):  # the timer watch starts with the first load after it
+    hovered: set = set()  # the signatures of the controls the hover pass has rested on
+    issues = 0
+    if view == "phone":
         replay([])
+    else:
+        page.evaluate(DESIGN_PREVIEW_GUARD_JS)  # the frame view just rendered: this is the initial state
+        if not page.evaluate("!!window.__dcTimers"):  # the timer watch starts with the first load after it
+            replay([])
+    if page_board and view == "frame":
+        before_hover = look()["hash"]
+        issues += design_preview_hover(ctx, rel, view, 0, hovered)
+        if look()["hash"] != before_hover:  # a hover handler changed the page: start again from a fresh load
+            replay([])
     first = look()
-    states = [{"n": 0, "path": [], "hash": first["hash"]}]
-    seen, queue, clicks, issues = {first["hash"]: 0}, [0], 0, 0
+    states = [{"n": 0, "path": [], "hash": first["hash"], "page": first["page"]}]
+    seen, queue, ahead, clicks = {first["hash"]: 0}, [], [0], 0
+    pages_met, pages_preset = {first["page"]}, set()
     notes, skipped, left, unreproduced, thrown = [], {"covered": 0, "outside": 0}, set(), 0, set()
+    said, lists_said, sampled_out, typed, pickers = set(), set(), 0, set(), 0
     capped_states = capped_depth = capped_clicks = False
     deadline = time.monotonic() + DESIGN_PREVIEW_BOARD_SECONDS
-    while queue and not capped_clicks:
-        state = states[queue.pop(0)]
+
+    def say(state_n: int, check: str, message: str) -> int:
+        if (check, message) in said:
+            return 0
+        said.add((check, message))
+        design_preview_note(ctx, rel, view, state_n, check, message)
+        return 1
+
+    while (ahead or queue) and not capped_clicks:
+        state = states[(ahead or queue).pop(0)]
         if len(state["path"]) >= DESIGN_PREVIEW_DEPTH:
             capped_depth = True
             continue
@@ -6549,7 +6848,30 @@ def design_preview_explore(ctx: dict, rel: str, board: dict) -> int:
         here = look()
         skipped["covered"] += here["covered"]
         skipped["outside"] += here["outside"]
-        for control in here["clicks"]:
+        pickers = max(pickers, here.get("pickers", 0))
+        presets = [c for c in here["clicks"] if c.get("bar")]
+        if here["page"] in pages_preset:
+            presets = []
+        elif presets:
+            pages_preset.add(here["page"])
+        rest = [c for c in here["clicks"] if not c.get("bar")]
+        lists: dict = {}
+        for c in rest:
+            if c.get("list"):
+                lists.setdefault(c["list"], []).append(c)
+        drop = set()
+        for members in lists.values():
+            if len(members) >= DESIGN_PREVIEW_LIST_SAMPLE:
+                members.sort(key=lambda c: c.get("idx", 0))
+                keep = {id(members[0]), id(members[1]), id(members[-1])}
+                drop.update(id(c) for c in members if id(c) not in keep)
+        sampled_out += len(drop)
+        fields = here.get("fields", [])
+        actions = presets + [c for c in rest if id(c) not in drop] + [dict(f) for f in fields]
+        if sum(1 for f in fields if f["empty"]) >= 2:  # and the whole form at once, so its submit is reached filled
+            actions.append({"key": "*", "label": "fill every field", "fill": True})
+        opened: dict = {}  # list id -> [(label, state hash, page)] for the rows clicked from this state
+        for control in actions:
             if clicks >= DESIGN_PREVIEW_CLICKS or time.monotonic() > deadline:
                 capped_clicks = True
                 break
@@ -6557,10 +6879,15 @@ def design_preview_explore(ctx: dict, rel: str, board: dict) -> int:
                 unreproduced += 1
                 break
             clicks += 1
-            if not press(control):
+            before = press(control)
+            if not before:
                 continue
-            path = state["path"] + [{"key": control["key"], "label": control["label"]}]
-            shown = " > ".join(step["label"] for step in path)
+            if "text" in control:
+                typed.add(control["label"])
+            path = state["path"] + [dict({"key": control["key"], "label": control["label"]},
+                                         **({"text": control["text"]} if "text" in control else {}),
+                                         **({"fill": True} if control.get("fill") else {}))]
+            shown = shown_path(path)
             try:
                 navigated = not page.evaluate("!!window.__dcPreview")
             except RuntimeError:
@@ -6569,7 +6896,18 @@ def design_preview_explore(ctx: dict, rel: str, board: dict) -> int:
                 left.add(control["label"])
                 continue
             errors = page.errors()
-            after = look()["hash"]
+            now = look()
+            after = now["hash"]
+            if before["page"] == now["page"]:
+                for message in design_preview_shifts(before, now, control):
+                    issues += say(state["n"], "layout-shift", message)
+            if control.get("list") and "text" not in control:
+                opened.setdefault(control["list"], []).append((control["label"], after, now["page"]))
+            if now["page"] not in pages_met:
+                pages_met.add(now["page"])
+                first_of_page = True
+            else:
+                first_of_page = False
             if after in seen or len(states) >= DESIGN_PREVIEW_STATES:
                 capped_states = capped_states or after not in seen
                 where = seen.get(after, state["n"])
@@ -6578,64 +6916,90 @@ def design_preview_explore(ctx: dict, rel: str, board: dict) -> int:
                         continue
                     thrown.add((control["label"], text))
                     message = f"clicking \"{shown}\" threw: {text}"
-                    print(f"issue board={rel} view=frame state={where:02d} check=click-error: {message}")
-                    record["click_errors"].append({"state": where, "path": [s["label"] for s in path], "message": text})
+                    print(f"issue board={rel} view={view} state={where:02d} check=click-error: {message}")
+                    record["click_errors"].append({"state": where, "view": view, "path": [s["label"] for s in path], "message": text})
                     issues += 1
+                if first_of_page and after not in seen:
+                    pages_met.discard(now["page"])  # not recorded: let a later move to that page count as its first
                 continue
-            if history != path:  # other clicks are behind this page: take the screenshot on the path alone
+            if history != path:  # other steps are behind this page: take the screenshot on the path alone
                 actual = list(history)
                 if replay(path, after) != after:  # the shortest path does not give it from a fresh load: keep the real one
-                    path, shown = actual, " > ".join(step["label"] for step in actual)
+                    path, shown = actual, shown_path(actual)
                     if replay(path, after) != after:
                         unreproduced += 1
                         continue
-            new = {"n": len(states), "path": path, "hash": after}
+            new = {"n": len(states), "path": path, "hash": after, "page": now["page"]}
             states.append(new)
             seen[after] = new["n"]
-            queue.append(new["n"])
+            (ahead if first_of_page else queue).append(new["n"])
             page.call("Emulation.setDeviceMetricsOverride", {"width": width, "height": height, "deviceScaleFactor": 1, "mobile": False})
             ctx["misses"].clear()
             shot = design_preview_capture(page, width, height, grow, page.settle(**quick))
             shot["errors"] = []  # the click's errors, said once below as click-error
-            png = ctx["out"] / f"{stem}.frame.state-{new['n']:02d}.png"
+            png = ctx["out"] / f"{stem}.{view}.state-{new['n']:02d}.png"
             png.write_bytes(shot["png"])
-            found = [(c, m) for c, m in design_preview_issues(ctx, rel, shot, grow, height) if (c, fold(m)) not in frame]
+            found = [(c, m) for c, m in design_preview_issues(ctx, rel, shot, grow, height, clip_h) if (c, fold(m)) not in frame]
             found += [("click-error", f"clicking \"{shown}\" threw: {text}") for text in errors
                       if (control["label"], text) not in thrown]
             thrown.update((control["label"], text) for text in errors)
             shape = shot["shape"]
-            print(f"state board={rel} view=frame n={new['n']:02d} path=\"{shown}\" png={png} w={shot['width']} "
+            print(f"state board={rel} view={view} n={new['n']:02d} path=\"{shown}\" png={png} w={shot['width']} "
                   f"h={shot['height']} content={shape['w']}x{shape['h']} issues={len(found)}")
             for check, message in found:
-                print(f"issue board={rel} view=frame state={new['n']:02d} check={check}: {message}")
+                print(f"issue board={rel} view={view} state={new['n']:02d} check={check}: {message}")
             issues += len(found)
-            record["states"].append({"n": new["n"], "path": [s["label"] for s in path], "png": str(png), "w": shot["width"],
-                                     "h": shot["height"], "content": [shape["w"], shape["h"]],
+            record["states"].append({"n": new["n"], "view": view, "page": new["page"], "path": [shown_path([s]) for s in path],
+                                     "png": str(png), "w": shot["width"], "h": shot["height"], "content": [shape["w"], shape["h"]],
                                      "issues": [{"check": c, "message": m} for c, m in found], "measured": shot["checks"]})
             for link in shot["checks"].get("links", []):
                 design_preview_edge(ctx, rel, link["href"])
-    fields = record["views"].get("frame", {}).get("measured", {}).get("fields", 0)
+            if page_board and view == "frame":
+                issues += design_preview_hover(ctx, rel, view, new["n"], hovered)
+        for list_id, rows in opened.items():
+            if list_id in lists_said:  # said once per list
+                continue
+            alike: dict = {}
+            for label, after, where in rows:
+                if after != state["hash"] and where != state["page"]:
+                    alike.setdefault(after, []).append(label)
+            for after, labels in alike.items():
+                if len(set(labels)) >= 2 and list_id not in lists_said:
+                    lists_said.add(list_id)
+                    names = ", ".join(f"'{label}'" for label in sorted(set(labels))[:3])
+                    issues += say(state["n"], "same-target",
+                                  f"rows {names} of one list all open the same state (n={seen.get(after, '?')}): "
+                                  "each item opens its own item")
     if capped_states:
         notes.append(f"state cap {DESIGN_PREVIEW_STATES} reached: more states exist")
     if capped_depth:
-        notes.append(f"depth cap {DESIGN_PREVIEW_DEPTH} reached: states deeper than {DESIGN_PREVIEW_DEPTH} clicks were not explored")
+        notes.append(f"depth cap {DESIGN_PREVIEW_DEPTH} reached: states deeper than {DESIGN_PREVIEW_DEPTH} steps were not explored")
     if capped_clicks:
-        notes.append(f"click cap ({DESIGN_PREVIEW_CLICKS} clicks or {DESIGN_PREVIEW_BOARD_SECONDS}s) reached: some controls were not tried")
+        notes.append(f"click cap ({DESIGN_PREVIEW_CLICKS} steps or {DESIGN_PREVIEW_BOARD_SECONDS}s) reached: some controls were not tried")
     if unreproduced:
         notes.append(f"{unreproduced} state(s) did not come back on replay (a timer, or randomness): their controls were not all tried")
     if skipped["covered"] or skipped["outside"]:
         notes.append(f"controls not clicked: {skipped['covered']} covered by another element, "
                      f"{skipped['outside']} outside the {width}x{height} frame (counted per state)")
+    if sampled_out:
+        notes.append(f"list rows sampled: {sampled_out} row click(s) skipped (each list of {DESIGN_PREVIEW_LIST_SAMPLE}+ rows "
+                     "tries its first, second and last row)")
+    if pages_preset:
+        notes.append(f"state-bar presets tried on {len(pages_preset)} page(s)")
     if left:
         notes.append(f"clicks that left the board (a link, not a state): {', '.join(sorted(left))}")
     if timed:
         notes.append(f"waited for the timers of {', '.join(sorted(timed))}: a state shown only while a timer runs "
                      "(Saving...) is passed through, and the state recorded is the one after it")
-    if fields:
-        notes.append(f"{fields} text field(s) never typed into: states behind typed input are not explored")
-    print(f"note board={rel} view=frame: {len(states) - 1} state(s) beyond the initial one, {clicks} click(s)"
+    if typed:
+        notes.append(f"typed a sample into {len(typed)} field(s): {', '.join(sorted(typed))}")
+    if pickers:
+        notes.append(f"{pickers} field(s) need a native picker (select, date, file, range): states behind them are not explored")
+    if hovered:
+        notes.append(f"hovered {len(hovered)} control(s)")
+    print(f"note board={rel} view={view}: {len(states) - 1} state(s) beyond the initial one, {clicks} step(s)"
           + "".join(f"; {n}" for n in notes))
-    record["click"] = {"states": len(states) - 1, "clicks": clicks, "notes": notes}
+    record.setdefault("click", {})[view] = {"states": len(states) - 1, "clicks": clicks, "notes": notes}
     ctx["states"] += len(states) - 1
     return issues
 
@@ -6643,6 +7007,8 @@ def design_preview_explore(ctx: dict, rel: str, board: dict) -> int:
 def design_preview(args: argparse.Namespace) -> int:
     """Render each board of a job's canvas locally and print where the screenshots are."""
     started = time.monotonic()
+    if args.phone_click:
+        args.click = True
     root = design_root()
     scan = design_scan(root, args.job)
     design_require_manifest(scan, root, "design-preview")
@@ -6714,6 +7080,7 @@ def design_preview(args: argparse.Namespace) -> int:
     print(f"runtime=real path={runtime}")
     misses: list = []
     report = {"schema": 1, "job": args.job, "runtime": str(runtime), "click": bool(args.click), "phone": bool(args.phone),
+              "phone_click": bool(args.phone_click),
               "boards": {}, "links": [], "issues": [], "totals": {}}
     profile = tempfile.mkdtemp(prefix="design-preview-profile-")
     try:
@@ -6755,17 +7122,22 @@ def design_preview(args: argparse.Namespace) -> int:
                 else:
                     shots += 1
                     issues += found
-                if view == "frame" and found >= 0 and args.click and board.get("is_interactive") is True:
-                    try:
+                if found < 0 or not args.click:
+                    continue
+                phone_walk = view == "phone" and args.phone_click and board.get("expand") == "fill"
+                if board.get("is_interactive") is True and (view == "frame" or phone_walk):
+                    try:  # --click: the frame view always; --phone-click: a PAGE's phone view too
                         script = page.call("Page.addScriptToEvaluateOnNewDocument", {"source": DESIGN_PREVIEW_TIMERS_JS})
                         try:
-                            issues += design_preview_explore(ctx, rel, board)
-                        finally:  # the phone render and the next board load without the timer watch
+                            issues += design_preview_explore(ctx, rel, board, view)
+                        finally:  # the next render loads without the timer watch
                             page.call("Page.removeScriptToEvaluateOnNewDocument", {"identifier": script["identifier"]})
                     except (RuntimeError, OSError, ValueError, KeyError, TypeError) as exc:
-                        print(f"issue board={rel} view=frame check=click: the click-through stopped: {exc}")
-                        report["boards"][rel].setdefault("click", {})["stopped"] = str(exc)
+                        print(f"issue board={rel} view={view} check=click: the click-through stopped: {exc}")
+                        report["boards"][rel].setdefault("click", {}).setdefault(view, {})["stopped"] = str(exc)
                         issues += 1
+                elif view == "frame" and board.get("expand") == "fill":  # a PAGE nobody clicks through still gets the hover pass
+                    issues += design_preview_hover(ctx, rel, view, 0, set())
     finally:
         page.close()
         server.shutdown()
@@ -7191,7 +7563,7 @@ def main(argv=None) -> int:
     p.set_defaults(func=design_open)
 
     p = sub.add_parser("design-check", help=f"Check {DESIGN_ROOT_REL}/ against the design contract -- well-formed design.json, job.json and round.json (a critique level, when present, is off, critic or critic+judge), at most one open round per job, and each job's canvas tree (canvas.json keys, boards listed and present, Main.dc.html, path rules, the ./support.js line, board titles numbered 01..N, references inside project/), no stray HTML; warnings exit 0, problems exit 1",
-                       description=f"Read-only. With a job id, only design.json and that job. Board titles start \"NN · \" with NN forming 01..N as a set (the layout is free). A canvas pinning another system version than design.json's is a warning, and so is an open job past {DESIGN_JOB_PAGES_MAX} Pages (boards with expand: fill) or {DESIGN_JOB_BOARDS_MAX} boards (one job is one surface, sized for one review). A co-work slice may hold several jobs. The OK line lists every open round. {DESIGN_LEGACY_DIR}/ and {DESIGN_SCHEMA1_DIR}/ are legacy records and never read.")
+                       description=f"Read-only. With a job id, only design.json and that job. Board titles start \"NN · \" with NN forming 01..N as a set (the layout is free). A canvas pinning another system version than design.json's is a warning, and so is an open job past {DESIGN_JOB_PAGES_MAX} Pages (boards with expand: fill) or {DESIGN_JOB_BOARDS_MAX} boards (one job is one surface, sized for one review; a board another board mounts with <dc-import name=...>, a flow board's screen or a gap component's one-instance board, is not counted). Board lint, also warnings, for an open job or a job named by id: check=leaves-canvas (an href to an https URL other than Google Fonts CSS: the link leaves the prototype) and check=same-target-list (a link with a literal .dc.html target inside a <sc-for>: every row opens the same board). A co-work slice may hold several jobs. The OK line lists every open round. {DESIGN_LEGACY_DIR}/ and {DESIGN_SCHEMA1_DIR}/ are legacy records and never read.")
     p.add_argument("job", nargs="?", default=None, help="a job id, e.g. 01-signin (default: every job)")
     p.set_defaults(func=design_check)
 
@@ -7217,16 +7589,18 @@ def main(argv=None) -> int:
                                    "dead-link: an <a href> to a .dc.html that is no canvas.json board, to another relative file not in the tree, to an #id with no element, or a bare # placeholder; absolute URLs (https:, mailto:) are listed as external, never fetched. "
                                    "image: an <img> that loaded with naturalWidth 0 (background images are not checked). "
                                    "name: a button or link with no accessible name (text, aria-label, aria-labelledby, title or an inner img alt), a form field with no label (label for=, a wrapping label, aria-label, aria-labelledby; a placeholder is not one). "
-                                   "Identical findings fold into one line ('+N more like it'); the phone view and the states repeat none the frame view named. The render's own issues are check=load, settle, too-tall, frame-clip, overflow, unmounted, runtime-error, script-error, not-found, screenshot, size and browser. "
-                                   f"--click: link lines and check=unreachable (a PAGE board, expand: fill, that no chain of links from Main.dc.html reaches; a Components board is not expected to be linked); on each is_interactive board, real mouse clicks (Input.dispatchMouseEvent) at each visible, enabled, uncovered control's centre, breadth first from the settled initial state, never a link that leaves the board and never a field that needs typing or a native picker. A state is a new visible DOM (shown elements with their class, style and open/expanded/selected/current/disabled attributes, and shown text); a ticked box or a typed value is not a state, and text fields are never filled in. After a click the page settles, the short timers the click set are waited for (up to 3s: 'Saving...' is passed through to 'Saved') and its animations end. Each state's PNG is taken on its click path replayed from a fresh load. A click that throws is check=click-error, once per control. Frame view only; at most {DESIGN_PREVIEW_STATES} states, {DESIGN_PREVIEW_DEPTH} clicks deep, {DESIGN_PREVIEW_CLICKS} clicks and {DESIGN_PREVIEW_BOARD_SECONDS}s per board, each cap said on the board's note line. "
-                                   "preview.json: {schema, job, runtime, click, phone, boards: {<file>: {title, page, interactive, views: {frame|phone: {png, w, h, content, issues: [{check, message}], as_in_frame, measured}}, states: [{n, path, png, w, h, content, issues, measured}], click_errors, click: {states, clicks, notes}}}, links: [{from, to, external}], issues: [board-level {board, check, message}], totals: {pngs, failed, issues, states, seconds}}; measured holds every raw finding (contrast: el, size, weight, need, ratio, fg, bg; target: el, w, h; clipped; links; images; names) and the counts texts, targets, fields.")
+                                   "The canvas-only prototype chrome ([data-proto]: the state bar, the board-link strip) is exempt from target, layout-shift and hover-contrast, and is never sampled as a list. "
+                                   "Identical findings fold into one line ('+N more like it'); the phone view and the states repeat none the frame view named. The render's own issues are check=load, settle, too-tall, frame-clip, page-clip (a PAGE's state taller than its frame h, in the frame view: the render grows a PAGE, the canvas frame does not), overflow, unmounted, runtime-error, script-error, not-found, screenshot, size and browser. "
+                                   f"--click: link lines and check=unreachable (a PAGE board, expand: fill, that no chain of links from Main.dc.html reaches; a Components board is not expected to be linked); on each is_interactive board, real mouse clicks (Input.dispatchMouseEvent) at each visible, enabled, uncovered control's centre, breadth first from the settled initial state, never a link that leaves the board. A state is a new visible DOM (shown elements with their class, style and open/expanded/selected/current/disabled attributes, and shown text, plus whether every visible text field holds text); a ticked box or a typed value alone is not a state. The state bar's presets ([data-proto=\"state-bar\"] buttons) are tried first, once per page (a preset sets its page's complete state), and a state on a page not met before is explored ahead of the rest; the page on screen is the bar's visible [role=group] name, else the first h1. A list of {DESIGN_PREVIEW_LIST_SAMPLE}+ alike rows is sampled: its first, second and last row. The type pass types a realistic sample into each visible text field (email, phone, name, postcode, search from the listed text, ...) and fills a form of two or more empty fields whole in one step, each a step of the path; select, date and other native pickers are not explored. After a step the page settles, the short timers it set are waited for (up to 3s: 'Saving...' is passed through to 'Saved') and its animations end. Each state's PNG is taken on its path replayed from a fresh load. A click that throws is check=click-error, once per control. check=layout-shift: a step that stays on the same page and resizes a control (outside [data-proto]) by more than {DESIGN_PREVIEW_SHIFT}px, or moves a header, nav or main by more than {DESIGN_PREVIEW_SHIFT}px; a step to another page is navigation, never a shift. check=same-target: two or more sampled rows of one list open the same state of another page. check=hover-contrast (PAGE boards, frame view, each state): the pointer rests on each button and link once per board (transitions off), and a text run of the hovered control that newly fails contrast is an issue (the a:hover color beating a system Button rendered as <a>). Frame view only, unless --phone-click; at most {DESIGN_PREVIEW_STATES} states, {DESIGN_PREVIEW_DEPTH} steps deep, {DESIGN_PREVIEW_CLICKS} steps and {DESIGN_PREVIEW_BOARD_SECONDS}s per board and view, each cap said on the board's note line. "
+                                   "preview.json: {schema, job, runtime, click, phone, phone_click, boards: {<file>: {title, page, interactive, views: {frame|phone: {png, w, h, content, issues: [{check, message}], as_in_frame, measured}}, states: [{n, view, page, path, png, w, h, content, issues, measured}], click_errors, interaction: [{view, state, check, message}], click: {frame|phone: {states, clicks, notes}}}}, links: [{from, to, external}], issues: [board-level {board, check, message} and every interaction finding {board, view, state, check, message}], totals: {pngs, failed, issues, states, seconds}}; measured holds every raw finding (contrast: el, size, weight, need, ratio, fg, bg; target: el, w, h; clipped; links; images; names) and the counts texts, targets, fields.")
     p.add_argument("job", help="the job id, e.g. 01-signin")
     p.add_argument("--runtime", required=True, help="the path of the Design canvas type's runtime (artifact-type/dc-runtime.js) the orchestrator saved for this job")
     p.add_argument("--out", default=None, help="the folder for the PNGs (default: a fresh temp folder); never inside the design root")
     p.add_argument("--browser", default=None, help=f"the Chrome/Chromium executable (default: ${DESIGN_PREVIEW_BROWSER_ENV}, then the known paths)")
     p.add_argument("--board", action="append", default=None, help="render only this board (its canvas.json key, e.g. Main.dc.html); repeatable")
     p.add_argument("--phone", action="store_true", help=f"also render every board {DESIGN_PREVIEW_PHONE[0]} px wide (a PAGE always is)")
-    p.add_argument("--click", action="store_true", help=f"also click through: print the link graph (link from= to= lines; a PAGE no link chain from Main.dc.html reaches is an issue) and, on each is_interactive board, click every control breadth first and screenshot each new state (state lines, <stem>.frame.state-NN.png), at most {DESIGN_PREVIEW_STATES} states, {DESIGN_PREVIEW_DEPTH} clicks deep, {DESIGN_PREVIEW_CLICKS} clicks and {DESIGN_PREVIEW_BOARD_SECONDS}s per board, in the frame view only")
+    p.add_argument("--phone-click", action="store_true", help=f"with --click (implied), also click through each interactive PAGE at {DESIGN_PREVIEW_PHONE[0]} px wide (<stem>.phone.state-NN.png); about doubles the time")
+    p.add_argument("--click", action="store_true", help=f"also click through: print the link graph (link from= to= lines; a PAGE no link chain from Main.dc.html reaches is an issue) and, on each is_interactive board, try the state-bar presets first, then every control (list rows sampled) and a sample typed into each text field, breadth first, and screenshot each new state (state lines, <stem>.frame.state-NN.png), checking layout-shift, same-target, page-clip and, on PAGE boards, hover-contrast; at most {DESIGN_PREVIEW_STATES} states, {DESIGN_PREVIEW_DEPTH} steps deep, {DESIGN_PREVIEW_CLICKS} steps and {DESIGN_PREVIEW_BOARD_SECONDS}s per board, in the frame view only (--phone-click: also at {DESIGN_PREVIEW_PHONE[0]} px)")
     p.set_defaults(func=design_preview)
 
     p = sub.add_parser("design-close", help="Close an open design round of a job: snapshot the job's canvas tree (ds/ left out) into the round folder, record canvas_version, then with --words mark the round and its job signed, or with --superseded mark the round superseded; idempotent",
