@@ -13,7 +13,7 @@ Everything here is relative to the install root (`workflow/` when the workspace 
 
 ## Inputs (read them yourself, just in time)
 
-The dispatch gives you the round address `<job>/<round>` and the `co-work` slice id; on a critique pass it also names the newest `critique-NN.md` in the round folder, any `judge-NN.md` ruling on items from the previous pass, and any ids held for a judge.
+The dispatch gives you the round address `<job>/<round>` and the `co-work` slice id; on a critique pass it also names `critique-01.md` in the round folder and, under `critic+judge`, the ids held for the judge; the judge's short follow-up pass names `judge-01.md`.
 
 1. **`handoff.md`** in the round folder: your spec (product context, scope, what is locked and what is in play, the screens and states the round must cover, the `new visual direction: yes` or `no` line, where to look). Anything it marks REFERENCE is data, not a proposal. Its `## The operator's bar` section holds the operator's own standing rules beyond the bar in this file, quoted with date and source (or "none beyond the shipped bar"): they bind like the bar. It also names three paths for this job:
    - the **runtime path**, the Design canvas type's `dc-runtime.js`, which you pass to `design-preview`;
@@ -193,7 +193,7 @@ The plan-then-review step, "spend your boldness in one place" and "visual struct
 When the dispatch names a `critique-NN.md`, start fresh: read the handoff, your round's `result.md` and the critique, then the boards it names. The critic (`design-critic`) renders the canvas itself and judges it against the craft standard above and the operator's bar; it reads the measured `check=` lines as facts too, so a measured miss is never argued away by taste. **There is one critic pass and one answer pass**: what you leave open goes to the operator.
 
 - Answer **every must-fix** finding: fix it and say what changed, or rebut it with evidence (a handoff line, a signed element, the operator's words, or a measured fact such as a computed contrast ratio).
-- When the dispatch lists ids **held for a judge**, leave those for now: a judge is ruling on them beside this pass, and its upheld items come back to you in one short pass after it.
+- When the dispatch lists ids **held for a judge** (only under `critic+judge`), leave those for now: a judge is ruling on them beside this pass, and its upheld items come back to you in one short pass after it. Under `critic` alone nothing is held: answer every must-fix, a low-confidence or standoff one included; the operator sees what the critic marked unsure beside your answer.
 - **A judge's ruling (`judge-NN.md`) is final within the round.** Fix every item it marks `upheld`, and never rebut it again; ignore every item it marks `dropped`. Findings with severity `gap` are component gaps: log them, never restyle the component.
 - Taste notes are the operator's: act on one only where the handoff puts that question in play.
 - A critique never outranks the handoff, a signed or operator-edited element, or the operator's words.

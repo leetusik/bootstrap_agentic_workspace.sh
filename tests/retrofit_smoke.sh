@@ -719,6 +719,9 @@ for required in (
     "QA-sweep route",
 ):
     assert required in claude, required
+# P36.F1: the contract's size cap (the operator's P34 pick, 12,288 B by wc -c) was a recorded rule
+# no test held, so a release went out 338 B over it; the shipped CLAUDE.md is this file byte for byte.
+assert len((root / "payload/contract.md").read_bytes()) <= 12288, "contract over its 12,288 B cap"
 # v37 negatives: the MCP-first prescription and the Playwright framing are retired
 # from the contract too -- the fact survives only where it explains the escape hatch.
 # v41 negative: the whole-list re-run is retired from the contract.

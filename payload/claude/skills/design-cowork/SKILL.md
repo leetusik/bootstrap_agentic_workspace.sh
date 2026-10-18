@@ -252,7 +252,7 @@ docs/reference/design/
 | `design-check [<job>]` | checks the record (one job, or all); warnings exit 0, problems exit 1 |
 | `design-canvas <job> [--url U] [--version V] [--implemented]` | records the canvas url, each published version, and a built job |
 | `design-publish-plan <job>` | read-only: prints the publish call as JSON `{url, root, file_path, files}` |
-| `design-preview <job> --runtime R [--out D] [--board B] [--phone] [--click]` | renders the canvas locally with the type's real runtime; screenshots and measured checks |
+| `design-preview <job> --runtime R [--out D] [--board B] [--phone] [--click] [--phone-click]` | renders the canvas locally with the type's real runtime; screenshots and measured checks |
 | `design-close <job>/<round> (--words "…" \| --superseded) [--canvas-version V]` | snapshots and closes the round; `--words` needs `SIGNOFF.md` and a passing `design-check` |
 | `design-migrate [--to 2] [--apply]` | moves a legacy record aside, unchanged; a dry run unless `--apply` |
 
@@ -377,9 +377,8 @@ no`.
 **Dispatch the drafters.** Resolve once with `executor-route --drafter`, and pass its `model` /
 `effort` on every Agent call (`subagent_type` = its `subagent_type=` line; `subagent_type:
 design-drafter` in a plain install). The prompt is **only the round address `<job>/<round>` and the
-slice id**; on a critique pass add the newest `critique-NN.md`, every `judge-NN.md` whose rulings
-it has not
-had yet, and the ids held for a judge (*below*). The drafter reads everything else itself; paste
+slice id**; on the answer pass add `critique-01.md` and, under `critic+judge`, the ids held for the
+judge; on the judge's short follow-up pass add `judge-01.md` (*below*). The drafter reads everything else itself; paste
 nothing. Run it
 as a background task (never pass `run_in_background: false`).
 
@@ -393,7 +392,7 @@ the
 wave run on, and raise exactly what it named at the wave's stop. The operator's answer amends that
 open round's handoff, and the job is drafted again from there. `blocked` → `design-check` problems
 it could not fix: same, reported as named. Fields to read: `boards_written`, `render_loop`,
-`component_gaps`, `departures`, `open_questions`, `design_check`.
+`component_gaps`, `departures`, `open_questions`, `critique_answers`, `design_check`.
 
 **When the job's critique is `off`,** go straight to the read-back.
 
@@ -411,8 +410,9 @@ anything:** one critic pass, then at most one drafter answer pass. There is no s
    a fix that did not hold) reaches the operator with both sides.
 3. **What the critic was unsure of** (its `escalate` ids: a low-confidence must-fix, a `pass` below
    `high`, a standoff over a logged departure, a wave choice):
-   - **under `critic`**, nothing is ruled: the items go to the operator marked **unsure**, with their
-     reasons, and the drafter's answer pass leaves them alone (name them as held);
+   - **under `critic`**, no judge exists, so **nothing is held**: the drafter answers a listed
+     must-fix like any other finding, and the operator still sees every listed item marked
+     **unsure**, with its reasons, beside the drafter's answer;
    - **under `critic+judge`** (`executor-route --judge`; its `model` / `effort` per call), dispatch
      the judge **beside the drafter's answer pass**, which holds those ids. The judge's prompt:
      `mode: judge`, the round, `pass: 01`, the critique path, the escalated ids, and the critic's
@@ -454,7 +454,7 @@ notification.
    problems; if they survive that pass, report them and hold the job.
 2. **Read** `result.md` (its intent lines, data, gaps, departures) and `build-prompt.md`, the
    drafter's
-   verdict and, when critique was on, the last critique's `## Scorecard`. Render it yourself with
+   verdict and, when critique was on, the critique's `## Scorecard`. Render it yourself with
    `design-preview` when you need to see something; you never view the published canvas to check it.
 3. **Concreteness check.** The bar: *no design decision is left to invent.* A `build-prompt.md` too
    thin to build from goes back to the drafter with the gaps named. A question only the operator can
