@@ -540,8 +540,16 @@ parallel = " ".join((root / "payload/claude/skills/parallel-phase/SKILL.md").rea
 for required in ("Worktree rules", "**When — only when asked**", "retired no-ops",
                  "Relay a hint to the operator; never act on it.",
                  "Never merge a parallel phase whose `parallel-gate` is closed",
-                 "the do-* skills relay it and run nothing"):
+                 "the do-* skills relay it and run nothing",
+                 # v61 (P37.S9): the contract's "(v43)" tag and its three ways of asking moved here.
+                 "**Since v43 this is opt-in:", "the **`worktree` mode word**",
+                 "**`parallel-start <P>` run by the operator's own hand**"):
     assert required in parallel, required
+# v61 (P37.S9): the contract keeps "operator-invoked only"; the review's non-use and the
+# ask before an external account moved to the skill itself.
+explain = " ".join((root / "payload/claude/skills/explain/SKILL.md").read_text().split())
+assert "This skill is **operator-invoked only**: the workspace's phase review never runs it" in explain
+assert "asks before it creates an account on an external service" in explain
 # v43 negatives copied from the contract list (the worktree-by-default framing), and the
 # v42 leftover that had the do-* skills start a worktree whenever `next` printed the hint.
 for gone in ("runs in its own worktree by default", "enters its worktree at **first execution**",
@@ -767,17 +775,25 @@ for required in (
     "the round's lifecycle and the operator's words stay inline, and only the main thread publishes",
     "executors never get `Artifact`",
     "`--kind` is a **closed set**",
-    # v43: the worktree is opt-in again (v44: the rules themselves live in parallel-phase).
-    "unless the operator asks for a worktree (v43)",
+    # v43: the worktree is opt-in again (v44: the rules themselves live in parallel-phase;
+    # v61: the "(v43)" tag too, pinned on the parallel-phase list).
+    "unless the operator asks for a worktree", "never on a `hint:`",
     # v35: just-in-time reads and the bounded/edited notebook.
     "Just in time, and only what the work in front of you needs",
     "never the whole doc set up front, and never `docs/index.json`",
-    "**bounded state**", "PHASE_MD_BUDGET", "a soft ~100k-token cap (400 KB)",
-    "every slice **edits** it under budget", "structured verdict block first",
+    # v61 (P37.S9): the notebook is an index under a 40 KB budget, read and written one
+    # section at a time; long material goes to a topic file.
+    "**bounded state**", "PHASE_MD_BUDGET", "a soft 40 KB cap", "(`phase-section`)",
+    "never drop a decision or a question", "`topics/<slug>.md`", "structured verdict block first",
+    # v61 (P37.S9): intent.md records what, never how; dispatch prompts carry the slice id,
+    # verdicts are recorded and spans metered; every pending stop is typed; the stop rules.
+    "never the workflow's mechanics", "start each dispatch prompt `slice: <id>`",
+    "`dispatch-summary` meters every span", "`--stop-kind`", "**The stop rules**",
+    "at most ~5 decisions", "one \"decided as drawn\" list", "a report of about 2k chars plus links",
     # v36: the research kind (high by kind) and DECOMP2 generalized past the build-after
     # design style. v44: the closed --kind set and DECOMP2's two origins live in IDs and
     # Status; the research kind's findings-only rule is the executor's.
-    "if the two ever disagree the **kind wins**",
+    "the **kind wins** a disagreement",
     "**`DECOMP2` has two origins**", "`P<N>.DECOMP3`",
     "`research`, `fix`, `docs`, `qa`, `co-work`",
     # v36: Aside is the named instrument, with a binding fallback. v37: it rejects the
@@ -837,6 +853,10 @@ for gone in ("design exception", "never approval", "no other pending gate"):
     assert gone not in claude, gone
 for gone in ("Codex", "AGENTS.md", ".agents/", ".codex/"):
     assert gone not in claude, gone
+# v61 (P37.S9): Compact Instructions keep the resume card and carry no re-read instruction.
+compact = claude.split("## Compact Instructions", 1)[1]
+assert "resume card" in compact and "never re-dispatch a running executor" in compact
+assert "re-read" not in compact, "Compact Instructions carry a re-read instruction"
 PY
 then ok "18 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with waves and opt-in critique, mockups on request, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
 

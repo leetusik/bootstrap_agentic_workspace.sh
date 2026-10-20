@@ -47,7 +47,7 @@ Turn an operator request for new work into one or more phases — or a deferred 
    2. Fill `works/phases/active/P<N>/intent.md`:
       - leave **Origin** as `operator`;
       - paste the operator's request **word-for-word** under *Original Input (verbatim)* — do not fix grammar or wording;
-      - write the confirmed, refined wording under *Confirmed Intent (refined + clarified)*;
+      - write the confirmed, refined wording under *Confirmed Intent (refined + clarified)*: what the operator wants (objective, scope, constraints, in their terms), **never workflow mechanics** (which tools, hooks or design loop run). The skills own those and can retire them;
       - record any clarifying Q/A under *Clarifications Resolved*;
       - **for a visual-design phase only**, append a `## Design Style` section naming the confirmed
         style (`build-after` / `design-only` / `paired`) and the one-line reason, then a second line
