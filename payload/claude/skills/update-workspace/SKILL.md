@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 Update the CURRENT repo's agentic-workspace machinery to the latest upstream cornerstone, preserving your own work. Explicit-invocation only. Run this when the cornerstone has changed since you adopted or last synced and you want this repo to match the current version. (For first-time adoption use `/retrofit` instead.)
 
-What it changes: it OVERWRITES machinery (`scripts/workflow.py`, the `.claude/agents/` subagents, every skill under `.claude/skills/`, `works/templates/*`), additively MERGES `.claude/settings.json`, and refreshes the `CLAUDE.md` contract. It PRESERVES everything under `works/` except templates (your state, phases, slices, deferred jobs) and all of `docs/` (your versioned docs). It never commits.
+What it changes: it OVERWRITES machinery (`scripts/workflow.py`, the `.claude/agents/` subagents, every skill under `.claude/skills/`, `works/templates/*`), additively MERGES `.claude/settings.json` (removing only hooks the workspace itself retired, such as v60's `compact-gate`, and moving an `autoCompactWindow` still at a value it shipped; each listed on a `removed:` / `changed:` line), and refreshes the `CLAUDE.md` contract. It PRESERVES everything under `works/` except templates (your state, phases, slices, deferred jobs) and all of `docs/` (your versioned docs). It never commits.
 
 **Nested personal install.** If `workflow/.agentic-nested.json` exists under the current directory, this is a private (nested) install, the default layout since v50: the engine and state live in the nested git repo `workflow/`, and the skills and agents sit untracked in the host's `.claude/`. Run this skill from the host root (never from inside `workflow/`). Every step below applies, and the steps marked **(nested)** differ. Instead of merging `.claude/settings.json` and refreshing `CLAUDE.md`, a nested update merges `.claude/settings.local.json`, refreshes `workflow/CLAUDE.workspace.md` and the managed block in `CLAUDE.local.md`, and never touches a tracked file. **The installer detects the layout itself**, so steps 5 and 7 run the same plain `--update` command for a nested and an at-root install, with no `--nested` or `--at-root`; it refuses, writing nothing, when it finds both layouts at once or when a flag contradicts the one it found. (A downstream still carrying the v49 text of this skill can keep running `--update --nested`: it matches a nested install and works.)
 
@@ -48,7 +48,7 @@ Preview the diff (this is the "check what is different" step):
 
    **(nested)** The same command, run from the host root, detects the nested install (its banner says `(nested, detected)`); it also lists the untracked host files it would change and the clash renames it keeps.
 
-   Show the operator the change-list: machinery files that would be updated (with +added/-removed counts) or added, settings merged, how many files are preserved and unchanged, and any stale workspace skills upstream has dropped.
+   Show the operator the change-list: machinery files that would be updated (with +added/-removed counts) or added, settings merged (and any `removed:` / `changed:` settings lines), how many files are preserved and unchanged, and any stale workspace skills upstream has dropped.
 
 6. STOP and let the operator review and approve. Do not apply without approval.
 

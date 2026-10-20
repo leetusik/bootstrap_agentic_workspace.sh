@@ -210,6 +210,17 @@ DOC_TYPES = {"product", "experience", "architecture", "frontend", "backend", "da
 DOC_SECTION_WARN_BYTES = 10 * 1024
 PHASE_STATUSES = {"planned", "in_progress", "in_review", "pending", "blocked", "done"}
 SLICE_STATUSES = {"todo", "ready", "in_progress", "in_review", "changes_requested", "pending", "blocked", "done"}
+# The typed pending record (v61): every operator stop says what kind it is and what the operator's words on
+# return will do. Stored on the slice as `pending: {kind, on_words, since}` while it is `pending`, and
+# cleared whenever it leaves `pending`. A closed set; `other` is the escape hatch.
+SLICE_STOP_KINDS = {
+    "wave": "a design wave stop (the jobs are published; the operator reviews them)",
+    "mockup": "the mockup gate (the operator walks the requested mockup)",
+    "decision": "a question only the operator answers (DECOMP's design style, a needs_operator)",
+    "operator-action": "the operator must run or provide something",
+    "limit": "a usage limit with no reset time",
+    "other": "anything else",
+}
 DEFERRED_STATUSES = {"deferred", "ready", "promoted", "done", "dropped"}
 REVIEW_VERDICTS = {"pass", "changes_requested", "blocked"}
 # Closed set of slice kinds (workspace v34). `kind` routes real behavior -- `co-work` in
@@ -2770,6 +2781,19 @@ def validate() -> int:
                 warnings.append(f"slice {s['id']} has unknown kind {s.get('kind')!r}; expected one of {sorted(SLICE_KINDS)} -- edit slice.json to one of them")
             if s["status"] == "ready" and not (ROOT / s["path"] / "plan.md").exists():
                 errors.append(f"slice {s['id']} is ready but has no plan.md; ready asserts an operator-approved plan exists")
+            if "pending" in s:  # the typed pending record (v61): {kind, on_words, since}, only while pending
+                record = s.get("pending")
+                if s["status"] != "pending":
+                    errors.append(f"slice {s['id']} is {s['status']} but carries a pending record; set-slice-status clears it when a slice leaves pending -- remove the key")
+                elif not isinstance(record, dict) or set(record) != {"kind", "on_words", "since"}:
+                    errors.append(f"slice {s['id']} has a malformed pending record {record!r}; expected {{kind, on_words, since}} (set-slice-status {s['id']} pending --stop-kind ... --on-words ...)")
+                else:
+                    if record.get("kind") not in SLICE_STOP_KINDS:
+                        errors.append(f"slice {s['id']} has unknown pending kind {record.get('kind')!r}; expected one of {list(SLICE_STOP_KINDS)}")
+                    if not isinstance(record.get("on_words"), str) or not record["on_words"].strip():
+                        errors.append(f"slice {s['id']}'s pending record has no on_words (what the operator's words will do)")
+                    if not isinstance(record.get("since"), str) or not record["since"].strip():
+                        errors.append(f"slice {s['id']}'s pending record has no since timestamp")
             for dep in s.get("depends_on", []):
                 if dep not in all_slice_ids:
                     errors.append(f"missing dependency for {s['id']}: {dep}")
@@ -3078,10 +3102,16 @@ def new_slice(args: argparse.Namespace) -> None:
     print(f"created slice {args.slice}: {shown(sdir)}")
 
 
-def _set_slice_status(sdir: Path, status: str) -> str:
+def _set_slice_status(sdir: Path, status: str, pending=None) -> str:
+    """Write the status; `pending` (a {kind, on_words, since} record) is stored only with status `pending`.
+    Leaving `pending` clears the record; a bare `pending` keeps one only when the slice was already pending."""
     data = read_json(sdir / "slice.json")
     old = data.get("status")
     data["status"] = status
+    if status == "pending" and pending is not None:
+        data["pending"] = pending
+    elif status != "pending" or old != "pending":
+        data.pop("pending", None)
     if status == "in_progress" and not data.get("started_at"):
         data["started_at"] = now_iso()
     if status == "done":
@@ -3090,13 +3120,33 @@ def _set_slice_status(sdir: Path, status: str) -> str:
     return old
 
 
-def set_slice_status(slice_id: str, status: str) -> None:
+def set_slice_status(slice_id: str, status: str, pending=None) -> None:
     if status not in SLICE_STATUSES:
         raise SystemExit(f"invalid slice status: {status}")
     sdir = require_slice(slice_id)
-    old = _set_slice_status(sdir, status)
-    append_event("slice_status_changed", slice=slice_id, old_status=old, new_status=status)
+    old = _set_slice_status(sdir, status, pending)
+    extra = {"stop_kind": pending["kind"]} if pending else {}
+    append_event("slice_status_changed", slice=slice_id, old_status=old, new_status=status, **extra)
     rebuild_index_and_state()
+
+
+def cmd_set_slice_status(args: argparse.Namespace) -> None:
+    """set-slice-status: a `pending` stop is typed with --stop-kind and --on-words (both, and only with
+    `pending`); a bare `pending` still works, with one warning line."""
+    stop_kind, on_words = getattr(args, "stop_kind", None), getattr(args, "on_words", None)
+    on_words = _one_line(on_words) if on_words is not None else None
+    pending = None
+    if args.status != "pending":
+        if stop_kind or on_words is not None:
+            raise SystemExit(f"set-slice-status: --stop-kind/--on-words type a pending stop; refused with status {args.status!r}")
+    elif stop_kind or on_words is not None:
+        if not stop_kind or not on_words:
+            raise SystemExit("set-slice-status: a typed pending stop needs both --stop-kind <kind> and --on-words \"<what the operator's words will do>\"")
+        pending = {"kind": stop_kind, "on_words": on_words, "since": now_iso()}
+    set_slice_status(args.slice, args.status, pending)
+    print(f"slice {args.slice}: {args.status}" + (f" (stop_kind={stop_kind})" if pending else ""))
+    if args.status == "pending" and pending is None:
+        print(f"warning: untyped pending stop -- add --stop-kind <{'|'.join(SLICE_STOP_KINDS)}> --on-words \"<what the operator's words will do>\"")
 
 
 def start_slice(args: argparse.Namespace) -> None:
@@ -4862,6 +4912,9 @@ def cmd_nested_convention(args: argparse.Namespace) -> None:
 
 def cmd_next(args: argparse.Namespace) -> None:
     rebuild_index_and_state()
+    if getattr(args, "card", False):  # the resume card alone: what compact-resume prints after a compaction
+        print(resume_card())
+        return
     state = read_json(WORKS / "state.json")
     # Nested install: name the host, and hold the first product commit until the operator has
     # confirmed the host's commit convention. Printed before every return below; silent at root.
@@ -4900,6 +4953,16 @@ def cmd_next(args: argparse.Namespace) -> None:
         print(f"current_phase={state.get('current_phase')}")
         print(f"waiting_on_operator={waiting}")
         print(f"WAITING ON OPERATOR: {kind} {waiting} is pending [~] -- operator co-work needed (validation or an operator-run action).")
+        if kind == "slice":
+            try:
+                record = read_json(require_slice(waiting) / "slice.json").get("pending")
+            except (OSError, ValueError, SystemExit):
+                record = None
+            if isinstance(record, dict):
+                print(f"stop_kind={record.get('kind')}")
+                print(f"on_words={_one_line(record.get('on_words') or '')}")
+            else:
+                print("stop_kind=untyped (set it with --stop-kind/--on-words)")
         print("Do not start, finish, or advance past it. Report what you need, then wait for the operator.")
         if gate:
             print(f"acceptance_gate=open (requested_at={gate.get('requested_at')}) -- the operator must walk the running product before this phase's review can pass.")
@@ -4927,33 +4990,14 @@ def cmd_next(args: argparse.Namespace) -> None:
         print(hint)
 
 
-# Boundary-gated compaction (P34, v55). Two hook commands: `compact-gate` (the PreCompact hook, matcher
-# `auto`) vetoes an auto-compaction while a slice is open or the tree is dirty, so compaction lands at a
-# slice boundary; `compact-resume` (the SessionStart hook, matcher `compact`) re-injects the pointer and a
-# resume line after one. The gate FAILS OPEN: every path exits 0, a block is only ever the stdout JSON
-# `{"decision": "block", ...}` (exit 2 would also block, so it is never used), anything unexpected allows,
-# and two fail-safes bound the veto -- the fill ceiling (the transcript's last usage) and the cap on
-# consecutive blocks per session. It writes nothing in the tree (a counter there would itself be dirt).
-COMPACT_CEILING_ENV = "AGENTIC_COMPACT_CEILING"
-COMPACT_CAP_ENV = "AGENTIC_COMPACT_BLOCK_CAP"
-COMPACT_CEILING_1M = 850_000   # 85% of a 1M window
-COMPACT_CEILING_200K = 170_000  # 85% of a 200k window
-COMPACT_BLOCK_CAP = 8
-# The 1M-window family: every Claude 5 model id as the transcript records it (`claude-opus-5-5`,
-# `claude-fable-5-1`, `claude-opus-5`, `claude-haiku-5-5`, `claude-opus-5-5[1m]`); anything else
-# (a Claude 4 id, `<synthetic>`) gets the 200k ceiling. A wrong guess only moves the ceiling: the cap
-# still releases the veto.
-COMPACT_1M_MODEL_RE = re.compile(r"^claude-[a-z]+-5(?:[-\[]|$)")
-# Generated files a read-only command (next, rebuild) may rewrite with no real change; they never make
-# the tree dirty for the gate. `docs/index.json` because `rebuild`/`rebuild-docs` restamp its
-# `last_rebuilt_at` on every run; a real doc change also writes docs/versions/ and docs/current/.
-COMPACT_DIRTY_EXCLUDE = ("works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "docs/index.json")
-COMPACT_TRANSCRIPT_TAIL = 4 * 1024 * 1024
-COMPACT_RESUME_LINE = (
-    "Context was compacted. Re-read the running skill's SKILL.md from disk (.claude/skills/<name>/SKILL.md -- only "
-    "its first 5,000 tokens were re-injected), the active slice folder (plan.md, result.md) and phase.md's `## Now`; "
-    "executors still running are listed by the harness."
-)
+# Pure compaction (P37, v61). Compaction is Claude Code's own: the workspace ships no PreCompact hook (the
+# v55-v60 `compact-gate` boundary veto is retired). After a compaction the SessionStart hook (matcher
+# `compact`) runs `compact-resume`, which prints the resume card -- computed here from state at print time,
+# never stored -- and `next --card` prints the same card on demand. The card names files, never their
+# contents, and is at most RESUME_CARD_MAX bytes.
+RESUME_CARD_MAX = 2048
+RESUME_CARD_SPANS = 4      # running spans listed by name; the rest are `+N more`
+RESUME_CARD_FIELD = 160    # a free-text field (a span description, the operator's words) is cut to this
 # The hooks follow the session (P35): `$CLAUDE_PROJECT_DIR` stays at the main checkout after EnterWorktree,
 # but the hook's stdin `cwd` follows the session into the worktree. So each hook first walks up from that
 # `cwd` to the engine that owns it -- `d/workflow/scripts/workflow.py` (nested) or `d/scripts/workflow.py`
@@ -5010,187 +5054,172 @@ def _hook_stdin_or_redirect(subcommand: str):
         return raw
 
 
-def _compact_env_int(name: str):
-    raw = os.environ.get(name, "").strip()
-    try:
-        value = int(raw)
-    except ValueError:
+def _card_cut(text, limit: int = RESUME_CARD_FIELD) -> str:
+    text = _one_line(text or "")
+    return text if len(text) <= limit else text[: limit - 3].rstrip() + "..."
+
+
+def _card_session_dir(transcript_path=None):
+    """The session folder whose `subagents/` the card reads: the hook's `transcript_path` minus `.jsonl`,
+    or, on demand, the newest session found by the meter's discovery. None when there is none."""
+    if isinstance(transcript_path, str) and transcript_path.strip():
+        path = Path(transcript_path).expanduser()
+        return path.with_suffix("") if path.suffix == ".jsonl" else None
+    dirs, _where = _meter_project_dirs(None)
+    newest, newest_t = None, None
+    for d in dirs:
+        for f in d.glob("*.jsonl"):
+            try:
+                t = f.stat().st_mtime
+            except OSError:
+                continue
+            if newest_t is None or t > newest_t:
+                newest, newest_t = f, t
+    return newest.with_suffix("") if newest is not None else None
+
+
+def _card_running_spans(session_dir):
+    """['agentType: description', ...] for the session's spans whose `.meta.json` lacks `finished: true`,
+    oldest first -- from those small files only, never a transcript read (that is `dispatch-summary`'s).
+    None when no session folder was found."""
+    if session_dir is None:
         return None
-    return value if value > 0 else None
-
-
-def _compact_last_usage(transcript_path):
-    """(fill, model) from the last main-thread assistant line in the transcript that carries a non-zero
-    `message.usage`, or (None, None) when the file or the usage cannot be read. Reads the file's tail
-    first (transcripts run to tens of MB) and the whole file only when the tail holds no such line."""
-    if not transcript_path or not isinstance(transcript_path, str):
-        return None, None
-    path = Path(transcript_path)
-    try:
-        size = path.stat().st_size
-        starts = [max(0, size - COMPACT_TRANSCRIPT_TAIL)] + ([0] if size > COMPACT_TRANSCRIPT_TAIL else [])
-        for start in starts:
-            with path.open("rb") as f:
-                f.seek(start)
-                lines = f.read().splitlines()
-            if start:
-                lines = lines[1:]  # the first line of a tail read is cut mid-way
-            for raw in reversed(lines):
-                try:
-                    entry = json.loads(raw)
-                except ValueError:
-                    continue
-                if not isinstance(entry, dict) or entry.get("type") != "assistant" or entry.get("isSidechain") is True:
-                    continue
-                message = entry.get("message")
-                usage = message.get("usage") if isinstance(message, dict) else None
-                if not isinstance(usage, dict):
-                    continue
-                fill = 0
-                for key in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"):
-                    value = usage.get(key)
-                    fill += value if isinstance(value, int) else 0
-                if fill <= 0:  # a synthetic or errored turn: no reading, keep looking
-                    continue
-                model = message.get("model")
-                return fill, (model if isinstance(model, str) else "")
-    except OSError:
-        return None, None
-    return None, None
-
-
-def _compact_counter_path(hook: dict) -> Path:
-    """The per-session block counter: never inside the tree (an untracked file there is dirt)."""
-    sid = re.sub(r"[^A-Za-z0-9_.-]", "_", str(hook.get("session_id") or "")) or "nosession"
-    base = hook.get("scratchpad_dir")
-    base = Path(base) if isinstance(base, str) and base.strip() and Path(base).is_dir() else Path(tempfile.gettempdir())
-    return base / f"agentic-compact-gate-{sid}.json"
-
-
-def _compact_read_blocks(path: Path) -> int:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8")).get("blocks")
-    except (OSError, ValueError, AttributeError):
-        return 0
-    return value if isinstance(value, int) and value > 0 else 0
-
-
-def _compact_dirty_count():
-    """How many files are uncommitted where the workspace lives, or None when there is no git to ask.
-    At root: this repo, minus the generated dashboards. Nested: the workspace repo the same way, plus the
-    host's product (everything but the nested folder)."""
-    checks = []
-    if _git_available(cwd=ROOT):
-        checks.append((ROOT, [".", *(f":(exclude){p}" for p in COMPACT_DIRTY_EXCLUDE)]))
-    if HOST_ROOT is not None and _git_available(cwd=HOST_ROOT):
-        checks.append((HOST_ROOT, _host_pathspec()))
-    if not checks:
-        return None
-    paths = set()
-    for cwd, spec in checks:
-        proc = subprocess.run(["git", "status", "--porcelain", "--untracked-files=all", "--", *spec],
-                              cwd=str(cwd), capture_output=True, text=True, timeout=10)
-        if proc.returncode != 0:
+    metas = []
+    for meta in (Path(session_dir) / "subagents").glob("*.meta.json"):
+        try:
+            data = json.loads(meta.read_text(encoding="utf-8"))
+            t = meta.stat().st_mtime
+        except (OSError, ValueError):
             continue
-        top = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=str(cwd), capture_output=True, text=True, timeout=10).stdout.strip()
-        paths.update(f"{top}/{line[3:]}" for line in proc.stdout.splitlines() if len(line) > 3)
-    return len(paths)
+        if isinstance(data, dict) and data.get("finished") is not True:
+            metas.append((t, f"{data.get('agentType') or '?'}: {data.get('description') or '-'}"))
+    return [name for _t, name in sorted(metas)]
 
 
-def cmd_compact_gate(args: argparse.Namespace) -> None:
-    """PreCompact hook: block an auto-compaction mid-slice, allow it at a clean slice boundary.
-    Decision order: (a) not `auto` -> allow; (a') fired inside a subagent (`agent_id`) -> allow; (b) fill >=
-    ceiling -> allow; (c) consecutive blocks >= cap -> allow; (d) current slice in_progress/in_review -> block,
-    dirty tree -> block, else allow. A block prints the JSON and counts (a block it cannot count allows
-    instead); an allow prints nothing and resets the count. Fails open: exit 0 always."""
-    trace = {"decision": "allow", "rule": "error", "slice": "-", "status": "-", "dirty": "-", "fill": "-", "ceiling": "-"}
-    cap, blocks, counter, reason, error = COMPACT_BLOCK_CAP, 0, None, None, None
-    raw = _hook_stdin_or_redirect("compact-gate")
+def _card_next_action(sid: str, sdata: dict, sdir: Path, spans) -> str:
+    """The slice's next action, derived from its status and which of plan.md / result.md exist."""
+    status, kind = sdata.get("status"), sdata.get("kind")
+    start = f"start-slice {sid}, then " if status in ("todo", "ready") else ""
+    if status == "blocked":
+        return "blocked: report the blocker (result.md) to the operator; nothing advances until it clears"
+    if (sdir / "result.md").is_file():
+        return f"read result.md's verdict head, then finish-slice {sid} --outcome \"<its summary>\", validate, commit"
+    if not (sdir / "plan.md").is_file():
+        return f"{start}plan it: write plan.md" + ("" if kind == "co-work" else f" and pin `executor-route {sid}` as its ## Dispatch")
+    if kind == "co-work":
+        return f"{start}continue the design-cowork loop inline from the round on disk; a running span below is its drafter, critic or mockup -- wait for it"
+    if spans:
+        return "an executor is running (see spans): wait for its notification, never re-dispatch"
+    if spans is None:
+        return (f"{start}dispatch from plan.md's ## Dispatch -- unless an executor dispatched before the compaction "
+                "is still running: then wait for its notification, never re-dispatch")
+    return f"{start}dispatch from plan.md's ## Dispatch (the prompt's first line: slice: {sid})"
+
+
+def resume_card(transcript_path=None) -> str:
+    """The resume card: the pointer, the next action (or the typed stop), the open gates, the running spans
+    and the slice's file paths -- computed from state now, read-only, at most RESUME_CARD_MAX bytes."""
+    phases = all_active_phases()
+    stream = current_stream(phases)
+    phase_id, sid, _next = resolve_current(stream_phases(phases, stream))
+    lines = [f"resume card (computed from state; files are named, not quoted; commands run as `{WORKFLOW_CMD} <command>`)"]
+    if stream:
+        lines.append(f"stream={stream}")
+    if not phase_id:
+        lines.append("pointer: no active phase")
+        lines.append("next action: create a phase (/create-phase) or promote deferred work")
+        return _card_fit(lines)
+    phase = next(p for p in phases if p["id"] == phase_id)
+    pdir = ACTIVE / phase_id
+    sdata = next((s for s in phase["slices"] if s.get("id") == sid), None) if sid else None
+    sdir = ACTIVE / phase_id / "slices" / sid if sid else None
+    pointer = f"pointer: phase {phase_id} {phase.get('status')}"
+    if sdata:
+        pointer += f"; slice {sid} {sdata.get('status')} ({sdata.get('kind') or '?'}/{sdata.get('risk') or '?'})"
+    lines.append(pointer)
+    try:
+        spans = _card_running_spans(_card_session_dir(transcript_path))
+    except Exception:  # noqa: BLE001 - spans are best-effort; the rest of the card still prints
+        spans = None
+    acceptance = phase_acceptance(phase)
+    gate_open = acceptance_gate_is_open(phase)
+    record = sdata.get("pending") if sdata and sdata.get("status") == "pending" else None
+    if gate_open:
+        lines.append(f"stop: phase {phase_id} acceptance gate open -- relay the walkthrough (`accept-gate {phase_id}` prints it); "
+                     f"the operator's words clear it with accept-gate {phase_id} --clear")
+    elif phase.get("status") == "pending":
+        lines.append(f"stop: phase {phase_id} pending -- report what you need; the operator's words clear it with set-phase-status {phase_id} in_progress")
+    elif phase.get("status") == "blocked":
+        lines.append(f"stop: phase {phase_id} blocked -- report the blocker to the operator")
+    elif sdata and sdata.get("status") == "pending":
+        if isinstance(record, dict):
+            lines.append(f"stop: {record.get('kind')} (since {record.get('since')}) -- the operator's words will: {_card_cut(record.get('on_words'))}")
+        else:
+            lines.append("stop: untyped pending -- say what you need and what the operator's words will do")
+        lines.append(f"next action: wait for the operator; their words clear it with set-slice-status {sid} in_progress")
+    elif sdata:
+        lines.append(f"next action: {_card_next_action(sid, sdata, sdir, spans)}")
+    else:
+        lines.append("next action: no open slice -- review or archive the phase")
+    gates = []
+    if acceptance is None:
+        gates.append("acceptance=legacy (no gate)")
+    else:
+        required = acceptance.get("required")
+        state = ("open" if gate_open else "cleared" if acceptance.get("cleared_at") else "not opened") if required is True else None
+        gates.append(f"acceptance={'required, ' + state if required is True else 'waived' if required is False else 'UNDECLARED'}")
+    execution = phase_execution(phase)
+    if execution:
+        gates.append(f"parallel={execution.get('branch')} (merge only past parallel-gate {phase_id})")
+    lines.append("gates: " + "; ".join(gates))
+    if spans is None:
+        lines.append("running spans: unknown (no session transcript found)")
+    elif not spans:
+        lines.append("running spans: none")
+    else:
+        shown_spans = [_card_cut(s, 80) for s in spans[:RESUME_CARD_SPANS]]
+        more = f" +{len(spans) - RESUME_CARD_SPANS} more" if len(spans) > RESUME_CARD_SPANS else ""
+        lines.append("running spans: " + "; ".join(shown_spans) + more)
+    if sdir is not None:
+        result = sdir / "result.md"
+        lines.append(f"plan: {shown(sdir / 'plan.md')}" + ("" if (sdir / "plan.md").is_file() else " (not yet)"))
+        lines.append(f"result: {shown(result) if result.is_file() else 'not yet'}")
+    lines.append(f"phase: {shown(pdir / 'phase.md')}")
+    lines.append(f"intent: {shown(pdir / 'intent.md')}")
+    return _card_fit(lines)
+
+
+def _card_fit(lines: list) -> str:
+    """Join the card and hold it to RESUME_CARD_MAX bytes (UTF-8): a card over the cap loses its tail."""
+    text = "\n".join(lines)
+    data = text.encode("utf-8")
+    if len(data) <= RESUME_CARD_MAX:
+        return text
+    return data[: RESUME_CARD_MAX - 4].decode("utf-8", "ignore").rstrip() + "\n..."
+
+
+def cmd_compact_resume(args: argparse.Namespace) -> None:
+    """SessionStart hook (source `compact`): print the resume card; on any error, the plain pointer. Exit 0."""
+    raw = _hook_stdin_or_redirect("compact-resume")
     if raw is None:  # the engine that owns the session's cwd answered
         return
+    print("compaction=done source=compact")
     try:
         try:
             hook = json.loads(raw or "null")
         except ValueError:
             hook = None
-        if not isinstance(hook, dict):
-            raise ValueError("stdin is not a hook JSON object")
-        cap = _compact_env_int(COMPACT_CAP_ENV) or COMPACT_BLOCK_CAP
-        counter = _compact_counter_path(hook)
-        blocks = _compact_read_blocks(counter)
-        if hook.get("trigger") != "auto":  # (a) a manual /compact is never blocked
-            trace["rule"] = "manual"
-        elif isinstance(hook.get("agent_id"), str) and hook["agent_id"].strip():
-            # (a') a subagent's own compaction (an executor, an Explore lookup): its slice is in_progress for
-            # its whole life, so the veto would only defer it to the cap -- the boundary is the main thread's.
-            # It leaves the main thread's block count alone (the subagent shares the session id).
-            trace["rule"], counter = "subagent", None
-        else:
-            fill, model = _compact_last_usage(hook.get("transcript_path"))  # (b)
-            ceiling = _compact_env_int(COMPACT_CEILING_ENV) or (COMPACT_CEILING_1M if model and COMPACT_1M_MODEL_RE.match(model) else COMPACT_CEILING_200K)
-            trace["fill"], trace["ceiling"] = ("-" if fill is None else fill), ceiling
-            if fill is not None and fill >= ceiling:
-                trace["rule"] = "ceiling"
-            elif blocks >= cap:  # (c)
-                trace["rule"] = "cap"
-            else:  # (d) the pointer `next` prints, read without next's rewrite of the dashboards
-                phases = all_active_phases()
-                _phase, current, _next = resolve_current(stream_phases(phases, current_stream(phases)))
-                status = None
-                if current:
-                    status = next((s.get("status") for p in phases for s in p["slices"] if s.get("id") == current), None)
-                    trace["slice"], trace["status"] = current, status or "-"
-                release = (f"block {blocks + 1}/{cap}; compaction is allowed at a clean slice boundary, "
-                           f"above {ceiling} tokens, or after {cap} blocks in a row")
-                if status in ("in_progress", "in_review"):
-                    trace["rule"], trace["decision"] = "slice_in_progress", "block"
-                    reason = f"slice {current} {status} -- compaction waits for the slice boundary ({release})"
-                else:
-                    dirty = _compact_dirty_count()
-                    trace["dirty"] = "-" if dirty is None else dirty
-                    if dirty:
-                        trace["rule"], trace["decision"] = "dirty", "block"
-                        reason = (f"dirty: {dirty} file{'s' if dirty != 1 else ''} uncommitted (your own uncommitted work counts too) "
-                                  f"-- compaction waits for a committed boundary ({release})")
-                    else:
-                        trace["rule"] = "boundary"
-    except Exception as exc:  # noqa: BLE001 - the gate fails open, always
-        trace.update(decision="allow", rule="error")
-        reason, error = None, f"{type(exc).__name__}: {exc}"
-    try:
-        if trace["decision"] == "block":
-            try:
-                counter.write_text(json.dumps({"blocks": blocks + 1, "updated_at": now_iso()}) + "\n", encoding="utf-8")
-                blocks += 1
-            except Exception as exc:  # noqa: BLE001 - a block the cap cannot count could repeat forever: allow
-                trace.update(decision="allow", rule="error")
-                error = f"block counter unwritable ({type(exc).__name__}: {exc})"
-        if trace["decision"] == "block":
-            print(json.dumps({"decision": "block", "reason": reason}))
-        elif counter is not None:  # every allow resets the count, bar a subagent's
-            blocks = 0
-            try:
-                counter.unlink()
-            except Exception:  # noqa: BLE001 - nothing to reset
-                pass
-        line = "compact-gate: " + " ".join(f"{k}={v}" for k, v in trace.items()) + f" blocks={blocks}/{cap}"
-        if error:
-            line += f" error={_one_line(error)}"
-        print(line, file=sys.stderr)
-    except Exception:  # noqa: BLE001 - never fail the request
-        pass
-
-
-def cmd_compact_resume(args: argparse.Namespace) -> None:
-    """SessionStart hook (source `compact`): print the pointer and the resume line as facts. Always exit 0."""
-    if _hook_stdin_or_redirect("compact-resume") is None:  # the engine that owns the session's cwd answered
+        transcript = hook.get("transcript_path") if isinstance(hook, dict) else None
+        print(resume_card(transcript if isinstance(transcript, str) and transcript.strip() else None))
         return
-    print("compaction=done source=compact")
+    except BaseException:  # noqa: BLE001 - SystemExit included: fall back to the plain pointer
+        pass
     try:
-        cmd_next(args)
-    except BaseException as exc:  # noqa: BLE001 - SystemExit included: the hook must never fail
+        cmd_next(argparse.Namespace(card=False))
+    except BaseException as exc:  # noqa: BLE001 - the hook must never fail
         print(f"pointer unavailable: {_one_line(str(exc)) or type(exc).__name__}")
-    print(COMPACT_RESUME_LINE)
+
+
 def cmd_deferred(args: argparse.Namespace) -> None:
     rebuild_index_and_state()
     groups = deferred_jobs()
@@ -8118,12 +8147,10 @@ def main(argv=None) -> int:
     p.set_defaults(func=cmd_dispatch_summary)
 
     p = sub.add_parser("next", help="Print the current phase/slice selection")
+    p.add_argument("--card", action="store_true", help="print the resume card instead: the pointer, the next action or the typed stop, the open gates, the running spans (from the newest session's subagents/*.meta.json) and the slice's file paths, computed from state, at most 2,048 bytes -- what compact-resume prints after a compaction")
     p.set_defaults(func=cmd_next)
 
-    p = sub.add_parser("compact-gate", help="The PreCompact hook (matcher auto): read the hook JSON on stdin and veto an auto-compaction while this checkout's current slice is in_progress or in_review or the tree is dirty, so compaction lands at a slice boundary; fails open -- a manual /compact, a fill at or above the ceiling (AGENTIC_COMPACT_CEILING), the cap of consecutive blocks (AGENTIC_COMPACT_BLOCK_CAP) and any error all allow, a block is only the stdout {\"decision\": \"block\"} JSON, and it always exits 0 (one trace line on stderr)")
-    p.set_defaults(func=cmd_compact_gate)
-
-    p = sub.add_parser("compact-resume", help="The SessionStart hook (matcher compact): print the next pointer and the resume line (re-read the running skill, the active slice folder and phase.md's ## Now) after a compaction; never fails, always exits 0")
+    p = sub.add_parser("compact-resume", help="The SessionStart hook (matcher compact): after a compaction, print compaction=done source=compact and the resume card (next --card; the running spans from the hook's transcript_path session), falling back to the plain pointer on any error; never fails, always exits 0")
     p.set_defaults(func=cmd_compact_resume)
 
     p = sub.add_parser("deferred", help="Rebuild and print deferred jobs dashboard summary")
@@ -8159,10 +8186,13 @@ def main(argv=None) -> int:
     p.add_argument("--outcome", help="one line recorded in slice.json and rendered in the phase's generated ## Slices table")
     p.set_defaults(func=finish_slice)
 
-    p = sub.add_parser("set-slice-status", help="Set any valid slice status")
+    p = sub.add_parser("set-slice-status", help="Set any valid slice status; a pending stop is typed with --stop-kind and --on-words (stored in slice.json as pending: {kind, on_words, since}, printed by next and the resume card, cleared when the slice leaves pending)")
     p.add_argument("slice")
     p.add_argument("status")
-    p.set_defaults(func=lambda args: (set_slice_status(args.slice, args.status), print(f"slice {args.slice}: {args.status}")))
+    p.add_argument("--stop-kind", dest="stop_kind", choices=SLICE_STOP_KINDS,
+                   help="pending only: what kind of stop this is -- " + "; ".join(f"{k} = {v}" for k, v in SLICE_STOP_KINDS.items()))
+    p.add_argument("--on-words", dest="on_words", help="pending only: what the operator's words on return will do (one line)")
+    p.set_defaults(func=cmd_set_slice_status)
 
     p = sub.add_parser("set-phase-status", help="Set any valid phase status")
     p.add_argument("phase")
@@ -8365,7 +8395,7 @@ def main(argv=None) -> int:
     p.set_defaults(func=rotate_backlog)
 
     args = parser.parse_args(argv)
-    if NESTED is not None and NESTED_PROBLEMS and args.cmd not in ("validate", "compact-gate", "compact-resume"):  # the hooks fail open
+    if NESTED is not None and NESTED_PROBLEMS and args.cmd not in ("validate", "compact-resume"):  # the hook fails open
         # Never fall back to at-root mode on a broken marker: refuse, and let validate list it all.
         raise SystemExit(f"{shown(ROOT / NESTED_MARKER)} is malformed, so this nested install cannot run {args.cmd}: "
                          f"{'; '.join(NESTED_PROBLEMS)} -- fix the file (run: {WORKFLOW_CMD} validate)")

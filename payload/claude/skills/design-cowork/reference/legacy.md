@@ -9,7 +9,7 @@ operator designing in Claude Design) and its viewer were retired in P36.
 
 **Legacy rule.** A phase whose `intent.md` still says `Design tool: claude-design` was created for the
 retired tool: it is not run on it, and it is never silently switched mid-round. At its **first design
-slice**, set the slice `pending` and ask the operator to re-confirm the phase on `drafter`; record
+slice**, set the slice `pending` (`--stop-kind decision`) and ask the operator to re-confirm the phase on `drafter`; record
 their
 answer by editing that line under `## Design Style` to `Design tool: drafter`. **An absent `Design
 tool:` line reads as `drafter`**, and so does an absent `## Design Style` section; `/create-phase` no

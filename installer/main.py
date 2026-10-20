@@ -314,20 +314,65 @@ def emit_policy_files(ci: bool = True) -> None:
 # ---- Retrofit (--into-existing) write policy --------------------------------
 # In retrofit mode the workspace is added non-destructively: an existing file is
 # never overwritten. A small, known set is additively, idempotently merged.
-def _merge_settings_dict(theirs: dict, ours: dict) -> dict:
-    """Pure additive merge of our settings payload into a parsed target. Returns a
-    new dict (`theirs` is not mutated); every key we do not own is untouched.
+# Settings we shipped and later retired or changed (v61). `--update` (and every other path through
+# _merge_settings_dict) removes exactly our retired hook handlers -- matched by command -- and moves a window
+# still at a value we shipped to today's; it reports both through SETTINGS_CHANGES.
+RETIRED_HOOK_COMMANDS = {"workflow.py compact-gate": "retired in v61"}  # substring of the handler's `command`
+SHIPPED_COMPACT_WINDOWS = {500000}  # what v57-v60 shipped; v56 shipped 300000, today's value
+SETTINGS_CHANGES = {"removed": [], "changed": []}
+
+
+def _merge_settings_dict(theirs: dict, ours: dict, label: str = None) -> dict:
+    """Merge of our settings payload into a parsed target. Returns a new dict (`theirs` is not
+    mutated); every key we do not own is untouched.
     - permissions.allow/deny: union, the adopter's entries first.
-    - hooks: for each event and matcher group in `ours`, append our handler to the
-      target's group with the same `matcher` (creating the event list / group when
-      absent) unless a handler with the same `command` already exists anywhere
-      under that event. Never removes, reorders or rewrites an adopter's entries.
-    - autoCompactWindow (v56; 500000 since v57): copied from `ours` only when the target has no such
-      key; a value the adopter chose is never overwritten.
+    - hooks: first, our retired handlers (RETIRED_HOOK_COMMANDS: a `command` containing
+      `workflow.py compact-gate`) are removed, and a group or event key they leave empty is
+      pruned -- nothing else is, an adopter's own handler on the same event included. Then, for
+      each event and matcher group in `ours`, append our handler to the target's group with the
+      same `matcher` (creating the event list / group when absent) unless a handler with the same
+      `command` already exists anywhere under that event. Never removes, reorders or rewrites an
+      adopter's entries.
+    - autoCompactWindow (v56; 300000 again since v61): copied from `ours` when the target has no
+      such key; a value equal to one we shipped (SHIPPED_COMPACT_WINDOWS: 500000, v57-v60) moves to
+      ours; any other value the adopter chose is kept.
+    With `label` (the file's shown path), each removal and change is recorded in SETTINGS_CHANGES.
     Idempotent. Raises ValueError on a malformed target shape (a non-object
     `permissions`/`hooks`, a non-list `allow`/`deny`/event/`hooks`, a non-object
     group) so callers can sidecar / refuse instead of clobbering."""
     merged = copy.deepcopy(theirs)
+    removed, changed = [], []
+    hooks_in = merged.get("hooks")
+    if isinstance(hooks_in, dict):
+        for event in list(hooks_in):
+            groups = hooks_in[event]
+            if not isinstance(groups, list):
+                continue  # a malformed shape is reported below, never repaired here
+            kept_groups = []
+            for g in groups:
+                inner = g.get("hooks") if isinstance(g, dict) else None
+                if not isinstance(inner, list):
+                    kept_groups.append(g)
+                    continue
+                keep = []
+                for h in inner:
+                    cmd = h.get("command") if isinstance(h, dict) else None
+                    retired = next((k for k in RETIRED_HOOK_COMMANDS if isinstance(cmd, str) and k in cmd), None)
+                    if retired:
+                        removed.append(f"hooks.{event} {retired.split()[-1]} ({RETIRED_HOOK_COMMANDS[retired]})")
+                    else:
+                        keep.append(h)
+                if len(keep) == len(inner):
+                    kept_groups.append(g)
+                elif keep:
+                    kept_groups.append(dict(g, hooks=keep))
+                # else: a group our removal emptied is pruned
+            if kept_groups:
+                hooks_in[event] = kept_groups
+            elif groups:  # an event key our removal emptied is pruned
+                del hooks_in[event]
+        if removed and not hooks_in:
+            del merged["hooks"]
     perms = merged.setdefault("permissions", {})
     if not isinstance(perms, dict):
         raise ValueError("`permissions` is not an object")
@@ -361,25 +406,41 @@ def _merge_settings_dict(theirs: dict, ours: dict) -> dict:
                         groups.append(target)
                     target.setdefault("hooks", []).append(copy.deepcopy(oh))
                     have.add(oh.get("command"))
-    if "autoCompactWindow" in ours and "autoCompactWindow" not in merged:
-        merged["autoCompactWindow"] = ours["autoCompactWindow"]
+    if "autoCompactWindow" in ours:
+        current = merged.get("autoCompactWindow")
+        if "autoCompactWindow" not in merged:
+            merged["autoCompactWindow"] = ours["autoCompactWindow"]
+        elif current in SHIPPED_COMPACT_WINDOWS and current != ours["autoCompactWindow"]:
+            merged["autoCompactWindow"] = ours["autoCompactWindow"]
+            changed.append(f"autoCompactWindow {current} -> {ours['autoCompactWindow']} "
+                           f"(the v61 default; set it back if you chose {current})")
+    if label:
+        for key, lines in (("removed", removed), ("changed", changed)):
+            for line in (f"{label} {x}" for x in lines):
+                if line not in SETTINGS_CHANGES[key]:  # one line per change, however many handlers it took
+                    SETTINGS_CHANGES[key].append(line)
     return merged
 
 
-def _merge_settings_json(text: str) -> None:
-    """Merge our settings payload (permissions union + hooks + autoCompactWindow when absent) into an existing
-    .claude/settings.json, preserving every key the target already has. Idempotent."""
+def _merge_settings_json(text: str, write: bool = True) -> None:
+    """Merge our settings payload (permissions union + hooks, our retired hooks removed + autoCompactWindow)
+    into an existing .claude/settings.json, preserving every key the target already has. Idempotent.
+    write=False (--update --dry-run) only records the removed/changed lines for the report."""
     p = ROOT / ".claude/settings.json"
     ours = json.loads(text)
     try:
         theirs = json.loads(p.read_text(encoding="utf-8"))
         if not isinstance(theirs, dict):
             raise ValueError("settings.json is not a JSON object")
-        merged = _merge_settings_dict(theirs, ours)
+        merged = _merge_settings_dict(theirs, ours, label=".claude/settings.json")
     except Exception:
+        if not write:
+            return
         # Never clobber an unparseable / malformed file — drop a sidecar instead.
         _atomic_write(ROOT / ".claude/settings.workspace.json", text)
         RETROFIT_SUMMARY["skipped"].append(".claude/settings.json (unparseable; wrote .claude/settings.workspace.json)")
+        return
+    if not write:
         return
     _atomic_write(p, json.dumps(merged, ensure_ascii=False, indent=2) + "\n")
     RETROFIT_SUMMARY["merged"].append(".claude/settings.json")
@@ -499,8 +560,7 @@ def _update_handle(path: str, text: str, executable: bool) -> None:
     if path == ".claude/settings.json":
         if (ROOT / path).exists():
             UPDATE_SUMMARY["merged"].append(path)
-            if not DRY_RUN:
-                _merge_settings_json(text)
+            _merge_settings_json(text, write=not DRY_RUN)
         else:
             _update_write(path, text, executable)
         return
@@ -1092,7 +1152,7 @@ def nested_plan() -> dict:
             theirs = json.loads(existing)
             if not isinstance(theirs, dict) or not isinstance(theirs.get("permissions", {}), dict):
                 raise ValueError("not a JSON object with an object `permissions`")
-            merged = _merge_settings_dict(theirs, json.loads(settings_ours))
+            merged = _merge_settings_dict(theirs, json.loads(settings_ours), label=".claude/settings.local.json")
         except (OSError, ValueError) as exc:
             _nested_refuse(f".claude/settings.local.json exists but cannot be merged ({exc}); fix or move it, then re-run (nothing written).")
         settings_text = existing if merged == theirs else json.dumps(merged, ensure_ascii=False, indent=2) + "\n"
@@ -1191,6 +1251,7 @@ def print_nested_banner(plan: dict) -> None:
             print(f"    ~ {label}")
         for label in HOST_SUMMARY["added"]:
             print(f"    + {label}")
+        print_settings_changes()
         if plan["verified_clean"]:
             print("  verified: the host's git status lists none of the workspace's files")
         else:
@@ -1204,6 +1265,7 @@ def print_nested_banner(plan: dict) -> None:
               f"{len(NESTED_AGENTS)} agents in .claude/agents/, .claude/settings.local.json, and CLAUDE.local.md importing the contract -- all untracked")
         if plan["verified_clean"]:
             print(f"  hidden by {plan['exclude_label']}, verified: the host's git status stays clean (no tracked file, CI, .gitattributes or docs/ touched)")
+        print_settings_changes()
     print(f"  {_nested_renames_line(plan)}")
     for name in plan["shadowed"]:
         print(f"  warning: your personal skill ~/.claude/skills/{name} shadows the workspace's /{name} in this repo (rename or remove one)")
@@ -1546,6 +1608,16 @@ def print_change_list() -> None:
         print(f"  stale workspace skills/machinery dropped upstream (remove manually?): {', '.join(UPDATE_SUMMARY['stale'])}")
     if UPDATE_SUMMARY["kept"]:
         print(f"  yours, kept (in the workspace's skill directories, not shipped by this version): {', '.join(UPDATE_SUMMARY['kept'])}")
+    if not NESTED:  # nested: print_nested_banner lists them under the host side, where settings.local.json lives
+        print_settings_changes()
+
+
+def print_settings_changes() -> None:
+    """The settings lines a merge removed or changed (v61; S8 folds them into the unified report)."""
+    for line in SETTINGS_CHANGES["removed"]:
+        print(f"  removed: {line}")
+    for line in SETTINGS_CHANGES["changed"]:
+        print(f"  changed: {line}")
 
 
 if UPDATE:
@@ -1597,6 +1669,7 @@ elif RETROFIT:
     print(f"  skipped (kept yours): {len(skipped)} file(s)")
     if merged:
         print(f"  merged (additive): {', '.join(merged)}")
+    print_settings_changes()
     print(f"  docs subsystem: {'installed' if INSTALL_DOCS else 'skipped (target already has a docs/ system)'}")
     print("  works subsystem: installed (no phases yet — the first phase is created by the operator)")
     if not INSTALL_DOCS:

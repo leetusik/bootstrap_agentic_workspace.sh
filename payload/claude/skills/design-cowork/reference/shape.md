@@ -53,7 +53,7 @@
 - **You suggest, the operator confirms.** Name a style and the reason; it is never yours alone and
   never implicit.
 - **Asked at `/create-phase` by default.** A phase created before its visual nature was clear has
-  `DECOMP` ask it, stopping **`pending`**, with `design-only`'s deadline in mind.
+  `DECOMP` ask it, stopping **`pending`** (`--stop-kind decision`), with `design-only`'s deadline in mind.
 - The confirmed style is recorded in `intent.md` under **`## Design Style`**, with a second line,
   `Mockup: requested` or `Mockup: on request` (the default; an absent line reads as `on request`).
 

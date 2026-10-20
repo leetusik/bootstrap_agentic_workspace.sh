@@ -41,8 +41,8 @@ the full spec stay in the record, linked by path.
 
 ## PENDING #1 — one stop per wave
 
-When every job of the wave is published or held: commit, `set-slice-status <slice> pending`, and
-STOP. The commit is `feat(design): <slice> drafted — <job>/<round>, …` (a superseding round:
+When every job of the wave is published or held: commit,
+`set-slice-status <slice> pending --stop-kind wave --on-words "<what their words will do>"`, and STOP. The commit is `feat(design): <slice> drafted — <job>/<round>, …` (a superseding round:
 `… — supersedes <job>/<round>`), carrying the handoffs, the canvas trees, the round records, the
 critique files and the closes of superseded rounds. The report, per job:
 

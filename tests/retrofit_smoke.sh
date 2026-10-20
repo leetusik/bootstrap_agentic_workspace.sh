@@ -873,20 +873,17 @@ then ok "settings.json additively merged (custom perm + env survive)"; else bad 
 if python3 - "$R/.claude/settings.json" <<'PY'
 import json, sys
 h = json.load(open(sys.argv[1]))["hooks"]
-gate = 'cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-gate || true'
 resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-resume || true'
-pc = h["PreCompact"]
-assert len(pc) == 1 and pc[0]["matcher"] == "auto", pc
-assert pc[0]["hooks"] == [{"type": "command", "command": "echo foreign-precompact"}, {"type": "command", "command": gate, "timeout": 15}], pc
+assert h["PreCompact"] == [{"matcher": "auto", "hooks": [{"type": "command", "command": "echo foreign-precompact"}]}], h["PreCompact"]
 assert h["PostToolUse"] == [{"matcher": "Edit", "hooks": [{"type": "command", "command": "echo foreign-post"}]}], h["PostToolUse"]
 assert h["SessionStart"] == [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}], h["SessionStart"]
 assert json.load(open(sys.argv[1]))["env"]["FOO"] == "bar"
 PY
-then ok "retrofit merges the two compaction hooks additively: foreign PreCompact/PostToolUse handlers survive in place (foreign first), ours present exactly once"; else bad "retrofit hooks merge incorrect"; fi
+then ok "retrofit merges the resume hook additively: foreign PreCompact/PostToolUse handlers survive untouched, ours (SessionStart compact) present exactly once, no PreCompact of ours (v61)"; else bad "retrofit hooks merge incorrect"; fi
 # v56: the project-level auto-compact window ships with the payload; retrofit fills it when the
 # adopter's file has none, and a second --update leaves it alone.
-python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["autoCompactWindow"] == 500000, d' "$R/.claude/settings.json" \
-  && ok "retrofit sets autoCompactWindow=500000 when the adopter's settings.json has none" || bad "retrofit did not set autoCompactWindow"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["autoCompactWindow"] == 300000, d' "$R/.claude/settings.json" \
+  && ok "retrofit sets autoCompactWindow=300000 when the adopter's settings.json has none (v61)" || bad "retrofit did not set autoCompactWindow"
 
 ( cd "$R" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) && ok "validate passes in target" || bad "validate failed in target"
 nph=$(find "$R/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
@@ -947,7 +944,7 @@ printf '{"permissions": {"allow": ["Bash(make:*)"]}, "hooks": "not-an-object"}\n
 HMS=$(sha "$HM/.claude/settings.json")
 out=$(sh "$BOOT" "$HM" --into-existing 2>&1); rc=$?
 [ "$rc" -eq 0 ] && [ "$(sha "$HM/.claude/settings.json")" = "$HMS" ] && [ -f "$HM/.claude/settings.workspace.json" ] \
-  && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert "PreCompact" in d["hooks"] and "SessionStart" in d["hooks"]' "$HM/.claude/settings.workspace.json" \
+  && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert "PreCompact" not in d["hooks"] and "SessionStart" in d["hooks"]' "$HM/.claude/settings.workspace.json" \
   && ok "a settings.json whose hooks is not an object is left byte-identical and the payload goes to settings.workspace.json" || bad "malformed hooks was clobbered or not sidecarred (rc=$rc) -- $out"
 
 # ---------------------------------------------------------------------------
@@ -959,14 +956,12 @@ out=$(sh "$BOOT" "$F" --at-root --name "Fresh" --summary "fresh" 2>&1); rc=$?
 if python3 - "$F/.claude/settings.json" <<'PY'
 import json, sys
 h = json.load(open(sys.argv[1]))["hooks"]
-gate = 'cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-gate || true'
 resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-resume || true'
-assert h["PreCompact"] == [{"matcher": "auto", "hooks": [{"type": "command", "command": gate, "timeout": 15}]}], h
-assert h["SessionStart"] == [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}], h
+assert h == {"SessionStart": [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}]}, h
 PY
-then ok "a fresh at-root install ships both compaction hooks (PreCompact auto -> compact-gate, SessionStart compact -> compact-resume, timeout 15)"; else bad "fresh install settings.json lacks the exact compaction hooks"; fi
-python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 500000' "$F/.claude/settings.json" \
-  && ok "a fresh at-root install ships autoCompactWindow=500000 in project settings (v57)" || bad "fresh install settings.json lacks autoCompactWindow=500000"
+then ok "a fresh at-root install ships only the resume hook (SessionStart compact -> compact-resume, timeout 15) and no PreCompact (v61: compaction is Claude Code's own)"; else bad "fresh install settings.json hooks wrong"; fi
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 300000' "$F/.claude/settings.json" \
+  && ok "a fresh at-root install ships autoCompactWindow=300000 in project settings (v61)" || bad "fresh install settings.json lacks autoCompactWindow=300000"
 nphf=$(find "$F/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
 [ "$nphf" = "0" ] && ok "fresh install seeds no phases (empty start)" || bad "fresh install seeded $nphf phase(s)"
 if python3 - "$REPO_ROOT" "$F/works/.workspace-version.json" <<'PY'
@@ -1457,73 +1452,62 @@ assert spans["design-drafter"]["usage"]["requests"] == 1 and spans["design-draft
 mt_out=$( cd "$MT/ws" && python3 scripts/workflow.py dispatch-summary --phase P1 --transcripts "$MT/projects/-fixture" 2>&1 )
 printf '%s\n' "$mt_out" | grep -qE '^main +- +2 +1\.10M +600 +1\.02 ' && printf '%s\n' "$mt_out" | grep -qE '^design-drafter +1 +1 +100 +10 +\? ' \
   && ok "dispatch-summary prices the main thread at list price (\$1.02) and leaves an unknown model unpriced (?)" || bad "dispatch-summary pricing wrong: $mt_out"
-# v55 boundary-gated compaction (P34.S1): compact-gate (the PreCompact hook) vetoes an auto-compaction while
-# the current slice is open or the tree is dirty, fails open (manual, the fill ceiling, the block cap, an
-# unreadable transcript or stdin) and always exits 0; compact-resume re-injects the pointer and a resume line.
-# Driven with fabricated hook JSON on a git fixture of its own (a fresh install + P1, committed).
+# v61 pure compaction (P37.S3): compaction is Claude Code's own -- no PreCompact hook, no compact-gate. After
+# a compaction the SessionStart hook runs compact-resume, which prints the resume card (also `next --card`):
+# computed from state, at most 2,048 B, naming files and never asking for a re-read. A pending stop is typed
+# (set-slice-status ... pending --stop-kind --on-words), printed by next and the card, cleared on leaving pending.
 newtmp CGT
 CG="$CGT/ws"
-sh "$BOOT" "$CG" --at-root --name "Gate" --summary "gate probe" >/dev/null 2>&1 \
-  && ( cd "$CG" && { git init -q -b main . 2>/dev/null || git init -q .; } && git config user.email smoke@example.invalid && git config user.name smoke \
-       && python3 scripts/workflow.py new-phase --phase P1 --name "Gate probe" --objective "probe the compaction gate" >/dev/null 2>&1 \
-       && git add -A >/dev/null 2>&1 && git commit -qm seed >/dev/null 2>&1 ) \
-  || bad "compact-gate: could not build the committed git fixture"
-CG_TR="$CGT/transcript.jsonl"
-printf '%s\n' '{"type":"user","message":{"role":"user","content":"hi"}}' \
-  '{"type":"assistant","message":{"model":"claude-opus-5-5","usage":{"input_tokens":1000,"cache_read_input_tokens":200000,"cache_creation_input_tokens":500}}}' > "$CG_TR"
-CGENV=""
-cg() { # cg <trigger> [transcript_path] -- stdout is the decision, the stderr trace lands in $CGT/err, $? is the exit code
-  printf '{"session_id":"s1","trigger":"%s","transcript_path":"%s","scratchpad_dir":"%s","cwd":"%s"}' "$1" "${2:-$CG_TR}" "$CGT" "$CG" \
-    | ( cd "$CG" && env -u AGENTIC_COMPACT_CEILING -u AGENTIC_COMPACT_BLOCK_CAP $CGENV python3 scripts/workflow.py compact-gate 2>"$CGT/err" )
+sh "$BOOT" "$CG" --at-root --name "Card" --summary "card probe" >/dev/null 2>&1 \
+  && ( cd "$CG" && python3 scripts/workflow.py new-phase --phase P1 --name "Card probe" --objective "probe the resume card" >/dev/null 2>&1 ) \
+  || bad "resume card: could not build the fixture"
+cg_help=$( cd "$CG" && python3 scripts/workflow.py --help 2>&1 )
+( cd "$CG" && python3 scripts/workflow.py compact-gate </dev/null >/dev/null 2>&1 ); cg_rc=$?
+[ "$cg_rc" -ne 0 ] && ! printf '%s\n' "$cg_help" | grep -q 'compact-gate' && ! grep -qE 'cmd_compact_gate|AGENTIC_COMPACT_|COMPACT_RESUME_LINE' "$CG/scripts/workflow.py" \
+  && ok "compact-gate is gone from the engine (no subcommand, no knobs, no resume line)" || bad "compact-gate still present (rc=$cg_rc)"
+card_ok() { # card_ok <text>: at most 2,048 bytes, no re-read, the pointer, the next action and the file paths
+  [ "$(printf '%s' "$1" | wc -c | tr -d ' ')" -le 2048 ] && ! printf '%s\n' "$1" | grep -qi 're-read' \
+    && printf '%s\n' "$1" | grep -q '^pointer: phase P1 ' && printf '%s\n' "$1" | grep -q '^next action: ' \
+    && printf '%s\n' "$1" | grep -q '^plan: works/phases/active/P1/slices/P1.DECOMP/plan.md' && printf '%s\n' "$1" | grep -q '^result: not yet' \
+    && printf '%s\n' "$1" | grep -q '^phase: works/phases/active/P1/phase.md' && printf '%s\n' "$1" | grep -q '^intent: works/phases/active/P1/intent.md'
 }
-cg_out=$(cg manual); cg_rc=$?
-[ "$cg_rc" -eq 0 ] && [ -z "$cg_out" ] && grep -q 'decision=allow rule=manual' "$CGT/err" \
-  && ok "compact-gate: a manual /compact is never blocked (no stdout, exit 0)" || bad "compact-gate manual wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err")"
-cg_out=$(cg auto); cg_rc=$?
-[ "$cg_rc" -eq 0 ] && [ -z "$cg_out" ] && grep -q 'decision=allow rule=boundary slice=P1.DECOMP status=todo dirty=0' "$CGT/err" \
-  && ok "compact-gate: a todo slice on a clean tree is a boundary (allow, no stdout)" || bad "compact-gate clean boundary wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err")"
-( cd "$CG" && python3 scripts/workflow.py start-slice P1.DECOMP >/dev/null 2>&1 ) || bad "compact-gate: start-slice failed on the fixture"
-cg_out=$(cg auto); cg_rc=$?
-[ "$cg_rc" -eq 0 ] && printf '%s\n' "$cg_out" | grep -q '"decision": "block"' && printf '%s\n' "$cg_out" | grep -q 'slice P1.DECOMP in_progress' \
-  && grep -q 'decision=block rule=slice_in_progress .* fill=201500 ceiling=850000 blocks=1/8' "$CGT/err" \
-  && ok "compact-gate: an in_progress slice blocks with the JSON on stdout at exit 0, the reason naming the slice (5-family ceiling 850000)" \
-  || bad "compact-gate mid-slice block wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err")"
-cg_out=$(printf '{"session_id":"s1","agent_id":"a1","agent_type":"slice-executor-high","trigger":"auto","transcript_path":"%s","scratchpad_dir":"%s"}' "$CG_TR" "$CGT" \
-  | ( cd "$CG" && env -u AGENTIC_COMPACT_CEILING -u AGENTIC_COMPACT_BLOCK_CAP python3 scripts/workflow.py compact-gate 2>"$CGT/err" )); cg_rc=$?
-[ "$cg_rc" -eq 0 ] && [ -z "$cg_out" ] && grep -q 'decision=allow rule=subagent .* blocks=1/8' "$CGT/err" \
-  && ok "compact-gate: a subagent's own auto-compaction (agent_id set) is allowed mid-slice and leaves the main thread's block count alone" || bad "compact-gate subagent wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err")"
-CGENV="AGENTIC_COMPACT_CEILING=1000"; cg_out=$(cg auto); cg_rc=$?; CGENV=""
-[ "$cg_rc" -eq 0 ] && [ -z "$cg_out" ] && grep -q 'decision=allow rule=ceiling .* blocks=0/8' "$CGT/err" && [ ! -e "$CGT/agentic-compact-gate-s1.json" ] \
-  && ok "compact-gate: a fill at or above AGENTIC_COMPACT_CEILING allows even mid-slice and resets the count" || bad "compact-gate ceiling wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err")"
-CGENV="AGENTIC_COMPACT_BLOCK_CAP=2"; cg_seq=""
-for _i in 1 2 3 4; do cg_out=$(cg auto); case "$cg_out" in *'"decision": "block"'*) cg_seq="$cg_seq block";; '') cg_seq="$cg_seq allow";; *) cg_seq="$cg_seq ?";; esac; done; CGENV=""
-[ "$cg_seq" = " block block allow block" ] \
-  && ok "compact-gate: AGENTIC_COMPACT_BLOCK_CAP=2 releases the third consecutive block, then the count starts over" || bad "compact-gate cap sequence wrong:$cg_seq"
-mkdir -p "$CGT/ro/agentic-compact-gate-s1.json"  # a directory where the counter goes: the block cannot be counted
-cg_out=$(printf '{"session_id":"s1","trigger":"auto","transcript_path":"","scratchpad_dir":"%s"}' "$CGT/ro" \
-  | ( cd "$CG" && env -u AGENTIC_COMPACT_CEILING -u AGENTIC_COMPACT_BLOCK_CAP python3 scripts/workflow.py compact-gate 2>"$CGT/err" )); cg_rc=$?
-[ "$cg_rc" -eq 0 ] && [ -z "$cg_out" ] && grep -q 'decision=allow rule=error .* error=block counter unwritable' "$CGT/err" \
-  && ok "compact-gate: a block the cap cannot count (counter unwritable) allows instead -- never an endless veto" || bad "compact-gate unwritable counter wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err")"
-cg_out=$(cg auto "$CGT/no-such-transcript.jsonl"); cg_rc=$?
-[ "$cg_rc" -eq 0 ] && printf '%s\n' "$cg_out" | grep -q '"decision": "block"' && grep -q 'rule=slice_in_progress .* fill=- ceiling=170000' "$CGT/err" \
-  && ok "compact-gate: an unreadable transcript skips the ceiling and still decides by the boundary" || bad "compact-gate missing transcript wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err")"
-cg_out=$(printf 'not json' | ( cd "$CG" && python3 scripts/workflow.py compact-gate 2>"$CGT/err" )); cg_rc=$?
-[ "$cg_rc" -eq 0 ] && [ -z "$cg_out" ] && grep -q 'decision=allow rule=error' "$CGT/err" \
-  && ok "compact-gate: garbage stdin fails open (no stdout, exit 0, rule=error)" || bad "compact-gate garbage stdin wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err")"
-( cd "$CG" && python3 scripts/workflow.py finish-slice P1.DECOMP --outcome "probe" >/dev/null 2>&1 && git add -A >/dev/null 2>&1 && git commit -qm "finish P1.DECOMP" >/dev/null 2>&1 \
-  && python3 scripts/workflow.py next >/dev/null 2>&1 && python3 scripts/workflow.py rebuild >/dev/null 2>&1 ) || bad "compact-gate: finish-slice / commit / next / rebuild failed on the fixture"
-cg_out=$(cg auto); cg_rc=$?
-[ "$cg_rc" -eq 0 ] && [ -z "$cg_out" ] && grep -q 'decision=allow rule=boundary slice=P1.REVIEW status=todo dirty=0' "$CGT/err" \
-  && ok "compact-gate: after finish-slice + commit, the dashboards and docs/index.json next/rebuild restamp are not dirt (allow)" || bad "compact-gate after the boundary commit wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err") -- $(cd "$CG" && git status --porcelain)"
-mkdir -p "$CG/src" && printf 'print("wip")\n' > "$CG/src/wip.py"
-cg_out=$(cg auto); cg_rc=$?
-[ "$cg_rc" -eq 0 ] && printf '%s\n' "$cg_out" | grep -q '"decision": "block"' && printf '%s\n' "$cg_out" | grep -q 'dirty: 1 file uncommitted' \
-  && ok "compact-gate: an untracked product file blocks at the boundary (dirty: 1 file)" || bad "compact-gate dirty tree wrong (rc=$cg_rc): $cg_out $(cat "$CGT/err")"
-rm -f "$CG/src/wip.py"
-cr_out=$( cd "$CG" && printf '{"source":"compact"}' | python3 scripts/workflow.py compact-resume 2>&1 ); cr_rc=$?
-[ "$cr_rc" -eq 0 ] && printf '%s\n' "$cr_out" | grep -qx 'current_slice=P1.REVIEW' && printf '%s\n' "$cr_out" | grep -q 'Re-read the running skill' \
-  && [ "${#cr_out}" -lt 10000 ] \
-  && ok "compact-resume prints the pointer and the resume line, under 10,000 characters" || bad "compact-resume wrong (rc=$cr_rc): $cr_out"
+card=$( cd "$CG" && python3 scripts/workflow.py next --card 2>&1 ); cr_rc=$?
+[ "$cr_rc" -eq 0 ] && card_ok "$card" && printf '%s\n' "$card" | grep -q '^next action: start-slice P1.DECOMP, then plan it' \
+  && ok "next --card prints the resume card: <= 2,048 B, the pointer, the next action (plan it), the file paths, no re-read" || bad "next --card wrong (rc=$cr_rc): $card"
+( cd "$CG" && python3 scripts/workflow.py start-slice P1.DECOMP >/dev/null 2>&1 && printf 'the plan\n' > works/phases/active/P1/slices/P1.DECOMP/plan.md ) || bad "resume card: start-slice failed"
+mkdir -p "$CGT/proj/s1/subagents" && printf '{}\n' > "$CGT/proj/s1.jsonl"
+printf '{"agentType":"slice-executor-high","description":"P1.DECOMP decomposition executor"}' > "$CGT/proj/s1/subagents/agent-a.meta.json"
+printf '{"agentType":"Explore","description":"an old lookup","finished":true}' > "$CGT/proj/s1/subagents/agent-b.meta.json"
+cr_out=$( cd "$CG" && printf '{"source":"compact","transcript_path":"%s","cwd":"%s"}' "$CGT/proj/s1.jsonl" "$CG" | python3 scripts/workflow.py compact-resume 2>&1 ); cr_rc=$?
+cr_card=$(printf '%s\n' "$cr_out" | sed 1d)
+[ "$cr_rc" -eq 0 ] && [ "$(printf '%s\n' "$cr_out" | head -1)" = "compaction=done source=compact" ] && card_ok "$cr_card" \
+  && printf '%s\n' "$cr_card" | grep -qx 'running spans: slice-executor-high: P1.DECOMP decomposition executor' \
+  && printf '%s\n' "$cr_card" | grep -q '^next action: an executor is running (see spans): wait for its notification, never re-dispatch' \
+  && ok "compact-resume (fake hook stdin) prints the card: running spans from the session's unfinished .meta.json only, wait -- never re-dispatch" || bad "compact-resume card wrong (rc=$cr_rc): $cr_out"
+cr_out=$( cd "$CG" && printf 'not json' | python3 scripts/workflow.py compact-resume 2>&1 ); cr_rc=$?
+[ "$cr_rc" -eq 0 ] && printf '%s\n' "$cr_out" | head -1 | grep -qx 'compaction=done source=compact' && printf '%s\n' "$cr_out" | grep -q '^pointer: phase P1 ' \
+  && ok "compact-resume on garbage stdin still prints the card and exits 0" || bad "compact-resume garbage stdin wrong (rc=$cr_rc): $cr_out"
+( cd "$CG" && python3 scripts/workflow.py set-slice-status P1.DECOMP in_progress --stop-kind decision --on-words x >/dev/null 2>&1 ); tp_rc=$?
+[ "$tp_rc" -ne 0 ] && ok "set-slice-status refuses --stop-kind/--on-words without pending" || bad "set-slice-status accepted --stop-kind without pending"
+tp_set=$( cd "$CG" && python3 scripts/workflow.py set-slice-status P1.DECOMP pending --stop-kind decision --on-words "choose the design style; DECOMP records it and cuts the slices" 2>&1 ); tp_rc=$?
+tp_next=$( cd "$CG" && python3 scripts/workflow.py next 2>&1 )
+tp_card=$( cd "$CG" && python3 scripts/workflow.py next --card 2>&1 )
+( cd "$CG" && python3 scripts/workflow.py validate >/dev/null 2>&1 ); tp_val=$?
+[ "$tp_rc" -eq 0 ] && [ "$tp_val" -eq 0 ] && python3 -c 'import json,sys; p=json.load(open(sys.argv[1]))["pending"]; assert set(p)=={"kind","on_words","since"} and p["kind"]=="decision", p' "$CG/works/phases/active/P1/slices/P1.DECOMP/slice.json" \
+  && printf '%s\n' "$tp_next" | grep -qx 'stop_kind=decision' && printf '%s\n' "$tp_next" | grep -qx 'on_words=choose the design style; DECOMP records it and cuts the slices' \
+  && printf '%s\n' "$tp_card" | grep -q '^stop: decision (since .*) -- the operator.s words will: choose the design style' && [ "$(printf '%s' "$tp_card" | wc -c | tr -d ' ')" -le 2048 ] \
+  && ok "a typed pending stop is stored as pending {kind, on_words, since}; next and the card print the kind and the words; validate passes" || bad "typed pending wrong (rc=$tp_rc val=$tp_val): $tp_set / $tp_next / $tp_card"
+( cd "$CG" && python3 scripts/workflow.py set-slice-status P1.DECOMP in_progress >/dev/null 2>&1 ) \
+  && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert "pending" not in d and d["status"]=="in_progress", d' "$CG/works/phases/active/P1/slices/P1.DECOMP/slice.json" \
+  && ok "leaving pending clears the typed record" || bad "the pending record survived set-slice-status in_progress"
+tp_bare=$( cd "$CG" && python3 scripts/workflow.py set-slice-status P1.DECOMP pending 2>&1 ); tp_rc=$?
+[ "$tp_rc" -eq 0 ] && [ "$(printf '%s\n' "$tp_bare" | grep -c '^warning: untyped pending stop')" -eq 1 ] \
+  && ok "a bare pending still works, with one warning line" || bad "bare pending wrong (rc=$tp_rc): $tp_bare"
+( cd "$CG" && python3 scripts/workflow.py set-slice-status P1.DECOMP in_progress >/dev/null 2>&1 )
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["pending"]={"kind":"nap","on_words":"x","since":"t"}; json.dump(d,open(p,"w"))' "$CG/works/phases/active/P1/slices/P1.DECOMP/slice.json"
+tp_val=$( cd "$CG" && python3 scripts/workflow.py validate 2>&1 ); tp_rc=$?
+[ "$tp_rc" -ne 0 ] && printf '%s\n' "$tp_val" | grep -q 'carries a pending record' \
+  && ok "validate rejects a pending record on a slice that is not pending" || bad "validate missed a stray pending record: $tp_val"
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed re-applying the fable override"
 rm -rf "$F/.claude/skills/do-whole-phase"
@@ -1598,21 +1582,32 @@ printf '# hand-edited\n' >> "$F/.github/workflows/workspace-ci.yml"
 sh "$BOOT" "$F" --update >/dev/null 2>&1
 grep -q '^# hand-edited$' "$F/.github/workflows/workspace-ci.yml" && ok "--update preserves an edited CI workflow (seed-once)" || bad "--update clobbered an edited CI workflow"
 [ "$(grep -c '^works/events\.jsonl merge=union$' "$F/.gitattributes")" -eq 1 ] && ok "--update .gitattributes merge is idempotent (one union rule)" || bad ".gitattributes union rule duplicated on re-update"
-# --update merges the compaction hooks additively and idempotently (a pre-v55 settings.json gains them).
+# --update merges the resume hook additively and idempotently.
 set_a=$(sha "$F/.claude/settings.json")
 sh "$BOOT" "$F" --update >/dev/null 2>&1
 [ "$(sha "$F/.claude/settings.json")" = "$set_a" ] \
   && ok "--update on a workspace that already has the hooks leaves settings.json byte-identical (idempotent)" || bad "--update changed an up-to-date settings.json"
-python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d.pop("hooks"); d["hooks"]={"PreCompact":[{"matcher":"auto","hooks":[{"type":"command","command":"echo foreign"}]}]}; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$F/.claude/settings.json"
+# v61: a v60-shaped settings.json (our compact-gate beside the adopter's own PreCompact handler, the
+# 500000 window v57-v60 shipped) loses exactly our handler, keeps theirs, moves to 300000 and lists both.
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["PreCompact"]=[{"matcher":"auto","hooks":[{"type":"command","command":"echo foreign"},{"type":"command","command":"cd \"$CLAUDE_PROJECT_DIR\" && python3 scripts/workflow.py compact-gate || true","timeout":15}]},{"matcher":"manual","hooks":[{"type":"command","command":"cd \"$CLAUDE_PROJECT_DIR\" && python3 scripts/workflow.py compact-gate || true"}]}]; d["autoCompactWindow"]=500000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$F/.claude/settings.json"
 upd_out=$(sh "$BOOT" "$F" --update 2>&1)
 if python3 - "$F/.claude/settings.json" <<'PY'
 import json, sys
-h = json.load(open(sys.argv[1]))["hooks"]
-cmds = [x["command"] for g in h["PreCompact"] for x in g["hooks"]]
-assert cmds == ["echo foreign", 'cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-gate || true'], cmds
+d = json.load(open(sys.argv[1]))
+h = d["hooks"]
+assert h["PreCompact"] == [{"matcher": "auto", "hooks": [{"type": "command", "command": "echo foreign"}]}], h["PreCompact"]
 assert [x["command"] for g in h["SessionStart"] for x in g["hooks"]] == ['cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-resume || true']
+assert d["autoCompactWindow"] == 300000, d
 PY
-then ok "--update adds the hooks to a pre-v55 settings.json beside a foreign PreCompact handler, which stays first"; else bad "--update did not merge the hooks additively -- $upd_out"; fi
+then printf '%s\n' "$upd_out" | grep -q '^  removed: .claude/settings.json hooks.PreCompact compact-gate (retired in v61)$' \
+  && printf '%s\n' "$upd_out" | grep -q '^  changed: .claude/settings.json autoCompactWindow 500000 -> 300000 (the v61 default; set it back if you chose 500000)$' \
+  && ok "--update on a v60-shaped settings.json removes only our compact-gate handlers (the group they emptied pruned), keeps the adopter's PreCompact hook, sets 300000 and lists both" \
+  || bad "--update did not report the settings changes -- $upd_out"
+else bad "--update did not retire our PreCompact handler cleanly -- $upd_out"; fi
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["autoCompactWindow"]=700000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$F/.claude/settings.json"
+upd_out=$(sh "$BOOT" "$F" --update 2>&1)
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 700000' "$F/.claude/settings.json" && ! printf '%s\n' "$upd_out" | grep -q '^  changed: .*autoCompactWindow' \
+  && ok "--update keeps an autoCompactWindow the adopter chose (700000), reporting no change" || bad "--update moved an adopter's 700000 window -- $upd_out"
 set_b=$(sha "$F/.claude/settings.json")
 sh "$BOOT" "$F" --update >/dev/null 2>&1
 [ "$(sha "$F/.claude/settings.json")" = "$set_b" ] \
@@ -2276,24 +2271,21 @@ if nw sync-agents --check >/dev/null 2>&1 && grep -qx "name: wf-design-drafter" 
   ok "sync-agents resolves agents in the host's .claude/agents through the rename map and keeps the renamed name:"
 else bad "sync-agents missed the host agent dir or the rename map, or rewrote name:"; fi
 nw validate >/dev/null 2>&1 && ok "validate passes on a well-formed nested install" || bad "validate failed on a well-formed nested install -- $(nw validate 2>&1)"
-# compact-gate from the host (P34.S1): the nested workspace repo was never committed, so the gate reads it
-# (and the host's product) as dirty and blocks at the todo P1.DECOMP boundary; exit 0 either way.
-cg_out=$(printf '{"session_id":"nested","trigger":"auto","transcript_path":"","scratchpad_dir":"%s"}' "$NS" | nw compact-gate 2>"$NS/cg_err"); cg_rc=$?
-[ "$cg_rc" -eq 0 ] && printf '%s\n' "$cg_out" | grep -q '"decision": "block"' && printf '%s\n' "$cg_out" | grep -q '"reason": "dirty: ' \
-  && grep -q 'decision=block rule=dirty slice=P1.DECOMP status=todo' "$NS/cg_err" \
-  && ok "nested: compact-gate runs from the host and blocks on the uncommitted workspace repo (dirty:), exit 0" || bad "nested compact-gate wrong (rc=$cg_rc): $cg_out $(cat "$NS/cg_err")"
+# v61: the resume card from the host prints host-relative paths, within its 2,048 B.
+card=$(nw next --card 2>&1); cr_rc=$?
+[ "$cr_rc" -eq 0 ] && [ "$(printf '%s' "$card" | wc -c | tr -d ' ')" -le 2048 ] && printf '%s\n' "$card" | grep -qx 'phase: workflow/works/phases/active/P1/phase.md' \
+  && printf '%s\n' "$card" | grep -qF 'commands run as `python3 workflow/scripts/workflow.py <command>`' \
+  && ok "nested: next --card names host-relative paths and the nested engine command, within 2,048 B" || bad "nested next --card wrong (rc=$cr_rc): $card"
 printf '{"schema": 1, "host_root": ".."' > "$NH/workflow/.agentic-nested.json"
 val_out=$(nw validate 2>&1); val_rc=$?; nx_out=$(nw next 2>&1); nx_rc=$?
 [ "$val_rc" -ne 0 ] && printf '%s\n' "$val_out" | grep -Fq ".agentic-nested.json: cannot be read as JSON" \
   && [ "$nx_rc" -ne 0 ] && printf '%s\n' "$nx_out" | grep -Fq ".agentic-nested.json is malformed" \
   && ok "a malformed .agentic-nested.json fails validate and stops every other command (never read as at-root mode)" \
   || bad "a malformed .agentic-nested.json passed validate or ran next (rc=$val_rc/$nx_rc) -- $val_out $nx_out"
-cg_out=$(printf '{"session_id":"nested","trigger":"manual"}' | nw compact-gate 2>"$NS/cg_err"); cg_rc=$?
 cr_out=$(printf '{}' | nw compact-resume 2>&1); cr_rc=$?
-[ "$cg_rc" -eq 0 ] && [ -z "$cg_out" ] && grep -q '^compact-gate: decision=allow rule=manual' "$NS/cg_err" \
-  && [ "$cr_rc" -eq 0 ] && printf '%s\n' "$cr_out" | grep -q 'Re-read the running skill' \
-  && ok "a malformed marker never stops the compaction hooks: compact-gate and compact-resume still run and exit 0" \
-  || bad "the compaction hooks refused on a malformed marker (rc=$cg_rc/$cr_rc): $cg_out $(cat "$NS/cg_err") $cr_out"
+[ "$cr_rc" -eq 0 ] && [ "$(printf '%s\n' "$cr_out" | head -1)" = "compaction=done source=compact" ] \
+  && ok "a malformed marker never stops the resume hook: compact-resume still runs and exits 0" \
+  || bad "the resume hook refused on a malformed marker (rc=$cr_rc): $cr_out"
 # The paired worktree lifecycle (P35): a nested phase runs in a host worktree with the nested worktree inside,
 # claims its own stream, shows in the main backlog's Streams view, resumes through the compaction hook's cwd, is
 # guarded at teardown and is retired nested-first, keeping the host branch. It runs last: it restores a valid
@@ -2322,7 +2314,7 @@ if printf '%s\n' "$wt_next" | grep -q "^stream=phase/P1-" && ! printf '%s\n' "$m
   ok "the worktree's next prints stream=phase/P1-..., the main checkout skips P1, and backlog.md's ## Streams row carries P1 with feat/side"
 else bad "stream claim or Streams row wrong -- worktree: $wt_next -- main: $main_next -- $(grep -A8 '^## Streams' "$NW/works/backlog.md")"; fi
 hook_out=$(printf '{"session_id":"t","source":"compact","cwd":"%s"}' "$HWT" | python3 "$NH/workflow/scripts/workflow.py" compact-resume 2>&1)
-printf '%s\n' "$hook_out" | grep -q "^stream=phase/P1-" && printf '%s\n' "$hook_out" | grep -q "^current_phase=P1" \
+printf '%s\n' "$hook_out" | grep -q "^stream=phase/P1-" && printf '%s\n' "$hook_out" | grep -q "^pointer: phase P1 " \
   && ok "compact-resume replayed from the main checkout with the worktree's cwd redirects to the worktree's own stream" \
   || bad "the compaction hook did not follow the worktree cwd -- $hook_out"
 printf 'product\n' > "$HWT/src/side.py" && git -C "$HWT" add src/side.py >/dev/null 2>&1 && git -C "$HWT" commit -qm "side" >/dev/null 2>&1
@@ -2406,16 +2398,15 @@ if [ "$rc" -eq 0 ] && ih_clean && [ ! -e "$IH/workflow/workflow" ] && ! grep -rq
     && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); c=d["commit_convention"]; assert c["confirmed"] is True and c["coauthor_trailers"] == "forbidden" and d["renames"]["skills"] == {"commit": "wf-commit", "design-cowork": "wf-design-cowork"}, d' "$IH/workflow/.agentic-nested.json" >/dev/null 2>&1; then
   ok "--update --nested keeps the confirmed convention and the renames, the host stays clean, no workflow/workflow/, one exclude block"
 else bad "--update --nested lost state or left a footprint (rc=$rc) -- $out"; fi
-# P34.S2: the nested settings.local.json carries both hooks, command rewritten to the nested engine path.
+# The nested settings.local.json carries the resume hook, command rewritten to the nested engine path (v61: no PreCompact).
 if python3 - "$IH/.claude/settings.local.json" <<'PY'
 import json, sys
-h = json.load(open(sys.argv[1]))["hooks"]
-gate = 'cd "$CLAUDE_PROJECT_DIR" && python3 workflow/scripts/workflow.py compact-gate || true'
+d = json.load(open(sys.argv[1]))
 resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 workflow/scripts/workflow.py compact-resume || true'
-assert h["PreCompact"] == [{"matcher": "auto", "hooks": [{"type": "command", "command": gate, "timeout": 15}]}], h
-assert h["SessionStart"] == [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}], h
+assert d["hooks"] == {"SessionStart": [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}]}, d["hooks"]
+assert d["autoCompactWindow"] == 300000, d
 PY
-then ok "nested: settings.local.json carries both compaction hooks with the workflow/scripts/workflow.py command path, and --update --nested kept exactly one of each"; else bad "nested settings.local.json hooks wrong"; fi
+then ok "nested: settings.local.json carries only the resume hook with the workflow/scripts/workflow.py command path and window 300000, and --update --nested kept exactly one"; else bad "nested settings.local.json hooks wrong"; fi
 # v61 (P37.S1): --update --nested on a v60-shaped host (no reference/ files) adds them in the renamed dir, host clean.
 rm -rf "$IH/.claude/skills/wf-design-cowork/reference" "$IH/.claude/skills/do-whole-phase/reference"
 out=$(sh "$BOOT" "$IH" --update --nested 2>&1); rc=$?
@@ -2426,20 +2417,28 @@ lset_a=$(sha "$IH/.claude/settings.local.json")
 sh "$BOOT" "$IH" --update --nested >/dev/null 2>&1
 [ "$(sha "$IH/.claude/settings.local.json")" = "$lset_a" ] && ih_clean \
   && ok "nested: a second --update --nested leaves settings.local.json byte-identical" || bad "nested --update rewrote settings.local.json"
-python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["PreCompact"][0]["hooks"].insert(0,{"type":"command","command":"echo foreign-nested"}); d["hooks"]["Stop"]=[{"hooks":[{"type":"command","command":"echo stop"}]}]; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$IH/.claude/settings.local.json"
-python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["SessionStart"][0]["hooks"]=[]; d["autoCompactWindow"]=400000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$IH/.claude/settings.local.json"
-sh "$BOOT" "$IH" --update --nested >/dev/null 2>&1
-python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 400000' "$IH/.claude/settings.local.json" \
-  && ok "nested: --update --nested never overwrites an autoCompactWindow the adopter chose (v56, 400000 since v57)" || bad "nested --update overwrote the adopter's autoCompactWindow"
+# v61: a v60-shaped settings.local.json (our compact-gate beside a foreign PreCompact handler, window 500000,
+# our resume handler removed) loses exactly ours, keeps theirs, regains the resume hook, moves to 300000, lists both.
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["PreCompact"]=[{"matcher":"auto","hooks":[{"type":"command","command":"echo foreign-nested"},{"type":"command","command":"cd \"$CLAUDE_PROJECT_DIR\" && python3 workflow/scripts/workflow.py compact-gate || true","timeout":15}]}]; d["hooks"]["Stop"]=[{"hooks":[{"type":"command","command":"echo stop"}]}]; d["hooks"]["SessionStart"][0]["hooks"]=[]; d["autoCompactWindow"]=500000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$IH/.claude/settings.local.json"
+out=$(sh "$BOOT" "$IH" --update --nested 2>&1)
 if python3 - "$IH/.claude/settings.local.json" <<'PY'
 import json, sys
-h = json.load(open(sys.argv[1]))["hooks"]
-cmds = [x["command"] for g in h["PreCompact"] for x in g["hooks"]]
-assert cmds == ["echo foreign-nested", 'cd "$CLAUDE_PROJECT_DIR" && python3 workflow/scripts/workflow.py compact-gate || true'], cmds
+d = json.load(open(sys.argv[1]))
+h = d["hooks"]
+assert h["PreCompact"] == [{"matcher": "auto", "hooks": [{"type": "command", "command": "echo foreign-nested"}]}], h["PreCompact"]
 assert [x["command"] for g in h["SessionStart"] for x in g["hooks"]] == ['cd "$CLAUDE_PROJECT_DIR" && python3 workflow/scripts/workflow.py compact-resume || true'], h["SessionStart"]
 assert h["Stop"] == [{"hooks": [{"type": "command", "command": "echo stop"}]}]
+assert d["autoCompactWindow"] == 300000, d
 PY
-then ok "nested: --update --nested keeps a foreign hook in the present settings.local.json, re-adds a removed one and never duplicates ours"; else bad "nested present-file hooks merge wrong"; fi
+then printf '%s\n' "$out" | grep -q '^  removed: .claude/settings.local.json hooks.PreCompact compact-gate (retired in v61)$' \
+  && printf '%s\n' "$out" | grep -q '^  changed: .claude/settings.local.json autoCompactWindow 500000 -> 300000 ' && ih_clean \
+  && ok "nested: --update --nested on a v60-shaped settings.local.json removes only our compact-gate, keeps the foreign hooks, re-adds the resume hook, sets 300000 and lists both" \
+  || bad "nested --update did not report the settings changes -- $out"
+else bad "nested present-file hooks merge wrong -- $out"; fi
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["autoCompactWindow"]=400000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$IH/.claude/settings.local.json"
+sh "$BOOT" "$IH" --update --nested >/dev/null 2>&1
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 400000' "$IH/.claude/settings.local.json" \
+  && ok "nested: --update --nested never overwrites an autoCompactWindow the adopter chose (400000)" || bad "nested --update overwrote the adopter's autoCompactWindow"
 out=$(sh "$BOOT" "$IH" --nested --into-existing 2>&1); rc=$?
 [ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -q "mutually exclusive" && ok "--nested --into-existing is rejected" || bad "--nested --into-existing was accepted (rc=$rc) -- $out"
 # v53 (P32.S5): a host that already has its own .claude/agents/Explore.md gets ours renamed like any clash.

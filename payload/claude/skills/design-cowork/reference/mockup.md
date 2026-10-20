@@ -28,7 +28,8 @@ nothing.**
 - **Its own `needs_operator` condition:** a record that proves **wrong, internally inconsistent, or
   too thin to build without inventing** comes back as `needs_operator`, and you raise it. **Never fill
   the gap.**
-- **Then PENDING #2, the mockup gate.** Commit `feat(design): <slice> mockup — …` and stop. The
+- **Then PENDING #2, the mockup gate.** Commit `feat(design): <slice> mockup — …` and stop
+  (`set-slice-status <slice> pending --stop-kind mockup --on-words "<what their words will do>"`). The
   walkthrough names the run command, the URL, the viewports, **what is real and what is stubbed**, and
   what is deliberately not wired. **PENDING #2 exists only when a mockup was requested.**
 - **Rejection splits like every other finding.** A departure from the record is fixed in the mockup. A
