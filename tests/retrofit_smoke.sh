@@ -1382,36 +1382,81 @@ printf '%s\n' "$er_out" | grep -qE '^cheap +mid +haiku +high +executors\.toml$' 
   && ok "the repo's executors.toml turns the cheap route on (haiku@high from executors.toml), agent files in sync" || bad "executor-route on the repo's executors.toml wrong: $er_out"
 ( cd "$F" && python3 scripts/workflow.py executor-mode 2>&1 | grep -q 'invalid choice' ) \
   && ok "executor-mode is gone from the engine (v53: executor-route replaces it)" || bad "the engine still accepts executor-mode"
-# v53 dispatch record (P32.S2): record-dispatch appends one executor_dispatched event to works/events.jsonl,
-# dispatch-summary is its first reader (by route, model @ effort, kind; skips malformed lines; read-only).
-rd() { ( cd "$F" && python3 scripts/workflow.py "$@" 2>&1 ); }
-rd_out=$(rd record-dispatch P1.DECOMP --route high --model opus --effort high --verdict done --duration-ms 60000 --tokens 1000 --tool-uses 5); rd_last=$(tail -1 "$F/works/events.jsonl")
-printf '%s\n' "$rd_out" | grep -qx 'recorded=executor_dispatched' && printf '%s\n' "$rd_last" | grep -q '"type": "executor_dispatched"' \
-  && printf '%s\n' "$rd_last" | grep -q '"route": "high"' && printf '%s\n' "$rd_last" | grep -q '"attribution": "Claude Opus 5.5"' \
-  && ok "record-dispatch appends an executor_dispatched event (route, model, attribution Claude Opus 5.5) to events.jsonl" || bad "record-dispatch wrong: $rd_out / $rd_last"
-rd record-dispatch P1.S9 --route cheap --model haiku --effort high --verdict escalate --attempt 1 >/dev/null
-rd record-dispatch P1.S9 --route high --model opus --effort high --verdict done --attempt 2 --tier high >/dev/null
-ds_out=$(rd dispatch-summary)
-printf '%s\n' "$ds_out" | grep -qE '^cheap +1 +0 +1 ' && printf '%s\n' "$ds_out" | grep -qE '^high +2 +2 +0 +0 +0 +0 +1 ' \
-  && ok "dispatch-summary counts a cheap escalate and a high retry by route" || bad "dispatch-summary by route wrong: $ds_out"
-ds_out=$(rd dispatch-summary --slice P1.S9)
-[ "$(printf '%s\n' "$ds_out" | grep -c '^attempt=')" = "2" ] && [ "$(printf '%s\n' "$ds_out" | grep '^attempt=' | head -1 | cut -c1-9)" = "attempt=1" ] \
-  && ok "dispatch-summary --slice lists the slice's attempts in order" || bad "dispatch-summary --slice wrong: $ds_out"
-rd record-dispatch P1.S9 --route bogus --model opus --effort high --verdict done >/dev/null; rc1=$?
-rd record-dispatch P9.S1 --route high --model opus --effort high --verdict done >/dev/null; rc2=$?
-[ "$rc1" -ne 0 ] && [ "$rc2" -ne 0 ] && ok "record-dispatch refuses an unknown route and an unknown slice" || bad "record-dispatch accepted a bad route or slice (rc=$rc1/$rc2)"
-rd dispatch-summary --json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["records"]==3 and d["by_route"]["high"]["n"]==2' \
-  && ok "dispatch-summary --json prints the aggregates" || bad "dispatch-summary --json wrong"
-rd dispatch-summary --phase P7 >/dev/null; rc1=$?
-rd dispatch-summary --phase P1 | grep -qx 'records=3'; rc2=$?
-[ "$rc1" -eq 1 ] && [ "$rc2" -eq 0 ] && ok "dispatch-summary --phase: an unknown phase exits 1, P1 reports its 3 records" || bad "dispatch-summary --phase wrong (rc=$rc1/$rc2)"
+# v61 dispatch record + transcript meter (P37.S2): record-dispatch keeps only the verdict (the pre-v61
+# flags parse and are named as ignored); dispatch-summary meters the main thread and the spans from
+# Claude Code's transcripts -- one request per message id with its largest output, spans attributed by
+# their `slice:` line, list-priced (an unknown model never guessed), a span ending on a usage limit is
+# `limit` -- and with no transcripts prints one line plus the recorded tables (old records stay readable).
+rd() { ( cd "$F" && CLAUDE_CONFIG_DIR="$F/.no-claude-config" python3 scripts/workflow.py "$@" 2>&1 ); }
+rd_out=$(rd record-dispatch P1.DECOMP --verdict done --tokens 5 --route high); rd_rc=$?; rd_last=$(tail -1 "$F/works/events.jsonl")
+[ "$rd_rc" -eq 0 ] && printf '%s\n' "$rd_out" | grep -qx 'recorded=executor_dispatched' \
+  && printf '%s\n' "$rd_out" | grep -qx 'ignored: --route --tokens (v61 meters spans from transcripts)' \
+  && printf '%s\n' "$rd_last" | grep -q '"verdict": "done"' && ! printf '%s\n' "$rd_last" | grep -q '"tokens"' \
+  && ok "record-dispatch --verdict done --tokens 5 records the verdict only and names the old flags ignored" || bad "record-dispatch wrong (rc=$rd_rc): $rd_out / $rd_last"
+rd record-dispatch P9.S1 --verdict done >/dev/null; rc1=$?
+[ "$rc1" -ne 0 ] && ok "record-dispatch refuses an unknown slice" || bad "record-dispatch accepted an unknown slice"
+printf '%s\n' '{"ts": "2026-01-01T00:00:00+00:00", "type": "executor_dispatched", "slice": "P1.S9", "phase": "P1", "kind": "docs", "route": "cheap", "model": "haiku", "effort": "high", "attempt": 1, "verdict": "escalate", "tokens": 900}' >> "$F/works/events.jsonl"
 printf 'not json\n' >> "$F/works/events.jsonl"
 ds_out=$(rd dispatch-summary); ds_rc=$?
-[ "$ds_rc" -eq 0 ] && printf '%s\n' "$ds_out" | grep -qx 'skipped_lines=1' \
-  && ok "dispatch-summary skips a malformed events.jsonl line and reports skipped_lines=1" || bad "dispatch-summary on a malformed line wrong (rc=$ds_rc): $ds_out"
-rd record-dispatch P1.DECOMP --route high --model opus --effort "" --verdict done >/dev/null
-rd dispatch-summary | grep -q '^opus @ (none)' \
-  && ok "record-dispatch accepts --effort \"\" (shown as opus @ (none))" || bad "an empty effort was not recorded/shown"
+[ "$ds_rc" -eq 0 ] && printf '%s\n' "$ds_out" | grep -q '^transcripts=none found under ' && printf '%s\n' "$ds_out" | grep -qx 'records=2' \
+  && printf '%s\n' "$ds_out" | grep -qE '^cheap +1 +0 +1 ' && printf '%s\n' "$ds_out" | grep -qx 'skipped_lines=1' \
+  && ok "dispatch-summary with no transcripts: one line, the recorded tables, an old record readable, a malformed line skipped" || bad "dispatch-summary without transcripts wrong (rc=$ds_rc): $ds_out"
+rd dispatch-summary --phase P7 >/dev/null; rc1=$?
+[ "$rc1" -eq 1 ] && ok "dispatch-summary --phase: an unknown phase exits 1" || bad "dispatch-summary --phase P7 rc=$rc1"
+newtmp MT
+cp -R "$F" "$MT/ws"
+( cd "$MT/ws" && python3 scripts/workflow.py new-slice --phase P1 --slice P1.S7 --name "meter probe" --kind implementation --risk low >/dev/null 2>&1 )
+python3 - "$MT" <<'PY'
+import json, os, sys
+mt = sys.argv[1]
+ev = os.path.join(mt, "ws", "works", "events.jsonl")
+with open(ev, "a") as f:
+    for ts, old, new in (("2026-01-01T10:00:00+00:00", "todo", "in_progress"), ("2026-01-01T11:00:00+00:00", "in_progress", "done")):
+        f.write(json.dumps({"ts": ts, "type": "slice_status_changed", "slice": "P1.S7", "old_status": old, "new_status": new}) + "\n")
+proj = os.path.join(mt, "projects", "-fixture")
+sub = os.path.join(proj, "sess1", "subagents")
+os.makedirs(sub)
+def asst(ts, mid, model, out, cr=0, w1h=0, w5=0, inp=0, content=None):
+    return {"type": "assistant", "timestamp": ts, "message": {"id": mid, "model": model, "content": content or [],
+            "usage": {"input_tokens": inp, "cache_read_input_tokens": cr, "cache_creation_input_tokens": w1h + w5,
+                      "cache_creation": {"ephemeral_1h_input_tokens": w1h, "ephemeral_5m_input_tokens": w5}, "output_tokens": out}}}
+def user(ts, text):
+    return {"type": "user", "timestamp": ts, "message": {"role": "user", "content": text}}
+def write(path, rows):
+    with open(path, "w") as f:
+        f.write("".join(json.dumps(r) + "\n" for r in rows))
+write(os.path.join(proj, "sess1.jsonl"), [
+    user("2026-01-01T10:29:00.000Z", "go"),
+    asst("2026-01-01T10:30:00.000Z", "m1", "claude-opus-5-5", 5, cr=1000000, w1h=100000, inp=10),
+    asst("2026-01-01T10:30:01.000Z", "m1", "claude-opus-5-5", 500, cr=1000000, w1h=100000, inp=10),
+    asst("2026-01-01T10:31:00.000Z", "m2", "claude-opus-5-5", 100, inp=1000)])
+write(os.path.join(sub, "agent-aaa.jsonl"), [
+    user("2026-01-01T10:35:00.000Z", "slice: P1.S7\nfolder: works/phases/active/P1/slices/P1.S7"),
+    asst("2026-01-01T10:40:00.000Z", "s1", "claude-opus-5-5", 50, inp=2000, content=[{"type": "text", "text": "Done.\n- status: done"}])])
+json.dump({"agentType": "slice-executor-high", "model": "opus", "effort": "high", "finished": True}, open(os.path.join(sub, "agent-aaa.meta.json"), "w"))
+write(os.path.join(sub, "agent-bbb.jsonl"), [
+    user("2026-01-01T10:41:00.000Z", "round: 01-x/01-x\nslice: P1.S7"),
+    asst("2026-01-01T10:42:00.000Z", "s2", "claude-mystery-1", 10, inp=100),
+    {"type": "assistant", "timestamp": "2026-01-01T10:43:00.000Z", "error": "rate_limit", "isApiErrorMessage": True,
+     "message": {"id": "syn1", "model": "<synthetic>", "content": [{"type": "text", "text": "You've hit your session limit · resets 3:10am (Asia/Seoul)"}],
+                 "usage": {"input_tokens": 0, "output_tokens": 0}}}])
+json.dump({"agentType": "design-drafter", "model": "opus", "effort": "xhigh", "finished": True}, open(os.path.join(sub, "agent-bbb.meta.json"), "w"))
+PY
+mt_json=$( cd "$MT/ws" && python3 scripts/workflow.py dispatch-summary --phase P1 --json --transcripts "$MT/projects/-fixture" 2>&1 )
+printf '%s\n' "$mt_json" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)["metered"]["slices"]["P1.S7"]
+m = d["main"]
+assert m["requests"] == 2 and m["output"] == 600, m
+spans = {s["agent"]: s for s in d["spans"]}
+assert spans["slice-executor-high"]["slice"] == "P1.S7" and spans["slice-executor-high"]["attributed_by"] == "slice-line", spans
+assert spans["slice-executor-high"]["outcome"] == "done", spans
+assert spans["design-drafter"]["outcome"] == "limit" and spans["design-drafter"]["reset"] == "3:10am (Asia/Seoul)", spans
+assert spans["design-drafter"]["usage"]["requests"] == 1 and spans["design-drafter"]["usage"]["unpriced"] == 1, spans
+' && ok "the meter: two main-thread ids from three entries keep the largest output, spans attributed by their slice: line, a span ending on a usage limit is limit with its reset" || bad "the transcript meter miscounted: $mt_json"
+mt_out=$( cd "$MT/ws" && python3 scripts/workflow.py dispatch-summary --phase P1 --transcripts "$MT/projects/-fixture" 2>&1 )
+printf '%s\n' "$mt_out" | grep -qE '^main +- +2 +1\.10M +600 +1\.02 ' && printf '%s\n' "$mt_out" | grep -qE '^design-drafter +1 +1 +100 +10 +\? ' \
+  && ok "dispatch-summary prices the main thread at list price (\$1.02) and leaves an unknown model unpriced (?)" || bad "dispatch-summary pricing wrong: $mt_out"
 # v55 boundary-gated compaction (P34.S1): compact-gate (the PreCompact hook) vetoes an auto-compaction while
 # the current slice is open or the tree is dirty, fails open (manual, the fill ceiling, the block cap, an
 # unreadable transcript or stdin) and always exits 0; compact-resume re-injects the pointer and a resume line.

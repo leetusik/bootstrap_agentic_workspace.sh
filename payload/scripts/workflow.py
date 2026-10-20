@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import bisect
 import json
 import os
 import posixpath
@@ -825,42 +826,35 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
 
 
 def cmd_record_dispatch(args: argparse.Namespace) -> None:
-    """Append one `executor_dispatched` event to works/events.jsonl: the route, model and effort an
-    executor ran on (copied from `executor-route`), the measured duration / tokens / tool uses from the
-    Agent completion notification, and its verdict. A record, never a route validation: nothing else is
-    written, no state changes."""
+    """Append one `executor_dispatched` event to works/events.jsonl: the verdict a slice dispatch
+    returned (v61). What a span ran on and what it cost is metered from Claude Code's transcripts by
+    `dispatch-summary`, so the pre-v61 flags (route, model, effort, tier, agent and the notification's
+    numbers) still parse and are ignored, named on one line. A record, nothing else: no state changes."""
     sdata = read_json(require_slice(args.slice) / "slice.json")
-    if not args.model.strip():
-        raise SystemExit("record-dispatch: --model must be a non-empty model (the model= line executor-route printed)")
-    tier = ROUTE_TIER[args.route] if args.tier is None else (None if args.tier == "-" else args.tier)
-    if args.agent is not None:
-        agent = args.agent
-    elif tier is not None:
-        agent = installed_agent_name(ROUTE_AGENT[tier])
-    else:
-        agent = installed_agent_name(ROUTE_AGENT[ROUTE_BORROWS.get(args.route, args.route)])
+    ignored = [flag for flag, dest in _RECORD_DISPATCH_RETIRED if getattr(args, dest, None) is not None]
+    if ignored:
+        print(f"ignored: {' '.join(ignored)} (v61 meters spans from transcripts)")
     rec = {
         "slice": args.slice, "phase": sdata.get("phase_id") or args.slice.split(".", 1)[0],
         "kind": sdata.get("kind"), "risk": sdata.get("risk"),
-        "route": args.route, "tier": tier, "agent": agent,
-        "model": args.model, "effort": args.effort,
-        "attribution": MODEL_ATTRIBUTION.get(args.model, args.model),
-        "attempt": args.attempt, "verdict": args.verdict,
-        "duration_ms": args.duration_ms, "tokens": args.tokens, "tool_uses": args.tool_uses,
-        "note": args.note,
+        "attempt": args.attempt, "verdict": args.verdict, "note": args.note,
     }
     append_event("executor_dispatched", **rec)
     print("recorded=executor_dispatched")
-    for key in ("slice", "route", "tier", "model", "effort", "attempt", "verdict", "duration_ms", "tokens", "tool_uses"):
-        v = rec[key]
-        print(f"{key}={'' if v is None else v}")
+    for key in ("slice", "attempt", "verdict"):
+        print(f"{key}={rec[key]}")
 
 
 _DISPATCH_VERDICTS = ("done", "escalate", "needs_operator", "blocked", "failed")
+# The pre-v61 record-dispatch flags: still parsed (an old prompt or script keeps working), never stored.
+_RECORD_DISPATCH_RETIRED = (("--route", "route"), ("--tier", "tier"), ("--agent", "agent"), ("--model", "model"),
+                            ("--effort", "effort"), ("--duration-ms", "duration_ms"), ("--tokens", "tokens"),
+                            ("--tool-uses", "tool_uses"))
 
 
 def _dispatch_agg(records: list) -> dict:
-    """Counts and sums over a group of executor_dispatched records."""
+    """Counts and sums over a group of executor_dispatched records. `tokens` is what pre-v61 records
+    stored: the span's final context from the completion notification, not the volume it processed."""
     durs = [r["duration_ms"] for r in records if isinstance(r.get("duration_ms"), (int, float))]
     toks = [r["tokens"] for r in records if isinstance(r.get("tokens"), (int, float))]
     agg = {"n": len(records)}
@@ -886,14 +880,628 @@ def _dispatch_table(title: str, groups: dict, cols: list) -> list:
     rows = [header]
     for key, agg in groups.items():
         rows.append([str(key)] + [("-" if agg[c[1]] is None else str(agg[c[1]])) for c in cols])
-    widths = [max(len(r[i]) for r in rows) for i in range(len(header))]
+    return _meter_columns(rows)
+
+
+# ---------------------------------------------------------------------------------------------------
+# The transcript meter (workspace v61). `dispatch-summary` -- and nothing else: no hook, no other
+# command -- reads Claude Code's own session transcripts, `<config>/projects/<slug>/<session>.jsonl`
+# (the main thread) and `<session>/subagents/agent-*.jsonl` + `.meta.json` (one file per span), and
+# meters what each actually processed:
+# - a request is an assistant entry, counted ONCE per `message.id` (else `requestId`): Claude Code
+#   writes one entry per content block, the usage repeating with a growing `output_tokens`, so the
+#   entry with the largest output is kept (the first undercounts output ~20x);
+# - `message.model == "<synthetic>"` is an API error, not a request; when its text or error names a
+#   usage / rate limit it is a limit hit, and a span whose LAST assistant entry is one ended on it;
+# - cache writes split by `usage.cache_creation` into 5 m and 1 h (the main thread writes 1 h,
+#   subagents 5 m); no split counts as 5 m;
+# - context = input + cache read + cache write per request: volume processed, not window size.
+# Spans go to slices by their first prompt (a `slice:` line, then a known slice id, then a design
+# round address through its round.json), then by time; main-thread requests go by time into slice
+# windows from `slice_status_changed` -- a slice's window runs from the previous slice's finish to its
+# own finish, so planning time counts toward the slice it plans.
+#
+# List prices in $/MTok per model id: (input, 5 m cache write, 1 h cache write, cache read, output).
+# Source: https://platform.claude.com/docs/en/about-claude/pricing (fetched 2026-10-20). A model not
+# listed is never guessed: it is shown unpriced as `?`.
+PRICES = {
+    "claude-fable-5-1": (10.0, 12.5, 20.0, 0.25, 50.0),
+    "claude-fable-5": (10.0, 12.5, 20.0, 1.0, 50.0),
+    "claude-opus-5-5": (4.0, 5.0, 8.0, 0.20, 20.0),
+    "claude-opus-5": (5.0, 6.25, 10.0, 0.50, 25.0),
+    "claude-sonnet-5-5": (2.0, 2.5, 4.0, 0.10, 10.0),
+    "claude-sonnet-5": (2.0, 2.5, 4.0, 0.20, 10.0),
+    "claude-haiku-5-5": (0.10, 0.125, 0.20, 0.01, 0.50),
+    "claude-haiku-4-5": (1.0, 1.25, 2.0, 0.10, 5.0),
+}
+# Priced by prompt length (same source): a request whose prompt -- input + cache read + cache write --
+# is over the threshold pays the second row, cache hit or not.
+PRICES_LONG_PROMPT = {"claude-haiku-5-5": (100_000, (0.50, 0.625, 1.0, 0.05, 2.50))}
+METER_PRICES_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing, fetched 2026-10-20"
+METER_SLICE_ID_RE = re.compile(r"\bP\d+\.[A-Z][A-Z0-9]*\b")
+METER_SLICE_LINE_RE = re.compile(r"(?im)^[\s>*`-]*slice[`*]*\s*:\s*[`*]*(P\d+\.[A-Za-z][A-Za-z0-9]*)")
+METER_ROUND_RE = re.compile(r"\b(\d{2}-[a-z0-9][a-z0-9-]*)/(\d{2}-[a-z0-9][a-z0-9-]*)\b")
+METER_LIMIT_RE = re.compile(r"(?i)\b(usage|rate|spend|session|weekly|monthly|daily|5-hour)\b[^.\n]{0,24}\blimit|\blimit (reached|exceeded)")
+METER_RESET_RE = re.compile(r"(?i)\bresets?\s+(?:at\s+)?([^·\n]+?)\s*(?:·|$)")
+METER_VERDICT_RE = re.compile(r"(?im)^[\s>*-]*[`*_]*(status|verdict)[`*_]*\s*:\s*[`*_]*([a-z][a-z_]*)")
+METER_JUDGE_RE = re.compile(r"(?im)^\s*mode\s*:\s*judge\b")
+
+
+def _meter_ts(value) -> "float | None":
+    """An ISO-8601 timestamp (transcripts write `...Z`, events `+09:00`) as epoch seconds, else None."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value[:-1] + "+00:00" if value.endswith("Z") else value).timestamp()
+    except ValueError:
+        return None
+
+
+def _meter_price(model) -> "tuple | None":
+    """The PRICES row for a transcript model id (a `[1m]` tag and a `-YYYYMMDD` date stripped), else None."""
+    if not isinstance(model, str):
+        return None
+    mid = re.sub(r"-\d{8}$", "", re.sub(r"\[[^\]]*\]$", "", model.strip()))
+    return PRICES.get(mid)
+
+
+def _meter_new() -> dict:
+    return {"requests": 0, "input": 0, "cache_read": 0, "cache_write_5m": 0, "cache_write_1h": 0,
+            "output": 0, "cost": 0.0, "unpriced": 0, "limit_hits": 0}
+
+
+def _meter_add(agg: dict, other: dict) -> dict:
+    for k in agg:
+        agg[k] += other.get(k, 0)
+    return agg
+
+
+def _meter_request(agg: dict, model, usage: dict) -> None:
+    """Add one deduplicated request's usage (and list-price cost) into `agg`."""
+    def num(v):
+        return v if isinstance(v, (int, float)) else 0
+    inp = num(usage.get("input_tokens"))
+    cr = num(usage.get("cache_read_input_tokens"))
+    cw = num(usage.get("cache_creation_input_tokens"))
+    out = num(usage.get("output_tokens"))
+    split = usage.get("cache_creation") if isinstance(usage.get("cache_creation"), dict) else {}
+    w1h = num(split.get("ephemeral_1h_input_tokens"))
+    w5 = num(split.get("ephemeral_5m_input_tokens"))
+    w5 += max(cw - w1h - w5, 0)  # no split (or a short one): the rest is a 5 m write
+    agg["requests"] += 1
+    agg["input"] += inp
+    agg["cache_read"] += cr
+    agg["cache_write_5m"] += w5
+    agg["cache_write_1h"] += w1h
+    agg["output"] += out
+    price = _meter_price(model)
+    if price is None:
+        agg["unpriced"] += 1
+        return
+    long_prompt = PRICES_LONG_PROMPT.get(re.sub(r"-\d{8}$", "", re.sub(r"\[[^\]]*\]$", "", model.strip())))
+    if long_prompt and inp + cr + w5 + w1h > long_prompt[0]:
+        price = long_prompt[1]
+    agg["cost"] += (inp * price[0] + w5 * price[1] + w1h * price[2] + cr * price[3] + out * price[4]) / 1e6
+
+
+def _meter_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(x.get("text", "") for x in content if isinstance(x, dict) and x.get("type") == "text")
+    return ""
+
+
+def _meter_limit(entry: dict, text: str) -> bool:
+    err = " ".join(str(entry.get(k) or "") for k in ("error", "apiError"))
+    return bool(METER_LIMIT_RE.search(text)) or "limit" in err.lower()
+
+
+def _meter_scan(path: Path, span: bool) -> dict:
+    """One transcript file read once: its deduplicated requests and limit hits, and for a span its
+    first prompt, resume count, final report and first / last timestamps. Unreadable lines are skipped."""
+    reqs: dict = {}   # key -> [ts, model, usage]
+    limits: list = []  # (ts, reset text)
+    out = {"reqs": reqs, "limits": limits, "prompt": None, "resumes": 0, "final": None, "first": None, "last": None,
+           "last_limit": None, "models": {}}
+    last_asst = None
+    try:
+        fh = path.open(encoding="utf-8", errors="replace")
+    except OSError:
+        return out
+    with fh:
+        for line in fh:
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(d, dict):
+                continue
+            kind = d.get("type")
+            if kind not in ("assistant", "user"):
+                continue
+            if not span and d.get("isSidechain") is True:
+                continue  # an older transcript's inline sidechain: never the main thread's
+            ts = _meter_ts(d.get("timestamp"))
+            if span and ts is not None:
+                out["first"] = ts if out["first"] is None else min(out["first"], ts)
+                out["last"] = ts if out["last"] is None else max(out["last"], ts)
+            msg = d.get("message") if isinstance(d.get("message"), dict) else {}
+            if kind == "user":
+                if not span or d.get("isCompactSummary"):
+                    continue
+                content = msg.get("content")
+                if isinstance(content, list) and any(isinstance(x, dict) and x.get("type") == "tool_result" for x in content):
+                    continue
+                origin = d.get("origin") if isinstance(d.get("origin"), dict) else {}
+                if origin.get("kind") == "coordinator":
+                    out["resumes"] += 1  # a SendMessage from the orchestrator continuing this span
+                elif not d.get("isMeta") and _meter_text(content).strip():
+                    if out["prompt"] is None:
+                        out["prompt"] = _meter_text(content)
+                    else:
+                        out["resumes"] += 1
+                continue
+            model = msg.get("model")
+            if model == "<synthetic>":
+                text = _meter_text(msg.get("content"))
+                hit = _meter_limit(d, text)
+                if hit:
+                    m = METER_RESET_RE.search(text)
+                    limits.append((ts, m.group(1).strip() if m else None))
+                last_asst = ("limit", limits[-1][1]) if hit else ("synthetic", None)
+                continue
+            last_asst = ("request", None)
+            if span:
+                for block in msg.get("content") or []:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") == "text" and block.get("text", "").strip():
+                        out["final"] = block["text"]
+                    elif block.get("type") == "tool_use" and block.get("name") == "SubagentHandback":
+                        inp = block.get("input") if isinstance(block.get("input"), dict) else {}
+                        if isinstance(inp.get("message"), str):
+                            out["final"] = inp["message"]
+            usage = msg.get("usage")
+            if not isinstance(usage, dict):
+                continue
+            key = msg.get("id") or d.get("requestId") or d.get("uuid")
+            prev = reqs.get(key)
+            if prev is None:
+                reqs[key] = [ts, model, usage]
+            elif (usage.get("output_tokens") or 0) > (prev[2].get("output_tokens") or 0):
+                prev[2] = usage
+    if last_asst and last_asst[0] == "limit":
+        out["last_limit"] = last_asst[1] or ""
+    for _ts, model, _u in reqs.values():
+        out["models"][model] = out["models"].get(model, 0) + 1
+    return out
+
+
+def _meter_session_range(path: Path) -> tuple:
+    """(first, last) timestamp of a session file from its head and its tail -- never a full read."""
+    first = last = None
+    try:
+        with path.open("rb") as fh:
+            for _ in range(200):
+                line = fh.readline()
+                if not line:
+                    break
+                try:
+                    first = _meter_ts(json.loads(line).get("timestamp"))
+                except (ValueError, AttributeError):
+                    continue
+                if first is not None:
+                    break
+            size = path.stat().st_size
+            fh.seek(max(0, size - 1_048_576))
+            for line in reversed(fh.read().splitlines()):
+                try:
+                    last = _meter_ts(json.loads(line).get("timestamp"))
+                except (ValueError, AttributeError):
+                    continue
+                if last is not None:
+                    break
+    except OSError:
+        return None, None
+    if last is None:
+        try:
+            last = path.stat().st_mtime
+        except OSError:
+            pass
+    return first, last if last is not None else first
+
+
+def _meter_project_dirs(explicit) -> tuple:
+    """(project dirs to read, how they were found). `--transcripts` overrides discovery; otherwise the
+    session root's slug under `${CLAUDE_CONFIG_DIR:-~/.claude}/projects/`, plus its worktree sessions'."""
+    if explicit:
+        return [Path(p).expanduser() for p in explicit], "--transcripts"
+    base = Path(os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude").expanduser() / "projects"
+    slug = re.sub(r"[^A-Za-z0-9]", "-", str(HOST_ROOT or ROOT))
+    dirs = []
+    if base.is_dir():
+        for d in sorted(base.iterdir()):
+            if d.is_dir() and (d.name == slug or d.name.startswith(slug + "--claude-worktrees-")):
+                dirs.append(d)
+    return dirs, str(base / slug)
+
+
+def _meter_known_slices(events: list) -> tuple:
+    """({slice id: kind or None}) from the phase folders (active and archived) and the events."""
+    kinds: dict = {}
+    for root in (ACTIVE, ARCHIVED):
+        if not root.is_dir():
+            continue
+        for sj in root.glob("*/slices/*/slice.json"):
+            try:
+                kinds[sj.parent.name] = read_json(sj).get("kind")
+            except (OSError, ValueError):
+                kinds.setdefault(sj.parent.name, None)
+    for ev in events:
+        sid = ev.get("slice")
+        if isinstance(sid, str) and sid:
+            if kinds.get(sid) is None and ev.get("kind"):
+                kinds[sid] = ev.get("kind")
+            kinds.setdefault(sid, None)
+    return kinds
+
+
+class _MeterWindows:
+    """Slice windows from `slice_status_changed`: each finished slice owns (previous finish, own finish];
+    the first finished slice starts at its own start; after the last finish, the latest-started open
+    slice owns the time. `at(t)` is the slice id, or None outside every window."""
+
+    def __init__(self, events: list):
+        st: dict = {}
+        for ev in events:
+            if ev.get("type") != "slice_status_changed" or not isinstance(ev.get("slice"), str):
+                continue
+            t = _meter_ts(ev.get("ts"))
+            if t is None:
+                continue
+            s = st.setdefault(ev["slice"], {"start": None, "done": None, "status": None})
+            if ev.get("new_status") == "in_progress" and s["start"] is None:
+                s["start"] = t
+            if ev.get("new_status") == "done":
+                s["done"] = t
+            s["status"] = ev.get("new_status")
+        self.finished = sorted((s["done"], sid) for sid, s in st.items() if s["status"] == "done" and s["done"] is not None)
+        self.ends = [f for f, _ in self.finished]
+        self.open = sorted((s["start"], sid) for sid, s in st.items() if s["status"] != "done" and s["start"] is not None)
+        self.first_start = None
+        if self.finished:
+            s0 = st[self.finished[0][1]]["start"]
+            self.first_start = s0 if s0 is not None else self.finished[0][0]
+        self.bounds: dict = {}
+        prev = self.first_start
+        for end, sid in self.finished:
+            self.bounds[sid] = (prev, end)
+            prev = end
+        # The open slices that own the time after the last finish: those started since it (a slice
+        # left open long before is stale), else every open one.
+        last = self.ends[-1] if self.ends else float("-inf")
+        self.current = [(start, sid) for start, sid in self.open if start >= last] or self.open
+        for start, sid in self.current:
+            self.bounds[sid] = (self.ends[-1] if self.ends else start, None)
+
+    def at(self, t) -> "str | None":
+        if t is None:
+            return None
+        i = bisect.bisect_left(self.ends, t)
+        if i < len(self.ends):
+            if i == 0 and self.first_start is not None and t < self.first_start:
+                return None
+            return self.finished[i][1]
+        if not self.current:
+            return None
+        live = [sid for start, sid in self.current if start <= t]
+        return live[-1] if live else self.current[0][1]  # before its start-slice: planning it
+
+
+def _meter_round_slice(job: str, rnd: str) -> "str | None":
+    """The slice a design round belongs to: its round.json `slice`, else its job.json `slice`."""
+    jobs = ROOT / DESIGN_ROOT_REL / "jobs" / job
+    for path in (jobs / "rounds" / rnd / "round.json", jobs / "job.json"):
+        try:
+            sid = read_json(path).get("slice")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if isinstance(sid, str) and sid:
+            return sid
+    return None
+
+
+def _meter_attribute(prompt: str, start, known: dict, windows: _MeterWindows) -> tuple:
+    """(slice id or 'unattributed', how) for a span from its first prompt, then its start time."""
+    prompt = prompt or ""
+    m = METER_SLICE_LINE_RE.search(prompt)
+    if m:
+        return m.group(1), "slice-line"
+    for sid in METER_SLICE_ID_RE.findall(prompt):
+        if sid in known:
+            return sid, "named"
+    for job, rnd in METER_ROUND_RE.findall(prompt):
+        sid = _meter_round_slice(job, rnd)
+        if sid:
+            return sid, "round"
+    sid = windows.at(start)
+    if sid:
+        return sid, "window"
+    return "unattributed", "none"
+
+
+def _meter_route(agent: str, prompt: str, model, kind) -> str:
+    """The route row a span most likely ran on, for the means: the agent type, the judge mode, the
+    slice kind (research) and the cheap row's haiku. Approximate by nature; other agents keep their name."""
+    if agent == "design-drafter":
+        return "design"
+    if agent == "design-critic":
+        return "judge" if METER_JUDGE_RE.search(prompt or "") else "critic"
+    if agent == "Explore":
+        return "explore"
+    if agent == "slice-executor-high":
+        return "research" if kind == "research" else "high"
+    if agent == "slice-executor-mid":
+        return "cheap" if isinstance(model, str) and "haiku" in model else "mid"
+    return agent or "?"
+
+
+def _meter_verdict(agent: str, final) -> str:
+    """The `status:` line (design spans: `verdict:` first) of a span's final report, else `?`."""
+    found = {}
+    for key, value in METER_VERDICT_RE.findall(final or ""):
+        found.setdefault(key.lower(), value.lower())
+    if agent.startswith("design-") and "verdict" in found:
+        return found["verdict"]
+    return found.get("status") or found.get("verdict") or "?"
+
+
+def _meter_collect(dirs: list, known: dict, windows: "_MeterWindows", selected, lo, hi) -> dict:
+    """Read the sessions overlapping [lo, hi] (None = unbounded) and meter them. `selected(slice)` says
+    whether a slice is in the report; everything else is `before`, `after` or `other`."""
+    canon = {installed_agent_name(a): a for a in ROUTE_AGENT.values()}
+    res = {"sessions": [], "main": {}, "spans": [], "outside": {}, "found": 0, "windows": windows, "kinds": known}
+    for d in dirs:
+        for path in sorted(d.glob("*.jsonl")):
+            res["found"] += 1
+            first, last = _meter_session_range(path)
+            if first is None or (lo is not None and last is not None and last < lo) or (hi is not None and first > hi):
+                continue
+            sess = {"session": path.stem, "dir": d.name, "first": first, "last": last, "main": _meter_new(), "spans": 0}
+            scan = _meter_scan(path, span=False)
+            for ts, model, usage in scan["reqs"].values():
+                if model == "<synthetic>":
+                    continue
+                one = _meter_new()
+                _meter_request(one, model, usage)
+                _meter_add(sess["main"], one)
+                _meter_main_bucket(res, windows.at(ts), ts, selected, lo, hi, one)
+            for ts, _reset in scan["limits"]:
+                one = _meter_new()
+                one["limit_hits"] = 1
+                _meter_add(sess["main"], one)
+                _meter_main_bucket(res, windows.at(ts), ts, selected, lo, hi, one)
+            for jl in sorted((path.parent / path.stem / "subagents").glob("agent-*.jsonl")):
+                meta = {}
+                mp = jl.with_name(jl.name[:-len(".jsonl")] + ".meta.json")
+                if mp.exists():
+                    try:
+                        meta = json.loads(mp.read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        meta = {}
+                sp = _meter_scan(jl, span=True)
+                agent = canon.get(meta.get("agentType"), meta.get("agentType") or "?")
+                sid, how = _meter_attribute(sp["prompt"], sp["first"], known, windows)
+                agg = _meter_new()
+                for _ts, model, usage in sp["reqs"].values():
+                    if model != "<synthetic>":
+                        _meter_request(agg, model, usage)
+                agg["limit_hits"] = len(sp["limits"])
+                model = meta.get("model") or (max(sp["models"], key=sp["models"].get) if sp["models"] else None)
+                if sp["last_limit"] is not None:
+                    outcome = "limit"
+                elif meta and meta.get("finished") is not True:
+                    outcome = "running"
+                else:
+                    outcome = _meter_verdict(agent, sp["final"])
+                minutes = round((sp["last"] - sp["first"]) / 60, 1) if sp["first"] is not None and sp["last"] is not None else None
+                span = {"id": jl.stem[len("agent-"):], "session": path.stem, "agent": agent, "model": model,
+                        "effort": meta.get("effort"), "route": _meter_route(agent, sp["prompt"], model, known.get(sid)),
+                        "slice": sid, "attributed_by": how, "start": sp["first"], "minutes": minutes,
+                        "resumes": sp["resumes"], "outcome": outcome, "reset": sp["last_limit"] or None,
+                        "usage": agg}
+                sess["spans"] += 1
+                if selected(sid):
+                    res["spans"].append(span)
+            res["sessions"].append(sess)
+    return res
+
+
+def _meter_main_bucket(res: dict, sid, ts, selected, lo, hi, one: dict) -> None:
+    """One main-thread request into its slice's row, else `before` / `after` the selected windows, or
+    `other` (inside them, in another stream's slice)."""
+    if sid is not None and selected(sid) and sid != "unattributed":
+        _meter_add(res["main"].setdefault(sid, _meter_new()), one)
+        return
+    lo = lo if lo is not None else res["windows"].first_start
+    where = "before" if (lo is not None and ts is not None and ts < lo) else "after" if (hi is None or ts is None or ts > hi) else "other"
+    _meter_add(res["outside"].setdefault(where, _meter_new()), one)
+
+
+def _meter_ctx(agg: dict) -> int:
+    return agg["input"] + agg["cache_read"] + agg["cache_write_5m"] + agg["cache_write_1h"]
+
+
+def _meter_tok(n) -> str:
+    if n >= 1e6:
+        return f"{n / 1e6:.2f}M"
+    if n >= 1e3:
+        return f"{n / 1e3:.1f}k"
+    return str(int(n))
+
+
+def _meter_cost(agg: dict) -> str:
+    if agg["requests"] and agg["unpriced"] == agg["requests"]:
+        return "?"
+    return f"{agg['cost']:.2f}" + ("+?" if agg["unpriced"] else "")
+
+
+def _meter_columns(rows: list) -> list:
+    widths = [max(len(r[i]) for r in rows) for i in range(len(rows[0]))]
     return ["  ".join(c.ljust(w) if i == 0 else c.rjust(w) for i, (c, w) in enumerate(zip(r, widths))).rstrip() for r in rows]
 
 
+def _meter_row(label: str, n, agg: dict, minutes=None, verdicts: str = "") -> list:
+    return [label, "-" if n is None else str(n), str(agg["requests"]), _meter_tok(_meter_ctx(agg)), _meter_tok(agg["output"]),
+            _meter_cost(agg), "-" if minutes is None else f"{minutes:.1f}", str(agg["limit_hits"]), verdicts or "-"]
+
+
+_METER_HEAD = ["row", "n", "requests", "context", "output", "$", "min", "limits", "verdicts"]
+
+
+def _meter_report(res: dict, slices: list) -> dict:
+    """The per-slice rows, the per-phase totals and the means, as plain data (the --json body)."""
+    by_slice: dict = {}
+    for sid in slices:
+        by_slice[sid] = {"main": res["main"].get(sid, _meter_new()), "spans": [s for s in res["spans"] if s["slice"] == sid]}
+    unattributed = [s for s in res["spans"] if s["slice"] not in by_slice]
+    phases: dict = {}
+    for sid, row in by_slice.items():
+        ph = phases.setdefault(sid.split(".", 1)[0], {"main": _meter_new(), "by_agent": {}, "span_total": _meter_new()})
+        _meter_add(ph["main"], row["main"])
+        for s in row["spans"]:
+            _meter_add(ph["by_agent"].setdefault(s["agent"], _meter_new()), s["usage"])
+            _meter_add(ph["span_total"], s["usage"])
+    for s in unattributed:
+        ph = phases.setdefault("unattributed", {"main": _meter_new(), "by_agent": {}, "span_total": _meter_new()})
+        _meter_add(ph["by_agent"].setdefault(s["agent"], _meter_new()), s["usage"])
+        _meter_add(ph["span_total"], s["usage"])
+    # means: per route (per span) and per slice kind (per slice, main thread included)
+    routes: dict = {}
+    for s in res["spans"]:
+        r = routes.setdefault(s["route"], {"spans": 0, "minutes": 0.0, "cost": 0.0, "unpriced": 0})
+        r["spans"] += 1
+        r["minutes"] += s["minutes"] or 0.0
+        r["cost"] += s["usage"]["cost"]
+        r["unpriced"] += s["usage"]["unpriced"]
+    kinds: dict = {}
+    for sid, row in by_slice.items():
+        if not row["spans"] and not row["main"]["requests"]:
+            continue
+        k = kinds.setdefault(res["kinds"].get(sid) or "unset", {"slices": 0, "spans": 0, "minutes": 0.0, "cost": 0.0})
+        k["slices"] += 1
+        k["spans"] += len(row["spans"])
+        k["minutes"] += sum(s["minutes"] or 0.0 for s in row["spans"])
+        k["cost"] += row["main"]["cost"] + sum(s["usage"]["cost"] for s in row["spans"])
+    means = {
+        "by_route": {r: {"spans": v["spans"], "min_per_span": round(v["minutes"] / v["spans"], 1),
+                         "usd_per_span": round(v["cost"] / v["spans"], 2), "unpriced_requests": v["unpriced"]}
+                     for r, v in sorted(routes.items(), key=lambda kv: (EXECUTOR_ROUTES.index(kv[0]) if kv[0] in EXECUTOR_ROUTES else 99, kv[0]))},
+        "by_kind": {k: {"slices": v["slices"], "spans_per_slice": round(v["spans"] / v["slices"], 1),
+                        "span_min_per_slice": round(v["minutes"] / v["slices"], 1), "usd_per_slice": round(v["cost"] / v["slices"], 2)}
+                    for k, v in sorted(kinds.items())},
+    }
+    return {"slices": by_slice, "unattributed": unattributed, "phases": phases, "means": means}
+
+
+def _meter_print(res: dict, rep: dict, dirs: list) -> None:
+    def hhmm(t):
+        return datetime.fromtimestamp(t).astimezone().strftime("%Y-%m-%d %H:%M") if t else "-"
+    print(f"transcripts={','.join(str(d) for d in dirs)}")
+    print(f"sessions_read={len(res['sessions'])} of {res['found']}  spans={len(res['spans'])}")
+    for s in res["sessions"]:
+        m = s["main"]
+        print(f"  session {s['session'][:8]} {hhmm(s['first'])} -> {hhmm(s['last'])}  main requests={m['requests']} "
+              f"context={_meter_tok(_meter_ctx(m))} output={_meter_tok(m['output'])} ${_meter_cost(m)} limits={m['limit_hits']}  spans={s['spans']}")
+    for pid, ph in rep["phases"].items():
+        total = _meter_add(_meter_add(_meter_new(), ph["main"]), ph["span_total"])
+        if not total["requests"] and not total["limit_hits"]:
+            continue  # a phase none of the sessions read worked on
+        rows = [["group", "requests", "context", "cache_read", "cache_write", "output", "$", "share"]]
+
+        def line(label, agg):
+            share = f"{100 * agg['cost'] / total['cost']:.0f}%" if total["cost"] else "-"
+            return [label, str(agg["requests"]), _meter_tok(_meter_ctx(agg)), _meter_tok(agg["cache_read"]),
+                    _meter_tok(agg["cache_write_5m"] + agg["cache_write_1h"]), _meter_tok(agg["output"]), _meter_cost(agg), share]
+        rows.append(line("main thread", ph["main"]))
+        rows.append(line("spans", ph["span_total"]))
+        for agent, agg in sorted(ph["by_agent"].items(), key=lambda kv: -kv[1]["cost"]):
+            rows.append(line(f"  {agent}", agg))
+        rows.append(line("total", total))
+        print()
+        print(f"[{pid}: main thread beside spans]")
+        print("\n".join(_meter_columns(rows)))
+    for sid, row in rep["slices"].items():
+        if not row["spans"] and not row["main"]["requests"]:
+            continue
+        b = res["windows"].bounds.get(sid)
+        window = f"  window {hhmm(b[0])} -> {hhmm(b[1]) if b[1] else 'open'}" if b else ""
+        rows = [_METER_HEAD, _meter_row("main", None, row["main"])]
+        groups: dict = {}
+        for s in row["spans"]:
+            label = s["agent"] + ("/judge" if s["route"] == "judge" else "")
+            groups.setdefault(label, []).append(s)
+        for label, spans in groups.items():
+            agg = _meter_new()
+            for s in spans:
+                _meter_add(agg, s["usage"])
+            outcomes: dict = {}
+            for s in spans:
+                outcomes[s["outcome"]] = outcomes.get(s["outcome"], 0) + 1
+            verdicts = " ".join(f"{k}={v}" for k, v in sorted(outcomes.items()))
+            resumes = sum(s["resumes"] for s in spans)
+            if resumes:
+                verdicts += f" resumes={resumes}"
+            resets = [s["reset"] for s in spans if s["outcome"] == "limit" and s["reset"]]
+            if resets:
+                verdicts += f" (resets {resets[-1]})"
+            rows.append(_meter_row(label, len(spans), agg, sum(s["minutes"] or 0.0 for s in spans), verdicts))
+        print()
+        print(f"[{sid}] {res['kinds'].get(sid) or ''}{window}")
+        print("\n".join(_meter_columns(rows)))
+    if rep["unattributed"]:
+        print()
+        print(f"[unattributed spans] {len(rep['unattributed'])}: " + ", ".join(f"{s['agent']} {s['id'][:8]}" for s in rep["unattributed"]))
+    if res["outside"]:
+        print()
+        print("[main thread outside the selected windows, in the sessions read]")
+        rows = [_METER_HEAD] + [_meter_row(k, None, v) for k, v in res["outside"].items()]
+        print("\n".join(_meter_columns(rows)))
+    means = rep["means"]
+    if means["by_route"] or means["by_kind"]:
+        print()
+        print("[means] (metered; a DECOMP estimates from these)")
+        rows = [["route", "spans", "min/span", "$/span"]] + [
+            [r, str(v["spans"]), f"{v['min_per_span']:.1f}", f"{v['usd_per_span']:.2f}" + ("+?" if v["unpriced_requests"] else "")]
+            for r, v in means["by_route"].items()]
+        print("\n".join(_meter_columns(rows)))
+        rows = [["kind", "slices", "spans/slice", "span-min/slice", "$/slice"]] + [
+            [k, str(v["slices"]), f"{v['spans_per_slice']:.1f}", f"{v['span_min_per_slice']:.1f}", f"{v['usd_per_slice']:.2f}"]
+            for k, v in means["by_kind"].items()]
+        print("\n".join(_meter_columns(rows)))
+    print()
+    for note in _METER_NOTES:
+        print(f"note={note}")
+
+
+_METER_NOTES = (
+    "context = input + cache read + cache write per request (volume processed, not window size); "
+    "one request per message id, its largest output kept; <synthetic> API errors are not requests",
+    f"$ = list price per model (PRICES: {METER_PRICES_SOURCE}); ? = a model PRICES does not list, never guessed",
+    "compaction summaries are not in the transcript and are not counted: a main thread that compacted cost "
+    "somewhat more than shown",
+    "min = a span's first to last entry, wall clock (a limit wait included); limits = usage-limit hits; "
+    "running = a span whose .meta.json lacks finished: true",
+)
+
+
 def cmd_dispatch_summary(args: argparse.Namespace) -> None:
-    """Read works/events.jsonl back: the executor_dispatched records by route, by model @ effort and by
-    kind (or, with --slice, one line per attempt). Read-only; blank and malformed lines are skipped."""
+    """What a phase really cost: the main thread beside its subagent spans, metered from Claude Code's
+    transcripts (deduplicated, attributed to slices, priced at list price), then the recorded
+    executor_dispatched verdicts. Read-only; no transcripts found is one line, never a failure."""
     records: list = []
+    events: list = []
     skipped = 0
     ev = WORKS / "events.jsonl"
     if ev.exists():
@@ -905,7 +1513,10 @@ def cmd_dispatch_summary(args: argparse.Namespace) -> None:
             except ValueError:
                 skipped += 1
                 continue
-            if isinstance(obj, dict) and obj.get("type") == "executor_dispatched":
+            if not isinstance(obj, dict):
+                continue
+            events.append(obj)
+            if obj.get("type") == "executor_dispatched":
                 records.append(obj)
     if args.phase is not None:
         known = (ACTIVE / args.phase).is_dir() or any(r.get("phase") == args.phase for r in records) \
@@ -917,12 +1528,62 @@ def cmd_dispatch_summary(args: argparse.Namespace) -> None:
         if not any(r.get("slice") == args.slice for r in records) and not (ACTIVE / args.slice.split(".", 1)[0] / "slices" / args.slice).is_dir():
             raise SystemExit(f"dispatch-summary: no such slice: {args.slice}")
         records = [r for r in records if r.get("slice") == args.slice]
-    by_route = _dispatch_groups(records, lambda r: r.get("route") or "?", order=EXECUTOR_ROUTES)
-    by_model = _dispatch_groups(records, lambda r: f"{r.get('model') or '?'} @ {r.get('effort') or '(none)'}")
+
+    # --- metered, from the transcripts ---
+    dirs, where = _meter_project_dirs(args.transcripts)
+    dirs = [d for d in dirs if d.is_dir()]
+    windows = _MeterWindows(events)
+    known = _meter_known_slices(events)
+    if args.slice is not None:
+        slices = [args.slice]
+    else:
+        slices = [s for s in sorted(known, key=_meter_slice_order(windows)) if args.phase is None or s.split(".", 1)[0] == args.phase]
+    selected_set = set(slices)
+    lo = hi = None
+    if args.phase is not None or args.slice is not None:
+        bounds = [windows.bounds[s] for s in slices if s in windows.bounds]
+        lo = min((b[0] for b in bounds if b[0] is not None), default=None)
+        hi = None if any(b[1] is None for b in bounds) else max((b[1] for b in bounds), default=None)
+        if not bounds:
+            lo = hi = float("inf")  # never worked on: no session can overlap
+    metered = None
+    if dirs:
+        everything = args.phase is None and args.slice is None
+        res = _meter_collect(dirs, known, windows, lambda s: everything or s in selected_set or s == "unattributed", lo, hi)
+        if args.phase is None and args.slice is None:
+            slices = sorted(set(slices) | set(res["main"]) | {s["slice"] for s in res["spans"] if s["slice"] != "unattributed"},
+                            key=_meter_slice_order(windows))
+        rep = _meter_report(res, slices)
+        metered = (res, rep)
+    if args.json:
+        body = {"records": len(records)}
+        if metered:
+            res, rep = metered
+            body["metered"] = {
+                "transcripts": [str(d) for d in dirs], "sessions_found": res["found"],
+                "sessions": [{k: v for k, v in s.items()} for s in res["sessions"]],
+                "slices": {sid: {"main": row["main"], "spans": row["spans"]} for sid, row in rep["slices"].items()},
+                "unattributed": rep["unattributed"], "phases": rep["phases"], "outside": res["outside"],
+                "means": rep["means"], "prices_source": METER_PRICES_SOURCE, "notes": list(_METER_NOTES)}
+        else:
+            body["metered"] = None
+            body["transcripts"] = f"none found under {where}"
+    else:
+        if metered:
+            _meter_print(metered[0], metered[1], dirs)
+        else:
+            print(f"transcripts=none found under {where} (pass --transcripts <projects/slug dir>); recorded verdicts only")
+        print()
+        print("[recorded verdicts] (executor_dispatched; tokens = a pre-v61 record's final context, not volume)")
+
+    # --- recorded verdicts (executor_dispatched) ---
+    legacy = [r for r in records if r.get("route")]
+    by_route = _dispatch_groups(legacy, lambda r: r.get("route") or "?", order=EXECUTOR_ROUTES)
+    by_model = _dispatch_groups(legacy, lambda r: f"{r.get('model') or '?'} @ {r.get('effort') or '(none)'}")
     by_kind = _dispatch_groups(records, lambda r: r.get("kind") or "unset")
     if args.json:
-        print(json.dumps({"records": len(records), "by_route": by_route, "by_model_effort": by_model, "by_kind": by_kind,
-                          "skipped_lines": skipped}, ensure_ascii=False, indent=2))
+        body.update({"by_route": by_route, "by_model_effort": by_model, "by_kind": by_kind, "skipped_lines": skipped})
+        print(json.dumps(body, ensure_ascii=False, indent=2))
         return
     phases = sorted({r.get("phase") for r in records if r.get("phase")})
     stamps = [r.get("ts") for r in records if r.get("ts")]
@@ -930,7 +1591,7 @@ def cmd_dispatch_summary(args: argparse.Namespace) -> None:
     if not records:
         if skipped:
             print(f"skipped_lines={skipped}")
-        print(f"hint=record a dispatch with: {WORKFLOW_CMD} record-dispatch <slice_id> --route … --model … --effort … --verdict …")
+        print(f"hint=record a slice dispatch's verdict with: {WORKFLOW_CMD} record-dispatch <slice_id> --verdict …")
         return
     print(f"phases={','.join(phases)}")
     print(f"since={stamps[0] if stamps else '-'}")
@@ -939,17 +1600,32 @@ def cmd_dispatch_summary(args: argparse.Namespace) -> None:
         print(f"skipped_lines={skipped}")
     if args.slice is not None:
         for r in records:
-            print(f"attempt={r.get('attempt')} route={r.get('route')} model={r.get('model')} effort={r.get('effort') or '(none)'} "
-                  f"verdict={r.get('verdict')} duration_ms={r.get('duration_ms')} tokens={r.get('tokens')} ts={r.get('ts')}")
+            print(f"attempt={r.get('attempt')} verdict={r.get('verdict')} route={r.get('route') or '-'} model={r.get('model') or '-'} "
+                  f"effort={r.get('effort') or '(none)'} duration_ms={r.get('duration_ms')} tokens={r.get('tokens')} ts={r.get('ts')}")
         return
     full = [("n", "n"), ("done", "done"), ("escalate", "escalate"), ("needs_op", "needs_operator"), ("blocked", "blocked"),
-            ("failed", "failed"), ("retries", "retries"), ("mean_min", "mean_min"), ("total_min", "total_min"), ("tokens", "tokens")]
-    short = [("n", "n"), ("done", "done"), ("escalate", "escalate"), ("retries", "retries"), ("tokens", "tokens")]
-    for label, title, groups, cols in (("by route", "route", by_route, full), ("by model @ effort", "model @ effort", by_model, full),
-                                       ("by kind", "kind", by_kind, short)):
+            ("failed", "failed"), ("retries", "retries"), ("mean_min", "mean_min"), ("total_min", "total_min"), ("final_ctx", "tokens")]
+    short = [("n", "n"), ("done", "done"), ("escalate", "escalate"), ("needs_op", "needs_operator"), ("blocked", "blocked"),
+             ("failed", "failed"), ("retries", "retries")]
+    tables = [("by kind", "kind", by_kind, short)]
+    if legacy:
+        tables = [("by route, pre-v61 records", "route", by_route, full),
+                  ("by model @ effort, pre-v61 records", "model @ effort", by_model, full)] + tables
+    for label, title, groups, cols in tables:
         print()
         print(f"[{label}]")
         print("\n".join(_dispatch_table(title, groups, cols)))
+
+
+def _meter_slice_order(windows: "_MeterWindows"):
+    """A sort key for slice ids: phase number, then the order they were worked (window end, an open
+    window last), then never-worked slices by name."""
+    def key(sid: str) -> tuple:
+        m = re.match(r"P(\d+)\.", sid)
+        b = windows.bounds.get(sid)
+        when = (0, b[1]) if b and b[1] is not None else (1, b[0] or 0.0) if b else (2, 0.0)
+        return (int(m.group(1)) if m else 10 ** 9, when, sid)
+    return key
 
 
 def doc_index() -> dict:
@@ -7425,25 +8101,20 @@ def main(argv=None) -> int:
     p.add_argument("--explore", action="store_true", help="the read-only Explore lookup agent's dispatch (the explore row)")
     p.set_defaults(func=cmd_executor_route)
 
-    p = sub.add_parser("record-dispatch", help="Append one executor_dispatched record to works/events.jsonl (slice, kind, risk, route, tier, agent, model, effort, attribution, attempt, verdict, and the measured duration / tokens / tool uses from the Agent completion notification); copy route / model / effort from executor-route; writes nothing else")
+    p = sub.add_parser("record-dispatch", help="Append one executor_dispatched record to works/events.jsonl: the verdict a slice dispatch returned (slice, phase, kind, risk, attempt, verdict, note). What it ran on and cost is metered from the transcripts by dispatch-summary; the pre-v61 flags (--route --model --effort --tier --agent --duration-ms --tokens --tool-uses) still parse and are ignored; writes nothing else")
     p.add_argument("slice", help="the slice that was dispatched")
-    p.add_argument("--route", required=True, choices=EXECUTOR_ROUTES, help="the route row dispatched on (the route= line executor-route printed)")
-    p.add_argument("--model", required=True, help="the model the dispatch ran on (the model= line)")
-    p.add_argument("--effort", required=True, help="the effort the dispatch ran on (the effort= line; empty when none was passed)")
     p.add_argument("--verdict", required=True, choices=_DISPATCH_VERDICTS, help="how the executor returned; failed = an empty or failed return")
     p.add_argument("--attempt", type=int, default=1, help="1 for the first dispatch, 2 for the retry (default 1)")
-    p.add_argument("--tier", choices=EXECUTOR_TIERS + ("-",), help="the tier (default: the route's tier; none for design, critic, judge and explore; - is none, as executor-route prints it)")
-    p.add_argument("--agent", help="the subagent_type dispatched (default: the route's installed agent -- the tier's, design-drafter for design, design-critic for critic and judge)")
-    p.add_argument("--duration-ms", type=int, dest="duration_ms", help="duration_ms from the completion notification")
-    p.add_argument("--tokens", type=int, help="subagent_tokens from the completion notification")
-    p.add_argument("--tool-uses", type=int, dest="tool_uses", help="tool_uses from the completion notification")
-    p.add_argument("--note", help="free text, e.g. back-filled from the completion notification")
+    p.add_argument("--note", help="free text")
+    for flag, dest in _RECORD_DISPATCH_RETIRED:
+        p.add_argument(flag, dest=dest, help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_record_dispatch)
 
-    p = sub.add_parser("dispatch-summary", help="Read-only: summarize the executor_dispatched records in works/events.jsonl by route, by model @ effort and by kind (dispatches, verdict counts, retries, mean / total minutes, tokens); --slice lists one slice's attempts; --json for tooling")
-    p.add_argument("--phase", help="keep one phase's records")
-    p.add_argument("--slice", help="keep one slice's records (its attempts, in order) and print them one per line")
-    p.add_argument("--json", action="store_true", help="print the aggregates as one JSON object")
+    p = sub.add_parser("dispatch-summary", help="Read-only: what a phase really cost -- the main thread beside its subagent spans per slice and per phase (requests, context, output, list-price $, minutes, limit hits, verdicts) metered from Claude Code's transcripts, the means a DECOMP estimates from, then the recorded verdicts; no transcripts found prints one line and the recorded tables")
+    p.add_argument("--phase", help="one phase: its slices, read from the sessions overlapping its slice windows")
+    p.add_argument("--slice", help="one slice: its metered rows and its recorded attempts, one per line")
+    p.add_argument("--json", action="store_true", help="print everything as one JSON object")
+    p.add_argument("--transcripts", action="append", metavar="DIR", help="read this projects/<slug> directory instead of discovering the session root's (repeatable)")
     p.set_defaults(func=cmd_dispatch_summary)
 
     p = sub.add_parser("next", help="Print the current phase/slice selection")

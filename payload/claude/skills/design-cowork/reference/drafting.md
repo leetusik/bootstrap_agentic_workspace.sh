@@ -4,8 +4,8 @@
 
 **Dispatch the drafters.** Resolve once with `executor-route --drafter`, and pass its `model` /
 `effort` on every Agent call (`subagent_type` = its `subagent_type=` line; `subagent_type:
-design-drafter` in a plain install). The prompt is **only the round address `<job>/<round>` and the
-slice id**; on the answer pass add `critique-01.md` and, under `critic+judge`, the ids held for the
+design-drafter` in a plain install). The prompt is **only a `slice: <id>` line and the round address
+`<job>/<round>`**; on the answer pass add `critique-01.md` and, under `critic+judge`, the ids held for the
 judge; on the judge's short follow-up pass add `judge-01.md` (*below*). The drafter reads everything else itself; paste
 nothing. Run it
 as a background task (never pass `run_in_background: false`).
@@ -65,12 +65,9 @@ critic and about 30 without. The drafter's `--click` self-check takes a few minu
 critic's model and effort are the `[claude.critic]` row's (`max` by default, `xhigh` the step down) and
 the judge's the `[claude.judge]` row's: the operator tunes them in `executors.toml`, never in a prompt.
 
-**Record every span**, whatever its verdict: `record-dispatch <slice> --route design|critic|judge
---tier -
---model <model=> --effort "<effort=>" --verdict <…> --agent <subagent_type=> --duration-ms …
---tokens …
---tool-uses …`, the flags copied from the `executor-route` lines, the numbers from the completion
-notification.
+**Every span's prompt starts with its `slice: <id>` line** — drafter, critic and judge alike: the
+meter attributes the span by it. Spans are metered from the transcripts by `dispatch-summary`; never
+record one by hand.
 
 ## Never — dispatching
 

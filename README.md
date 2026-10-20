@@ -364,8 +364,9 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 없어졌고, 남아 있는 `mode = "..."` 줄은 삭제 안내와 함께 거부됩니다.
 `python3 scripts/workflow.py executor-route`(또는 `/executor-route`)는 현재 라우트 표를,
 `executor-route <slice_id>`는 그 slice의 dispatch 결정(행·모델·노력 수준·에이전트)을 보여 줍니다. 모든
-dispatch는 `record-dispatch`로 `works/events.jsonl`에 기록되고 `dispatch-summary`가 라우트별로
-요약합니다 — 라우트 표는 이 워크스페이스 자신의 실행 기록으로 조정합니다. 싼 경로(`cheap`)는 이
+slice dispatch의 판정은 `record-dispatch`로 `works/events.jsonl`에 기록되고, `dispatch-summary`는
+Claude Code의 트랜스크립트에서 메인 스레드와 각 하위 에이전트가 실제로 처리한 토큰과 정가 기준 비용을
+slice별로 계량해 나란히 보여 줍니다 — 라우트 표는 이 워크스페이스 자신의 실행 기록으로 조정합니다. 싼 경로(`cheap`)는 이
 저장소에서는 켜져 있고(Haiku 5.5), 설치 시드에서는 주석 처리되어 있습니다 — `haiku` 별칭이
 Bedrock·Vertex·Foundry에서는 Haiku 4.5이기 때문입니다. 실행자는 큰 읽기 전용 조회를 `Explore`(Haiku)
 하위 에이전트에 맡길 수 있지만, `result.md`·`phase.md`·코드·검증·판정은 절대 맡기지 않습니다.
