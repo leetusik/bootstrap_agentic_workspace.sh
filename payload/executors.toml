@@ -18,7 +18,7 @@
 #   research  opus @ medium  research slices, by kind (slice-executor-high)
 #   design    opus @ xhigh   design-drafter (its own agent file); not a slice
 #                            tier: executor-route --drafter
-#   critic    sonnet @ max   design-critic (its own agent file), judging each
+#   critic    sonnet @ high  design-critic (its own agent file), judging each
 #                            drafted round: executor-route --critic
 #   judge     fable @ high   design-critic in judge mode, ruling on the items
 #                            the critic escalates (alias only): --judge
@@ -69,7 +69,7 @@ effort = "high"
 # effort = "xhigh"
 # [claude.critic]
 # model = "sonnet"  # design-critic; never the design row's model
-# effort = "max"
+# effort = "high"
 # [claude.judge]
 # model = "fable"   # alias only; e.g. "opus" when the drafter runs on fable
 # effort = "high"

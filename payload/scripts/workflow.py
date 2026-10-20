@@ -339,7 +339,7 @@ ROUTE_DEFAULTS = {
     "high": {"model": "opus", "effort": "high"},
     "research": {"model": "opus", "effort": "medium"},
     "design": {"model": "opus", "effort": "xhigh"},
-    "critic": {"model": "sonnet", "effort": "max"},
+    "critic": {"model": "sonnet", "effort": "high"},
     "judge": {"model": "fable", "effort": "high"},
     "mid": {"model": "sonnet", "effort": "high"},
     "cheap": None,  # inherits the resolved mid row

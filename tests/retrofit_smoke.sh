@@ -500,7 +500,7 @@ for required in ("`new visual direction: yes` in the handoff licenses setting a 
                  "**Controls never change size or move what is around them when they show state**",
                  "Scope page link colors to text links (`a:not([class])`)",
                  "**Toss-level care (the rules, never Toss's look).**",
-                 "**Fix every `check=` line before you return**", "--click`. It prints",
+                 "**Fix every `check=` line before you return**", "--strict`, with **no `--out`**",
                  "**never a reason to fold a component's states into a static board**"):
     assert required in drafter, required
 for gone in ("your **only** licence to load it", "load it through `Skill`", "`frontend_design`",
@@ -512,8 +512,8 @@ for gone in ("your **only** licence to load it", "load it through `Skill`", "`fr
 critic = " ".join((root / "payload/claude/agents/design-critic.md").read_text().split())
 for required in ("**You get one pass**", "**The bar, line by line**", "**The state bar is on every interactive Page, lists only that page's states**",
                  "**The state-bar exemption.**", "**The direction rule follows the handoff.**",
-                 "**The interaction pass is yours too.**", "**What it still cannot do**",
-                 "w.DesignBrowser(w.design_preview_browser(None), tempfile.mkdtemp())", "--phone-click",
+                 "**The interaction pass is yours where it needs judgment.**", "**What it still cannot do**",
+                 "w.DesignBrowser(w.design_preview_browser(None), tempfile.mkdtemp())", "--states-only",
                  "You rule once, beside the drafter's answer pass"):
     assert required in critic, required
 for gone in ("passes 02 and 03", "Passes 02 and 03", "- repeated: N", "`repeated`:", "at pass 03"):
@@ -1037,11 +1037,18 @@ grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '
   && ! grep -Eq '^tools: (.*, )?Skill(,.*)?$' "$F/.claude/agents/design-drafter.md" \
   && ! grep -q '^tools: .*DesignSync' "$F/.claude/agents/design-drafter.md" \
   && ok "fresh install ships the design-drafter subagent (no Skill tool, no DesignSync)" || bad "fresh install design-drafter missing, still carries Skill, or carries DesignSync"
-# P36.S5B: the design critic ships on the critic row (sonnet @ max) and can write only its own file: no Edit.
+# P36.S5B, v61 (P37.S7): the design critic ships on the critic row (sonnet @ high) and can write only its own file: no Edit.
 [ -f "$F/.claude/agents/design-critic.md" ] && grep -q '^model: sonnet$' "$F/.claude/agents/design-critic.md" \
-  && grep -q '^effort: max$' "$F/.claude/agents/design-critic.md" && grep -q '^tools: ' "$F/.claude/agents/design-critic.md" \
+  && grep -q '^effort: high$' "$F/.claude/agents/design-critic.md" && grep -q '^tools: ' "$F/.claude/agents/design-critic.md" \
   && ! grep -Eq '^tools: (.*, )?Edit(,.*)?$' "$F/.claude/agents/design-critic.md" \
-  && ok "fresh install ships the design-critic subagent (sonnet@max, no Edit in tools)" || bad "fresh install design-critic missing, off its row defaults, or carries Edit"
+  && ok "fresh install ships the design-critic subagent (sonnet@high, no Edit in tools)" || bad "fresh install design-critic missing, off its row defaults, or carries Edit"
+# v61 (P37.S7): shape pins on the two design agents -- one drafter output (no build-prompt.md bar as legacy), the
+# strict self-check and the state-bar rules in the drafter, the render reuse in the critic.
+D="$F/.claude/agents/design-drafter.md"; C="$F/.claude/agents/design-critic.md"
+! grep -h 'build-prompt' "$D" "$C" | grep -vqiE 'legacy|no `build-prompt.md`' \
+  && grep -q -- '--strict' "$D" && grep -q 'self_check=pass' "$D" && grep -q 'never follows the scroll' "$D" && grep -q 'one standalone bar' "$D" \
+  && grep -q -- '--states-only' "$C" && grep -q 'sheet.png' "$C" && grep -q '^- open_items:' "$C" && grep -q '^- `open_items`' "$D" \
+  && ok "the design agents carry the v61 shape (strict self-check, state-bar rules, render reuse, open_items, no build-prompt.md)" || bad "the design agent files are off the v61 shape"
 [ ! -f "$F/.claude/agents/slice-executor.md" ] && ok "legacy untiered slice-executor retired (absent on fresh install)" || bad "legacy untiered slice-executor should be retired but is present"
 [ ! -f "$F/.claude/agents/slice-executor-low.md" ] && ok "low tier retired in v23 (absent on fresh install)" || bad "slice-executor-low should be retired but is present"
 [ -f "$F/executors.toml" ] && ok "fresh install seeds the tracked executors.toml selection" || bad "fresh install missing executors.toml"
@@ -1307,8 +1314,8 @@ rm -f "$F/executors.toml"
   && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-high.md" \
   && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/design-drafter.md" \
   && grep -q '^model: haiku$' "$F/.claude/agents/Explore.md" && grep -q '^effort: high$' "$F/.claude/agents/Explore.md" \
-  && grep -q '^model: sonnet$' "$F/.claude/agents/design-critic.md" && grep -q '^effort: max$' "$F/.claude/agents/design-critic.md" \
-  && ok "no executors.toml: sync-agents writes the route defaults (mid sonnet@high, high opus@high, design-drafter opus@xhigh, design-critic sonnet@max, Explore haiku@high)" \
+  && grep -q '^model: sonnet$' "$F/.claude/agents/design-critic.md" && grep -q '^effort: high$' "$F/.claude/agents/design-critic.md" \
+  && ok "no executors.toml: sync-agents writes the route defaults (mid sonnet@high, high opus@high, design-drafter opus@xhigh, design-critic sonnet@high, Explore haiku@high)" \
   || bad "the route defaults matrix is wrong"
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: fable$' "$F/.claude/agents/slice-executor-high.md" \
@@ -1340,9 +1347,9 @@ rm -f "$F/executors.toml"
 er_out=$(er)
 [ "$(printf '%s\n' "$er_out" | grep -cE '^(high|research|design|critic|judge|mid|cheap|explore) ')" = "8" ] && printf '%s\n' "$er_out" | grep -qx 'proxy=none' \
   && printf '%s\n' "$er_out" | grep -qE '^design +- +opus +xhigh +default$' \
-  && printf '%s\n' "$er_out" | grep -qE '^critic +- +sonnet +max +default$' && printf '%s\n' "$er_out" | grep -qE '^judge +- +fable +high +default$' \
+  && printf '%s\n' "$er_out" | grep -qE '^critic +- +sonnet +high +default$' && printf '%s\n' "$er_out" | grep -qE '^judge +- +fable +high +default$' \
   && ! printf '%s\n' "$er_out" | grep -q '^warning=fairness' \
-  && ok "executor-route (bare) prints the eight-row route table (design opus@xhigh, critic sonnet@max, judge fable@high, tier -) and proxy=none" || bad "executor-route bare table wrong: $er_out"
+  && ok "executor-route (bare) prints the eight-row route table (design opus@xhigh, critic sonnet@high, judge fable@high, tier -) and proxy=none" || bad "executor-route bare table wrong: $er_out"
 er_out=$(er P1.DECOMP)
 printf '%s\n' "$er_out" | grep -qx 'route=high' && printf '%s\n' "$er_out" | grep -qx 'tier=high' \
   && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor-high' && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
@@ -1379,10 +1386,10 @@ printf '%s\n' "$er_out" | grep -qx 'agent=design-drafter' && printf '%s\n' "$er_
 # P36.S5B: the critic and the judge both run design-critic; each must be a different model from the drafter's.
 er_out=$(er --critic); er_j=$(er --judge)
 printf '%s\n' "$er_out" | grep -qx 'route=critic' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-critic' \
-  && printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && printf '%s\n' "$er_out" | grep -qx 'effort=max' \
+  && printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \
   && printf '%s\n' "$er_j" | grep -qx 'route=judge' && printf '%s\n' "$er_j" | grep -qx 'subagent_type=design-critic' \
   && printf '%s\n' "$er_j" | grep -qx 'model=fable' && printf '%s\n' "$er_j" | grep -qx 'tier=-' \
-  && ok "executor-route --critic (sonnet@max) and --judge (fable) both dispatch design-critic" || bad "executor-route --critic/--judge wrong: $er_out / $er_j"
+  && ok "executor-route --critic (sonnet@high) and --judge (fable) both dispatch design-critic" || bad "executor-route --critic/--judge wrong: $er_out / $er_j"
 printf '[claude.critic]\nmodel = "opus"\n' > "$F/executors.toml"
 er_out=$( cd "$F" && env -u ANTHROPIC_BASE_URL python3 scripts/workflow.py executor-route --critic 2>&1 ); er_rc=$?
 [ "$er_rc" -eq 1 ] && printf '%s\n' "$er_out" | grep -q "is the design row's model" \

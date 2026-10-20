@@ -63,10 +63,10 @@ anything:** one critic pass, then at most one drafter answer pass. There is no s
    as the judge's ruling, for its next round when the operator agrees. Under `critic` it reaches the
    operator unruled.
 
-**Cost** (measured in P36.S8B, critic at sonnet @ max): a critic pass took 25–36 minutes on a
+**Cost** (measured in P36.S8B, critic at sonnet @ max; v61 runs the critic at high and reuses the drafter's render): a critic pass took 25–36 minutes on a
 flow-board job, and the judge about 2 minutes per item. A job took about 55–100 agent-minutes with a
 critic and about 30 without. The drafter's `--click` self-check takes a few minutes of that. The
-critic's model and effort are the `[claude.critic]` row's (`max` by default, `xhigh` the step down) and
+critic's model and effort are the `[claude.critic]` row's (`high` by default since v61, `max` the step up) and
 the judge's the `[claude.judge]` row's: the operator tunes them in `executors.toml`, never in a prompt.
 
 **Every span's prompt starts with its `slice: <id>` line** — drafter, critic and judge alike: the
