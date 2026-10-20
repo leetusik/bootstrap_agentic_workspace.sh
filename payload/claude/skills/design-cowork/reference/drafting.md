@@ -20,7 +20,11 @@ the
 wave run on, and raise exactly what it named at the wave's stop. The operator's answer amends that
 open round's handoff, and the job is drafted again from there. `blocked` → `design-check` problems
 it could not fix: same, reported as named. Fields to read: `boards_written`, `render_loop`,
-`component_gaps`, `departures`, `open_questions`, `critique_answers`, `design_check`.
+`component_gaps`, `departures`, `open_questions`, `open_items`, `critique_answers`, `design_check`.
+
+**What you read of a span: its verdict block, and the round `result.md`'s `## Summary`** (1 KB or
+less). Never the drafter's other output, the canvas's JS or CSS, a critique's findings or any whole
+design file: their detail is the next span's input, and the operator's when they open the canvas.
 
 **When the job's critique is `off`,** go straight to the read-back.
 

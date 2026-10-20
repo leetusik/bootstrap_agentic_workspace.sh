@@ -1,14 +1,32 @@
 # do-whole-phase — a design slice (`kind: co-work`)
 
-- **`kind: co-work` (a design slice) runs inline, with dispatched drafting spans every round, critique spans when a job's level asks for them, and a dispatched mockup span only when the operator asked for one — and stops the loop once per wave, twice with a mockup.** The round's lifecycle and the operator's words stay inline (no executor runs them); the **drafting is dispatched to `design-drafter`**, the **critique to `design-critic`**, and the **mockup build is the one span dispatched to a slice executor** (`slice-executor-high`, like any code slice), when one was requested. Per the `design-cowork` skill, and with `python3 scripts/workflow.py set-slice-status <slice_id> pending --stop-kind <wave|mockup> --on-words "<what their words will do>"` at each stop (`wave` at PENDING #1, `mockup` at PENDING #2). Steps 1–4 are the loop. A phase whose `intent.md` still says `Design tool: claude-design` is a legacy one: at its first design slice set the slice `pending` (`--stop-kind decision`) and ask the operator to re-confirm it on `drafter`, per `design-cowork`'s legacy rule.
-  1. **Inline** — for each job of the slice's wave (one, or about 3–4, as `DECOMP` recorded them): `python3 scripts/workflow.py design-open --slug <slug> --slice <slice_id> --critique <level>` (`--new-job` for each further job; `design-init` first on a product's first job), the job's canvas on its first round, the preview prep, then `handoff.md`: the screens × states with a check each, the data, the system inventory, the constraints, the collected taste, the `## The operator's bar` section (the operator's own standing rules from `bar.md`, or none beyond the shipped bar), a `new visual direction: yes` or `no` line (the operator's call: the licence for a new look, built as one direction), the `critique:` line and the three paths.
-  2. **Dispatched — one `design-drafter` per job, at once** (the one carve-out from one executor at a time), as background tasks (never pass `run_in_background: false`); each prompt is the round **address** `<job>/<round>` and the slice id, its `model` / `effort` the `executor-route --drafter` lines, and every return recorded. Then, per job whose critique is `critic` or `critic+judge`, one critic pass on the `--critic` lines and, with any must-fix open, one drafter answer pass; under `critic+judge` the judge (`--judge`) rules once beside that answer pass on the items the critic escalated, and its upheld items get one more short drafter pass. There is no second critic pass. A drafter's `needs_operator` or `blocked` holds only its job; the stop reports it.
-  3. **Inline read-back and publish** — per job, run `design-check <job>` yourself, never resting on the drafter's own line; read `result.md` and `build-prompt.md`; then the concreteness check. **A failure the drafter can fix goes back to it once, on the same open round; otherwise report exactly those points at the stop, nothing signed.** Publish each job (`design-publish-plan <job>` → the `Artifact` publish → `design-canvas <job> --version <id>`), commit the drafted wave and STOP the loop at **PENDING #1**, once for the whole wave.
-  4. **The operator's words, inline** — read their in-app edits and the comments they sent to Claude back into `feedback.md` verbatim, then their words decide each job:
-     - **Literal approval, no mockup requested:** write `SIGNOFF.md` with their literal words and run `design-close <job>/<round> --words "<their literal words>"`.
-     - **Anything else is feedback:** write their words verbatim into `feedback.md`, run `design-close <job>/<round> --superseded`, then `design-open --slug <s> --slice <slice_id> --job <job> --critique <level>` — the new round edits the job's canvas in place — and **write its handoff**: what the feedback asks for, pointing at the superseded round's `feedback.md`, the boards the operator edited locked as edited, and its `new visual direction` line. Re-draft (step 2), read back and republish as in step 3 (a new canvas version), commit (the superseded round's `feedback.md` and close ride in the same commit), and STOP at PENDING #1 again — **one more commit and one more stop per superseding wave**.
-     - **Mockup requested** (`Mockup: requested` in `intent.md`, or the operator asked in their own words before the round closed): their go-ahead at PENDING #1 dispatches the mockup build to `slice-executor-high` (built from `build-prompt.md` and the job's record on disk, stubbed data, verified in the `## Operator Runtime`); handle its verdict exactly as any delegated slice below — `needs_operator` also covers a record too thin, wrong or inconsistent to build from, and you raise it rather than filling the gap — then commit and STOP the loop at **PENDING #2**, the mockup gate. **PENDING #2 exists only when a mockup was requested.** On the operator's **literal** approval of the running mockup, write `SIGNOFF.md` and run `design-close <job>/<round> --words "<their literal words>"`.
+A design slice runs inline, with dispatched spans, per the `design-cowork` skill: **its references own
+the round procedure**, and you read each one when its moment comes. This file keeps only what the loop
+adds.
 
-     When every job is signed, or dropped by the operator, `finish-slice`, commit, and continue the loop: **a wave signed at the first return is two commits and one stop; with a mockup, three commits and two loop stops**.
-
-  **Report each `pending` window for what it is:** at PENDING #1 give, per job, the canvas link, the scorecard when critique was on (open items, the bar line by line, Holds, Not seen), the taste notes, open wave choices, what the answer pass left open (rebuttals, with both sides), unsure items under `critic` and low-confidence items when the judge was skipped, the drafter's departures and `open_questions` as decisions to take, and what their words will do — literal approval signs that job (no mockup) or starts its mockup build (mockup requested), anything else is feedback and a superseding round re-drafts it; at PENDING #2 say that you are **asking for approval** — the run command, the mockup route's URL, the viewports, what is real and what is stubbed, and that only their literal words close the round.
+- **Who runs what.** The round's lifecycle and the operator's words stay inline; the **drafting is
+  dispatched to `design-drafter`** every round, the **critique to `design-critic`** when a job's level
+  asks for it, and the **mockup build is the one span dispatched to a slice executor**
+  (`slice-executor-high`, like any code slice), only when the operator asked for one. A wave's
+  drafters run at once: the one carve-out from one executor at a time.
+- **Legacy tool.** A phase whose `intent.md` still says `Design tool: claude-design` is a legacy one:
+  at its first design slice set the slice `pending` (`--stop-kind decision`) and ask the operator to
+  re-confirm it on `drafter`, per `design-cowork`'s legacy rule.
+- **The steps, each where it lives:** open the wave's rounds, write the wave brief and each job's
+  handoff (`design-cowork/reference/opening.md`); dispatch the drafters and run each job's critique
+  loop (`reference/drafting.md`); read back, publish, commit and report the stop
+  (`reference/publish.md`); the operator's return: edits, comments, feedback, signing
+  (`reference/operator.md`); a requested mockup (`reference/mockup.md`).
+- **The stops.** STOP the loop at **PENDING #1**, once for the whole wave:
+  `python3 scripts/workflow.py set-slice-status <slice_id> pending --stop-kind wave --on-words "<what their words will do>"`.
+  With a mockup requested, STOP again at **PENDING #2**, the mockup gate (`--stop-kind mockup`).
+  **PENDING #2 exists only when a mockup was requested** (`Mockup: requested` in `intent.md`, or the
+  operator asked in their own words before the round closed).
+- **The mockup's verdict** is handled exactly as any delegated slice's (`reference/verdicts.md`); its
+  `needs_operator` also covers a record too thin, wrong or inconsistent to build from, which you raise
+  rather than fill.
+- **Commits and stops.** The drafted wave is one commit and one stop; the signoff is one commit; each
+  superseding wave is **one more commit and one more stop**; a mockup adds its commit and PENDING #2.
+  **A wave signed at the first return is two commits and one stop; with a mockup, three commits and
+  two loop stops.** When every job is signed, or dropped by the operator, `finish-slice`, commit, and
+  continue the loop.

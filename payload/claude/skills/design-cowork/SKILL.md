@@ -26,7 +26,7 @@ paths are relative to the design root, `docs/reference/design/`, unless they sta
 - **The operator** decides. Only their literal words in the session sign a job.
 - **You, the orchestrator (main thread),** own the round lifecycle (`design-open`, `design-close`),
   every handoff, the read-back, **every `Artifact` and `ArtifactComments` call**, every `pending`
-  stop, the operator's words (`feedback.md`, `SIGNOFF.md`) and every commit. **Only the main thread
+  stop, the operator's words (`feedback.md`, the signoff) and every commit. **Only the main thread
   publishes**: a watch on a canvas lives only in the main loop, and one writer handles a publish
   refused over the operator's edit. Executors never get `Artifact`.
 - **`design-drafter`** (`.claude/agents/design-drafter.md`) drafts one round of one job into that
@@ -47,16 +47,16 @@ cannot see a canvas: stop `pending` (`--stop-kind operator-action`) and say so; 
 
 ```
 per co-work slice (one wave of 1–4 jobs; every job runs this, in parallel)
-design-open → canvas + preview prep → handoff.md (with the operator's bar)       [INLINE]
+design-open → canvas + preview prep → wave brief + each job's handoff.md      [INLINE]
   → drafter pass, self-checked with design-preview --click  [DISPATCHED, design-drafter]
   → critique on?  one critic pass                          [DISPATCHED, design-critic]
       → any must-fix open?  one drafter answer pass
         (critic+judge: the judge rules beside it; its upheld items get one short drafter pass)
-  → read back → publish → design-canvas --version                              [INLINE]
+  → design-readback → publish → design-canvas --version                       [INLINE]
 → commit → PENDING #1, once for the whole wave       [the operator opens the canvases]
 → per job, the operator's words:
-    feedback   → feedback.md → design-close --superseded → next round of that job
-    sign-off   → SIGNOFF.md → design-close --words      (no mockup requested)
+    feedback   → feedback.md → design-close --superseded → next round, critique off
+    sign-off   → design-sign (all presented)         (no mockup requested)
     go-ahead   → mockup [DISPATCHED, slice-executor-high] → PENDING #2 → SIGNOFF
 → the slice finishes when every job is signed or dropped → implement [separate slices]
 ```
@@ -73,9 +73,9 @@ requested.**
 
 - `reference/shape.md`: a phase or `DECOMP` shaping design work (styles, sizing, waves, critique, the gate).
 - `reference/record.md`: the on-disk record, who writes what, the `design-*` commands.
-- `reference/opening.md`: opening a round and writing its handoff.
+- `reference/opening.md`: opening a round, the wave brief, the handoffs.
 - `reference/drafting.md`: dispatching the drafters, the critic and the judge.
-- `reference/publish.md`: the read-back, the publish, PENDING #1.
+- `reference/publish.md`: the read-back, the publish, PENDING #1, its report.
 - `reference/operator.md`: the operator's return (edits, comments, feedback, sign-off).
 - `reference/system.md`: syncing the Design System Artifact.
 - `reference/mockup.md`: a mockup the operator asked for.
@@ -86,9 +86,8 @@ requested.**
 
 - Author a palette, a type scale, boards, "proposals", a first draft or options yourself, ever, or
   have a slice executor author them. **The operator decides, whoever drafts:** nothing drafted is
-  decided until their literal words sign it. What you write into the record (the handoff,
-  `feedback.md`, `SIGNOFF.md`, an operator edit copied in) files what exists and what the operator
-  said, never a new decision.
+  decided until their literal words sign it. What you write into the record (a brief, a handoff,
+  `feedback.md`) files what exists and what the operator said, never a new decision.
 - Load `artifact-design` or `frontend-design` for product design co-work: they will make you design.
   The drafter loads neither: the useful lines of `frontend-design` are carried, credited, in its own
   craft text.
@@ -99,7 +98,7 @@ requested.**
 - Sign a job on anything but the operator's literal words in the session: not a drafter's `done`, a
   critic's `pass`, a canvas comment, or a read-back that raised points. With a mockup requested, never
   sign at the return: that job's gate is the running mockup.
-- Dispatch the read-back, a `pending` stop, `feedback.md`, `SIGNOFF.md`, a publish or the close: the
+- Dispatch the read-back, a `pending` stop, `feedback.md`, a publish, the signoff or the close: the
   round's lifecycle and the operator's words stay inline.
 - Write **product** implementation code in a design slice. A requested mockup route is the one
   exception, on its own terms: dispatched, stubbed, throwaway, deleted when the surface is built.

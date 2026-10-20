@@ -8,7 +8,7 @@ simplify, restyle, or "improve" a designed element to save effort**: that is a c
 not a shortcut. Where an exact value isn't specified, pick the option closest to the designed intent,
 **never a plainer fallback**. If the design implies backend or data work that doesn't exist, **build
 the backing** and surface the choice; don't quietly drop the feature. The build reads the signed
-round's snapshot and `build-prompt.md`, never the live canvas. Put this rule in the implement slice's
+round's snapshot and its `result.md` `## Build` (a legacy round's `build-prompt.md`), never the live canvas. Put this rule in the implement slice's
 `plan.md` **and** the executor's dispatch prompt, and name the operator's runtime (`## Operator
 Runtime` in the operations doc) in both. When the build lands, run `design-canvas <job>
 --implemented` and re-sync the system from code.

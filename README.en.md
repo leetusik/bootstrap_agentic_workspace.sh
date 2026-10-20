@@ -365,16 +365,17 @@ can draft a **wave** of 3–4 jobs in parallel. Each job is a **working canvas**
 under `docs/reference/design/jobs/`: a prototype first, every screen as a clickable Page with real or
 realistic data (a flow carries the item you clicked onto the next screen, and a grey "Prototype only"
 bar on each Page jumps to that page's other states), and every component on its own board in all its
-states, in one direction unless you ask for options. The agent writes each job's handoff from your
-repo (every screen and state with a check, the data, the components, your taste words and your
-standing design rules quoted), the drafter builds the canvas and checks it with a local render that
+states, in one direction unless you ask for options. The agent writes one brief for the wave and a short
+handoff per job from your repo (every screen and state with a check, the data, the components, your
+taste words and your standing design rules quoted), the drafter builds the canvas and checks it with a local render that
 clicks, types and hovers through it, and — when the decomposition turned critique on for that job —
 the critic gives it one fresh-eyed pass against your bar and the drafter fixes or rebuts each finding
 once (a stronger judge rules on the calls the critic is unsure of). The agent then publishes each job to its
-own Design canvas Artifact, which you open in the Claude app, and stops once for the whole wave.
-You sign each job in your own words in the session; anything short of a literal approval — including
-comments you send to Claude and edits you make in the canvas, copied word for word — becomes the next
-round, a new version of the same canvas. If you want to see it running inside your product first, ask
+own Design canvas Artifact, which you open in the Claude app, and stops once for the whole wave with
+a short report: a handful of decisions, and a "decided as drawn" list to skim. One literal word in the
+session ("accept") signs every job presented, and the engine records it; anything short of a literal
+approval — including comments you send to Claude and edits you make in the canvas, copied word for
+word — becomes the next round of that job, a new version of the same canvas. If you want to see it running inside your product first, ask
 for a mockup: the agent builds a throwaway, stubbed route in the project's own frontend and stops
 again. Implementation is always a separate slice that follows the signed design faithfully and checks
 the running result in a real browser; built canvases are offered for deletion at the phase review.

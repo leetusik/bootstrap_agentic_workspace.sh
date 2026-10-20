@@ -30,7 +30,9 @@
 # design-system and the read-only design-publish-plan (v60: the system copies only on a first publish or a
 # changed pin, canvas.system optional); P36.S4: design-preview with no browser is an honest skip
 # that writes nothing, with --click too (P36.S5A); design-close snapshots byte-identical, signs the
-# job and is idempotent; design-migrate --to 2 moves a schema-1 record into schema1/ and a schema-1 root is
+# job and is idempotent; v61 (P37.S5): the publish's size manifest, design-readback (a listing names only what to
+# fetch; --fetched diffs, --apply copies in), a generated SIGNOFF.md that needs a read-back, design-sign all or
+# nothing, a superseding round's critique off, the absolute-path lint and the wave brief; design-migrate --to 2 moves a schema-1 record into schema1/ and a schema-1 root is
 # steered to it; v48: design-check skips claude-design/, design-migrate moves all-or-nothing and a pre-v47
 # root is steered to it; P36.S1: design-register is gone, an unknown command), the P36 design-tool invariants (design-cowork carries the drafter loop only, with a legacy
 # rule for a `Design tool: claude-design` intent and a Legacy record note for claude-design/), the P28 nested-engine invariants (workflow/.agentic-nested.json: host anchors, host-side
@@ -197,18 +199,13 @@ for name in ("do-next-slice", "do-whole-phase"):
         # the one span dispatched to a slice executor, the round's lifecycle and the operator's
         # words stay inline, and the round closes through the engine.
         "`design-drafter`", "mockup build is the one span dispatched to a slice executor",
-        "lifecycle and the operator's words stay inline", "new visual direction",
-        # P36.S6: rounds are addressed <job>/<round> on schema 2.
-        'design-close <job>/<round> --words "<their literal words>"', "design-close <job>/<round> --superseded",
-        # P26.F1: the feedback branch writes the revision round's handoff, re-dispatches the drafter
-        # and reads back before PENDING #1 -- as design-cowork says. P36.S6: the revision edits the
-        # job's canvas in place (the addressed cards are gone).
-        "**write its handoff**", "the new round edits the job's canvas in place",
+        "lifecycle and the operator's words stay inline",
         # P36.S6: waves -- one drafter per job at once (the one carve-out from one executor at a
-        # time), the critique dispatched to design-critic, one PENDING stop per wave, and the
-        # drafter's prompt is the round address.
+        # time), the critique dispatched to design-critic, one PENDING stop per wave. v61 (P37.S5): the
+        # round procedure (the handoff, the drafter's prompt, the read-back, the publish, the closes)
+        # lives once, in design-cowork's references, pinned there; the drivers point at them.
         "`design-critic`", "carve-out from one executor at a time", "once per wave",
-        "the round **address** `<job>/<round>`", "--critique <level>", "design-publish-plan <job>",
+        "design-cowork/reference/opening.md", "`reference/publish.md`", "`reference/operator.md`",
         # P36.S1: a phase whose intent still says `Design tool: claude-design` is legacy -- the
         # drivers point at design-cowork's legacy rule instead of carrying the retired branch.
         "`Design tool: claude-design`", "re-confirm it on `drafter`",
@@ -246,7 +243,9 @@ for name in ("do-next-slice", "do-whole-phase"):
                  "in the same slice, re-dispatch the drafter",
                  # P36.S6: schema-1 cards, their address and the regroup are gone from both drivers.
                  "numbered card paths", "no regroup", "the cards stay addressed", "card set",
-                 "design-close <round> --"):
+                 "design-close <round> --",
+                 # v61 (P37.S5): the drivers no longer restate the round procedure; one drafter output.
+                 "build-prompt.md", "read `result.md` and"):
         assert gone not in body, (name, gone)
     # v35: the per-slice re-read of the generated backlog dashboard is gone --
     # `next` prints the pointer. The only mentions left must say so.
@@ -384,8 +383,30 @@ for required in (
     "├── bar.md", "**Prototype first:**", "**Every link has a target in scope.**",
     "**One direction unless the operator asked for options.**",
     "a critic pass took 25–36 minutes on a flow-board job",
+    # Moved from the drivers' pins (v61, P37.S5): the rule lives here once.
+    "write the new round's handoff", "The new round edits the job's canvas in place",
+    "and the round address `<job>/<round>`", "`new visual direction: yes` or `no`",
+    # v61 (P37.S5): the design lifecycle as engine one-liners and a slimmer record. The read-back
+    # fetches only what the listing names; the engine writes SIGNOFF.md and one word signs every job
+    # presented; a superseding round re-drafts with critique off; the stop report is a short chat
+    # message; the wave brief once, a delta per job; one drafter output; repo-relative paths only.
+    "design-readback <job> --listing <file|->", "design-readback <job> --fetched <dir>",
+    "`--fetched <dir> --apply`", "python3 scripts/workflow.py design-sign --slice <S> --words",
+    "**All or nothing:**", "**Never write `SIGNOFF.md` yourself**",
+    "**A superseding round's critique is off by default**",
+    "**The stop report** is a chat message, never a file in the record",
+    "**At most about 5 decisions**", '**Everything else is one "decided as drawn" list**',
+    "**signs everything presented** (`design-sign`)",
+    "**The wave brief, once per wave: `waves/<slice>/brief.md`**", "**Each round's `handoff.md`, a short delta**",
+    "**What you read of a span: its verdict block, and the round `result.md`'s `## Summary`**",
+    "**One drafter output per round: `result.md`**", "**Repo-relative paths only.**",
+    "**The notebook gets one line per signed job**", "| `design-sign --slice S --words \"…\"` |",
 ):
     assert required in design, required
+# v61 (P37.S5): the orchestrator never hand-writes SIGNOFF.md, never reads build-prompt.md in a new
+# round, and never pulls the canvas whole at the read-back.
+for gone in ("**Write `SIGNOFF.md`** in the round folder", "and `build-prompt.md`, the", "`read` the canvas's files with `out_dir` and diff"):
+    assert gone not in design, gone
 # P36.S8C: the old multi-pass loop and the drafter's frontend-design licence are gone from the skill.
 for gone in ("cap 3", "repeated findings", "**the cap:**", "`repeated`", "**The one exception:**",
              "only licence for `frontend-design`", "whether it used", "passes 02–03"):
@@ -1972,7 +1993,7 @@ if ( cd "$W" && python3 scripts/workflow.py parallel-start P2 2>&1 | grep -q "le
   || bad "merge, merge-finish or teardown failed"
 
 # ---------------------------------------------------------------------------
-echo "== Test 13: schema-2 design record -- design-open makes a job and refuses a second open round of it, a wave of several jobs in one slice (--new-job / --job, --critique, size warnings, mounted boards not counted), the board lint (leaves-canvas, same-target-list), design-check names a missing board, a missing support line, a .. reference and a title gap, design-canvas / design-system / design-publish-plan (system copies on a first publish or a changed pin only), design-preview skips honestly without a browser, design-close snapshots and signs, a superseded round's slice reuses its job, design-migrate --to 2; claude-design/ is skipped, the pre-v47 design-migrate, design-register is gone =="
+echo "== Test 13: schema-2 design record -- design-open makes a job and refuses a second open round of it, a wave of several jobs in one slice (--new-job / --job, --critique, size warnings, mounted boards not counted), the board lint (leaves-canvas, same-target-list), design-check names a missing board, a missing support line, a .. reference and a title gap, design-canvas / design-system / design-publish-plan (system copies on a first publish or a changed pin only), design-preview skips honestly without a browser, design-close snapshots and signs, a superseded round's slice reuses its job, v61 design-readback / design-sign / a generated SIGNOFF.md / the absolute-path lint and wave briefs, design-migrate --to 2; claude-design/ is skipped, the pre-v47 design-migrate, design-register is gone =="
 # Runs in the fresh workspace $F.
 newtmp DZ
 DR="$F/docs/reference/design"
@@ -2109,9 +2130,17 @@ out=$( export AGENTIC_DESIGN_BROWSER=/nonexistent; dw design-preview 01-signin -
   && ok "design-preview --click with no browser prints preview=skipped reason=no-browser, exits 0 and writes nothing" \
   || bad "design-preview --click did not skip honestly without a browser (rc=$rc) -- $out"
 # 4. design-close snapshots the tree byte for byte and signs the job; a superseded round's slice reuses it.
+# v61 (P37.S5): signing needs a settled read-back of the round's publish and the round's build contract
+# (result.md ## Build); a hand-written SIGNOFF.md (legacy) is kept, with a warning.
+printf 'Published files of x (version 1700000000-aaaa), 2 files:\n- "project/Main.dc.html"  text/html  1 bytes\n' \
+  | dw design-readback 01-signin --listing - >/dev/null 2>&1 || bad "design probe: design-readback --listing failed"
+printf -- '- verdict: done\n\n## Summary\n\nSign-in.\n\n## Build\n\nBuild the boards.\n' > "$JD/rounds/01-signin/result.md"
 pre=$(tree_sig "$CP")
 printf 'Signed: "ship it"\n' > "$JD/rounds/01-signin/SIGNOFF.md"
-dw design-close 01-signin/01-signin --words "ship it" >/dev/null 2>&1 || bad "design probe: design-close --words failed"
+close_out=$(dw design-close 01-signin/01-signin --words "ship it" 2>&1) || bad "design probe: design-close --words failed -- $close_out"
+printf '%s\n' "$close_out" | grep -Fq 'kept the hand-written' && grep -qx 'Signed: "ship it"' "$JD/rounds/01-signin/SIGNOFF.md" \
+  && ok "design-close keeps a hand-written (legacy) SIGNOFF.md, with a warning" \
+  || bad "design-close overwrote a hand-written SIGNOFF.md or did not warn -- $close_out"
 if [ "$(tree_sig "$JD/rounds/01-signin/canvas/project")" = "$pre" ] && python3 - "$JD" <<'SIGNED'
 import json, pathlib, sys
 job = pathlib.Path(sys.argv[1])
@@ -2281,6 +2310,118 @@ if [ "$rc" -eq 0 ] && [ "$all_rc" -eq 0 ] && ! printf '%s\n' "$all_out" | grep -
     && ! printf '%s\n' "$out" | grep -Fq 'too big for one review' && ! printf '%s\n' "$out" | grep -Fq 'bar.md'; then
   ok "design-check warns on a link leaving the prototype (not Google Fonts) and on a list whose rows all link to one board, exit 0; boards another board mounts are not counted (18 boards, 3 mounted: no size warning); bar.md is no stray"
 else bad "the board lint, the mounted-board count or bar.md is wrong (rc=$rc/$all_rc) -- $out $all_out"; fi
+
+# 8. v61 (P37.S5): the design lifecycle one-liners. The publish records a size manifest; design-readback
+# reads a canvas listing (no hash) and names only what to fetch; --fetched diffs, --apply copies in;
+# design-close generates SIGNOFF.md and refuses without a read-back; design-sign signs every presented job
+# or none; a superseding round's critique defaults off; the record carries repo-relative paths only, and a
+# brief a handoff names must exist.
+LF="$DZ/life"; LR="$LF/docs/reference/design"
+mkdir -p "$LF/scripts" && cp "$F/scripts/workflow.py" "$LF/scripts/"
+lw() { ( cd "$LF" && HOME="$DZ/home" python3 scripts/workflow.py "$@" ); }
+lw design-init --id life >/dev/null 2>&1 && lw design-open --slug one --slice P9.S7 --critique critic >/dev/null 2>&1 \
+  && lw design-open --slug two --slice P9.S7 --new-job >/dev/null 2>&1 || bad "life probe: design-open failed"
+python3 - "$LR" <<'LIFE' || bad "life probe: could not write the canvases"
+import json, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+(root / "waves/P9.S7").mkdir(parents=True, exist_ok=True)
+(root / "waves/P9.S7/brief.md").write_text("# Wave P9.S7\n\nruntime: docs/reference/design/.type/artifact-type/dc-runtime.js\n")
+for job, rnd in (("01-one", "01-one"), ("02-two", "01-two")):
+    project = root / "jobs" / job / "canvas/project"; project.mkdir(parents=True, exist_ok=True)
+    boards = {"Main.dc.html": {"x": 0, "y": 0, "w": 400, "h": 300, "title": "01 · Main"},
+              "Two.dc.html": {"x": 500, "y": 0, "w": 400, "h": 300, "title": "02 · Two"}}
+    (project / "canvas.json").write_text(json.dumps({"v": 3, "createdOnFiles": {"v": 1}, "boards": boards, "order": list(boards)}))
+    for name in boards:
+        (project / name).write_text('<!doctype html>\n<script src="./support.js"></script>\n<p>' + name + '</p>\n')
+    (project / "app.css").write_text("p { color: #222; }\n")
+    rdir = root / "jobs" / job / "rounds" / rnd
+    (rdir / "handoff.md").write_text("# handoff\n\nbrief: waves/P9.S7/brief.md\ncritique: off\n")
+    (rdir / "result.md").write_text("- verdict: done\n- open_items: D1, D2\n\n## Summary\n\nTwo boards.\n\n## Build\n\nBuild both.\n")
+LIFE
+printf '# handoff\n\nbrief: waves/P9.S7/brief.md\nruntime: /private/tmp/scratch/dc-runtime.js\n' > "$LR/jobs/01-one/rounds/01-one/handoff.md"
+abs_out=$(lw design-check 2>&1); abs_rc=$?
+printf '# handoff\n\nbrief: waves/P9.S7/brief.md\ncritique: critic\n' > "$LR/jobs/01-one/rounds/01-one/handoff.md"
+mv "$LR/waves/P9.S7/brief.md" "$DZ/brief.md"; brief_out=$(lw design-check 2>&1); brief_rc=$?; mv "$DZ/brief.md" "$LR/waves/P9.S7/brief.md"
+clean_out=$(lw design-check 2>&1); clean_rc=$?
+if [ "$abs_rc" -eq 1 ] && printf '%s\n' "$abs_out" | grep -Fq 'jobs/01-one/rounds/01-one/handoff.md: an absolute path (check=abs-path): line 4 /private/' \
+    && [ "$brief_rc" -eq 1 ] && printf '%s\n' "$brief_out" | grep -Fq 'jobs/02-two/rounds/01-two/handoff.md: names brief waves/P9.S7/brief.md, which is missing' \
+    && [ "$clean_rc" -eq 0 ] && grep -qx '\*' "$LR/.type/.gitignore"; then
+  ok "design-check makes an absolute path in an open round's handoff a problem and a missing named wave brief a problem; the record passes with repo-relative paths, and design-open git-ignores the type cache"
+else bad "the absolute-path lint or the brief check is wrong (rc=$abs_rc/$brief_rc/$clean_rc) -- $abs_out $brief_out $clean_out"; fi
+{ lw design-canvas 01-one --url https://claude.ai/artifact/LifeOne && lw design-canvas 01-one --version 300-a \
+    && lw design-canvas 02-two --url https://claude.ai/artifact/LifeTwo && lw design-canvas 02-two --version 400-a; } >/dev/null 2>&1 \
+  || bad "life probe: design-canvas failed"
+python3 - "$LR/jobs/01-one" <<'MANIFEST' && ok "design-canvas --version records the publish's size manifest in job.json and the version on the open round" || bad "design-canvas recorded no manifest or no round publish"
+import json, pathlib, sys
+job = pathlib.Path(sys.argv[1]); project = job / "canvas/project"
+manifest = json.loads((job / "job.json").read_text())["canvas"]["manifest"]
+assert manifest == {f"project/{f.name}": f.stat().st_size for f in project.iterdir() if f.is_file()}, manifest
+assert json.loads((job / "rounds/01-one/round.json").read_text())["published"] == "300-a"
+MANIFEST
+# listing <version> [<file to grow by 9 bytes>]: an Artifact list scope:files output of job 01-one's local tree
+listing() { python3 - "$LR/jobs/01-one/canvas/project" "$1" "${2:-}" <<'LISTING'
+import pathlib, sys
+project, version, grow = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+print(f'Published files of https://claude.ai/artifact/LifeOne (version {version}), an Artifact of type "Design", 9 files by path:')
+for path, size in (("SKILL.md", 16042), ("index.html", 34176), ("artifact-type/dc-runtime.js", 187897), ("project/ds/life/tokens.css", 900)):
+    print(f'- "{path}"  text/plain  {size} bytes')
+for f in sorted(project.iterdir()):
+    print(f'- "project/{f.name}"  text/plain  {f.stat().st_size + (9 if f.name == grow else 0)} bytes')
+LISTING
+}
+close_out=$(lw design-close 01-one/01-one --words "ship it" 2>&1); close_rc=$?
+same=$(listing 300-a | lw design-readback 01-one --listing - 2>&1)
+moved=$(listing 301-b app.css | lw design-readback 01-one --listing - 2>&1)
+unloc=$(listing 302-c | lw design-readback 01-one --listing - 2>&1)
+if [ "$close_rc" -ne 0 ] && printf '%s\n' "$close_out" | grep -Fq 'no read-back since the last publish (300-a): run design-readback 01-one --listing' \
+    && [ ! -e "$LR/jobs/01-one/rounds/01-one/SIGNOFF.md" ] \
+    && printf '%s\n' "$same" | grep -qx 'readback=unchanged version=300-a' \
+    && printf '%s\n' "$moved" | grep -qx 'readback=changed version=301-b files=1' && printf '%s\n' "$moved" | grep -qx 'fetch=project/app.css' \
+    && printf '%s\n' "$unloc" | grep -qx 'readback=changed-unlocated version=302-c reason=same-sizes files=2' \
+    && printf '%s\n' "$unloc" | grep -qx 'fetch=project/Main.dc.html,project/Two.dc.html' \
+    && ! printf '%s\n%s\n%s\n' "$same" "$moved" "$unloc" | grep -Eq 'SKILL|artifact-type|index.html|ds/|color'; then
+  ok "design-close --words refuses with no read-back and writes nothing; design-readback reads a listing: same version unchanged, a resized file changed (only it fetched), same sizes changed-unlocated (the boards fetched), the type's files and ds/ ignored, no content printed"
+else bad "the read-back of a listing is wrong (close rc=$close_rc) -- $close_out / $same / $moved / $unloc"; fi
+listing 303-d app.css | lw design-readback 01-one --listing - >/dev/null 2>&1
+mkdir -p "$DZ/fetched/project" && printf 'p { color: #222; }\nb { font-weight: 600; }\n' > "$DZ/fetched/project/app.css"
+diff_out=$(lw design-readback 01-one --fetched "$DZ/fetched" 2>&1); diff_rc=$?
+cmp -s "$DZ/fetched/project/app.css" "$LR/jobs/01-one/canvas/project/app.css" && copied_early=1 || copied_early=0
+apply_out=$(lw design-readback 01-one --fetched "$DZ/fetched" --apply 2>&1); apply_rc=$?
+if [ "$diff_rc" -eq 0 ] && printf '%s\n' "$diff_out" | grep -qx 'diff=project/app.css +1 -0' && printf '%s\n' "$diff_out" | grep -q '^readback=differs ' \
+    && [ "$copied_early" -eq 0 ] && [ -f "$DZ/fetched/readback.diff" ] \
+    && [ "$apply_rc" -eq 0 ] && printf '%s\n' "$apply_out" | grep -q '^readback=edited version=303-d files=1' \
+    && cmp -s "$DZ/fetched/project/app.css" "$LR/jobs/01-one/canvas/project/app.css"; then
+  ok "design-readback --fetched prints diff=<path> +A -B and writes the diff to the scratch dir only; --apply copies the fetched file over the canvas file (read-back edited)"
+else bad "design-readback --fetched / --apply is wrong (rc=$diff_rc/$apply_rc) -- $diff_out / $apply_out"; fi
+sign_no=$(lw design-sign --slice P9.S7 --words "accept" 2>&1); sign_no_rc=$?
+st() { python3 -c 'import json, sys; print(" ".join(json.load(open(p))["status"] for p in sys.argv[1:]))' "$@"; }
+no_state=$(st "$LR/jobs/01-one/rounds/01-one/round.json" "$LR/jobs/02-two/rounds/01-two/round.json")
+[ -e "$LR/jobs/01-one/rounds/01-one/SIGNOFF.md" ] && no_state="$no_state signoff-written"
+printf 'Published files of x (version 400-a), 1 file:\n- "project/Main.dc.html"  text/html  80 bytes\n' | lw design-readback 02-two --listing - >/dev/null 2>&1
+sign_out=$(lw design-sign --slice P9.S7 --words "accept" 2>&1); sign_rc=$?
+if [ "$sign_no_rc" -ne 0 ] && printf '%s\n' "$sign_no" | grep -Fq '02-two/01-two: no read-back since the last publish (400-a)' \
+    && [ "$no_state" = "open open" ] \
+    && [ "$sign_rc" -eq 0 ] && printf '%s\n' "$sign_out" | grep -qx 'signed=01-one/01-one version=303-d readback=edited open_items=D1,D2 files=4' \
+    && printf '%s\n' "$sign_out" | grep -qx 'signed=02-two/01-two version=400-a readback=unchanged open_items=D1,D2 files=4' \
+    && [ "$(st "$LR/jobs/01-one/rounds/01-one/round.json" "$LR/jobs/02-two/rounds/01-two/round.json" "$LR/jobs/01-one/job.json" "$LR/jobs/02-two/job.json")" = "signed signed signed signed" ] \
+    && [ -f "$LR/jobs/02-two/rounds/01-two/SIGNOFF.md" ] && lw design-check >/dev/null 2>&1; then
+  ok "design-sign signs neither job while one lacks a read-back, then signs both presented jobs in one call, one line each"
+else bad "design-sign is not all-or-nothing or did not sign both (rc=$sign_no_rc/$sign_rc) -- $sign_no / $sign_out"; fi
+sup_out=$(lw design-open --slug one-fix --slice P9.S7 --job 01-one 2>&1)
+RD="$LR/jobs/01-one/rounds/02-one-fix"
+printf '# handoff\n\nbrief: waves/P9.S7/brief.md\ncritique: off\n' > "$RD/handoff.md"
+printf -- '- verdict: done\n- open_items: none\n\n## Summary\n\nFixed.\n\n## Build\n\nAs drawn.\n' > "$RD/result.md"
+printf -- '- verdict: pass\n- open_items: C4, C7\n' > "$RD/critique-01.md"
+{ lw design-canvas 01-one --version 500-e && listing 500-e | lw design-readback 01-one --listing -; } >/dev/null 2>&1
+close_out=$(lw design-close 01-one/02-one-fix --words "ship it, as drawn" 2>&1); close_rc=$?
+if printf '%s\n' "$sup_out" | grep -Fq 'critique off (a superseding round'"'"'s default' \
+    && python3 -c 'import json, sys; assert json.load(open(sys.argv[1]))["critique"] == "off"' "$RD/round.json" \
+    && [ "$close_rc" -eq 0 ] && printf '%s\n' "$close_out" | grep -Fq 'SIGNOFF.md generated' \
+    && grep -qx '  > ship it, as drawn' "$RD/SIGNOFF.md" && grep -qx -- '- \*\*Canvas version:\*\* 500-e' "$RD/SIGNOFF.md" \
+    && grep -qx -- '- \*\*Read-back:\*\* unchanged at 500-e (published 500-e)' "$RD/SIGNOFF.md" \
+    && grep -qx -- '- \*\*Open items:\*\* C4, C7' "$RD/SIGNOFF.md" && grep -qx -- '- \*\*Supersedes:\*\* 01-one' "$RD/SIGNOFF.md"; then
+  ok "a superseding round defaults critique off; design-close --words generates SIGNOFF.md: the words verbatim, the canvas version, the read-back and the open-item ids"
+else bad "the superseding round's critique or the generated SIGNOFF.md is wrong (close rc=$close_rc) -- $sup_out / $close_out / $(cat "$RD/SIGNOFF.md" 2>&1)"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 14: P28 nested engine -- workflow/.agentic-nested.json: host anchors, host-side phase-scope, the paired worktree lifecycle, the convention gate, the agent rename map, a malformed marker fails validate =="

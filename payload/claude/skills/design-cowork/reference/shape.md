@@ -18,7 +18,7 @@
   decomposition slice `P<N>.DECOMP2`** (`--kind decomposition --risk high`) ordered right after the
   **last** design slice.
 - **`P<N>.DECOMP2` cuts the build slices once the design is signed**, from the spec pointers in
-  `phase.md` and each signed round's `build-prompt.md`: **backing/backend work first, then the design
+  `phase.md` and each signed round's `## Build` (`result.md`): **backing/backend work first, then the design
   implementation**, then any fidelity fix. Otherwise it is an ordinary decomposition slice.
 - `P<N>.DECOMP2` has a second origin, after a `research` slice (see `CLAUDE.md`); nothing here depends
   on it.
