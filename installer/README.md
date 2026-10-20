@@ -120,9 +120,10 @@ Below, each entry is the source, then the emit path where it differs:
     dispatch → record → Explore) is copied to `do-next-slice/reference/dispatch.md`. Edit the source
     only; a copy that also exists under `payload/` is a build error.
   - **Retired reference files.** `--update` reports a file in one of our skill directories that the
-    payload does not ship as **"yours, kept"**, unless `RETIRED_SKILL_FILES` in `main.py` names it,
-    and then it is flagged stale. Both only report; nothing is deleted. When a release stops shipping
-    a reference file, add it to that list.
+    payload does not ship as **"yours, kept"**, unless `RETIRED_FILES` in `main.py` holds the hash of
+    its unchanged text, and then it is flagged stale (by content, file by file, never a directory).
+    Both only report; nothing is deleted. When a release stops shipping a file, add its hash to
+    that table.
   `explain` is the one **vendored** skill — its upstream is
   `plugin/skills/explain/SKILL.md` in [leetusik/knowledge](https://github.com/leetusik/knowledge),
   de-plugin-ified here (self-service onboarding replaces `/knowledge:setup`, and the

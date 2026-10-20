@@ -426,8 +426,8 @@ another agent, CI — drives the workspace with the exact same commands:
 | `promote-deferred D1 --phase P1 --slice P1.S2` | Promote a deferred job into a slice |
 | `sync-agents` | Apply the `executors.toml` per-row model/effort overrides to the four agent files |
 | `executor-route` / `executor-route <slice_id> [--retry]` | Show the resolved route table and the agent files' sync state, or the dispatch decision for one slice (`--drafter`, `--critic`, `--judge`, `--explore` for the non-slice agents) |
-| `record-dispatch <slice_id> --route … --model … --effort … --verdict …` | Record one executor dispatch (duration, tokens, verdict) in `works/events.jsonl` |
-| `dispatch-summary [--phase P] [--json]` | Summarize the recorded dispatches by route, model @ effort and kind |
+| `record-dispatch <slice_id> --verdict … [--attempt N] [--note …]` | Record the orchestrator's verdict on one executor dispatch in `works/events.jsonl` (the span's volume is metered from the transcripts, not recorded) |
+| `dispatch-summary [--phase P] [--slice S] [--json]` | Meter the main thread beside every span from Claude Code's transcripts, per slice and per phase, at list price, with the recorded verdicts |
 | `parallel-start <P>` … `parallel-teardown <P>` | Move a phase into its own branch + worktree when you ask for one, then integrate it back with a local merge (see the `parallel-phase` skill) |
 | `validate` | Check workspace integrity |
 
@@ -504,9 +504,9 @@ Vertex and Foundry) and `explore` (haiku @ high, the read-only `Explore` lookup 
 applied to the agent files with `python3 scripts/workflow.py sync-agents`; the presets are gone, and a
 leftover `mode = "…"` line is refused with the migration step. `python3 scripts/workflow.py
 executor-route <slice_id>` prints the decision the orchestrator dispatches from (kind first, then
-risk, then attempt; `/executor-route` shows the table), every dispatch is recorded with
-`record-dispatch` and summarized by `dispatch-summary`, so the table is tuned from this workspace's
-own runs; executors may hand bulky read-only lookups to `Explore` but never their `result.md`,
+risk, then attempt; `/executor-route` shows the table), every dispatch's verdict is recorded with
+`record-dispatch` and `dispatch-summary` meters what the main thread and each span actually processed
+from Claude Code's transcripts, so the table is tuned from this workspace's own runs; executors may hand bulky read-only lookups to `Explore` but never their `result.md`,
 `phase.md`, code, validation or verdict. Workflow skills are
 **explicit-invocation only** — agents don't fire them on their own. They are the **operator's
 interface**: you invoke the slash command; the agent does everything it implies.

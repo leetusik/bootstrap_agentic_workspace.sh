@@ -9,6 +9,99 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v61 — 2026-10-20
+
+**v61 cuts token waste.** It meters what a phase really costs, restores Claude Code's own
+compaction, and removes the waste P29 showed in the design loop, the skills and `phase.md`.
+Craft, literal signoff and the executor rules are unchanged. Each saving is reasoned from P29's
+transcripts, not replayed.
+
+- **Metering.** `dispatch-summary` reads Claude Code's transcripts and meters the main thread
+  beside every span, per slice and per phase (requests, context, output, list-price $, limit
+  hits, verdicts, plus a `means` block a DECOMP estimates from). `record-dispatch <slice>
+  --verdict <v>` is verdict-only; every dispatch prompt starts with `slice: <id>`; a
+  usage-limited span is resumed or re-dispatched, never a verdict.
+  - **Before / after:** `record-dispatch` stored a span's final context (P29: 7.40M against
+    1,188M processed) and the orchestrator (~$160, 32%) was invisible. Now both are metered.
+
+- **Compaction and the resume card.** The PreCompact hook, `compact-gate` and the
+  post-compaction re-read rule are retired; the project window ships at 300000. After a
+  compaction the SessionStart hook prints a computed card of 2 KB or less (`next --card` on
+  demand): pointer, next action or typed stop, gates, running spans, file paths.
+  - **Before / after:** compaction ran late behind a veto, and each restart re-read a ~45 KB
+    skill and the notebook (P29: ~73k tokens, 26 times). Now Claude Code compacts when it
+    decides and re-attaches an 8 KB core whole.
+
+- **Typed stops and the stop rules.** `set-slice-status <id> pending --stop-kind
+  wave|mockup|decision|operator-action|limit|other --on-words "…"` records what the stop is and
+  what the operator's words will do (a bare `pending` warns). Every phase-run stop shows at most
+  ~5 decisions plus one "decided as drawn" list in about 2k chars, and one word signs it all.
+  - **Before / after:** a bare `pending` and a per-job list of everything; now five decisions.
+
+- **`phase.md` as an index.** `phase-section <P> [<name>] [--replace|--append|--resolve OQ<n>]`
+  prints the index or reads and writes one section; the soft budget is 40 KB (was 400 KB) and
+  long material goes to `topics/<slug>.md`.
+  - **Before / after:** P29's notebook (2 to 137 KB) was re-read whole 47 times to touch `## Now`;
+    now a slice pays for the sections it needs.
+
+- **The skill split and skill directories.** `design-cowork`, `do-whole-phase` and
+  `do-next-slice` are a core `SKILL.md` of 8 KB or less plus `reference/*.md` read when the core
+  says; the text is unchanged. Every install path writes whole skill directories.
+  - **Before / after:** each skill loaded whole (57.8 / 44.3 / 36.7 KB) and SKILL.md was re-read
+    37 times; now a run loads a core and only the references its moment needs.
+
+- **The design lifecycle and record.** `design-readback <job> --listing <file|->` names only the
+  changed files, `--fetched <dir> [--apply]` prints `+A -B` per file, never contents;
+  `design-close --words` and the all-or-nothing `design-sign --slice <S> --words "<w>"` generate
+  SIGNOFF.md after a settled read-back. A superseding round defaults critique off, a wave shares
+  one `waves/<slice>/brief.md` plus a delta per job, a round keeps one drafter output
+  (`result.md`; no `build-prompt.md`), and the record holds repo-relative paths only.
+  - **Before / after:** whole-canvas read-backs (0.99M chars), ~83 KB of drafter files per
+    round and a hand-written SIGNOFF.md that drifted twice; now a listing, a diff line per file
+    and a summary of 1 KB.
+
+- **Machine checks and render reuse.** `design-preview` adds blocking `non-text-contrast`,
+  `reflow`, `overprint` and `keyboard` checks and a `state-bar` check, ends on
+  `self_check=pass|fail`, and `--strict` exits 1; the render lands in the git-ignored
+  `docs/reference/design/.preview/<job>/<round>/` for `--states-only` and `--contact-sheet`.
+  - **Before / after:** P29 signed three machine-checkable defects and its critics read ~118
+    screenshots a span; now the drafter's check names all three and a critic reads a contact sheet.
+
+- **The drafter, the critic and the critic row.** Both read the wave brief and their delta, read
+  each reference once and print ranges, never whole files. The critic reads `preview.json` and
+  contact sheets first and re-renders only states. The critic row is **sonnet @ high** (was max).
+  - **Before / after:** ~9.3M chars of file prints into P29's drafters and 68-minute critic
+    spans; now a 51-shot board costs ~2.6k image tokens, not ~86k.
+
+- **Update hygiene.** `--update` decides stale by content, file by file, never a directory: a
+  file at a retired path is stale only while it holds the exact text a version shipped there,
+  else "yours, kept". One report lists `removed:` / `changed:` lines, stale and kept files and
+  the active intents naming a retired mechanism; `update-workspace` removes only listed files.
+  - **Before / after:** `.agents` was flagged whole and deleted knowledge's own `/explain`.
+
+- **The contract.** `payload/contract.md` carries v61's rules at 12,281 of 12,288 B with no rule
+  dropped; `create-phase` writes `intent.md` as what the operator wants, never mechanics.
+  - **Before / after:** it told sessions to re-read after a compaction; now it points at the card.
+
+- **Migration notes.**
+  - **Preview first:** `sh bootstrap_agentic_workspace.sh --update --dry-run .`.
+  - **Settings:** `--update` removes our PreCompact `compact-gate` handler (any other hook stays)
+    and moves a window of exactly 500000 to 300000, each listed as `removed:` / `changed:`. The
+    workspace ships 300000, but `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, `--autocompact`, a per-model
+    `/autocompact` value or managed settings can still decide the window in effect; `/autocompact`
+    with no argument may show it (unverified).
+  - **Stale files** are listed per file and by content: remove only those, never a directory.
+    Your own files under `.agents/` or `.codex/` read "yours, kept".
+  - **Intents:** an active `intent.md` naming a retired mechanism is listed; re-confirm it with
+    the operator. The installer never edits one.
+  - **Design rounds opened on v60 and still open:** run `design-canvas <job> --version <its
+    canvas.version>`, then `design-readback <job> --listing …`; move the preview runtime into
+    `docs/reference/design/.type/` and fix absolute paths in the handoff. A hand-written
+    SIGNOFF.md is kept; signed rounds are untouched.
+  - **Critic row:** run `sync-agents`; an explicit `[claude.critic] effort = "max"` is kept.
+  - **`record-dispatch`:** the old flags still parse and print `ignored:`.
+  - **Relaunch Claude Code** to pick up the settings changes.
+
 ## v60 — 2026-10-18
 
 - **The design loop moves to Claude-app Design canvases.** Each design job is drafted as files in
