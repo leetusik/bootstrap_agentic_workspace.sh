@@ -6280,6 +6280,61 @@ def design_board_lint(text: str, rel: str) -> list:
     return found
 
 
+DESIGN_STATE_BAR_TAG_RE = re.compile(r"""<[a-zA-Z][\w-]*\b[^>]*?\bdata-proto\s*=\s*["']?state-bar\b[^>]*>""", re.I)
+DESIGN_CSS_RULE_RE = re.compile(r"([^{}]+)\{([^{}]*)\}")
+DESIGN_PINNED_RE = re.compile(r"\bposition\s*:\s*(fixed|sticky)\b", re.I)
+
+
+def design_state_bar_lint(project: Path, texts: dict, boards: dict) -> list:
+    """v61 (P37.S6) the static half of the state-bar lint (check=state-bar), from what the source shows:
+    - the bar pinned: position fixed or sticky in the bar's own style="", or in a CSS rule (a board's
+      <style>, or a .css file of the tree) whose last compound names the bar (state-bar, or a class the
+      bar's tag carries);
+    - several windows: an interactive board that <dc-import>s the same board two or more times (its
+      windows), when that board carries a state bar and the importing board none of its own -- each
+      window then shows its own bar, where one bar above all the windows, inside none, drives them all.
+    design-preview checks the rendered rest: the bar's computed position, the bars on screen, the pages
+    a bar lists, and a preset that moves to another page."""
+    found, has_bar, classes = [], {}, set()
+    for rel, text in texts.items():
+        if not rel.endswith(DESIGN_BOARD_SUFFIX):
+            continue
+        tags = DESIGN_STATE_BAR_TAG_RE.findall(text)
+        has_bar[rel.rsplit("/", 1)[-1][:-len(DESIGN_BOARD_SUFFIX)]] = bool(tags)
+        for tag in tags:
+            cls = re.search(r"""\bclass\s*=\s*["']([^"']*)["']""", tag)
+            if cls:
+                classes.update(c for c in cls.group(1).split() if "{" not in c and "}" not in c)
+            style = re.search(r"""\bstyle\s*=\s*["']([^"']*)["']""", tag)
+            pinned = DESIGN_PINNED_RE.search(style.group(1)) if style else None
+            if pinned:
+                found.append(f"{rel}: the state bar's own style is position: {pinned.group(1).lower()} (check=state-bar) -- it is "
+                             "the first row of the page and scrolls away with it, never fixed or sticky")
+    for rel, text in texts.items():
+        css = text if rel.lower().endswith(".css") else "\n".join(re.findall(r"<style\b[^>]*>(.*?)</style>", text, re.S | re.I))
+        for selector, body in DESIGN_CSS_RULE_RE.findall(re.sub(r"/\*.*?\*/", "", css, flags=re.S)):
+            pinned = DESIGN_PINNED_RE.search(body)
+            if not pinned:
+                continue
+            for part in (p.strip() for p in selector.split(",")):
+                last = re.split(r"[\s>+~]+", part)[-1] if part else ""
+                if "state-bar" in last or any(re.search(rf"\.{re.escape(c)}(?![\w-])", last) for c in classes):
+                    found.append(f"{rel}: the rule '{part[:60]}' makes the state bar position: {pinned.group(1).lower()} "
+                                 "(check=state-bar) -- it is the first row of the page and scrolls away with it, never fixed or sticky")
+    for rel, text in texts.items():
+        if not rel.endswith(DESIGN_BOARD_SUFFIX) or not (isinstance(boards.get(rel), dict) and boards[rel].get("is_interactive") is True):
+            continue
+        own = has_bar.get(rel.rsplit("/", 1)[-1][:-len(DESIGN_BOARD_SUFFIX)])
+        names = [n.strip() for n in DESIGN_DC_IMPORT_RE.findall(text)]
+        windows = [f"{name}{DESIGN_BOARD_SUFFIX} x{names.count(name)}" for name in sorted(set(names))
+                   if names.count(name) >= 2 and has_bar.get(name)]
+        if windows and not own:
+            found.append(f"{rel}: shows {', '.join(windows)} as windows, each with the state bar its page carries, and has no "
+                         "bar of its own (check=state-bar) -- a board that shows one page in several windows carries exactly "
+                         "one bar, above all the windows and inside none, driving them together")
+    return found
+
+
 def design_canvas_problems(project: Path, system: dict) -> tuple:
     """(problems, warnings, board count, Page count, lint, mounted count) for one job's canvas tree,
     each path under project/. A Page is a board with expand: "fill". lint is the static board lint
@@ -6348,11 +6403,11 @@ def design_canvas_problems(project: Path, system: dict) -> tuple:
             numbers[number] = key
     problems.extend(f"gap in the board titles' reading numbers: no board titled \"{n:02d} · …\""
                     for n in range(1, max(numbers, default=0) + 1) if n not in numbers)
-    lint, mounts = [], set()
+    lint, mounts, texts = [], set(), {}
     for rel in files:
         if not rel.lower().endswith((".html", ".htm", ".css")):
             continue
-        text = (project / rel).read_bytes().decode("utf-8", errors="replace")
+        text = texts[rel] = (project / rel).read_bytes().decode("utf-8", errors="replace")
         if rel.endswith(DESIGN_BOARD_SUFFIX) and not any(line.strip() == DESIGN_SUPPORT_LINE for line in text.splitlines()):
             problems.append(f"{rel}: missing the exact line {DESIGN_SUPPORT_LINE} (the type's runtime)")
         problems.extend(f"{rel}: {p}" for p in design_reference_problems(text, rel))
@@ -6360,6 +6415,7 @@ def design_canvas_problems(project: Path, system: dict) -> tuple:
             lint.extend(design_board_lint(text, rel))
             stem = rel.rsplit("/", 1)[-1][:-len(DESIGN_BOARD_SUFFIX)]
             mounts.update(name.strip() for name in DESIGN_DC_IMPORT_RE.findall(text) if name.strip() != stem)
+    lint.extend(design_state_bar_lint(project, texts, boards))
     records = index.get("designSystems", [])
     if not isinstance(records, list):
         problems.append("canvas.json: designSystems must be a list of install records")
@@ -7327,11 +7383,24 @@ DESIGN_PREVIEW_CLICKS = 300  # --click: at most this many clicks (and typed fiel
 DESIGN_PREVIEW_BOARD_SECONDS = 120  # --click: a board's click-through stops after this long (and says so)
 DESIGN_PREVIEW_SHIFT = 4  # px: a control resized, or a header/nav/main moved, by more than this is a layout shift
 DESIGN_PREVIEW_LIST_SAMPLE = 4  # --click: a list of this many rows or more is sampled (first, second, last), not clicked row by row
+DESIGN_PREVIEW_REFLOW = 320  # px: the reflow view's width (WCAG 1.4.10: 1280 CSS px at 400% zoom)
+DESIGN_PREVIEW_TEXT_SCALE = 2  # the text view's factor on every element's computed font-size (WCAG 1.4.4: 200%)
+DESIGN_PREVIEW_TABS = 400  # keyboard: at most this many Tab presses per board
+DESIGN_PREVIEW_POP_PROBES = 4  # keyboard: click-only controls (by tag and class) clicked to see whether they open a popover
 # The check names the measured pass gives its issue lines (beside the render's own: load, settle,
 # too-tall, frame-clip, page-clip, overflow, unmounted, runtime-error, script-error, not-found,
 # screenshot, size, browser; and --click's unreachable, click-error, click, layout-shift, same-target,
-# hover-contrast).
-DESIGN_PREVIEW_CHECKS = ("contrast", "unmeasured", "target", "clipped", "dead-link", "image", "name", "checks")
+# hover-contrast). v61 (P37.S6): non-text-contrast and state-bar in every view and state; reflow and
+# overprint in the w320 and text200 views of a PAGE; keyboard on each interactive board.
+DESIGN_PREVIEW_CHECKS = ("contrast", "unmeasured", "target", "clipped", "dead-link", "image", "name", "checks",
+                         "non-text-contrast", "state-bar", "reflow", "overprint", "keyboard")
+# The self-check's blocking checks: self_check=fail names them, and --strict exits 1 on any.
+DESIGN_PREVIEW_BLOCKING = ("non-text-contrast", "reflow", "overprint", "keyboard")
+# Render reuse (v61): the default --out, per job and round, under the design root, git-ignored like .type/.
+DESIGN_PREVIEW_DIR = ".preview"
+DESIGN_PREVIEW_SHEET_W = 1568  # px: a contact sheet's width (about the largest an image is read at without downscaling)
+DESIGN_PREVIEW_SHEET_SCALE = 0.5  # a contact sheet shows its shots at half size or less (the widest fills a tile)
+DESIGN_PREVIEW_SHEET_TILE = 1.6  # a tile is at most this many times as tall as it is wide; the rest is cut (and said so)
 # Shared by the two in-page scripts below: a short element label (<= 40 chars), the text a control
 # shows (aria-hidden text left out), and the interactive set (the target check, and the click set).
 DESIGN_PREVIEW_JS_HELPERS = r"""
@@ -7410,6 +7479,78 @@ while (walker.nextNode()) {
   if (ratio < item.need) out.contrast.push(Object.assign(item, {ratio: Math.floor(ratio * 100) / 100, fg: hex(fg), bg: hex(bg)}));
 } };
 """
+# v61 (P37.S6), inside the measured checks below. non-text-contrast (WCAG 1.4.11): each visible, enabled
+# control of the target set by its element or role (a bare tabindex region, a scrim over a quarter of the
+# viewport, inline text links, [data-proto] chrome, aria-hidden controls and UA-drawn
+# checkboxes, radios, ranges, color and file pickers left out) whose identifying boundary -- a >= 1px
+# border that is not none/hidden, or its own fill -- reaches 3:1 against the color its ancestors paint
+# around it, composited like the text contrast (alpha, ancestor opacity groups, over white). The best of
+# its border sides and its fill counts; a control with neither, or with both under 1.1:1 (drawn in the
+# surface's own color), has no boundary to check (its text or icon identifies it) -- a form field always
+# has one. A background image, gradient, filter or blend mode in the way is unmeasured, never a
+# guess. state-bar: the rendered half of the state-bar lint -- the bar (or an ancestor) fixed or sticky,
+# several bars on one board, a bar showing the presets of more than one page, a bar with no named group.
+DESIGN_PREVIEW_NTC_JS = r"""
+const nativeWidget = e => e.matches('input[type=checkbox],input[type=radio],input[type=range],input[type=color],input[type=file],progress,meter')
+  && cs(e).appearance !== 'none';
+for (const e of controls()) {
+  if (!e.matches(SEL) || inRun(e) || e.closest('[data-proto]') || hiddenIn(e) || nativeWidget(e)) continue;
+  const box = e.getBoundingClientRect(); if (box.width * box.height > innerWidth * innerHeight / 4) continue;  // a scrim or backdrop
+  const s = cs(e);
+  const sides = ['Top', 'Right', 'Bottom', 'Left'].filter(k => parseFloat(s['border' + k + 'Width']) >= 1
+    && !/^(none|hidden)$/.test(s['border' + k + 'Style'])).map(k => s['border' + k + 'Color']);
+  const own = color(s.backgroundColor), filled = !!own && own[3] > 0;
+  if (!sides.length && !filled && s.backgroundImage === 'none') continue;
+  out.boundaries++;
+  const item = {el: desc(e), need: 3};
+  let why = '';
+  if (s.backgroundImage !== 'none' && !sides.length) why = 'a background image or gradient';
+  if (s.filter !== 'none' || s.mixBlendMode !== 'normal') why = why || 'a filter or blend mode';
+  const chain = []; for (let a = e.parentElement; a; a = a.parentElement) chain.push(a);
+  let see = true;
+  for (const a of chain) { if (!see) break; const t = cs(a);
+    if (t.backgroundImage !== 'none') why = why || 'a background image or gradient around it';
+    if (t.filter !== 'none' || t.mixBlendMode !== 'normal') why = why || 'a filter or blend mode around it';
+    const b = color(t.backgroundColor);
+    if (!b) why = why || 'a color it cannot read (' + t.backgroundColor + ')';
+    else if (b[3] >= 1 && +t.opacity >= 1) see = false; }
+  if (why) { item.why = why; out.ntc_unmeasured.push(item); continue; }
+  let layer = [255, 255, 255, 1], total = 1; const groups = [];
+  for (let i = chain.length - 1; i >= 0; i--) { const t = cs(chain[i]), o = +t.opacity; total *= o;
+    if (o < 1) { groups.push([layer, o]); layer = [0, 0, 0, 0]; }
+    layer = over(color(t.backgroundColor), layer); }
+  const o = +s.opacity; total *= o;
+  if (total <= 0) continue;
+  const base = o < 1 ? [0, 0, 0, 0] : layer;
+  const fill = s.backgroundImage === 'none' ? over(own || [0, 0, 0, 0], base) : null;
+  const parts = sides.map(c => ['border', over(color(c) || [0, 0, 0, 0], fill || base)]);
+  if (filled && fill) parts.push(['fill', fill]);
+  let best = null;
+  for (const [part, c0] of parts) { let c = c0, bg = layer;
+    if (o < 1) c = over([c[0], c[1], c[2], c[3] * o], layer);
+    for (let g = groups.length - 1; g >= 0; g--) { const [under, go] = groups[g];
+      c = over([c[0], c[1], c[2], c[3] * go], under); bg = over([bg[0], bg[1], bg[2], bg[3] * go], under); }
+    const l1 = lum(c), l2 = lum(bg), ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    if (!best || ratio > best.ratio) best = {part: part, ratio: ratio, fg: hex(c), bg: hex(bg)}; }
+  const field = e.matches('input,select,textarea');
+  if (best && best.ratio < 1.1 && !field) continue;  // a border or fill in the surface's own color draws no boundary
+  if (best && best.ratio < 3) out.ntc.push(Object.assign(item, best, {ratio: Math.floor(best.ratio * 100) / 100,
+    width: sides.length ? Math.max(...['Top', 'Right', 'Bottom', 'Left'].map(k => parseFloat(s['border' + k + 'Width']) || 0)) : 0}));
+}
+const groupName = g => (g.getAttribute('aria-label') || '').trim() || (g.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean)
+  .map(id => { const r = document.getElementById(id); return r ? textOf(r) : ''; }).join(' ').trim();
+const bars = [...document.querySelectorAll('[data-proto="state-bar"]')].filter(boxed);
+out.bars = bars.length;
+if (bars.length > 1) out.statebar.push({kind: 'several', n: bars.length, names: [...new Set(bars.map(b => {
+  const g = [...b.querySelectorAll('[role=group]')].find(x => boxed(x) && groupName(x)); return g ? clip(groupName(g), 40) : '?'; }))]});
+for (const b of bars) {
+  for (let a = b; a && a !== document.body; a = a.parentElement) { const p = cs(a).position;
+    if (p === 'fixed' || p === 'sticky') { out.statebar.push({kind: 'pinned', pos: p, el: a === b ? 'the bar' : 'its ancestor ' + tagOf(a)}); break; } }
+  const named = [...b.querySelectorAll('[role=group]')].filter(g => boxed(g) && groupName(g));
+  if (named.length > 1) out.statebar.push({kind: 'pages', n: named.length, names: named.slice(0, 3).map(g => clip(groupName(g), 40))});
+  else if (!named.length) out.statebar.push({kind: 'unnamed'});
+}
+"""
 # The measured checks, run on the settled page right before its screenshot. Raw facts only; the engine
 # words them. contrast: every visible text run (one per element) against the background its ancestors
 # paint under it, alpha-composited (color alpha, background alpha, ancestor opacity) over the white
@@ -7418,7 +7559,8 @@ while (walker.nextNode()) {
 # ([data-proto]: the state bar, the board-link strip) is exempt from the target check, never from the
 # others: it must still read, name its buttons and link somewhere real.
 DESIGN_PREVIEW_CHECKS_JS = "(()=>{" + DESIGN_PREVIEW_JS_HELPERS + DESIGN_PREVIEW_CONTRAST_JS + r"""
-const out = {contrast: [], unmeasured: [], target: [], clipped: [], links: [], images: [], names: [], texts: 0, targets: 0, fields: 0};
+const out = {contrast: [], unmeasured: [], target: [], clipped: [], links: [], images: [], names: [], texts: 0, targets: 0, fields: 0,
+             ntc: [], ntc_unmeasured: [], boundaries: 0, statebar: [], bars: 0};
 contrastIn(document.body, out);
 const inRun = e => { if (!e.matches('a[href],[role=link]') || cs(e).display !== 'inline') return false;
   let p = e.parentElement; while (p && cs(p).display === 'inline') p = p.parentElement;
@@ -7432,6 +7574,7 @@ for (const e of controls()) {
   const w = x1 - x0, h = y1 - y0;
   if (w < 43.99 || h < 43.99) out.target.push({el: desc(e), w: Math.round(w * 10) / 10, h: Math.round(h * 10) / 10, labelled: !!(e.labels && e.labels.length)});
 }
+""" + DESIGN_PREVIEW_NTC_JS + r"""
 const ownText = e => [...e.childNodes].some(c => c.nodeType === 3 && c.data.trim())
   || (e.children.length > 0 && [...e.children].every(c => cs(c).display === 'inline') && !!e.textContent.trim());
 for (const e of document.body.querySelectorAll('*')) {
@@ -7599,6 +7742,111 @@ window.clearTimeout = function (id) { live.delete(id); return ct(id); }; })()"""
 DESIGN_PREVIEW_ANIMATIONS_JS = ("Promise.race([Promise.all(document.getAnimations().filter(a=>a.effect&&"
                                 "a.effect.getComputedTiming().endTime!==Infinity).map(a=>a.finished.catch(()=>0))),"
                                 "new Promise(r=>setTimeout(r,1000))]).then(()=>1)")
+# v61 (P37.S6): installed before every load's scripts: remembers each element given a click, mousedown,
+# pointerdown, mouseup or pointerup listener with addEventListener (the runtime's onclick= is a property,
+# read directly), for the keyboard check's click-only controls.
+DESIGN_PREVIEW_LISTENERS_JS = r"""(() => { if (window.__dcClick) return; const seen = new WeakSet(); window.__dcClick = seen;
+const add = EventTarget.prototype.addEventListener;
+EventTarget.prototype.addEventListener = function (t, f, o) {
+  if (this instanceof Element && /^(click|mousedown|pointerdown|mouseup|pointerup)$/.test(t)) seen.add(this);
+  return add.call(this, t, f, o); }; })()"""
+# 200% text (WCAG 1.4.4): every element's computed font-size read first, then each set to k times it
+# (!important, in px), so nothing compounds; rem lengths follow the root's.
+DESIGN_PREVIEW_TEXT_SCALE_JS = ("(k=>{const all=[document.documentElement,document.body,...document.body.querySelectorAll('*')]"
+                                ".filter(e=>e&&!/^(SCRIPT|STYLE|TEMPLATE|HEAD|META|LINK|TITLE)$/.test(e.tagName));"
+                                "const px=all.map(e=>parseFloat(getComputedStyle(e).fontSize));"
+                                "all.forEach((e,i)=>{if(px[i]>0)e.style.setProperty('font-size',(px[i]*k)+'px','important');});"
+                                "return all.length;})")
+# overprint (WCAG 1.4.4/1.4.10), in the 320 px and 200%-text views: two text runs of different elements,
+# neither containing the other, whose glyph boxes (Range.getClientRects, the middle half of each line box
+# so stacked lines that merely touch do not count, cut to every clipping ancestor: overflow, clip-path,
+# clip -- a visually hidden label is cut to its 1px box) cross by >= 2px across
+# and >= 1px down, where the crossing is visible: the topmost element at its centre belongs to one of the
+# two and nothing opaque between it and the other hides that one. [data-proto] chrome is left out.
+DESIGN_PREVIEW_OVERPRINT_JS = "(()=>{" + DESIGN_PREVIEW_JS_HELPERS + DESIGN_PREVIEW_CONTRAST_JS + r"""
+const runs = [], clips = new Map(), ids = new Map(), range = document.createRange();
+const clipOf = e => { if (!e || e === document.body || e === document.documentElement) return null;
+  if (clips.has(e)) return clips.get(e);
+  const s = cs(e); let c = s.position === 'fixed' ? null : clipOf(e.parentElement);
+  if (s.overflowX !== 'visible' || s.overflowY !== 'visible' || s.clipPath !== 'none' || (s.clip && s.clip !== 'auto')) { const r = e.getBoundingClientRect();
+    c = c ? [Math.max(c[0], r.left), Math.max(c[1], r.top), Math.min(c[2], r.right), Math.min(c[3], r.bottom)] : [r.left, r.top, r.right, r.bottom]; }
+  clips.set(e, c); return c; };
+const seenBy = e => e.checkVisibility ? e.checkVisibility({opacityProperty: true, visibilityProperty: true}) : cs(e).visibility === 'visible';
+const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+while (walker.nextNode()) { const n = walker.currentNode, e = n.parentElement;
+  if (!e || !n.data.trim() || e.closest('script,style,template,noscript,head,[data-proto]') || !seenBy(e)) continue;
+  range.selectNodeContents(n); const c = clipOf(e);
+  for (const r of range.getClientRects()) { if (r.width < 2 || r.height < 2) continue;
+    let b = [r.left, r.top + r.height / 4, r.right, r.bottom - r.height / 4];
+    if (c) b = [Math.max(b[0], c[0]), Math.max(b[1], c[1]), Math.min(b[2], c[2]), Math.min(b[3], c[3])];
+    if (b[2] - b[0] >= 1 && b[3] - b[1] >= 1) runs.push({e: e, b: b}); } }
+runs.sort((p, q) => p.b[1] - q.b[1]);
+const idOf = e => { if (!ids.has(e)) ids.set(e, ids.size); return ids.get(e); };
+const pairs = new Map(); let found = 0;
+for (let i = 0; i < runs.length; i++) { const A = runs[i];
+  for (let j = i + 1; j < runs.length && runs[j].b[1] < A.b[3]; j++) { const B = runs[j];
+    if (A.e === B.e || A.e.contains(B.e) || B.e.contains(A.e)) continue;
+    const x0 = Math.max(A.b[0], B.b[0]), x1 = Math.min(A.b[2], B.b[2]), y0 = Math.max(A.b[1], B.b[1]), y1 = Math.min(A.b[3], B.b[3]);
+    if (x1 - x0 < 2 || y1 - y0 < 1) continue;
+    const key = Math.min(idOf(A.e), idOf(B.e)) + ':' + Math.max(idOf(A.e), idOf(B.e));
+    if (pairs.has(key)) continue;
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    if (cx >= 0 && cy >= 0 && cx < innerWidth && cy < innerHeight) {
+      const top = document.elementFromPoint(cx, cy); if (!top) continue;
+      const back = A.e.contains(top) ? B.e : B.e.contains(top) ? A.e : null;
+      if (!back && !(top.contains(A.e) && top.contains(B.e))) continue;
+      let hidden = false;
+      if (back) for (let a = top; a && !a.contains(back); a = a.parentElement) { const t = cs(a), bc = color(t.backgroundColor);
+        if ((bc && bc[3] >= 1) || t.backgroundImage !== 'none') { hidden = true; break; } }
+      if (hidden) continue; }
+    found++;
+    if (pairs.size < 60) pairs.set(key, {a: desc(A.e), b: desc(B.e), w: Math.round(x1 - x0), h: Math.round(y1 - y0)}); } }
+return {runs: runs.length, pairs: [...pairs.values()], found: found}; })()"""
+# keyboard (WCAG 2.1.1), on interactive boards from the settled state: the controls Tab must reach
+# (the target set, outside [data-proto], not aria-hidden, not tabindex < 0, inside an open modal when
+# one is), a focusin recorder, and the click-only controls: an element with a click/mousedown/pointerdown
+# listener (the runtime's on* property, or one added with addEventListener) or, failing that, a pointer
+# cursor its parent does not have, that is neither natively focusable nor tabindex >= 0, sits inside no
+# focusable control or label and holds none (a container of controls delegating clicks is not one), and
+# covers under a quarter of the viewport.
+DESIGN_PREVIEW_KEYS_JS = "(()=>{" + DESIGN_PREVIEW_JS_HELPERS + r"""
+const modal = [...document.querySelectorAll('[aria-modal="true"],dialog[open]')].find(boxed) || null;
+const negative = e => e.hasAttribute('tabindex') && parseInt(e.getAttribute('tabindex'), 10) < 0;
+const ctl = controls().filter(e => !e.closest('[data-proto]') && !hiddenIn(e) && !negative(e) && (!modal || modal.contains(e)));
+const L = window.__dcClick;
+const handler = e => ['onclick', 'onmousedown', 'onpointerdown', 'onmouseup', 'onpointerup'].some(p => typeof e[p] === 'function') || (!!L && L.has(e));
+const FOCUS = SEL + ',label,[contenteditable],[tabindex]:not([tabindex^="-"])';
+const area = innerWidth * innerHeight, only = [];
+for (const e of document.body.querySelectorAll('*')) {
+  if (e.closest('[data-proto],script,style,template,noscript') || (e.closest('svg') && e.tagName.toLowerCase() !== 'svg')) continue;
+  const own = handler(e), ptr = !own && cs(e).cursor === 'pointer' && !(e.parentElement && cs(e.parentElement).cursor === 'pointer');
+  if (!own && !ptr) continue;
+  if (e.matches(FOCUS) || e.isContentEditable || (e.parentElement && e.parentElement.closest(FOCUS)) || e.querySelector(FOCUS)) continue;
+  if (!boxed(e) || hiddenIn(e) || off(e) || (modal && !modal.contains(e))) continue;
+  const r = e.getBoundingClientRect(), first = e.getClientRects()[0];
+  if (!first || r.width * r.height > area / 4) continue;
+  const cls = typeof e.className === 'string' ? e.className.trim().split(/\s+/)[0] : '';
+  const key = []; for (let a = e; a && a.parentElement; a = a.parentElement) key.unshift([...a.parentElement.children].indexOf(a));
+  only.push({el: desc(e), sig: e.tagName.toLowerCase() + (cls ? '.' + cls : ''), how: own ? 'a click handler' : 'a pointer cursor', key: key.join('.')}); }
+window.__dcKeys = {ctl: ctl, seen: new Set(), first: null, wrapped: false};
+if (!window.__dcKeysOn) { window.__dcKeysOn = 1;
+  addEventListener('focusin', ev => { const k = window.__dcKeys; if (!k) return;
+    if (k.first === ev.target) k.wrapped = true; else if (!k.first) k.first = ev.target; k.seen.add(ev.target); }, true); }
+if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+const stops = [...document.querySelectorAll(SEL + ',[tabindex]:not([tabindex^="-"])')].filter(e => boxed(e) && !off(e)).length;
+return {controls: ctl.length, stops: stops, only: only, modal: !!modal}; })()"""
+DESIGN_PREVIEW_KEYS_DONE_JS = "(()=>{" + DESIGN_PREVIEW_JS_HELPERS + r"""
+const k = window.__dcKeys; if (!k) return null;
+const missed = k.ctl.filter(e => e.isConnected && boxed(e) && !off(e) && !k.seen.has(e));
+return {wrapped: k.wrapped, reached: k.seen.size, missed: missed.map(desc)}; })()"""
+# The keyboard probe: scroll the element with this key into view; the centre of its first box, or null.
+DESIGN_PREVIEW_POINT_JS = ("(k=>{let e=document.documentElement;for(const i of k.split('.')){if(i==='')continue;e=e&&e.children[+i];}"
+                           "if(!e)return null;e.scrollIntoView({block:'center',inline:'center'});const r=e.getClientRects()[0];"
+                           "return r?[r.left+r.width/2,r.top+r.height/2]:null;})")
+# What a click opened: the visible dialogs, menus, tooltips, listboxes and popovers outside [data-proto].
+DESIGN_PREVIEW_OVERLAYS_JS = "(()=>{" + DESIGN_PREVIEW_JS_HELPERS + r"""
+return [...document.querySelectorAll('[role=dialog],[role=alertdialog],[role=menu],[role=tooltip],[role=listbox],[popover],[aria-modal="true"],dialog[open]')]
+  .filter(e => boxed(e) && !e.closest('[data-proto]')).map(e => (e.getAttribute('role') || e.tagName.toLowerCase()) + ' ' + desc(e)); })()"""
 
 
 def design_preview_browser(given):
@@ -7887,6 +8135,43 @@ def design_preview_measured(ctx: dict, rel: str, checks: dict) -> list:
         else:
             found.append(("name", n["el"], f"{n['el']}: a {n['kind']} with no accessible name (no text, aria-label, "
                                            "aria-labelledby, title or img alt)"))
+    ctx["ntc_again"], named, fresh = 0, ctx.setdefault("ntc_named", {}), set()
+    for c in checks.get("ntc", []):
+        # One line per run for a boundary (the same border or fill on the same surface is one token pairing,
+        # drawn again in every view, state and board that shows the control): later shots count it, never
+        # repeat it, and the closing note lists the other boards that draw it.
+        pair = (c["part"], c["fg"], c["bg"])
+        if pair in named and pair not in fresh:
+            ctx["ntc_again"] += 1
+            if named[pair] != rel:
+                ctx.setdefault("ntc_more", {}).setdefault(pair, {}).setdefault(rel, c["el"])
+            continue
+        named[pair] = rel
+        fresh.add(pair)
+        what = f"its {design_preview_num(c['width'])}px border {c['fg']}" if c["part"] == "border" else f"its fill {c['fg']}"
+        found.append(("non-text-contrast", f"{c['fg']} on {c['bg']}",
+                      f"{c['el']}: the control's boundary is {c['ratio']:.2f}:1 against {c['bg']} around it, needs 3:1 "
+                      f"({what}; the best of its border and fill counts; later views, states and boards do not repeat this pair)"))
+    ntc_unmeasured = checks.get("ntc_unmeasured", [])
+    if ntc_unmeasured and rel not in ctx.setdefault("ntc_unmeasured", set()):  # once per board, like unmeasured
+        ctx["ntc_unmeasured"].add(rel)
+        first = ntc_unmeasured[0]
+        found.append(("unmeasured", "ntc", f"{len(ntc_unmeasured)} control boundary(ies) sit on {first['why']} (first: {first['el']}): "
+                                           "non-text contrast not measured; judge it on the PNG"))
+    for b in checks.get("statebar", []):
+        if b["kind"] == "several":
+            message = (f"{b['n']} state bars on one board ({', '.join(b['names'])}): a board that shows one page in several "
+                       "windows carries exactly one bar, above all the windows and inside none, driving them together")
+        elif b["kind"] == "pinned":
+            message = (f"the state bar is position: {b['pos']} ({b['el']}): it is the first row of the page and scrolls "
+                       "away with it, never fixed or sticky")
+        elif b["kind"] == "pages":
+            message = (f"the state bar shows the presets of {b['n']} pages at once ({', '.join(b['names'])}): it lists only "
+                       "the states of the page on screen")
+        else:
+            message = ("the state bar has no [role=group] named by the page (aria-label or aria-labelledby): the preview "
+                       "cannot tell which page is on screen")
+        found.append(("state-bar", b["kind"], message))
     folded: dict = {}
     for check, key, message in found:
         entry = folded.setdefault((check, key), [message, 0])
@@ -7954,14 +8239,17 @@ def design_preview_view(ctx: dict, rel: str, board: dict, view: str) -> int:
         named = {(i["check"], design_preview_fold(i["message"])) for i in record["views"]["frame"]["issues"]}
         kept = [(c, m) for c, m in issues if c not in DESIGN_PREVIEW_CHECKS or (c, design_preview_fold(m)) not in named]
         issues, repeated = kept, len(issues) - len(kept)
-    print(f"board={rel} png={png} w={shot['width']} h={shot['height']} view={view} content={shape['w']}x{shape['h']} "
+    print(f"board={rel} png={design_preview_shown(png)} w={shot['width']} h={shot['height']} view={view} content={shape['w']}x{shape['h']} "
           f"unmounted={len(shape['unmounted'])} errors={len(shape['errors']) + len(shot['errors'])} issues={len(issues)}")
     for check, message in issues:
         print(f"issue board={rel} view={view} check={check}: {message}")
+    again = ctx.get("ntc_again", 0)
     if repeated:
         print(f"note board={rel} view={view}: {repeated} measured issue(s) as in the frame view, not repeated")
-    record["views"][view] = {"png": str(png), "w": shot["width"], "h": shot["height"], "content": [shape["w"], shape["h"]],
-                             "issues": [{"check": c, "message": m} for c, m in issues], "as_in_frame": repeated,
+    if again:
+        print(f"note board={rel} view={view}: {again} non-text-contrast boundary(ies) named earlier in this run, not repeated")
+    record["views"][view] = {"png": design_preview_shown(png), "w": shot["width"], "h": shot["height"], "content": [shape["w"], shape["h"]],
+                             "issues": [{"check": c, "message": m} for c, m in issues], "as_in_frame": repeated, "ntc_as_before": again,
                              "measured": shot["checks"]}
     for link in shot["checks"].get("links", []):
         design_preview_edge(ctx, rel, link["href"])
@@ -8024,6 +8312,239 @@ def design_preview_hover(ctx: dict, rel: str, view: str, state: int, hovered: se
         design_preview_note(ctx, rel, view, state, "click", f"the hover pass stopped: {exc}")
         found += 1
     return found
+
+
+def design_preview_load(page: "DesignBrowser", url: str, width: int, height: int) -> tuple:
+    """A fresh load of `url` in an exact width x height viewport; (loaded, settled)."""
+    page.call("Emulation.setDeviceMetricsOverride", {"width": width, "height": height, "deviceScaleFactor": 1, "mobile": False})
+    page.events.clear()
+    page.call("Page.navigate", {"url": url})
+    loaded = page.wait_event("Page.loadEventFired", DESIGN_PREVIEW_SETTLE)
+    return loaded, page.settle()
+
+
+def design_preview_earlier(record: dict) -> set:
+    """The (check, folded message) pairs the board's views so far already named."""
+    return {(i["check"], design_preview_fold(i["message"])) for v in record["views"].values() for i in v.get("issues", [])}
+
+
+def design_preview_text_view(ctx: dict, rel: str, view: str) -> int:
+    """v61 (P37.S6), a PAGE's two WCAG views: w320 (320 px wide: reflow, WCAG 1.4.10) and text200 (the
+    phone width with every element's font-size doubled: WCAG 1.4.4), each growing to its content. Each
+    names reflow (a sideways scroll), overprint (two text runs crossing) and the clipped check, plus the
+    render's own issues the earlier views did not name. Returns the issue count, or -1 with no screenshot."""
+    page, record = ctx["page"], ctx["report"]["boards"][rel]
+    width, height = (DESIGN_PREVIEW_REFLOW if view == "w320" else DESIGN_PREVIEW_PHONE[0]), DESIGN_PREVIEW_PHONE[1]
+    where = f"at {width}px wide" if view == "w320" else f"at {width}px with {DESIGN_PREVIEW_TEXT_SCALE * 100}% text"
+    png = ctx["out"] / f"{rel[:-len(DESIGN_BOARD_SUFFIX)].replace('/', '__')}.{view}.png"
+    ctx["misses"].clear()
+    try:
+        loaded, settled = design_preview_load(page, f"{ctx['base']}/{rel}", width, height)
+        if view == "text200":
+            page.evaluate(f"{DESIGN_PREVIEW_TEXT_SCALE_JS}({DESIGN_PREVIEW_TEXT_SCALE})")
+            settled = page.settle() and settled
+        shot = design_preview_capture(page, width, height, True, settled)
+        shot["loaded"] = loaded
+        crossed = page.evaluate(DESIGN_PREVIEW_OVERPRINT_JS) or {"pairs": [], "found": 0, "runs": 0}
+    except (RuntimeError, OSError, ValueError, KeyError, TypeError) as exc:
+        print(f"board={rel} png=none w={width} h={height} view={view} error=browser")
+        print(f"issue board={rel} view={view} check=screenshot: no screenshot: {exc}")
+        record["views"][view] = {"png": None, "w": width, "h": height,
+                                  "issues": [{"check": "screenshot", "message": f"no screenshot: {exc}"}]}
+        return -1
+    png.write_bytes(shot["png"])
+    shape = shot["shape"]
+    keep = ("clipped", "load", "settle", "too-tall", "unmounted", "runtime-error", "script-error", "not-found")
+    issues = [(c, m) for c, m in design_preview_issues(ctx, rel, shot, True, height) if c in keep]
+    if shape["w"] > width:
+        issues.insert(0, ("reflow", f"content is {shape['w']}px wide {where}: the page scrolls sideways "
+                                    "(it reflows into the width, scrolling only a table, code or a map in its own box)"))
+    for p in crossed["pairs"]:
+        issues.append(("overprint", f"{p['a']} and {p['b']} overprint {where}: their text crosses over {p['w']}x{p['h']}px"))
+    if crossed["found"] > len(crossed["pairs"]):
+        issues.append(("overprint", f"{crossed['found'] - len(crossed['pairs'])} more overprinting pair(s) {where} (see the PNG)"))
+    named = design_preview_earlier(record)
+    kept = [(c, m) for c, m in issues if (c, design_preview_fold(m)) not in named]
+    repeated = len(issues) - len(kept)
+    print(f"board={rel} png={design_preview_shown(png)} w={shot['width']} h={shot['height']} view={view} "
+          f"content={shape['w']}x{shape['h']} unmounted={len(shape['unmounted'])} "
+          f"errors={len(shape['errors']) + len(shot['errors'])} issues={len(kept)}")
+    for check, message in kept:
+        print(f"issue board={rel} view={view} check={check}: {message}")
+    if repeated:
+        print(f"note board={rel} view={view}: {repeated} issue(s) as in an earlier view, not repeated")
+    measured = {"clipped": shot["checks"].get("clipped", []) if isinstance(shot["checks"], dict) else [], "overprint": crossed}
+    record["views"][view] = {"png": design_preview_shown(png), "w": shot["width"], "h": shot["height"],
+                             "content": [shape["w"], shape["h"]], "issues": [{"check": c, "message": m} for c, m in kept],
+                             "as_in_frame": repeated, "measured": measured}
+    return len(kept)
+
+
+def design_preview_keyboard(ctx: dict, rel: str, board: dict) -> int:
+    """v61 (P37.S6): keyboard (WCAG 2.1.1) on an interactive board, frame view, from the settled state.
+    Tab (Input.dispatchKeyEvent) until focus comes back to the first stop, at most DESIGN_PREVIEW_TABS
+    presses; a control the order never reached is unreachable (judged only when the order wrapped). A
+    click-only control (DESIGN_PREVIEW_KEYS_JS) is a keyboard issue too, one line per tag and class; the
+    first DESIGN_PREVIEW_POP_PROBES of them are clicked from a fresh load, and one that opens a dialog,
+    menu, tooltip, listbox or popover is named so. Returns the issue count."""
+    page, url = ctx["page"], f"{ctx['base']}/{rel}"
+    width, height = board["w"], board["h"]
+    record, found = ctx["report"]["boards"][rel], 0
+    key = {"key": "Tab", "code": "Tab", "windowsVirtualKeyCode": 9, "nativeVirtualKeyCode": 9}
+    try:
+        design_preview_load(page, url, width, height)
+        setup = page.evaluate(DESIGN_PREVIEW_KEYS_JS)
+        cap, presses, wrapped = min(DESIGN_PREVIEW_TABS, 2 * max(setup["stops"], setup["controls"]) + 20), 0, False
+        while presses < cap and not wrapped:
+            for _ in range(min(25, cap - presses)):
+                page.call("Input.dispatchKeyEvent", dict(key, type="keyDown"))
+                page.call("Input.dispatchKeyEvent", dict(key, type="keyUp"))
+                presses += 1
+            wrapped = bool(page.evaluate("!!(window.__dcKeys && window.__dcKeys.wrapped)"))
+        done = page.evaluate(DESIGN_PREVIEW_KEYS_DONE_JS) or {"missed": [], "reached": 0}
+        sigs: dict = {}
+        for c in setup["only"]:
+            sigs.setdefault(c["sig"], []).append(c)
+        opened: dict = {}
+        for sig in list(sigs)[:DESIGN_PREVIEW_POP_PROBES]:
+            design_preview_load(page, url, width, height)
+            at = page.evaluate(f"{DESIGN_PREVIEW_POINT_JS}({json.dumps(sigs[sig][0]['key'])})")
+            if not at:
+                continue
+            page.settle(poll=0.04, need=1)
+            before, look = set(page.evaluate(DESIGN_PREVIEW_OVERLAYS_JS) or []), page.evaluate(DESIGN_PREVIEW_STATE_JS)["hash"]
+            design_preview_click(page, at[0], at[1])
+            page.settle(poll=0.04, need=1)
+            try:
+                page.evaluate(DESIGN_PREVIEW_ANIMATIONS_JS)
+            except RuntimeError:
+                pass
+            new = [o for o in page.evaluate(DESIGN_PREVIEW_OVERLAYS_JS) or [] if o not in before]
+            opened[sig] = f"opens {new[0]}" if new else ("changes the page" if page.evaluate(DESIGN_PREVIEW_STATE_JS)["hash"] != look else "")
+    except (RuntimeError, OSError, ValueError, KeyError, TypeError) as exc:
+        design_preview_note(ctx, rel, "frame", None, "click", f"the keyboard pass stopped: {exc}")
+        return 1
+    missed = done.get("missed") or []
+    if wrapped and missed:
+        names = ", ".join(missed[:4]) + (f" (+{len(missed) - 4} more)" if len(missed) > 4 else "")
+        design_preview_note(ctx, rel, "frame", None, "keyboard",
+                            f"{len(missed)} control(s) Tab never reaches from the settled state: {names}")
+        found += 1
+    for sig, items in sigs.items():
+        what, how = opened.get(sig), items[0]["how"]
+        more = f" (+{len(items) - 1} more like it)" if len(items) > 1 else ""
+        does = f"{what} on click ({how})" if what else f"takes a click ({how})"
+        design_preview_note(ctx, rel, "frame", None, "keyboard",
+                            f"{items[0]['el']} {does} but never keyboard focus: not natively focusable and no tabindex >= 0, "
+                            f"so a keyboard user cannot reach it{more}")
+        found += 1
+    notes = [f"{done.get('reached', 0)} Tab stop(s) for {setup['controls']} control(s) in {presses} press(es)"
+             + ("" if wrapped else f": the order did not come back to its first stop (cap {cap}), so no control is called unreachable")]
+    if setup.get("modal"):
+        notes.append("an open modal: only its controls are expected")
+    print(f"note board={rel} view=frame: keyboard: " + "; ".join(notes))
+    record["keyboard"] = {"controls": setup["controls"], "reached": done.get("reached", 0), "presses": presses,
+                          "wrapped": wrapped, "missed": missed, "click_only": setup["only"][:40], "opened": opened}
+    return found
+
+
+def design_preview_blocking(report: dict) -> dict:
+    """{check: count} of the blocking checks' issue lines over every board of a (merged) report."""
+    counts: dict = {}
+    for rec in report["boards"].values():
+        items = [i for v in rec.get("views", {}).values() for i in v.get("issues", [])]
+        items += [i for s in rec.get("states", []) for i in s.get("issues", [])] + rec.get("interaction", [])
+        for item in items:
+            if item.get("check") in DESIGN_PREVIEW_BLOCKING:
+                counts[item["check"]] = counts.get(item["check"], 0) + 1
+    return {c: counts[c] for c in DESIGN_PREVIEW_BLOCKING if c in counts}
+
+
+def design_preview_shown(path: Path) -> str:
+    """A screenshot's path as printed and stored: shown() (repo-relative) under the workspace, else absolute."""
+    try:
+        path.resolve().relative_to(ROOT.resolve())
+    except ValueError:
+        return str(path)
+    return shown(path.resolve())
+
+
+def design_preview_tokens(width: int, height: int) -> int:
+    """About what reading one image costs: ceil(w/28) x ceil(h/28) tokens, after the long side is
+    brought down to DESIGN_PREVIEW_SHEET_W."""
+    import math
+    f = min(1.0, DESIGN_PREVIEW_SHEET_W / max(width, height, 1))
+    return math.ceil(width * f / 28) * math.ceil(height * f / 28)
+
+
+def design_preview_sheet(ctx: dict, rel: str) -> dict:
+    """v61 (P37.S6) --contact-sheet: one PNG per board tiling its views and states at one reduced scale
+    (the widest shot fills a tile, at most DESIGN_PREVIEW_SHEET_SCALE of its size; a tile is cut at
+    DESIGN_PREVIEW_SHEET_TILE times its width), each under a caption, at most DESIGN_PREVIEW_SHEET_W px
+    wide, drawn as an HTML page of <img> tiles in the same
+    browser. Returns its record, or {} when the board has no screenshot."""
+    record = ctx["report"]["boards"][rel]
+    tiles = []
+    for view, v in record.get("views", {}).items():
+        if v.get("png"):
+            count = len(v.get("issues", []))
+            tiles.append((f"{view} {v['w']}x{v['h']}" + (f" · {count} issue(s)" if count else ""), v))
+    for s in record.get("states", []):
+        if s.get("png"):
+            count = len(s.get("issues", []))
+            tiles.append((f"{s['view']} state {s['n']:02d}: {' > '.join(s.get('path', []))[:80]}" + (f" · {count} issue(s)" if count else ""), s))
+    files = []
+    for caption, item in tiles:
+        path = Path(item["png"])
+        path = path if path.is_absolute() else (HOST_ROOT or ROOT) / path
+        if path.is_file():
+            files.append((caption, path, item["w"], item["h"]))
+    if not files:
+        return {}
+    import html as htmllib
+    import math
+    cols = max(1, min(6, math.ceil(math.sqrt(len(files)))))
+    gap = 8
+    widest = max(w for _, _, w, _ in files)
+    tile = min((DESIGN_PREVIEW_SHEET_W - gap * (cols + 1)) // cols, max(1, round(widest * DESIGN_PREVIEW_SHEET_SCALE)))
+    scale = tile / widest
+    sheet_w = tile * cols + gap * (cols + 1)
+    cap = int(tile * DESIGN_PREVIEW_SHEET_TILE)
+    cells = []
+    for caption, path, w, h in files:
+        sw, sh = max(1, round(w * scale)), max(1, round(h * scale))
+        cut = " (cut)" if sh > cap else ""
+        cells.append(f'<figure><div class="t" style="height:{min(sh, cap)}px"><img src="{path.as_uri()}" '
+                     f'style="width:{sw}px;height:{sh}px"></div><figcaption>{htmllib.escape(caption + cut)}</figcaption></figure>')
+    title = record.get("title") or rel
+    doc = ("<!doctype html><html><head><meta charset=utf-8><style>"
+           f"body{{margin:0;background:#fff;color:#111;font:13px/1.3 -apple-system,'Helvetica Neue',Arial,sans-serif;width:{sheet_w}px}}"
+           f"h1{{font-size:15px;margin:0;padding:{gap}px {gap}px 0}}"
+           f".g{{display:grid;grid-template-columns:repeat({cols},{tile}px);gap:{gap}px;padding:{gap}px;align-items:start}}"
+           "figure{margin:0}.t{overflow:hidden;outline:1px solid #bbb;background:#f4f4f4}img{display:block}"
+           "figcaption{margin-top:3px;font-size:11px;color:#333;overflow-wrap:anywhere}</style></head><body>"
+           f"<h1>{htmllib.escape(title)} · {htmllib.escape(rel)} · {len(files)} shot(s), 1:{1 / scale:.1f}</h1>"
+           f"<div class=g>{''.join(cells)}</div></body></html>")
+    stem = rel[:-len(DESIGN_BOARD_SUFFIX)].replace("/", "__")
+    page_file = ctx["out"] / f".{stem}.sheet.html"
+    png = ctx["out"] / f"{stem}.sheet.png"
+    page = ctx["page"]
+    page_file.write_text(doc, encoding="utf-8")
+    try:
+        design_preview_load(page, page_file.as_uri(), sheet_w, 300)
+        page.evaluate("Promise.all([...document.images].map(i=>i.complete?1:new Promise(r=>{i.onload=i.onerror=r;})))")
+        height = min(int(page.evaluate("document.documentElement.scrollHeight")), DESIGN_PREVIEW_MAX)
+        page.call("Emulation.setDeviceMetricsOverride", {"width": sheet_w, "height": height, "deviceScaleFactor": 1, "mobile": False})
+        page.settle(poll=0.05, need=1)
+        import base64
+        png.write_bytes(base64.b64decode(page.call("Page.captureScreenshot", {"format": "png"})["data"]))
+    finally:
+        page_file.unlink(missing_ok=True)
+    tokens = design_preview_tokens(sheet_w, height)
+    print(f"sheet board={rel} png={design_preview_shown(png)} w={sheet_w} h={height} tiles={len(files)} "
+          f"scale=1:{1 / scale:.1f} tokens~{tokens} (the {len(files)} PNG(s) one by one: ~{sum(design_preview_tokens(w, h) for _, _, w, h in files)})")
+    return {"png": design_preview_shown(png), "w": sheet_w, "h": height, "tiles": len(files),
+            "scale": round(scale, 4), "tokens": tokens}
 
 
 def design_preview_shifts(before: dict, after: dict, control: dict) -> list:
@@ -8265,6 +8786,9 @@ def design_preview_explore(ctx: dict, rel: str, board: dict, view: str = "frame"
             if before["page"] == now["page"]:
                 for message in design_preview_shifts(before, now, control):
                     issues += say(state["n"], "layout-shift", message)
+            elif control.get("bar"):  # v61: a preset sets its own page's state; the page changes only by the prototype
+                issues += say(state["n"], "state-bar", f"the preset '{control['label']}' moves to another page "
+                              f"({before['page'] or '?'} -> {now['page'] or '?'}): the bar lists only the states of the page on screen")
             if control.get("list") and "text" not in control:
                 opened.setdefault(control["list"], []).append((control["label"], after, now["page"]))
             if now["page"] not in pages_met:
@@ -8308,13 +8832,13 @@ def design_preview_explore(ctx: dict, rel: str, board: dict, view: str = "frame"
                       if (control["label"], text) not in thrown]
             thrown.update((control["label"], text) for text in errors)
             shape = shot["shape"]
-            print(f"state board={rel} view={view} n={new['n']:02d} path=\"{shown}\" png={png} w={shot['width']} "
+            print(f"state board={rel} view={view} n={new['n']:02d} path=\"{shown}\" png={design_preview_shown(png)} w={shot['width']} "
                   f"h={shot['height']} content={shape['w']}x{shape['h']} issues={len(found)}")
             for check, message in found:
                 print(f"issue board={rel} view={view} state={new['n']:02d} check={check}: {message}")
             issues += len(found)
             record["states"].append({"n": new["n"], "view": view, "page": new["page"], "path": [shown_path([s]) for s in path],
-                                     "png": str(png), "w": shot["width"], "h": shot["height"], "content": [shape["w"], shape["h"]],
+                                     "png": design_preview_shown(png), "w": shot["width"], "h": shot["height"], "content": [shape["w"], shape["h"]],
                                      "issues": [{"check": c, "message": m} for c, m in found], "measured": shot["checks"]})
             for link in shot["checks"].get("links", []):
                 design_preview_edge(ctx, rel, link["href"])
@@ -8394,14 +8918,34 @@ def design_preview(args: argparse.Namespace) -> int:
     if not runtime.is_file():
         raise SystemExit(f"design-preview: refused -- no runtime at {runtime} (the orchestrator saves the Design canvas "
                          "type's artifact-type/dc-runtime.js for the job; pass that path)")
-    out = Path(args.out).expanduser().resolve() if args.out else None
-    if out is not None:
+    # v61 (P37.S6) render reuse: the default --out is one stable folder per job and round under the design
+    # root's git-ignored .preview/, so the critic finds the drafter's final render (preview.json, the PNGs,
+    # the contact sheets) without re-rendering it. An --out elsewhere in the design root is refused.
+    rounds = sorted(job["rounds"], key=lambda r: r["number"])
+    current = next((r for r in rounds if r["data"] and r["data"]["status"] == "open"), rounds[-1] if rounds else None)
+    reuse = root / DESIGN_PREVIEW_DIR
+    default_out = reuse / args.job / (current["id"] if current else "no-round")
+    out = Path(args.out).expanduser().resolve() if args.out else default_out.resolve()
+    try:
+        out.relative_to(root.resolve())
+    except ValueError:
+        pass
+    else:
         try:
-            out.relative_to(root.resolve())
+            out.relative_to(reuse.resolve())
         except ValueError:
-            pass
-        else:
-            raise SystemExit(f"design-preview: refused -- --out {out} is inside {DESIGN_ROOT_SHOWN}/; screenshots stay out of the design record")
+            raise SystemExit(f"design-preview: refused -- --out {out} is inside {DESIGN_ROOT_SHOWN}/ but not its git-ignored "
+                             f"{DESIGN_PREVIEW_DIR}/; screenshots stay out of the design record")
+    earlier = None
+    if args.states_only:
+        args.click = True
+        try:
+            earlier = read_json(out / "preview.json")
+        except (ValueError, OSError):
+            earlier = None
+        if not isinstance(earlier, dict) or earlier.get("job") != args.job or not isinstance(earlier.get("boards"), dict):
+            raise SystemExit(f"design-preview: refused -- --states-only reuses an earlier render, and {design_preview_shown(out)} "
+                             "holds none of this job (run design-preview without it first)")
     browser = design_preview_browser(args.browser)
     if browser is None:  # an honest skip: a verdict, not an error, and never a claimed render
         print("preview=skipped reason=no-browser")
@@ -8432,9 +8976,26 @@ def design_preview(args: argparse.Namespace) -> int:
             for name in system.get("files") or []:
                 if not (ds / ns / name).is_file():
                     print(f"warning: system {ns} cache lacks {name}")
-    if out is None:
-        out = Path(tempfile.mkdtemp(prefix=f"design-preview-{args.job}-"))
+    if out == default_out.resolve() and not (reuse / ".gitignore").is_file():  # the renders are local only
+        write_text(reuse / ".gitignore", "*\n")
     out.mkdir(parents=True, exist_ok=True)
+    if earlier is None:
+        try:
+            earlier = read_json(out / "preview.json") if (args.board and (out / "preview.json").is_file()) else None
+        except (ValueError, OSError):
+            earlier = None
+        if not (isinstance(earlier, dict) and earlier.get("job") == args.job and isinstance(earlier.get("boards"), dict)):
+            earlier = None
+    # A board rendered again drops its own old PNGs first (a state that is gone must not linger): only files
+    # named as this command names them (<stem>.<view>[.state-NN].png, <stem>.sheet.png); --states-only
+    # drops only the states and sheets.
+    import glob
+    shot_name = re.compile(r"\.(?:(?:frame|phone|w320|text200)(\.state-\d+)?|(sheet))\.png$")
+    for stem in {rel[:-len(DESIGN_BOARD_SUFFIX)].replace("/", "__") for rel in (args.board or boards)}:
+        for old in out.glob(f"{glob.escape(stem)}.*.png"):
+            match = shot_name.fullmatch(old.name[len(stem):])
+            if match and (not args.states_only or match.group(1) or match.group(2)):
+                old.unlink()
 
     def reading(key):
         title = boards[key].get("title") if isinstance(boards[key], dict) else None
@@ -8443,9 +9004,10 @@ def design_preview(args: argparse.Namespace) -> int:
 
     print(f"runtime=real path={runtime}")
     misses: list = []
-    report = {"schema": 1, "job": args.job, "runtime": str(runtime), "click": bool(args.click), "phone": bool(args.phone),
-              "phone_click": bool(args.phone_click),
-              "boards": {}, "links": [], "issues": [], "totals": {}}
+    report = {"schema": 1, "job": args.job, "round": current["id"] if current else None, "out": design_preview_shown(out),
+              "runtime": str(runtime), "click": bool(args.click), "phone": bool(args.phone),
+              "phone_click": bool(args.phone_click), "states_only": bool(args.states_only),
+              "boards": {}, "links": [], "issues": [], "totals": {}, "sheets": {}}
     profile = tempfile.mkdtemp(prefix="design-preview-profile-")
     try:
         page = DesignBrowser(browser, profile)
@@ -8455,6 +9017,10 @@ def design_preview(args: argparse.Namespace) -> int:
         print(f"preview=failed pngs=0 failed=1 issues=1 states=0 out={out}")
         return 1
     server = design_preview_server(project, runtime_bytes, misses)
+    try:
+        page.call("Page.addScriptToEvaluateOnNewDocument", {"source": DESIGN_PREVIEW_LISTENERS_JS})
+    except RuntimeError:
+        pass  # the keyboard check then reads the on* properties and the pointer cursor only
     ctx = {"page": page, "out": out, "misses": misses, "base": f"http://127.0.0.1:{server.server_address[1]}",
            "boards": boards, "project": project, "report": report, "unmeasured": set(), "edges": {}, "states": 0}
     shots = issues = failed = 0
@@ -8466,6 +9032,17 @@ def design_preview(args: argparse.Namespace) -> int:
             report["boards"][rel] = {"title": entry.get("title"), "page": entry.get("expand") == "fill",
                                      "interactive": entry.get("is_interactive") is True, "views": {}, "states": [],
                                      "click_errors": []}
+            if args.states_only:  # the frame and phone views (and the WCAG views) of the earlier render are kept
+                old_board = earlier["boards"].get(rel) or {}
+                report["boards"][rel]["views"] = old_board.get("views") or {}
+                for kept in ("keyboard",):
+                    if kept in old_board:
+                        report["boards"][rel][kept] = old_board[kept]
+                report["boards"][rel]["interaction"] = [i for i in old_board.get("interaction", [])
+                                                        if i.get("check") == "keyboard" or entry.get("is_interactive") is not True]
+                for kept_view in report["boards"][rel]["views"].values():  # their boundaries are named already
+                    for c in (kept_view.get("measured") or {}).get("ntc", []):
+                        ctx.setdefault("ntc_named", {}).setdefault((c["part"], c["fg"], c["bg"]), rel)
             try:
                 w, h = int(board["w"]), int(board["h"])
             except (KeyError, TypeError, ValueError):
@@ -8480,10 +9057,16 @@ def design_preview(args: argparse.Namespace) -> int:
             board = dict(board, w=w, h=h)
             views = ["frame"] + (["phone"] if board.get("expand") == "fill" or args.phone else [])
             for view in views:
-                found = design_preview_view(ctx, rel, board, view)
+                if args.states_only:  # reuse the earlier render of this view; only its states are taken again
+                    found = 0 if report["boards"][rel]["views"].get(view, {}).get("png") else -1
+                    if found < 0:
+                        print(f"note board={rel} view={view}: no earlier render of this view to reuse (run without --states-only)")
+                        continue
+                else:
+                    found = design_preview_view(ctx, rel, board, view)
                 if found < 0:
                     failed += 1
-                else:
+                elif not args.states_only:
                     shots += 1
                     issues += found
                 if found < 0 or not args.click:
@@ -8500,13 +9083,37 @@ def design_preview(args: argparse.Namespace) -> int:
                         print(f"issue board={rel} view={view} check=click: the click-through stopped: {exc}")
                         report["boards"][rel].setdefault("click", {}).setdefault(view, {})["stopped"] = str(exc)
                         issues += 1
-                elif view == "frame" and board.get("expand") == "fill":  # a PAGE nobody clicks through still gets the hover pass
+                elif view == "frame" and board.get("expand") == "fill" and not args.states_only:  # a PAGE nobody clicks through still gets the hover pass
                     issues += design_preview_hover(ctx, rel, view, 0, set())
+            if args.states_only:
+                continue
+            # v61 (P37.S6): the WCAG passes -- a PAGE's reflow and 200%-text views, an interactive board's keyboard pass.
+            if board.get("expand") == "fill":
+                for view in ("w320", "text200"):
+                    found = design_preview_text_view(ctx, rel, view)
+                    if found < 0:
+                        failed += 1
+                    else:
+                        shots += 1
+                        issues += found
+            if board.get("is_interactive") is True:
+                issues += design_preview_keyboard(ctx, rel, board)
+        if args.contact_sheet:
+            for rel in rendered:
+                sheet = design_preview_sheet(ctx, rel)
+                if sheet:
+                    report["sheets"][rel] = sheet
     finally:
         page.close()
         server.shutdown()
         server.server_close()
         shutil.rmtree(profile, ignore_errors=True)
+    for (part, fg, bg), more in ctx.get("ntc_more", {}).items():  # where a folded boundary is drawn again
+        named = ", ".join(f"{r} ({el})" for r, el in list(more.items())[:3]) + (f" (+{len(more) - 3} more)" if len(more) > 3 else "")
+        print(f"note: the non-text-contrast {part} {fg} on {bg} (first named on {ctx['ntc_named'][(part, fg, bg)]}) is also on "
+              f"{len(more)} other board(s): {named}")
+        report.setdefault("ntc_also", []).append({"part": part, "fg": fg, "bg": bg, "first": ctx["ntc_named"][(part, fg, bg)],
+                                                 "boards": more})
     for rel in sorted(ctx["edges"]):
         for target, kind in sorted(ctx["edges"][rel].items()):
             report["links"].append({"from": rel, "to": target, "external": kind == "external"})
@@ -8531,10 +9138,25 @@ def design_preview(args: argparse.Namespace) -> int:
                     issues += 1
     seconds = round(time.monotonic() - started, 1)
     report["totals"] = {"pngs": shots, "failed": failed, "issues": issues, "states": ctx["states"], "seconds": seconds}
+    if earlier is not None:  # a partial render (--board, --states-only) keeps the earlier render's other boards
+        redone = set(report["boards"])
+        report["boards"] = dict({k: v for k, v in earlier["boards"].items() if k not in redone and k in boards}, **report["boards"])
+        report["issues"] = [i for i in earlier.get("issues", []) if i.get("board") not in redone] + report["issues"]
+        report["links"] = [l for l in earlier.get("links", []) if l.get("from") not in redone] + report["links"]
+        report["sheets"] = dict({k: v for k, v in (earlier.get("sheets") or {}).items() if k not in redone}, **report["sheets"])
+        report["merged"] = sorted(set(report["boards"]) - redone)
+    blocking = design_preview_blocking(report)
+    report["self_check"] = {"result": "fail" if blocking else "pass", "blocking": blocking}
     (out / "preview.json").write_text(json.dumps(report, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"preview={'failed' if failed and not shots else 'done'} pngs={shots} failed={failed} issues={issues} "
-          f"states={ctx['states']} seconds={seconds:g} out={out}")
-    return 1 if failed else 0
+          f"states={ctx['states']} seconds={seconds:g} out={design_preview_shown(out)}")
+    if report.get("merged"):
+        print(f"note: preview.json keeps the earlier render of {len(report['merged'])} board(s) not rendered now")
+    print(f"self_check={'fail' if blocking else 'pass'} blocking="
+          + (",".join(f"{c}:{n}" for c, n in blocking.items()) or "none"))
+    if failed:
+        return 1
+    return 1 if args.strict and blocking else 0
 
 
 def design_migrate(args: argparse.Namespace) -> None:
@@ -8951,8 +9573,9 @@ def main(argv=None) -> int:
     p.add_argument("job", help="the job id, e.g. 01-signin")
     p.set_defaults(func=design_publish_plan)
 
-    p = sub.add_parser("design-preview", help="Render each board of a job's canvas locally for the drafter's self-check: serve canvas/project/ (its ds/ system cache included) with the Design canvas type's real runtime as ./support.js over http on 127.0.0.1, screenshot every board in an exact viewport with a throwaway headless Chrome/Chromium profile driven over the DevTools pipe (no port), print one board=<file> png=<path> w= h= line per screenshot plus its issues; no browser prints preview=skipped reason=no-browser, writes nothing and exits 0",
-                       description=f"Never views the published canvas and never calls claude.ai. --runtime is the type's artifact-type/dc-runtime.js, which the orchestrator saves per job (never vendored); it renders standalone, so no stand-in ships. A board renders at its canvas.json w x h; a PAGE (expand: fill) grows to its content and also renders {DESIGN_PREVIEW_PHONE[0]} px wide (--phone: every board). Each line also gives the content size, unmounted parts (an x-import whose system global is missing, a dc-import whose board is missing), script errors and the issue count; issue lines name a clipped frame, a sideways overflow, runtime errors and files not found. Browser: --browser, else ${DESIGN_PREVIEW_BROWSER_ENV} (a named one is the only candidate), else the known Chrome/Chromium paths, else chromium/google-chrome on PATH. Writes only the PNGs and preview.json (outside the design record) and, once, canvas/project/ds/.gitignore (*) when ds/ exists; a system the canvas installs but ds/<namespace>/ lacks is a warning (the engine never fetches it). Exit 1 only when a screenshot failed. "
+    p = sub.add_parser("design-preview", help="Render each board of a job's canvas locally for the drafter's self-check: serve canvas/project/ (its ds/ system cache included) with the Design canvas type's real runtime as ./support.js over http on 127.0.0.1, screenshot every board in an exact viewport with a throwaway headless Chrome/Chromium profile driven over the DevTools pipe (no port), print one board=<file> png=<path> w= h= line per screenshot plus its issues, then the WCAG machine checks (non-text-contrast, reflow and overprint at 320px and 200% text, keyboard) and a final self_check=pass|fail line; the render stays in the job's git-ignored round folder for the critic; no browser prints preview=skipped reason=no-browser, writes nothing and exits 0",
+                       description=f"Never views the published canvas and never calls claude.ai. --runtime is the type's artifact-type/dc-runtime.js, which the orchestrator saves per job (never vendored); it renders standalone, so no stand-in ships. A board renders at its canvas.json w x h; a PAGE (expand: fill) grows to its content and also renders {DESIGN_PREVIEW_PHONE[0]} px wide (--phone: every board). Each line also gives the content size, unmounted parts (an x-import whose system global is missing, a dc-import whose board is missing), script errors and the issue count; issue lines name a clipped frame, a sideways overflow, runtime errors and files not found. Browser: --browser, else ${DESIGN_PREVIEW_BROWSER_ENV} (a named one is the only candidate), else the known Chrome/Chromium paths, else chromium/google-chrome on PATH. Writes only the PNGs, preview.json and the contact sheets -- by default into {DESIGN_ROOT_SHOWN}/{DESIGN_PREVIEW_DIR}/<job>/<round>/ (the job's open round, else its last; git-ignored, so outside the design record: the critic reads the drafter's final render there instead of rendering again; a whole run replaces the folder's shots, a --board run only that board's, and preview.json keeps the other boards' earlier render) -- and, once, canvas/project/ds/.gitignore (*) when ds/ exists; a system the canvas installs but ds/<namespace>/ lacks is a warning (the engine never fetches it). Exit 1 when a screenshot failed, or with --strict when the self-check fails. "
+                                   f"SELF-CHECK (v61): the last line is self_check=pass|fail blocking=<check:count,...>|none over the whole (merged) render, where blocking = {', '.join(DESIGN_PREVIEW_BLOCKING)}; preview.json repeats it as self_check: {{result, blocking}}. "
                                    f"MEASURED CHECKS, in every view and state; every issue line reads 'issue board=<file> [view=<v>] [state=NN] check=<name>: ...'. "
                                    f"contrast: each visible text run (one per element; aria-hidden, invisible and zero-size text skipped) against the background its ancestors paint, color alpha, background alpha and ancestor opacity composited over white, colors in any CSS syntax; WCAG 4.5:1, or 3:1 for text >= 24px or >= 18.66px bold. A background image, gradient, filter or blend mode in the way makes the text 'unmeasured' (one line per board: judge it on the PNG), never a guess; not seen: a positioned sibling or <img> under the text, text-shadow, placeholder and field-value text, SVG text. "
                                    f"target: an a[href], button, input, select, textarea, summary, ARIA button/link/checkbox/radio/switch/tab/menuitem or tabindex>=0 element (visible, enabled) whose box is under {DESIGN_PREVIEW_TARGET}x{DESIGN_PREVIEW_TARGET}px, a field's <label> counted with it; a link inside a run of text is exempt (WCAG's inline exception). "
@@ -8960,18 +9583,26 @@ def main(argv=None) -> int:
                                    "dead-link: an <a href> to a .dc.html that is no canvas.json board, to another relative file not in the tree, to an #id with no element, or a bare # placeholder; absolute URLs (https:, mailto:) are listed as external, never fetched. "
                                    "image: an <img> that loaded with naturalWidth 0 (background images are not checked). "
                                    "name: a button or link with no accessible name (text, aria-label, aria-labelledby, title or an inner img alt), a form field with no label (label for=, a wrapping label, aria-label, aria-labelledby; a placeholder is not one). "
-                                   "The canvas-only prototype chrome ([data-proto]: the state bar, the board-link strip) is exempt from target, layout-shift and hover-contrast, and is never sampled as a list. "
+                                   "non-text-contrast (WCAG 1.4.11): each visible, enabled control of the target set by element or role (inline text links, [data-proto], aria-hidden ones, UA-drawn checkboxes/radios/ranges/pickers and a scrim over a quarter of the viewport left out) whose boundary -- a >= 1px border that is not none/hidden, or else its own fill; the better of the two counts -- is under 3:1 against the color its ancestors paint around it, composited like contrast; a control with no border or fill, or with both under 1.1:1 (drawn in the surface's color), has no boundary to check unless it is a form field; a background image, gradient, filter or blend mode in the way makes it 'unmeasured'. One line per run for each border/fill-on-surface pair: later views, states and boards count it and a closing note lists the boards that draw it again. Not seen: box-shadow or outline boundaries, an icon's own shapes, focus indicators, a state told apart by a tint on a control whose border passes (the better boundary counts). "
+                                   f"state-bar: the bar ([data-proto=\"state-bar\"]) or an ancestor position fixed or sticky; two or more bars on one board (a board showing one page in several windows carries exactly one, above all the windows and inside none); a bar showing more than one page's named group; a bar with no named [role=group]; with --click, a preset that moves to another page. design-check lints what the source shows (a pinned bar in a style or rule; an interactive board mounting one board as windows with no bar of its own). "
+                                   f"WCAG VIEWS of each PAGE (expand: fill), each growing to its content: w320 ({DESIGN_PREVIEW_REFLOW}px wide) and text200 ({DESIGN_PREVIEW_PHONE[0]}px wide with every element's computed font-size read, then set to {DESIGN_PREVIEW_TEXT_SCALE}x, so nothing compounds); each names reflow (content wider than the view: a sideways scroll; WCAG 1.4.10/1.4.4), overprint (two text runs of different elements, neither containing the other, whose glyph boxes -- the middle half of each line box, cut to every overflow/clip-path ancestor -- cross where it shows: the topmost element there is one of them and nothing opaque hides the other; [data-proto] left out; identical pairs folded) and the clipped check, plus render issues the frame and phone views did not name (<stem>.w320.png, <stem>.text200.png). Not seen: real browser text zoom or a minimum-font setting, text in images or SVG, overlap with non-text shapes, an overprint a scroll or a click reveals. "
+                                   f"keyboard (WCAG 2.1.1), on each is_interactive board from the settled frame view: Tab (Input.dispatchKeyEvent) until focus comes back to its first stop, at most {DESIGN_PREVIEW_TABS} presses; a control of the target set (outside [data-proto], not tabindex < 0, inside an open modal when there is one) the order never reached is unreachable (judged only when it came back). A click-only control -- an element with a click/mousedown/pointerdown listener (an on* property, or addEventListener) or, failing that, a pointer cursor its parent lacks, neither natively focusable nor tabindex >= 0, inside no control or label, holding none and under a quarter of the viewport -- is one line per tag and class; the first {DESIGN_PREVIEW_POP_PROBES} are clicked from a fresh load and one that opens a dialog, menu, tooltip, listbox or popover is named so. Not seen: focus order sense, a visible focus indicator, keys other than Tab (arrows, Escape, Enter on a fake control), a listener delegated to an ancestor with no pointer cursor. "
+                                   "The canvas-only prototype chrome ([data-proto]: the state bar, the board-link strip) is exempt from target, non-text-contrast, overprint, keyboard, layout-shift and hover-contrast, and is never sampled as a list. "
                                    "Identical findings fold into one line ('+N more like it'); the phone view and the states repeat none the frame view named. The render's own issues are check=load, settle, too-tall, frame-clip, page-clip (a PAGE's state taller than its frame h, in the frame view: the render grows a PAGE, the canvas frame does not), overflow, unmounted, runtime-error, script-error, not-found, screenshot, size and browser. "
                                    f"--click: link lines and check=unreachable (a PAGE board, expand: fill, that no chain of links from Main.dc.html reaches; a Components board is not expected to be linked); on each is_interactive board, real mouse clicks (Input.dispatchMouseEvent) at each visible, enabled, uncovered control's centre, breadth first from the settled initial state, never a link that leaves the board. A state is a new visible DOM (shown elements with their class, style and open/expanded/selected/current/disabled attributes, and shown text, plus whether every visible text field holds text); a ticked box or a typed value alone is not a state. The state bar's presets ([data-proto=\"state-bar\"] buttons) are tried first, once per page (a preset sets its page's complete state), and a state on a page not met before is explored ahead of the rest; the page on screen is the bar's visible [role=group] name, else the first h1. A list of {DESIGN_PREVIEW_LIST_SAMPLE}+ alike rows is sampled: its first, second and last row. The type pass types a realistic sample into each visible text field (email, phone, name, postcode, search from the listed text, ...) and fills a form of two or more empty fields whole in one step, each a step of the path; select, date and other native pickers are not explored. After a step the page settles, the short timers it set are waited for (up to 3s: 'Saving...' is passed through to 'Saved') and its animations end. Each state's PNG is taken on its path replayed from a fresh load. A click that throws is check=click-error, once per control. check=layout-shift: a step that stays on the same page and resizes a control (outside [data-proto]) by more than {DESIGN_PREVIEW_SHIFT}px, or moves a header, nav or main by more than {DESIGN_PREVIEW_SHIFT}px; a step to another page is navigation, never a shift. check=same-target: two or more sampled rows of one list open the same state of another page. check=hover-contrast (PAGE boards, frame view, each state): the pointer rests on each button and link once per board (transitions off), and a text run of the hovered control that newly fails contrast is an issue (the a:hover color beating a system Button rendered as <a>). Frame view only, unless --phone-click; at most {DESIGN_PREVIEW_STATES} states, {DESIGN_PREVIEW_DEPTH} steps deep, {DESIGN_PREVIEW_CLICKS} steps and {DESIGN_PREVIEW_BOARD_SECONDS}s per board and view, each cap said on the board's note line. "
-                                   "preview.json: {schema, job, runtime, click, phone, phone_click, boards: {<file>: {title, page, interactive, views: {frame|phone: {png, w, h, content, issues: [{check, message}], as_in_frame, measured}}, states: [{n, view, page, path, png, w, h, content, issues, measured}], click_errors, interaction: [{view, state, check, message}], click: {frame|phone: {states, clicks, notes}}}}, links: [{from, to, external}], issues: [board-level {board, check, message} and every interaction finding {board, view, state, check, message}], totals: {pngs, failed, issues, states, seconds}}; measured holds every raw finding (contrast: el, size, weight, need, ratio, fg, bg; target: el, w, h; clipped; links; images; names) and the counts texts, targets, fields.")
+                                   "--states-only takes only the states again (--click implied), reusing the earlier render's views in --out; --contact-sheet writes <stem>.sheet.png per board, its shots tiled at half size or less under captions (a sheet line gives its token cost against the PNGs one by one). "
+                                   "preview.json: {schema, job, round, out, runtime, click, phone, phone_click, states_only, boards: {<file>: {title, page, interactive, views: {frame|phone|w320|text200: {png, w, h, content, issues: [{check, message}], as_in_frame, measured}}, states: [{n, view, page, path, png, w, h, content, issues, measured}], click_errors, interaction: [{view, state, check, message}], click: {frame|phone: {states, clicks, notes}}, keyboard: {controls, reached, presses, wrapped, missed, click_only, opened}}}, links: [{from, to, external}], issues: [board-level {board, check, message} and every interaction finding {board, view, state, check, message}], sheets: {<file>: {png, w, h, tiles, scale, tokens}}, ntc_also, merged (the boards kept from the earlier render), self_check: {result, blocking}, totals: {pngs, failed, issues, states, seconds}}; png paths are repo-relative under the workspace; measured holds every raw finding (contrast: el, size, weight, need, ratio, fg, bg; target: el, w, h; clipped; links; images; names; ntc: el, part, ratio, fg, bg, width; statebar; overprint in the WCAG views) and the counts texts, targets, fields, boundaries, bars.")
     p.add_argument("job", help="the job id, e.g. 01-signin")
     p.add_argument("--runtime", required=True, help="the path of the Design canvas type's runtime (artifact-type/dc-runtime.js) the orchestrator saved for this job")
-    p.add_argument("--out", default=None, help="the folder for the PNGs (default: a fresh temp folder); never inside the design root")
+    p.add_argument("--out", default=None, help=f"the folder for the PNGs, preview.json and the contact sheets (default: the job's round folder under the design root's git-ignored {DESIGN_PREVIEW_DIR}/, {DESIGN_ROOT_SHOWN}/{DESIGN_PREVIEW_DIR}/<job>/<round>/, where the critic finds the drafter's final render); never elsewhere inside the design root")
     p.add_argument("--browser", default=None, help=f"the Chrome/Chromium executable (default: ${DESIGN_PREVIEW_BROWSER_ENV}, then the known paths)")
     p.add_argument("--board", action="append", default=None, help="render only this board (its canvas.json key, e.g. Main.dc.html); repeatable")
     p.add_argument("--phone", action="store_true", help=f"also render every board {DESIGN_PREVIEW_PHONE[0]} px wide (a PAGE always is)")
     p.add_argument("--phone-click", action="store_true", help=f"with --click (implied), also click through each interactive PAGE at {DESIGN_PREVIEW_PHONE[0]} px wide (<stem>.phone.state-NN.png); about doubles the time")
     p.add_argument("--click", action="store_true", help=f"also click through: print the link graph (link from= to= lines; a PAGE no link chain from Main.dc.html reaches is an issue) and, on each is_interactive board, try the state-bar presets first, then every control (list rows sampled) and a sample typed into each text field, breadth first, and screenshot each new state (state lines, <stem>.frame.state-NN.png), checking layout-shift, same-target, page-clip and, on PAGE boards, hover-contrast; at most {DESIGN_PREVIEW_STATES} states, {DESIGN_PREVIEW_DEPTH} steps deep, {DESIGN_PREVIEW_CLICKS} steps and {DESIGN_PREVIEW_BOARD_SECONDS}s per board, in the frame view only (--phone-click: also at {DESIGN_PREVIEW_PHONE[0]} px)")
+    p.add_argument("--states-only", action="store_true", help="with --click (implied): take only the interaction states again, reusing the frame, phone and WCAG views of the earlier render in --out (refused when there is none); preview.json keeps every other board's earlier render")
+    p.add_argument("--contact-sheet", action="store_true", help=f"also write one <stem>.sheet.png per board rendered: its views and states tiled at one reduced scale, {DESIGN_PREVIEW_SHEET_W}px wide, each under a caption (a sheet line gives its size and its token cost against the PNGs one by one)")
+    p.add_argument("--strict", action="store_true", help=f"exit 1 when the self-check fails (any {', '.join(DESIGN_PREVIEW_BLOCKING)} issue); without it the exit code is as before")
     p.set_defaults(func=design_preview)
 
     p = sub.add_parser("design-readback", help="Read a job's published canvas back without pulling it: --listing parses the Artifact list scope:files output (file or - for stdin) and prints readback=unchanged|changed|changed-unlocated, one fetch= line naming only the files to read (changed and added by size against the publish manifest; the boards when no size moved or no manifest exists) and removed= ones; --fetched <dir> then diffs each fetched file against the local canvas tree (diff=<path> +A -B), and --apply copies them in; records readback in the open round's round.json; never prints file contents",

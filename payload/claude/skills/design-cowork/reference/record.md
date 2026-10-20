@@ -82,7 +82,7 @@ docs/reference/design/
 | `design-check [<job>]` | checks the record (one job, or all); warnings exit 0, problems exit 1 |
 | `design-canvas <job> [--url U] [--version V] [--implemented]` | records the canvas url, each published version (with its size manifest, and on the open round), and a built job |
 | `design-publish-plan <job>` | read-only: prints the publish call as JSON `{url, root, file_path, files}` |
-| `design-preview <job> --runtime R [--out D] [--board B] [--phone] [--click] [--phone-click]` | renders the canvas locally with the type's real runtime; screenshots and measured checks |
+| `design-preview <job> --runtime R [--out D] [--board B] [--phone] [--click] [--phone-click] [--states-only] [--contact-sheet] [--strict]` | renders the canvas locally with the type's real runtime; screenshots, measured checks and the WCAG checks (non-text contrast, reflow and overprint at 320 px and 200% text, keyboard); ends `self_check=pass\|fail`; keeps the render in the git-ignored `.preview/<job>/<round>/` |
 | `design-readback <job> (--listing F\|- \| --fetched D [--apply])` | compares a canvas listing with the publish manifest and names what to fetch; then diffs the fetched files, and copies them in |
 | `design-close <job>/<round> (--words "…" \| --superseded) [--canvas-version V]` | snapshots and closes the round; `--words` needs a settled read-back since the publish, the round's `## Build` and a passing `design-check`, and generates `SIGNOFF.md` |
 | `design-sign --slice S --words "…"` | signs every job presented at the stop (each open round with a recorded publish), all or nothing |

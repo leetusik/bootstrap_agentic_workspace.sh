@@ -29,7 +29,9 @@
 # board, a missing support line, a .. reference and a title gap in a canvas tree; design-canvas,
 # design-system and the read-only design-publish-plan (v60: the system copies only on a first publish or a
 # changed pin, canvas.system optional); P36.S4: design-preview with no browser is an honest skip
-# that writes nothing, with --click too (P36.S5A); design-close snapshots byte-identical, signs the
+# that writes nothing, with --click too (P36.S5A); v61 (P37.S6): with a browser, design-preview's machine
+# checks on fixture boards (non-text-contrast, reflow, overprint, keyboard, the state bar, --strict, the
+# .preview render and contact sheets); design-close snapshots byte-identical, signs the
 # job and is idempotent; v61 (P37.S5): the publish's size manifest, design-readback (a listing names only what to
 # fetch; --fetched diffs, --apply copies in), a generated SIGNOFF.md that needs a read-back, design-sign all or
 # nothing, a superseding round's critique off, the absolute-path lint and the wave brief; design-migrate --to 2 moves a schema-1 record into schema1/ and a schema-1 root is
@@ -1993,7 +1995,7 @@ if ( cd "$W" && python3 scripts/workflow.py parallel-start P2 2>&1 | grep -q "le
   || bad "merge, merge-finish or teardown failed"
 
 # ---------------------------------------------------------------------------
-echo "== Test 13: schema-2 design record -- design-open makes a job and refuses a second open round of it, a wave of several jobs in one slice (--new-job / --job, --critique, size warnings, mounted boards not counted), the board lint (leaves-canvas, same-target-list), design-check names a missing board, a missing support line, a .. reference and a title gap, design-canvas / design-system / design-publish-plan (system copies on a first publish or a changed pin only), design-preview skips honestly without a browser, design-close snapshots and signs, a superseded round's slice reuses its job, v61 design-readback / design-sign / a generated SIGNOFF.md / the absolute-path lint and wave briefs, design-migrate --to 2; claude-design/ is skipped, the pre-v47 design-migrate, design-register is gone =="
+echo "== Test 13: schema-2 design record -- design-open makes a job and refuses a second open round of it, a wave of several jobs in one slice (--new-job / --job, --critique, size warnings, mounted boards not counted), the board lint (leaves-canvas, same-target-list), design-check names a missing board, a missing support line, a .. reference and a title gap, design-canvas / design-system / design-publish-plan (system copies on a first publish or a changed pin only), design-preview skips honestly without a browser, v61 design-preview machine checks on fixture boards (non-text-contrast, reflow and overprint, keyboard, the state bar, --strict, the .preview render and contact sheets; skipped with no browser), design-close snapshots and signs, a superseded round's slice reuses its job, v61 design-readback / design-sign / a generated SIGNOFF.md / the absolute-path lint and wave briefs, design-migrate --to 2; claude-design/ is skipped, the pre-v47 design-migrate, design-register is gone =="
 # Runs in the fresh workspace $F.
 newtmp DZ
 DR="$F/docs/reference/design"
@@ -2129,6 +2131,77 @@ out=$( export AGENTIC_DESIGN_BROWSER=/nonexistent; dw design-preview 01-signin -
   && [ ! -e "$DZ/pv" ] && [ "$(tree_sig)" = "$before" ] \
   && ok "design-preview --click with no browser prints preview=skipped reason=no-browser, exits 0 and writes nothing" \
   || bad "design-preview --click did not skip honestly without a browser (rc=$rc) -- $out"
+# v61 (P37.S6): the machine checks on tiny fixture boards, in a copy of this workspace (a job of its own).
+# Each fixture shows one finding: a 1.5:1 button border (non-text-contrast) beside a 3.5:1 one (none);
+# two labels that cross only at 200% text (overprint, text200 only); a row wider than 320px (reflow,
+# w320 only); a <span> with a click listener and no tabindex that opens a dialog (keyboard); a sticky
+# state bar (state-bar, rendered and static). --strict exits 1 naming the blocking checks, the render
+# stays in .preview/<job>/<round>/, and --contact-sheet writes one sheet per board. With no browser on
+# this machine the block says so and asserts nothing (the honest skip above still runs everywhere).
+newtmp MC; cp -R "$F/." "$MC/"
+mc() { ( cd "$MC" && python3 scripts/workflow.py "$@" ); }
+MJ=$(mc design-open --slug fixture --slice P9.S6 2>&1 | sed -n 's#^design-open: created job .*/jobs/\([^/]*\)/ .*#\1#p')
+[ -n "$MJ" ] || bad "machine-check probe: design-open failed"
+python3 - "$MC/docs/reference/design/jobs/$MJ/canvas/project" <<'FIXTURE' || bad "machine-check probe: could not write the fixture boards"
+import json, pathlib, sys
+project = pathlib.Path(sys.argv[1])
+project.mkdir(parents=True, exist_ok=True)
+boards = {"Main.dc.html": {"x": 0, "y": 0, "w": 800, "h": 600, "title": "01 · Page — Fixture", "expand": "fill", "is_interactive": True},
+          "Borders.dc.html": {"x": 0, "y": 700, "w": 400, "h": 200, "title": "02 · Component — Borders"}}
+index = {"v": 3, "createdOnFiles": {"v": 1, "at": "2026-10-20T00:00:00Z"}, "title": "Fixture", "launch": {"view": "canvas"},
+         "pages": [], "boards": boards, "order": list(boards), "notes": {}, "designSystems": []}
+(project / "canvas.json").write_text(json.dumps(index), encoding="utf-8")
+head = '<!doctype html>\n<html><head>\n<script src="./support.js"></script>\n</head>\n'
+(project / "Main.dc.html").write_text(head + '''<body style="margin:0;background:#fff;color:#111;font:16px/1.4 Arial,sans-serif"><x-dc>
+<div data-proto="state-bar" style="position:sticky;top:0;background:#eee"><div role="group" aria-label="Fixture"><button type="button" aria-pressed="true" style="min-height:44px">Only</button></div></div>
+<h1>Fixture</h1>
+<div style="position:relative;height:60px"><span style="position:absolute;left:0;top:0">Alpha label</span><span style="position:absolute;left:130px;top:0">Beta</span></div>
+<div style="min-width:360px;background:#ddd">A row 360px wide</div>
+<p><span id="pop" style="cursor:pointer">Open the note</span></p>
+<button type="button" style="width:120px;height:48px;background:#fff;border:1px solid #888;color:#111">Go</button>
+</x-dc>
+<script>document.getElementById('pop').addEventListener('click', () => { const d = document.createElement('div');
+  d.setAttribute('role', 'dialog'); d.setAttribute('aria-label', 'Note'); d.textContent = 'The note'; document.body.appendChild(d); });</script>
+</body></html>
+''', encoding="utf-8")
+(project / "Borders.dc.html").write_text(head + '''<body style="margin:0;background:#fff;color:#111;font:16px Arial,sans-serif"><x-dc>
+<button type="button" style="width:120px;height:48px;background:#fff;border:1px solid #d0d0d0;color:#111">Weak</button>
+<button type="button" style="width:120px;height:48px;background:#fff;border:1px solid #8a8a8a;color:#111">Strong</button>
+</x-dc></body></html>
+''', encoding="utf-8")
+FIXTURE
+printf '/* a stand-in runtime: the fixture boards need none */\n' > "$MC/stub-runtime.js"
+mc_out=$(mc design-preview $MJ --runtime stub-runtime.js --strict --contact-sheet 2>&1); mc_rc=$?
+if printf '%s\n' "$mc_out" | grep -qx 'preview=skipped reason=no-browser'; then
+  printf 'SKIP: %s\n' "design-preview machine checks on fixture boards: no Chrome/Chromium on this machine (nothing asserted)"
+else
+  MCO="$MC/docs/reference/design/.preview/$MJ/01-fixture"
+  mc_lint=$(mc design-check $MJ 2>&1)
+  has() { printf '%s\n' "$mc_out" | grep -Eq "$1"; }
+  [ "$mc_rc" -eq 1 ] && has '^self_check=fail blocking=non-text-contrast:1,reflow:1,overprint:1,keyboard:1$' \
+    && ok "design-preview --strict exits 1 and self_check=fail names the blocking checks (non-text-contrast, reflow, overprint, keyboard)" \
+    || bad "design-preview --strict did not fail the self-check as expected (rc=$mc_rc) -- $(printf '%s\n' "$mc_out" | grep -E '^(issue|self_check)')"
+  has 'board=Borders\.dc\.html view=frame check=non-text-contrast: button "Weak": the control.s boundary is 1\.[45][0-9]:1' \
+    && ! has 'check=non-text-contrast: button "Strong"' \
+    && ok "non-text-contrast names a 1.5:1 button border and passes a 3.5:1 one" \
+    || bad "non-text-contrast missed the 1.5:1 border or flagged the 3.5:1 one -- $(printf '%s\n' "$mc_out" | grep 'non-text')"
+  has 'view=text200 check=overprint: span "Alpha label" and span "Beta" overprint' && ! has 'view=w320 check=overprint' \
+    && has 'view=w320 check=reflow: content is 36[0-9]px wide at 320px wide' && ! has 'view=text200 check=reflow' \
+    && ok "overprint names two labels that cross only at 200% text, and reflow a row wider than 320px only at 320px" \
+    || bad "overprint or reflow missed its fixture or fired in the wrong view -- $(printf '%s\n' "$mc_out" | grep -E 'overprint|reflow')"
+  has 'check=keyboard: span#pop "Open the note" opens dialog .*on click \(a click handler\) but never keyboard focus' \
+    && ok "keyboard names a <span> with a click listener and no tabindex, and the dialog it opens" \
+    || bad "keyboard missed the click-only span -- $(printf '%s\n' "$mc_out" | grep -E 'keyboard')"
+  has 'board=Main\.dc\.html view=frame check=state-bar: the state bar is position: sticky' \
+    && printf '%s\n' "$mc_lint" | grep -q "Main.dc.html: the state bar's own style is position: sticky (check=state-bar)" \
+    && ok "a sticky state bar is a rendered state-bar issue and a design-check lint" \
+    || bad "the sticky state bar was not flagged by both halves -- $(printf '%s\n' "$mc_out" | grep state-bar) / $mc_lint"
+  sheets=$(ls "$MCO" 2>/dev/null | grep -c '\.sheet\.png$')
+  [ "$sheets" -eq 2 ] && [ -f "$MCO/preview.json" ] && [ "$(cat "$MC/docs/reference/design/.preview/.gitignore" 2>/dev/null)" = "*" ] \
+    && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["self_check"]["result"]=="fail" and len(d["sheets"])==2 and d["out"].endswith(".preview/"+sys.argv[2]+"/01-fixture")' "$MCO/preview.json" "$MJ" \
+    && ok "the render stays in the git-ignored .preview/<job>/<round>/ with preview.json naming it, and --contact-sheet writes one sheet per board" \
+    || bad "the default render folder, its preview.json or the contact sheets are wrong (sheets=$sheets) -- $(ls -a "$MCO" "$MC/docs/reference/design/.preview" 2>&1)"
+fi
 # 4. design-close snapshots the tree byte for byte and signs the job; a superseded round's slice reuses it.
 # v61 (P37.S5): signing needs a settled read-back of the round's publish and the round's build contract
 # (result.md ## Build); a hand-written SIGNOFF.md (legacy) is kept, with a warning.
