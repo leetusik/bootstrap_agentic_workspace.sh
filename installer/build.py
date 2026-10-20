@@ -12,7 +12,8 @@ Source of truth:
     Each sits at its EMIT path with the first component undotted, and the contract is
     payload/contract.md, so no source lives at a path Claude Code or GitHub would load
     in this repo (it is driven by a nested install, whose copies own .claude/):
-      payload/scripts/workflow.py, payload/claude/skills/*, the payload/claude
+      payload/scripts/workflow.py, payload/claude/skills/*/** (each skill's whole directory,
+      plus the SHARED_SKILL_FILES copies), the payload/claude
       subagents, payload/claude/settings.json, payload/executors.toml,
       payload/works/templates/*, payload/github/workflows/workspace-ci.yml,
       payload/gitattributes, and the payload/contract.md contract body (header
@@ -69,6 +70,14 @@ FIXED_LIVE_FILES = [
     ".gitattributes",
 ]
 
+# Skill reference files the do-* twins share. Each one has ONE source (the value, under
+# payload/claude/skills/do-whole-phase/reference/); the build emits a byte-identical copy at the
+# key, so every installed skill directory is self-contained. A key must not also exist as a
+# source file under payload/ (that would be a second copy to keep in step).
+SHARED_SKILL_FILES = {
+    ".claude/skills/do-next-slice/reference/dispatch.md": ".claude/skills/do-whole-phase/reference/dispatch.md",
+}
+
 CLAUDE_HDR = "# CLAUDE.md\n\n"
 
 
@@ -115,8 +124,19 @@ def collect_live_payloads() -> "dict":
         payloads[rel] = read(src_rel(rel))
     payloads["executors.toml"] = derive_executors_seed(read("executors.toml"))
     # Skills are discovered from disk (sorted) so adding/removing a skill needs no code change.
+    # A skill ships as its whole directory: SKILL.md (the core) plus every other file under it
+    # (its reference/*.md), then the shared reference copies fan out (SHARED_SKILL_FILES).
     for skill in sorted((SRC / "claude/skills").glob("*/SKILL.md")):
-        payloads["." + str(skill.relative_to(SRC))] = skill.read_text(encoding="utf-8")
+        for f in sorted(p for p in skill.parent.rglob("*") if p.is_file()):
+            if any(part.startswith(".") or part == "__pycache__" for part in f.relative_to(skill.parent).parts):
+                continue  # editor/OS litter (.DS_Store, swap files) never ships
+            payloads["." + f.relative_to(SRC).as_posix()] = f.read_text(encoding="utf-8")
+    for dst, src in sorted(SHARED_SKILL_FILES.items()):
+        if src not in payloads:
+            die(f"SHARED_SKILL_FILES source missing from payload/: {src}")
+        if dst in payloads:
+            die(f"SHARED_SKILL_FILES target also exists as a source under payload/: {dst} (keep one source: {src})")
+        payloads[dst] = payloads[src]
     claude_skills = {
         Path(k).parts[2]
         for k in payloads

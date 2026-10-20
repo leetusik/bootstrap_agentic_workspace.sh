@@ -37,7 +37,7 @@ RETROFIT_SUMMARY = {"created": [], "skipped": [], "merged": []}
 UPDATE = os.environ.get("UPDATE") == "1"
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
 UPDATE_DOCS = True  # recomputed in the guards for update (skip docs rebuild if no docs subsystem)
-UPDATE_SUMMARY = {"updated": [], "added": [], "merged": [], "preserved": [], "unchanged": [], "stale": []}
+UPDATE_SUMMARY = {"updated": [], "added": [], "merged": [], "preserved": [], "unchanged": [], "stale": [], "kept": []}
 UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
@@ -166,6 +166,9 @@ if len(CLAUDE_SKILLS) != EXPECTED_SKILL_COUNT:
         f"embedded skill inventory must contain {EXPECTED_SKILL_COUNT} skill packages "
         f"(found {len(CLAUDE_SKILLS)})"
     )
+# Each skill ships as a directory: its SKILL.md (the core) plus any reference files, every one of
+# them an emit path in PAYLOADS (the build fans the do-* shared references out into both skills).
+SKILL_FILES = {name: sorted(k for k in PAYLOADS if k.startswith(f".claude/skills/{name}/")) for name in CLAUDE_SKILLS}
 
 MANAGED_DIRS = [
     "docs", "docs/current", "docs/versions",
@@ -191,7 +194,7 @@ MANAGED_FILES = [
 ]
 for name in CLAUDE_SKILLS:
     MANAGED_DIRS.append(f".claude/skills/{name}")
-    MANAGED_FILES.append(f".claude/skills/{name}/SKILL.md")
+    MANAGED_FILES.extend(SKILL_FILES[name])
 if NESTED:
     # Under workflow/ there is no .claude/ (its skills would load on demand as duplicates) and no
     # CLAUDE.md (the contract is CLAUDE.workspace.md); the host-side files are written separately.
@@ -1010,7 +1013,9 @@ def nested_plan() -> dict:
 
     files = {}
     for x in CLAUDE_SKILLS:
-        files[f".claude/skills/{renames['skills'].get(x, x)}/SKILL.md"] = nested_rewrite(PAYLOADS[f".claude/skills/{x}/SKILL.md"], renames)
+        for rel in SKILL_FILES[x]:  # the core and its reference files, into the (renamed) skill dir
+            inner = rel[len(f".claude/skills/{x}/"):]
+            files[f".claude/skills/{renames['skills'].get(x, x)}/{inner}"] = nested_rewrite(PAYLOADS[rel], renames)
     for x in NESTED_AGENTS:
         files[f".claude/agents/{renames['agents'].get(x, x)}.md"] = nested_rewrite(PAYLOADS[f".claude/agents/{x}.md"], renames)
     engine_side = {NESTED_CONTRACT: nested_rewrite(f"# CLAUDE.md\n\n{CONTRACT_BODY}", renames)}
@@ -1389,7 +1394,8 @@ write_text("scripts/workflow.py", PAYLOADS["scripts/workflow.py"], executable=Tr
 # ---- Agent surfaces: Claude Code skills -------------------------------------
 # (Nested: none under workflow/ -- the host-side copies are written by nested_apply below.)
 for name in ([] if NESTED else CLAUDE_SKILLS):
-    write_text(f".claude/skills/{name}/SKILL.md", PAYLOADS[f".claude/skills/{name}/SKILL.md"])
+    for rel in SKILL_FILES[name]:  # the core SKILL.md and its reference files
+        write_text(rel, PAYLOADS[rel])
 
 # Subagents: full-permission workers that implement one already-planned slice, in two
 # capability tiers picked by the slice's risk (embedded verbatim from the live repo), plus
@@ -1491,6 +1497,38 @@ def flag_stale_skills() -> None:
             UPDATE_SUMMARY["stale"].append(f"{base}/{sub.name}")
 
 
+# Files our own skill directories shipped in an earlier version and this one retired, as emit paths
+# under the shipped skill name (".claude/skills/<skill>/reference/<topic>.md"; a nested rename is
+# applied when looking). --update flags exactly these as stale and never deletes them. Any other
+# file in one of our skill directories that this version does not ship is the operator's: it is
+# reported "yours, kept", never flagged. Empty in v61, the first version that ships reference files.
+RETIRED_SKILL_FILES: list = []
+
+
+def flag_skill_dir_files() -> None:
+    """Per file, never per directory: in each of our installed skill directories, a file the payload
+    does not ship is stale when RETIRED_SKILL_FILES names it, and otherwise the operator's own."""
+    renames = NESTED_PLAN["renames"]["skills"] if NESTED else {}
+    base = HOST if NESTED else ROOT
+    for name in CLAUDE_SKILLS:
+        installed = renames.get(name, name)
+        d = base / ".claude" / "skills" / installed
+        if not d.is_dir() or d.is_symlink():
+            continue
+        shipped = {rel[len(f".claude/skills/{name}/"):] for rel in SKILL_FILES[name]}
+        if NESTED:
+            shipped.add(".gitignore")  # the self-hiding file nested_plan() writes into each dir
+        for f in sorted(p for p in d.rglob("*") if p.is_file()):
+            inner = f.relative_to(d).as_posix()
+            if inner in shipped:
+                continue
+            shown = f".claude/skills/{installed}/{inner}"
+            if f".claude/skills/{name}/{inner}" in RETIRED_SKILL_FILES:
+                UPDATE_SUMMARY["stale"].append(shown)
+            else:
+                UPDATE_SUMMARY["kept"].append(shown)
+
+
 def print_change_list() -> None:
     upd, add, mrg = UPDATE_SUMMARY["updated"], UPDATE_SUMMARY["added"], UPDATE_SUMMARY["merged"]
     print(f"  machinery updated: {len(upd)} file(s)")
@@ -1506,10 +1544,13 @@ def print_change_list() -> None:
     print(f"  unchanged: {len(UPDATE_SUMMARY['unchanged'])} file(s)")
     if UPDATE_SUMMARY["stale"]:
         print(f"  stale workspace skills/machinery dropped upstream (remove manually?): {', '.join(UPDATE_SUMMARY['stale'])}")
+    if UPDATE_SUMMARY["kept"]:
+        print(f"  yours, kept (in the workspace's skill directories, not shipped by this version): {', '.join(UPDATE_SUMMARY['kept'])}")
 
 
 if UPDATE:
     flag_stale_skills()
+    flag_skill_dir_files()
     flag_obsolete_machinery()
 
 if DRY_RUN:

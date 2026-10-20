@@ -38,8 +38,9 @@
 # the workflow/ prefix, the contract import, the tracked-target refusal, --update --nested, the self-hiding
 # skill dirs and the refusal when a host .gitignore re-includes a target), the P29 nested-by-default
 # invariants (a bare install nests and git-inits a new dir, --update detects the layout, --at-root
-# keeps the at-root path, a bare install over an at-root workspace refuses), and the v31
-# Codex-removal negatives. Re-runnable; self-cleaning.
+# keeps the at-root path, a bare install over an at-root workspace refuses), the v61 skill
+# directories (cores of 8 KB or less plus their reference files, on fresh, retrofit, --update and
+# nested installs, a renamed skill included), and the v31 Codex-removal negatives. Re-runnable; self-cleaning.
 #
 # Usage:  bash tests/retrofit_smoke.sh
 # Exit 0 if every check passes; non-zero otherwise.
@@ -68,6 +69,39 @@ sha() {
   else sha256sum "$1" | awk '{print $1}'; fi
 }
 
+# P37.S1 (v61): the skills ship as whole directories. Checks an installed .claude/skills tree against
+# the build's payload: every shipped skill file is there (byte-identical, or only present when
+# `nested`, whose texts are rewritten), in its renamed dir where <shipped>=<installed> says so; every
+# reference a core names exists and none is orphaned; and the shared do-* copies equal their source.
+skill_tree_ok() {  # <skills dir> <exact|nested> [<shipped>=<installed> ...]
+  python3 - "$REPO_ROOT" "$@" <<'PY'
+import re, sys
+from pathlib import Path
+root, base, mode = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+renames = dict(a.split("=", 1) for a in sys.argv[4:])
+sys.path.insert(0, str(root / "installer"))
+from build import collect_live_payloads, SHARED_SKILL_FILES
+live = collect_live_payloads()
+def installed(key):
+    _, _, name, inner = key.split("/", 3)
+    return base / renames.get(name, name) / inner
+names = set()  # the skills that ship reference files: their core names each one, and only those
+for key, text in live.items():
+    if key.startswith(".claude/skills/"):
+        if "/reference/" in key:
+            names.add(key.split("/")[2])
+        assert installed(key).is_file(), installed(key)
+        assert mode != "exact" or installed(key).read_text(encoding="utf-8") == text, installed(key)
+for name in sorted(names):
+    d = base / renames.get(name, name)
+    named = set(re.findall(r"`reference/([\w.-]+\.md)`", (d / "SKILL.md").read_text(encoding="utf-8")))
+    have = {p.name for p in (d / "reference").glob("*.md")}
+    assert named == have, (d.name, sorted(named ^ have))
+for dst, src in SHARED_SKILL_FILES.items():
+    assert installed(dst).read_bytes() == installed(src).read_bytes(), dst
+PY
+}
+
 command -v git >/dev/null 2>&1 || { echo "git is required to run this smoke test"; exit 2; }
 [ -f "$BOOT" ] || { echo "installer not found: $BOOT"; exit 2; }
 
@@ -80,6 +114,27 @@ import sys
 root = Path(sys.argv[1])
 skills = {p.parent.name for p in (root / "payload/claude/skills").glob("*/SKILL.md")}
 assert len(skills) == 18, len(skills)
+
+# P37.S1 (v61): a skill ships as its whole directory, a core SKILL.md plus reference/*.md, and the
+# do-* shared references fan out at build. Prose pins read the BUILT directory (core first, then its
+# references), so a rule keeps its pin wherever in the skill it lives.
+sys.path.insert(0, str(root / "installer"))
+from build import collect_live_payloads, SHARED_SKILL_FILES
+LIVE = collect_live_payloads()
+def skill_dir_text(name):
+    pre = f".claude/skills/{name}/"
+    keys = sorted((k for k in LIVE if k.startswith(pre)), key=lambda k: (k != pre + "SKILL.md", k))
+    return "\n".join(LIVE[k] for k in keys)
+import re as _re
+for name in ("design-cowork", "do-whole-phase", "do-next-slice"):
+    core = (root / "payload/claude/skills" / name / "SKILL.md").read_bytes()
+    assert len(core) <= 8192, (name, len(core))  # re-attached whole after a compaction
+    named = set(_re.findall(r"`reference/([\w.-]+\.md)`", core.decode()))
+    shipped = {k.rsplit("/", 1)[1] for k in LIVE if k.startswith(f".claude/skills/{name}/reference/")}
+    assert named and named == shipped, (name, sorted(named ^ shipped))
+for dst, src in SHARED_SKILL_FILES.items():
+    assert LIVE[dst] == LIVE[src], dst
+    assert not (root / "payload" / dst[1:]).exists(), ("a shared copy must not have a second source", dst)
 
 # v31 dropped Codex: the mirrored skill tree, the Codex agent config, and the
 # CLAUDE.md twin are gone from the repo and must stay gone.
@@ -121,14 +176,14 @@ for gone in ("ask which design tool", "Design tool: drafter", "Design tool: clau
 
 # Only skills that *document the removal* may still say "Codex": update-workspace's
 # pre-v31 migration step and explain's re-vendor note. Anywhere else it is a regression.
-codex_prose = {n for n in skills if "Codex" in (root / "payload/claude/skills" / n / "SKILL.md").read_text()}
+codex_prose = {n for n in skills if "Codex" in skill_dir_text(n)}
 assert codex_prose <= {"update-workspace", "explain"}, sorted(codex_prose)
 assert "Codex support was removed in workspace v31" in (
     root / "payload/claude/skills/update-workspace/SKILL.md").read_text()
 
 # Safety-critical orchestration rules only -- not the whole skill body, which would be brittle.
 for name in ("do-next-slice", "do-whole-phase"):
-    body = (root / "payload/claude/skills" / name / "SKILL.md").read_text()
+    body = skill_dir_text(name)
     for required in (
         "WAITING ON OPERATOR", "`kind: co-work`",
         "never pass `run_in_background: false`", "never glob `~/.claude/plans/`",
@@ -207,7 +262,7 @@ for name in ("do-next-slice", "do-whole-phase"):
 
 # The spec hard-wraps its prose, so match against a whitespace-flattened copy: these
 # assertions are about the wording, not about where a line happens to break.
-design = " ".join((root / "payload/claude/skills/design-cowork/SKILL.md").read_text().split())
+design = " ".join(skill_dir_text("design-cowork").split())
 for required in (
     "**You never design.**", "Claude Design", "handoff.md",
     # P36.S6: the card marker is gone; a job's canvas passes `design-check <job>`.
@@ -759,7 +814,7 @@ for gone in ("design exception", "never approval", "no other pending gate"):
 for gone in ("Codex", "AGENTS.md", ".agents/", ".codex/"):
     assert gone not in claude, gone
 PY
-then ok "18 Claude skills and their invocation metadata; the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with waves and opt-in critique, mockups on request, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
+then ok "18 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with waves and opt-in critique, mockups on request, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
@@ -845,6 +900,8 @@ cp_state=$(python3 -c "import json;print(json.load(open('$R/works/state.json'))[
   && ok "retrofit writes no AGENTS.workspace.md sidecar" || bad "retrofit wrote an AGENTS.workspace.md sidecar"
 [ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "18" ] \
   && ok "retrofit installs the 18-skill Claude inventory" || bad "retrofit skill inventory incomplete"
+skill_tree_ok "$R/.claude/skills" exact \
+  && ok "retrofit installs every skill as its whole directory: each core's reference files, none orphaned, the shared do-* copy identical" || bad "retrofit skill directories incomplete (core + reference/)"
 grep -q 'design subagent drafts, the operator decides' "$R/CLAUDE.workspace.md" && grep -q 'writes no \*\*\*product\*\*\* implementation code' "$R/CLAUDE.workspace.md" \
   && grep -q 'RESPECT THE DESIGN' "$R/CLAUDE.workspace.md" \
   && ok "retrofit sidecar carries the visual design contract" || bad "retrofit visual contract is incomplete"
@@ -944,6 +1001,8 @@ then ok "every changelog release section carries a Migration notes line"; else b
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
 [ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "18" ] \
   && ok "fresh install has the 18 Claude skills" || bad "fresh skill inventory incomplete"
+skill_tree_ok "$F/.claude/skills" exact \
+  && ok "fresh install ships every skill as its whole directory: each core's reference files, none orphaned, the shared do-* copy identical" || bad "fresh install skill directories incomplete (core + reference/)"
 [ ! -f "$F/AGENTS.md" ] && [ ! -d "$F/.agents" ] && [ ! -d "$F/.codex" ] \
   && ok "fresh install is Codex-free (no AGENTS.md, no .agents/, no .codex/)" || bad "fresh install still ships Codex machinery"
 [ -f "$F/.claude/agents/slice-executor-mid.md" ] && [ -f "$F/.claude/agents/slice-executor-high.md" ] && ok "fresh install ships the 2 Claude slice-executor tiers" || bad "fresh install missing Claude slice-executor tier(s)"
@@ -1423,6 +1482,9 @@ cr_out=$( cd "$CG" && printf '{"source":"compact"}' | python3 scripts/workflow.p
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed re-applying the fable override"
 rm -rf "$F/.claude/skills/do-whole-phase"
+# v61 (P37.S1): a v60-shaped install has no reference/ files; one in our skill dir that we do not ship is the operator's.
+rm -rf "$F/.claude/skills/do-next-slice/reference" && rm -f "$F/.claude/skills/design-cowork/reference/shape.md"
+printf 'my notes\n' > "$F/.claude/skills/design-cowork/notes.md"
 mkdir -p "$F/.claude/skills/executor-mode" && printf -- '---\nname: executor-mode\ndisable-model-invocation: true\n---\nstale v45 skill\n' > "$F/.claude/skills/executor-mode/SKILL.md"
 printf '%s\n' '# stale pre-v31 visual skill' > "$F/.claude/skills/design-cowork/SKILL.md"
 # Seed the pre-v31 Codex shape so the v31 migration flagging has something to find.
@@ -1443,6 +1505,13 @@ diff -q "$SRC/claude/skills/design-cowork/SKILL.md" "$F/.claude/skills/design-co
   && ok "--update refreshes a stale design-cowork skill body" || bad "--update did not refresh design-cowork"
 printf '%s\n' "$update_out" | grep -q 'stale workspace.*\.claude/skills/design-cowork' \
   && bad "--update incorrectly flags current design-cowork as stale" || ok "--update keeps design-cowork in the current inventory"
+skill_tree_ok "$F/.claude/skills" exact && printf '%s\n' "$update_out" | grep -qx '    + \.claude/skills/do-next-slice/reference/dispatch\.md' \
+  && printf '%s\n' "$update_out" | grep -qx '    + \.claude/skills/design-cowork/reference/shape\.md' \
+  && ok "--update on a v60-shaped install adds the reference files, each listed as added" || bad "--update did not add the reference files to a v60-shaped install -- $update_out"
+printf '%s\n' "$update_out" | grep -q "^  yours, kept (in the workspace's skill directories, not shipped by this version): \.claude/skills/design-cowork/notes\.md$" \
+  && [ -f "$F/.claude/skills/design-cowork/notes.md" ] && ! printf '%s\n' "$update_out" | grep 'stale workspace' | grep -q 'notes\.md' \
+  && ok "--update reports an unshipped file in our skill dir as yours, kept (per file, never stale, never deleted)" || bad "--update mis-reported an unshipped file in a skill dir -- $update_out"
+rm -f "$F/.claude/skills/design-cowork/notes.md"
 # v31 migration: each retired Codex path is named exactly once (the .codex directory
 # entry subsumes the two old per-file ones) and nothing is ever deleted.
 stale_line=$(printf '%s\n' "$update_out" | grep 'stale workspace skills/machinery')
@@ -2239,15 +2308,16 @@ echo "== Test 15: P28 nested install -- --nested leaves the host clean (status, 
 # (a clash with ours), plus Conventional-Commit history. Every workflow command runs from the host root.
 newtmp NI
 IH="$NI/host"
-mkdir -p "$IH/.claude/skills/commit" "$IH/.github/workflows" "$IH/src" && ( cd "$IH" && { git init -q -b main . 2>/dev/null || git init -q .; } \
+mkdir -p "$IH/.claude/skills/commit" "$IH/.claude/skills/design-cowork" "$IH/.github/workflows" "$IH/src" && ( cd "$IH" && { git init -q -b main . 2>/dev/null || git init -q .; } \
   && git config user.email smoke@example.invalid && git config user.name smoke && printf '# Team contract\n' > CLAUDE.md \
   && printf '{"permissions": {"allow": ["Bash(npm test:*)"]}}\n' > .claude/settings.json && printf '*.png binary\n' > .gitattributes \
   && printf 'name: ci\non: push\njobs: {}\n' > .github/workflows/ci.yml \
   && printf -- '---\nname: commit\ndescription: the team commit skill\n---\n\nTeam rules.\n' > .claude/skills/commit/SKILL.md \
+  && printf -- '---\nname: design-cowork\ndescription: the team design skill\n---\n\nTeam design rules.\n' > .claude/skills/design-cowork/SKILL.md \
   && git add -A && git commit -qm "chore: initial import" \
   && for s in "feat(api): add users" "fix(api): empty body" "docs: setup" "refactor(core): split"; do printf '%s\n' "$s" >> src/log.txt && git add -A && git commit -qm "$s" || exit 1; done ) >/dev/null 2>&1 \
   || bad "nested install: could not build the host fixture"
-ih_head=$(cd "$IH" && git rev-parse HEAD); ih_skill=$(sha "$IH/.claude/skills/commit/SKILL.md")
+ih_head=$(cd "$IH" && git rev-parse HEAD); ih_skill=$(sha "$IH/.claude/skills/commit/SKILL.md"); ih_design=$(sha "$IH/.claude/skills/design-cowork/SKILL.md")
 iw() { ( cd "$IH" && python3 workflow/scripts/workflow.py "$@" ); }
 ih_clean() { [ -z "$(cd "$IH" && git status --porcelain)" ]; }
 out=$(sh "$BOOT" "$IH" --nested 2>&1); rc=$?
@@ -2256,11 +2326,16 @@ ih_clean && [ "$(cd "$IH" && git rev-parse HEAD)" = "$ih_head" ] && ! ( cd "$IH"
   && ok "the host is untouched: git status --porcelain empty, HEAD unchanged, core.hooksPath unset" || bad "the nested install left a host footprint -- $(cd "$IH" && git status --porcelain)"
 [ -d "$IH/workflow/.git" ] && [ ! -e "$IH/workflow/.claude" ] && [ ! -e "$IH/workflow/CLAUDE.md" ] && [ -f "$IH/workflow/CLAUDE.workspace.md" ] \
   && ok "workflow/ is a nested git repo holding the contract as CLAUDE.workspace.md, with no CLAUDE.md and no .claude/" || bad "workflow/ layout is wrong (.git, CLAUDE.md, .claude/)"
-python3 -c 'import json,sys; r=json.load(open(sys.argv[1]))["renames"]; assert r == {"skills": {"commit": "wf-commit"}, "agents": {}}, r' "$IH/workflow/.agentic-nested.json" >/dev/null 2>&1 \
+python3 -c 'import json,sys; r=json.load(open(sys.argv[1]))["renames"]; assert r == {"skills": {"commit": "wf-commit", "design-cowork": "wf-design-cowork"}, "agents": {}}, r' "$IH/workflow/.agentic-nested.json" >/dev/null 2>&1 \
   && grep -qx "name: wf-commit" "$IH/.claude/skills/wf-commit/SKILL.md" && [ "$(sha "$IH/.claude/skills/commit/SKILL.md")" = "$ih_skill" ] \
   && ok "the clashing commit skill installs as wf-commit (marker rename + name:), and the host's own commit skill is byte-identical" || bad "the commit clash was not renamed cleanly"
+# v61 (P37.S1): a renamed split skill keeps its whole directory -- core and reference files -- under the new name.
+skill_tree_ok "$IH/.claude/skills" nested commit=wf-commit design-cowork=wf-design-cowork && grep -qx "name: wf-design-cowork" "$IH/.claude/skills/wf-design-cowork/SKILL.md" \
+  && [ "$(sha "$IH/.claude/skills/design-cowork/SKILL.md")" = "$ih_design" ] && [ ! -e "$IH/.claude/skills/design-cowork/reference" ] && ih_clean \
+  && ok "nested: the clashing design-cowork installs as wf-design-cowork with its reference/ files, the do-* references (shared copy included) ship, the host's own design-cowork is untouched, and the host stays clean" \
+  || bad "nested: a renamed split skill or its reference files were not installed cleanly -- $(cd "$IH" && git status --porcelain)"
 left=$(cd "$IH" && grep -rlF "python3 scripts/workflow.py" .claude CLAUDE.local.md workflow/CLAUDE.workspace.md workflow/works/templates 2>/dev/null)
-[ -z "$left" ] && grep -qF "python3 workflow/scripts/workflow.py" "$IH/.claude/skills/do-next-slice/SKILL.md" "$IH/.claude/settings.local.json" \
+[ -z "$left" ] && grep -rqF "python3 workflow/scripts/workflow.py" "$IH/.claude/skills/do-next-slice" "$IH/.claude/settings.local.json" \
   && ok "no unprefixed python3 scripts/workflow.py in the host's .claude/, CLAUDE.local.md, the contract or the templates" || bad "unprefixed engine command left in: $left"
 if python3 - "$IH/CLAUDE.local.md" <<'PY'
 import sys
@@ -2283,7 +2358,7 @@ iw nested-convention --confirm --text "type(scope): summary" --trailers forbidde
 out=$(sh "$BOOT" "$IH" --update --nested 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && ih_clean && [ ! -e "$IH/workflow/workflow" ] && ! grep -rqF "workflow/workflow/" "$IH/.claude/skills" "$IH/workflow/CLAUDE.workspace.md" \
     && [ "$(grep -cx '# BEGIN agentic-workspace (nested)' "$IH/.git/info/exclude")" -eq 1 ] && [ "$(grep -cx '<!-- BEGIN agentic-workspace (nested) -->' "$IH/CLAUDE.local.md")" -eq 1 ] \
-    && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); c=d["commit_convention"]; assert c["confirmed"] is True and c["coauthor_trailers"] == "forbidden" and d["renames"]["skills"] == {"commit": "wf-commit"}, d' "$IH/workflow/.agentic-nested.json" >/dev/null 2>&1; then
+    && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); c=d["commit_convention"]; assert c["confirmed"] is True and c["coauthor_trailers"] == "forbidden" and d["renames"]["skills"] == {"commit": "wf-commit", "design-cowork": "wf-design-cowork"}, d' "$IH/workflow/.agentic-nested.json" >/dev/null 2>&1; then
   ok "--update --nested keeps the confirmed convention and the renames, the host stays clean, no workflow/workflow/, one exclude block"
 else bad "--update --nested lost state or left a footprint (rc=$rc) -- $out"; fi
 # P34.S2: the nested settings.local.json carries both hooks, command rewritten to the nested engine path.
@@ -2296,6 +2371,12 @@ assert h["PreCompact"] == [{"matcher": "auto", "hooks": [{"type": "command", "co
 assert h["SessionStart"] == [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}], h
 PY
 then ok "nested: settings.local.json carries both compaction hooks with the workflow/scripts/workflow.py command path, and --update --nested kept exactly one of each"; else bad "nested settings.local.json hooks wrong"; fi
+# v61 (P37.S1): --update --nested on a v60-shaped host (no reference/ files) adds them in the renamed dir, host clean.
+rm -rf "$IH/.claude/skills/wf-design-cowork/reference" "$IH/.claude/skills/do-whole-phase/reference"
+out=$(sh "$BOOT" "$IH" --update --nested 2>&1); rc=$?
+[ "$rc" -eq 0 ] && skill_tree_ok "$IH/.claude/skills" nested commit=wf-commit design-cowork=wf-design-cowork && ih_clean \
+  && printf '%s\n' "$out" | grep -qx '    + \.claude/skills/wf-design-cowork/reference/shape\.md' \
+  && ok "nested: --update --nested adds the reference files to a v60-shaped host, in the renamed dir, and the host stays clean" || bad "nested --update did not restore the reference files (rc=$rc) -- $out"
 lset_a=$(sha "$IH/.claude/settings.local.json")
 sh "$BOOT" "$IH" --update --nested >/dev/null 2>&1
 [ "$(sha "$IH/.claude/settings.local.json")" = "$lset_a" ] && ih_clean \
@@ -2324,7 +2405,7 @@ mkdir -p "$IX/.claude/agents" && ( cd "$IX" && { git init -q -b main . 2>/dev/nu
 ix_explore=$(sha "$IX/.claude/agents/Explore.md"); out=$(sh "$BOOT" "$IX" --nested 2>&1); rc=$?
 python3 -c 'import json,sys; r=json.load(open(sys.argv[1]))["renames"]["agents"]; assert r.get("Explore") == "wf-Explore", r' "$IX/workflow/.agentic-nested.json" >/dev/null 2>&1 \
   && [ "$rc" -eq 0 ] && grep -qx "name: wf-Explore" "$IX/.claude/agents/wf-Explore.md" && [ "$(sha "$IX/.claude/agents/Explore.md")" = "$ix_explore" ] \
-  && grep -q 'subagent_type: wf-Explore' "$IX/.claude/skills/do-next-slice/SKILL.md" "$IX/.claude/agents/slice-executor-mid.md" "$IX/.claude/agents/slice-executor-high.md" \
+  && grep -rq 'subagent_type: wf-Explore' "$IX/.claude/skills/do-next-slice" "$IX/.claude/agents/slice-executor-mid.md" "$IX/.claude/agents/slice-executor-high.md" \
   && ( cd "$IX" && python3 workflow/scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) \
   && ok "a host with its own Explore.md: ours installs as wf-Explore (marker rename + name:), the host's is byte-identical, the executors and skill call wf-Explore" \
   || bad "the Explore clash was not renamed cleanly (rc=$rc) -- $out"

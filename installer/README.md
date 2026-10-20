@@ -104,10 +104,25 @@ install whose copies own `.claude/`; never add a dotted name or a `CLAUDE.md` un
 Below, each entry is the source, then the emit path where it differs:
 
 - `payload/scripts/workflow.py`
-- `payload/claude/skills/*/SKILL.md` → `.claude/skills/…` (skills are discovered from disk; the build asserts the release
-  inventory is exactly 18 packages — `EXPECTED_SKILL_COUNT` in both `build.py` and `main.py`, so
-  adding or removing a skill means moving both). Only `*/SKILL.md` is embedded: a skill needing a
-  `references/` or `scripts/` subdir would be **silently dropped**, so keep skills flat.
+- `payload/claude/skills/<name>/**` → `.claude/skills/<name>/…` (skills are discovered from disk by their
+  `SKILL.md`; the build asserts the release inventory is exactly 18 packages — `EXPECTED_SKILL_COUNT` in
+  both `build.py` and `main.py`, so adding or removing a skill means moving both). A skill ships as its
+  **whole directory**: `SKILL.md` plus every other file under it (dotfiles and `__pycache__` excepted),
+  written on fresh install, retrofit, `--update` and the nested install (rewritten and renamed with
+  its skill) like any machinery.
+  - **Cores and references (v61).** `design-cowork`, `do-whole-phase` and `do-next-slice` are a core
+    `SKILL.md` of **≤ 8,192 bytes** plus `reference/<topic>.md` files the core names, each with the
+    moment to read it; the smoke suite asserts the cap, that every named reference exists, and that no
+    reference is orphaned.
+  - **Shared references have one source.** `SHARED_SKILL_FILES` in `build.py` maps each copy to its
+    source; the build emits a byte-identical copy, so every installed skill directory is
+    self-contained. Today: `do-whole-phase/reference/dispatch.md` (the route table: resolve → pin →
+    dispatch → record → Explore) is copied to `do-next-slice/reference/dispatch.md`. Edit the source
+    only; a copy that also exists under `payload/` is a build error.
+  - **Retired reference files.** `--update` reports a file in one of our skill directories that the
+    payload does not ship as **"yours, kept"**, unless `RETIRED_SKILL_FILES` in `main.py` names it,
+    and then it is flagged stale. Both only report; nothing is deleted. When a release stops shipping
+    a reference file, add it to that list.
   `explain` is the one **vendored** skill — its upstream is
   `plugin/skills/explain/SKILL.md` in [leetusik/knowledge](https://github.com/leetusik/knowledge),
   de-plugin-ified here (self-service onboarding replaces `/knowledge:setup`, and the

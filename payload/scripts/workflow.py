@@ -4942,7 +4942,7 @@ def rotate_backlog(args: argparse.Namespace) -> None:
 # canvas.json plus one .dc.html per artboard), and the job's rounds (rounds/<NN-slug>/, each
 # snapshotting the tree at close). The orchestrator publishes canvas/ to the job's own canvas Artifact
 # as a plain copy; the engine only prints that plan (design-publish-plan) and never calls claude.ai.
-# The contract is written out in design-cowork/SKILL.md "The design record"; that section and these
+# The contract is written out in design-cowork/reference/record.md "The design record"; that section and these
 # commands must move together. The commands are the only writers of the machine-readable parts
 # (design.json, job.json, round.json, the close-time snapshots), and `design-check` enforces the
 # rest. Stdlib only. Two legacy records sit beside the live one and the scan never reads them:
@@ -7569,7 +7569,7 @@ def main(argv=None) -> int:
     p.add_argument("--json", action="store_true", help="print the same answer as one JSON object")
     p.set_defaults(func=phase_scope)
 
-    # The design contract, schema 2 (v60): the on-disk layout lives in design-cowork/SKILL.md "The design record".
+    # The design contract, schema 2 (v60): the on-disk layout lives in design-cowork/reference/record.md "The design record".
     p = sub.add_parser("design-init", help=f"Write the design project manifest {DESIGN_ROOT_REL}/design.json (schema {DESIGN_SCHEMA}: id, name, a null-filled system); idempotent -- an unchanged manifest is not rewritten; a schema-1 manifest is refused (design-migrate --to 2)",
                        description=f"Create or update {DESIGN_ROOT_REL}/design.json, the one design project this repo holds. Defaults: id = the repo folder's name, slugified; name = the folder's name. The system record stays as it is (design-system sets it).")
     p.add_argument("--id", default=None, help="the project id: lowercase [a-z0-9-], starting alphanumeric, at most 63 characters")
