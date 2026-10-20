@@ -1462,8 +1462,8 @@ with open(ev, "a") as f:
 proj = os.path.join(mt, "projects", "-fixture")
 sub = os.path.join(proj, "sess1", "subagents")
 os.makedirs(sub)
-def asst(ts, mid, model, out, cr=0, w1h=0, w5=0, inp=0, content=None):
-    return {"type": "assistant", "timestamp": ts, "message": {"id": mid, "model": model, "content": content or [],
+def asst(ts, mid, model, out, cr=0, w1h=0, w5=0, inp=0, content=None, stop="end_turn"):
+    return {"type": "assistant", "timestamp": ts, "message": {"id": mid, "model": model, "content": content or [], "stop_reason": stop,
             "usage": {"input_tokens": inp, "cache_read_input_tokens": cr, "cache_creation_input_tokens": w1h + w5,
                       "cache_creation": {"ephemeral_1h_input_tokens": w1h, "ephemeral_5m_input_tokens": w5}, "output_tokens": out}}}
 def user(ts, text):
@@ -1478,7 +1478,8 @@ write(os.path.join(proj, "sess1.jsonl"), [
     asst("2026-01-01T10:31:00.000Z", "m2", "claude-opus-5-5", 100, inp=1000)])
 write(os.path.join(sub, "agent-aaa.jsonl"), [
     user("2026-01-01T10:35:00.000Z", "slice: P1.S7\nfolder: works/phases/active/P1/slices/P1.S7"),
-    asst("2026-01-01T10:40:00.000Z", "s1", "claude-opus-5-5", 50, inp=2000, content=[{"type": "text", "text": "Done.\n- status: done"}])])
+    asst("2026-01-01T10:40:00.000Z", "s1", "claude-opus-5-5", 50, inp=2000, content=[{"type": "text", "text": "Done.\n- status: done"}]),
+    asst("2026-01-01T10:41:00.000Z", "s3", "claude-opus-5-5", 3, inp=500, stop=None)])  # a stream-start entry: no final usage ever follows
 json.dump({"agentType": "slice-executor-high", "model": "opus", "effort": "high", "finished": True}, open(os.path.join(sub, "agent-aaa.meta.json"), "w"))
 write(os.path.join(sub, "agent-bbb.jsonl"), [
     user("2026-01-01T10:41:00.000Z", "round: 01-x/01-x\nslice: P1.S7"),
@@ -1499,10 +1500,16 @@ assert spans["slice-executor-high"]["slice"] == "P1.S7" and spans["slice-executo
 assert spans["slice-executor-high"]["outcome"] == "done", spans
 assert spans["design-drafter"]["outcome"] == "limit" and spans["design-drafter"]["reset"] == "3:10am (Asia/Seoul)", spans
 assert spans["design-drafter"]["usage"]["requests"] == 1 and spans["design-drafter"]["usage"]["unpriced"] == 1, spans
+u = spans["slice-executor-high"]["usage"]
+assert u["requests"] == 2 and u["no_final"] == 1 and u["output_floor"] is True and spans["design-drafter"]["usage"]["output_floor"] is False, u
+assert m["output_floor"] is False, m
 ' && ok "the meter: two main-thread ids from three entries keep the largest output, spans attributed by their slice: line, a span ending on a usage limit is limit with its reset" || bad "the transcript meter miscounted: $mt_json"
 mt_out=$( cd "$MT/ws" && python3 scripts/workflow.py dispatch-summary --phase P1 --transcripts "$MT/projects/-fixture" 2>&1 )
 printf '%s\n' "$mt_out" | grep -qE '^main +- +2 +1\.10M +600 +1\.02 ' && printf '%s\n' "$mt_out" | grep -qE '^design-drafter +1 +1 +100 +10 +\? ' \
   && ok "dispatch-summary prices the main thread at list price (\$1.02) and leaves an unknown model unpriced (?)" || bad "dispatch-summary pricing wrong: $mt_out"
+printf '%s\n' "$mt_out" | grep -qE '^note=output_floor spans=1/3 \(33%\) main=0/2 ' && printf '%s\n' "$mt_out" | grep -qE '^slice-executor-high +1 +2 +[^ ]+ +≥53 +≥[0-9.]+ ' \
+  && ! printf '%s\n' "$mt_out" | grep -E '^(main|design-drafter) ' | grep -q '≥' \
+  && ok "dispatch-summary flags a span request that never logged a final usage: the note= count and the ≥ floor on that group only" || bad "dispatch-summary floor note/mark wrong: $mt_out"
 # v61 pure compaction (P37.S3): compaction is Claude Code's own -- no PreCompact hook, no compact-gate. After
 # a compaction the SessionStart hook runs compact-resume, which prints the resume card (also `next --card`):
 # computed from state, at most 2,048 B, naming files and never asking for a re-read. A pending stop is typed
@@ -1512,10 +1519,18 @@ CG="$CGT/ws"
 sh "$BOOT" "$CG" --at-root --name "Card" --summary "card probe" >/dev/null 2>&1 \
   && ( cd "$CG" && python3 scripts/workflow.py new-phase --phase P1 --name "Card probe" --objective "probe the resume card" >/dev/null 2>&1 ) \
   || bad "resume card: could not build the fixture"
-cg_help=$( cd "$CG" && python3 scripts/workflow.py --help 2>&1 )
+cg_help=$( cd "$CG" && python3 scripts/workflow.py --help 2>&1 ); cg_help_rc=$?
 ( cd "$CG" && python3 scripts/workflow.py compact-gate </dev/null >/dev/null 2>&1 ); cg_rc=$?
-[ "$cg_rc" -ne 0 ] && ! printf '%s\n' "$cg_help" | grep -q 'compact-gate' && ! grep -qE 'cmd_compact_gate|AGENTIC_COMPACT_|COMPACT_RESUME_LINE' "$CG/scripts/workflow.py" \
+[ "$cg_help_rc" -eq 0 ] && printf '%s\n' "$cg_help" | grep -q 'dispatch-summary' && [ "$cg_rc" -ne 0 ] && ! printf '%s\n' "$cg_help" | grep -q 'compact-gate' && ! grep -qE 'cmd_compact_gate|AGENTIC_COMPACT_|COMPACT_RESUME_LINE' "$CG/scripts/workflow.py" \
   && ok "compact-gate is gone from the engine (no subcommand, no knobs, no resume line)" || bad "compact-gate still present (rc=$cg_rc)"
+# every subcommand's --help exits 0 (a crash in an argparse help string once hid behind a green suite);
+# the list is the engine's own, read from the top-level help
+( cd "$CG" && printf '%s\n' "$cg_help" | python3 -c '
+import re, subprocess, sys
+names = re.search(r"\{([^}]+)\}", " ".join(sys.stdin.read().split())).group(1).split(",")
+bad = [n for n in names if subprocess.run([sys.executable, "scripts/workflow.py", n, "--help"], capture_output=True).returncode != 0]
+assert len(names) > 20 and not bad, bad
+' ) && ok "every subcommand's --help exits 0 (the list read from the engine's own top-level help)" || bad "a subcommand's --help fails"
 card_ok() { # card_ok <text>: at most 2,048 bytes, no re-read, the pointer, the next action and the file paths
   [ "$(printf '%s' "$1" | wc -c | tr -d ' ')" -le 2048 ] && ! printf '%s\n' "$1" | grep -qi 're-read' \
     && printf '%s\n' "$1" | grep -q '^pointer: phase P1 ' && printf '%s\n' "$1" | grep -q '^next action: ' \

@@ -135,10 +135,13 @@ nothing:
 
 - **`.claude/settings.json`** — the workspace's permission entries
   (`Bash(python3 scripts/workflow.py:*)`, `Read`, `Edit`, …) are **unioned** into
-  your existing `permissions.allow` / `permissions.deny`, and its two compaction
-  hooks (`PreCompact` and `SessionStart`) are **added** to your `hooks` (matched by
-  exact `command`; your own hooks are kept first, and re-running adds nothing), and
-  `autoCompactWindow` is set to 500000 only when you have none. All
+  your existing `permissions.allow` / `permissions.deny`, and its one compaction
+  hook (`SessionStart` on `compact` running `compact-resume`, which prints the
+  resume card) is **added** to your `hooks` (matched by exact `command`; your own
+  hooks are kept first, and re-running adds nothing). `autoCompactWindow` is set
+  to 300000 only when you have none; `--update` removes our old PreCompact handler
+  and moves an exact 500000 to 300000, listing both, and any other value is yours
+  and is kept. All
   your other keys are preserved. (`.claude/settings.local.json` is never touched.) Without this, every
   workflow command would prompt for permission.
 - **`CLAUDE.md`** — your file is kept, and a short, clearly delimited workspace

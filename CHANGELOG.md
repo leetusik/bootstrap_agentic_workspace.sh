@@ -22,7 +22,8 @@ transcripts, not replayed.
   --verdict <v>` is verdict-only; every dispatch prompt starts with `slice: <id>`; a
   usage-limited span is resumed or re-dispatched, never a verdict.
   - **Before / after:** `record-dispatch` stored a span's final context (P29: 7.40M against
-    1,188M processed) and the orchestrator (~$160, 32%) was invisible. Now both are metered.
+    1,188M processed) and the orchestrator (main $146.65, 30% of the phase) was invisible. Now both are metered
+    (span output and $ are floors where a transcript lacks the final usage, marked `≥`).
 
 - **Compaction and the resume card.** The PreCompact hook, `compact-gate` and the
   post-compaction re-read rule are retired; the project window ships at 300000. After a

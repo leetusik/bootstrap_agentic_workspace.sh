@@ -901,6 +901,9 @@ def _dispatch_table(title: str, groups: dict, cols: list) -> list:
 # - a request is an assistant entry, counted ONCE per `message.id` (else `requestId`): Claude Code
 #   writes one entry per content block, the usage repeating with a growing `output_tokens`, so the
 #   entry with the largest output is kept (the first undercounts output ~20x);
+# - most subagent requests never log a final usage (`stop_reason` stays null, `output_tokens` 2-20):
+#   those are counted per group (`no_final`), their output and $ are FLOORS (marked `>=`, never
+#   estimated), the main thread's share is an upper bound, and context and cache are exact;
 # - `message.model == "<synthetic>"` is an API error, not a request; when its text or error names a
 #   usage / rate limit it is a limit hit, and a span whose LAST assistant entry is one ended on it;
 # - cache writes split by `usage.cache_creation` into 5 m and 1 h (the main thread writes 1 h,
@@ -957,7 +960,7 @@ def _meter_price(model) -> "tuple | None":
 
 def _meter_new() -> dict:
     return {"requests": 0, "input": 0, "cache_read": 0, "cache_write_5m": 0, "cache_write_1h": 0,
-            "output": 0, "cost": 0.0, "unpriced": 0, "limit_hits": 0}
+            "output": 0, "cost": 0.0, "unpriced": 0, "limit_hits": 0, "no_final": 0}
 
 
 def _meter_add(agg: dict, other: dict) -> dict:
@@ -966,8 +969,9 @@ def _meter_add(agg: dict, other: dict) -> dict:
     return agg
 
 
-def _meter_request(agg: dict, model, usage: dict) -> None:
-    """Add one deduplicated request's usage (and list-price cost) into `agg`."""
+def _meter_request(agg: dict, model, usage: dict, final: bool = True) -> None:
+    """Add one deduplicated request's usage (and list-price cost) into `agg`. `final` = some entry of
+    the request carried a stop_reason; without one its output (and so $) is a floor."""
     def num(v):
         return v if isinstance(v, (int, float)) else 0
     inp = num(usage.get("input_tokens"))
@@ -979,6 +983,7 @@ def _meter_request(agg: dict, model, usage: dict) -> None:
     w5 = num(split.get("ephemeral_5m_input_tokens"))
     w5 += max(cw - w1h - w5, 0)  # no split (or a short one): the rest is a 5 m write
     agg["requests"] += 1
+    agg["no_final"] += 0 if final else 1
     agg["input"] += inp
     agg["cache_read"] += cr
     agg["cache_write_5m"] += w5
@@ -1010,7 +1015,7 @@ def _meter_limit(entry: dict, text: str) -> bool:
 def _meter_scan(path: Path, span: bool) -> dict:
     """One transcript file read once: its deduplicated requests and limit hits, and for a span its
     first prompt, resume count, final report and first / last timestamps. Unreadable lines are skipped."""
-    reqs: dict = {}   # key -> [ts, model, usage]
+    reqs: dict = {}   # key -> [ts, model, usage, saw a stop_reason]
     limits: list = []  # (ts, reset text)
     out = {"reqs": reqs, "limits": limits, "prompt": None, "resumes": 0, "final": None, "first": None, "last": None,
            "last_limit": None, "models": {}}
@@ -1077,13 +1082,16 @@ def _meter_scan(path: Path, span: bool) -> dict:
                 continue
             key = msg.get("id") or d.get("requestId") or d.get("uuid")
             prev = reqs.get(key)
+            final = msg.get("stop_reason") is not None
             if prev is None:
-                reqs[key] = [ts, model, usage]
-            elif (usage.get("output_tokens") or 0) > (prev[2].get("output_tokens") or 0):
-                prev[2] = usage
+                reqs[key] = [ts, model, usage, final]
+            else:
+                prev[3] = prev[3] or final
+                if (usage.get("output_tokens") or 0) > (prev[2].get("output_tokens") or 0):
+                    prev[2] = usage
     if last_asst and last_asst[0] == "limit":
         out["last_limit"] = last_asst[1] or ""
-    for _ts, model, _u in reqs.values():
+    for _ts, model, _u, _f in reqs.values():
         out["models"][model] = out["models"].get(model, 0) + 1
     return out
 
@@ -1280,11 +1288,11 @@ def _meter_collect(dirs: list, known: dict, windows: "_MeterWindows", selected, 
                 continue
             sess = {"session": path.stem, "dir": d.name, "first": first, "last": last, "main": _meter_new(), "spans": 0}
             scan = _meter_scan(path, span=False)
-            for ts, model, usage in scan["reqs"].values():
+            for ts, model, usage, final in scan["reqs"].values():
                 if model == "<synthetic>":
                     continue
                 one = _meter_new()
-                _meter_request(one, model, usage)
+                _meter_request(one, model, usage, final)
                 _meter_add(sess["main"], one)
                 _meter_main_bucket(res, windows.at(ts), ts, selected, lo, hi, one)
             for ts, _reset in scan["limits"]:
@@ -1304,9 +1312,9 @@ def _meter_collect(dirs: list, known: dict, windows: "_MeterWindows", selected, 
                 agent = canon.get(meta.get("agentType"), meta.get("agentType") or "?")
                 sid, how = _meter_attribute(sp["prompt"], sp["first"], known, windows)
                 agg = _meter_new()
-                for _ts, model, usage in sp["reqs"].values():
+                for _ts, model, usage, final in sp["reqs"].values():
                     if model != "<synthetic>":
-                        _meter_request(agg, model, usage)
+                        _meter_request(agg, model, usage, final)
                 agg["limit_hits"] = len(sp["limits"])
                 model = meta.get("model") or (max(sp["models"], key=sp["models"].get) if sp["models"] else None)
                 if sp["last_limit"] is not None:
@@ -1357,14 +1365,33 @@ def _meter_cost(agg: dict) -> str:
     return f"{agg['cost']:.2f}" + ("+?" if agg["unpriced"] else "")
 
 
+def _meter_fl(agg: dict) -> str:
+    """`>=` for a group with requests that never logged a final usage: its output and $ are floors."""
+    return "≥" if agg.get("no_final") else ""
+
+
+def _meter_out(agg: dict) -> str:
+    return _meter_fl(agg) + _meter_tok(agg["output"])
+
+
+def _meter_usd(agg: dict) -> str:
+    c = _meter_cost(agg)
+    return c if c.startswith("?") else _meter_fl(agg) + c
+
+
+def _meter_flagged(agg: dict) -> dict:
+    """A copy of a usage group for --json, with `output_floor` true when its output and $ are floors."""
+    return {**agg, "output_floor": bool(agg.get("no_final"))}
+
+
 def _meter_columns(rows: list) -> list:
     widths = [max(len(r[i]) for r in rows) for i in range(len(rows[0]))]
     return ["  ".join(c.ljust(w) if i == 0 else c.rjust(w) for i, (c, w) in enumerate(zip(r, widths))).rstrip() for r in rows]
 
 
 def _meter_row(label: str, n, agg: dict, minutes=None, verdicts: str = "") -> list:
-    return [label, "-" if n is None else str(n), str(agg["requests"]), _meter_tok(_meter_ctx(agg)), _meter_tok(agg["output"]),
-            _meter_cost(agg), "-" if minutes is None else f"{minutes:.1f}", str(agg["limit_hits"]), verdicts or "-"]
+    return [label, "-" if n is None else str(n), str(agg["requests"]), _meter_tok(_meter_ctx(agg)), _meter_out(agg),
+            _meter_usd(agg), "-" if minutes is None else f"{minutes:.1f}", str(agg["limit_hits"]), verdicts or "-"]
 
 
 _METER_HEAD = ["row", "n", "requests", "context", "output", "$", "min", "limits", "verdicts"]
@@ -1415,6 +1442,30 @@ def _meter_report(res: dict, slices: list) -> dict:
     return {"slices": by_slice, "unattributed": unattributed, "phases": phases, "means": means}
 
 
+def _meter_floor_note(res: dict):
+    """The one `note=` line saying which requests never logged a final usage (None when none lack it)."""
+    sp = [0, 0]
+    for s in res["spans"]:
+        sp[0] += s["usage"]["no_final"]
+        sp[1] += s["usage"]["requests"]
+    mn = [sum(v["no_final"] for v in res["main"].values()), sum(v["requests"] for v in res["main"].values())]
+    if not sp[0] and not mn[0]:
+        return None
+    pct = f" ({100 * sp[0] / sp[1]:.0f}%)" if sp[1] else ""
+    return (f"output_floor spans={sp[0]}/{sp[1]}{pct} main={mn[0]}/{mn[1]} — these requests never logged a final "
+            "usage: their output and $ are floors (≥); context and cache are exact; the main thread's share is an upper bound")
+
+
+def _meter_floor_json(res: dict) -> dict:
+    sp_n = sum(s["usage"]["requests"] for s in res["spans"])
+    sp_f = sum(s["usage"]["no_final"] for s in res["spans"])
+    mn_n = sum(v["requests"] for v in res["main"].values())
+    mn_f = sum(v["no_final"] for v in res["main"].values())
+    return {"spans": {"requests": sp_n, "no_final": sp_f, "floor": sp_f > 0},
+            "main": {"requests": mn_n, "no_final": mn_f, "floor": mn_f > 0},
+            "note": _meter_floor_note(res)}
+
+
 def _meter_print(res: dict, rep: dict, dirs: list) -> None:
     def hhmm(t):
         return datetime.fromtimestamp(t).astimezone().strftime("%Y-%m-%d %H:%M") if t else "-"
@@ -1423,7 +1474,7 @@ def _meter_print(res: dict, rep: dict, dirs: list) -> None:
     for s in res["sessions"]:
         m = s["main"]
         print(f"  session {s['session'][:8]} {hhmm(s['first'])} -> {hhmm(s['last'])}  main requests={m['requests']} "
-              f"context={_meter_tok(_meter_ctx(m))} output={_meter_tok(m['output'])} ${_meter_cost(m)} limits={m['limit_hits']}  spans={s['spans']}")
+              f"context={_meter_tok(_meter_ctx(m))} output={_meter_out(m)} ${_meter_usd(m)} limits={m['limit_hits']}  spans={s['spans']}")
     for pid, ph in rep["phases"].items():
         total = _meter_add(_meter_add(_meter_new(), ph["main"]), ph["span_total"])
         if not total["requests"] and not total["limit_hits"]:
@@ -1432,8 +1483,11 @@ def _meter_print(res: dict, rep: dict, dirs: list) -> None:
 
         def line(label, agg):
             share = f"{100 * agg['cost'] / total['cost']:.0f}%" if total["cost"] else "-"
+            if share != "-" and total["no_final"] and agg is not total:
+                # the missing output sits in the spans: their share is a floor, the main thread's an upper bound
+                share = ("≥" if agg["no_final"] else "≤" if agg is ph["main"] else "") + share
             return [label, str(agg["requests"]), _meter_tok(_meter_ctx(agg)), _meter_tok(agg["cache_read"]),
-                    _meter_tok(agg["cache_write_5m"] + agg["cache_write_1h"]), _meter_tok(agg["output"]), _meter_cost(agg), share]
+                    _meter_tok(agg["cache_write_5m"] + agg["cache_write_1h"]), _meter_out(agg), _meter_usd(agg), share]
         rows.append(line("main thread", ph["main"]))
         rows.append(line("spans", ph["span_total"]))
         for agent, agg in sorted(ph["by_agent"].items(), key=lambda kv: -kv[1]["cost"]):
@@ -1491,6 +1545,9 @@ def _meter_print(res: dict, rep: dict, dirs: list) -> None:
             for k, v in means["by_kind"].items()]
         print("\n".join(_meter_columns(rows)))
     print()
+    floor = _meter_floor_note(res)
+    if floor:
+        print(f"note={floor}")
     for note in _METER_NOTES:
         print(f"note={note}")
 
@@ -1572,8 +1629,15 @@ def cmd_dispatch_summary(args: argparse.Namespace) -> None:
             body["metered"] = {
                 "transcripts": [str(d) for d in dirs], "sessions_found": res["found"],
                 "sessions": [{k: v for k, v in s.items()} for s in res["sessions"]],
-                "slices": {sid: {"main": row["main"], "spans": row["spans"]} for sid, row in rep["slices"].items()},
-                "unattributed": rep["unattributed"], "phases": rep["phases"], "outside": res["outside"],
+                "slices": {sid: {"main": _meter_flagged(row["main"]),
+                                 "spans": [{**s, "usage": _meter_flagged(s["usage"])} for s in row["spans"]]}
+                           for sid, row in rep["slices"].items()},
+                "unattributed": [{**s, "usage": _meter_flagged(s["usage"])} for s in rep["unattributed"]],
+                "phases": {pid: {"main": _meter_flagged(ph["main"]), "span_total": _meter_flagged(ph["span_total"]),
+                                 "by_agent": {a: _meter_flagged(g) for a, g in ph["by_agent"].items()}}
+                           for pid, ph in rep["phases"].items()},
+                "outside": {k: _meter_flagged(v) for k, v in res["outside"].items()},
+                "output_floor": _meter_floor_json(res),
                 "means": rep["means"], "prices_source": METER_PRICES_SOURCE, "notes": list(_METER_NOTES)}
         else:
             body["metered"] = None
