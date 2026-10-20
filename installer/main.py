@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import copy
 import difflib
+import hashlib
 import json
 import os
 import re
@@ -37,7 +38,9 @@ RETROFIT_SUMMARY = {"created": [], "skipped": [], "merged": []}
 UPDATE = os.environ.get("UPDATE") == "1"
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
 UPDATE_DOCS = True  # recomputed in the guards for update (skip docs rebuild if no docs subsystem)
-UPDATE_SUMMARY = {"updated": [], "added": [], "merged": [], "preserved": [], "unchanged": [], "stale": [], "kept": []}
+# stale / kept: (path, reason) pairs; notes / intents: lines (the update report, print_update_report)
+UPDATE_SUMMARY = {"updated": [], "added": [], "merged": [], "preserved": [], "unchanged": [],
+                  "stale": [], "kept": [], "notes": [], "intents": []}
 UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
@@ -314,10 +317,29 @@ def emit_policy_files(ci: bool = True) -> None:
 # ---- Retrofit (--into-existing) write policy --------------------------------
 # In retrofit mode the workspace is added non-destructively: an existing file is
 # never overwritten. A small, known set is additively, idempotently merged.
+# Mechanisms an earlier version shipped and a later one retired (v61). `--update` scans the intent.md of
+# every active phase that is not done for `pattern` and prints one line per hit, asking the agent to
+# re-confirm that intent with the operator; it rewrites nothing. `hook` (optional) is a substring of
+# the `command` of the settings hook handler that shipped the mechanism: `--update` removes exactly
+# those handlers (RETIRED_HOOK_COMMANDS, derived below).
+RETIRED_MECHANISMS = [
+    {"name": "compact-gate", "retired": 61, "hook": "workflow.py compact-gate",
+     "pattern": r"\bcompact-gate\b|PreCompact[ -](?:boundary[ -])?gate|boundary[- ]gated compaction",
+     "replacement": "pure compaction and the resume card, compact-resume / next --card"},
+    {"name": "claude-design", "retired": 60, "pattern": r"\bclaude-design\b|\bDesignSync\b",
+     "replacement": "the drafter design tool and Design canvas Artifacts"},
+    {"name": "design-deck", "retired": 60, "pattern": r"\bdesign-deck\b|\bdesign-register\b",
+     "replacement": "Design canvas Artifacts in the Claude app"},
+    {"name": "build-prompt.md", "retired": 61, "pattern": r"\bbuild-prompt\.md\b",
+     "replacement": "the round's result.md ## Build"},
+    {"name": "record-dispatch --tokens", "retired": 61,
+     "pattern": r"record-dispatch[^\n]*?--(?:tokens|tool-uses|duration-ms)\b",
+     "replacement": "spans metered from transcripts by dispatch-summary"},
+]
 # Settings we shipped and later retired or changed (v61). `--update` (and every other path through
 # _merge_settings_dict) removes exactly our retired hook handlers -- matched by command -- and moves a window
 # still at a value we shipped to today's; it reports both through SETTINGS_CHANGES.
-RETIRED_HOOK_COMMANDS = {"workflow.py compact-gate": "retired in v61"}  # substring of the handler's `command`
+RETIRED_HOOK_COMMANDS = {m["hook"]: f"retired in v{m['retired']}" for m in RETIRED_MECHANISMS if m.get("hook")}
 SHIPPED_COMPACT_WINDOWS = {500000}  # what v57-v60 shipped; v56 shipped 300000, today's value
 SETTINGS_CHANGES = {"removed": [], "changed": []}
 
@@ -1064,7 +1086,7 @@ def nested_plan() -> dict:
                 renames[kind][x] = y
             installed[kind].append(y)
         # The workspace's own copies that this version no longer ships stay recognised (and
-        # excluded) while they exist; they are reported as stale, never deleted.
+        # excluded) while they exist; flag_retired_files() classifies their files by content, never deletes them.
         for name in prev:
             rel = f".claude/skills/{name}" if kind == "skills" else f".claude/agents/{name}.md"
             if name not in installed[kind] and os.path.lexists(HOST / rel):
@@ -1251,7 +1273,7 @@ def print_nested_banner(plan: dict) -> None:
             print(f"    ~ {label}")
         for label in HOST_SUMMARY["added"]:
             print(f"    + {label}")
-        print_settings_changes()
+        print_update_report()
         if plan["verified_clean"]:
             print("  verified: the host's git status lists none of the workspace's files")
         else:
@@ -1265,7 +1287,7 @@ def print_nested_banner(plan: dict) -> None:
               f"{len(NESTED_AGENTS)} agents in .claude/agents/, .claude/settings.local.json, and CLAUDE.local.md importing the contract -- all untracked")
         if plan["verified_clean"]:
             print(f"  hidden by {plan['exclude_label']}, verified: the host's git status stays clean (no tracked file, CI, .gitattributes or docs/ touched)")
-        print_settings_changes()
+        print_update_report()
     print(f"  {_nested_renames_line(plan)}")
     for name in plan["shadowed"]:
         print(f"  warning: your personal skill ~/.claude/skills/{name} shadows the workspace's /{name} in this repo (rename or remove one)")
@@ -1507,69 +1529,157 @@ def write_version_marker() -> None:
     _atomic_write(ROOT / "works/.workspace-version.json", json.dumps(marker, ensure_ascii=False, indent=2) + "\n")
 
 
-# Machinery files and directories older workspace versions shipped that this version
-# has retired. --update never deletes; flag them so the operator removes them manually.
-OBSOLETE_MACHINERY = [
-    ".claude/agents/slice-executor.md",   # replaced by slice-executor-{low,mid,high}.md in v7
-    ".env.example",                       # tier config moved to executors.toml(.example) in v8
-    "executors.toml.example",             # example dropped in v9 — executors.toml itself is seeded
-    "works/templates/result.md",          # template dropped in v10 — result.md is free-form, written by the executor
-    ".claude/agents/slice-planner.md",    # retired in v20 — idle-window research uses plain Claude Code behaviour (Explore or inline)
-    ".claude/agents/slice-executor-low.md",   # low tier retired in v23 — routing is two-tier (mid/high)
-    ".agents",                            # Codex support dropped in v31 — the mirrored Codex skill tree
-    ".codex",                             # Codex support dropped in v31 — Codex config + executor agents
-    "AGENTS.md",                          # Codex support dropped in v31 — CLAUDE.md is the single contract
-    "AGENTS.workspace.md",                # Codex support dropped in v31 — retrofit sidecar, no longer refreshed
-]
+# ---- The update report (v61): what --update removed, changed and flags, in one place ----------
+# Every file an earlier version shipped and this one no longer does: emit path -> (the last version that
+# shipped it, the sha256 of each text that version wrote there). Ownership is by CONTENT, never by path
+# or directory: a present file whose hash matches is ours and unchanged, flagged stale (remove it); any
+# other file at a retired path, or under a retired directory, is the adopter's, reported "yours, kept".
+# An unmodified copy from an even older version therefore reads as kept: conservative on purpose (the
+# knowledge repo keeps its own .agents/skills/explain/SKILL.md at a path v30 shipped).
+# Generated once (P37.S8) by a throwaway script over this repo's git history: every committed
+# bootstrap_agentic_workspace.sh's embedded PAYLOADS (what the installer wrote, not the repo's own tree),
+# taking the text at the last commit that shipped the path (the trailing comment). AGENTS.md and
+# AGENTS.workspace.md are v30's "# AGENTS.md" header + CONTRACT_BODY, as v30's main.py wrote both; the
+# second executor-mode hash is v52's nested_rewrite (no renames) of the same text. The Kiro sidecar
+# (.kiro/, added and reverted inside v44) never shipped and is absent.
+# When a later version drops a shipped file (a skill's reference file too), add it here the same way:
+# the hash of its last shipped text, plus its nested_rewrite with no renames for a .claude/ file.
+RETIRED_FILES = {
+    '.agents/skills/archive-phase/SKILL.md': (30, ('f748d9ae055255eee2eef5c16b59d86219755331bdda66a9938fb5ae80d82013',)),  # 4ee5c22
+    '.agents/skills/archive-phase/agents/openai.yaml': (30, ('8a5fe61f92bfbc624864afb5907edb8b918017f99f38fab0bc7235ad09a0d2c3',)),  # 4ee5c22
+    '.agents/skills/commit/SKILL.md': (30, ('cebbc9317542e76102be4b5e9a439033f008acb817e1f4daba069e117763774b',)),  # 4ee5c22
+    '.agents/skills/commit/agents/openai.yaml': (30, ('f4447ffb0661c6e85e1ad8af155ab4df50c74acc7ddf47d592408b86548c6e2f',)),  # 4ee5c22
+    '.agents/skills/create-phase/SKILL.md': (30, ('8e9ab6847b743474ff9875ac6b6e12becda8ddeefbf62b25b571b989986fcc07',)),  # 4ee5c22
+    '.agents/skills/create-phase/agents/openai.yaml': (30, ('177306729676315872e49b4d15ffe73cc2568728a2c59b8a66db783176f6460d',)),  # 4ee5c22
+    '.agents/skills/defer-job/SKILL.md': (30, ('a13cd7220828fd312b878459f47e7c10d0d0195b8879375479773a469978bfd7',)),  # 4ee5c22
+    '.agents/skills/defer-job/agents/openai.yaml': (30, ('46b101bb9e58272aeb33e1a93b56e075b92e36b50f281a6c2260e392f88ce8db',)),  # 4ee5c22
+    '.agents/skills/deferred/SKILL.md': (30, ('e3d01f70bc9bb167d0bbd1d74005151fd8c823dbbd450696105339802f67882f',)),  # 4ee5c22
+    '.agents/skills/deferred/agents/openai.yaml': (30, ('c1aefcc49a339628ed743c1ac4f1167b6cbf50eb94e5a55b2f9bd4e79c25f239',)),  # 4ee5c22
+    '.agents/skills/design-cowork/SKILL.md': (30, ('f19cb3f2fb07307152eec95cab45c6dff29be5dc3e2508de4a34d423166785f9',)),  # 4ee5c22
+    '.agents/skills/design-cowork/agents/openai.yaml': (30, ('33ebbf01cf515f4e89699a63cbf4e6d7494a4ac022c2e46d945894d7ec13c534',)),  # 4ee5c22
+    '.agents/skills/do-next-slice/SKILL.md': (30, ('84f97c72c58bad82944d0369785d3486cb330eec37ec238b8e052a6f5de05c6b',)),  # 4ee5c22
+    '.agents/skills/do-next-slice/agents/openai.yaml': (30, ('aeff0d7fc86ede761042ea3837cfdde1fe6accf656395c446c6e0ebf84d8123a',)),  # 4ee5c22
+    '.agents/skills/do-whole-phase/SKILL.md': (30, ('e6aec0c715791ab0bbb47d8f2f124ac064df861f6f21669a572b49b93e17ef03',)),  # 4ee5c22
+    '.agents/skills/do-whole-phase/agents/openai.yaml': (30, ('482b7e274c36509c5edbf1395d470a8603038ada6be8e241465868f24d4d2774',)),  # 4ee5c22
+    '.agents/skills/doc-new-version/SKILL.md': (30, ('8c066ef299e02e8d72851c3f198a82015dd3f0f13874427f0c418236def92099',)),  # 4ee5c22
+    '.agents/skills/doc-new-version/agents/openai.yaml': (30, ('f081a68aa674117ea0c0e97e1557f6d002c09de7bc267fefef214d52a817e53c',)),  # 4ee5c22
+    '.agents/skills/explain/SKILL.md': (30, ('f6e8a16c38719f047a4d53f109af5db9f1d2ea93741a7ba35ddd39bf01a0c1e7',)),  # 4ee5c22
+    '.agents/skills/explain/agents/openai.yaml': (30, ('abbfc65f2008e8ddf99106b9258380e08a117c68f251eb3797860e2ea6e75c1f',)),  # 4ee5c22
+    '.agents/skills/parallel-phase/SKILL.md': (30, ('03f41c6bc927bba5d875e8d7c5c47ab1fee8b3937c388e97e9168cac4fd334b7',)),  # 4ee5c22
+    '.agents/skills/parallel-phase/agents/openai.yaml': (30, ('5606a3232f932e9ffa41e4e58bd8457962237c38aa4b9439922effe2b3768b2e',)),  # 4ee5c22
+    '.agents/skills/promote-deferred/SKILL.md': (30, ('a314fc511656a451e2f408c0383e0f3ec52482bc3ecf6c8aedfb25c083fba520',)),  # 4ee5c22
+    '.agents/skills/promote-deferred/agents/openai.yaml': (30, ('3567035e19a67ccf89415387d9c48fba44a384ab2ef068c9cf594a83d291bc55',)),  # 4ee5c22
+    '.agents/skills/rebuild-workflow/SKILL.md': (30, ('a2730a21fa5ba34c95b826b325a0e24430c095732c1378d9ced9a7fb62c9cf74',)),  # 4ee5c22
+    '.agents/skills/rebuild-workflow/agents/openai.yaml': (30, ('2185bbae7136a4e77b38aea2c6b061e49fda6a264f724d28fe929b2630a78faf',)),  # 4ee5c22
+    '.agents/skills/retrofit/SKILL.md': (30, ('66cc4658acd9bf8149e2f415ce7a1f82956f37c6fd9cf7bf9fee47ca8741ef72',)),  # 4ee5c22
+    '.agents/skills/retrofit/agents/openai.yaml': (30, ('18b5537ef7a138221575dad2d8d19e5a3698351d38c25ff5708e19e27e01e962',)),  # 4ee5c22
+    '.agents/skills/review-phase/SKILL.md': (30, ('d9e26409b18aecf1d8c99f116b2d9498b371351b738006bb4f49faa7ca0e4b32',)),  # 4ee5c22
+    '.agents/skills/review-phase/agents/openai.yaml': (30, ('ec764186a6f0380290058bba59e4d431434a1ca8d8bc143705b7c99329bb3fde',)),  # 4ee5c22
+    '.agents/skills/rotate-backlog/SKILL.md': (30, ('5d1433b879b7861c9b4d150541543b5bf594a7537e4939d569efccdaaa21d538',)),  # 4ee5c22
+    '.agents/skills/rotate-backlog/agents/openai.yaml': (30, ('6d0256fe50e14bebef26818397323412ab68cbe7cacc4599af1bca1a7582e2c3',)),  # 4ee5c22
+    '.agents/skills/update-workspace/SKILL.md': (30, ('4f25b084dbfd896148f240ea3c663af40848a35041ba7aaed92d7abb8a6be30e',)),  # 4ee5c22
+    '.agents/skills/update-workspace/agents/openai.yaml': (30, ('0631c41fd8e1ec98331777d3e078d1ef4fdc1ec6c6cbf07cffcf73e1e1101206',)),  # 4ee5c22
+    '.claude/agents/slice-executor-low.md': (22, ('3d798df8b1170cf3aff4bbf10fbe83e6f7d8a8721a990a8d74333b7c08c731df',)),  # 097041d
+    '.claude/agents/slice-executor.md': (6, ('d1bd0dab7c9a3d4480aa18d12d1a531ad5641b9b183cc068f48cba3803d168b3',)),  # 057ec31
+    '.claude/agents/slice-planner.md': (19, ('7c8fa4c4824f276ec5e79292826dfb58a41ed4078682175faae2e119d36c51d6',)),  # c94f6e4
+    '.claude/skills/executor-mode/SKILL.md': (52, ('382fe9e6644c15c46d49ab0b481c8cec0b6722f20816d3fca48a60ba61826d43', 'cef5b8fbf576e83fd6048ceb652e05ddcd7cbcded6a4168efb5c834f32c16970')),  # 7c874c3
+    '.codex/agents/slice-executor-high.toml': (30, ('217fcafcd0449db43fd1e25b4a0a13cc918ee2ab46d4980a8544b098ed31ec2d',)),  # 4ee5c22
+    '.codex/agents/slice-executor-low.toml': (22, ('57e24a3b80eaa8a1991b82aeb29b6447735453c08ede535cc353a86a2b78bc35',)),  # 097041d
+    '.codex/agents/slice-executor-mid.toml': (30, ('1cd71cc675b96957f227c797ae7fd75b1ae8172eef3823ba890150545e7642b0',)),  # 4ee5c22
+    '.codex/agents/slice-executor.toml': (6, ('bd800dc30642e149b54bcf7b04af954b3e19d8d9517371c84e4fb53618fadd1e',)),  # 057ec31
+    '.codex/config.toml': (30, ('789bf89992ed3a26c23fa7476e497f45682a8b76f50de6b626add3638fc94fc5',)),  # 4ee5c22
+    '.env.example': (7, ('d93203bd09384e1a44ffcd868c80966f0b8de96536bcf95e768b369b1d757750',)),  # 3104b74
+    'AGENTS.md': (30, ('7ef0f82ad8d51f08cdcd750735fd0849344b5cb739f341f77c704fcf6e5033e6',)),  # 4ee5c22
+    'AGENTS.workspace.md': (30, ('7ef0f82ad8d51f08cdcd750735fd0849344b5cb739f341f77c704fcf6e5033e6',)),  # 4ee5c22
+    'executors.toml.example': (8, ('dad1620e97404eb7d1d9f29d796a05347c3b655e567c74a9e26ac6814e923261',)),  # 8a3c8c2
+    'works/templates/result.md': (9, ('3938ceaf78a7392d62ca5a7e88ee51e132d56f30adafb06afb002361639e1dc9',)),  # 06561c4
+}
+# Retired directories, walked file by file and never flagged whole. A retired skill's directory (a
+# .claude/skills/<name>/ path above whose skill this version no longer ships) is walked the same way.
+RETIRED_DIRS = (".agents", ".codex")
 
 
-def flag_obsolete_machinery() -> None:
-    # .exists(), not .is_file(): OBSOLETE_MACHINERY carries retired directories
-    # (.agents, .codex) as well as files.
-    for rel in OBSOLETE_MACHINERY:
-        if (ROOT / rel).exists():
-            UPDATE_SUMMARY["stale"].append(f"{SHOWN_PREFIX}{rel}")
+def _retired_entry(key: str):
+    """(stale reason, kept reason, hashes) for a RETIRED_FILES path, else None."""
+    if key not in RETIRED_FILES:
+        return None
+    version, hashes = RETIRED_FILES[key]
+    return (f"unchanged since v{version}", f"differs from what v{version} shipped", hashes)
 
 
-def flag_stale_skills() -> None:
-    """Surface workspace-managed skill dirs that this version no longer ships, so
-    the operator can remove them. A dir is "ours" only by our marker (a shipped
-    SKILL.md sets `disable-model-invocation: true`) — so the operator's own skills
-    are not mislabeled. Never deletes.
-
-    Nested: the host's .claude/skills holds the TEAM's skills, so a marker heuristic could mislabel
-    them; only the workspace's own copies (the marker's `installed` record) that this version no
-    longer ships are stale -- nested_plan() lists them, and our installed or renamed names never are."""
-    if NESTED:
-        UPDATE_SUMMARY["stale"].extend(NESTED_PLAN["stale"])
-        return
-    expected = set(CLAUDE_SKILLS)
-    base = ".claude/skills"
-    d = ROOT / base
-    if not d.is_dir():
-        return
-    for sub in sorted(d.iterdir()):
-        if not sub.is_dir() or sub.name in expected:
-            continue
+def _classify(p: Path, shown: str, entry, unknown: str) -> bool:
+    """Record one present file as stale (ours, unchanged) or kept (yours). True when stale."""
+    digest = None
+    if entry and not p.is_symlink():
         try:
-            head = (sub / "SKILL.md").read_text(encoding="utf-8")[:400]
+            digest = hashlib.sha256(p.read_bytes()).hexdigest()
         except OSError:
+            pass
+    if entry and digest in entry[2]:
+        UPDATE_SUMMARY["stale"].append((shown, entry[0]))
+        return True
+    UPDATE_SUMMARY["kept"].append((shown, entry[1] if entry else unknown))
+    return False
+
+
+def _walk_retired_dir(base: Path, rel: str, entry_of, guard=None) -> None:
+    """Classify every file under one retired directory (symlinks are listed, never followed); note the
+    directory removable once its files are gone when every one of them is stale. `guard` (nested) is
+    the directory's self-hiding .gitignore as (path, entry), classified last: ours only while every
+    other file beside it is stale too, since it hides them."""
+    d = base / rel
+    if not d.is_dir() or d.is_symlink():
+        return
+    found = []
+    for top, dirs, files in os.walk(d):
+        found += [Path(top) / n for n in dirs if (Path(top) / n).is_symlink()] + [Path(top) / n for n in files]
+    all_stale, guarded = bool(found), None
+    for f in sorted(found):
+        inner = f.relative_to(base).as_posix()
+        if guard and inner == guard[0]:
+            guarded = f
             continue
-        if "disable-model-invocation: true" in head:
-            UPDATE_SUMMARY["stale"].append(f"{base}/{sub.name}")
+        all_stale = _classify(f, inner, entry_of(inner), "not a file the workspace shipped") and all_stale
+    if guarded is not None:
+        if all_stale:
+            all_stale = _classify(guarded, guard[0], guard[1], "")
+        else:
+            UPDATE_SUMMARY["kept"].append((guard[0], "it hides the files kept beside it"))
+    if all_stale:
+        UPDATE_SUMMARY["notes"].append(f"{rel}/ holds only stale files: remove the emptied directory once they are gone")
 
 
-# Files our own skill directories shipped in an earlier version and this one retired, as emit paths
-# under the shipped skill name (".claude/skills/<skill>/reference/<topic>.md"; a nested rename is
-# applied when looking). --update flags exactly these as stale and never deletes them. Any other
-# file in one of our skill directories that this version does not ship is the operator's: it is
-# reported "yours, kept", never flagged. Empty in v61, the first version that ships reference files.
-RETIRED_SKILL_FILES: list = []
+def flag_retired_files() -> None:
+    """At-root: classify each present file at a retired path and every file under a retired directory,
+    by content (RETIRED_FILES). Never deletes, and never flags a directory.
+
+    Nested: no nested install ever had these paths; the workspace's own copies its marker recorded and
+    this version no longer ships (nested_plan()'s `stale`: skill directories and agent files) are
+    classified file by file the same way, a skill directory's self-hiding .gitignore counting as ours
+    while it still holds what we wrote."""
+    if NESTED:
+        hide = ("ours: the directory's self-hiding .gitignore", "differs from the .gitignore the workspace wrote",
+                (hashlib.sha256(NESTED_SKILL_GITIGNORE.encode("utf-8")).hexdigest(),))
+        for rel in NESTED_PLAN["stale"]:
+            if rel.startswith(".claude/agents/"):
+                if os.path.lexists(HOST / rel):
+                    _classify(HOST / rel, rel, _retired_entry(rel), "not a file the workspace shipped")
+            else:
+                _walk_retired_dir(HOST, rel, _retired_entry, guard=(f"{rel}/.gitignore", hide))
+        return
+    dirs = list(RETIRED_DIRS) + sorted({"/".join(k.split("/")[:3]) for k in RETIRED_FILES
+                                        if k.startswith(".claude/skills/") and k.split("/")[2] not in CLAUDE_SKILLS})
+    for rel in dirs:
+        _walk_retired_dir(ROOT, rel, _retired_entry)
+    for key in sorted(RETIRED_FILES):
+        p = ROOT / key
+        if not any(key.startswith(d + "/") for d in dirs) and os.path.lexists(p) and not p.is_dir():
+            _classify(p, key, _retired_entry(key), "")
 
 
 def flag_skill_dir_files() -> None:
     """Per file, never per directory: in each of our installed skill directories, a file the payload
-    does not ship is stale when RETIRED_SKILL_FILES names it, and otherwise the operator's own."""
+    does not ship is stale when RETIRED_FILES holds its unchanged text, and otherwise the operator's own."""
     renames = NESTED_PLAN["renames"]["skills"] if NESTED else {}
     base = HOST if NESTED else ROOT
     for name in CLAUDE_SKILLS:
@@ -1582,13 +1692,32 @@ def flag_skill_dir_files() -> None:
             shipped.add(".gitignore")  # the self-hiding file nested_plan() writes into each dir
         for f in sorted(p for p in d.rglob("*") if p.is_file()):
             inner = f.relative_to(d).as_posix()
-            if inner in shipped:
-                continue
-            shown = f".claude/skills/{installed}/{inner}"
-            if f".claude/skills/{name}/{inner}" in RETIRED_SKILL_FILES:
-                UPDATE_SUMMARY["stale"].append(shown)
-            else:
-                UPDATE_SUMMARY["kept"].append(shown)
+            if inner not in shipped:
+                _classify(f, f".claude/skills/{installed}/{inner}", _retired_entry(f".claude/skills/{name}/{inner}"),
+                          "not shipped by this version")
+
+
+def flag_retired_intents() -> None:
+    """Read-only: each active phase that is not done whose intent.md names a retired mechanism
+    (RETIRED_MECHANISMS) gets one line, for the agent to re-confirm that intent with the operator."""
+    phases = []
+    for pj in (ROOT / "works/phases/active").glob("*/phase.json"):
+        try:
+            d = json.loads(pj.read_text(encoding="utf-8"))
+            text = (pj.parent / "intent.md").read_text(encoding="utf-8")
+        except (OSError, ValueError):
+            continue
+        archive = d.get("archive") if isinstance(d, dict) else None
+        if not isinstance(d, dict) or d.get("status") == "done" or (isinstance(archive, dict) and archive.get("archived")):
+            continue
+        pid = str(d.get("id") or pj.parent.name)
+        num = re.fullmatch(r"P(\d+)", pid)
+        phases.append(((0, int(num.group(1)), "") if num else (1, 0, pid), pid, text))
+    for _, pid, text in sorted(phases, key=lambda t: t[0]):
+        for mech in RETIRED_MECHANISMS:
+            if re.search(mech["pattern"], text):
+                UPDATE_SUMMARY["intents"].append(f"{pid} intent.md names {mech['name']} (retired v{mech['retired']}: "
+                                                 f"{mech['replacement']}) — re-confirm with the operator")
 
 
 def print_change_list() -> None:
@@ -1604,26 +1733,36 @@ def print_change_list() -> None:
         print(f"  merged (additive): {', '.join(SHOWN_PREFIX + m for m in mrg)}")
     print(f"  preserved (your work + docs, untouched): {len(UPDATE_SUMMARY['preserved'])} file(s)")
     print(f"  unchanged: {len(UPDATE_SUMMARY['unchanged'])} file(s)")
-    if UPDATE_SUMMARY["stale"]:
-        print(f"  stale workspace skills/machinery dropped upstream (remove manually?): {', '.join(UPDATE_SUMMARY['stale'])}")
-    if UPDATE_SUMMARY["kept"]:
-        print(f"  yours, kept (in the workspace's skill directories, not shipped by this version): {', '.join(UPDATE_SUMMARY['kept'])}")
-    if not NESTED:  # nested: print_nested_banner lists them under the host side, where settings.local.json lives
-        print_settings_changes()
+    if not NESTED:  # nested: print_nested_banner prints the report under the host side, where its paths live
+        print_update_report()
 
 
-def print_settings_changes() -> None:
-    """The settings lines a merge removed or changed (v61; S8 folds them into the unified report)."""
+def print_update_report() -> None:
+    """The one update report (v61), printed by --update, --update --dry-run, the nested banner's host
+    side and the retrofit summary: the settings entries the run removed and the values it changed, the
+    files it flags stale (ours, unchanged: remove these files), the files it leaves as yours, and the
+    active intents naming a retired mechanism. Every path on its own line; no list is ever truncated."""
     for line in SETTINGS_CHANGES["removed"]:
         print(f"  removed: {line}")
     for line in SETTINGS_CHANGES["changed"]:
         print(f"  changed: {line}")
+    for key, title in (("stale", "stale (ours, unchanged — remove these files)"), ("kept", "yours, kept")):
+        if UPDATE_SUMMARY[key]:
+            print(f"  {title}: {len(UPDATE_SUMMARY[key])}")
+            for path, why in UPDATE_SUMMARY[key]:
+                print(f"    - {path}  ({why})")
+    for note in UPDATE_SUMMARY["notes"]:
+        print(f"  note: {note}")
+    if UPDATE_SUMMARY["intents"]:
+        print(f"  intents naming a retired mechanism: {len(UPDATE_SUMMARY['intents'])}")
+        for line in UPDATE_SUMMARY["intents"]:
+            print(f"    - {line}")
 
 
 if UPDATE:
-    flag_stale_skills()
+    flag_retired_files()
     flag_skill_dir_files()
-    flag_obsolete_machinery()
+    flag_retired_intents()
 
 if DRY_RUN:
     pass  # previewed only — no rebuild/validate, no marker
@@ -1669,7 +1808,7 @@ elif RETROFIT:
     print(f"  skipped (kept yours): {len(skipped)} file(s)")
     if merged:
         print(f"  merged (additive): {', '.join(merged)}")
-    print_settings_changes()
+    print_update_report()
     print(f"  docs subsystem: {'installed' if INSTALL_DOCS else 'skipped (target already has a docs/ system)'}")
     print("  works subsystem: installed (no phases yet — the first phase is created by the operator)")
     if not INSTALL_DOCS:

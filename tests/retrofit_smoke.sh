@@ -1547,47 +1547,87 @@ rm -rf "$F/.claude/skills/do-next-slice/reference" && rm -f "$F/.claude/skills/d
 printf 'my notes\n' > "$F/.claude/skills/design-cowork/notes.md"
 mkdir -p "$F/.claude/skills/executor-mode" && printf -- '---\nname: executor-mode\ndisable-model-invocation: true\n---\nstale v45 skill\n' > "$F/.claude/skills/executor-mode/SKILL.md"
 printf '%s\n' '# stale pre-v31 visual skill' > "$F/.claude/skills/design-cowork/SKILL.md"
-# Seed the pre-v31 Codex shape so the v31 migration flagging has something to find.
-mkdir -p "$F/.agents/skills/do-next-slice" "$F/.codex/agents"
+# v61 (P37.S8): ownership by content. A v30-shaped tree: the commit skill exactly as v30 shipped it (ours,
+# unchanged), the adopter's own explain skill at a path v30 shipped, a shipped file they modified, their
+# own file under .codex/, and their own AGENTS.md / a stranded sidecar that is not v30's text.
+mkdir -p "$F/.agents/skills/commit" "$F/.agents/skills/explain" "$F/.agents/skills/do-next-slice" "$F/.codex/agents"
+v30_commit_skill() { cat <<'V30'
+---
+name: commit
+description: Group pending changes by topic into focused conventional commits.
+---
+
+# commit
+
+Inspect pending changes, group them by logical topic, and create one focused commit per group using `type(scope): summary` (imperative, no trailing period).
+
+Never push, force-push, use `git add -A`, or skip hooks unless explicitly asked.
+V30
+}
+v30_commit_skill > "$F/.agents/skills/commit/SKILL.md"
+printf -- '---\nname: explain\n---\nthe knowledge repo keeps its own portable explain here\n' > "$F/.agents/skills/explain/SKILL.md"
 printf 'stale\n' > "$F/.agents/skills/do-next-slice/SKILL.md"
-printf 'stale\n' > "$F/.codex/agents/slice-executor.toml"
-printf 'stale\n' > "$F/.codex/agents/slice-executor-low.toml"
+printf 'model = "mine"\n' > "$F/.codex/agents/mine.toml"
 printf '# their own contract\n' > "$F/AGENTS.md"
 printf '# stranded retrofit sidecar\n' > "$F/AGENTS.workspace.md"
+# Intents: an active phase naming a retired mechanism is flagged, a done one is not (dry-run only:
+# these hand-made phase.json files never reach validate).
+mkdir -p "$F/works/phases/active/P90" "$F/works/phases/active/P91"
+printf '{"id": "P90", "status": "in_progress"}\n' > "$F/works/phases/active/P90/phase.json"
+printf '{"id": "P91", "status": "done"}\n' > "$F/works/phases/active/P91/phase.json"
+printf '# Intent\n\nRun the compact-gate before every slice.\n' | tee "$F/works/phases/active/P90/intent.md" > "$F/works/phases/active/P91/intent.md"
+dry_out=$(sh "$BOOT" "$F" --update --dry-run 2>&1)
+printf '%s\n' "$dry_out" | grep -qx '    - P90 intent\.md names compact-gate (retired v61: pure compaction and the resume card, compact-resume / next --card) — re-confirm with the operator' \
+  && ! printf '%s\n' "$dry_out" | grep -q 'P91 intent\.md' && grep -q 'Run the compact-gate' "$F/works/phases/active/P90/intent.md" \
+  && ok "--update flags an active phase whose intent.md names compact-gate (read-only), never a done one" || bad "--update intent flagging wrong -- $dry_out"
+rm -r "$F/works/phases/active/P90" "$F/works/phases/active/P91"
 update_out=$(sh "$BOOT" "$F" --update 2>&1); update_rc=$?
+update_stale=$(printf '%s\n' "$update_out" | sed -n '/^  stale (ours, unchanged/,/^  [^ ]/p')
 [ "$update_rc" -eq 0 ] && grep -q 'fable' "$F/executors.toml" \
   && ok "--update preserves an edited executors.toml (seed-once)" || bad "--update clobbered or failed on an edited executors.toml"
 [ -f "$F/.claude/skills/do-whole-phase/SKILL.md" ] \
   && ok "--update restores a deleted skill package" || bad "--update did not restore the deleted skill package"
-printf '%s\n' "$update_out" | grep -q 'stale workspace.*\.claude/skills/do-whole-phase' \
+printf '%s\n' "$update_out" | grep -q '^    - \.claude/skills/do-whole-phase' \
   && bad "--update incorrectly flags do-whole-phase as stale" || ok "--update does not flag do-whole-phase as stale"
 diff -q "$SRC/claude/skills/design-cowork/SKILL.md" "$F/.claude/skills/design-cowork/SKILL.md" >/dev/null \
   && ok "--update refreshes a stale design-cowork skill body" || bad "--update did not refresh design-cowork"
-printf '%s\n' "$update_out" | grep -q 'stale workspace.*\.claude/skills/design-cowork' \
+printf '%s\n' "$update_out" | grep -q '^    - \.claude/skills/design-cowork/SKILL\.md' \
   && bad "--update incorrectly flags current design-cowork as stale" || ok "--update keeps design-cowork in the current inventory"
 skill_tree_ok "$F/.claude/skills" exact && printf '%s\n' "$update_out" | grep -qx '    + \.claude/skills/do-next-slice/reference/dispatch\.md' \
   && printf '%s\n' "$update_out" | grep -qx '    + \.claude/skills/design-cowork/reference/shape\.md' \
   && ok "--update on a v60-shaped install adds the reference files, each listed as added" || bad "--update did not add the reference files to a v60-shaped install -- $update_out"
-printf '%s\n' "$update_out" | grep -q "^  yours, kept (in the workspace's skill directories, not shipped by this version): \.claude/skills/design-cowork/notes\.md$" \
-  && [ -f "$F/.claude/skills/design-cowork/notes.md" ] && ! printf '%s\n' "$update_out" | grep 'stale workspace' | grep -q 'notes\.md' \
+printf '%s\n' "$update_out" | grep -qx '    - \.claude/skills/design-cowork/notes\.md  (not shipped by this version)' \
+  && [ -f "$F/.claude/skills/design-cowork/notes.md" ] && ! printf '%s\n' "$update_stale" | grep -q 'notes\.md' \
   && ok "--update reports an unshipped file in our skill dir as yours, kept (per file, never stale, never deleted)" || bad "--update mis-reported an unshipped file in a skill dir -- $update_out"
 rm -f "$F/.claude/skills/design-cowork/notes.md"
-# v31 migration: each retired Codex path is named exactly once (the .codex directory
-# entry subsumes the two old per-file ones) and nothing is ever deleted.
-stale_line=$(printf '%s\n' "$update_out" | grep 'stale workspace skills/machinery')
-stale_bad=""
-for pat in '\.agents' '\.codex' 'AGENTS\.md' 'AGENTS\.workspace\.md'; do
-  n=$(printf '%s\n' "$stale_line" | grep -o "$pat" | wc -l | tr -d ' ')
-  [ "$n" = "1" ] || stale_bad="$stale_bad $pat=$n"
+report_lists() { printf '%s\n' "$1" | sed -n '/^  stale (ours, unchanged/,$p' | grep -E '^  (stale|yours|note:)|^    - ' | grep -v '^    - P[0-9]'; }
+if [ "$(printf '%s\n' "$update_stale" | grep -c '^    - ')" -eq 1 ] \
+  && printf '%s\n' "$update_stale" | grep -qx '    - \.agents/skills/commit/SKILL\.md  (unchanged since v30)'; then
+  ok "--update lists only the unchanged v30 file as stale (ours, by content)"
+else bad "--update stale list wrong -- $update_stale"; fi
+kept_bad=""
+for k in '\.agents/skills/explain/SKILL\.md  (differs from what v30 shipped)' '\.agents/skills/do-next-slice/SKILL\.md  (differs from what v30 shipped)' \
+         '\.codex/agents/mine\.toml  (not a file the workspace shipped)' 'AGENTS\.md  (differs from what v30 shipped)' \
+         'AGENTS\.workspace\.md  (differs from what v30 shipped)' '\.claude/skills/executor-mode/SKILL\.md  (differs from what v52 shipped)'; do
+  printf '%s\n' "$update_out" | grep -qx "    - $k" || kept_bad="$kept_bad [$k]"
 done
-[ -z "$stale_bad" ] \
-  && ok "--update flags each pre-v31 Codex path as stale exactly once" \
-  || bad "v31 stale-machinery line is wrong ($stale_bad) -- $stale_line"
-printf '%s\n' "$stale_line" | grep -q '\.claude/skills/executor-mode' && [ -f "$F/.claude/skills/executor-mode/SKILL.md" ] \
-  && ok "--update flags the retired executor-mode skill dir as stale and never deletes it" || bad "--update did not flag the retired executor-mode skill: $stale_line"
-[ -f "$F/.agents/skills/do-next-slice/SKILL.md" ] && [ -f "$F/.codex/agents/slice-executor.toml" ] \
-  && [ -f "$F/AGENTS.md" ] && [ -f "$F/AGENTS.workspace.md" ] \
-  && ok "--update never deletes the flagged pre-v31 machinery" || bad "--update deleted machinery it only flags"
+[ -z "$kept_bad" ] && ok "--update reports the adopter's explain, a modified shipped file, their .codex file and AGENTS.md as yours, kept" \
+  || bad "--update yours-kept list wrong:$kept_bad -- $update_out"
+if python3 - "$F" "$update_out" <<'PY'
+import os, re, sys
+listed = re.findall(r"^    - (\S+)  \(", sys.argv[2], re.M)
+assert listed and not [p for p in listed if os.path.isdir(os.path.join(sys.argv[1], p))], listed
+assert not re.search(r"^    - \.agents  |^    - \.codex  |^    - \.claude/skills/executor-mode  ", sys.argv[2], re.M)
+PY
+then ok "--update never flags or lists a directory (.agents, .codex, a retired skill dir): every listed path is a file"
+else bad "--update listed a directory -- $update_out"; fi
+! printf '%s\n' "$update_out" | grep -q '^  note: \.agents/' \
+  && ok "--update notes no directory as removable while it holds a file that is yours" || bad "--update noted .agents removable beside a kept file"
+[ -n "$(report_lists "$update_out")" ] && [ "$(report_lists "$dry_out")" = "$(report_lists "$update_out")" ] \
+  && ok "--update --dry-run prints the same stale and kept lists" || bad "--dry-run lists differ -- $(report_lists "$dry_out") /// $(report_lists "$update_out")"
+[ -f "$F/.agents/skills/commit/SKILL.md" ] && [ -f "$F/.agents/skills/explain/SKILL.md" ] && [ -f "$F/.codex/agents/mine.toml" ] \
+  && [ -f "$F/AGENTS.md" ] && [ -f "$F/AGENTS.workspace.md" ] && [ -f "$F/.claude/skills/executor-mode/SKILL.md" ] \
+  && ok "--update never deletes a file it lists (stale or kept)" || bad "--update deleted a file it only lists"
 rm -rf "$F/.agents" "$F/.codex" "$F/AGENTS.md" "$F/AGENTS.workspace.md"
 printf '%s\n' "$update_out" | grep -q 'python3 scripts/workflow.py sync-agents' \
   && ok "--update instructs the adopter to re-run sync-agents" || bad "--update omitted the sync-agents migration step"
@@ -1621,7 +1661,9 @@ sh "$BOOT" "$F" --update >/dev/null 2>&1
 # v61: a v60-shaped settings.json (our compact-gate beside the adopter's own PreCompact handler, the
 # 500000 window v57-v60 shipped) loses exactly our handler, keeps theirs, moves to 300000 and lists both.
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["PreCompact"]=[{"matcher":"auto","hooks":[{"type":"command","command":"echo foreign"},{"type":"command","command":"cd \"$CLAUDE_PROJECT_DIR\" && python3 scripts/workflow.py compact-gate || true","timeout":15}]},{"matcher":"manual","hooks":[{"type":"command","command":"cd \"$CLAUDE_PROJECT_DIR\" && python3 scripts/workflow.py compact-gate || true"}]}]; d["autoCompactWindow"]=500000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$F/.claude/settings.json"
-upd_out=$(sh "$BOOT" "$F" --update 2>&1)
+# ... and the same one report lists the stale v30 file beside them, noting its directory removable.
+mkdir -p "$F/.agents/skills/commit" && v30_commit_skill > "$F/.agents/skills/commit/SKILL.md"
+upd_out=$(sh "$BOOT" "$F" --update 2>&1); rm -r "$F/.agents"
 if python3 - "$F/.claude/settings.json" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
@@ -1632,7 +1674,9 @@ assert d["autoCompactWindow"] == 300000, d
 PY
 then printf '%s\n' "$upd_out" | grep -q '^  removed: .claude/settings.json hooks.PreCompact compact-gate (retired in v61)$' \
   && printf '%s\n' "$upd_out" | grep -q '^  changed: .claude/settings.json autoCompactWindow 500000 -> 300000 (the v61 default; set it back if you chose 500000)$' \
-  && ok "--update on a v60-shaped settings.json removes only our compact-gate handlers (the group they emptied pruned), keeps the adopter's PreCompact hook, sets 300000 and lists both" \
+  && printf '%s\n' "$upd_out" | grep -qx '    - \.agents/skills/commit/SKILL\.md  (unchanged since v30)' \
+  && printf '%s\n' "$upd_out" | grep -qx '  note: \.agents/ holds only stale files: remove the emptied directory once they are gone' \
+  && ok "--update on a v60-shaped settings.json removes only our compact-gate handlers (the group they emptied pruned), keeps the adopter's PreCompact hook, sets 300000 and lists both, in one report with the stale file and its directory note" \
   || bad "--update did not report the settings changes -- $upd_out"
 else bad "--update did not retire our PreCompact handler cleanly -- $upd_out"; fi
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["autoCompactWindow"]=700000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$F/.claude/settings.json"

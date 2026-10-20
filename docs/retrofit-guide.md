@@ -282,11 +282,14 @@ is real, the first slice that claims real-browser verification stops `pending`
 and asks you for it, which is the intended behaviour.
 
 **Coming from a pre-v31 workspace.** Workspace v31 dropped Codex support — this
-workspace ships Claude Code only. An update flags `.agents`, `.codex`, `AGENTS.md`,
-and `AGENTS.workspace.md` as stale machinery in its change-list; as always it
-**never deletes**, so remove them by hand once you're satisfied. An `AGENTS.md`
-your project maintains for other tools is yours to keep — nothing here writes it
-any more. One thing does hard-fail: a leftover `[codex.*]` table in
+workspace ships Claude Code only. An update checks every file under `.agents/`
+and `.codex/`, `AGENTS.md` and `AGENTS.workspace.md` **by content** (since v61):
+a file still holding exactly what v30 shipped is listed as stale, one path per
+line, and anything else (your own skills under `.agents/skills/`, a file you
+edited, an `AGENTS.md` your project maintains for other tools) is listed as
+**yours, kept**. It never flags a directory and, as always, **never deletes**:
+remove the listed stale files by hand, then a directory once it is empty.
+Nothing here writes those paths any more. One thing does hard-fail: a leftover `[codex.*]` table in
 `executors.toml` makes `sync-agents` abort with
 `executors.toml line <n>: Codex support was removed in workspace v31 — this
 workspace ships Claude Code only, so drop this section` (`validate` reports the
