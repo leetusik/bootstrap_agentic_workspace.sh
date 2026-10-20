@@ -242,15 +242,13 @@ REVIEW_VERDICTS = {"pass", "changes_requested", "blocked"}
 # on one so the recorded rating cannot contradict the routing; if the two ever disagree, the kind
 # wins.
 SLICE_KINDS = {"implementation", "review", "decomposition", "research", "fix", "docs", "qa", "co-work"}
-# Phase-notebook budget (v35; re-shaped in v39): ONE generous byte cap, ~100k tokens of
-# text. The v35 pair (200 lines / 16 KB) was measured in P21 and the line half never bound
-# while the byte half squeezed four slices into compressing unrelated notes -- so the line
-# ceiling is gone and the byte ceiling is a soft sanity cap, not a working constraint: a
-# notebook should stop compressing to fit and simply carry what the next slice needs.
-# Still a WARNING, never an error: a hard cap invites truncating exactly the notes that
-# matter, so the fix is always to rewrite (state stays in phase.md, detail moves to the
-# slice's result.md), never to delete under duress.
-PHASE_MD_BUDGET = 400 * 1024
+# Phase-notebook budget (v35; an index since v61): phase.md is read and written ONE SECTION at a
+# time (`phase-section`), so it is an index of what the next slice needs, not a store. Long
+# material -- a contract, a signed-design summary -- lives in `topics/<slug>.md` beside it,
+# linked by one line. 40 KB is a soft cap: still a WARNING, never an error, because a hard cap
+# invites truncating exactly the notes that matter; the warning names the biggest sections
+# so the fix is a move to `topics/` or to the slice's `result.md`, never a deletion.
+PHASE_MD_BUDGET = 40 * 1024
 # Execution streams (workspace v24; opt-in again since v43). A phase.json MAY carry an
 # optional `execution` block. `mode: "parallel"` = the phase runs on its own branch +
 # worktree, stamped by `parallel-start` -- which a phase gets ONLY when the operator asks
@@ -2486,6 +2484,174 @@ def phase_md_size(pdir: Path) -> tuple:
     return (len(text.splitlines()), len(text.encode("utf-8")))
 
 
+def notebook_sections_hint(pdir: Path, limit: int = 3) -> str:
+    """`biggest sections: ## A 12345 B, ...; move long material to topics/<slug>.md` for a notebook
+    that is over budget, or "" when it cannot be read. Shared by `validate` and `finish-slice`."""
+    path = pdir / "phase.md"
+    if not path.exists():
+        return ""
+    sections = sorted(h2_sections(path.read_text(encoding="utf-8")), key=lambda item: -item[1])[:limit]
+    if not sections:
+        return ""
+    named = ", ".join(f"{heading} {size} B" for heading, size in sections)
+    return f"biggest sections: {named}; move long material (contracts, signed-design summaries) to topics/<slug>.md, linked by one line, or to the slice's result.md"
+
+
+def h2_spans(lines: list) -> list:
+    """`(heading text, first line, end line)` for every `## ` section of a split notebook; the same
+    fence-aware boundaries as `h2_sections`, in line numbers so a section can be spliced in place."""
+    fenced, starts = False, []
+    for i, line in enumerate(lines):
+        if line.startswith("```") or line.startswith("~~~"):
+            fenced = not fenced
+        elif not fenced and line.startswith("## "):
+            starts.append(i)
+    return [(lines[i][3:].strip(), i, starts[j + 1] if j + 1 < len(starts) else len(lines)) for j, i in enumerate(starts)]
+
+
+PHASE_SECTION_APPEND_ONLY = {"doc impact": "--append", "operator questions": "--append (or --resolve OQ<n> --pointer <ref>)"}
+OQ_ENTRY = re.compile(r"^- \*\*OQ(\d+)\b")
+OQ_PARTS = re.compile(r"^- \*\*OQ\d+[^*]*\*\*:?\s*(.*)$")
+
+
+def _phase_section_body(args: argparse.Namespace) -> str:
+    """The text for --replace / --append: `--file`, else stdin."""
+    if args.file:
+        try:
+            body = Path(args.file).read_text(encoding="utf-8")
+        except OSError as exc:
+            raise SystemExit(f"cannot read --file {args.file}: {exc}")
+    else:
+        body = sys.stdin.read()
+    return body
+
+
+def _clean_section_body(body: str, heading: str) -> list:
+    """The body as lines. A `## ` heading line inside it is refused (it would split the section),
+    except the section's own heading as a first line, which is dropped."""
+    lines = body.strip("\n").split("\n") if body.strip() else []
+    if lines and lines[0].strip().lower() == f"## {heading}".lower():
+        lines = lines[1:]
+        while lines and not lines[0].strip():
+            lines = lines[1:]
+    if not lines:
+        raise SystemExit("empty text: nothing to write")
+    if h2_spans(lines):
+        raise SystemExit("the text contains a `## ` heading line, which would split the section; use deeper headings (### ) or write the other section with its own call")
+    return lines
+
+
+def phase_section(args: argparse.Namespace) -> None:
+    """Read or write ONE `## ` section of a phase's phase.md (v61): the notebook is an index, so a
+    reader prints a section and a writer replaces or appends to one, never the whole file.
+
+    No name prints the index (a line per heading with its bytes, then the total). `--replace`
+    keeps the heading and every other byte of the file; the generated `Slices` section and the
+    two append-only sections refuse it and name the right flag. `--resolve OQ<n> --pointer <ref>`
+    collapses one Operator Questions entry to a single resolved line (entries are never deleted).
+    A write happens only when the text changes; an archived phase is read-only.
+    """
+    pdir, archived = _find_phase_dir(args.phase)
+    path = pdir / "phase.md"
+    if not path.exists():
+        raise SystemExit(f"phase {args.phase} has no phase.md")
+    text = path.read_text(encoding="utf-8")
+    lines = text.split("\n")
+    spans = h2_spans(lines)
+    name = " ".join(args.name).strip().lstrip("#").strip() if args.name else ""
+    modes = [flag for flag, on in (("--replace", args.replace), ("--append", args.append), ("--resolve", bool(args.resolve))) if on]
+    if len(modes) > 1:
+        raise SystemExit(f"choose one of {', '.join(modes)}")
+    headings = ", ".join(f"`{h}`" for h, _, _ in spans)
+
+    def find(wanted: str):
+        for heading, i, e in spans:
+            if heading.lower() == wanted.lower():
+                return heading, i, e
+        print(f"unknown section: {wanted!r}; the headings are {headings}", file=sys.stderr)
+        raise SystemExit(1)
+
+    if not modes:
+        if not name:
+            sizes = h2_sections(text)
+            for heading, size in sizes:
+                print(f"{size:>8}  {heading}")
+            print(f"{len(text.encode('utf-8')):>8}  total (budget {PHASE_MD_BUDGET})")
+            return
+        _, i, e = find(name)
+        sec = lines[i:e]
+        while sec and not sec[-1].strip():
+            sec.pop()
+        print("\n".join(sec))
+        return
+    if archived:
+        raise SystemExit(f"phase {args.phase} is archived; its notebook is read-only")
+    if args.resolve:
+        if name and name.lower() != "operator questions":
+            raise SystemExit("--resolve works on `Operator Questions` only; omit the section name")
+        if not args.pointer:
+            raise SystemExit("--resolve needs --pointer <ref> (where the answer landed: a Decisions line, a deferred job, a slice)")
+        heading, i, e = find("Operator Questions")
+        want = re.fullmatch(r"OQ(\d+)", args.resolve.strip(), re.I)
+        if not want:
+            raise SystemExit(f"--resolve takes OQ<n>, got {args.resolve!r}")
+        n = want.group(1)
+        entry = None
+        for k in range(i + 1, e):
+            m = OQ_ENTRY.match(lines[k])
+            if m and m.group(1) == n:
+                entry = k
+                break
+        if entry is None:
+            have = ", ".join(f"OQ{OQ_ENTRY.match(ln).group(1)}" for ln in lines[i + 1:e] if OQ_ENTRY.match(ln)) or "none"
+            raise SystemExit(f"no Operator Questions entry OQ{n}; entries: {have}")
+        if re.match(r"^- \*\*OQ\d+\*\* \(resolved", lines[entry]):
+            raise SystemExit(f"OQ{n} is already resolved")
+        end = entry + 1
+        while end < e and not lines[end].startswith("- "):
+            end += 1
+        block = lines[entry:end]
+        while len(block) > 1 and not block[-1].strip():  # blank separators stay where they were
+            block.pop()
+            end -= 1
+        parts = OQ_PARTS.match(block[0])
+        question = (parts.group(1).strip() if parts else "")
+        if not question:
+            question = next((ln.strip() for ln in block[1:] if ln.strip()), "")
+        if len(question) > 160:
+            question = question[:157].rstrip() + "..."
+        lines[entry:end] = [f"- **OQ{n}** (resolved \u2192 {args.pointer}): {question}"]
+        updated, label = "\n".join(lines), f"OQ{n}"
+        old_size = len("\n".join(block).encode("utf-8"))
+        new_size = len(lines[entry].encode("utf-8"))
+    else:
+        if not name:
+            raise SystemExit(f"{modes[0]} needs a section name; the headings are {headings}")
+        heading, i, e = find(name)
+        key = heading.lower()
+        if key == "slices":
+            raise SystemExit("`Slices` is generated from each slice.json by `rebuild`; never write it")
+        if args.replace and key in PHASE_SECTION_APPEND_ONLY:
+            raise SystemExit(f"`{heading}` is append-only: use {PHASE_SECTION_APPEND_ONLY[key]}, never --replace")
+        body = _clean_section_body(_phase_section_body(args), heading)
+        old_section = lines[i:e]
+        if args.replace:
+            new_section = [lines[i], ""] + body + [""]
+        else:
+            new_section = list(old_section)
+            while new_section and not new_section[-1].strip():
+                new_section.pop()
+            new_section += body + [""]
+        lines[i:e] = new_section
+        updated, label = "\n".join(lines), heading
+        old_size = len("\n".join(old_section).encode("utf-8"))
+        new_size = len("\n".join(new_section).encode("utf-8"))
+    if updated != text:
+        write_text(path, updated)
+    verb = "replaced" if args.replace else "appended" if args.append else "resolved"
+    print(f"{verb}={label} bytes={old_size}->{new_size} phase_md={len(updated.encode('utf-8'))}")
+
+
 def rebuild_index_and_state() -> None:
     phases = all_active_phases()
     # Selection (pointer + operator halt) is scoped to this checkout's stream; the
@@ -2762,7 +2928,7 @@ def validate() -> int:
         notebook = ACTIVE / p["id"] / "phase.md"
         lines_n, bytes_n = phase_md_size(notebook.parent)
         if p["status"] != "done" and bytes_n > PHASE_MD_BUDGET:
-            warnings.append(f"phase {p['id']}: phase.md is {lines_n} lines / {bytes_n} bytes, over the notebook budget of {PHASE_MD_BUDGET} bytes; rewrite it under budget (state to phase.md, detail to the slice's result.md)")
+            warnings.append(f"phase {p['id']}: phase.md is {lines_n} lines / {bytes_n} bytes, over the notebook budget of {PHASE_MD_BUDGET} bytes; {notebook_sections_hint(notebook.parent)}")
         # Heading-line check, not a substring search: notebooks legitimately quote both
         # spellings in prose (this very rule, for one).
         if notebook.exists() and any(re.match(r"## Doc Impact\b", ln) for ln in notebook.read_text(encoding="utf-8").split("\n")):
@@ -2924,7 +3090,7 @@ _Generated by `python3 scripts/workflow.py rebuild` from each slice's `slice.jso
 
 ## Decisions
 
-_Durable cross-slice decisions. Replace a superseded line; never stack versions._
+_Durable cross-slice decisions, one line each. Replace a superseded line; never stack versions. Contracts and signed-design summaries go to `topics/<slug>.md` beside this file, linked by one line._
 
 ## Doc impact
 
@@ -2932,11 +3098,11 @@ _One line per durable-truth change: `- <doc>.md: <what changed> (<slice>)`. Appe
 
 ## Operator Questions
 
-_Questions only the operator can answer. Append only; every entry is routed at the review — folded into the acceptance walkthrough or filed with `defer-job`. An unrouted entry is a review finding._
+_Questions only the operator can answer, one entry each: `- **OQ<n> (<slice>):** <question>`. Append only (`phase-section <P> "Operator Questions" --append`); an answered entry collapses with `phase-section <P> --resolve OQ<n> --pointer <ref>`, never deleted. Every entry is routed at the review — folded into the acceptance walkthrough, filed with `defer-job`, or resolved. An unrouted entry is a review finding._
 
 ## Notes for later slices
 
-_Gotchas and constraints the next slices need, each tagged `**(from <slice>, for <slice>)**`. A slice that consumes a note removes it; the detail stays in that slice's `result.md`._
+_Gotchas and constraints the next slices need, each tagged `**(from <slice>, for <slice>)**`. A slice that consumes a note removes it; the detail stays in that slice's `result.md`. This file is an index read and written one section at a time (`phase-section <P>`); keep it under 40 KB._
 
 ## Now
 
@@ -3169,6 +3335,8 @@ def finish_slice(args: argparse.Namespace) -> None:
     if lines_n or bytes_n:  # the notebook is where the next slice reads its state; keep it in view
         over = " \u2014 OVER BUDGET" if bytes_n > PHASE_MD_BUDGET else ""  # bytes judge; lines are informational
         print(f"phase.md: {lines_n} lines / {bytes_n} bytes (budget {PHASE_MD_BUDGET} bytes){over}")
+        if bytes_n > PHASE_MD_BUDGET:
+            print(f"  {notebook_sections_hint(sdir.parents[1])}")
 
 
 def _set_phase_status(pdir: Path, status: str) -> str:
@@ -8269,6 +8437,17 @@ def main(argv=None) -> int:
     p.add_argument("--head", default=None, help="use this ref as the range head (default: HEAD, or the commit that recorded a passing review on a done phase)")
     p.add_argument("--json", action="store_true", help="print the same answer as one JSON object")
     p.set_defaults(func=phase_scope)
+
+    p = sub.add_parser("phase-section", help="Read or write ONE `## ` section of a phase's phase.md: no name = the index (a line per heading with its bytes), a name prints that section, --replace / --append write one section (stdin or --file), --resolve OQ<n> --pointer <ref> collapses an Operator Questions entry; every other byte of the notebook stays identical",
+                       description="phase.md is an index: read one section, write one section, never the whole file. Put the section name BEFORE the flags: phase-section P1 Now --replace --file now.md. Names match case-insensitively (Now, Decisions, 'Doc impact', 'Operator Questions', 'Notes for later slices', Objective, Slices). Slices is generated and refused; Doc impact and Operator Questions are append-only (--append, or --resolve to collapse an answered entry).")
+    p.add_argument("phase")
+    p.add_argument("name", nargs="*", help="section heading (quote it when it has spaces); omit for the index")
+    p.add_argument("--replace", action="store_true", help="replace the section's body (the heading and the rest of the file are kept byte-identical)")
+    p.add_argument("--append", action="store_true", help="add text at the end of the section")
+    p.add_argument("--resolve", metavar="OQ<n>", help="collapse that Operator Questions entry to one line (entries are never deleted)")
+    p.add_argument("--pointer", help="with --resolve: where the answer landed (a Decisions line, a deferred job, a slice)")
+    p.add_argument("--file", help="read the new text from this file (default: stdin)")
+    p.set_defaults(func=phase_section)
 
     # The design contract, schema 2 (v60): the on-disk layout lives in design-cowork/reference/record.md "The design record".
     p = sub.add_parser("design-init", help=f"Write the design project manifest {DESIGN_ROOT_REL}/design.json (schema {DESIGN_SCHEMA}: id, name, a null-filled system); idempotent -- an unchanged manifest is not rewritten; a schema-1 manifest is refused (design-migrate --to 2)",

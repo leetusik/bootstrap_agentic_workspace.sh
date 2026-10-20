@@ -18,7 +18,8 @@
 # invariants (every review surface re-runs the checklist inside the phase's boundary, never whole,
 # and phase-scope reads that boundary from git -- advisory without git), the v35 phase-notebook
 # invariants (template seed, generated ## Slices block, finish-slice --outcome, the
-# notebook budget/case-drift warnings and the timestamp-free dashboards), the v43
+# notebook budget/case-drift warnings and the timestamp-free dashboards; v61: phase-section reads and writes
+# one phase.md section, a 40 KB index budget naming the biggest sections), the v43
 # worktree-on-request invariants (nothing enters a worktree unhinted or unasked; parallel-start
 # on a dirty tree commits only the phase folder plus the regenerated works/ files and cuts a
 # nested .claude/worktrees/ checkout hidden by the repo's info/exclude; parallel-skip and
@@ -669,8 +670,8 @@ for tier in ("mid", "high"):
         "**only when you are unsure what was asked**",
         "never the whole doc set, and never `docs/index.json`",
         "**structured verdict block first**",
-        "**Edit** the phase's `phase.md`",
-        "a soft ~100k-token cap (400 KB)",
+        "**Edit** the phase's `phase.md` one section at a time",
+        "the soft budget is **40 KB**", "phase-section <P> <name> --replace|--append", "`topics/<slug>.md`",
         "never edit inside the `<!-- slices:begin -->`",
         "edit inside `phase.md`'s generated `## Slices` block",
         "Cross-check the notebook against the logs",
@@ -1745,7 +1746,7 @@ then ok "new_phase's embedded fallback is byte-identical to works/templates/phas
 # ---------------------------------------------------------------------------
 echo "== Test 10: v35/v39 notebook guardrails -- budget warning, ## Doc Impact case drift, no dashboard timestamp churn =="
 # Continues on $F (P2's phase.md lost its markers in Test 9; irrelevant here). v39's cap is
-# bytes-only and generous (400 KB), so the filler is generated, never checked in: pad the
+# bytes-only (v61: 40 KB, an index), so the filler is generated, never checked in: pad the
 # notebook past it and drift the Doc impact heading in one edit.
 python3 - "$PM" <<'PAD'
 import pathlib, sys
@@ -1754,14 +1755,16 @@ p.write_text(p.read_text() + "\n## Doc Impact\n\n" + "- filler\n" * 50_000)  # ~
 PAD
 out=$( cd "$F" && python3 scripts/workflow.py validate 2>&1 ); rc=$?
 [ "$rc" -eq 0 ] && ok "validate exits 0 with notebook warnings (warn, never error)" || bad "validate exited $rc on warnings -- $out"
-printf '%s\n' "$out" | grep -q 'phase P2: phase.md is .* over the notebook budget' \
-  && ok "an over-budget phase.md warns" || bad "no over-budget warning -- $out"
+printf '%s\n' "$out" | grep -q 'phase P2: phase.md is .* over the notebook budget of 40960 bytes; biggest sections: ## Doc Impact ' \
+  && ok "an over-budget phase.md warns (40 KB) and names its largest section" || bad "no over-budget warning naming the largest section -- $out"
 printf '%s\n' "$out" | grep -q 'has a `## Doc Impact` heading' \
   && ok "a case-drifted ## Doc Impact heading warns" || bad "no Doc-impact case-drift warning -- $out"
 ( cd "$F" && python3 scripts/workflow.py new-slice --phase P2 --slice P2.S2 --name "budget probe" >/dev/null 2>&1 )
 out=$( cd "$F" && python3 scripts/workflow.py finish-slice P2.S2 --outcome "probe" 2>&1 )
-printf '%s\n' "$out" | grep -q '^phase.md: .* bytes (budget 409600 bytes)' && printf '%s\n' "$out" | grep -q 'OVER BUDGET' \
+printf '%s\n' "$out" | grep -q '^phase.md: .* bytes (budget 40960 bytes)' && printf '%s\n' "$out" | grep -q 'OVER BUDGET' \
   && ok "finish-slice prints the notebook size and flags it over budget" || bad "finish-slice notebook size print missing -- $out"
+printf '%s\n' "$out" | grep -q 'biggest sections: ## Doc Impact ' && printf '%s\n' "$out" | grep -q 'topics/<slug>.md' \
+  && ok "finish-slice names the biggest sections and suggests topics/ when over budget" || bad "over-budget size line does not name the largest section -- $out"
 grep -q 'Rebuilt at' "$F/works/backlog.md" "$F/works/deferred.md" \
   && bad "a markdown dashboard still carries a Rebuilt at timestamp" || ok "no Rebuilt at timestamp in either markdown dashboard"
 # The churn this removes: repeated `next` calls must not dirty the two dashboards.
@@ -1772,6 +1775,77 @@ tracked=$( cd "$F" && git ls-files works/backlog.md works/deferred.md | wc -l | 
 dirty=$( cd "$F" && git status --short -- works/backlog.md works/deferred.md )
 [ "$tracked" = "2" ] && [ -z "$dirty" ] \
   && ok "two next calls leave the dashboards byte-identical (no timestamp churn)" || bad "next dirtied the dashboards (tracked=$tracked) -- $dirty"
+
+# ---------------------------------------------------------------------------
+echo "== Test 10b: v61 phase-section -- phase.md is an index, read and written one section at a time =="
+# Runs on a copy of $F so the probe phase never reaches the later tests' pointer.
+newtmp PSW; cp -R "$F" "$PSW/ws"; PW="$PSW/ws"; ps() { ( cd "$PW" && python3 scripts/workflow.py phase-section "$@" ); }
+( cd "$PW" && python3 scripts/workflow.py new-phase --phase P8 --name "Index probe" --objective "section probe" >/dev/null 2>&1 )
+PN="$PW/works/phases/active/P8/phase.md"
+python3 - "$PN" <<'SEED'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+t = t.replace("## Operator Questions\n", "## Operator Questions\n\n- **OQ1 (S1):** Should the probe keep the old shape?\n  A second line of context.\n- **OQ2 (S1):** Another one?\n", 1)
+t = t.replace("## Now\n", "## Now\n\n- old now line\n", 1)
+p.write_text(t)
+SEED
+out=$(ps P8); printf '%s\n' "$out" | grep -q 'Objective$' && printf '%s\n' "$out" | grep -q 'Operator Questions$' && printf '%s\n' "$out" | grep -q 'total' \
+  && ok "phase-section <P> lists the headings with their bytes and a total" || bad "phase-section index wrong -- $out"
+out=$(ps P8 Now); printf '%s\n' "$out" | grep -qx '## Now' && printf '%s\n' "$out" | grep -q 'old now line' && ! printf '%s\n' "$out" | grep -q '## Decisions' \
+  && ok "phase-section <P> Now prints that section, heading included, and nothing else" || bad "phase-section Now wrong -- $out"
+ps P8 nope >/dev/null 2>&1; rc=$?; [ "$rc" -eq 1 ] && ok "an unknown section exits 1" || bad "unknown section exit=$rc"
+cp "$PN" "$PSW/before.md"
+printf 'fresh now\n' | ps P8 Now --replace >/dev/null 2>&1
+python3 - "$PSW/before.md" "$PN" <<'SPLICE'
+import sys
+old, new = (open(p, encoding="utf-8").read() for p in sys.argv[1:3])
+cut = old.index("## Now\n")
+assert new[:cut] == old[:cut], "bytes before ## Now changed"
+assert new[cut:].startswith("## Now\n") and "fresh now" in new[cut:] and "old now line" not in new, "the section was not replaced"
+SPLICE
+[ $? -eq 0 ] && ok "--replace of Now keeps every byte before the section identical and swaps its body" || bad "--replace changed bytes outside the section"
+printf 'mid decision\n' > "$PSW/dec.txt"; cp "$PN" "$PSW/before2.md"; ps P8 Decisions --replace --file "$PSW/dec.txt" >/dev/null 2>&1
+python3 - "$PSW/before2.md" "$PN" <<'SPLICE2'
+import re, sys
+old, new = (open(p, encoding="utf-8").read() for p in sys.argv[1:3])
+split = lambda t: re.split(r"(?m)^(?=## )", t)
+a, b = split(old), split(new)
+assert len(a) == len(b)
+for x, y in zip(a, b):
+    if x.startswith("## Decisions"):
+        assert "mid decision" in y
+    else:
+        assert x == y, x[:30]
+SPLICE2
+[ $? -eq 0 ] && ok "--replace of a middle section (Decisions, from --file) leaves every other section byte-identical" || bad "--replace of Decisions touched another section"
+for target in Slices "Doc impact" "Operator Questions"; do
+  printf 'x\n' | ps P8 "$target" --replace >/dev/null 2>&1; rc=$?
+  [ "$rc" -ne 0 ] && ok "--replace refuses $target" || bad "--replace of $target was accepted"
+done
+printf 'x\n' | ps P8 Slices --append >/dev/null 2>&1; [ $? -ne 0 ] && ok "--append refuses the generated Slices section" || bad "--append of Slices was accepted"
+printf '%s\n' '- widget.md: a new line (S1)' | ps P8 "Doc impact" --append >/dev/null 2>&1
+ps P8 "Doc impact" | grep -q 'widget.md: a new line' && ok "--append adds a line to Doc impact" || bad "--append to Doc impact lost the line"
+ps P8 "Operator Questions" --append <<'OQAPP' >/dev/null 2>&1
+- **OQ3 (S2):** Third?
+OQAPP
+ps P8 "Operator Questions" | grep -q 'OQ3 (S2)' && ok "--append adds an Operator Questions entry" || bad "--append to Operator Questions lost the entry"
+out=$(ps P8 --resolve OQ1 --pointer "Decisions line 2"); rc=$?
+ps P8 "Operator Questions" > "$PSW/oq.txt"
+[ "$rc" -eq 0 ] && grep -qx -- '- \*\*OQ1\*\* (resolved → Decisions line 2): Should the probe keep the old shape?' "$PSW/oq.txt" \
+  && ! grep -q 'A second line of context' "$PSW/oq.txt" && grep -q 'OQ2 (S1)' "$PSW/oq.txt" && grep -q 'OQ3 (S2)' "$PSW/oq.txt" \
+  && ok "--resolve collapses a two-line entry to one resolved line and leaves its neighbours" || bad "--resolve result wrong (rc=$rc) -- $(cat "$PSW/oq.txt")"
+ps P8 --resolve OQ1 --pointer "again" >/dev/null 2>&1; [ $? -ne 0 ] && ok "a second --resolve of the same entry is refused" || bad "an already-resolved entry was resolved again"
+ps P8 --resolve OQ9 --pointer "x" >/dev/null 2>&1; [ $? -ne 0 ] && ok "--resolve of a missing entry is refused" || bad "--resolve of a missing entry succeeded"
+( cd "$PW" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) ; mkdir -p "$PW/works/phases/active/P8/topics" && printf '# topic\n' > "$PW/works/phases/active/P8/topics/contract.md"
+out=$( cd "$PW" && python3 scripts/workflow.py validate 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && ! printf '%s\n' "$out" | grep -q 'P8' && ok "validate accepts a topics/ folder beside phase.md without a word" || bad "validate flagged topics/ (rc=$rc) -- $out"
+python3 - "$PW/works/phases/active/P8/phase.md" <<'BIG'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1]); p.write_text(p.read_text() + "\n".join("- long decision line %d padding padding padding" % i for i in range(1500)) + "\n")
+BIG
+out=$( cd "$PW" && python3 scripts/workflow.py validate 2>&1 )
+printf '%s\n' "$out" | grep -q 'phase P8: phase.md is .* over the notebook budget of 40960 bytes; biggest sections: ## ' && printf '%s\n' "$out" | grep -q 'topics/<slug>.md' \
+  && ok "a notebook over 40 KB warns in validate, names its biggest sections and points at topics/" || bad "no 40 KB warning with sections -- $out"
 
 # ---------------------------------------------------------------------------
 echo "== Test 11: v41 phase-scope -- the phase's boundary is read from git, advisory everywhere =="

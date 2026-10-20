@@ -129,7 +129,7 @@ invented**, and catalogued means **delivered**:
 
 - Write each one as a **one-line question on `phase.md`'s `## Operator Questions` list**, not only in
   `result.md`, where a catalogue dies unread.
-- The review **routes** every entry: into the acceptance walkthrough as a decision, or a deferred job.
+- The review **routes** every entry: into the acceptance walkthrough as a decision, or a deferred job (a collapsed `(resolved → <ref>)` entry counts as routed).
   An unrouted entry blocks the pass.
 - **Questions get asked, not archived.**
 
