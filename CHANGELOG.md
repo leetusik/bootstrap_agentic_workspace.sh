@@ -9,6 +9,21 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v62 — 2026-10-21
+
+- **The cheap route runs Haiku 5.5 at `xhigh`.** The opt-in `cheap` row (`docs` and `qa`
+  slices rated `low`) moves from `haiku @ high` to `haiku @ xhigh`. That is Haiku's best level on
+  the Artificial Analysis Coding Agent Index: 41.4 against 35.1 at `high`, and 23.7 against
+  12.6 on Terminal-Bench 4.0, for about $0.25 more per benchmark task. `max` scores lower, at
+  36.8. The workspace's own dispatch records show no other row failing for lack of capability,
+  so every other row keeps its model and effort. The `executors.toml` seed, both executor
+  bodies and the README now say `haiku @ xhigh`. Smoke asserts the seeded block's effort and
+  the repo's route: 352 PASS.
+
+- **Migration notes.** `/update-workspace` never overwrites `executors.toml`. If you turned the
+  cheap route on, set `effort = "xhigh"` under `[claude.cheap]`. If its block is still
+  commented out, nothing changes.
+
 ## v61 — 2026-10-20
 
 **v61 cuts token waste.** It meters what a phase really costs, restores Claude Code's own

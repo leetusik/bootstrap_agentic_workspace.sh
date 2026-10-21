@@ -1077,8 +1077,9 @@ grep -q '^works/events\.jsonl merge=union$' "$F/.gitattributes" && ok "fresh ins
 [ ! -f "$F/.env.example" ] && [ ! -f "$F/executors.toml.example" ] && ok "legacy .env.example / executors.toml.example retired (absent on fresh install)" || bad "a legacy tier-config example should be retired but is present"
 ( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && ok "sync-agents --check: seeded route config matches live agents" || bad "sync-agents --check failed on a fresh install"
 # v53 (P32.S5): the adopter seed of executors.toml is derived from the live file with the cheap-route block
-# commented out -- a fresh install inherits the mid row until the adopter opts in.
-grep -qx '# \[claude\.cheap\]' "$F/executors.toml" && grep -qx '# model = "haiku"' "$F/executors.toml" && grep -qx '# effort = "high"' "$F/executors.toml" \
+# commented out -- a fresh install inherits the mid row until the adopter opts in. v62: the block's effort is xhigh.
+grep -qx '# \[claude\.cheap\]' "$F/executors.toml" && grep -qx '# model = "haiku"' "$F/executors.toml" \
+  && sed -n '/cheap-route: begin/,/cheap-route: end/p' "$F/executors.toml" | grep -qx '# effort = "xhigh"' \
   && ! grep -q '^\[claude\.cheap\]' "$F/executors.toml" && [ "$(grep -c 'cheap-route: begin' "$F/executors.toml")" = "1" ] && [ "$(grep -c 'cheap-route: end' "$F/executors.toml")" = "1" ] \
   && ok "the fresh install's executors.toml seeds the cheap-route block commented out, markers intact" || bad "the seeded executors.toml does not comment out the cheap-route block"
 seed_er=$(cd "$F" && python3 scripts/workflow.py executor-route 2>&1)
@@ -1424,8 +1425,8 @@ er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MOD
 cp "$SRC/executors.toml" "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed on the repo's own executors.toml"
 er_out=$(er)
-printf '%s\n' "$er_out" | grep -qE '^cheap +mid +haiku +high +executors\.toml$' && printf '%s\n' "$er_out" | grep -qx 'agent files: in sync' \
-  && ok "the repo's executors.toml turns the cheap route on (haiku@high from executors.toml), agent files in sync" || bad "executor-route on the repo's executors.toml wrong: $er_out"
+printf '%s\n' "$er_out" | grep -qE '^cheap +mid +haiku +xhigh +executors\.toml$' && printf '%s\n' "$er_out" | grep -qx 'agent files: in sync' \
+  && ok "the repo's executors.toml turns the cheap route on (haiku@xhigh from executors.toml), agent files in sync" || bad "executor-route on the repo's executors.toml wrong: $er_out"
 ( cd "$F" && python3 scripts/workflow.py executor-mode 2>&1 | grep -q 'invalid choice' ) \
   && ok "executor-mode is gone from the engine (v53: executor-route replaces it)" || bad "the engine still accepts executor-mode"
 # v61 dispatch record + transcript meter (P37.S2): record-dispatch keeps only the verdict (the pre-v61

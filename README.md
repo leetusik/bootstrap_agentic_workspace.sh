@@ -340,7 +340,7 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 | `critic` | Sonnet@high | `design-critic` | 초안 라운드를 새 눈으로 평가하는 디자인 비평가(`executor-route --critic`). `design` 행과 다른 모델이어야 함 |
 | `judge` | Fable@high | `design-critic` | 비평가가 확신하지 못한 항목만 판정하는 판정 모드(`executor-route --judge`, 별칭만). `design` 행과 다른 모델이어야 하며, 루프백 프록시에서는 건너뜀 |
 | `mid` | Sonnet@high | `slice-executor-mid` | 기본 — `risk: low`인 구현·수정(`fix`) slice. 실제 코드 작성과 여러 파일에 걸친 변경도 포함 |
-| `cheap` | `mid` 행을 상속(이 저장소: Haiku@high) | `slice-executor-mid` | `risk: low`인 문서(`docs`)·QA slice — 싼 경로. 설정하지 않으면 `mid` 행과 같음 |
+| `cheap` | `mid` 행을 상속(이 저장소: Haiku@xhigh) | `slice-executor-mid` | `risk: low`인 문서(`docs`)·QA slice — 싼 경로. 설정하지 않으면 `mid` 행과 같음 |
 | `explore` | Haiku@high | `Explore` | 읽기 전용 조회(계획 조사, 실행자의 큰 읽기). slice 라우트는 아님 |
 
 `high`는 네 가지 이유 중 하나가 있을 때만 붙습니다: **열린 설계**(계획이 접근법을 정해 둘 수

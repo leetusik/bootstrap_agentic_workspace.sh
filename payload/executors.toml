@@ -46,15 +46,16 @@
 # /update-workspace, re-run sync-agents (updates reset the agent files to
 # upstream defaults; `validate` warns while they drift).
 
-# The cheap route: docs and qa slices rated low run on Haiku 5.5 at high. On in this
-# repository; the installer seeds it commented out because the `haiku` alias is Haiku 4.5
-# on Bedrock, Vertex and Foundry — uncomment to opt in on the Anthropic API. Unset, the
-# cheap row inherits the mid row. Under a loopback ANTHROPIC_BASE_URL (ocx/Kiro, no
-# Haiku 5.5) executor-route falls back to the mid row's model by itself.
+# The cheap route: docs and qa slices rated low run on Haiku 5.5 at xhigh, its best level on
+# the Artificial Analysis coding-agent index (max scores lower). On in this repository; the
+# installer seeds it commented out because the `haiku` alias is Haiku 4.5 on Bedrock, Vertex
+# and Foundry — uncomment to opt in on the Anthropic API. Unset, the cheap row inherits the
+# mid row. Under a loopback ANTHROPIC_BASE_URL (ocx/Kiro, no Haiku 5.5) executor-route falls
+# back to the mid row's model by itself.
 # cheap-route: begin
 [claude.cheap]
 model = "haiku"
-effort = "high"
+effort = "xhigh"
 # cheap-route: end
 
 # The other rows at their defaults: uncomment and edit to override.
