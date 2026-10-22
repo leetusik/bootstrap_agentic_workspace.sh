@@ -2524,6 +2524,144 @@ def operator_wait_target(phases: list, current_phase, current_slice):
     return None
 
 
+# run-phases (P41): the phase list and the next target of a /do-whole-phases run. A run passes a
+# PARKED phase -- one whose only stop is an open operator acceptance gate -- instead of halting there.
+# It is stateless: its whole input is the operator's phase tokens, which a compaction keeps, and each
+# call recomputes it from disk and writes nothing. The plain pointer above (resolve_current /
+# operator_wait_target, so `next`, works/state.json, the backlog and the resume card's stop) never
+# reads any of this, so it still halts at a parked phase in every plain session.
+RUN_TOKEN = re.compile(r"[Pp]?([0-9]+)")
+
+
+def phase_parked(phase: dict) -> bool:
+    """True when a run may pass this phase: `pending` with its acceptance gate open and no slice of it
+    `pending` or `blocked`. Every other `pending`, and every `blocked`, halts a run."""
+    return bool(phase.get("status") == "pending" and acceptance_gate_is_open(phase)
+                and not any(s.get("status") in ("pending", "blocked") for s in phase.get("slices", [])))
+
+
+def run_phase_tokens(tokens) -> tuple:
+    """`(phase ids, refused tokens)`: `P12`, `p12` or `12`, separated by commas and/or spaces, in the
+    given order, duplicates dropped. Anything else (a range, `worktree`, a mode word) is refused."""
+    ids, refused = [], []
+    for raw in tokens or []:
+        for piece in re.split(r"[,\s]+", raw):
+            m = RUN_TOKEN.fullmatch(piece) if piece else None
+            if piece and m is None and piece not in refused:
+                refused.append(piece)
+            elif m is not None and f"P{int(m.group(1))}" not in ids:
+                ids.append(f"P{int(m.group(1))}")
+    return ids, refused
+
+
+def _archived_phase_ids() -> set:
+    ids = set()
+    for d in (ARCHIVED.iterdir() if ARCHIVED.is_dir() else []):
+        try:
+            pid = read_json(d / "phase.json").get("id") if (d / "phase.json").is_file() else None
+        except Exception:  # noqa: BLE001 - an unreadable archive entry is skipped, never fatal
+            pid = None
+        if pid:
+            ids.add(pid)
+    return ids
+
+
+def _run_halt(phase: dict):
+    """`(item, reason)` for the stop a run meets at a queued phase that is not parked, else None."""
+    pid, status, slices = phase["id"], phase.get("status"), phase.get("slices", [])
+    if status in ("pending", "blocked"):
+        stuck = next((s for s in slices if s.get("status") in ("pending", "blocked")), None)
+        if status == "pending" and stuck is not None and acceptance_gate_is_open(phase):
+            return stuck, f"phase {pid}'s acceptance gate is open, but slice {stuck['id']} is {stuck.get('status')}, so it is not parked"
+        return phase, f"phase {pid} is {status}" + (" without an open acceptance gate" if status == "pending" else "")
+    cur = next((s for s in slices if s.get("status") != "done"), None)
+    if cur is not None and cur.get("status") in ("pending", "blocked"):
+        return cur, f"slice {cur['id']} is {cur.get('status')}"
+    return None
+
+
+def run_selection(phases: list, stream, ids=None) -> dict:
+    """A run over `ids` (None: every non-`done` phase, by order), scoped to `stream` like `next`:
+    the queue, the skipped `(id, reason, stream)`, the parked phases, then either the target
+    `(phase, slice, next slice)` or the halt `(item, reason)`; both None means the run is done."""
+    by_id = {p["id"]: p for p in phases}
+    on_stream = {p["id"] for p in stream_phases(phases, stream)}
+    out = {"queue": [], "skipped": [], "parked": [], "target": None, "halt": None}
+    for pid in (ids if ids is not None else [p["id"] for p in phases if p.get("status") != "done"]):
+        phase = by_id.get(pid)
+        if phase is None or phase.get("status") == "done":
+            out["skipped"].append((pid, "done" if phase else "done (archived)", None))
+        elif pid not in on_stream:
+            out["skipped"].append((pid, "other-stream", (phase_execution(phase) or {}).get("branch") or "default"))
+        else:
+            out["queue"].append(phase)
+    for phase in out["queue"]:
+        if phase_parked(phase):
+            out["parked"].append(phase)
+        elif out["target"] is None and out["halt"] is None:
+            out["halt"] = _run_halt(phase)
+            if out["halt"] is None:
+                open_slices = [s for s in phase.get("slices", []) if s.get("status") != "done"] + [None, None]
+                out["target"] = (phase, open_slices[0], open_slices[1])
+    return out
+
+
+def cmd_run_phases(args: argparse.Namespace) -> None:
+    """Read-only: resolve a /do-whole-phases run (see run_selection) and print it as key=value lines."""
+    ids, refused = run_phase_tokens(args.tokens)
+    phases = all_active_phases()
+    active = {p["id"] for p in phases}
+    archived = _archived_phase_ids() if any(pid not in active for pid in ids) else set()
+    unknown = [pid for pid in ids if pid not in active and pid not in archived]
+    if refused or unknown:
+        for token in refused:
+            print(f"refused={token} -- not a phase id (P12, p12 or 12, separated by commas and/or spaces); the run starts nothing")
+        for pid in unknown:
+            print(f"refused={pid} -- no such phase, active or archived; the run starts nothing")
+        raise SystemExit(2)
+    stream = current_stream(phases)
+    run = run_selection(phases, stream, ids or None)
+    print(f"run={','.join(ids) or 'all'}")
+    print(f"stream={stream or 'default'}")
+    print(f"queue={','.join(p['id'] for p in run['queue']) or 'none'}")
+    for pid, reason, where in run["skipped"]:
+        if where is None:
+            print(f"skipped={pid} reason={reason}")
+        else:
+            home = "runs from its own branch" if where != "default" else "runs on the default stream, not in this worktree"
+            print(f"skipped={pid} reason={reason} stream={where} -- {home}")
+    for phase in run["parked"]:
+        pid = phase["id"]
+        print(f"parked={pid} since={phase_acceptance(phase).get('requested_at')} -- acceptance gate open, no slice pending or blocked: "
+              f"the run passes it; accept-gate {pid} prints the walkthrough, accept-gate {pid} --clear clears it")
+    if run["halt"] is not None:
+        item, reason = run["halt"]
+        print(f"halt={item['id']} status={item.get('status')}")
+        if "." in item["id"] and item.get("status") == "pending":
+            record = item.get("pending")
+            print(f"stop_kind={record.get('kind') if isinstance(record, dict) else 'untyped'}")
+            if isinstance(record, dict):
+                print(f"on_words={_one_line(record.get('on_words') or '')}")
+        print(f"halt_reason={reason} -- the whole run stops here: report it, start nothing past it")
+    elif run["target"] is not None:
+        phase, cur, nxt = run["target"]
+        print(f"target_phase={phase['id']}")
+        if cur is None:
+            print("target_slice=none -- no open slice in this phase: record its review verdict or archive it")
+            return
+        sdir = ACTIVE / phase["id"] / "slices" / cur["id"]
+        print(f"target_slice={cur['id']}")
+        print(f"slice_path={shown(sdir)}")
+        print(f"next_slice={nxt['id'] if nxt else 'none'}")
+        acceptance = phase_acceptance(phase)
+        if (acceptance and acceptance.get("required") is True and acceptance.get("cleared_at") and cur.get("kind") == "review"
+                and (sdir / "result.md").is_file()):
+            print(f"gate_cleared={phase['id']} cleared_at={acceptance.get('cleared_at')} -- the review passed before the gate opened: "
+                  f"record the pass (review-phase {phase['id']} --verdict pass) without re-dispatching it")
+    else:
+        print("run_done=yes -- nothing left to run" + ("; report every parked gate with its walkthrough" if run["parked"] else ""))
+
+
 SLICES_BEGIN = "<!-- slices:begin -->"
 SLICES_END = "<!-- slices:end -->"
 # WORKFLOW_CMD is the literal `python3 scripts/workflow.py` at root (so this line stays byte-identical to
@@ -5497,6 +5635,9 @@ def resume_card(transcript_path=None) -> str:
     if gate_open:
         lines.append(f"stop: phase {phase_id} acceptance gate open -- relay the walkthrough (`accept-gate {phase_id}` prints it); "
                      f"the operator's words clear it with accept-gate {phase_id} --clear")
+        if phase_parked(phase):  # informational only: the stop above stands for every plain session
+            lines.append(f"run: {phase_id} is parked; only a /do-whole-phases run passes it -- re-run `run-phases <the run's phases>` "
+                         "for that run's next target; outside such a run this is a stop")
     elif phase.get("status") == "pending":
         lines.append(f"stop: phase {phase_id} pending -- report what you need; the operator's words clear it with set-phase-status {phase_id} in_progress")
     elif phase.get("status") == "blocked":
@@ -9577,6 +9718,11 @@ def main(argv=None) -> int:
     p = sub.add_parser("next", help="Print the current phase/slice selection")
     p.add_argument("--card", action="store_true", help="print the resume card instead: the pointer, the next action or the typed stop, the open gates, the running spans (from the newest session's subagents/*.meta.json) and the slice's file paths, computed from state, at most 2,048 bytes -- what compact-resume prints after a compaction")
     p.set_defaults(func=cmd_next)
+
+    run_help = "Read-only, writes nothing: the phase list and the next target of a /do-whole-phases run, recomputed from disk on every call (re-run it at each phase boundary and after a compaction). Prints run=, stream=, queue= (this stream's non-done phases of the run, in order), skipped=<P> reason=done | done (archived) | other-stream stream=<branch or default>, parked=<P> (pending, its acceptance gate open, no slice pending or blocked: the run passes it), then target_phase= / target_slice= / slice_path= / next_slice= (plus gate_cleared= when a cleared gate's review awaits its recorded pass), or halt=<item> status= with stop_kind= / on_words= for a pending slice and halt_reason= (any other pending or blocked phase, or a pending or blocked current slice: the whole run stops), or run_done=yes. Exits 2 with refused= lines and nothing else for a token that is not a phase id or names no phase. The plain pointer (next, works/state.json, the resume card's stop) is unchanged and still halts at a parked phase"
+    p = sub.add_parser("run-phases", help=run_help, description=run_help)
+    p.add_argument("tokens", nargs="*", metavar="PHASE", help="P12, p12 or 12, separated by commas and/or spaces; the given order is kept and duplicates are dropped; none = every non-done phase on this stream, by order. Ranges, mode words and `worktree` are refused")
+    p.set_defaults(func=cmd_run_phases)
 
     p = sub.add_parser("compact-resume", help="The SessionStart hook (matcher compact): after a compaction, print compaction=done source=compact and the resume card (next --card; the running spans from the hook's transcript_path session), falling back to the plain pointer on any error; never fails, always exits 0")
     p.set_defaults(func=cmd_compact_resume)
