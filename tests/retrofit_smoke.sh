@@ -185,6 +185,19 @@ assert "`drafter`" in create_phase and "Mockup: on request" in create_phase
 for gone in ("ask which design tool", "Design tool: drafter", "Design tool: claude-design",
              "DesignSync", "design-deck", "design-register", "sign on the cards", "the drafted cards"):
     assert gone not in create_phase, gone
+# Explain phases: the route lives in create-phase, the three references ship in do-whole-phase and
+# fan out to do-next-slice, and the review pointer is one fixed string everywhere.
+assert "## The explain route" in create_phase and "## Explain" in create_phase
+for ref in ("explain-decomposition.md", "explain-chapter.md", "explain-review.md"):
+    assert f".claude/skills/do-next-slice/reference/{ref}" in SHARED_SKILL_FILES, ref
+POINTER = "not written — run /knowledge:explain P<N> for one chapter, or create an explain phase for a book"
+for rel in ("claude/agents/slice-executor-mid.md", "claude/agents/slice-executor-high.md",
+            "claude/skills/review-phase/SKILL.md", "claude/skills/do-whole-phase/reference/review.md",
+            "claude/skills/do-next-slice/reference/review.md"):
+    assert POINTER in (root / "payload" / rel).read_text(encoding="utf-8"), rel
+for p in [*(root / "payload").rglob("*.md"), root / "installer/main.py", root / "installer/payloads/doc_bodies/operations.md"]:
+    t = p.read_text(encoding="utf-8")
+    assert "run /explain for this phase" not in t and "run /knowledge:explain for this phase" not in t, p
 
 # Only skills that *document the removal* may still say "Codex": update-workspace's
 # pre-v31 migration step. Anywhere else it is a regression.
@@ -1069,6 +1082,11 @@ grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '
   && grep -q '^effort: high$' "$F/.claude/agents/design-critic.md" && grep -q '^tools: ' "$F/.claude/agents/design-critic.md" \
   && ! grep -Eq '^tools: (.*, )?Edit(,.*)?$' "$F/.claude/agents/design-critic.md" \
   && ok "fresh install ships the design-critic subagent (sonnet@high, no Edit in tools)" || bad "fresh install design-critic missing, off its row defaults, or carries Edit"
+# The explain critic ships as a sixth agent, opus @ high, and writes only its critique file: no Edit.
+[ -f "$F/.claude/agents/explain-critic.md" ] && grep -q '^model: opus$' "$F/.claude/agents/explain-critic.md" \
+  && grep -q '^effort: high$' "$F/.claude/agents/explain-critic.md" && grep -q '^tools: ' "$F/.claude/agents/explain-critic.md" \
+  && ! grep -Eq '^tools: (.*, )?Edit(,.*)?$' "$F/.claude/agents/explain-critic.md" \
+  && ok "fresh install ships the explain-critic subagent (opus@high, no Edit in tools)" || bad "fresh install explain-critic missing, off its frontmatter, or carries Edit"
 # v61 (P37.S7): shape pins on the two design agents -- one drafter output (no build-prompt.md bar as legacy), the
 # strict self-check and the state-bar rules in the drafter, the render reuse in the critic.
 D="$F/.claude/agents/design-drafter.md"; C="$F/.claude/agents/design-critic.md"
@@ -1660,9 +1678,9 @@ done
 [ -z "$kept_bad" ] && ok "--update reports a modified shipped file, their .codex file and AGENTS.md as yours, kept" \
   || bad "--update yours-kept list wrong:$kept_bad -- $update_out"
 [ "$(printf '%s\n' "$explain_before" | wc -l | tr -d ' ')" -eq 3 ] && [ "$(explain_sig "$F")" = "$explain_before" ] \
-  && ! printf '%s\n%s\n' "$dry_out" "$update_out" | grep -q 'explain' \
+  && ! printf '%s\n%s\n' "$dry_out" "$update_out" | grep -Eq '/explain(/|[[:space:]]|$)' \
   && ok "--update and --update --dry-run leave every explain file (.agents/ and .claude/, the old shipped copy too) byte-identical and never name one" \
-  || bad "--update touched or reported an explain path -- $(printf '%s\n%s\n' "$dry_out" "$update_out" | grep 'explain')"
+  || bad "--update touched or reported an explain path -- $(printf '%s\n%s\n' "$dry_out" "$update_out" | grep -E '/explain(/|[[:space:]]|$)')"
 if python3 - "$F" "$update_out" <<'PY'
 import os, re, sys
 listed = re.findall(r"^    - (\S+)  \(", sys.argv[2], re.M)
@@ -1774,6 +1792,7 @@ DUAL_FIXED=".claude/agents/slice-executor-mid.md
 .claude/agents/slice-executor-high.md
 .claude/agents/design-drafter.md
 .claude/agents/design-critic.md
+.claude/agents/explain-critic.md
 .claude/agents/Explore.md
 .claude/settings.json
 executors.toml

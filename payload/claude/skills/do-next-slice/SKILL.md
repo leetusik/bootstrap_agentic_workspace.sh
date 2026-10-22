@@ -35,6 +35,7 @@ Work exactly one slice:
 - a design slice (`kind: co-work`) → `reference/co-work.md`, with the `design-cowork` skill;
 - a decomposition (`kind: decomposition`) → `reference/decomposition.md`, which also declares the phase's acceptance gate;
 - the phase review (`kind: review`) → `reference/review.md` (the review, the acceptance gate, recording the verdict, the doc debt);
+- an explain phase (`## Explain` in `intent.md`): DECOMP → `reference/explain-decomposition.md`, each chapter → `reference/explain-chapter.md`, REVIEW → `reference/explain-review.md`;
 - **worktrees:** the phase runs on this checkout unless the operator asked for a worktree. When they asked, or the phase already runs in one, read `reference/worktree.md` first.
 
 Stop after one slice. Do not advance to the next slice in the same turn.

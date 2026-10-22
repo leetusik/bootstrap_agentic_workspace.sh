@@ -128,7 +128,7 @@ Below, each entry is the source, then the emit path where it differs:
   Knowledge block in [README.en.md](../README.en.md)). The updater never creates, edits, removes or
   reports a path with an `explain` component, and `RETIRED_FILES` never lists one.
 - `payload/claude/agents/slice-executor-{mid,high}.md`, `payload/claude/agents/design-drafter.md`,
-  `payload/claude/agents/design-critic.md`, `payload/claude/agents/Explore.md` → `.claude/agents/…` (the design subagent and the design critic; `sync-agents` keeps each on its own row, `design` and `critic`)
+  `payload/claude/agents/design-critic.md`, `payload/claude/agents/explain-critic.md`, `payload/claude/agents/Explore.md` → `.claude/agents/…` (the design subagent and the design critic; `sync-agents` keeps each on its own row, `design` and `critic`; the explain critic judges one drafted chapter of an explain phase and has no row: its model is its own frontmatter)
 - `payload/executors.toml` → `executors.toml` (seed-once executor-tier config — created if absent,
   never overwritten on update; embedded as the adopter seed, with its cheap-route block commented out)
 - `payload/claude/settings.json` → `.claude/settings.json`

@@ -211,7 +211,7 @@ under `workflow/` instead and the skills and agents untracked in the host's `.cl
 
 - [`CLAUDE.md`](payload/contract.md) — the compact routing contract every agent session works under.
 - [`scripts/workflow.py`](payload/scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` — the 17 Agent Skills (`/slash` commands), the two risk-routed `slice-executor` tier subagents (`.claude/agents/slice-executor-{mid,high}.md`, dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ xhigh), the `design-critic` that judges each draft (the `critic` row, sonnet @ high; in judge mode the `judge` row, fable @ high), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
+- `.claude/` — the 17 Agent Skills (`/slash` commands), the two risk-routed `slice-executor` tier subagents (`.claude/agents/slice-executor-{mid,high}.md`, dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ xhigh), the `design-critic` that judges each draft (the `critic` row, sonnet @ high; in judge mode the `judge` row, fable @ high), the `explain-critic` that judges one drafted chapter of an explain phase (no row: opus @ high from its own frontmatter), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - [`works/`](works/) — the state machine, starting with **no phases**: a `deferred/` area,
@@ -259,7 +259,7 @@ It writes only untracked files, all hidden by the host's `.git/info/exclude` (ne
 
 - `workflow/`: a **nested git repo** holding the engine, `works/`, `docs/`, `executors.toml` and
   the contract (as `CLAUDE.workspace.md`). It is versioned there, separately from the host.
-- the 17 skills and 3 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
+- the 17 skills and 6 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
   path rewritten to reach `workflow/` (`python3 workflow/scripts/workflow.py …`);
 - a `.gitignore` of `*` in each of those skill directories, so a skill directory hides itself
   even where the host's `.gitignore` re-includes `.claude/skills/`;
@@ -617,7 +617,7 @@ parallelism it never used. The mechanism itself is unchanged.)
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
 │   ├── skills/                    # 17 Agent Skills (/slash commands)
-│   ├── agents/                    # slice-executor tiers mid/high + design-drafter + design-critic (models from executors.toml)
+│   ├── agents/                    # slice-executor tiers mid/high + design-drafter + design-critic + explain-critic (models from executors.toml)
 │   └── settings.json              # pre-approves workflow.py; denies force-push & rm -rf
 └── .github/
     └── workflows/

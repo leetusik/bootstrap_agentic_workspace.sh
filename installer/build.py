@@ -58,6 +58,7 @@ FIXED_LIVE_FILES = [
     ".claude/agents/slice-executor-high.md",
     ".claude/agents/design-drafter.md",
     ".claude/agents/design-critic.md",
+    ".claude/agents/explain-critic.md",
     ".claude/agents/Explore.md",
     "executors.toml",
     "works/templates/deferred_brief.md",
@@ -76,6 +77,9 @@ FIXED_LIVE_FILES = [
 # source file under payload/ (that would be a second copy to keep in step).
 SHARED_SKILL_FILES = {
     ".claude/skills/do-next-slice/reference/dispatch.md": ".claude/skills/do-whole-phase/reference/dispatch.md",
+    ".claude/skills/do-next-slice/reference/explain-chapter.md": ".claude/skills/do-whole-phase/reference/explain-chapter.md",
+    ".claude/skills/do-next-slice/reference/explain-decomposition.md": ".claude/skills/do-whole-phase/reference/explain-decomposition.md",
+    ".claude/skills/do-next-slice/reference/explain-review.md": ".claude/skills/do-whole-phase/reference/explain-review.md",
 }
 
 CLAUDE_HDR = "# CLAUDE.md\n\n"
