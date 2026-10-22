@@ -2992,6 +2992,63 @@ def rebuild_index_and_state() -> None:
     rebuild_deferred_dashboard(deferred)
     for p in phases:  # only the marker-delimited ## Slices block; archived phases are never touched
         refresh_phase_md_slices(ROOT / p["path"], p)
+    if stream:  # a parallel stream's state just changed: the default checkout's dashboards follow it live
+        refresh_default_checkout()
+
+
+DEFAULT_REFRESH_ENV = "AGENTIC_WORKSPACE_REFRESHING_DEFAULT"
+
+
+def _default_checkout_root():
+    """The workspace root in this repo's main checkout when this checkout is one of its linked
+    worktrees, else None (the main checkout itself, no git, or a common dir that is not a plain
+    `.git`, as in `_main_host_checkout_agents`)."""
+    try:
+        proc = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                              cwd=str(ROOT), capture_output=True, text=True, timeout=10)
+    except Exception:  # noqa: BLE001 - best effort: no refresh is the honest fallback
+        return None
+    common = Path(proc.stdout.strip()) if proc.returncode == 0 and proc.stdout.strip() else None
+    if common is None or common.name != ".git":
+        return None
+    root = (common.parent / _repo_prefix()).resolve()
+    return None if root == ROOT.resolve() else root
+
+
+def refresh_default_checkout() -> None:
+    """Rerun the default checkout's OWN engine `rebuild` from a parallel stream (workspace v67), so
+    its `works/backlog.md` follows this phase whether or not anything runs there. Its rebuild reads
+    this phase from this worktree's files (`streams_section`); the files it rewrites are generated
+    and stay uncommitted there. Best effort and silent: a missing engine, a failure or a timeout
+    never blocks this stream, and the env guard stops a refresh from refreshing again."""
+    if os.environ.get(DEFAULT_REFRESH_ENV):
+        return
+    root = _default_checkout_root()
+    engine = root / "scripts" / "workflow.py" if root is not None else None
+    if engine is None or not engine.is_file():
+        return
+    try:
+        subprocess.run([sys.executable, str(engine), "rebuild"], cwd=str(root), capture_output=True, text=True,
+                       timeout=60, env={**os.environ, DEFAULT_REFRESH_ENV: "1"})
+    except Exception:  # noqa: BLE001 - never block the stream on the default checkout's dashboards
+        pass
+
+
+def _phase_at_worktree(worktree: str, phase_id: str):
+    """`(phase data, slices)` of one phase as its worktree's files hold them right now (uncommitted
+    progress included), or None when the worktree or its phase folder cannot be read."""
+    pdir = Path(worktree) / _repo_prefix() / "works" / "phases" / "active" / phase_id
+    try:
+        data = json.loads((pdir / "phase.json").read_text(encoding="utf-8"))
+        slices = [json.loads((s / "slice.json").read_text(encoding="utf-8"))
+                  for s in (sorted((pdir / "slices").iterdir()) if (pdir / "slices").is_dir() else [])
+                  if (s / "slice.json").is_file()]
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or not all(isinstance(s, dict) for s in slices):
+        return None
+    slices.sort(key=lambda d: d.get("order", 999999))
+    return data, slices
 
 
 def _phase_progress(phase_like: dict, slices: list) -> tuple:
@@ -3006,13 +3063,14 @@ def streams_section(phases: list, state: dict, live=None) -> list:
     phase still in flight, each read live from where its slices actually advance.
 
     A parallel phase's slice progress lives on its own branch, so this checkout's copy of it stands
-    still until the merge. Each phase read from a branch lands in `live` (phase id -> (phase data,
-    slices, ref)), so `rebuild_backlog` renders its `## Active Phases` row and its slice table from
-    the same read. Rows: this checkout's own stream first
+    still until the merge. Each phase read from elsewhere lands in `live` (phase id -> (phase data,
+    slices, where it was read)), so `rebuild_backlog` renders its `## Active Phases` row and its
+    slice table from the same read. Rows: this checkout's own stream first
     when it is a parallel one (from its working tree), then the `default` row (this checkout's
     pointer on the default stream; on a parallel stream the base branch's pointer, from
     `execution.base_branch`, else the local copy), then one row per other in-flight phase, read
-    from its branch, then `origin/<branch>`, else the local copy -- labelled so. Git is touched
+    from its worktree's files while that worktree is on disk (workspace v67: uncommitted progress
+    included), then its branch, then `origin/<branch>`, else the local copy -- labelled so. Git is touched
     only when a stamped phase is in flight (the same gate as `current_stream`); with none, this is
     a single working-tree default row and no git call is made. The Host branch column is nested only.
     """
@@ -3070,7 +3128,7 @@ def streams_section(phases: list, state: dict, live=None) -> list:
             if plist is not None:
                 target["slices"] = _slices_at_ref(base, target["id"]) or []
                 if live is not None:
-                    live[target["id"]] = (target, target["slices"], base)
+                    live[target["id"]] = (target, target["slices"], f"branch `{clean_cell(base)}`")
             cur_slice = resolve_current([target])[1]
             _, done = _phase_progress(target, target["slices"])
             add("default", target["id"], target.get("status"), cur_slice or "none", done, None, None, source)
@@ -3080,13 +3138,18 @@ def streams_section(phases: list, state: dict, live=None) -> list:
         branch = execution.get("branch")
         data, slices, source = p, p["slices"], "local copy"
         branch_gone, merged = False, None
+        on_disk = _phase_at_worktree(execution["worktree"], p["id"]) if use_git and isinstance(execution.get("worktree"), str) else None
+        if on_disk is not None:
+            (data, slices), source = on_disk, "worktree"
+            if live is not None:
+                live[p["id"]] = (data, slices, f"its worktree `{clean_cell(where(execution['worktree']))}`")
         if use_git and branch:
-            for candidate in (branch, f"origin/{branch}"):
+            for candidate in ((branch, f"origin/{branch}") if on_disk is None else ()):
                 found = _phase_json_at_ref(candidate, p["id"])
                 if found is not None:
                     data, slices, source = found, _slices_at_ref(candidate, p["id"]) or [], f"branch {candidate}"
                     if live is not None:
-                        live[p["id"]] = (data, slices, candidate)
+                        live[p["id"]] = (data, slices, f"branch `{clean_cell(candidate)}`")
                     break
             branch_gone = not _branch_exists(branch)
             if not branch_gone:
@@ -3112,7 +3175,7 @@ def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
     ]
     if state.get("stream"):  # only in a parallel-phase checkout; absent on the default stream
         lines.append(f"- Stream: `{clean_cell(state['stream'])}` (parallel phase checkout; the pointer above is scoped to it)")
-    live = {}  # phase id -> (phase data, slices, ref) for every phase streams_section read from a branch
+    live = {}  # phase id -> (phase data, slices, where) for every phase streams_section read from elsewhere
     lines += [
         f"- Open deferred jobs: `{index.get('deferred_open_count', 0)}`", "",
         *streams_section(phases, state, live),
@@ -3133,10 +3196,10 @@ def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
             current_cell += " · pinned: default stream"
         lines.append(f"| [{status_box(data.get('status'))}] `{p['id']}` | `{data.get('status')}` | `{review}` | {name} | {current_cell} | `{p['path']}` |")
     for p in phases:
-        _, slices, ref = live.get(p["id"], (p, p["slices"], None))
+        _, slices, read_from = live.get(p["id"], (p, p["slices"], None))
         lines.extend(["", f"## Phase {p['id']}: {p['name']}", ""])
-        if ref:  # its slices advance on another branch: show them as that branch records them
-            lines.extend([f"_Read live from branch `{clean_cell(ref)}`, where this phase advances._", ""])
+        if read_from:  # its slices advance elsewhere: show them as that worktree or branch records them
+            lines.extend([f"_Read live from {read_from}, where this phase advances._", ""])
         lines.extend(["| Slice | Status | Name | Kind | Path |", "|---|---|---|---|---|"])
         for s in slices:
             checkbox = status_box(s.get("status"))

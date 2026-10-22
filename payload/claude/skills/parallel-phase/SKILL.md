@@ -68,7 +68,7 @@ the detail lives here.
 7. **The merge** — after `parallel-gate <P>` is OPEN (branch phase `done` + review `pass`, default
    stream not busy; never past a closed gate): `ExitWorktree keep` → `git pull --ff-only` only if
    `main` tracks a remote → if anything is staged, or a file the merge touches is uncommitted (typically
-   the generated `works/` files after a phase was created here since the stamp — commit that
+   the generated `works/` files, which a phase worktree refreshes here as it runs (v67) — commit that
    workflow state first), STOP and ask (git refuses both; never unstage or discard the operator's work)
    → `git merge --no-ff phase/P<N>-<slug> -m "merge(P<N>): <name>"`
    (an orchestrator commit; a conflict in a generated file = take either side + regenerate) →
@@ -172,9 +172,12 @@ What *is* stream-scoped:
   merge — that is what `parallel-status` is for.
 
 `works/backlog.md`'s `## Streams` table lists the default stream and every in-flight worktree phase,
-read live from its branch (with the host branch in a nested install). The same read fills that
-phase's `## Active Phases` row and slice table, so the slices it cut show before the merge;
-`parallel-status` gives the detail.
+read live from its worktree's files while the worktree is on disk, else from its branch (with the
+host branch in a nested install). The same read fills that phase's `## Active Phases` row and slice
+table, so the slices it cut show before the merge. Since v67 every state change in a worktree reruns
+the default checkout's own `rebuild`, so its backlog follows the phase with nothing run there; those
+regenerated files stay uncommitted until the default stream's next commit. `parallel-status` gives
+the detail.
 
 **A worktree isolates files only.** Docker containers, ports, local databases and caches stay shared,
 so coordinate them across streams.
@@ -255,7 +258,8 @@ closes the gate or turns a check red mid-sequence, STOP and report — never mer
 4. **Merge locally.** If `git diff --cached --quiet` fails, STOP and ask the operator to commit or
    unstage — git refuses a merge on a non-clean index, and you never unstage their work. The same
    refusal fires for uncommitted changes to a file the merge touches — typically the generated
-   `works/` files after a phase was created on this checkout since the stamp: that is
+   `works/` files, which a phase worktree refreshes here as it runs (v67) and a phase created on
+   this checkout since the stamp rewrites: that is
    workflow state, yours to commit first (`git add works && git commit`), never the operator's edit
    to discard. Then:
    ```sh
