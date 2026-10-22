@@ -29,9 +29,10 @@ history.
 - **Per-repo phase scope.** A multi-repo phase carries `repo_anchors`, stamped at `new-phase` and
   again at `parallel-start`, and frozen at a passing review. The base rule picks each repo's
   range base: the recorded creation commit on the default branch or when the branch predates the
-  phase, the merge-base when the branch was rebased past it, a patch-id match when the creation
-  commit itself was rewritten, and a printed note when that anchor is rewritten and pruned. The
-  same rule fixes the review base of a single-repo nested phase after a rebase. `phase-scope`
+  phase, the merge-base when the branch moved past it (rebased onto, or merged with, a newer
+  default branch), a patch-id match when the creation commit itself was rewritten, and a printed
+  note when that anchor is rewritten and pruned. The same rule fixes the review base of a
+  single-repo nested phase after a rebase or a merge. `phase-scope`
   prints one block per repo (`--repo <name>`, repeatable; `--json` gains `repos[]`), with child
   repos excluded from the host's own pathspec.
 - **Worktree sets.** On a multi-repo host,

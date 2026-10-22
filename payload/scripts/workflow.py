@@ -5734,11 +5734,17 @@ def parallel_status(args: argparse.Namespace) -> None:
                 print(f"  host_worktree={execution.get('host_worktree') or '- (already torn down)'}")
             else:
                 print("  host_branch=- (no host half stamped: an execution block written at root, before the nested pair)")
-            set_repos = execution.get("repos")
+            # P40.F1: the set's repos come from the copy `data` came from -- a mid-phase `parallel-add-repo` commits its stamp
+            # on the phase branch only, so the default stream's own copy lacks it until the merge. The local block is the
+            # fallback only when no other copy was read (or the copy carries no execution block).
+            copy_execution = data.get("execution") if isinstance(data, dict) else None
+            set_repos = (copy_execution if isinstance(copy_execution, dict) else execution).get("repos")
             if isinstance(set_repos, dict):  # P40.S6: the worktree set's repos, one line each
                 for name, value in set_repos.items():
                     value = value if isinstance(value, dict) else {}
-                    print(f"  repo {name}: branch={value.get('branch') or '-'} ({'created' if value.get('branch_created') else 'reused'}) "
+                    # branch_created=false is all the stamp records of a branch that pre-existed: parallel-add-repo's reuse of an
+                    # existing branch and --adopt of an existing worktree stamp identically, so the label names both
+                    print(f"  repo {name}: branch={value.get('branch') or '-'} ({'created' if value.get('branch_created') else 'reused or adopted'}) "
                           f"base={value.get('base') or '-'} ({value.get('base_sha') or '-'}) worktree={value.get('worktree') or '- (torn down)'}")
         print(f"  consolidation={phase_consolidation(phase) or '-'}")
         print(f"  source={source}")
@@ -5997,7 +6003,7 @@ def resolve_repo_base(path: Path, created, default_branch=None, label: str = "cr
     1. `created` null -> the empty tree when the repo now has commits;
     2. no D, or mb == HEAD (the work sits on the default branch) -> `created`;
     3. mb an ancestor of `created` (the branch carried pre-phase commits) -> `created`;
-    4. `created` an ancestor of mb (the branch was rebased onto a newer default) -> mb;
+    4. `created` an ancestor of mb (the branch was rebased onto, or merged with, a newer default) -> mb;
     5. neither (a rebase rewrote `created` itself) -> the commit in mb..HEAD whose `patch-id --stable`
        equals `created`'s, else mb with a note. A `created` that is a merge commit (no patch-id) or no
        longer exists (pruned) takes the note path. Never raises."""
@@ -6018,7 +6024,7 @@ def resolve_repo_base(path: Path, created, default_branch=None, label: str = "cr
         if _is_ancestor(path, mb, commit):
             return {"base": commit, "rule": 3, "kind": f"{label}; the branch carried pre-phase commits", "note": None}
         if _is_ancestor(path, commit, mb):
-            return {"base": mb, "rule": 4, "kind": f"merge-base with {name}: the branch was rebased past {label} {commit[:7]}", "note": None}
+            return {"base": mb, "rule": 4, "kind": f"merge-base with {name}: the branch moved past {label} {commit[:7]}, by a rebase onto or a merge of a newer {name}", "note": None}
     elif mb is None:
         return {"base": None, "rule": 5, "kind": None,
                 "note": f"{label} {created} is not a commit here (rewritten and pruned?) and there is no default branch to fall back to"}
@@ -6274,7 +6280,7 @@ def _phase_scope_nested(args: argparse.Namespace, data: dict, out: dict, header:
         if frozen:  # P40: the base the rule resolved at the passing review (written only when != created)
             base = _rev_parse(frozen, cwd=host)
             if base:
-                base_kind = "the base the rule resolved when the review passed (the branch was rebased): phase.json host_anchors.review_base"
+                base_kind = "the base the rule resolved when the review passed (the branch moved past the anchor, by a rebase onto or a merge of a newer default): phase.json host_anchors.review_base"
             else:
                 out["notes"].append(f"host_anchors.review_base {frozen} is not a commit in the host repo -- measured from host_anchors.created instead")
         if base is None:

@@ -3169,6 +3169,16 @@ if [ "$td_rc" -eq 0 ] && [ ! -e "$WT" ] && [ -z "$(git -C "$MH/alpha" branch --l
     && [ "$(pjget "$PJ" execution.repos.alpha.worktree)" = None ] && [ "$(pjget "$PJ" execution.repos.beta.worktree)" = None ] && hw validate >/dev/null 2>&1; then
   ok "with the hand-made worktree gone, teardown removes the repo worktrees, nulls each stamp, deletes the created branch with no commits and keeps the one with a commit; validate passes"
 else bad "the set did not retire cleanly (rc=$td_rc) -- $td_out"; fi
+# (d2) a repo added mid-phase, from inside the set, is stamped on the phase branch only; the default stream's parallel-status must still list it.
+{ hw new-phase --phase P2 --name "Mid" --objective "add a repo mid-phase" && git -C "$MH/workflow" add -A && mr git -C "$MH/workflow" commit -qm "chore: create the second phase" \
+  && hw parallel-start P2 --host-branch hb2 --repo alpha=feat/a2 --repo-base alpha=main; } >/dev/null 2>&1 || bad "multi-repo probe: could not cut the second set"
+PJ2="$MH/workflow/works/phases/active/P2/phase.json"; WT2=$(pjget "$PJ2" execution.host_worktree)
+add_out=$( cd "$WT2" && mr python3 workflow/scripts/workflow.py parallel-add-repo P2 --repo beta=feat/b2 --repo-base main 2>&1 ); add_rc=$?
+st_out=$(hw parallel-status 2>&1); st_rc=$?
+[ "$add_rc" -eq 0 ] && ! pjget "$PJ2" execution.repos.beta >/dev/null 2>&1 && [ "$st_rc" -eq 0 ] && printf '%s\n' "$st_out" | grep -q '^  source=branch phase/P2' \
+  && printf '%s\n' "$st_out" | grep -q '^  repo beta: branch=feat/b2 (created) ' \
+  && ok "a repo added mid-phase (stamped on the phase branch only) is listed by the default stream's parallel-status, which reads the set's repos from the branch it reports" \
+  || bad "the default stream's parallel-status lost the repo added mid-phase (add rc=$add_rc, status rc=$st_rc) -- $add_out $st_out"
 # (e) --to-multi-repo: a per-repo nested install R beside a plain repo S becomes a multi-repo host at their parent, losslessly.
 newtmp MC; MX="$MC/C"; MXR="$MX/R"; mr_repo "$MXR" R; mr_repo "$MX/S" S
 mr sh "$BOOT" "$MXR" >/dev/null 2>&1 || bad "multi-repo probe: nested install of R failed"
