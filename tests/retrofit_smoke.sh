@@ -315,6 +315,25 @@ for required in (
 # do-whole-phase (one phase) points at its sibling, by the exact path.
 assert ".claude/skills/do-whole-phases/SKILL.md" in (root / "payload/claude/skills/do-whole-phase/SKILL.md").read_text(encoding="utf-8")
 
+# P42 (v70): /do-whole-phase runs a declared phase's independent slices together. The protocol lives in
+# one reference that ships with do-whole-phase only (do-next-slice still runs one slice), pinned on its
+# exact path and a handful of whole strings; the DECOMP rules that make a slice independent live in
+# decomposition.md, and explain chapters stay undeclared (explain-decomposition.md drops `--depends-on`).
+_wave_rel = ".claude/skills/do-whole-phase/reference/wave.md"
+assert _wave_rel in LIVE and ".claude/skills/do-next-slice/reference/wave.md" not in LIVE, "wave.md ships with do-whole-phase only"
+wave = (root / "payload/claude/skills/do-whole-phase/reference/wave.md").read_text(encoding="utf-8")
+for required in (
+    "`ready_slices=<ids|none>`", "`running_slices=<ids|none>`", "## Wave",
+    "**The join-rebuilt artifact is the one exception.**", "**Rolling (the default).**", "**At the join.**",
+    "wait for every running span and never re-dispatch one",
+):
+    assert required in wave, ("wave.md", required)
+decomp = (root / "payload/claude/skills/do-whole-phase/reference/decomposition.md").read_text(encoding="utf-8")
+for required in ("**Independence means disjoint sets.**", "Never declare `DECOMP2`, `REVIEW` or a `co-work` slice"):
+    assert required in decomp, ("decomposition.md", required)
+for _rel in (".claude/skills/do-whole-phase/reference/explain-decomposition.md", ".claude/skills/do-next-slice/reference/explain-decomposition.md"):
+    assert _rel in LIVE and "[--depends-on" not in LIVE[_rel], _rel
+
 # The spec hard-wraps its prose, so match against a whitespace-flattened copy: these
 # assertions are about the wording, not about where a line happens to break.
 design = " ".join(skill_dir_text("design-cowork").split())
@@ -708,11 +727,14 @@ for tier in ("slice-executor",):
         "that is `DECOMP2`'s second origin",
         # v44: two rules moved here from the contract -- the docs slice's
         # doc-new-version carve-out (OQ1, operator-approved) and the fractional
-        # `--order` / advisory `depends_on` facts a DECOMP executor needs.
+        # `--order` / `depends_on` facts a DECOMP executor needs (v70: the dependency binds).
         "**The `docs` slice's carve-out:**",
         "a fractional `--order` (e.g. `4.5`) inserts a slice between two neighbors",
+        # P42 (v70): a wave executor's rules, and `--depends-on` declares and binds.
+        "## In a wave (your `plan.md` carries a `## Wave` section)", "**declares and binds**",
     ):
         assert required in body, (tier, required)
+    assert "`depends_on` is advisory" not in body, (tier, "advisory depends_on")
     # v36: Aside is the prescribed real-browser instrument in BOTH bodies -- the
     # implementation bullet, the mockup span, and the review's gate stage 2.
     for required in (
@@ -869,8 +891,11 @@ for required in (
     # and the gate rule would forbid the run.
     "(bar `/do-whole-phases`' parked gate)",
     "(`/do-whole-phases` parks it and continues; every other stop halts the run)",
+    # v70 (P42): the reversal of "never fan out slices" -- a declared phase's independent slices run at once.
+    "a phase's declared, independent slices may run at once (`do-whole-phase`'s wave), all others alone",
 ):
     assert required in claude, required
+assert "never fan out slices" not in claude, "the contract still forbids fanning out slices"
 # P36.F1: the contract's size cap (the operator's P34 pick, 12,288 B by wc -c) was a recorded rule
 # no test held, so a release went out 338 B over it; the shipped CLAUDE.md is this file byte for byte.
 assert len((root / "payload/contract.md").read_bytes()) <= 12288, "contract over its 12,288 B cap"
@@ -915,7 +940,7 @@ compact = claude.split("## Compact Instructions", 1)[1]
 assert "resume card" in compact and "never re-dispatch a running executor" in compact
 assert "re-read" not in compact, "Compact Instructions carry a re-read instruction"
 PY
-then ok "18 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with waves and opt-in critique, mockups on request, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
+then ok "18 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with waves and opt-in critique, mockups on request, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v70 wave protocol (do-whole-phase's reference/wave.md, DECOMP's disjoint-sets rule, the executor's wave section, the contract's reversal of "never fan out slices"); the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
@@ -1891,6 +1916,7 @@ sh "$BOOT" "$F" --update >/dev/null 2>&1   # restore both verbatim for the Test 
 [ ! -f "$F/.claude/agents/phase-reviewer.md" ] && ok "phase-reviewer retired (absent on fresh install)" || bad "phase-reviewer should be retired but is present"
 [ -d "$F/.claude/skills/do-whole-phase" ] && ok "fresh install keeps do-whole-phase" || bad "do-whole-phase skill missing"
 [ -f "$F/.claude/skills/do-whole-phases/SKILL.md" ] && ok "fresh install ships the do-whole-phases skill" || bad "fresh install missing the do-whole-phases skill"
+[ -f "$F/.claude/skills/do-whole-phase/reference/wave.md" ] && ok "fresh install ships do-whole-phase's reference/wave.md (the wave protocol)" || bad "fresh install missing do-whole-phase/reference/wave.md"
 [ ! -e "$F/.claude/skills/explain" ] && grep -qF '/plugin marketplace add leetusik/knowledge' "$F/docs/current/operations.md" \
   && grep -qF '/plugin install knowledge@knowledge' "$F/docs/current/operations.md" \
   && ok "fresh install ships no explain skill; its operations doc points at the knowledge plugin" || bad "fresh install still ships explain, or the operations doc lacks the plugin pointer"

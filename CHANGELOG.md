@@ -9,6 +9,56 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v70 — 2026-10-22
+
+- **A phase's declared, independent slices run together.** `/do-whole-phase` (and `/do-whole-phases`
+  through it) now starts every slice whose dependencies are done at once, in the same checkout,
+  instead of one executor at a time. Each slice still gets its own start, verdict record, finish and
+  commit; the orchestrator writes the shared notebook entries as each one returns. There is no fixed
+  cap. `/do-next-slice` still runs one slice, and an explain phase stays sequential: its chapters are
+  cut undeclared (`explain-decomposition.md` drops `--depends-on`).
+- **Declared dependencies bind.** `new-slice` and `promote-deferred` take `--depends-on <id>`
+  (repeatable) or `--depends-on none`; the slice stores `"depends_declared": true` beside
+  `depends_on`. A declared dependency must name a slice of the same phase ordered strictly before
+  it, so `order` is a topological order and the plain pointer (`next`, `/do-next-slice`) always has
+  its dependencies done. `new-slice` refuses a violation (and `none` beside an id) and writes
+  nothing; `validate` adds three declaration errors and a warning for a declaration on a barrier.
+  Before v70 `depends_on` was advisory and only had to name a slice that exists.
+- **Barriers run alone.** `DECOMP`, `DECOMP2`, `DECOMP3`, `REVIEW`, `co-work` design slices and every
+  **undeclared** slice start only when everything before them is done and nothing is `in_progress`;
+  nothing after one starts until it is done. DECOMP declares every non-barrier slice with its
+  **set** (its files; the generated files its edits regenerate; any numbered sequence it extends; any
+  shared runtime resource it holds), and marks two slices independent only when the sets are disjoint.
+- **The ready set.** For a declared phase only, `next` and `run-phases` print `ready_slices=` and
+  `running_slices=`, and the resume card a `wave:` line (plus a `stop:` line for a sibling's stop):
+  after a compaction the run waits for every running span, never re-dispatches one, finishes each
+  slice whose `result.md` exists, and starts the ready set only while no stop is on disk. A stop
+  anywhere (`pending`, `blocked`, a failed high-row return) empties the ready set; the slices already
+  running finish and are committed, nothing new starts, and the run stops.
+- **The wave protocol, in a new `do-whole-phase/reference/wave.md`.** A wave slice's `plan.md` carries
+  a `## Wave` section; its executor writes no `phase.md` (it returns a `notebook` field in its
+  verdict), runs no engine command that writes, edits only its declared set, and lists whole-tree
+  checks it left out as `deferred: whole-tree` for the review. Commits are one per slice, rolling
+  by default. A **join-rebuilt artifact** (a build output regenerated from many slices' sources, such
+  as this repo's `bootstrap_agentic_workspace.sh`) is the one exception to disjoint sets: wave
+  executors never rebuild it; every host commit waits until the running set drains, then the
+  orchestrator rebuilds once and commits the artifact with the last slice.
+- **The contract reverses "never fan out slices".** It now says a phase's declared, independent slices
+  may run at once (`do-whole-phase`'s wave), all others alone, and the phase stays the unit of
+  *worktree* parallelism (`parallel-phase` reverses its sequential line and its slice-level guardrail:
+  a wave runs in the phase's own checkout, never a worktree per slice).
+  `slice-executor.md` gains an `## In a wave` section and says `--depends-on` declares and binds. The
+  contract stays under its 12,288 B cap; the skill count stays 18.
+- **A workspace that declares nothing is byte-identical to v69.** Every existing slice is undeclared,
+  so every existing phase selects, stores and prints exactly as before: no `ready_slices=` line, no
+  `wave:` line, `state.json` and the dashboards unchanged.
+
+- **Migration notes.** Existing phases stay sequential (undeclared, including any v69-era
+  `depends_on` list, which was advisory and may be incomplete). New phases' `DECOMP` declares its
+  slices from now on, and that is the only way a phase runs several at once. `--update` adds
+  `do-whole-phase/reference/wave.md` and the engine's new flag and lines; nothing in a phase's files
+  changes.
+
 ## v69 — 2026-10-22
 
 - **`/do-whole-phases` runs phases back to back.** `/do-whole-phases [phases] [auto|gate|plan only]`
