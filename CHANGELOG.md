@@ -9,6 +9,78 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v66 — 2026-10-22
+
+- **The route table runs at xhigh.** Every Opus row is now **opus @ xhigh**: `high` and `research`
+  move from opus @ high / medium, and `design` stays opus @ xhigh. The `judge` row moves from
+  fable @ high to **opus @ xhigh** and is **exempt from the critic-vs-drafter model rule**: only
+  `executor-route --critic` refuses an equal pair, and the Fable loopback-proxy skip fires only
+  on a Fable override of the judge. The rows below Opus (`mid`, `critic`, `explore`) go to
+  **xhigh**. `cheap` still inherits `mid`; its seed in `executors.toml` reads haiku @ xhigh,
+  commented out. The `explain-critic` frontmatter is opus @ xhigh.
+- **One executor.** `slice-executor` (`.claude/agents/slice-executor.md`) replaces
+  `slice-executor-mid` and `slice-executor-high`. Its frontmatter carries the `mid` row, and every
+  slice passes its row's model and effort per dispatch. A nested install that hits a name clash
+  renames it `wf-slice-executor`. `tier` retires for `route`: `executor-route` prints no `tier=`,
+  its bare table's columns are `route agent model effort source`, and the verdict field is
+  `route:` (`high | research | mid | cheap`). The review's fix rule reads `route: mid` or
+  `route: cheap`. A full model id or `inherit` is accepted only on the rows that own a file
+  (`mid`, `design`, `critic`, `explore`); `[claude.high]`, `research`, `cheap` and `judge` take an
+  alias, and a full id there is refused with a v66 line. `dispatch-summary` still reads old
+  transcripts' `slice-executor-mid` / `-high` spans, and reads `slice-executor` spans by kind and
+  model, approximately.
+- **A DECOMP estimates time, and marks real spend.** The estimate comes from the meter's means
+  (minutes per span by route, span-minutes per slice by kind), never a session-$ figure; the
+  `$/span` and `$/slice` columns stay. Each cut slice carries `spends money: no` or
+  `spends money: yes, ~$X via <service>`, and only a `yes` slice plans at the operator's gate. A
+  bulk-sweep slice is cut by surface, so its findings are written to disk as it goes.
+- **The compaction window is 450000.** The project `autoCompactWindow` ships at **450000** (was
+  300000 in v56 and v61–v65). Claude Code's native idle compaction does the rest, with no
+  compaction hook and no `idleCompaction` key: it is on by default, fires about 54 minutes after
+  the last request on a context of at least 200k tokens and a one-hour cache TTL, and
+  `idleCompaction: false` in user settings turns it off. A 200k-context model still compacts at
+  its own limit. See <https://code.claude.com/docs/en/settings-reference> (`autoCompactWindow`, `idleCompaction`)
+  and <https://code.claude.com/docs/en/model-config> (Set the auto-compact window).
+
+- **Migration notes.** `/update-workspace` lists `.claude/agents/slice-executor-mid.md` and
+  `-high.md` as stale, by content, ignoring their `sync-agents`-owned `model:` / `effort:` lines
+  (a nested renamed copy included). Delete them, then run `sync-agents`; a copy whose body you
+  edited is listed "yours, kept". A `[claude.high]` (or `research`, `cheap`, `judge`) full model
+  id must become an alias. `tier=` and `tier:` are now `route=` and `route:`. `autoCompactWindow`
+  moves from 300000 or 500000 to 450000, with `changed: <file> autoCompactWindow 300000 -> 450000
+  (today's default; set it back if you chose 300000)`; any other value is kept. The judge is no
+  longer refused on the drafter's model.
+
+## v65 — 2026-10-22
+
+- **`/explain` is the knowledge plugin's.** The vendored skill is gone (17 skills). The seed
+  operations doc's `## Knowledge (/knowledge:explain)` section, the README and the installer's
+  closing lines now point to `knowledge@knowledge` from the `leetusik/knowledge` marketplace,
+  plugin 0.5.0 or later, and quote its install commands. The contract drops its `/explain`
+  sentence. The updater never creates, writes, flags or reports a path with an `explain`
+  component, on any install path, nested included: a nested host's old copy stays recognised and
+  hidden.
+- **Explaining a book is a phase.** `/create-phase` gains *The explain route*: an `## Explain`
+  section in `intent.md` (subject, mode, book, lang, reader, depth, project, visibility) marks the
+  phase. Its `DECOMP` researches the subject, writes `book/outline.md` and cuts one chapter slice
+  per chapter; the operator signs the outline at a `pending` stop on the first chapter. Each
+  chapter is drafted and checked (`knowledge check`), judged by the new **`explain-critic`** agent
+  on a model different from the drafter's, and revised once. The review reads the whole book,
+  publishes every chapter **private** with the org key, reads it in the real reader, and the
+  operator accepts by reading it. Three new `do-whole-phase` references (shared into
+  `do-next-slice`): `explain-decomposition.md`, `explain-chapter.md`, `explain-review.md`. No
+  engine change: the critic has no route row; the orchestrator picks its model per call.
+- **The review's fixed pointer** is now `explain: not written — run /knowledge:explain P<N> for
+  one chapter, or create an explain phase for a book`.
+
+- **Migration notes.** `/update-workspace` installs `.claude/agents/explain-critic.md` (nested:
+  into the host's `.claude/agents/`, renamed `wf-explain-critic` on a clash). Explain phases need
+  the knowledge plugin at 0.5.0 or later and `/knowledge:setup` run once (the review publishes
+  with its org key); `knowledge check` needs a server with `POST /api/documents/check`. A 404 or
+  405 skips the check and the publish's 422 stays the backstop, while an unreachable server or a
+  rejected key stops the chapter. Delete an old `.claude/skills/explain/` by hand, once, after
+  installing the plugin: the updater leaves it in place.
+
 ## v64 — 2026-10-22
 
 - **`create-phase` and `update-workspace` commit when they finish.** `create-phase` commits what

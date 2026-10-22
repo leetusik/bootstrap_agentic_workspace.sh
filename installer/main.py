@@ -45,7 +45,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 64
+WORKSPACE_VERSION = 66
 ROOT = TARGET.resolve()
 # Nested personal install (P28; the default layout since P29): TARGET is a HOST git repo -- one the
 # operator may not own, or a new/empty dir this run `git init`s. The engine and all workflow state go
@@ -161,9 +161,9 @@ EMPTY_OK_ALLOWLIST = {
 #@@GENERATED_PAYLOADS@@
 
 # The skill inventory is derived independently from the embedded payload manifest.
-# The build enforces the release invariant: 18 skill packages.
+# The build enforces the release invariant: 17 skill packages.
 CLAUDE_SKILLS = sorted({k.split("/")[2] for k in PAYLOADS if k.startswith(".claude/skills/") and k.endswith("/SKILL.md")})
-EXPECTED_SKILL_COUNT = 18
+EXPECTED_SKILL_COUNT = 17
 if len(CLAUDE_SKILLS) != EXPECTED_SKILL_COUNT:
     raise RuntimeError(
         f"embedded skill inventory must contain {EXPECTED_SKILL_COUNT} skill packages "
@@ -190,8 +190,8 @@ MANAGED_FILES = [
     "works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/events.jsonl",
     *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md", "phase.md")],
     "scripts/workflow.py",
-    ".claude/agents/slice-executor-mid.md", ".claude/agents/slice-executor-high.md", ".claude/agents/design-drafter.md",
-    ".claude/agents/design-critic.md", ".claude/agents/Explore.md",
+    ".claude/agents/slice-executor.md", ".claude/agents/design-drafter.md",
+    ".claude/agents/design-critic.md", ".claude/agents/Explore.md", ".claude/agents/explain-critic.md",
     ".claude/settings.json",
     "executors.toml",
 ]
@@ -340,7 +340,7 @@ RETIRED_MECHANISMS = [
 # _merge_settings_dict) removes exactly our retired hook handlers -- matched by command -- and moves a window
 # still at a value we shipped to today's; it reports both through SETTINGS_CHANGES.
 RETIRED_HOOK_COMMANDS = {m["hook"]: f"retired in v{m['retired']}" for m in RETIRED_MECHANISMS if m.get("hook")}
-SHIPPED_COMPACT_WINDOWS = {500000}  # what v57-v60 shipped; v56 shipped 300000, today's value
+SHIPPED_COMPACT_WINDOWS = {300000, 500000}  # 300000: v56 and v61-v65; 500000: v57-v60; today's value is 450000
 SETTINGS_CHANGES = {"removed": [], "changed": []}
 
 
@@ -355,9 +355,9 @@ def _merge_settings_dict(theirs: dict, ours: dict, label: str = None) -> dict:
       same `matcher` (creating the event list / group when absent) unless a handler with the same
       `command` already exists anywhere under that event. Never removes, reorders or rewrites an
       adopter's entries.
-    - autoCompactWindow (v56; 300000 again since v61): copied from `ours` when the target has no
-      such key; a value equal to one we shipped (SHIPPED_COMPACT_WINDOWS: 500000, v57-v60) moves to
-      ours; any other value the adopter chose is kept.
+    - autoCompactWindow (v56; 450000 since the release after v65): copied from `ours` when the target has no
+      such key; a value equal to one we shipped (SHIPPED_COMPACT_WINDOWS: 300000, v56 and v61-v65;
+      500000, v57-v60) moves to ours; any other value the adopter chose is kept.
     With `label` (the file's shown path), each removal and change is recorded in SETTINGS_CHANGES.
     Idempotent. Raises ValueError on a malformed target shape (a non-object
     `permissions`/`hooks`, a non-list `allow`/`deny`/event/`hooks`, a non-object
@@ -435,7 +435,7 @@ def _merge_settings_dict(theirs: dict, ours: dict, label: str = None) -> dict:
         elif current in SHIPPED_COMPACT_WINDOWS and current != ours["autoCompactWindow"]:
             merged["autoCompactWindow"] = ours["autoCompactWindow"]
             changed.append(f"autoCompactWindow {current} -> {ours['autoCompactWindow']} "
-                           f"(the v61 default; set it back if you chose {current})")
+                           f"(today's default; set it back if you chose {current})")
     if label:
         for key, lines in (("removed", removed), ("changed", changed)):
             for line in (f"{label} {x}" for x in lines):
@@ -516,7 +516,7 @@ def _retrofit_handle(path: str, text: str) -> bool:
 #     subagents, every skill, works/templates/*.
 #   MERGE (additive): .claude/settings.json.
 #   CONTRACT (sidecar-aware): CLAUDE.md.
-#   SEED-ONCE: executors.toml (operator tier config — created if absent, never
+#   SEED-ONCE: executors.toml (operator route config — created if absent, never
 #     overwritten).
 #   PRESERVE (never touch): everything under works/ except templates, and all of
 #     docs/ (the append-only version chain plus generated snapshots).
@@ -598,7 +598,7 @@ def _update_handle(path: str, text: str, executable: bool) -> None:
         else:
             _update_write(path, text, executable)
         return
-    # Seed-once: executors.toml is the operator's tier config — create it when
+    # Seed-once: executors.toml is the operator's route config — create it when
     # absent (a pre-v9 workspace) and never overwrite an existing one.
     if path == "executors.toml":
         if (ROOT / path).exists():
@@ -639,7 +639,7 @@ def write_json(path, data) -> None:
 # Before any write, nested_plan() also asks git whether every host-side target WILL be ignored
 # (a host .gitignore negation outranks info/exclude); after the writes, nested_verify_clean()
 # asserts the host's git status lists none of them.
-NESTED_AGENTS = ["slice-executor-mid", "slice-executor-high", "design-drafter", "design-critic", "Explore"]
+NESTED_AGENTS = ["slice-executor", "design-drafter", "design-critic", "explain-critic", "Explore"]
 NESTED_KINDS = ("skills", "agents")
 # The engine's subcommands, read from the embedded engine: a hyphenated skill name that is not one
 # of them only ever names the skill, so its plain backticked form is renamed too.
@@ -1045,6 +1045,12 @@ Doc updates happen in a **docs phase the operator creates** — never per slice.
 """
 
 
+def _is_explain_path(rel: str) -> bool:
+    """A repo-relative path with a component named `explain`: the knowledge plugin owns it (v65), so no
+    install path creates, writes, removes, flags or reports it."""
+    return "explain" in rel.split("/")
+
+
 def nested_plan() -> dict:
     """Render and check everything the nested install writes, IN MEMORY, before any write: the
     clash map (merged into the existing marker on --update), the rewritten host-side skills and
@@ -1065,9 +1071,12 @@ def nested_plan() -> dict:
     raw_installed = old.get("installed") if isinstance(old.get("installed"), dict) else {}
     shipped = {"skills": CLAUDE_SKILLS, "agents": NESTED_AGENTS}
     renames, installed, stale = {k: {} for k in NESTED_KINDS}, {k: [] for k in NESTED_KINDS}, []
+    prior_renames = {k: {} for k in NESTED_KINDS}  # the marker's whole table, retired names included
+    retained_renames = {k: {} for k in NESTED_KINDS}  # renames of retired copies still on disk
     for kind in NESTED_KINDS:
         table = raw_renames.get(kind) if isinstance(raw_renames.get(kind), dict) else {}
         old_renames = {x: y for x, y in table.items() if isinstance(y, str) and y}
+        prior_renames[kind] = old_renames
         listed = raw_installed.get(kind) if isinstance(raw_installed.get(kind), list) else []
         prev = [n for n in listed if isinstance(n, str) and n]
         taken = _host_taken(kind, set(prev))
@@ -1087,11 +1096,17 @@ def nested_plan() -> dict:
             installed[kind].append(y)
         # The workspace's own copies that this version no longer ships stay recognised (and
         # excluded) while they exist; flag_retired_files() classifies their files by content, never deletes them.
+        # Their renames stay in the marker with them (never in the rewrite), so a later --update still maps
+        # a renamed copy back to its canonical path.
+        original = {y: x for x, y in old_renames.items()}
         for name in prev:
             rel = f".claude/skills/{name}" if kind == "skills" else f".claude/agents/{name}.md"
             if name not in installed[kind] and os.path.lexists(HOST / rel):
                 installed[kind].append(name)
-                stale.append(rel)
+                if name in original and original[name] not in shipped[kind]:
+                    retained_renames[kind][original[name]] = name
+                if not _is_explain_path(rel):
+                    stale.append(rel)
 
     files = {}
     for x in CLAUDE_SKILLS:
@@ -1155,7 +1170,8 @@ def nested_plan() -> dict:
     def _real_dir_or_absent(p: Path) -> bool:
         return not os.path.lexists(p) or (p.is_dir() and not p.is_symlink())
     self_hiding = [n for n in sorted(installed["skills"]) if _real_dir_or_absent(HOST / ".claude" / "skills" / n)]
-    skill_ignores = {f".claude/skills/{n}/.gitignore": NESTED_SKILL_GITIGNORE for n in self_hiding}
+    skill_ignores = {f".claude/skills/{n}/.gitignore": NESTED_SKILL_GITIGNORE for n in self_hiding
+                     if not _is_explain_path(f".claude/skills/{n}")}
     skill_targets = [f".claude/skills/{n}" for n in sorted(installed["skills"])]
     other_targets = [f".claude/agents/{n}.md" for n in sorted(installed["agents"])] + ["CLAUDE.local.md", ".claude/settings.local.json", NESTED_DIR]
     check_paths = [t for t in skill_targets if t.rsplit("/", 1)[1] not in self_hiding] + other_targets
@@ -1207,7 +1223,8 @@ def nested_plan() -> dict:
     else:
         conv = {"inferred": nested_infer_convention(), "confirmed": False, "text": None, "coauthor_trailers": "unknown"}
     marker = dict(old)
-    marker.update({"schema": 1, "host_root": "..", "commit_convention": conv, "renames": renames,
+    marker.update({"schema": 1, "host_root": "..", "commit_convention": conv,
+                   "renames": {k: {**retained_renames[k], **renames[k]} for k in NESTED_KINDS},
                    "installed": {k: sorted(installed[k]) for k in NESTED_KINDS}})
     home_skills = Path(os.path.expanduser("~")) / ".claude" / "skills"
     try:
@@ -1215,8 +1232,8 @@ def nested_plan() -> dict:
     except ValueError:
         exclude_label = str(exclude_path)
     return {
-        "renames": renames, "installed": installed, "stale": stale, "convention": conv,
-        "shadowed": [n for n in installed["skills"] if os.path.lexists(home_skills / n)],
+        "renames": renames, "installed": installed, "stale": stale, "convention": conv, "prior_renames": prior_renames,
+        "shadowed": [n for n in installed["skills"] if os.path.lexists(home_skills / n) and not _is_explain_path(n)],
         "engine_side": engine_side,
         # Sorted, so each skill dir's .gitignore is written before its SKILL.md.
         "host_writes": [(HOST / rel, text, rel) for rel, text in sorted({**files, **skill_ignores}.items())]
@@ -1308,7 +1325,7 @@ def print_nested_banner(plan: dict) -> None:
     print(f"Next (start Claude Code at the host root, {HOST} -- never inside {NESTED_DIR}/):")
     if UPDATE:
         print(f"  1. Commit the refresh in the nested repo (/update-workspace does this itself): git -C {NESTED_DIR} status, then git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: update agentic workspace to v{WORKSPACE_VERSION} (nested)\"")
-        print(f"  2. Re-apply your executor tiers: {cmd} sync-agents")
+        print(f"  2. Re-apply your executors.toml route overrides: {cmd} sync-agents")
     else:
         print(f"  1. First commit in the nested repo: git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: install agentic workspace (nested)\"")
         print(f"  2. Start Claude Code at the host root and accept the trust dialog on the first run, then: /{plan['renames']['skills'].get('create-phase', 'create-phase')} for the first phase ({cmd} next shows the state)")
@@ -1481,19 +1498,19 @@ for name in ([] if NESTED else CLAUDE_SKILLS):
     for rel in SKILL_FILES[name]:  # the core SKILL.md and its reference files
         write_text(rel, PAYLOADS[rel])
 
-# Subagents: full-permission workers that implement one already-planned slice, in two
-# capability tiers picked by the slice's risk (embedded verbatim from the live repo), plus
+# Subagents: the one full-permission slice executor that carries out one already-planned slice,
+# its route's model and effort passed per dispatch (embedded verbatim from the live repo), plus
 # the design subagent that drafts one design round (its own design row, [claude.design]), the design
-# critic that judges a drafted round (the critic row; the judge row runs it in judge mode) and the
+# critic that judges a drafted round (the critic row; the judge row runs it in judge mode), the explain critic that judges one drafted chapter of an explain phase (no row: the orchestrator passes its model per call, always different from the chapter executor's) and the
 # read-only Explore lookup agent (the explore row).
 if not NESTED:
-    for tier in ("mid", "high"):
-        write_text(f".claude/agents/slice-executor-{tier}.md", PAYLOADS[f".claude/agents/slice-executor-{tier}.md"])
+    write_text(".claude/agents/slice-executor.md", PAYLOADS[".claude/agents/slice-executor.md"])
     write_text(".claude/agents/design-drafter.md", PAYLOADS[".claude/agents/design-drafter.md"])
     write_text(".claude/agents/design-critic.md", PAYLOADS[".claude/agents/design-critic.md"])
+    write_text(".claude/agents/explain-critic.md", PAYLOADS[".claude/agents/explain-critic.md"])
     write_text(".claude/agents/Explore.md", PAYLOADS[".claude/agents/Explore.md"])
 
-# ---- Executor-tier config (seeded once — commented defaults; operator-owned) ----
+# ---- Executor route config (seeded once — commented defaults; operator-owned) ----
 write_text("executors.toml", NESTED_PLAN["engine_side"]["executors.toml"] if NESTED else PAYLOADS["executors.toml"])
 
 # ---- Claude Code project settings: pre-approve the workflow manager ----------
@@ -1534,8 +1551,9 @@ def write_version_marker() -> None:
 # shipped it, the sha256 of each text that version wrote there). Ownership is by CONTENT, never by path
 # or directory: a present file whose hash matches is ours and unchanged, flagged stale (remove it); any
 # other file at a retired path, or under a retired directory, is the adopter's, reported "yours, kept".
-# An unmodified copy from an even older version therefore reads as kept: conservative on purpose (the
-# knowledge repo keeps its own .agents/skills/explain/SKILL.md at a path v30 shipped).
+# An unmodified copy from an even older version therefore reads as kept: conservative on purpose.
+# A path with an `explain` component is never listed here, touched or reported (_is_explain_path):
+# the knowledge plugin owns it, and a .claude/skills/explain/ copy stays until its owner deletes it.
 # Generated once (P37.S8) by a throwaway script over this repo's git history: every committed
 # bootstrap_agentic_workspace.sh's embedded PAYLOADS (what the installer wrote, not the repo's own tree),
 # taking the text at the last commit that shipped the path (the trailing comment). AGENTS.md and
@@ -1544,6 +1562,9 @@ def write_version_marker() -> None:
 # (.kiro/, added and reverted inside v44) never shipped and is absent.
 # When a later version drops a shipped file (a skill's reference file too), add it here the same way:
 # the hash of its last shipped text, plus its nested_rewrite with no renames for a .claude/ file.
+# The v65 executor pair (slice-executor-mid/-high, merged into slice-executor in v66) is hashed with its
+# frontmatter `model:` / `effort:` lines dropped (RETIRED_ROUTE_LINES): sync-agents owns those two lines
+# and an adopter's overrides live in executors.toml, so a copy that differs only there is still ours.
 RETIRED_FILES = {
     '.agents/skills/archive-phase/SKILL.md': (30, ('f748d9ae055255eee2eef5c16b59d86219755331bdda66a9938fb5ae80d82013',)),  # 4ee5c22
     '.agents/skills/archive-phase/agents/openai.yaml': (30, ('8a5fe61f92bfbc624864afb5907edb8b918017f99f38fab0bc7235ad09a0d2c3',)),  # 4ee5c22
@@ -1563,8 +1584,6 @@ RETIRED_FILES = {
     '.agents/skills/do-whole-phase/agents/openai.yaml': (30, ('482b7e274c36509c5edbf1395d470a8603038ada6be8e241465868f24d4d2774',)),  # 4ee5c22
     '.agents/skills/doc-new-version/SKILL.md': (30, ('8c066ef299e02e8d72851c3f198a82015dd3f0f13874427f0c418236def92099',)),  # 4ee5c22
     '.agents/skills/doc-new-version/agents/openai.yaml': (30, ('f081a68aa674117ea0c0e97e1557f6d002c09de7bc267fefef214d52a817e53c',)),  # 4ee5c22
-    '.agents/skills/explain/SKILL.md': (30, ('f6e8a16c38719f047a4d53f109af5db9f1d2ea93741a7ba35ddd39bf01a0c1e7',)),  # 4ee5c22
-    '.agents/skills/explain/agents/openai.yaml': (30, ('abbfc65f2008e8ddf99106b9258380e08a117c68f251eb3797860e2ea6e75c1f',)),  # 4ee5c22
     '.agents/skills/parallel-phase/SKILL.md': (30, ('03f41c6bc927bba5d875e8d7c5c47ab1fee8b3937c388e97e9168cac4fd334b7',)),  # 4ee5c22
     '.agents/skills/parallel-phase/agents/openai.yaml': (30, ('5606a3232f932e9ffa41e4e58bd8457962237c38aa4b9439922effe2b3768b2e',)),  # 4ee5c22
     '.agents/skills/promote-deferred/SKILL.md': (30, ('a314fc511656a451e2f408c0383e0f3ec52482bc3ecf6c8aedfb25c083fba520',)),  # 4ee5c22
@@ -1579,8 +1598,9 @@ RETIRED_FILES = {
     '.agents/skills/rotate-backlog/agents/openai.yaml': (30, ('6d0256fe50e14bebef26818397323412ab68cbe7cacc4599af1bca1a7582e2c3',)),  # 4ee5c22
     '.agents/skills/update-workspace/SKILL.md': (30, ('4f25b084dbfd896148f240ea3c663af40848a35041ba7aaed92d7abb8a6be30e',)),  # 4ee5c22
     '.agents/skills/update-workspace/agents/openai.yaml': (30, ('0631c41fd8e1ec98331777d3e078d1ef4fdc1ec6c6cbf07cffcf73e1e1101206',)),  # 4ee5c22
+    '.claude/agents/slice-executor-high.md': (65, ('7a76f8dbe6d10b50333d34b2008fb576dd48f3720f9e2ba67847f4d5eed41f36', '0eafa7ed541f7d21f075878686179c186ac3cbacec96a7fb562d53279964ac4d')),  # d0759a4, route lines dropped
     '.claude/agents/slice-executor-low.md': (22, ('3d798df8b1170cf3aff4bbf10fbe83e6f7d8a8721a990a8d74333b7c08c731df',)),  # 097041d
-    '.claude/agents/slice-executor.md': (6, ('d1bd0dab7c9a3d4480aa18d12d1a531ad5641b9b183cc068f48cba3803d168b3',)),  # 057ec31
+    '.claude/agents/slice-executor-mid.md': (65, ('3c74ce9945cae627de3588f3ea01533cb8990a48e0b12d813af61d0ba04ded8a', 'faaa25e5cdc62e625d3720030f24e94388ec1cbeb5e80de6deafc39820f2654b')),  # d0759a4, route lines dropped
     '.claude/agents/slice-planner.md': (19, ('7c8fa4c4824f276ec5e79292826dfb58a41ed4078682175faae2e119d36c51d6',)),  # c94f6e4
     '.claude/skills/executor-mode/SKILL.md': (52, ('382fe9e6644c15c46d49ab0b481c8cec0b6722f20816d3fca48a60ba61826d43', 'cef5b8fbf576e83fd6048ceb652e05ddcd7cbcded6a4168efb5c834f32c16970')),  # 7c874c3
     '.codex/agents/slice-executor-high.toml': (30, ('217fcafcd0449db43fd1e25b4a0a13cc918ee2ab46d4980a8544b098ed31ec2d',)),  # 4ee5c22
@@ -1594,26 +1614,63 @@ RETIRED_FILES = {
     'executors.toml.example': (8, ('dad1620e97404eb7d1d9f29d796a05347c3b655e567c74a9e26ac6814e923261',)),  # 8a3c8c2
     'works/templates/result.md': (9, ('3938ceaf78a7392d62ca5a7e88ee51e132d56f30adafb06afb002361639e1dc9',)),  # 06561c4
 }
+# The retired paths hashed with their frontmatter model:/effort: lines dropped (_drop_route_lines).
+RETIRED_ROUTE_LINES = {".claude/agents/slice-executor-high.md", ".claude/agents/slice-executor-mid.md"}
 # Retired directories, walked file by file and never flagged whole. A retired skill's directory (a
 # .claude/skills/<name>/ path above whose skill this version no longer ships) is walked the same way.
 RETIRED_DIRS = (".agents", ".codex")
 
 
-def _retired_entry(key: str):
-    """(stale reason, kept reason, hashes) for a RETIRED_FILES path, else None."""
+def _drop_route_lines(text: str) -> str:
+    """An agent file's text without its frontmatter `model:` / `effort:` lines, the two sync-agents writes."""
+    end = text.find("\n---\n", 4) if text.startswith("---\n") else -1
+    if end == -1:
+        return text
+    head = [line for line in text[4:end].split("\n") if not line.startswith(("model:", "effort:"))]
+    return "---\n" + "\n".join(head) + text[end:]
+
+
+def _unrename(text: str, renames: dict) -> str:
+    """Undo nested_rewrite's renames ({kind: {X: Y}}) in an installed text: every Y token back to X.
+    Exact for our own texts, which never carry a `wf-` name of their own."""
+    for table in renames.values():
+        for x, y in table.items():
+            text = re.sub(r"(?<![\w-])" + re.escape(y) + r"(?![\w-])", x, text)
+    return text
+
+
+def _retired_entry(key: str, renames: dict = None):
+    """(stale reason, kept reason, hashes, normalizer or None) for a RETIRED_FILES path, else None.
+    The normalizer maps a file's text to the text its hash is taken over: a RETIRED_ROUTE_LINES path
+    drops its model:/effort: lines, and a nested copy installed under renames has them undone."""
     if key not in RETIRED_FILES:
         return None
     version, hashes = RETIRED_FILES[key]
-    return (f"unchanged since v{version}", f"differs from what v{version} shipped", hashes)
+    route_lines = key in RETIRED_ROUTE_LINES
+    if not (route_lines or renames):
+        return (f"unchanged since v{version}", f"differs from what v{version} shipped", hashes, None)
+
+    def norm(text: str) -> str:
+        text = _unrename(text, renames) if renames else text
+        return _drop_route_lines(text) if route_lines else text
+    aside = " (its model/effort lines aside)" if route_lines else ""
+    return (f"unchanged since v{version}{aside}", f"differs from what v{version} shipped{aside}", hashes, norm)
 
 
 def _classify(p: Path, shown: str, entry, unknown: str) -> bool:
-    """Record one present file as stale (ours, unchanged) or kept (yours). True when stale."""
+    """Record one present file as stale (ours, unchanged) or kept (yours). True when stale. An
+    `explain` path is never recorded."""
+    if _is_explain_path(shown):
+        return False
     digest = None
     if entry and not p.is_symlink():
         try:
-            digest = hashlib.sha256(p.read_bytes()).hexdigest()
-        except OSError:
+            data = p.read_bytes()
+            norm = entry[3] if len(entry) > 3 else None
+            if norm is not None:
+                data = norm(data.decode("utf-8")).encode("utf-8")
+            digest = hashlib.sha256(data).hexdigest()
+        except (OSError, UnicodeDecodeError):
             pass
     if entry and digest in entry[2]:
         UPDATE_SUMMARY["stale"].append((shown, entry[0]))
@@ -1643,7 +1700,7 @@ def _walk_retired_dir(base: Path, rel: str, entry_of, guard=None) -> None:
     if guarded is not None:
         if all_stale:
             all_stale = _classify(guarded, guard[0], guard[1], "")
-        else:
+        elif not _is_explain_path(guard[0]):
             UPDATE_SUMMARY["kept"].append((guard[0], "it hides the files kept beside it"))
     if all_stale:
         UPDATE_SUMMARY["notes"].append(f"{rel}/ holds only stale files: remove the emptied directory once they are gone")
@@ -1660,10 +1717,15 @@ def flag_retired_files() -> None:
     if NESTED:
         hide = ("ours: the directory's self-hiding .gitignore", "differs from the .gitignore the workspace wrote",
                 (hashlib.sha256(NESTED_SKILL_GITIGNORE.encode("utf-8")).hexdigest(),))
+        # The marker's renames rewrote every installed text, so a retired agent is looked up by its
+        # canonical path (a renamed copy maps back) and hashed with the renames undone.
+        prior = NESTED_PLAN["prior_renames"]
+        undo = prior if any(prior.values()) else None
+        canonical = {f".claude/agents/{y}.md": f".claude/agents/{x}.md" for x, y in prior["agents"].items()}
         for rel in NESTED_PLAN["stale"]:
             if rel.startswith(".claude/agents/"):
                 if os.path.lexists(HOST / rel):
-                    _classify(HOST / rel, rel, _retired_entry(rel), "not a file the workspace shipped")
+                    _classify(HOST / rel, rel, _retired_entry(canonical.get(rel, rel), undo), "not a file the workspace shipped")
             else:
                 _walk_retired_dir(HOST, rel, _retired_entry, guard=(f"{rel}/.gitignore", hide))
         return
@@ -1819,13 +1881,14 @@ elif RETROFIT:
 else:
     print(f"Bootstrapped agentic workspace at {TARGET}")
     print("Contract: CLAUDE.md")
-    print("Claude Code: 18 skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{mid,high}.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
+    print("Claude Code: 17 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, explain critic .claude/agents/explain-critic.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
     print("Visual design: design-cowork fires automatically; the design-drafter subagent drafts each design job as a working canvas under docs/reference/design/jobs/ (clickable Pages, a board per component), the design-critic judges it when the job's critique is on, the orchestrator publishes each job to its own Design canvas Artifact in the Claude app, and the operator decides: picks a style (build-after / design-only / paired) and signs each job in their own words, or on an in-product mockup they ask for, before separate implementation and browser fidelity")
-    print("Executor tiers are routed by kind, then risk, then attempt (mid is the default tier, real code included; high for decomposition, research, review, named triggers and retries), through one route table whose rows set each dispatch's model and effort; python3 scripts/workflow.py executor-route shows it (and executor-route <slice> the decision for one slice); override a row in executors.toml, then run sync-agents")
+    print("One executor, routed per dispatch by kind, then risk, then attempt (mid is the default row, real code included; high for decomposition, research, review, named triggers and retries), through one route table whose rows set each dispatch's model and effort; python3 scripts/workflow.py executor-route shows it (and executor-route <slice> the decision for one slice); override a row in executors.toml, then run sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
     print("CI: .github/workflows/workspace-ci.yml runs validate on every push/PR (seeded once — yours to edit); .gitattributes carries the merge rules for machine-written files")
     print("Canonical state: phase.json / slice.json / deferred.json; generated: works/backlog.md, works/deferred.md")
     print("Versioned docs: docs/versions/<doc>/vNNNN_*.md with generated docs/current/*.md")
-    print("Knowledge: /explain writes an interactive explainer for a phase or topic to your knowledge base (an operator-run step; the phase review writes none). First run sets up a hosted KB for you — it asks first. Already have one? export KB_API_BASE_URL + KB_API_TOKEN — see docs/current/operations.md")
+    print("Knowledge: /explain is the knowledge plugin's, not this workspace's (plugin 0.5.0+): /plugin marketplace add leetusik/knowledge, then /plugin install knowledge@knowledge; run /knowledge:setup once, then /knowledge:explain P<N> for one chapter")
+    print("  a book (outlined, signed, critic-checked, published private) is an explain phase: ask /create-phase — see docs/current/operations.md")
     print("No phases yet — the workspace starts empty on purpose.")
     print("Next: create the first phase with /create-phase (Claude Code) or python3 scripts/workflow.py new-phase ...")

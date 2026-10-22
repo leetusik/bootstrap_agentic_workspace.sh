@@ -40,32 +40,23 @@ the operator, it never assumes. Remove the `Status:` line once the fields above 
 |---|---|---|---|
 | <NAME> | yes/no | <purpose> | <notes> |
 
-## Knowledge (phase explainers)
+## Knowledge (/knowledge:explain)
 
-The `explain` skill ships with this workspace, in `.claude/skills/`.
-Explaining is an **operator-run step, separate from the phase review**:
-run `/explain` for a phase when you want one and it saves an interactive HTML explainer to
-the knowledge service. The review itself writes no explainer — it only reports the pointer
-`explain: not written — run /explain for this phase`.
+Explaining a topic, a change or a phase into your knowledge base is done by the
+**knowledge plugin**, not by this workspace. The plugin owns the skill, the CLI and the
+document API, so they stay in step. Install it once:
 
-**Setup is on first use, and it asks first.** Run `/explain`; if no knowledge base is
-configured it offers to create one on the hosted service at `https://knowledge.hi2vi.com`
-— it asks for an email, installs the `knowledge` CLI, signs you up (or logs you in), and
-writes an org-level key to `~/.config/knowledge-kb/config.json` at mode 0600. One org key
-serves every repo. Each document's project defaults to the repo's directory name.
+    /plugin marketplace add leetusik/knowledge
+    /plugin install knowledge@knowledge
 
-Already have a knowledge base — hosted or self-hosted? Skip the setup entirely by exporting
-the credentials in `~/.zshenv` (sourced by every zsh invocation) — never a repo `.env`,
-which Claude Code does not auto-load and which risks committing the secret:
-
-    export KB_API_BASE_URL="https://knowledge.hi2vi.com"
-    export KB_API_TOKEN="vk_..."
-
-- **Alternative (Claude Code plugin):** `/plugin marketplace add leetusik/knowledge` →
-  `/plugin install knowledge@knowledge` → `/knowledge:setup`, then `/knowledge:explain`.
-  A separate namespace from this workspace's `/explain`; you do not need both.
-
-Drive knowledge through the skill/agents; REST is the substrate.
+then run `/knowledge:setup` once (connect to the hosted KB, or scaffold your own) and use
+`/knowledge:explain <topic>`. A whole book (researched, outlined and signed, each chapter
+checked by a fresh-eyes critic, published private) is an **explain phase**: ask
+`/create-phase` to explain something as a book. Plugin version 0.5.0 or later is required.
+To update: `/plugin marketplace update knowledge`, then update `knowledge@knowledge` from the
+`/plugin` panel's Installed tab (or, from a shell, `claude plugin update knowledge@knowledge`).
+The review never writes an explainer; it only reports
+`explain: not written — run /knowledge:explain P<N> for one chapter, or create an explain phase for a book`.
 
 ## Deployment
 

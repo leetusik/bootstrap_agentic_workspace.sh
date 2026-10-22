@@ -221,7 +221,7 @@ note waits for the operator's docs phase, as on the default stream, which record
 Record the verdict normally, from the worktree:
 
 ```sh
-python3 scripts/workflow.py review-phase <P> --verdict pass --reviewer slice-executor-high --note "..."
+python3 scripts/workflow.py review-phase <P> --verdict pass --reviewer slice-executor --note "..."
 ```
 
 A `changes_requested` or `blocked` verdict behaves as always — fix slices on the branch, then

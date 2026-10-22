@@ -46,7 +46,7 @@ SRC = REPO / "payload"                          # the shipped sources (never liv
 HEREDOC_DELIM = "INSTALLER_PY"                  # distinctive: no payload/body line may equal it
 PAYLOAD_MARKER = "#@@GENERATED_PAYLOADS@@"      # in main.py — replaced by generated constants
 BODY_MARKER = "#@@PYTHON_BODY@@\n"              # in wrapper.sh — replaced by the python body
-EXPECTED_SKILL_COUNT = 18
+EXPECTED_SKILL_COUNT = 17
 
 # Shipped files embedded verbatim, keyed by EMIT path (where the installer writes them). The
 # source lives under payload/ at src_rel(emit): the first path component undotted, so no source
@@ -54,10 +54,10 @@ EXPECTED_SKILL_COUNT = 18
 FIXED_LIVE_FILES = [
     "scripts/workflow.py",
     ".claude/settings.json",
-    ".claude/agents/slice-executor-mid.md",
-    ".claude/agents/slice-executor-high.md",
+    ".claude/agents/slice-executor.md",
     ".claude/agents/design-drafter.md",
     ".claude/agents/design-critic.md",
+    ".claude/agents/explain-critic.md",
     ".claude/agents/Explore.md",
     "executors.toml",
     "works/templates/deferred_brief.md",
@@ -76,6 +76,9 @@ FIXED_LIVE_FILES = [
 # source file under payload/ (that would be a second copy to keep in step).
 SHARED_SKILL_FILES = {
     ".claude/skills/do-next-slice/reference/dispatch.md": ".claude/skills/do-whole-phase/reference/dispatch.md",
+    ".claude/skills/do-next-slice/reference/explain-chapter.md": ".claude/skills/do-whole-phase/reference/explain-chapter.md",
+    ".claude/skills/do-next-slice/reference/explain-decomposition.md": ".claude/skills/do-whole-phase/reference/explain-decomposition.md",
+    ".claude/skills/do-next-slice/reference/explain-review.md": ".claude/skills/do-whole-phase/reference/explain-review.md",
 }
 
 CLAUDE_HDR = "# CLAUDE.md\n\n"

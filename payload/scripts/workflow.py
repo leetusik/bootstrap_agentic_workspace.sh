@@ -334,14 +334,15 @@ REVIEW_VERDICTS = {"pass", "changes_requested", "blocked"}
 # (`new-slice`, `promote-deferred`), only a WARNING in `validate()`, so an adopting repo
 # carrying an invented kind in its history survives an update instead of failing validate
 # on slices it cannot change. Note `--risk` next door is deliberately NOT validated:
-# unrecognized values route to the high tier, which is the safe direction -- do not
+# unrecognized values route to the high row, which is the safe direction -- do not
 # "fix" that asymmetry for symmetry's sake.
 # Kinds route by KIND before `risk` is read (`slice_route`; `executor-route <slice>` prints the
 # decision): `decomposition`, `review` and `co-work` (its mockup span) to the `high` row, and
-# `research` (added in workspace v36) to the `research` row -- both on `slice-executor-high`, never
-# the mid or cheap rows. A `research` slice is findings-only -- it writes no product code, and what
-# it learned lands in the phase notebook for the `DECOMP2` that usually follows -- so a weak read
-# is expensive and it must never be routable to the mid tier by a `low` rating. Set `--risk high`
+# `research` (added in workspace v36) to the `research` row -- never the mid or cheap rows (all four
+# slice rows run the one `slice-executor` file since v66; the row picks the model and effort). A
+# `research` slice is findings-only -- it writes no product code, and what it learned lands in
+# the phase notebook for the `DECOMP2` that usually follows -- so a weak read is expensive and it
+# must never be routable to the mid row by a `low` rating. Set `--risk high`
 # on one so the recorded rating cannot contradict the routing; if the two ever disagree, the kind
 # wins.
 SLICE_KINDS = {"implementation", "review", "decomposition", "research", "fix", "docs", "qa", "co-work"}
@@ -448,8 +449,9 @@ def _git_work_tree_root(path: Path) -> bool:
         return False
     top = proc.stdout.strip()
     return proc.returncode == 0 and bool(top) and Path(top).resolve() == path.resolve()
-EXECUTOR_TIERS = ("mid", "high")
-RETIRED_EXECUTOR_TIERS = ("low",)  # dropped in workspace v23 — routing is two-tier (mid/high)
+
+
+RETIRED_EXECUTOR_TIERS = ("low",)  # [claude.low]: dropped in workspace v23, still refused with its migration
 # The executor route table (workspace v53): ONE table, owned here, that the orchestrator dispatches
 # from. A row is a (model, effort) pair the dispatch passes per call; `executor-route` prints the
 # resolved row for a slice and `sync-agents` writes the rows that own an agent file into that
@@ -457,48 +459,57 @@ RETIRED_EXECUTOR_TIERS = ("low",)  # dropped in workspace v23 — routing is two
 # [claude.<row>] in the repo-root executors.toml. `cheap` has no defaults of its own: it inherits
 # the RESOLVED mid row for every key it does not override, so an unset cheap row is the mid row.
 # `explore` is the read-only lookup agent (.claude/agents/Explore.md), not a slice route.
-# `design` is the design subagent's own row (.claude/agents/design-drafter.md, workspace v60): not a
-# slice tier and never a slice's route -- only `executor-route --drafter` dispatches on it.
+# `design` is the design subagent's own row (.claude/agents/design-drafter.md, workspace v60): never
+# a slice's route -- only `executor-route --drafter` dispatches on it.
 # `critic` and `judge` (workspace v60) are the design critic's two modes: `critic` owns
 # .claude/agents/design-critic.md and judges each drafted round; `judge` runs that same file in judge
 # mode, with its model passed per call, and rules only on the items the critic escalated. Neither is a
-# tier; `executor-route --critic` / `--judge` dispatch them. Both must be a different model from the
-# design row's (CRITIC_ROWS: a critic never judges its own model's drafting).
-# `research` and `cheap` run another row's agent file (slice-executor-high / -mid) with their model
-# passed per call, and the Agent tool's `model` is an enum, so those rows (and `judge`) take an alias
-# only; a full model id or "inherit" works only on mid, high, design, critic and explore, whose
-# frontmatter carries it.
+# slice route; `executor-route --critic` / `--judge` dispatch them. Only the critic must be a different model
+# from the design row's (CRITIC_ROWS: a critic never judges its own model's drafting); the judge is
+# exempt (workspace v66: the operator dropped the rule for it) and may share the drafter's model.
+# One executor (workspace v66): the four slice rows -- high, research, mid and cheap -- all run the
+# one `slice-executor` file, whose frontmatter carries the mid row (the default route). The two
+# executor tiers of v23-v65 (slice-executor-mid / -high, split because the Agent tool could not set
+# effort per dispatch before Claude Code 2.1.292) are retired, and so is the `tier` they carried:
+# a dispatch names its row (`route=`), and the verdict records it (`route:`).
+# Only the rows that own their file (FILE_ROWS: mid, design, critic, explore) are written into
+# frontmatter, so only they accept a full model id or "inherit"; every other row (high, research,
+# cheap, judge) runs a file another row owns with its model passed per call, and the Agent tool's
+# `model` is an enum, so those rows take an alias only.
 # effort = "" is the escape hatch for a model that rejects the parameter: no effort line in the
-# agent file and no per-dispatch effort. Rows, never tiers: two tiers stay (EXECUTOR_TIERS), and the
-# cheap row runs the mid file -- which supersedes v46's "haiku is never an executor tier". The
-# named modes of v29-v52 (a top-level `mode` key) are retired; read_executors_toml refuses one.
+# agent file and no per-dispatch effort. The cheap row runs the same file on its own model -- which
+# supersedes v46's "haiku is never an executor tier". The named modes of v29-v52 (a top-level
+# `mode` key) are retired; read_executors_toml refuses one.
 EXECUTOR_ROUTES = ("high", "research", "design", "critic", "judge", "mid", "cheap", "explore")  # print order
 ROUTE_DEFAULTS = {
-    "high": {"model": "opus", "effort": "high"},
-    "research": {"model": "opus", "effort": "medium"},
+    "high": {"model": "opus", "effort": "xhigh"},
+    "research": {"model": "opus", "effort": "xhigh"},
     "design": {"model": "opus", "effort": "xhigh"},
-    "critic": {"model": "sonnet", "effort": "high"},
-    "judge": {"model": "fable", "effort": "high"},
-    "mid": {"model": "sonnet", "effort": "high"},
+    "critic": {"model": "sonnet", "effort": "xhigh"},
+    "judge": {"model": "opus", "effort": "xhigh"},
+    "mid": {"model": "sonnet", "effort": "xhigh"},
     "cheap": None,  # inherits the resolved mid row
-    "explore": {"model": "haiku", "effort": "high"},
+    "explore": {"model": "haiku", "effort": "xhigh"},
 }
-ROUTE_TIER = {"high": "high", "research": "high", "design": None, "critic": None, "judge": None,
-              "mid": "mid", "cheap": "mid", "explore": None}
-# Rows that own an agent file (sync-agents writes their frontmatter). research and cheap dispatch
-# to another row's file, so their model must be an Agent-tool alias the dispatch can pass. The
-# design row owns design-drafter: it is not a tier and follows no other row, so one [claude.design]
-# override governs it alone (before v60 it followed the high row). The critic row owns design-critic;
-# the judge row borrows that file (ROUTE_BORROWS), like research and cheap borrow a tier's.
-ROUTE_AGENT = {"high": "slice-executor-high", "mid": "slice-executor-mid", "design": "design-drafter",
-               "critic": "design-critic", "explore": "Explore"}
-ROUTE_BORROWS = {"judge": "critic"}  # a non-tier row that runs another row's agent file
-# The rows that judge the design row's drafting: each must resolve to a different model family.
-CRITIC_ROWS = ("critic", "judge")
-# (label, canonical agent name, row) for the five agent files sync-agents manages, in print order.
+# The agent file each row dispatches to (canonical name; `installed_agent_name` applies a nested
+# rename). The design row owns design-drafter and follows no other row, so one [claude.design]
+# override governs it alone (before v60 it followed the high row). The critic row owns
+# design-critic; the judge row runs that same file in judge mode.
+SLICE_AGENT = "slice-executor"
+ROUTE_AGENT = {"high": SLICE_AGENT, "research": SLICE_AGENT, "design": "design-drafter", "critic": "design-critic",
+               "judge": "design-critic", "mid": SLICE_AGENT, "cheap": SLICE_AGENT, "explore": "Explore"}
+# The rows that own their agent file: sync-agents writes each one's resolved model/effort into its
+# frontmatter, so only these accept a full model id or "inherit".
+FILE_ROWS = ("mid", "design", "critic", "explore")
+# The executor pair v66 retired (last shipped in v65): old transcripts still name them, so the meter
+# keeps reading them (`_meter_route`, `_meter_collect`'s canon map).
+RETIRED_AGENTS = ("slice-executor-high", "slice-executor-mid")
+# The rows the fairness rule binds: each must resolve to a different model family from the design
+# row's. Only the critic: the judge row is exempt (it rules on the critic's escalations, not the drafting).
+CRITIC_ROWS = ("critic",)
+# (label, canonical agent name, row) for the four agent files sync-agents manages, in print order.
 MANAGED_AGENT_FILES = (
-    ("mid", ROUTE_AGENT["mid"], "mid"),
-    ("high", ROUTE_AGENT["high"], "high"),
+    ("slice-executor", ROUTE_AGENT["mid"], "mid"),
     ("design-drafter", ROUTE_AGENT["design"], "design"),
     ("design-critic", ROUTE_AGENT["critic"], "critic"),
     ("Explore", ROUTE_AGENT["explore"], "explore"),
@@ -513,10 +524,11 @@ MODEL_ATTRIBUTION = {"opus": "Claude Opus 5.5", "sonnet": "Claude Sonnet 5.5",
 # row to EXPLORE_PROXY_MODEL, printed as a `fallback=` line by executor-route.
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 EXPLORE_PROXY_MODEL = "sonnet"
-# The same proxy serves no Fable either. The judge row does NOT fall back: a judge is the stronger
-# second opinion, so a substitute would be a weaker one. On Fable behind a loopback proxy
-# `executor-route --judge` prints a `skip=yes` line instead: the orchestrator dispatches no judge and
-# the escalated items reach the operator marked low confidence.
+# The same proxy serves no Fable either. The judge row (Opus @ xhigh by default, so this never fires
+# at the default) does NOT fall back: a judge is the stronger second opinion, so a substitute would be
+# a weaker one. Only when an operator overrides the judge row to Fable and runs behind a loopback proxy
+# does `executor-route --judge` print a `skip=yes` line instead: the orchestrator dispatches no judge
+# and the escalated items reach the operator marked low confidence.
 JUDGE_PROXY_SKIP_FAMILY = "fable"
 
 
@@ -593,7 +605,7 @@ def read_executors_toml() -> dict:
         if re.match(r"^mode\s*=", line):
             raise SystemExit(
                 f"executors.toml line {n}: the economy/flex presets were retired in workspace v53 — delete this line; "
-                "the route table replaces them (flex was xhigh on both tiers: set effort = \"xhigh\" under [claude.mid] "
+                "the route table replaces them (flex was xhigh on both executor rows: set effort = \"xhigh\" under [claude.mid] "
                 f"and [claude.high] to keep it); run: {WORKFLOW_CMD} executor-route"
             )
         if re.match(r"^\[\s*codex\s*\.\s*[^\]]*\]\s*(?:#.*)?$", line):
@@ -607,7 +619,7 @@ def read_executors_toml() -> dict:
             if name in RETIRED_EXECUTOR_TIERS:
                 raise SystemExit(
                     f"executors.toml line {n}: the {name} executor tier was retired in workspace v23 — "
-                    "routing is two-tier now, so drop this section or move its settings to [claude.mid]"
+                    "drop this section or move its settings to [claude.mid]"
                 )
             if name not in EXECUTOR_ROUTES:
                 raise SystemExit(f"executors.toml line {n}: unknown route {name} (valid: {rows})")
@@ -627,11 +639,17 @@ def read_executors_toml() -> dict:
                     f"executors.toml line {n}: [claude.{section}] effort must be one of {', '.join(EFFORT_LEVELS)} "
                     f"— or \"\" to write no effort line (got {value!r})"
                 )
-            if key == "model" and section not in ROUTE_AGENT and value not in AGENT_MODEL_ALIASES:
+            if key == "model" and section == "high" and value not in AGENT_MODEL_ALIASES:
+                raise SystemExit(
+                    f"executors.toml line {n}: [claude.high] model {value!r}: since v66 one executor file carries the mid row; "
+                    f"the high row is passed per dispatch, so use an alias ({', '.join(AGENT_MODEL_ALIASES)}); "
+                    "a full model id or inherit belongs under [claude.mid], which slice-executor.md carries"
+                )
+            if key == "model" and section not in FILE_ROWS and value not in AGENT_MODEL_ALIASES:
                 raise SystemExit(
                     f"executors.toml line {n}: [claude.{section}] model {value!r}: route {section} dispatches to another row's "
                     f"agent file, so its model must be an Agent-tool alias ({', '.join(AGENT_MODEL_ALIASES)}); a full model id "
-                    f"or inherit works only on {', '.join(r for r in EXECUTOR_ROUTES if r in ROUTE_AGENT)}, whose agent files carry it"
+                    f"or inherit works only on {', '.join(r for r in EXECUTOR_ROUTES if r in FILE_ROWS)}, whose agent files carry it"
                 )
             values[(section, key)] = value
             continue
@@ -699,10 +717,10 @@ def installed_agent_name(name: str) -> str:
 
 
 def executor_agent_files(routes: dict) -> list:
-    """(label, path, model, effort) for the 5 managed agent files (MANAGED_AGENT_FILES): the two
-    slice-executor tiers from the mid and high rows, design-drafter from its own design row and
-    design-critic from the critic row (neither is a tier), and Explore from the explore row.
-    research, cheap and judge own no file. Labels stay canonical;
+    """(label, path, model, effort) for the 4 managed agent files (MANAGED_AGENT_FILES): slice-executor
+    from the mid row (the default route; high, research and cheap pass their model and effort per
+    dispatch), design-drafter from its own design row, design-critic from the critic row and Explore
+    from the explore row. high, research, cheap and judge own no file. Labels stay canonical;
     paths resolve through the nested rename map (`installed_agent_name`)."""
     return [
         (label, CLAUDE_AGENTS / f"{installed_agent_name(agent)}.md", routes[row]["model"], routes[row]["effort"])
@@ -725,8 +743,9 @@ def executor_agent_drift(routes: dict) -> tuple:
 
 
 def sync_agents(args: argparse.Namespace) -> None:
-    """Write the resolved route table into the five managed agent files' model/effort frontmatter:
-    slice-executor-mid/-high from the mid/high rows, design-drafter from the design row, design-critic
+    """Write the resolved route table into the four managed agent files' model/effort frontmatter:
+    slice-executor from the mid row (high, research and cheap run it with their model and effort
+    passed per dispatch), design-drafter from the design row, design-critic
     from the critic row (the judge row borrows that file, its model passed per call), Explore from
     the explore row (--check: report drift, write nothing, exit 1 when out of sync)."""
     overrides = read_executors_toml()
@@ -734,7 +753,7 @@ def sync_agents(args: argparse.Namespace) -> None:
     config_present = (ROOT / "executors.toml").exists()
     legacy_env = ROOT / ".env"
     if legacy_env.exists() and "SLICE_EXECUTOR" in legacy_env.read_text(encoding="utf-8"):
-        print("warning: .env holds SLICE_EXECUTOR_* keys, but tier config moved to executors.toml in v8 — .env is no longer read")
+        print("warning: .env holds SLICE_EXECUTOR_* keys, but executor config moved to executors.toml in v8 — .env is no longer read")
     drift, missing_paths = executor_agent_drift(routes)
     if not args.check:
         for path, desired in drift:
@@ -803,9 +822,10 @@ def model_family(model: str):
 
 
 def critic_fairness(row: str, routes: dict) -> tuple:
-    """(refusal, warning) for a critic row (CRITIC_ROWS) against the design row. The operator's rule
-    (P36): "using same model for critique and draft is not fair", so the critic and the judge must
-    each resolve to a different model from the drafter's. Models compare by family, so an alias and
+    """(refusal, warning) for a critic row (CRITIC_ROWS: the critic only) against the design row. The
+    operator's rule (P36): "using same model for critique and draft is not fair", so the critic must
+    resolve to a different model from the drafter's; the judge is exempt (P39: "drop the rule for the
+    judge"). Models compare by family, so an alias and
     its full id (`opus`, `claude-opus-5-5`) are the same model, and so are two versions of one family.
     refusal: a message when they are the same; warning: a `warning=` line when one side cannot be
     told (`inherit` -- the session's model -- against anything but `inherit`, or an unknown id)."""
@@ -820,9 +840,8 @@ def critic_fairness(row: str, routes: dict) -> tuple:
         same = a == d
     if not same:
         return None, None
-    prefer = ("sonnet", "opus", "fable") if row == "critic" else ("fable", "opus", "sonnet")
     d = model_family(drafter)
-    hint = next(m for m in prefer if m != d)
+    hint = next(m for m in ("sonnet", "opus", "fable") if m != d)
     return (f"the {row} row ({mine}) is the design row's model ({drafter}): the design critic never judges its own "
             f"model's drafting (\"using same model for critique and draft is not fair\"). Set [claude.{row}] "
             f"model = \"{hint}\" in executors.toml (or move the drafter's [claude.design] row)"), None
@@ -890,12 +909,14 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
     line: bare, the resolved route table and the agent files' sync state; with a slice id, that
     slice's route (--retry: its second attempt); --drafter / --critic / --judge / --explore, the
     design subagent's (the design row), the design critic's two modes (the critic and judge rows,
-    both running design-critic) and the lookup agent's (the explore row), all tier -.
+    both running design-critic) and the lookup agent's (the explore row). Every form names the
+    agent file it dispatches to as `subagent_type=`; the four slice rows all run slice-executor.
 
-    The critic and the judge must be a different model from the drafter's: --critic / --judge exit 1
-    on an equal pair (critic_fairness) and the bare table prints a warning= line for it. Behind a
-    loopback proxy (no Fable) --judge on Fable prints `skip=yes reason=…` and exits 0: unlike a
-    `fallback=` line, which names a substitute model to dispatch, `skip=` means dispatch nothing.
+    The critic must be a different model from the drafter's: --critic exits 1 on an equal pair
+    (critic_fairness) and the bare table prints a warning= line for it; the judge is exempt and may
+    share the drafter's model. Behind a loopback proxy (no Fable) --judge on a Fable override prints
+    `skip=yes reason=…` and exits 0: unlike a `fallback=` line, which names a substitute model to
+    dispatch, `skip=` means dispatch nothing.
     Reads executors.toml (a malformed one errors here) and writes nothing."""
     forms = [f for f, on in (("<slice_id>", args.slice is not None), ("--drafter", args.drafter), ("--critic", args.critic),
                              ("--judge", args.judge), ("--explore", args.explore)) if on]
@@ -909,7 +930,6 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
         sdata = read_json(require_slice(args.slice) / "slice.json")
         kind, risk = sdata.get("kind"), sdata.get("risk")
         row, reason = slice_route(kind, risk, args.retry)
-        tier = ROUTE_TIER[row]
         lines, fallback = _dispatch_lines(row, routes, proxy)
         print(f"slice={args.slice}")
         print(f"phase={args.slice.split('.', 1)[0]}")
@@ -918,13 +938,12 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
         print(f"attempt={2 if args.retry else 1}")
         print(f"route={row}")
         print(f"reason={reason}")
-        print(f"tier={tier}")
-        print(f"subagent_type={installed_agent_name(ROUTE_AGENT[tier])}")
+        print(f"subagent_type={installed_agent_name(ROUTE_AGENT[row])}")
         print("\n".join(lines))
         extra = [fallback] if fallback else []
     elif args.drafter or args.critic or args.judge or args.explore:
         row = "design" if args.drafter else "critic" if args.critic else "judge" if args.judge else "explore"
-        agent = ROUTE_AGENT[ROUTE_BORROWS.get(row, row)]
+        agent = ROUTE_AGENT[row]
         skip = _judge_proxy_skip(routes, proxy) if row == "judge" else None
         if row in CRITIC_ROWS and skip is None:
             refusal, _warning = critic_fairness(row, routes)
@@ -933,7 +952,6 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
         lines, fallback = _dispatch_lines(row, routes, proxy)
         print(f"agent={agent}")
         print(f"route={row}")
-        print(f"tier={ROUTE_TIER[row] or '-'}")
         print(f"subagent_type={installed_agent_name(agent)}")
         print("\n".join(lines))
         extra = [fallback] if fallback else []
@@ -942,8 +960,8 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
         if skip:
             extra.append(skip)
     else:
-        table = [("route", "tier", "model", "effort", "source")] + [
-            (row, ROUTE_TIER[row] or "-", routes[row]["model"], routes[row]["effort"] or "(no effort line)", route_source(routes[row]))
+        table = [("route", "agent", "model", "effort", "source")] + [
+            (row, ROUTE_AGENT[row], routes[row]["model"], routes[row]["effort"] or "(no effort line)", route_source(routes[row]))
             for row in EXECUTOR_ROUTES
         ]
         widths = [max(len(r[i]) for r in table) for i in range(4)]
@@ -1387,9 +1405,24 @@ def _meter_attribute(prompt: str, start, known: dict, windows: _MeterWindows) ->
     return "unattributed", "none"
 
 
-def _meter_route(agent: str, prompt: str, model, kind) -> str:
+def _meter_slice_families() -> tuple:
+    """(high row's model family, mid row's) from the resolved route table, for reading
+    `slice-executor` spans; the engine defaults when executors.toml cannot be read."""
+    try:
+        routes = resolve_routes()
+    except (SystemExit, Exception):  # noqa: BLE001 - the meter reads history; a bad toml must not stop it
+        routes = resolve_routes({})
+    return model_family(routes["high"]["model"]), model_family(routes["mid"]["model"])
+
+
+def _meter_route(agent: str, prompt: str, model, kind, families=None) -> str:
     """The route row a span most likely ran on, for the means: the agent type, the judge mode, the
-    slice kind (research) and the cheap row's haiku. Approximate by nature; other agents keep their name."""
+    slice kind (research) and the model. Approximate by nature, and more so for the one
+    `slice-executor` (v66), which every slice row runs: a research kind reads as research, a haiku
+    model as cheap, a model of the high row's family (and not the mid row's, `families`) as high,
+    anything else as mid -- so a high row overridden onto the mid row's model reads as mid. The
+    retired pair (v23-v65, still in old transcripts) keeps its reading: slice-executor-high is research
+    by kind, else high; slice-executor-mid is cheap on haiku, else mid. Other agents keep their name."""
     if agent == "design-drafter":
         return "design"
     if agent == "design-critic":
@@ -1400,6 +1433,14 @@ def _meter_route(agent: str, prompt: str, model, kind) -> str:
         return "research" if kind == "research" else "high"
     if agent == "slice-executor-mid":
         return "cheap" if isinstance(model, str) and "haiku" in model else "mid"
+    if agent == SLICE_AGENT:
+        if kind == "research":
+            return "research"
+        family = model_family(model) if isinstance(model, str) else None
+        if family == "haiku":
+            return "cheap"
+        high, mid = families if families is not None else _meter_slice_families()
+        return "high" if family and family == high and family != mid else "mid"
     return agent or "?"
 
 
@@ -1416,7 +1457,9 @@ def _meter_verdict(agent: str, final) -> str:
 def _meter_collect(dirs: list, known: dict, windows: "_MeterWindows", selected, lo, hi) -> dict:
     """Read the sessions overlapping [lo, hi] (None = unbounded) and meter them. `selected(slice)` says
     whether a slice is in the report; everything else is `before`, `after` or `other`."""
-    canon = {installed_agent_name(a): a for a in ROUTE_AGENT.values()}
+    canon = {installed_agent_name(a): a for a in (*ROUTE_AGENT.values(), *RETIRED_AGENTS)}
+    canon.update({f"wf-{a}": a for a in RETIRED_AGENTS})  # a nested rename the marker no longer records
+    families = _meter_slice_families()
     res = {"sessions": [], "main": {}, "spans": [], "outside": {}, "found": 0, "windows": windows, "kinds": known}
     for d in dirs:
         for path in sorted(d.glob("*.jsonl")):
@@ -1463,7 +1506,7 @@ def _meter_collect(dirs: list, known: dict, windows: "_MeterWindows", selected, 
                     outcome = _meter_verdict(agent, sp["final"])
                 minutes = round((sp["last"] - sp["first"]) / 60, 1) if sp["first"] is not None and sp["last"] is not None else None
                 span = {"id": jl.stem[len("agent-"):], "session": path.stem, "agent": agent, "model": model,
-                        "effort": meta.get("effort"), "route": _meter_route(agent, sp["prompt"], model, known.get(sid)),
+                        "effort": meta.get("effort"), "route": _meter_route(agent, sp["prompt"], model, known.get(sid), families),
                         "slice": sid, "attributed_by": how, "start": sp["first"], "minutes": minutes,
                         "resumes": sp["resumes"], "outcome": outcome, "reset": sp["last_limit"] or None,
                         "usage": agg}
@@ -1673,7 +1716,7 @@ def _meter_print(res: dict, rep: dict, dirs: list) -> None:
     means = rep["means"]
     if means["by_route"] or means["by_kind"]:
         print()
-        print("[means] (metered; a DECOMP estimates from these)")
+        print("[means] (metered; a DECOMP estimates time from these)")
         rows = [["route", "spans", "min/span", "$/span"]] + [
             [r, str(v["spans"]), f"{v['min_per_span']:.1f}", f"{v['usd_per_span']:.2f}" + ("+?" if v["unpriced_requests"] else "")]
             for r, v in means["by_route"].items()]
@@ -3276,7 +3319,7 @@ def validate() -> int:
     oversized = oversized_sections_line(oversized_doc_sections())
     if oversized:
         warnings.append(oversized)
-    # Agent-file drift is advisory only: warn (never error, never crash) when the five managed agent
+    # Agent-file drift is advisory only: warn (never error, never crash) when the four managed agent
     # files disagree with the route table (executors.toml/defaults), so a foreign or partial
     # workspace still validates. Skipped when a broken nested marker names no host: the agent files
     # live there, not under ROOT.
@@ -3290,7 +3333,7 @@ def validate() -> int:
             if desired != current:
                 warnings.append(f"executor agent file out of sync with executors.toml/defaults: {shown(path)} (run: {WORKFLOW_CMD} sync-agents)")
     except (SystemExit, Exception) as exc:  # noqa: BLE001 - advisory check must not fail validate
-        warnings.append(f"executor tier config check failed: {exc}")
+        warnings.append(f"executor agent config check failed: {exc}")
     # Nested personal install (P28): a malformed marker is an ERROR, so a broken nested install is
     # never mistaken for at-root mode; the host must be a git work tree (phase-scope and the
     # product commits read it). Silent at root -- no marker, nothing checked.
@@ -10934,16 +10977,16 @@ def main(argv=None) -> int:
     p = sub.add_parser("validate", help="Validate workflow and docs structure")
     p.set_defaults(func=lambda args: sys.exit(validate()))
 
-    p = sub.add_parser("sync-agents", help="Write the route table's rows (engine defaults overlaid by the repo-root executors.toml) into the model/effort frontmatter of the five managed agent files: slice-executor-mid, slice-executor-high, design-drafter (its own design row), design-critic (the critic row; the judge row runs it with its model passed per call) and Explore (the explore row)")
+    p = sub.add_parser("sync-agents", help="Write the route table's rows (engine defaults overlaid by the repo-root executors.toml) into the model/effort frontmatter of the four managed agent files: slice-executor (the mid row; high, research and cheap run it with their model and effort passed per dispatch), design-drafter (its own design row), design-critic (the critic row; the judge row runs it with its model passed per call) and Explore (the explore row)")
     p.add_argument("--check", action="store_true", help="Report drift without writing; exit 1 if out of sync")
     p.set_defaults(func=sync_agents)
 
-    p = sub.add_parser("executor-route", help="Print the executor routing decision, one key=value per line, writing nothing: bare, the resolved route table (high, research, design, critic, judge, mid, cheap, explore) and the agent files' sync state; with a slice id, the route, tier, subagent_type, model, effort and attribution its dispatch uses (kind first, then risk, then attempt); --drafter / --critic / --judge / --explore, a non-slice agent's dispatch; plus fallback=, skip= and warning= lines for the environment. --critic and --judge exit 1 when their row is the design row's model")
+    p = sub.add_parser("executor-route", help="Print the executor routing decision, one key=value per line, writing nothing: bare, the resolved route table (high, research, design, critic, judge, mid, cheap, explore) and the agent files' sync state; with a slice id, the route, subagent_type (slice-executor for every slice row), model, effort and attribution its dispatch uses (kind first, then risk, then attempt); --drafter / --critic / --judge / --explore, a non-slice agent's dispatch; plus fallback=, skip= and warning= lines for the environment. --critic exits 1 when the critic row is the design row's model (the judge row is exempt)")
     p.add_argument("slice", nargs="?", help="the slice to route; omit for the table")
     p.add_argument("--retry", action="store_true", help="the slice's second attempt (an escalation, a failed or empty return, a fix of mid-row work): always the high row")
-    p.add_argument("--drafter", action="store_true", help="the design-drafter's dispatch (its own design row, [claude.design]; not a slice tier)")
+    p.add_argument("--drafter", action="store_true", help="the design-drafter's dispatch (its own design row, [claude.design]; not a slice route)")
     p.add_argument("--critic", action="store_true", help="the design-critic's dispatch in critic mode (the critic row, [claude.critic]); exit 1 when it is the drafter's model")
-    p.add_argument("--judge", action="store_true", help="the design-critic's dispatch in judge mode (the judge row, [claude.judge], alias only); exit 1 when it is the drafter's model; skip=yes behind a loopback proxy that serves no Fable")
+    p.add_argument("--judge", action="store_true", help="the design-critic's dispatch in judge mode (the judge row, [claude.judge], alias only); never refused for sharing the drafter's model; skip=yes only when the judge row is overridden to Fable behind a loopback proxy that serves no Fable")
     p.add_argument("--explore", action="store_true", help="the read-only Explore lookup agent's dispatch (the explore row)")
     p.set_defaults(func=cmd_executor_route)
 
@@ -10956,7 +10999,7 @@ def main(argv=None) -> int:
         p.add_argument(flag, dest=dest, help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_record_dispatch)
 
-    p = sub.add_parser("dispatch-summary", help="Read-only: what a phase really cost -- the main thread beside its subagent spans per slice and per phase (requests, context, output, list-price $, minutes, limit hits, verdicts) metered from Claude Code's transcripts, the means a DECOMP estimates from, then the recorded verdicts; no transcripts found prints one line and the recorded tables")
+    p = sub.add_parser("dispatch-summary", help="Read-only: what a phase really cost -- the main thread beside its subagent spans per slice and per phase (requests, context, output, list-price $, minutes, limit hits, verdicts) metered from Claude Code's transcripts, the means a DECOMP estimates time from, then the recorded verdicts; no transcripts found prints one line and the recorded tables")
     p.add_argument("--phase", help="one phase: its slices, read from the sessions overlapping its slice windows")
     p.add_argument("--slice", help="one slice: its metered rows and its recorded attempts, one per line")
     p.add_argument("--json", action="store_true", help="print everything as one JSON object")
@@ -10988,8 +11031,8 @@ def main(argv=None) -> int:
     p.add_argument("--phase", required=True)
     p.add_argument("--slice", required=True)
     p.add_argument("--name", required=True)
-    p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work (closed set; unknown kinds are rejected). research is findings-only: no product code, findings land in phase.md, and it always routes to the research row on slice-executor-high")
-    p.add_argument("--risk", default="high", help="low (the mid row for implementation and fix, the cheap row for docs and qa -- both on slice-executor-mid, the default tier since v46, real code included) or high (the high row on slice-executor-high: only for a named trigger -- open design, a core invariant, an unlocated root cause, a wide blast radius -- or a fix to mid-row work); unset or unrecognized values route to high; kind decomposition, review, co-work and research route by kind whatever this says; `executor-route <slice>` prints the decision")
+    p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work (closed set; unknown kinds are rejected). research is findings-only: no product code, findings land in phase.md, and it always routes to the research row")
+    p.add_argument("--risk", default="high", help="low (the mid row for implementation and fix, the cheap row for docs and qa -- the default since v46, real code included) or high (the high row: only for a named trigger -- open design, a core invariant, an unlocated root cause, a wide blast radius -- or a fix to mid-row work); unset or unrecognized values route to high; kind decomposition, review, co-work and research route by kind whatever this says; `executor-route <slice>` prints the decision")
     p.add_argument("--order", type=float, help="sort position within the phase; a fractional value (e.g. 4.5) inserts between two neighbors without renumbering (default: 10 past the last non-review slice)")
     p.add_argument("--depends-on", action="append", help="advisory: validate checks only that the named slice exists; selection still follows --order")
     p.set_defaults(func=new_slice)
@@ -11242,8 +11285,8 @@ def main(argv=None) -> int:
     p.add_argument("--phase", required=True)
     p.add_argument("--slice", required=True)
     p.add_argument("--name")
-    p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work (closed set; unknown kinds are rejected). research is findings-only: no product code, findings land in phase.md, and it always routes to the research row on slice-executor-high")
-    p.add_argument("--risk", default="high", help="low (the mid row for implementation and fix, the cheap row for docs and qa -- both on slice-executor-mid, the default tier since v46, real code included) or high (the high row on slice-executor-high: only for a named trigger -- open design, a core invariant, an unlocated root cause, a wide blast radius -- or a fix to mid-row work); unset or unrecognized values route to high; kind decomposition, review, co-work and research route by kind whatever this says; `executor-route <slice>` prints the decision")
+    p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work (closed set; unknown kinds are rejected). research is findings-only: no product code, findings land in phase.md, and it always routes to the research row")
+    p.add_argument("--risk", default="high", help="low (the mid row for implementation and fix, the cheap row for docs and qa -- the default since v46, real code included) or high (the high row: only for a named trigger -- open design, a core invariant, an unlocated root cause, a wide blast radius -- or a fix to mid-row work); unset or unrecognized values route to high; kind decomposition, review, co-work and research route by kind whatever this says; `executor-route <slice>` prints the decision")
     p.add_argument("--order", type=float, help="sort position within the phase; a fractional value (e.g. 4.5) inserts between two neighbors without renumbering (default: 10 past the last non-review slice)")
     p.add_argument("--depends-on", action="append", help="advisory: validate checks only that the named slice exists; selection still follows --order")
     p.add_argument("--create-phase", action="store_true")

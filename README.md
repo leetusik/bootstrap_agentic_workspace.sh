@@ -144,7 +144,7 @@ nested 설치의 `workflow/` 디렉터리 자체에서 옵션 없는 설치나 `
 
 - `workflow/`: 엔진, `works/`, `docs/`, `executors.toml`, 규칙 문서(`CLAUDE.workspace.md`)가
   들어가는 **중첩 git 저장소**입니다. 호스트와 따로 버전 관리됩니다.
-- 호스트의 `.claude/skills/`, `.claude/agents/`에 들어가는 스킬 18개와 에이전트 3개. 경로는
+- 호스트의 `.claude/skills/`, `.claude/agents/`에 들어가는 스킬 17개와 에이전트 5개. 경로는
   `workflow/`를 가리키도록 바뀌어 있습니다(`python3 workflow/scripts/workflow.py …`).
 - 각 스킬 디렉터리 안의 `.gitignore`(내용은 `*`). 호스트의 `.gitignore`가 `.claude/skills/`를
   다시 포함시키더라도 스킬 디렉터리가 스스로를 가립니다.
@@ -209,8 +209,8 @@ git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하�
 
 - **병렬 worktree는 요청할 때만 씁니다.** nested 설치에서는 호스트 worktree와 그 안의 `workflow/`
   worktree가 한 쌍으로 만들어집니다([phase별 worktree](#phase별-worktree-요청할-때만) 참고).
-- 회사가 관리하는 Claude Code 정책이 `bypassPermissions`를 막을 수 있습니다. 세 에이전트가 이
-  모드를 쓰므로, `/do-whole-phase`처럼 사람 없이 도는 실행을 믿기 전에 확인하세요.
+- 회사가 관리하는 Claude Code 정책이 `bypassPermissions`를 막을 수 있습니다. 여섯 에이전트 중 다섯이 이
+  모드를 쓰므로(`Explore`는 쓰지 않습니다), `/do-whole-phase`처럼 사람 없이 도는 실행을 믿기 전에 확인하세요.
 - 이름이 바뀐 스킬을 엔진 메시지가 원래 이름으로 부를 수 있습니다(예: `wf-create-phase`로
   설치됐는데 `validate`가 "create-phase 스킬"이라고 안내).
 - `workflow/docs/`에 미리 들어 있는 문서 글은 `workflow/` 기준 경로로 적혀 있습니다.
@@ -329,19 +329,19 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 
 실행자는 slice의 종류(`kind`)와 위험도(`risk`)에 따라 엔진의 **라우트 표**에서 한 행이 선택되고, 그
 행이 정한 모델과 노력 수준(effort)이 매 dispatch마다 전달됩니다(v53부터). 위험도 표시가 곧 비용 조절
-장치입니다 — 대부분의 일은 기본 티어인 `mid`가 맡고, 정말 어려운 일과 `mid`가 한 번 실패한 일만
+장치입니다 — 대부분의 일은 기본 행인 `mid`가 맡고, 정말 어려운 일과 `mid`가 한 번 실패한 일만
 `high`가 맡습니다(v46부터).
 
 | 행(route) | 기본값 | 실행 에이전트 | 맡는 일 |
 |---|---|---|---|
-| `high` | Opus@high | `slice-executor-high` | 일 나누기(`DECOMP`), 최종 리뷰(`REVIEW`), 이유를 적어 `risk: high`로 매긴 slice, 그리고 두 번째 시도(에스컬레이션, `mid`가 한 번 실패한 일). |
-| `research` | Opus@medium | `slice-executor-high` | 조사(`research`) slice |
-| `design` | Opus@xhigh | `design-drafter` | 디자인 하위 에이전트의 라운드 초안(`executor-route --drafter`). slice 티어가 아니며 `high` 행을 따르지 않음 |
-| `critic` | Sonnet@high | `design-critic` | 초안 라운드를 새 눈으로 평가하는 디자인 비평가(`executor-route --critic`). `design` 행과 다른 모델이어야 함 |
-| `judge` | Fable@high | `design-critic` | 비평가가 확신하지 못한 항목만 판정하는 판정 모드(`executor-route --judge`, 별칭만). `design` 행과 다른 모델이어야 하며, 루프백 프록시에서는 건너뜀 |
-| `mid` | Sonnet@high | `slice-executor-mid` | 기본 — `risk: low`인 구현·수정(`fix`) slice. 실제 코드 작성과 여러 파일에 걸친 변경도 포함 |
-| `cheap` | `mid` 행을 상속(이 저장소: Haiku@xhigh) | `slice-executor-mid` | `risk: low`인 문서(`docs`)·QA slice — 싼 경로. 설정하지 않으면 `mid` 행과 같음 |
-| `explore` | Haiku@high | `Explore` | 읽기 전용 조회(계획 조사, 실행자의 큰 읽기). slice 라우트는 아님 |
+| `high` | Opus@xhigh | `slice-executor` | 일 나누기(`DECOMP`), 최종 리뷰(`REVIEW`), 이유를 적어 `risk: high`로 매긴 slice, 그리고 두 번째 시도(에스컬레이션, `mid`가 한 번 실패한 일). |
+| `research` | Opus@xhigh | `slice-executor` | 조사(`research`) slice |
+| `design` | Opus@xhigh | `design-drafter` | 디자인 하위 에이전트의 라운드 초안(`executor-route --drafter`). slice 행이 아니며 `high` 행을 따르지 않음 |
+| `critic` | Sonnet@xhigh | `design-critic` | 초안 라운드를 새 눈으로 평가하는 디자인 비평가(`executor-route --critic`). `design` 행과 다른 모델이어야 함 |
+| `judge` | Opus@xhigh | `design-critic` | 비평가가 확신하지 못한 항목만 판정하는 판정 모드(`executor-route --judge`, 별칭만). `design` 행과 같은 모델이어도 됨. Fable로 바꾼 경우 루프백 프록시에서는 건너뜀 |
+| `mid` | Sonnet@xhigh | `slice-executor` | 기본 — `risk: low`인 구현·수정(`fix`) slice. 실제 코드 작성과 여러 파일에 걸친 변경도 포함 |
+| `cheap` | `mid` 행을 상속(이 저장소: Haiku@xhigh) | `slice-executor` | `risk: low`인 문서(`docs`)·QA slice — 싼 경로. 설정하지 않으면 `mid` 행과 같음 |
+| `explore` | Haiku@xhigh | `Explore` | 읽기 전용 조회(계획 조사, 실행자의 큰 읽기). slice 라우트는 아님 |
 
 `high`는 네 가지 이유 중 하나가 있을 때만 붙습니다: **열린 설계**(계획이 접근법을 정해 둘 수
 없음), **핵심 불변식**(저장 데이터·스키마, 상태 전이, 인증, 돈, 삭제, 동시성), **원인을 모르는
@@ -351,9 +351,9 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 값을 안 줬거나 알아볼 수 없는 값이면 항상 `high`로 떨어집니다 — 그래서 `DECOMP`는 모든 slice의
 등급을 명시적으로 매깁니다.
 
-`mid` 티어가 작업 중에 — 계획에 없던 설계 결정이 필요하거나, 등급이 놓친 `high` 이유가
+`mid` 행이 작업 중에 — 계획에 없던 설계 결정이 필요하거나, 등급이 놓친 `high` 이유가
 드러나거나, 같은 검증 실패가 두 번 고쳐도 남거나, 일이 계획 범위를 넘어가면 — 그 자리에서 멈추고
-**에스컬레이션**을 돌려줍니다. 오케스트레이터가 발견 내용을 계획에 반영해 `slice-executor-high`로
+**에스컬레이션**을 돌려줍니다. 오케스트레이터가 발견 내용을 계획에 반영해 `high` 행으로
 다시 맡깁니다. 항상 위로만 올라가고, slice당 최대 한 번입니다. 리뷰가 `mid`의 작업에서 결함을
 찾으면 그 수정 slice도 `high`가 맡습니다 — `mid`가 한 번 틀린 일은 `mid`로 돌아가지 않습니다.
 
@@ -399,7 +399,7 @@ Claude Code에서 `/이름`으로 입력합니다.
 | `retrofit` | 기존 저장소에 워크스페이스 추가 |
 | `update-workspace` | 설치된 워크스페이스의 시스템 파일만 최신으로 교체 |
 
-스킬은 모두 18개입니다. 전체 목록과 설치 옵션은 [English README](README.en.md)에 있고,
+스킬은 모두 17개입니다. 전체 목록과 설치 옵션은 [English README](README.en.md)에 있고,
 CLI 명령 전체는 `python3 scripts/workflow.py --help`로 확인할 수 있습니다.
 
 ## phase별 worktree (요청할 때만)
@@ -475,7 +475,7 @@ branch만 지웁니다). worktree는 파일만 격리하므로 docker 컨테이�
 
 ## 더 알아보기
 
-- 전체 문서 (설치 옵션, CLI 명령 전체, 프로젝트 구조, 스킬 18종): [English README](README.en.md)
+- 전체 문서 (설치 옵션, CLI 명령 전체, 프로젝트 구조, 스킬 17종): [English README](README.en.md)
 - 에이전트 규칙 문서: [CLAUDE.md](payload/contract.md)
 - 기존 저장소에 추가하는 절차: [Retrofit Guide](docs/retrofit-guide.md)
 - 기여하기: 기여할 때는 클론에 비공개 워크스페이스를 설치해 같은 방식으로 작업합니다. phase를 열고 slice 단위로 기여해

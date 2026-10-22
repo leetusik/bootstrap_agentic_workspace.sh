@@ -10,8 +10,8 @@ Give the executor the slice id and folder path; it reads the plan and context, i
 
 ## Step 4 — an escalation, or a failed or empty return
 
-- `escalate` (returned only by `slice-executor-mid`) → escalate instead of stopping: append an `## Escalation: mid → high` section to this slice's `plan.md` carrying the executor's `escalation` findings and what to do differently, then resolve with `executor-route <slice_id> --retry`, pin its lines under that section, re-dispatch the slice to **`slice-executor-high`**, and record the second attempt. In `gate` mode, present the revised plan for the operator's approval first (plan mode, as in step 2); in the default (`auto`) re-dispatch straight away. At most 1 escalation per slice; the slice stays `in_progress` throughout.
-- failed or empty return → from `slice-executor-mid`, treat it as an `escalate` with no findings (record it `--verdict failed`, note the failed attempt in the escalation section and re-dispatch to `slice-executor-high` through the same `--retry` path); from `slice-executor-high`, treat the slice as not done: do not finish, do not commit; report and STOP.
+- `escalate` (returned only by a mid-row dispatch) → escalate instead of stopping: append an `## Escalation: mid → high` section to this slice's `plan.md` carrying the executor's `escalation` findings and what to do differently, then resolve with `executor-route <slice_id> --retry`, pin its lines under that section, re-dispatch the slice **on the high row**, and record the second attempt. In `gate` mode, present the revised plan for the operator's approval first (plan mode, as in step 2); in the default (`auto`) re-dispatch straight away. At most 1 escalation per slice; the slice stays `in_progress` throughout.
+- failed or empty return → from a mid-row dispatch, treat it as an `escalate` with no findings (record it `--verdict failed`, note the failed attempt in the escalation section and re-dispatch on the high row through the same `--retry` path); from a high-row dispatch, treat the slice as not done: do not finish, do not commit; report and STOP.
 
 ## Step 7 — the commit
 

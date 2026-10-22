@@ -73,6 +73,13 @@ sha() {
   if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
   else sha256sum "$1" | awk '{print $1}'; fi
 }
+# /explain is the knowledge plugin's: no install path touches or reports a path with an `explain` component.
+# plant_old_explain writes the last shipped explain skill (1c5ea0e) when this clone has that history, else a
+# marker copy; explain_sig is every such file under a tree with its hash (.git and workflow/ skipped).
+plant_old_explain() { mkdir -p "$(dirname "$1")"; git -C "$REPO_ROOT" show 1c5ea0e:payload/claude/skills/explain/SKILL.md > "$1" 2>/dev/null \
+  || printf -- '---\nname: explain\n---\nthe old workspace copy\n' > "$1"; }
+explain_sig() { ( cd "$1" && find . \( -path ./.git -o -path ./workflow \) -prune -o -type f -print | grep -E '/explain(/|$)' | LC_ALL=C sort \
+  | while read -r f; do printf '%s %s\n' "$f" "$(sha "$f")"; done ); }
 
 # P37.S1 (v61): the skills ship as whole directories. Checks an installed .claude/skills tree against
 # the build's payload: every shipped skill file is there (byte-identical, or only present when
@@ -118,7 +125,7 @@ import sys
 
 root = Path(sys.argv[1])
 skills = {p.parent.name for p in (root / "payload/claude/skills").glob("*/SKILL.md")}
-assert len(skills) == 18, len(skills)
+assert len(skills) == 17, len(skills)
 
 # P37.S1 (v61): a skill ships as its whole directory, a core SKILL.md plus reference/*.md, and the
 # do-* shared references fan out at build. Prose pins read the BUILT directory (core first, then its
@@ -178,11 +185,29 @@ assert "`drafter`" in create_phase and "Mockup: on request" in create_phase
 for gone in ("ask which design tool", "Design tool: drafter", "Design tool: claude-design",
              "DesignSync", "design-deck", "design-register", "sign on the cards", "the drafted cards"):
     assert gone not in create_phase, gone
+# Explain phases: the route lives in create-phase, the three references ship in do-whole-phase and
+# fan out to do-next-slice, and the review pointer is one fixed string everywhere.
+assert "## The explain route" in create_phase and "## Explain" in create_phase
+for ref in ("explain-decomposition.md", "explain-chapter.md", "explain-review.md"):
+    assert f".claude/skills/do-next-slice/reference/{ref}" in SHARED_SKILL_FILES, ref
+POINTER = "not written — run /knowledge:explain P<N> for one chapter, or create an explain phase for a book"
+for rel in ("claude/agents/slice-executor.md",
+            "claude/skills/review-phase/SKILL.md", "claude/skills/do-whole-phase/reference/review.md",
+            "claude/skills/do-next-slice/reference/review.md"):
+    assert POINTER in (root / "payload" / rel).read_text(encoding="utf-8"), rel
+for p in [*(root / "payload").rglob("*.md"), root / "installer/main.py", root / "installer/payloads/doc_bodies/operations.md"]:
+    t = p.read_text(encoding="utf-8")
+    assert "run /explain for this phase" not in t and "run /knowledge:explain for this phase" not in t, p
 
 # Only skills that *document the removal* may still say "Codex": update-workspace's
-# pre-v31 migration step and explain's re-vendor note. Anywhere else it is a regression.
+# pre-v31 migration step. Anywhere else it is a regression.
 codex_prose = {n for n in skills if "Codex" in skill_dir_text(n)}
-assert codex_prose <= {"update-workspace", "explain"}, sorted(codex_prose)
+assert codex_prose <= {"update-workspace"}, sorted(codex_prose)
+# /explain is the knowledge plugin's: not shipped, and RETIRED_FILES never lists an explain path.
+assert "explain" not in skills, skills
+main_py = (root / "installer/main.py").read_text()
+retired_table = main_py[main_py.index("RETIRED_FILES = {"):main_py.index("\n}\n", main_py.index("RETIRED_FILES = {"))]
+assert "/explain/" not in retired_table, "RETIRED_FILES lists an explain path"
 assert "Codex support was removed in workspace v31" in (
     root / "payload/claude/skills/update-workspace/SKILL.md").read_text()
 
@@ -254,10 +279,10 @@ for name in ("do-next-slice", "do-whole-phase"):
     for ln in body.splitlines():
         if "works/backlog.md" in ln:
             assert "next" in ln and "pointer" in ln, (name, ln)
-    # v46: mid is the default tier; high needs a named trigger, and a fix to
-    # mid-tier work goes high. The one-line/few-line scope for mid is retired.
+    # v46: mid is the default row; high needs a named trigger, and a fix to
+    # mid- or cheap-row work goes high. The one-line/few-line scope for mid is retired.
     for required in ("**Mid is the default (v46):**", "--kind fix --risk <low|high>`",
-                     "work the mid tier got wrong never goes back to it"):
+                     "work a mid or cheap row got wrong never goes back to it"):
         assert required in body, (name, required)
     for gone in ("one-line/few-line", "one-line, or few-line"):
         assert gone not in body, (name, gone)
@@ -545,11 +570,6 @@ for required in ("Worktree rules", "**When — only when asked**", "retired no-o
                  "**Since v43 this is opt-in:", "the **`worktree` mode word**",
                  "**`parallel-start <P>` run by the operator's own hand**"):
     assert required in parallel, required
-# v61 (P37.S9): the contract keeps "operator-invoked only"; the review's non-use and the
-# ask before an external account moved to the skill itself.
-explain = " ".join((root / "payload/claude/skills/explain/SKILL.md").read_text().split())
-assert "This skill is **operator-invoked only**: the workspace's phase review never runs it" in explain
-assert "asks before it creates an account on an external service" in explain
 # v43 negatives copied from the contract list (the worktree-by-default framing), and the
 # v42 leftover that had the do-* skills start a worktree whenever `next` printed the hint.
 for gone in ("runs in its own worktree by default", "enters its worktree at **first execution**",
@@ -614,9 +634,13 @@ assert "- [ ] <surface>: <one observable behaviour> (P<N>)" in qa
 # v41: the seed says the list is re-run inside the phase's boundary, never whole by a review.
 assert "phase-scope <P>" in qa and "re-runs the whole list" not in qa
 
-bodies = {}
-for tier in ("mid", "high"):
-    body = (root / f"payload/claude/agents/slice-executor-{tier}.md").read_text()
+# v66: one executor, slice-executor, replaces the mid/high pair; its frontmatter carries the mid row.
+assert not (root / "payload/claude/agents/slice-executor-mid.md").exists()
+assert not (root / "payload/claude/agents/slice-executor-high.md").exists()
+for tier in ("slice-executor",):
+    body = (root / "payload/claude/agents/slice-executor.md").read_text()
+    fm = body.split("---\n", 2)[1]
+    assert "name: slice-executor\n" in fm and "model: sonnet\n" in fm and "effort: xhigh\n" in fm, fm
     assert "commit or push (no `git commit`, `git add`, `git push`)" in body, tier
     for gone in ("Codex", ".agents/", ".codex/", "AGENTS.md"):
         assert gone not in body, (tier, gone)
@@ -715,12 +739,15 @@ for tier in ("mid", "high"):
         assert gone not in body, (tier, gone)
     never = [ln for ln in body.splitlines() if "run workflow state-transition commands" in ln]
     assert len(never) == 1 and "`accept-gate`" in never[0] and "`defer-job`" in never[0], tier
-    # v46: mid is the default tier, escalates on named reasons (never for real code
-    # or several files), and every verdict names its tier; mid gets the web tools.
-    for required in ("the default tier, where most slices land", "**two strikes**",
-                     "- `tier`: `mid` | `high`", "work the mid tier got wrong never goes back to it"):
+    # v46: mid is the default row, escalates on named reasons (never for real code
+    # or several files); v66: every verdict names its route (the `tier` field retired).
+    for required in ("the default row, where most slices land", "**two strikes**",
+                     "- `route`: `high` | `research` | `mid` | `cheap`", "work a mid or cheap row got wrong never goes back to it",
+                     "## Escalate early instead of thrashing (mid and cheap rows only)",
+                     "The `high` and `research` rows never return `escalate`."):
         assert required in body, (tier, required)
-    for gone in ("the light tier", "essentially all code writing"):
+    for gone in ("the light tier", "essentially all code writing", "- `tier`", "slice-executor-mid", "slice-executor-high",
+                 "mid tier", "high tier", "top tier", "capability tiers"):
         assert gone not in body, (tier, gone)
     assert "tools: Read, Edit, Write, Glob, Grep, Bash, WebSearch, WebFetch, Agent\n" in body, tier
     # v53 (P32.S3): the Agent tool is for read-only Explore lookups only; the verdict block
@@ -730,9 +757,6 @@ for tier in ("mid", "high"):
                      "never to spawn another executor"):
         assert required in body, (tier, required)
     assert "never an executor tier" not in body, tier
-    bodies[tier] = body.split("---\n", 2)[2]
-# The tiers differ in frontmatter only, so a body diff is the drift detector.
-assert bodies["mid"] == bodies["high"], "slice-executor tier bodies drifted"
 
 # v53 (P32.S3): the Explore agent's final body, and no Agent tool on it (it never nests).
 explore = (root / "payload/claude/agents/Explore.md").read_text()
@@ -771,7 +795,7 @@ for required in (
     # dispatch to two different agents and the round's lifecycle stays inline.
     "The design subagent drafts, the operator decides:",
     # P36.S6: a wave's drafters at once, the critique to design-critic, and one publisher.
-    "dispatching its drafting to `design-drafter` (one per job, a wave's at once), its critique to `design-critic` when the job's level asks, and its mockup build (only on request) to `slice-executor-high`",
+    "dispatching its drafting to `design-drafter` (one per job, a wave's at once), its critique to `design-critic` when the job's level asks, and its mockup build (only on request) to `slice-executor` on the high row",
     "the round's lifecycle and the operator's words stay inline, and only the main thread publishes",
     "executors never get `Artifact`",
     "`--kind` is a **closed set**",
@@ -858,7 +882,7 @@ compact = claude.split("## Compact Instructions", 1)[1]
 assert "resume card" in compact and "never re-dispatch a running executor" in compact
 assert "re-read" not in compact, "Compact Instructions carry a re-read instruction"
 PY
-then ok "18 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with waves and opt-in critique, mockups on request, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
+then ok "17 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with waves and opt-in critique, mockups on request, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
@@ -926,8 +950,8 @@ PY
 then ok "retrofit merges the resume hook additively: foreign PreCompact/PostToolUse handlers survive untouched, ours (SessionStart compact) present exactly once, no PreCompact of ours (v61)"; else bad "retrofit hooks merge incorrect"; fi
 # v56: the project-level auto-compact window ships with the payload; retrofit fills it when the
 # adopter's file has none, and a second --update leaves it alone.
-python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["autoCompactWindow"] == 300000, d' "$R/.claude/settings.json" \
-  && ok "retrofit sets autoCompactWindow=300000 when the adopter's settings.json has none (v61)" || bad "retrofit did not set autoCompactWindow"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["autoCompactWindow"] == 450000, d' "$R/.claude/settings.json" \
+  && ok "retrofit sets autoCompactWindow=450000 when the adopter's settings.json has none" || bad "retrofit did not set autoCompactWindow"
 
 ( cd "$R" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) && ok "validate passes in target" || bad "validate failed in target"
 nph=$(find "$R/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
@@ -939,8 +963,8 @@ cp_state=$(python3 -c "import json;print(json.load(open('$R/works/state.json'))[
   && ok "retrofit installs no Codex trees (.agents/, .codex/)" || bad "retrofit created a Codex tree"
 [ ! -f "$R/AGENTS.workspace.md" ] \
   && ok "retrofit writes no AGENTS.workspace.md sidecar" || bad "retrofit wrote an AGENTS.workspace.md sidecar"
-[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "18" ] \
-  && ok "retrofit installs the 18-skill Claude inventory" || bad "retrofit skill inventory incomplete"
+[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "17" ] \
+  && ok "retrofit installs the 17-skill Claude inventory" || bad "retrofit skill inventory incomplete"
 skill_tree_ok "$R/.claude/skills" exact \
   && ok "retrofit installs every skill as its whole directory: each core's reference files, none orphaned, the shared do-* copy identical" || bad "retrofit skill directories incomplete (core + reference/)"
 grep -q 'design subagent drafts, the operator decides' "$R/CLAUDE.workspace.md" && grep -q 'writes no \*\*\*product\*\*\* implementation code' "$R/CLAUDE.workspace.md" \
@@ -1004,8 +1028,8 @@ resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-resume
 assert h == {"SessionStart": [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}]}, h
 PY
 then ok "a fresh at-root install ships only the resume hook (SessionStart compact -> compact-resume, timeout 15) and no PreCompact (v61: compaction is Claude Code's own)"; else bad "fresh install settings.json hooks wrong"; fi
-python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 300000' "$F/.claude/settings.json" \
-  && ok "a fresh at-root install ships autoCompactWindow=300000 in project settings (v61)" || bad "fresh install settings.json lacks autoCompactWindow=300000"
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 450000' "$F/.claude/settings.json" \
+  && ok "a fresh at-root install ships autoCompactWindow=450000 in project settings" || bad "fresh install settings.json lacks autoCompactWindow=450000"
 nphf=$(find "$F/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
 [ "$nphf" = "0" ] && ok "fresh install seeds no phases (empty start)" || bad "fresh install seeded $nphf phase(s)"
 if python3 - "$REPO_ROOT" "$F/works/.workspace-version.json" <<'PY'
@@ -1038,30 +1062,36 @@ assert not missing, missing
 PY
 then ok "every changelog release section carries a Migration notes line"; else bad "a changelog release section has no Migration notes line"; fi
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
-[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "18" ] \
-  && ok "fresh install has the 18 Claude skills" || bad "fresh skill inventory incomplete"
+[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "17" ] \
+  && ok "fresh install has the 17 Claude skills" || bad "fresh skill inventory incomplete"
 skill_tree_ok "$F/.claude/skills" exact \
   && ok "fresh install ships every skill as its whole directory: each core's reference files, none orphaned, the shared do-* copy identical" || bad "fresh install skill directories incomplete (core + reference/)"
 [ ! -f "$F/AGENTS.md" ] && [ ! -d "$F/.agents" ] && [ ! -d "$F/.codex" ] \
   && ok "fresh install is Codex-free (no AGENTS.md, no .agents/, no .codex/)" || bad "fresh install still ships Codex machinery"
-[ -f "$F/.claude/agents/slice-executor-mid.md" ] && [ -f "$F/.claude/agents/slice-executor-high.md" ] && ok "fresh install ships the 2 Claude slice-executor tiers" || bad "fresh install missing Claude slice-executor tier(s)"
-grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-mid.md" \
-  && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-high.md" \
+[ -f "$F/.claude/agents/slice-executor.md" ] && [ ! -e "$F/.claude/agents/slice-executor-mid.md" ] && [ ! -e "$F/.claude/agents/slice-executor-high.md" ] \
+  && ok "fresh install ships the one slice-executor (v66), not the retired mid/high pair" || bad "fresh install: slice-executor.md missing or the retired pair present"
+grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor.md" \
+  && grep -q '^name: slice-executor$' "$F/.claude/agents/slice-executor.md" \
   && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/design-drafter.md" \
   && [ -f "$F/.claude/agents/Explore.md" ] && grep -q '^model: haiku$' "$F/.claude/agents/Explore.md" \
-  && grep -q '^effort: high$' "$F/.claude/agents/Explore.md" && grep -qx 'tools: Read, Grep, Glob' "$F/.claude/agents/Explore.md" \
-  && ok "fresh install follows the route defaults: mid sonnet@high, high opus@high, explore haiku@high" || bad "fresh install agent files do not follow the route defaults"
+  && grep -q '^effort: xhigh$' "$F/.claude/agents/Explore.md" && grep -qx 'tools: Read, Grep, Glob' "$F/.claude/agents/Explore.md" \
+  && ok "fresh install follows the route defaults: slice-executor carries mid sonnet@xhigh, explore haiku@xhigh" || bad "fresh install agent files do not follow the route defaults"
 # P26.S2, re-pinned by P36.S8C: the design subagent loads no skill (frontend-design is retired from
 # it, its useful lines carried in its craft), so it ships without the Skill tool, and never DesignSync.
 [ -f "$F/.claude/agents/design-drafter.md" ] && grep -q '^tools: Read, Edit, Write, Glob, Grep, Bash$' "$F/.claude/agents/design-drafter.md" \
   && ! grep -Eq '^tools: (.*, )?Skill(,.*)?$' "$F/.claude/agents/design-drafter.md" \
   && ! grep -q '^tools: .*DesignSync' "$F/.claude/agents/design-drafter.md" \
   && ok "fresh install ships the design-drafter subagent (no Skill tool, no DesignSync)" || bad "fresh install design-drafter missing, still carries Skill, or carries DesignSync"
-# P36.S5B, v61 (P37.S7): the design critic ships on the critic row (sonnet @ high) and can write only its own file: no Edit.
+# P36.S5B, v61 (P37.S7): the design critic ships on the critic row (sonnet @ xhigh) and can write only its own file: no Edit.
 [ -f "$F/.claude/agents/design-critic.md" ] && grep -q '^model: sonnet$' "$F/.claude/agents/design-critic.md" \
-  && grep -q '^effort: high$' "$F/.claude/agents/design-critic.md" && grep -q '^tools: ' "$F/.claude/agents/design-critic.md" \
+  && grep -q '^effort: xhigh$' "$F/.claude/agents/design-critic.md" && grep -q '^tools: ' "$F/.claude/agents/design-critic.md" \
   && ! grep -Eq '^tools: (.*, )?Edit(,.*)?$' "$F/.claude/agents/design-critic.md" \
-  && ok "fresh install ships the design-critic subagent (sonnet@high, no Edit in tools)" || bad "fresh install design-critic missing, off its row defaults, or carries Edit"
+  && ok "fresh install ships the design-critic subagent (sonnet@xhigh, no Edit in tools)" || bad "fresh install design-critic missing, off its row defaults, or carries Edit"
+# The explain critic ships as a sixth agent, opus @ xhigh, and writes only its critique file: no Edit.
+[ -f "$F/.claude/agents/explain-critic.md" ] && grep -q '^model: opus$' "$F/.claude/agents/explain-critic.md" \
+  && grep -q '^effort: xhigh$' "$F/.claude/agents/explain-critic.md" && grep -q '^tools: ' "$F/.claude/agents/explain-critic.md" \
+  && ! grep -Eq '^tools: (.*, )?Edit(,.*)?$' "$F/.claude/agents/explain-critic.md" \
+  && ok "fresh install ships the explain-critic subagent (opus@xhigh, no Edit in tools)" || bad "fresh install explain-critic missing, off its frontmatter, or carries Edit"
 # v61 (P37.S7): shape pins on the two design agents -- one drafter output (no build-prompt.md bar as legacy), the
 # strict self-check and the state-bar rules in the drafter, the render reuse in the critic.
 D="$F/.claude/agents/design-drafter.md"; C="$F/.claude/agents/design-critic.md"
@@ -1069,7 +1099,6 @@ D="$F/.claude/agents/design-drafter.md"; C="$F/.claude/agents/design-critic.md"
   && grep -q -- '--strict' "$D" && grep -q 'self_check=pass' "$D" && grep -q 'never follows the scroll' "$D" && grep -q 'one standalone bar' "$D" \
   && grep -q -- '--states-only' "$C" && grep -q 'sheet.png' "$C" && grep -q '^- open_items:' "$C" && grep -q '^- `open_items`' "$D" \
   && ok "the design agents carry the v61 shape (strict self-check, state-bar rules, render reuse, open_items, no build-prompt.md)" || bad "the design agent files are off the v61 shape"
-[ ! -f "$F/.claude/agents/slice-executor.md" ] && ok "legacy untiered slice-executor retired (absent on fresh install)" || bad "legacy untiered slice-executor should be retired but is present"
 [ ! -f "$F/.claude/agents/slice-executor-low.md" ] && ok "low tier retired in v23 (absent on fresh install)" || bad "slice-executor-low should be retired but is present"
 [ -f "$F/executors.toml" ] && ok "fresh install seeds the tracked executors.toml selection" || bad "fresh install missing executors.toml"
 [ -f "$F/.github/workflows/workspace-ci.yml" ] && ok "fresh install seeds the CI workflow" || bad "fresh install missing .github/workflows/workspace-ci.yml"
@@ -1083,8 +1112,8 @@ grep -qx '# \[claude\.cheap\]' "$F/executors.toml" && grep -qx '# model = "haiku
   && ! grep -q '^\[claude\.cheap\]' "$F/executors.toml" && [ "$(grep -c 'cheap-route: begin' "$F/executors.toml")" = "1" ] && [ "$(grep -c 'cheap-route: end' "$F/executors.toml")" = "1" ] \
   && ok "the fresh install's executors.toml seeds the cheap-route block commented out, markers intact" || bad "the seeded executors.toml does not comment out the cheap-route block"
 seed_er=$(cd "$F" && python3 scripts/workflow.py executor-route 2>&1)
-printf '%s\n' "$seed_er" | grep -qE '^cheap +mid +sonnet +high +mid row$' \
-  && ok "a fresh install's cheap row inherits the mid row (sonnet high, source mid row)" || bad "a fresh install's cheap row is not the mid row: $seed_er"
+printf '%s\n' "$seed_er" | grep -qE '^cheap +slice-executor +sonnet +xhigh +mid row$' \
+  && ok "a fresh install's cheap row inherits the mid row (sonnet xhigh, source mid row)" || bad "a fresh install's cheap row is not the mid row: $seed_er"
 newtmp SEEDT
 python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from build import derive_executors_seed; print(derive_executors_seed(open(sys.argv[2]).read()), end="")' "$REPO_ROOT/installer" "$SRC/executors.toml" > "$SEEDT/executors.seed.toml"
 python3 -c 'import sys; L=open(sys.argv[1]).read().split("\n"); b=L.index("# cheap-route: begin"); e=L.index("# cheap-route: end"); L[b+1:e]=[l[2:] if l.startswith("# ") else l for l in L[b+1:e]]; print("\n".join(L), end="")' "$F/executors.toml" > "$SEEDT/executors.uncommented.toml"
@@ -1325,27 +1354,36 @@ d = json.load(open(p)); d["kind"] = "co-work"
 json.dump(d, open(p, "w"), indent=2)
 PY2
 # v53 route table (P32.S1): executors.toml overrides the engine's rows key by key, sync-agents
-# writes the five managed agent files from them, and executor-route prints the routing decision,
+# writes the four managed agent files from them (v66: one slice-executor, carrying the mid row), and executor-route prints the routing decision,
 # writing nothing. Its probes unset the three environment variables it reports on, so a run inside
 # an ocx session (a loopback ANTHROPIC_BASE_URL) still sees the plain table.
 er() { ( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE python3 scripts/workflow.py executor-route "$@" 2>&1 ); }
 rm -f "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) \
-  && grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-mid.md" \
-  && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-high.md" \
+  && grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor.md" \
   && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/design-drafter.md" \
-  && grep -q '^model: haiku$' "$F/.claude/agents/Explore.md" && grep -q '^effort: high$' "$F/.claude/agents/Explore.md" \
-  && grep -q '^model: sonnet$' "$F/.claude/agents/design-critic.md" && grep -q '^effort: high$' "$F/.claude/agents/design-critic.md" \
-  && ok "no executors.toml: sync-agents writes the route defaults (mid sonnet@high, high opus@high, design-drafter opus@xhigh, design-critic sonnet@high, Explore haiku@high)" \
+  && grep -q '^model: haiku$' "$F/.claude/agents/Explore.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/Explore.md" \
+  && grep -q '^model: sonnet$' "$F/.claude/agents/design-critic.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/design-critic.md" \
+  && ok "no executors.toml: sync-agents writes the route defaults (slice-executor mid sonnet@xhigh, design-drafter opus@xhigh, design-critic sonnet@xhigh, Explore haiku@xhigh)" \
   || bad "the route defaults matrix is wrong"
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: fable$' "$F/.claude/agents/slice-executor-high.md" \
+sa_out=$( cd "$F" && python3 scripts/workflow.py sync-agents 2>&1 ); er_out=$(er P1.DECOMP)
+printf '%s\n' "$sa_out" | grep -q 'already in sync; nothing written' && grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor.md" \
   && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" \
-  && ok "a [claude.high] override patches the high tier and no longer reaches design-drafter (its own design row)" || bad "a [claude.high] override missed slice-executor-high or still reached design-drafter"
+  && printf '%s\n' "$er_out" | grep -qx 'model=fable' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' \
+  && ok "a [claude.high] alias override writes no agent file (v66: high is passed per dispatch) and shows in executor-route; design-drafter keeps its own row" \
+  || bad "a [claude.high] override wrote a file, reached design-drafter, or is missing from executor-route: $sa_out / $er_out"
+printf '[claude.high]\nmodel = "claude-opus-5-5"\n' > "$F/executors.toml"
+hi_out=$( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 ); hi_rc=$?
+[ "$hi_rc" -ne 0 ] && printf '%s\n' "$hi_out" | grep -q 'since v66 one executor file carries the mid row' \
+  && ok "a full model id on [claude.high] is refused with the v66 migration line" || bad "[claude.high] full id not refused (rc=$hi_rc): $hi_out"
+printf '[claude.mid]\nmodel = "claude-sonnet-5-5"\n' > "$F/executors.toml"
+( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: claude-sonnet-5-5$' "$F/.claude/agents/slice-executor.md" \
+  && ok "a full model id on [claude.mid] is accepted and written into slice-executor.md" || bad "[claude.mid] full id was refused or not written to slice-executor.md"
 printf '[claude.design]\nmodel = "fable"\neffort = "max"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: fable$' "$F/.claude/agents/design-drafter.md" \
-  && grep -q '^effort: max$' "$F/.claude/agents/design-drafter.md" && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" \
-  && ok "a [claude.design] override patches design-drafter alone" || bad "a [claude.design] override did not reach design-drafter, or reached the high tier"
+  && grep -q '^effort: max$' "$F/.claude/agents/design-drafter.md" && grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor.md" \
+  && ok "a [claude.design] override patches design-drafter alone" || bad "a [claude.design] override did not reach design-drafter, or reached slice-executor"
 printf 'mode = "flex"\n' > "$F/executors.toml"
 mode_out=$( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 ); mode_rc=$?
 [ "$mode_rc" -ne 0 ] && printf '%s\n' "$mode_out" | grep -q 'retired in workspace v53' \
@@ -1356,7 +1394,7 @@ printf '[codex.high]\nmodel = "gpt-5.6-sol"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 | grep -q 'removed in workspace v31' ) && ok "leftover [codex.*] section rejected with the v31 migration message" || bad "[codex.*] should be rejected as removed support"
 printf '[claude.cheap]\nmodel = "claude-haiku-5-5"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 | grep -q 'must be an Agent-tool alias' ) \
-  && ok "a full model id on the cheap row is refused (it runs the mid row's file, so an alias only)" || bad "[claude.cheap] accepted a full model id"
+  && ok "a full model id on the cheap row is refused (it runs a file the mid row owns, so an alias only)" || bad "[claude.cheap] accepted a full model id"
 printf '[claude.research]\neffort = "hgih"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 | grep -q 'effort must be one of' ) \
   && ok "an effort outside the Agent tool's levels is refused" || bad "[claude.research] accepted an unknown effort"
@@ -1367,28 +1405,34 @@ rm -f "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed restoring the route defaults"
 er_out=$(er)
 [ "$(printf '%s\n' "$er_out" | grep -cE '^(high|research|design|critic|judge|mid|cheap|explore) ')" = "8" ] && printf '%s\n' "$er_out" | grep -qx 'proxy=none' \
-  && printf '%s\n' "$er_out" | grep -qE '^design +- +opus +xhigh +default$' \
-  && printf '%s\n' "$er_out" | grep -qE '^critic +- +sonnet +high +default$' && printf '%s\n' "$er_out" | grep -qE '^judge +- +fable +high +default$' \
-  && ! printf '%s\n' "$er_out" | grep -q '^warning=fairness' \
-  && ok "executor-route (bare) prints the eight-row route table (design opus@xhigh, critic sonnet@high, judge fable@high, tier -) and proxy=none" || bad "executor-route bare table wrong: $er_out"
+  && printf '%s\n' "$er_out" | grep -qE '^route +agent +model +effort +source$' \
+  && printf '%s\n' "$er_out" | grep -qE '^design +design-drafter +opus +xhigh +default$' \
+  && printf '%s\n' "$er_out" | grep -qE '^critic +design-critic +sonnet +xhigh +default$' && printf '%s\n' "$er_out" | grep -qE '^judge +design-critic +opus +xhigh +default$' \
+  && printf '%s\n' "$er_out" | grep -qE '^high +slice-executor +opus +xhigh +default$' && printf '%s\n' "$er_out" | grep -qE '^research +slice-executor +opus +xhigh +default$' \
+  && printf '%s\n' "$er_out" | grep -qE '^mid +slice-executor +sonnet +xhigh +default$' && printf '%s\n' "$er_out" | grep -qE '^cheap +slice-executor +sonnet +xhigh +mid row$' \
+  && printf '%s\n' "$er_out" | grep -qE '^explore +Explore +haiku +xhigh +default$' \
+  && ! printf '%s\n' "$er_out" | grep -q '^warning=fairness' && ! printf '%s\n' "$er_out" | grep -q 'tier' \
+  && ok "executor-route (bare) prints the eight-row route table with its agent column, no tier (high/research opus@xhigh, design opus@xhigh, critic sonnet@xhigh, judge opus@xhigh on the drafter's model without a fairness warning, mid sonnet@xhigh, explore haiku@xhigh) and proxy=none" || bad "executor-route bare table wrong: $er_out"
 er_out=$(er P1.DECOMP)
-printf '%s\n' "$er_out" | grep -qx 'route=high' && printf '%s\n' "$er_out" | grep -qx 'tier=high' \
-  && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor-high' && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
-  && printf '%s\n' "$er_out" | grep -qx 'effort=high' && printf '%s\n' "$er_out" | grep -qx 'attribution=Claude Opus 5.5' \
-  && ok "executor-route sends a decomposition slice to the high row (slice-executor-high, opus@high, Claude Opus 5.5)" || bad "executor-route P1.DECOMP wrong: $er_out"
+printf '%s\n' "$er_out" | grep -qx 'route=high' && ! printf '%s\n' "$er_out" | grep -q '^tier=' \
+  && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
+  && printf '%s\n' "$er_out" | grep -qx 'effort=xhigh' && printf '%s\n' "$er_out" | grep -qx 'attribution=Claude Opus 5.5' \
+  && ok "executor-route sends a decomposition slice to the high row (slice-executor, opus@xhigh, Claude Opus 5.5, no tier= line)" || bad "executor-route P1.DECOMP wrong: $er_out"
 er_out=$(er P1.S2)
-printf '%s\n' "$er_out" | grep -qx 'route=research' && printf '%s\n' "$er_out" | grep -qx 'effort=medium' \
-  && ok "executor-route sends a research slice to the research row (opus@medium)" || bad "executor-route research slice wrong: $er_out"
+printf '%s\n' "$er_out" | grep -qx 'route=research' && printf '%s\n' "$er_out" | grep -qx 'effort=xhigh' \
+  && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' \
+  && ok "executor-route sends a research slice to the research row (slice-executor, opus@xhigh)" || bad "executor-route research slice wrong: $er_out"
 ( cd "$F" && python3 scripts/workflow.py new-slice --phase P1 --slice P1.S9 --name "docs probe" --kind docs --risk low >/dev/null 2>&1 ) \
   || bad "route probe: new-slice P1.S9 (docs, low) failed"
 er_out=$(er P1.S9)
-printf '%s\n' "$er_out" | grep -qx 'route=cheap' && printf '%s\n' "$er_out" | grep -qx 'tier=mid' \
-  && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor-mid' && printf '%s\n' "$er_out" | grep -qx 'model=sonnet' \
+printf '%s\n' "$er_out" | grep -qx 'route=cheap' && ! printf '%s\n' "$er_out" | grep -q '^tier=' \
+  && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' && printf '%s\n' "$er_out" | grep -qx 'model=sonnet' \
   && printf '%s\n' "$er_out" | grep -qx 'pass_model=yes' \
-  && ok "an unset cheap row inherits the mid row: a low docs slice runs slice-executor-mid on sonnet" || bad "executor-route cheap inheritance wrong: $er_out"
+  && ok "an unset cheap row inherits the mid row: a low docs slice runs slice-executor on sonnet" || bad "executor-route cheap inheritance wrong: $er_out"
 er_out=$(er P1.S9 --retry)
 printf '%s\n' "$er_out" | grep -qx 'route=high' && printf '%s\n' "$er_out" | grep -qx 'attempt=2' && printf '%s\n' "$er_out" | grep -qx 'reason=second attempt' \
-  && ok "executor-route --retry sends a second attempt to the high row" || bad "executor-route --retry wrong: $er_out"
+  && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
+  && ok "executor-route --retry sends a second attempt to the high row (the same slice-executor, on opus)" || bad "executor-route --retry wrong: $er_out"
 printf '[claude.cheap]\nmodel = "haiku"\neffort = "high"\n' > "$F/executors.toml"
 er_out=$(er P1.S9)
 printf '%s\n' "$er_out" | grep -qx 'model=haiku' && printf '%s\n' "$er_out" | grep -qx 'attribution=Claude Haiku 5.5' \
@@ -1401,31 +1445,42 @@ printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && printf '%s\n' "$er_out" | g
   && ok "behind the same proxy executor-route --explore falls back to sonnet" || bad "executor-route --explore proxy fallback wrong: $er_out"
 er_out=$(er --drafter)
 printf '%s\n' "$er_out" | grep -qx 'agent=design-drafter' && printf '%s\n' "$er_out" | grep -qx 'route=design' \
-  && printf '%s\n' "$er_out" | grep -qx 'tier=-' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-drafter' \
+  && ! printf '%s\n' "$er_out" | grep -q '^tier=' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-drafter' \
   && printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'effort=xhigh' \
-  && ok "executor-route --drafter names design-drafter on its own design row (tier -, opus@xhigh)" || bad "executor-route --drafter wrong: $er_out"
-# P36.S5B: the critic and the judge both run design-critic; each must be a different model from the drafter's.
+  && ok "executor-route --drafter names design-drafter on its own design row (no tier= line, opus@xhigh)" || bad "executor-route --drafter wrong: $er_out"
+# P36.S5B, P39.S1: the critic and the judge both run design-critic; only the critic must be a different model from the drafter's.
 er_out=$(er --critic); er_j=$(er --judge)
 printf '%s\n' "$er_out" | grep -qx 'route=critic' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-critic' \
-  && printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \
+  && printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && printf '%s\n' "$er_out" | grep -qx 'effort=xhigh' \
   && printf '%s\n' "$er_j" | grep -qx 'route=judge' && printf '%s\n' "$er_j" | grep -qx 'subagent_type=design-critic' \
-  && printf '%s\n' "$er_j" | grep -qx 'model=fable' && printf '%s\n' "$er_j" | grep -qx 'tier=-' \
-  && ok "executor-route --critic (sonnet@high) and --judge (fable) both dispatch design-critic" || bad "executor-route --critic/--judge wrong: $er_out / $er_j"
+  && printf '%s\n' "$er_j" | grep -qx 'model=opus' && printf '%s\n' "$er_j" | grep -qx 'effort=xhigh' && ! printf '%s\n' "$er_j" | grep -q '^tier=' \
+  && ok "executor-route --critic (sonnet@xhigh) and --judge (opus@xhigh) both dispatch design-critic" || bad "executor-route --critic/--judge wrong: $er_out / $er_j"
 printf '[claude.critic]\nmodel = "opus"\n' > "$F/executors.toml"
 er_out=$( cd "$F" && env -u ANTHROPIC_BASE_URL python3 scripts/workflow.py executor-route --critic 2>&1 ); er_rc=$?
 [ "$er_rc" -eq 1 ] && printf '%s\n' "$er_out" | grep -q "is the design row's model" \
   && printf '%s\n' "$(er)" | grep -q '^warning=fairness: the critic row' \
   && ok "a critic on the drafter's model is refused (exit 1), and the bare table warns" || bad "the critic fairness refusal failed (rc=$er_rc): $er_out"
 rm -f "$F/executors.toml"
+# P39.S1: the judge is exempt from the critic-vs-drafter rule -- at the defaults it is Opus over the Opus drafter.
+er_out=$( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE python3 scripts/workflow.py executor-route --judge 2>&1 ); er_rc=$?
+[ "$er_rc" -eq 0 ] && printf '%s\n' "$er_out" | grep -qx 'model=opus' && ! printf '%s\n' "$er_out" | grep -q 'warning=fairness' \
+  && ! printf '%s\n' "$er_out" | grep -q '^skip=' \
+  && ok "the judge on the drafter's model (opus over opus) is allowed: executor-route --judge exits 0 with no fairness warning" || bad "executor-route --judge refused or warned at the defaults (rc=$er_rc): $er_out"
+# The loopback-proxy skip needs a Fable judge: it never fires at the default (Opus), only on a Fable override.
+er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 scripts/workflow.py executor-route --judge 2>&1 ); er_rc=$?
+[ "$er_rc" -eq 0 ] && ! printf '%s\n' "$er_out" | grep -q '^skip=' \
+  && ok "behind a loopback proxy the default (opus) judge prints no skip= and exits 0" || bad "executor-route --judge proxy at the default wrong (rc=$er_rc): $er_out"
+printf '[claude.judge]\nmodel = "fable"\n' > "$F/executors.toml"
 er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 scripts/workflow.py executor-route --judge 2>&1 ); er_rc=$?
 [ "$er_rc" -eq 0 ] && printf '%s\n' "$er_out" | grep -q '^skip=yes reason=loopback ' \
-  && ok "behind a loopback proxy (no Fable) executor-route --judge prints skip=yes and exits 0" || bad "executor-route --judge proxy skip wrong (rc=$er_rc): $er_out"
+  && ok "behind a loopback proxy (no Fable) a Fable-overridden judge prints skip=yes and exits 0" || bad "executor-route --judge proxy skip wrong (rc=$er_rc): $er_out"
+rm -f "$F/executors.toml"
 ( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE CLAUDE_CODE_EFFORT_LEVEL=high python3 scripts/workflow.py executor-route P1.DECOMP 2>&1 | grep -q '^warning=CLAUDE_CODE_EFFORT_LEVEL' ) \
   && ok "executor-route warns that CLAUDE_CODE_EFFORT_LEVEL outranks every per-dispatch effort" || bad "executor-route did not warn on CLAUDE_CODE_EFFORT_LEVEL"
 cp "$SRC/executors.toml" "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed on the repo's own executors.toml"
 er_out=$(er)
-printf '%s\n' "$er_out" | grep -qE '^cheap +mid +haiku +xhigh +executors\.toml$' && printf '%s\n' "$er_out" | grep -qx 'agent files: in sync' \
+printf '%s\n' "$er_out" | grep -qE '^cheap +slice-executor +haiku +xhigh +executors\.toml$' && printf '%s\n' "$er_out" | grep -qx 'agent files: in sync' \
   && ok "the repo's executors.toml turns the cheap route on (haiku@xhigh from executors.toml), agent files in sync" || bad "executor-route on the repo's executors.toml wrong: $er_out"
 ( cd "$F" && python3 scripts/workflow.py executor-mode 2>&1 | grep -q 'invalid choice' ) \
   && ok "executor-mode is gone from the engine (v53: executor-route replaces it)" || bad "the engine still accepts executor-mode"
@@ -1511,6 +1566,42 @@ printf '%s\n' "$mt_out" | grep -qE '^main +- +2 +1\.10M +600 +1\.02 ' && printf 
 printf '%s\n' "$mt_out" | grep -qE '^note=output_floor spans=1/3 \(33%\) main=0/2 ' && printf '%s\n' "$mt_out" | grep -qE '^slice-executor-high +1 +2 +[^ ]+ +≥53 +≥[0-9.]+ ' \
   && ! printf '%s\n' "$mt_out" | grep -E '^(main|design-drafter) ' | grep -q '≥' \
   && ok "dispatch-summary flags a span request that never logged a final usage: the note= count and the ≥ floor on that group only" || bad "dispatch-summary floor note/mark wrong: $mt_out"
+# v66: a DECOMP estimates time, not session-$, and writes a `spends money:` line per slice; the [means] header says so.
+grep -q 'spends money:' "$SRC/claude/skills/do-whole-phase/reference/decomposition.md" && grep -q 'spends money:' "$SRC/claude/skills/do-next-slice/reference/decomposition.md" \
+  && grep -q 'spends money:' "$SRC/claude/agents/slice-executor.md" && ! grep -q '\$ per span' "$SRC/claude/agents/slice-executor.md" \
+  && grep -q 'a DECOMP estimates time from these' "$SRC/scripts/workflow.py" \
+  && ok "a DECOMP estimates time only and writes a per-slice spends-money line (both references, the executor, the [means] header)" || bad "the DECOMP time-only / spends-money wording is missing or a session-\$ estimate remains"
+# v66: one slice-executor runs every slice row, so the meter reads its route from the kind and the model
+# (research by kind, haiku as cheap, the high row's family as high, else mid); an old slice-executor-high
+# span keeps its reading. A second transcript dir on the engine defaults (high opus, mid sonnet).
+rm -f "$MT/ws/executors.toml"
+python3 - "$MT" <<'PY'
+import json, os, sys
+proj = os.path.join(sys.argv[1], "projects", "-fixture2")
+sub = os.path.join(proj, "sess2", "subagents")
+os.makedirs(sub)
+def row(ts, kind, payload):
+    return json.dumps({"type": kind, "timestamp": ts, "message": payload}) + "\n"
+open(os.path.join(proj, "sess2.jsonl"), "w").write(row("2026-01-01T10:29:00.000Z", "user", {"role": "user", "content": "go"}))
+for n, (agent, model, sid) in enumerate((("slice-executor", "claude-opus-5-5", "P1.S7"), ("slice-executor", "claude-sonnet-5-5", "P1.S7"),
+                                         ("slice-executor", "claude-haiku-5-5", "P1.S7"), ("slice-executor", "claude-opus-5-5", "P1.S2"),
+                                         ("slice-executor-high", "claude-opus-5-5", "P1.S7"))):
+    ts = f"2026-01-01T10:3{n}:00.000Z"
+    with open(os.path.join(sub, f"agent-x{n}.jsonl"), "w") as f:
+        f.write(row(ts, "user", {"role": "user", "content": f"slice: {sid}"}))
+        f.write(row(ts, "assistant", {"id": f"x{n}", "model": model, "content": [{"type": "text", "text": "- status: done"}], "stop_reason": "end_turn",
+                                      "usage": {"input_tokens": 10, "output_tokens": 5}}))
+    json.dump({"agentType": agent, "finished": True}, open(os.path.join(sub, f"agent-x{n}.meta.json"), "w"))
+PY
+mt2=$( cd "$MT/ws" && python3 scripts/workflow.py dispatch-summary --phase P1 --json --transcripts "$MT/projects/-fixture2" 2>&1 )
+printf '%s\n' "$mt2" | python3 -c '
+import json, sys
+slices = json.load(sys.stdin)["metered"]["slices"]
+routes = {s["id"]: (s["agent"], s["route"]) for d in slices.values() for s in d["spans"]}
+assert routes == {"x0": ("slice-executor", "high"), "x1": ("slice-executor", "mid"), "x2": ("slice-executor", "cheap"),
+                  "x3": ("slice-executor", "research"), "x4": ("slice-executor-high", "high")}, routes
+' && ok "the meter reads slice-executor spans by kind and model (opus high, sonnet mid, haiku cheap, a research slice research) and still reads an old slice-executor-high span" \
+  || bad "the meter misread slice-executor routes: $mt2"
 # v61 pure compaction (P37.S3): compaction is Claude Code's own -- no PreCompact hook, no compact-gate. After
 # a compaction the SessionStart hook runs compact-resume, which prints the resume card (also `next --card`):
 # computed from state, at most 2,048 B, naming files and never asking for a re-read. A pending stop is typed
@@ -1575,8 +1666,11 @@ python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["pending"]={
 tp_val=$( cd "$CG" && python3 scripts/workflow.py validate 2>&1 ); tp_rc=$?
 [ "$tp_rc" -ne 0 ] && printf '%s\n' "$tp_val" | grep -q 'carries a pending record' \
   && ok "validate rejects a pending record on a slice that is not pending" || bad "validate missed a stray pending record: $tp_val"
-printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed re-applying the fable override"
+# v66: the high row owns no file (passed per dispatch), so the fable override lives only in executors.toml
+# and executor-route; the [claude.mid] effort override is the one sync-agents writes into slice-executor.md.
+printf '[claude.high]\nmodel = "fable"\n\n[claude.mid]\neffort = "high"\n' > "$F/executors.toml"
+( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^effort: high$' "$F/.claude/agents/slice-executor.md" \
+  || bad "sync-agents failed applying the fable + mid-effort overrides"
 rm -rf "$F/.claude/skills/do-whole-phase"
 # v61 (P37.S1): a v60-shaped install has no reference/ files; one in our skill dir that we do not ship is the operator's.
 rm -rf "$F/.claude/skills/do-next-slice/reference" && rm -f "$F/.claude/skills/design-cowork/reference/shape.md"
@@ -1602,6 +1696,9 @@ V30
 }
 v30_commit_skill > "$F/.agents/skills/commit/SKILL.md"
 printf -- '---\nname: explain\n---\nthe knowledge repo keeps its own portable explain here\n' > "$F/.agents/skills/explain/SKILL.md"
+# An old workspace copy of the retired explain skill, byte-for-byte, plus the operator's own file beside it.
+plant_old_explain "$F/.claude/skills/explain/SKILL.md"; printf 'my notes\n' > "$F/.claude/skills/explain/notes.md"
+explain_before=$(explain_sig "$F")
 printf 'stale\n' > "$F/.agents/skills/do-next-slice/SKILL.md"
 printf 'model = "mine"\n' > "$F/.codex/agents/mine.toml"
 printf '# their own contract\n' > "$F/AGENTS.md"
@@ -1642,13 +1739,17 @@ if [ "$(printf '%s\n' "$update_stale" | grep -c '^    - ')" -eq 1 ] \
   ok "--update lists only the unchanged v30 file as stale (ours, by content)"
 else bad "--update stale list wrong -- $update_stale"; fi
 kept_bad=""
-for k in '\.agents/skills/explain/SKILL\.md  (differs from what v30 shipped)' '\.agents/skills/do-next-slice/SKILL\.md  (differs from what v30 shipped)' \
+for k in '\.agents/skills/do-next-slice/SKILL\.md  (differs from what v30 shipped)' \
          '\.codex/agents/mine\.toml  (not a file the workspace shipped)' 'AGENTS\.md  (differs from what v30 shipped)' \
          'AGENTS\.workspace\.md  (differs from what v30 shipped)' '\.claude/skills/executor-mode/SKILL\.md  (differs from what v52 shipped)'; do
   printf '%s\n' "$update_out" | grep -qx "    - $k" || kept_bad="$kept_bad [$k]"
 done
-[ -z "$kept_bad" ] && ok "--update reports the adopter's explain, a modified shipped file, their .codex file and AGENTS.md as yours, kept" \
+[ -z "$kept_bad" ] && ok "--update reports a modified shipped file, their .codex file and AGENTS.md as yours, kept" \
   || bad "--update yours-kept list wrong:$kept_bad -- $update_out"
+[ "$(printf '%s\n' "$explain_before" | wc -l | tr -d ' ')" -eq 3 ] && [ "$(explain_sig "$F")" = "$explain_before" ] \
+  && ! printf '%s\n%s\n' "$dry_out" "$update_out" | grep -Eq '/explain(/|[[:space:]]|$)' \
+  && ok "--update and --update --dry-run leave every explain file (.agents/ and .claude/, the old shipped copy too) byte-identical and never name one" \
+  || bad "--update touched or reported an explain path -- $(printf '%s\n%s\n' "$dry_out" "$update_out" | grep -E '/explain(/|[[:space:]]|$)')"
 if python3 - "$F" "$update_out" <<'PY'
 import os, re, sys
 listed = re.findall(r"^    - (\S+)  \(", sys.argv[2], re.M)
@@ -1664,20 +1765,42 @@ else bad "--update listed a directory -- $update_out"; fi
 [ -f "$F/.agents/skills/commit/SKILL.md" ] && [ -f "$F/.agents/skills/explain/SKILL.md" ] && [ -f "$F/.codex/agents/mine.toml" ] \
   && [ -f "$F/AGENTS.md" ] && [ -f "$F/AGENTS.workspace.md" ] && [ -f "$F/.claude/skills/executor-mode/SKILL.md" ] \
   && ok "--update never deletes a file it lists (stale or kept)" || bad "--update deleted a file it only lists"
-rm -rf "$F/.agents" "$F/.codex" "$F/AGENTS.md" "$F/AGENTS.workspace.md"
+rm -rf "$F/.agents" "$F/.codex" "$F/AGENTS.md" "$F/AGENTS.workspace.md" "$F/.claude/skills/explain"
 printf '%s\n' "$update_out" | grep -q 'python3 scripts/workflow.py sync-agents' \
   && ok "--update instructs the adopter to re-run sync-agents" || bad "--update omitted the sync-agents migration step"
-grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" \
+grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor.md" \
   && ok "--update resets agent files to upstream defaults (re-run sync-agents after updates)" || bad "--update did not reset the agent files"
 ( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) \
   && bad "preserved executor override should require re-sync after update" || ok "--update leaves a detectable executor drift until sync-agents"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) \
-  && grep -q '^model: fable$' "$F/.claude/agents/slice-executor-high.md" \
-  && ok "sync-agents re-applies the preserved executor override" || bad "sync-agents did not restore the preserved override"
+  && grep -q '^effort: high$' "$F/.claude/agents/slice-executor.md" \
+  && ( cd "$F" && env -u ANTHROPIC_BASE_URL python3 scripts/workflow.py executor-route P1.DECOMP 2>&1 | grep -qx 'model=fable' ) \
+  && ok "sync-agents re-applies the preserved executor override (mid effort in slice-executor.md; the high row's fable in executor-route)" || bad "sync-agents did not restore the preserved override"
 rm -f "$F/executors.toml"
 sh "$BOOT" "$F" --update >/dev/null 2>&1 && [ -f "$F/executors.toml" ] \
   && ok "--update seeds a missing executors.toml (pre-v9 workspace)" || bad "--update did not seed a missing executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && ok "re-seeded executors.toml restores the tracked route selection" || bad "re-seeded executors.toml drifts from the tracked route selection"
+# v66: the v65 executor pair is retired by content. A v65-shaped at-root install (the two files exactly as
+# v65 shipped them, from tests/fixtures/v65 -- the suite never reads git history): --update lists both stale,
+# a copy sync-agents patched (model/effort lines only) too, and installs the one slice-executor.md.
+newtmp V65
+V65W="$V65/ws"
+sh "$BOOT" "$V65W" --at-root --name "V65" --summary "v65 probe" >/dev/null 2>&1 || bad "v65 probe: fresh install failed"
+rm -f "$V65W/.claude/agents/slice-executor.md"
+cp "$REPO_ROOT/tests/fixtures/v65/slice-executor-mid.md" "$V65W/.claude/agents/slice-executor-mid.md"
+sed -e 's/^model: opus$/model: fable/' -e '/^effort: /d' "$REPO_ROOT/tests/fixtures/v65/slice-executor-high.md" > "$V65W/.claude/agents/slice-executor-high.md"
+v65_out=$(sh "$BOOT" "$V65W" --update 2>&1); v65_rc=$?
+[ "$v65_rc" -eq 0 ] && printf '%s\n' "$v65_out" | grep -qx '    - \.claude/agents/slice-executor-mid\.md  (unchanged since v65 (its model/effort lines aside))' \
+  && printf '%s\n' "$v65_out" | grep -qx '    - \.claude/agents/slice-executor-high\.md  (unchanged since v65 (its model/effort lines aside))' \
+  && diff -q "$SRC/claude/agents/slice-executor.md" "$V65W/.claude/agents/slice-executor.md" >/dev/null \
+  && [ -f "$V65W/.claude/agents/slice-executor-mid.md" ] && [ -f "$V65W/.claude/agents/slice-executor-high.md" ] \
+  && ok "--update of a v65-shaped install lists both old executors stale (a sync-agents-patched copy too), keeps them on disk, installs slice-executor.md" \
+  || bad "--update of a v65-shaped install wrong (rc=$v65_rc) -- $v65_out"
+printf '\nmy own rule\n' >> "$V65W/.claude/agents/slice-executor-mid.md"
+v65_out=$(sh "$BOOT" "$V65W" --update 2>&1)
+printf '%s\n' "$v65_out" | grep -qx '    - \.claude/agents/slice-executor-mid\.md  (differs from what v65 shipped (its model/effort lines aside))' \
+  && printf '%s\n' "$v65_out" | grep -qx '    - \.claude/agents/slice-executor-high\.md  (unchanged since v65 (its model/effort lines aside))' \
+  && ok "an old executor with a body edit is yours, kept (only its model/effort lines are ours to ignore)" || bad "a body-edited v65 executor was misclassified -- $v65_out"
 # --update reaches a pre-v24 workspace: CI is seeded once, .gitattributes is line-merged.
 rm -f "$F/.github/workflows/workspace-ci.yml"
 printf '*.md text\n' > "$F/.gitattributes"
@@ -1695,7 +1818,7 @@ sh "$BOOT" "$F" --update >/dev/null 2>&1
 [ "$(sha "$F/.claude/settings.json")" = "$set_a" ] \
   && ok "--update on a workspace that already has the hooks leaves settings.json byte-identical (idempotent)" || bad "--update changed an up-to-date settings.json"
 # v61: a v60-shaped settings.json (our compact-gate beside the adopter's own PreCompact handler, the
-# 500000 window v57-v60 shipped) loses exactly our handler, keeps theirs, moves to 300000 and lists both.
+# 500000 window v57-v60 shipped) loses exactly our handler, keeps theirs, moves to 450000 and lists both.
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["PreCompact"]=[{"matcher":"auto","hooks":[{"type":"command","command":"echo foreign"},{"type":"command","command":"cd \"$CLAUDE_PROJECT_DIR\" && python3 scripts/workflow.py compact-gate || true","timeout":15}]},{"matcher":"manual","hooks":[{"type":"command","command":"cd \"$CLAUDE_PROJECT_DIR\" && python3 scripts/workflow.py compact-gate || true"}]}]; d["autoCompactWindow"]=500000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$F/.claude/settings.json"
 # ... and the same one report lists the stale v30 file beside them, noting its directory removable.
 mkdir -p "$F/.agents/skills/commit" && v30_commit_skill > "$F/.agents/skills/commit/SKILL.md"
@@ -1706,13 +1829,13 @@ d = json.load(open(sys.argv[1]))
 h = d["hooks"]
 assert h["PreCompact"] == [{"matcher": "auto", "hooks": [{"type": "command", "command": "echo foreign"}]}], h["PreCompact"]
 assert [x["command"] for g in h["SessionStart"] for x in g["hooks"]] == ['cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-resume || true']
-assert d["autoCompactWindow"] == 300000, d
+assert d["autoCompactWindow"] == 450000, d
 PY
 then printf '%s\n' "$upd_out" | grep -q '^  removed: .claude/settings.json hooks.PreCompact compact-gate (retired in v61)$' \
-  && printf '%s\n' "$upd_out" | grep -q '^  changed: .claude/settings.json autoCompactWindow 500000 -> 300000 (the v61 default; set it back if you chose 500000)$' \
+  && printf '%s\n' "$upd_out" | grep -q '^  changed: .claude/settings.json autoCompactWindow 500000 -> 450000 (today.s default; set it back if you chose 500000)$' \
   && printf '%s\n' "$upd_out" | grep -qx '    - \.agents/skills/commit/SKILL\.md  (unchanged since v30)' \
   && printf '%s\n' "$upd_out" | grep -qx '  note: \.agents/ holds only stale files: remove the emptied directory once they are gone' \
-  && ok "--update on a v60-shaped settings.json removes only our compact-gate handlers (the group they emptied pruned), keeps the adopter's PreCompact hook, sets 300000 and lists both, in one report with the stale file and its directory note" \
+  && ok "--update on a v60-shaped settings.json removes only our compact-gate handlers (the group they emptied pruned), keeps the adopter's PreCompact hook, sets 450000 and lists both, in one report with the stale file and its directory note" \
   || bad "--update did not report the settings changes -- $upd_out"
 else bad "--update did not retire our PreCompact handler cleanly -- $upd_out"; fi
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["autoCompactWindow"]=700000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$F/.claude/settings.json"
@@ -1723,13 +1846,20 @@ set_b=$(sha "$F/.claude/settings.json")
 sh "$BOOT" "$F" --update >/dev/null 2>&1
 [ "$(sha "$F/.claude/settings.json")" = "$set_b" ] \
   && ok "a second --update after the merge leaves settings.json byte-identical" || bad "--update hooks merge is not idempotent"
+# 450000 window: a v65-shaped settings.json (window 300000, what v56 and v61-v65 shipped) moves to 450000 with its changed: line.
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["autoCompactWindow"]=300000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$F/.claude/settings.json"
+upd_out=$(sh "$BOOT" "$F" --update 2>&1)
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 450000' "$F/.claude/settings.json" \
+  && printf '%s\n' "$upd_out" | grep -q '^  changed: .claude/settings.json autoCompactWindow 300000 -> 450000 (today.s default; set it back if you chose 300000)$' \
+  && ok "--update moves a v65-shaped 300000 window to 450000 and lists it" || bad "--update did not move the 300000 window -- $upd_out"
 cp "$SRC/claude/settings.json" "$F/.claude/settings.json"   # drop the probe's foreign handler before the Test 6 diff
 rm -f "$F/.github/workflows/workspace-ci.yml" "$F/.gitattributes"
 sh "$BOOT" "$F" --update >/dev/null 2>&1   # restore both verbatim for the Test 6 diff
 [ ! -f "$F/.claude/agents/phase-reviewer.md" ] && ok "phase-reviewer retired (absent on fresh install)" || bad "phase-reviewer should be retired but is present"
 [ -d "$F/.claude/skills/do-whole-phase" ] && ok "fresh install keeps do-whole-phase" || bad "do-whole-phase skill missing"
-[ -f "$F/.claude/skills/explain/SKILL.md" ] && ok "fresh install ships the explain skill" || bad "explain skill missing"
-grep -q "knowledge:setup" "$F/.claude/skills/explain/SKILL.md" && bad "vendored explain still points at the plugin-only /knowledge:setup" || ok "vendored explain is de-plugin-ified"
+[ ! -e "$F/.claude/skills/explain" ] && grep -qF '/plugin marketplace add leetusik/knowledge' "$F/docs/current/operations.md" \
+  && grep -qF '/plugin install knowledge@knowledge' "$F/docs/current/operations.md" \
+  && ok "fresh install ships no explain skill; its operations doc points at the knowledge plugin" || bad "fresh install still ships explain, or the operations doc lacks the plugin pointer"
 # Since v31 the installer neither claims nor writes AGENTS.md, so --force-empty-ok
 # installs beside a repo's own copy instead of aborting on a managed-file conflict.
 newtmp H
@@ -1749,16 +1879,16 @@ diff -q "$SRC/scripts/workflow.py" "$F/scripts/workflow.py" >/dev/null \
   || bad "DRIFT: scripts/workflow.py differs from the bootstrap-embedded copy"
 skill_rels=$(cd "$SRC" && find claude/skills -type f -name SKILL.md | sed 's|^|.|' | LC_ALL=C sort)
 nskill=$(printf '%s\n' "$skill_rels" | grep -c .)
-[ "$nskill" -eq 18 ] && ok "dual-apply covers all 18 skill bodies" || bad "expected 18 SKILL.md files to diff, found $nskill"
+[ "$nskill" -eq 17 ] && ok "dual-apply covers all 17 skill bodies" || bad "expected 17 SKILL.md files to diff, found $nskill"
 for rel in $skill_rels; do
   diff -q "$SRC/${rel#.}" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
     || bad "DRIFT: $rel differs from the bootstrap-embedded copy"
 done
-DUAL_FIXED=".claude/agents/slice-executor-mid.md
-.claude/agents/slice-executor-high.md
+DUAL_FIXED=".claude/agents/slice-executor.md
 .claude/agents/design-drafter.md
 .claude/agents/design-critic.md
+.claude/agents/explain-critic.md
 .claude/agents/Explore.md
 .claude/settings.json
 executors.toml
@@ -2638,7 +2768,7 @@ if printf '%s\n' "$nx" | grep -q "^host_commit_convention=confirmed (coauthor_tr
     && python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["commit_convention"]; assert c["confirmed"] is True and c["text"] == "type(scope): summary" and c["inferred"] == "type(scope): summary", c' "$NH/workflow/.agentic-nested.json"; then
   ok "nested-convention --confirm records the text and the trailer rule, and next stops flagging it"; else bad "nested-convention --confirm did not flip the convention -- $nx"; fi
 # The agent rename map: design-drafter is installed as wf-design-drafter in the host's .claude/agents.
-mkdir -p "$NH/.claude/agents" && cp "$SRC/claude/agents/slice-executor-mid.md" "$SRC/claude/agents/slice-executor-high.md" "$SRC/claude/agents/design-critic.md" "$SRC/claude/agents/Explore.md" "$NH/.claude/agents/" \
+mkdir -p "$NH/.claude/agents" && cp "$SRC/claude/agents/slice-executor.md" "$SRC/claude/agents/design-critic.md" "$SRC/claude/agents/Explore.md" "$NH/.claude/agents/" \
   && sed 's/^name: design-drafter$/name: wf-design-drafter/' "$SRC/claude/agents/design-drafter.md" > "$NH/.claude/agents/wf-design-drafter.md"
 nw sync-agents >/dev/null 2>&1
 if nw sync-agents --check >/dev/null 2>&1 && grep -qx "name: wf-design-drafter" "$NH/.claude/agents/wf-design-drafter.md" \
@@ -2767,7 +2897,18 @@ printf '%s\n' "$scope" | grep -q "^product_files=0 " && ! printf '%s\n' "$scope"
 out=$(sh "$BOOT" "$IH" --nested 2>&1); rc=$?
 [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q "already installed" && ih_clean && ok "re-running --nested is an idempotent exit 0" || bad "re-running --nested was not a clean no-op (rc=$rc) -- $out"
 iw nested-convention --confirm --text "type(scope): summary" --trailers forbidden >/dev/null 2>&1 || bad "nested install: nested-convention --confirm failed"
+# An earlier nested install's explain skill (listed under `installed`, its exclude line in the block, no self-hiding
+# .gitignore): --update keeps it recognised and hidden, and never writes, flags or reports it.
+plant_old_explain "$IH/.claude/skills/explain/SKILL.md"
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["installed"]["skills"]=sorted(d["installed"]["skills"]+["explain"]); open(p,"w").write(json.dumps(d,indent=2)+"\n")' "$IH/workflow/.agentic-nested.json"
+python3 -c 'import sys; p=sys.argv[1]; t=open(p).read(); b="# BEGIN agentic-workspace (nested)\n"; open(p,"w").write(t.replace(b, b+"/.claude/skills/explain/\n",1))' "$IH/.git/info/exclude"
+ih_explain=$(explain_sig "$IH"); dry_ex=$(sh "$BOOT" "$IH" --update --nested --dry-run 2>&1)
 out=$(sh "$BOOT" "$IH" --update --nested 2>&1); rc=$?
+[ "$rc" -eq 0 ] && ih_clean && [ -n "$ih_explain" ] && [ "$(explain_sig "$IH")" = "$ih_explain" ] && [ ! -e "$IH/.claude/skills/explain/.gitignore" ] \
+  && ! printf '%s\n%s\n' "$dry_ex" "$out" | grep -q 'explain' && grep -qx '/\.claude/skills/explain/' "$IH/.git/info/exclude" \
+  && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert "explain" in d["installed"]["skills"] and "explain" not in json.dumps(d.get("stale", [])), d' "$IH/workflow/.agentic-nested.json" \
+  && ok "nested: --update (and --dry-run) leaves an earlier install's explain skill byte-identical, unflagged, unreported, still in installed and the exclude block, the host clean" \
+  || bad "nested --update touched, flagged or exposed the old explain skill (rc=$rc) -- $(printf '%s\n%s\n' "$dry_ex" "$out" | grep explain) $(cd "$IH" && git status --porcelain)"
 if [ "$rc" -eq 0 ] && ih_clean && [ ! -e "$IH/workflow/workflow" ] && ! grep -rqF "workflow/workflow/" "$IH/.claude/skills" "$IH/workflow/CLAUDE.workspace.md" \
     && [ "$(grep -cx '# BEGIN agentic-workspace (nested)' "$IH/.git/info/exclude")" -eq 1 ] && [ "$(grep -cx '<!-- BEGIN agentic-workspace (nested) -->' "$IH/CLAUDE.local.md")" -eq 1 ] \
     && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); c=d["commit_convention"]; assert c["confirmed"] is True and c["coauthor_trailers"] == "forbidden" and d["renames"]["skills"] == {"commit": "wf-commit", "design-cowork": "wf-design-cowork"}, d' "$IH/workflow/.agentic-nested.json" >/dev/null 2>&1; then
@@ -2779,9 +2920,9 @@ import json, sys
 d = json.load(open(sys.argv[1]))
 resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 workflow/scripts/workflow.py compact-resume || true'
 assert d["hooks"] == {"SessionStart": [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}]}, d["hooks"]
-assert d["autoCompactWindow"] == 300000, d
+assert d["autoCompactWindow"] == 450000, d
 PY
-then ok "nested: settings.local.json carries only the resume hook with the workflow/scripts/workflow.py command path and window 300000, and --update --nested kept exactly one"; else bad "nested settings.local.json hooks wrong"; fi
+then ok "nested: settings.local.json carries only the resume hook with the workflow/scripts/workflow.py command path and window 450000, and --update --nested kept exactly one"; else bad "nested settings.local.json hooks wrong"; fi
 # v61 (P37.S1): --update --nested on a v60-shaped host (no reference/ files) adds them in the renamed dir, host clean.
 rm -rf "$IH/.claude/skills/wf-design-cowork/reference" "$IH/.claude/skills/do-whole-phase/reference"
 out=$(sh "$BOOT" "$IH" --update --nested 2>&1); rc=$?
@@ -2793,7 +2934,7 @@ sh "$BOOT" "$IH" --update --nested >/dev/null 2>&1
 [ "$(sha "$IH/.claude/settings.local.json")" = "$lset_a" ] && ih_clean \
   && ok "nested: a second --update --nested leaves settings.local.json byte-identical" || bad "nested --update rewrote settings.local.json"
 # v61: a v60-shaped settings.local.json (our compact-gate beside a foreign PreCompact handler, window 500000,
-# our resume handler removed) loses exactly ours, keeps theirs, regains the resume hook, moves to 300000, lists both.
+# our resume handler removed) loses exactly ours, keeps theirs, regains the resume hook, moves to 450000, lists both.
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["PreCompact"]=[{"matcher":"auto","hooks":[{"type":"command","command":"echo foreign-nested"},{"type":"command","command":"cd \"$CLAUDE_PROJECT_DIR\" && python3 workflow/scripts/workflow.py compact-gate || true","timeout":15}]}]; d["hooks"]["Stop"]=[{"hooks":[{"type":"command","command":"echo stop"}]}]; d["hooks"]["SessionStart"][0]["hooks"]=[]; d["autoCompactWindow"]=500000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$IH/.claude/settings.local.json"
 out=$(sh "$BOOT" "$IH" --update --nested 2>&1)
 if python3 - "$IH/.claude/settings.local.json" <<'PY'
@@ -2803,17 +2944,23 @@ h = d["hooks"]
 assert h["PreCompact"] == [{"matcher": "auto", "hooks": [{"type": "command", "command": "echo foreign-nested"}]}], h["PreCompact"]
 assert [x["command"] for g in h["SessionStart"] for x in g["hooks"]] == ['cd "$CLAUDE_PROJECT_DIR" && python3 workflow/scripts/workflow.py compact-resume || true'], h["SessionStart"]
 assert h["Stop"] == [{"hooks": [{"type": "command", "command": "echo stop"}]}]
-assert d["autoCompactWindow"] == 300000, d
+assert d["autoCompactWindow"] == 450000, d
 PY
 then printf '%s\n' "$out" | grep -q '^  removed: .claude/settings.local.json hooks.PreCompact compact-gate (retired in v61)$' \
-  && printf '%s\n' "$out" | grep -q '^  changed: .claude/settings.local.json autoCompactWindow 500000 -> 300000 ' && ih_clean \
-  && ok "nested: --update --nested on a v60-shaped settings.local.json removes only our compact-gate, keeps the foreign hooks, re-adds the resume hook, sets 300000 and lists both" \
+  && printf '%s\n' "$out" | grep -q '^  changed: .claude/settings.local.json autoCompactWindow 500000 -> 450000 ' && ih_clean \
+  && ok "nested: --update --nested on a v60-shaped settings.local.json removes only our compact-gate, keeps the foreign hooks, re-adds the resume hook, sets 450000 and lists both" \
   || bad "nested --update did not report the settings changes -- $out"
 else bad "nested present-file hooks merge wrong -- $out"; fi
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["autoCompactWindow"]=400000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$IH/.claude/settings.local.json"
 sh "$BOOT" "$IH" --update --nested >/dev/null 2>&1
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 400000' "$IH/.claude/settings.local.json" \
   && ok "nested: --update --nested never overwrites an autoCompactWindow the adopter chose (400000)" || bad "nested --update overwrote the adopter's autoCompactWindow"
+# 450000 window: the 300000 window v56 and v61-v65 shipped (a v65-shaped nested file) moves to 450000 too, listed.
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["autoCompactWindow"]=300000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$IH/.claude/settings.local.json"
+out=$(sh "$BOOT" "$IH" --update --nested 2>&1)
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 450000' "$IH/.claude/settings.local.json" \
+  && printf '%s\n' "$out" | grep -q '^  changed: .claude/settings.local.json autoCompactWindow 300000 -> 450000 (today.s default; set it back if you chose 300000)$' \
+  && ok "nested: --update --nested moves a v65-shaped 300000 window to 450000 and lists it" || bad "nested --update did not move the 300000 window -- $out"
 out=$(sh "$BOOT" "$IH" --nested --into-existing 2>&1); rc=$?
 [ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -q "mutually exclusive" && ok "--nested --into-existing is rejected" || bad "--nested --into-existing was accepted (rc=$rc) -- $out"
 # v53 (P32.S5): a host that already has its own .claude/agents/Explore.md gets ours renamed like any clash.
@@ -2824,11 +2971,59 @@ mkdir -p "$IX/.claude/agents" && ( cd "$IX" && { git init -q -b main . 2>/dev/nu
 ix_explore=$(sha "$IX/.claude/agents/Explore.md"); out=$(sh "$BOOT" "$IX" --nested 2>&1); rc=$?
 python3 -c 'import json,sys; r=json.load(open(sys.argv[1]))["renames"]["agents"]; assert r.get("Explore") == "wf-Explore", r' "$IX/workflow/.agentic-nested.json" >/dev/null 2>&1 \
   && [ "$rc" -eq 0 ] && grep -qx "name: wf-Explore" "$IX/.claude/agents/wf-Explore.md" && [ "$(sha "$IX/.claude/agents/Explore.md")" = "$ix_explore" ] \
-  && grep -rq 'subagent_type: wf-Explore' "$IX/.claude/skills/do-next-slice" "$IX/.claude/agents/slice-executor-mid.md" "$IX/.claude/agents/slice-executor-high.md" \
+  && grep -rq 'subagent_type: wf-Explore' "$IX/.claude/skills/do-next-slice" "$IX/.claude/agents/slice-executor.md" \
   && ( cd "$IX" && python3 workflow/scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) \
   && ok "a host with its own Explore.md: ours installs as wf-Explore (marker rename + name:), the host's is byte-identical, the executors and skill call wf-Explore" \
   || bad "the Explore clash was not renamed cleanly (rc=$rc) -- $out"
-echo "NOTE: wf-Explore occurrences: executor-mid=$(grep -o 'wf-Explore' "$IX/.claude/agents/slice-executor-mid.md" | wc -l | tr -d ' ') executor-high=$(grep -o 'wf-Explore' "$IX/.claude/agents/slice-executor-high.md" | wc -l | tr -d ' ')"
+echo "NOTE: wf-Explore occurrences: slice-executor=$(grep -o 'wf-Explore' "$IX/.claude/agents/slice-executor.md" | wc -l | tr -d ' ')"
+# v66: a nested --update from a v65 marker. The host holds v65's two executors as v65's nested install wrote
+# them (nested_rewrite of tests/fixtures/v65, rebuilt here from the installer's own rewrite patterns), one of
+# them renamed wf-slice-executor-high by an old clash and one patched by sync-agents: both list stale.
+IV="$NI/v65-host"
+mkdir -p "$IV" && ( cd "$IV" && { git init -q -b main . 2>/dev/null || git init -q .; } && git config user.email smoke@example.invalid && git config user.name smoke \
+  && printf 'host\n' > README.md && git add -A && git commit -qm "chore: init" ) >/dev/null 2>&1 && sh "$BOOT" "$IV" --nested >/dev/null 2>&1 \
+  || bad "nested v65 probe: could not build the host"
+python3 - "$REPO_ROOT" "$IV" <<'PY' || bad "nested v65 probe: could not plant the v65 executors"
+import json, re, sys
+from pathlib import Path
+repo, host = Path(sys.argv[1]), Path(sys.argv[2])
+src = (repo / "installer/main.py").read_text()
+ns = {"re": re}
+for name in ("NESTED_DIR", "NESTED_CONTRACT", "NESTED_ENGINE_RE", "NESTED_PATH_RE", "NESTED_CONTRACT_REF_RE", "NESTED_PROTECT_RE"):
+    exec(re.search(r"(?ms)^" + name + r" = .*?(?=^\S)", src).group(0), ns)
+def rewrite(text, agents):  # nested_rewrite for these texts: paths, the contract, then agent renames outside workflow.py commands
+    text = ns["NESTED_ENGINE_RE"].sub(f"{ns['NESTED_DIR']}/scripts/workflow.py", text)
+    text = ns["NESTED_PATH_RE"].sub(lambda m: f"{ns['NESTED_DIR']}/{m.group(0)}", text)
+    text = ns["NESTED_CONTRACT_REF_RE"].sub(f"`{ns['NESTED_DIR']}/{ns['NESTED_CONTRACT']}`", text)
+    parts = ns["NESTED_PROTECT_RE"].split(text)
+    for i in range(0, len(parts), 2):
+        for x, y in agents.items():
+            parts[i] = re.sub(r"(?<![\w-])" + re.escape(x) + r"(?![\w-])", y, parts[i])
+    return "".join(parts)
+agents_dir = host / ".claude/agents"
+(agents_dir / "slice-executor.md").unlink()
+renames = {"slice-executor-high": "wf-slice-executor-high"}
+mid = rewrite((repo / "tests/fixtures/v65/slice-executor-mid.md").read_text(), renames)
+(agents_dir / "slice-executor-mid.md").write_text(mid.replace("\nmodel: sonnet\n", "\nmodel: haiku\n", 1))
+(agents_dir / "wf-slice-executor-high.md").write_text(rewrite((repo / "tests/fixtures/v65/slice-executor-high.md").read_text(), renames))
+marker = host / "workflow/.agentic-nested.json"
+m = json.loads(marker.read_text())
+m["installed"]["agents"] = sorted([a for a in m["installed"]["agents"] if a != "slice-executor"] + ["slice-executor-mid", "wf-slice-executor-high"])
+m["renames"]["agents"] = dict(m["renames"].get("agents") or {}, **renames)
+marker.write_text(json.dumps(m, indent=2) + "\n")
+PY
+iv_out=$(sh "$BOOT" "$IV" --update --nested 2>&1); iv_rc=$?
+[ "$iv_rc" -eq 0 ] && printf '%s\n' "$iv_out" | grep -qx '    - \.claude/agents/slice-executor-mid\.md  (unchanged since v65 (its model/effort lines aside))' \
+  && printf '%s\n' "$iv_out" | grep -qx '    - \.claude/agents/wf-slice-executor-high\.md  (unchanged since v65 (its model/effort lines aside))' \
+  && [ -f "$IV/.claude/agents/slice-executor.md" ] && grep -qx 'name: slice-executor' "$IV/.claude/agents/slice-executor.md" \
+  && [ -z "$(cd "$IV" && git status --porcelain --untracked-files=all)" ] \
+  && ok "nested --update from a v65 marker lists both old executors stale (a renamed copy and a sync-agents-patched one) and installs slice-executor.md, the host clean" \
+  || bad "nested --update from a v65 marker wrong (rc=$iv_rc) -- $iv_out"
+iv_out=$(sh "$BOOT" "$IV" --update --nested 2>&1)
+printf '%s\n' "$iv_out" | grep -qx '    - \.claude/agents/wf-slice-executor-high\.md  (unchanged since v65 (its model/effort lines aside))' \
+  && python3 -c 'import json,sys; r=json.load(open(sys.argv[1]))["renames"]["agents"]; assert r.get("slice-executor-high") == "wf-slice-executor-high", r' "$IV/workflow/.agentic-nested.json" \
+  && ok "a second nested --update still reads the renamed old executor as stale: the marker keeps a retired copy's rename while the file exists" \
+  || bad "a second nested --update lost the retired rename -- $iv_out"
 IT="$NI/tracked"
 mkdir -p "$IT" && ( cd "$IT" && { git init -q -b main . 2>/dev/null || git init -q .; } && git config user.email smoke@example.invalid && git config user.name smoke \
   && printf 'team notes\n' > CLAUDE.local.md && git add -A && git commit -qm "chore: team local notes" ) >/dev/null 2>&1 || bad "nested install: could not build the tracked-target fixture"
@@ -2843,7 +3038,7 @@ ign_host() { mkdir -p "$1" && ( cd "$1" && { git init -q -b main . 2>/dev/null |
   && git commit -qm "chore: init" ) >/dev/null 2>&1 || bad "nested install: could not build the $1 fixture"; }
 ign_sig() { ( cd "$1" && find . -path ./.git/objects -prune -o -print | LC_ALL=C sort; cat .git/info/exclude 2>/dev/null ) | sha_stdin; }
 IG="$NI/ign-skills"; ign_host "$IG" '.claude/*\n!.claude/skills/\n!.claude/skills/**\n'; out=$(sh "$BOOT" "$IG" --nested 2>&1); rc=$?
-[ "$rc" -eq 0 ] && [ -z "$(cd "$IG" && git status --porcelain --untracked-files=all)" ] && [ "$(cat "$IG/.claude/skills/explain/.gitignore")" = "*" ] \
+[ "$rc" -eq 0 ] && [ -z "$(cd "$IG" && git status --porcelain --untracked-files=all)" ] && [ "$(cat "$IG/.claude/skills/commit/.gitignore")" = "*" ] \
   && ok "a host .gitignore re-including .claude/skills/** still installs clean: each skill dir hides itself with a .gitignore of *" || bad "a !.claude/skills/** host was not installed clean (rc=$rc) -- $(cd "$IG" && git status --porcelain) $out"
 IE="$NI/ign-claude"; ign_host "$IE" '!CLAUDE*.md\n'; ie_before=$(ign_sig "$IE"); out=$(sh "$BOOT" "$IE" --nested 2>&1); rc=$?
 [ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -qF "  - CLAUDE.local.md: re-included by .gitignore:1:!CLAUDE*.md" && [ ! -e "$IE/workflow" ] && [ "$(ign_sig "$IE")" = "$ie_before" ] \
@@ -2878,9 +3073,9 @@ out=$(sh "$BOOT" "$NB" --update 2>&1); rc=$?; out2=$(sh "$BOOT" "$NB" --update -
   && ok "a bare --update refreshes the nested install and says so (nested, detected); --update --nested still works" || bad "bare --update on a nested host failed (rc=$rc/$rc2) -- $out $out2"
 # (d) a bare --update on an at-root install stays at-root and refreshes its machinery.
 NR="$ND/atroot"; sh "$BOOT" "$NR" --at-root --name "At root" --summary "at-root probe" >/dev/null 2>&1 || bad "P29 probe: --at-root install failed"
-printf 'stale\n' >> "$NR/.claude/skills/explain/SKILL.md"; out=$(sh "$BOOT" "$NR" --update 2>&1); rc=$?
+printf 'stale\n' >> "$NR/.claude/skills/commit/SKILL.md"; out=$(sh "$BOOT" "$NR" --update 2>&1); rc=$?
 [ "$rc" -eq 0 ] && [ ! -e "$NR/workflow" ] && printf '%s\n' "$out" | grep -q "^Update complete (--update) at " && ! printf '%s\n' "$out" | grep -q "nested" \
-  && diff -q "$SRC/claude/skills/explain/SKILL.md" "$NR/.claude/skills/explain/SKILL.md" >/dev/null \
+  && diff -q "$SRC/claude/skills/commit/SKILL.md" "$NR/.claude/skills/commit/SKILL.md" >/dev/null \
   && ok "a bare --update on an at-root install stays at-root (no workflow/) and refreshes its machinery" || bad "bare --update on an at-root install misrouted (rc=$rc) -- $out"
 # (e) a bare install over that at-root workspace refuses and writes nothing.
 nr_before=$(tree_sig "$NR"); out=$(sh "$BOOT" "$NR" 2>&1); rc=$?

@@ -211,7 +211,7 @@ under `workflow/` instead and the skills and agents untracked in the host's `.cl
 
 - [`CLAUDE.md`](payload/contract.md) — the compact routing contract every agent session works under.
 - [`scripts/workflow.py`](payload/scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` — the 18 Agent Skills (`/slash` commands), the two risk-routed `slice-executor` tier subagents (`.claude/agents/slice-executor-{mid,high}.md`, dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ xhigh), the `design-critic` that judges each draft (the `critic` row, sonnet @ high; in judge mode the `judge` row, fable @ high), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
+- `.claude/` — the 17 Agent Skills (`/slash` commands), the risk-routed `slice-executor` subagent (`.claude/agents/slice-executor.md`, one file dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ xhigh), the `design-critic` that judges each draft (the `critic` row, sonnet @ xhigh; in judge mode the `judge` row, opus @ xhigh), the `explain-critic` that judges one drafted chapter of an explain phase (no row: opus @ xhigh from its own frontmatter), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - [`works/`](works/) — the state machine, starting with **no phases**: a `deferred/` area,
@@ -259,7 +259,7 @@ It writes only untracked files, all hidden by the host's `.git/info/exclude` (ne
 
 - `workflow/`: a **nested git repo** holding the engine, `works/`, `docs/`, `executors.toml` and
   the contract (as `CLAUDE.workspace.md`). It is versioned there, separately from the host.
-- the 18 skills and 3 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
+- the 17 skills and 5 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
   path rewritten to reach `workflow/` (`python3 workflow/scripts/workflow.py …`);
 - a `.gitignore` of `*` in each of those skill directories, so a skill directory hides itself
   even where the host's `.gitignore` re-includes `.claude/skills/`;
@@ -323,8 +323,8 @@ under `workflow/works/` and `workflow/docs/`. Run `sync-agents` afterwards and c
 
 - **Parallel worktrees are opt-in.** In a nested install a phase worktree is a pair: a host worktree
   with the `workflow/` worktree inside it (see [Phase worktrees](#phase-worktrees-on-request)).
-- A company-managed Claude Code policy may disable `bypassPermissions`, which the three subagents
-  set. Check that before you rely on unattended runs such as `/do-whole-phase`.
+- A company-managed Claude Code policy may disable `bypassPermissions`, which five of the six
+  subagents set (`Explore` sets none). Check that before you rely on unattended runs such as `/do-whole-phase`.
 - Engine messages may name a renamed skill by its original name (for example `validate` pointing
   at "the create-phase skill" when it installed as `wf-create-phase`).
 - The seeded text under `workflow/docs/` describes paths relative to `workflow/`.
@@ -435,7 +435,7 @@ The full command list is `python3 scripts/workflow.py --help` (and `<command> -h
 
 ### The same operations as Agent Skills
 
-The common workflows also ship as **18 Agent Skills** in `.claude/skills/`, invoked as `/slash`
+The common workflows also ship as **17 Agent Skills** in `.claude/skills/`, invoked as `/slash`
 commands in Claude Code:
 
 | Skill | What it does |
@@ -457,49 +457,42 @@ commands in Claude Code:
 | `retrofit` | Non-destructively adopt this workspace into an existing repo |
 | `update-workspace` | Update an adopted workspace's machinery to the latest upstream, preserving your work |
 
-> **Knowledge (phase explainers).** The `explain` skill ships with the workspace.
-> Explainers are interactive HTML documents saved to the knowledge service — produced on demand, not
-> by the review: run `/explain` for a phase when you want one, and a passing review simply reports
-> that none was written.
+> **Knowledge (`/knowledge:explain`).** Explaining a topic, a change or a phase into your knowledge
+> base is done by the **knowledge plugin** from the [knowledge repo](https://github.com/leetusik/knowledge),
+> not by this workspace. The plugin owns the skill, the CLI and the document API, so they stay in step.
+> Install it once:
 >
-> **Setup happens on first use, and it asks first.** Run `/explain`; if no knowledge base is
-> configured it offers to create one on the [hosted service](https://knowledge.hi2vi.com) — it asks
-> for an email, installs the `knowledge` CLI, signs you up (or logs you in), and writes an org-level
-> key to `~/.config/knowledge-kb/config.json` at mode 0600. Creating an account is an outward-facing
-> action, so nothing happens until you say yes. One org key serves every repo, and each document's
-> project defaults to the repo's directory name.
+>     /plugin marketplace add leetusik/knowledge
+>     /plugin install knowledge@knowledge
 >
-> Already have a knowledge base, hosted or self-hosted? Skip setup by exporting
-> `KB_API_BASE_URL="https://knowledge.hi2vi.com"` and `KB_API_TOKEN="vk_..."` in `~/.zshenv`
-> (sourced by every zsh invocation). Never a repo `.env` — Claude Code does not auto-load
-> it, and a secret in a repo file risks being committed.
->
-> **Alternative (Claude Code plugin):** the same feature also lives as a standalone plugin in the
-> [knowledge repo](https://github.com/leetusik/knowledge) —
-> `/plugin marketplace add leetusik/knowledge` → `/plugin install knowledge@knowledge` →
-> `/knowledge:setup` once, then `/knowledge:explain <topic>`. That is a separate namespace from this
-> workspace's `/explain`; you do not need both.
+> then run `/knowledge:setup` once (connect to the hosted KB, or scaffold your own) and use
+> `/knowledge:explain <topic>`. A whole book (researched, outlined and signed, each chapter checked by a
+> fresh-eyes critic, published private) is an **explain phase**: ask `/create-phase` to explain something
+> as a book. Plugin version 0.5.0 or later is required. To update: `/plugin marketplace update knowledge`,
+> then update `knowledge@knowledge` from the `/plugin` panel's Installed tab (or, from a shell,
+> `claude plugin update knowledge@knowledge`). The review never writes an explainer; it only reports
+> `explain: not written — run /knowledge:explain P<N> for one chapter, or create an explain phase for a book`.
 
-The orchestrator delegates the heavy lifting to a **`slice-executor`** subagent in one of two
-capability tiers, picked by each slice's risk. `slice-executor-mid` is the default tier (since v46):
+The orchestrator delegates the heavy lifting to a **`slice-executor`** subagent, on a row
+picked by each slice's risk. The mid row is the default (since v46):
 implementation, `fix`, `docs` and `qa` slices rated `risk: low`, real code writing and multi-file
-changes included. `slice-executor-high` takes decomposition, `research`, the phase review (which it
+changes included. The high row takes decomposition, `research`, the phase review (which it
 runs in a fresh context that never edits source, validating the phase and — only on a pass —
 verifying its doc-impact list and writing its two gate sections, leaving the docs themselves to a
 docs phase; a `changes_requested` or `blocked` verdict stops there and hands the findings back), a
 slice rated `risk: high` for a named trigger (open design, a core invariant, an unlocated root
 cause, a wide blast radius), and every second attempt after mid. Risk is two values, `low` and `high`, defaulting to `high` — only an exact `low` routes down, so an
-unset or unrecognized value always lands on the thorough tier, and the decomposition rates every
-slice explicitly. When the mid executor needs a design decision the plan did not make, hits a
+unset or unrecognized value always lands on the high row, and the decomposition rates every
+slice explicitly. When an executor on the mid row needs a design decision the plan did not make, hits a
 trigger its rating missed, or fails the same validation twice, it returns an `escalate` verdict; the
-orchestrator folds the findings into the plan and re-dispatches to `slice-executor-high` (once per
-slice), and a review finding against mid-tier work gets a `high` fix slice — so most slices run on
+orchestrator folds the findings into the plan and re-dispatches on the high row (once per
+slice), and a review finding against mid- or cheap-row work gets a `high` fix slice — so most slices run on
 sonnet while opus takes what is genuinely hard or has already failed once. Model and effort come from one engine-owned **route table**, resolved per slice at dispatch time:
-`high` (opus @ high — review, decomposition, the mockup span, any risk but `low`, every second
-attempt), `research` (opus @ medium), `mid` (sonnet @ high — implementation and fix rated `low`),
+`high` (opus @ xhigh — review, decomposition, the mockup span, any risk but `low`, every second
+attempt), `research` (opus @ xhigh), `mid` (sonnet @ xhigh — implementation and fix rated `low`),
 `cheap` (docs and qa rated `low`; inherits `mid` unless overridden — this repository runs it on Haiku
-5.5 at `high`, and the seed ships it commented out because the `haiku` alias is Haiku 4.5 on Bedrock,
-Vertex and Foundry) and `explore` (haiku @ high, the read-only `Explore` lookup agent). Three rows serve design, never a slice: `design` (opus @ xhigh, `design-drafter`), `critic` (sonnet @ high, `design-critic`) and `judge` (fable @ high, alias only, the same critic file in judge mode); the critic and the judge must each run on a different model from the drafter's, and `executor-route --critic` / `--judge` refuse an equal pair. The repo-root
+5.5 at `xhigh`, and the seed ships it commented out because the `haiku` alias is Haiku 4.5 on Bedrock,
+Vertex and Foundry) and `explore` (haiku @ xhigh, the read-only `Explore` lookup agent). Three rows serve design, never a slice: `design` (opus @ xhigh, `design-drafter`), `critic` (sonnet @ xhigh, `design-critic`) and `judge` (opus @ xhigh, alias only, the same critic file in judge mode); only the critic must run on a different model from the drafter's, and only `executor-route --critic` refuses an equal pair (the judge may share the drafter's model). The repo-root
 `executors.toml` overrides rows one by one (`[claude.<row>]`, seed-once — updates never overwrite it),
 applied to the agent files with `python3 scripts/workflow.py sync-agents`; the presets are gone, and a
 leftover `mode = "…"` line is refused with the migration step. `python3 scripts/workflow.py
@@ -623,8 +616,8 @@ parallelism it never used. The mechanism itself is unchanged.)
 │   │   └── archived/             # finished phases
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
-│   ├── skills/                    # 18 Agent Skills (/slash commands)
-│   ├── agents/                    # slice-executor tiers mid/high + design-drafter + design-critic (models from executors.toml)
+│   ├── skills/                    # 17 Agent Skills (/slash commands)
+│   ├── agents/                    # slice-executor + design-drafter + design-critic + explain-critic (models from executors.toml)
 │   └── settings.json              # pre-approves workflow.py; denies force-push & rm -rf
 └── .github/
     └── workflows/
