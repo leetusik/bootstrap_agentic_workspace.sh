@@ -15,8 +15,9 @@ history.
   through it) now starts every slice whose dependencies are done at once, in the same checkout,
   instead of one executor at a time. Each slice still gets its own start, verdict record, finish and
   commit; the orchestrator writes the shared notebook entries as each one returns. There is no fixed
-  cap. `/do-next-slice` still runs one slice, and an explain phase stays sequential: its chapters are
-  cut undeclared (`explain-decomposition.md` drops `--depends-on`).
+  cap. `/do-next-slice` still runs one slice; in a declared phase it stops while a wave is unfinished
+  (a commit waits, or another slice is in flight) and points to `/do-whole-phase`. An explain phase
+  stays sequential: its chapters are cut undeclared (`explain-decomposition.md` drops `--depends-on`).
 - **Declared dependencies bind.** `new-slice` and `promote-deferred` take `--depends-on <id>`
   (repeatable) or `--depends-on none`; the slice stores `"depends_declared": true` beside
   `depends_on`. A declared dependency must name a slice of the same phase ordered strictly before
@@ -33,15 +34,19 @@ history.
   `running_slices=`, and the resume card a `wave:` line (plus a `stop:` line for a sibling's stop).
   A barrier running alone prints none of them, so a running `REVIEW` or an open acceptance gate
   reads as before. `start-slice` warns, never refuses: it prints one `warning:` line and still starts
-  a declared slice whose dependency is not done, or a barrier beside running slices. After a
-  compaction the run first commits each finished slice whose commit still waits, read from disk:
+  a declared slice whose dependency is not done, or a barrier beside running slices. At every
+  session start, after every compaction and before every start or commit, the run first commits
+  each finished slice whose commit still waits, read from disk:
   a slice's workflow state commits with its host commit, or right after it in a nested pair, so a
   finished slice whose `slice.json` is still uncommitted is one, and a committed slice never reads as
-  waiting. It starts no barrier before those commits are in, then waits for every running span,
-  never re-dispatches one, finishes each slice whose `result.md` exists, and starts the ready set
-  only while no stop is on disk. A stop
-  anywhere (`pending`, `blocked`, a failed high-row return) empties the ready set; the slices already
-  running finish and are committed, nothing new starts, and the run stops.
+  waiting; one whose set holds a path a check stop names keeps waiting for that answer. It starts no
+  barrier before those commits are in, then waits for every running span (none outlives the session
+  that dispatched it), never re-dispatches one, finishes each slice whose `result.md` says `done`,
+  re-dispatches the rest from disk, and starts the ready set only while no stop is on disk. A
+  `/do-whole-phases` run starts nothing in a phase while another phase on the stream has a commit
+  waiting or a slice in flight. A stop anywhere (`pending`, `blocked`, a failed high-row return)
+  empties the ready set; the slices already running finish and are committed, nothing new starts,
+  and the run stops.
 - **The wave protocol, in a new `do-whole-phase/reference/wave.md`.** A wave slice's `plan.md` carries
   a `## Wave` section (its set, its siblings' sets, and the set of each finished slice whose commit
   still waits); its executor writes no `phase.md` (it returns a `notebook` field in its verdict),
@@ -53,9 +58,11 @@ history.
   the running set drains, then the orchestrator rebuilds once and commits the artifact with the
   last slice. Each slice's commit stages the dirty paths of its declared set, read from the tree
   (new, deleted and renamed files included, whatever its `files_changed` lists), and commits only
-  those paths. An edit that no set in flight holds stops the run before any commit takes it. A
-  slice whose set overlaps a finished slice's waiting commit starts only once that commit is in, so
-  each commit holds exactly its own slice's edits.
+  those paths. An edit that no set in flight holds stops the run before any commit takes it: the
+  stop names its paths, the commit of any slice whose set holds one waits for the answer in any later
+  session too, and an answer that adds a path to a set is written into that slice's `## Wave` set
+  line. A slice whose set overlaps a finished slice's waiting commit starts only once that commit
+  is in, so each commit holds exactly its own slice's edits.
 - **The contract reverses "never fan out slices".** It now says a phase's declared, independent slices
   may run at once (`do-whole-phase`'s wave), all others alone, and the phase stays the unit of
   *worktree* parallelism (`parallel-phase` reverses its sequential line and its slice-level guardrail:

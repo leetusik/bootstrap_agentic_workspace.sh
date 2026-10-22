@@ -1,5 +1,15 @@
 # do-next-slice — launching the executor, escalation and the commit
 
+## Before step 1 — a declared phase
+
+`/do-next-slice` never runs a wave, and its commit (step 7) takes all pending changes. So in a declared phase (`next` prints `ready_slices=`) it starts nothing while a wave is unfinished, that is, while:
+
+- a commit waits: `git status --porcelain --untracked-files=all` on the phase's `slices/` folder, in the repo that holds the workflow state, lists the `slice.json` of a `done` slice whose committed copy does not say `done`;
+- a slice other than the selected one is `in_progress`, `pending` or `blocked`; or
+- the selected slice's `plan.md` carries a `## Wave` section (it ran in a wave).
+
+Then STOP before any `start-slice`, dispatch or commit, and tell the operator to run `/do-whole-phase`, whose *Resume* commits and resumes the wave from disk. Otherwise go on: the slice runs alone, as a wave's lone slice would.
+
 ## Step 3 — dispatch
 
 3. Dispatch the executor to implement the slice. Always launch it through the Agent tool **as a background task** (the default — never pass `run_in_background: false`) and wait for its completion notification; never run the executor synchronously inline in the main session. This applies to decomposition, `research`, implementation, `fix`, and review. **`kind: co-work` is the exception, and only in part** — its round runs inline with dispatched spans; *When the selected slice is a design slice* below carries it.
