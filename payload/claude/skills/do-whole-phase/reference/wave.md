@@ -1,16 +1,17 @@
 # do-whole-phase — a wave: several slices at once
 
-Read this when the phase's `DECOMP` **declared** its slices (`--depends-on <id>` or `--depends-on none`) and `next` prints `ready_slices=` with more than one id, or a slice becomes ready while others still run. Otherwise (nothing declared, one ready slice, a barrier) the loop in `SKILL.md` is unchanged and none of this applies. `/do-next-slice` never runs a wave, and an explain phase declares nothing, so it stays sequential.
+Read this when the phase's `DECOMP` **declared** its slices (`--depends-on <id>` or `--depends-on none`) and `next` prints `ready_slices=` with more than one id, or a slice becomes ready while others still run, and after every compaction in a declared phase (*After a compaction*). Otherwise (nothing declared, one ready slice, a barrier) the loop in `SKILL.md` is unchanged and none of this applies. `/do-next-slice` never runs a wave, and an explain phase declares nothing, so it stays sequential.
 
 ## What the engine prints
 
-A declared phase's `next` (and `run-phases`) adds, after `next_slice=` and in its WAITING branch:
+A declared phase's `next` (and `run-phases`) adds, after `next_slice=` and in its WAITING branch, the lines below. While a barrier runs alone it adds none and the card has no `wave:` line: the phase then reads as an undeclared one.
 
 - `ready_slices=<ids|none>`: the slices that may start now, by order. A declared slice is ready when it is `todo` or `ready` and every slice it depends on is `done`. A **barrier** (`DECOMP`, `DECOMP2`, `REVIEW`, a `co-work` slice, and every undeclared slice) is ready only alone: first open slice, nothing in progress. It also ends the walk, so nothing behind a barrier starts before it is done.
-- `running_slices=<ids|none>`: the slices `in_progress`.
+- `running_slices=<ids|none>`: the wave's slices `in_progress`, never a barrier.
 - With a stop on disk (a `pending` or `blocked` slice anywhere): `ready_slices=none -- stopped by <id> (<status>)…: nothing new starts while a stop is on disk`, and if slices run, `running_slices=<ids> -- already running beside the stop: wait for each, then finish and commit it`.
 - `current_slice=` / `target_slice=` stay the plain pointer (the first open slice). In a wave they name the first open slice, which may already be running: the work is the whole `ready_slices=` list.
 - The resume card adds `wave: running=<ids>; returned=<ids>; ready=<ids>; stops=<ids> -- …`, and a `stop: slice <id> …` line for a sibling's stop the pointer does not show. `returned` are the running slices whose `result.md` exists.
+- `start-slice` warns, never refuses: it prints one `warning:` line, and still starts the slice, for a start the ready set would not make (a declared slice whose dependency is not `done`, or a barrier beside a running slice).
 
 ## Declaration and independence
 
@@ -48,10 +49,10 @@ Handle returns one at a time, in the order they come in.
 1. `record-dispatch`. On `done`: `finish-slice <id> --outcome "<its summary>"`.
 2. Write its `notebook` entries with `phase-section <P> <name>`, reading each section first and sending it back whole. Doc impact and Operator Questions are **appended**; number each question `OQ<n>` yourself, in finish order, because the executor cannot see its siblings' numbers. Decisions and Notes are merged: replace a superseded line, and remove the notes this slice consumed. Rewrite `## Now` **for the whole wave**: what landed, what is running, what is next.
 3. `validate`.
-4. **Commit the workflow state at once**, naming explicit paths: the slice folder, `phase.md`, its `topics/` file and the generated state. In a nested pair that is the nested repo's commit; in a single-repo install the paths ride in the slice's host commit and wait with it. Never `git add -A`, never `--no-verify`.
+4. **Commit the workflow state at once**, naming explicit paths: the slice folder, `phase.md`, its `topics/` file and the generated state. In a nested pair that is the nested repo's commit. In a single-repo install the paths ride in the slice's host commit and wait with it; when several host commits waited (held, or at the join), each carries its own slice folder and `topics/` file, and **the last carries `phase.md` and the generated state** for all of them, since those hold every waiting slice's entries. Never `git add -A`, never `--no-verify`.
 5. **Commit the slice's host paths**, one commit per slice, its `files_changed` only, attributed to its dispatch's model. Which way depends on the join-rebuilt artifact:
    - **Rolling (the default).** When no running or finished-uncommitted slice touches the artifact's sources (or the phase has none), commit at once, alone. A hook failure or a busy index lock while siblings run **holds** that commit, every later host commit and every new start until the running set drains; then commit the held ones in finish order. A worktree-wide hook can trip on a sibling's half-done edit, and a drained tree is the honest test.
-   - **At the join.** When a running or finished-uncommitted slice touches the artifact's sources, **every host commit waits until the running set drains.** Then rebuild the artifact once, and commit each slice's own paths in finish order, **the rebuilt artifact with the last of them**. The earlier commits carry their sources without the rebuilt artifact, an exception to a same-commit rebuild rule that holds for a wave's commits only (the `DECOMP` gate approved the artifact's naming); the pre-commit hook still passes, because it reads the worktree, which is rebuilt by then. A barrier (`REVIEW`) starts only after the join's commits are in.
+   - **At the join.** When a running or finished-uncommitted slice touches the artifact's sources, **every host commit waits until the running set drains.** Then rebuild the artifact once, and commit each slice's own paths in finish order, **the rebuilt artifact with the last of them** (in a single-repo install that last commit also carries `phase.md` and the generated state, step 4; in a nested pair the nested repo committed those at each finish). The earlier commits carry their sources without the rebuilt artifact, an exception to a same-commit rebuild rule that holds for a wave's commits only (the `DECOMP` gate approved the artifact's naming); the pre-commit hook still passes, because it reads the worktree, which is rebuilt by then. A barrier (`REVIEW`) starts only after the join's commits are in.
 6. Recompute the ready set (`next`; `run-phases` in a run) and start what it lists, unless a stop is on disk or a held commit (*Rolling*) holds starts.
 
 ## Stops and retries
@@ -65,7 +66,8 @@ Handle returns one at a time, in the order they come in.
 
 ## After a compaction
 
-The card's `wave:` line says it: **wait for every running span and never re-dispatch one**; finish each slice in `returned=` (its `result.md` exists), then commit it by *At each return*; start `ready=` only while no stop is on disk. The contract's kept facts already list each running executor's slice id.
+1. **First, the commits that still wait.** A `done` slice whose host commit waits (for the join, or held) is on no card line, and once the running set drains the card points at the barrier. So before you start anything, run `git status` against the `files_changed` in each `done` wave slice's `result.md`. Every slice with paths still uncommitted commits by *At each return* step 5: at the join, once the running set drains, rebuild once and commit them in finish order (each `slice.json`'s `completed_at`), the rebuilt artifact with the last. **Start no barrier, and no wave slice that touches the artifact's sources, before those commits are in.**
+2. Then the card's `wave:` line says it: **wait for every running span and never re-dispatch one**; finish each slice in `returned=` (its `result.md` exists), then commit it by *At each return*; start `ready=` only while no stop is on disk. The contract's kept facts already list each running executor's slice id.
 
 ## The idle window
 

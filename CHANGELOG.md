@@ -31,8 +31,10 @@ history.
   shared runtime resource it holds), and marks two slices independent only when the sets are disjoint.
 - **The ready set.** For a declared phase only, `next` and `run-phases` print `ready_slices=` and
   `running_slices=`, and the resume card a `wave:` line (plus a `stop:` line for a sibling's stop):
-  after a compaction the run waits for every running span, never re-dispatches one, finishes each
-  slice whose `result.md` exists, and starts the ready set only while no stop is on disk. A stop
+  after a compaction the run first finds each finished slice whose host commit still waits
+  (`git status` against its `files_changed`) and starts no barrier before those commits are in, then
+  waits for every running span, never re-dispatches one, finishes each slice whose `result.md`
+  exists, and starts the ready set only while no stop is on disk. A stop
   anywhere (`pending`, `blocked`, a failed high-row return) empties the ready set; the slices already
   running finish and are committed, nothing new starts, and the run stops.
 - **The wave protocol, in a new `do-whole-phase/reference/wave.md`.** A wave slice's `plan.md` carries
