@@ -9,6 +9,36 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v65 — 2026-10-22
+
+- **`/explain` is the knowledge plugin's.** The vendored skill is gone (17 skills). The seed
+  operations doc's `## Knowledge (/knowledge:explain)` section, the README and the installer's
+  closing lines now point to `knowledge@knowledge` from the `leetusik/knowledge` marketplace,
+  plugin 0.5.0 or later, and quote its install commands. The contract drops its `/explain`
+  sentence. The updater never creates, writes, flags or reports a path with an `explain`
+  component, on any install path, nested included: a nested host's old copy stays recognised and
+  hidden.
+- **Explaining a book is a phase.** `/create-phase` gains *The explain route*: an `## Explain`
+  section in `intent.md` (subject, mode, book, lang, reader, depth, project, visibility) marks the
+  phase. Its `DECOMP` researches the subject, writes `book/outline.md` and cuts one chapter slice
+  per chapter; the operator signs the outline at a `pending` stop on the first chapter. Each
+  chapter is drafted and checked (`knowledge check`), judged by the new **`explain-critic`** agent
+  on a model different from the drafter's, and revised once. The review reads the whole book,
+  publishes every chapter **private** with the org key, reads it in the real reader, and the
+  operator accepts by reading it. Three new `do-whole-phase` references (shared into
+  `do-next-slice`): `explain-decomposition.md`, `explain-chapter.md`, `explain-review.md`. No
+  engine change: the critic has no route row; the orchestrator picks its model per call.
+- **The review's fixed pointer** is now `explain: not written — run /knowledge:explain P<N> for
+  one chapter, or create an explain phase for a book`.
+
+- **Migration notes.** `/update-workspace` installs `.claude/agents/explain-critic.md` (nested:
+  into the host's `.claude/agents/`, renamed `wf-explain-critic` on a clash). Explain phases need
+  the knowledge plugin at 0.5.0 or later and `/knowledge:setup` run once (the review publishes
+  with its org key); `knowledge check` needs a server with `POST /api/documents/check`. A 404 or
+  405 skips the check and the publish's 422 stays the backstop, while an unreachable server or a
+  rejected key stops the chapter. Delete an old `.claude/skills/explain/` by hand, once, after
+  installing the plugin: the updater leaves it in place.
+
 ## v64 — 2026-10-22
 
 - **`create-phase` and `update-workspace` commit when they finish.** `create-phase` commits what

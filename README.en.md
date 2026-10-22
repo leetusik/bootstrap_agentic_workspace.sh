@@ -323,8 +323,8 @@ under `workflow/works/` and `workflow/docs/`. Run `sync-agents` afterwards and c
 
 - **Parallel worktrees are opt-in.** In a nested install a phase worktree is a pair: a host worktree
   with the `workflow/` worktree inside it (see [Phase worktrees](#phase-worktrees-on-request)).
-- A company-managed Claude Code policy may disable `bypassPermissions`, which the three subagents
-  set. Check that before you rely on unattended runs such as `/do-whole-phase`.
+- A company-managed Claude Code policy may disable `bypassPermissions`, which five of the six
+  subagents set (`Explore` sets none). Check that before you rely on unattended runs such as `/do-whole-phase`.
 - Engine messages may name a renamed skill by its original name (for example `validate` pointing
   at "the create-phase skill" when it installed as `wf-create-phase`).
 - The seeded text under `workflow/docs/` describes paths relative to `workflow/`.

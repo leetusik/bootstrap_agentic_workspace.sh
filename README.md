@@ -209,8 +209,8 @@ git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하�
 
 - **병렬 worktree는 요청할 때만 씁니다.** nested 설치에서는 호스트 worktree와 그 안의 `workflow/`
   worktree가 한 쌍으로 만들어집니다([phase별 worktree](#phase별-worktree-요청할-때만) 참고).
-- 회사가 관리하는 Claude Code 정책이 `bypassPermissions`를 막을 수 있습니다. 세 에이전트가 이
-  모드를 쓰므로, `/do-whole-phase`처럼 사람 없이 도는 실행을 믿기 전에 확인하세요.
+- 회사가 관리하는 Claude Code 정책이 `bypassPermissions`를 막을 수 있습니다. 여섯 에이전트 중 다섯이 이
+  모드를 쓰므로(`Explore`는 쓰지 않습니다), `/do-whole-phase`처럼 사람 없이 도는 실행을 믿기 전에 확인하세요.
 - 이름이 바뀐 스킬을 엔진 메시지가 원래 이름으로 부를 수 있습니다(예: `wf-create-phase`로
   설치됐는데 `validate`가 "create-phase 스킬"이라고 안내).
 - `workflow/docs/`에 미리 들어 있는 문서 글은 `workflow/` 기준 경로로 적혀 있습니다.
