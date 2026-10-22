@@ -9,6 +9,46 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v69 — 2026-10-22
+
+- **`/do-whole-phases` runs phases back to back.** `/do-whole-phases [phases] [auto|gate|plan only]`
+  runs each phase end to end by `/do-whole-phase`'s own loop, so the operator does not start every
+  one. Name them in any form: `P12, 13 p14` (any case, bare numbers, commas or spaces, order kept,
+  duplicates dropped). With no argument it runs every phase on this stream that is not done, in
+  backlog order. An unknown phase ID, a range, `worktree` or a mistyped mode word is refused before
+  anything starts; a done phase is skipped with a note, and a phase running in another worktree is
+  skipped and named, because it runs from its own branch. The mode word applies to every phase in
+  the run, and without an explicit `auto` each phase's `DECOMP` still waits in the session for the
+  operator to approve its plan: that is a pause, and the run continues after it.
+- **An open acceptance gate is parked, not a stop.** When a phase's review passes with a required
+  gate, the run opens the gate (the phase waits on the operator) and moves on to the next phase.
+  **Every other stop halts the whole run**: `needs_operator`, `blocked`, a failed high-row return
+  or a design wave. The run ends with a report of every parked gate with its walkthrough, each
+  phase that passed and each phase skipped with its reason; the operator clears each gate with
+  `accept-gate <P> --clear`, as today. `/do-whole-phase` still runs one phase and keeps its rule
+  not to continue into the next. The new skill takes no `worktree` word and never starts one.
+- **A new engine command, `run-phases [PHASE ...]`.** Read-only and stateless, it resolves the run
+  from disk on every call: `run=`, `stream=`, `queue=`, `skipped=<P> reason=…`, `parked=<P>`, then
+  one ending (a target phase and slice, a `halt=` naming the stop, or `run_done=yes`). The skill
+  re-runs it at the start, after each slice's commit and at each phase boundary. It prints
+  `gate_cleared=<P>` when the operator clears a parked gate mid-run, so the review's pass is
+  recorded without re-dispatching it. A run's later phase was usually created before the earlier
+  ones ran, so the skill plans its review with `phase-scope <P> --base <sha>` (the commit at
+  `<P>.DECOMP`'s start) instead of a boundary that would fold the earlier phases in.
+- **The resume card's `run:` line.** Under a parked gate's `stop:` line the card adds one line:
+  only a `/do-whole-phases` run passes the parked phase, and after a compaction mid-run the run's
+  own `run-phases` target wins over the card's pointer; outside a run the stop holds. The plain
+  pointer (`next`, `works/state.json`, the `WAITING ON OPERATOR` block) is unchanged and still
+  halts at a parked phase.
+- **The contract gains two narrow exceptions**, both limited to a `/do-whole-phases` run and an
+  open acceptance gate: the `pending` rule ("nothing starts, finishes or advances past it") is
+  barred for a parked gate, and the gate rule says the run parks it and continues while every other
+  stop halts the run. The contract stays under its 12,288 B cap. The skill count is now 18.
+
+- **Migration notes.** None beyond `--update`: it ships the new skill, the engine command, the
+  contract clauses and the resume card line. Nothing in a phase's files changes, and `/do-whole-phase`
+  runs as before.
+
 ## v67 — 2026-10-22
 
 - **The default backlog follows a worktree phase live.** Every state change in a phase worktree
