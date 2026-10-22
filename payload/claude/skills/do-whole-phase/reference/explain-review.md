@@ -1,7 +1,7 @@
 # do-whole-phase — an explain phase's review: read the book, publish it private, read it in the reader
 
 An explain phase is one whose `intent.md` carries `## Explain`. Its `REVIEW` is a review slice like any other:
-- it runs on the high row and is delegated to `slice-executor-high`;
+- it runs on the high row and is delegated to `slice-executor`;
 - `reference/review.md` still owns recording the verdict, the acceptance gate, fix slices and archiving.
 
 What differs is the work it reviews, which is a book rather than product code, and so what its `plan.md` asks for. The writing and publish rules are the knowledge plugin's `skills/explain/SKILL.md`, cited by section and never copied here.
@@ -80,7 +80,7 @@ What differs is the work it reviews, which is a book rather than product code, a
 
 ## Fix slices republish
 
-A `changes_requested` verdict, or an operator-reported failure at the gate (`review-phase <P> --verdict changes_requested --note "operator-reported: …"`), becomes one fix slice per chapter that needs changes: `<P>.F<n>`, `--kind fix`. Rate it as `reference/review.md` says: `high` when the chapter's `result.md` reads `tier: mid`.
+A `changes_requested` verdict, or an operator-reported failure at the gate (`review-phase <P> --verdict changes_requested --note "operator-reported: …"`), becomes one fix slice per chapter that needs changes: `<P>.F<n>`, `--kind fix`. Rate it as `reference/review.md` says: `high` when the chapter's `result.md` reads `route: mid` or `route: cheap`.
 
 A fix slice:
 1. revises `book/<key>.md` and its assets;

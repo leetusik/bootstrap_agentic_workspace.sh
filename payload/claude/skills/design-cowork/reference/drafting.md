@@ -77,4 +77,4 @@ record one by hand.
 
 - Dispatch anything but these spans: the drafting to `design-drafter`, every round; the critique and
   the judging to `design-critic`, when the job's level says so; and the mockup build to
-  `slice-executor-high`, only when the operator asked for one.
+  `slice-executor` on the high row, only when the operator asked for one.

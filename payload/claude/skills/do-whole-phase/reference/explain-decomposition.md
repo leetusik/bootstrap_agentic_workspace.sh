@@ -1,6 +1,6 @@
 # do-whole-phase — an explain phase's decomposition and the outline gate
 
-An explain phase is one whose `intent.md` carries an `## Explain` section, written by `create-phase`'s explain route. Its `DECOMP` follows `reference/decomposition.md`: planned at the gate unless the operator said `auto`, dispatched to `slice-executor-high`, with the acceptance gate declared at its boundary. This file adds three things: what that `DECOMP` cuts, the outline stop after it, and how a chapter's `plan.md` is later drawn from the outline. The writing rules are the knowledge plugin's `skills/explain/SKILL.md`, cited by section and never copied here.
+An explain phase is one whose `intent.md` carries an `## Explain` section, written by `create-phase`'s explain route. Its `DECOMP` follows `reference/decomposition.md`: planned at the gate unless the operator said `auto`, dispatched on the high row, with the acceptance gate declared at its boundary. This file adds three things: what that `DECOMP` cuts, the outline stop after it, and how a chapter's `plan.md` is later drawn from the outline. The writing rules are the knowledge plugin's `skills/explain/SKILL.md`, cited by section and never copied here.
 
 ## Before you plan it
 
@@ -48,7 +48,7 @@ An explain phase is one whose `intent.md` carries an `## Explain` section, writt
      --kind implementation --risk low --order <10k> [--depends-on P<N>.S<j>]
    ```
 
-   - **Risk.** `--risk low` is the mid tier, and the norm for a chapter. Rate `high` only for a named trigger, written on the chapter's `high:` line: a chapter on a core algorithm or invariant, where a subtly wrong explanation would mislead the reader about how the system really behaves.
+   - **Risk.** `--risk low` is the mid row, and the norm for a chapter. Rate `high` only for a named trigger, written on the chapter's `high:` line: a chapter on a core algorithm or invariant, where a subtly wrong explanation would mislead the reader about how the system really behaves.
    - **Bare folders.** Never write a chapter's `plan.md`.
    - **No translation slices.** A translation names the published original's version (§5's `translated_from`), so translations follow the accepted book (`reference/explain-review.md`).
 4. **Update `phase.md`:**

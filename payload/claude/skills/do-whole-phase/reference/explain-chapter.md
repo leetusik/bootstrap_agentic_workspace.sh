@@ -104,7 +104,7 @@ executor's model) is a later option, left for the bootstrap to decide.
   critic span is metered from the transcripts, never recorded.
 - A usage limit in any span is resumed or re-dispatched per `reference/dispatch.md` (5); it is never a
   verdict.
-- An escalation in span 1 or span 3 re-dispatches that span to `slice-executor-high` from disk. If span 1
+- An escalation in span 1 or span 3 re-dispatches that span on the high row from disk. If span 1
   is redone on `opus`, the critic runs on `sonnet`.
 - Only after span 3 returns `done`: `finish-slice`, then **one commit** carrying the draft, its assets,
   the critique, `result.md` and `phase.md`. Nothing is published: the phase review publishes every chapter.

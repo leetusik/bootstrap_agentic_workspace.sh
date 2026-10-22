@@ -211,7 +211,7 @@ under `workflow/` instead and the skills and agents untracked in the host's `.cl
 
 - [`CLAUDE.md`](payload/contract.md) — the compact routing contract every agent session works under.
 - [`scripts/workflow.py`](payload/scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` — the 17 Agent Skills (`/slash` commands), the two risk-routed `slice-executor` tier subagents (`.claude/agents/slice-executor-{mid,high}.md`, dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ xhigh), the `design-critic` that judges each draft (the `critic` row, sonnet @ xhigh; in judge mode the `judge` row, opus @ xhigh), the `explain-critic` that judges one drafted chapter of an explain phase (no row: opus @ xhigh from its own frontmatter), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
+- `.claude/` — the 17 Agent Skills (`/slash` commands), the risk-routed `slice-executor` subagent (`.claude/agents/slice-executor.md`, one file dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ xhigh), the `design-critic` that judges each draft (the `critic` row, sonnet @ xhigh; in judge mode the `judge` row, opus @ xhigh), the `explain-critic` that judges one drafted chapter of an explain phase (no row: opus @ xhigh from its own frontmatter), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - [`works/`](works/) — the state machine, starting with **no phases**: a `deferred/` area,
@@ -473,20 +473,20 @@ commands in Claude Code:
 > `claude plugin update knowledge@knowledge`). The review never writes an explainer; it only reports
 > `explain: not written — run /knowledge:explain P<N> for one chapter, or create an explain phase for a book`.
 
-The orchestrator delegates the heavy lifting to a **`slice-executor`** subagent in one of two
-capability tiers, picked by each slice's risk. `slice-executor-mid` is the default tier (since v46):
+The orchestrator delegates the heavy lifting to a **`slice-executor`** subagent, on a row
+picked by each slice's risk. The mid row is the default (since v46):
 implementation, `fix`, `docs` and `qa` slices rated `risk: low`, real code writing and multi-file
-changes included. `slice-executor-high` takes decomposition, `research`, the phase review (which it
+changes included. The high row takes decomposition, `research`, the phase review (which it
 runs in a fresh context that never edits source, validating the phase and — only on a pass —
 verifying its doc-impact list and writing its two gate sections, leaving the docs themselves to a
 docs phase; a `changes_requested` or `blocked` verdict stops there and hands the findings back), a
 slice rated `risk: high` for a named trigger (open design, a core invariant, an unlocated root
 cause, a wide blast radius), and every second attempt after mid. Risk is two values, `low` and `high`, defaulting to `high` — only an exact `low` routes down, so an
-unset or unrecognized value always lands on the thorough tier, and the decomposition rates every
+unset or unrecognized value always lands on the high row, and the decomposition rates every
 slice explicitly. When the mid executor needs a design decision the plan did not make, hits a
 trigger its rating missed, or fails the same validation twice, it returns an `escalate` verdict; the
-orchestrator folds the findings into the plan and re-dispatches to `slice-executor-high` (once per
-slice), and a review finding against mid-tier work gets a `high` fix slice — so most slices run on
+orchestrator folds the findings into the plan and re-dispatches on the high row (once per
+slice), and a review finding against mid- or cheap-row work gets a `high` fix slice — so most slices run on
 sonnet while opus takes what is genuinely hard or has already failed once. Model and effort come from one engine-owned **route table**, resolved per slice at dispatch time:
 `high` (opus @ xhigh — review, decomposition, the mockup span, any risk but `low`, every second
 attempt), `research` (opus @ xhigh), `mid` (sonnet @ xhigh — implementation and fix rated `low`),
@@ -617,7 +617,7 @@ parallelism it never used. The mechanism itself is unchanged.)
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
 │   ├── skills/                    # 17 Agent Skills (/slash commands)
-│   ├── agents/                    # slice-executor tiers mid/high + design-drafter + design-critic + explain-critic (models from executors.toml)
+│   ├── agents/                    # slice-executor + design-drafter + design-critic + explain-critic (models from executors.toml)
 │   └── settings.json              # pre-approves workflow.py; denies force-push & rm -rf
 └── .github/
     └── workflows/

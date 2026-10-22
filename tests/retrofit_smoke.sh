@@ -279,10 +279,10 @@ for name in ("do-next-slice", "do-whole-phase"):
     for ln in body.splitlines():
         if "works/backlog.md" in ln:
             assert "next" in ln and "pointer" in ln, (name, ln)
-    # v46: mid is the default tier; high needs a named trigger, and a fix to
-    # mid-tier work goes high. The one-line/few-line scope for mid is retired.
+    # v46: mid is the default row; high needs a named trigger, and a fix to
+    # mid- or cheap-row work goes high. The one-line/few-line scope for mid is retired.
     for required in ("**Mid is the default (v46):**", "--kind fix --risk <low|high>`",
-                     "work the mid tier got wrong never goes back to it"):
+                     "work a mid or cheap row got wrong never goes back to it"):
         assert required in body, (name, required)
     for gone in ("one-line/few-line", "one-line, or few-line"):
         assert gone not in body, (name, gone)
@@ -795,7 +795,7 @@ for required in (
     # dispatch to two different agents and the round's lifecycle stays inline.
     "The design subagent drafts, the operator decides:",
     # P36.S6: a wave's drafters at once, the critique to design-critic, and one publisher.
-    "dispatching its drafting to `design-drafter` (one per job, a wave's at once), its critique to `design-critic` when the job's level asks, and its mockup build (only on request) to `slice-executor-high`",
+    "dispatching its drafting to `design-drafter` (one per job, a wave's at once), its critique to `design-critic` when the job's level asks, and its mockup build (only on request) to `slice-executor` on the high row",
     "the round's lifecycle and the operator's words stay inline, and only the main thread publishes",
     "executors never get `Artifact`",
     "`--kind` is a **closed set**",
