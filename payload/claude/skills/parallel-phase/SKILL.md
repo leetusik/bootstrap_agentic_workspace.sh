@@ -205,8 +205,8 @@ So on a parallel branch the review executor:
 
 - validates every slice together and judges the phase as usual;
 - **verifies** that the running "Doc impact" list in `phase.md` covers every durable-truth change the
-  phase made (that list is the input the post-merge step consolidates from — an incomplete list is a
-  review finding, not a detail);
+  phase made (that list is the input the post-merge step consolidates from), appending any missing
+  line itself and reporting it as `doc_impact_added:` (a gap is never a finding on its own);
 - runs **no** `doc-new-version` and no `rebuild-docs` — including the two named gate sections a
   default-stream review may write (`## Regression Checklist`, `## Operator Runtime`) — and reports
   `doc_versions: none — deferred to post-merge consolidation (parallel mode)`;
