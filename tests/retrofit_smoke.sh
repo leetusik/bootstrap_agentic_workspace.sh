@@ -2818,6 +2818,11 @@ if printf '%s\n' "$wt_next" | grep -q "^stream=phase/P1-" && ! printf '%s\n' "$m
     && grep -A8 '^## Streams' "$NW/works/backlog.md" | grep -E '^\|' | grep -F 'P1' | grep -qF 'feat/side'; then
   ok "the worktree's next prints stream=phase/P1-..., the main checkout skips P1, and backlog.md's ## Streams row carries P1 with feat/side"
 else bad "stream claim or Streams row wrong -- worktree: $wt_next -- main: $main_next -- $(grep -A8 '^## Streams' "$NW/works/backlog.md")"; fi
+# v67: a state change in the worktree refreshes the main checkout's backlog, read from the worktree's files (uncommitted).
+( cd "$HWT" && python3 workflow/scripts/workflow.py set-slice-status P1.DECOMP in_progress >/dev/null 2>&1 )
+grep -F '`P1.DECOMP`' "$NW/works/backlog.md" | grep -qF '`in_progress`' && grep -qF '_Read live from its worktree `' "$NW/works/backlog.md" \
+  && ok "a slice status changed in the worktree shows in the main checkout's backlog, with nothing run there" \
+  || bad "the main backlog did not follow the worktree -- $(grep -F 'P1.' "$NW/works/backlog.md")"
 hook_out=$(printf '{"session_id":"t","source":"compact","cwd":"%s"}' "$HWT" | python3 "$NH/workflow/scripts/workflow.py" compact-resume 2>&1)
 printf '%s\n' "$hook_out" | grep -q "^stream=phase/P1-" && printf '%s\n' "$hook_out" | grep -q "^pointer: phase P1 " \
   && ok "compact-resume replayed from the main checkout with the worktree's cwd redirects to the worktree's own stream" \

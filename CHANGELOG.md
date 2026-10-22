@@ -9,6 +9,25 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v67 — 2026-10-22
+
+- **The default backlog follows a worktree phase live.** Every state change in a phase worktree
+  (the same rebuild `next`, `start-slice`, `finish-slice` and the rest end in) now reruns the
+  default checkout's **own** engine `rebuild`, so its `works/backlog.md` shows the phase's current
+  slices whether or not anything runs on the default stream. That rebuild reads an in-flight
+  phase from its worktree's files while the worktree is on disk, uncommitted progress included,
+  then from its branch, then `origin/<branch>`, else the local copy. The `## Streams` Source cell
+  says `worktree`, and the phase's slice table says `_Read live from its worktree `<path>`, where
+  this phase advances._`. The refresh is best effort and silent: a missing engine, a failure or a
+  60-second timeout never blocks the worktree. The default checkout's regenerated files stay
+  uncommitted until its next commit, and the merge step commits them first, as it already did
+  for a phase created there since the stamp.
+
+- **Migration notes.** None. A worktree started before this update refreshes the default
+  checkout once its own engine is v67 (merge the default branch into the phase branch, or wait
+  for the phase's next sync); until then the default checkout's own `next` or `rebuild` still
+  reads it live from its files.
+
 ## v66 — 2026-10-22
 
 - **The route table runs at xhigh.** Every Opus row is now **opus @ xhigh**: `high` and `research`
