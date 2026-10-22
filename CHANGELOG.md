@@ -34,23 +34,25 @@ history.
   A barrier running alone prints none of them, so a running `REVIEW` or an open acceptance gate
   reads as before. `start-slice` warns, never refuses: it prints one `warning:` line and still starts
   a declared slice whose dependency is not done, or a barrier beside running slices. After a
-  compaction the run first finds each finished slice whose host commit still waits (`git status`
-  against its `files_changed`, each dirty path belonging to the last slice that lists it, so a
-  committed slice never reads as waiting) and starts no barrier before those commits are in, then
-  waits for every running span, never re-dispatches one, finishes each slice whose `result.md`
-  exists, and starts the ready set only while no stop is on disk. A stop
+  compaction the run first commits each finished slice whose commit still waits, read from disk:
+  a slice's workflow state commits with its host commit, or right after it in a nested pair, so a
+  finished slice whose folder is still uncommitted is one, and a committed slice never reads as
+  waiting. It starts no barrier before those commits are in, then waits for every running span,
+  never re-dispatches one, finishes each slice whose `result.md` exists, and starts the ready set
+  only while no stop is on disk. A stop
   anywhere (`pending`, `blocked`, a failed high-row return) empties the ready set; the slices already
   running finish and are committed, nothing new starts, and the run stops.
 - **The wave protocol, in a new `do-whole-phase/reference/wave.md`.** A wave slice's `plan.md` carries
-  a `## Wave` section; its executor writes no `phase.md` (it returns a `notebook` field in its
-  verdict), runs no engine command that writes, edits only its declared set, and lists whole-tree
-  checks it left out as `deferred: whole-tree` for the review. Commits are one per slice, rolling
-  by default. A **join-rebuilt artifact** (a build output regenerated from many slices' sources, such
-  as this repo's `bootstrap_agentic_workspace.sh`) is the one exception to disjoint sets: wave
-  executors never rebuild it; every host commit waits until the running set drains, then the
-  orchestrator rebuilds once and commits the artifact with the last slice. A slice that shares a
-  file with a finished slice whose host commit still waits starts only once that commit is in, so
-  each commit holds only its own slice's edits.
+  a `## Wave` section (its set, its siblings' sets, and the files of each finished slice whose commit
+  still waits); its executor writes no `phase.md` (it returns a `notebook` field in its verdict),
+  runs no engine command that writes, edits only its declared set (any other file is a
+  `needs_operator`), and lists whole-tree checks it left out as `deferred: whole-tree` for the
+  review. Commits are one per slice, rolling by default. A **join-rebuilt artifact** (a build
+  output regenerated from many slices' sources, such as this repo's `bootstrap_agentic_workspace.sh`)
+  is the one exception to disjoint sets: wave executors never rebuild it; every commit waits until
+  the running set drains, then the orchestrator rebuilds once and commits the artifact with the
+  last slice. A slice that shares a file with a finished slice whose commit still waits starts only
+  once that commit is in, so each commit holds only its own slice's edits.
 - **The contract reverses "never fan out slices".** It now says a phase's declared, independent slices
   may run at once (`do-whole-phase`'s wave), all others alone, and the phase stays the unit of
   *worktree* parallelism (`parallel-phase` reverses its sequential line and its slice-level guardrail:

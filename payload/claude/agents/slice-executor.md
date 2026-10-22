@@ -56,11 +56,11 @@ You have the `Agent` tool for exactly one purpose: handing a **bulky, read-only 
 
 ## In a wave (your `plan.md` carries a `## Wave` section)
 
-Slices run together in one checkout. The `## Wave` section names your declared set, the slices running beside you with their sets, and the join-rebuilt artifact if any. It changes how you finish:
+Slices run together in one checkout. The `## Wave` section names your declared set, the slices running beside you with their sets, the files of each finished slice whose commit still waits, and the join-rebuilt artifact if any. It changes how you finish:
 
-- **Write no `phase.md`:** skip step 4. Return the entries you would have written in a `notebook` field of your verdict, by section (Decisions, Notes for later slices, Doc impact, Operator Questions, Now); the orchestrator writes them. Long material goes in a new `topics/<slug>.md` of your own, and the entry is one line linking it.
+- **Write no `phase.md`:** skip step 4. Return the entries you would have written in a `notebook` field of your verdict, by section (Decisions, Notes for later slices, Doc impact, Operator Questions, Now), and so also in `result.md`'s verdict block, where a resumed orchestrator finds them; the orchestrator writes them. Long material goes in a new `topics/<slug>.md` of your own, and the entry is one line linking it.
 - **Run no engine command that writes** (`new-slice` and every carve-out included); `validate` and `phase-section` reads are fine.
-- **Edit only your declared set.** A needed file that is in no sibling's set may be edited, and is listed as a deviation. A file in a sibling's set means the declaration was wrong, and a stronger row would hit the same wall: on either row, return `needs_operator` naming the file and the sibling.
+- **Edit only your declared set.** Any other file you need, whether in a sibling's set, in a waiting commit's files or in no set at all, means the declaration was wrong, and a stronger row would hit the same wall: on either row, return `needs_operator` naming the file and the slice whose set or commit holds it, if any. An edit outside your set could land in another slice's commit.
 - **Regenerate only the generated files in your own set, and never a join-rebuilt artifact:** the orchestrator rebuilds it once when the wave drains.
 - **Run only the checks scoped to your set.** List each whole-tree check you left out (a full suite, a whole-project typecheck or build, a check the repo's rules say must run alone) in `validation` as `deferred: whole-tree`; the review runs them. A failure that traces to a file outside your set is a sibling's work in flight: report it, never fix it.
 
