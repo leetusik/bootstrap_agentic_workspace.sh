@@ -45,11 +45,12 @@ An explain phase is one whose `intent.md` carries an `## Explain` section, writt
 
    ```sh
    python3 scripts/workflow.py new-slice --phase P<N> --slice P<N>.S<k> --name "<key>: <title>" \
-     --kind implementation --risk low --order <10k> [--depends-on P<N>.S<j>]
+     --kind implementation --risk low --order <10k>
    ```
 
    - **Risk.** `--risk low` is the mid row, and the norm for a chapter. Rate `high` only for a named trigger, written on the chapter's `high:` line: a chapter on a core algorithm or invariant, where a subtly wrong explanation would mislead the reader about how the system really behaves.
    - **Bare folders.** Never write a chapter's `plan.md`.
+   - **Undeclared.** Cut chapters without `--depends-on`: that flag declares a slice, and an explain phase runs one slice at a time.
    - **No translation slices.** A translation names the published original's version (§5's `translated_from`), so translations follow the accepted book (`reference/explain-review.md`).
 4. **Update `phase.md`:**
    - `## Decisions`: one line for the book (placement, project, chapter count, `book/outline.md`);

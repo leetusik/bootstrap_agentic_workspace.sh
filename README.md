@@ -241,6 +241,10 @@ git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하�
 자동 실행이 기본입니다. `gate`(slice마다 계획을 승인)와 `plan only`(계획만 쓰고 실행 전에
 멈춤)는 명령 뒤에 덧붙이는 선택 사항입니다.
 
+서로 의존하지 않고 파일이 겹치지 않는다고 DECOMP가 선언한 slice들은 `/do-whole-phase`가 같은
+checkout에서 한꺼번에 실행합니다. 선언이 없는 phase는 지금처럼 slice를 하나씩 순서대로 실행하고,
+`/do-next-slice`는 언제나 slice 하나만 실행합니다.
+
 ### 시각 디자인 작업: job마다 여러분이 승인
 
 제품의 화면 모양을 바꾸는 일이면 `design-cowork` 스킬이 자동으로 작동합니다. **에이전트는
@@ -416,8 +420,9 @@ worktree로 옮겨갑니다. (at-root 설치와 nested 설치 모두에서 됩�
 
 그러면 에이전트가 `phase/P<N>-<slug>` branch와 `.claude/worktrees/P<N>-<slug>` worktree를 만들고,
 **같은 세션 안에서** 그 worktree로 들어가 phase를 끝까지 진행합니다. `main`은 그동안 원래 하던
-일을 그대로 계속하고, 각 checkout은 자기 stream의 phase만 봅니다. 한 phase 안의 slice는 여전히
-순서대로만 진행됩니다. 에이전트가 먼저 worktree를 만드는 일은 없습니다 — 다른 phase가 진행 중일
+일을 그대로 계속하고, 각 checkout은 자기 stream의 phase만 봅니다. worktree로 나뉘는 단위는
+phase입니다(한 phase 안에서는 DECOMP가 독립이라고 선언한 slice끼리만 그 phase의 checkout에서 함께
+실행됩니다). 에이전트가 먼저 worktree를 만드는 일은 없습니다 — 다른 phase가 진행 중일
 때 `next`가 "이 phase는 병렬로 돌릴 수 있습니다"라고 **제안**할 뿐이고, 그 제안을 실행할지는
 여러분이 정합니다.
 

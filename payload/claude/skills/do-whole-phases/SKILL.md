@@ -19,6 +19,8 @@ The mode word applies to every phase in the run (`.claude/skills/do-whole-phase/
 
 `run-phases` is the run's pointer. **Run it at the start, after every slice's commit and at each phase boundary**, and work its `target_slice` in its `target_phase` by `do-whole-phase`'s loop (plan, dispatch, verdict, `finish-slice`, `validate`, commit). Its lines: `run=` (the normalized list), `stream=`, `queue=`, `skipped=<P> reason=…`, `parked=<P>`, then one ending: a target, a `halt=` or `run_done=yes`. `target_slice=none`: the phase has no open slice and needs only its review verdict recorded (`.claude/skills/do-whole-phase/reference/review.md`).
 
+**Several slices at once.** For a phase whose `DECOMP` declared its slices, `run-phases` also prints `ready_slices=` and `running_slices=` (after `next_slice=`, and after `halt_reason=` on a halt). When `ready_slices=` lists more than one id, work all of them together by `.claude/skills/do-whole-phase/reference/wave.md` (plan, dispatch, finish, commit and stop), re-running `run-phases` after each slice's commit; `target_slice=` is then only the plain pointer. A `halt=` while spans still run: wait for each, finish and commit it by that file, then report every stop and STOP.
+
 `next` still runs for its other lines (the nested-convention gate, the doc debt, `parallel_phases_elsewhere`); relay its `parallel_start_hint`, never act on it. Its `WAITING ON OPERATOR` block for a phase `run-phases` lists as `parked=` is not the run's stop.
 
 **The two overrides, and only these:**
@@ -38,7 +40,7 @@ A run stays on the stream it starts on. A phase running in another worktree is s
 
 ## After a compaction mid-run
 
-Re-run `run-phases` with the `run=` list first (`all` means no arguments). **Its target wins over the resume card's pointer for the whole run**, even when the run leaves out the plain pointer's phase; the card's `run:` line under a parked gate's `stop:` line says the same, and outside a run that stop holds. Keep the mode word, and read `.claude/skills/do-whole-phase/SKILL.md` again if its loop is gone from your context. A span already running on the target slice: wait for its completion notification, never re-dispatch.
+Re-run `run-phases` with the `run=` list first (`all` means no arguments). **Its target wins over the resume card's pointer for the whole run**, even when the run leaves out the plain pointer's phase; the card's `run:` line under a parked gate's `stop:` line says the same, and outside a run that stop holds. Keep the mode word, and read `.claude/skills/do-whole-phase/SKILL.md` again if its loop is gone from your context. A span already running on the target phase's slices (the card's `wave:` line lists them): wait for each completion notification, never re-dispatch.
 
 ## The review boundary in a run
 
