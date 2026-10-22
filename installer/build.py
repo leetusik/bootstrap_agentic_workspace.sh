@@ -54,8 +54,7 @@ EXPECTED_SKILL_COUNT = 17
 FIXED_LIVE_FILES = [
     "scripts/workflow.py",
     ".claude/settings.json",
-    ".claude/agents/slice-executor-mid.md",
-    ".claude/agents/slice-executor-high.md",
+    ".claude/agents/slice-executor.md",
     ".claude/agents/design-drafter.md",
     ".claude/agents/design-critic.md",
     ".claude/agents/explain-critic.md",
