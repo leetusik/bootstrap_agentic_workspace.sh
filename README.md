@@ -97,7 +97,10 @@ sh /path/to/bootstrap_agentic_workspace.sh . --update             # 실제 적�
 갱신합니다. 어떤 레이아웃이든 같은 명령이고 `--nested`도 `--at-root`도 필요 없습니다. nested
 설치에서는 호스트 저장소의 루트에서 실행하세요. 두 레이아웃이 한 디렉터리에 함께 있어 감지가
 모호하거나, 붙인 플래그가 감지된 레이아웃과 어긋나면 아무것도 쓰지 않고 멈춥니다. 이미 설치된
-at-root 워크스페이스는 마이그레이션 없이 그대로 at-root로 갱신됩니다.
+at-root 워크스페이스는 마이그레이션 없이 그대로 at-root로 갱신됩니다. 반대로 저장소 하나짜리
+nested 설치는 `--to-multi-repo <repo>`로 저장소 여러 개를 맡는 멀티 저장소 호스트로 바꿀 수
+있습니다([한 호스트에 저장소 여러 개](#한-호스트에-저장소-여러-개) 참고). 이 변환은 nested 설치에만
+되고, at-root 설치는 변환되지 않습니다.
 
 에이전트에게는 `/update-workspace`라고 입력하면 됩니다.
 업데이트는 기존 `executors.toml`을 보존하지만 생성된 `slice-executor` 에이전트 파일은 최신
@@ -133,8 +136,10 @@ sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo
 ```
 
 추가 파일이 있는데 git 저장소가 아닌 디렉터리는 아무것도 쓰지 않고 거부합니다(직접 `git init`한
-뒤 다시 실행하거나 `--at-root`를 쓰세요). 다른 저장소의 work tree 안에 있는 새 디렉터리도
-거부합니다. 그 저장소의 루트를 지정하거나, 그 디렉터리에서 먼저 `git init`한 뒤 다시 실행하세요.
+뒤 다시 실행하거나 `--at-root`를 쓰세요). 다만 git 저장소만 들어 있는 폴더는 거부하지 않고 멀티
+저장소 호스트로 설치합니다([한 호스트에 저장소 여러 개](#한-호스트에-저장소-여러-개) 참고). 다른
+저장소의 work tree 안에 있는 새 디렉터리도 거부합니다. 그 저장소의 루트를 지정하거나, 그
+디렉터리에서 먼저 `git init`한 뒤 다시 실행하세요.
 이미 at-root 워크스페이스가 있는 디렉터리에 옵션 없이 설치해도 거부하며(`--update`를 쓰세요),
 nested 설치의 `workflow/` 디렉터리 자체에서 옵션 없는 설치나 `--update`를 실행하는 것도
 거부합니다(호스트 루트에서 실행하세요).
@@ -218,6 +223,54 @@ git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하�
   대한 내용이 들어 있습니다.
 - 먼저 회사의 AI 도구 사용 정책을 확인하세요. 기본 설치(nested)는 내 사용을 비공개로 유지해
   줄 뿐, 허용해 주지는 않습니다.
+
+### 한 호스트에 저장소 여러 개
+
+하나의 작업이 저장소 여러 개에 걸쳐 있다면(백엔드, 프런트엔드, 배포 저장소처럼) 저장소 하나에
+설치하지 말고, 저장소들이 들어 있는 폴더에 설치하세요.
+
+```sh
+sh /path/to/bootstrap_agentic_workspace.sh /path/to/저장소들이-든-폴더
+```
+
+git 저장소가 아니면서 바로 아래에 git 저장소만 들어 있는 폴더(저장소 하나뿐이어도 됩니다)는
+**멀티 저장소 호스트**로 설치됩니다. 설치 프로그램이 그 폴더를 `git init`하고 빈 커밋 하나,
+`chore: start the host history`를 만듭니다(`new-phase`와 `parallel-start`가 기준으로 삼는
+커밋입니다). 저장소마다 호스트의 `.git/info/exclude`에 `/<저장소>/` 줄을 넣어 가리고 저장소
+목록(registry)에 기록합니다. `python3 workflow/scripts/workflow.py nested-repos`로 볼 수 있고,
+저장소별 규칙 파일(`AGENTS.md` 등)도 함께 나옵니다. 어느 저장소에도 아무것도 쓰지 않으며, 호스트
+폴더는 tracked 파일을 하나도 두지 않습니다. git에 사용자 정보가 없으면 `git init`은 그대로 두고
+커밋은 만들지 않은 채 종료 코드 0으로 끝나며, 대신 실행할 명령 두 개를 알려 줍니다.
+`git config --global user.name "<이름>"`과 `user.email "<you@example.com>"`, 그다음
+`git -C <폴더> commit --allow-empty -m "chore: start the host history"`입니다.
+
+저장소마다 커밋, branch, PR 컨벤션이 **따로** 있습니다. 하나씩 확정하세요:
+`nested-convention --confirm --repo <이름> --text "<컨벤션>" --trailers allowed|forbidden`
+(`--repo`를 빼면 모든 저장소에 적용되는 규칙을 기록합니다). 확정하기 전에는 `next`가
+`repo_conventions=` 줄에 아직 UNCONFIRMED인 저장소를 보여 줍니다. 그 뒤 slice는 바뀐 저장소마다
+커밋을 하나씩(`git -C <저장소> ...`, 그 저장소의 컨벤션대로), 그리고 `workflow/`에 하나 만듭니다.
+`phase-scope`와 리뷰는 저장소별 범위를 읽고, 리뷰는 저장소마다 커밋, branch, PR을 읽기만 하는
+팀 규칙 점검(team-rules check)도 합니다. phase worktree는 **세트**가 됩니다. 호스트 worktree,
+`workflow/` worktree, 그 phase가 바꾸는 저장소마다 worktree 하나입니다
+([phase별 worktree](#phase별-worktree-요청할-때만) 참고).
+
+**이미 저장소 하나에 설치했다면?** 그 자리에서 변환하세요.
+
+```sh
+sh /path/to/bootstrap_agentic_workspace.sh --to-multi-repo /path/to/repo --dry-run   # 모든 단계 또는 거부 사유만 보여 주고 아무것도 쓰지 않습니다
+sh /path/to/bootstrap_agentic_workspace.sh --to-multi-repo /path/to/repo
+```
+
+`repo/workflow/`의 중첩 저장소가 repo의 부모 폴더로 올라가고, 그 폴더가 멀티 저장소 호스트가
+됩니다. 폴더 안의 다른 저장소들도 목록에 들어갑니다. 아무것도 쓰기 전에 다음을 거부합니다. 이
+버전이 아닌 설치, 커밋하지 않은 변경이 있는 중첩 저장소, 진행 중인 phase worktree, 깨끗하지 않은
+부모 폴더입니다. `--dry-run`을 먼저 실행하면 거부 사유를 한 번에 볼 수 있습니다. 옛 저장소의
+컨벤션은 그 저장소 몫이 되고, phase에 기록된 기준 커밋은 그 저장소로 옮겨져 `phase-scope`가
+이전과 같은 범위를 읽습니다. 옛 저장소에서는 설치 프로그램이 쓰는 내용과 바이트까지 같은
+워크스페이스 파일만 지우고, 직접 고친 파일은 남겨 두고 목록으로 알려 줍니다. 실행이 끝나면 만들어야
+할 nested 커밋, 확정할 컨벤션, 정확한 롤백 방법(그 커밋 revert, `workflow/`를 되돌려 옮기기,
+저장소 `--update`)을 알려 줍니다. 이후에는 Claude Code를 부모 폴더에서 시작하세요. 이 변환은 저장소
+하나짜리 **nested** 설치에만 됩니다. at-root 설치는 변환되지 않습니다.
 
 ## 사용 예시
 
@@ -450,6 +503,17 @@ branch에 합치기)은 기록해 둔 관례를 따르며, 워크스페이스는
 merge도 하지 않습니다. 정리(`parallel-teardown`)는 호스트 branch를 남겨 둡니다(엔진이 만든 빈
 branch만 지웁니다). worktree는 파일만 격리하므로 docker 컨테이너, 포트, 로컬 DB와 캐시는 stream끼리
 공유된다는 점은 직접 조율하세요.
+
+**멀티 저장소 호스트에서는**([한 호스트에 저장소 여러 개](#한-호스트에-저장소-여러-개)) 한 쌍이
+**세트**가 됩니다. 같은 worktree 두 개에 더해, 그 phase가 바꾸는 저장소마다 `<호스트 worktree>/<저장소>/`에
+worktree가 하나씩 생깁니다. `parallel-start <P> --host-branch <이름> --repo <이름>=<branch>`가
+만들고(반복할 수 있으며, 저장소의 branch를 다른 branch 위에 쌓으려면 `--repo-base <이름>=<ref>`),
+세트 안에서 실행하는 `parallel-add-repo <P> --repo <이름>=<branch>`가 진행 중에 하나를 더합니다.
+저장소별 branch 이름은 그 저장소의 관례를 따르고 확정은 여러분이 합니다. `parallel-teardown`은
+저장소 worktree를 먼저, 그다음 `workflow/`, 마지막에 호스트 worktree를 지웁니다. 스탬프를 찍지
+않은 git worktree가 호스트 worktree 안에 있으면 `--discard-ignored`를 붙여도 항상 거부하므로,
+branch를 통합한 뒤 직접 지우거나 `parallel-add-repo ... --adopt`로 세트에 편입하세요. 워크스페이스는
+어떤 저장소의 기본 branch에도 fetch, push, PR 열기, merge를 하지 않습니다.
 
 자세한 규칙과 절차는 [`parallel-phase`](payload/claude/skills/parallel-phase/SKILL.md) 스킬(`/parallel-phase`)과
 [English README](README.en.md#phase-worktrees-on-request)에 있습니다.
