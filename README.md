@@ -437,7 +437,8 @@ worktree에서 진행한 phase의 리뷰가 통과하면 에이전트가 통합�
 CI → merge). 나머지 문서 버전 작업은 평소처럼 나중에 docs phase에서 한 번에 처리합니다.
 어느 checkout에서든 `parallel-status`로 모든 stream의 진행 상황을 볼 수 있고, `works/backlog.md`의
 `## Streams` 표에는 기본 stream과 진행 중인 모든 worktree phase가 각자의 branch에서 바로 읽은
-상태로 나열됩니다(nested에서는 호스트 branch 열이 함께 나옵니다).
+상태로 나열됩니다(nested에서는 호스트 branch 열이 함께 나옵니다). 그 phase의 `## Active Phases`
+행과 slice 표도 같은 branch에서 읽으므로, merge 전에도 나눈 slice가 그대로 보입니다.
 
 **nested 설치에서는.** `parallel-start <P> --host-branch <이름> [--host-base <ref>]`가 한 쌍을
 만듭니다. `.claude/worktrees/` 아래의 호스트 worktree(여러분의 호스트 branch)와, 그 안의

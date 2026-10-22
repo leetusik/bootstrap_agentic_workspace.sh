@@ -9,6 +9,19 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v63 — 2026-10-22
+
+- **`backlog.md` shows a worktree phase's slices before the merge.** The `## Streams` table
+  already read each in-flight worktree phase from its branch, but that phase's `## Active Phases`
+  row and its slice table showed this checkout's copy, which stands still until the merge, so the
+  slices its `DECOMP` cut on the branch were invisible from the main checkout. Both now come from
+  the same branch read, under a line naming the branch. A worktree checkout shows the default
+  stream's phase the same way, read from the base branch. With no phase in flight elsewhere,
+  nothing changes and no git call is made.
+
+- **Migration notes.** Nothing to run: the next command that rebuilds `works/backlog.md` writes
+  the new tables.
+
 ## v62 — 2026-10-21
 
 - **The cheap route runs Haiku 5.5 at `xhigh`.** The opt-in `cheap` row (`docs` and `qa`

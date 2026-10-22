@@ -172,8 +172,9 @@ What *is* stream-scoped:
   merge — that is what `parallel-status` is for.
 
 `works/backlog.md`'s `## Streams` table lists the default stream and every in-flight worktree phase,
-read live from its branch (with the host branch in a nested install); `parallel-status` gives the
-detail.
+read live from its branch (with the host branch in a nested install). The same read fills that
+phase's `## Active Phases` row and slice table, so the slices it cut show before the merge;
+`parallel-status` gives the detail.
 
 **A worktree isolates files only.** Docker containers, ports, local databases and caches stay shared,
 so coordinate them across streams.

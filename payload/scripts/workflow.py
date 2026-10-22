@@ -2766,12 +2766,14 @@ def _phase_progress(phase_like: dict, slices: list) -> tuple:
     return (cur or "none", f"{sum(1 for x in slices if x.get('status') == 'done')}/{len(slices)}")
 
 
-def streams_section(phases: list, state: dict) -> list:
+def streams_section(phases: list, state: dict, live=None) -> list:
     """The `## Streams` table for `works/backlog.md` (P35.S7): the default stream plus every stamped
     phase still in flight, each read live from where its slices actually advance.
 
-    A parallel phase's slice progress lives on its own branch, so the stamp-time copy in the
-    `## Active Phases` table stands still until the merge. Rows: this checkout's own stream first
+    A parallel phase's slice progress lives on its own branch, so this checkout's copy of it stands
+    still until the merge. Each phase read from a branch lands in `live` (phase id -> (phase data,
+    slices, ref)), so `rebuild_backlog` renders its `## Active Phases` row and its slice table from
+    the same read. Rows: this checkout's own stream first
     when it is a parallel one (from its working tree), then the `default` row (this checkout's
     pointer on the default stream; on a parallel stream the base branch's pointer, from
     `execution.base_branch`, else the local copy), then one row per other in-flight phase, read
@@ -2832,6 +2834,8 @@ def streams_section(phases: list, state: dict) -> list:
         else:
             if plist is not None:
                 target["slices"] = _slices_at_ref(base, target["id"]) or []
+                if live is not None:
+                    live[target["id"]] = (target, target["slices"], base)
             cur_slice = resolve_current([target])[1]
             _, done = _phase_progress(target, target["slices"])
             add("default", target["id"], target.get("status"), cur_slice or "none", done, None, None, source)
@@ -2846,6 +2850,8 @@ def streams_section(phases: list, state: dict) -> list:
                 found = _phase_json_at_ref(candidate, p["id"])
                 if found is not None:
                     data, slices, source = found, _slices_at_ref(candidate, p["id"]) or [], f"branch {candidate}"
+                    if live is not None:
+                        live[p["id"]] = (data, slices, candidate)
                     break
             branch_gone = not _branch_exists(branch)
             if not branch_gone:
@@ -2871,30 +2877,37 @@ def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
     ]
     if state.get("stream"):  # only in a parallel-phase checkout; absent on the default stream
         lines.append(f"- Stream: `{clean_cell(state['stream'])}` (parallel phase checkout; the pointer above is scoped to it)")
+    live = {}  # phase id -> (phase data, slices, ref) for every phase streams_section read from a branch
     lines += [
         f"- Open deferred jobs: `{index.get('deferred_open_count', 0)}`", "",
-        *streams_section(phases, state),
+        *streams_section(phases, state, live),
         "## Active Phases", "", "| Phase | Status | Review | Name | Current Slice | Path |", "|---|---|---|---|---|---|",
     ]
     if not phases:
         lines.append("| - | - | - | - | - | - |")
     for p in phases:
-        current = next((s["id"] for s in p["slices"] if s.get("status") != "done"), "none")
+        data, slices, _ = live.get(p["id"], (p, p["slices"], None))
+        current = next((s["id"] for s in slices if s.get("status") != "done"), "none")
         name = clean_cell(p.get("name", ""))
-        review = clean_cell(p.get("review", {}).get("status"))
+        review = clean_cell((data.get("review") or {}).get("status"))
         current_cell = f"`{current}`"
         execution = phase_execution(p)
-        if execution:  # runs on its own branch; from another stream the slice state may be behind
+        if execution:  # runs on its own branch; read from it when git could reach it, else this checkout's copy
             current_cell += f" · parallel: `{clean_cell(execution.get('branch'))}`"
         elif phase_pinned(p):  # v42's legacy pin; since v43 the default stream needs no marker
             current_cell += " · pinned: default stream"
-        lines.append(f"| [{status_box(p['status'])}] `{p['id']}` | `{p['status']}` | `{review}` | {name} | {current_cell} | `{p['path']}` |")
+        lines.append(f"| [{status_box(data.get('status'))}] `{p['id']}` | `{data.get('status')}` | `{review}` | {name} | {current_cell} | `{p['path']}` |")
     for p in phases:
-        lines.extend(["", f"## Phase {p['id']}: {p['name']}", "", "| Slice | Status | Name | Kind | Path |", "|---|---|---|---|---|"])
-        for s in p["slices"]:
+        _, slices, ref = live.get(p["id"], (p, p["slices"], None))
+        lines.extend(["", f"## Phase {p['id']}: {p['name']}", ""])
+        if ref:  # its slices advance on another branch: show them as that branch records them
+            lines.extend([f"_Read live from branch `{clean_cell(ref)}`, where this phase advances._", ""])
+        lines.extend(["| Slice | Status | Name | Kind | Path |", "|---|---|---|---|---|"])
+        for s in slices:
             checkbox = status_box(s.get("status"))
             name = clean_cell(s.get("name", ""))
-            lines.append(f"| [{checkbox}] `{s['id']}` | `{s['status']}` | {name} | `{clean_cell(s.get('kind', ''))}` | `{s['path']}` |")
+            path = s.get("path") or f"{p['path']}/slices/{s['id']}"  # slice.json read at a ref carries no path
+            lines.append(f"| [{checkbox}] `{s['id']}` | `{s['status']}` | {name} | `{clean_cell(s.get('kind', ''))}` | `{path}` |")
     lines.append("")
     write_text(WORKS / "backlog.md", "\n".join(lines))
 
@@ -4620,8 +4633,8 @@ def _parallel_verdict_pair(phase_id: str, status, review, slices, consolidation,
 def parallel_status(args: argparse.Namespace) -> None:
     """Read-only cross-stream view: this checkout's pointer plus every parallel phase's real state.
 
-    A parallel phase's slice progress lives on its own branch, so the default stream's
-    `works/backlog.md` stands still until the merge. This reads each phase's truth straight out of
+    A parallel phase's slice progress lives on its own branch, so the default stream's copy of it
+    stands still until the merge (`works/backlog.md` reads it from the branch too). This reads each phase's truth straight out of
     its branch with `git show` / `git ls-tree` -- no checkout switching, no fetching, and (unlike
     every other command here) no rebuild: nothing on disk is written.
     """
