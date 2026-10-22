@@ -144,7 +144,7 @@ nested 설치의 `workflow/` 디렉터리 자체에서 옵션 없는 설치나 `
 
 - `workflow/`: 엔진, `works/`, `docs/`, `executors.toml`, 규칙 문서(`CLAUDE.workspace.md`)가
   들어가는 **중첩 git 저장소**입니다. 호스트와 따로 버전 관리됩니다.
-- 호스트의 `.claude/skills/`, `.claude/agents/`에 들어가는 스킬 17개와 에이전트 6개. 경로는
+- 호스트의 `.claude/skills/`, `.claude/agents/`에 들어가는 스킬 17개와 에이전트 5개. 경로는
   `workflow/`를 가리키도록 바뀌어 있습니다(`python3 workflow/scripts/workflow.py …`).
 - 각 스킬 디렉터리 안의 `.gitignore`(내용은 `*`). 호스트의 `.gitignore`가 `.claude/skills/`를
   다시 포함시키더라도 스킬 디렉터리가 스스로를 가립니다.

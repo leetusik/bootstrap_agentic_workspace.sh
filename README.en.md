@@ -259,7 +259,7 @@ It writes only untracked files, all hidden by the host's `.git/info/exclude` (ne
 
 - `workflow/`: a **nested git repo** holding the engine, `works/`, `docs/`, `executors.toml` and
   the contract (as `CLAUDE.workspace.md`). It is versioned there, separately from the host.
-- the 17 skills and 6 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
+- the 17 skills and 5 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
   path rewritten to reach `workflow/` (`python3 workflow/scripts/workflow.py …`);
 - a `.gitignore` of `*` in each of those skill directories, so a skill directory hides itself
   even where the host's `.gitignore` re-includes `.claude/skills/`;
