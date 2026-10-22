@@ -21,7 +21,8 @@
 # notebook budget/case-drift warnings and the timestamp-free dashboards; v61: phase-section reads and writes
 # one phase.md section, a 40 KB index budget naming the biggest sections), the P41 run-phases invariants
 # (a run's tokens resolve in order and a non-phase token refuses; a run passes a parked acceptance gate and
-# halts at a pending slice while plain `next` still waits there), the v43
+# halts at a pending slice while plain `next` still waits there), the P42 ready-set invariants (an undeclared phase
+# keeps its plain pointer and prints no wave line; a declared slice is never ready before its dependency is done), the v43
 # worktree-on-request invariants (nothing enters a worktree unhinted or unasked; parallel-start
 # on a dirty tree commits only the phase folder plus the regenerated works/ files and cuts a
 # nested .claude/worktrees/ checkout hidden by the repo's info/exclude; parallel-skip and
@@ -2134,6 +2135,26 @@ out=$(rp run-phases P1 P2 P3 2>&1); plain=$(rp next 2>&1)
 printf '%s\n' "$out" | grep -q '^parked=P1 ' && printf '%s\n' "$out" | grep -qx 'halt=P2.DECOMP status=pending' && printf '%s\n' "$out" | grep -qx 'stop_kind=decision' \
   && ! printf '%s\n' "$out" | grep -q '^target_' && printf '%s\n' "$plain" | grep -qx 'waiting_on_operator=P1' \
   && ok "run-phases passes a parked gate and halts at a pending slice, while plain next still waits on the parked phase" || bad "run-phases parking wrong -- $out / $plain"
+
+# ---------------------------------------------------------------------------
+echo "== Test 10d: P42 the ready set -- an undeclared phase keeps its plain pointer, a declared dependency binds =="
+# Same emptied copy of $F as 10c: P1 is undeclared (the pointer, as before); P2 is declared and read through run-phases P2.
+newtmp RSW; cp -R "$F" "$RSW/ws"; SW="$RSW/ws"; rm -rf "$SW/works/phases/active/"*; rs() { ( cd "$SW" && python3 scripts/workflow.py "$@" ); }
+{ for n in 1 2; do rs new-phase --phase "P$n" --name "Ready probe $n" --objective "ready probe" && rs finish-slice "P$n.DECOMP" --outcome cut; done \
+  && rs new-slice --phase P1 --slice P1.S1 --name s1 && rs new-slice --phase P1 --slice P1.S2 --name s2 \
+  && rs new-slice --phase P2 --slice P2.S1 --name s1 --depends-on none && rs new-slice --phase P2 --slice P2.S2 --name s2 --depends-on P2.S1; } >/dev/null 2>&1 \
+  || bad "ready-set probe: setup failed"
+plain=$(rs next 2>&1); card=$(rs next --card 2>&1); run=$(rs run-phases P1 2>&1)
+printf '%s\n' "$plain" | grep -qx 'current_slice=P1.S1' && printf '%s\n' "$run" | grep -qx 'target_slice=P1.S1' \
+  && ! printf '%s\n%s\n%s\n' "$plain" "$card" "$run" | grep -q -e '^ready_slices=' -e '^running_slices=' -e '^wave: ' \
+  && ok "an undeclared phase's ready set is its first open slice alone: next, the card and run-phases print no ready, running or wave line" \
+  || bad "undeclared phase output changed -- $plain / $card / $run"
+r1=$(rs run-phases P2 2>&1); rs start-slice P2.S1 >/dev/null 2>&1; r2=$(rs run-phases P2 2>&1); rs finish-slice P2.S1 --outcome x >/dev/null 2>&1; r3=$(rs run-phases P2 2>&1)
+rs new-slice --phase P2 --slice P2.S0 --name s0 --order 5 --depends-on P2.S2 >/dev/null 2>&1; fwd=$?
+printf '%s\n' "$r1" | grep -qx 'ready_slices=P2.S1' && printf '%s\n' "$r2" | grep -qx 'ready_slices=none' && printf '%s\n' "$r2" | grep -qx 'running_slices=P2.S1' \
+  && printf '%s\n' "$r3" | grep -qx 'ready_slices=P2.S2' && [ "$fwd" -ne 0 ] && [ ! -e "$SW/works/phases/active/P2/slices/P2.S0" ] \
+  && ok "a declared slice is never ready before its dependency is done, and new-slice refuses a dependency not ordered before it" \
+  || bad "declared ready set wrong (fwd rc=$fwd) -- $r1 / $r2 / $r3"
 
 # ---------------------------------------------------------------------------
 echo "== Test 11: v41 phase-scope -- the phase's boundary is read from git, advisory everywhere =="
