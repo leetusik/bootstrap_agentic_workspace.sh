@@ -646,8 +646,14 @@ for required in ("## Gate stages", "`walkthrough`", "`## Operator Runtime`", "`#
                  # the mockup qualifier applies only where the operator asked for one.
                  "(gate section — written at merge)", "a phase in which the operator asked for one",
                  "Re-run the checklist lines inside the boundary",
-                 "an operator-created QA phase, never by a review"):
+                 "an operator-created QA phase, never by a review",
+                 # P42.S4 (v70): a finding is a whole problem class, so one round finds every case.
+                 "**A finding is a problem class, not an instance.**"):
     assert required in review, required
+# P42.S4 (v70): a second failure of the same rules stops for the operator instead of another fix round,
+# in both loops' review references (separate files, so each exact path is read).
+for _rel in ("claude/skills/do-whole-phase/reference/review.md", "claude/skills/do-next-slice/reference/review.md"):
+    assert "**Stop instead of another round.**" in (root / "payload" / _rel).read_text(encoding="utf-8"), _rel
 for gone in ("MCP surface first", "scripted Playwright-style automation",
              # the default is never moved with `aside account use`; the flag is
              # passed per invocation.

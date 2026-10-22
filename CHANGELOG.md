@@ -62,12 +62,24 @@ history.
 - **A workspace that declares nothing is byte-identical to v69.** Every existing slice is undeclared,
   so every existing phase selects, stores and prints exactly as before: no `ready_slices=` line, no
   `wave:` line, `state.json` and the dashboards unchanged.
+- **The review finds every case of a finding at once.** A finding is a problem class, not an
+  instance: the reviewer names the rule that failed, enumerates and tests every case it governs
+  across every file that implements or describes it (states, paths, modes), and reports one finding
+  per class with its failing and passing cases. It proposes one fix slice per class, naming every
+  file of the rule's family and carrying the case list as its acceptance matrix; the orchestrator
+  copies the list into the fix's `plan.md`, and the fix executor proves every case. A re-review
+  round states its number and checks each fix against its case list, its blast radius and the
+  validation suite, reusing earlier results for what no fix touched; a new problem elsewhere is a
+  finding only when earlier rounds could not have seen it. When the same rules fail a second time,
+  the orchestrator cuts no further fix: it stops `pending --stop-kind decision` and asks the
+  operator (a simpler fix, accept and defer, or cut scope). Text only: `review-phase`, both loops'
+  `reference/review.md`, `slice-executor.md`.
 
 - **Migration notes.** Existing phases stay sequential (undeclared, including any v69-era
   `depends_on` list, which was advisory and may be incomplete). New phases' `DECOMP` declares its
   slices from now on, and that is the only way a phase runs several at once. `--update` adds
   `do-whole-phase/reference/wave.md` and the engine's new flag and lines; nothing in a phase's files
-  changes.
+  changes. A phase already in review takes the new review rules from its next round.
 
 ## v69 — 2026-10-22
 
