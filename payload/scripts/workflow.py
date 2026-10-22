@@ -1576,7 +1576,7 @@ def _meter_print(res: dict, rep: dict, dirs: list) -> None:
     means = rep["means"]
     if means["by_route"] or means["by_kind"]:
         print()
-        print("[means] (metered; a DECOMP estimates from these)")
+        print("[means] (metered; a DECOMP estimates time from these)")
         rows = [["route", "spans", "min/span", "$/span"]] + [
             [r, str(v["spans"]), f"{v['min_per_span']:.1f}", f"{v['usd_per_span']:.2f}" + ("+?" if v["unpriced_requests"] else "")]
             for r, v in means["by_route"].items()]
@@ -9504,7 +9504,7 @@ def main(argv=None) -> int:
         p.add_argument(flag, dest=dest, help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_record_dispatch)
 
-    p = sub.add_parser("dispatch-summary", help="Read-only: what a phase really cost -- the main thread beside its subagent spans per slice and per phase (requests, context, output, list-price $, minutes, limit hits, verdicts) metered from Claude Code's transcripts, the means a DECOMP estimates from, then the recorded verdicts; no transcripts found prints one line and the recorded tables")
+    p = sub.add_parser("dispatch-summary", help="Read-only: what a phase really cost -- the main thread beside its subagent spans per slice and per phase (requests, context, output, list-price $, minutes, limit hits, verdicts) metered from Claude Code's transcripts, the means a DECOMP estimates time from, then the recorded verdicts; no transcripts found prints one line and the recorded tables")
     p.add_argument("--phase", help="one phase: its slices, read from the sessions overlapping its slice windows")
     p.add_argument("--slice", help="one slice: its metered rows and its recorded attempts, one per line")
     p.add_argument("--json", action="store_true", help="print everything as one JSON object")

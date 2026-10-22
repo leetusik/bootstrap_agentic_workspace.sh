@@ -1566,6 +1566,11 @@ printf '%s\n' "$mt_out" | grep -qE '^main +- +2 +1\.10M +600 +1\.02 ' && printf 
 printf '%s\n' "$mt_out" | grep -qE '^note=output_floor spans=1/3 \(33%\) main=0/2 ' && printf '%s\n' "$mt_out" | grep -qE '^slice-executor-high +1 +2 +[^ ]+ +≥53 +≥[0-9.]+ ' \
   && ! printf '%s\n' "$mt_out" | grep -E '^(main|design-drafter) ' | grep -q '≥' \
   && ok "dispatch-summary flags a span request that never logged a final usage: the note= count and the ≥ floor on that group only" || bad "dispatch-summary floor note/mark wrong: $mt_out"
+# v66: a DECOMP estimates time, not session-$, and writes a `spends money:` line per slice; the [means] header says so.
+grep -q 'spends money:' "$SRC/claude/skills/do-whole-phase/reference/decomposition.md" && grep -q 'spends money:' "$SRC/claude/skills/do-next-slice/reference/decomposition.md" \
+  && grep -q 'spends money:' "$SRC/claude/agents/slice-executor.md" && ! grep -q '\$ per span' "$SRC/claude/agents/slice-executor.md" \
+  && grep -q 'a DECOMP estimates time from these' "$SRC/scripts/workflow.py" \
+  && ok "a DECOMP estimates time only and writes a per-slice spends-money line (both references, the executor, the [means] header)" || bad "the DECOMP time-only / spends-money wording is missing or a session-\$ estimate remains"
 # v66: one slice-executor runs every slice row, so the meter reads its route from the kind and the model
 # (research by kind, haiku as cheap, the high row's family as high, else mid); an old slice-executor-high
 # span keeps its reading. A second transcript dir on the engine defaults (high opus, mid sonnet).

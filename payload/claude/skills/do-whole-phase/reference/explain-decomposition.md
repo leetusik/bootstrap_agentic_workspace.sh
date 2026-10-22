@@ -6,7 +6,7 @@ An explain phase is one whose `intent.md` carries an `## Explain` section, writt
 
 - **Read `## Explain`.** Check that all eight fields are present (subject, mode, book, lang, reader, depth, project, visibility) and that `visibility` is `private`. A field that is missing or contradicts the rest STOPs you before dispatch: a project the operator says is public, or a subject that does not exist. Set `<P>.DECOMP` `pending` with `--stop-kind decision --on-words "<their answer completes ## Explain, then DECOMP runs>"`, ask by the contract's stop rules, and record the answer in `## Explain`.
 - **Locate the explain skill.** It is the installed plugin's `skills/explain/SKILL.md`; `Glob` `~/.claude/plugins/cache/*/knowledge/*/skills/explain/SKILL.md` if you do not know where. Its plugin version, in the `plugin.json` beside it, must be 0.5.0 or later. If it is missing or older, set `<P>.DECOMP` `pending` with `--stop-kind operator-action`: the operator installs or updates the plugin. Name the skill's path in `plan.md`.
-- **Estimate from the meter**, as `reference/decomposition.md` says: the number of chapters × the metered mean of a chapter slice (three spans: executor, critic, executor), plus the review.
+- **Estimate time from the meter**, as `reference/decomposition.md` says: the number of chapters × the metered span-minutes of a chapter slice (three spans: executor, critic, executor), plus the review; each chapter slice carries its `spends money:` line (normally `no`; a chapter citing paid sources is not spend).
 
 ## What the plan asks the executor to do
 
