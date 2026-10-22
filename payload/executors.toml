@@ -12,20 +12,20 @@
 #   python3 scripts/workflow.py sync-agents
 #
 # The rows (default; what each serves):
-#   high      opus @ high    review, decomposition, the co-work mockup span,
+#   high      opus @ xhigh   review, decomposition, the co-work mockup span,
 #                            any risk but low, every second attempt
 #                            (slice-executor-high)
-#   research  opus @ medium  research slices, by kind (slice-executor-high)
+#   research  opus @ xhigh   research slices, by kind (slice-executor-high)
 #   design    opus @ xhigh   design-drafter (its own agent file); not a slice
 #                            tier: executor-route --drafter
-#   critic    sonnet @ high  design-critic (its own agent file), judging each
+#   critic    sonnet @ xhigh design-critic (its own agent file), judging each
 #                            drafted round: executor-route --critic
-#   judge     fable @ high   design-critic in judge mode, ruling on the items
+#   judge     opus @ xhigh   design-critic in judge mode, ruling on the items
 #                            the critic escalates (alias only): --judge
-#   mid       sonnet @ high  implementation and fix rated low (slice-executor-mid)
+#   mid       sonnet @ xhigh implementation and fix rated low (slice-executor-mid)
 #   cheap     = the mid row  docs and qa rated low; inherits the mid row unless
 #                            overridden (slice-executor-mid)
-#   explore   haiku @ high   read-only lookups (.claude/agents/Explore.md)
+#   explore   haiku @ xhigh  read-only lookups (.claude/agents/Explore.md)
 #
 # Grammar: [claude.<row>] tables holding model = "..." and effort = "...",
 # double-quoted. effort is low, medium, high, xhigh or max, or "" to write no
@@ -33,8 +33,9 @@
 # mid, high, design, critic and explore own an agent file, so they also take a
 # full model id or "inherit"; research, cheap and judge run another row's file,
 # so they take an Agent-tool alias only (opus, sonnet, haiku, fable).
-# Fairness: critic and judge must each be a different model from design's; an
-# equal pair (an alias and its full id count as one) is refused by executor-route.
+# Fairness: the critic must be a different model from design's; an equal pair (an
+# alias and its full id count as one) is refused by executor-route. The judge is
+# exempt and may share the drafter's model.
 #
 # From v52 or earlier: a top-level mode = "..." line is refused since v53 —
 # delete it. flex was xhigh on both tiers; to keep it, set effort = "xhigh"
@@ -61,22 +62,22 @@ effort = "xhigh"
 # The other rows at their defaults: uncomment and edit to override.
 # [claude.high]
 # model = "opus"    # e.g. "fable"
-# effort = "high"
+# effort = "xhigh"
 # [claude.research]
 # model = "opus"
-# effort = "medium"
+# effort = "xhigh"
 # [claude.design]
 # model = "opus"    # design-drafter's own row
 # effort = "xhigh"
 # [claude.critic]
 # model = "sonnet"  # design-critic; never the design row's model
-# effort = "high"
+# effort = "xhigh"
 # [claude.judge]
-# model = "fable"   # alias only; e.g. "opus" when the drafter runs on fable
-# effort = "high"
+# model = "opus"    # alias only; may share the design row's model
+# effort = "xhigh"
 # [claude.mid]
 # model = "sonnet"
-# effort = "high"
+# effort = "xhigh"
 # [claude.explore]
 # model = "haiku"
-# effort = "high"
+# effort = "xhigh"

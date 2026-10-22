@@ -1065,28 +1065,28 @@ skill_tree_ok "$F/.claude/skills" exact \
 [ ! -f "$F/AGENTS.md" ] && [ ! -d "$F/.agents" ] && [ ! -d "$F/.codex" ] \
   && ok "fresh install is Codex-free (no AGENTS.md, no .agents/, no .codex/)" || bad "fresh install still ships Codex machinery"
 [ -f "$F/.claude/agents/slice-executor-mid.md" ] && [ -f "$F/.claude/agents/slice-executor-high.md" ] && ok "fresh install ships the 2 Claude slice-executor tiers" || bad "fresh install missing Claude slice-executor tier(s)"
-grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-mid.md" \
-  && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-high.md" \
+grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-mid.md" \
+  && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-high.md" \
   && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/design-drafter.md" \
   && [ -f "$F/.claude/agents/Explore.md" ] && grep -q '^model: haiku$' "$F/.claude/agents/Explore.md" \
-  && grep -q '^effort: high$' "$F/.claude/agents/Explore.md" && grep -qx 'tools: Read, Grep, Glob' "$F/.claude/agents/Explore.md" \
-  && ok "fresh install follows the route defaults: mid sonnet@high, high opus@high, explore haiku@high" || bad "fresh install agent files do not follow the route defaults"
+  && grep -q '^effort: xhigh$' "$F/.claude/agents/Explore.md" && grep -qx 'tools: Read, Grep, Glob' "$F/.claude/agents/Explore.md" \
+  && ok "fresh install follows the route defaults: mid sonnet@xhigh, high opus@xhigh, explore haiku@xhigh" || bad "fresh install agent files do not follow the route defaults"
 # P26.S2, re-pinned by P36.S8C: the design subagent loads no skill (frontend-design is retired from
 # it, its useful lines carried in its craft), so it ships without the Skill tool, and never DesignSync.
 [ -f "$F/.claude/agents/design-drafter.md" ] && grep -q '^tools: Read, Edit, Write, Glob, Grep, Bash$' "$F/.claude/agents/design-drafter.md" \
   && ! grep -Eq '^tools: (.*, )?Skill(,.*)?$' "$F/.claude/agents/design-drafter.md" \
   && ! grep -q '^tools: .*DesignSync' "$F/.claude/agents/design-drafter.md" \
   && ok "fresh install ships the design-drafter subagent (no Skill tool, no DesignSync)" || bad "fresh install design-drafter missing, still carries Skill, or carries DesignSync"
-# P36.S5B, v61 (P37.S7): the design critic ships on the critic row (sonnet @ high) and can write only its own file: no Edit.
+# P36.S5B, v61 (P37.S7): the design critic ships on the critic row (sonnet @ xhigh) and can write only its own file: no Edit.
 [ -f "$F/.claude/agents/design-critic.md" ] && grep -q '^model: sonnet$' "$F/.claude/agents/design-critic.md" \
-  && grep -q '^effort: high$' "$F/.claude/agents/design-critic.md" && grep -q '^tools: ' "$F/.claude/agents/design-critic.md" \
+  && grep -q '^effort: xhigh$' "$F/.claude/agents/design-critic.md" && grep -q '^tools: ' "$F/.claude/agents/design-critic.md" \
   && ! grep -Eq '^tools: (.*, )?Edit(,.*)?$' "$F/.claude/agents/design-critic.md" \
-  && ok "fresh install ships the design-critic subagent (sonnet@high, no Edit in tools)" || bad "fresh install design-critic missing, off its row defaults, or carries Edit"
-# The explain critic ships as a sixth agent, opus @ high, and writes only its critique file: no Edit.
+  && ok "fresh install ships the design-critic subagent (sonnet@xhigh, no Edit in tools)" || bad "fresh install design-critic missing, off its row defaults, or carries Edit"
+# The explain critic ships as a sixth agent, opus @ xhigh, and writes only its critique file: no Edit.
 [ -f "$F/.claude/agents/explain-critic.md" ] && grep -q '^model: opus$' "$F/.claude/agents/explain-critic.md" \
-  && grep -q '^effort: high$' "$F/.claude/agents/explain-critic.md" && grep -q '^tools: ' "$F/.claude/agents/explain-critic.md" \
+  && grep -q '^effort: xhigh$' "$F/.claude/agents/explain-critic.md" && grep -q '^tools: ' "$F/.claude/agents/explain-critic.md" \
   && ! grep -Eq '^tools: (.*, )?Edit(,.*)?$' "$F/.claude/agents/explain-critic.md" \
-  && ok "fresh install ships the explain-critic subagent (opus@high, no Edit in tools)" || bad "fresh install explain-critic missing, off its frontmatter, or carries Edit"
+  && ok "fresh install ships the explain-critic subagent (opus@xhigh, no Edit in tools)" || bad "fresh install explain-critic missing, off its frontmatter, or carries Edit"
 # v61 (P37.S7): shape pins on the two design agents -- one drafter output (no build-prompt.md bar as legacy), the
 # strict self-check and the state-bar rules in the drafter, the render reuse in the critic.
 D="$F/.claude/agents/design-drafter.md"; C="$F/.claude/agents/design-critic.md"
@@ -1108,8 +1108,8 @@ grep -qx '# \[claude\.cheap\]' "$F/executors.toml" && grep -qx '# model = "haiku
   && ! grep -q '^\[claude\.cheap\]' "$F/executors.toml" && [ "$(grep -c 'cheap-route: begin' "$F/executors.toml")" = "1" ] && [ "$(grep -c 'cheap-route: end' "$F/executors.toml")" = "1" ] \
   && ok "the fresh install's executors.toml seeds the cheap-route block commented out, markers intact" || bad "the seeded executors.toml does not comment out the cheap-route block"
 seed_er=$(cd "$F" && python3 scripts/workflow.py executor-route 2>&1)
-printf '%s\n' "$seed_er" | grep -qE '^cheap +mid +sonnet +high +mid row$' \
-  && ok "a fresh install's cheap row inherits the mid row (sonnet high, source mid row)" || bad "a fresh install's cheap row is not the mid row: $seed_er"
+printf '%s\n' "$seed_er" | grep -qE '^cheap +mid +sonnet +xhigh +mid row$' \
+  && ok "a fresh install's cheap row inherits the mid row (sonnet xhigh, source mid row)" || bad "a fresh install's cheap row is not the mid row: $seed_er"
 newtmp SEEDT
 python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from build import derive_executors_seed; print(derive_executors_seed(open(sys.argv[2]).read()), end="")' "$REPO_ROOT/installer" "$SRC/executors.toml" > "$SEEDT/executors.seed.toml"
 python3 -c 'import sys; L=open(sys.argv[1]).read().split("\n"); b=L.index("# cheap-route: begin"); e=L.index("# cheap-route: end"); L[b+1:e]=[l[2:] if l.startswith("# ") else l for l in L[b+1:e]]; print("\n".join(L), end="")' "$F/executors.toml" > "$SEEDT/executors.uncommented.toml"
@@ -1356,12 +1356,12 @@ PY2
 er() { ( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE python3 scripts/workflow.py executor-route "$@" 2>&1 ); }
 rm -f "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) \
-  && grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-mid.md" \
-  && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: high$' "$F/.claude/agents/slice-executor-high.md" \
+  && grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor-mid.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-mid.md" \
+  && grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor-high.md" \
   && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/design-drafter.md" \
-  && grep -q '^model: haiku$' "$F/.claude/agents/Explore.md" && grep -q '^effort: high$' "$F/.claude/agents/Explore.md" \
-  && grep -q '^model: sonnet$' "$F/.claude/agents/design-critic.md" && grep -q '^effort: high$' "$F/.claude/agents/design-critic.md" \
-  && ok "no executors.toml: sync-agents writes the route defaults (mid sonnet@high, high opus@high, design-drafter opus@xhigh, design-critic sonnet@high, Explore haiku@high)" \
+  && grep -q '^model: haiku$' "$F/.claude/agents/Explore.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/Explore.md" \
+  && grep -q '^model: sonnet$' "$F/.claude/agents/design-critic.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/design-critic.md" \
+  && ok "no executors.toml: sync-agents writes the route defaults (mid sonnet@xhigh, high opus@xhigh, design-drafter opus@xhigh, design-critic sonnet@xhigh, Explore haiku@xhigh)" \
   || bad "the route defaults matrix is wrong"
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: fable$' "$F/.claude/agents/slice-executor-high.md" \
@@ -1393,17 +1393,19 @@ rm -f "$F/executors.toml"
 er_out=$(er)
 [ "$(printf '%s\n' "$er_out" | grep -cE '^(high|research|design|critic|judge|mid|cheap|explore) ')" = "8" ] && printf '%s\n' "$er_out" | grep -qx 'proxy=none' \
   && printf '%s\n' "$er_out" | grep -qE '^design +- +opus +xhigh +default$' \
-  && printf '%s\n' "$er_out" | grep -qE '^critic +- +sonnet +high +default$' && printf '%s\n' "$er_out" | grep -qE '^judge +- +fable +high +default$' \
+  && printf '%s\n' "$er_out" | grep -qE '^critic +- +sonnet +xhigh +default$' && printf '%s\n' "$er_out" | grep -qE '^judge +- +opus +xhigh +default$' \
+  && printf '%s\n' "$er_out" | grep -qE '^high +high +opus +xhigh +default$' && printf '%s\n' "$er_out" | grep -qE '^research +high +opus +xhigh +default$' \
+  && printf '%s\n' "$er_out" | grep -qE '^mid +mid +sonnet +xhigh +default$' && printf '%s\n' "$er_out" | grep -qE '^explore +- +haiku +xhigh +default$' \
   && ! printf '%s\n' "$er_out" | grep -q '^warning=fairness' \
-  && ok "executor-route (bare) prints the eight-row route table (design opus@xhigh, critic sonnet@high, judge fable@high, tier -) and proxy=none" || bad "executor-route bare table wrong: $er_out"
+  && ok "executor-route (bare) prints the eight-row route table (high/research opus@xhigh, design opus@xhigh, critic sonnet@xhigh, judge opus@xhigh on the drafter's model without a fairness warning, mid sonnet@xhigh, explore haiku@xhigh) and proxy=none" || bad "executor-route bare table wrong: $er_out"
 er_out=$(er P1.DECOMP)
 printf '%s\n' "$er_out" | grep -qx 'route=high' && printf '%s\n' "$er_out" | grep -qx 'tier=high' \
   && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor-high' && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
-  && printf '%s\n' "$er_out" | grep -qx 'effort=high' && printf '%s\n' "$er_out" | grep -qx 'attribution=Claude Opus 5.5' \
-  && ok "executor-route sends a decomposition slice to the high row (slice-executor-high, opus@high, Claude Opus 5.5)" || bad "executor-route P1.DECOMP wrong: $er_out"
+  && printf '%s\n' "$er_out" | grep -qx 'effort=xhigh' && printf '%s\n' "$er_out" | grep -qx 'attribution=Claude Opus 5.5' \
+  && ok "executor-route sends a decomposition slice to the high row (slice-executor-high, opus@xhigh, Claude Opus 5.5)" || bad "executor-route P1.DECOMP wrong: $er_out"
 er_out=$(er P1.S2)
-printf '%s\n' "$er_out" | grep -qx 'route=research' && printf '%s\n' "$er_out" | grep -qx 'effort=medium' \
-  && ok "executor-route sends a research slice to the research row (opus@medium)" || bad "executor-route research slice wrong: $er_out"
+printf '%s\n' "$er_out" | grep -qx 'route=research' && printf '%s\n' "$er_out" | grep -qx 'effort=xhigh' \
+  && ok "executor-route sends a research slice to the research row (opus@xhigh)" || bad "executor-route research slice wrong: $er_out"
 ( cd "$F" && python3 scripts/workflow.py new-slice --phase P1 --slice P1.S9 --name "docs probe" --kind docs --risk low >/dev/null 2>&1 ) \
   || bad "route probe: new-slice P1.S9 (docs, low) failed"
 er_out=$(er P1.S9)
@@ -1429,22 +1431,33 @@ printf '%s\n' "$er_out" | grep -qx 'agent=design-drafter' && printf '%s\n' "$er_
   && printf '%s\n' "$er_out" | grep -qx 'tier=-' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-drafter' \
   && printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'effort=xhigh' \
   && ok "executor-route --drafter names design-drafter on its own design row (tier -, opus@xhigh)" || bad "executor-route --drafter wrong: $er_out"
-# P36.S5B: the critic and the judge both run design-critic; each must be a different model from the drafter's.
+# P36.S5B, P39.S1: the critic and the judge both run design-critic; only the critic must be a different model from the drafter's.
 er_out=$(er --critic); er_j=$(er --judge)
 printf '%s\n' "$er_out" | grep -qx 'route=critic' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-critic' \
-  && printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \
+  && printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && printf '%s\n' "$er_out" | grep -qx 'effort=xhigh' \
   && printf '%s\n' "$er_j" | grep -qx 'route=judge' && printf '%s\n' "$er_j" | grep -qx 'subagent_type=design-critic' \
-  && printf '%s\n' "$er_j" | grep -qx 'model=fable' && printf '%s\n' "$er_j" | grep -qx 'tier=-' \
-  && ok "executor-route --critic (sonnet@high) and --judge (fable) both dispatch design-critic" || bad "executor-route --critic/--judge wrong: $er_out / $er_j"
+  && printf '%s\n' "$er_j" | grep -qx 'model=opus' && printf '%s\n' "$er_j" | grep -qx 'effort=xhigh' && printf '%s\n' "$er_j" | grep -qx 'tier=-' \
+  && ok "executor-route --critic (sonnet@xhigh) and --judge (opus@xhigh) both dispatch design-critic" || bad "executor-route --critic/--judge wrong: $er_out / $er_j"
 printf '[claude.critic]\nmodel = "opus"\n' > "$F/executors.toml"
 er_out=$( cd "$F" && env -u ANTHROPIC_BASE_URL python3 scripts/workflow.py executor-route --critic 2>&1 ); er_rc=$?
 [ "$er_rc" -eq 1 ] && printf '%s\n' "$er_out" | grep -q "is the design row's model" \
   && printf '%s\n' "$(er)" | grep -q '^warning=fairness: the critic row' \
   && ok "a critic on the drafter's model is refused (exit 1), and the bare table warns" || bad "the critic fairness refusal failed (rc=$er_rc): $er_out"
 rm -f "$F/executors.toml"
+# P39.S1: the judge is exempt from the critic-vs-drafter rule -- at the defaults it is Opus over the Opus drafter.
+er_out=$( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE python3 scripts/workflow.py executor-route --judge 2>&1 ); er_rc=$?
+[ "$er_rc" -eq 0 ] && printf '%s\n' "$er_out" | grep -qx 'model=opus' && ! printf '%s\n' "$er_out" | grep -q 'warning=fairness' \
+  && ! printf '%s\n' "$er_out" | grep -q '^skip=' \
+  && ok "the judge on the drafter's model (opus over opus) is allowed: executor-route --judge exits 0 with no fairness warning" || bad "executor-route --judge refused or warned at the defaults (rc=$er_rc): $er_out"
+# The loopback-proxy skip needs a Fable judge: it never fires at the default (Opus), only on a Fable override.
+er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 scripts/workflow.py executor-route --judge 2>&1 ); er_rc=$?
+[ "$er_rc" -eq 0 ] && ! printf '%s\n' "$er_out" | grep -q '^skip=' \
+  && ok "behind a loopback proxy the default (opus) judge prints no skip= and exits 0" || bad "executor-route --judge proxy at the default wrong (rc=$er_rc): $er_out"
+printf '[claude.judge]\nmodel = "fable"\n' > "$F/executors.toml"
 er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 scripts/workflow.py executor-route --judge 2>&1 ); er_rc=$?
 [ "$er_rc" -eq 0 ] && printf '%s\n' "$er_out" | grep -q '^skip=yes reason=loopback ' \
-  && ok "behind a loopback proxy (no Fable) executor-route --judge prints skip=yes and exits 0" || bad "executor-route --judge proxy skip wrong (rc=$er_rc): $er_out"
+  && ok "behind a loopback proxy (no Fable) a Fable-overridden judge prints skip=yes and exits 0" || bad "executor-route --judge proxy skip wrong (rc=$er_rc): $er_out"
+rm -f "$F/executors.toml"
 ( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE CLAUDE_CODE_EFFORT_LEVEL=high python3 scripts/workflow.py executor-route P1.DECOMP 2>&1 | grep -q '^warning=CLAUDE_CODE_EFFORT_LEVEL' ) \
   && ok "executor-route warns that CLAUDE_CODE_EFFORT_LEVEL outranks every per-dispatch effort" || bad "executor-route did not warn on CLAUDE_CODE_EFFORT_LEVEL"
 cp "$SRC/executors.toml" "$F/executors.toml"

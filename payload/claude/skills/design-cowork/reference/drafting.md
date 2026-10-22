@@ -53,9 +53,9 @@ anything:** one critic pass, then at most one drafter answer pass. There is no s
      `pass-rejected` sends the must-fixes it names into that same short pass. With no confident
      must-fix for the answer pass, the judge runs first and the drafter takes its upheld items in
      its one pass.
-   - **`skip=yes`** (a loopback proxy, no Fable): dispatch no judge; the escalated items go to the
+   - **`skip=yes`** (the judge row overridden to Fable behind a loopback proxy, which serves no Fable): dispatch no judge; the escalated items go to the
      operator marked **low confidence**.
-   - **Exit 1** (fairness: the critic or judge row names the drafter's model family): stop and tell
+   - **Exit 1** (fairness: the critic row names the drafter's model family; the judge is exempt): stop and tell
      the operator the row conflict. The rows are the knob.
 4. **A wave choice** (a `choice` finding, a cross-job conflict) never blocks. Copy it onto the other
    job too. Under `critic+judge` the judge rules: `upheld` means this job takes the other's version,
@@ -66,7 +66,7 @@ anything:** one critic pass, then at most one drafter answer pass. There is no s
 **Cost** (measured in P36.S8B, critic at sonnet @ max; v61 runs the critic at high and reuses the drafter's render): a critic pass took 25–36 minutes on a
 flow-board job, and the judge about 2 minutes per item. A job took about 55–100 agent-minutes with a
 critic and about 30 without. The drafter's `--click` self-check takes a few minutes of that. The
-critic's model and effort are the `[claude.critic]` row's (`high` by default since v61, `max` the step up) and
+critic's model and effort are the `[claude.critic]` row's (`xhigh` by default since v66, `max` the step up) and
 the judge's the `[claude.judge]` row's: the operator tunes them in `executors.toml`, never in a prompt.
 
 **Every span's prompt starts with its `slice: <id>` line** — drafter, critic and judge alike: the

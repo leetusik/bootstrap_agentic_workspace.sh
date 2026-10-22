@@ -90,7 +90,7 @@ The critic always runs on a **model different from the one that drafted the chap
 on the same model shares the drafter's blind spots. Compare the critic's frontmatter model (`opus`) with
 span 1's `model=` line (from `## Dispatch`, or `## Escalation: mid → high` after an escalation):
 - a mid chapter (`sonnet`): dispatch the critic as written;
-- a high chapter (`opus`): pass `model: sonnet` on the call, with `effort: high`;
+- a high chapter (`opus`): pass `model: sonnet` on the call, with `effort: xhigh`;
 - on a machine where both rows resolve to one model (a loopback proxy): STOP and tell the operator, as
   for the design critic's row conflict.
 

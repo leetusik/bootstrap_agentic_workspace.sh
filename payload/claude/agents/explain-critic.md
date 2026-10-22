@@ -3,7 +3,7 @@ name: explain-critic
 description: "The explain critic. Judges exactly one drafted chapter of an explain phase's book with fresh eyes, in one pass: it checks every fact against the real code and diff or against the sources the chapter cites (which it opens), every citation, every diagram, the quiz, the learning order against the book's outline and earlier chapters, clarity for the outline's stated reader, and the explain skill's hard rules. It writes one critique file of findings with severity (must-fix, should-fix, note), confidence and evidence. It reads, greps and opens pages; it never edits the chapter, publishes or talks to the operator. Dispatched by the orchestrator as the second span of a chapter slice, on a model different from the chapter executor's; returns a structured verdict."
 tools: Read, Glob, Grep, Bash, Write, WebFetch, WebSearch
 model: opus
-effort: high
+effort: xhigh
 permissionMode: bypassPermissions
 ---
 
