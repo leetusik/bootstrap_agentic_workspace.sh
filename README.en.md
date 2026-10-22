@@ -483,7 +483,7 @@ docs phase; a `changes_requested` or `blocked` verdict stops there and hands the
 slice rated `risk: high` for a named trigger (open design, a core invariant, an unlocated root
 cause, a wide blast radius), and every second attempt after mid. Risk is two values, `low` and `high`, defaulting to `high` — only an exact `low` routes down, so an
 unset or unrecognized value always lands on the high row, and the decomposition rates every
-slice explicitly. When the mid executor needs a design decision the plan did not make, hits a
+slice explicitly. When an executor on the mid row needs a design decision the plan did not make, hits a
 trigger its rating missed, or fails the same validation twice, it returns an `escalate` verdict; the
 orchestrator folds the findings into the plan and re-dispatches on the high row (once per
 slice), and a review finding against mid- or cheap-row work gets a `high` fix slice — so most slices run on

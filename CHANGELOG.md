@@ -35,11 +35,11 @@ history.
   `spends money: yes, ~$X via <service>`, and only a `yes` slice plans at the operator's gate. A
   bulk-sweep slice is cut by surface, so its findings are written to disk as it goes.
 - **The compaction window is 450000.** The project `autoCompactWindow` ships at **450000** (was
-  300000 in v56 and v61–v65). Claude Code's native idle compaction does the rest, with no hook and
-  no `idleCompaction` key: it is on by default, fires about 54 minutes after the last request on a
-  context of at least 200k tokens and a one-hour cache TTL, and `idleCompaction: false` in user
-  settings turns it off. A 200k-context model still compacts at its own limit. See
-  <https://code.claude.com/docs/en/settings-reference> (`autoCompactWindow`, `idleCompaction`)
+  300000 in v56 and v61–v65). Claude Code's native idle compaction does the rest, with no
+  compaction hook and no `idleCompaction` key: it is on by default, fires about 54 minutes after
+  the last request on a context of at least 200k tokens and a one-hour cache TTL, and
+  `idleCompaction: false` in user settings turns it off. A 200k-context model still compacts at
+  its own limit. See <https://code.claude.com/docs/en/settings-reference> (`autoCompactWindow`, `idleCompaction`)
   and <https://code.claude.com/docs/en/model-config> (Set the auto-compact window).
 
 - **Migration notes.** `/update-workspace` lists `.claude/agents/slice-executor-mid.md` and
