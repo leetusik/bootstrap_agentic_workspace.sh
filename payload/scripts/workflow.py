@@ -3206,6 +3206,9 @@ def validate() -> int:
                     errors.extend(_nested_execution_problems(p["id"], execution))
                     if "repos" in execution:  # P40.S6: a worktree set's repo half (multi-repo only)
                         _nested_execution_repo_problems(p["id"], execution, errors, warnings)
+                    unstamped = _unstamped_set_warning(p["id"], execution)  # P40.S8: nested only, a live host worktree only
+                    if unstamped:
+                        warnings.append(unstamped)
         # Optional operator acceptance gate. Absent = legacy phase = nothing to check and
         # NO warning: nagging every pre-v32 phase on every run would clutter the dashboards.
         if "acceptance" in p:
@@ -4191,8 +4194,13 @@ def parallel_start(args: argparse.Namespace) -> None:
 def _worktree_entries(cwd=None) -> list:
     """`[(path, ref-or-None)]` for every worktree git registers in the repo at `cwd` (ROOT by default),
     from `git worktree list --porcelain`; `ref` is `refs/heads/<name>`, or None when detached/bare."""
+    return _parse_worktree_list(_git(["worktree", "list", "--porcelain"], cwd=cwd).stdout)
+
+
+def _parse_worktree_list(text: str) -> list:
+    """`git worktree list --porcelain` output -> `[(path, ref-or-None)]` (see `_worktree_entries`)."""
     entries, path, ref = [], None, None
-    for line in _git(["worktree", "list", "--porcelain"], cwd=cwd).stdout.splitlines() + [""]:
+    for line in text.splitlines() + [""]:
         if line.startswith("worktree "):
             path, ref = line[len("worktree "):], None
         elif line.startswith("branch "):
@@ -4764,6 +4772,231 @@ def _ignored_worktree_files(path, skip=()) -> list:
             if not (entry.endswith("/") and any(other != entry and other.startswith(entry) for other in entries))]
 
 
+def _detached_orphans(worktree, base_sha):
+    """`(short HEAD, count)` when the checkout at `worktree` is detached with commits beyond `base_sha`
+    that no branch, tag or remote ref holds -- removing it would orphan them -- else None. The host
+    worktree's orphan rule (P35), shared with each repo worktree of a set (P40.S8)."""
+    if _git(["symbolic-ref", "-q", "HEAD"], cwd=worktree, check=False).returncode == 0:
+        return None
+    keep = [base_sha] if base_sha else []
+    proc = _git(["rev-list", "--count", "HEAD", "--not", *keep, "--branches", "--tags", "--remotes"], cwd=worktree, check=False)
+    orphans = int(proc.stdout.strip() or 0) if proc.returncode == 0 else 0
+    if not orphans:
+        return None
+    return _git(["rev-parse", "--short", "HEAD"], cwd=worktree, check=False).stdout.strip(), orphans
+
+
+def _unstamped_worktrees(host_wt, execution: dict) -> list:
+    """P40.S8 (S2 §19's scan): every git work tree inside the host worktree `host_wt` that the phase's
+    stamp does not name, as `[{"path", "main", "name", "branch", "standalone"}]` sorted by path; [] when
+    there is none, or when git cannot run (it never raises: `validate` calls it too). Removing the host
+    worktree would delete such a tree with everything in it, uncommitted work included, so
+    `parallel-teardown` refuses each one always (`--discard-ignored` never covers it) and `validate`
+    warns. Shared by both, and it runs in single-repo nested installs too. The union of two sources:
+
+    * the host worktree's ignored entries (`ls-files --others --ignored --directory`), minus the nested
+      worktree, each walked for a `.git` file or dir: the entry itself, else each of its subdirectories
+      -- two levels at most, enough for a repo at `<path>` or `<dir>/<path>`; symlinks never followed
+      (an UNignored one shows as untracked and is already refused as the host worktree's uncommitted work);
+    * every registered repo's `git worktree list` paths under the host worktree that exist on disk
+      (multi-repo only; a stale registration holds no files).
+
+    Excluded: the nested worktree and every stamped `execution.repos.<n>.worktree`. Per tree: `main` is
+    the checkout it belongs to (`git -C <main> worktree remove <path>`), `name` the registry name when
+    that is a registered repo, `branch` its branch (None when detached), and `standalone` marks a
+    repository of its own (a `.git` directory), which no `worktree remove` applies to."""
+    host_wt = Path(host_wt)
+    host_real = os.path.realpath(str(host_wt))
+    repos = execution.get("repos") if isinstance(execution.get("repos"), dict) else {}
+    exclude = {os.path.realpath(value["worktree"]) for value in repos.values()
+               if isinstance(value, dict) and isinstance(value.get("worktree"), str)}
+    if isinstance(execution.get("worktree"), str):
+        exclude.add(os.path.realpath(execution["worktree"]))
+    nested_rel = f"{Path(os.path.relpath(ROOT, HOST_ROOT)).as_posix()}/" if HOST_ROOT is not None else None
+    found = {}
+
+    def add(path, **known):
+        real = os.path.realpath(str(path))
+        if real in exclude or not real.startswith(host_real + os.sep):
+            return
+        entry = found.setdefault(real, {"path": str(path), "main": None, "name": None, "branch": None, "standalone": False})
+        entry.update({key: value for key, value in known.items() if value is not None})
+
+    proc = _repo_git(host_wt, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory")
+    if proc is not None and proc.returncode == 0:
+        for entry in proc.stdout.split("\0"):
+            if not entry.endswith("/") or entry == nested_rel:
+                continue
+            top = host_wt / entry.rstrip("/")
+            if top.is_symlink() or not top.is_dir():
+                continue
+            if os.path.lexists(str(top / ".git")):
+                add(top)
+                continue
+            try:
+                children = sorted(child for child in top.iterdir() if child.is_dir() and not child.is_symlink())
+            except OSError:
+                continue
+            for child in children:
+                if os.path.lexists(str(child / ".git")):
+                    add(child)
+    mains = {}
+    for repo in nested_repos():
+        if not (isinstance(repo, dict) and isinstance(repo.get("path"), str)):
+            continue
+        main = nested_repo_path(repo)
+        if not _git_work_tree_root(main):
+            continue
+        mains[os.path.realpath(str(main))] = repo.get("name")
+        listing = _repo_git(main, "worktree", "list", "--porcelain")
+        if listing is None or listing.returncode != 0:
+            continue
+        for path, ref in _parse_worktree_list(listing.stdout):
+            if os.path.lexists(path):
+                branch = ref[len("refs/heads/"):] if ref and ref.startswith("refs/heads/") else None
+                add(path, main=main, name=repo.get("name"), branch=branch)
+    for entry in found.values():
+        if entry["main"] is not None:
+            continue
+        path = Path(entry["path"])
+        main = _main_host_checkout(path)
+        if (path / ".git").is_dir() or os.path.realpath(str(main)) == os.path.realpath(str(path)):
+            entry["standalone"] = True
+            continue
+        entry["main"] = main
+        entry["name"] = mains.get(os.path.realpath(str(main)))
+        head = _repo_git(path, "symbolic-ref", "-q", "--short", "HEAD")
+        entry["branch"] = (head.stdout.strip() or None) if head is not None and head.returncode == 0 else None
+    return sorted(found.values(), key=lambda entry: entry["path"])
+
+
+def _unstamped_refusal(phase_id: str, host_wt, found: list, execution: dict, branch: str, branch_exists: bool) -> str:
+    """`parallel-teardown`'s refusal item for `_unstamped_worktrees` (P40.S8, S2 §19): each tree named,
+    with its ways out -- removed by hand against its own repo after its branch is integrated, or, in a
+    multi-repo host, adopted into the set (`parallel-add-repo --adopt`, from inside the set) when it
+    sits at a registered repo's path and that repo is not stamped yet."""
+    q = shlex.quote
+    stamped = execution.get("repos") if isinstance(execution.get("repos"), dict) else {}
+    registry = {repo.get("name"): repo for repo in nested_repos() if isinstance(repo, dict)}
+    lines = [f"the host worktree {host_wt} holds {len(found)} git work tree(s) {phase_id}'s stamp does not name; removing the host worktree "
+             f"would delete each with everything in it, uncommitted work included, so parallel-teardown refuses them always "
+             f"(--discard-ignored does not cover them):"]
+    for tree in found:
+        path = tree["path"]
+        if tree["standalone"]:
+            lines.append(f"      {path}: a git repository of its own, not a worktree")
+            lines.append(f"        move it out of the host worktree first (after pushing or integrating its work)")
+            continue
+        on = f"on {tree['branch']}" if tree["branch"] else "detached"
+        lines.append(f"      {path}: a worktree of {tree['main']}, {on}")
+        after = f"after integrating {tree['branch']}" if tree["branch"] else "after putting its commits on a branch"
+        lines.append(f"        remove it by hand {after}: git -C {q(str(tree['main']))} worktree remove {q(path)}")
+        repo = registry.get(tree["name"]) if tree["name"] else None
+        if (repo is not None and tree["name"] not in stamped and isinstance(repo.get("path"), str)
+                and os.path.realpath(path) == os.path.realpath(os.path.join(str(host_wt), repo["path"]))):
+            lines.append(f"        or adopt it into the set, from inside the set: cd {q(str(host_wt))} && {WORKFLOW_CMD} parallel-add-repo {phase_id} "
+                         f"--repo {tree['name']}={tree['branch'] or '<branch>'} --adopt (then merge the phase branch again and re-run this teardown)")
+    if not branch_exists:
+        lines.append(f"    note: the phase branch {branch} is gone, so a repo stamped on it after its last merge (parallel-add-repo) is missing from "
+                     f"this copy of phase.json and is refused here as unstamped -- the safe outcome")
+    return "\n".join(lines)
+
+
+def _unstamped_set_warning(phase_id: str, execution: dict):
+    """`validate`'s row for `_unstamped_worktrees` (P40.S8, S2 §18): the warning text, or None. Only for
+    a LIVE host worktree (`host_worktree` set and on disk), nested only. A warning, never an error:
+    `--update` runs `validate` with check=True after its writes, and glide's P29 trips it. The phase
+    branch's stamp counts too: a mid-phase `parallel-add-repo` commits its stamp there only, so the
+    default stream's copy lacks it until the merge (teardown runs after the merge and reads its own)."""
+    host_wt = execution.get("host_worktree")
+    if NESTED is None or not isinstance(host_wt, str) or not Path(host_wt).is_dir():
+        return None
+    found = _unstamped_worktrees(host_wt, execution)
+    if found and isinstance(execution.get("branch"), str) and execution["branch"].strip():
+        try:
+            branch_copy = _phase_json_at_ref(f"refs/heads/{execution['branch']}", phase_id)
+        except SystemExit:  # no git binary: keep what the local stamp says
+            branch_copy = None
+        repos = ((branch_copy or {}).get("execution") or {}).get("repos") if isinstance(branch_copy, dict) else None
+        on_branch = {os.path.realpath(value["worktree"]) for value in (repos.values() if isinstance(repos, dict) else ())
+                     if isinstance(value, dict) and isinstance(value.get("worktree"), str)}
+        found = [tree for tree in found if os.path.realpath(tree["path"]) not in on_branch]
+    if not found:
+        return None
+    listed = ", ".join(tree["path"] for tree in found)
+    if nested_repos():
+        return (f"{phase_id}'s host worktree holds git worktrees it did not stamp: {listed} -- parallel-teardown will refuse them; adopt them from "
+                f"inside the set (parallel-add-repo {phase_id} --repo <name>=<branch> --adopt) or remove them by hand after integrating their branches")
+    return (f"{phase_id}'s host worktree holds git worktrees it did not stamp: {listed} -- parallel-teardown will refuse them; remove them by hand "
+            f"after integrating their branches (git -C <repo> worktree remove <path>)")
+
+
+def _teardown_set_repos(execution: dict) -> list:
+    """P40.S8: a worktree set's stamped repos as `parallel-teardown` handles them, one dict per
+    `execution.repos.<name>` in stamp order: `name`; `wt`, the stamped worktree (None once torn down);
+    `live` (on disk); `main`, its repo's MAIN checkout -- the registry path under the main host checkout,
+    else (a name the registry dropped) the checkout a live worktree's common git dir names, else None;
+    `entries`, `main`'s `worktree list`; and the stamp's `branch`, `base`, `base_sha`, `created`. [] when
+    the block has no `repos`, as in every single-repo and at-root phase."""
+    repos = execution.get("repos")
+    if not isinstance(repos, dict):
+        return []
+    registry = {repo.get("name"): repo for repo in nested_repos() if isinstance(repo, dict)}
+    out = []
+    for name, value in repos.items():
+        if not isinstance(value, dict):
+            continue
+        wt = value.get("worktree") if isinstance(value.get("worktree"), str) and value.get("worktree") else None
+        live = bool(wt) and Path(wt).exists()
+        main = None
+        repo = registry.get(name)
+        if repo is not None and isinstance(repo.get("path"), str) and _git_work_tree_root(nested_repo_path(repo)):
+            main = nested_repo_path(repo)
+        elif live and _git_work_tree_root(Path(wt)):
+            candidate = _main_host_checkout(Path(wt))
+            if os.path.realpath(str(candidate)) != os.path.realpath(wt):
+                main = candidate
+        listing = _repo_git(main, "worktree", "list", "--porcelain") if main is not None else None
+        branch, sha = value.get("branch"), value.get("base_sha")
+        out.append({"name": name, "wt": wt, "live": live, "main": main,
+                    "entries": _parse_worktree_list(listing.stdout) if listing is not None and listing.returncode == 0 else [],
+                    "branch": branch if isinstance(branch, str) and branch.strip() else None, "base": value.get("base"),
+                    "base_sha": sha if isinstance(sha, str) and sha else None, "created": value.get("branch_created") is True})
+    return out
+
+
+def _set_repo_teardown_problems(repo: dict, ignored: list) -> list:
+    """The guards on one live stamped repo worktree (P40.S8, S2 §19), the host worktree's own: it must be
+    a worktree of its repo (else no `worktree remove` applies, and removing the host worktree would delete
+    it); uncommitted work; a detached HEAD holding commits no ref keeps. Its ignored, worktree-only files
+    are appended to `ignored`, for the one combined list `--discard-ignored` covers."""
+    q = shlex.quote
+    name, wt, main = repo["name"], repo["wt"], repo["main"]
+    label = f"repo {name}"
+    if not _git_work_tree_root(Path(wt)):
+        return [f"{label}: its stamped worktree {wt} is not a git work tree root (its .git is gone, or it is a plain directory), so no git worktree "
+                f"remove applies, and removing the host worktree would delete it with everything in it -- move what it holds out of the host "
+                f"worktree, or delete it by hand, then re-run"]
+    if main is None:
+        return [f"{label}: its main checkout cannot be found (no registered repo is named {name}, and {wt} names no other checkout), so its "
+                f"worktree cannot be removed against it -- re-register it ({WORKFLOW_CMD} nested-repos --add <path> --name {name}), then re-run"]
+    if not any(os.path.realpath(path) == os.path.realpath(wt) for path, _ref in repo["entries"]):
+        return [f"{label}: {wt} is a git work tree, but not a worktree of {name} (git -C {main} worktree list does not list it), so it cannot be "
+                f"removed against {name}, and removing the host worktree would delete it -- move it out of the host worktree first, then re-run"]
+    problems = []
+    dirty = _git(["status", "--porcelain", "--untracked-files=normal"], cwd=wt).stdout.splitlines()
+    if dirty:
+        problems.append(f"{label}: its worktree {wt} has uncommitted work (commit it on {repo['branch']}, or move or discard it):\n"
+                        + "\n".join(f"      {line}" for line in dirty))
+    ignored += [(wt, entry) for entry in _ignored_worktree_files(wt)]
+    orphan = _detached_orphans(wt, repo["base_sha"])
+    if orphan:
+        problems.append(f"{label}: its worktree {wt} is detached at {orphan[0]} with {orphan[1]} commit(s) beyond the base that no branch, tag or "
+                        f"remote ref holds; removing it would orphan them -- put them on a branch first "
+                        f"(git -C {q(wt)} switch -c <name>, or switch {repo['branch']} to them)")
+    return problems
+
+
 def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, execution: dict,
                               branch: str, branch_exists: bool, discard_ignored: bool) -> None:
     """`parallel-teardown` in a nested personal install (P35): retire the host + nested worktree pair.
@@ -4786,7 +5019,21 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
 
     `worktree` and `host_worktree` become null; the other host keys and `base_branch` stay as
     history. A failure after the first removal prints the exact remaining commands; a re-run of
-    this command resumes too, since every step skips what is already gone."""
+    this command resumes too, since every step skips what is already gone.
+
+    A worktree SET (P40.S8, S2 §19) adds its repo half, gated on the stamp's `execution.repos`, so a
+    single-repo pair runs exactly the steps above: each stamped repo worktree is guarded like the host
+    worktree (uncommitted work, ignored files, detached orphans) and removed FIRST, before the nested
+    worktree, with `git -C <main> worktree remove`, against its repo's main checkout (no `--force`: a
+    plain remove deletes ignored files, as the host's does; the guards cover the rest); one gone from
+    disk but still registered is pruned there before any branch step (a stale registration holds its
+    branch). A repo branch is deleted (`-D`, against its `base_sha`) only when the set created it, it
+    has 0 commits beyond `base_sha` and no other worktree holds it; reused and adopted branches are the
+    operator's and stay. Each `execution.repos.<n>.worktree` becomes null with the host keys. In EVERY
+    nested teardown, single-repo too, a git work tree inside the host worktree that the stamp does not
+    name (`_unstamped_worktrees`) is refused, `--discard-ignored` or not: removing the host worktree
+    would delete it with its uncommitted work. The stamp read is this copy of phase.json, merged from
+    the phase branch, so a repo `parallel-add-repo` stamped after the last merge is refused as unstamped."""
     q = shlex.quote
     host = HOST_ROOT
     nested_wt = execution.get("worktree")
@@ -4800,9 +5047,16 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
     if (host_live or host_branch) and not host_git:
         raise SystemExit(f"the nested install's host {host} is not a git work tree; the paired teardown needs it to retire the host worktree "
                          f"and branch -- nothing was removed")
+    set_repos = _teardown_set_repos(execution)  # P40.S8: [] unless a multi-repo set stamped repos
 
     # 1. Every guard, before anything is removed.
     problems, ignored = [], []
+    unstamped = _unstamped_worktrees(host_wt, execution) if host_live else []
+    if unstamped:
+        problems.append(_unstamped_refusal(args.phase, host_wt, unstamped, execution, branch, branch_exists))
+    for repo in set_repos:
+        if repo["live"]:
+            problems += _set_repo_teardown_problems(repo, ignored)
     if nested_live:
         dirty = _git(["status", "--porcelain", "--untracked-files=normal"], cwd=nested_wt).stdout.splitlines()
         if dirty:
@@ -4812,20 +5066,20 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
     if host_live:
         rel = os.path.relpath(ROOT, host)
         skip = {"CLAUDE.local.md", f"{Path(rel).as_posix().rstrip('/')}/"}  # the engine's copy; the nested worktree (step 2)
+        # P40.S8: never a git work tree as a plain ignored path -- the stamped repo worktrees are guarded
+        # and removed on their own (step 1), the unstamped ones refused above
+        skip |= {f"{Path(os.path.relpath(os.path.realpath(path), os.path.realpath(host_wt))).as_posix()}/"
+                 for path in [repo["wt"] for repo in set_repos if repo["wt"]] + [tree["path"] for tree in unstamped]}
         ignored += [(host_wt, entry) for entry in _ignored_worktree_files(host_wt, skip)]
         dirty = _git(["status", "--porcelain", "--untracked-files=normal"], cwd=host_wt).stdout.splitlines()
         if dirty:
             problems.append(f"the host worktree {host_wt} has uncommitted work (commit it on {host_branch}, or move or discard it):\n"
                             + "\n".join(f"      {line}" for line in dirty))
-        if _git(["symbolic-ref", "-q", "HEAD"], cwd=host_wt, check=False).returncode != 0:
-            keep = [base_sha] if base_sha else []
-            proc = _git(["rev-list", "--count", "HEAD", "--not", *keep, "--branches", "--tags", "--remotes"], cwd=host_wt, check=False)
-            orphans = int(proc.stdout.strip() or 0) if proc.returncode == 0 else 0
-            if orphans:
-                head = _git(["rev-parse", "--short", "HEAD"], cwd=host_wt, check=False).stdout.strip()
-                problems.append(f"the host worktree {host_wt} is detached at {head} with {orphans} commit(s) beyond the base that no branch, tag or "
-                                f"remote ref holds; removing it would orphan them -- put them on a branch first "
-                                f"(git -C {q(host_wt)} switch -c <name>, or switch {host_branch} to them)")
+        orphan = _detached_orphans(host_wt, base_sha)
+        if orphan:
+            problems.append(f"the host worktree {host_wt} is detached at {orphan[0]} with {orphan[1]} commit(s) beyond the base that no branch, tag or "
+                            f"remote ref holds; removing it would orphan them -- put them on a branch first "
+                            f"(git -C {q(host_wt)} switch -c <name>, or switch {host_branch} to them)")
     if ignored and not discard_ignored:
         problems.append("ignored, worktree-only files would be deleted with the worktrees (git worktree remove does not ask):\n"
                         + "\n".join(f"      {os.path.join(where, entry)}" for where, entry in ignored)
@@ -4834,6 +5088,38 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
         lines = [f"parallel-teardown {args.phase} refused -- nothing was removed:"]
         lines += [f"{i}. {problem}" for i, problem in enumerate(problems, 1)]
         raise SystemExit("\n".join(lines))
+
+    # P40.S8: each repo branch's fate, decided before any removal like the host branch's below:
+    # `(repo, delete, keep reason, exists)`. Deleted only when the set created it, it has 0 commits
+    # beyond the stamped base_sha and no worktree but the stamped one (removed first) holds it.
+    repo_fates = []
+    for repo in set_repos:
+        rbranch, main = repo["branch"], repo["main"]
+        if not rbranch:
+            continue
+        if main is None:
+            repo_fates.append((repo, False, f"its repo's main checkout cannot be found (no registered repo is named {repo['name']})", True))
+            continue
+        if _git(["rev-parse", "--verify", "--quiet", f"refs/heads/{rbranch}"], cwd=main, check=False).returncode != 0:
+            repo_fates.append((repo, False, None, False))
+            continue
+        holders = [path for path, ref in repo["entries"] if ref == f"refs/heads/{rbranch}"
+                   and not (repo["wt"] and os.path.realpath(path) == os.path.realpath(repo["wt"]))]
+        ahead = None
+        if repo["base_sha"]:
+            proc = _git(["rev-list", "--count", f"{repo['base_sha']}..refs/heads/{rbranch}"], cwd=main, check=False)
+            ahead = int(proc.stdout.strip()) if proc.returncode == 0 and proc.stdout.strip().isdigit() else None
+        if holders:
+            reason = f"it is checked out in {holders[0]}"
+        elif not repo["created"]:
+            reason = "branch_created is false: it existed before the set took it (reused, or adopted with parallel-add-repo --adopt), so it is the operator's"
+        elif ahead is None:
+            reason = f"its commits beyond the base {repo['base_sha']} could not be counted"
+        elif ahead:
+            reason = f"it has {ahead} commit(s) beyond its base {repo['base']} ({repo['base_sha'][:12]})"
+        else:
+            reason = None
+        repo_fates.append((repo, reason is None, reason, True))
 
     # The host branch's fate is decided before any removal (its commits do not change).
     delete_host_branch, keep_reason = False, None
@@ -4864,6 +5150,13 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
         return any(os.path.realpath(p) == os.path.realpath(path) for p, _ref in _worktree_entries(cwd=repo))
 
     steps = []
+    for repo in set_repos:  # P40.S8: the repo worktrees first, each against its repo's main checkout
+        if not repo["wt"] or repo["main"] is None:
+            continue
+        if repo["live"]:
+            steps.append((f"repo {repo['name']} worktree {repo['wt']}", ["worktree", "remove", repo["wt"]], repo["main"]))
+        elif registered(repo["main"], repo["wt"]):
+            steps.append((f"the stale registration of {repo['wt']} (git worktree prune in {repo['main']})", ["worktree", "prune"], repo["main"]))
     if nested_live:
         steps.append((f"nested worktree {nested_wt}", ["worktree", "remove", str(nested_wt)], ROOT))
     elif nested_wt and registered(ROOT, nested_wt):
@@ -4872,6 +5165,10 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
         steps.append((f"host worktree {host_wt}", ["worktree", "remove", str(host_wt)], host))
     elif host_wt and host_git and registered(host, host_wt):
         steps.append((f"the stale registration of {host_wt} (git worktree prune in {host})", ["worktree", "prune"], host))
+    for repo, delete, _reason, _exists in repo_fates:
+        if delete:
+            steps.append((f"repo {repo['name']} branch {repo['branch']} (created for the set, no commits beyond its base)",
+                          ["branch", "-D", repo["branch"]], repo["main"]))
     if delete_host_branch:
         steps.append((f"host branch {host_branch} (created by parallel-start, no commits beyond its base)",
                       ["branch", "-D", host_branch], host))
@@ -4881,6 +5178,10 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
     def command(git_args, cwd):
         return f"git -C {q(str(cwd))} " + " ".join(q(part) for part in git_args)
 
+    null_fields = "execution.worktree and execution.host_worktree"
+    repo_fields = [f"execution.repos.{repo['name']}.worktree" for repo in set_repos if repo["wt"]]
+    if repo_fields:  # P40.S8: a set's repo worktrees are nulled with the host keys
+        null_fields = ", ".join(["execution.worktree", "execution.host_worktree", *repo_fields[:-1]]) + f" and {repo_fields[-1]}"
     removed = []
     for i, (label, git_args, cwd) in enumerate(steps):
         proc = _git(git_args, cwd=cwd, check=False)
@@ -4891,11 +5192,12 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
             raise SystemExit(
                 f"{command(git_args, cwd)} failed: {detail}{done}\n"
                 f"fix the cause, then re-run {WORKFLOW_CMD} parallel-teardown {args.phase} (it resumes), or finish by hand, in this order:\n{rest}\n"
-                f"  then set execution.worktree and execution.host_worktree to null in {shown(pdir)}/phase.json")
+                f"  then set {null_fields} to null in {shown(pdir)}/phase.json")
         removed.append(label)
 
     pruned = []  # a registration a successful `worktree remove` still left behind
-    for repo, path in ((ROOT, nested_wt), (host, host_wt)):
+    left = [(repo["main"], repo["wt"]) for repo in set_repos if repo["main"] is not None]
+    for repo, path in (*left, (ROOT, nested_wt), (host, host_wt)):
         if not path or (repo is host and not host_git):
             continue
         if registered(repo, path):
@@ -4904,8 +5206,13 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
 
     data["execution"]["worktree"] = None
     data["execution"]["host_worktree"] = None
+    stamped_repos = data["execution"].get("repos")
+    for value in (stamped_repos.values() if isinstance(stamped_repos, dict) else ()):
+        if isinstance(value, dict):
+            value["worktree"] = None
     write_json(pdir / "phase.json", data)
-    append_event("phase_parallel_torndown", phase=args.phase, branch=branch, host_branch=host_branch)
+    event = {"repos": [repo["name"] for repo in set_repos]} if set_repos else {}
+    append_event("phase_parallel_torndown", phase=args.phase, branch=branch, host_branch=host_branch, **event)
     rebuild_index_and_state()
     print(f"phase {args.phase} parallel checkout pair retired (nested install)")
     for item in removed:
@@ -4916,6 +5223,18 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
         print(f"pruned a stale worktree registration in {repo}")
     if ignored:
         print(f"deleted {len(ignored)} ignored, worktree-only path(s) with the worktrees (--discard-ignored)")
+    kept_repo_branch = False
+    for repo, delete, reason, exists in repo_fates:  # P40.S8
+        if delete:
+            continue
+        if exists:
+            kept_repo_branch = True
+            print(f"kept repo {repo['name']}'s branch {repo['branch']}: {reason}")
+        else:
+            print(f"repo {repo['name']}'s branch {repo['branch']} is already gone; nothing to keep")
+    if kept_repo_branch:
+        print(f"each repo branch follows its repo's own custom (nested-convention --repo <name>): integrate it there; "
+              f"the engine pushed, opened and merged nothing")
     if host_branch and not delete_host_branch:
         if host_branch_exists:
             print(f"kept host branch {host_branch}: {keep_reason}")
@@ -4925,6 +5244,9 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
             print(f"host branch {host_branch} is already gone; nothing to keep")
     print(f"execution.worktree=null, execution.host_worktree=null; mode/branch/consolidation and host_branch/host_base/host_base_sha/"
           f"host_branch_created/base_branch kept as history (branch={branch}, host_branch={host_branch}, consolidation={phase_consolidation(data)})")
+    if set_repos:
+        print(f"execution.repos.<name>.worktree=null for {', '.join(repo['name'] for repo in set_repos)}; branch/base/base_sha/branch_created "
+              f"kept as history")
     if phase_consolidation(data) == "pending":
         print(f"warning: {args.phase} doc consolidation is still 'pending' -- run the post-merge consolidation on this stream (teardown does not gate on it)")
     print("phase.json changed -- commit it in the nested repo with the rest of the merge cleanup")
