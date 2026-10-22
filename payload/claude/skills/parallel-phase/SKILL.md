@@ -38,7 +38,8 @@ the detail lives here.
 1. **When — only when asked** — a `planned` phase moves into its own worktree on the operator's
    word and nothing else (the three forms above). `do-next-slice` / `do-whole-phase` run
    `parallel-start <P>` when they are told to and never on their own initiative; `create-phase`
-   never does. A phase already carrying the stamp is entered without asking again.
+   never does, and neither does `/do-whole-phases`. A phase already carrying the stamp is entered
+   without asking again.
 2. **Where** — `<repo>/.claude/worktrees/P<N>-<slug>` on branch `phase/P<N>-<slug>` (`--worktree`
    overrides); the engine puts `.claude/worktrees/` in `.git/info/exclude` (common dir), never in
    `.gitignore`. **Nested install:** a pair — the host worktree `<host>/.claude/worktrees/P<N>-<slug>`

@@ -19,7 +19,9 @@
 # and phase-scope reads that boundary from git -- advisory without git), the v35 phase-notebook
 # invariants (template seed, generated ## Slices block, finish-slice --outcome, the
 # notebook budget/case-drift warnings and the timestamp-free dashboards; v61: phase-section reads and writes
-# one phase.md section, a 40 KB index budget naming the biggest sections), the v43
+# one phase.md section, a 40 KB index budget naming the biggest sections), the P41 run-phases invariants
+# (a run's tokens resolve in order and a non-phase token refuses; a run passes a parked acceptance gate and
+# halts at a pending slice while plain `next` still waits there), the v43
 # worktree-on-request invariants (nothing enters a worktree unhinted or unasked; parallel-start
 # on a dirty tree commits only the phase folder plus the regenerated works/ files and cuts a
 # nested .claude/worktrees/ checkout hidden by the repo's info/exclude; parallel-skip and
@@ -125,7 +127,7 @@ import sys
 
 root = Path(sys.argv[1])
 skills = {p.parent.name for p in (root / "payload/claude/skills").glob("*/SKILL.md")}
-assert len(skills) == 17, len(skills)
+assert len(skills) == 18, len(skills)
 
 # P37.S1 (v61): a skill ships as its whole directory, a core SKILL.md plus reference/*.md, and the
 # do-* shared references fan out at build. Prose pins read the BUILT directory (core first, then its
@@ -286,6 +288,31 @@ for name in ("do-next-slice", "do-whole-phase"):
         assert required in body, (name, required)
     for gone in ("one-line/few-line", "one-line, or few-line"):
         assert gone not in body, (name, gone)
+
+# P41 (v69): /do-whole-phases is a core-only skill (no reference/ folder of its own) that runs
+# do-whole-phase's loop once per phase. `do-whole-phase` is a PREFIX of `do-whole-phases`, so every
+# check here names the exact path or the whole string, never a bare `do-whole-phase` search. Its core
+# is not in the core-cap loop above (that asserts named == shipped, and this core names no bare
+# `reference/<x>.md`); it is checked here instead: the cap, the full-path form of every reference it
+# mentions, and the strings the product cannot afford to lose. `disable-model-invocation: true` is
+# already pinned for every skill by the marker loop above.
+assert "do-whole-phases" in skills, sorted(skills)
+phases_core = (root / "payload/claude/skills/do-whole-phases/SKILL.md").read_text(encoding="utf-8")
+assert len(phases_core.encode()) <= 8192, ("do-whole-phases", len(phases_core.encode()))
+assert phases_core.startswith("---\nname: do-whole-phases\n"), "do-whole-phases frontmatter name"
+assert not any(k.startswith(".claude/skills/do-whole-phases/reference/") for k in LIVE), "do-whole-phases ships a reference/"
+_full = _re.findall(r"\.claude/skills/do-whole-phase/reference/([\w.<>-]+?)\.md", phases_core)
+assert _full and len(_full) == phases_core.count("reference/"), ("a bare reference/ mention", _full)
+for _x in _full:
+    assert _x == "<x>" or f".claude/skills/do-whole-phase/reference/{_x}.md" in LIVE, _x
+for required in (
+    "run-phases", "**Every halt stops the whole run.**", "**The two overrides, and only these:**",
+    "**Its target wins over the resume card's pointer for the whole run**",
+    "git rev-list -1 --before=<started_at> HEAD", "never runs `parallel-start`", "gate_cleared=",
+):
+    assert required in phases_core, ("do-whole-phases", required)
+# do-whole-phase (one phase) points at its sibling, by the exact path.
+assert ".claude/skills/do-whole-phases/SKILL.md" in (root / "payload/claude/skills/do-whole-phase/SKILL.md").read_text(encoding="utf-8")
 
 # The spec hard-wraps its prose, so match against a whitespace-flattened copy: these
 # assertions are about the wording, not about where a line happens to break.
@@ -836,6 +863,11 @@ for required in (
     # v46: mid is the default tier, and a retry never returns to mid.
     "**mid the default**", "never returns to mid",
     "QA-sweep route",
+    # v69 (P41): the two narrow exceptions a /do-whole-phases run needs -- it parks an open acceptance
+    # gate and continues, every other stop halts the run. Without them the contract's `pending` rule
+    # and the gate rule would forbid the run.
+    "(bar `/do-whole-phases`' parked gate)",
+    "(`/do-whole-phases` parks it and continues; every other stop halts the run)",
 ):
     assert required in claude, required
 # P36.F1: the contract's size cap (the operator's P34 pick, 12,288 B by wc -c) was a recorded rule
@@ -882,7 +914,7 @@ compact = claude.split("## Compact Instructions", 1)[1]
 assert "resume card" in compact and "never re-dispatch a running executor" in compact
 assert "re-read" not in compact, "Compact Instructions carry a re-read instruction"
 PY
-then ok "17 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with waves and opt-in critique, mockups on request, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
+then ok "18 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with waves and opt-in critique, mockups on request, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
@@ -963,8 +995,8 @@ cp_state=$(python3 -c "import json;print(json.load(open('$R/works/state.json'))[
   && ok "retrofit installs no Codex trees (.agents/, .codex/)" || bad "retrofit created a Codex tree"
 [ ! -f "$R/AGENTS.workspace.md" ] \
   && ok "retrofit writes no AGENTS.workspace.md sidecar" || bad "retrofit wrote an AGENTS.workspace.md sidecar"
-[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "17" ] \
-  && ok "retrofit installs the 17-skill Claude inventory" || bad "retrofit skill inventory incomplete"
+[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "18" ] \
+  && ok "retrofit installs the 18-skill Claude inventory" || bad "retrofit skill inventory incomplete"
 skill_tree_ok "$R/.claude/skills" exact \
   && ok "retrofit installs every skill as its whole directory: each core's reference files, none orphaned, the shared do-* copy identical" || bad "retrofit skill directories incomplete (core + reference/)"
 grep -q 'design subagent drafts, the operator decides' "$R/CLAUDE.workspace.md" && grep -q 'writes no \*\*\*product\*\*\* implementation code' "$R/CLAUDE.workspace.md" \
@@ -1062,8 +1094,8 @@ assert not missing, missing
 PY
 then ok "every changelog release section carries a Migration notes line"; else bad "a changelog release section has no Migration notes line"; fi
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
-[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "17" ] \
-  && ok "fresh install has the 17 Claude skills" || bad "fresh skill inventory incomplete"
+[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "18" ] \
+  && ok "fresh install has the 18 Claude skills" || bad "fresh skill inventory incomplete"
 skill_tree_ok "$F/.claude/skills" exact \
   && ok "fresh install ships every skill as its whole directory: each core's reference files, none orphaned, the shared do-* copy identical" || bad "fresh install skill directories incomplete (core + reference/)"
 [ ! -f "$F/AGENTS.md" ] && [ ! -d "$F/.agents" ] && [ ! -d "$F/.codex" ] \
@@ -1857,6 +1889,7 @@ rm -f "$F/.github/workflows/workspace-ci.yml" "$F/.gitattributes"
 sh "$BOOT" "$F" --update >/dev/null 2>&1   # restore both verbatim for the Test 6 diff
 [ ! -f "$F/.claude/agents/phase-reviewer.md" ] && ok "phase-reviewer retired (absent on fresh install)" || bad "phase-reviewer should be retired but is present"
 [ -d "$F/.claude/skills/do-whole-phase" ] && ok "fresh install keeps do-whole-phase" || bad "do-whole-phase skill missing"
+[ -f "$F/.claude/skills/do-whole-phases/SKILL.md" ] && ok "fresh install ships the do-whole-phases skill" || bad "fresh install missing the do-whole-phases skill"
 [ ! -e "$F/.claude/skills/explain" ] && grep -qF '/plugin marketplace add leetusik/knowledge' "$F/docs/current/operations.md" \
   && grep -qF '/plugin install knowledge@knowledge' "$F/docs/current/operations.md" \
   && ok "fresh install ships no explain skill; its operations doc points at the knowledge plugin" || bad "fresh install still ships explain, or the operations doc lacks the plugin pointer"
@@ -1879,7 +1912,7 @@ diff -q "$SRC/scripts/workflow.py" "$F/scripts/workflow.py" >/dev/null \
   || bad "DRIFT: scripts/workflow.py differs from the bootstrap-embedded copy"
 skill_rels=$(cd "$SRC" && find claude/skills -type f -name SKILL.md | sed 's|^|.|' | LC_ALL=C sort)
 nskill=$(printf '%s\n' "$skill_rels" | grep -c .)
-[ "$nskill" -eq 17 ] && ok "dual-apply covers all 17 skill bodies" || bad "expected 17 SKILL.md files to diff, found $nskill"
+[ "$nskill" -eq 18 ] && ok "dual-apply covers all 18 skill bodies" || bad "expected 18 SKILL.md files to diff, found $nskill"
 for rel in $skill_rels; do
   diff -q "$SRC/${rel#.}" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
@@ -2086,6 +2119,21 @@ BIG
 out=$( cd "$PW" && python3 scripts/workflow.py validate 2>&1 )
 printf '%s\n' "$out" | grep -q 'phase P8: phase.md is .* over the notebook budget of 40960 bytes; biggest sections: ## ' && printf '%s\n' "$out" | grep -q 'topics/<slug>.md' \
   && ok "a notebook over 40 KB warns in validate, names its biggest sections and points at topics/" || bad "no 40 KB warning with sections -- $out"
+
+# ---------------------------------------------------------------------------
+echo "== Test 10c: P41 run-phases -- a run's phase list, and a parked acceptance gate only a run passes =="
+# On a copy of $F emptied of its phases, so the probe phases are the whole pointer and never reach the later tests.
+newtmp RPW; cp -R "$F" "$RPW/ws"; RW="$RPW/ws"; rm -rf "$RW/works/phases/active/"*; rp() { ( cd "$RW" && python3 scripts/workflow.py "$@" ); }
+for n in 1 2 3; do rp new-phase --phase "P$n" --name "Run probe $n" --objective "run probe" >/dev/null 2>&1 || bad "run-phases probe: new-phase P$n failed"; done
+out=$(rp run-phases 3,p1 P2 1 2>&1); rc=$?; ref=$(rp run-phases P1 worktree 2>&1); ref_rc=$?
+[ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -qx 'queue=P3,P1,P2' && [ "$ref_rc" -eq 2 ] && printf '%s\n' "$ref" | grep -q '^refused=worktree ' && ! printf '%s\n' "$ref" | grep -q '^queue=' \
+  && ok "run-phases keeps the tokens' order (3,p1 P2 1 -> P3,P1,P2) and refuses a non-phase token with exit 2 and no queue" || bad "run-phases tokens wrong (rc=$rc ref_rc=$ref_rc) -- $out / $ref"
+{ rp accept-gate P1 --require && rp accept-gate P1 --open --walkthrough "probe" && rp set-slice-status P2.DECOMP pending --stop-kind decision --on-words "probe"; } >/dev/null 2>&1 \
+  || bad "run-phases probe: could not park P1 or stop P2.DECOMP"
+out=$(rp run-phases P1 P2 P3 2>&1); plain=$(rp next 2>&1)
+printf '%s\n' "$out" | grep -q '^parked=P1 ' && printf '%s\n' "$out" | grep -qx 'halt=P2.DECOMP status=pending' && printf '%s\n' "$out" | grep -qx 'stop_kind=decision' \
+  && ! printf '%s\n' "$out" | grep -q '^target_' && printf '%s\n' "$plain" | grep -qx 'waiting_on_operator=P1' \
+  && ok "run-phases passes a parked gate and halts at a pending slice, while plain next still waits on the parked phase" || bad "run-phases parking wrong -- $out / $plain"
 
 # ---------------------------------------------------------------------------
 echo "== Test 11: v41 phase-scope -- the phase's boundary is read from git, advisory everywhere =="

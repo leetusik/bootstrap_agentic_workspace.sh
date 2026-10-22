@@ -211,7 +211,7 @@ under `workflow/` instead and the skills and agents untracked in the host's `.cl
 
 - [`CLAUDE.md`](payload/contract.md) — the compact routing contract every agent session works under.
 - [`scripts/workflow.py`](payload/scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` — the 17 Agent Skills (`/slash` commands), the risk-routed `slice-executor` subagent (`.claude/agents/slice-executor.md`, one file dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ xhigh), the `design-critic` that judges each draft (the `critic` row, sonnet @ xhigh; in judge mode the `judge` row, opus @ xhigh), the `explain-critic` that judges one drafted chapter of an explain phase (no row: opus @ xhigh from its own frontmatter), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
+- `.claude/` — the 18 Agent Skills (`/slash` commands), the risk-routed `slice-executor` subagent (`.claude/agents/slice-executor.md`, one file dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ xhigh), the `design-critic` that judges each draft (the `critic` row, sonnet @ xhigh; in judge mode the `judge` row, opus @ xhigh), the `explain-critic` that judges one drafted chapter of an explain phase (no row: opus @ xhigh from its own frontmatter), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - [`works/`](works/) — the state machine, starting with **no phases**: a `deferred/` area,
@@ -259,7 +259,7 @@ It writes only untracked files, all hidden by the host's `.git/info/exclude` (ne
 
 - `workflow/`: a **nested git repo** holding the engine, `works/`, `docs/`, `executors.toml` and
   the contract (as `CLAUDE.workspace.md`). It is versioned there, separately from the host.
-- the 17 skills and 5 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
+- the 18 skills and 5 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
   path rewritten to reach `workflow/` (`python3 workflow/scripts/workflow.py …`);
 - a `.gitignore` of `*` in each of those skill directories, so a skill directory hides itself
   even where the host's `.gitignore` re-includes `.claude/skills/`;
@@ -435,7 +435,7 @@ The full command list is `python3 scripts/workflow.py --help` (and `<command> -h
 
 ### The same operations as Agent Skills
 
-The common workflows also ship as **17 Agent Skills** in `.claude/skills/`, invoked as `/slash`
+The common workflows also ship as **18 Agent Skills** in `.claude/skills/`, invoked as `/slash`
 commands in Claude Code:
 
 | Skill | What it does |
@@ -443,6 +443,7 @@ commands in Claude Code:
 | `create-phase` | Capture intent, then create a phase (seeds `DECOMP` + `REVIEW`); stops before decomposition |
 | `do-next-slice` | Complete exactly one slice, then stop |
 | `do-whole-phase` | Finish the active phase end-to-end, including its review |
+| `do-whole-phases` | Run several phases back to back (`P12, 13, 14`, or every phase not done): an open acceptance gate is parked and the run continues; any other stop halts it |
 | `review-phase` | Review a phase and record a `pass` / `changes_requested` / `blocked` verdict |
 | `parallel-phase` | Run a phase in its own branch + worktree when you ask for one, and integrate it back: quiet-point gate, local merge by default, the review's gate sections, teardown |
 | `doc-new-version` | Create a new versioned durable doc instead of patching the current one |
@@ -616,7 +617,7 @@ parallelism it never used. The mechanism itself is unchanged.)
 │   │   └── archived/             # finished phases
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
-│   ├── skills/                    # 17 Agent Skills (/slash commands)
+│   ├── skills/                    # 18 Agent Skills (/slash commands)
 │   ├── agents/                    # slice-executor + design-drafter + design-critic + explain-critic (models from executors.toml)
 │   └── settings.json              # pre-approves workflow.py; denies force-push & rm -rf
 └── .github/
