@@ -9,6 +9,21 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v64 — 2026-10-22
+
+- **`create-phase` and `update-workspace` commit when they finish.** `create-phase` commits what
+  its intake wrote (the new phase folders or the deferred job's, and the regenerated `works/`
+  files), one commit as `chore(P<N>): create <name> and record the operator's intent` or
+  `chore(D<N>): defer <title>`. `update-workspace` commits the refresh as its new last step,
+  `chore: update agentic workspace to v<M>`. On a tree that was dirty before the update it stages
+  only the paths the update and its removals name. Nested installs commit both in the nested
+  repo, `git -C workflow`, and the host gets no commit. Neither pushes. The contract's Commit
+  Convention names both: "Commit after each slice, `create-phase` and `update-workspace`; else
+  only when asked." `retrofit` still leaves its first commit to you.
+
+- **Migration notes.** Nothing to run. The update that brings v64 still runs the old skill, so
+  commit that one refresh yourself; later updates commit on their own.
+
 ## v63 — 2026-10-22
 
 - **`backlog.md` shows a worktree phase's slices before the merge.** The `## Streams` table

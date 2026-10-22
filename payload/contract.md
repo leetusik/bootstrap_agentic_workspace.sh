@@ -59,7 +59,7 @@ Just in time, and only what the work in front of you needs:
 
 ## Commit Convention
 
-`type(scope): summary`, imperative, no period; types `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `build`, `perf`, `revert`; a phase branch merges as `merge(P<N>): <phase name>`. Commit after each completed slice; outside the slice workflow only when asked. Attribute each commit to the model that did the work, never another session's trailer. Create no branch unless asked (a worktree is its branch). Never push unasked.
+`type(scope): summary`, imperative, no period; types `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `build`, `perf`, `revert`; a phase branch merges as `merge(P<N>): <phase name>`. Commit after each slice, `create-phase` and `update-workspace`; else only when asked. Attribute each commit to the model that did the work, never another session's trailer. Create no branch unless asked (a worktree is its branch). Never push unasked.
 
 ## Compact Instructions
 

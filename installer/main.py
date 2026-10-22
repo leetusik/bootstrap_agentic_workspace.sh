@@ -45,7 +45,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 63
+WORKSPACE_VERSION = 64
 ROOT = TARGET.resolve()
 # Nested personal install (P28; the default layout since P29): TARGET is a HOST git repo -- one the
 # operator may not own, or a new/empty dir this run `git init`s. The engine and all workflow state go
@@ -1307,7 +1307,7 @@ def print_nested_banner(plan: dict) -> None:
         print("The installer made no git commits, and nothing tracked in the host changed.")
     print(f"Next (start Claude Code at the host root, {HOST} -- never inside {NESTED_DIR}/):")
     if UPDATE:
-        print(f"  1. Review and commit the refresh in the nested repo: git -C {NESTED_DIR} status, then git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: update agentic workspace (nested)\"")
+        print(f"  1. Commit the refresh in the nested repo (/update-workspace does this itself): git -C {NESTED_DIR} status, then git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: update agentic workspace to v{WORKSPACE_VERSION} (nested)\"")
         print(f"  2. Re-apply your executor tiers: {cmd} sync-agents")
     else:
         print(f"  1. First commit in the nested repo: git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: install agentic workspace (nested)\"")

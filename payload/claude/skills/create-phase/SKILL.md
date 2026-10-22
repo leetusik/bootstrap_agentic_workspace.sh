@@ -36,7 +36,7 @@ Turn an operator request for new work into one or more phases — or a deferred 
    ```
    python3 scripts/workflow.py defer-job --title "..." --reason "..." --trigger "..." [--source ...]
    ```
-   This parks the job under `works/deferred/open/<DID>/` and never affects next-slice selection until promoted (the same command the `defer-job` skill wraps). Report and STOP.
+   This parks the job under `works/deferred/open/<DID>/` and never affects next-slice selection until promoted (the same command the `defer-job` skill wraps). Commit it as step 5 says, report and STOP.
 
    **Make a phase (or several)** → for each phase, in operator-confirmed order:
    1. Create it:
@@ -66,7 +66,7 @@ Turn an operator request for new work into one or more phases — or a deferred 
       the operator's word starts a worktree, and it is `/do-next-slice` / `/do-whole-phase` that
       act on it later, never `create-phase`. See the `parallel-phase` skill.
 
-5. **STOP and report.** List the phases created — IDs, names, and `intent.md` paths — or the deferred job created. Do **not** decompose into middle slices, write any slice's `plan.md`, or implement code. Decomposition is the `DECOMP` slice's own job, later, when the operator executes the phase (`/do-next-slice`, `/do-whole-phase`) or explicitly tells you to.
+5. **Commit, then STOP and report.** Commit what the intake wrote, and only that: the new phase folders (or the deferred job's folder) and the regenerated `works/` files (`state.json`, `index.json`, `backlog.md`, `deferred.md`, `events.jsonl`), never other changes the tree holds. **(nested)** Commit in the nested repo, `git -C workflow …`, with paths relative to it. One commit for the whole intake, in the contract's Commit Convention: `chore(P<N>): create <name> and record the operator's intent` (a deferred job: `chore(D<N>): defer <title>`). Never push. Then list the phases created — IDs, names, and `intent.md` paths — or the deferred job created. Do **not** decompose into middle slices, write any slice's `plan.md`, or implement code. Decomposition is the `DECOMP` slice's own job, later, when the operator executes the phase (`/do-next-slice`, `/do-whole-phase`) or explicitly tells you to.
 
 ## The docs-phase route
 
