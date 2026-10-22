@@ -51,8 +51,13 @@ NESTED_HOST_BRANCH_REQUIRED = (
     "named by the host's own convention for branches (see nested-convention), with no workspace phase/slice IDs in it; "
     "an existing branch is reused when no host worktree has it checked out -- nothing was written")
 # phase.json `host_anchors` (nested only): the host HEAD at new-phase and at the passing review --
-# phase-scope's range in the host repo, whose commits the nested repo never sees.
-HOST_ANCHOR_KEYS = ("created", "review_pass")
+# phase-scope's range in the host repo, whose commits the nested repo never sees. `review_base`
+# (P40, optional) is written at the passing review only when the base rule resolved something other
+# than `created` (a rebased branch); absent means `created`, so older phase.json files stay valid.
+HOST_ANCHOR_KEYS = ("created", "review_pass", "review_base")
+# phase.json `repo_anchors.<name>` (multi-repo host only, P40): each registered repo's HEAD and branch
+# at new-phase, and both ends of its range frozen at the passing review. Exactly these four keys.
+REPO_ANCHOR_KEYS = ("created", "branch", "review_pass", "review_base")
 
 
 def nested_marker_problems(data) -> list:
@@ -3130,6 +3135,8 @@ def validate() -> int:
                         errors.append(f"phase {p['id']} has unknown host_anchors.{key}; expected only {', '.join(HOST_ANCHOR_KEYS)}")
                     elif value is not None and not (isinstance(value, str) and re.fullmatch(r"[0-9a-f]{7,64}", value)):
                         errors.append(f"phase {p['id']} has invalid host_anchors.{key} {value!r}; expected a host commit sha or null")
+        if "repo_anchors" in p and nested_repos():
+            _repo_anchor_problems(p, errors, warnings)
         if not (ACTIVE / p["id"] / "intent.md").exists():
             warnings.append(f"phase {p['id']} has no intent.md (expected {p['id']}/intent.md); capture operator intent via the create-phase skill")
         # Bounded notebook (v35). Warnings only: `validate` prints them and still exits 0.
@@ -3385,6 +3392,28 @@ def _with_host_anchors(data: dict, anchors: dict) -> dict:
     return data
 
 
+def _with_repo_anchors(data: dict, entries: dict) -> dict:
+    """`data` with `entries` ({repo name: anchor entry}) merged into its `repo_anchors` block (P40,
+    multi-repo only), the block placed right after `host_anchors` (else `acceptance`, else appended)
+    when it is new -- `_with_host_anchors`' ordering idiom."""
+    current = data.get("repo_anchors")
+    merged = dict(current) if isinstance(current, dict) else {}
+    merged.update(entries)
+    if "repo_anchors" in data:
+        data["repo_anchors"] = merged
+        return data
+    after = "host_anchors" if "host_anchors" in data else "acceptance"
+    ordered = {}
+    for key, value in data.items():
+        ordered[key] = value
+        if key == after:
+            ordered["repo_anchors"] = merged
+    ordered.setdefault("repo_anchors", merged)
+    data.clear()
+    data.update(ordered)
+    return data
+
+
 def _parse_consolidates(raw) -> list:
     """`new-phase --consolidates P26,P27` -> `["P26", "P27"]`: comma-separated, spaces tolerated,
     duplicates dropped in order. Refuses (before `new-phase` writes anything) when the flag names
@@ -3435,6 +3464,23 @@ def new_phase(args: argparse.Namespace) -> None:
         # The nested repo never sees the host's commits, so phase-scope's base is the host HEAD now
         # (null while the host has no commit). At root this key is never written.
         phase_data = _with_host_anchors(phase_data, {"created": head_commit() or None})
+    repo_stamp_lines = []
+    repos = nested_repos()
+    if repos:
+        # P40 multi-repo: each registered repo's own range starts at its HEAD now (null while it has
+        # no commit); `branch` lets phase-scope note a repo later switched to another branch.
+        stamped = {}
+        for repo in repos:
+            rpath, why = _phase_repo_path(repo, phase_data)
+            if rpath is None:
+                repo_stamp_lines.append(f"repo_anchors: {repo['name']} not stamped ({why}) -- phase-scope reports it 'no anchor'")
+                continue
+            head = _rev_parse("HEAD", cwd=rpath)
+            stamped[repo["name"]] = {"created": head, "branch": _repo_current_branch(rpath), "review_pass": None, "review_base": None}
+        if stamped:
+            phase_data = _with_repo_anchors(phase_data, stamped)
+            repo_stamp_lines.insert(0, "repo_anchors=" + ", ".join(
+                f"{n}@{(e['created'] or 'none')[:7]} ({e['branch'] or 'detached'})" for n, e in stamped.items()) + " -- phase-scope's base per repo")
     write_json(pdir / "phase.json", phase_data)
     # Seed the notebook from the template: fixed sections plus an empty generated ## Slices
     # block, which the rebuild at the end of this function fills immediately.
@@ -3445,6 +3491,8 @@ def new_phase(args: argparse.Namespace) -> None:
     append_event("phase_created", phase=phase_id)
     rebuild_index_and_state()
     print(f"created phase {phase_id}: {shown(pdir)}")
+    for line in repo_stamp_lines:
+        print(line)
     if consolidates:
         print(f"consolidates={', '.join(consolidates)} (docs phase: pays the doc debt of those phases; docs-debt shows it as 'paid by {phase_id}')")
     # v43: a phase runs on this stream unless the operator asks for a worktree, so creation
@@ -3624,6 +3672,9 @@ def review_phase(args: argparse.Namespace) -> None:
     if args.verdict == "pass" and NESTED is not None:
         # The end of the phase's host range: phase-scope reads base..review_pass in the host.
         _with_host_anchors(data, {"review_pass": head_commit() or None})
+        _freeze_host_review_base(data)
+        if nested_repos():
+            _freeze_repo_anchors(data)
     write_json(pdir / "phase.json", data)
     # Drive the phase's REVIEW slice from the same verdict so the phase and its
     # review slice never diverge (a pass no longer leaves REVIEW stuck in_progress).
@@ -4993,6 +5044,186 @@ def _status_product_files(cwd=None, pathspec=PRODUCT_PATHSPEC) -> list:
     return files
 
 
+# ---------------------------------------------------------------------------
+# P40: per-repo anchors and the base rule. A nested install's phase range is read from the product
+# repo(s) the nested repo never sees: the host (single-repo) or each registered repo (multi-repo).
+# ---------------------------------------------------------------------------
+
+def _phase_repo_path(repo: dict, phase_data: dict):
+    """`(path, None)` for where phase `phase_data` reads registered repo `repo`, or `(None, why)` when
+    it cannot be read there. THE one resolver every per-repo anchor and scope read goes through:
+    today it is the registry path under the main host checkout (`nested_repo_path`), guarded by
+    `_git_work_tree_root` (on a plain dir `git -C` answers for the host). The worktree set's rule (a
+    repo with no worktree in this set is skipped, never read from the main checkout; S2 §17) changes
+    only this function. `phase_data` is unused until then."""
+    path = nested_repo_path(repo)
+    if not path.exists():
+        return None, f"{repo['path']}/ is missing from the host"
+    if not _git_work_tree_root(path):
+        return None, f"{repo['path']}/ is not a git work tree root"
+    return path, None
+
+
+def _repo_current_branch(path: Path):
+    """The branch checked out in `path`, or None (detached HEAD, or git cannot say)."""
+    proc = _git(["symbolic-ref", "-q", "--short", "HEAD"], cwd=path, check=False)
+    return proc.stdout.strip() if proc.returncode == 0 and proc.stdout.strip() else None
+
+
+def _is_ancestor(path: Path, older: str, newer: str) -> bool:
+    return _git(["merge-base", "--is-ancestor", older, newer], cwd=path, check=False).returncode == 0
+
+
+def _repo_default_branch(path: Path, configured=None):
+    """D, the repo's integration branch NAME: the registry's `default_branch`, else `origin/HEAD`'s
+    target, else a local `main`/`master`, else None."""
+    if configured:
+        return configured
+    proc = _git(["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"], cwd=path, check=False)
+    target = proc.stdout.strip() if proc.returncode == 0 else ""
+    if target.startswith("origin/") and len(target) > len("origin/"):
+        return target[len("origin/"):]
+    for cand in ("main", "master"):
+        if _git(["rev-parse", "--verify", "--quiet", f"refs/heads/{cand}"], cwd=path, check=False).returncode == 0:
+            return cand
+    return None
+
+
+def _default_merge_base(path: Path, name: str, head: str):
+    """merge-base(D, HEAD), D read as `origin/<name>` and as the local `<name>` (whichever exist):
+    the newest of the two merge-bases, so a rebase onto a teammate's pushed commits and one onto a
+    local-only default both count. None when neither ref exists or the histories are unrelated."""
+    best = None
+    for ref in (f"refs/remotes/origin/{name}", f"refs/heads/{name}"):
+        if not _rev_parse(ref, cwd=path):
+            continue
+        proc = _git(["merge-base", ref, head], cwd=path, check=False)
+        mb = proc.stdout.strip() if proc.returncode == 0 else ""
+        if mb and (best is None or (mb != best and _is_ancestor(path, best, mb))):
+            best = mb
+    return best
+
+
+def _patch_ids(path: Path, *revs: str) -> list:
+    """`[(commit, patch-id)]`, newest first, for `git log -p <revs>` (merges skipped), via
+    `git patch-id --stable`. Bytes in and out: a binary or non-UTF-8 diff must not break the read."""
+    try:
+        log = subprocess.run(["git", "log", "-p", "--no-color", "--no-ext-diff", "--no-merges", "--format=commit %H", *revs],
+                             cwd=str(path), capture_output=True, timeout=120)
+        if log.returncode != 0 or not log.stdout:
+            return []
+        pid = subprocess.run(["git", "patch-id", "--stable"], cwd=str(path), input=log.stdout, capture_output=True, timeout=120)
+    except Exception:  # noqa: BLE001 - no patch-id means no recovered copy: the rule falls back to its note
+        return []
+    pairs = []
+    for line in pid.stdout.decode("utf-8", "replace").splitlines():
+        parts = line.split()
+        if len(parts) == 2:
+            pairs.append((parts[1], parts[0]))
+    return pairs
+
+
+def resolve_repo_base(path: Path, created, default_branch=None, label: str = "created", branch=None, hint: str = "--base <sha>") -> dict:
+    """The base rule (P40 S1 §7; answers D35): where a repo's phase range starts. Returns
+    `{"base", "rule", "kind", "note"}` -- `base` a commit sha, the empty tree, or None (unmeasurable);
+    `rule` 1-5 (which step fired); `kind` the text phase-scope prints in `base=... (...)`; `note` a
+    caveat to print, or None. With D = `_repo_default_branch(path, default_branch)` and
+    mb = merge-base(D, HEAD):
+
+    1. `created` null -> the empty tree when the repo now has commits;
+    2. no D, or mb == HEAD (the work sits on the default branch) -> `created`;
+    3. mb an ancestor of `created` (the branch carried pre-phase commits) -> `created`;
+    4. `created` an ancestor of mb (the branch was rebased onto a newer default) -> mb;
+    5. neither (a rebase rewrote `created` itself) -> the commit in mb..HEAD whose `patch-id --stable`
+       equals `created`'s, else mb with a note. A `created` that is a merge commit (no patch-id) or no
+       longer exists (pruned) takes the note path. Never raises."""
+    head = _rev_parse("HEAD", cwd=path)
+    if not created:
+        if head:
+            return {"base": EMPTY_TREE, "rule": 1, "kind": f"the empty tree: {label} is null (no commit at new-phase)", "note": None}
+        return {"base": None, "rule": 1, "kind": None, "note": "no commit at new-phase, and still none"}
+    commit = _rev_parse(created, cwd=path)
+    name = _repo_default_branch(path, default_branch)
+    mb = _default_merge_base(path, name, head) if name and head else None
+    if commit:
+        if mb is None or mb == head:
+            who = "host" if label.startswith("host_anchors") else "repo"
+            return {"base": commit, "rule": 2, "kind": f"the {who} HEAD at new-phase: {label}", "note": None}
+        if _is_ancestor(path, mb, commit):
+            return {"base": commit, "rule": 3, "kind": f"{label}; the branch carried pre-phase commits", "note": None}
+        if _is_ancestor(path, commit, mb):
+            return {"base": mb, "rule": 4, "kind": f"merge-base with {name}: the branch was rebased past {label} {commit[:7]}", "note": None}
+    elif mb is None:
+        return {"base": None, "rule": 5, "kind": None,
+                "note": f"{label} {created} is not a commit here (rewritten and pruned?) and there is no default branch to fall back to"}
+    if commit:
+        own = dict(_patch_ids(path, "-1", commit)).get(commit)
+        if own:
+            copies = [c for c, p in _patch_ids(path, f"{mb}..{head}") if p == own]
+            if copies:
+                return {"base": copies[-1], "rule": 5, "kind": f"the rebased copy of {label} {commit[:7]}, matched by patch-id", "note": None}
+    return {"base": mb, "rule": 5, "kind": f"merge-base with {name}: {label} {str(created)[:7]} was rewritten",
+            "note": f"the phase's base commit was rewritten; the range may include pre-phase commits on {branch or 'HEAD'} -- pass {hint}"}
+
+
+def _freeze_host_review_base(data: dict) -> None:
+    """At a passing review: `host_anchors.review_base` = the base rule's answer, written ONLY when it
+    differs from `created` (a rebased branch, D35) -- absent means `created`, so a non-rebased phase's
+    phase.json is exactly today's. A stale one from an earlier pass is dropped when it no longer differs."""
+    anchors = data.get("host_anchors")
+    if HOST_ROOT is None or not isinstance(anchors, dict) or not anchors.get("created") or not _git_available(cwd=HOST_ROOT):
+        return
+    res = resolve_repo_base(HOST_ROOT, anchors["created"], None, "host_anchors.created")
+    if res["base"] and res["rule"] in (4, 5) and res["base"] != EMPTY_TREE:
+        anchors["review_base"] = res["base"]
+    else:
+        anchors.pop("review_base", None)
+
+
+def _freeze_repo_anchors(data: dict) -> None:
+    """At a passing review (multi-repo): per repo holding an anchor, `review_pass` = its HEAD and
+    `review_base` = what the base rule resolves now, so both ends freeze (after the branch merges and
+    is deleted the rule would otherwise drift). A repo that cannot be read keeps its entry as it is."""
+    anchors = data.get("repo_anchors")
+    if not isinstance(anchors, dict):
+        return
+    registry = {r["name"]: r for r in nested_repos()}
+    for name, entry in anchors.items():
+        repo = registry.get(name)
+        if repo is None or not isinstance(entry, dict):
+            continue
+        path, _why = _phase_repo_path(repo, data)
+        if path is None:
+            continue
+        res = resolve_repo_base(path, entry.get("created"), repo.get("default_branch"), f"repo_anchors.{name}.created")
+        entry["review_pass"] = _rev_parse("HEAD", cwd=path)
+        entry["review_base"] = res["base"] if res["base"] and res["base"] != EMPTY_TREE else None
+
+
+def _repo_anchor_problems(p: dict, errors: list, warnings: list) -> None:
+    """validate's `repo_anchors` rows (multi-repo only): a malformed block or entry is an error,
+    mirroring `host_anchors`; an entry naming an unregistered repo is a warning (glide's P29 has no
+    `repo_anchors`, so nothing here can fail its `--update`)."""
+    anchors = p.get("repo_anchors")
+    if not isinstance(anchors, dict):
+        errors.append(f"phase {p['id']} has a non-object repo_anchors block: {anchors!r}")
+        return
+    registered = {r["name"] for r in nested_repos()}
+    for name, entry in anchors.items():
+        if not isinstance(entry, dict) or set(entry) != set(REPO_ANCHOR_KEYS):
+            got = ", ".join(sorted(entry)) if isinstance(entry, dict) else repr(entry)
+            errors.append(f"phase {p['id']} has a malformed repo_anchors.{name} ({got}); expected exactly the keys {', '.join(REPO_ANCHOR_KEYS)}")
+        else:
+            for key in ("created", "review_pass", "review_base"):
+                value = entry[key]
+                if value is not None and not (isinstance(value, str) and re.fullmatch(r"[0-9a-f]{7,64}", value)):
+                    errors.append(f"phase {p['id']} has invalid repo_anchors.{name}.{key} {value!r}; expected a commit sha of {name} or null")
+            if entry["branch"] is not None and not isinstance(entry["branch"], str):
+                errors.append(f"phase {p['id']} has invalid repo_anchors.{name}.branch {entry['branch']!r}; expected a branch name or null")
+        if name not in registered:
+            warnings.append(f"phase {p['id']} holds repo_anchors.{name}, but no registered repo is named {name} -- phase-scope skips it (re-register it with: {WORKFLOW_CMD} nested-repos --add <path> --name {name})")
+
+
 def _phase_review_commit(phase_id: str, base: str, tip: str):
     """The first commit in base..tip whose recorded phase.json says `review.status == "pass"`.
 
@@ -5032,6 +5263,8 @@ def phase_scope(args: argparse.Namespace) -> None:
                 print(ln)
 
     header = [f"phase={args.phase} status={data.get('status')} archived={str(archived).lower()}"]
+    if NESTED is None and args.repo:
+        raise SystemExit("phase-scope --repo: refused -- a multi-repo host only; an at-root workspace's repo is its one product repo")
     if NESTED is not None:
         _phase_scope_nested(args, data, out, header, emit)
         return
@@ -5139,7 +5372,17 @@ def _phase_scope_nested(args: argparse.Namespace, data: dict, out: dict, header:
     anchors `new-phase` and the passing review stamped into phase.json: base = `--base`, else
     `host_anchors.created` (the host HEAD at creation, so base..head with no `^`); head = `--head`,
     else `host_anchors.review_pass` once the review passed, else the host HEAD. A phase with no
-    usable anchor lists the host working tree only, mirroring the uncommitted-phase path at root."""
+    usable anchor lists the host working tree only, mirroring the uncommitted-phase path at root.
+
+    P40: with no `--base` and no passing review, the base rule (`resolve_repo_base`) runs on the
+    host; it changes the answer only for a rebased branch (rules 4-5, D35). A multi-repo host reads
+    one range per registered repo instead (`_phase_scope_multi`)."""
+    repos = nested_repos()
+    if repos:
+        _phase_scope_multi(args, data, out, header, emit, repos)
+        return
+    if args.repo:
+        raise SystemExit("phase-scope --repo: refused -- single-repo install: the host is the one repo; drop --repo")
     host = HOST_ROOT
     spec = _host_pathspec()
     nested_dir = spec[1].split(")", 1)[1]
@@ -5160,11 +5403,29 @@ def _phase_scope_nested(args: argparse.Namespace, data: dict, out: dict, header:
             raise SystemExit(f"--base {args.base}: not a commit in the host repo {host}")
         base_kind = f"from --base {args.base}"
     elif created:
-        base = _rev_parse(created, cwd=host)
-        if base:
-            base_kind = "the host HEAD when the phase was created (or the host worktree's base after parallel-start): phase.json host_anchors.created"
-        else:
-            missing = f"host_anchors.created {created} is not a commit in the host repo (rewritten history, or a shallow clone)"
+        passed = (data.get("review") or {}).get("status") == "pass"
+        frozen = anchors.get("review_base") if passed else None
+        if frozen:  # P40: the base the rule resolved at the passing review (written only when != created)
+            base = _rev_parse(frozen, cwd=host)
+            if base:
+                base_kind = "the base the rule resolved when the review passed (the branch was rebased): phase.json host_anchors.review_base"
+            else:
+                out["notes"].append(f"host_anchors.review_base {frozen} is not a commit in the host repo -- measured from host_anchors.created instead")
+        if base is None:
+            base = _rev_parse(created, cwd=host)
+            rule = None
+            if not passed:
+                # P40 (D35): the base rule. Rules 2-3 resolve to `created`, the output is exactly
+                # today's; only a rebased branch (rules 4-5) moves the base.
+                rule = resolve_repo_base(host, created, None, "host_anchors.created", _repo_current_branch(host), "--base <host-sha>")
+            if rule is not None and rule["rule"] in (4, 5) and rule["base"]:
+                base, base_kind = rule["base"], rule["kind"]
+                if rule["note"]:
+                    out["notes"].append(rule["note"])
+            elif base:
+                base_kind = "the host HEAD when the phase was created (or the host worktree's base after parallel-start): phase.json host_anchors.created"
+            else:
+                missing = f"host_anchors.created {created} is not a commit in the host repo (rewritten history, or a shallow clone)"
     elif "created" in anchors:  # recorded as null: the host had no commit yet when the phase was created
         if _rev_parse("HEAD", cwd=host):
             base, base_kind = EMPTY_TREE, "the empty tree: the host had no commit when the phase was created"
@@ -5223,6 +5484,212 @@ def _phase_scope_nested(args: argparse.Namespace, data: dict, out: dict, header:
     if uncommitted:
         lines.append(f"uncommitted_product_files={len(uncommitted)} (host working tree, not in the range above)")
         lines += [f"  {f['status']} {f['path']}" for f in uncommitted]
+    lines += [f"note: {n}" for n in out["notes"]] + [SCOPE_HINT]
+    emit(lines)
+
+
+def _scope_file_lines(files: list, prefix: str = "", indent: str = "  ") -> list:
+    return [f"{indent}{f['status']} {prefix}{f['from']} -> {prefix}{f['path']}" if f.get("from") else f"{indent}{f['status']} {prefix}{f['path']}"
+            for f in files]
+
+
+def _prefixed(files: list, prefix: str) -> list:
+    """Scope file entries with `prefix` (`<repo path>/`) on every path, for the union and the JSON."""
+    out = []
+    for f in files:
+        g = dict(f, path=prefix + f["path"])
+        if f.get("from"):
+            g["from"] = prefix + f["from"]
+        out.append(g)
+    return out
+
+
+def _phase_scope_multi(args: argparse.Namespace, data: dict, out: dict, header: list, emit, repos: list) -> None:
+    """phase-scope on a multi-repo host (P40 S1 §8): the phase's boundary is its commits in EACH
+    registered repo, so one block per repo, read through `_phase_repo_path`.
+
+    Per repo: base = per-repo `--base` (with exactly one `--repo`), else `repo_anchors.<name>.review_base`
+    once the review passed, else the base rule; head = per-repo `--head`, else `review_pass` once the
+    review passed, else the repo's HEAD. A repo with no anchor prints `base=none` and its working tree
+    only -- never the empty tree, which would list the whole repo. The host's own block (every registered
+    path excluded from its pathspec) prints only when it has a product file; without `--repo`,
+    `--base`/`--head` still mean the host."""
+    host = HOST_ROOT
+    names = [r["name"] for r in repos]
+    wanted = list(dict.fromkeys(args.repo or []))
+    unknown = [n for n in wanted if n not in names]
+    if unknown:
+        raise SystemExit(f"phase-scope --repo: refused -- no registered repo is named {', '.join(unknown)} (registered: {', '.join(names)})")
+    if wanted and (args.base or args.head) and len(wanted) != 1:
+        raise SystemExit("phase-scope: refused -- with --repo, --base/--head set ONE repo's range, so they need exactly one --repo "
+                         f"(got {len(wanted)}: {', '.join(wanted)}); without --repo they set the host's range")
+    per_repo_override = bool(wanted)
+    selected = [r for r in repos if not wanted or r["name"] in wanted]
+    passed = (data.get("review") or {}).get("status") == "pass"
+    anchors = data.get("repo_anchors") if isinstance(data.get("repo_anchors"), dict) else {}
+    out["mode"] = "nested-multi"
+    blocks, union, union_unc, total_commits, touched = [], [], [], 0, 0
+
+    for repo in selected:
+        name, rel = repo["name"], repo["path"]
+        prefix = f"{rel}/"
+        entry = {"name": name, "path": rel, "branch": None, "base": None, "base_kind": None, "head": None, "head_kind": None,
+                 "range": None, "commits": 0, "files": [], "uncommitted": [], "notes": []}
+        out.setdefault("repos", []).append(entry)
+        path, why = _phase_repo_path(repo, data)
+        if path is None:
+            entry["notes"].append(f"{name} skipped: {why}")
+            blocks.append([f"repo={name} path={prefix} skipped ({why})"])
+            continue
+        branch_now = _repo_current_branch(path)
+        entry["branch"] = branch_now
+        branch_txt = branch_now or "(detached)"
+        anchor = anchors.get(name) if isinstance(anchors.get(name), dict) else None
+        repo_head = _rev_parse("HEAD", cwd=path)
+        base = base_kind = None
+        why_none = None
+        if per_repo_override and args.base:
+            base = _rev_parse(args.base, cwd=path)
+            if not base:
+                raise SystemExit(f"--base {args.base}: not a commit in {name} ({path})")
+            base_kind = f"from --base {args.base}"
+        elif anchor is None:
+            why_none = f"no repo_anchors.{name} -- pass --repo {name} --base <sha>"
+        else:
+            frozen = anchor.get("review_base") if passed else None
+            if frozen:
+                base = _rev_parse(frozen, cwd=path)
+                if base:
+                    base_kind = f"frozen at the passing review: repo_anchors.{name}.review_base"
+                else:
+                    entry["notes"].append(f"repo_anchors.{name}.review_base {frozen} is not a commit in {name} -- the base rule decides instead")
+            if base is None:
+                res = resolve_repo_base(path, anchor.get("created"), repo.get("default_branch"), f"repo_anchors.{name}.created",
+                                        branch_now, f"--repo {name} --base <sha>")
+                base, base_kind = res["base"], res["kind"]
+                if res["note"] and base:
+                    entry["notes"].append(f"{name}: {res['note']}")
+                elif not base:
+                    why_none = f"{res['note']} -- pass --repo {name} --base <sha>"
+        if base is None:
+            unc = _prefixed(_status_product_files(cwd=path, pathspec=["."]), prefix)
+            entry["uncommitted"] = unc
+            union_unc += unc
+            touched += bool(unc)
+            block = [f"repo={name} path={prefix} branch={branch_txt} base=none ({why_none})"]
+            if unc:
+                block.append(f"  uncommitted_product_files={len(unc)} (working tree)")
+                block += _scope_file_lines(unc, indent="    ")
+            blocks.append(block)
+            out["notes"] += entry["notes"]
+            continue
+        if per_repo_override and args.head:
+            head = _rev_parse(args.head, cwd=path)
+            if not head:
+                raise SystemExit(f"--head {args.head}: not a commit in {name} ({path})")
+            head_kind = f"from --head {args.head}"
+        else:
+            head = head_kind = None
+            frozen_head = anchor.get("review_pass") if (anchor and passed) else None
+            if frozen_head:
+                head = _rev_parse(frozen_head, cwd=path)
+                if head:
+                    head_kind = f"{name}'s HEAD when the review passed: repo_anchors.{name}.review_pass; pass --repo {name} --head HEAD to read to the tip"
+                else:
+                    entry["notes"].append(f"repo_anchors.{name}.review_pass {frozen_head} is not a commit in {name} -- read to its tip instead")
+            if not head:
+                head, head_kind = repo_head, f"the tip of {name}'s HEAD"
+                recorded = anchor.get("branch") if anchor else None
+                if recorded and branch_now != recorded:
+                    entry["notes"].append(f"{name} is on {branch_txt}, the phase recorded {recorded} -- pass --repo {name} --head {recorded}")
+        if not head:
+            raise SystemExit(f"cannot resolve {name}'s HEAD to a commit in {path}")
+        rng = head if base == EMPTY_TREE else f"{base}..{head}"
+        count = int(_git(["rev-list", "--count", rng], cwd=path, check=False).stdout.strip() or "0")
+        files = _diff_product_files(base, head, cwd=path, pathspec=["."])
+        uncommitted = _status_product_files(cwd=path, pathspec=["."]) if head == repo_head else []
+        pfiles, punc = _prefixed(files, prefix), _prefixed(uncommitted, prefix)
+        entry.update({"base": base, "base_kind": base_kind, "head": head, "head_kind": head_kind,
+                      "range": f"{base[:7]}..{head[:7]}", "commits": count, "files": pfiles, "uncommitted": punc})
+        union += pfiles
+        union_unc += punc
+        total_commits += count
+        out["notes"] += entry["notes"]
+        if not (count or files or uncommitted):
+            blocks.append([f"repo={name} path={prefix} commits=0 product_files=0 (untouched)"])
+            continue
+        touched += 1
+        tally = {k: sum(1 for f in files if f["status"] == k) for k in ("A", "M", "D", "R")}
+        block = [f"repo={name} path={prefix} branch={branch_txt} base={base[:7]} ({base_kind}) head={head[:7]} ({head_kind}) commits={count}",
+                 f"  product_files={len(files)} (added {tally['A']}, modified {tally['M']}, deleted {tally['D']}, renamed {tally['R']})"]
+        block += _scope_file_lines(pfiles, indent="    ")
+        if uncommitted:
+            block.append(f"  uncommitted_product_files={len(uncommitted)} (working tree, not in the range above)")
+            block += _scope_file_lines(punc, indent="    ")
+        blocks.append(block)
+
+    # The host's own block: never with a --repo filter; printed only when it has a product file
+    # (a multi-repo host tracks nothing), or when --base/--head asked for its range.
+    host_block = []
+    host_anchors = data.get("host_anchors") if isinstance(data.get("host_anchors"), dict) else {}
+    out["creation_commit"] = host_anchors.get("created")
+    if not wanted and host is not None and _git_available(cwd=host):
+        spec = _host_pathspec() + [f":(exclude){r['path']}" for r in repos]
+        base = base_kind = None
+        if args.base:
+            base = _rev_parse(args.base, cwd=host)
+            if not base:
+                raise SystemExit(f"--base {args.base}: not a commit in the host repo {host}")
+            base_kind = f"from --base {args.base}"
+        elif passed and host_anchors.get("review_base") and _rev_parse(host_anchors["review_base"], cwd=host):
+            base, base_kind = _rev_parse(host_anchors["review_base"], cwd=host), "frozen at the passing review: host_anchors.review_base"
+        elif "created" in host_anchors:
+            res = resolve_repo_base(host, host_anchors.get("created"), None, "host_anchors.created", _repo_current_branch(host), "--base <host-sha>")
+            base, base_kind = res["base"], res["kind"]
+        host_head = _rev_parse("HEAD", cwd=host)
+        head, head_kind = None, None
+        if args.head:
+            head = _rev_parse(args.head, cwd=host)
+            if not head:
+                raise SystemExit(f"--head {args.head}: not a commit in the host repo {host}")
+            head_kind = f"from --head {args.head}"
+        elif passed and host_anchors.get("review_pass"):
+            head = _rev_parse(host_anchors["review_pass"], cwd=host)
+            head_kind = "the host HEAD when the review passed: host_anchors.review_pass" if head else None
+        if not head:
+            head, head_kind = host_head, "the tip of the host's HEAD"
+        files, count = [], 0
+        if base and head:
+            rng = head if base == EMPTY_TREE else f"{base}..{head}"
+            count = int(_git(["rev-list", "--count", rng], cwd=host, check=False).stdout.strip() or "0")
+            files = _diff_product_files(base, head, cwd=host, pathspec=spec)
+            out.update({"base": base, "base_kind": base_kind, "head": head, "head_kind": head_kind, "range": f"{base[:7]}..{head[:7]}"})
+        uncommitted = _status_product_files(cwd=host, pathspec=spec) if head == host_head else []
+        union += files
+        union_unc += uncommitted
+        if files or uncommitted or args.base or args.head:
+            total_commits += count
+            tally = {k: sum(1 for f in files if f["status"] == k) for k in ("A", "M", "D", "R")}
+            if base and head:
+                host_block.append(f"repo=. (host) base={base[:7]} ({base_kind}) head={head[:7]} ({head_kind}) commits={count}")
+            else:
+                host_block.append("repo=. (host) base=none (no usable host_anchors.created -- pass --base <host-sha>)")
+            host_block.append(f"  product_files={len(files)} (added {tally['A']}, modified {tally['M']}, deleted {tally['D']}, renamed {tally['R']}; "
+                              f"{_nested_dir_name()}/ and the {len(repos)} repos excluded)")
+            host_block += _scope_file_lines(files, indent="    ")
+            if uncommitted:
+                host_block.append(f"  uncommitted_product_files={len(uncommitted)} (host working tree, not in the range above)")
+                host_block += _scope_file_lines(uncommitted, indent="    ")
+            if files or uncommitted:
+                out["notes"].append("the multi-repo host has product files of its own -- product belongs in the repos")
+
+    out.update({"commits": total_commits, "files": union, "uncommitted": union_unc})
+    lines = header + [f"mode=nested-multi repos={len(selected)} touched={touched}"]
+    for block in blocks:
+        lines += block
+    lines += host_block
+    if not union:
+        lines.append(f"product_files=0 across {len(selected)} repos")
     lines += [f"note: {n}" for n in out["notes"]] + [SCOPE_HINT]
     emit(lines)
 
@@ -5596,6 +6063,9 @@ def cmd_nested_repos(args: argparse.Namespace) -> None:
     path = ROOT / NESTED_MARKER
     host = MAIN_HOST or HOST_ROOT
     current = nested_repos()
+    if args.map_anchors is not None:
+        _map_repo_anchors(args.map_anchors, current)
+        return
     if args.add is None and args.remove is None and args.rules is None and args.detect_rules is None:
         _print_nested_repos(current)
         return
@@ -5683,6 +6153,69 @@ def cmd_nested_repos(args: argparse.Namespace) -> None:
         for rule in rules:
             print(f"  {rule}")
     _print_nested_repos(repos)
+
+
+def _map_repo_anchors(name: str, repos: list) -> None:
+    """`nested-repos --map-anchors <repo>` (P40 S2 §22 step 7, §25): a converted install's phases
+    carry `host_anchors` that are really commits of the old single repo, now registered as `<repo>`.
+    Per phase, active and archived: `repo_anchors.<repo>` = {created, branch: null, review_pass,
+    review_base} (review_base = the frozen `host_anchors.review_base` if any, else `created` once the
+    review passed, which reproduces the old `created..review_pass` exactly), and `host_anchors`
+    becomes {}. Skipped, untouched and said why: already mapped; in flight on its own branch (its
+    truth lives there); no host_anchors shas; shas that are not commits in `<repo>` (glide's P29: the
+    host's empty commit). Writes phase.json files only and never commits; a re-run maps nothing."""
+    refused = "nested-repos --map-anchors: refused -- nothing was written"
+    repo = next((r for r in repos if r.get("name") == name), None)
+    if repo is None:
+        raise SystemExit(f"{refused}: no registered repo is named {name} (registered: {', '.join(r.get('name', '?') for r in repos) or 'none'})")
+    rpath, why = _phase_repo_path(repo, {})
+    if rpath is None:
+        raise SystemExit(f"{refused}: {why}")
+    pdirs = [(d, False) for d in phase_dirs()]
+    if ARCHIVED.is_dir():
+        pdirs += [(d, True) for d in sorted(ARCHIVED.iterdir()) if d.is_dir() and (d / "phase.json").is_file()]
+    mapped, skipped = [], 0
+    for pdir, archived in pdirs:
+        try:
+            data = read_json(pdir / "phase.json")
+        except (OSError, ValueError) as exc:
+            print(f"{pdir.name}: skipped: phase.json cannot be read ({exc})")
+            skipped += 1
+            continue
+        pid = f"{data.get('id', pdir.name)}{' (archived)' if archived else ''}"
+        host = data.get("host_anchors") if isinstance(data.get("host_anchors"), dict) else {}
+        shas = {k: v for k, v in host.items() if k in HOST_ANCHOR_KEYS and isinstance(v, str) and v}
+        held = data.get("repo_anchors") if isinstance(data.get("repo_anchors"), dict) else {}
+        execution = data.get("execution") if isinstance(data.get("execution"), dict) else {}
+        reason = None
+        if name in held:
+            reason = f"already holds repo_anchors.{name}"
+        elif execution.get("worktree") or execution.get("host_worktree"):
+            reason = (f"in flight on its own branch ({execution.get('branch') or execution.get('worktree')}): "
+                      "its phase.json's truth lives there -- map it after it merges")
+        elif not shas:
+            reason = "holds no host_anchors shas"
+        else:
+            bad = [f"{k}={v[:7]}" for k, v in shas.items() if not _rev_parse(v, cwd=rpath)]
+            if bad:
+                reason = f"host_anchors {', '.join(bad)} not a commit in {name} (a host commit, or another repo's) -- left untouched"
+        if reason:
+            print(f"{pid}: skipped: {reason}")
+            skipped += 1
+            continue
+        created, passed = shas.get("created"), shas.get("review_pass")
+        entry = {"created": created, "branch": None, "review_pass": passed,
+                 "review_base": shas.get("review_base") or (created if passed else None)}
+        data["host_anchors"] = {}
+        _with_repo_anchors(data, {name: entry})
+        write_json(pdir / "phase.json", data)
+        mapped.append(data.get("id", pdir.name))
+        print(f"{pid}: mapped: repo_anchors.{name} = created {(created or 'null')[:7]}, review_pass {(passed or 'null')[:7]}, "
+              f"review_base {(entry['review_base'] or 'null')[:7]}; host_anchors = {{}}")
+    if mapped:
+        append_event("nested_repo_anchors_mapped", repo=name, phases=mapped)
+    print(f"nested-repos --map-anchors {name}: mapped {len(mapped)}, skipped {skipped} of {len(pdirs)} phase(s)"
+          + (" -- phase.json files written; commit them in the nested repo" if mapped else " -- nothing written"))
 
 
 def _write_nested_repos(path: Path, data: dict, repos: list) -> None:
@@ -10137,6 +10670,7 @@ def main(argv=None) -> int:
     action.add_argument("--remove", default=None, metavar="NAME", help="drop a repo from the registry (its files are untouched); refused while an active phase holds repo_anchors.NAME")
     action.add_argument("--rules", default=None, metavar="NAME", help="set a repo's rules files by hand (needs --set)")
     action.add_argument("--detect-rules", default=None, metavar="NAME", dest="detect_rules", help="re-detect a repo's rules files: every tracked AGENTS.md / CLAUDE.md, plus .agents/skills/*/SKILL.md")
+    action.add_argument("--map-anchors", default=None, metavar="NAME", dest="map_anchors", help="converted install: move every phase's host_anchors (shas that are commits of repo NAME) to repo_anchors.NAME, active and archived phases alike; skips phases in flight on their own branch; writes phase.json files only")
     p.add_argument("--set", default=None, metavar="A,B,C", help="with --rules: the comma-separated repo-relative paths of the repo's own rules files (empty clears them)")
     p.add_argument("--name", default=None, help="with --add: the repo's name in the registry (default: the path's last segment; [A-Za-z0-9._-]+)")
     p.add_argument("--default-branch", default=None, dest="default_branch", help="with --add: the repo's integration branch (default: its origin/HEAD target, else none)")
@@ -10147,6 +10681,7 @@ def main(argv=None) -> int:
     p.add_argument("--base", default=None, help="use this ref as the range base verbatim (skips creation-commit / merge-base detection)")
     p.add_argument("--head", default=None, help="use this ref as the range head (default: HEAD, or the commit that recorded a passing review on a done phase)")
     p.add_argument("--json", action="store_true", help="print the same answer as one JSON object")
+    p.add_argument("--repo", action="append", default=None, metavar="NAME", help="multi-repo host only: measure only this registered repo (repeatable); with exactly one --repo, --base/--head set that repo's range instead of the host's")
     p.set_defaults(func=phase_scope)
 
     p = sub.add_parser("phase-section", help="Read or write ONE `## ` section of a phase's phase.md: no name = the index (a line per heading with its bytes), a name prints that section, --replace / --append write one section (stdin or --file), --resolve OQ<n> --pointer <ref> collapses an Operator Questions entry; every other byte of the notebook stays identical",
