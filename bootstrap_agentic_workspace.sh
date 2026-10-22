@@ -119,6 +119,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -175,6 +176,19 @@ _HOST_INIT_UNDO = None   # (the .git this run created, [dirs this run created, d
 NESTED_INIT_CONVENTION = {"inferred": None, "confirmed": True,
                           "text": "type(scope): summary -- imperative, no trailing period",
                           "coauthor_trailers": "allowed"}
+# Multi-repo host (P40): a folder that tracks nothing and holds product repos at depth 1. The marker's
+# optional `repos` registry (scripts/workflow.py: nested_repos(), NESTED_REPO_KEYS) is what makes an
+# install multi-repo; every branch below is gated on a non-empty registry, so a single-repo nested or
+# at-root install runs exactly the code it always did. The installer seeds the registry (a fresh install
+# into a repos-only folder, or an --update on a host that tracks nothing and has no `repos` key) and
+# renders it (the exclude lines, the CLAUDE.local.md block); the engine's `nested-repos` edits it after.
+# The installer never contains worktree code. The conversion (--to-multi-repo, S10) shares these names:
+# _child_repo_dirs, _seed_repos, _inferred_convention, _registry_entries, _multi_repo_local_block.
+REPOS_HOST = False          # this run git init-ed a repos-only target: the host is a multi-repo host
+REPOS_HOST_NAMES = []       # ... and the depth-1 repo dirs it found there (the registry nested_plan seeds)
+HOST_FIRST_COMMIT = "chore: start the host history"   # the empty commit new-phase / parallel-start base on (OQ2)
+HOST_COMMIT_ERROR = None    # why that commit was not made (git has no identity, usually); None when it was
+REPO_NAME_RE = re.compile(r"[A-Za-z0-9._-]+")   # == scripts/workflow.py NESTED_REPO_NAME
 
 
 def _nested_undo_init() -> None:
@@ -888,10 +902,15 @@ def nested_rewrite(text: str, renames: dict) -> str:
     return text
 
 
+def _git_in(path: Path, *args: str):
+    """(returncode, stdout) of git run in `path` -- read-only queries only."""
+    proc = subprocess.run(["git", "-C", str(path), *args], capture_output=True)
+    return proc.returncode, proc.stdout.decode("utf-8", errors="replace")
+
+
 def _host_git(*args: str):
     """(returncode, stdout) of git run in the host repo -- read-only queries only."""
-    proc = subprocess.run(["git", "-C", str(HOST), *args], capture_output=True)
-    return proc.returncode, proc.stdout.decode("utf-8", errors="replace")
+    return _git_in(HOST, *args)
 
 
 def _work_tree_top(path: Path):
@@ -911,6 +930,47 @@ def _host_empty_or_absent() -> bool:
             and not any(e.name not in EMPTY_OK_ALLOWLIST for e in HOST.iterdir()))
 
 
+def _is_repo_dir(path: Path) -> bool:
+    """`path` is a real directory (not a symlink) that is the root of its own git work tree: it has a
+    `.git` (a directory, or the file of a worktree or submodule) and git agrees it is a work tree root."""
+    if path.is_symlink() or not path.is_dir() or not os.path.lexists(path / ".git"):
+        return False
+    top = _work_tree_top(path)
+    return top is not None and top == path.resolve()
+
+
+def _registrable_name(name: str) -> bool:
+    """A dir name the registry can take as a repo's name and path: [A-Za-z0-9._-]+, and neither the
+    nested workspace's dir nor `.claude/` (the engine refuses both as a registry path)."""
+    return bool(REPO_NAME_RE.fullmatch(name)) and name not in (NESTED_DIR, ".claude")
+
+
+def _child_repo_dirs(base: Path) -> list:
+    """Sorted names of `base`'s depth-1 directories that are git work tree roots, the nested
+    workspace's own dir and `.claude/` aside. Detection only: it registers nothing."""
+    try:
+        entries = sorted(base.iterdir(), key=lambda e: e.name)
+    except OSError:
+        return []
+    return [e.name for e in entries if e.name not in (NESTED_DIR, ".claude") and _is_repo_dir(e)]
+
+
+def _repos_only_target():
+    """The depth-1 repo names (sorted) when HOST is a repos-only target (S1 §12 step 1), else None: not
+    inside any git work tree and not a repo itself; every depth-1 entry outside EMPTY_OK_ALLOWLIST is a
+    git repo whose name the registry can take; at least one such repo. Anything else keeps today's refusal."""
+    if not HOST.is_dir() or os.path.lexists(HOST / ".git") or _work_tree_top(HOST) is not None:
+        return None
+    names = []
+    for entry in sorted(HOST.iterdir(), key=lambda e: e.name):
+        if entry.name in EMPTY_OK_ALLOWLIST:
+            continue
+        if not (_registrable_name(entry.name) and _is_repo_dir(entry)):
+            return None
+        names.append(entry.name)
+    return names or None
+
+
 def _nested_refuse_inside(top) -> None:
     """HOST sits below the root of the work tree `top`: today's refusal, naming --at-root too."""
     _nested_refuse(f"the nested install goes at a git repo's root, and {HOST} is inside the work tree of {top}: "
@@ -923,12 +983,22 @@ def nested_init_host() -> None:
     EMPTY_OK_ALLOWLIST sense and in no git work tree: `mkdir -p` + `git init -q` it as the host
     (P29), recording what to undo should a refusal come before the first write. Any other target
     is left to nested_preflight's checks; an absent one inside a work tree refuses as a directory
-    there would."""
-    global HOST_INITED, _HOST_INIT_UNDO
+    there would.
+
+    P40: a non-git target that holds only product repos (_repos_only_target) is initialised the same
+    way, with its undo, and then gets the empty commit `chore: start the host history` -- the one
+    commit the installer ever makes (_host_first_commit); it becomes a multi-repo host (REPOS_HOST)."""
+    global HOST_INITED, REPOS_HOST, REPOS_HOST_NAMES, _HOST_INIT_UNDO
     created = []
+    repos_only = None
     if os.path.lexists(HOST):
-        if not _host_empty_or_absent() or _work_tree_top(HOST) is not None:
-            return
+        if _host_empty_or_absent():
+            if _work_tree_top(HOST) is not None:
+                return
+        else:
+            repos_only = _repos_only_target()
+            if repos_only is None:
+                return
     else:
         anc = HOST
         while not os.path.lexists(anc):
@@ -948,6 +1018,26 @@ def nested_init_host() -> None:
     proc = subprocess.run(["git", "init", "-q", str(HOST)], capture_output=True)
     if proc.returncode != 0:
         _nested_refuse(f"git init in {HOST} failed (exit {proc.returncode}: {proc.stderr.decode('utf-8', 'replace').strip()}); nothing written.")
+    if repos_only is not None:
+        REPOS_HOST, REPOS_HOST_NAMES = True, repos_only
+        _host_first_commit()
+
+
+def _host_first_commit() -> None:
+    """The host's one commit, empty: new-phase stamps host_anchors.created from it and parallel-start
+    takes its base from it. A refusal later in this run removes the whole .git with it (the undo). When
+    git will not make it (no identity, usually), the init is kept, HOST_COMMIT_ERROR says why and the
+    banner prints the commands; the install goes on as a hand-initialised host's would."""
+    global HOST_COMMIT_ERROR
+    try:
+        proc = subprocess.run(["git", "-C", str(HOST), "commit", "--allow-empty", "-q", "-m", HOST_FIRST_COMMIT],
+                              capture_output=True, stdin=subprocess.DEVNULL, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        HOST_COMMIT_ERROR = str(exc) or type(exc).__name__
+        return
+    if proc.returncode != 0:
+        lines = [ln.strip() for ln in proc.stderr.decode("utf-8", errors="replace").splitlines() if ln.strip()]
+        HOST_COMMIT_ERROR = lines[0] if lines else f"git commit exited {proc.returncode}"
 
 
 def nested_preflight() -> None:
@@ -1036,16 +1126,18 @@ def _host_taken(kind: str, ours: set) -> dict:
     return taken
 
 
-def nested_infer_convention():
+def nested_infer_convention(base: Path = None):
     """The host's commit convention, inferred non-interactively from its recent history and any
     CONTRIBUTING file -- one line for the operator to confirm (`nested-convention --confirm`), or
-    None when the host has neither."""
-    rc, out = _host_git("log", "-n", "50", "--no-merges", "--format=%s")
+    None when the host has neither. `base` (P40) infers from another repo instead: each registered
+    repo of a multi-repo host, on its own history."""
+    base = HOST if base is None else base
+    rc, out = _git_in(base, "log", "-n", "50", "--no-merges", "--format=%s")
     subjects = [s.strip() for s in out.splitlines() if s.strip()] if rc == 0 else []
-    rc, bodies = _host_git("log", "-n", "50", "--no-merges", "--format=%B%x00")
+    rc, bodies = _git_in(base, "log", "-n", "50", "--no-merges", "--format=%B%x00")
     trailers = sum(1 for b in bodies.split("\x00") if re.search(r"(?im)^co-authored-by:", b)) if rc == 0 else 0
     mentions = []
-    for f in sorted(HOST.glob("CONTRIBUTING*")) + sorted((HOST / ".github").glob("CONTRIBUTING*")):
+    for f in sorted(base.glob("CONTRIBUTING*")) + sorted((base / ".github").glob("CONTRIBUTING*")):
         try:
             head = f.read_bytes()[:4096].decode("utf-8", errors="replace") if f.is_file() else ""
         except OSError:
@@ -1080,7 +1172,150 @@ def nested_infer_convention():
     return "; ".join(parts)
 
 
-def _nested_unignored(check_paths: list, exclude_entries: list) -> list:
+REPO_RULE_NAMES = ("AGENTS.md", "CLAUDE.md")   # == scripts/workflow.py NESTED_REPO_RULE_NAMES
+
+
+def _inferred_convention(repo_path: Path) -> dict:
+    """An UNCONFIRMED convention for one repo: inferred from that repo's own history and CONTRIBUTING
+    file (the host-level rule of nested_plan, applied per repo -- S1 §5)."""
+    return {"inferred": nested_infer_convention(repo_path), "confirmed": False, "text": None, "coauthor_trailers": "unknown"}
+
+
+def _repo_origin_head(path: Path):
+    """The branch a repo's `origin/HEAD` points at (`main`, `dev`, ...), or None. Same reading as the
+    engine's `_repo_origin_head`, which `nested-repos --add` seeds `default_branch` from."""
+    rc, out = _git_in(path, "symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD")
+    target = out.strip() if rc == 0 else ""
+    return target.split("/", 1)[1] if target.startswith("origin/") and len(target) > len("origin/") else None
+
+
+def _detect_repo_rules(path: Path) -> list:
+    """A repo's own rules files, repo-relative and sorted: every tracked `AGENTS.md` / `CLAUDE.md` at
+    any depth, plus `.agents/skills/*/SKILL.md`. The same detection as the engine's `_detect_repo_rules`
+    (`nested-repos --detect-rules`): tracked files only, so build output and ignored copies never count."""
+    rc, out = _git_in(path, "ls-files", "-z")
+    if rc != 0:
+        return []
+    found = []
+    for f in out.split("\0"):
+        parts = f.split("/") if f else []
+        if parts and (parts[-1] in REPO_RULE_NAMES or (len(parts) == 4 and parts[:2] == [".agents", "skills"] and parts[3] == "SKILL.md")):
+            found.append(f)
+    return sorted(found)
+
+
+def _seed_repos(names: list, convention_for) -> list:
+    """Registry entries for the depth-1 repos `names` of HOST, in the engine's key order: name and path
+    are the dir name, default_branch the repo's origin/HEAD target (else null), rules detected.
+    `convention_for(name, path)` returns the entry's commit_convention: a four-key object or None (inherit)."""
+    return [{"name": n, "path": n, "default_branch": _repo_origin_head(HOST / n),
+             "commit_convention": convention_for(n, HOST / n), "rules": _detect_repo_rules(HOST / n)} for n in names]
+
+
+def _clean_repo_path(raw) -> bool:
+    """A registry path the installer will act on (an exclude line, a block line, a git call): host-relative
+    and normalized, never the nested dir or under `.claude/`. The engine's `validate` judges the rest."""
+    if not (isinstance(raw, str) and raw.strip() and raw == raw.strip()) or os.path.isabs(raw) or "\\" in raw:
+        return False
+    parts = raw.split("/")
+    return not any(p in ("", ".", "..") for p in parts) and parts[0] not in (NESTED_DIR, ".claude")
+
+
+def _registry_entries(raw) -> list:
+    """The entries of a marker's `repos` the installer can use: dicts with a usable name and path. Others
+    are skipped here (never rewritten, never dropped from the marker): the engine's `validate` reports them."""
+    if not isinstance(raw, list):
+        return []
+    return [r for r in raw if isinstance(r, dict) and isinstance(r.get("name"), str) and _clean_repo_path(r.get("path"))]
+
+
+def _reinfer_unconfirmed(raw: list) -> list:
+    """A later --update: a repo whose own convention is unconfirmed is re-inferred, as the host-level one
+    is on a single-repo host; a confirmed or null (inherit) one is kept. Entries are copied, never mutated."""
+    out = []
+    for r in raw:
+        conv = r.get("commit_convention") if isinstance(r, dict) else None
+        if isinstance(conv, dict) and conv.get("confirmed") is not True and _clean_repo_path(r.get("path")) and _is_repo_dir(HOST / r["path"]):
+            r = {**r, "commit_convention": _inferred_convention(HOST / r["path"])}
+        out.append(r)
+    return out
+
+
+def _repo_unconfirmed(repos: list, host_conv: dict) -> list:
+    """Names of the registered repos whose effective convention is UNCONFIRMED: its own is not confirmed,
+    or it has none (null = inherit) and the host-level one is not confirmed -- the engine's reading."""
+    out = []
+    for r in repos:
+        conv = r.get("commit_convention")
+        if (conv.get("confirmed") is True) if isinstance(conv, dict) else (host_conv.get("confirmed") is True):
+            continue
+        out.append(r["name"])
+    return out
+
+
+def _tracked_workspace_files(repo_path: Path, installed: dict) -> list:
+    """Workspace paths a repo tracks (`workflow`, `CLAUDE.local.md`, `.claude/settings.local.json`, an
+    installed skill dir or agent file): the engine's validate row, an error once the repo is registered."""
+    paths = [NESTED_DIR, "CLAUDE.local.md", ".claude/settings.local.json"]
+    paths += [f".claude/skills/{n}" for n in installed.get("skills") or []] + [f".claude/agents/{n}.md" for n in installed.get("agents") or []]
+    rc, out = _git_in(repo_path, "ls-files", "-z", "--", *paths)
+    files = [f for f in out.split("\0") if f] if rc == 0 else []
+    return [w for w in paths if any(f == w or f.startswith(w + "/") for f in files)]
+
+
+def _is_commit(path: Path, sha: str) -> bool:
+    proc = subprocess.run(["git", "-C", str(path), "cat-file", "-e", f"{sha}^{{commit}}"], capture_output=True)
+    return proc.returncode == 0
+
+
+def _registry_drift_notes(repos: list) -> list:
+    """One line per depth-1 child repo the registry does not list. The installer never re-detects once
+    `repos` exists (S1 §3): the engine's `nested-repos --add` owns the list."""
+    registered = {r["path"] for r in repos}
+    cmd = f"python3 {NESTED_DIR}/scripts/workflow.py"
+    notes = []
+    for child in _child_repo_dirs(HOST):
+        if child not in registered:
+            quoted = shlex.quote(child)
+            hint = f"{cmd} nested-repos --add {quoted}" if _registrable_name(child) else f"{cmd} nested-repos --add {quoted} --name <name>"
+            notes.append(f"{child}/ is a git repo the registry does not list (--update never re-detects): {hint}")
+    return notes
+
+
+def _anchor_map_notes(repos: list) -> list:
+    """S2 §25: phases whose `host_anchors` shas are no commit of the host but are commits of exactly one
+    registered repo (glide: the migrated P1-P33 shas) get one note per repo naming `nested-repos
+    --map-anchors <repo>`. --update maps nothing itself: the engine owns phase.json, and its command
+    skips a phase in flight on its own branch."""
+    seen, counts = {}, {}
+
+    def commit_of(path: Path, sha: str) -> bool:
+        key = (str(path), sha)
+        if key not in seen:
+            seen[key] = _is_commit(path, sha)
+        return seen[key]
+    for state in ("active", "archived"):
+        for pj in sorted((ROOT / "works" / "phases" / state).glob("*/phase.json")):
+            try:
+                data = json.loads(pj.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            anchors = data.get("host_anchors") if isinstance(data, dict) else None
+            if not isinstance(anchors, dict):
+                continue
+            shas = [anchors.get(k) for k in ("created", "review_pass", "review_base")]
+            shas = [s for s in shas if isinstance(s, str) and re.fullmatch(r"[0-9a-fA-F]{7,64}", s)]
+            if not shas or any(commit_of(HOST, s) for s in shas):
+                continue
+            owners = [r["name"] for r in repos if all(commit_of(HOST / r["path"], s) for s in shas)]
+            if len(owners) == 1:
+                counts[owners[0]] = counts.get(owners[0], 0) + 1
+    cmd = f"python3 {NESTED_DIR}/scripts/workflow.py"
+    return [f"{n} phase(s) hold host_anchors shas that are no commit of the host but are commits of {name}: run {cmd} nested-repos --map-anchors {name}"
+            for name, n in sorted(counts.items())]
+
+
+def _nested_unignored(check_paths: list, exclude_entries: list, dir_paths=()) -> list:
     """[(target, reason)] for each host path in `check_paths` that git would NOT ignore once our
     exclude block is in place -- decided before any write (P28.F1). The block goes into a temporary
     core.excludesFile, which ranks below the host's .gitignore files and its current info/exclude,
@@ -1089,8 +1324,10 @@ def _nested_unignored(check_paths: list, exclude_entries: list) -> list:
     it is in info/exclude (it has no negations). The one approximation errs safe: an operator's own
     info/exclude negation of a target refuses even where our block would come after it. A target
     that does not exist yet is matched as a file, so `workflow/` is checked as a directory that
-    must exist: it is created empty for the check and removed again if it was absent. Refuses
-    (exit 1, nothing written) when the check itself cannot run."""
+    must exist: it is created empty for the check and removed again if it was absent. `dir_paths`
+    (P40: a multi-repo host's registered repos) are directories the exclude block hides as `/<path>/`;
+    they are shown with the trailing slash. Refuses (exit 1, nothing written) when the check itself
+    cannot run."""
     fd, tmp = tempfile.mkstemp(prefix="agentic-nested-", suffix=".exclude")
     made_root = False
     try:
@@ -1116,7 +1353,7 @@ def _nested_unignored(check_paths: list, exclude_entries: list) -> list:
     decided = {fields[i + 3]: fields[i:i + 3] for i in range(0, len(fields) - 3, 4)}
     unignored = []
     for path in check_paths:
-        shown = f"{path}/" if path == NESTED_DIR else path
+        shown = f"{path}/" if path == NESTED_DIR or path in dir_paths else path
         source, line, pattern = decided.get(path, ["", "", ""])
         if path not in decided:
             unignored.append((shown, "git check-ignore gave no answer for it"))
@@ -1167,9 +1404,60 @@ def _with_block(existing: str, begin: str, end: str, block: list) -> str:
     return "\n".join(out) + "\n"
 
 
-def _nested_local_block(renames: dict) -> list:
+def _renames_line(renames: dict):
+    """The block's renames line ("Renamed at install, ..."), or None when nothing was renamed."""
+    pairs = [f"skill `{x}` is `/{y}`" for x, y in sorted((renames.get("skills") or {}).items())]
+    pairs += [f"agent `{x}` is `{y}`" for x, y in sorted((renames.get("agents") or {}).items())]
+    if pairs:
+        return "- Renamed at install, so this repo's own skills and agents stay untouched: " + "; ".join(pairs) + "."
+    return None
+
+
+def _multi_repo_local_block(renames: dict, repos: list) -> list:
+    """The managed CLAUDE.local.md block of a multi-repo host (P40; S1 §6 with S2 §21's parallel line):
+    the single-repo block's shape, with one line per registered repo (path, default branch, rules files),
+    "this repo" meaning the repo the change lives in, one commit per repo a slice changed, and a parallel
+    line naming `--repo` and `parallel-add-repo`. Emitted only when `repos` is non-empty; the renames
+    line is appended exactly as the single-repo block does."""
+    cmd = f"python3 {NESTED_DIR}/scripts/workflow.py"
+    repo_lines = []
+    for r in repos:
+        rules = [x for x in r.get("rules") or [] if isinstance(x, str) and x]
+        facts = [f"default branch `{r['default_branch']}`"] if isinstance(r.get("default_branch"), str) and r["default_branch"] else []
+        facts += ["rules: " + ", ".join(f"`{x}`" for x in rules)] if rules else []
+        repo_lines.append(f"  - `{r['path']}/`" + (f" ({'; '.join(facts)})" if facts else ""))
+    lines = [
+        NESTED_LOCAL_BEGIN,
+        f"This is a private install of the agentic workspace at a host folder that tracks nothing and holds several product repos. It is never committed anywhere and the team cannot see it: `{NESTED_DIR}/` (its own git repo), this file and the workspace's own `.claude/` files are hidden by the host's `.git/info/exclude`.",
+        "",
+        f"@{NESTED_DIR}/{NESTED_CONTRACT}",
+        "",
+        "Nested-install rules for a multi-repo host (they win over the contract above where the two differ):",
+        f"- Start Claude Code at this host folder, never inside `{NESTED_DIR}/` or a repo. Run the engine from here: `{cmd} <command>`.",
+        f"- The product repos (`{cmd} nested-repos` lists them, with each repo's rules files):",
+        *repo_lines,
+        "- \"This repo\" in any rule means the repo the change lives in. Before changing a repo, read its rules files; they win over this block for that repo.",
+        "- Commits per slice: one in each repo the slice changed, plus one for the workflow state:",
+        f"  - product code goes to its own repo with `git -C <repo> ...`, on the operator's branch there, in that repo's conventions for commits, branches and pull requests, which `{cmd} nested-convention --repo <name>` prints. Add Claude `Co-Authored-By` trailers only when it says `allowed`. The host folder itself never gets a commit;",
+        f"  - workflow state goes to the nested repo (`git -C {NESTED_DIR} ...`) in the contract's Commit Convention.",
+        f"- If `next` shows `host_commit_convention=UNCONFIRMED` or an UNCONFIRMED repo in `repo_conventions=`, confirm those conventions with the operator before that repo's first product commit, then record them: `{cmd} nested-convention --confirm [--repo <name>] --text \"<conventions>\" --trailers allowed|forbidden` (no `--repo`: the rules for every repo).",
+        f"- **Parallel phases, only on the operator's word:** `{cmd} parallel-start <P> --host-branch <name> [--host-base <ref>] [--repo <name>=<branch> ...] [--repo-base <name>=<ref> ...]` cuts a set: a host worktree under `.claude/worktrees/`, the nested worktree at its `{NESTED_DIR}/`, and one worktree per named repo at its `<repo>/`; add a repo mid-phase from inside the set with `parallel-add-repo <P> --repo <name>=<branch>`. Propose each branch name from that repo's recorded custom (`nested-convention --repo <name>`) and let the operator confirm it. Each repo's side follows its own custom; the engine never fetches, pushes, opens a PR or merges into any repo's default branch.",
+        f"- A pull request's title, body and commits (and every product commit, in every repo) carry no phase or slice IDs, no `{NESTED_DIR}/` paths and no workspace files.",
+        f"- Never stage `{NESTED_DIR}/`, `CLAUDE.local.md`, `.claude/settings.local.json` or the workspace's skills and agents into any repo or the host (the exclude block lists them).",
+    ]
+    renames_line = _renames_line(renames)
+    if renames_line:
+        lines.append(renames_line)
+    lines.append(NESTED_LOCAL_END)
+    return lines
+
+
+def _nested_local_block(renames: dict, repos=()) -> list:
     """The managed CLAUDE.local.md block: what this is, the contract import (on its own line,
-    outside any code span or fence, or Claude Code will not expand it) and the nested rules."""
+    outside any code span or fence, or Claude Code will not expand it) and the nested rules.
+    A multi-repo host (a non-empty registry, P40) gets _multi_repo_local_block instead."""
+    if repos:
+        return _multi_repo_local_block(renames, repos)
     cmd = f"python3 {NESTED_DIR}/scripts/workflow.py"
     lines = [
         NESTED_LOCAL_BEGIN,
@@ -1187,10 +1475,9 @@ def _nested_local_block(renames: dict) -> list:
         f"- A pull request's title, body and commits (and every product commit) carry no phase or slice IDs, no `{NESTED_DIR}/` paths and no workspace files.",
         f"- Never stage `{NESTED_DIR}/`, `CLAUDE.local.md`, `.claude/settings.local.json` or the workspace's skills and agents into this repo (the exclude block lists them).",
     ]
-    pairs = [f"skill `{x}` is `/{y}`" for x, y in sorted((renames.get("skills") or {}).items())]
-    pairs += [f"agent `{x}` is `{y}`" for x, y in sorted((renames.get("agents") or {}).items())]
-    if pairs:
-        lines.append("- Renamed at install, so this repo's own skills and agents stay untouched: " + "; ".join(pairs) + ".")
+    renames_line = _renames_line(renames)
+    if renames_line:
+        lines.append(renames_line)
     lines.append(NESTED_LOCAL_END)
     return lines
 
@@ -1310,13 +1597,42 @@ def nested_plan() -> dict:
     engine_side["executors.toml"] = nested_rewrite(PAYLOADS["executors.toml"], renames)
     engine_side["docs/README.md"] = nested_rewrite(_docs_readme(), renames)
     settings_ours = nested_rewrite(PAYLOADS[".claude/settings.json"], renames)
-    local_block = _nested_local_block(renames)
+
+    # Multi-repo host (P40). The registry is the marker's `repos`. Seeded when this run git init-ed a
+    # repos-only folder (each repo takes its own convention, inferred from its own history, UNCONFIRMED), or
+    # when --update finds no `repos` key on a host that tracks nothing and holds a depth-1 child repo
+    # (under a confirmed host-level convention every repo inherits it: null; else inferred per repo). Once
+    # it exists the installer never re-detects: it re-infers each repo's own unconfirmed convention and
+    # reports drift (_registry_drift_notes). A single-repo host gets [] here, and so none of this.
+    old_conv = old.get("commit_convention") if isinstance(old.get("commit_convention"), dict) else {}
+    repos, repos_seeded = [], False
+    if REPOS_HOST:
+        repos, repos_seeded = _seed_repos(REPOS_HOST_NAMES, lambda n, p: _inferred_convention(p)), True
+    elif UPDATE and "repos" not in old:
+        rc, out = _host_git("ls-files", "-z")
+        names = [n for n in _child_repo_dirs(HOST) if _registrable_name(n)] if rc == 0 and not out.strip("\0") else []
+        if names:
+            inherit = old_conv.get("confirmed") is True
+            repos, repos_seeded = _seed_repos(names, lambda n, p: None if inherit else _inferred_convention(p)), True
+    elif UPDATE and isinstance(old.get("repos"), list):
+        repos = _reinfer_unconfirmed(old["repos"])
+    usable = _registry_entries(repos)
+    if repos_seeded:
+        # The engine's validate rejects a registered repo that tracks a workspace file; refuse before writing.
+        tracking = [(r["name"], _tracked_workspace_files(HOST / r["path"], installed)) for r in usable]
+        tracking = [(n, w) for n, w in tracking if w]
+        if tracking:
+            _nested_refuse("a repo this install would register tracks a file the workspace owns, which the engine's validate rejects (nothing written):",
+                           *[f"  - {n}/ tracks {', '.join(w)}: untrack them (git -C {n} rm -r --cached -- {' '.join(w)}), then re-run" for n, w in tracking])
+    local_block = _nested_local_block(renames, usable)
 
     # Post-check: nothing the rewrite should have caught is left. Our own texts only -- never the
-    # operator's part of CLAUDE.local.md or settings.local.json.
+    # operator's part of CLAUDE.local.md or settings.local.json, nor a registered repo's own paths (a
+    # stand-in repo line takes their place in the multi-repo block).
     problems = []
+    stand_in = [{"name": "repo", "path": "repo", "default_branch": None, "rules": []}] if usable else []
     checked = {**files, **{f"{NESTED_DIR}/{k}": v for k, v in engine_side.items()},
-               "CLAUDE.local.md (managed block)": "\n".join(local_block), ".claude/settings.local.json (ours)": settings_ours}
+               "CLAUDE.local.md (managed block)": "\n".join(_nested_local_block(renames, stand_in)), ".claude/settings.local.json (ours)": settings_ours}
     for label, text in sorted(checked.items()):
         if "python3 scripts/workflow.py" in text or NESTED_ENGINE_RE.search(text):
             problems.append(f"{label}: an unprefixed scripts/workflow.py")
@@ -1353,6 +1669,11 @@ def nested_plan() -> dict:
     exclude_entries = [f"/{NESTED_DIR}/", "/CLAUDE.local.md", "/.claude/settings.local.json", "/.claude/worktrees/"]
     exclude_entries += [f"/.claude/skills/{n}/" for n in sorted(installed["skills"])]
     exclude_entries += [f"/.claude/agents/{n}.md" for n in sorted(installed["agents"])]
+    # A multi-repo host's registered repos: one `/<path>/` line each, generated from the registry so
+    # --update follows `nested-repos --add/--remove`. Only a repo that exists is preflighted and verified
+    # (validate reports a missing one).
+    exclude_entries += [f"/{r['path']}/" for r in usable]
+    repo_dirs = [r["path"] for r in usable if (HOST / r["path"]).is_dir()]
     def _real_dir_or_absent(p: Path) -> bool:
         return not os.path.lexists(p) or (p.is_dir() and not p.is_symlink())
     self_hiding = [n for n in sorted(installed["skills"]) if _real_dir_or_absent(HOST / ".claude" / "skills" / n)]
@@ -1360,8 +1681,8 @@ def nested_plan() -> dict:
                      if not _is_explain_path(f".claude/skills/{n}")}
     skill_targets = [f".claude/skills/{n}" for n in sorted(installed["skills"])]
     other_targets = [f".claude/agents/{n}.md" for n in sorted(installed["agents"])] + ["CLAUDE.local.md", ".claude/settings.local.json", NESTED_DIR]
-    check_paths = [t for t in skill_targets if t.rsplit("/", 1)[1] not in self_hiding] + other_targets
-    unignored = _nested_unignored(check_paths, exclude_entries)
+    check_paths = [t for t in skill_targets if t.rsplit("/", 1)[1] not in self_hiding] + other_targets + repo_dirs
+    unignored = _nested_unignored(check_paths, exclude_entries, repo_dirs)
     if unignored:
         _nested_refuse("the host's ignore rules would leave files of the nested install visible to git, so it cannot stay private (nothing written):",
                        *[f"  - {target}: {why}" for target, why in unignored],
@@ -1400,9 +1721,12 @@ def nested_plan() -> dict:
     # The marker, to the engine's schema 1 (+ `installed`). --update merges: a confirmed convention
     # and the existing renames are kept; an unconfirmed convention is re-inferred. A host this run
     # `git init`ed (P29) has no history to infer from and is the operator's own: it starts confirmed
-    # on this workspace's own Commit Convention (NESTED_INIT_CONVENTION).
-    old_conv = old.get("commit_convention") if isinstance(old.get("commit_convention"), dict) else {}
-    if HOST_INITED:
+    # on this workspace's own Commit Convention (NESTED_INIT_CONVENTION). A multi-repo host's top-level
+    # convention is "the rules for every repo": confirmed it is kept; unconfirmed it starts empty
+    # (inferred: null), never inferred from the host's own empty history and never the workspace's own.
+    if usable:
+        conv = old_conv if old_conv.get("confirmed") is True else {"inferred": None, "confirmed": False, "text": None, "coauthor_trailers": "unknown"}
+    elif HOST_INITED:
         conv = dict(NESTED_INIT_CONVENTION)
     elif old_conv.get("confirmed") is True:
         conv = old_conv
@@ -1412,6 +1736,19 @@ def nested_plan() -> dict:
     marker.update({"schema": 1, "host_root": "..", "commit_convention": conv,
                    "renames": {k: {**retained_renames[k], **renames[k]} for k in NESTED_KINDS},
                    "installed": {k: sorted(installed[k]) for k in NESTED_KINDS}})
+    if repos_seeded or (UPDATE and isinstance(old.get("repos"), list)):
+        marker["repos"] = repos
+    # Notes for the update report: drift (a depth-1 child repo the registry lacks) and the anchors to map.
+    if UPDATE and usable:
+        UPDATE_SUMMARY["notes"].extend(_registry_drift_notes(usable) + _anchor_map_notes(usable))
+    # OQ1: Claude Code reads no AGENTS.md while a CLAUDE.local.md sits at the working directory, which every
+    # nested install writes. The installer writes nothing into any repo; the banner prints one hint line when
+    # a registered repo's rules, or a single-repo host's tracked files, include an AGENTS.md.
+    if usable:
+        agents_md = [r["name"] for r in usable if any(isinstance(x, str) and x.rsplit("/", 1)[-1] == "AGENTS.md" for x in r.get("rules") or [])]
+    else:
+        rc, out = _host_git("ls-files", "-z")
+        agents_md = ["this repo"] if rc == 0 and any(f.rsplit("/", 1)[-1] == "AGENTS.md" for f in out.split("\0") if f) else []
     home_skills = Path(os.path.expanduser("~")) / ".claude" / "skills"
     try:
         exclude_label = exclude_path.resolve().relative_to(HOST).as_posix()
@@ -1428,8 +1765,11 @@ def nested_plan() -> dict:
         "marker_text": json.dumps(marker, ensure_ascii=False, indent=2) + "\n",
         "exclude_label": exclude_label,
         # nested_verify_clean() asks git status about exactly these after the writes.
-        "status_paths": skill_targets + other_targets,
+        "status_paths": skill_targets + other_targets + repo_dirs,
         "verified_clean": False,
+        # P40: the usable registry (empty on a single-repo host), whether this run seeded it, and the
+        # AGENTS.md carriers the banner's hint names.
+        "repos": usable, "repos_seeded": repos_seeded, "agents_md": agents_md,
     }
 
 
@@ -1483,7 +1823,11 @@ def print_nested_banner(plan: dict) -> None:
             print("  checked: git will ignore every host-side file once written")
     else:
         print(f"Installed the agentic workspace privately into the host repo at {HOST}")
-        if HOST_INITED:
+        if REPOS_HOST:
+            print("  host: a new git repo over the repos in this folder -- the installer ran git init there"
+                  + (f" and made its one commit, the empty \"{HOST_FIRST_COMMIT}\"" if HOST_COMMIT_ERROR is None
+                     else " but could not make its first commit (see below)"))
+        elif HOST_INITED:
             print("  host: a new git repo -- the installer ran git init there, and it has no commits yet")
         print(f"  engine + state: {NESTED_DIR}/ (a nested git repo; the contract is {NESTED_DIR}/{NESTED_CONTRACT})")
         print(f"  Claude Code: {len(plan['installed']['skills'])} skills in .claude/skills/ (each dir hides itself with a .gitignore of *), "
@@ -1495,16 +1839,44 @@ def print_nested_banner(plan: dict) -> None:
     for name in plan["shadowed"]:
         print(f"  warning: your personal skill ~/.claude/skills/{name} shadows the workspace's /{name} in this repo (rename or remove one)")
     conv = plan["convention"]
-    if HOST_INITED:
+    repos = plan["repos"]
+    if repos:
+        # P40: a multi-repo host's top-level convention is the rules for every repo; each repo has its own.
+        if conv.get("confirmed") is True:
+            print(f"  host commit convention (the rules for every repo): confirmed (coauthor_trailers={conv.get('coauthor_trailers')})")
+        else:
+            print("  host commit convention (the rules for every repo): UNCONFIRMED (inferred: nothing -- a multi-repo host has no commits of its own to infer from)")
+        print(f"  repos: {len(repos)} ({', '.join(r['name'] for r in repos)}) -- "
+              + (f"{'would be seeded' if DRY_RUN else 'seeded'} into {NESTED_DIR}/{NESTED_MARKER} from the repos in this folder"
+                 if plan["repos_seeded"] else f"the registry in {NESTED_DIR}/{NESTED_MARKER} ({cmd} nested-repos lists it)")
+              + f"; each is hidden by a /<path>/ line in {plan['exclude_label']}")
+        unconfirmed = _repo_unconfirmed(repos, conv)
+        if unconfirmed:
+            print(f"  repo conventions: UNCONFIRMED for {', '.join(unconfirmed)} -- confirm each before its first product commit: "
+                  f"{cmd} nested-convention --confirm --repo <name> --text \"<conventions>\" --trailers allowed|forbidden")
+    elif HOST_INITED:
         print(f"  host commit convention: confirmed for the new repo -- this workspace's own ({conv.get('text')}), coauthor_trailers={conv.get('coauthor_trailers')}")
     elif conv.get("confirmed") is True:
         print(f"  host commit convention: confirmed (coauthor_trailers={conv.get('coauthor_trailers')})")
     else:
         print(f"  host commit convention: UNCONFIRMED (inferred: {conv.get('inferred') or 'nothing -- the host has no history yet'})")
+    if plan["agents_md"]:
+        # OQ1 / S1 §13: the installer writes nothing into any repo; the operator sets this once, in the user settings.
+        who = "this repo's AGENTS.md" if not repos else "the AGENTS.md of " + ", ".join(plan["agents_md"])
+        print("  AGENTS.md: Claude Code reads no AGENTS.md while a CLAUDE.local.md sits at the working directory, and this install writes one -- "
+              f"to load {who}, set Project instructions to claude-md-and-agents-md in ~/.claude/settings.json (/config shows it; Claude Code 2.1.277+)")
     if DRY_RUN:
         print("Re-run without --dry-run to apply.")
         return
-    if HOST_INITED:
+    if REPOS_HOST and HOST_COMMIT_ERROR is None:
+        print(f"The installer made one git commit, the empty \"{HOST_FIRST_COMMIT}\" in the host (new-phase and parallel-start base on it); "
+              "the workspace's files stay untracked and nothing in any repo changed.")
+    elif REPOS_HOST:
+        print("The installer made no git commits and changed nothing in any repo. The host has no commit yet, and new-phase needs one first "
+              f"(git said: {HOST_COMMIT_ERROR}). Give git an identity (globally, so the nested repo's first commit works too), then make it:")
+        print("    git config --global user.name \"<your name>\" && git config --global user.email \"<you@example.com>\"")
+        print(f"    git -C {shlex.quote(str(HOST))} commit --allow-empty -m \"{HOST_FIRST_COMMIT}\"")
+    elif HOST_INITED:
         print("The installer made no git commits: the host has no commits yet, and the workspace's files in it stay untracked.")
     else:
         print("The installer made no git commits, and nothing tracked in the host changed.")
@@ -1515,13 +1887,18 @@ def print_nested_banner(plan: dict) -> None:
     else:
         print(f"  1. First commit in the nested repo: git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: install agentic workspace (nested)\"")
         print(f"  2. Start Claude Code at the host root and accept the trust dialog on the first run, then: /{plan['renames']['skills'].get('create-phase', 'create-phase')} for the first phase ({cmd} next shows the state)")
-    if conv.get("confirmed") is not True:
+    if repos:
+        if conv.get("confirmed") is not True:
+            print(f"  3. Confirm the conventions that bind every repo before the first product commit: {cmd} nested-convention (then --confirm --text \"<conventions>\" --trailers allowed|forbidden; add --repo <name> for one repo's own)")
+        else:
+            print(f"  The host-level conventions (the rules for every repo) are recorded; {cmd} nested-convention shows them, and each repo's with --repo <name>.")
+    elif conv.get("confirmed") is not True:
         print(f"  3. Confirm the host's conventions (commits, branches and pull requests) before the first product commit: {cmd} nested-convention (then --confirm --text \"<conventions>\" --trailers allowed|forbidden)")
     elif HOST_INITED:
         print(f"  The new repo's conventions are recorded; {cmd} nested-convention shows them (--confirm --text \"...\" --trailers allowed|forbidden changes it).")
     else:
         print(f"  The host's conventions (commits, branches, pull requests) are recorded; {cmd} nested-convention shows them.")
-    if not HOST_INITED:
+    if not HOST_INITED or REPOS_HOST:
         print(f"  Any remote for {NESTED_DIR}/ stays inside your company's org: its phase and slice files describe the company's code.")
 
 
