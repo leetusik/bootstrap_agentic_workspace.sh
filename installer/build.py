@@ -46,7 +46,7 @@ SRC = REPO / "payload"                          # the shipped sources (never liv
 HEREDOC_DELIM = "INSTALLER_PY"                  # distinctive: no payload/body line may equal it
 PAYLOAD_MARKER = "#@@GENERATED_PAYLOADS@@"      # in main.py — replaced by generated constants
 BODY_MARKER = "#@@PYTHON_BODY@@\n"              # in wrapper.sh — replaced by the python body
-EXPECTED_SKILL_COUNT = 18
+EXPECTED_SKILL_COUNT = 17
 
 # Shipped files embedded verbatim, keyed by EMIT path (where the installer writes them). The
 # source lives under payload/ at src_rel(emit): the first path component undotted, so no source

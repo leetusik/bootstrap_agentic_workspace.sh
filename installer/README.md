@@ -43,7 +43,7 @@ register it once per clone: `git config core.hooksPath .githooks`.
   timestamps → same inputs produce a byte-identical artifact. Safety checks:
   `compile()` the assembled python body, `sh -n` the assembled artifact, assert no
   body line collides with the heredoc delimiter (`INSTALLER_PY`), assert the skill
-  inventory is exactly `EXPECTED_SKILL_COUNT` (18) packages, and assert `payload/contract.md`
+  inventory is exactly `EXPECTED_SKILL_COUNT` (17) packages, and assert `payload/contract.md`
   still starts with `CLAUDE_HDR` before slicing the contract body off it.
   **It only `compile()`s the artifact — it never runs it**, so a change to what
   `main.py` reads out of `PAYLOADS` needs a real install into a temp dir to verify.
@@ -105,7 +105,7 @@ Below, each entry is the source, then the emit path where it differs:
 
 - `payload/scripts/workflow.py`
 - `payload/claude/skills/<name>/**` → `.claude/skills/<name>/…` (skills are discovered from disk by their
-  `SKILL.md`; the build asserts the release inventory is exactly 18 packages — `EXPECTED_SKILL_COUNT` in
+  `SKILL.md`; the build asserts the release inventory is exactly 17 packages — `EXPECTED_SKILL_COUNT` in
   both `build.py` and `main.py`, so adding or removing a skill means moving both). A skill ships as its
   **whole directory**: `SKILL.md` plus every other file under it (dotfiles and `__pycache__` excepted),
   written on fresh install, retrofit, `--update` and the nested install (rewritten and renamed with
@@ -124,11 +124,9 @@ Below, each entry is the source, then the emit path where it differs:
     its unchanged text, and then it is flagged stale (by content, file by file, never a directory).
     Both only report; nothing is deleted. When a release stops shipping a file, add its hash to
     that table.
-  `explain` is the one **vendored** skill — its upstream is
-  `plugin/skills/explain/SKILL.md` in [leetusik/knowledge](https://github.com/leetusik/knowledge),
-  de-plugin-ified here (self-service onboarding replaces `/knowledge:setup`, and the
-  offline local-file fallback is removed) and further trimmed of its Codex-only passages.
-  Nothing syncs the two; re-vendor by hand, and read the divergence comment in the file first.
+  `/explain` is not shipped; it comes from the knowledge plugin as `/knowledge:explain` (see the
+  Knowledge block in [README.en.md](../README.en.md)). The updater never creates, edits, removes or
+  reports a path with an `explain` component, and `RETIRED_FILES` never lists one.
 - `payload/claude/agents/slice-executor-{mid,high}.md`, `payload/claude/agents/design-drafter.md`,
   `payload/claude/agents/design-critic.md`, `payload/claude/agents/Explore.md` → `.claude/agents/…` (the design subagent and the design critic; `sync-agents` keeps each on its own row, `design` and `critic`)
 - `payload/executors.toml` → `executors.toml` (seed-once executor-tier config — created if absent,

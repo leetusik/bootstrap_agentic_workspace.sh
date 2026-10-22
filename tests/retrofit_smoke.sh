@@ -73,6 +73,13 @@ sha() {
   if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
   else sha256sum "$1" | awk '{print $1}'; fi
 }
+# /explain is the knowledge plugin's: no install path touches or reports a path with an `explain` component.
+# plant_old_explain writes the last shipped explain skill (1c5ea0e) when this clone has that history, else a
+# marker copy; explain_sig is every such file under a tree with its hash (.git and workflow/ skipped).
+plant_old_explain() { mkdir -p "$(dirname "$1")"; git -C "$REPO_ROOT" show 1c5ea0e:payload/claude/skills/explain/SKILL.md > "$1" 2>/dev/null \
+  || printf -- '---\nname: explain\n---\nthe old workspace copy\n' > "$1"; }
+explain_sig() { ( cd "$1" && find . \( -path ./.git -o -path ./workflow \) -prune -o -type f -print | grep -E '/explain(/|$)' | LC_ALL=C sort \
+  | while read -r f; do printf '%s %s\n' "$f" "$(sha "$f")"; done ); }
 
 # P37.S1 (v61): the skills ship as whole directories. Checks an installed .claude/skills tree against
 # the build's payload: every shipped skill file is there (byte-identical, or only present when
@@ -118,7 +125,7 @@ import sys
 
 root = Path(sys.argv[1])
 skills = {p.parent.name for p in (root / "payload/claude/skills").glob("*/SKILL.md")}
-assert len(skills) == 18, len(skills)
+assert len(skills) == 17, len(skills)
 
 # P37.S1 (v61): a skill ships as its whole directory, a core SKILL.md plus reference/*.md, and the
 # do-* shared references fan out at build. Prose pins read the BUILT directory (core first, then its
@@ -180,9 +187,14 @@ for gone in ("ask which design tool", "Design tool: drafter", "Design tool: clau
     assert gone not in create_phase, gone
 
 # Only skills that *document the removal* may still say "Codex": update-workspace's
-# pre-v31 migration step and explain's re-vendor note. Anywhere else it is a regression.
+# pre-v31 migration step. Anywhere else it is a regression.
 codex_prose = {n for n in skills if "Codex" in skill_dir_text(n)}
-assert codex_prose <= {"update-workspace", "explain"}, sorted(codex_prose)
+assert codex_prose <= {"update-workspace"}, sorted(codex_prose)
+# /explain is the knowledge plugin's: not shipped, and RETIRED_FILES never lists an explain path.
+assert "explain" not in skills, skills
+main_py = (root / "installer/main.py").read_text()
+retired_table = main_py[main_py.index("RETIRED_FILES = {"):main_py.index("\n}\n", main_py.index("RETIRED_FILES = {"))]
+assert "/explain/" not in retired_table, "RETIRED_FILES lists an explain path"
 assert "Codex support was removed in workspace v31" in (
     root / "payload/claude/skills/update-workspace/SKILL.md").read_text()
 
@@ -545,11 +557,6 @@ for required in ("Worktree rules", "**When — only when asked**", "retired no-o
                  "**Since v43 this is opt-in:", "the **`worktree` mode word**",
                  "**`parallel-start <P>` run by the operator's own hand**"):
     assert required in parallel, required
-# v61 (P37.S9): the contract keeps "operator-invoked only"; the review's non-use and the
-# ask before an external account moved to the skill itself.
-explain = " ".join((root / "payload/claude/skills/explain/SKILL.md").read_text().split())
-assert "This skill is **operator-invoked only**: the workspace's phase review never runs it" in explain
-assert "asks before it creates an account on an external service" in explain
 # v43 negatives copied from the contract list (the worktree-by-default framing), and the
 # v42 leftover that had the do-* skills start a worktree whenever `next` printed the hint.
 for gone in ("runs in its own worktree by default", "enters its worktree at **first execution**",
@@ -858,7 +865,7 @@ compact = claude.split("## Compact Instructions", 1)[1]
 assert "resume card" in compact and "never re-dispatch a running executor" in compact
 assert "re-read" not in compact, "Compact Instructions carry a re-read instruction"
 PY
-then ok "18 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with waves and opt-in critique, mockups on request, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
+then ok "17 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with waves and opt-in critique, mockups on request, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
@@ -939,8 +946,8 @@ cp_state=$(python3 -c "import json;print(json.load(open('$R/works/state.json'))[
   && ok "retrofit installs no Codex trees (.agents/, .codex/)" || bad "retrofit created a Codex tree"
 [ ! -f "$R/AGENTS.workspace.md" ] \
   && ok "retrofit writes no AGENTS.workspace.md sidecar" || bad "retrofit wrote an AGENTS.workspace.md sidecar"
-[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "18" ] \
-  && ok "retrofit installs the 18-skill Claude inventory" || bad "retrofit skill inventory incomplete"
+[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "17" ] \
+  && ok "retrofit installs the 17-skill Claude inventory" || bad "retrofit skill inventory incomplete"
 skill_tree_ok "$R/.claude/skills" exact \
   && ok "retrofit installs every skill as its whole directory: each core's reference files, none orphaned, the shared do-* copy identical" || bad "retrofit skill directories incomplete (core + reference/)"
 grep -q 'design subagent drafts, the operator decides' "$R/CLAUDE.workspace.md" && grep -q 'writes no \*\*\*product\*\*\* implementation code' "$R/CLAUDE.workspace.md" \
@@ -1038,8 +1045,8 @@ assert not missing, missing
 PY
 then ok "every changelog release section carries a Migration notes line"; else bad "a changelog release section has no Migration notes line"; fi
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
-[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "18" ] \
-  && ok "fresh install has the 18 Claude skills" || bad "fresh skill inventory incomplete"
+[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "17" ] \
+  && ok "fresh install has the 17 Claude skills" || bad "fresh skill inventory incomplete"
 skill_tree_ok "$F/.claude/skills" exact \
   && ok "fresh install ships every skill as its whole directory: each core's reference files, none orphaned, the shared do-* copy identical" || bad "fresh install skill directories incomplete (core + reference/)"
 [ ! -f "$F/AGENTS.md" ] && [ ! -d "$F/.agents" ] && [ ! -d "$F/.codex" ] \
@@ -1602,6 +1609,9 @@ V30
 }
 v30_commit_skill > "$F/.agents/skills/commit/SKILL.md"
 printf -- '---\nname: explain\n---\nthe knowledge repo keeps its own portable explain here\n' > "$F/.agents/skills/explain/SKILL.md"
+# An old workspace copy of the retired explain skill, byte-for-byte, plus the operator's own file beside it.
+plant_old_explain "$F/.claude/skills/explain/SKILL.md"; printf 'my notes\n' > "$F/.claude/skills/explain/notes.md"
+explain_before=$(explain_sig "$F")
 printf 'stale\n' > "$F/.agents/skills/do-next-slice/SKILL.md"
 printf 'model = "mine"\n' > "$F/.codex/agents/mine.toml"
 printf '# their own contract\n' > "$F/AGENTS.md"
@@ -1642,13 +1652,17 @@ if [ "$(printf '%s\n' "$update_stale" | grep -c '^    - ')" -eq 1 ] \
   ok "--update lists only the unchanged v30 file as stale (ours, by content)"
 else bad "--update stale list wrong -- $update_stale"; fi
 kept_bad=""
-for k in '\.agents/skills/explain/SKILL\.md  (differs from what v30 shipped)' '\.agents/skills/do-next-slice/SKILL\.md  (differs from what v30 shipped)' \
+for k in '\.agents/skills/do-next-slice/SKILL\.md  (differs from what v30 shipped)' \
          '\.codex/agents/mine\.toml  (not a file the workspace shipped)' 'AGENTS\.md  (differs from what v30 shipped)' \
          'AGENTS\.workspace\.md  (differs from what v30 shipped)' '\.claude/skills/executor-mode/SKILL\.md  (differs from what v52 shipped)'; do
   printf '%s\n' "$update_out" | grep -qx "    - $k" || kept_bad="$kept_bad [$k]"
 done
-[ -z "$kept_bad" ] && ok "--update reports the adopter's explain, a modified shipped file, their .codex file and AGENTS.md as yours, kept" \
+[ -z "$kept_bad" ] && ok "--update reports a modified shipped file, their .codex file and AGENTS.md as yours, kept" \
   || bad "--update yours-kept list wrong:$kept_bad -- $update_out"
+[ "$(printf '%s\n' "$explain_before" | wc -l | tr -d ' ')" -eq 3 ] && [ "$(explain_sig "$F")" = "$explain_before" ] \
+  && ! printf '%s\n%s\n' "$dry_out" "$update_out" | grep -q 'explain' \
+  && ok "--update and --update --dry-run leave every explain file (.agents/ and .claude/, the old shipped copy too) byte-identical and never name one" \
+  || bad "--update touched or reported an explain path -- $(printf '%s\n%s\n' "$dry_out" "$update_out" | grep 'explain')"
 if python3 - "$F" "$update_out" <<'PY'
 import os, re, sys
 listed = re.findall(r"^    - (\S+)  \(", sys.argv[2], re.M)
@@ -1664,7 +1678,7 @@ else bad "--update listed a directory -- $update_out"; fi
 [ -f "$F/.agents/skills/commit/SKILL.md" ] && [ -f "$F/.agents/skills/explain/SKILL.md" ] && [ -f "$F/.codex/agents/mine.toml" ] \
   && [ -f "$F/AGENTS.md" ] && [ -f "$F/AGENTS.workspace.md" ] && [ -f "$F/.claude/skills/executor-mode/SKILL.md" ] \
   && ok "--update never deletes a file it lists (stale or kept)" || bad "--update deleted a file it only lists"
-rm -rf "$F/.agents" "$F/.codex" "$F/AGENTS.md" "$F/AGENTS.workspace.md"
+rm -rf "$F/.agents" "$F/.codex" "$F/AGENTS.md" "$F/AGENTS.workspace.md" "$F/.claude/skills/explain"
 printf '%s\n' "$update_out" | grep -q 'python3 scripts/workflow.py sync-agents' \
   && ok "--update instructs the adopter to re-run sync-agents" || bad "--update omitted the sync-agents migration step"
 grep -q '^model: opus$' "$F/.claude/agents/slice-executor-high.md" \
@@ -1728,8 +1742,9 @@ rm -f "$F/.github/workflows/workspace-ci.yml" "$F/.gitattributes"
 sh "$BOOT" "$F" --update >/dev/null 2>&1   # restore both verbatim for the Test 6 diff
 [ ! -f "$F/.claude/agents/phase-reviewer.md" ] && ok "phase-reviewer retired (absent on fresh install)" || bad "phase-reviewer should be retired but is present"
 [ -d "$F/.claude/skills/do-whole-phase" ] && ok "fresh install keeps do-whole-phase" || bad "do-whole-phase skill missing"
-[ -f "$F/.claude/skills/explain/SKILL.md" ] && ok "fresh install ships the explain skill" || bad "explain skill missing"
-grep -q "knowledge:setup" "$F/.claude/skills/explain/SKILL.md" && bad "vendored explain still points at the plugin-only /knowledge:setup" || ok "vendored explain is de-plugin-ified"
+[ ! -e "$F/.claude/skills/explain" ] && grep -qF '/plugin marketplace add leetusik/knowledge' "$F/docs/current/operations.md" \
+  && grep -qF '/plugin install knowledge@knowledge' "$F/docs/current/operations.md" \
+  && ok "fresh install ships no explain skill; its operations doc points at the knowledge plugin" || bad "fresh install still ships explain, or the operations doc lacks the plugin pointer"
 # Since v31 the installer neither claims nor writes AGENTS.md, so --force-empty-ok
 # installs beside a repo's own copy instead of aborting on a managed-file conflict.
 newtmp H
@@ -1749,7 +1764,7 @@ diff -q "$SRC/scripts/workflow.py" "$F/scripts/workflow.py" >/dev/null \
   || bad "DRIFT: scripts/workflow.py differs from the bootstrap-embedded copy"
 skill_rels=$(cd "$SRC" && find claude/skills -type f -name SKILL.md | sed 's|^|.|' | LC_ALL=C sort)
 nskill=$(printf '%s\n' "$skill_rels" | grep -c .)
-[ "$nskill" -eq 18 ] && ok "dual-apply covers all 18 skill bodies" || bad "expected 18 SKILL.md files to diff, found $nskill"
+[ "$nskill" -eq 17 ] && ok "dual-apply covers all 17 skill bodies" || bad "expected 17 SKILL.md files to diff, found $nskill"
 for rel in $skill_rels; do
   diff -q "$SRC/${rel#.}" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
@@ -2767,7 +2782,18 @@ printf '%s\n' "$scope" | grep -q "^product_files=0 " && ! printf '%s\n' "$scope"
 out=$(sh "$BOOT" "$IH" --nested 2>&1); rc=$?
 [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q "already installed" && ih_clean && ok "re-running --nested is an idempotent exit 0" || bad "re-running --nested was not a clean no-op (rc=$rc) -- $out"
 iw nested-convention --confirm --text "type(scope): summary" --trailers forbidden >/dev/null 2>&1 || bad "nested install: nested-convention --confirm failed"
+# An earlier nested install's explain skill (listed under `installed`, its exclude line in the block, no self-hiding
+# .gitignore): --update keeps it recognised and hidden, and never writes, flags or reports it.
+plant_old_explain "$IH/.claude/skills/explain/SKILL.md"
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["installed"]["skills"]=sorted(d["installed"]["skills"]+["explain"]); open(p,"w").write(json.dumps(d,indent=2)+"\n")' "$IH/workflow/.agentic-nested.json"
+python3 -c 'import sys; p=sys.argv[1]; t=open(p).read(); b="# BEGIN agentic-workspace (nested)\n"; open(p,"w").write(t.replace(b, b+"/.claude/skills/explain/\n",1))' "$IH/.git/info/exclude"
+ih_explain=$(explain_sig "$IH"); dry_ex=$(sh "$BOOT" "$IH" --update --nested --dry-run 2>&1)
 out=$(sh "$BOOT" "$IH" --update --nested 2>&1); rc=$?
+[ "$rc" -eq 0 ] && ih_clean && [ -n "$ih_explain" ] && [ "$(explain_sig "$IH")" = "$ih_explain" ] && [ ! -e "$IH/.claude/skills/explain/.gitignore" ] \
+  && ! printf '%s\n%s\n' "$dry_ex" "$out" | grep -q 'explain' && grep -qx '/\.claude/skills/explain/' "$IH/.git/info/exclude" \
+  && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert "explain" in d["installed"]["skills"] and "explain" not in json.dumps(d.get("stale", [])), d' "$IH/workflow/.agentic-nested.json" \
+  && ok "nested: --update (and --dry-run) leaves an earlier install's explain skill byte-identical, unflagged, unreported, still in installed and the exclude block, the host clean" \
+  || bad "nested --update touched, flagged or exposed the old explain skill (rc=$rc) -- $(printf '%s\n%s\n' "$dry_ex" "$out" | grep explain) $(cd "$IH" && git status --porcelain)"
 if [ "$rc" -eq 0 ] && ih_clean && [ ! -e "$IH/workflow/workflow" ] && ! grep -rqF "workflow/workflow/" "$IH/.claude/skills" "$IH/workflow/CLAUDE.workspace.md" \
     && [ "$(grep -cx '# BEGIN agentic-workspace (nested)' "$IH/.git/info/exclude")" -eq 1 ] && [ "$(grep -cx '<!-- BEGIN agentic-workspace (nested) -->' "$IH/CLAUDE.local.md")" -eq 1 ] \
     && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); c=d["commit_convention"]; assert c["confirmed"] is True and c["coauthor_trailers"] == "forbidden" and d["renames"]["skills"] == {"commit": "wf-commit", "design-cowork": "wf-design-cowork"}, d' "$IH/workflow/.agentic-nested.json" >/dev/null 2>&1; then
@@ -2843,7 +2869,7 @@ ign_host() { mkdir -p "$1" && ( cd "$1" && { git init -q -b main . 2>/dev/null |
   && git commit -qm "chore: init" ) >/dev/null 2>&1 || bad "nested install: could not build the $1 fixture"; }
 ign_sig() { ( cd "$1" && find . -path ./.git/objects -prune -o -print | LC_ALL=C sort; cat .git/info/exclude 2>/dev/null ) | sha_stdin; }
 IG="$NI/ign-skills"; ign_host "$IG" '.claude/*\n!.claude/skills/\n!.claude/skills/**\n'; out=$(sh "$BOOT" "$IG" --nested 2>&1); rc=$?
-[ "$rc" -eq 0 ] && [ -z "$(cd "$IG" && git status --porcelain --untracked-files=all)" ] && [ "$(cat "$IG/.claude/skills/explain/.gitignore")" = "*" ] \
+[ "$rc" -eq 0 ] && [ -z "$(cd "$IG" && git status --porcelain --untracked-files=all)" ] && [ "$(cat "$IG/.claude/skills/commit/.gitignore")" = "*" ] \
   && ok "a host .gitignore re-including .claude/skills/** still installs clean: each skill dir hides itself with a .gitignore of *" || bad "a !.claude/skills/** host was not installed clean (rc=$rc) -- $(cd "$IG" && git status --porcelain) $out"
 IE="$NI/ign-claude"; ign_host "$IE" '!CLAUDE*.md\n'; ie_before=$(ign_sig "$IE"); out=$(sh "$BOOT" "$IE" --nested 2>&1); rc=$?
 [ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -qF "  - CLAUDE.local.md: re-included by .gitignore:1:!CLAUDE*.md" && [ ! -e "$IE/workflow" ] && [ "$(ign_sig "$IE")" = "$ie_before" ] \
@@ -2878,9 +2904,9 @@ out=$(sh "$BOOT" "$NB" --update 2>&1); rc=$?; out2=$(sh "$BOOT" "$NB" --update -
   && ok "a bare --update refreshes the nested install and says so (nested, detected); --update --nested still works" || bad "bare --update on a nested host failed (rc=$rc/$rc2) -- $out $out2"
 # (d) a bare --update on an at-root install stays at-root and refreshes its machinery.
 NR="$ND/atroot"; sh "$BOOT" "$NR" --at-root --name "At root" --summary "at-root probe" >/dev/null 2>&1 || bad "P29 probe: --at-root install failed"
-printf 'stale\n' >> "$NR/.claude/skills/explain/SKILL.md"; out=$(sh "$BOOT" "$NR" --update 2>&1); rc=$?
+printf 'stale\n' >> "$NR/.claude/skills/commit/SKILL.md"; out=$(sh "$BOOT" "$NR" --update 2>&1); rc=$?
 [ "$rc" -eq 0 ] && [ ! -e "$NR/workflow" ] && printf '%s\n' "$out" | grep -q "^Update complete (--update) at " && ! printf '%s\n' "$out" | grep -q "nested" \
-  && diff -q "$SRC/claude/skills/explain/SKILL.md" "$NR/.claude/skills/explain/SKILL.md" >/dev/null \
+  && diff -q "$SRC/claude/skills/commit/SKILL.md" "$NR/.claude/skills/commit/SKILL.md" >/dev/null \
   && ok "a bare --update on an at-root install stays at-root (no workflow/) and refreshes its machinery" || bad "bare --update on an at-root install misrouted (rc=$rc) -- $out"
 # (e) a bare install over that at-root workspace refuses and writes nothing.
 nr_before=$(tree_sig "$NR"); out=$(sh "$BOOT" "$NR" 2>&1); rc=$?

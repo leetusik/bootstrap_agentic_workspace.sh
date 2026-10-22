@@ -211,7 +211,7 @@ under `workflow/` instead and the skills and agents untracked in the host's `.cl
 
 - [`CLAUDE.md`](payload/contract.md) — the compact routing contract every agent session works under.
 - [`scripts/workflow.py`](payload/scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` — the 18 Agent Skills (`/slash` commands), the two risk-routed `slice-executor` tier subagents (`.claude/agents/slice-executor-{mid,high}.md`, dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ xhigh), the `design-critic` that judges each draft (the `critic` row, sonnet @ high; in judge mode the `judge` row, fable @ high), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
+- `.claude/` — the 17 Agent Skills (`/slash` commands), the two risk-routed `slice-executor` tier subagents (`.claude/agents/slice-executor-{mid,high}.md`, dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ xhigh), the `design-critic` that judges each draft (the `critic` row, sonnet @ high; in judge mode the `judge` row, fable @ high), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - [`works/`](works/) — the state machine, starting with **no phases**: a `deferred/` area,
@@ -259,7 +259,7 @@ It writes only untracked files, all hidden by the host's `.git/info/exclude` (ne
 
 - `workflow/`: a **nested git repo** holding the engine, `works/`, `docs/`, `executors.toml` and
   the contract (as `CLAUDE.workspace.md`). It is versioned there, separately from the host.
-- the 18 skills and 3 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
+- the 17 skills and 3 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
   path rewritten to reach `workflow/` (`python3 workflow/scripts/workflow.py …`);
 - a `.gitignore` of `*` in each of those skill directories, so a skill directory hides itself
   even where the host's `.gitignore` re-includes `.claude/skills/`;
@@ -435,7 +435,7 @@ The full command list is `python3 scripts/workflow.py --help` (and `<command> -h
 
 ### The same operations as Agent Skills
 
-The common workflows also ship as **18 Agent Skills** in `.claude/skills/`, invoked as `/slash`
+The common workflows also ship as **17 Agent Skills** in `.claude/skills/`, invoked as `/slash`
 commands in Claude Code:
 
 | Skill | What it does |
@@ -457,28 +457,21 @@ commands in Claude Code:
 | `retrofit` | Non-destructively adopt this workspace into an existing repo |
 | `update-workspace` | Update an adopted workspace's machinery to the latest upstream, preserving your work |
 
-> **Knowledge (phase explainers).** The `explain` skill ships with the workspace.
-> Explainers are interactive HTML documents saved to the knowledge service — produced on demand, not
-> by the review: run `/explain` for a phase when you want one, and a passing review simply reports
-> that none was written.
+> **Knowledge (`/knowledge:explain`).** Explaining a topic, a change or a phase into your knowledge
+> base is done by the **knowledge plugin** from the [knowledge repo](https://github.com/leetusik/knowledge),
+> not by this workspace. The plugin owns the skill, the CLI and the document API, so they stay in step.
+> Install it once:
 >
-> **Setup happens on first use, and it asks first.** Run `/explain`; if no knowledge base is
-> configured it offers to create one on the [hosted service](https://knowledge.hi2vi.com) — it asks
-> for an email, installs the `knowledge` CLI, signs you up (or logs you in), and writes an org-level
-> key to `~/.config/knowledge-kb/config.json` at mode 0600. Creating an account is an outward-facing
-> action, so nothing happens until you say yes. One org key serves every repo, and each document's
-> project defaults to the repo's directory name.
+>     /plugin marketplace add leetusik/knowledge
+>     /plugin install knowledge@knowledge
 >
-> Already have a knowledge base, hosted or self-hosted? Skip setup by exporting
-> `KB_API_BASE_URL="https://knowledge.hi2vi.com"` and `KB_API_TOKEN="vk_..."` in `~/.zshenv`
-> (sourced by every zsh invocation). Never a repo `.env` — Claude Code does not auto-load
-> it, and a secret in a repo file risks being committed.
->
-> **Alternative (Claude Code plugin):** the same feature also lives as a standalone plugin in the
-> [knowledge repo](https://github.com/leetusik/knowledge) —
-> `/plugin marketplace add leetusik/knowledge` → `/plugin install knowledge@knowledge` →
-> `/knowledge:setup` once, then `/knowledge:explain <topic>`. That is a separate namespace from this
-> workspace's `/explain`; you do not need both.
+> then run `/knowledge:setup` once (connect to the hosted KB, or scaffold your own) and use
+> `/knowledge:explain <topic>`. A whole book (researched, outlined and signed, each chapter checked by a
+> fresh-eyes critic, published private) is an **explain phase**: ask `/create-phase` to explain something
+> as a book. Plugin version 0.5.0 or later is required. To update: `/plugin marketplace update knowledge`,
+> then update `knowledge@knowledge` from the `/plugin` panel's Installed tab (or, from a shell,
+> `claude plugin update knowledge@knowledge`). The review never writes an explainer; it only reports
+> `explain: not written — run /knowledge:explain P<N> for one chapter, or create an explain phase for a book`.
 
 The orchestrator delegates the heavy lifting to a **`slice-executor`** subagent in one of two
 capability tiers, picked by each slice's risk. `slice-executor-mid` is the default tier (since v46):
@@ -623,7 +616,7 @@ parallelism it never used. The mechanism itself is unchanged.)
 │   │   └── archived/             # finished phases
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
-│   ├── skills/                    # 18 Agent Skills (/slash commands)
+│   ├── skills/                    # 17 Agent Skills (/slash commands)
 │   ├── agents/                    # slice-executor tiers mid/high + design-drafter + design-critic (models from executors.toml)
 │   └── settings.json              # pre-approves workflow.py; denies force-push & rm -rf
 └── .github/

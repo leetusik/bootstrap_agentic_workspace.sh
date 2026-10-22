@@ -161,9 +161,9 @@ EMPTY_OK_ALLOWLIST = {
 #@@GENERATED_PAYLOADS@@
 
 # The skill inventory is derived independently from the embedded payload manifest.
-# The build enforces the release invariant: 18 skill packages.
+# The build enforces the release invariant: 17 skill packages.
 CLAUDE_SKILLS = sorted({k.split("/")[2] for k in PAYLOADS if k.startswith(".claude/skills/") and k.endswith("/SKILL.md")})
-EXPECTED_SKILL_COUNT = 18
+EXPECTED_SKILL_COUNT = 17
 if len(CLAUDE_SKILLS) != EXPECTED_SKILL_COUNT:
     raise RuntimeError(
         f"embedded skill inventory must contain {EXPECTED_SKILL_COUNT} skill packages "
@@ -1045,6 +1045,12 @@ Doc updates happen in a **docs phase the operator creates** — never per slice.
 """
 
 
+def _is_explain_path(rel: str) -> bool:
+    """A repo-relative path with a component named `explain`: the knowledge plugin owns it (v65), so no
+    install path creates, writes, removes, flags or reports it."""
+    return "explain" in rel.split("/")
+
+
 def nested_plan() -> dict:
     """Render and check everything the nested install writes, IN MEMORY, before any write: the
     clash map (merged into the existing marker on --update), the rewritten host-side skills and
@@ -1091,7 +1097,8 @@ def nested_plan() -> dict:
             rel = f".claude/skills/{name}" if kind == "skills" else f".claude/agents/{name}.md"
             if name not in installed[kind] and os.path.lexists(HOST / rel):
                 installed[kind].append(name)
-                stale.append(rel)
+                if not _is_explain_path(rel):
+                    stale.append(rel)
 
     files = {}
     for x in CLAUDE_SKILLS:
@@ -1155,7 +1162,8 @@ def nested_plan() -> dict:
     def _real_dir_or_absent(p: Path) -> bool:
         return not os.path.lexists(p) or (p.is_dir() and not p.is_symlink())
     self_hiding = [n for n in sorted(installed["skills"]) if _real_dir_or_absent(HOST / ".claude" / "skills" / n)]
-    skill_ignores = {f".claude/skills/{n}/.gitignore": NESTED_SKILL_GITIGNORE for n in self_hiding}
+    skill_ignores = {f".claude/skills/{n}/.gitignore": NESTED_SKILL_GITIGNORE for n in self_hiding
+                     if not _is_explain_path(f".claude/skills/{n}")}
     skill_targets = [f".claude/skills/{n}" for n in sorted(installed["skills"])]
     other_targets = [f".claude/agents/{n}.md" for n in sorted(installed["agents"])] + ["CLAUDE.local.md", ".claude/settings.local.json", NESTED_DIR]
     check_paths = [t for t in skill_targets if t.rsplit("/", 1)[1] not in self_hiding] + other_targets
@@ -1216,7 +1224,7 @@ def nested_plan() -> dict:
         exclude_label = str(exclude_path)
     return {
         "renames": renames, "installed": installed, "stale": stale, "convention": conv,
-        "shadowed": [n for n in installed["skills"] if os.path.lexists(home_skills / n)],
+        "shadowed": [n for n in installed["skills"] if os.path.lexists(home_skills / n) and not _is_explain_path(n)],
         "engine_side": engine_side,
         # Sorted, so each skill dir's .gitignore is written before its SKILL.md.
         "host_writes": [(HOST / rel, text, rel) for rel, text in sorted({**files, **skill_ignores}.items())]
@@ -1534,8 +1542,9 @@ def write_version_marker() -> None:
 # shipped it, the sha256 of each text that version wrote there). Ownership is by CONTENT, never by path
 # or directory: a present file whose hash matches is ours and unchanged, flagged stale (remove it); any
 # other file at a retired path, or under a retired directory, is the adopter's, reported "yours, kept".
-# An unmodified copy from an even older version therefore reads as kept: conservative on purpose (the
-# knowledge repo keeps its own .agents/skills/explain/SKILL.md at a path v30 shipped).
+# An unmodified copy from an even older version therefore reads as kept: conservative on purpose.
+# A path with an `explain` component is never listed here, touched or reported (_is_explain_path):
+# the knowledge plugin owns it, and a .claude/skills/explain/ copy stays until its owner deletes it.
 # Generated once (P37.S8) by a throwaway script over this repo's git history: every committed
 # bootstrap_agentic_workspace.sh's embedded PAYLOADS (what the installer wrote, not the repo's own tree),
 # taking the text at the last commit that shipped the path (the trailing comment). AGENTS.md and
@@ -1563,8 +1572,6 @@ RETIRED_FILES = {
     '.agents/skills/do-whole-phase/agents/openai.yaml': (30, ('482b7e274c36509c5edbf1395d470a8603038ada6be8e241465868f24d4d2774',)),  # 4ee5c22
     '.agents/skills/doc-new-version/SKILL.md': (30, ('8c066ef299e02e8d72851c3f198a82015dd3f0f13874427f0c418236def92099',)),  # 4ee5c22
     '.agents/skills/doc-new-version/agents/openai.yaml': (30, ('f081a68aa674117ea0c0e97e1557f6d002c09de7bc267fefef214d52a817e53c',)),  # 4ee5c22
-    '.agents/skills/explain/SKILL.md': (30, ('f6e8a16c38719f047a4d53f109af5db9f1d2ea93741a7ba35ddd39bf01a0c1e7',)),  # 4ee5c22
-    '.agents/skills/explain/agents/openai.yaml': (30, ('abbfc65f2008e8ddf99106b9258380e08a117c68f251eb3797860e2ea6e75c1f',)),  # 4ee5c22
     '.agents/skills/parallel-phase/SKILL.md': (30, ('03f41c6bc927bba5d875e8d7c5c47ab1fee8b3937c388e97e9168cac4fd334b7',)),  # 4ee5c22
     '.agents/skills/parallel-phase/agents/openai.yaml': (30, ('5606a3232f932e9ffa41e4e58bd8457962237c38aa4b9439922effe2b3768b2e',)),  # 4ee5c22
     '.agents/skills/promote-deferred/SKILL.md': (30, ('a314fc511656a451e2f408c0383e0f3ec52482bc3ecf6c8aedfb25c083fba520',)),  # 4ee5c22
@@ -1608,7 +1615,10 @@ def _retired_entry(key: str):
 
 
 def _classify(p: Path, shown: str, entry, unknown: str) -> bool:
-    """Record one present file as stale (ours, unchanged) or kept (yours). True when stale."""
+    """Record one present file as stale (ours, unchanged) or kept (yours). True when stale. An
+    `explain` path is never recorded."""
+    if _is_explain_path(shown):
+        return False
     digest = None
     if entry and not p.is_symlink():
         try:
@@ -1643,7 +1653,7 @@ def _walk_retired_dir(base: Path, rel: str, entry_of, guard=None) -> None:
     if guarded is not None:
         if all_stale:
             all_stale = _classify(guarded, guard[0], guard[1], "")
-        else:
+        elif not _is_explain_path(guard[0]):
             UPDATE_SUMMARY["kept"].append((guard[0], "it hides the files kept beside it"))
     if all_stale:
         UPDATE_SUMMARY["notes"].append(f"{rel}/ holds only stale files: remove the emptied directory once they are gone")
@@ -1819,13 +1829,14 @@ elif RETROFIT:
 else:
     print(f"Bootstrapped agentic workspace at {TARGET}")
     print("Contract: CLAUDE.md")
-    print("Claude Code: 18 skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{mid,high}.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
+    print("Claude Code: 17 skills in .claude/skills/ (e.g. /do-next-slice), subagent tiers .claude/agents/slice-executor-{mid,high}.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
     print("Visual design: design-cowork fires automatically; the design-drafter subagent drafts each design job as a working canvas under docs/reference/design/jobs/ (clickable Pages, a board per component), the design-critic judges it when the job's critique is on, the orchestrator publishes each job to its own Design canvas Artifact in the Claude app, and the operator decides: picks a style (build-after / design-only / paired) and signs each job in their own words, or on an in-product mockup they ask for, before separate implementation and browser fidelity")
     print("Executor tiers are routed by kind, then risk, then attempt (mid is the default tier, real code included; high for decomposition, research, review, named triggers and retries), through one route table whose rows set each dispatch's model and effort; python3 scripts/workflow.py executor-route shows it (and executor-route <slice> the decision for one slice); override a row in executors.toml, then run sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
     print("CI: .github/workflows/workspace-ci.yml runs validate on every push/PR (seeded once — yours to edit); .gitattributes carries the merge rules for machine-written files")
     print("Canonical state: phase.json / slice.json / deferred.json; generated: works/backlog.md, works/deferred.md")
     print("Versioned docs: docs/versions/<doc>/vNNNN_*.md with generated docs/current/*.md")
-    print("Knowledge: /explain writes an interactive explainer for a phase or topic to your knowledge base (an operator-run step; the phase review writes none). First run sets up a hosted KB for you — it asks first. Already have one? export KB_API_BASE_URL + KB_API_TOKEN — see docs/current/operations.md")
+    print("Knowledge: /explain is the knowledge plugin's, not this workspace's (plugin 0.5.0+): /plugin marketplace add leetusik/knowledge, then /plugin install knowledge@knowledge; run /knowledge:setup once, then /knowledge:explain P<N> for one chapter")
+    print("  a book (outlined, signed, critic-checked, published private) is an explain phase: ask /create-phase — see docs/current/operations.md")
     print("No phases yet — the workspace starts empty on purpose.")
     print("Next: create the first phase with /create-phase (Claude Code) or python3 scripts/workflow.py new-phase ...")
