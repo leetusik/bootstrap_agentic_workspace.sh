@@ -2674,6 +2674,10 @@ def cmd_run_phases(args: argparse.Namespace) -> None:
 # done. Every other slice is UNDECLARED (every pre-v70 slice, a v69 advisory list included) and, like the
 # barrier kinds, runs alone. Stateless like run-phases: recomputed from disk on every call, it writes nothing,
 # and a phase with no declared slice prints, stores and halts exactly as before (the plain pointer above).
+# A barrier is never a wave slice (P42.F1): while one is in_progress it holds the phase alone, nothing is
+# ready, and -- unless wave slices also run -- no wave line prints, so a declared phase then reads exactly as
+# an undeclared one in the same state (at an open acceptance gate the running REVIEW is the gate's, not a
+# returned wave slice to finish). start-slice warns, never refuses, at a start the ready set would not make.
 DEPENDS_DECLARED = "depends_declared"
 BARRIER_KINDS = ("decomposition", "review", "co-work")
 STOP_STATUSES = ("pending", "blocked")
@@ -2704,17 +2708,21 @@ def _order_of(s: dict):
 
 
 def ready_set(phase: dict) -> dict:
-    """`{ready, running, stops}` of one phase, each a list of slices by order. `stops` are the open slices
-    `pending` or `blocked`; any stop, or the phase itself `pending`/`blocked`, leaves `ready` empty. Else a
-    walk over the open slices admits a barrier only as the first open slice with nothing running, ends at
-    the first barrier either way, and admits a declared slice that is todo/ready with every dependency
-    `done`. So an undeclared phase's ready set is its first open slice when that can start: the pointer."""
+    """`{ready, running, stops, barrier}` of one phase: lists of slices by order, and `barrier` the first
+    barrier `in_progress` (else None). `running` is the wave: the non-barrier slices `in_progress`; a barrier
+    never joins it, it holds the phase alone. `stops` are the open slices `pending` or `blocked`; any stop, a
+    barrier in progress, or the phase itself `pending`/`blocked`, leaves `ready` empty. Else a walk over the
+    open slices admits a barrier only as the first open slice with nothing running, ends at the first barrier
+    either way, and admits a declared slice that is todo/ready with every dependency `done`. So an undeclared
+    phase's ready set is its first open slice when that can start: the pointer."""
     slices = phase.get("slices", [])
     done = {s.get("id") for s in slices if s.get("status") == "done"}
     open_slices = [s for s in slices if s.get("status") != "done"]
-    out = {"ready": [], "running": [s for s in open_slices if s.get("status") == "in_progress"],
+    in_progress = [s for s in open_slices if s.get("status") == "in_progress"]
+    out = {"ready": [], "running": [s for s in in_progress if not slice_barrier(s)],
+           "barrier": next((s for s in in_progress if slice_barrier(s)), None),
            "stops": [s for s in open_slices if s.get("status") in STOP_STATUSES]}
-    if out["stops"] or phase.get("status") in STOP_STATUSES + ("done",):
+    if out["stops"] or out["barrier"] is not None or phase.get("status") in STOP_STATUSES + ("done",):
         return out
     for i, s in enumerate(open_slices):
         startable = s.get("status") in ("todo", "ready")
@@ -2750,12 +2758,20 @@ def _wave_stops(phase: dict, wave: dict) -> list:
     return ([f"phase {phase['id']} ({phase.get('status')})"] if phase.get("status") in STOP_STATUSES else []) + stops
 
 
+def wave_held(wave: dict) -> bool:
+    """True while a barrier runs alone (no wave slice beside it): a single-slice run that the plain pointer's
+    lines carry, so the phase prints no wave line and reads as an undeclared phase does (P42.F1)."""
+    return wave["barrier"] is not None and not wave["running"]
+
+
 def wave_lines(phase) -> list:
     """`next` / `run-phases` lines for a declared phase: `ready_slices=` and `running_slices=`. Empty for an
-    undeclared phase (or None), so those outputs stay byte-identical there."""
+    undeclared phase (or None), so those outputs stay byte-identical there, and while a barrier holds the phase."""
     if not phase_declared(phase):
         return []
     wave = ready_set(phase)
+    if wave_held(wave):
+        return []
     stops = _wave_stops(phase, wave)
     ready = f"ready_slices={_slice_ids(wave['ready'])}"
     running = f"running_slices={_slice_ids(wave['running'])}"
@@ -2778,8 +2794,9 @@ def _active_phase(phase_id):
 
 def wave_card_lines(phase: dict, sid) -> list:
     """The resume card's wave lines for a declared phase, none otherwise: a sibling's stop that the pointer's
-    lines do not show, then one `wave:` line -- the running slices, those of them whose result.md exists
-    (returned), the ready set and the stops -- with the wave's next action."""
+    lines do not show, then one `wave:` line -- the running wave slices, those of them whose result.md exists
+    (returned), the ready set and the stops -- with the wave's next action. A barrier is never running or
+    returned there, and while one holds the phase alone the card has no `wave:` line (P42.F1)."""
     if not phase_declared(phase):
         return []
     wave, lines = ready_set(phase), []
@@ -2794,6 +2811,8 @@ def wave_card_lines(phase: dict, sid) -> list:
                          f"{_card_cut(record.get('on_words'))}; they clear it with set-slice-status {hid} in_progress")
         else:
             lines.append(f"stop: slice {hid} untyped pending -- say what you need; the operator's words clear it with set-slice-status {hid} in_progress")
+    if wave_held(wave):
+        return lines
     returned = [s for s in wave["running"] if (ACTIVE / phase["id"] / "slices" / s["id"] / "result.md").is_file()]
     stops = ([phase["id"]] if phase.get("status") in STOP_STATUSES else []) + [s["id"] for s in wave["stops"]]
     then = "start nothing new: a stop is on disk" if stops else "start the ready set only while no stop is on disk"
@@ -2801,6 +2820,35 @@ def wave_card_lines(phase: dict, sid) -> list:
                  f"stops={','.join(stops) or 'none'} -- in a /do-whole-phase run, wait for every running span (never re-dispatch one), "
                  f"finish each returned slice, and {then}")
     return lines
+
+
+def start_warning(slice_id: str):
+    """start-slice's one `warning:` line in a declared phase (OQ3, P42.F1), for a start the ready set would not
+    make: a declared slice with a dependency not yet `done`, or a barrier while another slice of the phase is
+    `in_progress`. None otherwise, and always None in an undeclared phase. It warns, never refuses."""
+    try:
+        phase = _active_phase(slice_id.split(".", 1)[0]) if isinstance(slice_id, str) else None
+    except (OSError, ValueError, TypeError):  # an unreadable slice.json: the start goes on as before, unwarned
+        return None
+    if not phase_declared(phase):
+        return None
+    by_id = {s.get("id"): s for s in phase["slices"]}
+    me = by_id.get(slice_id)
+    if me is None:
+        return None
+    reasons = []
+    if slice_declared(me):
+        deps = [f"{dep} ({by_id[dep].get('status')})" if dep in by_id else f"{dep} (missing)"
+                for dep in me.get("depends_on") or [] if (by_id.get(dep) or {}).get("status") != "done"]
+        if deps:
+            reasons.append(f"depends on {', '.join(deps)}, not done yet")
+    if slice_barrier(me):
+        beside = [s["id"] for s in phase["slices"] if s.get("status") == "in_progress" and s.get("id") != slice_id]
+        if beside:
+            reasons.append(f"is a barrier that runs alone, but {', '.join(beside)} {'is' if len(beside) == 1 else 'are'} in_progress")
+    if not reasons:
+        return None
+    return f"warning: {slice_id} {', and '.join(reasons)} -- the ready set would not start it; started anyway (start-slice warns, never refuses)"
 
 
 def parse_depends_on(values):
@@ -3852,8 +3900,11 @@ def cmd_set_slice_status(args: argparse.Namespace) -> None:
 
 
 def start_slice(args: argparse.Namespace) -> None:
+    warning = start_warning(args.slice)  # P42.F1: declared phases only; read before the start changes the state
     set_slice_status(args.slice, "in_progress")
     print(f"started {args.slice}")
+    if warning:
+        print(warning)
 
 
 def finish_slice(args: argparse.Namespace) -> None:

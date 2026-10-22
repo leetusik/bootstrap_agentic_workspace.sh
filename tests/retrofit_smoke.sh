@@ -22,7 +22,8 @@
 # one phase.md section, a 40 KB index budget naming the biggest sections), the P41 run-phases invariants
 # (a run's tokens resolve in order and a non-phase token refuses; a run passes a parked acceptance gate and
 # halts at a pending slice while plain `next` still waits there), the P42 ready-set invariants (an undeclared phase
-# keeps its plain pointer and prints no wave line; a declared slice is never ready before its dependency is done), the v43
+# keeps its plain pointer and prints no wave line; a declared slice is never ready before its dependency is done;
+# a running barrier is never a wave slice, so a declared phase's open acceptance gate reads as a stop), the v43
 # worktree-on-request invariants (nothing enters a worktree unhinted or unasked; parallel-start
 # on a dirty tree commits only the phase folder plus the regenerated works/ files and cuts a
 # nested .claude/worktrees/ checkout hidden by the repo's info/exclude; parallel-skip and
@@ -2181,6 +2182,14 @@ printf '%s\n' "$r1" | grep -qx 'ready_slices=P2.S1' && printf '%s\n' "$r2" | gre
   && printf '%s\n' "$r3" | grep -qx 'ready_slices=P2.S2' && [ "$fwd" -ne 0 ] && [ ! -e "$SW/works/phases/active/P2/slices/P2.S0" ] \
   && ok "a declared slice is never ready before its dependency is done, and new-slice refuses a dependency not ordered before it" \
   || bad "declared ready set wrong (fwd rc=$fwd) -- $r1 / $r2 / $r3"
+{ rs set-phase-status P1 done && rs start-slice P2.S2 && rs finish-slice P2.S2 --outcome x && rs start-slice P2.REVIEW \
+  && : > "$SW/works/phases/active/P2/slices/P2.REVIEW/result.md" && rs accept-gate P2 --require && rs accept-gate P2 --open --walkthrough probe; } >/dev/null 2>&1 \
+  || bad "ready-set probe: could not open P2's acceptance gate"
+gn=$(rs next 2>&1); gc=$(rs next --card 2>&1)
+printf '%s\n' "$gn" | grep -qx 'waiting_on_operator=P2' && printf '%s\n' "$gc" | grep -q '^stop: phase P2 acceptance gate open ' \
+  && ! printf '%s\n%s\n' "$gn" "$gc" | grep -q -e '^running_slices=' -e '^wave: ' \
+  && ok "a declared phase at its open acceptance gate reads as a stop: the running REVIEW is a barrier, never a wave's running or returned slice" \
+  || bad "declared gate reads as a wave -- $gn / $gc"
 
 # ---------------------------------------------------------------------------
 echo "== Test 11: v41 phase-scope -- the phase's boundary is read from git, advisory everywhere =="
