@@ -5247,7 +5247,117 @@ def nested_next_lines() -> list:
         inferred = _one_line(conv.get("inferred")) if conv.get("inferred") else "nothing"
         lines.append(f"host_commit_convention=UNCONFIRMED (inferred: {inferred}) -- confirm the host's conventions (commits, branches and pull requests) with the operator before the first product commit, "
                      f"then: {WORKFLOW_CMD} nested-convention --confirm --text \"<conventions>\" --trailers allowed|forbidden")
+    repos = nested_repos()
+    if repos:  # P40 multi-repo: one summary line; a single-repo install prints exactly the two above
+        lines.append(_repo_conventions_line(repos))
     return lines
+
+
+def effective_repo_convention(repo: dict, host_conv=None) -> dict:
+    """P40 (Decision 12): repo X's effective convention on a multi-repo host, where the top-level
+    `commit_convention` is "the rules for every repo" and X's own (null = inherit) is more specific.
+
+    - text: the host-level text, then X's own, each labelled (both shown);
+    - confirmed: X's own `confirmed`, or the host-level one when X's convention is null;
+    - trailers: `forbidden` if either forbids, else X's own when it records allowed/forbidden, else the host's.
+
+    `state` is what `nested-repos`, `nested-convention` and `next`'s `repo_conventions=` all print:
+    `UNCONFIRMED` whenever the effective `confirmed` is false (an inherited convention under an
+    unconfirmed host included), else `inherited` for a null convention, else `confirmed`.
+    `host_conv` defaults to the loaded marker's; `nested-convention --confirm` passes the one it just wrote."""
+    if host_conv is None:
+        host_conv = NESTED.get("commit_convention") if NESTED is not None else None
+    host = host_conv if isinstance(host_conv, dict) else {}
+    own = repo.get("commit_convention")
+    host_trailers = host.get("coauthor_trailers") or "unknown"
+    parts = [f"every repo: {host['text']}"] if host.get("text") else []
+    if own is None:
+        confirmed = host.get("confirmed") is True
+        trailers = host_trailers
+    else:
+        confirmed = own.get("confirmed") is True
+        own_trailers = own.get("coauthor_trailers")
+        if "forbidden" in (host_trailers, own_trailers):
+            trailers = "forbidden"
+        else:
+            trailers = own_trailers if own_trailers in ("allowed", "forbidden") else host_trailers
+        if own.get("text"):
+            parts.append(f"{repo['name']}: {own['text']}")
+    state = "UNCONFIRMED" if not confirmed else ("inherited" if own is None else "confirmed")
+    return {"state": state, "confirmed": confirmed, "coauthor_trailers": trailers, "text": "\n".join(parts) or None,
+            "inferred": None if own is None else own.get("inferred"), "inherits": own is None}
+
+
+def _repo_convention_lines(repo: dict, host_conv=None) -> list:
+    """One registry entry's block in `nested-convention` (bare multi-repo, and `--repo`): its effective values."""
+    eff = effective_repo_convention(repo, host_conv)
+    lines = [f"repo={repo['name']} path={repo['path']}/ commit_convention={eff['state']} coauthor_trailers={eff['coauthor_trailers']}",
+             "inferred:",
+             "(inherits the host-level convention, the rules for every repo)" if eff["inherits"] else (eff["inferred"] or "(nothing inferred)"),
+             "text:",
+             eff["text"] or "(none -- not confirmed yet)"]
+    if eff["state"] == "UNCONFIRMED" and eff["inherits"]:
+        lines.append(f"{repo['name']} inherits the unconfirmed host-level conventions: confirm those (the rules for every repo) with the operator before its first product commit, "
+                     f"then: {WORKFLOW_CMD} nested-convention --confirm --text \"<conventions>\" --trailers allowed|forbidden "
+                     f"(or record {repo['name']}'s own: --confirm --repo {repo['name']} ...)")
+    elif eff["state"] == "UNCONFIRMED":
+        lines.append(f"confirm {repo['name']}'s conventions (commits, branches and pull requests) with the operator before its first product commit, "
+                     f"then: {WORKFLOW_CMD} nested-convention --confirm --repo {repo['name']} --text \"<conventions>\" --trailers allowed|forbidden")
+    return lines
+
+
+def _repo_conventions_line(repos: list) -> str:
+    """`next`'s one multi-repo summary line (S1 §5): the count by effective state with the UNCONFIRMED
+    names and the command that confirms them, or that nothing needs confirming."""
+    states = [(repo["name"], effective_repo_convention(repo)["state"]) for repo in repos]
+    unconfirmed = [name for name, state in states if state == "UNCONFIRMED"]
+    if not unconfirmed:
+        return f"repo_conventions={len(repos)} (all confirmed or inherited) -- per repo: {WORKFLOW_CMD} nested-convention --repo <name>"
+    confirmed = sum(1 for _, state in states if state == "confirmed")
+    inherited = sum(1 for _, state in states if state == "inherited")
+    return (f"repo_conventions={len(repos)} (confirmed {confirmed}, inherited {inherited}, UNCONFIRMED {len(unconfirmed)}: {', '.join(unconfirmed)}) "
+            f"-- confirm each UNCONFIRMED repo's conventions before its first product commit: "
+            f"{WORKFLOW_CMD} nested-convention --confirm --repo <name> --text \"<conventions>\" --trailers allowed|forbidden")
+
+
+def _nested_convention_repo(args: argparse.Namespace, path: Path) -> None:
+    """`nested-convention --repo <name>` on a multi-repo host (P40): show that repo's effective block,
+    `--confirm` its own convention, or `--inherit` (set it back to null). Validate-then-write, one event."""
+    repos = nested_repos()
+    names = [repo["name"] for repo in repos]
+    if args.repo not in names:
+        raise SystemExit(f"nested-convention: refused -- no registered repo named {args.repo!r} (registered: {', '.join(names)}; "
+                         f"list them with: {WORKFLOW_CMD} nested-repos)")
+    if not (args.confirm or args.inherit):
+        print("\n".join(_repo_convention_lines(repos[names.index(args.repo)])))
+        return
+    data = read_json(path)
+    entries = data.get("repos") if isinstance(data.get("repos"), list) else []
+    entry = next((e for e in entries if isinstance(e, dict) and e.get("name") == args.repo), None)
+    if entry is None:  # the marker changed under us; never write a guess
+        raise SystemExit(f"nested-convention: refused -- {shown(path)} no longer registers {args.repo!r}")
+    previous = entry.get("commit_convention")
+    if args.inherit:
+        if previous is None:
+            print(f"nested-convention: {args.repo} already inherits the host-level convention -- nothing written")
+            print("\n".join(_repo_convention_lines(entry, data.get("commit_convention"))))
+            return
+        entry["commit_convention"] = None
+    else:
+        base = dict(previous) if isinstance(previous, dict) else {"inferred": None, "confirmed": False, "text": None, "coauthor_trailers": "unknown"}
+        entry["commit_convention"] = dict(base, text=args.text, confirmed=True, coauthor_trailers=args.trailers)
+    problems = nested_marker_problems(data)
+    if problems:  # never write a marker validate would reject
+        raise SystemExit(f"nested-convention: refused -- the result would be malformed: {'; '.join(problems)}")
+    write_json(path, data)
+    was_confirmed = isinstance(previous, dict) and previous.get("confirmed") is True
+    if args.inherit:
+        append_event("nested_convention_inherited", repo=args.repo, previously_confirmed=was_confirmed)
+        print(f"nested-convention: {args.repo} now inherits the host-level convention (its own was {'confirmed' if was_confirmed else 'UNCONFIRMED'}) -- written to {shown(path)}")
+    else:
+        append_event("nested_convention_confirmed", repo=args.repo, coauthor_trailers=args.trailers, previously_confirmed=was_confirmed)
+        print(f"nested-convention: {args.repo} confirmed{' (replacing the earlier confirmation)' if was_confirmed else ''} -- written to {shown(path)}")
+    print("\n".join(_repo_convention_lines(entry, data.get("commit_convention"))))
 
 
 def cmd_nested_convention(args: argparse.Namespace) -> None:
@@ -5256,18 +5366,35 @@ def cmd_nested_convention(args: argparse.Namespace) -> None:
     The installer cannot ask (it runs non-interactively), so it records what it inferred from the
     host's git log and CONTRIBUTING with `confirmed: false`; the orchestrator asks the operator
     before the first product commit and records the answer here -- the convention text and whether
-    Claude `Co-Authored-By` trailers are allowed in the host repo. Writes only `.agentic-nested.json`."""
+    Claude `Co-Authored-By` trailers are allowed in the host repo. Writes only `.agentic-nested.json`.
+
+    On a multi-repo host (P40) the host-level convention is the rules for every repo, and each
+    registered repo may carry its own (`--repo <name>`; `--inherit` sets it back to null); a repo's
+    effective convention composes the two (`effective_repo_convention`)."""
     if NESTED is None:
         raise SystemExit(f"nested-convention: refused -- this is not a nested personal install (no {NESTED_MARKER} beside scripts/); "
                          "commits here follow the workspace's own Commit Convention")
+    if args.inherit and args.confirm:
+        raise SystemExit(f"nested-convention: --inherit and --confirm exclude each other: --inherit sets a repo's own convention back to null "
+                         f"({WORKFLOW_CMD} nested-convention --repo <name> --inherit)")
+    if args.inherit and args.repo is None:
+        raise SystemExit(f"nested-convention: --inherit needs --repo <name> (the host-level convention has nothing to inherit from): "
+                         f"{WORKFLOW_CMD} nested-convention --repo <name> --inherit")
     if (args.text is not None or args.trailers is not None) and not args.confirm:
         raise SystemExit(f"--text and --trailers belong to --confirm: {WORKFLOW_CMD} nested-convention --confirm --text \"...\" --trailers allowed|forbidden")
+    if args.repo is not None and not nested_repos():
+        raise SystemExit("nested-convention: refused -- single-repo install: the host is the one repo; drop --repo")
     path = ROOT / NESTED_MARKER
     if args.confirm:
+        whose = f"{args.repo}'s" if args.repo is not None else "the host's"
         if not (args.text or "").strip():
-            raise SystemExit("nested-convention --confirm needs --text \"<the host's conventions for commits, branches and pull requests, as the operator confirmed them>\"")
+            raise SystemExit(f"nested-convention --confirm needs --text \"<{whose} conventions for commits, branches and pull requests, as the operator confirmed them>\"")
         if args.trailers is None:
-            raise SystemExit("nested-convention --confirm needs --trailers allowed|forbidden (may Claude Co-Authored-By trailers appear in host commits?)")
+            raise SystemExit(f"nested-convention --confirm needs --trailers allowed|forbidden (may Claude Co-Authored-By trailers appear in {args.repo + ' commits' if args.repo is not None else 'host commits'}?)")
+    if args.repo is not None:
+        _nested_convention_repo(args, path)
+        return
+    if args.confirm:
         data = read_json(path)
         previous = dict(data["commit_convention"])
         data["commit_convention"] = dict(previous, text=args.text, confirmed=True, coauthor_trailers=args.trailers)
@@ -5280,7 +5407,10 @@ def cmd_nested_convention(args: argparse.Namespace) -> None:
         conv = data["commit_convention"]
     else:
         conv = NESTED["commit_convention"]
+    repos = nested_repos()
     print(f"nested_host={HOST_ROOT}")
+    if repos:  # P40 multi-repo: the host-level block is the rules for every repo
+        print("scope=every repo")
     print(f"commit_convention={'confirmed' if conv.get('confirmed') is True else 'UNCONFIRMED'}")
     print(f"coauthor_trailers={conv.get('coauthor_trailers')}")
     print("inferred:")
@@ -5289,6 +5419,9 @@ def cmd_nested_convention(args: argparse.Namespace) -> None:
     print(conv.get("text") or "(none -- not confirmed yet)")
     if conv.get("confirmed") is not True:
         print(f"confirm the host's conventions (commits, branches and pull requests) with the operator before the first product commit, then: {WORKFLOW_CMD} nested-convention --confirm --text \"<conventions>\" --trailers allowed|forbidden")
+    for repo in repos:
+        print()
+        print("\n".join(_repo_convention_lines(repo, conv)))
 
 
 # P40: the multi-repo registry's helpers, its `validate` rows and the `nested-repos` command. Every
@@ -5402,13 +5535,6 @@ def nested_repo_checks(errors: list, warnings: list) -> None:
         warnings.append(f"nested install: the multi-repo host tracks {count} file(s); product belongs in the repos")
 
 
-def _repo_convention_state(repo: dict) -> str:
-    conv = repo.get("commit_convention")
-    if conv is None:
-        return "inherited"
-    return "confirmed" if conv.get("confirmed") is True else "UNCONFIRMED"
-
-
 def _repo_branch_now(path: Path) -> str:
     if not path.exists():
         return "(missing)"
@@ -5431,7 +5557,7 @@ def _print_nested_repos(repos: list) -> None:
     for repo in repos:
         path = nested_repo_path(repo)
         print(f"repo={repo['name']} path={repo['path']}/ branch={_repo_branch_now(path)} "
-              f"default_branch={repo.get('default_branch') or 'none'} convention={_repo_convention_state(repo)} rules={len(repo.get('rules') or [])}")
+              f"default_branch={repo.get('default_branch') or 'none'} convention={effective_repo_convention(repo)['state']} rules={len(repo.get('rules') or [])}")
 
 
 def _repo_anchor_holders(name: str) -> list:
@@ -10001,6 +10127,8 @@ def main(argv=None) -> int:
     p.add_argument("--confirm", action="store_true", help="record the operator-confirmed conventions (needs --text and --trailers)")
     p.add_argument("--text", default=None, help="the host's conventions as the operator confirmed them: commit subjects and trailers; branch naming and base (e.g. from fresh main); PR shape (one per ticket or per phase) and who merges")
     p.add_argument("--trailers", default=None, choices=("allowed", "forbidden"), help="may Claude Co-Authored-By trailers appear in host product commits")
+    p.add_argument("--repo", default=None, metavar="NAME", help="multi-repo host only: show one registered repo's effective conventions (the host-level ones, the rules for every repo, composed with its own), or with --confirm record its own; without --repo, --confirm records the host-level ones")
+    p.add_argument("--inherit", action="store_true", help="with --repo: set that repo's own conventions back to null, so it inherits the host-level ones")
     p.set_defaults(func=cmd_nested_convention)
 
     p = sub.add_parser("nested-repos", help="Nested personal install only: show the multi-repo host's registry of product repos (bare: name, path, the branch checked out now, default branch, convention state, rules count), or edit it -- --add <path>, --remove <name>, --rules <name> --set a,b,c, --detect-rules <name>; writes only .agentic-nested.json; --add on a single-repo install only when the host tracks no files; refuses outside a nested install")
