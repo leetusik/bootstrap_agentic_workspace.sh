@@ -45,6 +45,13 @@ NESTED_OPTIONAL_KEYS = ("installed", "repos")
 # `rules` lists the repo's own rules files (AGENTS.md, CLAUDE.md, .agents/skills/*/SKILL.md), repo-relative.
 NESTED_REPO_KEYS = ("name", "path", "default_branch", "commit_convention", "rules")
 NESTED_REPO_NAME = re.compile(r"[A-Za-z0-9._-]+")
+# P40.S10: `converted_from`, which the installer's `--to-multi-repo <repo>` appends to: one entry per
+# per-repo nested install converted into this multi-repo host, `{"repo", "old_nested", "at"}` (strings:
+# the repo's name, its old `<repo>/workflow`, the date). A known field, but lenient: nothing in the
+# engine reads it (the installer renders its CLAUDE.local.md line), so a malformed value is a validate
+# WARNING, never an error that would stop every command.
+NESTED_NOTE_KEYS = ("converted_from",)
+NESTED_CONVERTED_KEYS = ("repo", "old_nested", "at")
 # P35: a nested phase worktree is a pair, and its host half needs a branch the operator names.
 NESTED_HOST_BRANCH_REQUIRED = (
     "parallel-start in a nested install needs --host-branch <name>: the host repo's branch for this phase's product commits, "
@@ -135,6 +142,29 @@ def nested_marker_problems(data) -> list:
                         problems.append(f"installed.{kind} does not list the renamed {', '.join(missing)}")
     if "repos" in data:
         problems.extend(_repos_problems(data["repos"], data.get("host_root")))
+    return problems
+
+
+def _converted_from_problems(raw) -> list:
+    """Every way the marker's `converted_from` (P40.S10) breaks its shape: a list of objects with exactly
+    the three string keys of NESTED_CONVERTED_KEYS. `validate` prints each one as a warning."""
+    if not isinstance(raw, list):
+        return [f"converted_from must be a list of objects with {', '.join(NESTED_CONVERTED_KEYS)} (strings)"]
+    problems = []
+    for i, entry in enumerate(raw):
+        label = f"converted_from[{i}]"
+        if not isinstance(entry, dict):
+            problems.append(f"{label} is not an object")
+            continue
+        missing = [k for k in NESTED_CONVERTED_KEYS if k not in entry]
+        unknown = sorted(str(k) for k in entry if k not in NESTED_CONVERTED_KEYS)
+        if missing:
+            problems.append(f"{label}: missing field(s) {', '.join(missing)}")
+        if unknown:
+            problems.append(f"{label}: unknown field(s) {', '.join(unknown)} (an entry has exactly {', '.join(NESTED_CONVERTED_KEYS)})")
+        for key in NESTED_CONVERTED_KEYS:
+            if key in entry and not (isinstance(entry[key], str) and entry[key].strip()):
+                problems.append(f"{label}.{key} must be a non-empty string")
     return problems
 
 
@@ -3406,9 +3436,12 @@ def validate() -> int:
     if NESTED is not None:
         marker = shown(ROOT / NESTED_MARKER)
         errors.extend(f"{marker}: {problem}" for problem in NESTED_PROBLEMS)
-        unknown = sorted(set(NESTED) - set(NESTED_KEYS) - set(NESTED_OPTIONAL_KEYS))
+        unknown = sorted(set(NESTED) - set(NESTED_KEYS) - set(NESTED_OPTIONAL_KEYS) - set(NESTED_NOTE_KEYS))
         if unknown:
             warnings.append(f"{marker}: unknown field(s) {', '.join(unknown)} (schema {NESTED_SCHEMA} reads only {', '.join(NESTED_KEYS + NESTED_OPTIONAL_KEYS)})")
+        if "converted_from" in NESTED:
+            warnings.extend(f"{marker}: {problem} (the --to-multi-repo record; only the CLAUDE.local.md line reads it)"
+                            for problem in _converted_from_problems(NESTED["converted_from"]))
         if HOST_ROOT is not None and HOST_ROOT.is_dir():
             try:
                 proc = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=str(HOST_ROOT), capture_output=True, text=True, timeout=10)

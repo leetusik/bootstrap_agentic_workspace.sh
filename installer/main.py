@@ -42,6 +42,18 @@ UPDATE_DOCS = True  # recomputed in the guards for update (skip docs rebuild if 
 # stale / kept: (path, reason) pairs; notes / intents: lines (the update report, print_update_report)
 UPDATE_SUMMARY = {"updated": [], "added": [], "merged": [], "preserved": [], "unchanged": [],
                   "stale": [], "kept": [], "notes": [], "intents": []}
+# --to-multi-repo <repo> (P40.S10, OQ4): turn the per-repo nested install at <repo>/workflow/ into a
+# multi-repo host at <repo>'s parent folder. Every refusal comes first (convert_prepare); then the parent
+# is git init-ed (+ its empty commit), <repo>/workflow moves up a level, and the plain --update runs at
+# the parent -- this very program from here on, with TARGET the parent and UPDATE set -- seeding the
+# registry with the conversion's convention rule and `converted_from` (nested_plan); convert_finish maps
+# the anchors, cleans the old repo's side and prints the closing block. No worktree code, no nested commit.
+CONVERT = os.environ.get("TO_MULTI_REPO") == "1"
+CONVERT_REPO = None
+if CONVERT:
+    CONVERT_REPO = TARGET.resolve()
+    TARGET = CONVERT_REPO.parent
+    UPDATE = True
 UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
@@ -63,6 +75,7 @@ AT_ROOT_FLAG = os.environ.get("AT_ROOT") == "1"     # --at-root: the committed, 
 # first write, a refusal undoes that init (_nested_undo_init); from the first write on it is kept.
 HOST_INITED = False
 _HOST_INIT_UNDO = None   # (the .git this run created, [dirs this run created, deepest first]) or None
+_CONVERT_UNDO = None     # --to-multi-repo: (where the nested repo moved to, where it came from) until the first write
 # The commit convention recorded for a host this installer just `git init`ed: it has no history to
 # infer from and is the operator's own repo, so it takes this workspace's own Commit Convention.
 NESTED_INIT_CONVENTION = {"inferred": None, "confirmed": True,
@@ -85,8 +98,19 @@ REPO_NAME_RE = re.compile(r"[A-Za-z0-9._-]+")   # == scripts/workflow.py NESTED_
 
 def _nested_undo_init() -> None:
     """Remove what this run's `git init` of a new or empty host created -- its .git, then each
-    directory it created if it is empty again -- and nothing else. A no-op once writing started."""
-    global _HOST_INIT_UNDO
+    directory it created if it is empty again -- and nothing else. A no-op once writing started.
+    --to-multi-repo: the nested repo it moved goes back first (os.rename, as it came)."""
+    global _HOST_INIT_UNDO, _CONVERT_UNDO
+    moved, _CONVERT_UNDO = _CONVERT_UNDO, None
+    if moved:
+        try:
+            os.rename(moved[0], moved[1])
+            print(f"(--to-multi-repo undone: {moved[0]} moved back to {moved[1]}"
+                  + (f", and the {moved[0].parent / '.git'} this run made removed)" if _HOST_INIT_UNDO else ")"), file=sys.stderr)
+        except OSError as exc:
+            _HOST_INIT_UNDO = None   # keep the host's .git: the nested repo is still under it
+            print(f"Error: --to-multi-repo could not move {moved[0]} back ({exc}); move it by hand: "
+                  f"mv {shlex.quote(str(moved[0]))} {shlex.quote(str(moved[1]))}", file=sys.stderr)
     undo, _HOST_INIT_UNDO = _HOST_INIT_UNDO, None
     if not undo:
         return
@@ -118,7 +142,10 @@ def resolve_layout() -> bool:
     (workflow/.agentic-nested.json) or an at-root workspace (scripts/workflow.py + works/); both is
     ambiguous unless a flag picks one, a flag that contradicts the one found refuses, and neither
     falls to at-root, whose "no agentic workspace found here" error then fires. Anything else -- a
-    fresh install, with or without --nested -- is nested. Refuses (exit 1, nothing written)."""
+    fresh install, with or without --nested -- is nested. Refuses (exit 1, nothing written).
+    --to-multi-repo is nested by definition: its own refusals (convert_prepare) judge the target."""
+    if CONVERT:
+        return True
     if RETROFIT:
         return False
     t = ROOT
@@ -1227,12 +1254,13 @@ def _renames_line(renames: dict):
     return None
 
 
-def _multi_repo_local_block(renames: dict, repos: list) -> list:
+def _multi_repo_local_block(renames: dict, repos: list, converted=()) -> list:
     """The managed CLAUDE.local.md block of a multi-repo host (P40; S1 §6 with S2 §21's parallel line):
     the single-repo block's shape, with one line per registered repo (path, default branch, rules files),
     "this repo" meaning the repo the change lives in, one commit per repo a slice changed, and a parallel
     line naming `--repo` and `parallel-add-repo`. Emitted only when `repos` is non-empty; the renames
-    line is appended exactly as the single-repo block does."""
+    line is appended exactly as the single-repo block does. `converted` (the marker's `converted_from`,
+    S10) adds one line per converted per-repo install after the repo list; without it the block is S9's."""
     cmd = f"python3 {NESTED_DIR}/scripts/workflow.py"
     repo_lines = []
     for r in repos:
@@ -1240,6 +1268,9 @@ def _multi_repo_local_block(renames: dict, repos: list) -> list:
         facts = [f"default branch `{r['default_branch']}`"] if isinstance(r.get("default_branch"), str) and r["default_branch"] else []
         facts += ["rules: " + ", ".join(f"`{x}`" for x in rules)] if rules else []
         repo_lines.append(f"  - `{r['path']}/`" + (f" ({'; '.join(facts)})" if facts else ""))
+    for c in converted:
+        if isinstance(c, dict) and all(isinstance(c.get(k), str) and c[k].strip() for k in ("repo", "at")):
+            repo_lines.append(f"- Records from before {c['at']} name product paths relative to `{c['repo']}/`.")
     lines = [
         NESTED_LOCAL_BEGIN,
         f"This is a private install of the agentic workspace at a host folder that tracks nothing and holds several product repos. It is never committed anywhere and the team cannot see it: `{NESTED_DIR}/` (its own git repo), this file and the workspace's own `.claude/` files are hidden by the host's `.git/info/exclude`.",
@@ -1266,12 +1297,12 @@ def _multi_repo_local_block(renames: dict, repos: list) -> list:
     return lines
 
 
-def _nested_local_block(renames: dict, repos=()) -> list:
+def _nested_local_block(renames: dict, repos=(), converted=()) -> list:
     """The managed CLAUDE.local.md block: what this is, the contract import (on its own line,
     outside any code span or fence, or Claude Code will not expand it) and the nested rules.
     A multi-repo host (a non-empty registry, P40) gets _multi_repo_local_block instead."""
     if repos:
-        return _multi_repo_local_block(renames, repos)
+        return _multi_repo_local_block(renames, repos, converted)
     cmd = f"python3 {NESTED_DIR}/scripts/workflow.py"
     lines = [
         NESTED_LOCAL_BEGIN,
@@ -1425,7 +1456,11 @@ def nested_plan() -> dict:
     elif UPDATE and "repos" not in old:
         rc, out = _host_git("ls-files", "-z")
         names = [n for n in _child_repo_dirs(HOST) if _registrable_name(n)] if rc == 0 and not out.strip("\0") else []
-        if names:
+        if names and CONVERT:
+            # --to-multi-repo (S10): the old repo keeps the old marker's convention, verbatim; every other repo
+            # gets its own inferred, unconfirmed one -- the old repo's rules are never copied up to bind the others.
+            repos, repos_seeded = _seed_repos(names, lambda n, p: copy.deepcopy(old_conv) if n == CONVERT_REPO.name else _inferred_convention(p)), True
+        elif names:
             inherit = old_conv.get("confirmed") is True
             repos, repos_seeded = _seed_repos(names, lambda n, p: None if inherit else _inferred_convention(p)), True
     elif UPDATE and isinstance(old.get("repos"), list):
@@ -1438,7 +1473,12 @@ def nested_plan() -> dict:
         if tracking:
             _nested_refuse("a repo this install would register tracks a file the workspace owns, which the engine's validate rejects (nothing written):",
                            *[f"  - {n}/ tracks {', '.join(w)}: untrack them (git -C {n} rm -r --cached -- {' '.join(w)}), then re-run" for n, w in tracking])
-    local_block = _nested_local_block(renames, usable)
+    # --to-multi-repo (S10) appends one `converted_from` entry; the multi-repo block prints one line per entry.
+    converted = list(old.get("converted_from")) if isinstance(old.get("converted_from"), list) else []
+    if CONVERT:
+        converted.append({"repo": CONVERT_REPO.name, "old_nested": f"{CONVERT_REPO.name}/{NESTED_DIR}",
+                          "at": datetime.now().astimezone().date().isoformat()})
+    local_block = _nested_local_block(renames, usable, converted)
 
     # Post-check: nothing the rewrite should have caught is left. Our own texts only -- never the
     # operator's part of CLAUDE.local.md or settings.local.json, nor a registered repo's own paths (a
@@ -1538,7 +1578,10 @@ def nested_plan() -> dict:
     # on this workspace's own Commit Convention (NESTED_INIT_CONVENTION). A multi-repo host's top-level
     # convention is "the rules for every repo": confirmed it is kept; unconfirmed it starts empty
     # (inferred: null), never inferred from the host's own empty history and never the workspace's own.
-    if usable:
+    if usable and CONVERT:
+        # --to-multi-repo: the old convention moved to its repo above; the rules for every repo start empty.
+        conv = {"inferred": None, "confirmed": False, "text": None, "coauthor_trailers": "unknown"}
+    elif usable:
         conv = old_conv if old_conv.get("confirmed") is True else {"inferred": None, "confirmed": False, "text": None, "coauthor_trailers": "unknown"}
     elif HOST_INITED:
         conv = dict(NESTED_INIT_CONVENTION)
@@ -1552,9 +1595,12 @@ def nested_plan() -> dict:
                    "installed": {k: sorted(installed[k]) for k in NESTED_KINDS}})
     if repos_seeded or (UPDATE and isinstance(old.get("repos"), list)):
         marker["repos"] = repos
-    # Notes for the update report: drift (a depth-1 child repo the registry lacks) and the anchors to map.
+    if CONVERT:
+        marker["converted_from"] = converted
+    # Notes for the update report: drift (a depth-1 child repo the registry lacks) and the anchors to map
+    # (--to-multi-repo maps them itself, right after this --update: convert_finish).
     if UPDATE and usable:
-        UPDATE_SUMMARY["notes"].extend(_registry_drift_notes(usable) + _anchor_map_notes(usable))
+        UPDATE_SUMMARY["notes"].extend(_registry_drift_notes(usable) + ([] if CONVERT else _anchor_map_notes(usable)))
     # OQ1: Claude Code reads no AGENTS.md while a CLAUDE.local.md sits at the working directory, which every
     # nested install writes. The installer writes nothing into any repo; the banner prints one hint line when
     # a registered repo's rules, or a single-repo host's tracked files, include an AGENTS.md.
@@ -1682,6 +1728,8 @@ def print_nested_banner(plan: dict) -> None:
     if DRY_RUN:
         print("Re-run without --dry-run to apply.")
         return
+    if CONVERT:
+        return   # --to-multi-repo: convert_finish prints the rest, and its own Next
     if REPOS_HOST and HOST_COMMIT_ERROR is None:
         print(f"The installer made one git commit, the empty \"{HOST_FIRST_COMMIT}\" in the host (new-phase and parallel-start base on it); "
               "the workspace's files stay untracked and nothing in any repo changed.")
@@ -1716,6 +1764,889 @@ def print_nested_banner(plan: dict) -> None:
         print(f"  Any remote for {NESTED_DIR}/ stays inside your company's org: its phase and slice files describe the company's code.")
 
 
+# ---- The update report (v61): what --update removed, changed and flags, in one place ----------
+# Every file an earlier version shipped and this one no longer does: emit path -> (the last version that
+# shipped it, the sha256 of each text that version wrote there). Ownership is by CONTENT, never by path
+# or directory: a present file whose hash matches is ours and unchanged, flagged stale (remove it); any
+# other file at a retired path, or under a retired directory, is the adopter's, reported "yours, kept".
+# An unmodified copy from an even older version therefore reads as kept: conservative on purpose.
+# A path with an `explain` component is never listed here, touched or reported (_is_explain_path):
+# the knowledge plugin owns it, and a .claude/skills/explain/ copy stays until its owner deletes it.
+# Generated once (P37.S8) by a throwaway script over this repo's git history: every committed
+# bootstrap_agentic_workspace.sh's embedded PAYLOADS (what the installer wrote, not the repo's own tree),
+# taking the text at the last commit that shipped the path (the trailing comment). AGENTS.md and
+# AGENTS.workspace.md are v30's "# AGENTS.md" header + CONTRACT_BODY, as v30's main.py wrote both; the
+# second executor-mode hash is v52's nested_rewrite (no renames) of the same text. The Kiro sidecar
+# (.kiro/, added and reverted inside v44) never shipped and is absent.
+# When a later version drops a shipped file (a skill's reference file too), add it here the same way:
+# the hash of its last shipped text, plus its nested_rewrite with no renames for a .claude/ file.
+# The v65 executor pair (slice-executor-mid/-high, merged into slice-executor in v66) is hashed with its
+# frontmatter `model:` / `effort:` lines dropped (RETIRED_ROUTE_LINES): sync-agents owns those two lines
+# and an adopter's overrides live in executors.toml, so a copy that differs only there is still ours.
+RETIRED_FILES = {
+    '.agents/skills/archive-phase/SKILL.md': (30, ('f748d9ae055255eee2eef5c16b59d86219755331bdda66a9938fb5ae80d82013',)),  # 4ee5c22
+    '.agents/skills/archive-phase/agents/openai.yaml': (30, ('8a5fe61f92bfbc624864afb5907edb8b918017f99f38fab0bc7235ad09a0d2c3',)),  # 4ee5c22
+    '.agents/skills/commit/SKILL.md': (30, ('cebbc9317542e76102be4b5e9a439033f008acb817e1f4daba069e117763774b',)),  # 4ee5c22
+    '.agents/skills/commit/agents/openai.yaml': (30, ('f4447ffb0661c6e85e1ad8af155ab4df50c74acc7ddf47d592408b86548c6e2f',)),  # 4ee5c22
+    '.agents/skills/create-phase/SKILL.md': (30, ('8e9ab6847b743474ff9875ac6b6e12becda8ddeefbf62b25b571b989986fcc07',)),  # 4ee5c22
+    '.agents/skills/create-phase/agents/openai.yaml': (30, ('177306729676315872e49b4d15ffe73cc2568728a2c59b8a66db783176f6460d',)),  # 4ee5c22
+    '.agents/skills/defer-job/SKILL.md': (30, ('a13cd7220828fd312b878459f47e7c10d0d0195b8879375479773a469978bfd7',)),  # 4ee5c22
+    '.agents/skills/defer-job/agents/openai.yaml': (30, ('46b101bb9e58272aeb33e1a93b56e075b92e36b50f281a6c2260e392f88ce8db',)),  # 4ee5c22
+    '.agents/skills/deferred/SKILL.md': (30, ('e3d01f70bc9bb167d0bbd1d74005151fd8c823dbbd450696105339802f67882f',)),  # 4ee5c22
+    '.agents/skills/deferred/agents/openai.yaml': (30, ('c1aefcc49a339628ed743c1ac4f1167b6cbf50eb94e5a55b2f9bd4e79c25f239',)),  # 4ee5c22
+    '.agents/skills/design-cowork/SKILL.md': (30, ('f19cb3f2fb07307152eec95cab45c6dff29be5dc3e2508de4a34d423166785f9',)),  # 4ee5c22
+    '.agents/skills/design-cowork/agents/openai.yaml': (30, ('33ebbf01cf515f4e89699a63cbf4e6d7494a4ac022c2e46d945894d7ec13c534',)),  # 4ee5c22
+    '.agents/skills/do-next-slice/SKILL.md': (30, ('84f97c72c58bad82944d0369785d3486cb330eec37ec238b8e052a6f5de05c6b',)),  # 4ee5c22
+    '.agents/skills/do-next-slice/agents/openai.yaml': (30, ('aeff0d7fc86ede761042ea3837cfdde1fe6accf656395c446c6e0ebf84d8123a',)),  # 4ee5c22
+    '.agents/skills/do-whole-phase/SKILL.md': (30, ('e6aec0c715791ab0bbb47d8f2f124ac064df861f6f21669a572b49b93e17ef03',)),  # 4ee5c22
+    '.agents/skills/do-whole-phase/agents/openai.yaml': (30, ('482b7e274c36509c5edbf1395d470a8603038ada6be8e241465868f24d4d2774',)),  # 4ee5c22
+    '.agents/skills/doc-new-version/SKILL.md': (30, ('8c066ef299e02e8d72851c3f198a82015dd3f0f13874427f0c418236def92099',)),  # 4ee5c22
+    '.agents/skills/doc-new-version/agents/openai.yaml': (30, ('f081a68aa674117ea0c0e97e1557f6d002c09de7bc267fefef214d52a817e53c',)),  # 4ee5c22
+    '.agents/skills/parallel-phase/SKILL.md': (30, ('03f41c6bc927bba5d875e8d7c5c47ab1fee8b3937c388e97e9168cac4fd334b7',)),  # 4ee5c22
+    '.agents/skills/parallel-phase/agents/openai.yaml': (30, ('5606a3232f932e9ffa41e4e58bd8457962237c38aa4b9439922effe2b3768b2e',)),  # 4ee5c22
+    '.agents/skills/promote-deferred/SKILL.md': (30, ('a314fc511656a451e2f408c0383e0f3ec52482bc3ecf6c8aedfb25c083fba520',)),  # 4ee5c22
+    '.agents/skills/promote-deferred/agents/openai.yaml': (30, ('3567035e19a67ccf89415387d9c48fba44a384ab2ef068c9cf594a83d291bc55',)),  # 4ee5c22
+    '.agents/skills/rebuild-workflow/SKILL.md': (30, ('a2730a21fa5ba34c95b826b325a0e24430c095732c1378d9ced9a7fb62c9cf74',)),  # 4ee5c22
+    '.agents/skills/rebuild-workflow/agents/openai.yaml': (30, ('2185bbae7136a4e77b38aea2c6b061e49fda6a264f724d28fe929b2630a78faf',)),  # 4ee5c22
+    '.agents/skills/retrofit/SKILL.md': (30, ('66cc4658acd9bf8149e2f415ce7a1f82956f37c6fd9cf7bf9fee47ca8741ef72',)),  # 4ee5c22
+    '.agents/skills/retrofit/agents/openai.yaml': (30, ('18b5537ef7a138221575dad2d8d19e5a3698351d38c25ff5708e19e27e01e962',)),  # 4ee5c22
+    '.agents/skills/review-phase/SKILL.md': (30, ('d9e26409b18aecf1d8c99f116b2d9498b371351b738006bb4f49faa7ca0e4b32',)),  # 4ee5c22
+    '.agents/skills/review-phase/agents/openai.yaml': (30, ('ec764186a6f0380290058bba59e4d431434a1ca8d8bc143705b7c99329bb3fde',)),  # 4ee5c22
+    '.agents/skills/rotate-backlog/SKILL.md': (30, ('5d1433b879b7861c9b4d150541543b5bf594a7537e4939d569efccdaaa21d538',)),  # 4ee5c22
+    '.agents/skills/rotate-backlog/agents/openai.yaml': (30, ('6d0256fe50e14bebef26818397323412ab68cbe7cacc4599af1bca1a7582e2c3',)),  # 4ee5c22
+    '.agents/skills/update-workspace/SKILL.md': (30, ('4f25b084dbfd896148f240ea3c663af40848a35041ba7aaed92d7abb8a6be30e',)),  # 4ee5c22
+    '.agents/skills/update-workspace/agents/openai.yaml': (30, ('0631c41fd8e1ec98331777d3e078d1ef4fdc1ec6c6cbf07cffcf73e1e1101206',)),  # 4ee5c22
+    '.claude/agents/slice-executor-high.md': (65, ('7a76f8dbe6d10b50333d34b2008fb576dd48f3720f9e2ba67847f4d5eed41f36', '0eafa7ed541f7d21f075878686179c186ac3cbacec96a7fb562d53279964ac4d')),  # d0759a4, route lines dropped
+    '.claude/agents/slice-executor-low.md': (22, ('3d798df8b1170cf3aff4bbf10fbe83e6f7d8a8721a990a8d74333b7c08c731df',)),  # 097041d
+    '.claude/agents/slice-executor-mid.md': (65, ('3c74ce9945cae627de3588f3ea01533cb8990a48e0b12d813af61d0ba04ded8a', 'faaa25e5cdc62e625d3720030f24e94388ec1cbeb5e80de6deafc39820f2654b')),  # d0759a4, route lines dropped
+    '.claude/agents/slice-planner.md': (19, ('7c8fa4c4824f276ec5e79292826dfb58a41ed4078682175faae2e119d36c51d6',)),  # c94f6e4
+    '.claude/skills/executor-mode/SKILL.md': (52, ('382fe9e6644c15c46d49ab0b481c8cec0b6722f20816d3fca48a60ba61826d43', 'cef5b8fbf576e83fd6048ceb652e05ddcd7cbcded6a4168efb5c834f32c16970')),  # 7c874c3
+    '.codex/agents/slice-executor-high.toml': (30, ('217fcafcd0449db43fd1e25b4a0a13cc918ee2ab46d4980a8544b098ed31ec2d',)),  # 4ee5c22
+    '.codex/agents/slice-executor-low.toml': (22, ('57e24a3b80eaa8a1991b82aeb29b6447735453c08ede535cc353a86a2b78bc35',)),  # 097041d
+    '.codex/agents/slice-executor-mid.toml': (30, ('1cd71cc675b96957f227c797ae7fd75b1ae8172eef3823ba890150545e7642b0',)),  # 4ee5c22
+    '.codex/agents/slice-executor.toml': (6, ('bd800dc30642e149b54bcf7b04af954b3e19d8d9517371c84e4fb53618fadd1e',)),  # 057ec31
+    '.codex/config.toml': (30, ('789bf89992ed3a26c23fa7476e497f45682a8b76f50de6b626add3638fc94fc5',)),  # 4ee5c22
+    '.env.example': (7, ('d93203bd09384e1a44ffcd868c80966f0b8de96536bcf95e768b369b1d757750',)),  # 3104b74
+    'AGENTS.md': (30, ('7ef0f82ad8d51f08cdcd750735fd0849344b5cb739f341f77c704fcf6e5033e6',)),  # 4ee5c22
+    'AGENTS.workspace.md': (30, ('7ef0f82ad8d51f08cdcd750735fd0849344b5cb739f341f77c704fcf6e5033e6',)),  # 4ee5c22
+    'executors.toml.example': (8, ('dad1620e97404eb7d1d9f29d796a05347c3b655e567c74a9e26ac6814e923261',)),  # 8a3c8c2
+    'works/templates/result.md': (9, ('3938ceaf78a7392d62ca5a7e88ee51e132d56f30adafb06afb002361639e1dc9',)),  # 06561c4
+}
+# The retired paths hashed with their frontmatter model:/effort: lines dropped (_drop_route_lines).
+RETIRED_ROUTE_LINES = {".claude/agents/slice-executor-high.md", ".claude/agents/slice-executor-mid.md"}
+# Retired directories, walked file by file and never flagged whole. A retired skill's directory (a
+# .claude/skills/<name>/ path above whose skill this version no longer ships) is walked the same way.
+RETIRED_DIRS = (".agents", ".codex")
+
+
+def _drop_route_lines(text: str) -> str:
+    """An agent file's text without its frontmatter `model:` / `effort:` lines, the two sync-agents writes."""
+    end = text.find("\n---\n", 4) if text.startswith("---\n") else -1
+    if end == -1:
+        return text
+    head = [line for line in text[4:end].split("\n") if not line.startswith(("model:", "effort:"))]
+    return "---\n" + "\n".join(head) + text[end:]
+
+
+def _unrename(text: str, renames: dict) -> str:
+    """Undo nested_rewrite's renames ({kind: {X: Y}}) in an installed text: every Y token back to X.
+    Exact for our own texts, which never carry a `wf-` name of their own."""
+    for table in renames.values():
+        for x, y in table.items():
+            text = re.sub(r"(?<![\w-])" + re.escape(y) + r"(?![\w-])", x, text)
+    return text
+
+
+def _retired_entry(key: str, renames: dict = None):
+    """(stale reason, kept reason, hashes, normalizer or None) for a RETIRED_FILES path, else None.
+    The normalizer maps a file's text to the text its hash is taken over: a RETIRED_ROUTE_LINES path
+    drops its model:/effort: lines, and a nested copy installed under renames has them undone."""
+    if key not in RETIRED_FILES:
+        return None
+    version, hashes = RETIRED_FILES[key]
+    route_lines = key in RETIRED_ROUTE_LINES
+    if not (route_lines or renames):
+        return (f"unchanged since v{version}", f"differs from what v{version} shipped", hashes, None)
+
+    def norm(text: str) -> str:
+        text = _unrename(text, renames) if renames else text
+        return _drop_route_lines(text) if route_lines else text
+    aside = " (its model/effort lines aside)" if route_lines else ""
+    return (f"unchanged since v{version}{aside}", f"differs from what v{version} shipped{aside}", hashes, norm)
+
+
+# ---- --to-multi-repo <repo> (P40.S10): a per-repo nested install -> a multi-repo host at its parent ----
+# convert_prepare() runs at the guards, before anything is written: every refusal (S2 §23, each naming its
+# fix), then the plan for the old repo's side (which of its workspace files are ours and unchanged, what its
+# settings.local.json, CLAUDE.local.md and info/exclude become, its leftover worktrees) and, with --dry-run,
+# the full step list and exit 0. A real run then does steps 1-2 -- git init the parent (+ its empty commit),
+# move the nested repo up a level -- which _nested_undo_init reverses should the --update's own planning
+# still refuse. Step 3 is the plain --update at the parent (the rest of this program; nested_plan seeds the
+# registry with the conversion's convention rule and appends `converted_from`, step 4). convert_finish()
+# then maps the anchors with the freshly updated engine, cleans the old repo's side, lists its leftover
+# worktrees and prints the closing block. Deletes only the workspace's own unchanged files, never touches a
+# .claude/worktrees/ dir, runs no teardown and makes no nested commit.
+CONVERT_COMMIT = "chore(works): convert to a multi-repo host"
+CONVERT_PLAN = None
+CONVENTION_KEYS = ("inferred", "confirmed", "text", "coauthor_trailers")   # == scripts/workflow.py NESTED_CONVENTION_KEYS
+
+
+def _git_ro(path: Path, *args: str):
+    """(returncode, stdout) of a read-only git query that must not even refresh the index (git status)."""
+    proc = subprocess.run(["git", "-C", str(path), *args], capture_output=True, env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})
+    return proc.returncode, proc.stdout.decode("utf-8", errors="replace")
+
+
+def _read_text_or_none(p: Path):
+    try:
+        return p.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _worktree_entries(repo: Path) -> list:
+    """`git worktree list --porcelain` of `repo`, its main working tree first: [{path, branch, prunable}]."""
+    rc, out = _git_in(repo, "worktree", "list", "--porcelain")
+    entries = []
+    for line in out.splitlines() if rc == 0 else []:
+        if line.startswith("worktree "):
+            entries.append({"path": line[len("worktree "):], "branch": None, "prunable": False})
+        elif entries and line.startswith("branch "):
+            entries[-1]["branch"] = line[len("branch "):].replace("refs/heads/", "", 1)
+        elif entries and line.startswith("prunable"):
+            entries[-1]["prunable"] = True
+    return entries
+
+
+def _without_block(text: str, begin: str, end: str):
+    """(`text` without our managed block, the block's inner lines), or (text, None) when it holds none.
+    Blank lines left at the end go with it (the separator _with_block put before an appended block). A
+    stray or unterminated marker raises ValueError, as _with_block does: such a file is left as it is."""
+    lines, out, inner, found, i = text.splitlines(), [], [], False, 0
+    while i < len(lines):
+        if lines[i].strip() == begin:
+            j = next((k for k in range(i + 1, len(lines)) if lines[k].strip() == end), None)
+            if j is None:
+                raise ValueError(f"an unterminated {begin!r} line")
+            inner += lines[i + 1:j]
+            found, i = True, j + 1
+            continue
+        if lines[i].strip() == end:
+            raise ValueError(f"a stray {end!r} line")
+        out.append(lines[i])
+        i += 1
+    if not found:
+        return text, None
+    while out and not out[-1].strip():
+        out.pop()
+    return ("\n".join(out) + "\n") if out else "", inner
+
+
+def _without_our_settings(theirs: dict, ours: dict) -> dict:
+    """`theirs` (a settings.local.json) minus exactly the workspace's own entries: our permissions.allow /
+    deny entries, our hook handlers (matched by command, a retired one too) and an autoCompactWindow at a
+    value we shipped. A list, group, event or object the removal empties goes with it; every other key and
+    entry stays as it is. `theirs` is not mutated."""
+    out = copy.deepcopy(theirs)
+    perms = out.get("permissions")
+    if isinstance(perms, dict):
+        for key in ("allow", "deny"):
+            ours_k = (ours.get("permissions") or {}).get(key) or []
+            cur = perms.get(key)
+            if isinstance(cur, list) and any(x in ours_k for x in cur):
+                kept = [x for x in cur if x not in ours_k]
+                if kept:
+                    perms[key] = kept
+                else:
+                    del perms[key]
+        if not perms:
+            del out["permissions"]
+    our_cmds = {h.get("command") for groups in (ours.get("hooks") or {}).values() for g in groups for h in g.get("hooks", [])}
+    hooks = out.get("hooks")
+    if isinstance(hooks, dict):
+        for event in list(hooks):
+            groups = hooks[event]
+            if not isinstance(groups, list):
+                continue
+            kept_groups = []
+            for g in groups:
+                inner = g.get("hooks") if isinstance(g, dict) else None
+                if not isinstance(inner, list):
+                    kept_groups.append(g)
+                    continue
+                keep = [h for h in inner if not (isinstance(h, dict) and isinstance(h.get("command"), str)
+                                                 and (h["command"] in our_cmds or any(k in h["command"] for k in RETIRED_HOOK_COMMANDS)))]
+                if len(keep) == len(inner):
+                    kept_groups.append(g)
+                elif keep:
+                    kept_groups.append(dict(g, hooks=keep))
+            if kept_groups:
+                hooks[event] = kept_groups
+            else:
+                del hooks[event]
+        if not hooks:
+            del out["hooks"]
+    window = out.get("autoCompactWindow")
+    if isinstance(window, int) and not isinstance(window, bool) and (window in SHIPPED_COMPACT_WINDOWS or window == ours.get("autoCompactWindow")):
+        del out["autoCompactWindow"]
+    return out
+
+
+def _same_as_retired(p: Path, entry) -> bool:
+    """A RETIRED_FILES entry (_retired_entry) holds the hash of `p`'s text: ours, unchanged."""
+    if entry is None or p.is_symlink() or not p.is_file():
+        return False
+    try:
+        data = p.read_bytes()
+        if entry[3] is not None:
+            data = entry[3](data.decode("utf-8")).encode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    return hashlib.sha256(data).hexdigest() in entry[2]
+
+
+def _convert_classify(repo: Path, renames: dict, installed: dict) -> dict:
+    """Step 6a, planned up front: the old repo's skill dirs and agent files its marker's `installed` lists,
+    classified file by file as flag_retired_files does -- ours and unchanged (deleted) or yours (kept). Ours
+    is this version's text under the install's renames (an agent's model:/effort: lines aside: sync-agents
+    writes them) or, for a file this version does not ship, a text RETIRED_FILES knows. A skill dir's
+    self-hiding .gitignore is ours only while every file beside it is; a directory goes once it is empty."""
+    original = {k: {y: x for x, y in renames[k].items()} for k in NESTED_KINDS}
+    undo = renames if any(renames.values()) else None
+    hide = hashlib.sha256(NESTED_SKILL_GITIGNORE.encode("utf-8")).hexdigest()
+    delete, kept, dirs, gone, shown = [], [], [], set(), []
+    for name in installed.get("skills") or []:
+        rel = f".claude/skills/{name}"
+        d = repo / rel
+        if _is_explain_path(rel) or not os.path.lexists(d):
+            continue
+        if d.is_symlink() or not d.is_dir():
+            kept.append((rel, "not a directory the workspace wrote"))
+            continue
+        x = original["skills"].get(name, name)
+        expected = {r[len(f".claude/skills/{x}/"):]: nested_rewrite(PAYLOADS[r], renames) for r in SKILL_FILES.get(x, [])}
+        found = []
+        for top, subdirs, files in os.walk(d):
+            found += [Path(top) / n for n in subdirs if (Path(top) / n).is_symlink()] + [Path(top) / n for n in files]
+        all_ours, guard, mine = True, None, []
+        for f in sorted(found):
+            inner = f.relative_to(d).as_posix()
+            if inner == ".gitignore":
+                guard = f
+                continue
+            if inner in expected:
+                same = not f.is_symlink() and _read_text_or_none(f) == expected[inner]
+                why = f"differs from what v{WORKSPACE_VERSION} installs"
+            else:
+                entry = _retired_entry(f".claude/skills/{x}/{inner}", undo)
+                same = _same_as_retired(f, entry)
+                why = entry[1] if entry else "not a file the workspace shipped"
+            if same:
+                mine.append(f)
+            else:
+                kept.append((f"{rel}/{inner}", why))
+                all_ours = False
+        if guard is not None:
+            try:
+                guard_ours = not guard.is_symlink() and hashlib.sha256(guard.read_bytes()).hexdigest() == hide
+            except OSError:
+                guard_ours = False
+            if all_ours and guard_ours:
+                mine.append(guard)
+            else:
+                kept.append((f"{rel}/.gitignore", "it hides the files kept beside it" if guard_ours else "differs from the .gitignore the workspace wrote"))
+                all_ours = False
+        delete += mine
+        dirs.append(d)
+        if all_ours:
+            gone.add(rel)
+            shown.append(f"{rel}/")
+        else:
+            shown += [f.relative_to(repo).as_posix() for f in mine]
+    for name in installed.get("agents") or []:
+        rel = f".claude/agents/{name}.md"
+        p = repo / rel
+        if _is_explain_path(rel) or not os.path.lexists(p):
+            continue
+        x = original["agents"].get(name, name)
+        if x in NESTED_AGENTS:
+            text = _read_text_or_none(p) if p.is_file() and not p.is_symlink() else None
+            same = text is not None and _drop_route_lines(text) == _drop_route_lines(nested_rewrite(PAYLOADS[f".claude/agents/{x}.md"], renames))
+            why = f"differs from what v{WORKSPACE_VERSION} installs (its model/effort lines aside)"
+        else:
+            entry = _retired_entry(f".claude/agents/{x}.md", undo)
+            same = _same_as_retired(p, entry)
+            why = entry[1] if entry else "not a file the workspace shipped"
+        if same:
+            delete.append(p)
+            gone.add(rel)
+            shown.append(rel)
+        else:
+            kept.append((rel, why))
+    return {"delete": delete, "dirs": dirs, "kept": kept, "gone": gone, "shown": shown}
+
+
+def _convert_plan_files(repo: Path, renames: dict, gone: set, leftovers: list) -> dict:
+    """Steps 6b-6d, planned up front: {key: (path, action, new text or None, why)} for the old repo's
+    settings.local.json, CLAUDE.local.md and info/exclude; action is delete | rewrite | keep | none."""
+    plan = {}
+    p = repo / ".claude" / "settings.local.json"
+    if not os.path.lexists(p):
+        plan["settings"] = (p, "none", None, "absent")
+    else:
+        try:
+            theirs = json.loads(p.read_text(encoding="utf-8"))
+            if not isinstance(theirs, dict):
+                raise ValueError("not a JSON object")
+        except (OSError, ValueError) as exc:
+            plan["settings"] = (p, "keep", None, f"cannot be read as JSON ({exc}): left exactly as it is")
+        else:
+            stripped = _without_our_settings(theirs, json.loads(nested_rewrite(PAYLOADS[".claude/settings.json"], renames)))
+            if not stripped:
+                plan["settings"] = (p, "delete", None, "deleted: it held only the workspace's entries")
+            elif stripped == theirs:
+                plan["settings"] = (p, "keep", None, "holds none of the workspace's entries: left as it is")
+            else:
+                plan["settings"] = (p, "rewrite", json.dumps(stripped, ensure_ascii=False, indent=2) + "\n",
+                                    f"the workspace's entries removed, yours kept ({', '.join(sorted(stripped))})")
+    p = repo / "CLAUDE.local.md"
+    text = _read_text_or_none(p) if p.is_file() and not p.is_symlink() else None
+    if text is None:
+        plan["local"] = (p, "none", None, "absent") if not os.path.lexists(p) else (p, "keep", None, "not a text file: left as it is")
+    else:
+        try:
+            rest, inner = _without_block(text, NESTED_LOCAL_BEGIN, NESTED_LOCAL_END)
+        except ValueError as exc:
+            plan["local"] = (p, "keep", None, f"its managed block cannot be read ({exc}): left exactly as it is")
+        else:
+            if inner is None:
+                plan["local"] = (p, "keep", None, "holds no managed block: left as it is")
+            elif not rest.strip():
+                plan["local"] = (p, "delete", None, "deleted: it held only the managed block")
+            else:
+                plan["local"] = (p, "rewrite", rest, "the managed block removed, your own lines kept")
+    gone = set(gone) | {NESTED_DIR}
+    if plan["settings"][1] == "delete":
+        gone.add(".claude/settings.local.json")
+    if plan["local"][1] == "delete":
+        gone.add("CLAUDE.local.md")
+    rc, out = _git_in(repo, "rev-parse", "--git-path", "info/exclude")
+    p = Path(out.strip()) if rc == 0 and out.strip() else repo / ".git" / "info" / "exclude"
+    p = p if p.is_absolute() else repo / p
+    text = _read_text_or_none(p) if p.is_file() else None
+    if text is None:
+        plan["exclude"] = (p, "none", None, "absent")
+        return plan
+    try:
+        rest, inner = _without_block(text, NESTED_EXCLUDE_BEGIN, NESTED_EXCLUDE_END)
+    except ValueError as exc:
+        plan["exclude"] = (p, "keep", None, f"its managed block cannot be read ({exc}): left exactly as it is")
+        return plan
+    if inner is None:
+        plan["exclude"] = (p, "none", None, "holds no managed block")
+    elif leftovers:
+        # Never the worktrees line while leftover worktrees exist; the whole block stays, since it also hides
+        # the workspace files a leftover host worktree carries (its CLAUDE.local.md copy, its workflow/).
+        plan["exclude"] = (p, "keep", None, "the managed block kept whole while the leftover worktrees below exist (it hides "
+                                             ".claude/worktrees/ and the workspace files they hold): remove it by hand once they are gone")
+    else:
+        # What the block hid and is still there (yours, kept) stays hidden: the block keeps exactly those lines.
+        left = [ln.strip() for ln in inner if ln.strip()]
+        left = [ln for ln in left if ln.strip("/") != ".claude/worktrees" and ln.strip("/") not in gone
+                and os.path.lexists(repo / ln.strip("/"))]
+        if left:
+            plan["exclude"] = (p, "rewrite", _with_block(text, NESTED_EXCLUDE_BEGIN, NESTED_EXCLUDE_END, [NESTED_EXCLUDE_BEGIN, *left, NESTED_EXCLUDE_END]),
+                               f"the managed block now hides only what is left of yours ({' '.join(left)})")
+        else:
+            plan["exclude"] = (p, "rewrite", rest, "the managed block removed")
+    return plan
+
+
+def _convert_leftovers(repo: Path) -> list:
+    """Step 7, read up front: the old repo's worktrees besides its main checkout, and every entry under its
+    .claude/worktrees/ that is not one of them. Listed, never deleted."""
+    lines, seen = [], set()
+    for e in _worktree_entries(repo)[1:]:
+        seen.add(os.path.realpath(e["path"]))
+        lines.append(f"{e['path']} ({'branch ' + e['branch'] if e['branch'] else 'detached'}"
+                     + (", prunable: its directory is gone)" if e["prunable"] else ")"))
+    wt = repo / ".claude" / "worktrees"
+    if wt.is_dir() and not wt.is_symlink():
+        for d in sorted(wt.iterdir(), key=lambda e: e.name):
+            if os.path.realpath(d) not in seen:
+                lines.append(f"{d} (under .claude/worktrees/, not a registered worktree)")
+    return lines
+
+
+def _convert_phases(nested: Path, repo: Path) -> list:
+    """The dry run's step 5: (phase label, whether --map-anchors maps it) for each phase with host_anchors shas."""
+    out = []
+    for state in ("active", "archived"):
+        for pj in sorted((nested / "works" / "phases" / state).glob("*/phase.json")):
+            try:
+                data = json.loads(pj.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            anchors = data.get("host_anchors") if isinstance(data, dict) else None
+            shas = [anchors.get(k) for k in ("created", "review_pass", "review_base")] if isinstance(anchors, dict) else []
+            shas = [s for s in shas if isinstance(s, str) and s]
+            if shas:
+                out.append((f"{data.get('id', pj.parent.name)}{' (archived)' if state == 'archived' else ''}",
+                            all(_is_commit(repo, s) for s in shas)))
+    return out
+
+
+def _convert_unignored(parent: Path, exclude, names: list, old: dict) -> list:
+    """nested_plan's ignore preflight, asked BEFORE the git init and the move, so its refusal is one more
+    pre-write refusal: a throwaway repo in the system temp dir models the parent after the init (its
+    .gitignore copied, and the info/exclude it has now when it is a repo already), with workflow/ and each
+    repo to register as directories; the same targets and exclude entries as nested_plan's are asked of
+    _nested_unignored there. Every other ignore source is refused as a stray before this runs (.claude/,
+    CLAUDE.local.md and any other non-repo entry) or does not exist yet. [(target, reason)]."""
+    global HOST, ROOT
+    raw_renames = old.get("renames") if isinstance(old.get("renames"), dict) else {}
+    named = {}
+    for kind, shipped in (("skills", CLAUDE_SKILLS), ("agents", NESTED_AGENTS)):
+        table = raw_renames.get(kind) if isinstance(raw_renames.get(kind), dict) else {}
+        named[kind] = [table[x] if isinstance(table.get(x), str) and table.get(x) else x for x in shipped]
+    exclude_entries = [f"/{NESTED_DIR}/", "/CLAUDE.local.md", "/.claude/settings.local.json", "/.claude/worktrees/"]
+    exclude_entries += [f"/.claude/skills/{n}/" for n in sorted(named["skills"])]
+    exclude_entries += [f"/.claude/agents/{n}.md" for n in sorted(named["agents"])]
+    exclude_entries += [f"/{n}/" for n in names]
+    # The parent has no .claude/ (a stray, refused), so every skill dir is absent and hides itself (nested_plan's self_hiding).
+    check_paths = [f".claude/agents/{n}.md" for n in sorted(named["agents"])] + ["CLAUDE.local.md", ".claude/settings.local.json", NESTED_DIR] + list(names)
+    model = Path(tempfile.mkdtemp(prefix="agentic-convert-"))
+    saved = (HOST, ROOT)
+    try:
+        if subprocess.run(["git", "init", "-q", str(model)], capture_output=True).returncode != 0:
+            return [("(the check)", "git init of a throwaway repo in the system temp dir failed, so the parent's ignore rules cannot be checked")]
+        ignore = parent / ".gitignore"
+        if ignore.is_file():
+            shutil.copyfile(ignore, model / ".gitignore")
+        if exclude is not None and exclude.is_file():
+            (model / ".git" / "info").mkdir(parents=True, exist_ok=True)   # an init template may lack info/
+            shutil.copyfile(exclude, model / ".git" / "info" / "exclude")
+        for n in names:
+            (model / n).mkdir()
+        HOST, ROOT = model, model / NESTED_DIR
+        return _nested_unignored(check_paths, exclude_entries, list(names))
+    except OSError as exc:
+        return [("(the check)", f"the throwaway model of the parent could not be built ({exc})")]
+    finally:
+        HOST, ROOT = saved
+        shutil.rmtree(model, ignore_errors=True)
+
+
+def convert_prepare() -> None:
+    """--to-multi-repo: every refusal and the plan, nothing written; --dry-run prints the step list and exits
+    0. A real run then git-inits the parent (+ the empty commit) and moves the nested repo up a level."""
+    global CONVERT_PLAN, _HOST_INIT_UNDO, _CONVERT_UNDO
+    repo, parent = CONVERT_REPO, HOST
+    nested, target = repo / NESTED_DIR, parent / NESTED_DIR
+    q = lambda p: shlex.quote(str(p))   # noqa: E731
+    engine = f"python3 {NESTED_DIR}/scripts/workflow.py"
+
+    def refuse(*problems: str) -> None:
+        _nested_refuse(f"--to-multi-repo {repo}: refused, nothing written:", *[f"  - {p}" for p in problems])
+
+    # Stage 1: is there a per-repo nested install to convert (each check needs the one before it).
+    if shutil.which("git") is None:
+        refuse("the conversion needs git on PATH: install git, then re-run.")
+    if not _is_repo_dir(repo):
+        refuse(f"{repo} is not the root of a git repo: name the repo whose per-repo nested install is <repo>/{NESTED_DIR}/.")
+    if _at_root_workspace_in(repo):
+        refuse(f"{repo} holds an at-root workspace (scripts/workflow.py plus works/, committed in the repo): only a private "
+               "per-repo nested install converts; an at-root workspace has no conversion path.")
+    marker_path = nested / NESTED_MARKER
+    if not marker_path.is_file() or not (nested / "scripts" / "workflow.py").is_file():
+        refuse(f"{repo} has no per-repo nested install ({NESTED_DIR}/{NESTED_MARKER} and {NESTED_DIR}/scripts/workflow.py): nothing to "
+               "convert. A fresh install into a folder that holds only repos makes a multi-repo host.")
+    try:
+        old = json.loads(marker_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        old = None
+        refuse(f"{NESTED_DIR}/{NESTED_MARKER} cannot be read as JSON ({exc}): fix it (cd {q(repo)} && {engine} validate), then re-run.")
+    if not isinstance(old, dict):
+        refuse(f"{NESTED_DIR}/{NESTED_MARKER} is not a JSON object: fix it (cd {q(repo)} && {engine} validate), then re-run.")
+    if "repos" in old:
+        refuse(f"{nested} already belongs to a multi-repo host (its marker holds a repos registry): nothing to convert.")
+    conv = old.get("commit_convention")
+    if not (isinstance(conv, dict) and sorted(conv) == sorted(CONVENTION_KEYS)):
+        refuse("the marker's commit_convention is not the four-key object the old repo's convention moves as: fix it "
+               f"(cd {q(repo)} && {engine} validate names the problem), then re-run.")
+    try:
+        version = json.loads((nested / "works" / ".workspace-version.json").read_text(encoding="utf-8")).get("workspace_version")
+    except (OSError, ValueError, AttributeError):
+        version = None
+    raw_installed = old.get("installed")
+    if not (isinstance(raw_installed, dict) and all(isinstance(raw_installed.get(k), list) for k in NESTED_KINDS)):
+        refuse(f"the marker's `installed` (the skill and agent copies this install wrote) is missing or malformed, so the cleanup cannot "
+               f"tell the workspace's files from yours: refresh the install (sh bootstrap_agentic_workspace.sh --update {q(repo)}, then "
+               f"commit it in {q(nested)}), then re-run.")
+    if version != WORKSPACE_VERSION:
+        refuse(f"{nested} is at {'workspace v' + str(version) if isinstance(version, int) else 'an unknown workspace version'} and this "
+               f"installer is v{WORKSPACE_VERSION}: refresh it first, so the cleanup can tell the workspace's unchanged files from "
+               f"yours (sh bootstrap_agentic_workspace.sh --update {q(repo)}, then git -C {q(nested)} add -A && git -C {q(nested)} "
+               f"commit -m \"chore: update agentic workspace to v{WORKSPACE_VERSION} (nested)\"); then re-run.")
+    if not _is_repo_dir(nested):
+        refuse(f"{nested} is not a git repo of its own: its history is the conversion's backup and rollback; give it one "
+               f"(git -C {q(nested)} init, then add -A and commit), then re-run.")
+
+    # Stage 2: everything else, collected, so one run names every fix.
+    problems = []
+    for pj in sorted((nested / "works" / "phases" / "active").glob("*/phase.json")):
+        try:
+            data = json.loads(pj.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        ex = data.get("execution") if isinstance(data, dict) else None
+        if isinstance(ex, dict) and (ex.get("worktree") or ex.get("host_worktree")):
+            pid = data.get("id", pj.parent.name)
+            problems.append(f"{pid} is in flight in a worktree pair ({ex.get('host_worktree') or ex.get('worktree')}), which the move would "
+                            f"orphan: finish and tear it down first (cd {q(repo)} && {engine} parallel-teardown {pid}), then re-run.")
+    linked = _worktree_entries(nested)[1:]
+    if linked:
+        problems.append(f"the nested repo has linked worktrees the move would orphan ({', '.join(e['path'] for e in linked)}): finish and "
+                        f"remove them (git -C {q(nested)} worktree remove <path>; worktree prune for one whose directory is gone), then re-run.")
+    rc, out = _git_ro(nested, "status", "--porcelain")
+    if rc != 0 or out.strip():
+        problems.append(f"the nested repo {nested} has uncommitted changes{'' if rc == 0 else ' (git status failed)'}: commit them first "
+                        f"(git -C {q(nested)} add -A && git -C {q(nested)} commit -m \"<summary>\"), so the conversion is one commit away "
+                        "from its rollback; then re-run.")
+    # The --update at the parent ends in the engine's validate; a failure there would stop the conversion after
+    # the move. validate only reads, so ask the install's own engine now.
+    proc = subprocess.run([sys.executable, str(nested / "scripts" / "workflow.py"), "validate"], cwd=str(repo),
+                          capture_output=True, stdin=subprocess.DEVNULL)
+    if proc.returncode != 0:
+        said = [ln.strip().lstrip("- ") for ln in (proc.stdout + proc.stderr).decode("utf-8", errors="replace").splitlines()
+                if ln.strip() and not ln.startswith("Workflow validation failed")]
+        problems.append(f"the install's validate fails ({'; '.join(said[:4]) + ('; ...' if len(said) > 4 else '') or 'exit ' + str(proc.returncode)}): "
+                        f"fix it first (cd {q(repo)} && {engine} validate), commit the fix in the nested repo, then re-run.")
+    top = _work_tree_top(parent)
+    parent_git, exclude = None, None
+    if top is not None and top != parent.resolve():
+        problems.append(f"the parent {parent} is inside the work tree of {top}: a multi-repo host is a folder of its own, outside every "
+                        "repo; move the repos into such a folder, then re-run.")
+    elif top is not None:
+        rc, out = _git_in(parent, "ls-files", "-z")
+        if rc != 0 or out.strip("\0"):
+            problems.append(f"the parent {parent} is a git repo that tracks files: a multi-repo host tracks nothing; untrack them (or move "
+                            "the repos into a folder of their own), then re-run.")
+        parent_git = "history" if _git_in(parent, "rev-parse", "-q", "--verify", "HEAD")[0] == 0 else "empty"
+        rc, out = _git_in(parent, "rev-parse", "--git-path", "info/exclude")
+        exclude = Path(out.strip()) if rc == 0 and out.strip() else None
+        exclude = exclude if exclude is None or exclude.is_absolute() else parent / exclude
+        try:
+            _with_block(exclude.read_text(encoding="utf-8") if exclude is not None and exclude.is_file() else "",
+                        NESTED_EXCLUDE_BEGIN, NESTED_EXCLUDE_END, [])
+        except (OSError, ValueError) as exc:
+            problems.append(f"{exclude} cannot take the managed block ({exc}): fix it, then re-run.")
+    elif os.path.lexists(parent / ".git"):
+        problems.append(f"{parent}/.git exists, but git does not read {parent} as a work tree: repair or remove it, then re-run.")
+    if os.path.lexists(target):
+        problems.append(f"{target} already exists: a host has room for one nested workspace, at {NESTED_DIR}/; move it away, then re-run.")
+    local_parent = parent / "CLAUDE.local.md"
+    local_block = local_parent.is_file() and any(ln.strip() == NESTED_LOCAL_BEGIN for ln in (_read_text_or_none(local_parent) or "").splitlines())
+    if local_block:
+        problems.append(f"{local_parent} holds a nested install's managed block: the parent is no fresh host; remove the block (or the "
+                        "file), then re-run.")
+    strays, unnamed = [], []
+    for e in sorted(parent.iterdir(), key=lambda e: e.name):
+        if e.name in EMPTY_OK_ALLOWLIST or e.name in (NESTED_DIR, repo.name) or (local_block and e.name == "CLAUDE.local.md"):
+            continue
+        if _is_repo_dir(e):
+            if not _registrable_name(e.name):
+                unnamed.append(f"{e.name}/")
+        else:
+            strays.append(e.name + ("/" if e.is_dir() and not e.is_symlink() else ""))
+    if strays:
+        problems.append(f"{parent} holds entries that are not product repos ({', '.join(strays)}): a multi-repo host holds only repos at "
+                        "depth 1 (plus files such as .DS_Store, README.md or .gitignore); move them out, then re-run.")
+    if unnamed:
+        problems.append(f"{', '.join(unnamed)} {'is a git repo whose folder name' if len(unnamed) == 1 else 'are git repos whose folder names'} "
+                        "the registry cannot take ([A-Za-z0-9._-]+, not workflow or .claude): rename the folder, then re-run.")
+    if not _registrable_name(repo.name):
+        problems.append(f"the old repo's folder name {repo.name!r} cannot be a registry name ([A-Za-z0-9._-]+, not workflow or .claude): "
+                        "rename the folder, then re-run.")
+    installed = {k: [n for n in raw_installed[k] if isinstance(n, str) and n] for k in NESTED_KINDS}
+    names = sorted({n for n in _child_repo_dirs(parent) if _registrable_name(n)} | ({repo.name} if _registrable_name(repo.name) else set()))
+    for n in names:
+        tracked = _tracked_workspace_files(parent / n, installed)
+        if tracked:
+            problems.append(f"{n}/ tracks {', '.join(tracked)}, which the workspace owns (the engine's validate rejects a registered repo "
+                            f"that does): untrack {'it' if len(tracked) == 1 else 'them'} (git -C {q(parent / n)} rm -r --cached -- "
+                            f"{' '.join(tracked)}), then re-run.")
+    # The --update's ignore preflight, asked now: its refusal would otherwise come after the init and the move.
+    # Its model needs a parent that is (or will be) a work tree root of its own and holds no stray entry.
+    if not strays and (top is None or top == parent.resolve()) and (top is not None or not os.path.lexists(parent / ".git")):
+        unignored = _convert_unignored(parent, exclude, names, old)
+        if unignored:
+            problems.append("the parent's ignore rules would leave files of the host install visible to git, so it cannot stay "
+                            f"private ({'; '.join(f'{t}: {why}' for t, why in unignored)}): a .gitignore (or an info/exclude line) "
+                            f"in {parent} re-includes them, and .git/info/exclude, where the install hides its files, ranks below "
+                            "every .gitignore; fix it, then re-run.")
+    if problems:
+        refuse(*problems)
+
+    # The plan for the old repo's side (read-only); then the dry run, or steps 1-2.
+    raw_renames = old.get("renames") if isinstance(old.get("renames"), dict) else {}
+    renames = {k: ({x: y for x, y in raw_renames[k].items() if isinstance(y, str) and y} if isinstance(raw_renames.get(k), dict) else {})
+               for k in NESTED_KINDS}
+    leftovers = _convert_leftovers(repo)
+    classified = _convert_classify(repo, renames, installed)
+    CONVERT_PLAN = {"repo": repo, "parent": parent, "name": repo.name, "nested": nested, "target": target, "names": names,
+                    "convention": copy.deepcopy(conv), "parent_git": parent_git, "inited": False, "leftovers": leftovers,
+                    "classified": classified, "files": _convert_plan_files(repo, renames, classified["gone"], leftovers),
+                    "writing": False, "finished": False}
+    if DRY_RUN:
+        _convert_print_dry_run(renames, _convert_phases(nested, repo))
+        sys.exit(0)
+    if parent_git is None:
+        _HOST_INIT_UNDO = (parent / ".git", [])
+        CONVERT_PLAN["inited"] = True
+        proc = subprocess.run(["git", "init", "-q", str(parent)], capture_output=True)
+        if proc.returncode != 0:
+            refuse(f"git init in {parent} failed (exit {proc.returncode}: {proc.stderr.decode('utf-8', 'replace').strip()}).")
+        _host_first_commit()
+    try:
+        os.rename(nested, target)
+    except OSError as exc:
+        refuse(f"cannot move {nested} to {target} ({exc}): the repos must be on one filesystem with their parent; then re-run.")
+    _CONVERT_UNDO = (target, nested)
+
+
+def _convert_shown(p: Path) -> str:
+    plan = CONVERT_PLAN
+    try:
+        return f"{plan['name']}/{p.relative_to(plan['repo']).as_posix()}"
+    except ValueError:
+        return str(p)
+
+
+def _convert_cleanup_lines(past: bool) -> list:
+    """Step 6 in words: what goes and what stays on the old repo's side."""
+    plan = CONVERT_PLAN
+    name, c = plan["name"], plan["classified"]
+    lines = []
+    if c["shown"]:
+        lines.append(f"{'deleted' if past else 'delete'} the workspace's own copies, unchanged ({len(c['delete'])} file(s)):")
+        lines += [f"  - {name}/{rel}" for rel in c["shown"]]
+    if c["kept"]:
+        lines.append(f"yours, kept ({len(c['kept'])}):")
+        lines += [f"  - {name}/{rel}  ({why})" for rel, why in c["kept"]]
+    for key in ("settings", "local", "exclude"):
+        p, action, _, why = plan["files"][key]
+        if action != "none" or key == "exclude":
+            lines.append(f"{_convert_shown(p)}: {why}")
+    return lines
+
+
+def _convert_print_dry_run(renames: dict, phases: list) -> None:
+    plan = CONVERT_PLAN
+    repo, parent, name, nested, target, conv = plan["repo"], plan["parent"], plan["name"], plan["nested"], plan["target"], plan["convention"]
+    others = [n for n in plan["names"] if n != name]
+    print(f"DRY RUN (--to-multi-repo --dry-run): convert {repo}'s per-repo nested install into a multi-repo host at {parent} -- nothing written.")
+    if plan["parent_git"] is None:
+        print(f"  1. git init {parent}, then its one commit, the empty \"{HOST_FIRST_COMMIT}\" (with no git identity: the init, and the commands to make it)")
+    else:
+        print(f"  1. {parent} is already a git repo that tracks nothing: its history is kept, no commit made"
+              + ("" if plan["parent_git"] == "history" else " (it has none yet: the closing block prints the one to make)"))
+    print(f"  2. move {nested} -> {target} (the nested repo, with its history and branches)")
+    print(f"  3. the plain --update at {parent} (what a separate --update there would write):")
+    for s in sorted(renames["skills"].get(x, x) for x in CLAUDE_SKILLS):
+        print(f"       + {parent}/.claude/skills/{s}/ (with its self-hiding .gitignore)")
+    for a in sorted(renames["agents"].get(x, x) for x in NESTED_AGENTS):
+        print(f"       + {parent}/.claude/agents/{a}.md")
+    print(f"       + {parent}/.claude/settings.local.json")
+    print(f"       + {parent}/CLAUDE.local.md (the multi-repo block, with: Records from before <today> name product paths relative to `{name}/`.)")
+    print(f"       ~ {parent}/.git/info/exclude (the managed block, with {' '.join('/' + n + '/' for n in plan['names'])})")
+    print(f"       ~ {target}/: the machinery every --update refreshes, then rebuild and validate")
+    print(f"       ~ {target}/{NESTED_MARKER}: repos {', '.join(plan['names'])}; {name} keeps the old convention verbatim "
+          f"({'confirmed' if conv.get('confirmed') is True else 'UNCONFIRMED'}, coauthor_trailers={conv.get('coauthor_trailers')})"
+          + (f"; {', '.join(others)} {'gets its' if len(others) == 1 else 'each get their'} own, inferred and UNCONFIRMED" if others else "")
+          + "; the host-level convention (the rules for every repo) UNCONFIRMED, nothing inferred")
+    print(f"  4. converted_from in {target}/{NESTED_MARKER}: {{\"repo\": \"{name}\", \"old_nested\": \"{name}/{NESTED_DIR}\", \"at\": \"<today>\"}}")
+    print(f"  5. map the anchors: python3 {NESTED_DIR}/scripts/workflow.py nested-repos --map-anchors {name} (writes phase.json files only)")
+    for label, maps in phases:
+        print(f"       {label}: " + (f"host_anchors -> repo_anchors.{name}" if maps else f"skipped: its host_anchors are not commits of {name}"))
+    if not phases:
+        print("       no phase holds host_anchors shas: nothing to map")
+    print(f"  6. clean {repo} (only the workspace's own, unchanged files go; nothing of yours is deleted):")
+    for line in _convert_cleanup_lines(past=False):
+        print(f"       {line}")
+    print(f"  7. leftover worktrees of {repo}, listed and never deleted:" + ("" if plan["leftovers"] else " none"))
+    for line in plan["leftovers"]:
+        print(f"       - {line}")
+    print(f"  8. the closing block: the nested commit to make (\"{CONVERT_COMMIT}\"), the conventions to confirm, the rollback")
+    print("Re-run without --dry-run to apply.")
+
+
+def _convert_rollback_lines(halted: bool = False) -> list:
+    """The rollback, as commands: after the nested commit (revert, mv back, --update the old repo), or, for a
+    run that stopped before cleaning the old repo (`halted`), the uncommitted reset and the mv alone."""
+    plan = CONVERT_PLAN
+    q = lambda p: shlex.quote(str(p))   # noqa: E731
+    target, parent = plan["target"], plan["parent"]
+    # clean -f without -d: the files the run added go, and the empty directories the install keeps stay.
+    reset = f"git -C {q(target)} reset -q --hard && git -C {q(target)} clean -qf"
+    if halted:
+        lines = [f"  {reset}", f"  mv {q(target)} {q(plan['nested'])}"]
+    else:
+        lines = [f"  git -C {q(target)} revert --no-edit \"$(git -C {q(target)} log -1 --format=%H -F --grep='{CONVERT_COMMIT}')\"",
+                 f"  (before that commit is made, instead: {reset})",
+                 f"  mv {q(target)} {q(plan['nested'])}",
+                 f"  sh bootstrap_agentic_workspace.sh --update {q(plan['repo'])}"]
+        if any(rel.startswith(".claude/") for rel, _ in plan["classified"]["kept"]):
+            lines.append(f"  (that --update rewrites {plan['name']}'s installed skills and agents, as every --update does: copy aside the ones listed as yours first)")
+    lines.append(f"  then the host's own files are yours to delete: rm -rf {q(parent / '.claude/skills')} {q(parent / '.claude/agents')} && "
+                 f"rm -f {q(parent / '.claude/settings.local.json')} {q(parent / 'CLAUDE.local.md')} && rmdir {q(parent / '.claude')}"
+                 + (f", and the .git this conversion made: rm -rf {q(parent / '.git')}" if plan["inited"] else ""))
+    return lines
+
+
+def _convert_halted() -> None:
+    """atexit, once writing started: a run that stops before convert_finish ends says where it stopped and how
+    to roll back (the old repo is not cleaned yet, so the mv back restores it). Never a plain --update at the
+    parent: its registry rule is not the conversion's."""
+    plan = CONVERT_PLAN
+    if not plan or not plan["writing"] or plan["finished"]:
+        return
+    print(f"Error: --to-multi-repo stopped after the move, before the old repo was cleaned ({plan['nested']} is now {plan['target']}; "
+          f"nothing in {plan['repo']} was deleted). Roll back, fix what is said above, then re-run --to-multi-repo:", file=sys.stderr)
+    for line in _convert_rollback_lines(halted=True):
+        print(line, file=sys.stderr)
+
+
+def convert_start_writing() -> None:
+    """At the guards, past every refusal: the first write is next. Steps 1-2 as done, before the --update's report."""
+    import atexit
+    plan = CONVERT_PLAN
+    plan["writing"] = True
+    atexit.register(_convert_halted)
+    print(f"Converting {plan['repo']}'s per-repo nested install into a multi-repo host at {plan['parent']} (--to-multi-repo)")
+    if plan["inited"] and HOST_COMMIT_ERROR is None:
+        print(f"  1. host: git init {plan['parent']}, and its one commit, the empty \"{HOST_FIRST_COMMIT}\"")
+    elif plan["inited"]:
+        print(f"  1. host: git init {plan['parent']}; git could not make its first commit ({HOST_COMMIT_ERROR}): the commands are in Next")
+    else:
+        print(f"  1. host: {plan['parent']} was already a git repo that tracks nothing: its history kept, no commit made")
+    print(f"  2. moved {plan['nested']} -> {plan['target']} (the nested repo, with its history and branches)")
+    print(f"  3. the plain --update at {plan['parent']}:", flush=True)   # before the engine's own output (rebuild, validate)
+
+
+def _convert_apply_cleanup() -> list:
+    """Step 6: the workspace's own unchanged files, then our settings entries, then the CLAUDE.local.md
+    block, then the exclude block -- in that order, so nothing turns visible on the way. Only empty
+    directories go. Never raises: a failure is collected, and the rest still runs."""
+    plan = CONVERT_PLAN
+    repo, c, errors = plan["repo"], plan["classified"], []
+    for f in c["delete"]:
+        try:
+            os.unlink(f)
+        except OSError as exc:
+            errors.append(f"could not delete {f} ({exc})")
+    for d in c["dirs"]:
+        subdirs = sorted((p for p in d.rglob("*") if p.is_dir() and not p.is_symlink()), key=lambda p: len(p.parts), reverse=True)
+        for sub in subdirs + [d]:
+            try:
+                sub.rmdir()   # an empty directory only: one that still holds anything stays
+            except OSError:
+                pass
+    for key in ("settings", "local", "exclude"):
+        p, action, text, _ = plan["files"][key]
+        try:
+            if action == "delete":
+                os.unlink(p)
+            elif action == "rewrite":
+                mode = stat.S_IMODE(p.stat().st_mode)
+                _atomic_write(p, text)
+                os.chmod(p, mode)
+        except OSError as exc:
+            errors.append(f"could not {'delete' if action == 'delete' else 'rewrite'} {p} ({exc})")
+        if key == "settings":
+            for d in (repo / ".claude" / "skills", repo / ".claude" / "agents", repo / ".claude"):
+                try:
+                    d.rmdir()
+                except OSError:
+                    pass
+    return errors
+
+
+def convert_finish() -> None:
+    """Steps 4-8, after the plain --update at the parent: report converted_from, map the anchors with the
+    freshly updated engine, clean the old repo's side, list its leftover worktrees, print the closing block."""
+    plan = CONVERT_PLAN
+    repo, parent, name, target = plan["repo"], plan["parent"], plan["name"], plan["target"]
+    engine = f"python3 {NESTED_DIR}/scripts/workflow.py"
+    q = lambda p: shlex.quote(str(p))   # noqa: E731
+    failed = []
+    try:
+        marker = json.loads((ROOT / NESTED_MARKER).read_text(encoding="utf-8"))
+        entry = marker["converted_from"][-1]
+        print(f"  4. converted_from: {json.dumps(entry, ensure_ascii=False)} ({NESTED_DIR}/{NESTED_MARKER}; CLAUDE.local.md now says "
+              f"records from before {entry['at']} name product paths relative to {name}/)")
+    except (OSError, ValueError, KeyError, IndexError, TypeError) as exc:
+        marker = {}
+        failed.append(f"converted_from could not be read back from {ROOT / NESTED_MARKER} ({exc})")
+    print(f"  5. anchors: {engine} nested-repos --map-anchors {name}")
+    proc = subprocess.run([sys.executable, str(ROOT / "scripts" / "workflow.py"), "nested-repos", "--map-anchors", name],
+                          cwd=str(HOST), capture_output=True, stdin=subprocess.DEVNULL)
+    for line in (proc.stdout + proc.stderr).decode("utf-8", errors="replace").splitlines():
+        print(f"       {line}")
+    if proc.returncode != 0:
+        failed.append(f"the anchor mapping exited {proc.returncode} (nothing was rolled back): fix what it says, then re-run it: "
+                      f"cd {q(parent)} && {engine} nested-repos --map-anchors {name}")
+    print(f"  6. cleaned {repo} (only the workspace's own, unchanged files went; nothing of yours was deleted):")
+    for line in _convert_cleanup_lines(past=True):
+        print(f"       {line}")
+    errors = _convert_apply_cleanup()
+    for e in errors:
+        print(f"       error: {e}")
+    if errors:
+        failed.append(f"{len(errors)} cleanup step(s) in {repo} failed (above): finish them by hand")
+    print(f"  7. leftover worktrees of {repo}, listed and never deleted:" + ("" if plan["leftovers"] else " none"))
+    for line in plan["leftovers"]:
+        print(f"       - {line}")
+    if plan["leftovers"]:
+        print(f"       they are yours: integrate or remove each (git -C {q(repo)} worktree remove <path>), then {name}'s exclude block by hand")
+    if plan["files"]["local"][1] == "rewrite":
+        print(f"  note: {name}/CLAUDE.local.md keeps your own lines; a session started at {parent} reads {parent}/CLAUDE.local.md: "
+              "move what still applies there, above its managed block")
+    print(f"Next (from {parent}: start Claude Code there from now on, never inside {NESTED_DIR}/ or a repo):")
+    step = 1
+    if (plan["inited"] and HOST_COMMIT_ERROR is not None) or plan["parent_git"] == "empty":
+        print(f"  {step}. Give the host its first commit, which new-phase and parallel-start base on"
+              + (" (git has no identity: set one globally first, so the nested commit below works too):" if HOST_COMMIT_ERROR else ":"))
+        if HOST_COMMIT_ERROR:
+            print("       git config --global user.name \"<your name>\" && git config --global user.email \"<you@example.com>\"")
+        print(f"       git -C {q(parent)} commit --allow-empty -m \"{HOST_FIRST_COMMIT}\"")
+        step += 1
+    print(f"  {step}. Commit the conversion in the nested repo: git -C {q(target)} add -A && git -C {q(target)} commit -m \"{CONVERT_COMMIT}\"")
+    step += 1
+    print(f"  {step}. Confirm the conventions that bind every repo (UNCONFIRMED, nothing inferred) before the first product commit: "
+          f"{engine} nested-convention (then --confirm --text \"<conventions>\" --trailers allowed|forbidden); each repo's own:")
+    for r in marker.get("repos") or [] if isinstance(marker.get("repos"), list) else []:
+        rc = r.get("commit_convention") if isinstance(r, dict) else None
+        if isinstance(rc, dict) and rc.get("confirmed") is True:
+            print(f"       {r.get('name')}: confirmed, moved from the old install (coauthor_trailers={rc.get('coauthor_trailers')}); "
+                  f"{engine} nested-convention --repo {r.get('name')} shows it")
+        elif isinstance(rc, dict):
+            print(f"       {r.get('name')}: UNCONFIRMED -- {engine} nested-convention --confirm --repo {r.get('name')} --text \"<conventions>\" "
+                  "--trailers allowed|forbidden")
+    step += 1
+    print(f"  {step}. Re-apply your executors.toml route overrides to the new agent files: {engine} sync-agents")
+    print("Rollback (the nested repo's history is the backup; the installer deletes none of this):")
+    for line in _convert_rollback_lines():
+        print(line)
+    plan["finished"] = True
+    if failed:
+        print("Error: --to-multi-repo did not finish:", file=sys.stderr)
+        for f in failed:
+            print(f"  - {f}", file=sys.stderr)
+        sys.exit(1)
+    print(f"Converted: {parent} is a multi-repo host over {', '.join(r.get('name', '?') for r in marker.get('repos') or [] if isinstance(r, dict))}.")
+
+
 # ---- Guards -----------------------------------------------------------------
 NESTED_PLAN = None
 if NESTED:
@@ -1723,12 +2654,17 @@ if NESTED:
     # empty target `git init`s it first), then the whole host-side render with its post-check, the
     # tracked-target refusal and the ignore preflight. A refusal or a crash up to here undoes that init.
     try:
+        if CONVERT:
+            convert_prepare()   # --to-multi-repo: its own refusals and --dry-run first, then git init + the move
         nested_preflight()
         NESTED_PLAN = nested_plan()
     except BaseException:
         _nested_undo_init()
         raise
     _HOST_INIT_UNDO = None   # the first write is next: from here on the initialised host is kept
+    if CONVERT:
+        _CONVERT_UNDO = None   # ... and the moved nested repo stays moved
+        convert_start_writing()
 ROOT.mkdir(parents=True, exist_ok=True)
 for rel in MANAGED_DIRS:
     p = ROOT / rel
@@ -1921,117 +2857,6 @@ def write_version_marker() -> None:
         "synced_at": now_iso(),
     }
     _atomic_write(ROOT / "works/.workspace-version.json", json.dumps(marker, ensure_ascii=False, indent=2) + "\n")
-
-
-# ---- The update report (v61): what --update removed, changed and flags, in one place ----------
-# Every file an earlier version shipped and this one no longer does: emit path -> (the last version that
-# shipped it, the sha256 of each text that version wrote there). Ownership is by CONTENT, never by path
-# or directory: a present file whose hash matches is ours and unchanged, flagged stale (remove it); any
-# other file at a retired path, or under a retired directory, is the adopter's, reported "yours, kept".
-# An unmodified copy from an even older version therefore reads as kept: conservative on purpose.
-# A path with an `explain` component is never listed here, touched or reported (_is_explain_path):
-# the knowledge plugin owns it, and a .claude/skills/explain/ copy stays until its owner deletes it.
-# Generated once (P37.S8) by a throwaway script over this repo's git history: every committed
-# bootstrap_agentic_workspace.sh's embedded PAYLOADS (what the installer wrote, not the repo's own tree),
-# taking the text at the last commit that shipped the path (the trailing comment). AGENTS.md and
-# AGENTS.workspace.md are v30's "# AGENTS.md" header + CONTRACT_BODY, as v30's main.py wrote both; the
-# second executor-mode hash is v52's nested_rewrite (no renames) of the same text. The Kiro sidecar
-# (.kiro/, added and reverted inside v44) never shipped and is absent.
-# When a later version drops a shipped file (a skill's reference file too), add it here the same way:
-# the hash of its last shipped text, plus its nested_rewrite with no renames for a .claude/ file.
-# The v65 executor pair (slice-executor-mid/-high, merged into slice-executor in v66) is hashed with its
-# frontmatter `model:` / `effort:` lines dropped (RETIRED_ROUTE_LINES): sync-agents owns those two lines
-# and an adopter's overrides live in executors.toml, so a copy that differs only there is still ours.
-RETIRED_FILES = {
-    '.agents/skills/archive-phase/SKILL.md': (30, ('f748d9ae055255eee2eef5c16b59d86219755331bdda66a9938fb5ae80d82013',)),  # 4ee5c22
-    '.agents/skills/archive-phase/agents/openai.yaml': (30, ('8a5fe61f92bfbc624864afb5907edb8b918017f99f38fab0bc7235ad09a0d2c3',)),  # 4ee5c22
-    '.agents/skills/commit/SKILL.md': (30, ('cebbc9317542e76102be4b5e9a439033f008acb817e1f4daba069e117763774b',)),  # 4ee5c22
-    '.agents/skills/commit/agents/openai.yaml': (30, ('f4447ffb0661c6e85e1ad8af155ab4df50c74acc7ddf47d592408b86548c6e2f',)),  # 4ee5c22
-    '.agents/skills/create-phase/SKILL.md': (30, ('8e9ab6847b743474ff9875ac6b6e12becda8ddeefbf62b25b571b989986fcc07',)),  # 4ee5c22
-    '.agents/skills/create-phase/agents/openai.yaml': (30, ('177306729676315872e49b4d15ffe73cc2568728a2c59b8a66db783176f6460d',)),  # 4ee5c22
-    '.agents/skills/defer-job/SKILL.md': (30, ('a13cd7220828fd312b878459f47e7c10d0d0195b8879375479773a469978bfd7',)),  # 4ee5c22
-    '.agents/skills/defer-job/agents/openai.yaml': (30, ('46b101bb9e58272aeb33e1a93b56e075b92e36b50f281a6c2260e392f88ce8db',)),  # 4ee5c22
-    '.agents/skills/deferred/SKILL.md': (30, ('e3d01f70bc9bb167d0bbd1d74005151fd8c823dbbd450696105339802f67882f',)),  # 4ee5c22
-    '.agents/skills/deferred/agents/openai.yaml': (30, ('c1aefcc49a339628ed743c1ac4f1167b6cbf50eb94e5a55b2f9bd4e79c25f239',)),  # 4ee5c22
-    '.agents/skills/design-cowork/SKILL.md': (30, ('f19cb3f2fb07307152eec95cab45c6dff29be5dc3e2508de4a34d423166785f9',)),  # 4ee5c22
-    '.agents/skills/design-cowork/agents/openai.yaml': (30, ('33ebbf01cf515f4e89699a63cbf4e6d7494a4ac022c2e46d945894d7ec13c534',)),  # 4ee5c22
-    '.agents/skills/do-next-slice/SKILL.md': (30, ('84f97c72c58bad82944d0369785d3486cb330eec37ec238b8e052a6f5de05c6b',)),  # 4ee5c22
-    '.agents/skills/do-next-slice/agents/openai.yaml': (30, ('aeff0d7fc86ede761042ea3837cfdde1fe6accf656395c446c6e0ebf84d8123a',)),  # 4ee5c22
-    '.agents/skills/do-whole-phase/SKILL.md': (30, ('e6aec0c715791ab0bbb47d8f2f124ac064df861f6f21669a572b49b93e17ef03',)),  # 4ee5c22
-    '.agents/skills/do-whole-phase/agents/openai.yaml': (30, ('482b7e274c36509c5edbf1395d470a8603038ada6be8e241465868f24d4d2774',)),  # 4ee5c22
-    '.agents/skills/doc-new-version/SKILL.md': (30, ('8c066ef299e02e8d72851c3f198a82015dd3f0f13874427f0c418236def92099',)),  # 4ee5c22
-    '.agents/skills/doc-new-version/agents/openai.yaml': (30, ('f081a68aa674117ea0c0e97e1557f6d002c09de7bc267fefef214d52a817e53c',)),  # 4ee5c22
-    '.agents/skills/parallel-phase/SKILL.md': (30, ('03f41c6bc927bba5d875e8d7c5c47ab1fee8b3937c388e97e9168cac4fd334b7',)),  # 4ee5c22
-    '.agents/skills/parallel-phase/agents/openai.yaml': (30, ('5606a3232f932e9ffa41e4e58bd8457962237c38aa4b9439922effe2b3768b2e',)),  # 4ee5c22
-    '.agents/skills/promote-deferred/SKILL.md': (30, ('a314fc511656a451e2f408c0383e0f3ec52482bc3ecf6c8aedfb25c083fba520',)),  # 4ee5c22
-    '.agents/skills/promote-deferred/agents/openai.yaml': (30, ('3567035e19a67ccf89415387d9c48fba44a384ab2ef068c9cf594a83d291bc55',)),  # 4ee5c22
-    '.agents/skills/rebuild-workflow/SKILL.md': (30, ('a2730a21fa5ba34c95b826b325a0e24430c095732c1378d9ced9a7fb62c9cf74',)),  # 4ee5c22
-    '.agents/skills/rebuild-workflow/agents/openai.yaml': (30, ('2185bbae7136a4e77b38aea2c6b061e49fda6a264f724d28fe929b2630a78faf',)),  # 4ee5c22
-    '.agents/skills/retrofit/SKILL.md': (30, ('66cc4658acd9bf8149e2f415ce7a1f82956f37c6fd9cf7bf9fee47ca8741ef72',)),  # 4ee5c22
-    '.agents/skills/retrofit/agents/openai.yaml': (30, ('18b5537ef7a138221575dad2d8d19e5a3698351d38c25ff5708e19e27e01e962',)),  # 4ee5c22
-    '.agents/skills/review-phase/SKILL.md': (30, ('d9e26409b18aecf1d8c99f116b2d9498b371351b738006bb4f49faa7ca0e4b32',)),  # 4ee5c22
-    '.agents/skills/review-phase/agents/openai.yaml': (30, ('ec764186a6f0380290058bba59e4d431434a1ca8d8bc143705b7c99329bb3fde',)),  # 4ee5c22
-    '.agents/skills/rotate-backlog/SKILL.md': (30, ('5d1433b879b7861c9b4d150541543b5bf594a7537e4939d569efccdaaa21d538',)),  # 4ee5c22
-    '.agents/skills/rotate-backlog/agents/openai.yaml': (30, ('6d0256fe50e14bebef26818397323412ab68cbe7cacc4599af1bca1a7582e2c3',)),  # 4ee5c22
-    '.agents/skills/update-workspace/SKILL.md': (30, ('4f25b084dbfd896148f240ea3c663af40848a35041ba7aaed92d7abb8a6be30e',)),  # 4ee5c22
-    '.agents/skills/update-workspace/agents/openai.yaml': (30, ('0631c41fd8e1ec98331777d3e078d1ef4fdc1ec6c6cbf07cffcf73e1e1101206',)),  # 4ee5c22
-    '.claude/agents/slice-executor-high.md': (65, ('7a76f8dbe6d10b50333d34b2008fb576dd48f3720f9e2ba67847f4d5eed41f36', '0eafa7ed541f7d21f075878686179c186ac3cbacec96a7fb562d53279964ac4d')),  # d0759a4, route lines dropped
-    '.claude/agents/slice-executor-low.md': (22, ('3d798df8b1170cf3aff4bbf10fbe83e6f7d8a8721a990a8d74333b7c08c731df',)),  # 097041d
-    '.claude/agents/slice-executor-mid.md': (65, ('3c74ce9945cae627de3588f3ea01533cb8990a48e0b12d813af61d0ba04ded8a', 'faaa25e5cdc62e625d3720030f24e94388ec1cbeb5e80de6deafc39820f2654b')),  # d0759a4, route lines dropped
-    '.claude/agents/slice-planner.md': (19, ('7c8fa4c4824f276ec5e79292826dfb58a41ed4078682175faae2e119d36c51d6',)),  # c94f6e4
-    '.claude/skills/executor-mode/SKILL.md': (52, ('382fe9e6644c15c46d49ab0b481c8cec0b6722f20816d3fca48a60ba61826d43', 'cef5b8fbf576e83fd6048ceb652e05ddcd7cbcded6a4168efb5c834f32c16970')),  # 7c874c3
-    '.codex/agents/slice-executor-high.toml': (30, ('217fcafcd0449db43fd1e25b4a0a13cc918ee2ab46d4980a8544b098ed31ec2d',)),  # 4ee5c22
-    '.codex/agents/slice-executor-low.toml': (22, ('57e24a3b80eaa8a1991b82aeb29b6447735453c08ede535cc353a86a2b78bc35',)),  # 097041d
-    '.codex/agents/slice-executor-mid.toml': (30, ('1cd71cc675b96957f227c797ae7fd75b1ae8172eef3823ba890150545e7642b0',)),  # 4ee5c22
-    '.codex/agents/slice-executor.toml': (6, ('bd800dc30642e149b54bcf7b04af954b3e19d8d9517371c84e4fb53618fadd1e',)),  # 057ec31
-    '.codex/config.toml': (30, ('789bf89992ed3a26c23fa7476e497f45682a8b76f50de6b626add3638fc94fc5',)),  # 4ee5c22
-    '.env.example': (7, ('d93203bd09384e1a44ffcd868c80966f0b8de96536bcf95e768b369b1d757750',)),  # 3104b74
-    'AGENTS.md': (30, ('7ef0f82ad8d51f08cdcd750735fd0849344b5cb739f341f77c704fcf6e5033e6',)),  # 4ee5c22
-    'AGENTS.workspace.md': (30, ('7ef0f82ad8d51f08cdcd750735fd0849344b5cb739f341f77c704fcf6e5033e6',)),  # 4ee5c22
-    'executors.toml.example': (8, ('dad1620e97404eb7d1d9f29d796a05347c3b655e567c74a9e26ac6814e923261',)),  # 8a3c8c2
-    'works/templates/result.md': (9, ('3938ceaf78a7392d62ca5a7e88ee51e132d56f30adafb06afb002361639e1dc9',)),  # 06561c4
-}
-# The retired paths hashed with their frontmatter model:/effort: lines dropped (_drop_route_lines).
-RETIRED_ROUTE_LINES = {".claude/agents/slice-executor-high.md", ".claude/agents/slice-executor-mid.md"}
-# Retired directories, walked file by file and never flagged whole. A retired skill's directory (a
-# .claude/skills/<name>/ path above whose skill this version no longer ships) is walked the same way.
-RETIRED_DIRS = (".agents", ".codex")
-
-
-def _drop_route_lines(text: str) -> str:
-    """An agent file's text without its frontmatter `model:` / `effort:` lines, the two sync-agents writes."""
-    end = text.find("\n---\n", 4) if text.startswith("---\n") else -1
-    if end == -1:
-        return text
-    head = [line for line in text[4:end].split("\n") if not line.startswith(("model:", "effort:"))]
-    return "---\n" + "\n".join(head) + text[end:]
-
-
-def _unrename(text: str, renames: dict) -> str:
-    """Undo nested_rewrite's renames ({kind: {X: Y}}) in an installed text: every Y token back to X.
-    Exact for our own texts, which never carry a `wf-` name of their own."""
-    for table in renames.values():
-        for x, y in table.items():
-            text = re.sub(r"(?<![\w-])" + re.escape(y) + r"(?![\w-])", x, text)
-    return text
-
-
-def _retired_entry(key: str, renames: dict = None):
-    """(stale reason, kept reason, hashes, normalizer or None) for a RETIRED_FILES path, else None.
-    The normalizer maps a file's text to the text its hash is taken over: a RETIRED_ROUTE_LINES path
-    drops its model:/effort: lines, and a nested copy installed under renames has them undone."""
-    if key not in RETIRED_FILES:
-        return None
-    version, hashes = RETIRED_FILES[key]
-    route_lines = key in RETIRED_ROUTE_LINES
-    if not (route_lines or renames):
-        return (f"unchanged since v{version}", f"differs from what v{version} shipped", hashes, None)
-
-    def norm(text: str) -> str:
-        text = _unrename(text, renames) if renames else text
-        return _drop_route_lines(text) if route_lines else text
-    aside = " (its model/effort lines aside)" if route_lines else ""
-    return (f"unchanged since v{version}{aside}", f"differs from what v{version} shipped{aside}", hashes, norm)
 
 
 def _classify(p: Path, shown: str, entry, unknown: str) -> bool:
@@ -2227,6 +3052,8 @@ if NESTED:
     if not DRY_RUN:
         nested_verify_clean(NESTED_PLAN)
     print_nested_banner(NESTED_PLAN)
+    if CONVERT:
+        convert_finish()
 elif DRY_RUN:
     print(f"DRY RUN (--update --dry-run) at {TARGET} — nothing written.")
     print_change_list()
