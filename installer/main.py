@@ -340,7 +340,7 @@ RETIRED_MECHANISMS = [
 # _merge_settings_dict) removes exactly our retired hook handlers -- matched by command -- and moves a window
 # still at a value we shipped to today's; it reports both through SETTINGS_CHANGES.
 RETIRED_HOOK_COMMANDS = {m["hook"]: f"retired in v{m['retired']}" for m in RETIRED_MECHANISMS if m.get("hook")}
-SHIPPED_COMPACT_WINDOWS = {500000}  # what v57-v60 shipped; v56 shipped 300000, today's value
+SHIPPED_COMPACT_WINDOWS = {300000, 500000}  # 300000: v56 and v61-v65; 500000: v57-v60; today's value is 450000
 SETTINGS_CHANGES = {"removed": [], "changed": []}
 
 
@@ -355,9 +355,9 @@ def _merge_settings_dict(theirs: dict, ours: dict, label: str = None) -> dict:
       same `matcher` (creating the event list / group when absent) unless a handler with the same
       `command` already exists anywhere under that event. Never removes, reorders or rewrites an
       adopter's entries.
-    - autoCompactWindow (v56; 300000 again since v61): copied from `ours` when the target has no
-      such key; a value equal to one we shipped (SHIPPED_COMPACT_WINDOWS: 500000, v57-v60) moves to
-      ours; any other value the adopter chose is kept.
+    - autoCompactWindow (v56; 450000 since the release after v65): copied from `ours` when the target has no
+      such key; a value equal to one we shipped (SHIPPED_COMPACT_WINDOWS: 300000, v56 and v61-v65;
+      500000, v57-v60) moves to ours; any other value the adopter chose is kept.
     With `label` (the file's shown path), each removal and change is recorded in SETTINGS_CHANGES.
     Idempotent. Raises ValueError on a malformed target shape (a non-object
     `permissions`/`hooks`, a non-list `allow`/`deny`/event/`hooks`, a non-object
@@ -435,7 +435,7 @@ def _merge_settings_dict(theirs: dict, ours: dict, label: str = None) -> dict:
         elif current in SHIPPED_COMPACT_WINDOWS and current != ours["autoCompactWindow"]:
             merged["autoCompactWindow"] = ours["autoCompactWindow"]
             changed.append(f"autoCompactWindow {current} -> {ours['autoCompactWindow']} "
-                           f"(the v61 default; set it back if you chose {current})")
+                           f"(today's default; set it back if you chose {current})")
     if label:
         for key, lines in (("removed", removed), ("changed", changed)):
             for line in (f"{label} {x}" for x in lines):

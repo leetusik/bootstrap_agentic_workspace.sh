@@ -950,8 +950,8 @@ PY
 then ok "retrofit merges the resume hook additively: foreign PreCompact/PostToolUse handlers survive untouched, ours (SessionStart compact) present exactly once, no PreCompact of ours (v61)"; else bad "retrofit hooks merge incorrect"; fi
 # v56: the project-level auto-compact window ships with the payload; retrofit fills it when the
 # adopter's file has none, and a second --update leaves it alone.
-python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["autoCompactWindow"] == 300000, d' "$R/.claude/settings.json" \
-  && ok "retrofit sets autoCompactWindow=300000 when the adopter's settings.json has none (v61)" || bad "retrofit did not set autoCompactWindow"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["autoCompactWindow"] == 450000, d' "$R/.claude/settings.json" \
+  && ok "retrofit sets autoCompactWindow=450000 when the adopter's settings.json has none" || bad "retrofit did not set autoCompactWindow"
 
 ( cd "$R" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) && ok "validate passes in target" || bad "validate failed in target"
 nph=$(find "$R/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
@@ -1028,8 +1028,8 @@ resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-resume
 assert h == {"SessionStart": [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}]}, h
 PY
 then ok "a fresh at-root install ships only the resume hook (SessionStart compact -> compact-resume, timeout 15) and no PreCompact (v61: compaction is Claude Code's own)"; else bad "fresh install settings.json hooks wrong"; fi
-python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 300000' "$F/.claude/settings.json" \
-  && ok "a fresh at-root install ships autoCompactWindow=300000 in project settings (v61)" || bad "fresh install settings.json lacks autoCompactWindow=300000"
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 450000' "$F/.claude/settings.json" \
+  && ok "a fresh at-root install ships autoCompactWindow=450000 in project settings" || bad "fresh install settings.json lacks autoCompactWindow=450000"
 nphf=$(find "$F/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
 [ "$nphf" = "0" ] && ok "fresh install seeds no phases (empty start)" || bad "fresh install seeded $nphf phase(s)"
 if python3 - "$REPO_ROOT" "$F/works/.workspace-version.json" <<'PY'
@@ -1818,7 +1818,7 @@ sh "$BOOT" "$F" --update >/dev/null 2>&1
 [ "$(sha "$F/.claude/settings.json")" = "$set_a" ] \
   && ok "--update on a workspace that already has the hooks leaves settings.json byte-identical (idempotent)" || bad "--update changed an up-to-date settings.json"
 # v61: a v60-shaped settings.json (our compact-gate beside the adopter's own PreCompact handler, the
-# 500000 window v57-v60 shipped) loses exactly our handler, keeps theirs, moves to 300000 and lists both.
+# 500000 window v57-v60 shipped) loses exactly our handler, keeps theirs, moves to 450000 and lists both.
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["PreCompact"]=[{"matcher":"auto","hooks":[{"type":"command","command":"echo foreign"},{"type":"command","command":"cd \"$CLAUDE_PROJECT_DIR\" && python3 scripts/workflow.py compact-gate || true","timeout":15}]},{"matcher":"manual","hooks":[{"type":"command","command":"cd \"$CLAUDE_PROJECT_DIR\" && python3 scripts/workflow.py compact-gate || true"}]}]; d["autoCompactWindow"]=500000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$F/.claude/settings.json"
 # ... and the same one report lists the stale v30 file beside them, noting its directory removable.
 mkdir -p "$F/.agents/skills/commit" && v30_commit_skill > "$F/.agents/skills/commit/SKILL.md"
@@ -1829,13 +1829,13 @@ d = json.load(open(sys.argv[1]))
 h = d["hooks"]
 assert h["PreCompact"] == [{"matcher": "auto", "hooks": [{"type": "command", "command": "echo foreign"}]}], h["PreCompact"]
 assert [x["command"] for g in h["SessionStart"] for x in g["hooks"]] == ['cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-resume || true']
-assert d["autoCompactWindow"] == 300000, d
+assert d["autoCompactWindow"] == 450000, d
 PY
 then printf '%s\n' "$upd_out" | grep -q '^  removed: .claude/settings.json hooks.PreCompact compact-gate (retired in v61)$' \
-  && printf '%s\n' "$upd_out" | grep -q '^  changed: .claude/settings.json autoCompactWindow 500000 -> 300000 (the v61 default; set it back if you chose 500000)$' \
+  && printf '%s\n' "$upd_out" | grep -q '^  changed: .claude/settings.json autoCompactWindow 500000 -> 450000 (today.s default; set it back if you chose 500000)$' \
   && printf '%s\n' "$upd_out" | grep -qx '    - \.agents/skills/commit/SKILL\.md  (unchanged since v30)' \
   && printf '%s\n' "$upd_out" | grep -qx '  note: \.agents/ holds only stale files: remove the emptied directory once they are gone' \
-  && ok "--update on a v60-shaped settings.json removes only our compact-gate handlers (the group they emptied pruned), keeps the adopter's PreCompact hook, sets 300000 and lists both, in one report with the stale file and its directory note" \
+  && ok "--update on a v60-shaped settings.json removes only our compact-gate handlers (the group they emptied pruned), keeps the adopter's PreCompact hook, sets 450000 and lists both, in one report with the stale file and its directory note" \
   || bad "--update did not report the settings changes -- $upd_out"
 else bad "--update did not retire our PreCompact handler cleanly -- $upd_out"; fi
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["autoCompactWindow"]=700000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$F/.claude/settings.json"
@@ -1846,6 +1846,12 @@ set_b=$(sha "$F/.claude/settings.json")
 sh "$BOOT" "$F" --update >/dev/null 2>&1
 [ "$(sha "$F/.claude/settings.json")" = "$set_b" ] \
   && ok "a second --update after the merge leaves settings.json byte-identical" || bad "--update hooks merge is not idempotent"
+# 450000 window: a v65-shaped settings.json (window 300000, what v56 and v61-v65 shipped) moves to 450000 with its changed: line.
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["autoCompactWindow"]=300000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$F/.claude/settings.json"
+upd_out=$(sh "$BOOT" "$F" --update 2>&1)
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 450000' "$F/.claude/settings.json" \
+  && printf '%s\n' "$upd_out" | grep -q '^  changed: .claude/settings.json autoCompactWindow 300000 -> 450000 (today.s default; set it back if you chose 300000)$' \
+  && ok "--update moves a v65-shaped 300000 window to 450000 and lists it" || bad "--update did not move the 300000 window -- $upd_out"
 cp "$SRC/claude/settings.json" "$F/.claude/settings.json"   # drop the probe's foreign handler before the Test 6 diff
 rm -f "$F/.github/workflows/workspace-ci.yml" "$F/.gitattributes"
 sh "$BOOT" "$F" --update >/dev/null 2>&1   # restore both verbatim for the Test 6 diff
@@ -2914,9 +2920,9 @@ import json, sys
 d = json.load(open(sys.argv[1]))
 resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 workflow/scripts/workflow.py compact-resume || true'
 assert d["hooks"] == {"SessionStart": [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}]}, d["hooks"]
-assert d["autoCompactWindow"] == 300000, d
+assert d["autoCompactWindow"] == 450000, d
 PY
-then ok "nested: settings.local.json carries only the resume hook with the workflow/scripts/workflow.py command path and window 300000, and --update --nested kept exactly one"; else bad "nested settings.local.json hooks wrong"; fi
+then ok "nested: settings.local.json carries only the resume hook with the workflow/scripts/workflow.py command path and window 450000, and --update --nested kept exactly one"; else bad "nested settings.local.json hooks wrong"; fi
 # v61 (P37.S1): --update --nested on a v60-shaped host (no reference/ files) adds them in the renamed dir, host clean.
 rm -rf "$IH/.claude/skills/wf-design-cowork/reference" "$IH/.claude/skills/do-whole-phase/reference"
 out=$(sh "$BOOT" "$IH" --update --nested 2>&1); rc=$?
@@ -2928,7 +2934,7 @@ sh "$BOOT" "$IH" --update --nested >/dev/null 2>&1
 [ "$(sha "$IH/.claude/settings.local.json")" = "$lset_a" ] && ih_clean \
   && ok "nested: a second --update --nested leaves settings.local.json byte-identical" || bad "nested --update rewrote settings.local.json"
 # v61: a v60-shaped settings.local.json (our compact-gate beside a foreign PreCompact handler, window 500000,
-# our resume handler removed) loses exactly ours, keeps theirs, regains the resume hook, moves to 300000, lists both.
+# our resume handler removed) loses exactly ours, keeps theirs, regains the resume hook, moves to 450000, lists both.
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["PreCompact"]=[{"matcher":"auto","hooks":[{"type":"command","command":"echo foreign-nested"},{"type":"command","command":"cd \"$CLAUDE_PROJECT_DIR\" && python3 workflow/scripts/workflow.py compact-gate || true","timeout":15}]}]; d["hooks"]["Stop"]=[{"hooks":[{"type":"command","command":"echo stop"}]}]; d["hooks"]["SessionStart"][0]["hooks"]=[]; d["autoCompactWindow"]=500000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$IH/.claude/settings.local.json"
 out=$(sh "$BOOT" "$IH" --update --nested 2>&1)
 if python3 - "$IH/.claude/settings.local.json" <<'PY'
@@ -2938,17 +2944,23 @@ h = d["hooks"]
 assert h["PreCompact"] == [{"matcher": "auto", "hooks": [{"type": "command", "command": "echo foreign-nested"}]}], h["PreCompact"]
 assert [x["command"] for g in h["SessionStart"] for x in g["hooks"]] == ['cd "$CLAUDE_PROJECT_DIR" && python3 workflow/scripts/workflow.py compact-resume || true'], h["SessionStart"]
 assert h["Stop"] == [{"hooks": [{"type": "command", "command": "echo stop"}]}]
-assert d["autoCompactWindow"] == 300000, d
+assert d["autoCompactWindow"] == 450000, d
 PY
 then printf '%s\n' "$out" | grep -q '^  removed: .claude/settings.local.json hooks.PreCompact compact-gate (retired in v61)$' \
-  && printf '%s\n' "$out" | grep -q '^  changed: .claude/settings.local.json autoCompactWindow 500000 -> 300000 ' && ih_clean \
-  && ok "nested: --update --nested on a v60-shaped settings.local.json removes only our compact-gate, keeps the foreign hooks, re-adds the resume hook, sets 300000 and lists both" \
+  && printf '%s\n' "$out" | grep -q '^  changed: .claude/settings.local.json autoCompactWindow 500000 -> 450000 ' && ih_clean \
+  && ok "nested: --update --nested on a v60-shaped settings.local.json removes only our compact-gate, keeps the foreign hooks, re-adds the resume hook, sets 450000 and lists both" \
   || bad "nested --update did not report the settings changes -- $out"
 else bad "nested present-file hooks merge wrong -- $out"; fi
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["autoCompactWindow"]=400000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$IH/.claude/settings.local.json"
 sh "$BOOT" "$IH" --update --nested >/dev/null 2>&1
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 400000' "$IH/.claude/settings.local.json" \
   && ok "nested: --update --nested never overwrites an autoCompactWindow the adopter chose (400000)" || bad "nested --update overwrote the adopter's autoCompactWindow"
+# 450000 window: the 300000 window v56 and v61-v65 shipped (a v65-shaped nested file) moves to 450000 too, listed.
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["autoCompactWindow"]=300000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$IH/.claude/settings.local.json"
+out=$(sh "$BOOT" "$IH" --update --nested 2>&1)
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 450000' "$IH/.claude/settings.local.json" \
+  && printf '%s\n' "$out" | grep -q '^  changed: .claude/settings.local.json autoCompactWindow 300000 -> 450000 (today.s default; set it back if you chose 300000)$' \
+  && ok "nested: --update --nested moves a v65-shaped 300000 window to 450000 and lists it" || bad "nested --update did not move the 300000 window -- $out"
 out=$(sh "$BOOT" "$IH" --nested --into-existing 2>&1); rc=$?
 [ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -q "mutually exclusive" && ok "--nested --into-existing is rejected" || bad "--nested --into-existing was accepted (rc=$rc) -- $out"
 # v53 (P32.S5): a host that already has its own .claude/agents/Explore.md gets ours renamed like any clash.
