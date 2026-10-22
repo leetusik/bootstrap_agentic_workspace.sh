@@ -9,7 +9,7 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
-## v68 — 2026-10-22
+## v70 — 2026-10-22
 
 - **One workspace over several repos.** A nested install can now sit over a folder of repos, a
   multi-repo host. The nested marker gains an optional `repos` registry (schema 1, additive: a
@@ -85,10 +85,28 @@ history.
   seeds the registry, then run the printed `nested-repos --map-anchors <repo>` if phases moved
   there from one repo. Hand-made repo worktrees inside a live set: never tear the set down on an
   older engine; `validate` warns about them; adopt them from inside the set with
-  `parallel-add-repo <P> --repo <name>=<branch> --adopt` once that phase branch's engine is v68
+  `parallel-add-repo <P> --repo <name>=<branch> --adopt` once that phase branch's engine is v70
   (merge the default branch into it), or remove them by hand after integrating their branches. A
   per-repo nested install that should become a host: `--to-multi-repo <repo> --dry-run`, then the
   real run, then the printed nested commit.
+
+## v68 — 2026-10-22
+
+- **The review completes the `## Doc impact` list itself.** A passing review still verifies that
+  the list covers every durable-truth change the phase made, but it now appends each missing or
+  corrected line itself (`phase-section <P> "Doc impact" --append`) and reports those lines as
+  `doc_impact_added:` in its verdict block. A gap in the list is no longer a finding on its own, so
+  it no longer costs a fix slice and a re-review round that would only paste the review's own
+  draft. A finding is still raised for anything that needs a product change or an operator
+  decision. The change is in `slice-executor`, `review-phase`, both `do-*` `reference/review.md`
+  and `parallel-phase`; the contract and the engine are unchanged.
+- **Slices note the three easy misses.** The executor's Doc impact rule now names three changes
+  that are always durable truth: a change in the smoke suite's PASS count (qa `## Test Commands`),
+  a change that reverses or supersedes a recorded decision (`decisions.md`), and a rename or
+  removal (grep `docs/current/` for the old name and name every section that still says it).
+
+- **Migration notes.** None. A review already in flight finishes under the rule it was planned
+  with; the next review dispatch reads the new text.
 
 ## v67 — 2026-10-22
 
