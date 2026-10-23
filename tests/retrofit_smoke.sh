@@ -2400,6 +2400,27 @@ printf '%s\n' "$dv_val" | grep -q 'warning: doc product: latest is v0001_bootstr
   && printf '%s\n' "$dv_val" | grep -q "duplicate doc version number in docs/index.json: product v$(printf '%s' "$dv_v2" | cut -c2-) claimed by both" && [ "$dv_rc" -ne 0 ] \
   && ok "validate warns when latest is not the highest version and still errors on a duplicate number (named as written)" || bad "validate missed the latest-not-highest warning or the duplicate (rc=$dv_rc) -- $dv_val"
 
+echo "== Test 10h: v74 a read leaves the tree clean -- next, run-phases, rebuild, rebuild-docs and validate on a committed install change no tracked file; a real change still moves the stamps =="
+# Before v74 every rebuild rewrote state.json's updated_at and both index.json stamps, so a plain
+# `next` dirtied the tree. The sleep makes a rewritten stamp differ from the committed one.
+newtmp RCW; RC="$RCW/ws"; sh "$BOOT" "$RC" --at-root --name "ReadClean" --summary "rc" >/dev/null 2>&1 || bad "read-clean probe: the fresh install failed"
+rcw() { ( cd "$RC" && python3 scripts/workflow.py "$@" ); }
+rc_stamp() { python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["updated_at"])' "$RC/works/state.json" 2>/dev/null; }
+( cd "$RC" && git init -q . >/dev/null 2>&1 && git add -A >/dev/null 2>&1 \
+    && git -c user.email=smoke@example.invalid -c user.name=smoke commit -qm "read-clean baseline" >/dev/null 2>&1 ) \
+  || bad "read-clean probe: could not make the fixture a git repo"
+sleep 1
+for rc_cmd in next run-phases rebuild rebuild-docs validate; do rcw "$rc_cmd" >/dev/null 2>&1; done
+rc_dirty=$(git -C "$RC" status --porcelain 2>&1)
+[ -z "$rc_dirty" ] && ok "next, run-phases, rebuild, rebuild-docs and validate leave a committed install's tree clean (no stamp-only write)" \
+  || bad "a read dirtied the tree -- $rc_dirty"
+rc_before=$(rc_stamp); sleep 1
+rcw new-phase --name "Read clean probe" --objective "a real change" >/dev/null 2>&1
+rc_after=$(rc_stamp); rc_dirty=$(git -C "$RC" status --porcelain 2>&1)
+[ -n "$rc_before" ] && [ "$rc_before" != "$rc_after" ] && printf '%s\n' "$rc_dirty" | grep -q '^ M works/state.json$' && printf '%s\n' "$rc_dirty" | grep -q '^ M works/index.json$' \
+  && ok "a real change (new-phase) still rewrites state.json and index.json with a new stamp" \
+  || bad "a real change did not move the stamps ($rc_before -> $rc_after) -- $rc_dirty"
+
 # ---------------------------------------------------------------------------
 echo "== Test 11: v41 phase-scope -- the phase's boundary is read from git, advisory everywhere =="
 # $F is a clean git repo at the "smoke baseline" commit. A phase created and committed, then one

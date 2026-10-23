@@ -14,6 +14,24 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v74 — 2026-10-23
+
+- **`next`, `run-phases` and a plain `rebuild` no longer dirty the tree.** Before v74 every rebuild
+  rewrote `works/state.json` (`updated_at`), `works/index.json` and `docs/index.json` (`last_rebuilt_at`)
+  with the current time, even when nothing else had changed. So a workspace was never clean after a
+  session's first `next`, and anything that checks for uncommitted changes counted the engine's own
+  noise as work. Now each of those three files is written only when something other than its stamp
+  changes, such as a new phase or slice, a status change, the pointer moving or a gate opening. When
+  nothing changed the engine writes nothing and the old stamp stays, so a stamp now means "last real
+  change" rather than "last time anyone looked". Nothing reads either stamp. The smoke suite checks
+  that the five read commands leave a committed install's tree clean and that a real change still moves
+  the stamps.
+- **Migration notes.** None for a clean install. An install already dirty from the old churn (a
+  `git status` showing only `works/state.json`, `works/index.json` or `docs/index.json` modified, with
+  nothing but a timestamp changed) can drop it once with `git checkout -- works/state.json
+  works/index.json docs/index.json` (in `workflow/` for a nested install) before running `--update`.
+  After the update it stays clean.
+
 ## v73 — 2026-10-23
 
 - **Phase and deferred ids are minted, so two branches can no longer collide.** Before v73 a new id was

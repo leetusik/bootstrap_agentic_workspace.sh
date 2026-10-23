@@ -622,6 +622,23 @@ def write_json(path: Path, data: object) -> None:
     write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
 
 
+def write_json_stamped(path: Path, data: dict, key: str, stamp: str) -> dict:
+    """Write a generated JSON file whose `key` stamps when it was built, unless nothing but that
+    stamp would change: then write nothing and keep the old stamp. So a read (`next`, `run-phases`,
+    a plain `rebuild`) leaves these tracked files, and the tree, unchanged; the stamp moves only
+    with a real change (v74). Returns `data` holding the stamp that is on disk."""
+    try:
+        old = read_json(path)
+    except (OSError, ValueError):
+        old = None
+    if isinstance(old, dict) and key in old and {k: v for k, v in old.items() if k != key} == {k: v for k, v in data.items() if k != key}:
+        data[key] = old[key]
+        return data
+    data[key] = stamp
+    write_json(path, data)
+    return data
+
+
 def append_event(event_type: str, **payload: object) -> None:
     event = {"ts": now_iso(), "type": event_type, **payload}
     WORKS.mkdir(parents=True, exist_ok=True)
@@ -1959,8 +1976,7 @@ def doc_index() -> dict:
 
 
 def write_doc_index(index: dict) -> None:
-    index["last_rebuilt_at"] = now_iso()
-    write_json(DOCS / "index.json", index)
+    write_json_stamped(DOCS / "index.json", index, "last_rebuilt_at", now_iso())
 
 
 def rebuild_docs() -> None:
@@ -3649,13 +3665,12 @@ def rebuild_index_and_state() -> None:
         "deferred_dropped_count": len(deferred.get("dropped", [])),
         "last_rebuilt_at": rebuilt_at,
     }
-    write_json(WORKS / "index.json", index)
+    write_json_stamped(WORKS / "index.json", index, "last_rebuilt_at", rebuilt_at)
     mode = "waiting" if waiting_on else ("phase" if current_phase else "idle")
     state = {"current_phase": current_phase, "current_slice": current_slice, "next_slice": next_slice, "waiting_on_operator": waiting_on, "mode": mode}
     if stream:  # only ever present in a parallel-phase checkout
         state["stream"] = stream
-    state["updated_at"] = rebuilt_at
-    write_json(WORKS / "state.json", state)
+    write_json_stamped(WORKS / "state.json", state, "updated_at", rebuilt_at)
     rebuild_backlog(phases, state, index)
     rebuild_deferred_dashboard(deferred)
     for p in phases:  # only the marker-delimited ## Slices block; archived phases are never touched
