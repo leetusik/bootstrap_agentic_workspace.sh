@@ -9,6 +9,88 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v70 — 2026-10-22
+
+- **One workspace over several repos.** A nested install can now sit over a folder of repos, a
+  multi-repo host. The nested marker gains an optional `repos` registry (schema 1, additive: a
+  marker without it is the single-repo install, and every path of the engine stays as it was).
+  Each entry holds `name`, `path`, `default_branch`, `commit_convention` and the repo's own
+  `rules` files. The new `nested-repos` command lists the registry and edits it: `--add`,
+  `--remove` (refused while a phase holds that repo's anchors), `--rules NAME --set …`,
+  `--detect-rules` and `--map-anchors`. In the shipped skills "this repo" now means the repo a
+  change lives in. `validate` errors on a registered repo that is missing, is not a git repo, is
+  visible to the host or tracks a workspace file, and warns on an unregistered child repo.
+- **Per-repo conventions.** `nested-convention --repo <name>` shows a repo's effective
+  conventions and, with `--confirm`, records its own; `--repo <name> --inherit` sets them back to
+  the host's. In a multi-repo host the top-level convention is the rules for every repo: a repo's
+  effective text is the host's plus its own, trailers are forbidden if either forbids, and a repo
+  is confirmed by its own record or, when it has none, by the host's. `next` adds one
+  `repo_conventions=` line naming the repos still to confirm before their first product commit.
+- **Per-repo phase scope.** A multi-repo phase carries `repo_anchors`, stamped at `new-phase` and
+  again at `parallel-start`, and frozen at a passing review. The base rule picks each repo's
+  range base: the recorded creation commit on the default branch or when the branch predates the
+  phase, the merge-base when the branch moved past it (rebased onto, or merged with, a newer
+  default branch), a patch-id match when the creation commit itself was rewritten, and a printed
+  note when that anchor is rewritten and pruned. The same rule fixes the review base of a
+  single-repo nested phase after a rebase or a merge. `phase-scope`
+  prints one block per repo (`--repo <name>`, repeatable; `--json` gains `repos[]`), with child
+  repos excluded from the host's own pathspec.
+- **Worktree sets.** On a multi-repo host,
+  `parallel-start <P> --host-branch <branch> --repo <name>=<branch> [--repo-base <name>=<ref>]`
+  (the `--repo` repeatable) also cuts a worktree for each named repo inside the host worktree, at
+  the repo's path, and stamps them in `execution.repos`. A registered repo the set does not name
+  is "not in this worktree set": inside it `phase-scope` skips that repo and never reads its main
+  checkout. `parallel-add-repo <P> --repo <name>=<branch>` adds a repo mid-phase from inside the
+  set, and with `--adopt` it stamps a worktree that already exists, whose branch stays yours.
+  `parallel-status` prints one line per stamped repo.
+- **The teardown is safer, and a data-loss path is closed.** `parallel-teardown --discard-ignored`
+  used to delete any worktree sitting inside a host worktree, the hand-made ones included, with
+  their uncommitted work. Now a set comes down repo worktrees first, then the nested one, then the
+  host's, and every refusal comes before anything is touched: a dirty worktree, ignored files
+  without `--discard-ignored`, a detached orphan, and **any git worktree the engine did not
+  stamp, refused even with `--discard-ignored`** (single-repo nested installs too). A repo branch
+  is deleted only when the engine created it and it holds no commit beyond its base; an
+  operator's branch stays. Stale registrations are pruned first, and a re-run resumes. `validate`
+  warns about an unstamped worktree inside a live set.
+- **A fresh install into a folder of repos makes a multi-repo host.** A target that holds only
+  repos (a single repo counts) used to be refused. Now the installer runs `git init`, makes the
+  empty commit `chore: start the host history` (when git has no identity it keeps the init and
+  prints the two commands that set one and make the commit), seeds the registry, hides every repo
+  through the managed exclude block and writes the multi-repo `CLAUDE.local.md` block.
+- **`--update` on a host that tracks nothing seeds the registry.** Every repo inherits a confirmed
+  host-level convention, or is inferred and unconfirmed otherwise; once a registry exists nothing
+  is detected again. The update prints and never writes the rest: a drift line for each
+  unregistered child repo with its `nested-repos --add` command, a `nested-repos --map-anchors
+  <repo>` note when phases recorded shas that are commits of one registered repo, and, where a
+  registered repo (or a single-repo host) carries an `AGENTS.md`, one line telling you to set
+  Project instructions to `claude-md-and-agents-md` in `~/.claude/settings.json`, because Claude
+  Code reads no `AGENTS.md` once a `CLAUDE.local.md` sits at the working directory. Nothing is
+  written into your repos.
+- **`--to-multi-repo <repo> [--dry-run]` converts a per-repo nested install into a multi-repo
+  host.** It works at the repo's parent folder. Every refusal comes before the first write, and
+  `--dry-run` prints each step or each refusal and writes nothing. The old repo's convention moves
+  to its registry entry, its phases' anchors are mapped with `nested-repos --map-anchors`, only
+  workspace files byte-identical to what the installer writes are removed from the old repo, and
+  the closing block prints the nested commit to make and the rollback (revert, move the install
+  back, `--update`).
+- **The review checks the team's rules.** On a nested install the phase review reads the phase's
+  commits and pull requests against the team's own rules, once per touched repo on a multi-repo
+  host: the commit convention, authorship and trailers, no workspace IDs or paths, the branch
+  pattern, the pull-request shape, the repo's own rules files, and no tracked workspace file.
+  It is read-only (`git log` and `gh pr view`), is recorded in `result.md` as `team-rules check:`,
+  and a failed item is a finding. At-root installs skip it.
+
+- **Migration notes.** A single-repo nested or at-root install: nothing to do; only the teardown's
+  new refusal can appear, and only where a hand-made worktree sits inside a host worktree. A host
+  already shaped like a multi-repo host by hand (it tracks nothing and holds repos): `--update`
+  seeds the registry, then run the printed `nested-repos --map-anchors <repo>` if phases moved
+  there from one repo. Hand-made repo worktrees inside a live set: never tear the set down on an
+  older engine; `validate` warns about them; adopt them from inside the set with
+  `parallel-add-repo <P> --repo <name>=<branch> --adopt` once that phase branch's engine is v70
+  (merge the default branch into it), or remove them by hand after integrating their branches. A
+  per-repo nested install that should become a host: `--to-multi-repo <repo> --dry-run`, then the
+  real run, then the printed nested commit.
+
 ## v69 — 2026-10-22
 
 - **`/do-whole-phases` runs phases back to back.** `/do-whole-phases [phases] [auto|gate|plan only]`

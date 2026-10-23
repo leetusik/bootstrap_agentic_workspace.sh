@@ -23,6 +23,9 @@ Options:
   --update                    Update an installed workspace's machinery to this version; the
                               layout (nested or at-root) is detected from what is installed
   --dry-run                   With --update, preview the change-list without writing anything
+  --to-multi-repo REPO        Convert the private nested install at REPO/workflow/ into a
+                              multi-repo host at REPO's parent folder; with --dry-run, print
+                              every step (or every refusal) and write nothing
   --nested                    Accepted and redundant: the nested layout is the default
   -h, --help                  Show this help
 
@@ -61,6 +64,8 @@ update=0
 dry_run=0
 nested=0
 at_root=0
+to_multi_repo=
+to_multi_repo_set=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -75,16 +80,27 @@ while [ $# -gt 0 ]; do
     --dry-run) dry_run=1; shift ;;
     --nested) nested=1; shift ;;
     --at-root) at_root=1; shift ;;
+    --to-multi-repo) need_value "$1" "${2-}"; to_multi_repo=$2; to_multi_repo_set=1; shift 2 ;;
+    --to-multi-repo=*) to_multi_repo=${1#--to-multi-repo=}; [ -n "$to_multi_repo" ] || die "--to-multi-repo requires a non-empty value"; to_multi_repo_set=1; shift ;;
     --) shift; while [ $# -gt 0 ]; do [ -z "$target_dir" ] || die "only one TARGET_DIR may be provided"; target_dir=$1; shift; done ;;
     -*) die "unknown option $1" ;;
     *) [ -z "$target_dir" ] || die "only one TARGET_DIR may be provided"; target_dir=$1; shift ;;
   esac
 done
 
+if [ "$to_multi_repo_set" = 1 ]; then
+  # The conversion is a mode of its own: REPO is the old repo, the host is its parent folder.
+  [ -z "$target_dir" ] || die "--to-multi-repo takes the old repo as its value and no TARGET_DIR (the host is that repo's parent folder)"
+  for flag_set in "--update:$update" "--at-root:$at_root" "--into-existing:$into_existing" "--nested:$nested" "--force-empty-ok:$force_empty_ok"; do
+    [ "${flag_set##*:}" = 0 ] || die "--to-multi-repo does not combine with ${flag_set%:*} (only --dry-run does)"
+  done
+  [ -z "$project_name" ] && [ -z "$project_summary" ] || die "--to-multi-repo does not combine with --name or --summary (only --dry-run does)"
+  target_dir=$to_multi_repo
+fi
 [ -n "$target_dir" ] || target_dir=.
 [ -e "$target_dir" ] && [ ! -d "$target_dir" ] && die "target exists but is not a directory: $target_dir"
 [ "$update" = 1 ] && [ "$into_existing" = 1 ] && die "--update and --into-existing are mutually exclusive"
-[ "$dry_run" = 1 ] && [ "$update" = 0 ] && die "--dry-run is only valid with --update"
+[ "$dry_run" = 1 ] && [ "$update" = 0 ] && [ "$to_multi_repo_set" = 0 ] && die "--dry-run is only valid with --update"
 [ "$at_root" = 1 ] && [ "$nested" = 1 ] && die "--at-root and --nested are mutually exclusive"
 [ "$nested" = 1 ] && [ "$into_existing" = 1 ] && die "--nested and --into-existing are mutually exclusive (--nested installs into a host repo without changing any tracked file)"
 [ "$force_empty_ok" = 1 ] && [ "$at_root" = 0 ] && [ "$into_existing" = 0 ] && die "--force-empty-ok applies to the at-root install; add --at-root"
@@ -104,6 +120,7 @@ export UPDATE="$update"
 export DRY_RUN="$dry_run"
 export NESTED="$nested"
 export AT_ROOT="$at_root"
+export TO_MULTI_REPO="$to_multi_repo_set"
 
 python3 - <<'INSTALLER_PY'
 #@@PYTHON_BODY@@

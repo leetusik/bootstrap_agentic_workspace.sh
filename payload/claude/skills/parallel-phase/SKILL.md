@@ -349,6 +349,63 @@ Only when the operator asks or the repo's policy requires it. It replaces steps 
 5. **Back on the default checkout** (`ExitWorktree` `keep` if you are still in the worktree), `git pull`,
    then continue at step 5 above.
 
+## 6. A multi-repo host — a set instead of a pair
+
+When `python3 scripts/workflow.py nested-repos` lists repos (a host that tracks nothing and holds
+several product repos), a phase worktree is a **set**: the host worktree, the nested worktree at its
+`workflow/`, and one worktree per repo the phase will change, at `<host worktree>/<repo>/`. Sections
+1-5 and the nested paragraphs above still hold; this is what changes. Everything on a repo's side
+follows **that repo's** custom, on the operator's word: the engine never fetches, pushes, opens a PR
+or merges into any repo's default branch.
+
+**Starting.** The orchestrator prepares each repo, as it prepares the host in a nested install:
+
+1. For each repo the phase will change, read its custom (`nested-convention --repo <name>`), propose
+   a branch name in it (no phase or slice IDs), and let the operator confirm it. The engine never
+   invents a name, and one phase's repos can use different names.
+2. The base is that repo's registry `default_branch`, read as a **local** branch; stack on another
+   branch with `--repo-base <name>=<ref>`. Run `git -C <repo> fetch` first when its custom says to
+   branch from fresh main.
+3. `python3 scripts/workflow.py parallel-start <P> --host-branch <name> --repo <name>=<branch>
+   [--repo-base <name>=<ref>] ...`: `--repo` repeats, and `--repo-base` must name a repo `--repo`
+   also names. `--host-branch` is still required (the host worktree needs a branch; no product commit
+   ever goes to the host folder). A repo branch that exists and is checked out nowhere is reused; one
+   checked out anywhere is refused. Every guard runs before any write, so a refusal leaves nothing
+   behind. Then `EnterWorktree` with the printed host worktree path.
+4. A repo the phase needs later: from **inside the set**, `parallel-add-repo <P> --repo
+   <name>=<branch> [--repo-base <ref>]`. It commits its stamp on the phase branch, where
+   `phase.json` advances, so never re-run `parallel-start`. Add `--adopt` to stamp a repo worktree
+   that already exists at `<host worktree>/<repo>/` (registered in that repo, on `<branch>`) instead
+   of cutting one; its branch stays the operator's.
+
+**Not in this set.** A registered repo with no worktree in the set is not in it: inside the set,
+`phase-scope` prints `not in this worktree set` for it and skips it. It never falls back to that
+repo's main checkout, whose branch and working tree belong to another stream. To read it anyway:
+`phase-scope <P> --repo <name> --base <ref>` (or `--head`). `parallel-start` with no `--repo` cuts
+host + nested only.
+
+**Working.** Product commits go to each repo's branch in its own worktree (`git -C <repo> ...` from
+the host worktree), never to the host folder; the nested worktree's workflow commits are unchanged.
+`parallel-status` adds one `repo <name>:` line per stamped repo. Each repo branch is integrated by
+that repo's custom, one PR per repo branch where the custom says so; the nested repo merges as in
+"Integrating in a nested install".
+
+**Tear down.** `parallel-teardown <P>` checks first and refuses in one report: uncommitted work or
+ignored worktree-only files in any repo worktree (the latter only deleted with `--discard-ignored`),
+and detached commits no branch holds. Then it removes the repo worktrees first, then the nested
+worktree, then the host worktree: removing the host first would delete the repo worktrees with
+whatever they hold. A repo branch is deleted only when the engine created it and it holds no commit
+beyond its base; every other one is kept, as the operator's. A failed step prints the rest, and a
+re-run resumes.
+
+**A worktree the stamp does not name is refused, always.** Any git worktree inside the host
+worktree that the phase's stamp does not name (typically one made by hand with `git worktree add`)
+is refused by `parallel-teardown` in every nested install, and `--discard-ignored` never covers it:
+removing the host worktree would delete it with everything uncommitted in it. `validate` warns about
+it while the set is live. Remove it yourself after integrating its branch
+(`git -C <repo> worktree remove <path>`), or adopt it with `parallel-add-repo ... --adopt` from
+inside the set, merge the phase branch again and re-run the teardown.
+
 ## Guardrails
 
 - Never merge a parallel phase whose `parallel-gate` is closed, and never merge two phases into the
@@ -364,3 +421,6 @@ Only when the operator asks or the repo's policy requires it. It replaces steps 
   when asked.
 - Nested install: never merge a host branch into the host's default branch, and never push, open a
   PR or merge on the host without the operator's word; the host's custom decides the shape.
+- Multi-repo host: the same for every repo — never push, open a PR or merge into any repo's default
+  branch without the operator's word; never remove a git worktree inside the host worktree that the phase's
+  stamp does not name before its branch is integrated, and never force the teardown past one.

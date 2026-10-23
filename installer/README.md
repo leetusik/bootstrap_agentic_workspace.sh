@@ -74,9 +74,25 @@ layout of a run, and the wrapper rejects contradictory flags first:
   `settings.local.json` and `CLAUDE.local.md` go to the host untracked, hidden by the host's
   `.git/info/exclude`. A new or empty target is `git init`-ed as the host, with this workspace's own
   commit convention recorded as confirmed (trailers allowed), and that init is undone if a refusal
-  comes before the first write. A non-empty non-git target, a new directory inside another repo's
-  work tree, a bare install over an at-root workspace, and a bare install or `--update` on a nested install's
-  own `workflow/` are refused with nothing written.
+  comes before the first write. A non-empty non-git target (unless it is a folder of repos, next
+  bullet), a new directory inside another repo's work tree, a bare install over an at-root workspace,
+  and a bare install or `--update` on a nested install's own `workflow/` are refused with nothing written.
+- **No flag, into a folder of repos: the multi-repo host.** A target that is not a git repo and
+  holds only git repos at depth 1 (a single repo counts; the harmless files a new target may hold,
+  such as `.DS_Store` or a README, are ignored) is installed as a host that tracks nothing and
+  carries several product repos. The installer `git init`s the folder and makes its one empty
+  commit, `chore: start the host history` (the base `new-phase` and `parallel-start` need),
+  writes a `/<repo>/` line per repo inside the managed `info/exclude` block, and seeds the
+  registry, an optional `repos` list in `workflow/.agentic-nested.json` (name, path, default
+  branch, rules files and convention per repo, each repo's convention inferred from its own history
+  and unconfirmed; the host-level convention, the rules for every repo, starts unconfirmed with
+  nothing inferred). `CLAUDE.local.md` gets the multi-repo block. It writes nothing into any repo.
+  When git has no identity, the init is kept, no commit is made and the run still exits 0: it
+  prints `git config --global user.name`/`user.email` and then `git -C <host> commit --allow-empty
+  -m "chore: start the host history"` for you to run. A refusal before the first write undoes the
+  init and its commit. When a registered repo tracks an `AGENTS.md`, one line says to set Project
+  instructions to `claude-md-and-agents-md` in `~/.claude/settings.json`, because Claude Code
+  reads no `AGENTS.md` while a `CLAUDE.local.md` sits at the working directory.
 - **`--at-root`**: the committed, team-visible layout into a fresh directory (`CLAUDE.md`,
   `.claude/`, `scripts/`, `works/`, `docs/` at its root). Its behaviour and output are the v49
   default, unchanged. `--force-empty-ok` is accepted only with `--at-root` or `--into-existing`
@@ -85,11 +101,38 @@ layout of a run, and the wrapper rejects contradictory flags first:
 - **`--update [--dry-run]`**: detects the installed layout at the target, the nested marker
   `workflow/.agentic-nested.json` versus an at-root workspace (`scripts/workflow.py` plus
   `works/`), and refreshes it in that layout. Both found is ambiguous and refuses unless
-  `--nested` or `--at-root` picks one; a flag that contradicts the layout found refuses.
+  `--nested` or `--at-root` picks one; a flag that contradicts the layout found refuses. On a
+  host that tracks nothing and has no registry yet, the first `--update` seeds one from the depth-1
+  repos; once `repos` exists, `--update` only prints (a drift line per unregistered child repo,
+  `nested-repos --add <path>`, and a `nested-repos --map-anchors <repo>` note) and never
+  re-detects.
+- **`--to-multi-repo REPO [--dry-run]`**: converts the per-repo nested install at `REPO/workflow/`
+  into a multi-repo host at `REPO`'s parent folder. It takes the repo and no target, and does not
+  combine with `--update`, `--at-root`, `--into-existing`, `--nested`, `--force-empty-ok`, `--name`
+  or `--summary`. `--dry-run` prints every step, or every refusal, and writes nothing. Every
+  refusal comes before the first write: no per-repo nested install (an at-root workspace, or a
+  marker that already holds `repos`), an install not at this installer's version, an in-flight
+  worktree pair, a dirty nested repo or a failing `validate`, a parent that is inside a work tree,
+  tracks files, holds a `workflow/`, a managed `CLAUDE.local.md` block or a non-repo entry, or whose
+  ignore rules would show a host file to git, and a repo that tracks a workspace file. Then it
+  `git init`s the parent with the one empty commit (a parent that is already a repo tracking
+  nothing keeps its history), moves `REPO/workflow` to the parent, runs the plain `--update` there,
+  moves the old repo's convention into the registry as that repo's (every other repo inferred and
+  unconfirmed, the host-level convention unconfirmed), records `converted_from` in the marker,
+  runs `nested-repos --map-anchors REPO` so each phase's `host_anchors` become
+  `repo_anchors.REPO`, and cleans the old repo: only workspace files byte-identical to what this
+  installer writes are deleted, edited ones stay and are listed, and its leftover worktrees are
+  listed, never deleted. The closing block names the nested commit to make
+  (`chore(works): convert to a multi-repo host`), the conventions to confirm and the rollback
+  (revert that commit, `mv` the nested repo back, `--update REPO` after copying aside the skills
+  listed as yours, then remove the host's own files). A stop between the move and the cleanup
+  prints the shorter rollback and says to re-run `--to-multi-repo`, never to run a plain
+  `--update` at the parent.
 - **`--nested`**: accepted and redundant (on `--update` it must match the layout found).
 
-Nothing migrates an at-root install. This upstream repo was itself converted to the nested
-layout by hand, once, on 2026-10-13 (no migration command ships): its sources live under
+Nothing migrates an at-root install: `--to-multi-repo` converts a *per-repo nested* install, never
+an at-root one. This upstream repo was itself converted to the nested layout by hand, once, on
+2026-10-13 (no at-root-to-nested migration command ships): its sources live under
 `payload/` and its workspace in the git-excluded `workflow/`. `tests/retrofit_smoke.sh` passes
 `--at-root` wherever a test expects the at-root layout.
 

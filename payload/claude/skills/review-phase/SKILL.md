@@ -40,7 +40,30 @@ Check:
 - Did you stay inside the boundary — `phase-scope <P>` read, every checklist line classified inside/outside, and what you noticed outside listed as deferred-job candidates rather than findings?
 - Did a design round ship a **throwaway in-product mockup route**? (One exists only when the operator asked for a mockup in addition to the job's working canvas — `Mockup: requested` in `intent.md`, or asked for during the round; a job reviewed on its canvas alone leaves no route to check here.) Then no **orphaned design route** may remain: whichever slice implemented the surface for real deletes it (under `design-only` the route deliberately survives into the apply phase and is deleted there). A leftover route is a finding.
 - Did the phase build a signed design job? Its Design canvas Artifact is now history: list each **implemented** job's canvas (`job.json` status `implemented`, its `canvas.url`) in the walkthrough as a decision (on a waived phase, in your return for the orchestrator to raise) — "delete canvas <link>: its design is built and signed in the repo". You cannot delete it (you have no `Artifact` tool), and the orchestrator deletes one only on the operator's yes. A signed job not yet marked `implemented` whose build landed in this phase is a finding.
+- **Nested install:** did the team-rules check (next section) run for every repo the phase touched, and is it recorded in `result.md` as `team-rules check:`?
 - Are any issues serious enough to require fix slices?
+
+## Team-rules check — nested installs
+
+A nested install's product commits, branches and pull requests land in the team's own repos, under rules the team set: a commit convention, an author and trailer policy, a branch pattern, a pull-request shape, rules files. Nothing else reads the finished work against them, so this review does, in one read-only pass inside the boundary. It reads through `git log` and `gh pr view` only; it never creates or edits a commit, a branch or a pull request.
+
+Where it runs:
+
+- **Multi-repo host** (`python3 scripts/workflow.py nested-repos` lists repos): once per repo whose `phase-scope <P>` block shows commits or files. A repo printed as `(untouched)` or as not in this worktree set was not changed by the phase: skip it.
+- **Single-repo nested install:** the host is the one repo. Items 1-5 and 7, plus item 6 against the host's own CONTRIBUTING, AGENTS.md or CLAUDE.md when it has one.
+- **At-root install:** skipped. There is no host/nested split, and the contract's Commit Convention is the only one.
+
+For each repo, take the `base=` and `head=` of its `phase-scope` block and read the range with `git -C <repo> log --format='%H%n%an <%ae>%n%B%x00' <base>..<head>` (the host: the same without `-C`; in a worktree set `<repo>` is the repo's worktree at `<host worktree>/<repo>/`, which `phase-scope` reads too). Check, one line per item, `ok` or the offending commits:
+
+1. Subjects follow that repo's commit convention (`python3 scripts/workflow.py nested-convention [--repo <name>]`).
+2. Authorship and trailers: the author is who the convention says; `Co-Authored-By` or any AI attribution appears only where it says `allowed`.
+3. No phase, slice or deferred IDs (`P<N>`, `P<N>.S<n>`, `D<n>`) and no workspace paths (`workflow/`, `CLAUDE.local.md`, `.claude/settings.local.json`) in subjects, bodies or branch names.
+4. The branch follows that repo's branch pattern, with no IDs in it.
+5. A pull request, when one exists: `gh pr view <branch> --json title,body,commits,baseRefName`, run in the repo. Its title, body and base follow the repo's PR rules, with no IDs, workspace paths or workspace files. No pull request yet, or no `gh` here, is `n/a`, not a failure.
+6. The repo's own rules files (`nested-repos` lists each repo's `rules`) were held for what the phase changed, e.g. the checks or guards they require before a merge.
+7. No workspace file is tracked in the repo: `git -C <repo> ls-files -- workflow CLAUDE.local.md .claude/settings.local.json` prints nothing.
+
+Record it in `result.md` as `team-rules check:` with one row per repo and item (one row per item in a single-repo install). A failed item is a **finding** with a fix slice. Rewording or amending commits that already exist is history rewriting: the fix slice names it, and nothing is rewritten without the operator's word. When the phase touched no product file, write `team-rules check: n/a (0 product files)`.
 
 ## Gate stages — only when `acceptance.required` is `true`
 

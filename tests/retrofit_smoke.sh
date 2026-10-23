@@ -45,7 +45,9 @@
 # the workflow/ prefix, the contract import, the tracked-target refusal, --update --nested, the self-hiding
 # skill dirs and the refusal when a host .gitignore re-includes a target), the P29 nested-by-default
 # invariants (a bare install nests and git-inits a new dir, --update detects the layout, --at-root
-# keeps the at-root path, a bare install over an at-root workspace refuses), the v61 skill
+# keeps the at-root path, a bare install over an at-root workspace refuses), the multi-repo host
+# invariants (a fresh install over a folder of repos, per-repo phase-scope, a worktree set's start and
+# safe teardown, the lossless --to-multi-repo conversion), the v61 skill
 # directories (cores of 8 KB or less plus their reference files, on fresh, retrofit, --update and
 # nested installs, a renamed skill included), and the v31 Codex-removal negatives. Re-runnable; self-cleaning.
 #
@@ -3148,6 +3150,121 @@ out=$(sh "$BOOT" "$ND/flags" --force-empty-ok 2>&1); rc=$?
 NN="$ND/plain"; mkdir -p "$NN" && printf 'notes\n' > "$NN/notes.txt"; out=$(sh "$BOOT" "$NN" 2>&1); rc=$?
 [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -q "is not a git repo and is not empty: run git init there first" && [ ! -e "$NN/.git" ] && [ ! -e "$NN/workflow" ] \
   && ok "a bare install into a non-empty non-git dir exits 1 and writes nothing (no .git, no workflow/)" || bad "a non-empty non-git dir was not refused cleanly (rc=$rc) -- $out"
+
+# ---------------------------------------------------------------------------
+echo "== Test 17: multi-repo host -- a fresh install over a folder of repos makes the host (one empty commit, the repo registry with per-repo conventions, the repos hidden; with no git identity it prints the commands), phase-scope reads each repo on its own, a worktree set refuses to tear down what it did not stamp and then retires clean, and --to-multi-repo converts a nested install without loss =="
+# Identity comes from the environment of one call (mr), never from a git config.
+mr() { env GIT_AUTHOR_NAME=smoke GIT_AUTHOR_EMAIL=smoke@example.invalid GIT_COMMITTER_NAME=smoke GIT_COMMITTER_EMAIL=smoke@example.invalid "$@"; }
+mr_repo() { mkdir -p "$1" && ( cd "$1" && mr git init -q . && mr git symbolic-ref HEAD refs/heads/main && printf '%s\n' "$2" > "$2.txt" \
+  && mr git add -A && mr git commit -qm "feat: $2" ) >/dev/null 2>&1 || bad "multi-repo probe: could not build the $2 repo"; }
+# A tree's listing, its non-.git file contents and every repo's HEAD and status in it: a refusal or a dry run leaves it unchanged.
+mr_sig() { ( cd "$1" && find . -name .git -prune -print -o -print | LC_ALL=C sort; find . -name .git -prune -o -type f -print0 | LC_ALL=C sort -z | xargs -0 cat; \
+  find . -name .git -prune -print | while read -r g; do git -C "$(dirname "$g")" rev-parse HEAD 2>&1; git -C "$(dirname "$g")" status --porcelain 2>&1; done ) | sha_stdin; }
+pjget() { python3 -c 'import json,sys
+d = json.load(open(sys.argv[1]))
+for k in sys.argv[2].split("."): d = d[k]
+print(d)' "$1" "$2"; }
+# (a) a fresh install over a folder holding only repos makes the host: its own .git, one empty commit, a registry, the repos hidden.
+newtmp MR; MH="$MR/host"; mr_repo "$MH/alpha" alpha; mr_repo "$MH/beta" beta
+hw() { ( cd "$MH" && mr python3 workflow/scripts/workflow.py "$@" ); }
+out=$(mr sh "$BOOT" "$MH" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && [ "$(git -C "$MH" rev-list --count HEAD)" = 1 ] && [ "$(git -C "$MH" log -1 --format=%s)" = "chore: start the host history" ] \
+    && [ -z "$(git -C "$MH" status --porcelain --untracked-files=all)" ] && grep -qx '/alpha/' "$MH/.git/info/exclude" && grep -qx '/beta/' "$MH/.git/info/exclude" \
+    && python3 -c 'import json,sys; r = json.load(open(sys.argv[1]))["repos"]; assert [x["name"] for x in r] == ["alpha", "beta"], r; assert all(x["commit_convention"]["confirmed"] is False for x in r), r' "$MH/workflow/.agentic-nested.json" \
+    && hw validate >/dev/null 2>&1 && hw next 2>&1 | grep -q "^repo_conventions=.*UNCONFIRMED"; then
+  ok "a fresh install over a folder of two repos makes the host: its own .git with exactly one empty commit, both repos registered with unconfirmed conventions and hidden by the exclude block, a clean host status, validate passing, next flagging the repo conventions"
+else bad "a fresh multi-repo install did not make the host (rc=$rc) -- $out $(git -C "$MH" log --format=%s 2>&1 | head -3)"; fi
+# (b) with no git identity the install still exits 0, keeps the .git it made, commits nothing and prints the two commands.
+newtmp MN; newtmp MNH; MO="$MN/host"; mr_repo "$MO/alpha" alpha; mr_repo "$MO/beta" beta
+printf '[user]\n\tuseConfigOnly = true\n' > "$MNH/gitconfig"
+out=$( unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL EMAIL; export HOME="$MNH" GIT_CONFIG_GLOBAL="$MNH/gitconfig" GIT_CONFIG_SYSTEM=/dev/null; sh "$BOOT" "$MO" 2>&1 ); rc=$?
+if [ "$rc" -eq 0 ] && [ -d "$MO/.git" ] && [ "$(git -C "$MO" rev-list --count --all)" = 0 ] \
+    && printf '%s\n' "$out" | grep -qF 'git config --global user.name' && printf '%s\n' "$out" | grep -qF 'commit --allow-empty -m "chore: start the host history"'; then
+  ok "with no git identity the multi-repo install exits 0, keeps the .git it made, makes no commit and prints the identity and empty-commit commands"
+else bad "the no-identity multi-repo install did not degrade cleanly (rc=$rc) -- $out"; fi
+# (c) phase-scope reads each repo on its own, from the anchor stamped at new-phase.
+hw new-phase --phase P1 --name "Multi" --objective "probe the host" >/dev/null 2>&1 || bad "multi-repo probe: new-phase failed"
+printf 'one\n' > "$MH/alpha/one.txt" && mr git -C "$MH/alpha" add one.txt >/dev/null 2>&1 && mr git -C "$MH/alpha" commit -qm "feat: one" >/dev/null 2>&1 || bad "multi-repo probe: could not commit in alpha"
+sc=$(hw phase-scope P1 2>&1); sc_rc=$?; a_head=$(git -C "$MH/alpha" rev-parse --short HEAD)
+[ "$sc_rc" -eq 0 ] && printf '%s\n' "$sc" | grep -q "^repo=alpha path=alpha/ .*head=$a_head .*commits=1$" && printf '%s\n' "$sc" | grep -qx '    A alpha/one.txt' \
+  && printf '%s\n' "$sc" | grep -q "^repo=beta path=beta/ commits=0 " \
+  && ok "phase-scope prints one block per repo: alpha holds its commit and file, beta shows no commits" || bad "multi-repo phase-scope wrong (rc=$sc_rc) -- $sc"
+# (d) a worktree set: parallel-start --repo cuts a worktree per repo; teardown refuses a dirty repo worktree and a hand-made one it did not stamp, then retires the set.
+git -C "$MH/workflow" add -A >/dev/null 2>&1 && mr git -C "$MH/workflow" commit -qm "chore: install and create the phase" >/dev/null 2>&1 || bad "multi-repo probe: could not commit the nested repo"
+ps_out=$(hw parallel-start P1 --host-branch hb --repo alpha=feat/a --repo beta=feat/b --repo-base alpha=main --repo-base beta=main 2>&1); ps_rc=$?
+PJ="$MH/workflow/works/phases/active/P1/phase.json"; WT=$(pjget "$PJ" execution.host_worktree); PB=$(pjget "$PJ" execution.branch)
+wl() { git -C "$MH/alpha" worktree list; git -C "$MH/beta" worktree list; git -C "$MH" worktree list; git -C "$MH/workflow" worktree list; }
+[ "$ps_rc" -eq 0 ] && [ -f "$WT/alpha/.git" ] && [ -f "$WT/beta/.git" ] && [ "$(pjget "$PJ" execution.repos.beta.branch)" = "feat/b" ] \
+  && ok "parallel-start --repo cuts a worktree per repo inside the host worktree and stamps each in execution.repos" || bad "parallel-start --repo did not cut the set (rc=$ps_rc) -- $ps_out"
+wl_before=$(wl); printf 'dirty\n' > "$WT/alpha/dirty.txt"
+td_out=$(hw parallel-teardown P1 2>&1); td_rc=$?
+[ "$td_rc" -ne 0 ] && [ "$(wl)" = "$wl_before" ] && [ -f "$WT/alpha/dirty.txt" ] \
+  && ok "parallel-teardown refuses a repo worktree with uncommitted work and removes nothing" || bad "teardown did not refuse a dirty repo worktree (rc=$td_rc) -- $td_out"
+rm -f "$WT/alpha/dirty.txt"
+printf '/vendor/\n' >> "$MH/.git/info/exclude"   # hidden from the host worktree's status, so only the stamp can tell it from the set's own
+mr git -C "$MH/alpha" worktree add -q --detach "$WT/vendor" >/dev/null 2>&1 && printf 'wip\n' > "$WT/vendor/wip.txt" || bad "multi-repo probe: could not make the hand-made worktree"
+wl_before=$(wl); val_out=$(hw validate 2>&1); val_rc=$?; td_out=$(hw parallel-teardown P1 --discard-ignored 2>&1); td_rc=$?
+[ "$val_rc" -eq 0 ] && printf '%s\n' "$val_out" | grep -q "^warning: .*/vendor" && [ "$td_rc" -ne 0 ] && [ "$(wl)" = "$wl_before" ] && [ -f "$WT/vendor/wip.txt" ] \
+  && [ "$(pjget "$PJ" execution.repos.alpha.worktree)" != None ] \
+  && ok "a hand-made worktree in the host worktree: validate warns (rc 0), teardown refuses even with --discard-ignored, its uncommitted file and every worktree list untouched" \
+  || bad "the hand-made worktree was not warned about and refused (validate rc=$val_rc, teardown rc=$td_rc) -- $val_out $td_out"
+{ mr git -C "$MH/alpha" worktree remove --force "$WT/vendor" && printf 'b\n' > "$WT/beta/b2.txt" && mr git -C "$WT/beta" add b2.txt \
+  && mr git -C "$WT/beta" commit -qm "feat: beta work" && mr git -C "$WT/workflow" commit -q --allow-empty -m "chore(works): slice work" \
+  && mr git -C "$MH/workflow" merge -q --no-ff -m "merge: the phase" "$PB"; } >/dev/null 2>&1 || bad "multi-repo probe: could not integrate the set"
+td_out=$(hw parallel-teardown P1 --discard-ignored 2>&1); td_rc=$?
+if [ "$td_rc" -eq 0 ] && [ ! -e "$WT" ] && [ -z "$(git -C "$MH/alpha" branch --list feat/a)" ] && [ -n "$(git -C "$MH/beta" branch --list feat/b)" ] \
+    && [ "$(git -C "$MH/alpha" worktree list | wc -l | tr -d ' ')" = 1 ] && [ "$(git -C "$MH/beta" worktree list | wc -l | tr -d ' ')" = 1 ] \
+    && [ "$(pjget "$PJ" execution.repos.alpha.worktree)" = None ] && [ "$(pjget "$PJ" execution.repos.beta.worktree)" = None ] && hw validate >/dev/null 2>&1; then
+  ok "with the hand-made worktree gone, teardown removes the repo worktrees, nulls each stamp, deletes the created branch with no commits and keeps the one with a commit; validate passes"
+else bad "the set did not retire cleanly (rc=$td_rc) -- $td_out"; fi
+# (d2) a repo added mid-phase, from inside the set, is stamped on the phase branch only; the default stream's parallel-status must still list it.
+{ hw new-phase --phase P2 --name "Mid" --objective "add a repo mid-phase" && git -C "$MH/workflow" add -A && mr git -C "$MH/workflow" commit -qm "chore: create the second phase" \
+  && hw parallel-start P2 --host-branch hb2 --repo alpha=feat/a2 --repo-base alpha=main; } >/dev/null 2>&1 || bad "multi-repo probe: could not cut the second set"
+PJ2="$MH/workflow/works/phases/active/P2/phase.json"; WT2=$(pjget "$PJ2" execution.host_worktree)
+add_out=$( cd "$WT2" && mr python3 workflow/scripts/workflow.py parallel-add-repo P2 --repo beta=feat/b2 --repo-base main 2>&1 ); add_rc=$?
+st_out=$(hw parallel-status 2>&1); st_rc=$?
+[ "$add_rc" -eq 0 ] && ! pjget "$PJ2" execution.repos.beta >/dev/null 2>&1 && [ "$st_rc" -eq 0 ] && printf '%s\n' "$st_out" | grep -q '^  source=branch phase/P2' \
+  && printf '%s\n' "$st_out" | grep -q '^  repo beta: branch=feat/b2 (created) ' \
+  && ok "a repo added mid-phase (stamped on the phase branch only) is listed by the default stream's parallel-status, which reads the set's repos from the branch it reports" \
+  || bad "the default stream's parallel-status lost the repo added mid-phase (add rc=$add_rc, status rc=$st_rc) -- $add_out $st_out"
+# (e) --to-multi-repo: a per-repo nested install R beside a plain repo S becomes a multi-repo host at their parent, losslessly.
+newtmp MC; MX="$MC/C"; MXR="$MX/R"; mr_repo "$MXR" R; mr_repo "$MX/S" S
+mr sh "$BOOT" "$MXR" >/dev/null 2>&1 || bad "multi-repo probe: nested install of R failed"
+rw() { ( cd "$MXR" && mr python3 workflow/scripts/workflow.py "$@" ); }
+{ rw nested-convention --confirm --text "Conventional Commits, scope required" --trailers forbidden && rw new-phase --phase P1 --name "First" --objective "convert me"; } >/dev/null 2>&1 \
+  || bad "multi-repo probe: R convention / new-phase failed"
+printf 'two\n' > "$MXR/two.txt" && mr git -C "$MXR" add two.txt >/dev/null 2>&1 && mr git -C "$MXR" commit -qm "feat: two" >/dev/null 2>&1 && printf 'mine\n' > "$MXR/notes.txt" \
+  && git -C "$MXR/workflow" add -A >/dev/null 2>&1 && mr git -C "$MXR/workflow" commit -qm "chore: install and create the phase" >/dev/null 2>&1 || bad "multi-repo probe: could not build R's history"
+cp "$MXR/workflow/.agentic-nested.json" "$MC/old-marker.json"; scope_before=$(rw phase-scope P1 2>&1); sig=$(mr_sig "$MC")
+out=$(mr sh "$BOOT" --to-multi-repo "$MXR" --dry-run 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ "$(mr_sig "$MC")" = "$sig" ] && [ ! -e "$MX/.git" ] && [ ! -e "$MX/workflow" ] \
+  && ok "--to-multi-repo --dry-run exits 0 and writes nothing" || bad "--to-multi-repo --dry-run wrote or failed (rc=$rc) -- $out"
+printf 'uncommitted\n' > "$MXR/workflow/scratch.md"; sig=$(mr_sig "$MC")
+out=$(mr sh "$BOOT" --to-multi-repo "$MXR" 2>&1); rc=$?
+[ "$rc" -eq 1 ] && [ "$(mr_sig "$MC")" = "$sig" ] && [ ! -e "$MX/.git" ] \
+  && ok "--to-multi-repo on a nested repo with uncommitted work exits 1 and leaves the tree unchanged" || bad "--to-multi-repo did not refuse a dirty nested repo (rc=$rc) -- $out"
+rm -f "$MXR/workflow/scratch.md"
+out=$(mr sh "$BOOT" --to-multi-repo "$MXR" 2>&1); rc=$?
+scope_after=$(cd "$MX" && mr python3 workflow/scripts/workflow.py phase-scope P1 --repo R 2>&1); sc_rc=$?
+mk_out=$(python3 - "$MX/workflow/.agentic-nested.json" "$MC/old-marker.json" "$scope_before" "$scope_after" 2>&1 <<'PY'
+import json, re, sys
+new, old = (json.load(open(p)) for p in sys.argv[1:3])
+def scope(text):  # the range and the files, whichever mode printed them (file names relative to the repo)
+    return [re.search(r"\bbase=([0-9a-f]{7})", text).group(1), re.search(r"\bhead=([0-9a-f]{7})", text).group(1),
+            re.search(r"\bcommits=(\d+)", text).group(1), sorted(re.findall(r"^\s+([AMDR]) (?:R/)?(\S+)$", text, re.M))]
+assert scope(sys.argv[3]) == scope(sys.argv[4]), (scope(sys.argv[3]), scope(sys.argv[4]))
+conv = {r["name"]: r["commit_convention"] for r in new["repos"]}
+assert conv["R"] == old["commit_convention"], conv["R"]
+assert conv["S"]["confirmed"] is False, conv["S"]
+assert new["commit_convention"]["confirmed"] is False and new["commit_convention"]["inferred"] is None, new["commit_convention"]
+assert len(new["converted_from"]) == 1, new.get("converted_from")
+PY
+); mk_rc=$?
+if [ "$rc" -eq 0 ] && [ "$(git -C "$MX" rev-list --count HEAD)" = 1 ] && [ "$(git -C "$MX" log -1 --format=%s)" = "chore: start the host history" ] \
+    && [ -f "$MX/workflow/.agentic-nested.json" ] && [ ! -e "$MXR/workflow" ] && [ "$mk_rc" -eq 0 ] && [ "$sc_rc" -eq 0 ] \
+    && [ "$(git -C "$MXR" status --porcelain)" = "?? notes.txt" ] && (cd "$MX" && mr python3 workflow/scripts/workflow.py validate >/dev/null 2>&1); then
+  ok "--to-multi-repo makes the parent a host: one empty host commit, the nested repo moved up, R's confirmed convention carried over and S unconfirmed, converted_from recorded, phase-scope P1 --repo R equal to the one before, R left with only its untracked file, validate passing"
+else bad "--to-multi-repo did not convert cleanly (rc=$rc, scope rc=$sc_rc) -- $mk_out $out"; fi
 
 # ---------------------------------------------------------------------------
 echo

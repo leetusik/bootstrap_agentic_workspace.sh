@@ -160,7 +160,10 @@ sh /path/to/bootstrap_agentic_workspace.sh . --update
 the same command serves both and neither `--nested` nor `--at-root` is needed. Run it from the
 host repo's root for a nested install. If a directory holds both layouts, so the layout is
 ambiguous, or a flag you add contradicts the one found, it refuses and writes nothing. An existing
-at-root workspace keeps updating at-root; nothing migrates it.
+at-root workspace keeps updating at-root; nothing migrates it. A per-repo nested install, by
+contrast, can become a multi-repo host that serves several repos, with `--to-multi-repo <repo>`
+(see [Several repos under one host](#several-repos-under-one-host)); that converts a nested install,
+never an at-root one.
 
 Or drive it with an agent via the `/update-workspace` skill: it clones the latest
 upstream, shows you the dry-run change-list, applies on your approval, runs
@@ -197,6 +200,7 @@ commits at slice boundaries, and stops at `pending` hand-offs for your review. S
 | `--force-empty-ok` | off | With `--at-root` (or `--into-existing`): allow scaffolding into a directory that has extra, non-managed files; refused without one of them, on `--update` too |
 | `--into-existing` | off | Non-destructively retrofit into an existing repo, in the at-root layout (see the [Retrofit Guide](docs/retrofit-guide.md)) |
 | `--update` | off | Update an already-installed workspace's machinery to this version (preserves your `works/` and `docs/`); the layout, nested or at-root, is detected |
+| `--to-multi-repo REPO` | — | Convert the per-repo nested install at `REPO` into a multi-repo host at `REPO`'s parent folder; takes no target and combines with nothing but `--dry-run`, which prints every step (or every refusal) and writes nothing (see [Several repos under one host](#several-repos-under-one-host)) |
 | `--nested` | — | Accepted and redundant: the nested layout is the default. On `--update` it must match the layout found; never with `--at-root` or `--into-existing` |
 | `--dry-run` | off | With `--update`, preview the change-list without writing anything |
 | `-h`, `--help` | — | Show help and exit |
@@ -224,7 +228,8 @@ install's own `workflow/` directory. The at-root install refuses to scaffold int
 `--force-empty-ok` (a few harmless files like `.git`, `README`, and `LICENSE` are tolerated), and
 it refuses to overwrite managed workflow files that already exist. The default nested install
 refuses a non-empty directory that is not a git repo (`git init` it yourself, or use `--at-root`),
-and writes nothing when it refuses. To add the workspace's files to a repo that *already* has
+unless every entry in it is a git repo, which it installs as a multi-repo host (see
+[Several repos under one host](#several-repos-under-one-host)), and writes nothing when it refuses. To add the workspace's files to a repo that *already* has
 content, in the committed layout, use the non-destructive `--into-existing` retrofit instead — see
 the [Retrofit Guide](docs/retrofit-guide.md).
 
@@ -249,7 +254,8 @@ sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo
 ```
 
 A directory that holds extra files and is not a git repo is refused with nothing written (`git init`
-it yourself and re-run, or use `--at-root`). So is a new directory inside another repo's work tree:
+it yourself and re-run, or use `--at-root`), unless it holds only git repos (see
+[Several repos under one host](#several-repos-under-one-host)). So is a new directory inside another repo's work tree:
 name that repo's root instead, or `git init` the directory first and re-run. A bare install over a
 directory that already holds an at-root workspace is refused (use `--update`), and so is a bare
 install or an `--update` on a nested install's own `workflow/` directory (run it at the host root).
@@ -332,6 +338,53 @@ under `workflow/works/` and `workflow/docs/`. Run `sync-agents` afterwards and c
   slice files describe the company's code.
 - Check your company's AI-tool policy first. The private (nested) install keeps your use private; it
   does not make it permitted.
+
+### Several repos under one host
+
+When one piece of work spans several repos (a backend, a frontend, a deploy repo), install into the
+folder that holds them instead of into one of them:
+
+```sh
+sh /path/to/bootstrap_agentic_workspace.sh /path/to/folder-of-repos
+```
+
+A folder that is not a git repo and holds only git repos (at depth 1; a single repo counts) becomes a
+**multi-repo host**. The installer `git init`s the folder and makes its one empty commit,
+`chore: start the host history` (the base `new-phase` and `parallel-start` measure from), hides each
+repo with a `/<repo>/` line in the host's `.git/info/exclude`, and records the repos in a registry
+(`python3 workflow/scripts/workflow.py nested-repos` lists it, with each repo's rules files such as
+`AGENTS.md`). It writes nothing into any repo, and the host folder tracks nothing. If git has no
+identity, the installer keeps the `git init`, makes no commit, still exits 0 and prints the two
+commands to run instead: `git config --global user.name "<your name>"` and `user.email
+"<you@example.com>"`, then `git -C <folder> commit --allow-empty -m "chore: start the host history"`.
+
+Each repo has **its own** commit, branch and pull-request conventions. Confirm them one by one with
+`nested-convention --confirm --repo <name> --text "<conventions>" --trailers allowed|forbidden`
+(without `--repo`, it records the rules that bind every repo); until then `next` prints
+`repo_conventions=` with the repos still UNCONFIRMED. A slice then commits once in each repo it
+changed (`git -C <repo> ...`, in that repo's conventions) and once in `workflow/`; `phase-scope`
+and the review read each repo's own range, and the review runs a read-only team-rules check over each
+repo's commits, branch and pull request. A phase worktree becomes a **set**: the host worktree, the
+`workflow/` worktree and one worktree per repo the phase changes (see
+[Phase worktrees](#phase-worktrees-on-request)).
+
+**Already installed in one repo?** Convert it in place:
+
+```sh
+sh /path/to/bootstrap_agentic_workspace.sh --to-multi-repo /path/to/repo --dry-run   # every step, or every refusal; writes nothing
+sh /path/to/bootstrap_agentic_workspace.sh --to-multi-repo /path/to/repo
+```
+
+The nested repo at `repo/workflow/` moves up to the repo's parent folder, which becomes the
+multi-repo host, and the other repos in that folder join the registry. Before writing anything it
+refuses an install that is not at this version, a dirty nested repo, an in-flight phase worktree and
+a parent folder that is not clean; `--dry-run` shows every refusal at once. The old repo's
+convention becomes that repo's own, each phase's recorded anchors move to the repo (`phase-scope`
+reads the same range as before), and only workspace files in the old repo that are byte-identical to
+what the installer writes are deleted: anything you edited stays and is listed. The run ends with the
+nested commit to make, the conventions to confirm and the exact rollback (revert that commit, move
+`workflow/` back, `--update` the repo). From then on start Claude Code at the parent folder. This
+converts a per-repo **nested** install only; nothing migrates an at-root one.
 
 ## Example workflow
 
@@ -579,6 +632,17 @@ combined commit); the workspace never pushes, opens a PR or merges into the host
 Teardown keeps your host branch (it deletes only an empty branch the engine created). A worktree
 isolates files only: docker containers, ports, local databases and caches stay shared across streams,
 so coordinate them yourself.
+
+**On a multi-repo host** ([Several repos under one host](#several-repos-under-one-host)) the pair
+becomes a **set**: the same two worktrees plus one per repo the phase changes, at
+`<host worktree>/<repo>/`. `parallel-start <P> --host-branch <name> --repo <name>=<branch>`
+(repeatable, with `--repo-base <name>=<ref>` to stack a repo's branch on another) cuts them, and
+`parallel-add-repo <P> --repo <name>=<branch>`, run inside the set, adds one mid-phase. Each repo's
+branch name follows that repo's custom and you confirm it. `parallel-teardown` removes the repo
+worktrees first, then the nested one, then the host's, and it refuses any git worktree in the host
+worktree that it did not stamp, even with `--discard-ignored`: remove it by hand after integrating
+its branch, or adopt it with `parallel-add-repo ... --adopt`. The workspace never fetches, pushes,
+opens a PR or merges into any repo's default branch.
 
 **Integrating back.** Once the branch review passes, the agent runs the integration itself:
 `parallel-gate <P>` checks the quiet point (the branch's phase done + `main` between phases), then it
