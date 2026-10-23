@@ -55,8 +55,6 @@ anything:** one critic pass, then at most one drafter answer pass. There is no s
      its one pass.
    - **`skip=yes`** (the judge row overridden to Fable behind a loopback proxy, which serves no Fable): dispatch no judge; the escalated items go to the
      operator marked **low confidence**.
-   - **Exit 1** (fairness: the critic row names the drafter's model family; the judge is exempt): stop and tell
-     the operator the row conflict. The rows are the knob.
 4. **A wave choice** (a `choice` finding, a cross-job conflict) never blocks. Copy it onto the other
    job too. Under `critic+judge` the judge rules: `upheld` means this job takes the other's version,
    in its short pass; `dropped` means the other job changes, which you report on that job at the stop

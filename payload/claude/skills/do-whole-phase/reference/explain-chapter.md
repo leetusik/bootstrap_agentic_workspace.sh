@@ -86,17 +86,9 @@ phase review decides it, beside the book.
 
 ## The critic's model
 
-The critic always runs on a **model different from the one that drafted the chapter**: a fresh-eyes check
-on the same model shares the drafter's blind spots. Compare the critic's frontmatter model (`opus`) with
-span 1's `model=` line (from `## Dispatch`, or `## Escalation: mid → high` after an escalation):
-- a mid chapter (`sonnet`): dispatch the critic as written;
-- a high chapter (`opus`): pass `model: sonnet` on the call, with `effort: xhigh`;
-- on a machine where both rows resolve to one model (a loopback proxy): STOP and tell the operator, as
-  for the design critic's row conflict.
-
-This needs **no engine change**: the critic has no row in the route table, and the orchestrator applies
-the rule per call. A dedicated engine row (a managed agent file, a `--critic`-style form refusing the
-executor's model) is a later option, left for the bootstrap to decide.
+Dispatch the critic as written, on its frontmatter model (`opus`), whatever model drafted the chapter:
+the fresh eyes are a fresh context, and the operator dropped the different-model rule (v75). The critic
+has no row in the route table.
 
 ## Records, limits and the commit
 

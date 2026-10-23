@@ -1574,7 +1574,7 @@ printf '%s\n' "$er_out" | grep -qx 'agent=design-drafter' && printf '%s\n' "$er_
   && ! printf '%s\n' "$er_out" | grep -q '^tier=' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-drafter' \
   && printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'effort=xhigh' \
   && ok "executor-route --drafter names design-drafter on its own design row (no tier= line, opus@xhigh)" || bad "executor-route --drafter wrong: $er_out"
-# P36.S5B, P39.S1: the critic and the judge both run design-critic; only the critic must be a different model from the drafter's.
+# P36.S5B, P39.S1, v75: the critic and the judge both run design-critic; either may share the drafter's model.
 er_out=$(er --critic); er_j=$(er --judge)
 printf '%s\n' "$er_out" | grep -qx 'route=critic' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-critic' \
   && printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && printf '%s\n' "$er_out" | grep -qx 'effort=xhigh' \
@@ -1583,9 +1583,9 @@ printf '%s\n' "$er_out" | grep -qx 'route=critic' && printf '%s\n' "$er_out" | g
   && ok "executor-route --critic (sonnet@xhigh) and --judge (opus@xhigh) both dispatch design-critic" || bad "executor-route --critic/--judge wrong: $er_out / $er_j"
 printf '[claude.critic]\nmodel = "opus"\n' > "$F/executors.toml"
 er_out=$( cd "$F" && env -u ANTHROPIC_BASE_URL python3 scripts/workflow.py executor-route --critic 2>&1 ); er_rc=$?
-[ "$er_rc" -eq 1 ] && printf '%s\n' "$er_out" | grep -q "is the design row's model" \
-  && printf '%s\n' "$(er)" | grep -q '^warning=fairness: the critic row' \
-  && ok "a critic on the drafter's model is refused (exit 1), and the bare table warns" || bad "the critic fairness refusal failed (rc=$er_rc): $er_out"
+[ "$er_rc" -eq 0 ] && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
+  && ! printf '%s\n' "$(er)" | grep -q '^warning=fairness' \
+  && ok "a critic on the drafter's model is accepted (exit 0, model=opus) and the bare table does not warn (v75)" || bad "the critic on the drafter's model was refused or warned (rc=$er_rc): $er_out"
 rm -f "$F/executors.toml"
 # P39.S1: the judge is exempt from the critic-vs-drafter rule -- at the defaults it is Opus over the Opus drafter.
 er_out=$( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE python3 scripts/workflow.py executor-route --judge 2>&1 ); er_rc=$?

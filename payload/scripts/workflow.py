@@ -525,9 +525,8 @@ RETIRED_EXECUTOR_TIERS = ("low",)  # [claude.low]: dropped in workspace v23, sti
 # `critic` and `judge` (workspace v60) are the design critic's two modes: `critic` owns
 # .claude/agents/design-critic.md and judges each drafted round; `judge` runs that same file in judge
 # mode, with its model passed per call, and rules only on the items the critic escalated. Neither is a
-# slice route; `executor-route --critic` / `--judge` dispatch them. Only the critic must be a different model
-# from the design row's (CRITIC_ROWS: a critic never judges its own model's drafting); the judge is
-# exempt (workspace v66: the operator dropped the rule for it) and may share the drafter's model.
+# slice route; `executor-route --critic` / `--judge` dispatch them. Either may run on the drafter's model:
+# the operator dropped the different-model rule for the judge in workspace v66 and for the critic in v75.
 # One executor (workspace v66): the four slice rows -- high, research, mid and cheap -- all run the
 # one `slice-executor` file, whose frontmatter carries the mid row (the default route). The two
 # executor tiers of v23-v65 (slice-executor-mid / -high, split because the Agent tool could not set
@@ -565,9 +564,6 @@ FILE_ROWS = ("mid", "design", "critic", "explore")
 # The executor pair v66 retired (last shipped in v65): old transcripts still name them, so the meter
 # keeps reading them (`_meter_route`, `_meter_collect`'s canon map).
 RETIRED_AGENTS = ("slice-executor-high", "slice-executor-mid")
-# The rows the fairness rule binds: each must resolve to a different model family from the design
-# row's. Only the critic: the judge row is exempt (it rules on the critic's escalations, not the drafting).
-CRITIC_ROWS = ("critic",)
 # (label, canonical agent name, row) for the four agent files sync-agents manages, in print order.
 MANAGED_AGENT_FILES = (
     ("slice-executor", ROUTE_AGENT["mid"], "mid"),
@@ -889,40 +885,14 @@ def _route_fallback(row: str, model: str, routes: dict, proxy):
 
 
 def model_family(model: str):
-    """The model family a row's model names, for the critic fairness rule: an alias is its own family;
-    a full id names one (`claude-opus-5-5`, a provider id such as `us.anthropic.claude-opus-…`, a
+    """The model family a row's model names, for the judge's proxy skip and the meter's routes: an
+    alias is its own family; a full id names one (`claude-opus-5-5`, a provider id such as `us.anthropic.claude-opus-…`, a
     `[1m]` suffix -> opus). `inherit` and an id naming no family are None: unknown here."""
     m = (model or "").strip().lower()
     if m in AGENT_MODEL_ALIASES:
         return m
     found = re.search(r"(?<![a-z])(" + "|".join(AGENT_MODEL_ALIASES) + r")(?![a-z])", m)
     return found.group(1) if found else None
-
-
-def critic_fairness(row: str, routes: dict) -> tuple:
-    """(refusal, warning) for a critic row (CRITIC_ROWS: the critic only) against the design row. The
-    operator's rule (P36): "using same model for critique and draft is not fair", so the critic must
-    resolve to a different model from the drafter's; the judge is exempt (P39: "drop the rule for the
-    judge"). Models compare by family, so an alias and
-    its full id (`opus`, `claude-opus-5-5`) are the same model, and so are two versions of one family.
-    refusal: a message when they are the same; warning: a `warning=` line when one side cannot be
-    told (`inherit` -- the session's model -- against anything but `inherit`, or an unknown id)."""
-    mine, drafter = routes[row]["model"], routes["design"]["model"]
-    if mine.strip().lower() == drafter.strip().lower():
-        same = True
-    else:
-        a, d = model_family(mine), model_family(drafter)
-        if a is None or d is None:
-            return None, (f"warning=fairness: cannot tell whether the {row} row ({mine}) and the design row ({drafter}) "
-                          "are different models; make sure the design critic never runs on the drafter's model")
-        same = a == d
-    if not same:
-        return None, None
-    d = model_family(drafter)
-    hint = next(m for m in ("sonnet", "opus", "fable") if m != d)
-    return (f"the {row} row ({mine}) is the design row's model ({drafter}): the design critic never judges its own "
-            f"model's drafting (\"using same model for critique and draft is not fair\"). Set [claude.{row}] "
-            f"model = \"{hint}\" in executors.toml (or move the drafter's [claude.design] row)"), None
 
 
 def _judge_proxy_skip(routes: dict, proxy):
@@ -990,9 +960,8 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
     both running design-critic) and the lookup agent's (the explore row). Every form names the
     agent file it dispatches to as `subagent_type=`; the four slice rows all run slice-executor.
 
-    The critic must be a different model from the drafter's: --critic exits 1 on an equal pair
-    (critic_fairness) and the bare table prints a warning= line for it; the judge is exempt and may
-    share the drafter's model. Behind a loopback proxy (no Fable) --judge on a Fable override prints
+    The critic and the judge may share the drafter's model (v75). Behind a loopback proxy (no Fable)
+    --judge on a Fable override prints
     `skip=yes reason=…` and exits 0: unlike a `fallback=` line, which names a substitute model to
     dispatch, `skip=` means dispatch nothing.
     Reads executors.toml (a malformed one errors here) and writes nothing."""
@@ -1023,18 +992,12 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
         row = "design" if args.drafter else "critic" if args.critic else "judge" if args.judge else "explore"
         agent = ROUTE_AGENT[row]
         skip = _judge_proxy_skip(routes, proxy) if row == "judge" else None
-        if row in CRITIC_ROWS and skip is None:
-            refusal, _warning = critic_fairness(row, routes)
-            if refusal:
-                raise SystemExit(f"executor-route: {refusal}")
         lines, fallback = _dispatch_lines(row, routes, proxy)
         print(f"agent={agent}")
         print(f"route={row}")
         print(f"subagent_type={installed_agent_name(agent)}")
         print("\n".join(lines))
         extra = [fallback] if fallback else []
-        if row in CRITIC_ROWS and skip is None:
-            extra += [w for w in (critic_fairness(row, routes)[1],) if w]
         if skip:
             extra.append(skip)
     else:
@@ -1052,12 +1015,6 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
         else:
             print("agent files: in sync")
         extra = [f for f in (_route_fallback(row, routes[row]["model"], routes, proxy)[1] for row in EXECUTOR_ROUTES) if f]
-        for row in CRITIC_ROWS:
-            refusal, warning = critic_fairness(row, routes)
-            if refusal:
-                extra.append(f"warning=fairness: {refusal}; executor-route --{row} refuses it")
-            elif warning:
-                extra.append(warning)
         judge_skip = _judge_proxy_skip(routes, proxy)
         if judge_skip:
             extra.append(judge_skip.replace("skip=yes ", "skip=judge ", 1))

@@ -13,7 +13,7 @@ You run in one of two modes, named by the dispatch:
 - **critic** (the default row, `[claude.critic]`): you review the round and write `critique-NN.md`;
 - **judge** (the `[claude.judge]` row, a stronger model running this same file): you rule only on the items a critique escalated and write `judge-NN.md`.
 
-The critic mode runs on a model different from the drafter's, and the engine refuses anything else; the judge mode is exempt from that rule and may run on the drafter's model.
+Either mode may run on the drafter's model; the operator's route table decides.
 
 Everything here is relative to the install root (`workflow/` when the workspace is nested). The design lives under `docs/reference/design/`; a job is `jobs/<job>/`, its canvas tree `jobs/<job>/canvas/project/`, and its rounds `jobs/<job>/rounds/<round>/`.
 

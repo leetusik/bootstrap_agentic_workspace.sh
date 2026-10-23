@@ -34,9 +34,7 @@
 # mid, design, critic and explore own an agent file, so they also take a full
 # model id or "inherit"; high, research, cheap and judge run a file another row
 # owns, so they take an Agent-tool alias only (opus, sonnet, haiku, fable).
-# Fairness: the critic must be a different model from design's; an equal pair (an
-# alias and its full id count as one) is refused by executor-route. The judge is
-# exempt and may share the drafter's model.
+# The critic and the judge may run on the drafter's model (no row must differ).
 #
 # From v52 or earlier: a top-level mode = "..." line is refused since v53 —
 # delete it. flex was xhigh on both executors; to keep it, set effort = "xhigh"
@@ -71,10 +69,10 @@ effort = "xhigh"
 # model = "opus"    # design-drafter's own row
 # effort = "xhigh"
 # [claude.critic]
-# model = "sonnet"  # design-critic; never the design row's model
+# model = "sonnet"  # design-critic; may share the design row's model
 # effort = "xhigh"
 # [claude.judge]
-# model = "opus"    # alias only; may share the design row's model
+# model = "opus"    # alias only
 # effort = "xhigh"
 # [claude.mid]
 # model = "sonnet"

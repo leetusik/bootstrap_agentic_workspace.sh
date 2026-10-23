@@ -14,6 +14,22 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v75 — 2026-10-23
+
+- **The design critic and the explain critic may now run on the drafter's model.** Before v75,
+  `executor-route --critic` exited 1 when the critic row named the design row's model family, the
+  bare route table warned about it, and the design loop stopped on that exit. An explain chapter's
+  critic was also moved off the model that drafted the chapter (`model: sonnet` on the call for an
+  opus chapter), and returned `blocked` when the two matched, so a route table that put opus on both
+  slice rows stopped every explain phase. The operator dropped the rule for the judge in v66 and now
+  drops it for both critics. The fresh eyes are a fresh context, and the route table is the only knob.
+  `executor-route --critic` dispatches whatever row it resolves, the bare table prints no
+  `warning=fairness` line, and the explain critic runs on its frontmatter model. The shipped defaults
+  are unchanged: the design critic is still sonnet @ xhigh and the explain critic opus @ xhigh. The
+  smoke suite now checks that a critic on the drafter's model is accepted.
+- **Migration notes.** None beyond `--update`. To run the critic on the drafter's model, set it in
+  `executors.toml` (`[claude.critic]`), then run `sync-agents`.
+
 ## v74 — 2026-10-23
 
 - **`next`, `run-phases` and a plain `rebuild` no longer dirty the tree.** Before v74 every rebuild
