@@ -24,7 +24,7 @@ The engine decides; this skill runs the chain. `python3 scripts/workflow.py rota
    python3 scripts/workflow.py rotate-backlog
    ```
 
-   Every branch but `refused` and `archive` first archives the phases that are cleanly archivable (never one that owes docs), then prints, after the first line and before the branch's own lines:
+   Every branch but `refused` first archives the phases that are cleanly archivable (never one that owes docs). `archive` lists them in its sweep report; the other four branches print, after the first line and before the branch's own lines:
    - `archived=<ids>` when it moved any. Relay and commit it first (`chore(works): archive <ids> with rotate-backlog`). It may name a phase the docs phase has just paid, because `docs-consolidated` makes it archivable on the next run.
    - one `parked=<id> status=<status>[ stop_kind=<kind>]` per parked item (a blocked or `changes_requested` item has no `stop_kind`). Relay each; touch none.
 
@@ -40,11 +40,11 @@ The engine decides; this skill runs the chain. `python3 scripts/workflow.py rota
 
    - **`rotate=stop_uncommitted`** (`uncommitted=<n>`): something is parked and the product tree holds uncommitted edits, which a parked item may own and the docs phase's commits would take. Relay `uncommitted=` with its path lines, `archived=` (commit it), the `parked=` lines, `stopped_before=` and the closing line. Nothing was created, widened or reordered. **STOP**: the operator commits or stashes those edits, then re-runs. A workspace without git never prints this.
 
-   - **`rotate=resume`** (`rotate=resume docs_phase=<P>`): a docs phase is live.
-     1. If a `docs_phase_widened=<P> <old> -> <new>` line was printed, the engine widened the docs phase (undecomposed, with its engine-drafted name) to the debt no docs phase paid yet: it rewrote `consolidates`, name and objective. Add one dated line to `works/phases/active/<P>/intent.md` *Notes* (`- <date>: widened by rotate-backlog from <old> to <new>`). A decomposed or renamed docs phase is never widened: it runs as it is, `docs_debt_waiting=` names the rest, and the loop in step 3 creates one more docs phase for it.
-     2. If a `docs_phase_order=<P> <old> -> <new>` line was printed, the engine re-asserted the queue jump: `phase.json` and the regenerated `works/` files changed. Commit the widening and the order change together (`chore(works): widen <P> with rotate-backlog`, or `chore(works): move <P> ahead with rotate-backlog` when only the order moved) before anything else. Relay any `docs_phase_covered=` and `docs_debt_waiting=` lines.
+   - **`rotate=resume`** (`rotate=resume docs_phase=<P>`): a docs phase is live. Relay any `docs_phase_covered=` and `docs_debt_waiting=` lines, in every case.
+     1. If a `docs_phase_widened=<P> <old> -> <new>` line was printed, the engine widened the docs phase (undecomposed, with its engine-drafted name) to the debt no docs phase paid yet: it rewrote `consolidates`, name and objective in `phase.json`, and the heading and objective in `phase.md`. Add one dated line to `works/phases/active/<P>/intent.md` *Notes* (`- <date>: widened by rotate-backlog from <old> to <new>`). A decomposed or renamed docs phase is never widened: it runs as it is, `docs_debt_waiting=` names the rest, and the loop (step 3 of the procedure) creates one more docs phase for it once this one is `done`, or the next `/rotate-backlog` does if this invocation has already created one.
+     2. **Commit whenever a `docs_phase_widened=` or a `docs_phase_order=<P> <old> -> <new>` line was printed**, before the docs phase runs. The order line means the engine re-asserted the queue jump in `phase.json`. Name what changed: the docs phase's `phase.json` (when widened, also its `phase.md` and step 1's `intent.md`) and the `works/` files the engine rewrote. The message is `chore(works): widen <P> with rotate-backlog` when it was widened, with or without an order change, or `chore(works): move <P> ahead with rotate-backlog` when only the order moved. When neither line was printed, nothing changed: commit nothing.
      3. **Run the docs phase `<P>` end to end per the `do-whole-phase` skill, in `auto`.** `python3 scripts/workflow.py next` now points at it (it sorts first by order); its `WAITING ON OPERATOR` for a parked item is not the run's stop while the docs phase sorts first. The `/rotate-backlog` invocation is the explicit `auto` that the contract's decomposition carve-out requires, so the docs phase's `DECOMP` plans inline; `gate` in the invocation args restores the approval loop instead. Its acceptance gate is normally `--waive`d at the `DECOMP` boundary. Every normal stop ends the run (`pending`, `needs_operator`, `blocked`, a failed or empty high return, a non-passing review): report where it stopped and that the next `/rotate-backlog` resumes from there.
-     4. When the docs phase is `done`, go to step 3.
+     4. When the docs phase is `done`, go to the loop (step 3 of the procedure).
 
    - **`rotate=create`**: a docs phase is owed and none is live.
      1. **Show the proposal** so the operator sees what is being created: `docs_phase_proposal=`, `phase=`, `name=`, `objective=`, and the `scope:` line's `python3 scripts/workflow.py docs-debt` in a few lines (the phases, the note count, the docs). Relay any `docs_phase_covered=` line.
@@ -52,11 +52,11 @@ The engine decides; this skill runs the chain. `python3 scripts/workflow.py rota
      3. **Fill `works/phases/active/<P>/intent.md`** as the `create-phase` skill's *docs-phase route* says, which stays the source of truth: origin `operator`; under *Original Input (verbatim)*, the `/rotate-backlog` invocation; under *Confirmed Intent*, the engine-drafted name and objective and the `docs-debt` scope; and the cut the phase's `DECOMP` will make, written down and not made: one `--kind docs` slice per doc, `doc-new-version` then `rebuild-docs` per note, and the payment per covered phase as `docs-debt`'s `pay:` line says (`docs-consolidated <P>`, or `parallel-consolidated <P>`), with the acceptance gate `--waive`d at the `DECOMP` boundary.
      4. **Commit** (`chore(works): create <P> with rotate-backlog`), then continue as `resume` from its step 3.
 
-3. **Loop.** After each docs phase is `done`, run `python3 scripts/workflow.py rotate-backlog` again and branch on its first line:
-   - `rotate=archive`: relay the sweep, commit it (`chore(works): archive <ids> with rotate-backlog`) and report; the run ends.
-   - `rotate=resume`: another docs phase is live; run it as above.
-   - `rotate=create`: only if this invocation has created no docs phase yet; otherwise relay it and end the run, and the next `/rotate-backlog` takes that step.
-   - anything else (`stop_midflight`, `stop_uncommitted`, `refused`): relay it, commit any `archived=`, and end the run.
+3. **Loop.** After each docs phase is `done`, run `python3 scripts/workflow.py rotate-backlog` again. Whatever its first line, relay and commit any `archived=` line and relay any `parked=` lines as in step 2, then branch on the first line:
+   - `rotate=archive`: the `archive` branch above; the run ends.
+   - `rotate=resume`: another docs phase is live; the whole `resume` branch above, its relay and steps 1-4.
+   - `rotate=create`: the `create` branch above, only if this invocation has created no docs phase yet; otherwise relay it and end the run, and the next `/rotate-backlog` takes that step.
+   - anything else (`stop_midflight`, `stop_uncommitted`, `refused`): its branch above; the run ends.
 
    An invocation creates at most one docs phase, and each docs phase ends `done` or stops the run, so the loop is finite.
 

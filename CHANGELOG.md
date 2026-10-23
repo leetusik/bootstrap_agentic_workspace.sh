@@ -22,7 +22,7 @@ history.
   `--archive-only` is byte-identical). The skill commits it (`chore(works): archive <ids> with
   rotate-backlog`) before anything else. A docs phase's own run can print `archived=` for a phase it has
   just paid.
-- **Parked work is gone around; only running work stops the run.** A phase `pending` or `blocked`, a
+- **Parked work is gone around; running work still stops the run.** A phase `pending` or `blocked`, a
   slice `pending`, `blocked` or `changes_requested`, is parked: one `parked=<id> status=<status>
   [stop_kind=<kind>]` line each (a phase with its acceptance gate open shows `acceptance-gate`), and
   the docs phase runs ahead of it. `rotate=stop_midflight` now means running work only, a slice
@@ -39,9 +39,10 @@ history.
   name is widened to the debt no docs phase pays yet: its `consolidates` list, name, objective and
   `phase.md` heading and objective are rewritten in one step and the line
   `docs_phase_widened=<P> <old ids> -> <new ids>` is printed (event `docs_phase_widened`); a re-run
-  writes nothing. The skill adds a dated *Notes* line to its `intent.md` and commits it with the queue
-  jump (`chore(works): widen <P> with rotate-backlog`). A decomposed or renamed docs phase runs as it
-  is.
+  writes nothing. The skill adds a dated *Notes* line to its `intent.md` and commits the widening
+  before the docs phase runs, whether or not the order moved too (`chore(works): widen <P> with
+  rotate-backlog`); an order change alone is committed as `chore(works): move <P> ahead with
+  rotate-backlog`. A decomposed or renamed docs phase runs as it is.
 - **The skill loops to the end.** After each docs phase is `done` it asks the engine again: `archive`
   commits and ends, `resume` runs the next live docs phase, `create` is taken only when this
   invocation created no docs phase yet (at most one new docs phase per invocation keeps the run
