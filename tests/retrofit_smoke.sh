@@ -1727,6 +1727,28 @@ assert routes == {"x0": ("slice-executor", "high"), "x1": ("slice-executor", "mi
                   "x3": ("slice-executor", "research"), "x4": ("slice-executor-high", "high")}, routes
 ' && ok "the meter reads slice-executor spans by kind and model (opus high, sonnet mid, haiku cheap, a research slice research) and still reads an old slice-executor-high span" \
   || bad "the meter misread slice-executor routes: $mt2"
+# P44: a minted slice id attributes by its `slice:` line, and dispatch-summary --phase takes the brief name (a bare token).
+mt_tok=$( cd "$MT/ws" && python3 scripts/workflow.py new-phase --name "Meter token" --objective probe 2>&1 | sed -n 's/^created phase P-\([^:]*\):.*/\1/p' )
+( cd "$MT/ws" && python3 scripts/workflow.py new-slice --phase "$mt_tok" --slice S1 --name "token meter" --kind implementation --risk low ) >/dev/null 2>&1 || bad "token meter probe: new-slice failed"
+python3 - "$MT" "P-$mt_tok.S1" <<'PY'
+import json, os, sys
+sub = os.path.join(sys.argv[1], "projects", "-fixture2", "sess2", "subagents")
+with open(os.path.join(sys.argv[1], "ws", "works", "events.jsonl"), "a") as f:  # the slice's window, so the phase filter finds the session
+    for ts, old, new in (("2026-01-01T10:00:00+00:00", "todo", "in_progress"), ("2026-01-01T10:55:00+00:00", "in_progress", "done")):
+        f.write(json.dumps({"ts": ts, "type": "slice_status_changed", "slice": sys.argv[2], "old_status": old, "new_status": new}) + "\n")
+with open(os.path.join(sub, "agent-t0.jsonl"), "w") as f:
+    f.write(json.dumps({"type": "user", "timestamp": "2026-01-01T10:50:00.000Z", "message": {"role": "user", "content": "slice: " + sys.argv[2]}}) + "\n")
+    f.write(json.dumps({"type": "assistant", "timestamp": "2026-01-01T10:51:00.000Z", "message": {"id": "t0", "model": "claude-sonnet-5-5", "content": [{"type": "text", "text": "- status: done"}],
+                                                                                              "stop_reason": "end_turn", "usage": {"input_tokens": 10, "output_tokens": 5}}}) + "\n")
+json.dump({"agentType": "slice-executor", "finished": True}, open(os.path.join(sub, "agent-t0.meta.json"), "w"))
+PY
+mt3=$( cd "$MT/ws" && python3 scripts/workflow.py dispatch-summary --phase "$mt_tok" --json --transcripts "$MT/projects/-fixture2" 2>&1 )
+printf '%s\n' "$mt3" | python3 -c '
+import json, sys
+spans = [s for d in json.load(sys.stdin)["metered"]["slices"].values() for s in d["spans"]]
+assert [(s["slice"], s["attributed_by"]) for s in spans] == [("P-" + sys.argv[1] + ".S1", "slice-line")], spans
+' "$mt_tok" && ok "the meter attributes a minted slice id (P-xxxx.S1) by its slice: line, and dispatch-summary --phase takes the bare token" \
+  || bad "the meter did not attribute a minted slice id: $mt3"
 # v61 pure compaction (P37.S3): compaction is Claude Code's own -- no PreCompact hook, no compact-gate. After
 # a compaction the SessionStart hook runs compact-resume, which prints the resume card (also `next --card`):
 # computed from state, at most 2,048 B, naming files and never asking for a re-read. A pending stop is typed
@@ -2313,6 +2335,27 @@ tb_val=$(tw validate 2>&1); tb_rc=$?
   && [ "$tb_rc" -eq 0 ] && [ -z "$(tg status --porcelain)" ] && [ "$(grep -c '"type": "phase_created"' "$TW/works/events.jsonl")" = 2 ] \
   && ok "two branches each mint a phase and a deferred job and merge with conflicts only in generated files (${conflicted:-none}); either side + rebuild validates" \
   || bad "two-branch mint did not merge clean -- conflicted: $conflicted / outside: $outside / $tb_val"
+
+# ---------------------------------------------------------------------------
+echo "== Test 10f: P44 brief names -- 7kq2, P-7kq2, 12 and P12 name the same phases wherever an id is typed, and the CI seed parses a token branch =="
+# Same emptied copy of $F as 10c, minted phase beside an explicit P12. Brief names go through one choke point after argparse.
+newtmp BNW; cp -R "$F" "$BNW/ws"; BN="$BNW/ws"; rm -rf "$BN/.git" "$BN/works/phases/active/"* "$BN/works/phases/archived/"* "$BN/works/deferred/"*/*; bn() { ( cd "$BN" && python3 scripts/workflow.py "$@" ); }
+bn_pid=$(bn new-phase --name "Brief" --objective probe 2>&1 | sed -n 's/^created phase P-\([^:]*\):.*/\1/p'); bn_up=$(printf '%s' "$bn_pid" | tr '[:lower:]' '[:upper:]')
+bn new-phase --phase P12 --name "Numbered" --objective probe >/dev/null 2>&1 || bad "brief-name probe: new-phase P12 failed"
+r1=$(bn run-phases "$bn_pid" 12 2>&1); r2=$(bn run-phases "P-$bn_up, p12" "$bn_pid" 2>&1); r3=$(bn run-phases "P$bn_pid" 2>&1); r3_rc=$?; r4=$(bn run-phases gate 2>&1); r4_rc=$?
+printf '%s\n' "$r1" | grep -qx "run=P-$bn_pid,P12" && printf '%s\n' "$r2" | grep -qx "queue=P-$bn_pid,P12" \
+  && [ "$r3_rc" -eq 2 ] && printf '%s\n' "$r3" | grep -q "^refused=P$bn_pid .*P-$bn_pid" && ! printf '%s\n' "$r3" | grep -q '^queue=' && [ "$r4_rc" -eq 2 ] && printf '%s\n' "$r4" | grep -q '^refused=gate ' \
+  && ok "run-phases takes a bare token, P-token in any case and 12/p12, keeps the order and drops duplicates, and refuses P<token> without its dash and a mode word" \
+  || bad "run-phases brief names wrong -- $r1 / $r2 / $r3 / $r4"
+bn_gate=$(bn accept-gate "$bn_pid" --waive --note probe 2>&1); bn_show=$(bn accept-gate "p-$bn_up" 2>&1); bn_old=$(bn accept-gate 12 2>&1); bn_bad=$(bn accept-gate "P$bn_pid" 2>&1); bn_bad_rc=$?
+bn_did=$(bn defer-job --title brief --reason r --trigger t --source manual 2>&1 | sed -n 's/^created deferred job D-\([^:]*\):.*/\1/p'); bn_drop=$(bn drop-deferred "$bn_did" --reason x 2>&1)
+printf '%s\n' "$bn_gate" | grep -qx "phase P-$bn_pid: operator acceptance WAIVED -- probe" && printf '%s\n' "$bn_show" | grep -qx "phase=P-$bn_pid" && printf '%s\n' "$bn_old" | grep -qx 'phase=P12' \
+  && [ "$bn_bad_rc" -ne 0 ] && printf '%s\n' "$bn_bad" | grep -q "not a phase id" && printf '%s\n' "$bn_drop" | grep -q "^dropped D-$bn_did:" \
+  && ok "a phase or deferred-id argument takes the brief name (accept-gate 7kq2, p-7KQ2, 12; drop-deferred m3xa) and refuses P7kq2 with the shapes" || bad "brief names on commands wrong -- $bn_gate / $bn_show / $bn_old / $bn_bad / $bn_drop"
+seed_sed=$(grep -o "sed -nE '[^']*'" "$SRC/github/workflows/workspace-ci.yml")
+c1=$(printf 'phase/P-%s-slug\n' "$bn_pid" | eval "$seed_sed"); c2=$(printf 'phase/P12-slug\n' | eval "$seed_sed"); c3=$(printf 'phase/feature-x\n' | eval "$seed_sed")
+[ -n "$seed_sed" ] && [ "$c1" = "P-$bn_pid" ] && [ "$c2" = "P12" ] && [ -z "$c3" ] \
+  && ok "the CI seed's branch parse gives P-token for phase/P-token-slug and P12 for phase/P12-slug (and nothing for another branch)" || bad "the CI seed's branch parse is wrong -- [$seed_sed] [$c1] [$c2] [$c3]"
 
 # ---------------------------------------------------------------------------
 echo "== Test 11: v41 phase-scope -- the phase's boundary is read from git, advisory everywhere =="

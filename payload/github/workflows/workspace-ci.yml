@@ -1,7 +1,8 @@
 # Agentic workspace CI.
 #
 # It checks the workflow state (`validate`) on every push and
-# pull request, and gates a phase/P<N>-<slug> pull request on the quiet point.
+# pull request, and gates a phase/P<N>-<slug> (or phase/P-<token>-<slug>) pull request on the
+# quiet point.
 #
 # It is seeded once by the installer and never overwritten afterwards: this is your
 # CI file, edit it freely.
@@ -22,7 +23,8 @@ jobs:
         run: python3 scripts/workflow.py validate
 
   # Quiet-point gate for parallel phase execution: a pull request from a
-  # phase/P<N>-<slug> branch is mergeable only when that phase is done + review
+  # phase/P<N>-<slug> (or phase/P-<token>-<slug>, the minted id) branch is mergeable only when
+  # that phase is done + review
   # pass on its own branch AND the default stream is quiet. GATE CLOSED exits
   # non-zero, so this check goes red; whether that blocks the merge is the repo's
   # branch-protection choice.
@@ -44,10 +46,11 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           set -eu
-          # phase/P<N>-<slug> -> P<N>  (the branch format parallel-start writes)
-          phase=$(printf '%s\n' "$HEAD_REF" | sed -n 's|^phase/\(P[0-9][0-9]*\)-.*$|\1|p')
+          # phase/P<N>-<slug> -> P<N>, phase/P-<token>-<slug> -> P-<token>  (the branch formats parallel-start
+          # writes: a numbered phase, and a minted one whose token is 4 lowercase base32 symbols)
+          phase=$(printf '%s\n' "$HEAD_REF" | sed -nE 's#^phase/(P([0-9]+|-[0-9a-hjkmnp-tv-z]{4}))-.*$#\1#p')
           if [ -z "$phase" ]; then
-            echo "head branch '$HEAD_REF' is not phase/P<N>-<slug> -- nothing to gate"
+            echo "head branch '$HEAD_REF' is not phase/P<N>-<slug> or phase/P-<token>-<slug> -- nothing to gate"
             exit 0
           fi
           git fetch --no-tags --quiet origin "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF" || true
