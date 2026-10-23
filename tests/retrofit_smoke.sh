@@ -19,7 +19,8 @@
 # and phase-scope reads that boundary from git -- advisory without git), the v35 phase-notebook
 # invariants (template seed, generated ## Slices block, finish-slice --outcome, the
 # notebook budget/case-drift warnings and the timestamp-free dashboards; v61: phase-section reads and writes
-# one phase.md section, a 40 KB index budget naming the biggest sections), the P41 run-phases invariants
+# one phase.md section, a 40 KB index budget naming the biggest sections; --entry K --replace writes one entry, and
+# --to-topic moves entries verbatim to topics/ behind gist lines, its refusals writing nothing), the P41 run-phases invariants
 # (a run's tokens resolve in order and a non-phase token refuses; a run passes a parked acceptance gate and
 # halts at a pending slice while plain `next` still waits there), the P42 ready-set invariants (an undeclared phase
 # keeps its plain pointer and prints no wave line; a declared slice is never ready before its dependency is done;
@@ -2236,6 +2237,59 @@ BIG
 out=$( cd "$PW" && python3 scripts/workflow.py validate 2>&1 )
 printf '%s\n' "$out" | grep -q 'phase P8: phase.md is .* over the notebook budget of 40960 bytes; biggest sections: ## ' && printf '%s\n' "$out" | grep -q 'topics/<slug>.md' \
   && ok "a notebook over 40 KB warns in validate, names its biggest sections and points at topics/" || bad "no 40 KB warning with sections -- $out"
+# Entries: --entry K --replace writes one entry, --to-topic moves entries losslessly behind gist lines, and
+# every refusal writes nothing. On a fresh probe phase P9 with a small synthetic notebook.
+( cd "$PW" && python3 scripts/workflow.py new-phase --phase P9 --name "Entry probe" --objective "entry probe" >/dev/null 2>&1 )
+PE="$PW/works/phases/active/P9/phase.md"
+python3 - "$PE" <<'SEED'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+dec = ("1. **Alpha:** the first decision, short enough to be its own gist.\n"
+       "2. **Beta:** a long decision. " + "It carries detail the next slice reads only when it needs it. " * 12 + "\n"
+       "   - a nested point under Beta\n"
+       "3. [topics/x.md](topics/x.md)\n")
+t = t.replace("linked by one line._\n", "linked by one line._\n\n" + dec, 1)
+t = t.replace("Last on purpose._\n", "Last on purpose._\n\n- now line\n", 1)
+p.write_text(t)
+SEED
+cp "$PE" "$PSW/e0.md"; printf 'the **Alpha** decision, replaced\n' | ps P9 Decisions --entry alpha --replace >/dev/null 2>&1
+python3 - "$PSW/e0.md" "$PE" <<'ENTRY'
+import sys
+old, new = (open(p, encoding="utf-8").read() for p in sys.argv[1:3])
+line = "1. **Alpha:** the first decision, short enough to be its own gist."
+assert old.count(line) == 1 and new == old.replace(line, "1. the **Alpha** decision, replaced", 1), "bytes outside the entry changed"
+ENTRY
+[ $? -eq 0 ] && ok "--entry K --replace swaps only that entry (its marker kept) and leaves every other byte identical" || bad "--entry --replace touched bytes outside the entry"
+cp "$PE" "$PSW/e1.md"
+for refusal in "Decisions --to-topic decisions --entry 3" "Decisions --to-topic breakdown --entry 1" "Now --to-topic now" \
+               "Doc_impact --to-topic notes" "Operator_Questions --entry 1 --replace" "Decisions --entry 1 --remove"; do
+  # shellcheck disable=SC2086
+  set -- $refusal; sect=$(printf '%s' "$1" | tr '_' ' '); shift
+  printf 'x\n' | ps P9 "$sect" "$@" >/dev/null 2>&1; rc=$?
+  [ "$rc" -ne 0 ] && cmp -s "$PSW/e1.md" "$PE" && [ ! -e "$PW/works/phases/active/P9/topics" ] \
+    && ok "phase-section refuses $sect $* and writes nothing" || bad "phase-section $sect $* was not refused cleanly (rc=$rc)"
+done
+ps P9 Decisions --to-topic decisions --entry 1-2 --dry-run >/dev/null 2>&1; dry_rc=$?
+dry_clean=no; cmp -s "$PSW/e1.md" "$PE" && [ ! -e "$PW/works/phases/active/P9/topics" ] && dry_clean=yes
+ps P9 Decisions --to-topic decisions --entry 1-2 >/dev/null 2>&1; mv_rc=$?
+python3 - "$PSW/e1.md" "$PE" "$PW/works/phases/active/P9/topics/decisions.md" <<'MOVE'
+import re, sys
+old, new, topic = (open(p, encoding="utf-8").read() for p in sys.argv[1:4])
+dec = lambda t: re.search(r"(?ms)^## Decisions\n.*?(?=^## )", t).group(0)
+others = lambda t: t.replace(dec(t), "")
+assert others(old) == others(new), "a section other than Decisions changed"
+body = dec(old).split("\n")
+starts = [i for i, l in enumerate(body) if re.match(r"\d+\. ", l)]
+entries = ["\n".join(body[s:e]).rstrip("\n") for s, e in zip(starts, starts[1:] + [len(body)])]
+for n, entry in enumerate(entries[:2], 1):
+    assert f"## Decisions {n}\n\n{entry}\n" in topic, f"entry {n} is not verbatim in the topic"
+    ptr = re.search(rf"(?m)^{n}\. (.+) → \[topics/decisions\.md\]\(topics/decisions\.md\) § Decisions {n}$", dec(new))
+    assert ptr and len(re.sub(r"[*`]", "", ptr.group(1))) >= 24 and len(ptr.group(1)) <= 160, f"pointer {n} lacks a gist"
+assert entries[2] in dec(new), "the unmoved entry changed"
+MOVE
+[ $? -eq 0 ] && [ "$dry_rc" -eq 0 ] && [ "$dry_clean" = yes ] && [ "$mv_rc" -eq 0 ] \
+  && ok "--to-topic --dry-run writes nothing; the move puts each entry verbatim in topics/<slug>.md and leaves a pointer line with a gist" \
+  || bad "--to-topic was not lossless (dry rc=$dry_rc clean=$dry_clean, move rc=$mv_rc)"
 
 # ---------------------------------------------------------------------------
 echo "== Test 10c: P41 run-phases -- a run's phase list, and a parked acceptance gate only a run passes =="

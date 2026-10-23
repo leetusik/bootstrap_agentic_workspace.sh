@@ -405,6 +405,15 @@ SLICE_KINDS = {"implementation", "review", "decomposition", "research", "fix", "
 # invites truncating exactly the notes that matter; the warning names the biggest sections
 # so the fix is a move to `topics/` or to the slice's `result.md`, never a deletion.
 PHASE_MD_BUDGET = 40 * 1024
+# Notebook entries: a section's entries are what `phase-section --entry` reads and writes
+# and what `--to-topic` moves (`notebook_entries` is the one parser). An entry over
+# LONG_ENTRY_BYTES (or one with nested list lines) is long: the move's candidate. A moved entry
+# leaves one pointer line whose gist is a verbatim excerpt of at most GIST_MAX characters; a gist
+# with fewer than GIST_PLAIN_MIN characters of plain text once markdown, links and the label are
+# stripped is a bare link, which says nothing where the decision was, so the move refuses it.
+LONG_ENTRY_BYTES = 512
+GIST_MAX = 160
+GIST_PLAIN_MIN = 24
 # Execution streams (workspace v24; opt-in again since v43). A phase.json MAY carry an
 # optional `execution` block. `mode: "parallel"` = the phase runs on its own branch +
 # worktree, stamped by `parallel-start` -- which a phase gets ONLY when the operator asks
@@ -3497,6 +3506,231 @@ PHASE_SECTION_APPEND_ONLY = {"doc impact": "--append", "operator questions": "--
 OQ_ENTRY = re.compile(r"^- \*\*OQ(\d+)\b")
 OQ_PARTS = re.compile(r"^- \*\*OQ\d+[^*]*\*\*:?\s*(.*)$")
 
+# Notebook entries. An entry is a column-0 list item of a section: ENTRY_MARKER, then its
+# continuation and nested lines. `notebook_entries` is the ONE parser; every entry read and write,
+# the move, the budget report and paging go through it. A pointer line is what a move leaves in an
+# entry's place: one line, `<marker><gist> → [topics/<slug>.md](topics/<slug>.md) § <block>`.
+ENTRY_MARKER = re.compile(r"(?:[-*+]|[0-9]+[.)]) ")
+ENTRY_DEEP_HEADING = re.compile(r"#{3,}(?:\s|$)")
+ENTRY_OQ = re.compile(r"\*\*OQ([0-9]+)\b")
+ENTRY_KEY_PART = re.compile(r"([0-9]+)(?:\s*-\s*([0-9]+))?|OQ([0-9]+)", re.I)
+TOPIC_SLUG_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
+POINTER_LINE = re.compile(r"(?:[-*+]|[0-9]+[.)]) .* → \[topics/([a-z0-9][a-z0-9-]{0,63})\.md\]\(topics/\1\.md\) § (\S.*)")
+GIST_SENTENCE_END = re.compile(r"[.!?][*_`)\]\"'”’]*(?=\s|$)")
+TOPIC_INTRO = ("_Entries moved here from phase.md by `phase-section --to-topic`, byte for byte, one `## ` block each; "
+               "the pointer line left in each one's place names its block._")
+# The sections a move refuses, and why (every other section moves: Decisions, Notes for later slices,
+# Objective and any custom section).
+PHASE_SECTION_UNMOVABLE = {
+    "slices": "it is generated from each slice.json by `rebuild`",
+    "doc impact": "it is append-only, and the docs phase and the review read its notes where they are (add with --append)",
+    "operator questions": "it is append-only, and the review routes its entries where they are: collapse an answered one with --resolve OQ<n> --pointer <ref>",
+    "now": "it is the handoff the next dispatch reads first: rewrite it shorter with --replace",
+}
+
+
+def notebook_entries(lines: list, first: int, end: int) -> list:
+    """The entries of one notebook section, in document order: the one parser behind every
+    entry read and write, the move, the budget report and paging. `lines[first:end]` is the section's
+    body; for a section `(heading, i, e)` from `h2_spans`, pass `i + 1, e`.
+
+    An entry starts at a column-0 line, outside a fence, that begins with a list marker (`- `, `* `,
+    `+ `, `<digits>. `, `<digits>) `). It runs to the next such line, the next column-0 `###`-or-deeper
+    heading, an unindented paragraph after a blank line, or the section's end. Its continuation and
+    indented (nested) lines belong to it; its trailing blank lines are separators, not part of it. A
+    line whose stripped form starts with ``` or ~~~ toggles a fence, and nothing inside a fence starts
+    or ends an entry. Lines outside every entry (the italic guidance line, prose, `###` headings, table
+    rows) are never touched by an entry operation.
+
+    Each entry is a dict: `pos` (1-based), `start` and `end` (line indices, `end` exclusive and before
+    the trailing blank lines), `sep_end` (the end of those blank lines, never past `end` of the
+    section), `marker` (`- `, `9. `, ...), `label` (`9.`, `OQ3` or ""), `oq` (the n of a `**OQ<n>`
+    lead, else None), `bytes` (UTF-8 bytes of its lines joined by newlines), `nested` (an indented
+    line that starts with a list marker), `pointer` (a one-line pointer, POINTER_LINE), `long` (over
+    LONG_ENTRY_BYTES or nested; a pointer is never long) and `lead` (its first line after the marker).
+    """
+    spans, fenced, current, prev_blank = [], False, None, False
+    for k in range(first, end):
+        line = lines[k]
+        stripped = line.strip()
+        fence = stripped.startswith("```") or stripped.startswith("~~~")
+        if fenced:
+            fenced = not fence
+            if current is not None:
+                current[1] = k + 1
+            prev_blank = False
+            continue
+        if not stripped:
+            prev_blank = True
+            continue
+        column0 = not line[0].isspace()
+        if column0 and ENTRY_MARKER.match(line):
+            current = [k, k + 1, False]
+            spans.append(current)
+        elif column0 and (prev_blank or ENTRY_DEEP_HEADING.match(line)):
+            current = None
+        elif current is not None and not column0 and ENTRY_MARKER.match(line.lstrip()):
+            current[2] = True
+        if current is not None:
+            current[1] = k + 1
+        fenced = fence
+        prev_blank = False
+    out = []
+    for pos, (start, stop, nested) in enumerate(spans, 1):
+        sep = stop
+        while sep < end and not lines[sep].strip():
+            sep += 1
+        marker = ENTRY_MARKER.match(lines[start]).group(0)
+        lead = lines[start][len(marker):]
+        oq = ENTRY_OQ.match(lead)
+        size = len("\n".join(lines[start:stop]).encode("utf-8"))
+        pointer = stop - start == 1 and POINTER_LINE.fullmatch(lines[start].rstrip()) is not None
+        label = marker.strip() if marker[0].isdigit() else (f"OQ{int(oq.group(1))}" if oq else "")
+        out.append({"pos": pos, "start": start, "end": stop, "sep_end": sep, "marker": marker, "label": label,
+                    "oq": int(oq.group(1)) if oq else None, "bytes": size, "nested": nested, "pointer": pointer,
+                    "long": not pointer and (nested or size > LONG_ENTRY_BYTES), "lead": lead})
+    return out
+
+
+def entry_ranges(positions) -> str:
+    """`1-8,10` for positions 1..8 and 10: a set of entry positions in the form `--entry` takes."""
+    runs = []
+    for pos in sorted(set(positions)):
+        if runs and pos == runs[-1][1] + 1:
+            runs[-1][1] = pos
+        else:
+            runs.append([pos, pos])
+    return ",".join(str(a) if a == b else f"{a}-{b}" for a, b in runs)
+
+
+def resolve_entry_key(entries: list, key: str, section: str, phase: str, several: bool = False) -> list:
+    """The entries `--entry K` names, in document order; SystemExit naming why when it names none or,
+    unless `several`, more than one. K is a position (1-based), `OQ<n>`, or, with `several`, ranges and
+    comma lists of those (`1-8,10`); any other text is a case-insensitive piece of an entry's first
+    line and must match exactly one entry."""
+    text = (key or "").strip()
+    listing = f'phase-section {phase} "{section}" --list'
+    if not text:
+        raise SystemExit(f"--entry needs a key: a position, OQ<n> or a piece of the entry's first line (see {listing})")
+    parts = [part.strip() for part in text.split(",")]
+    matched = [ENTRY_KEY_PART.fullmatch(part) for part in parts]
+    if all(matched):
+        if not several and (len(parts) > 1 or matched[0].group(2)):
+            raise SystemExit(f"--entry {text} names several entries; here it takes one (ranges and lists go with --to-topic only)")
+        chosen = {}
+        for m in matched:
+            if m.group(3):
+                n = int(m.group(3))
+                hits = [x for x in entries if x["oq"] == n]
+                if len(hits) != 1:
+                    have = ", ".join(f"OQ{x['oq']} ({x['pos']})" for x in entries if x["oq"] is not None) or "none"
+                    raise SystemExit(f"{'no' if not hits else 'more than one'} entry OQ{n} in {section}; its OQ entries: {have}")
+            else:
+                a, b = int(m.group(1)), int(m.group(2) or m.group(1))
+                if a < 1 or a > b or b > len(entries):
+                    raise SystemExit(f"{section} has {len(entries)} entr{'y' if len(entries) == 1 else 'ies'}, so {m.group(0)} names none (see {listing})")
+                hits = entries[a - 1:b]
+            for x in hits:
+                chosen[x["pos"]] = x
+        return [chosen[pos] for pos in sorted(chosen)]
+    wanted = text.lower()
+    hits = [x for x in entries if wanted in (x["marker"] + x["lead"]).lower()]
+    if len(hits) == 1:
+        return hits
+    if not hits:
+        raise SystemExit(f"no entry of {section} has {text!r} in its first line (see {listing})")
+    named = "; ".join(f"{x['pos']}: {x['lead'][:60]}" for x in hits)
+    raise SystemExit(f"{text!r} matches {len(hits)} entries of {section}, so it names none; use a position -- {named}")
+
+
+def _markdown_closers(text: str) -> str:
+    """What closes the markdown `text` leaves open: a backtick for an open code span, then `**` for
+    open bold; "" when nothing is open."""
+    code = bold = False
+    k = 0
+    while k < len(text):
+        if text[k] == "`":
+            code = not code
+        elif not code and text.startswith("**", k):
+            bold = not bold
+            k += 1
+        k += 1
+    return ("`" if code else "") + ("**" if bold else "")
+
+
+def entry_gist(entry_lines: list) -> str:
+    """The derived gist of an entry: a verbatim excerpt, never a summary. The entry's text is flattened
+    (its marker and its continuation lines' markers dropped, whitespace collapsed) and kept whole up to
+    GIST_MAX characters. Longer, it is cut at the last sentence end (`.` `!` `?` with any closing `**`,
+    backtick, bracket or quote; never `:`) between characters 40 and GIST_MAX, else at the last word
+    boundary that leaves room for ` …`. Markdown is kept, and a cut never leaves a `**` or a backtick
+    open: the markers it would leave open are closed at the cut, inside GIST_MAX."""
+    words = []
+    for line in entry_lines:
+        stripped = line.strip()
+        marker = ENTRY_MARKER.match(stripped)
+        words.append(stripped[marker.end():] if marker else stripped)
+    flat = re.sub(r"\s+", " ", " ".join(words)).strip()
+    if len(flat) <= GIST_MAX:
+        return flat
+    best = None
+    for m in GIST_SENTENCE_END.finditer(flat):
+        if m.end() > GIST_MAX:
+            break
+        if m.end() >= 40 and m.end() + len(_markdown_closers(flat[:m.end()])) <= GIST_MAX:
+            best = m.end()
+    if best is not None:
+        return flat[:best] + _markdown_closers(flat[:best])
+    for cut in range(GIST_MAX - 2, 0, -1):
+        if flat[cut] == " " and cut + len(_markdown_closers(flat[:cut])) + 2 <= GIST_MAX:
+            return flat[:cut] + _markdown_closers(flat[:cut]) + " \u2026"
+    kept = flat[:GIST_MAX - 5]  # no word boundary at all: one long token (a URL, a path)
+    return kept + _markdown_closers(kept) + " \u2026"
+
+
+def gist_plain_chars(gist: str, entry: dict) -> int:
+    """The characters of plain text a gist keeps once its links (whole, bare URLs too), its markdown and
+    the entry's own label are stripped: under GIST_PLAIN_MIN, the gist is a bare link."""
+    text = re.sub(r"!?\[[^\]]*\]\([^)]*\)", " ", gist)
+    text = re.sub(r"<?https?://\S+", " ", text)
+    if entry.get("oq") is not None:
+        text = re.sub(rf"\bOQ{entry['oq']}\b", " ", text)
+    text = re.sub(r"[*_`~#>\[\]…]", "", text)
+    return len(re.sub(r"\s+", " ", text).strip())
+
+
+def entry_block_label(entry: dict) -> str:
+    """The label of a moved entry's topic block: its own number, its OQ<n>, else its position."""
+    if entry["marker"][0].isdigit():
+        return entry["marker"].strip()[:-1]
+    if entry["oq"] is not None:
+        return f"OQ{entry['oq']}"
+    return str(entry["pos"])
+
+
+def _topic_blocks_missing(text: str, blocks: list) -> list:
+    """The names of `blocks` (`(name, entry lines)`) that `text` does not hold as a `## <name>` line, a
+    blank line, then those lines byte for byte: the move's check, run before it touches phase.md."""
+    lines = text.split("\n")
+    found = {}
+    for heading, i, e in h2_spans(lines):
+        if lines[i] == f"## {heading}":
+            found.setdefault(heading, (i, e))
+    missing = []
+    for name, body in blocks:
+        if name not in found:
+            missing.append(name)
+            continue
+        i, e = found[name]
+        got, want = lines[i + 1:e], [""] + list(body)
+        while got and not got[-1].strip():
+            got.pop()
+        while len(want) > 1 and not want[-1].strip():
+            want.pop()
+        if got != want:
+            missing.append(name)
+    return missing
+
 
 def _phase_section_body(args: argparse.Namespace) -> str:
     """The text for --replace / --append: `--file`, else stdin."""
@@ -3525,27 +3759,227 @@ def _clean_section_body(body: str, heading: str) -> list:
     return lines
 
 
+def _phase_section_flags(args: argparse.Namespace, mode) -> None:
+    """Refuse the flag combinations `phase-section` has no meaning for, naming the right form."""
+    if args.topic is not None and (mode or args.list or args.entry is not None or args.gist is not None or args.dry_run):
+        raise SystemExit("--topic reads a topic file: give it a block name or nothing (a topic is written by --to-topic, or directly)")
+    if args.list and (mode or args.entry is not None):
+        raise SystemExit("--list is a read: it takes a section name, no --entry and no write flag")
+    if (args.gist is not None or args.dry_run) and mode != "--to-topic":
+        raise SystemExit(f"{'--gist' if args.gist is not None else '--dry-run'} works with --to-topic only")
+    if args.entry is not None and mode == "--append":
+        raise SystemExit("--append adds at the section's end and takes no --entry (to change one entry: --entry K --replace)")
+    if args.entry is not None and mode == "--resolve":
+        raise SystemExit("--resolve names its entry itself (--resolve OQ<n> --pointer <ref>) and takes no --entry")
+    if mode == "--remove" and args.entry is None:
+        raise SystemExit("--remove needs --entry K: it deletes one entry, never a section")
+
+
+def _phase_topic_read(args: argparse.Namespace, pdir: Path, name: str) -> None:
+    """`phase-section <P> [<block>] --topic <slug>`: the topic's index (its `## ` blocks with bytes, then
+    the total), or one block, heading included. Unpaged."""
+    slug = args.topic.strip()
+    if not TOPIC_SLUG_RE.fullmatch(slug):
+        raise SystemExit(f"--topic takes a slug [a-z0-9][a-z0-9-]{{0,63}} (the file topics/<slug>.md), got {args.topic!r}")
+    topic = pdir / "topics" / f"{slug}.md"
+    if not topic.is_file():
+        have = sorted(p.stem for p in (pdir / "topics").glob("*.md")) if (pdir / "topics").is_dir() else []
+        raise SystemExit(f"phase {args.phase} has no topics/{slug}.md; its topics: {', '.join(have) or 'none'}")
+    text = topic.read_text(encoding="utf-8")
+    if not name:
+        for heading, size in h2_sections(text):
+            print(f"{size:>8}  {heading}")
+        print(f"{len(text.encode('utf-8')):>8}  total")
+        return
+    lines = text.split("\n")
+    spans = h2_spans(lines)
+    for heading, i, e in spans:
+        if heading.lower() == name.lower():
+            block = lines[i:e]
+            while block and not block[-1].strip():
+                block.pop()
+            print("\n".join(block))
+            return
+    blocks = ", ".join(f"`{h}`" for h, _, _ in spans) or "none"
+    print(f"unknown block: {name!r} in topics/{slug}.md; its blocks are {blocks}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def _phase_section_entry_write(args: argparse.Namespace, path: Path, text: str, lines: list, heading: str, i: int, e: int) -> None:
+    """`--entry K --replace` swaps exactly that entry's lines; `--entry K --remove` deletes it with its
+    trailing separator (the last entry of a section takes the blank lines before it instead, so the
+    section still ends with its blank line). Every other byte of the file stays identical."""
+    key = heading.lower()
+    flag = "--replace" if args.replace else "--remove"
+    if key == "slices":
+        raise SystemExit("`Slices` is generated from each slice.json by `rebuild`; never write it")
+    if key in PHASE_SECTION_APPEND_ONLY:
+        raise SystemExit(f"`{heading}` is append-only: use {PHASE_SECTION_APPEND_ONLY[key]}, never --entry {flag}")
+    if args.remove and key == "decisions":
+        raise SystemExit("`Decisions` keeps every decision: replace a superseded one in place (--entry K --replace), never --remove")
+    entries = notebook_entries(lines, i + 1, e)
+    entry = resolve_entry_key(entries, args.entry, heading, args.phase)[0]
+    old_size = len("\n".join(lines[entry["start"]:entry["end"]]).encode("utf-8"))
+    if args.replace:
+        new = _clean_section_body(_phase_section_body(args), heading)
+        while new and not new[-1].strip():
+            new.pop()
+        if not ENTRY_MARKER.match(new[0]):
+            new[0] = entry["marker"] + new[0].lstrip()  # text without a marker takes the old entry's marker
+        parsed = notebook_entries(new, 0, len(new))
+        if len(parsed) > 1:
+            raise SystemExit(f"the text holds {len(parsed)} entries; --entry K --replace writes exactly one (add the others with --append)")
+        if not parsed or parsed[0]["start"] != 0 or parsed[0]["end"] != len(new):
+            raise SystemExit("the text is not one entry: a `###` heading or an unindented paragraph after a blank line would stand outside it; indent its continuation lines, or write the rest with --append")
+        lines[entry["start"]:entry["end"]] = new
+        after = notebook_entries(lines, i + 1, e + len(new) - (entry["end"] - entry["start"]))
+        if len(after) != len(entries) or (after[entry["pos"] - 1]["start"], after[entry["pos"] - 1]["end"]) != (entry["start"], entry["start"] + len(new)):
+            raise SystemExit("the text would change the entries around it (a fence it opens and never closes?); nothing written")
+        verb, new_size = "replaced", len("\n".join(new).encode("utf-8"))
+    else:
+        if entry["sep_end"] < e:
+            del lines[entry["start"]:entry["sep_end"]]
+        else:
+            first = entry["start"]
+            while first > i + 1 and not lines[first - 1].strip():
+                first -= 1
+            del lines[first:entry["end"]]
+        verb, new_size = "removed", 0
+    updated = "\n".join(lines)
+    if updated != text:
+        write_text(path, updated)
+    print(f"{verb}={heading} entry={entry['pos']} bytes={old_size}->{new_size} phase_md={len(updated.encode('utf-8'))}")
+
+
+def _phase_section_move(args: argparse.Namespace, pdir: Path, archived: bool, path: Path, lines: list, heading: str, i: int, e: int) -> None:
+    """`--to-topic <slug> [--entry K] [--gist TEXT] [--dry-run]`: move entries to `topics/<slug>.md`,
+    losslessly. Each entry is appended as a `## <Section> <label>` block holding its lines byte for
+    byte, the topic is re-read and every block verified, and only then is phase.md rewritten, each
+    entry replaced by one pointer line carrying a verbatim gist. A failure between the two writes
+    leaves a duplicate, never a loss. Every refusal is named and nothing is written."""
+    key = heading.lower()
+    slug = args.to_topic.strip()
+    if archived and not args.dry_run:
+        raise SystemExit(f"phase {args.phase} is archived; its notebook is read-only (--dry-run still reads it)")
+    if key in PHASE_SECTION_UNMOVABLE:
+        raise SystemExit(f"`{heading}` cannot move to a topic: {PHASE_SECTION_UNMOVABLE[key]}")
+    if not TOPIC_SLUG_RE.fullmatch(slug):
+        raise SystemExit(f"--to-topic takes a slug [a-z0-9][a-z0-9-]{{0,63}} (the file is topics/<slug>.md), got {args.to_topic!r}")
+    if slug == "breakdown":
+        raise SystemExit("the slug `breakdown` is refused: each decomposition pass rewrites topics/breakdown.md whole, so entries moved there would be lost; pick another slug")
+    entries = notebook_entries(lines, i + 1, e)
+    if not entries:
+        raise SystemExit(f"`{heading}` has no entries to move (an entry is a column-0 list item: `- `, `* `, `+ `, `1. `, `1) `)")
+    reasons, skipped = [], []
+    if args.entry is not None:
+        chosen = resolve_entry_key(entries, args.entry, heading, args.phase, several=True)
+        reasons += [f"entry {x['pos']} is already a pointer line: nothing to move" for x in chosen if x["pointer"]]
+    else:  # the whole section: entries already moved stay as they are
+        chosen = [x for x in entries if not x["pointer"]]
+        skipped = [x["pos"] for x in entries if x["pointer"]]
+        if not chosen:
+            raise SystemExit(f"every entry of `{heading}` is already a pointer line: nothing to move")
+    given = args.gist.strip() if args.gist is not None else None
+    if given is not None and len(chosen) != 1:
+        reasons.append(f"--gist gives one entry's gist, but this move takes {len(chosen)} entries: move that entry alone (--entry K --gist TEXT), or let the gists derive")
+    if given is not None and ("\n" in given or not given):
+        reasons.append("--gist must be one non-empty line")
+    plans = []
+    for x in chosen:
+        if x["pointer"]:
+            continue
+        body = lines[x["start"]:x["end"]]
+        gist = given if given is not None else entry_gist(body)
+        plain = gist_plain_chars(gist, x)
+        if plain < GIST_PLAIN_MIN:
+            reasons.append(f"entry {x['pos']}: {'the given' if given is not None else 'its derived'} gist {gist!r} keeps {plain} characters of plain text once markdown, links and the label are stripped, under the {GIST_PLAIN_MIN}-character floor (a bare link): give it a gist that says what the entry holds (--entry {x['pos']} --gist TEXT)")
+        plans.append((x, body, gist))
+    if reasons:
+        for reason in reasons:
+            print(f"refused: {reason}", file=sys.stderr)
+        raise SystemExit(f"--to-topic refused, nothing written ({len(reasons)} reason{'' if len(reasons) == 1 else 's'} above)")
+    rel = f"topics/{slug}.md"
+    topic = pdir / "topics" / f"{slug}.md"
+    old_topic = topic.read_text(encoding="utf-8") if topic.is_file() else ""
+    if old_topic.strip():
+        base = old_topic if old_topic.endswith("\n") else old_topic + "\n"
+    else:
+        base = f"# {args.phase} — {slug}\n\n{TOPIC_INTRO}\n"
+    taken = {h.lower() for h, _, _ in h2_spans(base.split("\n"))}
+    blocks, added, pointers = [], [], []
+    for x, body, gist in plans:
+        label = f"{heading} {entry_block_label(x)}"
+        name, n = label, 2
+        while name.lower() in taken:
+            name, n = f"{label} ({n})", n + 1
+        taken.add(name.lower())
+        blocks.append((name, body))
+        added.append(f"\n## {name}\n\n" + "\n".join(body) + "\n")
+        pointers.append(f"{x['marker']}{gist} → [{rel}]({rel}) § {name}")
+    new_topic = base + "".join(added)
+    new_lines = list(lines)
+    for (x, _, _), pointer in reversed(list(zip(plans, pointers))):
+        new_lines[x["start"]:x["end"]] = [pointer]
+    end = e - sum(x["end"] - x["start"] - 1 for x, _, _ in plans)
+    after = notebook_entries(new_lines, i + 1, end)
+    if (_topic_blocks_missing(new_topic, blocks) or len(after) != len(entries)
+            or any(not after[x["pos"] - 1]["pointer"] for x, _, _ in plans)):
+        raise SystemExit(f"--to-topic refused, nothing written: the blocks would not read back from {rel} byte for byte, "
+                         f"or a pointer line would not parse as one (an unclosed fence in the topic or the entry?)")
+    updated = "\n".join(new_lines)
+    keys = entry_ranges(x["pos"] for x, _, _ in plans)
+    old_size = len("\n".join(lines[i:e]).encode("utf-8"))
+    new_size = len("\n".join(new_lines[i:end]).encode("utf-8"))
+    tail = f"to={rel} bytes={old_size}->{new_size} phase_md={len(updated.encode('utf-8'))}"
+    note = f"skipped={entry_ranges(skipped)} (already pointer lines)" if skipped else ""
+    if args.dry_run:
+        for pointer in pointers:
+            print(pointer)
+        print(f"would_move={heading} entries={keys} {tail} saved={old_size - new_size} (dry run: nothing written)")
+        if note:
+            print(note)
+        return
+    write_text(topic, new_topic)
+    missing = _topic_blocks_missing(topic.read_text(encoding="utf-8"), blocks)
+    if missing:
+        raise SystemExit(f"{rel} does not hold {', '.join(missing)} byte for byte after the write; phase.md is unchanged, "
+                         f"so nothing is lost (check the topic for a partial copy)")
+    write_text(path, updated)
+    print(f"moved={heading} entries={keys} {tail}")
+    if note:
+        print(note)
+
+
 def phase_section(args: argparse.Namespace) -> None:
-    """Read or write ONE `## ` section of a phase's phase.md (v61): the notebook is an index, so a
-    reader prints a section and a writer replaces or appends to one, never the whole file.
+    """Read or write ONE `## ` section of a phase's phase.md (v61), or one entry of it: the
+    notebook is an index, so a reader prints a section or an entry and a writer replaces, appends,
+    removes or moves one, never the whole file.
 
     No name prints the index (a line per heading with its bytes, then the total). `--replace`
     keeps the heading and every other byte of the file; the generated `Slices` section and the
     two append-only sections refuse it and name the right flag. `--resolve OQ<n> --pointer <ref>`
     collapses one Operator Questions entry to a single resolved line (entries are never deleted).
+    `--list` lists a section's entries (`notebook_entries`); `--entry K` prints one, and with
+    `--replace` / `--remove` writes only it. `--to-topic <slug>` moves entries verbatim into
+    `topics/<slug>.md`, leaving one pointer line each; `--topic <slug>` reads that file.
     A write happens only when the text changes; an archived phase is read-only.
     """
     pdir, archived = _find_phase_dir(args.phase)
+    name = " ".join(args.name).strip().lstrip("#").strip() if args.name else ""
+    modes = [flag for flag, on in (("--replace", args.replace), ("--append", args.append), ("--resolve", bool(args.resolve)),
+                                   ("--remove", args.remove), ("--to-topic", args.to_topic is not None)) if on]
+    if len(modes) > 1:
+        raise SystemExit(f"choose one of {', '.join(modes)}")
+    _phase_section_flags(args, modes[0] if modes else None)
+    if args.topic is not None:
+        _phase_topic_read(args, pdir, name)
+        return
     path = pdir / "phase.md"
     if not path.exists():
         raise SystemExit(f"phase {args.phase} has no phase.md")
     text = path.read_text(encoding="utf-8")
     lines = text.split("\n")
     spans = h2_spans(lines)
-    name = " ".join(args.name).strip().lstrip("#").strip() if args.name else ""
-    modes = [flag for flag, on in (("--replace", args.replace), ("--append", args.append), ("--resolve", bool(args.resolve))) if on]
-    if len(modes) > 1:
-        raise SystemExit(f"choose one of {', '.join(modes)}")
     headings = ", ".join(f"`{h}`" for h, _, _ in spans)
 
     def find(wanted: str):
@@ -3557,19 +3991,46 @@ def phase_section(args: argparse.Namespace) -> None:
 
     if not modes:
         if not name:
+            if args.list or args.entry is not None:
+                raise SystemExit(f"{'--list' if args.list else '--entry'} needs a section name; the headings are {headings}")
             sizes = h2_sections(text)
             for heading, size in sizes:
                 print(f"{size:>8}  {heading}")
             print(f"{len(text.encode('utf-8')):>8}  total (budget {PHASE_MD_BUDGET})")
             return
-        _, i, e = find(name)
+        heading, i, e = find(name)
+        if args.list:
+            entries = notebook_entries(lines, i + 1, e)
+            if not entries:
+                print(f"`{heading}` has no entries", file=sys.stderr)
+            for x in entries:
+                flags = ",".join(f for f, on in (("long", x["long"]), ("nested", x["nested"]), ("pointer", x["pointer"])) if on) or "-"
+                lead = x["lead"] if len(x["lead"]) <= 80 else x["lead"][:80] + "…"
+                print(f"{x['pos']:>4}  {x['label'] or '-':<5} {x['bytes']:>7} B  {flags:<18} {lead}")
+            return
+        if args.entry is not None:
+            entry = resolve_entry_key(notebook_entries(lines, i + 1, e), args.entry, heading, args.phase)[0]
+            print("\n".join(lines[entry["start"]:entry["end"]]))
+            return
         sec = lines[i:e]
         while sec and not sec[-1].strip():
             sec.pop()
         print("\n".join(sec))
         return
+    if args.to_topic is not None:
+        if not name:
+            raise SystemExit(f"--to-topic needs a section name; the headings are {headings}")
+        heading, i, e = find(name)
+        _phase_section_move(args, pdir, archived, path, lines, heading, i, e)
+        return
     if archived:
         raise SystemExit(f"phase {args.phase} is archived; its notebook is read-only")
+    if args.entry is not None:
+        if not name:
+            raise SystemExit(f"--entry needs a section name; the headings are {headings}")
+        heading, i, e = find(name)
+        _phase_section_entry_write(args, path, text, lines, heading, i, e)
+        return
     if args.resolve:
         if name and name.lower() != "operator questions":
             raise SystemExit("--resolve works on `Operator Questions` only; omit the section name")
@@ -12478,8 +12939,10 @@ def main(argv=None) -> int:
     p.add_argument("--repo", action="append", default=None, metavar="NAME", help="multi-repo host only: measure only this registered repo (repeatable); with exactly one --repo, --base/--head set that repo's range instead of the host's")
     p.set_defaults(func=phase_scope)
 
-    p = sub.add_parser("phase-section", help="Read or write ONE `## ` section of a phase's phase.md: no name = the index (a line per heading with its bytes), a name prints that section, --replace / --append write one section (stdin or --file), --resolve OQ<n> --pointer <ref> collapses an Operator Questions entry; every other byte of the notebook stays identical",
-                       description="phase.md is an index: read one section, write one section, never the whole file. Put the section name BEFORE the flags: phase-section P1 Now --replace --file now.md. Names match case-insensitively (Now, Decisions, 'Doc impact', 'Operator Questions', 'Notes for later slices', Objective, Slices). Slices is generated and refused; Doc impact and Operator Questions are append-only (--append, or --resolve to collapse an answered entry).")
+    p = sub.add_parser("phase-section", help="Read or write ONE `## ` section of a phase's phase.md, or one entry of it: no name = the index (a line per heading with its bytes), a name prints that section, --list its entries, --entry K one entry; --replace / --append write one section (stdin or --file), --entry K --replace / --remove write one entry, --resolve OQ<n> --pointer <ref> collapses an Operator Questions entry, --to-topic <slug> moves entries verbatim to topics/<slug>.md behind one gist line each, --topic <slug> reads that file; every other byte of the notebook stays identical",
+                       description="phase.md is an index: read one section or one entry, write one section or one entry, never the whole file. Put the section name BEFORE the flags: phase-section P1 Now --replace --file now.md. Names match case-insensitively (Now, Decisions, 'Doc impact', 'Operator Questions', 'Notes for later slices', Objective, Slices). Slices is generated and refused; Doc impact and Operator Questions are append-only (--append, or --resolve to collapse an answered entry). "
+                                   "Entries are a section's column-0 list items (- , * , + , 1. , 1) ) with their continuation and nested lines: --list numbers them (position, own label, bytes, flags long/nested/pointer, lead), and --entry K names one by position, OQ<n> or a unique case-insensitive piece of its first line. --entry K --replace swaps that entry alone (text without a marker keeps the old one); --entry K --remove deletes a consumed one (Notes for later slices, Now, Objective, custom sections; a superseded decision is replaced, never removed). "
+                                   "--to-topic <slug> [--entry K] [--gist TEXT] [--dry-run] moves the section's entries (or K's, where ranges and lists like 1-8,10 work) to topics/<slug>.md: each is appended there as a `## <Section> <label>` block byte for byte and verified, then replaced in phase.md by one pointer line, `<marker><gist> → [topics/<slug>.md](topics/<slug>.md) § <block>`, its gist a verbatim excerpt of at most 160 characters; Decisions, Notes for later slices, Objective and custom sections only, never the slug breakdown, and a gist under 24 characters of plain text (a bare link) is refused. --topic <slug> [<block>] reads a topic: its index of blocks with bytes, or one block.")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("name", nargs="*", help="section heading (quote it when it has spaces); omit for the index")
     p.add_argument("--replace", action="store_true", help="replace the section's body (the heading and the rest of the file are kept byte-identical)")
@@ -12487,6 +12950,13 @@ def main(argv=None) -> int:
     p.add_argument("--resolve", metavar="OQ<n>", help="collapse that Operator Questions entry to one line (entries are never deleted)")
     p.add_argument("--pointer", help="with --resolve: where the answer landed (a Decisions line, a deferred job, a slice)")
     p.add_argument("--file", help="read the new text from this file (default: stdin)")
+    p.add_argument("--list", action="store_true", help="with a section name: one line per entry (position, own label, bytes, flags long/nested/pointer, its lead cut at 80 characters)")
+    p.add_argument("--entry", metavar="K", help="one entry of the section: its position (1-based), OQ<n>, or a unique case-insensitive piece of its first line; alone it prints that entry, with --replace / --remove it writes only it, with --to-topic it may also be ranges and lists (1-8,10)")
+    p.add_argument("--remove", action="store_true", help="with --entry K: delete that entry and its trailing blank lines (Notes for later slices, Now, Objective, custom sections; refused in Decisions, Doc impact, Operator Questions and Slices)")
+    p.add_argument("--to-topic", metavar="SLUG", dest="to_topic", help="move the section's entries (or --entry K's) verbatim to topics/SLUG.md, verify them there, then leave one pointer line each carrying a verbatim gist; Decisions, Notes for later slices, Objective and custom sections; the slug breakdown is refused")
+    p.add_argument("--gist", help="with --to-topic and exactly one entry: the pointer line's gist (default: derived, a verbatim excerpt of at most 160 characters)")
+    p.add_argument("--dry-run", action="store_true", dest="dry_run", help="with --to-topic: print the pointer lines and the bytes saved, and write nothing")
+    p.add_argument("--topic", metavar="SLUG", help="read topics/SLUG.md beside phase.md instead: no name prints its index (its ## blocks with bytes), a name prints that block")
     p.set_defaults(func=phase_section)
 
     # The design contract, schema 2 (v60): the on-disk layout lives in design-cowork/reference/record.md "The design record".
