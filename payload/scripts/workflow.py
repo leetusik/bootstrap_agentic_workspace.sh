@@ -414,6 +414,19 @@ PHASE_MD_BUDGET = 40 * 1024
 LONG_ENTRY_BYTES = 512
 GIST_MAX = 160
 GIST_PLAIN_MIN = 24
+# Per-section budgets (bytes), warning-only like PHASE_MD_BUDGET, which still judges the total. A
+# section not named here gets SECTION_BUDGET_DEFAULT; None = no budget of its own (Slices is
+# generated, Doc impact is append-only, one line per note), though both still count to the total.
+# `notebook_report` is the one reader: the index, finish-slice, validate and next all print from it.
+SECTION_BUDGETS = {"decisions": 12288, "operator questions": 8192, "notes for later slices": 6144,
+                   "now": 2048, "objective": 2048, "slices": None, "doc impact": None}
+SECTION_BUDGET_DEFAULT = 6144
+SECTION_REMEDIES = {"operator questions": "collapse answered entries with --resolve OQ<n> --pointer <ref>",
+                    "now": "rewrite it shorter with --replace"}
+# Paged reads: a section or topic block over PAGE_BYTES prints one page at a time, whole entries
+# only. Bytes are at least characters, so a page plus its header stays under the Bash tool's
+# 30,000-character output limit and is never printed cut off.
+PAGE_BYTES = 24 * 1024
 # Execution streams (workspace v24; opt-in again since v43). A phase.json MAY carry an
 # optional `execution` block. `mode: "parallel"` = the phase runs on its own branch +
 # worktree, stamped by `parallel-start` -- which a phase gets ONLY when the operator asks
@@ -3560,6 +3573,139 @@ def entry_ranges(positions) -> str:
     return ",".join(str(a) if a == b else f"{a}-{b}" for a, b in runs)
 
 
+def section_topic_slug(heading: str) -> str:
+    """The topic slug a suggested move uses for a section: `Notes for later slices` -> `notes-for-later-slices`."""
+    slug = re.sub(r"[^a-z0-9]+", "-", heading.lower()).strip("-")[:64].strip("-")
+    return slug if slug and slug != "breakdown" else "notes"
+
+
+def notebook_report(phase: str, text: str) -> dict:
+    """The one budget report of a notebook (design §4), read by the index, finish-slice, validate and
+    next. Returns data:
+
+    `{"phase", "lines", "bytes", "budget": PHASE_MD_BUDGET, "over", "sections": [...], "moves": [...],
+      "flagged": [...]}`; each section is `{"heading", "bytes", "budget" (None = none of its own),
+    "over", "movable", "long": [the long entries' dicts from notebook_entries], "move" (the suggested
+    `phase-section <P> "<Section>" --to-topic <slug> --entry <ranges>` or None), "remedy" (the fix for
+    an over-budget section a move cannot shrink, or None)}`. Long entries are named only in movable
+    sections (not PHASE_SECTION_UNMOVABLE); `moves` lists every section's move command; `flagged` the
+    sections over their budget or holding long entries. Section bytes are `h2_sections`' bytes."""
+    lines = text.split("\n")
+    sections = []
+    for heading, i, e in h2_spans(lines):
+        key = heading.lower()
+        size = len("\n".join(lines[i:e]).encode("utf-8"))
+        budget = SECTION_BUDGETS.get(key, SECTION_BUDGET_DEFAULT)
+        movable = key not in PHASE_SECTION_UNMOVABLE
+        long_entries = [x for x in notebook_entries(lines, i + 1, e) if x["long"]] if movable else []
+        move = (f'phase-section {phase} "{heading}" --to-topic {section_topic_slug(heading)} '
+                f'--entry {entry_ranges(x["pos"] for x in long_entries)}') if long_entries else None
+        over = budget is not None and size > budget
+        remedy = SECTION_REMEDIES.get(key) if over and not move else None
+        sections.append({"heading": heading, "bytes": size, "budget": budget, "over": over, "movable": movable,
+                         "long": long_entries, "move": move, "remedy": remedy})
+    total = len(text.encode("utf-8"))
+    return {"phase": phase, "lines": len(text.splitlines()), "bytes": total, "budget": PHASE_MD_BUDGET,
+            "over": total > PHASE_MD_BUDGET, "sections": sections,
+            "moves": [s["move"] for s in sections if s["move"]],
+            "flagged": [s for s in sections if s["over"] or s["long"]]}
+
+
+def notebook_section_line(section: dict, limit: int = 8) -> str:
+    """One line for a flagged section of `notebook_report`: its size against its budget, up to `limit`
+    long-entry labels (a label, else the position) with `+N more`, and its move command or remedy."""
+    parts = []
+    if section["over"]:
+        parts.append(f"{section['bytes']} B, over its {section['budget']} B budget")
+    else:
+        parts.append(f"{section['bytes']} B")
+    if section["long"]:
+        names = [x["label"] or str(x["pos"]) for x in section["long"]]
+        more = f" +{len(names) - limit} more" if len(names) > limit else ""
+        parts.append(f"long entries: {', '.join(names[:limit])}{more}")
+    if section["move"]:
+        parts.append(f"move: {section['move']}")
+    elif section["remedy"]:
+        parts.append(section["remedy"])
+    return f"## {section['heading']}: " + "; ".join(parts)
+
+
+def dangling_pointers(pdir: Path) -> list:
+    """The pointer lines of a phase notebook whose topic file or `§ <block>` does not exist, as
+    `(section, entry position, topics/<slug>.md, block)`: each one is a lost decision."""
+    path = pdir / "phase.md"
+    if not path.exists():
+        return []
+    lines = path.read_text(encoding="utf-8").split("\n")
+    topics, out = {}, []
+    for heading, i, e in h2_spans(lines):
+        for x in notebook_entries(lines, i + 1, e):
+            if not x["pointer"]:
+                continue
+            m = POINTER_LINE.fullmatch(lines[x["start"]].rstrip())
+            slug, block = m.group(1), m.group(2).strip()
+            if slug not in topics:
+                topic = pdir / "topics" / f"{slug}.md"
+                topics[slug] = ({h.lower() for h, _, _ in h2_spans(topic.read_text(encoding="utf-8").split("\n"))}
+                                if topic.is_file() else None)
+            if topics[slug] is None or block.lower() not in topics[slug]:
+                out.append((heading, x["pos"], f"topics/{slug}.md", block if topics[slug] is not None else None))
+    return out
+
+
+def paged_units(lines: list, first: int, end: int) -> list:
+    """The page units of a block `lines[first:end]` (its heading at `first`, trailing blanks already
+    dropped): the heading with the lines before the first entry, then each entry with its trailing
+    separators, and each non-entry line after an entry on its own. `(start, stop, entry pos or None)`."""
+    entries = notebook_entries(lines, first + 1, end)
+    units, cur = [], first
+    for x in entries:
+        if not units:
+            units.append((first, x["start"], None))
+        else:
+            units += [(k, k + 1, None) for k in range(cur, x["start"])]
+        stop = min(x["sep_end"], end)
+        units.append((x["start"], stop, x["pos"]))
+        cur = stop
+    if not entries:
+        return [(first, end, None)]
+    units += [(k, k + 1, None) for k in range(cur, end)]
+    return units
+
+
+def paged_print(lines: list, first: int, end: int, title: str, next_cmd: str, page) -> None:
+    """Print a section or topic block `lines[first:end]` (trailing blanks dropped), paged (design §5).
+    Without `page`, a block at or under PAGE_BYTES prints whole and unchanged; over it, page 1. A page
+    packs whole units (an entry is never split; a unit bigger than a page gets its own) and opens with
+    `<!-- page i of n · <title> · entries a–b of m · next: <next_cmd> --page i+1 -->` (`last page` on
+    the last). Drop the header lines, concatenate the pages, and the result is the plain print."""
+    while end > first + 1 and not lines[end - 1].strip():
+        end -= 1
+    plain = "\n".join(lines[first:end])
+    if page is None and len(plain.encode("utf-8")) <= PAGE_BYTES:
+        print(plain)
+        return
+    pages, size = [], 0
+    for unit in paged_units(lines, first, end):
+        ubytes = len("\n".join(lines[unit[0]:unit[1]]).encode("utf-8")) + 1
+        if pages and size + ubytes <= PAGE_BYTES:
+            pages[-1].append(unit)
+            size += ubytes
+        else:
+            pages.append([unit])
+            size = ubytes
+    n, want = len(pages), page or 1
+    if want < 1 or want > n:
+        raise SystemExit(f"{title} has {n} page{'' if n == 1 else 's'}, so --page {want} names none")
+    total = len(notebook_entries(lines, first + 1, end))
+    chosen = pages[want - 1]
+    pos = [u[2] for u in chosen if u[2] is not None]
+    span = f"entries {pos[0]}–{pos[-1]} of {total}" if pos else f"entries none of {total}"
+    tail = f"next: {next_cmd} --page {want + 1}" if want < n else "last page"
+    print(f"<!-- page {want} of {n} · {title} · {span} · {tail} -->")
+    print("\n".join(lines[chosen[0][0]:chosen[-1][1]]))
+
+
 def resolve_entry_key(entries: list, key: str, section: str, phase: str, several: bool = False) -> list:
     """The entries `--entry K` names, in document order; SystemExit naming why when it names none or,
     unless `several`, more than one. K is a position (1-based), `OQ<n>`, or, with `several`, ranges and
@@ -3728,13 +3874,20 @@ def _phase_section_flags(args: argparse.Namespace, mode) -> None:
         raise SystemExit("--append adds at the section's end and takes no --entry (to change one entry: --entry K --replace)")
     if args.entry is not None and mode == "--resolve":
         raise SystemExit("--resolve names its entry itself (--resolve OQ<n> --pointer <ref>) and takes no --entry")
+    if args.page is not None:
+        if mode:
+            raise SystemExit(f"--page is a read: it takes no {mode}")
+        if args.list or args.entry is not None:
+            raise SystemExit(f"--page pages a whole section or topic block; it takes no {'--list' if args.list else '--entry'}")
+        if args.page < 1:
+            raise SystemExit(f"--page counts from 1, got {args.page}")
     if mode == "--remove" and args.entry is None:
         raise SystemExit("--remove needs --entry K: it deletes one entry, never a section")
 
 
 def _phase_topic_read(args: argparse.Namespace, pdir: Path, name: str) -> None:
     """`phase-section <P> [<block>] --topic <slug>`: the topic's index (its `## ` blocks with bytes, then
-    the total), or one block, heading included. Unpaged."""
+    the total), or one block, heading included, paged like a section (`paged_print`)."""
     slug = args.topic.strip()
     if not TOPIC_SLUG_RE.fullmatch(slug):
         raise SystemExit(f"--topic takes a slug [a-z0-9][a-z0-9-]{{0,63}} (the file topics/<slug>.md), got {args.topic!r}")
@@ -3744,6 +3897,8 @@ def _phase_topic_read(args: argparse.Namespace, pdir: Path, name: str) -> None:
         raise SystemExit(f"phase {args.phase} has no topics/{slug}.md; its topics: {', '.join(have) or 'none'}")
     text = topic.read_text(encoding="utf-8")
     if not name:
+        if args.page is not None:
+            raise SystemExit("--page pages one block: give the block name (the index is never paged)")
         for heading, size in h2_sections(text):
             print(f"{size:>8}  {heading}")
         print(f"{len(text.encode('utf-8')):>8}  total")
@@ -3752,10 +3907,7 @@ def _phase_topic_read(args: argparse.Namespace, pdir: Path, name: str) -> None:
     spans = h2_spans(lines)
     for heading, i, e in spans:
         if heading.lower() == name.lower():
-            block = lines[i:e]
-            while block and not block[-1].strip():
-                block.pop()
-            print("\n".join(block))
+            paged_print(lines, i, e, heading, f'phase-section {args.phase} "{heading}" --topic {slug}', args.page)
             return
     blocks = ", ".join(f"`{h}`" for h, _, _ in spans) or "none"
     print(f"unknown block: {name!r} in topics/{slug}.md; its blocks are {blocks}", file=sys.stderr)
@@ -3948,12 +4100,26 @@ def phase_section(args: argparse.Namespace) -> None:
 
     if not modes:
         if not name:
+            if args.page is not None:
+                raise SystemExit(f"--page needs a section name (the index is never paged); the headings are {headings}")
             if args.list or args.entry is not None:
                 raise SystemExit(f"{'--list' if args.list else '--entry'} needs a section name; the headings are {headings}")
-            sizes = h2_sections(text)
-            for heading, size in sizes:
-                print(f"{size:>8}  {heading}")
-            print(f"{len(text.encode('utf-8')):>8}  total (budget {PHASE_MD_BUDGET})")
+            report = notebook_report(args.phase, text)
+            if not report["flagged"]:  # nothing over or long: the index exactly as before
+                for sec in report["sections"]:
+                    print(f"{sec['bytes']:>8}  {sec['heading']}")
+            else:  # bytes, budget and flags per section, the heading still last
+                for sec in report["sections"]:
+                    flags = ",".join(f for f, on in (("over", sec["over"]), (f"long:{len(sec['long'])}", sec["long"])) if on) or "-"
+                    budget = sec["budget"] if sec["budget"] is not None else "-"
+                    print(f"{sec['bytes']:>8}  {budget:>6}  {flags:<12} {sec['heading']}")
+            over = " \u2014 OVER BUDGET" if report["over"] else ""
+            print(f"{report['bytes']:>8}  total (budget {PHASE_MD_BUDGET}){over}")
+            for sec in report["flagged"]:
+                if sec["move"]:
+                    print(f"move: {sec['move']}")
+                elif sec["remedy"]:
+                    print(f"fix ## {sec['heading']}: {sec['remedy']}")
             return
         heading, i, e = find(name)
         if args.list:
@@ -3969,10 +4135,7 @@ def phase_section(args: argparse.Namespace) -> None:
             entry = resolve_entry_key(notebook_entries(lines, i + 1, e), args.entry, heading, args.phase)[0]
             print("\n".join(lines[entry["start"]:entry["end"]]))
             return
-        sec = lines[i:e]
-        while sec and not sec[-1].strip():
-            sec.pop()
-        print("\n".join(sec))
+        paged_print(lines, i, e, heading, f'phase-section {args.phase} "{heading}"', args.page)
         return
     if args.to_topic is not None:
         if not name:
@@ -4421,6 +4584,12 @@ def validate() -> int:
         lines_n, bytes_n = phase_md_size(notebook.parent)
         if p["status"] != "done" and bytes_n > PHASE_MD_BUDGET:
             warnings.append(f"phase {p['id']}: phase.md is {lines_n} lines / {bytes_n} bytes, over the notebook budget of {PHASE_MD_BUDGET} bytes; {notebook_sections_hint(notebook.parent)}")
+        if p["status"] != "done" and notebook.exists():  # per section (design §4): over its budget, or long entries
+            for section in notebook_report(p["id"], notebook.read_text(encoding="utf-8"))["flagged"]:
+                warnings.append(f"phase {p['id']}: phase.md {notebook_section_line(section)}")
+        for heading, pos, rel, block in dangling_pointers(notebook.parent):  # every active phase: a lost decision
+            what = f"has no block `{block}`" if block is not None else "does not exist"
+            warnings.append(f"phase {p['id']}: phase.md ## {heading} entry {pos} points at {rel}, which {what}: the moved entry is lost (restore the topic from git, or rewrite the pointer)")
         # Heading-line check, not a substring search: notebooks legitimately quote both
         # spellings in prose (this very rule, for one).
         if notebook.exists() and any(re.match(r"## Doc Impact\b", ln) for ln in notebook.read_text(encoding="utf-8").split("\n")):
@@ -4899,6 +5068,10 @@ def finish_slice(args: argparse.Namespace) -> None:
         print(f"phase.md: {lines_n} lines / {bytes_n} bytes (budget {PHASE_MD_BUDGET} bytes){over}")
         if bytes_n > PHASE_MD_BUDGET:
             print(f"  {notebook_sections_hint(sdir.parents[1])}")
+        pdir = sdir.parents[1]
+        report = notebook_report(pdir.name, (pdir / "phase.md").read_text(encoding="utf-8"))
+        for section in report["flagged"]:  # a section over its own budget or holding long entries
+            print(f"  {notebook_section_line(section)}")
 
 
 def _set_phase_status(pdir: Path, status: str) -> str:
@@ -12896,10 +13069,12 @@ def main(argv=None) -> int:
     p.add_argument("--repo", action="append", default=None, metavar="NAME", help="multi-repo host only: measure only this registered repo (repeatable); with exactly one --repo, --base/--head set that repo's range instead of the host's")
     p.set_defaults(func=phase_scope)
 
-    p = sub.add_parser("phase-section", help="Read or write ONE `## ` section of a phase's phase.md, or one entry of it: no name = the index (a line per heading with its bytes), a name prints that section, --list its entries, --entry K one entry; --replace / --append write one section (stdin or --file), --entry K --replace / --remove write one entry, --resolve OQ<n> --pointer <ref> collapses an Operator Questions entry, --to-topic <slug> moves entries verbatim to topics/<slug>.md behind one gist line each, --topic <slug> reads that file; every other byte of the notebook stays identical",
+    p = sub.add_parser("phase-section", help="Read or write ONE `## ` section of a phase's phase.md, or one entry of it: no name = the index (a line per heading with its bytes; with its budget and over/long flags, then the move commands, when a section is over its budget or holds long entries), a name prints that section (paged: --page N), --list its entries, --entry K one entry; --replace / --append write one section (stdin or --file), --entry K --replace / --remove write one entry, --resolve OQ<n> --pointer <ref> collapses an Operator Questions entry, --to-topic <slug> moves entries verbatim to topics/<slug>.md behind one gist line each, --topic <slug> reads that file; every other byte of the notebook stays identical",
                        description="phase.md is an index: read one section or one entry, write one section or one entry, never the whole file. Put the section name BEFORE the flags: phase-section P1 Now --replace --file now.md. Names match case-insensitively (Now, Decisions, 'Doc impact', 'Operator Questions', 'Notes for later slices', Objective, Slices). Slices is generated and refused; Doc impact and Operator Questions are append-only (--append, or --resolve to collapse an answered entry). "
                                    "Entries are a section's column-0 list items (- , * , + , 1. , 1) ) with their continuation and nested lines: --list numbers them (position, own label, bytes, flags long/nested/pointer, lead), and --entry K names one by position, OQ<n> or a unique case-insensitive piece of its first line. --entry K --replace swaps that entry alone (text without a marker keeps the old one); --entry K --remove deletes a consumed one (Notes for later slices, Now, Objective, custom sections; a superseded decision is replaced, never removed). "
-                                   "--to-topic <slug> [--entry K] [--gist TEXT] [--dry-run] moves the section's entries (or K's, where ranges and lists like 1-8,10 work) to topics/<slug>.md: each is appended there as a `## <Section> <label>` block byte for byte and verified, then replaced in phase.md by one pointer line, `<marker><gist> → [topics/<slug>.md](topics/<slug>.md) § <block>`, its gist a verbatim excerpt of at most 160 characters; Decisions, Notes for later slices, Objective and custom sections only, never the slug breakdown, and a gist under 24 characters of plain text (a bare link) is refused. --topic <slug> [<block>] reads a topic: its index of blocks with bytes, or one block.")
+                                   "--to-topic <slug> [--entry K] [--gist TEXT] [--dry-run] moves the section's entries (or K's, where ranges and lists like 1-8,10 work) to topics/<slug>.md: each is appended there as a `## <Section> <label>` block byte for byte and verified, then replaced in phase.md by one pointer line, `<marker><gist> → [topics/<slug>.md](topics/<slug>.md) § <block>`, its gist a verbatim excerpt of at most 160 characters; Decisions, Notes for later slices, Objective and custom sections only, never the slug breakdown, and a gist under 24 characters of plain text (a bare link) is refused. --topic <slug> [<block>] reads a topic: its index of blocks with bytes, or one block. "
+                                   "Budgets: the index prints each section's bytes; when one is over its budget (Decisions 12 KB, Operator Questions 8 KB, Notes for later slices 6 KB, Now 2 KB, Objective 2 KB, any other 6 KB; none for Slices and Doc impact, which still count to the 40 KB total) or holds long entries (over 512 B or nested, named in movable sections only), every line shows bytes, budget, flags (over, long:N) and the heading last, then the total, then one `move: phase-section <P> \"<Section>\" --to-topic <slug> --entry <ranges>` per section. "
+                                   "Paging: a section or topic block over 24 KB prints page 1 of it; --page N prints page N. Pages break only between entries (an entry bigger than a page gets its own page) and open with `<!-- page i of n · <Section> · entries a–b of m · next: ... --page i+1 -->` (`last page` on the last); drop those header lines, concatenate the pages, and you have the section byte for byte.")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("name", nargs="*", help="section heading (quote it when it has spaces); omit for the index")
     p.add_argument("--replace", action="store_true", help="replace the section's body (the heading and the rest of the file are kept byte-identical)")
@@ -12913,7 +13088,8 @@ def main(argv=None) -> int:
     p.add_argument("--to-topic", metavar="SLUG", dest="to_topic", help="move the section's entries (or --entry K's) verbatim to topics/SLUG.md, verify them there, then leave one pointer line each carrying a verbatim gist; Decisions, Notes for later slices, Objective and custom sections; the slug breakdown is refused")
     p.add_argument("--gist", help="with --to-topic and exactly one entry: the pointer line's gist (default: derived, a verbatim excerpt of at most 160 characters)")
     p.add_argument("--dry-run", action="store_true", dest="dry_run", help="with --to-topic: print the pointer lines and the bytes saved, and write nothing")
-    p.add_argument("--topic", metavar="SLUG", help="read topics/SLUG.md beside phase.md instead: no name prints its index (its ## blocks with bytes), a name prints that block")
+    p.add_argument("--topic", metavar="SLUG", help="read topics/SLUG.md beside phase.md instead: no name prints its index (its ## blocks with bytes), a name prints that block (paged like a section)")
+    p.add_argument("--page", type=int, metavar="N", help=f"with a section or topic block name: print page N of it ({PAGE_BYTES // 1024} KB pages that break only between entries, each opening with a `<!-- page i of n ... -->` header); a plain read over {PAGE_BYTES // 1024} KB prints page 1; refused with any write flag, --list or --entry")
     p.set_defaults(func=phase_section)
 
     # The design contract, schema 2 (v60): the on-disk layout lives in design-cowork/reference/record.md "The design record".

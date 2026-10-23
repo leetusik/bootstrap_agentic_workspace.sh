@@ -20,7 +20,8 @@
 # invariants (template seed, generated ## Slices block, finish-slice --outcome, the
 # notebook budget/case-drift warnings and the timestamp-free dashboards; v61: phase-section reads and writes
 # one phase.md section, a 40 KB index budget naming the biggest sections; --entry K --replace writes one entry, and
-# --to-topic moves entries verbatim to topics/ behind gist lines, its refusals writing nothing), the P41 run-phases invariants
+# --to-topic moves entries verbatim to topics/ behind gist lines, its refusals writing nothing; per-section budgets
+# and long entries named with a move command, 24 KB pages that never split an entry, a dangling pointer warning), the P41 run-phases invariants
 # (a run's tokens resolve in order and a non-phase token refuses; a run passes a parked acceptance gate and
 # halts at a pending slice while plain `next` still waits there), the P42 ready-set invariants (an undeclared phase
 # keeps its plain pointer and prints no wave line; a declared slice is never ready before its dependency is done;
@@ -2290,6 +2291,45 @@ MOVE
 [ $? -eq 0 ] && [ "$dry_rc" -eq 0 ] && [ "$dry_clean" = yes ] && [ "$mv_rc" -eq 0 ] \
   && ok "--to-topic --dry-run writes nothing; the move puts each entry verbatim in topics/<slug>.md and leaves a pointer line with a gist" \
   || bad "--to-topic was not lossless (dry rc=$dry_rc clean=$dry_clean, move rc=$mv_rc)"
+# Budgets and paging (design §4-§5): a probe phase P10 whose Decisions (~70 KB, one entry bigger than a
+# page) is over its 12 KB budget, read in 24 KB pages; then a dangling pointer warns in validate.
+( cd "$PW" && python3 scripts/workflow.py new-phase --phase P10 --name "Page probe" --objective "page probe" >/dev/null 2>&1 )
+PP="$PW/works/phases/active/P10/phase.md"
+python3 - "$PP" <<'SEED'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+dec = "".join(f"- **D{n}:** decision {n}. " + "detail " * 140 + "\n" for n in range(1, 41))
+dec += "- **Huge:** " + "x" * 30000 + "\n\nA prose paragraph after the entries.\n"
+t = t.replace("linked by one line._\n", "linked by one line._\n\n" + dec, 1)
+p.write_text(t)
+SEED
+out=$(ps P10)
+printf '%s\n' "$out" | grep -q '12288  over,long:41 Decisions$' && printf '%s\n' "$out" | grep -qx 'move: phase-section P10 "Decisions" --to-topic decisions --entry 1-41' \
+  && val=$( cd "$PW" && python3 scripts/workflow.py validate 2>&1 ) && printf '%s\n' "$val" | grep -q 'phase P10: phase.md ## Decisions: .* over its 12288 B budget; long entries: 1, 2, 3, 4, 5, 6, 7, 8 +33 more; move: phase-section P10 "Decisions"' \
+  && ok "an over-budget section and its long entries are named, with the move command, by the index (heading last) and validate" || bad "budget report wrong -- $out"
+pg_rc=0; ps P10 Decisions > "$PSW/plain.txt" || pg_rc=1; n=$(head -1 "$PSW/plain.txt" | sed -n 's/^<!-- page 1 of \([0-9]*\) · Decisions · entries 1–[0-9]* of 41 · next: phase-section P10 "Decisions" --page 2 -->$/\1/p')
+: > "$PSW/pages.txt"; for k in $(seq 1 "${n:-0}"); do ps P10 Decisions --page "$k" > "$PSW/page$k.txt" || pg_rc=1; done
+python3 - "$PP" "$PSW" "${n:-0}" <<'PAGES'
+import re, sys
+text, d, n = open(sys.argv[1], encoding="utf-8").read(), sys.argv[2], int(sys.argv[3])
+sec = re.search(r"(?ms)^## Decisions\n.*?(?=^## )", text).group(0).rstrip("\n") + "\n"
+pages = [open(f"{d}/page{k}.txt", encoding="utf-8").read() for k in range(1, n + 1)]
+assert n >= 3 and pages[0] == open(f"{d}/plain.txt", encoding="utf-8").read(), "a plain read is not page 1"
+assert all(p.startswith("<!-- page ") for p in pages) and pages[-1].split("\n")[0].endswith("· last page -->")
+assert "".join(p.split("\n", 1)[1] for p in pages) == sec, "the pages do not concatenate to the section"
+for p in pages[1:]:
+    assert re.match(r"(- \*\*|A prose)", p.split("\n", 1)[1]), "a page starts inside an entry"
+assert any(len(p.encode()) > 24 * 1024 for p in pages), "the entry bigger than a page was split"
+PAGES
+[ $? -eq 0 ] && [ "$pg_rc" -eq 0 ] && ok "a section over 24 KB reads in pages: a plain read is page 1, pages break only between entries and concatenate to the section byte for byte" \
+  || bad "paged read wrong (n=$n rc=$pg_rc) -- $(head -1 "$PSW/plain.txt" | cut -c1-200)"
+cp "$PP" "$PSW/p0.md"; r1=0; r2=0; ps P10 Decisions --page 99 >/dev/null 2>&1 || r1=1; printf 'x\n' | ps P10 Decisions --page 1 --replace >/dev/null 2>&1 || r2=1
+[ "$r1" -eq 1 ] && [ "$r2" -eq 1 ] && cmp -s "$PSW/p0.md" "$PP" && ok "--page out of range and --page with a write flag are refused, writing nothing" || bad "--page refusals wrong (range=$r1 write=$r2)"
+ps P10 Decisions --to-topic decisions --entry 1 >/dev/null 2>&1
+q=$( cd "$PW" && python3 scripts/workflow.py validate 2>&1 | grep -c 'the moved entry is lost' ); rm "$PW/works/phases/active/P10/topics/decisions.md"
+lost=$( cd "$PW" && python3 scripts/workflow.py validate 2>&1 ); lost_rc=$?
+[ "$q" = 0 ] && [ "$lost_rc" -eq 0 ] && printf '%s\n' "$lost" | grep -q 'phase P10: phase.md ## Decisions entry 1 points at topics/decisions.md, which does not exist: the moved entry is lost' \
+  && ok "validate stays quiet on a good pointer and warns on a dangling one (a lost decision), exit 0" || bad "dangling-pointer warning wrong (quiet=$q rc=$lost_rc) -- $lost"
 
 # ---------------------------------------------------------------------------
 echo "== Test 10c: P41 run-phases -- a run's phase list, and a parked acceptance gate only a run passes =="
