@@ -14,6 +14,42 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v76 — 2026-10-23
+
+- **A phase notebook no longer grows past its budget unnoticed, and nobody rewrites the whole file
+  to change one line.** glide's live P33 `phase.md` reached 149 KB against the 40 KB budget, its
+  `## Decisions` alone 107 KB, and executors rewrote the whole file to change one entry. Every later
+  dispatch paid to read all of it. `phase-section` now works on single entries: `--list` prints a
+  section's entries with their keys and sizes, `--entry K` reads one (a position, a range, `OQ<n>` or
+  a unique lead match), and `--entry K --replace` / `--entry K --remove` swap or drop one while every
+  other byte stays identical (`--remove` is refused in Decisions and the append-only sections).
+- **A lossless move to `topics/`.** `phase-section <P> <section> --to-topic <slug>` appends the chosen
+  entries verbatim to `topics/<slug>.md`, verifies them there, and leaves one pointer line per entry
+  carrying a verbatim gist (at most 160 characters; a bare link is refused). `--topic <slug>` reads a
+  topic back. Slices, Doc impact, Operator Questions and Now never move.
+- **Per-section budgets and warnings.** The 40 KB total stays; each section now has its own budget
+  (Decisions 12 KB, Operator Questions 8 KB, Notes 6 KB, Now 2 KB, Objective 2 KB, others 6 KB; none
+  for the generated Slices table or Doc impact). The section index, `finish-slice` and `validate`
+  name the flagged sections and their long entries (over 512 B or nested), and `validate` warns on a
+  pointer line whose topic entry is missing.
+- **Paged reads.** A section over 24 KB prints in pages that break only between entries, each with a
+  `<!-- page i of n … -->` header; a plain read prints page 1, and the pages concatenate to the section.
+- **A "move to topics first" step.** When an unfinished phase's notebook is over 40 KB, `next`,
+  `run-phases`, `start-slice` and the resume card print `notebook_over_budget=` with the
+  `notebook_move=` commands to run. The step is required when a long movable entry exists and advisory
+  when nothing can move; it never blocks, and the orchestrator runs it between dispatches.
+- **The breakdown lives in `topics/breakdown.md`.** Each decomposition pass rewrites it in place (a
+  design phase's build inventory included) and leaves one Decisions gist line.
+- **No whole-file access.** The executor, the orchestrator skills, the `phase.md` template and the
+  contract now say: never `Read`, `Edit` or `Write` `phase.md`; read and write it through the
+  entry-level `phase-section` commands. The review counts a gist line together with its topic.
+- The smoke suite grows from 406 to 422 checks.
+- **Migration notes.** An unfinished phase whose notebook is over 40 KB (glide's P33, for one) gets the
+  required "move to topics first" step on its next run: run the printed `notebook_move=` lines. When
+  nothing can move, the advisory form names what remains (the generated Slices table, Operator
+  Questions to `--resolve`). Done phases and existing notebooks are untouched, and nothing is rewritten
+  on `--update`. The new template guidance applies to new phases only.
+
 ## v75 — 2026-10-23
 
 - **The design critic and the explain critic may now run on the drafter's model.** Before v75,
