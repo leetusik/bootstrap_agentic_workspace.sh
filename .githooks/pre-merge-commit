@@ -1,0 +1,17 @@
+#!/bin/sh
+# Git runs this for the merge commit `git merge` makes by itself (no --no-commit), where
+# .githooks/pre-commit does not run. On main, refuse a merge commit whose tree still holds a
+# pending release fragment (changelog.d/*.md other than README.md): land a branch with
+#   git merge --no-ff --no-commit <branch> && python3 installer/build.py --release
+# and commit the stamped result. Register once per clone: git config core.hooksPath .githooks
+
+if [ "$(git symbolic-ref -q --short HEAD)" = "main" ]; then
+    pending=$(git -c core.quotePath=false ls-files --cached -- changelog.d | grep -E '^changelog\.d/[^/]+\.md$' | grep -v '^changelog\.d/README\.md$')
+    if [ -n "$pending" ]; then
+        echo "pre-merge-commit: this merge into main still holds a pending release fragment:" >&2
+        echo "$pending" | sed 's/^/  /' >&2
+        echo "Redo it as: git merge --no-ff --no-commit <branch>, then python3 installer/build.py --release," >&2
+        echo "stage the result (git add -A CHANGELOG.md installer/main.py bootstrap_agentic_workspace.sh changelog.d) and commit." >&2
+        exit 1
+    fi
+fi

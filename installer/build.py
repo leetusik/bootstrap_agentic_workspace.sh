@@ -27,12 +27,20 @@ Source of truth:
 Determinism: sorted directory walks, sorted dict keys, repr() literals (no
 timestamps or randomness) => same inputs produce a byte-identical artifact.
 
+Release (this repo only; adopters only ever see the stamped integer): a branch never
+touches WORKSPACE_VERSION or CHANGELOG's numbered sections. Its release notes go in a
+fragment, changelog.d/<slug>.md, and `--release` stamps the next version when the branch
+lands on main (see changelog.d/README.md and CLAUDE.md).
+
 Usage:
   python3 installer/build.py           # write ../bootstrap_agentic_workspace.sh
   python3 installer/build.py --check   # exit non-zero if the committed artifact drifts
+  python3 installer/build.py --release # on main: fold changelog.d/ into v<N+1>, bump, rebuild
 """
 from __future__ import annotations
 
+import datetime
+import re
 import subprocess
 import sys
 import tempfile
@@ -47,6 +55,18 @@ HEREDOC_DELIM = "INSTALLER_PY"                  # distinctive: no payload/body l
 PAYLOAD_MARKER = "#@@GENERATED_PAYLOADS@@"      # in main.py — replaced by generated constants
 BODY_MARKER = "#@@PYTHON_BODY@@\n"              # in wrapper.sh — replaced by the python body
 EXPECTED_SKILL_COUNT = 18
+
+# Release stamping (--release). The smoke suite reads the same two shapes (WORKSPACE_VERSION in
+# installer/main.py, the numbered `## v<N> ` headings in CHANGELOG.md), so they are named once here.
+CHANGELOG = REPO / "CHANGELOG.md"
+MAIN_PY = HERE / "main.py"
+FRAGMENT_DIR = REPO / "changelog.d"             # one fragment per branch; README.md is the format, never a fragment
+FRAGMENT_README = "README.md"
+RELEASE_BRANCH = "main"
+VERSION_LINE_RE = re.compile(r"^WORKSPACE_VERSION = (\d+)$", re.M)
+SECTION_RE = re.compile(r"^## v(\d+) ", re.M)
+SUMMARY_RE = re.compile(r"^# (\S.*?)\s*$")
+MIGRATION_MARK = "**Migration notes.**"
 
 # Shipped files embedded verbatim, keyed by EMIT path (where the installer writes them). The
 # source lives under payload/ at src_rel(emit): the first path component undotted, so no source
@@ -228,8 +248,110 @@ def _sh_syntax_check(artifact: str) -> None:
         print("build warning: 'sh' not found; skipped shell syntax check", file=sys.stderr)
 
 
+def write_artifact(artifact: str) -> None:
+    ARTIFACT.write_text(artifact, encoding="utf-8")
+    ARTIFACT.chmod(0o755)
+    print(f"wrote {ARTIFACT.name} ({len(artifact)} bytes) from installer/ source")
+
+
+def refuse(msg: str) -> "None":
+    print(f"release refused: {msg}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def pending_fragments() -> "list":
+    """The release fragments waiting to be stamped: changelog.d/*.md directly in the directory,
+    by file name, except README.md (the format note, which is never a fragment)."""
+    if not FRAGMENT_DIR.is_dir():
+        return []
+    return sorted((p for p in FRAGMENT_DIR.glob("*.md") if p.is_file() and p.name != FRAGMENT_README),
+                  key=lambda p: p.name)
+
+
+def read_fragment(path: Path) -> "tuple":
+    """(summary, body) of one fragment: line 1 is `# <summary>`, the rest is the section's bullets
+    and must carry a `**Migration notes.**` line. Anything else is a refusal naming the file."""
+    name = f"changelog.d/{path.name}"
+    lines = path.read_text(encoding="utf-8").split("\n")
+    m = SUMMARY_RE.match(lines[0])
+    if not m:
+        refuse(f"{name}: line 1 must be '# <one-line summary>' (the release commit's subject tail)")
+    body = "\n".join(lines[1:]).strip("\n").rstrip()
+    if MIGRATION_MARK not in body:
+        refuse(f"{name}: no '{MIGRATION_MARK}' line (say 'None.' when a sync needs no manual step)")
+    if SECTION_RE.search(body):
+        refuse(f"{name}: holds a numbered '## v<N>' heading; the stamp writes the heading, a fragment carries only the bullets")
+    return m.group(1), body
+
+
+def current_branch() -> str:
+    try:
+        r = subprocess.run(["git", "-C", str(REPO), "symbolic-ref", "-q", "--short", "HEAD"],
+                           capture_output=True, text=True)
+    except FileNotFoundError:
+        refuse("git not found; --release needs it to check the branch")
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def release() -> int:
+    """Stamp the next version at landing: fold every pending changelog.d fragment into one
+    `## v<N+1> — <today>` section above the previous top, set WORKSPACE_VERSION = N+1, delete the
+    fragments and rebuild the artifact. Every refusal happens before anything is written; a failed
+    build puts the two edited files back and keeps the fragments."""
+    branch = current_branch()
+    if branch != RELEASE_BRANCH:
+        refuse(f"HEAD is {branch or 'detached'}, not {RELEASE_BRANCH}; versions are stamped as a branch lands "
+               f"(git merge --no-ff --no-commit <branch>, then --release)")
+    fragments = pending_fragments()
+    if not fragments:
+        refuse("no pending fragment: changelog.d/ holds no *.md besides README.md")
+    parsed = [read_fragment(p) for p in fragments]
+
+    main_text = MAIN_PY.read_text(encoding="utf-8")
+    changelog = CHANGELOG.read_text(encoding="utf-8")
+    versions = VERSION_LINE_RE.findall(main_text)
+    top = SECTION_RE.search(changelog)
+    if len(versions) != 1:
+        refuse(f"expected exactly one 'WORKSPACE_VERSION = <n>' line in installer/main.py; found {len(versions)}")
+    if top is None:
+        refuse("CHANGELOG.md has no numbered '## v<N> ' section to stamp above")
+    n, top_n = int(versions[0]), int(top.group(1))
+    if n != top_n:
+        refuse(f"WORKSPACE_VERSION is {n} but CHANGELOG.md's top section is v{top_n}; they must agree before a stamp "
+               f"(a branch must not touch either; resolve the merge first)")
+    m = n + 1
+
+    heading = f"## v{m} — {datetime.date.today().isoformat()}"
+    section = heading + "\n\n" + "\n\n".join(body for _, body in parsed) + "\n\n"
+    new_changelog = changelog[:top.start()] + section + changelog[top.start():]
+    new_main = VERSION_LINE_RE.sub(f"WORKSPACE_VERSION = {m}", main_text, count=1)
+    subject = f"build(release): workspace v{m} — " + "; ".join(summary for summary, _ in parsed)
+
+    CHANGELOG.write_text(new_changelog, encoding="utf-8")
+    MAIN_PY.write_text(new_main, encoding="utf-8")
+    try:
+        artifact = assemble()
+    except BaseException:
+        CHANGELOG.write_text(changelog, encoding="utf-8")
+        MAIN_PY.write_text(main_text, encoding="utf-8")
+        raise
+    write_artifact(artifact)
+    for p in fragments:
+        p.unlink()
+    print(f"released=v{m}")
+    print(f"fragments_folded={len(fragments)} ({', '.join(p.name for p in fragments)})")
+    print(f"commit_subject={subject}")
+    print("next: git add -A CHANGELOG.md installer/main.py bootstrap_agentic_workspace.sh changelog.d "
+          "&& git commit -m \"<commit_subject>\"")
+    return 0
+
+
 def main(argv) -> int:
     check = "--check" in argv
+    if "--release" in argv:
+        if check:
+            die("--release writes; --check is read-only: pass one of them")
+        return release()
     artifact = assemble()
     if check:
         if not ARTIFACT.exists():
@@ -239,9 +361,7 @@ def main(argv) -> int:
                 "Run: python3 installer/build.py")
         print("OK: bootstrap_agentic_workspace.sh is in sync with installer/ source")
         return 0
-    ARTIFACT.write_text(artifact, encoding="utf-8")
-    ARTIFACT.chmod(0o755)
-    print(f"wrote {ARTIFACT.name} ({len(artifact)} bytes) from installer/ source")
+    write_artifact(artifact)
     return 0
 
 

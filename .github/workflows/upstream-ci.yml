@@ -15,6 +15,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The version is stamped as work lands on main (python3 installer/build.py --release), which
+      # folds and deletes every changelog.d fragment. A fragment on main is a forgotten stamp.
+      - name: no pending release fragment on main
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          pending=$(find changelog.d -maxdepth 1 -type f -name '*.md' ! -name README.md)
+          if [ -n "$pending" ]; then
+            echo "A pending release fragment reached main; stamp it with: python3 installer/build.py --release" >&2
+            echo "$pending" >&2
+            exit 1
+          fi
+
       - name: installer artifact parity
         run: python3 installer/build.py --check
 

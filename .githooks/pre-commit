@@ -1,9 +1,25 @@
 #!/bin/sh
-# Block commits that stage embedded machinery without a matching distributable rebuild.
-# Register once per clone: git config core.hooksPath .githooks
-# Skipped entirely when no staged path touches machinery. `installer/build.py --check`
-# is read-only (assembles in memory, compares bytes); it reads the worktree, so it is
-# exact only when machinery edits are staged together — the normal flow here.
+# Two guards. Register once per clone: git config core.hooksPath .githooks
+#
+# 1. On main, refuse a commit whose staged tree still holds a pending release fragment
+#    (changelog.d/*.md other than README.md): the version is stamped as work lands on main
+#    (python3 installer/build.py --release), never left for later. This runs first, before the
+#    machinery check below can exit early.
+# 2. Block commits that stage embedded machinery without a matching distributable rebuild.
+#    Skipped when no staged path touches machinery. `installer/build.py --check` is read-only
+#    (assembles in memory, compares bytes); it reads the worktree, so it is exact only when
+#    machinery edits are staged together -- the normal flow here.
+
+if [ "$(git symbolic-ref -q --short HEAD)" = "main" ]; then
+    pending=$(git -c core.quotePath=false ls-files --cached -- changelog.d | grep -E '^changelog\.d/[^/]+\.md$' | grep -v '^changelog\.d/README\.md$')
+    if [ -n "$pending" ]; then
+        echo "pre-commit: this commit on main still holds a pending release fragment:" >&2
+        echo "$pending" | sed 's/^/  /' >&2
+        echo "Stamp it as the work lands: python3 installer/build.py --release, stage the result" >&2
+        echo "(git add -A CHANGELOG.md installer/main.py bootstrap_agentic_workspace.sh changelog.d), retry." >&2
+        exit 1
+    fi
+fi
 
 if ! git diff --cached --name-only | grep -qE '^(installer/|payload/|bootstrap_agentic_workspace\.sh$)'; then
     exit 0

@@ -5,6 +5,11 @@ integer `WORKSPACE_VERSION`, newest first. `/update-workspace` reads this file f
 the upstream clone to show adopting repos what a sync brings — so each entry states
 what changed and, when a sync needs manual steps, a **Migration notes** line.
 
+Sections are stamped when work lands on `main`, never written on a branch: a branch leaves its
+notes in a `changelog.d/<slug>.md` fragment (see `changelog.d/README.md`), and
+`python3 installer/build.py --release` folds the pending fragments into the next `## v<N>`
+section and sets `WORKSPACE_VERSION` to match.
+
 Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
