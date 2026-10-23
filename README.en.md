@@ -508,7 +508,7 @@ commands in Claude Code:
 | `deferred` | Rebuild and show the deferred-jobs dashboard |
 | `promote-deferred` | Promote a deferred job into an active phase or slice |
 | `archive-phase` | Archive review-passed phases whose doc debt is paid (normally batched via `archive-all`) |
-| `rotate-backlog` | One invocation pays the doc debt, then archives: it checks the debt first, creates and runs the docs phase that pays it (the invocation is the yes; `gate` restores the approval loop), then archives every done phase; `archive-only` keeps the plain archive-and-report sweep |
+| `rotate-backlog` | One invocation cleans up every done phase: it archives the clean ones at once, pays all the doc debt by resuming, widening or creating the docs phase and running it (the invocation is the yes; `gate` restores the approval loop), goes around parked work, and archives every paid phase; it stops only for running work or for uncommitted edits beside parked work; `archive-only` keeps the plain archive-and-report sweep |
 | `rebuild-workflow` | Rebuild generated dashboards, indexes, and doc snapshots, then validate |
 | `executor-route` | Show the route table and the dispatch summary, or one slice's dispatch decision (`/executor-route P1.S2`) |
 | `commit` | Group pending changes into focused conventional commits |

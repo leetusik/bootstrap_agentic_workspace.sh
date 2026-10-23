@@ -9,6 +9,53 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v72 — 2026-10-23
+
+- **One `/rotate-backlog` cleans up every done phase.** Before v72 it stopped at the first sign of
+  trouble: any `pending`, `blocked` or `changes_requested` item, or any phase in review, held the whole
+  run, nothing was archived while any debt stood, and it paid one docs phase per invocation, so a
+  workspace with a vendor-blocked slice and ten owing phases stayed untouched across several runs. Now a
+  single invocation archives what is clean, pays all the debt and archives what it paid.
+- **The early sweep.** Every branch but `refused` first archives each phase that is cleanly archivable
+  (a phase that owes docs is never one), whatever else happens next, even when the run then stops. The
+  new line `archived=<ids>` names them (`rotate=archive` still prints its verbose sweep, and
+  `--archive-only` is byte-identical). The skill commits it (`chore(works): archive <ids> with
+  rotate-backlog`) before anything else. A docs phase's own run can print `archived=` for a phase it has
+  just paid.
+- **Parked work is gone around; only running work stops the run.** A phase `pending` or `blocked`, a
+  slice `pending`, `blocked` or `changes_requested`, is parked: one `parked=<id> status=<status>
+  [stop_kind=<kind>]` line each (a phase with its acceptance gate open shows `acceptance-gate`), and
+  the docs phase runs ahead of it. `rotate=stop_midflight` now means running work only, a slice
+  `in_progress` or `in_review` or a phase `in_review` (the `REVIEW` slice of a gate-open phase is
+  parked, not running). A new branch, `rotate=stop_uncommitted` (`uncommitted=<n>` and the paths, at
+  most 20), stops the run when something is parked and the product tree holds uncommitted edits, which
+  the parked item may own and the docs phase's commits would take; it reads git only, so a workspace
+  without git never prints it. Both stops end with a closing line that says nothing was created,
+  widened or reordered. A docs phase writes only workflow docs, so going around parked work is safe
+  once the product tree is clean (a `/do-whole-phases` run parks only an open acceptance gate; the
+  contract's `pending` clause names both).
+- **A docs phase is widened, not duplicated.** In the `resume` branch, an undecomposed docs phase
+  (its only slices `DECOMP` and `REVIEW`, both `todo` or `ready`) that still carries the engine-drafted
+  name is widened to the debt no docs phase pays yet: its `consolidates` list, name, objective and
+  `phase.md` heading and objective are rewritten in one step and the line
+  `docs_phase_widened=<P> <old ids> -> <new ids>` is printed (event `docs_phase_widened`); a re-run
+  writes nothing. The skill adds a dated *Notes* line to its `intent.md` and commits it with the queue
+  jump (`chore(works): widen <P> with rotate-backlog`). A decomposed or renamed docs phase runs as it
+  is.
+- **The skill loops to the end.** After each docs phase is `done` it asks the engine again: `archive`
+  commits and ends, `resume` runs the next live docs phase, `create` is taken only when this
+  invocation created no docs phase yet (at most one new docs phase per invocation keeps the run
+  finite), and anything else is reported and ends the run. Every commit of the run leaves the parked
+  phases' folders out (`git commit -- <paths>`, never `git add -A`). `next`'s `WAITING ON OPERATOR`
+  for a parked item is not the run's stop while the docs phase sorts first.
+- **Texts.** The `rotate-backlog` skill is rewritten around the branches above; `create-phase`'s
+  *docs-phase route*, `archive-phase`'s chain paragraph, the README row and the contract's `pending`
+  clause now say the same; the contract stays under its 12,288 B cap.
+
+- **Migration notes.** None. A `pending` or `blocked` item no longer holds `/rotate-backlog`, and an
+  undecomposed docs phase that an earlier `/rotate-backlog` created is widened on the next run.
+  `--update` adds the engine's new lines and the rewritten skills; nothing in a phase's files changes.
+
 ## v71 — 2026-10-23
 
 - **A phase's declared, independent slices run together.** `/do-whole-phase` (and `/do-whole-phases`
