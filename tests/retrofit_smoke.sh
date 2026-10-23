@@ -2358,6 +2358,49 @@ c1=$(printf 'phase/P-%s-slug\n' "$bn_pid" | eval "$seed_sed"); c2=$(printf 'phas
   && ok "the CI seed's branch parse gives P-token for phase/P-token-slug and P12 for phase/P12-slug (and nothing for another branch)" || bad "the CI seed's branch parse is wrong -- [$seed_sed] [$c1] [$c2] [$c3]"
 
 # ---------------------------------------------------------------------------
+echo "== Test 10g: P44 doc versions by minute -- v<yyMMddHHmm> in UTC beside v0001, a same-minute second version takes the next minute, docs/current follows latest, validate takes both shapes =="
+# A fresh install (its docs are v0001_bootstrap). The number is still the digits after `v`, per doc.
+newtmp DVW; DV="$DVW/ws"; sh "$BOOT" "$DV" --at-root --name "DocVer" --summary "dv" >/dev/null 2>&1 || bad "doc-version probe: the fresh install failed"
+dv() { ( cd "$DV" && python3 scripts/workflow.py "$@" ); }
+dv_v1=$(dv doc-new-version --doc product --summary "first by minute" --source manual 2>&1 | sed -n 's|^created doc version product/\(v[0-9]*\)_.*|\1|p')
+dv_v2=$(dv doc-new-version --doc product --summary "second by minute" --source manual 2>&1 | sed -n 's|^created doc version product/\(v[0-9]*\)_.*|\1|p')
+if python3 - "$dv_v1" "$dv_v2" <<'PY'
+import re, sys
+from datetime import datetime, timedelta, timezone
+a, b = sys.argv[1:3]
+assert re.fullmatch(r"v[0-9]{10}", a) and re.fullmatch(r"v[0-9]{10}", b), (a, b)
+assert "v0001" < a < b and int(a[1:]) > 1, (a, b)
+t = datetime.strptime(a[1:], "%y%m%d%H%M").replace(tzinfo=timezone.utc)
+assert abs(datetime.now(timezone.utc) - t) <= timedelta(minutes=3), (a, "is not the current UTC minute")
+PY
+then ok "a new doc version is v + 10 digits (the current UTC minute) and sorts after v0001"; else bad "a new doc version is not v<yyMMddHHmm> after v0001 -- [$dv_v1] [$dv_v2]"; fi
+python3 - "$dv_v1" "$dv_v2" <<'PY' && ok "a second version of the same doc in the same minute takes the next minute" || bad "the same-minute second version did not take the next minute -- [$dv_v1] [$dv_v2]"
+import sys
+from datetime import datetime, timedelta
+a, b = (datetime.strptime(x[1:], "%y%m%d%H%M") for x in sys.argv[1:3])
+assert b - a == timedelta(minutes=1), (a, b)
+PY
+dv_path=$(ls "$DV"/docs/versions/product/"$dv_v2"_*.md 2>/dev/null | head -n 1)
+printf '\nBY-MINUTE-PROBE\n' >> "$dv_path"; dv rebuild-docs >/dev/null 2>&1
+dv_docs=$(dv docs 2>&1)
+[ -n "$dv_path" ] && cmp -s "$dv_path" "$DV/docs/current/product.md" && printf '%s\n' "$dv_docs" | grep -q "^product: latest=${dv_v2}_" && grep -q "BY-MINUTE-PROBE" "$DV/docs/current/product.md" \
+  && ok "docs/current is generated from the new latest (docs lists it)" || bad "docs/current did not follow the new latest ($dv_v2)"
+dv_val=$(dv validate 2>&1); dv_rc=$?
+[ "$dv_rc" -eq 0 ] && printf '%s\n' "$dv_val" | grep -q '^Workflow validation passed' && ! printf '%s\n' "$dv_val" | grep -q 'has the highest version number' \
+  && ok "validate passes on a doc holding both shapes (v0001 and two v<minute>) with no latest warning" || bad "validate failed or warned on a mix of both version shapes (rc=$dv_rc) -- $dv_val"
+python3 - "$DV/docs/index.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1])); info = d["docs"]["product"]
+info["latest"] = info["versions"][0]["id"]
+info["versions"].append(dict(info["versions"][-1], path=info["versions"][-1]["path"] + ".dup"))
+json.dump(d, open(sys.argv[1], "w"), indent=2)
+PY
+dv_val=$(dv validate 2>&1); dv_rc=$?
+printf '%s\n' "$dv_val" | grep -q 'warning: doc product: latest is v0001_bootstrap, but v[0-9]\{10\}_.* has the highest version number' \
+  && printf '%s\n' "$dv_val" | grep -q "duplicate doc version number in docs/index.json: product v$(printf '%s' "$dv_v2" | cut -c2-) claimed by both" && [ "$dv_rc" -ne 0 ] \
+  && ok "validate warns when latest is not the highest version and still errors on a duplicate number (named as written)" || bad "validate missed the latest-not-highest warning or the duplicate (rc=$dv_rc) -- $dv_val"
+
+# ---------------------------------------------------------------------------
 echo "== Test 11: v41 phase-scope -- the phase's boundary is read from git, advisory everywhere =="
 # $F is a clean git repo at the "smoke baseline" commit. A phase created and committed, then one
 # product file committed after it: the boundary is exactly that file, and neither works/ nor docs/.

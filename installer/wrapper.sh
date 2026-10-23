@@ -45,7 +45,8 @@ Claude Code:
   until promoted.
 - Phase review is recorded (review-phase) and gates archiving.
 - Docs are versioned fullstack categories: agents create
-  docs/versions/<doc>/vNNNN_*.md and regenerate docs/current/*.md.
+  docs/versions/<doc>/v<yyMMddHHmm>_*.md (named by UTC minute) and regenerate
+  docs/current/*.md.
 
 Requires python3 (>= 3.8), and git for the default nested install. A fresh
 install never overwrites an installed workspace: refresh one with --update.

@@ -16,7 +16,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -1977,12 +1977,27 @@ def rebuild_docs() -> None:
 
 
 def next_doc_version_id(doc_id: str, index: dict) -> tuple:
+    """`("v<yyMMddHHmm>", number)`: the next version of one doc, named by its UTC minute (v73).
+
+    The version NUMBER stays the digits after `v`, per doc -- unique and strictly increasing -- and a
+    name is now the minute the version was made, so two branches that each version a doc never pick
+    the same `max + 1`. When the doc's highest number is not below this minute (a second version in
+    the same minute, or a clock behind a teammate's) the new one takes the minute after it, so a name
+    stays a valid minute and always sorts above every older one, `v0001`-`v0043` included. Two
+    branches versioning one doc in one minute is an accepted risk (`validate` fails loudly on it)."""
     nums = []
     for v in index["docs"][doc_id].get("versions", []):
         m = re.match(r"v(\d+)", v["id"])
         if m:
             nums.append(int(m.group(1)))
-    num = max(nums, default=0) + 1
+    top = max(nums, default=0)
+    num = int(datetime.now(timezone.utc).strftime("%y%m%d%H%M"))
+    if num <= top:
+        try:
+            num = int((datetime.strptime(f"{top:010d}", "%y%m%d%H%M") + timedelta(minutes=1)).strftime("%y%m%d%H%M"))
+        except ValueError:  # a highest number that is not a minute (hand-written): just step past it
+            num = top + 1
+        num = max(num, top + 1)
     return f"v{num:04d}", num
 
 
@@ -2029,13 +2044,14 @@ def new_doc_version(args: argparse.Namespace) -> None:
     doc_id = args.doc
     if doc_id not in DOC_TYPES:
         raise SystemExit(f"doc must be one of: {', '.join(sorted(DOC_TYPES))}")
-    # Doc versions are allocated from a single `docs/index.json` (`max+1` per doc), so two streams
-    # consolidating at once pick the same vNNNN and collide silently on the merge. Consolidation
-    # therefore always runs on the default stream -- refuse here, before any allocation or write,
-    # so a refusal leaves zero partial state.
+    # Doc versions are named by their UTC minute (v73), so two streams no longer pick the same
+    # number -- but two branches versioning one doc each copy its whole body from the same parent, so
+    # a merge silently keeps one side's edits, and both write the one `docs/index.json`.
+    # Consolidation therefore still runs on the default stream only -- refuse here, before any
+    # allocation or write, so a refusal leaves zero partial state.
     stream = current_stream(all_active_phases())
     if stream:
-        raise SystemExit(f"this checkout is on parallel stream {stream}; doc consolidation runs on the default stream, never on a phase branch -- for a parallel phase defer it to the post-merge step (parallel-merge-finish, then doc-new-version, then parallel-consolidated)")
+        raise SystemExit(f"this checkout is on parallel stream {stream}; doc consolidation runs on the default stream, never on a phase branch -- the names no longer collide, but two branches versioning one doc each copy its whole body from the same parent (a merge silently keeps one side's edits) and both write the one docs/index.json; for a parallel phase defer it to the post-merge step (parallel-merge-finish, then doc-new-version, then parallel-consolidated)")
     index = doc_index()
     info = index["docs"][doc_id]
     latest_id = info["latest"]
@@ -2163,7 +2179,8 @@ def oversized_sections_line(sections: list, limit: int = 3) -> str:
             f" -- split them at the next consolidation (a docs phase), by per-doc judgment, never a sweep")
 
 
-def validate_docs(errors: list) -> None:
+def validate_docs(errors: list, warnings: list = None) -> None:
+    warnings = [] if warnings is None else warnings
     if not (DOCS / "index.json").exists():
         errors.append("missing docs/index.json")
         return
@@ -2173,10 +2190,11 @@ def validate_docs(errors: list) -> None:
         if not info:
             errors.append(f"missing doc index entry: {doc_id}")
             continue
-        # Version numbers must be unique per doc: `next_doc_version_id` allocates `max+1`, so two
-        # entries claiming the same vNNNN means a collision already happened (two streams, or a
-        # hand-resolved merge of docs/index.json) and one version is silently absent from
-        # docs/current. Fail loudly instead.
+        # Version numbers must be unique per doc (the digits after `v`: `v0007` in the old counter,
+        # `v2610230147` -- a UTC minute -- since v73). `next_doc_version_id` never repeats one, so two
+        # entries claiming the same number means a collision already happened (two branches versioning
+        # one doc in the same minute, or a hand-resolved merge of docs/index.json) and one version is
+        # silently absent from docs/current. Fail loudly instead, naming the ids as written.
         seen_nums = {}
         for version in info.get("versions", []):
             m = re.match(r"v(\d+)", str(version.get("id", "")))
@@ -2184,13 +2202,20 @@ def validate_docs(errors: list) -> None:
                 continue
             num = int(m.group(1))
             if num in seen_nums:
-                errors.append(f"duplicate doc version number in docs/index.json: {doc_id} v{num:04d} claimed by both {seen_nums[num]} and {version.get('id')}")
+                errors.append(f"duplicate doc version number in docs/index.json: {doc_id} v{m.group(1)} claimed by both {seen_nums[num]} and {version.get('id')}")
             else:
                 seen_nums[num] = version.get("id")
         latest = next((v for v in info.get("versions", []) if v.get("id") == info.get("latest")), None)
         if not latest:
             errors.append(f"missing latest doc version entry: {doc_id}")
             continue
+        # `latest` stays the stored pointer `rebuild-docs` reads; it is not recomputed. But a pointer
+        # below the highest version number means docs/current is generated from an older version than
+        # the newest one on file -- a hand-resolved merge, most likely -- so say so (advisory).
+        latest_match = re.match(r"v(\d+)", str(latest.get("id", "")))
+        if latest_match and seen_nums and int(latest_match.group(1)) < max(seen_nums):
+            highest_id = seen_nums[max(seen_nums)]
+            warnings.append(f"doc {doc_id}: latest is {latest.get('id')}, but {highest_id} has the highest version number -- docs/current is generated from latest; if the newer version is the one meant, set docs/index.json's latest to {highest_id} and run rebuild-docs")
         latest_path = ROOT / latest["path"]
         current_path = ROOT / info["current_path"]
         if not latest_path.exists():
@@ -4076,7 +4101,7 @@ def validate() -> int:
                     errors.append(f"nested install: the host {HOST_ROOT} is not a git work tree (phase-scope and the host product commits need one)")
         if nested_repos() and HOST_ROOT is not None and HOST_ROOT.is_dir():
             nested_repo_checks(errors, warnings)
-    validate_docs(errors)
+    validate_docs(errors, warnings)
     for w in warnings:
         print(f"warning: {w}")
     if errors:

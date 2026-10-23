@@ -3091,7 +3091,7 @@ else:
     print("Any agent / CI: python3 scripts/workflow.py <command>")
     print("CI: .github/workflows/workspace-ci.yml runs validate on every push/PR (seeded once — yours to edit); .gitattributes carries the merge rules for machine-written files")
     print("Canonical state: phase.json / slice.json / deferred.json; generated: works/backlog.md, works/deferred.md")
-    print("Versioned docs: docs/versions/<doc>/vNNNN_*.md with generated docs/current/*.md")
+    print("Versioned docs: docs/versions/<doc>/v<yyMMddHHmm>_*.md (a new version is named by its UTC minute; v0001_bootstrap.md is the first) with generated docs/current/*.md")
     print("Knowledge: /explain is the knowledge plugin's, not this workspace's (plugin 0.5.0+): /plugin marketplace add leetusik/knowledge, then /plugin install knowledge@knowledge; run /knowledge:setup once, then /knowledge:explain P<N> for one chapter")
     print("  a book (outlined, signed, critic-checked, published private) is an explain phase: ask /create-phase — see docs/current/operations.md")
     print("No phases yet — the workspace starts empty on purpose.")
