@@ -21,7 +21,8 @@
 # notebook budget/case-drift warnings and the timestamp-free dashboards; v61: phase-section reads and writes
 # one phase.md section, a 40 KB index budget naming the biggest sections; --entry K --replace writes one entry, and
 # --to-topic moves entries verbatim to topics/ behind gist lines, its refusals writing nothing; per-section budgets
-# and long entries named with a move command, 24 KB pages that never split an entry, a dangling pointer warning), the P41 run-phases invariants
+# and long entries named with a move command, 24 KB pages that never split an entry, a dangling pointer warning, and over 40 KB the required or advisory
+# notebook_over_budget= step in next, the card and start-slice, silent under budget and for a done phase), the P41 run-phases invariants
 # (a run's tokens resolve in order and a non-phase token refuses; a run passes a parked acceptance gate and
 # halts at a pending slice while plain `next` still waits there), the P42 ready-set invariants (an undeclared phase
 # keeps its plain pointer and prints no wave line; a declared slice is never ready before its dependency is done;
@@ -2330,6 +2331,38 @@ q=$( cd "$PW" && python3 scripts/workflow.py validate 2>&1 | grep -c 'the moved 
 lost=$( cd "$PW" && python3 scripts/workflow.py validate 2>&1 ); lost_rc=$?
 [ "$q" = 0 ] && [ "$lost_rc" -eq 0 ] && printf '%s\n' "$lost" | grep -q 'phase P10: phase.md ## Decisions entry 1 points at topics/decisions.md, which does not exist: the moved entry is lost' \
   && ok "validate stays quiet on a good pointer and warns on a dangling one (a lost decision), exit 0" || bad "dangling-pointer warning wrong (quiet=$q rc=$lost_rc) -- $lost"
+# The required step (design §6): over 40 KB, next / start-slice / the card print it; silent under budget and when done.
+newtmp NBW; cp -R "$F" "$NBW/ws"; NW="$NBW/ws"; rm -rf "$NW/works/phases/active/"* "$NW/works/phases/archived/"*; nb() { ( cd "$NW" && python3 scripts/workflow.py "$@" ); }
+nb new-phase --phase P11 --name "Step probe" --objective "step probe" >/dev/null 2>&1; NP="$NW/works/phases/active/P11/phase.md"
+nb start-slice P11.DECOMP >/dev/null 2>&1; base=$(nb next 2>&1); base_card=$(nb next --card 2>&1)
+python3 - "$NP" <<'SEED'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+dec = "".join(f"- **D{n}:** decision {n}. " + "detail " * 400 + "\n" for n in range(1, 18))
+p.write_text(t.replace("linked by one line._\n", "linked by one line._\n\n" + dec, 1))
+SEED
+out=$(nb next 2>&1); card=$(nb next --card 2>&1); st=$(nb set-slice-status P11.DECOMP todo >/dev/null 2>&1; nb start-slice P11.DECOMP 2>&1)
+printf '%s\n' "$out" | grep -q '^notebook_over_budget=P11 ([0-9]* of 40960 B) -- required before the next dispatch: move long entries to topics first (gists stay, nothing is lost)$' \
+  && printf '%s\n' "$out" | grep -qx 'notebook_move=phase-section P11 "Decisions" --to-topic decisions --entry 1-17' \
+  && printf '%s\n' "$card" | grep -q '^notebook: over budget ([0-9]*/40960 B) -- run the notebook_move lines `next` prints before the next dispatch$' \
+  && printf '%s\n' "$st" | grep -qx 'started P11.DECOMP' && printf '%s\n' "$st" | grep -q '^warning: notebook P11 is over budget ' \
+  && ok "over 40 KB with a long entry, next prints the required step and its move, the card one line, start-slice a warning and still starts" || bad "required step wrong -- $out / $st"
+nb phase-section P11 Decisions --to-topic decisions --entry 1-17 >/dev/null 2>&1
+[ "$(nb next 2>&1)" = "$base" ] && [ "$(nb next --card 2>&1)" = "$base_card" ] \
+  && ok "after the move the notebook is under budget and next and the card are byte-identical to before" || bad "under-budget next or card changed after the move"
+python3 - "$NP" <<'SEED'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+oq = "".join(f"- **OQ{n} (S1):** question {n}? " + "context " * 400 + "\n" for n in range(1, 18))
+p.write_text(t.replace("## Operator Questions\n", "## Operator Questions\n\n" + oq, 1))
+SEED
+out=$(nb next 2>&1)
+printf '%s\n' "$out" | grep -q '^notebook_over_budget=P11 ([0-9]* of 40960 B) -- advisory: nothing left to move (Slices [0-9]* B generated; Operator Questions [0-9]* B: collapse answered entries with --resolve OQ<n> --pointer <ref>)$' \
+  && ! printf '%s\n' "$out" | grep -q '^notebook_move=' \
+  && ok "when nothing can move, next prints the advisory step and no notebook_move line" || bad "advisory step wrong -- $out"
+nb set-phase-status P11 done >/dev/null 2>&1
+! nb next 2>&1 | grep -q 'notebook' && ! nb next --card 2>&1 | grep -q '^notebook:' && ! nb run-phases 2>&1 | grep -q '^notebook_' \
+  && ok "a done phase over budget prints no step in next, the card or run-phases" || bad "a done phase still prints the step"
 
 # ---------------------------------------------------------------------------
 echo "== Test 10c: P41 run-phases -- a run's phase list, and a parked acceptance gate only a run passes =="

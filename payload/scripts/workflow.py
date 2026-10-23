@@ -3117,6 +3117,8 @@ def cmd_run_phases(args: argparse.Namespace) -> None:
         print(f"next_slice={nxt['id'] if nxt else 'none'}")
         for line in wave_lines(phase):  # P42: declared phases only
             print(line)
+        for line in notebook_step_lines(phase["id"]):  # §6: silent under budget
+            print(line)
         acceptance = phase_acceptance(phase)
         if (acceptance and acceptance.get("required") is True and acceptance.get("cleared_at") and cur.get("kind") == "review"
                 and (sdir / "result.md").is_file()):
@@ -3628,6 +3630,61 @@ def notebook_section_line(section: dict, limit: int = 8) -> str:
     elif section["remedy"]:
         parts.append(section["remedy"])
     return f"## {section['heading']}: " + "; ".join(parts)
+
+
+# The required step (design §6): when a phase that is not done has a notebook over PHASE_MD_BUDGET,
+# `next`, `run-phases`, `start-slice` and the resume card tell the main thread to move long entries to
+# topics before the next dispatch. `notebook_step` is the one function they print from; it is silent
+# (None) under budget, for a done phase and for a phase with no notebook, so those outputs never change.
+NOTEBOOK_STEP_MOVES = 3
+
+
+def notebook_step(phase_id) -> dict:
+    """The over-budget step of one phase, or None. `{"phase", "bytes", "form": "required" | "advisory",
+    "lines": [...]}`: required when a movable long entry exists (`notebook_over_budget=` and at most
+    NOTEBOOK_STEP_MOVES `notebook_move=` lines), advisory when nothing can move (`notebook_over_budget=`
+    naming what remains, no move line). Read-only: it never writes and never blocks anything."""
+    if not phase_id:
+        return None
+    pdir = ACTIVE / phase_id
+    notebook = pdir / "phase.md"
+    if not notebook.is_file():
+        return None
+    try:
+        if read_json(pdir / "phase.json").get("status") == "done":
+            return None
+    except (OSError, ValueError):
+        return None
+    text = notebook.read_text(encoding="utf-8")
+    if len(text.encode("utf-8")) <= PHASE_MD_BUDGET:
+        return None
+    report = notebook_report(phase_id, text)
+    head = f"notebook_over_budget={phase_id} ({report['bytes']} of {PHASE_MD_BUDGET} B) -- "
+    moves = report["moves"]
+    if moves:
+        more = (f" (+{len(moves) - NOTEBOOK_STEP_MOVES} more moves: `phase-section {phase_id}` lists them)"
+                if len(moves) > NOTEBOOK_STEP_MOVES else "")
+        lines = [head + "required before the next dispatch: move long entries to topics first (gists stay, nothing is lost)" + more]
+        lines.extend(f"notebook_move={m}" for m in moves[:NOTEBOOK_STEP_MOVES])
+        return {"phase": phase_id, "bytes": report["bytes"], "form": "required", "lines": lines}
+    remains = []
+    for s in report["sections"]:
+        if s["heading"].lower() == "slices":
+            remains.append(f"{s['heading']} {s['bytes']} B generated")
+        elif s["over"]:
+            remains.append(f"{s['heading']} {s['bytes']} B: {s['remedy'] or 'no long entry left to move'}")
+    if not remains:  # nothing over its own budget: name the biggest section
+        big = max(report["sections"], key=lambda s: s["bytes"], default=None)
+        if big:
+            remains.append(f"{big['heading']} {big['bytes']} B")
+    lines = [head + f"advisory: nothing left to move ({'; '.join(remains)})"]
+    return {"phase": phase_id, "bytes": report["bytes"], "form": "advisory", "lines": lines}
+
+
+def notebook_step_lines(phase_id) -> list:
+    """`notebook_step`'s lines, or [] when it is silent."""
+    step = notebook_step(phase_id)
+    return step["lines"] if step else []
 
 
 def dangling_pointers(pdir: Path) -> list:
@@ -5049,6 +5106,11 @@ def start_slice(args: argparse.Namespace) -> None:
     print(f"started {args.slice}")
     if warning:
         print(warning)
+    step = notebook_step(args.slice.split(".", 1)[0])  # §6: a warning, never a refusal
+    if step:
+        todo = ("required: run the notebook_move lines `next` prints before dispatching" if step["form"] == "required"
+                else "advisory: nothing left to move (`next` names what remains)")
+        print(f"warning: notebook {step['phase']} is over budget ({step['bytes']} of {PHASE_MD_BUDGET} B) -- {todo}")
 
 
 def finish_slice(args: argparse.Namespace) -> None:
@@ -8393,6 +8455,10 @@ def _write_nested_repos(path: Path, data: dict, repos: list) -> None:
 
 
 def cmd_next(args: argparse.Namespace) -> None:
+    """Print this checkout's pointer. When the current phase is not done and its notebook is over
+    PHASE_MD_BUDGET, `notebook_over_budget=` (and up to 3 `notebook_move=` commands, the required form;
+    none, the advisory form) follows the pointer and wave lines, and in the WAITING block precedes its
+    `After the operator approves` line: run the moves before the next dispatch. Silent under budget."""
     rebuild_index_and_state()
     if getattr(args, "card", False):  # the resume card alone: what compact-resume prints after a compaction
         print(resume_card())
@@ -8452,6 +8518,8 @@ def cmd_next(args: argparse.Namespace) -> None:
             print(f"acceptance_gate=open (requested_at={gate.get('requested_at')}) -- the operator must walk the running product before this phase's review can pass.")
             print("WALKTHROUGH:")
             print(gate.get("walkthrough") or "(none recorded)")
+        for line in notebook_step_lines(waiting.split(".", 1)[0]):  # §6: a notebook write, not an advance
+            print(line)
         print(f"After the operator approves, clear it: {WORKFLOW_CMD} {clear}")
         if gate:
             print("Add --note \"...\" to record what the operator reported.")
@@ -8470,6 +8538,8 @@ def cmd_next(args: argparse.Namespace) -> None:
     print(f"slice_path={shown(sdir)}")
     print(f"next_slice={state.get('next_slice') or 'none'}")
     for line in wave_lines(_active_phase(state.get("current_phase"))):  # P42: declared phases only
+        print(line)
+    for line in notebook_step_lines(current_slice.split(".", 1)[0]):  # §6: silent under budget
         print(line)
     hint = parallel_start_hint(state, index)
     if hint:
@@ -8662,6 +8732,14 @@ def resume_card(transcript_path=None) -> str:
     if execution:
         gates.append(f"parallel={execution.get('branch')} (merge only past parallel-gate {phase_id})")
     lines.append("gates: " + "; ".join(gates))
+    step = notebook_step(phase_id) if phase.get("status") != "done" else None  # §6: silent under budget
+    if step:
+        lines.append(f"notebook: over budget ({step['bytes']}/{PHASE_MD_BUDGET} B) -- "
+                     + ("run the notebook_move lines `next` prints before the next dispatch" if step["form"] == "required"
+                        else "advisory: nothing left to move (`next` names what remains)"))
+        notebook_at = len(lines) - 1
+    else:
+        notebook_at = None
     if spans is None:
         lines.append("running spans: unknown (no session transcript found)")
     elif not spans:
@@ -8676,6 +8754,8 @@ def resume_card(transcript_path=None) -> str:
         lines.append(f"result: {shown(result) if result.is_file() else 'not yet'}")
     lines.append(f"phase: {shown(pdir / 'phase.md')}")
     lines.append(f"intent: {shown(pdir / 'intent.md')}")
+    if notebook_at is not None and len("\n".join(lines).encode("utf-8")) > RESUME_CARD_MAX:
+        del lines[notebook_at]  # optional: it yields before the card's own lines are cut
     return _card_fit(lines)
 
 
@@ -12915,11 +12995,11 @@ def main(argv=None) -> int:
     p.add_argument("--transcripts", action="append", metavar="DIR", help="read this projects/<slug> directory instead of discovering the session root's (repeatable)")
     p.set_defaults(func=cmd_dispatch_summary)
 
-    p = sub.add_parser("next", help="Print the current phase/slice selection")
+    p = sub.add_parser("next", help="Print the current phase/slice selection; when the phase's notebook is over 40,960 B, also notebook_over_budget= with up to 3 notebook_move= commands to run before the next dispatch (required form), or none when nothing can move (advisory form)")
     p.add_argument("--card", action="store_true", help="print the resume card instead: the pointer, the next action or the typed stop, the open gates, the running spans (from the newest session's subagents/*.meta.json) and the slice's file paths, computed from state, at most 2,048 bytes -- what compact-resume prints after a compaction")
     p.set_defaults(func=cmd_next)
 
-    run_help = "Read-only, writes nothing: the phase list and the next target of a /do-whole-phases run, recomputed from disk on every call (re-run it at each phase boundary and after a compaction). Prints run=, stream=, queue= (this stream's non-done phases of the run, in order), skipped=<P> reason=done | done (archived) | other-stream stream=<branch or default>, parked=<P> (pending, its acceptance gate open, no slice pending or blocked: the run passes it), then target_phase= / target_slice= / slice_path= / next_slice= (plus gate_cleared= when a cleared gate's review awaits its recorded pass), or halt=<item> status= with stop_kind= / on_words= for a pending slice and halt_reason= (any other pending or blocked phase, or a pending or blocked current slice: the whole run stops), or run_done=yes. Phase tokens are brief ids: 7kq2 / P-7kq2 (minted) or 12 / P12 (numbered), any case. Exits 2 with refused= lines and nothing else for a token that is not a phase id or names no phase. The plain pointer (next, works/state.json, the resume card's stop) is unchanged and still halts at a parked phase"
+    run_help = "Read-only, writes nothing: the phase list and the next target of a /do-whole-phases run, recomputed from disk on every call (re-run it at each phase boundary and after a compaction). Prints run=, stream=, queue= (this stream's non-done phases of the run, in order), skipped=<P> reason=done | done (archived) | other-stream stream=<branch or default>, parked=<P> (pending, its acceptance gate open, no slice pending or blocked: the run passes it), then target_phase= / target_slice= / slice_path= / next_slice= (plus notebook_over_budget= / notebook_move= when the target phase's notebook is over 40,960 B: run the moves before the dispatch; plus gate_cleared= when a cleared gate's review awaits its recorded pass), or halt=<item> status= with stop_kind= / on_words= for a pending slice and halt_reason= (any other pending or blocked phase, or a pending or blocked current slice: the whole run stops), or run_done=yes. Phase tokens are brief ids: 7kq2 / P-7kq2 (minted) or 12 / P12 (numbered), any case. Exits 2 with refused= lines and nothing else for a token that is not a phase id or names no phase. The plain pointer (next, works/state.json, the resume card's stop) is unchanged and still halts at a parked phase"
     p = sub.add_parser("run-phases", help=run_help, description=run_help)
     p.add_argument("tokens", nargs="*", metavar="PHASE", help="a phase id in any brief form: 7kq2 or P-7kq2 (a minted id), 12 or P12 (a numbered one), any case, separated by commas and/or spaces; the given order is kept and duplicates are dropped; none = every non-done phase on this stream, by order. Ranges, mode words, `worktree` and a minted id without its dash (P7kq2) are refused")
     p.set_defaults(func=cmd_run_phases)
