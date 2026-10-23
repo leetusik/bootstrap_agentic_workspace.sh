@@ -14,6 +14,56 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v73 — 2026-10-23
+
+- **Phase and deferred ids are minted, so two branches can no longer collide.** Before v73 a new id was
+  `max + 1` over what the checkout could see, so two branches that each created a phase both took the
+  same number and the merge picked a side. `new-phase` without `--phase`, `defer-job` without `--id` and
+  `promote-deferred --create-phase` now mint a token id: `P-7kq2`, `D-m3xa` (an uppercase prefix, then
+  four lowercase symbols from Crockford base32, drawn with `secrets`). A draw is repeated when it is all
+  digits, a mode word (`gate`, `plan`), `p` or `d` plus three digits, or equal to any phase or deferred id
+  the checkout can see, active or archived. `promote-deferred --create-phase` also takes a bare
+  `--slice S1`. An explicit `--phase P12` or `--id D12` still works, held to the same rules; the shipped
+  skills no longer teach picking a number. Slice ids stay per phase (`P-7kq2.S1`). **Existing ids are
+  never renamed:** `P12`, `D12` and the new tokens live side by side. Listings put numeric ids first
+  by number, then tokens by creation time, and selection still follows `order`.
+- **Brief names in every phase and deferred argument.** `7kq2`, `P-7kq2`, `p-7kq2`, `P12`, `p12` and
+  `12` all resolve, once and centrally, for every `phase`, `--phase`, `deferred_id`, `defer-job --id` and
+  `new-phase --consolidates` argument, so a command only ever sees the stored id. `/do-whole-phases` and
+  `run-phases` take the same tokens (`run-phases 7kq2 P12`). An id of an unknown shape is refused once,
+  with the accepted shapes listed, instead of a different message per command; a stored id of an odd shape
+  that exists on disk is still accepted as typed. The usage meter and the design-slice test read the
+  new slice ids too (`slice: P-7kq2.S1` attributes).
+- **Doc versions are named by the UTC minute.** `doc-new-version` writes `v<yyMMddHHmm>_<slug>.md`
+  (`v2610231542_<slug>.md`) instead of the next four-digit number, so a name always sorts above the
+  old `v0001`–`v0043`. A second version of one doc in the same minute, or on a clock behind the doc's
+  newest, steps to the next number. `doc-new-version` still runs on the default stream only: two branches
+  versioning one doc each copy its whole body and both write `docs/index.json`, so a merge keeps one side's
+  edits (the refusal now says so).
+- **New `validate` warnings.** An id of a shape it does not know, an active phase id equal to an archived
+  one, and a doc whose `latest` is not its highest-numbered version are warnings, never errors. The
+  duplicate-version-number error now names the ids as written.
+- **Texts.** The contract's IDs and Status, `create-phase`, `do-whole-phases`, `promote-deferred`,
+  `defer-job`, `parallel-phase` and the other skills that taught a picked number or a `vNNNN` name, the
+  executor body and the READMEs now teach the minted ids, the brief names and the minute-named versions.
+  The contract stays under its 12,288 B cap.
+- **This repo's release is stamped when work lands on `main`.** `python3 installer/build.py --release`
+  writes `WORKSPACE_VERSION` and the top `## v<N>` section from `changelog.d/` fragments, so a branch
+  never edits either. This affects the maintainers of this repo only; adopters see no change.
+
+- **Migration notes.** Nothing is renamed, and `--update` adds the engine's new lines and the rewritten
+  skills; but three things can need a hand. (1) **The adopter CI seed is seed-once.** An existing
+  `.github/workflows/workspace-ci.yml` keeps v72's branch parse, `sed -n 's|^phase/\(P[0-9][0-9]*\)-.*$|\1|p'`,
+  under which a `phase/P-xxxx-<slug>` branch matches nothing and **the quiet-point gate is silently
+  skipped**; replace that line by hand with `sed -nE 's#^phase/(P([0-9]+|-[0-9a-hjkmnp-tv-z]{4}))-.*$#\1#p'`.
+  (2) **Scripts that parse ids.** Anything of yours that matches `P\d+`, `D\d+` or `v\d{4}`, or expects
+  `v0044` to be the next doc version, needs the new shapes (`P-[0-9a-z]{4}`, `D-[0-9a-z]{4}`,
+  `v\d{10}`). (3) **Small behaviour changes.** `new-phase` now refuses an explicit id an archived phase
+  holds (v72 accepted it); `deferred.md` reorders once into id order (`D2` before `D10`); the phase-id
+  listings in `docs`, `validate`'s `stale_docs=` and `docs-debt` go numeric (`P9` before `P10`), while
+  rotate's labels and orders are byte-identical to v72; a phase or deferred argument of an unknown shape is
+  refused centrally.
+
 ## v72 — 2026-10-23
 
 - **One `/rotate-backlog` cleans up every done phase.** Before v72 it stopped at the first sign of
