@@ -2423,6 +2423,23 @@ printf '%s\n' "$gn" | grep -qx 'waiting_on_operator=P2' && printf '%s\n' "$gc" |
   && ! printf '%s\n%s\n' "$gn" "$gc" | grep -q -e '^running_slices=' -e '^wave: ' \
   && ok "a declared phase at its open acceptance gate reads as a stop: the running REVIEW is a barrier, never a wave's running or returned slice" \
   || bad "declared gate reads as a wave -- $gn / $gc"
+# v77: a decomposition cannot finish while a middle slice it leaves open is undeclared; set-slice-deps declares
+# one, and finish-slice then prints the engine's parallel plan. An explain phase's chapters stay exempt.
+{ rs new-phase --phase P3 --name "Forced probe" --objective "forced declaration" && rs new-slice --phase P3 --slice P3.S1 --name s1; } >/dev/null 2>&1 \
+  || bad "forced-declaration probe: setup failed"
+fr=$(rs finish-slice P3.DECOMP --outcome cut 2>&1); fr_rc=$?; fr_todo=$(grep -c '"status": "todo"' "$SW/works/phases/active/P3/slices/P3.DECOMP/slice.json")
+{ rs set-slice-deps P3.S1 --depends-on none && rs new-slice --phase P3 --slice P3.S2 --name s2 --depends-on none \
+  && rs new-slice --phase P3 --slice P3.S3 --name s3 --depends-on P3.S1; } >/dev/null 2>&1 || bad "forced-declaration probe: declaring failed"
+fp=$(rs finish-slice P3.DECOMP --outcome cut 2>&1); fp_rc=$?
+{ rs new-phase --phase P4 --name "Explain probe" --objective "explain exempt" && printf '\n## Explain\n\n- subject: P3\n' >> "$SW/works/phases/active/P4/intent.md" \
+  && rs new-slice --phase P4 --slice P4.S1 --name chapter; } >/dev/null 2>&1 || bad "forced-declaration probe: explain setup failed"
+rs finish-slice P4.DECOMP --outcome cut >/dev/null 2>&1; fe_rc=$?
+[ "$fr_rc" -ne 0 ] && printf '%s\n' "$fr" | grep -q 'undeclared: P3.S1' && printf '%s\n' "$fr" | grep -q 'set-slice-deps' \
+  && [ "$fr_todo" -eq 1 ] \
+  && [ "$fp_rc" -eq 0 ] && printf '%s\n' "$fp" | grep -qx 'parallel_plan=P3: S1 + S2 -> S3 -> REVIEW' \
+  && printf '%s\n' "$fp" | grep -q '^parallel_rounds=3 rounds for 4 open slices; 2 run beside another' && [ "$fe_rc" -eq 0 ] \
+  && ok "a decomposition refuses to finish over an undeclared middle slice (nothing written), set-slice-deps declares it, finish-slice prints the engine's parallel plan, and an explain phase is exempt (v77)" \
+  || bad "forced declaration wrong (refuse rc=$fr_rc, pass rc=$fp_rc, explain rc=$fe_rc) -- $fr / $fp"
 
 # ---------------------------------------------------------------------------
 echo "== Test 10e: P44 minted ids -- P-/D- tokens beside P<n>/D<n>, one listing order, an archived id is spent, two branches mint and merge clean =="

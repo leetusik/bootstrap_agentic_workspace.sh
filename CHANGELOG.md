@@ -14,6 +14,33 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v77 — 2026-10-24
+
+- **A decomposition can no longer leave the parallel decision to the default.** Before, a slice cut
+  without `--depends-on` was undeclared and silently ran alone, so a phase whose slices could have run
+  as a wave ran as a chain whenever the decomposition forgot the flag. Now `finish-slice` on a
+  decomposition (`DECOMP`, `DECOMP2`, `DECOMP3`) refuses, writing nothing, while any open middle slice
+  that is not a barrier (`DECOMP2`, `REVIEW`, `co-work`) is undeclared. The refusal names each slice
+  and the command that fixes it. Fix slices, cut after a review, and an explain phase's chapters
+  (`## Explain` in `intent.md`) are exempt and stay undeclared.
+- **`set-slice-deps <slice> --depends-on <id>|none`** declares a slice that was already cut, under
+  the same rules as `new-slice --depends-on`: each id names an earlier slice of the same phase. It is
+  refused for a barrier kind or a `done` slice.
+- **The engine computes what runs together.** `parallel-plan <P>` (read-only) prints the phase's open
+  slices in rounds as the ready set would start them, for example
+  `parallel_plan=P3: S1 + S2 -> S3 -> REVIEW`, then a
+  `parallel_rounds=` summary (how many slices run beside another, or "a chain"), then any slice still
+  undeclared. `finish-slice` on a decomposition prints the same two lines.
+- **Every decomposition returns a parallel proposal.** The executor runs `parallel-plan` before it
+  returns and puts a `parallel:` field in its verdict: the rounds, and for a chain why, and what would
+  unlock parallelism. The orchestrator relays it in its report and runs the phase as drawn; it adds no
+  stop. `slice-executor` and both `do-*` skills' `reference/decomposition.md` say so. The smoke
+  suite gains one assertion (423).
+- **Migration notes.** An in-flight phase whose `DECOMP` is already done is untouched. A decomposition
+  that finishes after `--update` must declare its open middle slices: run the printed `set-slice-deps`
+  lines (`--depends-on none`, or the earlier slice it needs), then finish again. Existing undeclared
+  slices keep running alone.
+
 ## v76 — 2026-10-23
 
 - **A phase notebook no longer grows past its budget unnoticed, and nobody rewrites the whole file

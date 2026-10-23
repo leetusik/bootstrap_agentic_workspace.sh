@@ -3383,6 +3383,67 @@ def declaration_checks(phase: dict, s: dict, errors: list, warnings: list) -> No
                           f"of the same phase ({phase['id']})")
 
 
+# Forced declaration (v77, operator: "force engine to determine parallel run about slice when decomp"). A
+# decomposition must leave every open middle slice of its phase DECLARED, so finish-slice on a decomposition
+# refuses while one is not: the parallel decision is made at the cut, never left to the default. The engine,
+# not the decomposition's prose, then determines what may run together (parallel_plan). An explain phase
+# (`## Explain` in intent.md) is exempt: its chapters stay undeclared by design, as fix slices do. set-slice-deps
+# declares a slice that was cut without the flag.
+def explain_phase(pdir: Path) -> bool:
+    """True when the phase's intent.md carries the `## Explain` section (the explain route's only marker)."""
+    intent = pdir / "intent.md"
+    return intent.is_file() and any(line.strip() == "## Explain" for line in intent.read_text(encoding="utf-8").split("\n"))
+
+
+def undeclared_middle_slices(phase: dict) -> list:
+    """The open (not `done`) slices of a phase that are neither a barrier kind, a fix nor declared, by order: a
+    fix slice is cut after a review, outside any decomposition's reach, and stays undeclared unless its set is known."""
+    return [s for s in phase.get("slices", []) if s.get("status") != "done" and s.get("kind") not in BARRIER_KINDS + ("fix",)
+            and not slice_declared(s)]
+
+
+def parallel_plan(phase: dict) -> list:
+    """The rounds the open slices run in, as the ready set would start them if every round finished together:
+    a list of slice lists, by order. A barrier is a round of its own; declared slices whose dependencies are
+    all done (or in an earlier round) share a round; an undeclared slice runs alone, like a barrier. Pure:
+    it reads the slice records and writes nothing."""
+    done = {s.get("id") for s in phase.get("slices", []) if s.get("status") == "done"}
+    pending = [s for s in phase.get("slices", []) if s.get("status") != "done"]
+    rounds = []
+    while pending:
+        batch = []
+        for i, s in enumerate(pending):
+            if slice_barrier(s):
+                if i == 0:
+                    batch = [s]
+                break
+            if all(dep in done for dep in s.get("depends_on") or []):
+                batch.append(s)
+        if not batch:  # unreachable while order stays topological (validate errors otherwise); never loop
+            batch = [pending[0]]
+        rounds.append(batch)
+        done |= {s.get("id") for s in batch}
+        pending = [s for s in pending if s not in batch]
+    return rounds
+
+
+def parallel_plan_lines(phase: dict) -> list:
+    """`parallel_plan=` and `parallel_rounds=` lines for a phase's open slices (none when nothing is open)."""
+    rounds = parallel_plan(phase)
+    if not rounds:
+        return []
+    short = lambda s: str(s.get("id", "")).split(".", 1)[-1]
+    shown_rounds = " -> ".join(" + ".join(short(s) for s in batch) for batch in rounds)
+    together = sum(len(batch) for batch in rounds if len(batch) > 1)
+    total = sum(len(batch) for batch in rounds)
+    widest = max(len(batch) for batch in rounds)
+    if together:
+        summary = f"{len(rounds)} rounds for {total} open slices; {together} run beside another (widest round: {widest})"
+    else:
+        summary = f"{len(rounds)} rounds for {total} open slices; a chain: no two slices run together"
+    return [f"parallel_plan={phase.get('id')}: {shown_rounds}", f"parallel_rounds={summary}"]
+
+
 SLICES_BEGIN = "<!-- slices:begin -->"
 SLICES_END = "<!-- slices:end -->"
 # WORKFLOW_CMD is the literal `python3 scripts/workflow.py` at root (so this line stays byte-identical to
@@ -5053,6 +5114,50 @@ def new_slice(args: argparse.Namespace) -> None:
         print(line)
 
 
+def set_slice_deps(args: argparse.Namespace) -> None:
+    """Declare an existing slice (v77): write its `depends_on` and the declared marker, under the same rules
+    as `new-slice --depends-on`. Refused for a barrier kind (it runs alone) and a `done` slice (no effect)."""
+    sdir = require_slice(args.slice)
+    data = read_json(sdir / "slice.json")
+    phase_id = sdir.parents[1].name
+    if data.get("kind") in BARRIER_KINDS:
+        raise SystemExit(f"set-slice-deps {args.slice}: kind {data.get('kind')} is a barrier that runs alone; refused, nothing was written")
+    if data.get("status") == "done":
+        raise SystemExit(f"set-slice-deps {args.slice}: the slice is done, so a declaration has no effect; refused, nothing was written")
+    deps = declared_dependencies(phase_id, args.slice, _order_of(data), args.depends_on)
+    if data.get(DEPENDS_DECLARED) is True and (data.get("depends_on") or []) == deps:
+        print(f"unchanged {args.slice}")
+    else:
+        data["depends_on"], data[DEPENDS_DECLARED] = deps, True
+        write_json(sdir / "slice.json", data)
+        append_event("slice_declared", slice=args.slice, depends_on=deps)
+        rebuild_index_and_state()
+        print(f"declared {args.slice}")
+    for line in declared_slice_lines(data.get("kind"), deps):
+        print(line)
+
+
+def cmd_parallel_plan(args: argparse.Namespace) -> None:
+    """Print what the engine lets run together in a phase (v77): its open slices in rounds, the undeclared
+    middle slices a decomposition must still declare, and, for an explain phase, that it stays sequential.
+    Read-only: the decomposition runs it before it returns, and finish-slice prints the same plan."""
+    pdir = require_phase(args.phase)
+    phase = _active_phase(pdir.name) or {}
+    lines = parallel_plan_lines(phase)
+    if not lines:
+        print(f"parallel_plan={pdir.name}: no open slice")
+        return
+    for line in lines:
+        print(line)
+    if explain_phase(pdir):
+        print("note: an explain phase's chapters stay undeclared and run one at a time")
+        return
+    loose = undeclared_middle_slices(phase)
+    if loose:
+        print(f"undeclared={', '.join(str(s.get('id')) for s in loose)} (each runs alone; a decomposition cannot finish "
+              f"until it declares them: {WORKFLOW_CMD} set-slice-deps <slice> --depends-on <id>|none)")
+
+
 def _set_slice_status(sdir: Path, status: str, pending=None) -> str:
     """Write the status; `pending` (a {kind, on_words, since} record) is stored only with status `pending`.
     Leaving `pending` clears the record; a bare `pending` keeps one only when the slice was already pending."""
@@ -5115,6 +5220,16 @@ def start_slice(args: argparse.Namespace) -> None:
 
 def finish_slice(args: argparse.Namespace) -> None:
     sdir = require_slice(args.slice)
+    pdir = sdir.parents[1]  # .../<phase>/slices/<slice> -> <phase>
+    decomposition = read_json(sdir / "slice.json").get("kind") == "decomposition"
+    if decomposition and not explain_phase(pdir):  # v77: the cut decides parallelism, never the default
+        loose = undeclared_middle_slices(_active_phase(pdir.name) or {})
+        if loose:
+            ids = ", ".join(str(s.get("id")) for s in loose)
+            raise SystemExit(f"finish-slice {args.slice}: refused, nothing was written -- a decomposition declares every middle slice "
+                             f"it leaves open, and these are undeclared: {ids}. Declare each one: {WORKFLOW_CMD} set-slice-deps <slice> "
+                             "--depends-on <an earlier slice of this phase> (repeatable) or --depends-on none, then finish again; "
+                             f"{WORKFLOW_CMD} parallel-plan {pdir.name} shows the rounds that follow")
     outcome = (getattr(args, "outcome", None) or "").strip()
     if outcome:  # stored before the status change, so the rebuild it triggers renders the row
         data = read_json(sdir / "slice.json")
@@ -5124,13 +5239,15 @@ def finish_slice(args: argparse.Namespace) -> None:
     if not outcome:  # a warning, never an error: the slice is still finished
         print(f"warning: no --outcome recorded for {args.slice}; the ## Slices row will be blank")
     print(f"finished {args.slice}")
+    if decomposition:  # v77: the engine's determination of what runs together, for the orchestrator to relay
+        for line in parallel_plan_lines(_active_phase(pdir.name) or {}):
+            print(line)
     lines_n, bytes_n = phase_md_size(sdir.parents[1])  # .../<phase>/slices/<slice> -> <phase>
     if lines_n or bytes_n:  # the notebook is where the next slice reads its state; keep it in view
         over = " \u2014 OVER BUDGET" if bytes_n > PHASE_MD_BUDGET else ""  # bytes judge; lines are informational
         print(f"phase.md: {lines_n} lines / {bytes_n} bytes (budget {PHASE_MD_BUDGET} bytes){over}")
         if bytes_n > PHASE_MD_BUDGET:
             print(f"  {notebook_sections_hint(sdir.parents[1])}")
-        pdir = sdir.parents[1]
         report = notebook_report(pdir.name, (pdir / "phase.md").read_text(encoding="utf-8"))
         for section in report["flagged"]:  # a section over its own budget or holding long entries
             print(f"  {notebook_section_line(section)}")
@@ -13040,6 +13157,15 @@ def main(argv=None) -> int:
     p.add_argument("slice")
     p.add_argument("--outcome", help="one line recorded in slice.json and rendered in the phase's generated ## Slices table")
     p.set_defaults(func=finish_slice)
+
+    p = sub.add_parser("set-slice-deps", help="Declare an existing slice's dependencies (v77), under new-slice --depends-on's rules: a decomposition cannot finish while a middle slice it leaves open is undeclared")
+    p.add_argument("slice")
+    p.add_argument("--depends-on", action="append", required=True, metavar="ID|none", help=DEPENDS_ON_HELP)
+    p.set_defaults(func=set_slice_deps)
+
+    p = sub.add_parser("parallel-plan", help="Print the rounds a phase's open slices run in, as the engine determines them from the declarations (v77), and any middle slice still undeclared; read-only")
+    p.add_argument("phase", help=PHASE_ARG_HELP)
+    p.set_defaults(func=cmd_parallel_plan)
 
     p = sub.add_parser("set-slice-status", help="Set any valid slice status; a pending stop is typed with --stop-kind and --on-words (stored in slice.json as pending: {kind, on_words, since}, printed by next and the resume card, cleared when the slice leaves pending)")
     p.add_argument("slice")
