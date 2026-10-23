@@ -58,7 +58,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 78
+WORKSPACE_VERSION = 79
 ROOT = TARGET.resolve()
 # Nested personal install (P28; the default layout since P29): TARGET is a HOST git repo -- one the
 # operator may not own, or a new/empty dir this run `git init`s. The engine and all workflow state go
@@ -187,7 +187,7 @@ NESTED_EXCLUDE_BEGIN, NESTED_EXCLUDE_END = "# BEGIN agentic-workspace (nested)",
 NESTED_SKILL_GITIGNORE = "*\n"
 SHOWN_PREFIX = f"{NESTED_DIR}/" if NESTED else ""   # change-list paths as typed from the host root
 
-DOC_TYPES = ["product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"]
+DOC_TYPES = ["product", "architecture", "operations", "qa", "decisions"]
 
 # Common, harmless files a brand-new repo often already contains. Their presence
 # does NOT count as "non-empty" for the safety guard (the GitHub "create repo
@@ -1349,17 +1349,13 @@ Doc updates happen in a **docs phase the operator creates** — never per slice.
 
 ## Update Triggers
 
-- `product`: goals, users, scope, terminology, business direction
-- `experience`: routes, journeys, UI behavior, copy, UX states
-- `architecture`: system boundaries, components, runtime, integrations
-- `frontend`: routing, components, state, data fetching, browser auth
-- `backend`: server modules, services, jobs, auth/session, logging/errors
-- `data`: schema, migrations, entities, indexes, storage, retention
-- `api`: REST/RPC/webhook/event contracts and error shapes
-- `operations`: env, deployment, local commands, jobs, monitoring, backups
-- `security`: permissions, secrets, customer data boundaries, abuse controls
+- `product`: goals, users, scope, terminology, business direction, and the user journeys and UX rules the code cannot show
+- `architecture`: system boundaries, components, runtime, integrations, and what the code cannot say about its modules, data, API contracts and security model (invariants, ownership, retention, outside contracts, trust boundaries)
+- `operations`: env, deployment, local commands, jobs, monitoring, backups, and how the operator runs and views the product
 - `qa`: test commands, QA missions, regression checklist, acceptance style
 - `decisions`: meaningful choices, tradeoffs, rejected alternatives
+
+These docs are read by agents, which can read the code: write what the code cannot say, and point at the code for the rest. An install made before v79 may also hold `experience`, `frontend`, `backend`, `data`, `api` and `security`: they are retired, kept readable and never versioned again, and their changes go to `product` (experience) or `architecture` (the rest).
 """
 
 

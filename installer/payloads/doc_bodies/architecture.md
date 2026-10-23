@@ -34,6 +34,15 @@ __PROJECT_NAME__ is newly bootstrapped. This document should describe stable sys
 - Data boundary:
 - External service boundary:
 
+## What the Code Cannot Say
+
+Agents read the code, so this doc never restates it. It keeps only what the code cannot show about the modules, the data, the API and the security model:
+
+- Invariants and ownership: <rule the code relies on but does not state>
+- Data: <retention, migration or consistency rule>
+- API: <contract with an outside client or service>
+- Security: <trust boundary, secret handling, permission model>
+
 ## Cross-Cutting Constraints
 
 - <constraint>

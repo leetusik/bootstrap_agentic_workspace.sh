@@ -1454,7 +1454,7 @@ printf '%s\n' "$docs_out" | grep -q "STALE: 1 unconsolidated '## Doc impact' not
 ( cd "$F" && python3 scripts/workflow.py validate 2>&1 | grep -q "oversized_doc_sections=" ) \
   && bad "validate flagged an oversized doc section on a clean fresh install" \
   || ok "validate is silent about doc sections on a clean fresh install"
-big_path=$( cd "$F" && python3 scripts/workflow.py doc-new-version --doc data --summary "oversized probe" --source manual 2>&1 | sed -n 's/^edit_path=//p' )
+big_path=$( cd "$F" && python3 scripts/workflow.py doc-new-version --doc architecture --summary "oversized probe" --source manual 2>&1 | sed -n 's/^edit_path=//p' )
 python3 - "$F/$big_path" <<'PY2'
 import sys
 from pathlib import Path
@@ -1464,13 +1464,19 @@ PY2
 ( cd "$F" && python3 scripts/workflow.py rebuild-docs >/dev/null 2>&1 ) || bad "rebuild-docs failed after the oversized probe"
 big_out=$( cd "$F" && python3 scripts/workflow.py validate 2>&1 ); big_rc=$?
 printf '%s\n' "$big_out" | grep -q "warning: oversized_doc_sections=1" \
-  && printf '%s\n' "$big_out" | grep -q "data.md '## Oversized probe section'" \
+  && printf '%s\n' "$big_out" | grep -q "architecture.md '## Oversized probe section'" \
   && [ "$big_rc" -eq 0 ] \
   && ok "validate names an oversized doc section (doc, heading, size) and still exits 0" \
   || bad "validate did not warn exit-code-neutrally about an oversized doc section (rc=$big_rc)"
-( cd "$F" && python3 scripts/workflow.py doc-new-version --doc data --summary "split probe" --source manual 2>&1 | grep -q "note: oversized_doc_sections=1" ) \
+( cd "$F" && python3 scripts/workflow.py doc-new-version --doc architecture --summary "split probe" --source manual 2>&1 | grep -q "note: oversized_doc_sections=1" ) \
   && ok "doc-new-version repeats the oversized-section note where the split can land" \
   || bad "doc-new-version did not flag the oversized section it is about to hand over for editing"
+# v79: the doc set is five; a retired doc is refused (naming its successor) and nothing is written.
+ret_out=$( cd "$F" && python3 scripts/workflow.py doc-new-version --doc backend --summary "retired probe" --source manual 2>&1 ); ret_rc=$?
+[ "$ret_rc" -ne 0 ] && printf '%s\n' "$ret_out" | grep -q "backend is a retired doc (v79)" && printf '%s\n' "$ret_out" | grep -q -- "--doc architecture" \
+  && [ ! -e "$F/docs/versions/backend" ] && [ "$(ls "$F/docs/current" | wc -l | tr -d ' ')" = "5" ] \
+  && ok "a fresh install seeds five docs, and doc-new-version refuses a retired doc, naming its successor, writing nothing (v79)" \
+  || bad "retired doc not refused, or the fresh doc set is not five (rc=$ret_rc) -- $ret_out"
 # v39 last-updated marker at write time: the HEAD sha lands in the version frontmatter (which
 # rebuild-docs copies verbatim into docs/current) AND in the index entry. Needs a repo with a
 # commit, so the fixture becomes one here; the later dashboard test re-inits it harmlessly.
@@ -1478,16 +1484,16 @@ printf '%s\n' "$big_out" | grep -q "warning: oversized_doc_sections=1" \
     && git -c user.email=smoke@example.invalid -c user.name=smoke commit -qm "marker baseline" >/dev/null 2>&1 ) \
   || bad "v39 marker probe: could not make the fixture a git repo"
 head_sha=$( cd "$F" && git rev-parse HEAD 2>/dev/null )
-marker_path=$( cd "$F" && python3 scripts/workflow.py doc-new-version --doc security --summary "marker probe" --source manual 2>&1 | sed -n 's/^edit_path=//p' )
+marker_path=$( cd "$F" && python3 scripts/workflow.py doc-new-version --doc decisions --summary "marker probe" --source manual 2>&1 | sed -n 's/^edit_path=//p' )
 [ -n "$head_sha" ] && grep -q "^commit: $head_sha\$" "$F/$marker_path" \
   && grep -q "\"commit\": \"$head_sha\"" "$F/docs/index.json" \
-  && grep -q "^commit: $head_sha\$" "$F/docs/current/security.md" \
+  && grep -q "^commit: $head_sha\$" "$F/docs/current/decisions.md" \
   && ok "doc-new-version records the HEAD sha in the frontmatter, docs/current and the index entry" \
   || bad "doc-new-version did not record the commit sha"
 # ...and where git cannot answer at all (no git on PATH), the version is still written: the sha is
 # recorded as unknown/null and nothing raises.
 nogit_py=$( command -v python3 )
-nogit_path=$( cd "$F" && PATH="/var/empty" "$nogit_py" scripts/workflow.py doc-new-version --doc security --summary "no git probe" --source manual 2>&1 | sed -n 's/^edit_path=//p' )
+nogit_path=$( cd "$F" && PATH="/var/empty" "$nogit_py" scripts/workflow.py doc-new-version --doc decisions --summary "no git probe" --source manual 2>&1 | sed -n 's/^edit_path=//p' )
 [ -n "$nogit_path" ] && grep -q "^commit: unknown\$" "$F/$nogit_path" && grep -q "\"commit\": null" "$F/docs/index.json" \
   && ok "doc-new-version survives a checkout without git (commit unknown/null, never fatal)" \
   || bad "doc-new-version broke or recorded a sha where git was unavailable"

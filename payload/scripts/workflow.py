@@ -332,7 +332,13 @@ ARCHIVED = WORKS / "phases" / "archived"
 DEFERRED_OPEN = WORKS / "deferred" / "open"
 DEFERRED_PROMOTED = WORKS / "deferred" / "promoted"
 DEFERRED_DROPPED = WORKS / "deferred" / "dropped"
-DOC_TYPES = {"product", "experience", "architecture", "frontend", "backend", "data", "api", "operations", "security", "qa", "decisions"}
+DOC_TYPES = {"product", "architecture", "operations", "qa", "decisions"}
+# The six docs retired by v79: for an AI reader they restated the code (and went stale), and they were
+# written more than read. An install that has them keeps them readable in docs/current, listed as
+# retired; doc-new-version refuses them, and a `## Doc impact` note naming one counts for its successor,
+# where what the code cannot say about it (a journey, a contract, an invariant, a trust boundary) goes.
+RETIRED_DOCS = {"experience": "product", "frontend": "architecture", "backend": "architecture",
+                "data": "architecture", "api": "architecture", "security": "architecture"}
 # An H2 section in a durable doc past this many bytes has outgrown the read-order rule
 # ("read the `docs/current/` SECTIONS the work touches"): at ~4 B/token 10 KB is ~2.5 k tokens,
 # and measured across four live adopting repos (P21.S1 §2.8) 10 % of all H2 sections are already
@@ -2037,6 +2043,10 @@ def doc_marker(version: dict) -> str:
 
 def new_doc_version(args: argparse.Namespace) -> None:
     doc_id = args.doc
+    if doc_id in RETIRED_DOCS:
+        kept = f"; {shown_rel(f'docs/current/{doc_id}.md')} stays readable as it is" if (DOCS / "current" / f"{doc_id}.md").exists() else ""
+        raise SystemExit(f"{doc_id} is a retired doc (v79), never versioned again: write the change into a new version of "
+                         f"{RETIRED_DOCS[doc_id]} (doc-new-version --doc {RETIRED_DOCS[doc_id]}), keeping only what the code cannot say{kept}")
     if doc_id not in DOC_TYPES:
         raise SystemExit(f"doc must be one of: {', '.join(sorted(DOC_TYPES))}")
     # Doc versions are named by their UTC minute (v73), so two streams no longer pick the same
@@ -2105,6 +2115,9 @@ def cmd_docs(args: argparse.Namespace) -> None:
         latest = next(v for v in info["versions"] if v["id"] == info["latest"])
         print(f"{doc_id}: latest={info['latest']} current={shown_rel(info['current_path'])} latest_path={shown_rel(latest['path'])}")
         line = f"  {doc_marker(latest)}"
+        if doc_id in RETIRED_DOCS:  # v79: kept readable, never versioned; its notes count for the successor
+            print(f"{line} -- retired (v79): frozen as it is; read the code first, and durable truth for it now goes to {RETIRED_DOCS[doc_id]}.md")
+            continue
         owed = stale.get(doc_id)
         if owed:
             notes = sum(owed.values())
@@ -2578,11 +2591,12 @@ def doc_impact_docs(note: str) -> list:
 
     A note names its doc(s) in prose, so this is a best-effort read against the known `DOC_TYPES`
     only -- one note may name several docs (`operations.md: ...; qa.md: ...`) and a note naming
-    none is reported unassigned rather than guessed at. Nothing routes on it: `docs-debt` groups
-    the worklist with it, and the operator still reads the note.
+    none is reported unassigned rather than guessed at. A retired doc (v79) counts for its successor,
+    so an older note naming `backend.md` lands in architecture's worklist. Nothing routes on it:
+    `docs-debt` groups the worklist with it, and the operator still reads the note.
     """
-    found = [d for d in sorted(DOC_TYPES) if re.search(rf"\b{re.escape(d)}\.md\b", note, re.I)]
-    return found
+    named = [d for d in sorted(DOC_TYPES | set(RETIRED_DOCS)) if re.search(rf"\b{re.escape(d)}\.md\b", note, re.I)]
+    return sorted({RETIRED_DOCS.get(d, d) for d in named})
 
 
 def phases_owing_consolidation(phases: list) -> list:
@@ -13064,7 +13078,7 @@ def main(argv=None) -> int:
     p.set_defaults(func=cmd_docs)
 
     p = sub.add_parser("doc-new-version", help="Create a new durable doc version from the latest version")
-    p.add_argument("--doc", required=True, choices=sorted(DOC_TYPES))
+    p.add_argument("--doc", required=True, help=f"one of {', '.join(sorted(DOC_TYPES))} (a retired doc is refused and names its successor)")
     p.add_argument("--summary", required=True)
     p.add_argument("--source", required=True)
     p.set_defaults(func=new_doc_version)

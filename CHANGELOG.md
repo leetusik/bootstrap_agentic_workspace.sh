@@ -14,6 +14,33 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v79 — 2026-10-24
+
+- **Six docs retire: `experience`, `frontend`, `backend`, `data`, `api` and `security`.** These docs are
+  read by agents, which can read the code, and those six mostly restated it. They went stale and were
+  written more than read. Across 1,992 transcripts:
+  - `data` was written 52 times and read 20;
+  - `security` was written 24 times and read 10;
+  - one adopter's `backend.md` reached 524 KB of per-phase narrative and was read 7 times.
+
+  The five that stay are the ones the mechanics and the reads rely on:
+  - `operations` (441 reads; `## Operator Runtime`);
+  - `qa` (151; `## Regression Checklist`, `## Test Commands`);
+  - `decisions` (66);
+  - `architecture` (48);
+  - `product` (38).
+
+  A fresh install seeds those five.
+  - The product seed gains a short `## User Experience` section (the journeys and UX rules the code cannot show).
+  - The architecture seed gains `## What the Code Cannot Say` (invariants, data rules, outside API contracts, trust boundaries).
+  - `docs/README.md`'s triggers say to write what the code cannot say and to point at the code for the rest.
+- **An existing install keeps its retired docs readable and never versions them again.**
+  - `docs` lists each one as `retired (v79)`, naming its successor.
+  - `doc-new-version --doc <retired>` refuses, writing nothing, and names the doc to write instead: `product` for `experience`, `architecture` for the rest.
+  - A `## Doc impact` note naming a retired doc (`backend.md: …`) counts for its successor in `docs-debt` and the STALE marks, so owed debt still gets paid.
+  - The executor's durable-truth list now names the five.
+- **Migration notes.** Nothing is deleted or rewritten. Retired docs stay in `docs/current` and `docs/versions`, frozen. A docs phase that pays an older note naming one writes it into the successor, keeping only what the code cannot say. `--update` refreshes `docs/README.md` only. The smoke suite gains one assertion (424).
+
 ## v78 — 2026-10-24
 
 - **Every `/rotate-backlog` now ends with one docs phase covering all the doc debt.** Before, a docs

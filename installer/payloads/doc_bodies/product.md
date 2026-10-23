@@ -33,6 +33,13 @@ __PROJECT_SUMMARY__
 
 Keep durable product truth here. Update by creating a new version under `docs/versions/product/`, not by patching old versions.
 
+## User Experience
+
+Only what the code cannot show: the journeys that matter, the UX rules and states the product promises, and the copy tone. Point at the routes and components rather than restating them.
+
+- <journey>: entry, success state, failure and recovery
+- <UX rule or copy principle>
+
 ## Terminology
 
 - `phase`: grouped unit of work under `works/phases/active/` or `works/phases/archived/`
