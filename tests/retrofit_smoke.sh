@@ -789,7 +789,11 @@ for tier in ("slice-executor",):
         "**only when you are unsure what was asked**",
         "never the whole doc set, and never `docs/index.json`",
         "**structured verdict block first**",
-        "**Edit** the phase's `phase.md` one section at a time",
+        # The entry-level notebook: phase.md is written one entry at a time through phase-section only, never
+        # by Read/Edit/Write; a decomposition's breakdown lives in topics/breakdown.md behind a gist line.
+        "**Write** the phase's `phase.md` one entry at a time, through `phase-section` only: **never `Read`, `Edit` or `Write` `phase.md`**.",
+        "A decomposition slice writes its breakdown to `topics/breakdown.md`, never into `phase.md`",
+        "Executors never act on `notebook_over_budget=`",
         "the soft budget is **40 KB**", "phase-section <P> <name> --replace|--append", "`topics/<slug>.md`",
         "never edit inside the `<!-- slices:begin -->`",
         "edit inside `phase.md`'s generated `## Slices` block",
@@ -799,7 +803,8 @@ for tier in ("slice-executor",):
         "phase-scope <P>", "inside the phase's boundary",
     ):
         assert required in body, (tier, required)
-    for gone in ("not just this phase's lines", "re-run the **whole**"):
+    for gone in ("not just this phase's lines", "re-run the **whole**", "goes here too",
+                 "read the section first so you send it back whole"):
         assert gone not in body, (tier, gone)
     never = [ln for ln in body.splitlines() if "run workflow state-transition commands" in ln]
     assert len(never) == 1 and "`accept-gate`" in never[0] and "`defer-job`" in never[0], tier
@@ -2250,7 +2255,7 @@ dec = ("1. **Alpha:** the first decision, short enough to be its own gist.\n"
        "2. **Beta:** a long decision. " + "It carries detail the next slice reads only when it needs it. " * 12 + "\n"
        "   - a nested point under Beta\n"
        "3. [topics/x.md](topics/x.md)\n")
-t = t.replace("linked by one line._\n", "linked by one line._\n\n" + dec, 1)
+t = t.replace("`topics/breakdown.md`._\n", "`topics/breakdown.md`._\n\n" + dec, 1)
 t = t.replace("Last on purpose._\n", "Last on purpose._\n\n- now line\n", 1)
 p.write_text(t)
 SEED
@@ -2301,7 +2306,7 @@ import pathlib, sys
 p = pathlib.Path(sys.argv[1]); t = p.read_text()
 dec = "".join(f"- **D{n}:** decision {n}. " + "detail " * 140 + "\n" for n in range(1, 41))
 dec += "- **Huge:** " + "x" * 30000 + "\n\nA prose paragraph after the entries.\n"
-t = t.replace("linked by one line._\n", "linked by one line._\n\n" + dec, 1)
+t = t.replace("`topics/breakdown.md`._\n", "`topics/breakdown.md`._\n\n" + dec, 1)
 p.write_text(t)
 SEED
 out=$(ps P10)
@@ -2339,7 +2344,7 @@ python3 - "$NP" <<'SEED'
 import pathlib, sys
 p = pathlib.Path(sys.argv[1]); t = p.read_text()
 dec = "".join(f"- **D{n}:** decision {n}. " + "detail " * 400 + "\n" for n in range(1, 18))
-p.write_text(t.replace("linked by one line._\n", "linked by one line._\n\n" + dec, 1))
+p.write_text(t.replace("`topics/breakdown.md`._\n", "`topics/breakdown.md`._\n\n" + dec, 1))
 SEED
 out=$(nb next 2>&1); card=$(nb next --card 2>&1); st=$(nb set-slice-status P11.DECOMP todo >/dev/null 2>&1; nb start-slice P11.DECOMP 2>&1)
 printf '%s\n' "$out" | grep -q '^notebook_over_budget=P11 ([0-9]* of 40960 B) -- required before the next dispatch: move long entries to topics first (gists stay, nothing is lost)$' \

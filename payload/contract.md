@@ -32,7 +32,7 @@ Just in time, and only what the work in front of you needs:
 - `works/backlog.md`, `works/deferred.md`, `works/index.json`: generated, **regenerated, not merged**, never hand-edited
 - `works/phases/active/<P>/phase.json`: the phase's status, `acceptance` gate block and `consolidation` debt
 - `intent.md`: the operator's verbatim original (immutable) and the confirmed intent: what the operator wants, never the workflow's mechanics
-- `phase.md`: the phase's **bounded state**, an index under `PHASE_MD_BUDGET`, a soft 40 KB cap; read and write it one section at a time (`phase-section`), never drop a decision or a question, and send long material to `topics/<slug>.md`, linked by one line. `## Slices` is generated; `## Doc impact` and `## Operator Questions` are append-only, a resolved question collapsing to one line plus a pointer; rules: `works/templates/phase.md`
+- `phase.md`: the phase's **bounded state**, an index under `PHASE_MD_BUDGET`, a soft 40 KB cap; read and write it by entry (`phase-section`), never whole, never drop a decision or a question, and send long material to `topics/<slug>.md`, behind a gist line. `## Slices` is generated; `## Doc impact` and `## Operator Questions` are append-only, a resolved question collapsing to one line plus a pointer; rules: `works/templates/phase.md`
 - `slices/<id>/`: `slice.json` and exactly two unscaffolded context files: `plan.md`, the orchestrator's complete plan, and `result.md`, the executor's, **structured verdict block first**. `phase.md` holds what the next slice needs, `result.md` what this slice did, never both. A slice never pre-fills another slice's `plan.md`
 - `works/deferred/open/<DID>/deferred.json`; `docs/index.json`; `docs/current/*.md`, generated from `docs/versions/<doc>/v*_*.md`
 
