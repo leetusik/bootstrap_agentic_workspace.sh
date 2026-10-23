@@ -23,7 +23,9 @@
 # (a run's tokens resolve in order and a non-phase token refuses; a run passes a parked acceptance gate and
 # halts at a pending slice while plain `next` still waits there), the P42 ready-set invariants (an undeclared phase
 # keeps its plain pointer and prints no wave line; a declared slice is never ready before its dependency is done;
-# a running barrier is never a wave slice, so a declared phase's open acceptance gate reads as a stop), the v43
+# a running barrier is never a wave slice, so a declared phase's open acceptance gate reads as a stop), the P44 minted-id
+# invariants (new-phase, defer-job and promote-deferred mint P-/D- tokens when no id is given; an archived id is spent;
+# listings put numeric ids first and rotate's all-numeric labels stay v72's; two branches mint and merge clean), the v43
 # worktree-on-request invariants (nothing enters a worktree unhinted or unasked; parallel-start
 # on a dirty tree commits only the phase folder plus the regenerated works/ files and cuts a
 # nested .claude/worktrees/ checkout hidden by the repo's info/exclude; parallel-skip and
@@ -1202,7 +1204,7 @@ cmp -s "$SEEDT/executors.uncommented.toml" "$SRC/executors.toml" && diff -q "$F/
   && ok "the unknown-kind error names the closed set" || bad "the unknown-kind error does not name the closed set"
 # promote-deferred --create-phase creates the phase BEFORE the slice, so the kind must be
 # rejected before that happens -- otherwise a typo leaves a half-created phase behind.
-( cd "$F" && python3 scripts/workflow.py defer-job --title "kind probe" --reason r --trigger t --source manual >/dev/null 2>&1 ) || bad "defer-job probe failed"
+( cd "$F" && python3 scripts/workflow.py defer-job --id D1 --title "kind probe" --reason r --trigger t --source manual >/dev/null 2>&1 ) || bad "defer-job probe failed"
 ( cd "$F" && python3 scripts/workflow.py promote-deferred D1 --phase P8 --slice P8.S1 --name x --kind cowork --create-phase 2>&1 | grep -q "invalid slice kind: cowork" ) \
   && [ ! -d "$F/works/phases/active/P8" ] \
   && ok "promote-deferred rejects an unknown --kind before --create-phase creates the phase" \
@@ -2074,18 +2076,19 @@ printf '%s\n' "$out" | grep -q "unknown option --with-explain" && ok "reports th
 
 # ---------------------------------------------------------------------------
 echo "== Test 9: v35 phase notebook -- template seed, generated ## Slices block, finish-slice --outcome =="
-# Runs against the fresh workspace from Test 5 ($F), which already carries the gate-probe P1.
+# Runs against the fresh workspace from Test 5 ($F), which already carries the gate-probe P1 (P2 was archived above,
+# and an archived id is spent since v73, so the notebook probe is P4).
 sig() { python3 -c "import hashlib,os,sys;p=sys.argv[1];print(hashlib.sha256(open(p,'rb').read()).hexdigest(),os.stat(p).st_mtime_ns)" "$1"; }
-PM="$F/works/phases/active/P2/phase.md"
-( cd "$F" && python3 scripts/workflow.py new-phase --phase P2 --name "Notebook" --objective "notebook probe" >/dev/null 2>&1 )
+PM="$F/works/phases/active/P4/phase.md"
+( cd "$F" && python3 scripts/workflow.py new-phase --phase P4 --name "Notebook" --objective "notebook probe" >/dev/null 2>&1 )
 grep -q '<!-- slices:begin -->' "$PM" && grep -q '<!-- slices:end -->' "$PM" && grep -q '^## Now$' "$PM" \
   && ok "new-phase seeds phase.md from the template (both markers + ## Now)" || bad "seeded phase.md is not the v35 shape"
-grep -q '^| `P2.DECOMP` |' "$PM" && ok "new-phase renders the generated ## Slices block" || bad "## Slices block was not filled on phase creation"
-( cd "$F" && python3 scripts/workflow.py new-slice --phase P2 --slice P2.S1 --name "probe" >/dev/null 2>&1 )
-out=$( cd "$F" && python3 scripts/workflow.py finish-slice P2.S1 --outcome "did X" 2>&1 )
+grep -q '^| `P4.DECOMP` |' "$PM" && ok "new-phase renders the generated ## Slices block" || bad "## Slices block was not filled on phase creation"
+( cd "$F" && python3 scripts/workflow.py new-slice --phase P4 --slice P4.S1 --name "probe" >/dev/null 2>&1 )
+out=$( cd "$F" && python3 scripts/workflow.py finish-slice P4.S1 --outcome "did X" 2>&1 )
 grep -q '| did X |' "$PM" && ok "finish-slice --outcome lands in the slice's generated row" || bad "outcome missing from the ## Slices row -- $out"
-out=$( cd "$F" && python3 scripts/workflow.py finish-slice P2.DECOMP 2>&1 ); rc=$?
-[ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^warning: no --outcome recorded for P2.DECOMP' \
+out=$( cd "$F" && python3 scripts/workflow.py finish-slice P4.DECOMP 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^warning: no --outcome recorded for P4.DECOMP' \
   && ok "finish-slice without --outcome warns and still succeeds" || bad "omitted --outcome must warn, never fail (exit=$rc) -- $out"
 before=$(sig "$PM"); ( cd "$F" && python3 scripts/workflow.py rebuild >/dev/null 2>&1 )
 [ "$(sig "$PM")" = "$before" ] && ok "an unchanged phase.md is not rewritten by rebuild (no notebook churn)" || bad "rebuild rewrote an unchanged phase.md"
@@ -2110,7 +2113,7 @@ then ok "new_phase's embedded fallback is byte-identical to works/templates/phas
 
 # ---------------------------------------------------------------------------
 echo "== Test 10: v35/v39 notebook guardrails -- budget warning, ## Doc Impact case drift, no dashboard timestamp churn =="
-# Continues on $F (P2's phase.md lost its markers in Test 9; irrelevant here). v39's cap is
+# Continues on $F (P4's phase.md lost its markers in Test 9; irrelevant here). v39's cap is
 # bytes-only (v61: 40 KB, an index), so the filler is generated, never checked in: pad the
 # notebook past it and drift the Doc impact heading in one edit.
 python3 - "$PM" <<'PAD'
@@ -2120,12 +2123,12 @@ p.write_text(p.read_text() + "\n## Doc Impact\n\n" + "- filler\n" * 50_000)  # ~
 PAD
 out=$( cd "$F" && python3 scripts/workflow.py validate 2>&1 ); rc=$?
 [ "$rc" -eq 0 ] && ok "validate exits 0 with notebook warnings (warn, never error)" || bad "validate exited $rc on warnings -- $out"
-printf '%s\n' "$out" | grep -q 'phase P2: phase.md is .* over the notebook budget of 40960 bytes; biggest sections: ## Doc Impact ' \
+printf '%s\n' "$out" | grep -q 'phase P4: phase.md is .* over the notebook budget of 40960 bytes; biggest sections: ## Doc Impact ' \
   && ok "an over-budget phase.md warns (40 KB) and names its largest section" || bad "no over-budget warning naming the largest section -- $out"
 printf '%s\n' "$out" | grep -q 'has a `## Doc Impact` heading' \
   && ok "a case-drifted ## Doc Impact heading warns" || bad "no Doc-impact case-drift warning -- $out"
-( cd "$F" && python3 scripts/workflow.py new-slice --phase P2 --slice P2.S2 --name "budget probe" >/dev/null 2>&1 )
-out=$( cd "$F" && python3 scripts/workflow.py finish-slice P2.S2 --outcome "probe" 2>&1 )
+( cd "$F" && python3 scripts/workflow.py new-slice --phase P4 --slice P4.S2 --name "budget probe" >/dev/null 2>&1 )
+out=$( cd "$F" && python3 scripts/workflow.py finish-slice P4.S2 --outcome "probe" 2>&1 )
 printf '%s\n' "$out" | grep -q '^phase.md: .* bytes (budget 40960 bytes)' && printf '%s\n' "$out" | grep -q 'OVER BUDGET' \
   && ok "finish-slice prints the notebook size and flags it over budget" || bad "finish-slice notebook size print missing -- $out"
 printf '%s\n' "$out" | grep -q 'biggest sections: ## Doc Impact ' && printf '%s\n' "$out" | grep -q 'topics/<slug>.md' \
@@ -2215,7 +2218,7 @@ printf '%s\n' "$out" | grep -q 'phase P8: phase.md is .* over the notebook budge
 # ---------------------------------------------------------------------------
 echo "== Test 10c: P41 run-phases -- a run's phase list, and a parked acceptance gate only a run passes =="
 # On a copy of $F emptied of its phases, so the probe phases are the whole pointer and never reach the later tests.
-newtmp RPW; cp -R "$F" "$RPW/ws"; RW="$RPW/ws"; rm -rf "$RW/works/phases/active/"*; rp() { ( cd "$RW" && python3 scripts/workflow.py "$@" ); }
+newtmp RPW; cp -R "$F" "$RPW/ws"; RW="$RPW/ws"; rm -rf "$RW/works/phases/active/"* "$RW/works/phases/archived/"*; rp() { ( cd "$RW" && python3 scripts/workflow.py "$@" ); }
 for n in 1 2 3; do rp new-phase --phase "P$n" --name "Run probe $n" --objective "run probe" >/dev/null 2>&1 || bad "run-phases probe: new-phase P$n failed"; done
 out=$(rp run-phases 3,p1 P2 1 2>&1); rc=$?; ref=$(rp run-phases P1 worktree 2>&1); ref_rc=$?
 [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -qx 'queue=P3,P1,P2' && [ "$ref_rc" -eq 2 ] && printf '%s\n' "$ref" | grep -q '^refused=worktree ' && ! printf '%s\n' "$ref" | grep -q '^queue=' \
@@ -2230,7 +2233,7 @@ printf '%s\n' "$out" | grep -q '^parked=P1 ' && printf '%s\n' "$out" | grep -qx 
 # ---------------------------------------------------------------------------
 echo "== Test 10d: P42 the ready set -- an undeclared phase keeps its plain pointer, a declared dependency binds =="
 # Same emptied copy of $F as 10c: P1 is undeclared (the pointer, as before); P2 is declared and read through run-phases P2.
-newtmp RSW; cp -R "$F" "$RSW/ws"; SW="$RSW/ws"; rm -rf "$SW/works/phases/active/"*; rs() { ( cd "$SW" && python3 scripts/workflow.py "$@" ); }
+newtmp RSW; cp -R "$F" "$RSW/ws"; SW="$RSW/ws"; rm -rf "$SW/works/phases/active/"* "$SW/works/phases/archived/"*; rs() { ( cd "$SW" && python3 scripts/workflow.py "$@" ); }
 { for n in 1 2; do rs new-phase --phase "P$n" --name "Ready probe $n" --objective "ready probe" && rs finish-slice "P$n.DECOMP" --outcome cut; done \
   && rs new-slice --phase P1 --slice P1.S1 --name s1 && rs new-slice --phase P1 --slice P1.S2 --name s2 \
   && rs new-slice --phase P2 --slice P2.S1 --name s1 --depends-on none && rs new-slice --phase P2 --slice P2.S2 --name s2 --depends-on P2.S1; } >/dev/null 2>&1 \
@@ -2254,6 +2257,62 @@ printf '%s\n' "$gn" | grep -qx 'waiting_on_operator=P2' && printf '%s\n' "$gc" |
   && ! printf '%s\n%s\n' "$gn" "$gc" | grep -q -e '^running_slices=' -e '^wave: ' \
   && ok "a declared phase at its open acceptance gate reads as a stop: the running REVIEW is a barrier, never a wave's running or returned slice" \
   || bad "declared gate reads as a wave -- $gn / $gc"
+
+# ---------------------------------------------------------------------------
+echo "== Test 10e: P44 minted ids -- P-/D- tokens beside P<n>/D<n>, one listing order, an archived id is spent, two branches mint and merge clean =="
+# On a copy of $F emptied of its phases, deferred jobs and git history. Explicit P<n>/D<n> ids keep working beside the tokens.
+newtmp MIW; cp -R "$F" "$MIW/ws"; MW="$MIW/ws"; rm -rf "$MW/.git" "$MW/works/phases/active/"* "$MW/works/phases/archived/"* "$MW/works/deferred/"*/*
+mi() { ( cd "$MW" && python3 scripts/workflow.py "$@" ); }
+tok='[0-9abcdefghjkmnpqrstvwxyz]{4}'
+mi_note() { python3 -c 'import sys; from pathlib import Path; p = Path(sys.argv[1]); p.write_text(p.read_text().replace("## Operator Questions", "- architecture.md: a durable change (" + sys.argv[2] + ".S1)\n\n## Operator Questions", 1))' "$MW/works/phases/active/$1/phase.md" "$1"; }
+mi_owe() { mi_note "$1" && mi accept-gate "$1" --waive --note probe && mi set-slice-status "$1.DECOMP" done && mi set-slice-status "$1.REVIEW" done && mi review-phase "$1" --verdict pass; }
+m1=$(mi new-phase --name "Minted" --objective "mint probe" 2>&1); mp=$(printf '%s\n' "$m1" | sed -n 's/^created phase \(P-[^:]*\):.*/\1/p')
+md=$(mi defer-job --title "minted" --reason r --trigger t --source manual 2>&1); mdid=$(printf '%s\n' "$md" | sed -n 's/^created deferred job \(D-[^:]*\):.*/\1/p')
+printf '%s\n' "$mp" | grep -qxE "P-$tok" && printf '%s\n' "${mp#P-}" | grep -q '[a-z]' && [ -d "$MW/works/phases/active/$mp/slices/$mp.DECOMP" ] && [ -d "$MW/works/phases/active/$mp/slices/$mp.REVIEW" ] \
+  && printf '%s\n' "$mdid" | grep -qxE "D-$tok" && printf '%s\n' "${mdid#D-}" | grep -q '[a-z]' && [ -f "$MW/works/deferred/open/$mdid/deferred.json" ] \
+  && ok "new-phase without --phase mints a P- token (Crockford lowercase, never all digits) with its DECOMP and REVIEW; defer-job without --id mints a D- token" \
+  || bad "minted ids wrong -- $m1 / $md"
+pm=$(mi defer-job --id D5 --title "to promote" --reason r --trigger t --source manual >/dev/null 2>&1 && mi promote-deferred D5 --create-phase --slice S1 --name "promoted" 2>&1)
+pp=$(printf '%s\n' "$pm" | sed -n 's/^promoted D5 -> \(P-[^.]*\)\.S1: .*/\1/p')
+printf '%s\n' "$pp" | grep -qxE "P-$tok" && [ -f "$MW/works/phases/active/$pp/slices/$pp.S1/slice.json" ] && [ -d "$MW/works/deferred/promoted/D5" ] \
+  && ok "promote-deferred --create-phase without --phase mints the phase and takes a bare --slice S1" || bad "promote-deferred did not mint (or refused the bare suffix) -- $pm"
+mi archive-phase "$pp" --force >/dev/null 2>&1; arch=$(ls "$MW/works/phases/archived")
+re_tok=$(mi new-phase --phase "$pp" --name again --objective again 2>&1); re_act=$(mi new-phase --phase "$mp" --name again --objective again 2>&1)
+printf '%s\n' "$arch" | grep -qE "^[0-9]{8}_[0-9]{6}_${pp}_to_promote$" && printf '%s\n' "$re_tok" | grep -q "phase already exists (archived): $pp" \
+  && printf '%s\n' "$re_act" | grep -q "phase already exists: $mp" && [ "$(ls "$MW/works/phases/active" | wc -l | tr -d ' ')" = 1 ] \
+  && ok "a token phase archives as <stamp>_P-xxxx_<slug>, and new-phase refuses an explicit id that exists active or archived (an archived id is spent)" \
+  || bad "archived token id not spent -- $arch / $re_tok / $re_act"
+( for n in 9 10; do mi new-phase --phase "P$n" --name "Numeric $n" --objective probe || exit 1; done \
+  && for d in D10 D2; do mi defer-job --id "$d" --title "$d" --reason r --trigger t --source manual || exit 1; done && mi_owe P9 && mi_owe P10 ) >/dev/null 2>&1 \
+  || bad "mixed-id probe: setup failed"
+rot_num=$(mi rotate-backlog 2>&1)
+printf '%s\n' "$rot_num" | grep -qx 'docs_phase_proposal=P9, P10' && printf '%s\n' "$rot_num" | grep -qx 'name=Consolidate the doc impact of P9–P10' \
+  && printf '%s\n' "$rot_num" | grep -qE "^phase=P-$tok$" \
+  && ok "an all-numeric debt keeps v72's order and en-dash label (P9–P10), and the proposal's phase= is a minted token" || bad "all-numeric rotate label changed -- $rot_num"
+mi_owe "$mp" >/dev/null 2>&1 || bad "mixed-id probe: could not pass $mp"
+rot_mix=$(mi rotate-backlog 2>&1); val_mix=$(mi validate 2>&1); val_rc=$?
+dlist=$(sed -n '/^## Open/,/^## Promoted/p' "$MW/works/deferred.md" | sed -n 's/^| `\([^`]*\)` |.*/\1/p' | tr '\n' ' ')
+printf '%s\n' "$rot_mix" | grep -qx "docs_phase_proposal=P9, P10, $mp" && printf '%s\n' "$rot_mix" | grep -qx "name=Consolidate the doc impact of P9, P10, $mp" \
+  && [ "$dlist" = "D2 D10 $mdid " ] && [ "$val_rc" -eq 0 ] && printf '%s\n' "$val_mix" | grep -q '^Workflow validation passed' \
+  && ok "mixed ids list numeric first by number, then tokens (rotate's proposal, the deferred dashboard: $dlist), and validate passes" \
+  || bad "mixed ids out of order or invalid -- $rot_mix / deferred: $dlist / $val_mix"
+# Two branches of one repo each mint a phase and a deferred job: the merge conflicts in generated files only, and
+# taking either side then `rebuild` (payload/gitattributes) leaves both phases and both jobs, valid.
+newtmp TBW; cp -R "$F" "$TBW/ws"; TW="$TBW/ws"; rm -rf "$TW/.git" "$TW/works/phases/active/"* "$TW/works/phases/archived/"* "$TW/works/deferred/"*/*; : > "$TW/works/events.jsonl"
+tw() { ( cd "$TW" && python3 scripts/workflow.py "$@" ); }
+tg() { git -C "$TW" -c user.email=smoke@example.invalid -c user.name=smoke "$@"; }
+( tw rebuild && tg init -q && tg add -A && tg commit -qm base \
+  && tg checkout -q -b one && tw new-phase --name "Branch one" --objective one && tw defer-job --title one --reason r --trigger t --source manual && tg add -A && tg commit -qm one \
+  && tg checkout -q - && tg checkout -q -b two && tw new-phase --name "Branch two" --objective two && tw defer-job --title two --reason r --trigger t --source manual && tg add -A && tg commit -qm two ) >/dev/null 2>&1 \
+  || bad "two-branch probe: setup failed"
+tg merge -q --no-edit one >/dev/null 2>&1; conflicted=$(tg diff --name-only --diff-filter=U | tr '\n' ' ')
+outside=$(printf '%s\n' $conflicted | grep -vxE 'works/(state\.json|index\.json|backlog\.md|deferred\.md)')
+( for f in $conflicted; do tg checkout --theirs -- "$f" || exit 1; done; tw rebuild && tg add -A && tg commit -qm merge ) >/dev/null 2>&1
+tb_val=$(tw validate 2>&1); tb_rc=$?
+[ -z "$outside" ] && [ "$(ls "$TW/works/phases/active" | grep -cE "^P-$tok$")" = 2 ] && [ "$(ls "$TW/works/deferred/open" | grep -cE "^D-$tok$")" = 2 ] \
+  && [ "$tb_rc" -eq 0 ] && [ -z "$(tg status --porcelain)" ] && [ "$(grep -c '"type": "phase_created"' "$TW/works/events.jsonl")" = 2 ] \
+  && ok "two branches each mint a phase and a deferred job and merge with conflicts only in generated files (${conflicted:-none}); either side + rebuild validates" \
+  || bad "two-branch mint did not merge clean -- conflicted: $conflicted / outside: $outside / $tb_val"
 
 # ---------------------------------------------------------------------------
 echo "== Test 11: v41 phase-scope -- the phase's boundary is read from git, advisory everywhere =="

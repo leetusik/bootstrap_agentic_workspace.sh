@@ -8,6 +8,7 @@ import json
 import os
 import posixpath
 import re
+import secrets
 import shlex
 import shutil
 import stat
@@ -15,7 +16,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -356,6 +357,27 @@ SLICE_STOP_KINDS = {
 }
 DEFERRED_STATUSES = {"deferred", "ready", "promoted", "done", "dropped"}
 REVIEW_VERDICTS = {"pass", "changes_requested", "blocked"}
+# Ids (v73, P44): an id minted on any branch or machine never collides at merge. New phase and
+# deferred ids are `P-` / `D-` plus a 4-symbol token, Crockford base32 in lowercase without the
+# look-alikes `i l o u` (32^4 values, drawn with `secrets`); the old `P<n>` / `D<n>` ids stay valid
+# and are never renamed. These patterns are the ONE predicate every reader of a stored id uses, and
+# `id_sort_key` the one order a listing uses (numeric ids first by number, tokens after by creation).
+# A token is re-drawn when it is all digits (so a bare `12` always means `P12`), a mode word the do-*
+# skills strip from the operator's words, or the token of any id this workspace can see (one pool for
+# phases and deferred jobs, so a bare token names exactly one thing). Slice ids keep their per-phase
+# suffixes: `P-7kq2.S1`.
+ID_TOKEN_ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz"
+ID_TOKEN_LENGTH = 4
+ID_TOKEN_PATTERN = "[0-9a-hjkmnp-tv-z]{4}"
+ID_MODE_WORDS = frozenset({"gate", "plan"})  # `auto` and `only` cannot be drawn: u, o and l are not in the alphabet
+PHASE_ID_PATTERN = rf"P(?:[0-9]+|-{ID_TOKEN_PATTERN})"
+DEFERRED_ID_PATTERN = rf"D(?:[0-9]+|-{ID_TOKEN_PATTERN})"
+SLICE_SUFFIX_PATTERN = "[A-Z][A-Z0-9]*"
+PHASE_ID_RE = re.compile(PHASE_ID_PATTERN)
+DEFERRED_ID_RE = re.compile(DEFERRED_ID_PATTERN)
+SLICE_ID_RE = re.compile(rf"({PHASE_ID_PATTERN})\.({SLICE_SUFFIX_PATTERN})")
+# An archive folder is `<yyyymmdd>_<hhmmss>_<phase id>_<slug>` (`_archive_one`); the slug is lowercase.
+ARCHIVE_FOLDER_ID_RE = re.compile(rf"_({PHASE_ID_PATTERN})_")
 # Closed set of slice kinds (workspace v34). `kind` routes real behavior -- `co-work` in
 # particular means orchestrator-inline (the round's lifecycle and the operator's words
 # stay on the main thread), so a typo like `cowork` used to create a slice that read as
@@ -2046,6 +2068,8 @@ def cmd_docs(args: argparse.Namespace) -> None:
     each doc's last-updated marker and its staleness belong. Writes nothing."""
     index = doc_index()
     stale = stale_docs()
+    owing_ids = {pid for owed in stale.values() for pid in owed}
+    active = all_active_phases() if any(id_sort_key(pid)[0] == 1 for pid in owing_ids) else []  # tokens list by created_at
     for doc_id in sorted(index["docs"]):
         info = index["docs"][doc_id]
         latest = next(v for v in info["versions"] if v["id"] == info["latest"])
@@ -2054,7 +2078,7 @@ def cmd_docs(args: argparse.Namespace) -> None:
         owed = stale.get(doc_id)
         if owed:
             notes = sum(owed.values())
-            line += (f" -- STALE: {notes} unconsolidated '## Doc impact' note(s) from {', '.join(sorted(owed))}"
+            line += (f" -- STALE: {notes} unconsolidated '## Doc impact' note(s) from {', '.join(sort_phase_ids(owed, active))}"
                      f" are newer than this version; read them (docs-debt) before trusting this doc")
         print(line)
     hint = stale_docs_line(stale)
@@ -2158,10 +2182,54 @@ def validate_docs(errors: list) -> None:
             errors.append(f"current doc is stale; run rebuild-docs: {doc_id}")
 
 
+def _created_sort_stamp(created_at) -> str:
+    """A `created_at` as a string that sorts by time across machines in different zones (UTC), or
+    the value as written when it is not an ISO time; "" when absent."""
+    if not created_at:
+        return ""
+    try:
+        return datetime.fromisoformat(str(created_at)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    except (TypeError, ValueError):
+        return str(created_at)
+
+
+def id_sort_key(value, created_at=None) -> tuple:
+    """The ONE order of phase and deferred ids in a listing (v73): numeric ids first, by number --
+    `(0, n, "")`, exactly the order v72 gave an all-numeric list -- then minted tokens, by creation
+    time and then token -- `(1, created_at, token)`; an id of neither shape sorts last, as written.
+    Phases still SELECT by `order`; this key lists them, and breaks a tie in `order`."""
+    text = str(value)
+    numeric = re.fullmatch(r"[PD]([0-9]+)", text)
+    if numeric:
+        return (0, int(numeric.group(1)), "")
+    token = re.fullmatch(rf"[PD]-({ID_TOKEN_PATTERN})", text)
+    if token:
+        return (1, _created_sort_stamp(created_at), token.group(1))
+    return (2, "", text)
+
+
+def sort_phase_ids(ids, phases=None) -> list:
+    """`ids` in `id_sort_key` order, a token's `created_at` read from `phases` (default: the active
+    phases, read only when a token is listed); an id no record names sorts as if it had none."""
+    ids = list(ids)
+    if phases is None:
+        phases = all_active_phases() if any(id_sort_key(pid)[0] == 1 for pid in ids) else []
+    created = {p.get("id"): p.get("created_at") for p in phases if isinstance(p, dict)}
+    return sorted(ids, key=lambda pid: id_sort_key(pid, created.get(pid)))
+
+
 def phase_dirs() -> list:
+    """The active phase folders in selection order: by `order`, a tie broken by `id_sort_key` (two
+    branches that each created a phase give both the same next order; the merge must still select
+    the same phase on every machine, never in directory-listing order)."""
     if not ACTIVE.exists():
         return []
-    return sorted([p for p in ACTIVE.iterdir() if p.is_dir() and (p / "phase.json").exists()], key=lambda p: read_json(p / "phase.json").get("order", 999999))
+    found = []
+    for p in ACTIVE.iterdir():
+        if p.is_dir() and (p / "phase.json").exists():
+            data = read_json(p / "phase.json")
+            found.append(((data.get("order", 999999), id_sort_key(data.get("id", p.name), data.get("created_at"))), p))
+    return [p for _key, p in sorted(found, key=lambda item: item[0])]
 
 
 def slice_dirs(phase_dir: Path) -> list:
@@ -2197,6 +2265,8 @@ def deferred_jobs() -> dict:
             data = read_json(djson)
             data["path"] = str(ddir.relative_to(ROOT))
             groups[label].append(data)
+        # v73: in id order (D2 before D10, then minted D- tokens by creation), not folder-name order.
+        groups[label].sort(key=lambda d: id_sort_key(Path(d["path"]).name, d.get("created_at")))
     return groups
 
 
@@ -2514,30 +2584,82 @@ def consolidation_cover(phases: list) -> dict:
     return cover
 
 
-def next_phase_id() -> str:
-    """`P<n>`, one above the highest phase number across the active AND archived phases: an archived
-    id is spent, so reusing it would collide in history. Archived phases are read from their
-    `archive_manifest.json` `phase_id`, falling back to the `_P<N>_` in the folder name."""
-    numbers = []
-    for pdir in phase_dirs():
-        match = re.fullmatch(r"P([0-9]+)", str(read_json(pdir / "phase.json").get("id", "")))
+def archived_phase_ids() -> set:
+    """Every phase id archived/ holds, from each folder's `archive_manifest.json` `phase_id`, its
+    `phase.json` `id` and the `_<id>_` in the folder name (`_archive_one` writes all three): an archived
+    id is spent. An unreadable entry gives what still reads, never an error."""
+    ids = set()
+    for adir in (ARCHIVED.iterdir() if ARCHIVED.is_dir() else []):
+        if not adir.is_dir():
+            continue
+        for name, key in (("archive_manifest.json", "phase_id"), ("phase.json", "id")):
+            try:
+                value = read_json(adir / name).get(key) if (adir / name).is_file() else None
+            except Exception:  # noqa: BLE001 - an unreadable archive entry is skipped, never fatal
+                value = None
+            if isinstance(value, str) and value:
+                ids.add(value)
+        match = ARCHIVE_FOLDER_ID_RE.search(adir.name)
         if match:
-            numbers.append(int(match.group(1)))
-    if ARCHIVED.exists():
-        for adir in ARCHIVED.iterdir():
-            if not adir.is_dir():
-                continue
-            pid = ""
-            manifest = adir / "archive_manifest.json"
-            if manifest.exists():
-                try:
-                    pid = str(read_json(manifest).get("phase_id", ""))
-                except (ValueError, OSError):
-                    pid = ""
-            match = re.fullmatch(r"P([0-9]+)", pid) or re.search(r"_P([0-9]+)_", adir.name)
-            if match:
-                numbers.append(int(match.group(1)))
-    return f"P{max(numbers, default=0) + 1}"
+            ids.add(match.group(1))
+    return ids
+
+
+def deferred_folder_ids() -> set:
+    """Every deferred id with a folder in open/, promoted/ or dropped/ (the folder name is the id)."""
+    return {d.name for base in (DEFERRED_OPEN, DEFERRED_PROMOTED, DEFERRED_DROPPED) if base.is_dir()
+            for d in base.iterdir() if d.is_dir()}
+
+
+def _id_token(value):
+    """The lowercase token of a `P-`/`D-` id, any case, or None for any other shape."""
+    match = re.fullmatch(r"[PDpd]-([0-9A-Za-z]+)", str(value))
+    return match.group(1).lower() if match else None
+
+
+def visible_id_tokens() -> set:
+    """The tokens of every phase and deferred id this workspace can see -- ONE pool for both kinds:
+    active phases (folder and `phase.json` id), archived phases (`archived_phase_ids`) and every
+    deferred folder. A minted token is drawn outside it, so a bare token names exactly one thing."""
+    ids = set(archived_phase_ids()) | deferred_folder_ids()
+    for pdir in (ACTIVE.iterdir() if ACTIVE.is_dir() else []):
+        if pdir.is_dir():
+            ids.add(pdir.name)
+            try:
+                ids.add(str(read_json(pdir / "phase.json").get("id", "")))
+            except Exception:  # noqa: BLE001 - an unreadable phase.json still has its folder name
+                pass
+    return {tok for tok in (_id_token(i) for i in ids) if tok}
+
+
+def id_token_refusal(token: str, taken=None):
+    """Why `token` cannot be a new id's token, or None: all digits (it would read as an old number), a
+    mode word (`gate`, `plan`), or a token some visible phase or deferred id already has."""
+    token = token.lower()
+    if token.isdigit():
+        return f"its token {token} is all digits, which reads as an old number"
+    if token in ID_MODE_WORDS:
+        return f"its token {token} is a mode word"
+    if token in (visible_id_tokens() if taken is None else taken):
+        return f"its token {token} is already the token of a phase or deferred id this workspace holds (one pool for both kinds)"
+    return None
+
+
+def mint_id(prefix: str) -> str:
+    """A new `<prefix>-<token>` id (prefix `P` or `D`), the token drawn with `secrets` until
+    `id_token_refusal` accepts it. Nothing else allocates a phase or deferred id (v73)."""
+    taken = visible_id_tokens()
+    for _ in range(10000):
+        token = "".join(secrets.choice(ID_TOKEN_ALPHABET) for _ in range(ID_TOKEN_LENGTH))
+        if id_token_refusal(token, taken) is None:
+            return f"{prefix}-{token}"
+    raise SystemExit(f"could not mint a free {prefix}- id: {len(taken)} tokens are taken")
+
+
+def mint_phase_id() -> str:
+    """`P-<token>`: `new-phase` without `--phase`, `promote-deferred --create-phase` without `--phase`, and
+    rotate-backlog's docs-phase proposal. It supersedes v72's `max + 1` (`P<n>`), which two branches drew alike."""
+    return mint_id("P")
 
 
 def stale_docs(phases=None) -> dict:
@@ -2584,7 +2706,7 @@ def stale_docs_line(stale: dict) -> str:
     named = sorted(d for d in stale if d != UNASSIGNED_DOC)
     if not named:
         return ""
-    phases = sorted({pid for doc in named for pid in stale[doc]})
+    phases = sort_phase_ids({pid for doc in named for pid in stale[doc]})
     notes = sum(sum(stale[doc].values()) for doc in named)
     return (f"stale_docs={', '.join(named)} ({len(named)} doc(s) named by {notes} unconsolidated"
             f" '## Doc impact' note(s) from {', '.join(phases)}; docs/current is older than those notes, so"
@@ -2778,18 +2900,6 @@ def run_phase_tokens(tokens) -> tuple:
     return ids, refused
 
 
-def _archived_phase_ids() -> set:
-    ids = set()
-    for d in (ARCHIVED.iterdir() if ARCHIVED.is_dir() else []):
-        try:
-            pid = read_json(d / "phase.json").get("id") if (d / "phase.json").is_file() else None
-        except Exception:  # noqa: BLE001 - an unreadable archive entry is skipped, never fatal
-            pid = None
-        if pid:
-            ids.add(pid)
-    return ids
-
-
 def _run_halt(phase: dict):
     """`(item, reason)` for the stop a run meets at a queued phase that is not parked, else None."""
     pid, status, slices = phase["id"], phase.get("status"), phase.get("slices", [])
@@ -2836,7 +2946,7 @@ def cmd_run_phases(args: argparse.Namespace) -> None:
     ids, refused = run_phase_tokens(args.tokens)
     phases = all_active_phases()
     active = {p["id"] for p in phases}
-    archived = _archived_phase_ids() if any(pid not in active for pid in ids) else set()
+    archived = archived_phase_ids() if any(pid not in active for pid in ids) else set()
     unknown = [pid for pid in ids if pid not in active and pid not in archived]
     if refused or unknown:
         for token in refused:
@@ -3141,7 +3251,7 @@ def declaration_checks(phase: dict, s: dict, errors: list, warnings: list) -> No
             errors.append(f"declared dependency of {s['id']} (order {s.get('order')}) on {dep} (order {orders[dep].get('order')}) "
                           "is not ordered before it; a declared dependency comes strictly earlier by order, so order stays a "
                           "topological order -- reorder one of them")
-        elif dep not in orders and isinstance(dep, str) and re.fullmatch(r"P[0-9]+\..+", dep) and dep.split(".", 1)[0] != phase["id"]:
+        elif dep not in orders and isinstance(dep, str) and re.fullmatch(rf"{PHASE_ID_PATTERN}\..+", dep) and dep.split(".", 1)[0] != phase["id"]:
             errors.append(f"declared dependency of {s['id']} on {dep} crosses phases; a declared dependency names a slice "
                           f"of the same phase ({phase['id']})")
 
@@ -3645,10 +3755,18 @@ def validate() -> int:
     seen_phases, seen_slices = set(), set()
     seen_branches: dict = {}
     all_slice_ids = {s["id"] for p in phases for s in p["slices"]}
+    archived_ids = archived_phase_ids()
     for p in phases:
         if p["id"] in seen_phases:
             errors.append(f"duplicate phase id: {p['id']}")
         seen_phases.add(p["id"])
+        # v73 ids: both shapes are valid and nothing is renamed, so these two only WARN -- an adopter's
+        # history must keep validating. Creation is the hard gate (new-phase refuses either case).
+        if not PHASE_ID_RE.fullmatch(str(p["id"])):
+            warnings.append(f"phase id {p['id']!r} has an unknown shape; expected P<n> (P12) or a minted P-<token> (P-7kq2) -- nothing renames it")
+        if p["id"] in archived_ids:
+            warnings.append(f"active phase {p['id']} has the same id as an archived phase; an archived id is spent, so lookups by id "
+                            "(phase-scope, the meter, events.jsonl) mix the two -- new phases are minted (new-phase without --phase)")
         if p["status"] not in PHASE_STATUSES:
             errors.append(f"invalid phase status {p['id']}: {p['status']}")
         review_status = p.get("review", {}).get("status")
@@ -3665,8 +3783,8 @@ def validate() -> int:
         # Optional docs-phase marker (v51): the active phases a docs phase pays. Absent = not a docs phase.
         if "consolidates" in p:
             paid = p.get("consolidates")
-            if not (isinstance(paid, list) and paid and all(isinstance(v, str) and re.fullmatch(r"P[0-9]+", v) for v in paid)):
-                errors.append(f"phase {p['id']} has invalid consolidates {paid!r}; expected a non-empty list of phase ids such as [\"P26\", \"P27\"] (written by new-phase --consolidates)")
+            if not (isinstance(paid, list) and paid and all(isinstance(v, str) and PHASE_ID_RE.fullmatch(v) for v in paid)):
+                errors.append(f"phase {p['id']} has invalid consolidates {paid!r}; expected a non-empty list of phase ids such as [\"P26\", \"P-7kq2\"] (written by new-phase --consolidates)")
         # Optional parallel-execution block. Absent = default stream = nothing to check.
         # A phase that merged `done` while its doc consolidation is still pending
         # (`consolidation: "pending"`) is a legitimate state and passes cleanly here.
@@ -3791,6 +3909,8 @@ def validate() -> int:
                 errors.append(f"missing deferred.json: {shown(ddir)}")
                 continue
             data = read_json(djson)
+            if not DEFERRED_ID_RE.fullmatch(ddir.name):
+                warnings.append(f"deferred id {ddir.name!r} has an unknown shape; expected D<n> (D12) or a minted D-<token> (D-m3xa) -- nothing renames it")
             if data.get("status") not in DEFERRED_STATUSES:
                 errors.append(f"invalid deferred status {data.get('id')}: {data.get('status')}")
             if data.get("status") not in allowed:
@@ -4012,7 +4132,7 @@ def _with_repo_anchors(data: dict, entries: dict) -> dict:
 
 
 def _parse_consolidates(raw) -> list:
-    """`new-phase --consolidates P26,P27` -> `["P26", "P27"]`: comma-separated, spaces tolerated,
+    """`new-phase --consolidates P26,P-7kq2` -> `["P26", "P-7kq2"]`: comma-separated, spaces tolerated,
     duplicates dropped in order. Refuses (before `new-phase` writes anything) when the flag names
     nothing, or names an id that is not an ACTIVE phase still owing doc consolidation -- a docs phase
     can only pay debt that stands. `None` (flag absent) is `[]`."""
@@ -4024,7 +4144,7 @@ def _parse_consolidates(raw) -> list:
         if part and part not in ids:
             ids.append(part)
     if not ids:
-        raise SystemExit("--consolidates needs at least one phase id (e.g. --consolidates P26,P27)")
+        raise SystemExit("--consolidates needs at least one phase id (e.g. --consolidates P26,P-7kq2)")
     active = {p["id"]: p for p in all_active_phases()}
     bad = []
     for pid in ids:
@@ -4037,13 +4157,27 @@ def _parse_consolidates(raw) -> list:
     return ids
 
 
-def new_phase(args: argparse.Namespace) -> None:
-    phase_id = args.phase
-    if not re.fullmatch(r"P[0-9]+", phase_id):
-        raise SystemExit("phase must look like P1, P2, P3")
-    pdir = ACTIVE / phase_id
-    if pdir.exists():
+def explicit_phase_id(phase_id: str) -> str:
+    """An explicit `new-phase --phase` id, checked before anything is written: either shape (`P12`, or a
+    `P-` token as minted), never one that exists active or archived (an archived id is spent), and a
+    token only as the mint would draw it (`id_token_refusal`). SystemExit otherwise."""
+    if not PHASE_ID_RE.fullmatch(phase_id):
+        raise SystemExit(f"phase must look like P12 or P-7kq2 (got {phase_id!r}); omit --phase and the engine mints one")
+    if (ACTIVE / phase_id).exists():
         raise SystemExit(f"phase already exists: {phase_id}")
+    if phase_id in archived_phase_ids():
+        raise SystemExit(f"phase already exists (archived): {phase_id}; an archived id is spent -- omit --phase and the engine mints one")
+    token = _id_token(phase_id)
+    reason = id_token_refusal(token) if token else None
+    if reason:
+        raise SystemExit(f"phase id {phase_id} refused: {reason}; omit --phase and the engine mints one")
+    return phase_id
+
+
+def new_phase(args: argparse.Namespace) -> None:
+    raw = getattr(args, "phase", None)
+    phase_id = mint_phase_id() if raw is None else explicit_phase_id(raw)
+    pdir = ACTIVE / phase_id
     consolidates = _parse_consolidates(getattr(args, "consolidates", None))  # refuses before anything is written
     order = _clean_order(args.order) if args.order is not None else max([read_json(p / "phase.json").get("order", 0) for p in phase_dirs()], default=0) + 1
     phase_data = {
@@ -4119,6 +4253,7 @@ def _auto_order(pdir: Path, explicit):
 
 def new_slice(args: argparse.Namespace) -> None:
     pdir = require_phase(args.phase)
+    args.slice = full_slice_id(args.phase, args.slice)  # v73: a bare suffix (S1) names a slice of --phase
     order = _auto_order(pdir, args.order)
     deps = declared_dependencies(args.phase, args.slice, order, args.depends_on)  # None: undeclared, as before
     sdir = create_slice(args.phase, args.slice, args.name, args.kind, order, args.risk, source={"type": "manual", "id": None}, depends_on=deps or [], declared=deps is not None)
@@ -4549,7 +4684,7 @@ def _phases_at_ref(ref: str):
             continue
         data.setdefault("path", entry)
         phases.append(data)
-    phases.sort(key=lambda d: d.get("order", 999999))
+    phases.sort(key=lambda d: (d.get("order", 999999), id_sort_key(d.get("id", ""), d.get("created_at"))))  # phase_dirs' order
     return phases
 
 
@@ -5977,7 +6112,7 @@ def docs_debt(args: argparse.Namespace) -> None:
     for doc in docs_hit + ([UNASSIGNED_DOC] if UNASSIGNED_DOC in per_doc else []):
         by_phase = per_doc[doc]
         count = sum(by_phase.values())
-        print(f"  {doc}: {count} note(s) from {', '.join(sorted(by_phase))}")
+        print(f"  {doc}: {count} note(s) from {', '.join(sort_phase_ids(by_phase, phases))}")
     if UNASSIGNED_DOC in per_doc:
         print(f"  {UNASSIGNED_DOC} = the note names no doc from the known set; read it in the notebook and decide")
     print()
@@ -7848,23 +7983,29 @@ def cmd_deferred(args: argparse.Namespace) -> None:
     print(f"dashboard={shown(WORKS / 'deferred.md')}")
 
 
-def next_deferred_id() -> str:
-    max_n = 0
-    for base in (DEFERRED_OPEN, DEFERRED_PROMOTED, DEFERRED_DROPPED):
-        if not base.exists():
-            continue
-        for p in base.iterdir():
-            m = re.fullmatch(r"D(\d+)", p.name)
-            if m:
-                max_n = max(max_n, int(m.group(1)))
-    return f"D{max_n + 1}"
+def mint_deferred_id() -> str:
+    """`D-<token>`: `defer-job` without `--id`. It supersedes v72's `max + 1` (`D<n>`), which two branches drew alike."""
+    return mint_id("D")
+
+
+def explicit_deferred_id(did: str) -> str:
+    """An explicit `defer-job --id`, checked before anything is written: either shape (`D12`, or a `D-`
+    token as minted), never an id with a folder in open/, promoted/ or dropped/, and a token only as
+    the mint would draw it (`id_token_refusal`). SystemExit otherwise."""
+    if not DEFERRED_ID_RE.fullmatch(did):
+        raise SystemExit(f"deferred id must look like D12 or D-m3xa (got {did!r}); omit --id and the engine mints one")
+    if did in deferred_folder_ids():
+        raise SystemExit(f"deferred job already exists: {did}")
+    token = _id_token(did)
+    reason = id_token_refusal(token) if token else None
+    if reason:
+        raise SystemExit(f"deferred id {did} refused: {reason}; omit --id and the engine mints one")
+    return did
 
 
 def defer_job(args: argparse.Namespace) -> None:
-    did = args.id or next_deferred_id()
+    did = explicit_deferred_id(args.id) if args.id else mint_deferred_id()
     ddir = DEFERRED_OPEN / did
-    if ddir.exists():
-        raise SystemExit(f"deferred job already exists: {did}")
     created = now_iso()
     data = {"id": did, "title": args.title, "status": "deferred", "source": args.source, "reason": args.reason, "trigger": args.trigger, "created_at": created, "promoted_to": None, "dropped_reason": None}
     write_json(ddir / "deferred.json", data)
@@ -7877,6 +8018,12 @@ def defer_job(args: argparse.Namespace) -> None:
     print(f"created deferred job {did}: {shown(ddir)}")
 
 
+def full_slice_id(phase_id: str, raw: str) -> str:
+    """`--slice` as stored: a bare suffix (`S1`, `F2`) is prefixed with its phase id (`P-7kq2.S1`), so a
+    slice of a phase the same command mints can be named before its id is known; a full id stays as is."""
+    return f"{phase_id}.{raw}" if re.fullmatch(SLICE_SUFFIX_PATTERN, raw) else raw
+
+
 def promote_deferred(args: argparse.Namespace) -> None:
     did = args.deferred_id
     ddir = DEFERRED_OPEN / did
@@ -7884,19 +8031,28 @@ def promote_deferred(args: argparse.Namespace) -> None:
         raise SystemExit(f"open deferred job not found: {did}")
     data = read_json(ddir / "deferred.json")
     require_slice_kind(args.kind)  # before --create-phase, so a bad kind leaves no half-created phase
-    if parse_depends_on(args.depends_on) and not (ACTIVE / args.phase / "phase.json").exists():  # P42, likewise
-        raise SystemExit(f"--depends-on: phase {args.phase} does not exist yet, so it has no slice to depend on (a new phase "
+    if args.phase is None and not args.create_phase:
+        raise SystemExit("promote-deferred needs --phase <id>, or --create-phase to create a phase (without --phase the engine "
+                         "mints its id; name the slice by its bare suffix, e.g. --slice S1); refused, nothing was written")
+    phase_id = args.phase if args.phase is not None else mint_phase_id()
+    slice_id = full_slice_id(phase_id, args.slice)
+    if not slice_id.startswith(f"{phase_id}."):  # before --create-phase, likewise
+        why = ("the phase --create-phase mints has no id yet, so name the slice by its bare suffix (e.g. --slice S1)" if args.phase is None
+               else f"a slice of {phase_id} is {phase_id}.<suffix>, or the bare suffix (e.g. --slice S1)")
+        raise SystemExit(f"--slice {args.slice}: {why}; refused, nothing was written")
+    if parse_depends_on(args.depends_on) and not (ACTIVE / phase_id / "phase.json").exists():  # P42, likewise
+        raise SystemExit(f"--depends-on: phase {phase_id} does not exist yet, so it has no slice to depend on (a new phase "
                          "holds only its DECOMP and REVIEW, both barriers); use --depends-on none, or create the phase first; "
                          "refused, nothing was written")
-    if not (ACTIVE / args.phase / "phase.json").exists():
+    if not (ACTIVE / phase_id / "phase.json").exists():
         if not args.create_phase:
-            raise SystemExit(f"phase does not exist: {args.phase}. Use --create-phase to create it.")
-        ns = argparse.Namespace(phase=args.phase, name=args.phase_name or data["title"], objective=args.phase_objective or data["title"], order=None)
+            raise SystemExit(f"phase does not exist: {phase_id}. Use --create-phase to create it.")
+        ns = argparse.Namespace(phase=phase_id, name=args.phase_name or data["title"], objective=args.phase_objective or data["title"], order=None)
         new_phase(ns)
-    pdir = require_phase(args.phase)
+    pdir = require_phase(phase_id)
     order = _auto_order(pdir, args.order)
-    deps = declared_dependencies(args.phase, args.slice, order, args.depends_on)  # None: undeclared, as before
-    sdir = create_slice(args.phase, args.slice, args.name or data["title"], args.kind, order, args.risk, source={"type": "deferred", "id": did, "path": str(ddir.relative_to(ROOT))}, depends_on=deps or [], declared=deps is not None)
+    deps = declared_dependencies(phase_id, slice_id, order, args.depends_on)  # None: undeclared, as before
+    sdir = create_slice(phase_id, slice_id, args.name or data["title"], args.kind, order, args.risk, source={"type": "deferred", "id": did, "path": str(ddir.relative_to(ROOT))}, depends_on=deps or [], declared=deps is not None)
     plan_path = sdir / "plan.md"
     # plan.md has no template, so it may not exist yet; only prepend a separator when it does.
     sep = "\n---\n\n" if plan_path.exists() and plan_path.read_text(encoding="utf-8").strip() else ""
@@ -7904,15 +8060,15 @@ def promote_deferred(args: argparse.Namespace) -> None:
         f.write(f"{sep}## Promoted Deferred Context\n\n")
         f.write((ddir / "brief.md").read_text(encoding="utf-8"))
     data["status"] = "promoted"
-    data["promoted_to"] = {"phase_id": args.phase, "slice_id": args.slice, "path": str(sdir.relative_to(ROOT))}
+    data["promoted_to"] = {"phase_id": phase_id, "slice_id": slice_id, "path": str(sdir.relative_to(ROOT))}
     write_json(ddir / "deferred.json", data)
     target = DEFERRED_PROMOTED / did
     if target.exists():
         raise SystemExit(f"promoted destination already exists: {shown(target)}")
     shutil.move(str(ddir), str(target))
-    append_event("deferred_promoted", deferred=did, phase=args.phase, slice=args.slice)
+    append_event("deferred_promoted", deferred=did, phase=phase_id, slice=slice_id)
     rebuild_index_and_state()
-    print(f"promoted {did} -> {args.slice}: {shown(sdir)}")
+    print(f"promoted {did} -> {slice_id}: {shown(sdir)}")
     for line in declared_slice_lines(args.kind, deps):
         print(line)
 
@@ -8055,11 +8211,15 @@ def archive_all(args: argparse.Namespace) -> None:
 
 
 def _phase_range_label(ids: list) -> str:
-    """`P26`, the en-dash range `P26–P29` when the numbers run consecutively, else `P26, P28, P29`."""
+    """`P26`, the en-dash range `P26–P29` when EVERY id is numeric and the numbers run consecutively,
+    else `P26, P28, P29` (a minted token never joins a range: `P26, P27, P-7kq2`). For an all-numeric
+    list the label is byte-identical to v72's: rotate's widening recognizes an engine-named docs phase
+    by string equality with this draft."""
     if len(ids) == 1:
         return ids[0]
-    numbers = [int(i[1:]) for i in ids]
-    if all(b - a == 1 for a, b in zip(numbers, numbers[1:])):
+    matches = [re.fullmatch(r"P([0-9]+)", str(i)) for i in ids]
+    numbers = [int(m.group(1)) for m in matches if m]
+    if len(numbers) == len(ids) and all(b - a == 1 for a, b in zip(numbers, numbers[1:])):
         return f"{ids[0]}\u2013{ids[-1]}"
     return ", ".join(ids)
 
@@ -8189,21 +8349,23 @@ def _docs_debt_split(phases: list) -> tuple:
     """`(covered_by, uncovered)` over the CURRENT active set, from the phases held back ONLY by doc
     debt (`_debt_only`): `{covering docs phase id: [the debt-only ids it pays]}` -- every not-`done`
     phase whose `consolidates` names one, whatever its stream -- and the debt-only phases no such
-    docs phase covers yet, sorted by number."""
+    docs phase covers yet, in `_debt_sort_key` order."""
     debt_only = [p for p in phases if _debt_only(ROOT / p["path"])]
     cover = consolidation_cover(phases)
     covered_by = {}
     for p in debt_only:
         for docs_phase in cover.get(p["id"], []):
             covered_by.setdefault(docs_phase["id"], []).append(p["id"])
-    uncovered = sorted((p for p in debt_only if not cover.get(p["id"])), key=lambda p: _debt_sort_key(p["id"]))
+    uncovered = sorted((p for p in debt_only if not cover.get(p["id"])), key=lambda p: _debt_sort_key(p["id"], phases))
     return covered_by, uncovered
 
 
-def _debt_sort_key(phase_id: str):
+def _debt_sort_key(phase_id: str, phases: list):
     """The order a docs phase's ids are listed in (`_docs_debt_split`'s uncovered list, a widened
-    `consolidates`): by phase number. The one place `rotate-backlog` turns an id into a sort key."""
-    return int(phase_id[1:])
+    `consolidates`): `id_sort_key`, a token's `created_at` read from `phases` -- numeric ids by number,
+    exactly v72's order, then minted tokens by creation. The one place `rotate-backlog` turns an id
+    into a sort key."""
+    return id_sort_key(phase_id, next((p.get("created_at") for p in phases if p.get("id") == phase_id), None))
 
 
 def _print_docs_phase_covered(covered_by: dict) -> None:
@@ -8229,7 +8391,7 @@ def _widen_docs_phase(docs_phase: dict, uncovered: list, phases: list):
     Only a docs phase that is both UNDECOMPOSED (its only slices are `<P>.DECOMP` and `<P>.REVIEW`,
     both todo or ready) and ENGINE-NAMED (its name equals the draft for its current `consolidates`):
     a decomposed one has planned its work, and a renamed one is the operator's. One step: phase.json's
-    `consolidates` (its list and the uncovered ids, by number), name and objective, redrafted; phase.md's
+    `consolidates` (its list and the uncovered ids, in `_debt_sort_key` order), name and objective, redrafted; phase.md's
     `# Phase` heading and `## Objective` body (written once by new-phase, still the scaffold); the event
     `docs_phase_widened`; one rebuild. Returns `(old ids, new ids)` when it wrote, None when it did not.
     A re-run writes nothing: the debt it took is covered, so none stands uncovered."""
@@ -8240,7 +8402,7 @@ def _widen_docs_phase(docs_phase: dict, uncovered: list, phases: list):
     old = phase_consolidates(docs_phase)
     if not (uncovered and undecomposed and docs_phase.get("name") == _docs_phase_draft(old, [p for p in phases if p["id"] in old])[0]):
         return None
-    new = sorted(set(old) | {p["id"] for p in uncovered}, key=_debt_sort_key)
+    new = sorted(set(old) | {p["id"] for p in uncovered}, key=lambda pid: _debt_sort_key(pid, phases))
     name, objective = _docs_phase_draft(new, [p for p in phases if p["id"] in new])
     pdir = ROOT / docs_phase["path"]
     data = read_json(pdir / "phase.json")
@@ -8271,7 +8433,7 @@ def _print_docs_phase_proposal(uncovered: list, order) -> None:
     ids = [p["id"] for p in uncovered]
     listing = ", ".join(ids)
     name, objective = _docs_phase_draft(ids, uncovered)
-    phase_id = next_phase_id()
+    phase_id = mint_phase_id()  # v73: a minted token, passed to new-phase as --phase (the create: line runs as is)
     order_arg = f" --order {order}" if order is not None else ""
     print(f"docs_phase_proposal={listing}")
     print(f"phase={phase_id}")
@@ -12033,7 +12195,8 @@ def main(argv=None) -> int:
     p.set_defaults(func=cmd_deferred)
 
     p = sub.add_parser("new-phase", help="Create a new phase with DECOMP and REVIEW slices")
-    p.add_argument("--phase", required=True)
+    p.add_argument("--phase", help="the phase id; omit it and the engine mints one (P-7kq2), printed on the created line. "
+                   "Given, either shape (P12 or P-7kq2); refused when it exists active or archived")
     p.add_argument("--name", required=True)
     p.add_argument("--objective", required=True)
     p.add_argument("--order", type=float, help="sort position among phases; a fractional value (e.g. 4.5) inserts between two neighbors without renumbering")
@@ -12045,7 +12208,7 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("new-slice", help="Create a new slice folder with slice.json + markdown files")
     p.add_argument("--phase", required=True)
-    p.add_argument("--slice", required=True)
+    p.add_argument("--slice", required=True, help="the slice id (P-7kq2.S1), or its bare suffix (S1)")
     p.add_argument("--name", required=True)
     p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work (closed set; unknown kinds are rejected). research is findings-only: no product code, findings land in phase.md, and it always routes to the research row")
     p.add_argument("--risk", default="high", help="low (the mid row for implementation and fix, the cheap row for docs and qa -- the default since v46, real code included) or high (the high row: only for a named trigger -- open design, a core invariant, an unlocated root cause, a wide blast radius -- or a fix to mid-row work); unset or unrecognized values route to high; kind decomposition, review, co-work and research route by kind whatever this says; `executor-route <slice>` prints the decision")
@@ -12289,7 +12452,8 @@ def main(argv=None) -> int:
     p.set_defaults(func=design_migrate)
 
     p = sub.add_parser("defer-job", help="Create a deferred job folder")
-    p.add_argument("--id")
+    p.add_argument("--id", help="the deferred id; omit it and the engine mints one (D-m3xa). Given, either shape (D12 or D-m3xa); "
+                   "refused when any deferred folder holds it")
     p.add_argument("--title", required=True)
     p.add_argument("--reason", required=True)
     p.add_argument("--trigger", required=True)
@@ -12298,8 +12462,8 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("promote-deferred", help="Promote an open deferred job into an active slice")
     p.add_argument("deferred_id")
-    p.add_argument("--phase", required=True)
-    p.add_argument("--slice", required=True)
+    p.add_argument("--phase", help="the target phase; omit it with --create-phase and the engine mints the new phase's id")
+    p.add_argument("--slice", required=True, help="the new slice's id (P-7kq2.S1), or its bare suffix (S1) -- the only way to name it in a phase being minted")
     p.add_argument("--name")
     p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work (closed set; unknown kinds are rejected). research is findings-only: no product code, findings land in phase.md, and it always routes to the research row")
     p.add_argument("--risk", default="high", help="low (the mid row for implementation and fix, the cheap row for docs and qa -- the default since v46, real code included) or high (the high row: only for a named trigger -- open design, a core invariant, an unlocated root cause, a wide blast radius -- or a fix to mid-row work); unset or unrecognized values route to high; kind decomposition, review, co-work and research route by kind whatever this says; `executor-route <slice>` prints the decision")
