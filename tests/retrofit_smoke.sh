@@ -1278,7 +1278,7 @@ after_debt=$( cd "$F" && find works docs -type f | sort | xargs cat | sha_stdin 
 # v54 one-shot rotate-backlog (P33; v51 made it propose the docs phase): the doc debt is checked FIRST,
 # and the first stdout line is the decision, rotate=<branch>. v72 (P43): while debt stands only the
 # cleanly archivable phases are archived (archived=), parked work is gone around (parked=), running
-# work stops the run, and an undecomposed, engine-named docs phase is widened to the uncovered debt.
+# work stops the run; v78: an unstarted docs phase is replaced by one proposal covering all the debt.
 # Probed on COPIES of the fixture while P2 still owes (the probe adds phases and archives, and the
 # original's later assertions -- docs_debt=none, the STALE clear, archiving -- must stay untouched).
 # rotate=refused (a parallel-stream checkout) needs a git branch stamped on a phase; P33.S1's
@@ -1317,7 +1317,7 @@ rot_before=$(ls "$ROT/works/phases/active" | wc -l | tr -d ' ')
 ( cd "$ROT" && python3 scripts/workflow.py rotate-backlog --archive-only 2>&1 | grep -qE "docs_phase|^rotate=" ) \
   && bad "rotate-backlog --archive-only printed a rotate= or docs-phase line" \
   || ok "rotate-backlog --archive-only prints no rotate= line and no docs-phase line"
-# Widening and the early sweep, on a copy while $rot_pid is live, undecomposed and engine-named: P5
+# Replacement and the early sweep, on a copy while $rot_pid is live and unstarted: P5
 # owes docs (uncovered), P6 is clean and done, and P1's acceptance gate is open with its REVIEW slice
 # in_progress -- parked (accept-gate --open never moves that slice), never running.
 newtmp ROTW; cp -R "$ROT/." "$ROTW/"
@@ -1326,26 +1326,35 @@ newtmp ROTW; cp -R "$ROT/." "$ROTW/"
   && for rp in P5 P6; do python3 scripts/workflow.py accept-gate "$rp" --waive --note "probe" >/dev/null 2>&1 && python3 scripts/workflow.py set-slice-status "$rp.DECOMP" done >/dev/null 2>&1 \
        && python3 scripts/workflow.py set-slice-status "$rp.REVIEW" done >/dev/null 2>&1 && python3 scripts/workflow.py review-phase "$rp" --verdict pass >/dev/null 2>&1 || exit 1; done \
   && python3 scripts/workflow.py accept-gate P1 --require >/dev/null 2>&1 && python3 scripts/workflow.py set-slice-status P1.REVIEW in_progress >/dev/null 2>&1 \
-  && python3 scripts/workflow.py accept-gate P1 --open --walkthrough "walk it" >/dev/null 2>&1 ) || bad "rotate probe: could not build the widening copy"
+  && python3 scripts/workflow.py accept-gate P1 --open --walkthrough "walk it" >/dev/null 2>&1 ) || bad "rotate probe: could not build the replacement copy"
 rotw_out=$( cd "$ROTW" && python3 scripts/workflow.py rotate-backlog 2>&1 )
-[ "$(printf '%s\n' "$rotw_out" | head -1)" = "rotate=resume docs_phase=$rot_pid" ] && printf '%s\n' "$rotw_out" | grep -q "^archived=P6$" \
+[ "$(printf '%s\n' "$rotw_out" | head -1)" = "rotate=replace replaced=$rot_pid" ] && printf '%s\n' "$rotw_out" | grep -q "^archived=P6$" \
   && printf '%s\n' "$rotw_out" | grep -q "^parked=P1 status=pending stop_kind=acceptance-gate$" \
   && [ ! -d "$ROTW/works/phases/active/P6" ] && [ -d "$ROTW/works/phases/active/P2" ] && [ -d "$ROTW/works/phases/active/P5" ] \
   && ok "the early sweep archives a clean done phase while P2's debt stands (archived=P6), and a gate-open phase with its REVIEW in_progress is parked, not running" \
   || bad "rotate-backlog did not archive the clean phase early (or archived a debtor, or stopped for a gate-open REVIEW): $rotw_out"
-printf '%s\n' "$rotw_out" | grep -q "^docs_phase_widened=$rot_pid P2 -> P2,P5$" \
-  && printf '%s\n' "$rotw_out" | grep -q "^docs_phase_covered=$rot_pid (pays P2, P5)$" \
-  && python3 -c 'import json,sys; d = json.load(open(sys.argv[1])); sys.exit(0 if d["consolidates"] == ["P2", "P5"] and d["name"] == "Consolidate the doc impact of P2, P5" else 1)' "$ROTW/works/phases/active/$rot_pid/phase.json" \
-  && grep -qx "# Phase $rot_pid: Consolidate the doc impact of P2, P5" "$ROTW/works/phases/active/$rot_pid/phase.md" \
-  && grep -q '"type": "docs_phase_widened"' "$ROTW/works/events.jsonl" \
-  && ok "resume widens the undecomposed, engine-named docs phase to the uncovered debt (consolidates, name and phase.md heading; logged)" \
-  || bad "rotate-backlog did not widen the live docs phase to P5's debt: $rotw_out"
+rotw_pid=$(printf '%s\n' "$rotw_out" | sed -n 's/^phase=//p'); rotw_create=$(printf '%s\n' "$rotw_out" | sed -n 's/^create: //p')
+printf '%s\n' "$rotw_out" | grep -q "^docs_phase_replaced=$rot_pid (paid P2; " && printf '%s\n' "$rotw_out" | grep -q "^docs_phase_proposal=P2, P5$" \
+  && [ ! -d "$ROTW/works/phases/active/$rot_pid" ] && grep -q '"type": "docs_phase_replaced"' "$ROTW/works/events.jsonl" \
+  && ( cd "$ROTW" && eval "$rotw_create" >/dev/null 2>&1 ) && grep -q '"consolidates": \[' "$ROTW/works/phases/active/$rotw_pid/phase.json" \
+  && ok "an unstarted docs phase is replaced: its folder removed (logged), one proposal covering P2 and the new P5 debt, its create: line run as is (v78)" \
+  || bad "rotate-backlog did not replace the unstarted docs phase with one covering P2 and P5: $rotw_out"
 rotw_before=$( cd "$ROTW" && find works docs -type f | sort | xargs cat | sha_stdin )
-( cd "$ROTW" && python3 scripts/workflow.py rotate-backlog >/dev/null 2>&1 )
+rotw_again=$( cd "$ROTW" && python3 scripts/workflow.py rotate-backlog 2>&1 )
 rotw_after=$( cd "$ROTW" && find works docs -type f | sort | xargs cat | sha_stdin )
-[ -n "$rotw_before" ] && [ "$rotw_before" = "$rotw_after" ] \
-  && ok "a re-run after the widening writes nothing (the workspace tree is unchanged)" \
-  || bad "a re-run after the widening modified the workspace"
+( cd "$ROTW" && python3 scripts/workflow.py new-phase --phase P7 --name "Rotate probe P7" --objective probe >/dev/null 2>&1 \
+  && python3 -c 'import sys; from pathlib import Path; p = Path(sys.argv[1]); p.write_text(p.read_text().replace("## Operator Questions", "- qa.md: a durable change (P7.S1)\n\n## Operator Questions", 1))' works/phases/active/P7/phase.md \
+  && python3 scripts/workflow.py accept-gate P7 --waive --note probe >/dev/null 2>&1 && python3 scripts/workflow.py set-slice-status P7.DECOMP done >/dev/null 2>&1 \
+  && python3 scripts/workflow.py set-slice-status P7.REVIEW done >/dev/null 2>&1 && python3 scripts/workflow.py review-phase P7 --verdict pass >/dev/null 2>&1 \
+  && python3 scripts/workflow.py set-slice-status "$rotw_pid.DECOMP" done >/dev/null 2>&1 \
+  && python3 scripts/workflow.py new-slice --phase "$rotw_pid" --slice "$rotw_pid.S1" --name ops --kind docs --risk low >/dev/null 2>&1 \
+  && python3 scripts/workflow.py set-slice-status "$rotw_pid.S1" done >/dev/null 2>&1 ) || bad "rotate probe: could not start the docs phase"
+rotw_started=$( cd "$ROTW" && python3 scripts/workflow.py rotate-backlog 2>&1 )
+[ "$(printf '%s\n' "$rotw_again" | head -1)" = "rotate=resume docs_phase=$rotw_pid" ] && [ -n "$rotw_before" ] && [ "$rotw_before" = "$rotw_after" ] \
+  && [ "$(printf '%s\n' "$rotw_started" | head -1)" = "rotate=resume docs_phase=$rotw_pid" ] && printf '%s\n' "$rotw_started" | grep -q "^docs_debt_waiting=P7 " \
+  && [ -d "$ROTW/works/phases/active/$rotw_pid" ] \
+  && ok "with nothing new owed a re-run resumes and writes nothing, and a started docs phase is never replaced: it finishes first while new debt waits" \
+  || bad "rotate-backlog replaced a started docs phase, or a no-debt re-run wrote: $rotw_again / $rotw_started"
 ( cd "$ROT" && python3 scripts/workflow.py set-phase-status P1 pending >/dev/null 2>&1 \
   && python3 scripts/workflow.py set-slice-status P1.S1 in_progress >/dev/null 2>&1 ) || bad "rotate probe: could not put P1 mid-flight"
 rot_mid=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
@@ -1375,7 +1384,7 @@ rotg_dirty=$( cd "$ROTG" && python3 scripts/workflow.py rotate-backlog 2>&1 )
   && [ "$(printf '%s\n' "$rotg_dirty" | head -1)" = "rotate=stop_uncommitted uncommitted=1" ] \
   && printf '%s\n' "$rotg_dirty" | grep -qx "  A src/app.py" \
   && printf '%s\n' "$rotg_dirty" | grep -q "^parked=P1.S1 status=pending stop_kind=decision$" \
-  && printf '%s\n' "$rotg_dirty" | grep -q "^nothing was created, widened or reordered" \
+  && printf '%s\n' "$rotg_dirty" | grep -q "^nothing was created, replaced or reordered" \
   && ok "parked work beside an uncommitted product file stops the run (rotate=stop_uncommitted names the path); a clean tree resumes" \
   || bad "rotate-backlog did not stop for uncommitted product edits beside parked work (clean: $rotg_clean): $rotg_dirty"
 ( cd "$ROT" && python3 scripts/workflow.py set-slice-status P1.S1 todo >/dev/null 2>&1 \

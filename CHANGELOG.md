@@ -14,6 +14,28 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v78 — 2026-10-24
+
+- **Every `/rotate-backlog` now ends with one docs phase covering all the doc debt.** Before, a docs
+  phase left live by an earlier rotate was widened to new debt only while it was undecomposed and kept
+  its engine-drafted name. A decomposed or renamed one ran as it was, and the new debt waited for a
+  second docs phase. Now, when every live docs phase is **unstarted** and new debt stands that none
+  pays, the engine prints `rotate=replace replaced=<ids>`. Unstarted means none of its docs slices is
+  past `ready`; a done `DECOMP` wrote only a plan. The engine removes each such phase's folder (one
+  `docs_phase_replaced=<P> (paid …)` line each, logged as `docs_phase_replaced`; git keeps the history)
+  and prints one proposal covering the replaced phases' debt and the new debt. The skill runs its
+  `create:` line as is, as on `rotate=create`.
+- **A docs phase that has started finishes first.** A live docs phase with a docs slice past `ready`
+  resumes as before (`rotate=resume`). `docs_debt_waiting=` names the debt it does not pay, and the
+  loop proposes the next docs phase once it is `done`. With nothing new owed, an unstarted docs phase
+  also resumes as it is, so a re-run writes nothing.
+- **The widening is gone.** `docs_phase_widened=` and its event no longer exist; replacement covers
+  every case widening did. `rotate-backlog` and `create-phase` say so, and the smoke suite's two widening
+  checks became two replacement checks (still 423).
+- **Migration notes.** None beyond `--update`. A docs phase an earlier rotate left unstarted is replaced
+  on the next `/rotate-backlog` only when new debt has arisen since; its operator-edited name or
+  `intent.md` notes, if any, go with it (git keeps them).
+
 ## v77 — 2026-10-24
 
 - **A decomposition can no longer leave the parallel decision to the default.** Before, a slice cut

@@ -9146,8 +9146,7 @@ def archive_all(args: argparse.Namespace) -> None:
 def _phase_range_label(ids: list) -> str:
     """`P26`, the en-dash range `P26–P29` when EVERY id is numeric and the numbers run consecutively,
     else `P26, P28, P29` (a minted token never joins a range: `P26, P27, P-7kq2`). For an all-numeric
-    list the label is byte-identical to v72's: rotate's widening recognizes an engine-named docs phase
-    by string equality with this draft."""
+    list the label is byte-identical to v72's."""
     if len(ids) == 1:
         return ids[0]
     matches = [re.fullmatch(r"P([0-9]+)", str(i)) for i in ids]
@@ -9294,7 +9293,7 @@ def _docs_debt_split(phases: list) -> tuple:
 
 
 def _debt_sort_key(phase_id: str, phases: list):
-    """The order a docs phase's ids are listed in (`_docs_debt_split`'s uncovered list, a widened
+    """The order a docs phase's ids are listed in (`_docs_debt_split`'s uncovered list, a proposal's
     `consolidates`): `id_sort_key`, a token's `created_at` read from `phases` -- numeric ids by number,
     exactly v72's order, then minted tokens by creation. The one place `rotate-backlog` turns an id
     into a sort key."""
@@ -9308,9 +9307,7 @@ def _print_docs_phase_covered(covered_by: dict) -> None:
 
 def _docs_phase_draft(ids: list, phases: list) -> tuple:
     """`(name, objective)` the engine drafts for a docs phase paying `ids`, the docs listed from the
-    owed `## Doc impact` notes of `phases`. The one drafting code: the proposal prints it, the
-    widening rewrites a docs phase with it, and a docs phase whose name still equals this draft for
-    its own `consolidates` is engine-named (the operator never renamed it)."""
+    owed `## Doc impact` notes of `phases`. The one drafting code: the proposal prints it."""
     docs = sorted(d for d in stale_docs(phases) if d != UNASSIGNED_DOC)
     name = f"Consolidate the doc impact of {_phase_range_label(ids)}"
     objective = (f"consolidate the '## Doc impact' notes from {', '.join(ids)} into new versions of "
@@ -9318,44 +9315,30 @@ def _docs_phase_draft(ids: list, phases: list) -> tuple:
     return name, objective
 
 
-def _widen_docs_phase(docs_phase: dict, uncovered: list, phases: list):
-    """Widen the resumed docs phase to the uncovered debt, so each doc gets one new version (v72).
+def _docs_phase_unstarted(docs_phase: dict) -> bool:
+    """True when a live docs phase has written nothing yet, so rotate-backlog replaces it (v78): the
+    phase is neither parked, in review nor done, its REVIEW and every middle slice are still todo or
+    ready, and its DECOMP is todo, ready or done (a done cut wrote only a plan, which the replacement
+    cuts again over the wider debt). A docs phase with any docs slice past ready has started and
+    finishes first."""
+    if docs_phase.get("status") in STOP_STATUSES + ("in_review", "done"):
+        return False
+    for s in docs_phase.get("slices", []):
+        allowed = ("todo", "ready", "done") if s.get("kind") == "decomposition" else ("todo", "ready")
+        if s.get("status") not in allowed:
+            return False
+    return True
 
-    Only a docs phase that is both UNDECOMPOSED (its only slices are `<P>.DECOMP` and `<P>.REVIEW`,
-    both todo or ready) and ENGINE-NAMED (its name equals the draft for its current `consolidates`):
-    a decomposed one has planned its work, and a renamed one is the operator's. One step: phase.json's
-    `consolidates` (its list and the uncovered ids, in `_debt_sort_key` order), name and objective, redrafted; phase.md's
-    `# Phase` heading and `## Objective` body (written once by new-phase, still the scaffold); the event
-    `docs_phase_widened`; one rebuild. Returns `(old ids, new ids)` when it wrote, None when it did not.
-    A re-run writes nothing: the debt it took is covered, so none stands uncovered."""
-    pid = docs_phase["id"]
-    slices = docs_phase.get("slices", [])
-    undecomposed = (sorted(s["id"] for s in slices) == sorted([f"{pid}.DECOMP", f"{pid}.REVIEW"])
-                    and all(s.get("status") in ("todo", "ready") for s in slices))
-    old = phase_consolidates(docs_phase)
-    if not (uncovered and undecomposed and docs_phase.get("name") == _docs_phase_draft(old, [p for p in phases if p["id"] in old])[0]):
-        return None
-    new = sorted(set(old) | {p["id"] for p in uncovered}, key=lambda pid: _debt_sort_key(pid, phases))
-    name, objective = _docs_phase_draft(new, [p for p in phases if p["id"] in new])
-    pdir = ROOT / docs_phase["path"]
-    data = read_json(pdir / "phase.json")
-    data.update({"name": name, "objective": objective, "consolidates": new})
-    write_json(pdir / "phase.json", data)
-    md = pdir / "phase.md"
-    if md.exists():
-        text = md.read_text(encoding="utf-8")
-        lines = text.split("\n")
-        head = next((i for i, ln in enumerate(lines) if ln.startswith(f"# Phase {pid}:")), None)
-        if head is not None:
-            lines[head] = f"# Phase {pid}: {name}"
-        section = next(((i, e) for heading, i, e in h2_spans(lines) if heading.lower() == "objective"), None)
-        if section is not None:
-            lines[section[0] + 1:section[1]] = ["", objective, ""]
-        if "\n".join(lines) != text:
-            write_text(md, "\n".join(lines))
-    append_event("docs_phase_widened", phase=pid, old_consolidates=old, new_consolidates=new)
+
+def _replace_docs_phase(docs_phase: dict) -> list:
+    """Remove an unstarted docs phase's folder (v78; the workspace's git history keeps it), log
+    `docs_phase_replaced` and rebuild, so the debt it covered stands uncovered and the proposal that
+    follows covers it together with the new debt. Returns the ids it covered."""
+    pays = phase_consolidates(docs_phase)
+    shutil.rmtree(ROOT / docs_phase["path"])
+    append_event("docs_phase_replaced", phase=docs_phase["id"], consolidates=pays)
     rebuild_index_and_state()
-    return old, new
+    return pays
 
 
 def _print_docs_phase_proposal(uncovered: list, order) -> None:
@@ -9437,13 +9420,15 @@ def rotate_backlog(args: argparse.Namespace) -> None:
     #   stop_uncommitted  PARKED work (a phase pending or blocked; a slice pending, blocked or
     #                     changes_requested) beside uncommitted product edits, which a parked item
     #                     may own and the run's commits would take: `uncommitted=<n>` and the paths.
-    #   resume            a live docs phase exists (it beats create): widens it to the uncovered debt
-    #                     when it is undecomposed and engine-named, then re-asserts its queue jump.
+    #   replace           (v78) every live docs phase is unstarted and new debt stands uncovered: each is
+    #                     removed, and one proposal covers all the debt, its `create:` line run as is.
+    #   resume            a live docs phase has started (a docs slice past ready), or nothing new owes:
+    #                     it runs as it is, re-asserting its queue jump; new debt waits for it.
     #   create            the docs-phase proposal, its `create:` line carrying the queue-jump --order;
     #                     writes nothing -- the skill runs that line as is.
     # Parked work no longer stops the run: the docs phase runs ahead of it and never touches it. After
     # the first line come `archived=`, one `parked=<id> status=<status>[ stop_kind=<kind>]` line per
-    # parked item, then the branch's own lines. A stop creates, widens and reorders nothing.
+    # parked item, then the branch's own lines. A stop creates, replaces and reorders nothing.
     # --archive-only is the sweep alone, output unchanged since v51 (no rotate= line, no docs line).
     if getattr(args, "archive_only", False):
         _rotate_sweep()
@@ -9487,7 +9472,7 @@ def rotate_backlog(args: argparse.Namespace) -> None:
         print(f"rotate=stop_midflight midflight={', '.join(running)}")
         report()
         stopped()
-        print("nothing was created, widened or reordered (only the clean-phase archive sweep ran): the docs phase never "
+        print("nothing was created, replaced or reordered (only the clean-phase archive sweep ran): the docs phase never "
               "interleaves with running work -- re-run rotate-backlog once no listed slice is in_progress or in_review "
               "and no listed phase is in_review")
         return
@@ -9499,21 +9484,25 @@ def rotate_backlog(args: argparse.Namespace) -> None:
         if len(dirty) > ROTATE_UNCOMMITTED_SHOWN:
             print(f"  ... and {len(dirty) - ROTATE_UNCOMMITTED_SHOWN} more")
         stopped()
-        print("nothing was created, widened or reordered (only the clean-phase archive sweep ran): work is parked and the "
+        print("nothing was created, replaced or reordered (only the clean-phase archive sweep ran): work is parked and the "
               "product tree holds uncommitted edits, which a parked item may own and the docs phase's commits would take -- "
               "the operator commits or stashes them, then re-run rotate-backlog")
         return
+    if live and uncovered and all(_docs_phase_unstarted(p) for p in live):
+        print(f"rotate=replace replaced={', '.join(p['id'] for p in live)}")
+        report()
+        for docs_phase in live:
+            pays = _replace_docs_phase(docs_phase)
+            print(f"docs_phase_replaced={docs_phase['id']} (paid {', '.join(pays)}; unstarted, so its folder is removed and git keeps it)")
+        phases = all_active_phases()
+        covered_by, uncovered = _docs_debt_split(phases)
+        _print_docs_phase_covered(covered_by)
+        _print_docs_phase_proposal(uncovered, _queue_jump_order(phases))
+        return
     if live:
-        docs_phase = live[0]
+        docs_phase = next((p for p in live if not _docs_phase_unstarted(p)), live[0])
         print(f"rotate=resume docs_phase={docs_phase['id']}")
         report()
-        widened = _widen_docs_phase(docs_phase, uncovered, phases)
-        if widened:
-            print(f"docs_phase_widened={docs_phase['id']} {','.join(widened[0])} -> {','.join(widened[1])}")
-            phases = all_active_phases()
-            docs_phase = next(p for p in phases if p["id"] == docs_phase["id"])
-            covered_by, uncovered = _docs_debt_split(phases)
-            owing = ", ".join(p["id"] for p in uncovered)
         moved = _reassert_queue_jump(docs_phase, phases)
         if moved:
             print(f"docs_phase_order={docs_phase['id']} {moved[0]} -> {moved[1]}")
@@ -13442,7 +13431,7 @@ def main(argv=None) -> int:
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=archive_all)
 
-    p = sub.add_parser("rotate-backlog", help="The one resumable step of /rotate-backlog: checks the doc debt FIRST and prints its decision as the first line, rotate=<refused|archive|stop_midflight|stop_uncommitted|resume|create>. archive: nothing owes, so archive every currently-done phase (whole phases, the partial archive-all) and rebuild. While debt stands it first archives the cleanly archivable phases (never one that owes docs; archived=<ids>), goes around parked work -- a phase pending or blocked, a slice pending, blocked or changes_requested, one parked=<id> status=<status>[ stop_kind=<kind>] line each -- and then: stop_midflight for running default-stream work (a slice in_progress or in_review, a phase in_review; a gate-open phase's review slice is parked), stop_uncommitted when work is parked and the product tree holds uncommitted edits (uncommitted=<n> and the paths), resume the live docs phase (widening an undecomposed, engine-named one to the uncovered debt, docs_phase_widened=, and re-asserting its queue-jump order), or print the docs phase to create, its create: line carrying the queue-jump --order. A stop creates, widens and reorders nothing. refused (writes nothing, non-zero exit) on a parallel stream")
+    p = sub.add_parser("rotate-backlog", help="The one resumable step of /rotate-backlog: checks the doc debt FIRST and prints its decision as the first line, rotate=<refused|archive|stop_midflight|stop_uncommitted|replace|resume|create>. archive: nothing owes, so archive every currently-done phase (whole phases, the partial archive-all) and rebuild. While debt stands it first archives the cleanly archivable phases (never one that owes docs; archived=<ids>), goes around parked work -- a phase pending or blocked, a slice pending, blocked or changes_requested, one parked=<id> status=<status>[ stop_kind=<kind>] line each -- and then: stop_midflight for running default-stream work (a slice in_progress or in_review, a phase in_review; a gate-open phase's review slice is parked), stop_uncommitted when work is parked and the product tree holds uncommitted edits (uncommitted=<n> and the paths), replace (v78) every live docs phase when all are unstarted and new debt stands uncovered (each folder removed, docs_phase_replaced=, then one proposal covering all the debt), resume a started live docs phase (re-asserting its queue-jump order; new debt waits for it), or print the docs phase to create, its create: line carrying the queue-jump --order. A stop creates, replaces and reorders nothing. refused (writes nothing, non-zero exit) on a parallel stream")
     p.add_argument("--archive-only", action="store_true", dest="archive_only",
                    help="archive only: the sweep of every currently-done phase and its report, with no rotate= line and no docs-phase line (unchanged since v51)")
     p.set_defaults(func=rotate_backlog)
