@@ -24,8 +24,9 @@ normal shape of this workspace and a branch per phase made every ordinary run pa
 never used. What v42 built stays — the dirty-tree stamp commit, the in-repo worktree home (`.claude/worktrees/`), the local
 merge, the gate-section notes — it is simply reached on request now.
 
-The unit of parallelism is the **phase**. Slices inside a phase stay strictly sequential — they build
-on each other through `phase.md` and a commit at every boundary — so never fan out slices.
+The unit of *worktree* parallelism is the **phase**. Slices inside a phase run one at a time, except that
+the declared, independent slices of a phase may run together in its checkout (the `do-whole-phase` wave,
+`.claude/skills/do-whole-phase/reference/wave.md`); a phase worktree changes none of that.
 
 Everything below is the whole lifecycle, in order: the operator asks → enter → work → review on the
 branch → integrate back (a local merge by default). The contract (`CLAUDE.md`) carries only the rules;
@@ -416,7 +417,7 @@ inside the set, merge the phase branch again and re-run the teardown.
 - Never merge from inside the worktree — exit first.
 - Never `parallel-start` a phase the operator did not ask about, nor a pinned or in-flight one.
 - Never enter a path the engine did not print / `git worktree list` does not show.
-- Slice-level parallelism inside a phase stays out of scope.
+- Slices running together inside a phase are `do-whole-phase`'s wave, in the phase's own checkout; never a worktree per slice.
 - The phase branch and the stamp commit are part of executing a phase; pushing is not — push only
   when asked.
 - Nested install: never merge a host branch into the host's default branch, and never push, open a

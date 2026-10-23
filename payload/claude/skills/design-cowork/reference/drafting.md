@@ -10,8 +10,8 @@ judge; on the judge's short follow-up pass add `judge-01.md` (*below*). The draf
 nothing. Run it
 as a background task (never pass `run_in_background: false`).
 
-**A wave dispatches one drafter per job at once.** That is the one carve-out from "one executor at a
-time": the jobs' folders are disjoint and these are design spans only. Every later span of the wave
+**A wave dispatches one drafter per job at once.** That is the design-wave carve-out from "one executor
+at a time": the jobs' folders are disjoint and these are design spans only. Every later span of the wave
 (critic, judge, the next drafter pass) runs as soon as its own job is ready for it.
 
 **The drafter's verdict.** `done` → the loop below. `needs_operator` → the handoff is thin or

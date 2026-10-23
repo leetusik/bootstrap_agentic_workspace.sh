@@ -408,6 +408,10 @@ Then execute it at whichever pace you prefer:
 Automatic execution is the default; `gate` (approve each slice's plan) and `plan only` (write the
 plan, stop before running it) are opt-in words you add to the command.
 
+Slices the decomposition declared independent (what each depends on, and files that don't overlap) run
+together under `/do-whole-phase`, in the same checkout. A phase that declares nothing runs one slice at a
+time, as before, and `/do-next-slice` always runs exactly one.
+
 ### Visual work: you sign each design job
 
 `design-cowork` fires automatically when the work changes a product's visual appearance. **The agent
@@ -601,8 +605,9 @@ install is described in its own paragraph below.) Asking looks like either of th
 
 Either way the agent cuts `phase/P<N>-<slug>` and a worktree at `.claude/worktrees/P<N>-<slug>`,
 then enters it **in the same session** and drives the phase there. `main` keeps working whatever it
-was working, each checkout sees only its own stream, and the phase is the unit of parallelism
-(slices inside one phase stay strictly sequential). The agent never starts a worktree on its own
+was working, each checkout sees only its own stream, and the phase is the unit of worktree parallelism
+(inside one phase, only slices the decomposition declared independent run together, in that phase's own
+checkout). The agent never starts a worktree on its own
 initiative: when another phase is already in flight, `next` *suggests* one for the phase queued
 behind it, and acting on that suggestion is your call.
 

@@ -2744,7 +2744,7 @@ def operator_wait_target(phases: list, current_phase, current_slice):
         cur = next((s for s in phase["slices"] if s["id"] == current_slice), None)
         if cur and cur.get("status") == "pending":
             return current_slice
-        break
+        return wave_wait_target(phase)  # P42: a declared phase's pending slice anywhere by order; None otherwise
     return None
 
 
@@ -2799,6 +2799,7 @@ def _run_halt(phase: dict):
             return stuck, f"phase {pid}'s acceptance gate is open, but slice {stuck['id']} is {stuck.get('status')}, so it is not parked"
         return phase, f"phase {pid} is {status}" + (" without an open acceptance gate" if status == "pending" else "")
     cur = next((s for s in slices if s.get("status") != "done"), None)
+    cur = wave_stop(phase) or cur  # P42: a declared phase halts at a stop anywhere by order
     if cur is not None and cur.get("status") in ("pending", "blocked"):
         return cur, f"slice {cur['id']} is {cur.get('status')}"
     return None
@@ -2867,6 +2868,8 @@ def cmd_run_phases(args: argparse.Namespace) -> None:
             if isinstance(record, dict):
                 print(f"on_words={_one_line(record.get('on_words') or '')}")
         print(f"halt_reason={reason} -- the whole run stops here: report it, start nothing past it")
+        for line in wave_lines(next((p for p in run["queue"] if p["id"] == item["id"].split(".", 1)[0]), None)):
+            print(line)
     elif run["target"] is not None:
         phase, cur, nxt = run["target"]
         print(f"target_phase={phase['id']}")
@@ -2877,6 +2880,8 @@ def cmd_run_phases(args: argparse.Namespace) -> None:
         print(f"target_slice={cur['id']}")
         print(f"slice_path={shown(sdir)}")
         print(f"next_slice={nxt['id'] if nxt else 'none'}")
+        for line in wave_lines(phase):  # P42: declared phases only
+            print(line)
         acceptance = phase_acceptance(phase)
         if (acceptance and acceptance.get("required") is True and acceptance.get("cleared_at") and cur.get("kind") == "review"
                 and (sdir / "result.md").is_file()):
@@ -2884,6 +2889,261 @@ def cmd_run_phases(args: argparse.Namespace) -> None:
                   f"record the pass (review-phase {phase['id']} --verdict pass) without re-dispatching it")
     else:
         print("run_done=yes -- nothing left to run" + ("; report every parked gate with its walkthrough" if run["parked"] else ""))
+
+
+# The ready set (P42): several slices of one phase in flight at once. A slice created with `--depends-on <id>`
+# (repeatable) or `--depends-on none` is DECLARED: its slice.json carries `"depends_declared": true` beside
+# `depends_on`, and that list binds -- each id names a slice of the same phase ordered strictly before it, so
+# `order` stays a topological order and the plain pointer (the first open slice) always has its dependencies
+# done. Every other slice is UNDECLARED (every pre-v71 slice, an advisory pre-v71 list included) and, like the
+# barrier kinds, runs alone. Stateless like run-phases: recomputed from disk on every call, it writes nothing,
+# and a phase with no declared slice prints, stores and halts exactly as before (the plain pointer above).
+# A barrier is never a wave slice (P42.F1): while one is in_progress it holds the phase alone, nothing is
+# ready, and -- unless wave slices also run -- no wave line prints, so a declared phase then reads exactly as
+# an undeclared one in the same state (at an open acceptance gate the running REVIEW is the gate's, not a
+# returned wave slice to finish). start-slice warns, never refuses, at a start the ready set would not make.
+DEPENDS_DECLARED = "depends_declared"
+BARRIER_KINDS = ("decomposition", "review", "co-work")
+STOP_STATUSES = ("pending", "blocked")
+DEPENDS_ON_HELP = ("a slice of this phase ordered before this one (repeat the flag for several), or `none`; either form "
+                   "DECLARES the slice: its dependencies bind, and /do-whole-phase may run it beside other declared slices "
+                   "once they are done. Refused (nothing written) for an id of another phase, one not ordered strictly "
+                   "before this slice, or `none` beside an id. Without the flag the slice is undeclared and runs alone")
+
+
+def slice_declared(s) -> bool:
+    return isinstance(s, dict) and s.get(DEPENDS_DECLARED) is True
+
+
+def phase_declared(phase) -> bool:
+    """True when any slice of the phase, done ones included, was created with --depends-on."""
+    return isinstance(phase, dict) and any(slice_declared(s) for s in phase.get("slices", []))
+
+
+def slice_barrier(s: dict) -> bool:
+    """A barrier runs alone: a decomposition, review or co-work slice, and every undeclared slice
+    (nobody stated its file set, so nothing can be shown disjoint from it)."""
+    return s.get("kind") in BARRIER_KINDS or not slice_declared(s)
+
+
+def _order_of(s: dict):
+    order = s.get("order", 999999)
+    return order if isinstance(order, (int, float)) else 999999
+
+
+def ready_set(phase: dict) -> dict:
+    """`{ready, running, stops, barrier}` of one phase: lists of slices by order, and `barrier` the first
+    barrier `in_progress` (else None). `running` is the wave: the non-barrier slices `in_progress`; a barrier
+    never joins it, it holds the phase alone. `stops` are the open slices `pending` or `blocked`; any stop, a
+    barrier in progress, or the phase itself `pending`/`blocked`, leaves `ready` empty. Else a walk over the
+    open slices admits a barrier only as the first open slice with nothing running, ends at the first barrier
+    either way, and admits a declared slice that is todo/ready with every dependency `done`. So an undeclared
+    phase's ready set is its first open slice when that can start: the pointer."""
+    slices = phase.get("slices", [])
+    done = {s.get("id") for s in slices if s.get("status") == "done"}
+    open_slices = [s for s in slices if s.get("status") != "done"]
+    in_progress = [s for s in open_slices if s.get("status") == "in_progress"]
+    out = {"ready": [], "running": [s for s in in_progress if not slice_barrier(s)],
+           "barrier": next((s for s in in_progress if slice_barrier(s)), None),
+           "stops": [s for s in open_slices if s.get("status") in STOP_STATUSES]}
+    if out["stops"] or out["barrier"] is not None or phase.get("status") in STOP_STATUSES + ("done",):
+        return out
+    for i, s in enumerate(open_slices):
+        startable = s.get("status") in ("todo", "ready")
+        if slice_barrier(s):
+            if i == 0 and startable and not out["running"]:
+                out["ready"].append(s)
+            break
+        if startable and all(dep in done for dep in s.get("depends_on") or []):
+            out["ready"].append(s)
+    return out
+
+
+def wave_stop(phase: dict):
+    """A declared phase's first `pending`/`blocked` slice wherever it sits by order, else None: there a stop
+    behind a running or finished sibling halts too (undeclared phases halt at the first open slice only)."""
+    if not phase_declared(phase):
+        return None
+    return next((s for s in phase.get("slices", []) if s.get("status") in STOP_STATUSES), None)
+
+
+def wave_wait_target(phase: dict):
+    """operator_wait_target's widening: the id of a declared phase's first `pending` slice, else None."""
+    stop = next((s for s in phase.get("slices", []) if s.get("status") == "pending"), None) if phase_declared(phase) else None
+    return stop["id"] if stop else None
+
+
+def _slice_ids(slices) -> str:
+    return ",".join(s["id"] for s in slices) or "none"
+
+
+def _wave_stops(phase: dict, wave: dict) -> list:
+    stops = [f"{s['id']} ({s.get('status')})" for s in wave["stops"]]
+    return ([f"phase {phase['id']} ({phase.get('status')})"] if phase.get("status") in STOP_STATUSES else []) + stops
+
+
+def wave_held(wave: dict) -> bool:
+    """True while a barrier runs alone (no wave slice beside it): a single-slice run that the plain pointer's
+    lines carry, so the phase prints no wave line and reads as an undeclared phase does (P42.F1)."""
+    return wave["barrier"] is not None and not wave["running"]
+
+
+def wave_lines(phase) -> list:
+    """`next` / `run-phases` lines for a declared phase: `ready_slices=` and `running_slices=`. Empty for an
+    undeclared phase (or None), so those outputs stay byte-identical there, and while a barrier holds the phase."""
+    if not phase_declared(phase):
+        return []
+    wave = ready_set(phase)
+    if wave_held(wave):
+        return []
+    stops = _wave_stops(phase, wave)
+    ready = f"ready_slices={_slice_ids(wave['ready'])}"
+    running = f"running_slices={_slice_ids(wave['running'])}"
+    if stops:
+        ready += f" -- stopped by {', '.join(stops)}: nothing new starts while a stop is on disk"
+        if wave["running"]:
+            running += " -- already running beside the stop: wait for each, then finish and commit it"
+    return [ready, running]
+
+
+def _active_phase(phase_id):
+    """One active phase as all_active_phases() reads it, its slices in order; None when there is none."""
+    pdir = ACTIVE / phase_id if isinstance(phase_id, str) and phase_id else None
+    if pdir is None or not (pdir / "phase.json").is_file():
+        return None
+    data = read_json(pdir / "phase.json")
+    data["slices"] = [read_json(sdir / "slice.json") for sdir in slice_dirs(pdir)]
+    return data
+
+
+def wave_card_lines(phase: dict, sid) -> list:
+    """The resume card's wave lines for a declared phase, none otherwise: a sibling's stop that the pointer's
+    lines do not show, then one `wave:` line -- the running wave slices, those of them whose result.md exists
+    (returned), the ready set and the stops -- with the wave's next action. A barrier is never running or
+    returned there, and while one holds the phase alone the card has no `wave:` line (P42.F1)."""
+    if not phase_declared(phase):
+        return []
+    wave, lines = ready_set(phase), []
+    shown_stop = phase.get("status") in STOP_STATUSES or any(s["id"] == sid for s in wave["stops"])
+    hidden = None if shown_stop else next(iter(wave["stops"]), None)
+    if hidden is not None:
+        hid, record = hidden["id"], hidden.get("pending")
+        if hidden.get("status") == "blocked":
+            lines.append(f"stop: slice {hid} blocked -- report the blocker (its result.md) to the operator")
+        elif isinstance(record, dict):
+            lines.append(f"stop: slice {hid} {record.get('kind')} (since {record.get('since')}) -- the operator's words will: "
+                         f"{_card_cut(record.get('on_words'))}; they clear it with set-slice-status {hid} in_progress")
+        else:
+            lines.append(f"stop: slice {hid} untyped pending -- say what you need; the operator's words clear it with set-slice-status {hid} in_progress")
+    if wave_held(wave):
+        return lines
+    returned = [s for s in wave["running"] if (ACTIVE / phase["id"] / "slices" / s["id"] / "result.md").is_file()]
+    stops = ([phase["id"]] if phase.get("status") in STOP_STATUSES else []) + [s["id"] for s in wave["stops"]]
+    then = "start nothing new: a stop is on disk" if stops else "start the ready set only while no stop is on disk"
+    lines.append(f"wave: running={_slice_ids(wave['running'])}; returned={_slice_ids(returned)}; ready={_slice_ids(wave['ready'])}; "
+                 f"stops={','.join(stops) or 'none'} -- in a /do-whole-phase run, wait for every running span (never re-dispatch one), "
+                 f"finish each returned slice, and {then}")
+    return lines
+
+
+def start_warning(slice_id: str):
+    """start-slice's one `warning:` line in a declared phase (OQ3, P42.F1), for a start the ready set would not
+    make: a declared slice with a dependency not yet `done`, or a barrier while another slice of the phase is
+    `in_progress`. None otherwise, and always None in an undeclared phase. It warns, never refuses."""
+    try:
+        phase = _active_phase(slice_id.split(".", 1)[0]) if isinstance(slice_id, str) else None
+    except (OSError, ValueError, TypeError):  # an unreadable slice.json: the start goes on as before, unwarned
+        return None
+    if not phase_declared(phase):
+        return None
+    by_id = {s.get("id"): s for s in phase["slices"]}
+    me = by_id.get(slice_id)
+    if me is None:
+        return None
+    reasons = []
+    if slice_declared(me):
+        deps = [f"{dep} ({by_id[dep].get('status')})" if dep in by_id else f"{dep} (missing)"
+                for dep in me.get("depends_on") or [] if (by_id.get(dep) or {}).get("status") != "done"]
+        if deps:
+            reasons.append(f"depends on {', '.join(deps)}, not done yet")
+    if slice_barrier(me):
+        beside = [s["id"] for s in phase["slices"] if s.get("status") == "in_progress" and s.get("id") != slice_id]
+        if beside:
+            reasons.append(f"is a barrier that runs alone, but {', '.join(beside)} {'is' if len(beside) == 1 else 'are'} in_progress")
+    if not reasons:
+        return None
+    return f"warning: {slice_id} {', and '.join(reasons)} -- the ready set would not start it; started anyway (start-slice warns, never refuses)"
+
+
+def parse_depends_on(values):
+    """`--depends-on` values -> the declared ids (`[]` for `none`), or None when the flag is absent: an
+    undeclared slice, created exactly as before. Refuses an empty value and `none` beside an id."""
+    if values is None:
+        return None
+    raw = [v.strip() for v in values]
+    ids = list(dict.fromkeys(v for v in raw if v.lower() != "none"))
+    if "" in ids:
+        raise SystemExit("--depends-on needs a slice id or none; refused, nothing was written")
+    if ids and any(v.lower() == "none" for v in raw):
+        raise SystemExit(f"--depends-on none declares no dependency and never stands beside a slice id (got: {', '.join(raw)}); refused, nothing was written")
+    return ids
+
+
+def declared_dependencies(phase_id: str, slice_id: str, order, values):
+    """parse_depends_on, then rule 2 at creation: each id names an existing slice of the same phase, other
+    than this one, ordered strictly before `order`. Refuses (SystemExit, nothing written) otherwise."""
+    ids = parse_depends_on(values)
+    if not ids:
+        return ids
+    siblings = {s.get("id"): s for s in (read_json(d / "slice.json") for d in slice_dirs(ACTIVE / phase_id))}
+    for dep in ids:
+        if dep == slice_id:
+            problem = "a slice cannot depend on itself"
+        elif dep.split(".", 1)[0] != phase_id:
+            problem = f"not a slice of phase {phase_id}; a declared dependency names a slice of the same phase"
+        elif dep not in siblings:
+            problem = f"phase {phase_id} has no such slice; create it first, ordered before {slice_id}"
+        elif not _order_of(siblings[dep]) < order:
+            problem = (f"it is ordered at {siblings[dep].get('order')}, not before {slice_id} at {order}; a declared dependency "
+                       "comes strictly earlier by --order, so order stays a topological order")
+        else:
+            continue
+        raise SystemExit(f"--depends-on {dep}: {problem}; refused, nothing was written")
+    return ids
+
+
+def declared_slice_lines(kind: str, deps) -> list:
+    """new-slice / promote-deferred's lines for a declared slice (none for an undeclared one)."""
+    if deps is None:
+        return []
+    lines = [f"depends_on={','.join(deps)} (declared: binding; /do-whole-phase starts it once these are done)" if deps else
+             "depends_on=none (declared: no dependency; /do-whole-phase may start it beside other ready slices)"]
+    if kind in BARRIER_KINDS:
+        lines.append(f"note: kind {kind} is a barrier that runs alone, so this declaration has no effect (validate warns)")
+    return lines
+
+
+def declaration_checks(phase: dict, s: dict, errors: list, warnings: list) -> None:
+    """validate's checks of one slice's declaration. Silent for a slice with no marker key at all (every
+    undeclared slice), so an undeclared workspace's validate output is unchanged."""
+    if DEPENDS_DECLARED not in s:
+        return
+    if s.get(DEPENDS_DECLARED) is not True:
+        errors.append(f"slice {s['id']} has invalid {DEPENDS_DECLARED} {s.get(DEPENDS_DECLARED)!r}; expected true "
+                      "(written by new-slice/promote-deferred --depends-on) or no key at all")
+        return
+    if s.get("kind") in BARRIER_KINDS:
+        warnings.append(f"slice {s['id']} declares its dependencies, but kind {s.get('kind')} is a barrier that runs alone: "
+                        f"the declaration has no effect -- drop {DEPENDS_DECLARED} from its slice.json")
+    orders = {x.get("id"): x for x in phase.get("slices", [])}
+    for dep in s.get("depends_on") or []:
+        if dep in orders and not _order_of(orders[dep]) < _order_of(s):
+            errors.append(f"declared dependency of {s['id']} (order {s.get('order')}) on {dep} (order {orders[dep].get('order')}) "
+                          "is not ordered before it; a declared dependency comes strictly earlier by order, so order stays a "
+                          "topological order -- reorder one of them")
+        elif dep not in orders and isinstance(dep, str) and re.fullmatch(r"P[0-9]+\..+", dep) and dep.split(".", 1)[0] != phase["id"]:
+            errors.append(f"declared dependency of {s['id']} on {dep} crosses phases; a declared dependency names a slice "
+                          f"of the same phase ({phase['id']})")
 
 
 SLICES_BEGIN = "<!-- slices:begin -->"
@@ -3514,6 +3774,7 @@ def validate() -> int:
             for dep in s.get("depends_on", []):
                 if dep not in all_slice_ids:
                     errors.append(f"missing dependency for {s['id']}: {dep}")
+            declaration_checks(p, s, errors, warnings)  # P42: declared slices only; silent without the marker
     state = read_json(WORKS / "state.json") if (WORKS / "state.json").exists() else {}
     if state.get("current_phase") and state["current_phase"] not in seen_phases:
         errors.append(f"state current_phase does not exist: {state['current_phase']}")
@@ -3684,7 +3945,7 @@ def require_slice_kind(kind: str) -> str:
     return kind
 
 
-def create_slice(phase_id: str, slice_id: str, name: str, kind: str, order, risk: str, source: dict, depends_on=None) -> Path:
+def create_slice(phase_id: str, slice_id: str, name: str, kind: str, order, risk: str, source: dict, depends_on=None, declared=False) -> Path:
     require_slice_kind(kind)
     require_phase(phase_id)
     if not slice_id.startswith(f"{phase_id}."):
@@ -3695,7 +3956,7 @@ def create_slice(phase_id: str, slice_id: str, name: str, kind: str, order, risk
     created = now_iso()
     data = {
         "id": slice_id, "phase_id": phase_id, "name": name, "kind": kind, "status": "todo", "order": order,
-        "depends_on": depends_on or [], "created_at": created, "started_at": None, "completed_at": None, "risk": risk, "source": source,
+        "depends_on": depends_on or [], **({DEPENDS_DECLARED: True} if declared else {}), "created_at": created, "started_at": None, "completed_at": None, "risk": risk, "source": source,
         "paths": {"plan": "plan.md", "result": "result.md"},
         "outcome": None,  # one line, set by `finish-slice --outcome`; rendered in the phase's ## Slices table
         "validation": {"required": [], "last_run": None, "last_status": "pending"},
@@ -3859,10 +4120,13 @@ def _auto_order(pdir: Path, explicit):
 def new_slice(args: argparse.Namespace) -> None:
     pdir = require_phase(args.phase)
     order = _auto_order(pdir, args.order)
-    sdir = create_slice(args.phase, args.slice, args.name, args.kind, order, args.risk, source={"type": "manual", "id": None}, depends_on=args.depends_on or [])
+    deps = declared_dependencies(args.phase, args.slice, order, args.depends_on)  # None: undeclared, as before
+    sdir = create_slice(args.phase, args.slice, args.name, args.kind, order, args.risk, source={"type": "manual", "id": None}, depends_on=deps or [], declared=deps is not None)
     append_event("slice_created", phase=args.phase, slice=args.slice)
     rebuild_index_and_state()
     print(f"created slice {args.slice}: {shown(sdir)}")
+    for line in declared_slice_lines(args.kind, deps):
+        print(line)
 
 
 def _set_slice_status(sdir: Path, status: str, pending=None) -> str:
@@ -3913,8 +4177,11 @@ def cmd_set_slice_status(args: argparse.Namespace) -> None:
 
 
 def start_slice(args: argparse.Namespace) -> None:
+    warning = start_warning(args.slice)  # P42.F1: declared phases only; read before the start changes the state
     set_slice_status(args.slice, "in_progress")
     print(f"started {args.slice}")
+    if warning:
+        print(warning)
 
 
 def finish_slice(args: argparse.Namespace) -> None:
@@ -7308,6 +7575,8 @@ def cmd_next(args: argparse.Namespace) -> None:
             else:
                 print("stop_kind=untyped (set it with --stop-kind/--on-words)")
         print("Do not start, finish, or advance past it. Report what you need, then wait for the operator.")
+        for line in wave_lines(_active_phase(state.get("current_phase"))):  # P42: declared phases only
+            print(line)
         if gate:
             print(f"acceptance_gate=open (requested_at={gate.get('requested_at')}) -- the operator must walk the running product before this phase's review can pass.")
             print("WALKTHROUGH:")
@@ -7329,6 +7598,8 @@ def cmd_next(args: argparse.Namespace) -> None:
     print(f"current_slice={current_slice}")
     print(f"slice_path={shown(sdir)}")
     print(f"next_slice={state.get('next_slice') or 'none'}")
+    for line in wave_lines(_active_phase(state.get("current_phase"))):  # P42: declared phases only
+        print(line)
     hint = parallel_start_hint(state, index)
     if hint:
         print(hint)
@@ -7508,6 +7779,7 @@ def resume_card(transcript_path=None) -> str:
         lines.append(f"next action: {_card_next_action(sid, sdata, sdir, spans)}")
     else:
         lines.append("next action: no open slice -- review or archive the phase")
+    lines.extend(wave_card_lines(phase, sid))  # P42: declared phases only
     gates = []
     if acceptance is None:
         gates.append("acceptance=legacy (no gate)")
@@ -7612,6 +7884,10 @@ def promote_deferred(args: argparse.Namespace) -> None:
         raise SystemExit(f"open deferred job not found: {did}")
     data = read_json(ddir / "deferred.json")
     require_slice_kind(args.kind)  # before --create-phase, so a bad kind leaves no half-created phase
+    if parse_depends_on(args.depends_on) and not (ACTIVE / args.phase / "phase.json").exists():  # P42, likewise
+        raise SystemExit(f"--depends-on: phase {args.phase} does not exist yet, so it has no slice to depend on (a new phase "
+                         "holds only its DECOMP and REVIEW, both barriers); use --depends-on none, or create the phase first; "
+                         "refused, nothing was written")
     if not (ACTIVE / args.phase / "phase.json").exists():
         if not args.create_phase:
             raise SystemExit(f"phase does not exist: {args.phase}. Use --create-phase to create it.")
@@ -7619,7 +7895,8 @@ def promote_deferred(args: argparse.Namespace) -> None:
         new_phase(ns)
     pdir = require_phase(args.phase)
     order = _auto_order(pdir, args.order)
-    sdir = create_slice(args.phase, args.slice, args.name or data["title"], args.kind, order, args.risk, source={"type": "deferred", "id": did, "path": str(ddir.relative_to(ROOT))}, depends_on=args.depends_on or [])
+    deps = declared_dependencies(args.phase, args.slice, order, args.depends_on)  # None: undeclared, as before
+    sdir = create_slice(args.phase, args.slice, args.name or data["title"], args.kind, order, args.risk, source={"type": "deferred", "id": did, "path": str(ddir.relative_to(ROOT))}, depends_on=deps or [], declared=deps is not None)
     plan_path = sdir / "plan.md"
     # plan.md has no template, so it may not exist yet; only prepend a separator when it does.
     sep = "\n---\n\n" if plan_path.exists() and plan_path.read_text(encoding="utf-8").strip() else ""
@@ -7636,6 +7913,8 @@ def promote_deferred(args: argparse.Namespace) -> None:
     append_event("deferred_promoted", deferred=did, phase=args.phase, slice=args.slice)
     rebuild_index_and_state()
     print(f"promoted {did} -> {args.slice}: {shown(sdir)}")
+    for line in declared_slice_lines(args.kind, deps):
+        print(line)
 
 
 def drop_deferred(args: argparse.Namespace) -> None:
@@ -11604,7 +11883,7 @@ def main(argv=None) -> int:
     p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work (closed set; unknown kinds are rejected). research is findings-only: no product code, findings land in phase.md, and it always routes to the research row")
     p.add_argument("--risk", default="high", help="low (the mid row for implementation and fix, the cheap row for docs and qa -- the default since v46, real code included) or high (the high row: only for a named trigger -- open design, a core invariant, an unlocated root cause, a wide blast radius -- or a fix to mid-row work); unset or unrecognized values route to high; kind decomposition, review, co-work and research route by kind whatever this says; `executor-route <slice>` prints the decision")
     p.add_argument("--order", type=float, help="sort position within the phase; a fractional value (e.g. 4.5) inserts between two neighbors without renumbering (default: 10 past the last non-review slice)")
-    p.add_argument("--depends-on", action="append", help="advisory: validate checks only that the named slice exists; selection still follows --order")
+    p.add_argument("--depends-on", action="append", metavar="ID|none", help=DEPENDS_ON_HELP)
     p.set_defaults(func=new_slice)
 
     p = sub.add_parser("start-slice", help="Mark a slice in_progress")
@@ -11858,7 +12137,7 @@ def main(argv=None) -> int:
     p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work (closed set; unknown kinds are rejected). research is findings-only: no product code, findings land in phase.md, and it always routes to the research row")
     p.add_argument("--risk", default="high", help="low (the mid row for implementation and fix, the cheap row for docs and qa -- the default since v46, real code included) or high (the high row: only for a named trigger -- open design, a core invariant, an unlocated root cause, a wide blast radius -- or a fix to mid-row work); unset or unrecognized values route to high; kind decomposition, review, co-work and research route by kind whatever this says; `executor-route <slice>` prints the decision")
     p.add_argument("--order", type=float, help="sort position within the phase; a fractional value (e.g. 4.5) inserts between two neighbors without renumbering (default: 10 past the last non-review slice)")
-    p.add_argument("--depends-on", action="append", help="advisory: validate checks only that the named slice exists; selection still follows --order")
+    p.add_argument("--depends-on", action="append", metavar="ID|none", help=DEPENDS_ON_HELP)
     p.add_argument("--create-phase", action="store_true")
     p.add_argument("--phase-name")
     p.add_argument("--phase-objective")

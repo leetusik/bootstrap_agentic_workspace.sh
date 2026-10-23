@@ -21,7 +21,9 @@
 # notebook budget/case-drift warnings and the timestamp-free dashboards; v61: phase-section reads and writes
 # one phase.md section, a 40 KB index budget naming the biggest sections), the P41 run-phases invariants
 # (a run's tokens resolve in order and a non-phase token refuses; a run passes a parked acceptance gate and
-# halts at a pending slice while plain `next` still waits there), the v43
+# halts at a pending slice while plain `next` still waits there), the P42 ready-set invariants (an undeclared phase
+# keeps its plain pointer and prints no wave line; a declared slice is never ready before its dependency is done;
+# a running barrier is never a wave slice, so a declared phase's open acceptance gate reads as a stop), the v43
 # worktree-on-request invariants (nothing enters a worktree unhinted or unasked; parallel-start
 # on a dirty tree commits only the phase folder plus the regenerated works/ files and cuts a
 # nested .claude/worktrees/ checkout hidden by the repo's info/exclude; parallel-skip and
@@ -315,6 +317,25 @@ for required in (
     assert required in phases_core, ("do-whole-phases", required)
 # do-whole-phase (one phase) points at its sibling, by the exact path.
 assert ".claude/skills/do-whole-phases/SKILL.md" in (root / "payload/claude/skills/do-whole-phase/SKILL.md").read_text(encoding="utf-8")
+
+# P42 (v71): /do-whole-phase runs a declared phase's independent slices together. The protocol lives in
+# one reference that ships with do-whole-phase only (do-next-slice still runs one slice), pinned on its
+# exact path and a handful of whole strings; the DECOMP rules that make a slice independent live in
+# decomposition.md, and explain chapters stay undeclared (explain-decomposition.md drops `--depends-on`).
+_wave_rel = ".claude/skills/do-whole-phase/reference/wave.md"
+assert _wave_rel in LIVE and ".claude/skills/do-next-slice/reference/wave.md" not in LIVE, "wave.md ships with do-whole-phase only"
+wave = (root / "payload/claude/skills/do-whole-phase/reference/wave.md").read_text(encoding="utf-8")
+for required in (
+    "`ready_slices=<ids|none>`", "`running_slices=<ids|none>`", "## Wave",
+    "**The join-rebuilt artifact is the one exception.**", "**Rolling (the default).**", "**At the join.**",
+    "wait for every running span and never re-dispatch one",
+):
+    assert required in wave, ("wave.md", required)
+decomp = (root / "payload/claude/skills/do-whole-phase/reference/decomposition.md").read_text(encoding="utf-8")
+for required in ("**Independence means disjoint sets.**", "Never declare `DECOMP2`, `REVIEW` or a `co-work` slice"):
+    assert required in decomp, ("decomposition.md", required)
+for _rel in (".claude/skills/do-whole-phase/reference/explain-decomposition.md", ".claude/skills/do-next-slice/reference/explain-decomposition.md"):
+    assert _rel in LIVE and "[--depends-on" not in LIVE[_rel], _rel
 
 # The spec hard-wraps its prose, so match against a whitespace-flattened copy: these
 # assertions are about the wording, not about where a line happens to break.
@@ -627,8 +648,14 @@ for required in ("## Gate stages", "`walkthrough`", "`## Operator Runtime`", "`#
                  # the mockup qualifier applies only where the operator asked for one.
                  "(gate section — written at merge)", "a phase in which the operator asked for one",
                  "Re-run the checklist lines inside the boundary",
-                 "an operator-created QA phase, never by a review"):
+                 "an operator-created QA phase, never by a review",
+                 # P42.S4 (v71): a finding is a whole problem class, so one round finds every case.
+                 "**A finding is a problem class, not an instance.**"):
     assert required in review, required
+# P42.S4 (v71): a second failure of the same rules stops for the operator instead of another fix round,
+# in both loops' review references (separate files, so each exact path is read).
+for _rel in ("claude/skills/do-whole-phase/reference/review.md", "claude/skills/do-next-slice/reference/review.md"):
+    assert "**Stop instead of another round.**" in (root / "payload" / _rel).read_text(encoding="utf-8"), _rel
 for gone in ("MCP surface first", "scripted Playwright-style automation",
              # the default is never moved with `aside account use`; the flag is
              # passed per invocation.
@@ -709,11 +736,14 @@ for tier in ("slice-executor",):
         "that is `DECOMP2`'s second origin",
         # v44: two rules moved here from the contract -- the docs slice's
         # doc-new-version carve-out (OQ1, operator-approved) and the fractional
-        # `--order` / advisory `depends_on` facts a DECOMP executor needs.
+        # `--order` / `depends_on` facts a DECOMP executor needs (v71: the dependency binds).
         "**The `docs` slice's carve-out:**",
         "a fractional `--order` (e.g. `4.5`) inserts a slice between two neighbors",
+        # P42 (v71): a wave executor's rules, and `--depends-on` declares and binds.
+        "## In a wave (your `plan.md` carries a `## Wave` section)", "**declares and binds**",
     ):
         assert required in body, (tier, required)
+    assert "`depends_on` is advisory" not in body, (tier, "advisory depends_on")
     # v36: Aside is the prescribed real-browser instrument in BOTH bodies -- the
     # implementation bullet, the mockup span, and the review's gate stage 2.
     for required in (
@@ -870,8 +900,11 @@ for required in (
     # and the gate rule would forbid the run.
     "(bar `/do-whole-phases`' parked gate)",
     "(`/do-whole-phases` parks it and continues; every other stop halts the run)",
+    # v71 (P42): the reversal of "never fan out slices" -- a declared phase's independent slices run at once.
+    "a phase's declared, independent slices may run at once (`do-whole-phase`'s wave), all others alone",
 ):
     assert required in claude, required
+assert "never fan out slices" not in claude, "the contract still forbids fanning out slices"
 # P36.F1: the contract's size cap (the operator's P34 pick, 12,288 B by wc -c) was a recorded rule
 # no test held, so a release went out 338 B over it; the shipped CLAUDE.md is this file byte for byte.
 assert len((root / "payload/contract.md").read_bytes()) <= 12288, "contract over its 12,288 B cap"
@@ -916,7 +949,7 @@ compact = claude.split("## Compact Instructions", 1)[1]
 assert "resume card" in compact and "never re-dispatch a running executor" in compact
 assert "re-read" not in compact, "Compact Instructions carry a re-read instruction"
 PY
-then ok "18 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with waves and opt-in critique, mockups on request, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
+then ok "18 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with waves and opt-in critique, mockups on request, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v71 wave protocol (do-whole-phase's reference/wave.md, DECOMP's disjoint-sets rule, the executor's wave section, the contract's reversal of "never fan out slices"); the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
@@ -1892,6 +1925,7 @@ sh "$BOOT" "$F" --update >/dev/null 2>&1   # restore both verbatim for the Test 
 [ ! -f "$F/.claude/agents/phase-reviewer.md" ] && ok "phase-reviewer retired (absent on fresh install)" || bad "phase-reviewer should be retired but is present"
 [ -d "$F/.claude/skills/do-whole-phase" ] && ok "fresh install keeps do-whole-phase" || bad "do-whole-phase skill missing"
 [ -f "$F/.claude/skills/do-whole-phases/SKILL.md" ] && ok "fresh install ships the do-whole-phases skill" || bad "fresh install missing the do-whole-phases skill"
+[ -f "$F/.claude/skills/do-whole-phase/reference/wave.md" ] && ok "fresh install ships do-whole-phase's reference/wave.md (the wave protocol)" || bad "fresh install missing do-whole-phase/reference/wave.md"
 [ ! -e "$F/.claude/skills/explain" ] && grep -qF '/plugin marketplace add leetusik/knowledge' "$F/docs/current/operations.md" \
   && grep -qF '/plugin install knowledge@knowledge' "$F/docs/current/operations.md" \
   && ok "fresh install ships no explain skill; its operations doc points at the knowledge plugin" || bad "fresh install still ships explain, or the operations doc lacks the plugin pointer"
@@ -2136,6 +2170,34 @@ out=$(rp run-phases P1 P2 P3 2>&1); plain=$(rp next 2>&1)
 printf '%s\n' "$out" | grep -q '^parked=P1 ' && printf '%s\n' "$out" | grep -qx 'halt=P2.DECOMP status=pending' && printf '%s\n' "$out" | grep -qx 'stop_kind=decision' \
   && ! printf '%s\n' "$out" | grep -q '^target_' && printf '%s\n' "$plain" | grep -qx 'waiting_on_operator=P1' \
   && ok "run-phases passes a parked gate and halts at a pending slice, while plain next still waits on the parked phase" || bad "run-phases parking wrong -- $out / $plain"
+
+# ---------------------------------------------------------------------------
+echo "== Test 10d: P42 the ready set -- an undeclared phase keeps its plain pointer, a declared dependency binds =="
+# Same emptied copy of $F as 10c: P1 is undeclared (the pointer, as before); P2 is declared and read through run-phases P2.
+newtmp RSW; cp -R "$F" "$RSW/ws"; SW="$RSW/ws"; rm -rf "$SW/works/phases/active/"*; rs() { ( cd "$SW" && python3 scripts/workflow.py "$@" ); }
+{ for n in 1 2; do rs new-phase --phase "P$n" --name "Ready probe $n" --objective "ready probe" && rs finish-slice "P$n.DECOMP" --outcome cut; done \
+  && rs new-slice --phase P1 --slice P1.S1 --name s1 && rs new-slice --phase P1 --slice P1.S2 --name s2 \
+  && rs new-slice --phase P2 --slice P2.S1 --name s1 --depends-on none && rs new-slice --phase P2 --slice P2.S2 --name s2 --depends-on P2.S1; } >/dev/null 2>&1 \
+  || bad "ready-set probe: setup failed"
+plain=$(rs next 2>&1); card=$(rs next --card 2>&1); run=$(rs run-phases P1 2>&1)
+printf '%s\n' "$plain" | grep -qx 'current_slice=P1.S1' && printf '%s\n' "$run" | grep -qx 'target_slice=P1.S1' \
+  && ! printf '%s\n%s\n%s\n' "$plain" "$card" "$run" | grep -q -e '^ready_slices=' -e '^running_slices=' -e '^wave: ' \
+  && ok "an undeclared phase's ready set is its first open slice alone: next, the card and run-phases print no ready, running or wave line" \
+  || bad "undeclared phase output changed -- $plain / $card / $run"
+r1=$(rs run-phases P2 2>&1); rs start-slice P2.S1 >/dev/null 2>&1; r2=$(rs run-phases P2 2>&1); rs finish-slice P2.S1 --outcome x >/dev/null 2>&1; r3=$(rs run-phases P2 2>&1)
+rs new-slice --phase P2 --slice P2.S0 --name s0 --order 5 --depends-on P2.S2 >/dev/null 2>&1; fwd=$?
+printf '%s\n' "$r1" | grep -qx 'ready_slices=P2.S1' && printf '%s\n' "$r2" | grep -qx 'ready_slices=none' && printf '%s\n' "$r2" | grep -qx 'running_slices=P2.S1' \
+  && printf '%s\n' "$r3" | grep -qx 'ready_slices=P2.S2' && [ "$fwd" -ne 0 ] && [ ! -e "$SW/works/phases/active/P2/slices/P2.S0" ] \
+  && ok "a declared slice is never ready before its dependency is done, and new-slice refuses a dependency not ordered before it" \
+  || bad "declared ready set wrong (fwd rc=$fwd) -- $r1 / $r2 / $r3"
+{ rs set-phase-status P1 done && rs start-slice P2.S2 && rs finish-slice P2.S2 --outcome x && rs start-slice P2.REVIEW \
+  && : > "$SW/works/phases/active/P2/slices/P2.REVIEW/result.md" && rs accept-gate P2 --require && rs accept-gate P2 --open --walkthrough probe; } >/dev/null 2>&1 \
+  || bad "ready-set probe: could not open P2's acceptance gate"
+gn=$(rs next 2>&1); gc=$(rs next --card 2>&1)
+printf '%s\n' "$gn" | grep -qx 'waiting_on_operator=P2' && printf '%s\n' "$gc" | grep -q '^stop: phase P2 acceptance gate open ' \
+  && ! printf '%s\n%s\n' "$gn" "$gc" | grep -q -e '^running_slices=' -e '^wave: ' \
+  && ok "a declared phase at its open acceptance gate reads as a stop: the running REVIEW is a barrier, never a wave's running or returned slice" \
+  || bad "declared gate reads as a wave -- $gn / $gc"
 
 # ---------------------------------------------------------------------------
 echo "== Test 11: v41 phase-scope -- the phase's boundary is read from git, advisory everywhere =="

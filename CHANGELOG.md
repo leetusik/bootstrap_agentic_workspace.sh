@@ -9,6 +9,89 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v71 — 2026-10-23
+
+- **A phase's declared, independent slices run together.** `/do-whole-phase` (and `/do-whole-phases`
+  through it) now starts every slice whose dependencies are done at once, in the same checkout,
+  instead of one executor at a time. Each slice still gets its own start, verdict record, finish and
+  commit; the orchestrator writes the shared notebook entries as each one returns. There is no fixed
+  cap. `/do-next-slice` still runs one slice; in a declared phase it stops while a wave is unfinished
+  (a commit waits, or another slice is in flight) and points to `/do-whole-phase`. An explain phase
+  stays sequential: its chapters are cut undeclared (`explain-decomposition.md` drops `--depends-on`).
+- **Declared dependencies bind.** `new-slice` and `promote-deferred` take `--depends-on <id>`
+  (repeatable) or `--depends-on none`; the slice stores `"depends_declared": true` beside
+  `depends_on`. A declared dependency must name a slice of the same phase ordered strictly before
+  it, so `order` is a topological order and the plain pointer (`next`, `/do-next-slice`) always has
+  its dependencies done. `new-slice` refuses a violation (and `none` beside an id) and writes
+  nothing; `validate` adds three declaration errors and a warning for a declaration on a barrier.
+  Before v71 `depends_on` was advisory and only had to name a slice that exists.
+- **Barriers run alone.** `DECOMP`, `DECOMP2`, `DECOMP3`, `REVIEW`, `co-work` design slices and every
+  **undeclared** slice start only when everything before them is done and nothing is `in_progress`;
+  nothing after one starts until it is done. DECOMP declares every non-barrier slice with its
+  **set** (its files; the generated files its edits regenerate; any numbered sequence it extends; any
+  shared runtime resource it holds), and marks two slices independent only when the sets are disjoint.
+- **The ready set.** For a declared phase only, `next` and `run-phases` print `ready_slices=` and
+  `running_slices=`, and the resume card a `wave:` line (plus a `stop:` line for a sibling's stop).
+  A barrier running alone prints none of them, so a running `REVIEW` or an open acceptance gate
+  reads as before. `start-slice` warns, never refuses: it prints one `warning:` line and still starts
+  a declared slice whose dependency is not done, or a barrier beside running slices. At every
+  session start, after every compaction and before every start or commit, the run first commits
+  each finished slice whose commit still waits, read from disk:
+  a slice's workflow state commits with its host commit, or right after it in a nested pair, so a
+  finished slice whose `slice.json` is still uncommitted is one, and a committed slice never reads as
+  waiting; one whose set holds a path a check stop names keeps waiting for that answer. It starts no
+  barrier before those commits are in, then waits for every running span (none outlives the session
+  that dispatched it), never re-dispatches one, finishes each slice whose `result.md` says `done`,
+  re-dispatches the rest from disk, and starts the ready set only while no stop is on disk. A
+  `/do-whole-phases` run starts nothing in a phase while another phase on the stream has a commit
+  waiting or a slice in flight. A stop anywhere (`pending`, `blocked`, a failed high-row return)
+  empties the ready set; the slices already running finish and are committed, nothing new starts,
+  and the run stops.
+- **The wave protocol, in a new `do-whole-phase/reference/wave.md`.** A wave slice's `plan.md` carries
+  a `## Wave` section (its set, its siblings' sets, and the set of each finished slice whose commit
+  still waits); its executor writes no `phase.md` (it returns a `notebook` field in its verdict),
+  runs no engine command that writes, edits only its declared set (any other file is a
+  `needs_operator`), and lists whole-tree checks it left out as `deferred: whole-tree` for the
+  review. Commits are one per slice, rolling by default. A **join-rebuilt artifact** (a build
+  output regenerated from many slices' sources, such as this repo's `bootstrap_agentic_workspace.sh`)
+  is the one exception to disjoint sets: wave executors never rebuild it; every commit waits until
+  the running set drains, then the orchestrator rebuilds once and commits the artifact with the
+  last slice. Each slice's commit stages the dirty paths of its declared set, read from the tree
+  (new, deleted and renamed files included, whatever its `files_changed` lists), and commits only
+  those paths. An edit that no set in flight holds stops the run before any commit takes it: the
+  stop names its paths, the commit of any slice whose set holds one waits for the answer in any later
+  session too, and an answer that adds a path to a set is written into that slice's `## Wave` set
+  line. A slice whose set overlaps a finished slice's waiting commit starts only once that commit
+  is in, so each commit holds exactly its own slice's edits.
+- **The contract reverses "never fan out slices".** It now says a phase's declared, independent slices
+  may run at once (`do-whole-phase`'s wave), all others alone, and the phase stays the unit of
+  *worktree* parallelism (`parallel-phase` reverses its sequential line and its slice-level guardrail:
+  a wave runs in the phase's own checkout, never a worktree per slice).
+  `slice-executor.md` gains an `## In a wave` section and says `--depends-on` declares and binds; its
+  `files_changed` now lists deleted paths and both paths of a rename. The
+  contract stays under its 12,288 B cap; the skill count stays 18.
+- **A workspace that declares nothing is byte-identical to v70.** Every existing slice is undeclared,
+  so every existing phase selects, stores and prints exactly as before: no `ready_slices=` line, no
+  `wave:` line, `state.json` and the dashboards unchanged.
+- **The review finds every case of a finding at once.** A finding is a problem class, not an
+  instance: the reviewer names the rule that failed, enumerates and tests every case it governs
+  across every file that implements or describes it (states, paths, modes), and reports one finding
+  per class with its failing and passing cases. It proposes one fix slice per class, naming every
+  file of the rule's family and carrying the case list as its acceptance matrix; the orchestrator
+  copies the list into the fix's `plan.md`, and the fix executor proves every case. A re-review
+  round states its number and checks each fix against its case list, its blast radius and the
+  validation suite, reusing earlier results for what no fix touched; a new problem elsewhere is a
+  finding only when earlier rounds could not have seen it. When the same rules fail a second time,
+  the orchestrator cuts no further fix: it stops `pending --stop-kind decision` and asks the
+  operator (a simpler fix, accept and defer, or cut scope). Text only: `review-phase`, both loops'
+  `reference/review.md`, `slice-executor.md`.
+
+- **Migration notes.** Existing phases stay sequential (undeclared, including any pre-v71
+  `depends_on` list, which was advisory and may be incomplete). New phases' `DECOMP` declares its
+  slices from now on, and that is the only way a phase runs several at once. `--update` adds
+  `do-whole-phase/reference/wave.md` and the engine's new flag and lines; nothing in a phase's files
+  changes. A phase already in review takes the new review rules from its next round.
+
 ## v70 — 2026-10-22
 
 - **One workspace over several repos.** A nested install can now sit over a folder of repos, a

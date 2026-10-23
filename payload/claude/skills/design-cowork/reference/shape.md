@@ -68,7 +68,7 @@
   Foundations board, the core components, one key page); with a design system, the system is the
   foundation. Later jobs build on signed ones, and the most central surface goes first.
 - **Waves:** one co-work slice may hold several jobs (about 3–4), drafted in parallel, one drafter per
-  job, each writing only its own job folder. A wave is one slice, so "never fan out slices" holds.
+  job, each writing only its own job folder. A wave is one slice, and a `co-work` slice is a barrier that runs alone.
   `design-open` warns past 4 open rounds in a slice.
 - **Each job's critique level:** `off | critic | critic+judge`, unset = `off`. On for new or central
   surfaces, greenfield foundations, many-state flows and public pages; off for small follow-ups,

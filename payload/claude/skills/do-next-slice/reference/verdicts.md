@@ -1,5 +1,15 @@
 # do-next-slice — launching the executor, escalation and the commit
 
+## Before step 1 — a declared phase
+
+`/do-next-slice` never runs a wave, and its commit (step 7) takes all pending changes. So in a declared phase (`next` prints `ready_slices=`) it starts nothing while a wave is unfinished, that is, while:
+
+- a commit waits: `git status --porcelain --untracked-files=all` on the phase's `slices/` folder, in the repo that holds the workflow state, lists the `slice.json` of a `done` slice whose committed copy does not say `done`;
+- a slice other than the selected one is `in_progress`, `pending` or `blocked`; or
+- the selected slice's `plan.md` carries a `## Wave` section (it ran in a wave).
+
+Then STOP before any `start-slice`, dispatch or commit, and tell the operator to run `/do-whole-phase`, whose *Resume* commits and resumes the wave from disk. Otherwise go on: the slice runs alone, as a wave's lone slice would.
+
 ## Step 3 — dispatch
 
 3. Dispatch the executor to implement the slice. Always launch it through the Agent tool **as a background task** (the default — never pass `run_in_background: false`) and wait for its completion notification; never run the executor synchronously inline in the main session. This applies to decomposition, `research`, implementation, `fix`, and review. **`kind: co-work` is the exception, and only in part** — its round runs inline with dispatched spans; *When the selected slice is a design slice* below carries it.
@@ -15,4 +25,4 @@ Give the executor the slice id and folder path; it reads the plan and context, i
 
 ## Step 7 — the commit
 
-7. Commit by default: group the slice's pending changes into focused `type(scope): summary` commit(s) following the Commit Convention. Committing is the orchestrator's job — the executor never commits. **Attribute the slice commit to the model that did the work:** its trailer is `Co-Authored-By: <attribution> <noreply@anthropic.com>`, `<attribution>` being the `attribution=` line of the dispatch that produced the work — equivalently the name for the `model:` its verdict block records; a slice done in two attempts goes to the model that completed it. Commits carrying only your own work (phase creation, a gate declaration alone, a verdict record) are attributed to the session's model as before; never carry over another session's trailer. Do not branch unless the operator asks; never push. A phase the operator asked into a worktree already has its branch — that branch *is* the worktree they asked for, so its slice commits land on `phase/P<N>-<slug>` without asking again; every other phase's land on the current branch. Pushing is separate and still needs asking: the `parallel-phase` integration merges locally by default, and its push → PR variant runs only when the operator asks (each push still goes through the permission prompt).
+7. Commit by default: group the slice's pending changes into focused `type(scope): summary` commit(s) following the Commit Convention. Committing is the orchestrator's job — the executor never commits. In a nested pair commit the host paths first and the workflow state right after, so a `done` slice whose `slice.json` is still uncommitted always marks a commit that waits. **Attribute the slice commit to the model that did the work:** its trailer is `Co-Authored-By: <attribution> <noreply@anthropic.com>`, `<attribution>` being the `attribution=` line of the dispatch that produced the work — equivalently the name for the `model:` its verdict block records; a slice done in two attempts goes to the model that completed it. Commits carrying only your own work (phase creation, a gate declaration alone, a verdict record) are attributed to the session's model as before; never carry over another session's trailer. Do not branch unless the operator asks; never push. A phase the operator asked into a worktree already has its branch — that branch *is* the worktree they asked for, so its slice commits land on `phase/P<N>-<slug>` without asking again; every other phase's land on the current branch. Pushing is separate and still needs asking: the `parallel-phase` integration merges locally by default, and its push → PR variant runs only when the operator asks (each push still goes through the permission prompt).
