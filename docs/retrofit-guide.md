@@ -198,8 +198,8 @@ and `executors.toml`.
 The installer seeds **no phases** — a freshly adopted workspace starts empty, on
 purpose. Your first real task enters through the normal intake flow: tell your
 agent what you want (or type `/create-phase <your task>`), and it refines your
-intent, asks about anything ambiguous, confirms, and creates `P1` with its
-`DECOMP` + `REVIEW` slices. That way the first phase reflects a task *you*
+intent, asks about anything ambiguous, confirms, and creates your first phase
+(the engine mints its id, e.g. `P-7kq2`) with its `DECOMP` + `REVIEW` slices. That way the first phase reflects a task *you*
 chose and confirmed — not a placeholder synthesized at install time.
 
 ---

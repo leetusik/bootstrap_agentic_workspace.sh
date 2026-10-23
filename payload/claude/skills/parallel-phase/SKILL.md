@@ -41,8 +41,8 @@ the detail lives here.
    `parallel-start <P>` when they are told to and never on their own initiative; `create-phase`
    never does, and neither does `/do-whole-phases`. A phase already carrying the stamp is entered
    without asking again.
-2. **Where** — `<repo>/.claude/worktrees/P<N>-<slug>` on branch `phase/P<N>-<slug>` (`--worktree`
-   overrides); the engine puts `.claude/worktrees/` in `.git/info/exclude` (common dir), never in
+2. **Where** — `<repo>/.claude/worktrees/P<N>-<slug>` on branch `phase/P<N>-<slug>` (`P<N>` is the
+   phase's id, `P12` or `P-7kq2`; `--worktree` overrides); the engine puts `.claude/worktrees/` in `.git/info/exclude` (common dir), never in
    `.gitignore`. **Nested install:** a pair — the host worktree `<host>/.claude/worktrees/P<N>-<slug>`
    on the operator-confirmed host branch, with the nested worktree at its `workflow/` on
    `phase/P<N>-<slug>`; the engine adds `/.claude/worktrees/` to the host's `info/exclude`.
@@ -200,8 +200,9 @@ Operator Questions, Notes, Now — is merged by hand like any other prose.
 Run the phase review exactly as `review-phase` describes, with **one** difference. Every phase now
 defers consolidation to a docs phase, but a default-stream review still writes two named sections
 itself (`## Regression Checklist`, `## Operator Runtime`); on a branch it writes **nothing**. Doc
-versions are allocated from a single `docs/index.json` counter, so two branches writing at once
-collide — everything waits for the serialized post-merge step on the default stream.
+versions copy a doc's whole body from the branch point and write the one `docs/index.json`, so two
+branches versioning one doc at once fork it (a merge keeps one side's edits) — everything waits for
+the serialized post-merge step on the default stream.
 
 So on a parallel branch the review executor:
 

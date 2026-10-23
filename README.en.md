@@ -449,12 +449,12 @@ agent, *"where are we?"*.
 
 Everything is organized as **phases** made of **slices**, driven by one script.
 
-- **Phase** (`P1`, `P2`, …) — a unit of work with an objective. A new phase starts with only two
+- **Phase** (`P-7kq2`, minted by the engine; older workspaces number them `P1`, `P2`, …) — a unit of work with an objective. A new phase starts with only two
   slices: a `DECOMP` (decomposition) and a `REVIEW`.
-- **Slice** (`P1.DECOMP`, `P1.S1`, `P1.F1`, `P1.REVIEW`) — an ordered step within a phase. The
+- **Slice** (`P-7kq2.DECOMP`, `P-7kq2.S1`, `P-7kq2.F1`, `P-7kq2.REVIEW`) — an ordered step within a phase. The
   `DECOMP` slice is what breaks the phase into the middle slices; each slice fills its own `plan.md`
   before working and writes a `result.md` when done.
-- **Deferred job** (`D1`, `D2`, …) — a parked idea. It sits outside the active backlog and never
+- **Deferred job** (`D-m3xa`, minted likewise; older workspaces have `D1`, `D2`, …) — a parked idea. It sits outside the active backlog and never
   changes what runs next until you explicitly promote it.
 
 The contract boils down to one line:
@@ -470,23 +470,29 @@ another agent, CI — drives the workspace with the exact same commands:
 | Command | What it does |
 |---|---|
 | `next` | Show the current / next slice |
-| `new-phase --phase P2 --name … --objective …` | Create a phase (seeds `DECOMP` + `REVIEW`) |
-| `new-slice --phase P1 --slice P1.S1 --name …` | Add a slice |
-| `start-slice P1.S1` / `finish-slice P1.S1 --outcome …` | Move a slice through its lifecycle |
-| `review-phase P1 --verdict pass` | Record a phase review |
-| `accept-gate P1 --require` / `--open --walkthrough …` / `--clear` | Declare, open, and clear a phase's operator acceptance gate |
+| `new-phase --name … --objective …` | Create a phase (seeds `DECOMP` + `REVIEW`); the engine mints its id, e.g. `P-7kq2` |
+| `new-slice --phase P-7kq2 --slice S1 --name …` | Add a slice (`P-7kq2.S1`; the full id works too) |
+| `start-slice P-7kq2.S1` / `finish-slice P-7kq2.S1 --outcome …` | Move a slice through its lifecycle |
+| `review-phase P-7kq2 --verdict pass` | Record a phase review |
+| `accept-gate P-7kq2 --require` / `--open --walkthrough …` / `--clear` | Declare, open, and clear a phase's operator acceptance gate |
 | `docs` | List each doc's latest version with its last-updated marker, flagging **STALE** docs |
-| `doc-new-version --doc backend --summary … --source P1.REVIEW` | Cut a new durable doc version (in a docs phase) |
+| `doc-new-version --doc backend --summary … --source P-7kq2.REVIEW` | Cut a new durable doc version, named by its UTC minute (in a docs phase) |
 | `docs-debt` | Print a docs phase's worklist: the phases that owe consolidation, their notes, the docs they touch |
-| `docs-consolidated P1` | Record that a phase's doc debt is paid |
-| `defer-job --title … --reason … --trigger …` | Park a deferred job |
-| `promote-deferred D1 --phase P1 --slice P1.S2` | Promote a deferred job into a slice |
+| `docs-consolidated P-7kq2` | Record that a phase's doc debt is paid |
+| `defer-job --title … --reason … --trigger …` | Park a deferred job; the engine mints its id, e.g. `D-m3xa` |
+| `promote-deferred D-m3xa --phase P-7kq2 --slice S2` | Promote a deferred job into a slice (`--create-phase` without `--phase` mints the phase) |
 | `sync-agents` | Apply the `executors.toml` per-row model/effort overrides to the four agent files |
 | `executor-route` / `executor-route <slice_id> [--retry]` | Show the resolved route table and the agent files' sync state, or the dispatch decision for one slice (`--drafter`, `--critic`, `--judge`, `--explore` for the non-slice agents) |
 | `record-dispatch <slice_id> --verdict … [--attempt N] [--note …]` | Record the orchestrator's verdict on one executor dispatch in `works/events.jsonl` (the span's volume is metered from the transcripts, not recorded) |
 | `dispatch-summary [--phase P] [--slice S] [--json]` | Meter the main thread beside every span from Claude Code's transcripts, per slice and per phase, at list price, with the recorded verdicts |
 | `parallel-start <P>` … `parallel-teardown <P>` | Move a phase into its own branch + worktree when you ask for one, then integrate it back with a local merge (see the `parallel-phase` skill) |
 | `validate` | Check workspace integrity |
+
+Ids are minted by the engine, never picked: `new-phase` and `defer-job` print a `P-` or `D-` id with a
+four-character token (`P-7kq2`, `D-m3xa`), so two branches minting at once do not clash on a number.
+Numbered ids from older workspaces (`P12`, `D12`) keep working, and anywhere an id is typed the brief
+forms do too: `7kq2`, `P-7kq2`, `12`, `P12`. A new doc version is named by its UTC minute
+(`v2610230243_<slug>.md`); `v0001`–`v0043` stay as they are.
 
 The full command list is `python3 scripts/workflow.py --help` (and `<command> -h` for one command's flags).
 
@@ -500,7 +506,7 @@ commands in Claude Code:
 | `create-phase` | Capture intent, then create a phase (seeds `DECOMP` + `REVIEW`); stops before decomposition |
 | `do-next-slice` | Complete exactly one slice, then stop |
 | `do-whole-phase` | Finish the active phase end-to-end, including its review |
-| `do-whole-phases` | Run several phases back to back (`P12, 13, 14`, or every phase not done): an open acceptance gate is parked and the run continues; any other stop halts it |
+| `do-whole-phases` | Run several phases back to back (`P12, 13, 7kq2`, or every phase not done): an open acceptance gate is parked and the run continues; any other stop halts it |
 | `review-phase` | Review a phase and record a `pass` / `changes_requested` / `blocked` verdict |
 | `parallel-phase` | Run a phase in its own branch + worktree when you ask for one, and integrate it back: quiet-point gate, local merge by default, the review's gate sections, teardown |
 | `doc-new-version` | Create a new versioned durable doc instead of patching the current one |
@@ -510,7 +516,7 @@ commands in Claude Code:
 | `archive-phase` | Archive review-passed phases whose doc debt is paid (normally batched via `archive-all`) |
 | `rotate-backlog` | One invocation cleans up every done phase: it archives the clean ones at once, pays all the doc debt by resuming, widening or creating the docs phase and running it (the invocation is the yes; `gate` restores the approval loop), goes around parked work, and archives every paid phase; it stops only for running work or for uncommitted edits beside parked work; `archive-only` keeps the plain archive-and-report sweep |
 | `rebuild-workflow` | Rebuild generated dashboards, indexes, and doc snapshots, then validate |
-| `executor-route` | Show the route table and the dispatch summary, or one slice's dispatch decision (`/executor-route P1.S2`) |
+| `executor-route` | Show the route table and the dispatch summary, or one slice's dispatch decision (`/executor-route P-7kq2.S2`) |
 | `commit` | Group pending changes into focused conventional commits |
 | `retrofit` | Non-destructively adopt this workspace into an existing repo |
 | `update-workspace` | Update an adopted workspace's machinery to the latest upstream, preserving your work |
@@ -620,7 +626,8 @@ progress, a taken branch or path.
 
 **Staying on `main` takes nothing** — it is the default. The one thing to know: **never ask for a
 worktree on a docs phase**, because `doc-new-version` and `docs-consolidated` only work on the
-default stream (doc versions come from one shared index). `parallel-skip <P>` and `new-phase
+default stream (a doc version copies the doc's whole body and writes the one shared
+`docs/index.json`, so two branches versioning at once would fork it). `parallel-skip <P>` and `new-phase
 --on-main`, which pinned a phase back when v42 made the worktree the default, are now no-ops kept
 only so older habits and scripts still run; they write nothing. `parallel-status` shows every
 stream's state from any checkout. `works/backlog.md`'s `## Streams` table lists the default stream and
@@ -676,7 +683,7 @@ parallelism it never used. The mechanism itself is unchanged.)
 │   └── workflow.py                # the one manager that drives all state
 ├── docs/
 │   ├── current/                   # generated snapshots — never hand-edit
-│   ├── versions/<doc>/vNNNN_*.md  # append-only durable doc history (11 categories)
+│   ├── versions/<doc>/v*_*.md     # append-only durable doc history (11 categories)
 │   └── index.json                 # maps each doc to its latest version
 ├── works/
 │   ├── state.json                 # current / next pointer (canonical)
@@ -772,10 +779,10 @@ installed copies; see the root [`CLAUDE.md`](CLAUDE.md)).
 2. Execute it: type `/do-next-slice` or `/do-whole-phase`, or let any agent run the `workflow.py`
    commands directly. The `DECOMP` slice breaks the phase into slices.
 3. Review it: the phase closes only on a passing review — the agent records it with
-   `python3 workflow/scripts/workflow.py review-phase P2 --verdict …`; you read the result and approve.
+   `python3 workflow/scripts/workflow.py review-phase P-7kq2 --verdict …`; you read the result and approve.
    On a phase that changes what you can see, the review stops one step earlier: it ends with the
    phase `pending` and a concrete walkthrough, and the pass is recorded only after you have walked
-   the running product yourself and cleared the gate (`accept-gate P2 --clear`).
+   the running product yourself and cleared the gate (`accept-gate P-7kq2 --clear`).
 4. Consolidate the docs when you choose: a passing phase leaves its doc changes as notes it owes,
    and a docs phase you start — *"consolidate the docs"* — versions each touched doc once and pays
    the debt (see [Durable docs](#durable-docs-a-docs-phase-you-start)).

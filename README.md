@@ -360,11 +360,11 @@ checkout에서 한꺼번에 실행합니다. 선언이 없는 phase는 지금처
 
 세 가지만 알면 됩니다.
 
-- **phase** (`P1`, `P2`, …) — 하나의 목표를 가진 작업 묶음입니다. 새 phase는 두 개의
+- **phase** (`P-7kq2` — 엔진이 만들어 주는 id입니다. 이전 workspace는 `P1`, `P2`, … 로 번호를 붙였습니다) — 하나의 목표를 가진 작업 묶음입니다. 새 phase는 두 개의
   slice로 시작합니다. 일을 나누는 `DECOMP`와 마지막 검증인 `REVIEW`입니다.
-- **slice** (`P1.S1`, …) — phase 안의 작은 작업 한 개입니다. 시작 전에 계획(`plan.md`)을
+- **slice** (`P-7kq2.S1`, …) — phase 안의 작은 작업 한 개입니다. 시작 전에 계획(`plan.md`)을
   쓰고, 끝나면 판정 요약으로 시작하는 결과(`result.md`)를 남깁니다.
-- **보류 작업** (deferred job, `D1`, …) — 나중에 하기로 미뤄 둔 아이디어입니다. 명시적으로
+- **보류 작업** (deferred job, `D-m3xa` — 마찬가지로 엔진이 만듭니다. 이전에는 `D1`, …) — 나중에 하기로 미뤄 둔 아이디어입니다. 명시적으로
   꺼내기 전에는 작업 순서에 영향을 주지 않습니다.
 
 규칙 전체는 한 줄로 요약됩니다.
@@ -450,7 +450,7 @@ Claude Code에서 `/이름`으로 입력합니다.
 | `create-phase` | 요청을 확인받은 뒤 phase 생성. 일을 나누기 전에 멈춤 |
 | `do-next-slice` | slice 하나만 완료하고 멈춤 |
 | `do-whole-phase` | phase를 리뷰까지 끝까지 실행 |
-| `do-whole-phases` | 여러 phase를 연달아 실행 (`P12, 13, 14`, 없으면 끝나지 않은 phase 전부). 열린 게이트는 보류하고 계속하며, 그 밖의 멈춤은 전체를 멈춤 |
+| `do-whole-phases` | 여러 phase를 연달아 실행 (`P12, 13, 7kq2`, 없으면 끝나지 않은 phase 전부). 열린 게이트는 보류하고 계속하며, 그 밖의 멈춤은 전체를 멈춤 |
 | `review-phase` | phase를 리뷰하고 `pass` / `changes_requested` / `blocked` 기록 |
 | `parallel-phase` | 요청했을 때 phase를 자기 worktree에서 실행하고 로컬 merge로 다시 합치기 |
 | `executor-route` | 라우트 표와 dispatch 요약 확인; `/executor-route <slice_id>`로 한 slice의 dispatch 결정 확인 |
@@ -485,8 +485,8 @@ phase입니다(한 phase 안에서는 DECOMP가 독립이라고 선언한 slice�
 기록되므로 `main`에서 untracked로 보이지 않습니다(`.gitignore`는 건드리지 않습니다).
 
 `main`에 남기려고 따로 할 일은 없습니다 — 그게 기본값입니다. 문서 통합(docs) phase만은
-**worktree를 요청하지 마세요**: 문서 버전은 하나의 index에서만 나오기 때문에 `doc-new-version`은
-기본 stream에서만 동작합니다. (v42에서 쓰던 `parallel-skip <P>`와 `new-phase --on-main`은 이제
+**worktree를 요청하지 마세요**: 문서 버전은 문서 전체를 복사하고 하나의 `docs/index.json`을 쓰기 때문에, 두 branch가 동시에
+버전을 만들면 갈라집니다. 그래서 `doc-new-version`은 기본 stream에서만 동작합니다. (v42에서 쓰던 `parallel-skip <P>`와 `new-phase --on-main`은 이제
 아무것도 하지 않는 no-op으로 남아 있습니다.)
 
 worktree에서 진행한 phase의 리뷰가 통과하면 에이전트가 통합까지 직접 진행합니다:
