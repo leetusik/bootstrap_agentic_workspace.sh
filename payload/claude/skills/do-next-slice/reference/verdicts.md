@@ -18,6 +18,10 @@ The route table (resolve, pin, dispatch, record, Explore) is in `reference/dispa
 
 Give the executor the slice id and folder path; it reads the plan and context, implements, validates, writes `result.md` (verdict block first), edits the phase notebook under its budget — consuming the notes written for it, recording decisions and doc impact — and returns the structured verdict. Do not implement the slice yourself.
 
+## An over-budget notebook — before the next dispatch
+
+When `next` (or the resume card) prints `notebook_over_budget=<P> (<bytes> of 40960 B) -- required before the next dispatch: …`, run each `notebook_move=` line under it, prefixed `python3 scripts/workflow.py` (`phase-section <P> "<Section>" --to-topic <slug> --entry <ranges>`: the entries move verbatim to `topics/<slug>.md` and a gist line stays, so nothing is lost), then re-run `next`, and carry the moved files in this slice's workflow-state commit. Do it on the main thread before `start-slice` (whose `warning: notebook <P> is over budget` line still starts the slice), never while the executor runs, since it writes the notebook itself. Past 3 moves the line says `(+N more moves …)`: re-run `next` for the rest. The **advisory** form (`-- advisory: nothing left to move (…)`, no `notebook_move=` line) asks only for the remedy it names, such as `--resolve` on answered questions. It never blocks a write, a stop or a finish. Executors never act on it.
+
 ## Step 4 — an escalation, or a failed or empty return
 
 - `escalate` (returned only by a mid-row dispatch) → escalate instead of stopping: append an `## Escalation: mid → high` section to this slice's `plan.md` carrying the executor's `escalation` findings and what to do differently, then resolve with `executor-route <slice_id> --retry`, pin its lines under that section, re-dispatch the slice **on the high row**, and record the second attempt. In `gate` mode, present the revised plan for the operator's approval first (plan mode, as in step 2); in the default (`auto`) re-dispatch straight away. At most 1 escalation per slice; the slice stays `in_progress` throughout.

@@ -11,7 +11,7 @@ An explain phase is one whose `intent.md` carries an `## Explain` section, writt
 ## What the plan asks the executor to do
 
 1. **Research the subject, read-only**, per the skill's §3:
-   - **a phase:** its `intent.md`, `phase.md`, each slice's `result.md` head and `python3 scripts/workflow.py phase-scope <P>` for the commit range and files, then the code itself;
+   - **a phase:** its `intent.md`, its notebook (through `phase-section <P>`, with its `topics/`), each slice's `result.md` head and `python3 scripts/workflow.py phase-scope <P>` for the commit range and files, then the code itself;
    - **a slice:** that slice's records and its commits;
    - **a free topic:** this repo's code in `codebase` mode, or the web in `general` mode.
 
@@ -52,8 +52,8 @@ An explain phase is one whose `intent.md` carries an `## Explain` section, writt
    - **Bare folders.** Never write a chapter's `plan.md`.
    - **Undeclared.** Cut chapters without `--depends-on`: that flag declares a slice, and an explain phase runs one slice at a time.
    - **No translation slices.** A translation names the published original's version (§5's `translated_from`), so translations follow the accepted book (`reference/explain-review.md`).
-4. **Update `phase.md`:**
-   - `## Decisions`: one line for the book (placement, project, chapter count, `book/outline.md`);
+4. **Update `phase.md`**, entry by entry through `phase-section` (never `Read`, `Edit` or `Write` it):
+   - `## Decisions`: one gist line for the book (placement, project, chapter count), linking `book/outline.md`;
    - `## Notes for later slices`: the defined-terms list, tagged for every chapter;
    - `## Now`: the outline awaits the operator's signature.
 

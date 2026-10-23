@@ -18,8 +18,9 @@
   decomposition slice `P<N>.DECOMP2`** (`--kind decomposition --risk high`) ordered right after the
   **last** design slice.
 - **`P<N>.DECOMP2` cuts the build slices once the design is signed**, from the spec pointers in
-  `phase.md` and each signed round's `## Build` (`result.md`): **backing/backend work first, then the design
-  implementation**, then any fidelity fix. Otherwise it is an ordinary decomposition slice.
+  `phase.md`, the build inventory in `topics/breakdown.md`, and each signed round's `## Build` (`result.md`): **backing/backend work first, then the design
+  implementation**, then any fidelity fix. Otherwise it is an ordinary decomposition slice, rewriting
+  `topics/breakdown.md` in place with one more `Breakdown (DECOMP2): …` gist line in `## Decisions`.
 - `P<N>.DECOMP2` has a second origin, after a `research` slice (see `CLAUDE.md`); nothing here depends
   on it.
 - **Choose it when** the whole design should land before any of it is built, and the build fits in
@@ -76,7 +77,8 @@
   a public flow). The operator may override it per round.
 - **How many design slices and jobs there are is decided at the opening `DECOMP`**, from the
   inventory; a job's revisions are superseding rounds inside it, never cut in advance.
-- **`DECOMP` records a build inventory in `phase.md`**: the candidate surface list, **what** to build,
+- **`DECOMP` records a build inventory in `topics/breakdown.md`** (its `## Build inventory`, never in
+  `phase.md`): the candidate surface list, **what** to build,
   not how, one line per candidate, plus each co-work slice's jobs with their critique levels. The
   handoff's scope is written from it, and `paired` counts its apply slices from it; the design may
   add to it and cut from it.

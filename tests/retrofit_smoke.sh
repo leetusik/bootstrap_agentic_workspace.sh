@@ -265,8 +265,14 @@ for name in ("do-next-slice", "do-whole-phase"):
         # design-only device -- it is also the sequel to a research slice.
         "that is what the `research` kind is for", "`--kind research --risk high`",
         "second origin", "`research` and review always",
+        # The entry-level notebook: the orchestrator reads it through phase-section only, runs the
+        # required step's notebook_move= lines before the next dispatch, and keeps the breakdown in a topic.
+        "never with `Read`, `Edit` or `Write`", "`notebook_over_budget=`",
+        "run each `notebook_move=` line under it, prefixed `python3 scripts/workflow.py`",
+        "**The breakdown lives in `topics/breakdown.md`, never in `phase.md`:**",
     ):
         assert required in body, (name, required)
+    assert "sending it back whole" not in body, name
     # v42 negatives: the mandatory mockup, "not an approval" return, and the
     # opt-in framing of the phase branch are retired from both drivers.
     for gone in ("mechanical wait", "can no longer be waived", "suggestion, never a default",
@@ -317,7 +323,7 @@ for _x in _full:
 for required in (
     "run-phases", "**Every halt stops the whole run.**", "**The two overrides, and only these:**",
     "**Its target wins over the resume card's pointer for the whole run**",
-    "git rev-list -1 --before=<started_at> HEAD", "never runs `parallel-start`", "gate_cleared=",
+    "git rev-list -1 --before=<started_at> HEAD", "never runs `parallel-start`", "gate_cleared=", "`notebook_over_budget=<P>`",
 ):
     assert required in phases_core, ("do-whole-phases", required)
 # do-whole-phase (one phase) points at its sibling, by the exact path.
@@ -334,6 +340,8 @@ for required in (
     "`ready_slices=<ids|none>`", "`running_slices=<ids|none>`", "## Wave",
     "**The join-rebuilt artifact is the one exception.**", "**Rolling (the default).**", "**At the join.**",
     "wait for every running span and never re-dispatch one",
+    # Entry-level notebook writes at a return, beside the over-budget step.
+    "Write its `notebook` entries one entry at a time, through `phase-section` only", "`--entry K --remove`",
 ):
     assert required in wave, ("wave.md", required)
 decomp = (root / "payload/claude/skills/do-whole-phase/reference/decomposition.md").read_text(encoding="utf-8")
@@ -482,7 +490,7 @@ for required in (
     "**The wave brief, once per wave: `waves/<slice>/brief.md`**", "**Each round's `handoff.md`, a short delta**",
     "**What you read of a span: its verdict block, and the round `result.md`'s `## Summary`**",
     "**One drafter output per round: `result.md`**", "**Repo-relative paths only.**",
-    "**The notebook gets one line per signed job**", "| `design-sign --slice S --words \"…\"` |",
+    "**The notebook gets one gist line per signed job**", "| `design-sign --slice S --words \"…\"` |",
 ):
     assert required in design, required
 # v61 (P37.S5): the orchestrator never hand-writes SIGNOFF.md, never reads build-prompt.md in a new
@@ -655,7 +663,11 @@ for required in ("## Gate stages", "`walkthrough`", "`## Operator Runtime`", "`#
                  "Re-run the checklist lines inside the boundary",
                  "an operator-created QA phase, never by a review",
                  # P42.S4 (v71): a finding is a whole problem class, so one round finds every case.
-                 "**A finding is a problem class, not an instance.**"):
+                 "**A finding is a problem class, not an instance.**",
+                 # The entry-level notebook: a decision is present as a gist line plus its topic, and a
+                 # dangling pointer is a lost decision.
+                 "**A decision counts as present when its gist line is in `## Decisions` and its detail is in the linked topic**",
+                 "A dangling-pointer warning from `validate`"):
     assert required in review, required
 # P42.S4 (v71): a second failure of the same rules stops for the operator instead of another fix round,
 # in both loops' review references (separate files, so each exact path is read).

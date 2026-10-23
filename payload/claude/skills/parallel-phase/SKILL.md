@@ -193,7 +193,11 @@ convention and with no workspace IDs; workflow commits run `git -C workflow …`
 inside it, so "take either side and regenerate" does not apply to the file: a conflict *inside* its
 `<!-- slices:begin -->` … `<!-- slices:end -->` block is resolved by taking either side and re-running
 `python3 scripts/workflow.py rebuild`, while the rest of the notebook — Decisions, Doc impact,
-Operator Questions, Notes, Now — is merged by hand like any other prose.
+Operator Questions, Notes, Now — is merged by hand like any other prose, entry by entry (keep both
+sides' entries; a conflict marker is the one time the file is edited directly). Its `topics/*.md`
+(`topics/breakdown.md` included) are part of the notebook and travel with the phase folder; a
+conflict there is merged the same way. Then `phase-section <P>` shows the index and any over-budget
+section, and `validate` warns on a dangling pointer.
 
 ## 4. Review on the branch — with even the gate sections deferred
 
@@ -342,7 +346,7 @@ Only when the operator asks or the repo's policy requires it. It replaces steps 
    here.
 2. **Open the PR.** `gh pr create --base main --head phase/P<N>-<slug> --title "..." --body "..."`.
    The **phase is the reviewable unit** — one PR per phase, body drawn from `phase.md` (objective,
-   slice breakdown, notable decisions). PR approval maps to the passing review verdict that already
+   the slice breakdown in `topics/breakdown.md`, notable decisions). PR approval maps to the passing review verdict that already
    exists; do not re-litigate the review in the PR.
 3. **Wait for CI.** `gh pr checks --watch`. The `validate` job runs everywhere; the `parallel-gate`
    job re-runs the quiet point server-side on `phase/*` PRs. Red → stop and report.
