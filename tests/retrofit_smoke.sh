@@ -1254,7 +1254,9 @@ after_debt=$( cd "$F" && find works docs -type f | sort | xargs cat | sha_stdin 
   && ok "docs-debt writes nothing (the workspace tree is unchanged after it runs)" \
   || bad "docs-debt modified the workspace"
 # v54 one-shot rotate-backlog (P33; v51 made it propose the docs phase): the doc debt is checked FIRST,
-# nothing is archived while it stands, and the first stdout line is the decision, rotate=<branch>.
+# and the first stdout line is the decision, rotate=<branch>. v72 (P43): while debt stands only the
+# cleanly archivable phases are archived (archived=), parked work is gone around (parked=), running
+# work stops the run, and an undecomposed, engine-named docs phase is widened to the uncovered debt.
 # Probed on COPIES of the fixture while P2 still owes (the probe adds phases and archives, and the
 # original's later assertions -- docs_debt=none, the STALE clear, archiving -- must stay untouched).
 # rotate=refused (a parallel-stream checkout) needs a git branch stamped on a phase; P33.S1's
@@ -1293,14 +1295,67 @@ rot_before=$(ls "$ROT/works/phases/active" | wc -l | tr -d ' ')
 ( cd "$ROT" && python3 scripts/workflow.py rotate-backlog --archive-only 2>&1 | grep -qE "docs_phase|^rotate=" ) \
   && bad "rotate-backlog --archive-only printed a rotate= or docs-phase line" \
   || ok "rotate-backlog --archive-only prints no rotate= line and no docs-phase line"
+# Widening and the early sweep, on a copy while $rot_pid is live, undecomposed and engine-named: P5
+# owes docs (uncovered), P6 is clean and done, and P1's acceptance gate is open with its REVIEW slice
+# in_progress -- parked (accept-gate --open never moves that slice), never running.
+newtmp ROTW; cp -R "$ROT/." "$ROTW/"
+( cd "$ROTW" && for rp in P5 P6; do python3 scripts/workflow.py new-phase --phase "$rp" --name "Rotate probe $rp" --objective "probe" >/dev/null 2>&1 || exit 1; done \
+  && python3 -c 'import sys; from pathlib import Path; p = Path(sys.argv[1]); p.write_text(p.read_text().replace("## Operator Questions", "- operations.md: a durable change (P5.S1)\n\n## Operator Questions", 1))' works/phases/active/P5/phase.md \
+  && for rp in P5 P6; do python3 scripts/workflow.py accept-gate "$rp" --waive --note "probe" >/dev/null 2>&1 && python3 scripts/workflow.py set-slice-status "$rp.DECOMP" done >/dev/null 2>&1 \
+       && python3 scripts/workflow.py set-slice-status "$rp.REVIEW" done >/dev/null 2>&1 && python3 scripts/workflow.py review-phase "$rp" --verdict pass >/dev/null 2>&1 || exit 1; done \
+  && python3 scripts/workflow.py accept-gate P1 --require >/dev/null 2>&1 && python3 scripts/workflow.py set-slice-status P1.REVIEW in_progress >/dev/null 2>&1 \
+  && python3 scripts/workflow.py accept-gate P1 --open --walkthrough "walk it" >/dev/null 2>&1 ) || bad "rotate probe: could not build the widening copy"
+rotw_out=$( cd "$ROTW" && python3 scripts/workflow.py rotate-backlog 2>&1 )
+[ "$(printf '%s\n' "$rotw_out" | head -1)" = "rotate=resume docs_phase=$rot_pid" ] && printf '%s\n' "$rotw_out" | grep -q "^archived=P6$" \
+  && printf '%s\n' "$rotw_out" | grep -q "^parked=P1 status=pending stop_kind=acceptance-gate$" \
+  && [ ! -d "$ROTW/works/phases/active/P6" ] && [ -d "$ROTW/works/phases/active/P2" ] && [ -d "$ROTW/works/phases/active/P5" ] \
+  && ok "the early sweep archives a clean done phase while P2's debt stands (archived=P6), and a gate-open phase with its REVIEW in_progress is parked, not running" \
+  || bad "rotate-backlog did not archive the clean phase early (or archived a debtor, or stopped for a gate-open REVIEW): $rotw_out"
+printf '%s\n' "$rotw_out" | grep -q "^docs_phase_widened=$rot_pid P2 -> P2,P5$" \
+  && printf '%s\n' "$rotw_out" | grep -q "^docs_phase_covered=$rot_pid (pays P2, P5)$" \
+  && python3 -c 'import json,sys; d = json.load(open(sys.argv[1])); sys.exit(0 if d["consolidates"] == ["P2", "P5"] and d["name"] == "Consolidate the doc impact of P2, P5" else 1)' "$ROTW/works/phases/active/$rot_pid/phase.json" \
+  && grep -qx "# Phase $rot_pid: Consolidate the doc impact of P2, P5" "$ROTW/works/phases/active/$rot_pid/phase.md" \
+  && grep -q '"type": "docs_phase_widened"' "$ROTW/works/events.jsonl" \
+  && ok "resume widens the undecomposed, engine-named docs phase to the uncovered debt (consolidates, name and phase.md heading; logged)" \
+  || bad "rotate-backlog did not widen the live docs phase to P5's debt: $rotw_out"
+rotw_before=$( cd "$ROTW" && find works docs -type f | sort | xargs cat | sha_stdin )
+( cd "$ROTW" && python3 scripts/workflow.py rotate-backlog >/dev/null 2>&1 )
+rotw_after=$( cd "$ROTW" && find works docs -type f | sort | xargs cat | sha_stdin )
+[ -n "$rotw_before" ] && [ "$rotw_before" = "$rotw_after" ] \
+  && ok "a re-run after the widening writes nothing (the workspace tree is unchanged)" \
+  || bad "a re-run after the widening modified the workspace"
 ( cd "$ROT" && python3 scripts/workflow.py set-phase-status P1 pending >/dev/null 2>&1 \
   && python3 scripts/workflow.py set-slice-status P1.S1 in_progress >/dev/null 2>&1 ) || bad "rotate probe: could not put P1 mid-flight"
 rot_mid=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
-[ "$(printf '%s\n' "$rot_mid" | head -1)" = "rotate=stop_midflight midflight=P1:pending, P1.S1:in_progress" ] \
+[ "$(printf '%s\n' "$rot_mid" | head -1)" = "rotate=stop_midflight midflight=P1.S1:in_progress" ] \
+  && printf '%s\n' "$rot_mid" | grep -q "^parked=P1 status=pending stop_kind=untyped$" \
   && printf '%s\n' "$rot_mid" | grep -q "^stopped_before=resume docs_phase=$rot_pid$" \
   && [ -d "$ROT/works/phases/active/P2" ] \
-  && ok "a pending phase and an in_progress slice elsewhere stop the run: rotate=stop_midflight lists both, nothing archived" \
-  || bad "rotate-backlog did not stop for another phase's mid-flight work"
+  && ok "an in_progress slice elsewhere stops the run: rotate=stop_midflight lists only the running slice, its pending phase is a parked= line" \
+  || bad "rotate-backlog did not stop for another phase's running slice (or listed the parked phase as running): $rot_mid"
+( cd "$ROT" && python3 scripts/workflow.py set-slice-status P1.S1 pending --stop-kind decision --on-words "the vendor's reply decides" >/dev/null 2>&1 ) \
+  || bad "rotate probe: could not park P1.S1 under a typed stop"
+rot_park=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
+[ "$(printf '%s\n' "$rot_park" | head -1)" = "rotate=resume docs_phase=$rot_pid" ] \
+  && printf '%s\n' "$rot_park" | grep -q "^parked=P1 status=pending stop_kind=untyped$" \
+  && printf '%s\n' "$rot_park" | grep -q "^parked=P1.S1 status=pending stop_kind=decision$" \
+  && ok "parked work is gone around: a pending phase and a slice pending under a typed stop give rotate=resume and one parked= line each" \
+  || bad "rotate-backlog did not go around parked work: $rot_park"
+# The uncommitted-edits check reads git, so it runs on a git init-ed copy (the ROT copies have no git,
+# where nothing is dirty): a clean tree resumes, an untracked product file beside the parked slice stops.
+newtmp ROTG; cp -R "$ROT/." "$ROTG/"
+( cd "$ROTG" && git init -q . >/dev/null 2>&1 && git add -A >/dev/null 2>&1 \
+  && git -c user.email=smoke@example.invalid -c user.name=smoke commit -qm "rotate baseline" >/dev/null 2>&1 ) || bad "rotate probe: could not git init the dirt copy"
+rotg_clean=$( cd "$ROTG" && python3 scripts/workflow.py rotate-backlog 2>&1 | head -1 )
+mkdir -p "$ROTG/src" && printf 'x = 1\n' > "$ROTG/src/app.py"
+rotg_dirty=$( cd "$ROTG" && python3 scripts/workflow.py rotate-backlog 2>&1 )
+[ "$rotg_clean" = "rotate=resume docs_phase=$rot_pid" ] \
+  && [ "$(printf '%s\n' "$rotg_dirty" | head -1)" = "rotate=stop_uncommitted uncommitted=1" ] \
+  && printf '%s\n' "$rotg_dirty" | grep -qx "  A src/app.py" \
+  && printf '%s\n' "$rotg_dirty" | grep -q "^parked=P1.S1 status=pending stop_kind=decision$" \
+  && printf '%s\n' "$rotg_dirty" | grep -q "^nothing was created, widened or reordered" \
+  && ok "parked work beside an uncommitted product file stops the run (rotate=stop_uncommitted names the path); a clean tree resumes" \
+  || bad "rotate-backlog did not stop for uncommitted product edits beside parked work (clean: $rotg_clean): $rotg_dirty"
 ( cd "$ROT" && python3 scripts/workflow.py set-slice-status P1.S1 todo >/dev/null 2>&1 \
   && python3 scripts/workflow.py set-phase-status P1 planned >/dev/null 2>&1 \
   && python3 scripts/workflow.py set-slice-status "$rot_pid.DECOMP" in_progress >/dev/null 2>&1 ) || bad "rotate probe: could not start the docs phase's DECOMP"
@@ -1311,17 +1366,18 @@ rot_own=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
 ( cd "$ROT" && python3 scripts/workflow.py set-slice-status "$rot_pid.DECOMP" done >/dev/null 2>&1 \
   && python3 scripts/workflow.py docs-consolidated P2 >/dev/null 2>&1 ) || bad "rotate probe: docs-consolidated P2 failed"
 rot_paid=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
-[ "$(printf '%s\n' "$rot_paid" | head -1)" = "rotate=resume docs_phase=$rot_pid" ] && [ -d "$ROT/works/phases/active/P2" ] \
-  && ok "a docs phase that has paid its debt but not passed its review still resumes; nothing is archived yet" \
-  || bad "a paid docs phase short of its review did not resume (or rotate archived early)"
+[ "$(printf '%s\n' "$rot_paid" | head -1)" = "rotate=resume docs_phase=$rot_pid" ] && printf '%s\n' "$rot_paid" | grep -q "^archived=P2$" \
+  && [ ! -d "$ROT/works/phases/active/P2" ] && [ -d "$ROT/works/phases/active/$rot_pid" ] \
+  && ok "a docs phase that has paid its debt but not passed its review still resumes; the paid phase is archived early (archived=P2)" \
+  || bad "a paid docs phase short of its review did not resume (or the paid phase was not archived early): $rot_paid"
 ( cd "$ROT" && python3 scripts/workflow.py accept-gate "$rot_pid" --waive --note "docs phase" >/dev/null 2>&1 \
   && python3 scripts/workflow.py set-slice-status "$rot_pid.REVIEW" done >/dev/null 2>&1 \
   && python3 scripts/workflow.py review-phase "$rot_pid" --verdict pass >/dev/null 2>&1 ) || bad "rotate probe: could not pass the docs phase's review"
 rot_arch=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
 [ "$(printf '%s\n' "$rot_arch" | head -1)" = "rotate=archive" ] && [ "$(printf '%s\n' "$rot_arch" | tail -1)" = "docs_phase=none" ] \
   && [ ! -d "$ROT/works/phases/active/P2" ] && [ ! -d "$ROT/works/phases/active/$rot_pid" ] && [ -d "$ROT/works/phases/active/P1" ] \
-  && ok "once the debt is paid and the docs phase is done, rotate=archive archives both last and leaves the open phase" \
-  || bad "rotate-backlog did not archive the paid phase and the done docs phase at the end"
+  && ok "once the debt is paid and the docs phase is done, rotate=archive archives the docs phase and leaves the open phase" \
+  || bad "rotate-backlog did not archive the done docs phase at the end"
 # A docs phase created before the queue jump (no --order: the default max + 1, behind planned work)
 # is moved ahead on resume: one order write, printed and logged, then idempotent.
 newtmp ROT2; cp -R "$F/." "$ROT2/"
