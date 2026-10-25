@@ -18,8 +18,6 @@ Source of truth:
       payload/works/templates/*, payload/github/workflows/workspace-ci.yml,
       payload/gitattributes, and the payload/contract.md contract body (header
       stripped, embedded once).
-    One exception: executors.toml is embedded as the adopter seed, the source file
-    with its cheap-route block commented out (derive_executors_seed).
   * installer/payloads/  (fresh-install-only seeds, no payload/ counterpart):
       doc_bodies/<doc>.md, sentinel-templated (__PROJECT_NAME__ / __PROJECT_SUMMARY__
       substituted by main.py at install time).
@@ -121,31 +119,11 @@ def read(rel: str, base: Path = SRC) -> str:
     return p.read_text(encoding="utf-8")
 
 
-CHEAP_BEGIN, CHEAP_END = "# cheap-route: begin", "# cheap-route: end"
-
-
-def derive_executors_seed(text: str) -> str:
-    """The adopter seed of executors.toml: the source file with the cheap-route block's
-    non-comment lines commented out, so a fresh install inherits the mid row until the
-    adopter opts in. Markers must both exist, once, in order; anything else is a build error."""
-    lines = text.split("\n")
-    begin = [i for i, l in enumerate(lines) if l.strip() == CHEAP_BEGIN]
-    end = [i for i, l in enumerate(lines) if l.strip() == CHEAP_END]
-    if len(begin) != 1 or len(end) != 1 or begin[0] >= end[0]:
-        die("executors.toml: expected exactly one '# cheap-route: begin' … '# cheap-route: end' block")
-    for i in range(begin[0] + 1, end[0]):
-        if lines[i].strip() and not lines[i].lstrip().startswith("#"):
-            lines[i] = "# " + lines[i]
-    return "\n".join(lines)
-
-
 def collect_live_payloads() -> "dict":
-    """emit-path -> content for every shipped file (deterministic ordering); verbatim
-    except executors.toml, which is the derived adopter seed."""
+    """emit-path -> content for every shipped file (deterministic ordering), verbatim."""
     payloads: dict = {}
     for rel in FIXED_LIVE_FILES:
         payloads[rel] = read(src_rel(rel))
-    payloads["executors.toml"] = derive_executors_seed(read("executors.toml"))
     # Skills are discovered from disk (sorted) so adding/removing a skill needs no code change.
     # A skill ships as its whole directory: SKILL.md (the core) plus every other file under it
     # (its reference/*.md), then the shared reference copies fan out (SHARED_SKILL_FILES).

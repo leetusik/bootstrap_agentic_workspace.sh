@@ -536,8 +536,9 @@ RETIRED_EXECUTOR_TIERS = ("low",)  # [claude.low]: dropped in workspace v23, sti
 # from. A row is a (model, effort) pair the dispatch passes per call; `executor-route` prints the
 # resolved row for a slice and `sync-agents` writes the rows that own an agent file into that
 # file's frontmatter, which is only the fallback. Each row is overridable, key by key, under
-# [claude.<row>] in the repo-root executors.toml. `cheap` has no defaults of its own: it inherits
-# the RESOLVED mid row for every key it does not override, so an unset cheap row is the mid row.
+# [claude.<row>] in the repo-root executors.toml. `cheap` has its own defaults since v80 (Haiku,
+# before that it inherited the resolved mid row); where the `haiku` alias is not Haiku 5.5 it falls
+# back to the mid row at dispatch (`_route_fallback`).
 # `explore` is the read-only lookup agent (.claude/agents/Explore.md), not a slice route.
 # `design` is the design subagent's own row (.claude/agents/design-drafter.md, workspace v60): never
 # a slice's route -- only `executor-route --drafter` dispatches on it.
@@ -559,15 +560,17 @@ RETIRED_EXECUTOR_TIERS = ("low",)  # [claude.low]: dropped in workspace v23, sti
 # agent file and no per-dispatch effort. The cheap row runs the same file on its own model -- which
 # supersedes v46's "haiku is never an executor tier". The named modes of v29-v52 (a top-level
 # `mode` key) are retired; read_executors_toml refuses one.
+# The defaults are the operator's own routes (workspace v80): every opus row at high, mid on opus at
+# medium, haiku at xhigh for cheap and explore.
 EXECUTOR_ROUTES = ("high", "research", "design", "critic", "judge", "mid", "cheap", "explore")  # print order
 ROUTE_DEFAULTS = {
-    "high": {"model": "opus", "effort": "xhigh"},
-    "research": {"model": "opus", "effort": "xhigh"},
-    "design": {"model": "opus", "effort": "xhigh"},
-    "critic": {"model": "sonnet", "effort": "xhigh"},
-    "judge": {"model": "opus", "effort": "xhigh"},
-    "mid": {"model": "sonnet", "effort": "xhigh"},
-    "cheap": None,  # inherits the resolved mid row
+    "high": {"model": "opus", "effort": "high"},
+    "research": {"model": "opus", "effort": "high"},
+    "design": {"model": "opus", "effort": "high"},
+    "critic": {"model": "opus", "effort": "high"},
+    "judge": {"model": "opus", "effort": "high"},
+    "mid": {"model": "opus", "effort": "medium"},
+    "cheap": {"model": "haiku", "effort": "xhigh"},
     "explore": {"model": "haiku", "effort": "xhigh"},
 }
 # The agent file each row dispatches to (canonical name; `installed_agent_name` applies a nested
@@ -596,10 +599,14 @@ EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")  # the Agent tool's `e
 MODEL_ATTRIBUTION = {"opus": "Claude Opus 5.5", "sonnet": "Claude Sonnet 5.5",
                      "haiku": "Claude Haiku 5.5", "fable": "Claude Fable 5.1"}
 # A loopback ANTHROPIC_BASE_URL is a local proxy (ocx's Kiro sidecar listens on 127.0.0.1:10100)
-# that serves no Haiku 5.5: there the cheap row falls back to the mid row's model and the explore
-# row to EXPLORE_PROXY_MODEL, printed as a `fallback=` line by executor-route.
+# that serves no Haiku 5.5: there the cheap row falls back to the mid row (model and effort) and the
+# explore row to EXPLORE_PROXY_MODEL, printed as a `fallback=` line by executor-route.
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 EXPLORE_PROXY_MODEL = "sonnet"
+# On Bedrock, Vertex and Foundry the `haiku` alias is Haiku 4.5, too weak for an executor: a haiku
+# cheap row falls back to the mid row there too (v80), unless ANTHROPIC_DEFAULT_HAIKU_MODEL names
+# the model the alias means. Explore keeps its haiku: a lookup judges nothing.
+HAIKU_4_5_PLATFORMS = ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY")
 # The same proxy serves no Fable either. The judge row (Opus @ xhigh by default, so this never fires
 # at the default) does NOT fall back: a judge is the stronger second opinion, so a substitute would be
 # a weaker one. Only when an operator overrides the judge row to Fable and runs behind a loopback proxy
@@ -754,24 +761,39 @@ def read_executors_toml() -> dict:
 
 def resolve_routes(overrides=None) -> dict:
     """{row: {model, effort, model_source, effort_source}} in EXECUTOR_ROUTES order: the engine
-    defaults overlaid key by key with executors.toml. A source is `default`, `executors.toml`, or
-    -- for a cheap key it does not override -- `mid row`; cheap resolves after mid, from mid's
-    resolved values, so a [claude.mid] override carries over to an unset cheap row."""
+    defaults overlaid key by key with executors.toml. A source is `default` or `executors.toml`."""
     if overrides is None:
         overrides = read_executors_toml()
     resolved: dict = {}
-    for row in sorted(EXECUTOR_ROUTES, key=lambda r: ROUTE_DEFAULTS[r] is None):  # inheriting rows last
-        default = ROUTE_DEFAULTS[row]
+    for row in EXECUTOR_ROUTES:
         entry: dict = {}
         for key in ("model", "effort"):
             if (row, key) in overrides:
                 entry[key], entry[f"{key}_source"] = overrides[(row, key)], "executors.toml"
-            elif default is None:
-                entry[key], entry[f"{key}_source"] = resolved["mid"][key], "mid row"
             else:
-                entry[key], entry[f"{key}_source"] = default[key], "default"
+                entry[key], entry[f"{key}_source"] = ROUTE_DEFAULTS[row][key], "default"
         resolved[row] = entry
-    return {row: resolved[row] for row in EXECUTOR_ROUTES}
+    return resolved
+
+
+def route_overrides(routes: dict) -> list:
+    """`override=` lines for the rows executors.toml sets: what each pins against the engine default,
+    or that it repeats the default (and so would stop following a later one). /update-workspace shows
+    them to the operator, who decides whether to drop each [claude.<row>] table."""
+    def pair(model, effort):
+        return f"{model}@{effort or '(no effort)'}"
+    lines = []
+    for row in EXECUTOR_ROUTES:
+        entry, default = routes[row], ROUTE_DEFAULTS[row]
+        if "executors.toml" not in (entry["model_source"], entry["effort_source"]):
+            continue
+        if (entry["model"], entry["effort"]) == (default["model"], default["effort"]):
+            lines.append(f"override={row} {pair(entry['model'], entry['effort'])} same as the default "
+                         f"(drop [claude.{row}] to follow later defaults)")
+        else:
+            lines.append(f"override={row} {pair(entry['model'], entry['effort'])} "
+                         f"(default {pair(default['model'], default['effort'])})")
+    return lines
 
 
 def route_source(entry: dict) -> str:
@@ -892,15 +914,37 @@ def _loopback_base_url():
     return url if host in LOOPBACK_HOSTS else None
 
 
-def _route_fallback(row: str, model: str, routes: dict, proxy):
-    """(model to dispatch, `fallback=` line or None) for one row under the environment: behind a
-    loopback proxy (no Haiku 5.5) cheap takes the mid row's model and explore EXPLORE_PROXY_MODEL."""
-    if proxy is None or row not in ("cheap", "explore"):
-        return model, None
-    target = routes["mid"]["model"] if row == "cheap" else EXPLORE_PROXY_MODEL
-    if target == model:
-        return model, None
-    return target, f"fallback={row} model {model} -> {target} (loopback ANTHROPIC_BASE_URL {proxy}: ocx/Kiro serves no Haiku 5.5)"
+def _haiku_4_5_platform():
+    """The HAIKU_4_5_PLATFORMS variable that is set, when ANTHROPIC_DEFAULT_HAIKU_MODEL is not, else None."""
+    if os.environ.get("ANTHROPIC_DEFAULT_HAIKU_MODEL", "").strip():
+        return None
+    for name in HAIKU_4_5_PLATFORMS:
+        if os.environ.get(name, "").strip().lower() not in ("", "0", "false", "no"):
+            return name
+    return None
+
+
+def _route_fallback(row: str, routes: dict, proxy) -> tuple:
+    """(model, effort, `fallback=` line or None) to dispatch one row under the environment. Behind a
+    loopback proxy (no Haiku 5.5) cheap takes the mid row and explore EXPLORE_PROXY_MODEL; on Bedrock,
+    Vertex or Foundry (`haiku` is Haiku 4.5 there) a haiku cheap row takes the mid row."""
+    model, effort = routes[row]["model"], routes[row]["effort"]
+    if row == "cheap" and proxy is not None:
+        reason = f"loopback ANTHROPIC_BASE_URL {proxy}: ocx/Kiro serves no Haiku 5.5"
+    elif row == "cheap" and model_family(model) == "haiku" and _haiku_4_5_platform():
+        reason = f"{_haiku_4_5_platform()}: the haiku alias is Haiku 4.5 there; set ANTHROPIC_DEFAULT_HAIKU_MODEL to keep it"
+    elif row == "explore" and proxy is not None:
+        if model == EXPLORE_PROXY_MODEL:
+            return model, effort, None
+        return EXPLORE_PROXY_MODEL, effort, (f"fallback=explore model {model} -> {EXPLORE_PROXY_MODEL} "
+                                             f"(loopback ANTHROPIC_BASE_URL {proxy}: ocx/Kiro serves no Haiku 5.5)")
+    else:
+        return model, effort, None
+    to_model, to_effort = routes["mid"]["model"], routes["mid"]["effort"]
+    if (to_model, to_effort) == (model, effort):
+        return model, effort, None
+    moved = f"model {model} -> {to_model}" + (f", effort {effort or '(none)'} -> {to_effort or '(none)'}" if to_effort != effort else "")
+    return to_model, to_effort, f"fallback=cheap {moved} ({reason})"
 
 
 def model_family(model: str):
@@ -958,9 +1002,7 @@ def slice_route(kind, risk, retry: bool) -> tuple:
 
 def _dispatch_lines(row: str, routes: dict, proxy) -> tuple:
     """(the model..attribution lines for one dispatch on `row`, its fallback line or None)."""
-    entry = routes[row]
-    model, fallback = _route_fallback(row, entry["model"], routes, proxy)
-    effort = entry["effort"]
+    model, effort, fallback = _route_fallback(row, routes, proxy)
     lines = [
         f"model={model}",
         f"pass_model={'yes' if model in AGENT_MODEL_ALIASES else 'no'}",
@@ -1033,7 +1075,7 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
             print(f"agent files: out of sync: {', '.join(stale)} (run: {WORKFLOW_CMD} sync-agents)")
         else:
             print("agent files: in sync")
-        extra = [f for f in (_route_fallback(row, routes[row]["model"], routes, proxy)[1] for row in EXECUTOR_ROUTES) if f]
+        extra = route_overrides(routes) + [f for f in (_route_fallback(row, routes, proxy)[2] for row in EXECUTOR_ROUTES) if f]
         judge_skip = _judge_proxy_skip(routes, proxy)
         if judge_skip:
             extra.append(judge_skip.replace("skip=yes ", "skip=judge ", 1))
@@ -1461,23 +1503,25 @@ def _meter_attribute(prompt: str, start, known: dict, windows: _MeterWindows) ->
 
 
 def _meter_slice_families() -> tuple:
-    """(high row's model family, mid row's) from the resolved route table, for reading
-    `slice-executor` spans; the engine defaults when executors.toml cannot be read."""
+    """(high row's model family, mid row's, high row's effort, mid row's) from the resolved route
+    table, for reading `slice-executor` spans; the engine defaults when executors.toml cannot be read."""
     try:
         routes = resolve_routes()
     except (SystemExit, Exception):  # noqa: BLE001 - the meter reads history; a bad toml must not stop it
         routes = resolve_routes({})
-    return model_family(routes["high"]["model"]), model_family(routes["mid"]["model"])
+    return (model_family(routes["high"]["model"]), model_family(routes["mid"]["model"]),
+            routes["high"]["effort"], routes["mid"]["effort"])
 
 
-def _meter_route(agent: str, prompt: str, model, kind, families=None) -> str:
+def _meter_route(agent: str, prompt: str, model, kind, families=None, effort=None) -> str:
     """The route row a span most likely ran on, for the means: the agent type, the judge mode, the
     slice kind (research) and the model. Approximate by nature, and more so for the one
-    `slice-executor` (v66), which every slice row runs: a research kind reads as research, a haiku
-    model as cheap, a model of the high row's family (and not the mid row's, `families`) as high,
-    anything else as mid -- so a high row overridden onto the mid row's model reads as mid. The
-    retired pair (v23-v65, still in old transcripts) keeps its reading: slice-executor-high is research
-    by kind, else high; slice-executor-mid is cheap on haiku, else mid. Other agents keep their name."""
+    `slice-executor` (v66), which every slice row runs: a research kind reads as research, review,
+    decomposition and co-work as high (they route there by kind), a haiku model as cheap, a model of
+    the high row's family (and not the mid row's, `families`) as high; when the two rows share a family
+    (opus at v80's defaults) the span's recorded effort tells them apart; anything else reads as mid.
+    The retired pair (v23-v65, still in old transcripts) keeps its reading: slice-executor-high is
+    research by kind, else high; slice-executor-mid is cheap on haiku, else mid. Other agents keep their name."""
     if agent == "design-drafter":
         return "design"
     if agent == "design-critic":
@@ -1491,11 +1535,17 @@ def _meter_route(agent: str, prompt: str, model, kind, families=None) -> str:
     if agent == SLICE_AGENT:
         if kind == "research":
             return "research"
+        if kind in ("review", "decomposition", "co-work"):
+            return "high"
         family = model_family(model) if isinstance(model, str) else None
         if family == "haiku":
             return "cheap"
-        high, mid = families if families is not None else _meter_slice_families()
-        return "high" if family and family == high and family != mid else "mid"
+        high, mid, high_effort, mid_effort = families if families is not None else _meter_slice_families()
+        if not family or family != high:
+            return "mid"
+        if family != mid:
+            return "high"
+        return "high" if effort and effort == high_effort and effort != mid_effort else "mid"
     return agent or "?"
 
 
@@ -1561,7 +1611,7 @@ def _meter_collect(dirs: list, known: dict, windows: "_MeterWindows", selected, 
                     outcome = _meter_verdict(agent, sp["final"])
                 minutes = round((sp["last"] - sp["first"]) / 60, 1) if sp["first"] is not None and sp["last"] is not None else None
                 span = {"id": jl.stem[len("agent-"):], "session": path.stem, "agent": agent, "model": model,
-                        "effort": meta.get("effort"), "route": _meter_route(agent, sp["prompt"], model, known.get(sid), families),
+                        "effort": meta.get("effort"), "route": _meter_route(agent, sp["prompt"], model, known.get(sid), families, meta.get("effort")),
                         "slice": sid, "attributed_by": how, "start": sp["first"], "minutes": minutes,
                         "resumes": sp["resumes"], "outcome": outcome, "reset": sp["last_limit"] or None,
                         "usage": agg}
@@ -13090,11 +13140,11 @@ def main(argv=None) -> int:
     p.add_argument("--check", action="store_true", help="Report drift without writing; exit 1 if out of sync")
     p.set_defaults(func=sync_agents)
 
-    p = sub.add_parser("executor-route", help="Print the executor routing decision, one key=value per line, writing nothing: bare, the resolved route table (high, research, design, critic, judge, mid, cheap, explore) and the agent files' sync state; with a slice id, the route, subagent_type (slice-executor for every slice row), model, effort and attribution its dispatch uses (kind first, then risk, then attempt); --drafter / --critic / --judge / --explore, a non-slice agent's dispatch; plus fallback=, skip= and warning= lines for the environment. --critic exits 1 when the critic row is the design row's model (the judge row is exempt)")
+    p = sub.add_parser("executor-route", help="Print the executor routing decision, one key=value per line, writing nothing: bare, the resolved route table (high, research, design, critic, judge, mid, cheap, explore), the agent files' sync state and an override= line per row executors.toml sets (its value against the default); with a slice id, the route, subagent_type (slice-executor for every slice row), model, effort and attribution its dispatch uses (kind first, then risk, then attempt); --drafter / --critic / --judge / --explore, a non-slice agent's dispatch; plus fallback=, skip= and warning= lines for the environment. The critic and the judge may share the design row's model (v75)")
     p.add_argument("slice", nargs="?", help="the slice to route; omit for the table")
     p.add_argument("--retry", action="store_true", help="the slice's second attempt (an escalation, a failed or empty return, a fix of mid-row work): always the high row")
     p.add_argument("--drafter", action="store_true", help="the design-drafter's dispatch (its own design row, [claude.design]; not a slice route)")
-    p.add_argument("--critic", action="store_true", help="the design-critic's dispatch in critic mode (the critic row, [claude.critic]); exit 1 when it is the drafter's model")
+    p.add_argument("--critic", action="store_true", help="the design-critic's dispatch in critic mode (the critic row, [claude.critic]); it may share the drafter's model")
     p.add_argument("--judge", action="store_true", help="the design-critic's dispatch in judge mode (the judge row, [claude.judge], alias only); never refused for sharing the drafter's model; skip=yes only when the judge row is overridden to Fable behind a loopback proxy that serves no Fable")
     p.add_argument("--explore", action="store_true", help="the read-only Explore lookup agent's dispatch (the explore row)")
     p.set_defaults(func=cmd_executor_route)

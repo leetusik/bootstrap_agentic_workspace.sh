@@ -58,7 +58,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 79
+WORKSPACE_VERSION = 80
 ROOT = TARGET.resolve()
 # Nested personal install (P28; the default layout since P29): TARGET is a HOST git repo -- one the
 # operator may not own, or a new/empty dir this run `git init`s. The engine and all workflow state go
@@ -1741,7 +1741,7 @@ def print_nested_banner(plan: dict) -> None:
     print(f"Next (start Claude Code at the host root, {HOST} -- never inside {NESTED_DIR}/):")
     if UPDATE:
         print(f"  1. Commit the refresh in the nested repo (/update-workspace does this itself): git -C {NESTED_DIR} status, then git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: update agentic workspace to v{WORKSPACE_VERSION} (nested)\"")
-        print(f"  2. Re-apply your executors.toml route overrides: {cmd} sync-agents")
+        print(f"  2. Re-apply your executors.toml route overrides: {cmd} sync-agents; {cmd} executor-route prints an override= line for each row it pins")
     else:
         print(f"  1. First commit in the nested repo: git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: install agentic workspace (nested)\"")
         print(f"  2. Start Claude Code at the host root and accept the trust dialog on the first run, then: /{plan['renames']['skills'].get('create-phase', 'create-phase')} for the first phase ({cmd} next shows the state)")
@@ -3062,6 +3062,7 @@ elif UPDATE:
     print(f"  provenance recorded: works/.workspace-version.json (synced_commit {os.environ.get('SYNCED_COMMIT') or 'bootstrap'})")
     print("The installer made no git changes. Review the diff (git status); commit once the operator approves.")
     print("Next: python3 scripts/workflow.py sync-agents  # re-apply your preserved executors.toml")
+    print("      python3 scripts/workflow.py executor-route  # an override= line for each row it pins against the defaults")
     print("Then: python3 scripts/workflow.py next")
 elif RETROFIT:
     created, skipped, merged = (RETROFIT_SUMMARY["created"], RETROFIT_SUMMARY["skipped"], RETROFIT_SUMMARY["merged"])

@@ -14,18 +14,18 @@
 # The rows (default; what each serves). high, research, mid and cheap all
 # run the one slice executor (.claude/agents/slice-executor.md), whose
 # frontmatter carries the mid row; the others pass their model per dispatch.
-#   high      opus @ xhigh   review, decomposition, the co-work mockup span,
+#   high      opus @ high    review, decomposition, the co-work mockup span,
 #                            any risk but low, every second attempt
-#   research  opus @ xhigh   research slices, by kind
-#   design    opus @ xhigh   design-drafter (its own agent file); not a slice
+#   research  opus @ high    research slices, by kind
+#   design    opus @ high    design-drafter (its own agent file); not a slice
 #                            route: executor-route --drafter
-#   critic    sonnet @ xhigh design-critic (its own agent file), judging each
+#   critic    opus @ high    design-critic (its own agent file), judging each
 #                            drafted round: executor-route --critic
-#   judge     opus @ xhigh   design-critic in judge mode, ruling on the items
+#   judge     opus @ high    design-critic in judge mode, ruling on the items
 #                            the critic escalates (alias only): --judge
-#   mid       sonnet @ xhigh implementation and fix rated low (the default)
-#   cheap     = the mid row  docs and qa rated low; inherits the mid row unless
-#                            overridden
+#   mid       opus @ medium  implementation and fix rated low (the default)
+#   cheap     haiku @ xhigh  docs and qa rated low; falls back to the mid row
+#                            where `haiku` is not Haiku 5.5 (below)
 #   explore   haiku @ xhigh  read-only lookups (.claude/agents/Explore.md)
 #
 # Grammar: [claude.<row>] tables holding model = "..." and effort = "...",
@@ -46,36 +46,32 @@
 # /update-workspace, re-run sync-agents (updates reset the agent files to
 # upstream defaults; `validate` warns while they drift).
 
-# The cheap route: docs and qa slices rated low run on Haiku 5.5 at xhigh, its best level on
-# the Artificial Analysis coding-agent index (max scores lower). On in this repository; the
-# installer seeds it commented out because the `haiku` alias is Haiku 4.5 on Bedrock, Vertex
-# and Foundry — uncomment to opt in on the Anthropic API. Unset, the cheap row inherits the
-# mid row. Under a loopback ANTHROPIC_BASE_URL (ocx/Kiro, no Haiku 5.5) executor-route falls
-# back to the mid row's model by itself.
-# cheap-route: begin
-[claude.cheap]
-model = "haiku"
-effort = "xhigh"
-# cheap-route: end
-
-# The other rows at their defaults: uncomment and edit to override.
+# The cheap row falls back to the mid row by itself (executor-route prints a fallback= line)
+# under a loopback ANTHROPIC_BASE_URL (ocx/Kiro serves no Haiku 5.5) and on Bedrock, Vertex and
+# Foundry, where the `haiku` alias is Haiku 4.5; set ANTHROPIC_DEFAULT_HAIKU_MODEL there to keep it.
+#
+# Every row at its default: uncomment and edit to override. A row you set stops
+# following later defaults; executor-route prints an override= line for each.
 # [claude.high]
 # model = "opus"    # e.g. "fable"
-# effort = "xhigh"
+# effort = "high"
 # [claude.research]
 # model = "opus"
-# effort = "xhigh"
+# effort = "high"
 # [claude.design]
 # model = "opus"    # design-drafter's own row
-# effort = "xhigh"
+# effort = "high"
 # [claude.critic]
-# model = "sonnet"  # design-critic; may share the design row's model
-# effort = "xhigh"
+# model = "opus"    # design-critic; may share the design row's model
+# effort = "high"
 # [claude.judge]
 # model = "opus"    # alias only
-# effort = "xhigh"
+# effort = "high"
 # [claude.mid]
-# model = "sonnet"
+# model = "opus"
+# effort = "medium"
+# [claude.cheap]
+# model = "haiku"   # alias only
 # effort = "xhigh"
 # [claude.explore]
 # model = "haiku"

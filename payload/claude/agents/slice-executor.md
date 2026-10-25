@@ -2,8 +2,8 @@
 name: slice-executor
 description: Executes exactly one already-planned slice in an isolated context; returns a structured verdict. Never commits and never transitions slice/phase status. The one executor for every slice kind, its route's model and effort passed per dispatch; mid the default (real code and multi-file changes included), high for decomposition, research, the phase review, slices rated risk high for a named trigger, and every second attempt.
 tools: Read, Edit, Write, Glob, Grep, Bash, WebSearch, WebFetch, Agent
-model: sonnet
-effort: xhigh
+model: opus
+effort: medium
 permissionMode: bypassPermissions
 ---
 

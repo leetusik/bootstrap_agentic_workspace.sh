@@ -713,7 +713,7 @@ assert not (root / "payload/claude/agents/slice-executor-high.md").exists()
 for tier in ("slice-executor",):
     body = (root / "payload/claude/agents/slice-executor.md").read_text()
     fm = body.split("---\n", 2)[1]
-    assert "name: slice-executor\n" in fm and "model: sonnet\n" in fm and "effort: xhigh\n" in fm, fm
+    assert "name: slice-executor\n" in fm and "model: opus\n" in fm and "effort: medium\n" in fm, fm
     assert "commit or push (no `git commit`, `git add`, `git push`)" in body, tier
     for gone in ("Codex", ".agents/", ".codex/", "AGENTS.md"):
         assert gone not in body, (tier, gone)
@@ -1159,23 +1159,23 @@ skill_tree_ok "$F/.claude/skills" exact \
   && ok "fresh install is Codex-free (no AGENTS.md, no .agents/, no .codex/)" || bad "fresh install still ships Codex machinery"
 [ -f "$F/.claude/agents/slice-executor.md" ] && [ ! -e "$F/.claude/agents/slice-executor-mid.md" ] && [ ! -e "$F/.claude/agents/slice-executor-high.md" ] \
   && ok "fresh install ships the one slice-executor (v66), not the retired mid/high pair" || bad "fresh install: slice-executor.md missing or the retired pair present"
-grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor.md" \
+grep -q '^model: opus$' "$F/.claude/agents/slice-executor.md" && grep -q '^effort: medium$' "$F/.claude/agents/slice-executor.md" \
   && grep -q '^name: slice-executor$' "$F/.claude/agents/slice-executor.md" \
-  && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/design-drafter.md" \
+  && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: high$' "$F/.claude/agents/design-drafter.md" \
   && [ -f "$F/.claude/agents/Explore.md" ] && grep -q '^model: haiku$' "$F/.claude/agents/Explore.md" \
   && grep -q '^effort: xhigh$' "$F/.claude/agents/Explore.md" && grep -qx 'tools: Read, Grep, Glob' "$F/.claude/agents/Explore.md" \
-  && ok "fresh install follows the route defaults: slice-executor carries mid sonnet@xhigh, explore haiku@xhigh" || bad "fresh install agent files do not follow the route defaults"
+  && ok "fresh install follows the route defaults: slice-executor carries mid opus@medium, design-drafter opus@high, explore haiku@xhigh" || bad "fresh install agent files do not follow the route defaults"
 # P26.S2, re-pinned by P36.S8C: the design subagent loads no skill (frontend-design is retired from
 # it, its useful lines carried in its craft), so it ships without the Skill tool, and never DesignSync.
 [ -f "$F/.claude/agents/design-drafter.md" ] && grep -q '^tools: Read, Edit, Write, Glob, Grep, Bash$' "$F/.claude/agents/design-drafter.md" \
   && ! grep -Eq '^tools: (.*, )?Skill(,.*)?$' "$F/.claude/agents/design-drafter.md" \
   && ! grep -q '^tools: .*DesignSync' "$F/.claude/agents/design-drafter.md" \
   && ok "fresh install ships the design-drafter subagent (no Skill tool, no DesignSync)" || bad "fresh install design-drafter missing, still carries Skill, or carries DesignSync"
-# P36.S5B, v61 (P37.S7): the design critic ships on the critic row (sonnet @ xhigh) and can write only its own file: no Edit.
-[ -f "$F/.claude/agents/design-critic.md" ] && grep -q '^model: sonnet$' "$F/.claude/agents/design-critic.md" \
-  && grep -q '^effort: xhigh$' "$F/.claude/agents/design-critic.md" && grep -q '^tools: ' "$F/.claude/agents/design-critic.md" \
+# P36.S5B, v61 (P37.S7): the design critic ships on the critic row (opus @ high since v80) and can write only its own file: no Edit.
+[ -f "$F/.claude/agents/design-critic.md" ] && grep -q '^model: opus$' "$F/.claude/agents/design-critic.md" \
+  && grep -q '^effort: high$' "$F/.claude/agents/design-critic.md" && grep -q '^tools: ' "$F/.claude/agents/design-critic.md" \
   && ! grep -Eq '^tools: (.*, )?Edit(,.*)?$' "$F/.claude/agents/design-critic.md" \
-  && ok "fresh install ships the design-critic subagent (sonnet@xhigh, no Edit in tools)" || bad "fresh install design-critic missing, off its row defaults, or carries Edit"
+  && ok "fresh install ships the design-critic subagent (opus@high, no Edit in tools)" || bad "fresh install design-critic missing, off its row defaults, or carries Edit"
 # The explain critic ships as a sixth agent, opus @ xhigh, and writes only its critique file: no Edit.
 [ -f "$F/.claude/agents/explain-critic.md" ] && grep -q '^model: opus$' "$F/.claude/agents/explain-critic.md" \
   && grep -q '^effort: xhigh$' "$F/.claude/agents/explain-critic.md" && grep -q '^tools: ' "$F/.claude/agents/explain-critic.md" \
@@ -1194,20 +1194,14 @@ D="$F/.claude/agents/design-drafter.md"; C="$F/.claude/agents/design-critic.md"
 grep -q '^works/events\.jsonl merge=union$' "$F/.gitattributes" && ok "fresh install seeds .gitattributes with the union rule" || bad "fresh install missing the .gitattributes union rule"
 [ ! -f "$F/.env.example" ] && [ ! -f "$F/executors.toml.example" ] && ok "legacy .env.example / executors.toml.example retired (absent on fresh install)" || bad "a legacy tier-config example should be retired but is present"
 ( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && ok "sync-agents --check: seeded route config matches live agents" || bad "sync-agents --check failed on a fresh install"
-# v53 (P32.S5): the adopter seed of executors.toml is derived from the live file with the cheap-route block
-# commented out -- a fresh install inherits the mid row until the adopter opts in. v62: the block's effort is xhigh.
-grep -qx '# \[claude\.cheap\]' "$F/executors.toml" && grep -qx '# model = "haiku"' "$F/executors.toml" \
-  && sed -n '/cheap-route: begin/,/cheap-route: end/p' "$F/executors.toml" | grep -qx '# effort = "xhigh"' \
-  && ! grep -q '^\[claude\.cheap\]' "$F/executors.toml" && [ "$(grep -c 'cheap-route: begin' "$F/executors.toml")" = "1" ] && [ "$(grep -c 'cheap-route: end' "$F/executors.toml")" = "1" ] \
-  && ok "the fresh install's executors.toml seeds the cheap-route block commented out, markers intact" || bad "the seeded executors.toml does not comment out the cheap-route block"
+# v80: the seed executors.toml ships verbatim with every row commented out at its default (the cheap-route
+# block and its derived seed are gone), so a fresh install runs the engine table: cheap on haiku@xhigh by default.
+diff -q "$F/executors.toml" "$SRC/executors.toml" >/dev/null && ! grep -q '^\[claude\.' "$F/executors.toml" \
+  && grep -qx '# \[claude\.cheap\]' "$F/executors.toml" && grep -qx '# effort = "medium"' "$F/executors.toml" && ! grep -q 'cheap-route' "$F/executors.toml" \
+  && ok "the fresh install's executors.toml is the source verbatim, every row commented out at its default" || bad "the seeded executors.toml is not the verbatim all-commented source"
 seed_er=$(cd "$F" && python3 scripts/workflow.py executor-route 2>&1)
-printf '%s\n' "$seed_er" | grep -qE '^cheap +slice-executor +sonnet +xhigh +mid row$' \
-  && ok "a fresh install's cheap row inherits the mid row (sonnet xhigh, source mid row)" || bad "a fresh install's cheap row is not the mid row: $seed_er"
-newtmp SEEDT
-python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from build import derive_executors_seed; print(derive_executors_seed(open(sys.argv[2]).read()), end="")' "$REPO_ROOT/installer" "$SRC/executors.toml" > "$SEEDT/executors.seed.toml"
-python3 -c 'import sys; L=open(sys.argv[1]).read().split("\n"); b=L.index("# cheap-route: begin"); e=L.index("# cheap-route: end"); L[b+1:e]=[l[2:] if l.startswith("# ") else l for l in L[b+1:e]]; print("\n".join(L), end="")' "$F/executors.toml" > "$SEEDT/executors.uncommented.toml"
-cmp -s "$SEEDT/executors.uncommented.toml" "$SRC/executors.toml" && diff -q "$F/executors.toml" "$SEEDT/executors.seed.toml" >/dev/null \
-  && ok "uncommenting the seed's cheap block reproduces the live executors.toml byte-for-byte (single source)" || bad "the seeded executors.toml and the live one disagree beyond the cheap block"
+printf '%s\n' "$seed_er" | grep -qE '^cheap +slice-executor +haiku +xhigh +default$' && ! printf '%s\n' "$seed_er" | grep -q '^override=' \
+  && ok "a fresh install's cheap row is haiku@xhigh by default, with no override= line" || bad "a fresh install's cheap row or override lines wrong: $seed_er"
 # v32 operator acceptance gate, probed once against a real engine (throwaway workspace).
 ( cd "$F" && python3 scripts/workflow.py new-phase --phase P1 --name "Gate probe" --objective "probe the gate" >/dev/null 2>&1 ) \
   && grep -q '"acceptance"' "$F/works/phases/active/P1/phase.json" && ok "new-phase stamps the acceptance gate block" || bad "new-phase did not stamp the acceptance block"
@@ -1515,20 +1509,21 @@ json.dump(d, open(p, "w"), indent=2)
 PY2
 # v53 route table (P32.S1): executors.toml overrides the engine's rows key by key, sync-agents
 # writes the four managed agent files from them (v66: one slice-executor, carrying the mid row), and executor-route prints the routing decision,
-# writing nothing. Its probes unset the three environment variables it reports on, so a run inside
-# an ocx session (a loopback ANTHROPIC_BASE_URL) still sees the plain table.
-er() { ( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE python3 scripts/workflow.py executor-route "$@" 2>&1 ); }
+# writing nothing. Its probes unset the environment variables it reads, so a run inside an ocx
+# session (a loopback ANTHROPIC_BASE_URL) or on Bedrock still sees the plain table.
+erenv() { env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE -u CLAUDE_CODE_USE_BEDROCK -u CLAUDE_CODE_USE_VERTEX -u CLAUDE_CODE_USE_FOUNDRY -u ANTHROPIC_DEFAULT_HAIKU_MODEL "$@"; }
+er() { ( cd "$F" && erenv python3 scripts/workflow.py executor-route "$@" 2>&1 ); }
 rm -f "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) \
-  && grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor.md" \
-  && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/design-drafter.md" \
+  && grep -q '^model: opus$' "$F/.claude/agents/slice-executor.md" && grep -q '^effort: medium$' "$F/.claude/agents/slice-executor.md" \
+  && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: high$' "$F/.claude/agents/design-drafter.md" \
   && grep -q '^model: haiku$' "$F/.claude/agents/Explore.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/Explore.md" \
-  && grep -q '^model: sonnet$' "$F/.claude/agents/design-critic.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/design-critic.md" \
-  && ok "no executors.toml: sync-agents writes the route defaults (slice-executor mid sonnet@xhigh, design-drafter opus@xhigh, design-critic sonnet@xhigh, Explore haiku@xhigh)" \
+  && grep -q '^model: opus$' "$F/.claude/agents/design-critic.md" && grep -q '^effort: high$' "$F/.claude/agents/design-critic.md" \
+  && ok "no executors.toml: sync-agents writes the route defaults (slice-executor mid opus@medium, design-drafter opus@high, design-critic opus@high, Explore haiku@xhigh)" \
   || bad "the route defaults matrix is wrong"
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
 sa_out=$( cd "$F" && python3 scripts/workflow.py sync-agents 2>&1 ); er_out=$(er P1.DECOMP)
-printf '%s\n' "$sa_out" | grep -q 'already in sync; nothing written' && grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor.md" \
+printf '%s\n' "$sa_out" | grep -q 'already in sync; nothing written' && grep -q '^model: opus$' "$F/.claude/agents/slice-executor.md" \
   && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" \
   && printf '%s\n' "$er_out" | grep -qx 'model=fable' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' \
   && ok "a [claude.high] alias override writes no agent file (v66: high is passed per dispatch) and shows in executor-route; design-drafter keeps its own row" \
@@ -1542,7 +1537,7 @@ printf '[claude.mid]\nmodel = "claude-sonnet-5-5"\n' > "$F/executors.toml"
   && ok "a full model id on [claude.mid] is accepted and written into slice-executor.md" || bad "[claude.mid] full id was refused or not written to slice-executor.md"
 printf '[claude.design]\nmodel = "fable"\neffort = "max"\n' > "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: fable$' "$F/.claude/agents/design-drafter.md" \
-  && grep -q '^effort: max$' "$F/.claude/agents/design-drafter.md" && grep -q '^model: sonnet$' "$F/.claude/agents/slice-executor.md" \
+  && grep -q '^effort: max$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: medium$' "$F/.claude/agents/slice-executor.md" \
   && ok "a [claude.design] override patches design-drafter alone" || bad "a [claude.design] override did not reach design-drafter, or reached slice-executor"
 printf 'mode = "flex"\n' > "$F/executors.toml"
 mode_out=$( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 ); mode_rc=$?
@@ -1566,29 +1561,38 @@ rm -f "$F/executors.toml"
 er_out=$(er)
 [ "$(printf '%s\n' "$er_out" | grep -cE '^(high|research|design|critic|judge|mid|cheap|explore) ')" = "8" ] && printf '%s\n' "$er_out" | grep -qx 'proxy=none' \
   && printf '%s\n' "$er_out" | grep -qE '^route +agent +model +effort +source$' \
-  && printf '%s\n' "$er_out" | grep -qE '^design +design-drafter +opus +xhigh +default$' \
-  && printf '%s\n' "$er_out" | grep -qE '^critic +design-critic +sonnet +xhigh +default$' && printf '%s\n' "$er_out" | grep -qE '^judge +design-critic +opus +xhigh +default$' \
-  && printf '%s\n' "$er_out" | grep -qE '^high +slice-executor +opus +xhigh +default$' && printf '%s\n' "$er_out" | grep -qE '^research +slice-executor +opus +xhigh +default$' \
-  && printf '%s\n' "$er_out" | grep -qE '^mid +slice-executor +sonnet +xhigh +default$' && printf '%s\n' "$er_out" | grep -qE '^cheap +slice-executor +sonnet +xhigh +mid row$' \
+  && printf '%s\n' "$er_out" | grep -qE '^design +design-drafter +opus +high +default$' \
+  && printf '%s\n' "$er_out" | grep -qE '^critic +design-critic +opus +high +default$' && printf '%s\n' "$er_out" | grep -qE '^judge +design-critic +opus +high +default$' \
+  && printf '%s\n' "$er_out" | grep -qE '^high +slice-executor +opus +high +default$' && printf '%s\n' "$er_out" | grep -qE '^research +slice-executor +opus +high +default$' \
+  && printf '%s\n' "$er_out" | grep -qE '^mid +slice-executor +opus +medium +default$' && printf '%s\n' "$er_out" | grep -qE '^cheap +slice-executor +haiku +xhigh +default$' \
   && printf '%s\n' "$er_out" | grep -qE '^explore +Explore +haiku +xhigh +default$' \
-  && ! printf '%s\n' "$er_out" | grep -q '^warning=fairness' && ! printf '%s\n' "$er_out" | grep -q 'tier' \
-  && ok "executor-route (bare) prints the eight-row route table with its agent column, no tier (high/research opus@xhigh, design opus@xhigh, critic sonnet@xhigh, judge opus@xhigh on the drafter's model without a fairness warning, mid sonnet@xhigh, explore haiku@xhigh) and proxy=none" || bad "executor-route bare table wrong: $er_out"
+  && ! printf '%s\n' "$er_out" | grep -q '^warning=fairness' && ! printf '%s\n' "$er_out" | grep -q 'tier' && ! printf '%s\n' "$er_out" | grep -q '^fallback=' \
+  && ok "executor-route (bare) prints the eight-row route table with its agent column, no tier (v80 defaults: every opus row @high, mid opus@medium, cheap and explore haiku@xhigh) and proxy=none" || bad "executor-route bare table wrong: $er_out"
 er_out=$(er P1.DECOMP)
 printf '%s\n' "$er_out" | grep -qx 'route=high' && ! printf '%s\n' "$er_out" | grep -q '^tier=' \
   && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
-  && printf '%s\n' "$er_out" | grep -qx 'effort=xhigh' && printf '%s\n' "$er_out" | grep -qx 'attribution=Claude Opus 5.5' \
-  && ok "executor-route sends a decomposition slice to the high row (slice-executor, opus@xhigh, Claude Opus 5.5, no tier= line)" || bad "executor-route P1.DECOMP wrong: $er_out"
+  && printf '%s\n' "$er_out" | grep -qx 'effort=high' && printf '%s\n' "$er_out" | grep -qx 'attribution=Claude Opus 5.5' \
+  && ok "executor-route sends a decomposition slice to the high row (slice-executor, opus@high, Claude Opus 5.5, no tier= line)" || bad "executor-route P1.DECOMP wrong: $er_out"
 er_out=$(er P1.S2)
-printf '%s\n' "$er_out" | grep -qx 'route=research' && printf '%s\n' "$er_out" | grep -qx 'effort=xhigh' \
+printf '%s\n' "$er_out" | grep -qx 'route=research' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \
   && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' \
-  && ok "executor-route sends a research slice to the research row (slice-executor, opus@xhigh)" || bad "executor-route research slice wrong: $er_out"
+  && ok "executor-route sends a research slice to the research row (slice-executor, opus@high)" || bad "executor-route research slice wrong: $er_out"
 ( cd "$F" && python3 scripts/workflow.py new-slice --phase P1 --slice P1.S9 --name "docs probe" --kind docs --risk low >/dev/null 2>&1 ) \
   || bad "route probe: new-slice P1.S9 (docs, low) failed"
 er_out=$(er P1.S9)
 printf '%s\n' "$er_out" | grep -qx 'route=cheap' && ! printf '%s\n' "$er_out" | grep -q '^tier=' \
-  && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' && printf '%s\n' "$er_out" | grep -qx 'model=sonnet' \
-  && printf '%s\n' "$er_out" | grep -qx 'pass_model=yes' \
-  && ok "an unset cheap row inherits the mid row: a low docs slice runs slice-executor on sonnet" || bad "executor-route cheap inheritance wrong: $er_out"
+  && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' && printf '%s\n' "$er_out" | grep -qx 'model=haiku' \
+  && printf '%s\n' "$er_out" | grep -qx 'effort=xhigh' && printf '%s\n' "$er_out" | grep -qx 'pass_model=yes' && ! printf '%s\n' "$er_out" | grep -q '^fallback=' \
+  && ok "an unset cheap row is haiku@xhigh (v80): a low docs slice runs slice-executor on haiku" || bad "executor-route cheap default wrong: $er_out"
+er_out=$( cd "$F" && erenv CLAUDE_CODE_USE_BEDROCK=1 python3 scripts/workflow.py executor-route P1.S9 2>&1 )
+printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'effort=medium' \
+  && printf '%s\n' "$er_out" | grep -q '^fallback=cheap model haiku -> opus, effort xhigh -> medium (CLAUDE_CODE_USE_BEDROCK: ' \
+  && ok "on Bedrock (haiku is Haiku 4.5) a haiku cheap row falls back to the mid row, model and effort, with a fallback= line" || bad "executor-route Bedrock fallback wrong: $er_out"
+er_out=$( cd "$F" && erenv CLAUDE_CODE_USE_VERTEX=1 ANTHROPIC_DEFAULT_HAIKU_MODEL=claude-haiku-5-5 python3 scripts/workflow.py executor-route P1.S9 2>&1 )
+er_x=$( cd "$F" && erenv CLAUDE_CODE_USE_FOUNDRY=1 python3 scripts/workflow.py executor-route --explore 2>&1 )
+printf '%s\n' "$er_out" | grep -qx 'model=haiku' && ! printf '%s\n' "$er_out" | grep -q '^fallback=' \
+  && printf '%s\n' "$er_x" | grep -qx 'model=haiku' && ! printf '%s\n' "$er_x" | grep -q '^fallback=' \
+  && ok "ANTHROPIC_DEFAULT_HAIKU_MODEL keeps the cheap row on haiku on Vertex, and explore never falls back on a platform" || bad "platform fallback overreached: $er_out / $er_x"
 er_out=$(er P1.S9 --retry)
 printf '%s\n' "$er_out" | grep -qx 'route=high' && printf '%s\n' "$er_out" | grep -qx 'attempt=2' && printf '%s\n' "$er_out" | grep -qx 'reason=second attempt' \
   && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
@@ -1598,24 +1602,33 @@ er_out=$(er P1.S9)
 printf '%s\n' "$er_out" | grep -qx 'model=haiku' && printf '%s\n' "$er_out" | grep -qx 'attribution=Claude Haiku 5.5' \
   && ok "a [claude.cheap] override puts a low docs slice on haiku, attributed to Claude Haiku 5.5" || bad "executor-route cheap override wrong: $er_out"
 er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 scripts/workflow.py executor-route P1.S9 2>&1 )
-printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && printf '%s\n' "$er_out" | grep -q '^fallback=cheap model haiku -> sonnet ' \
-  && ok "behind a loopback ANTHROPIC_BASE_URL (ocx/Kiro) the cheap row falls back to the mid row's model, with a fallback= line" || bad "executor-route proxy fallback wrong: $er_out"
+printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'effort=medium' \
+  && printf '%s\n' "$er_out" | grep -q '^fallback=cheap model haiku -> opus, effort high -> medium (loopback ' \
+  && ok "behind a loopback ANTHROPIC_BASE_URL (ocx/Kiro) the cheap row falls back to the mid row, model and effort, with a fallback= line" || bad "executor-route proxy fallback wrong: $er_out"
+er_out=$(er)
+printf '%s\n' "$er_out" | grep -qx 'override=cheap haiku@high (default haiku@xhigh)' && [ "$(printf '%s\n' "$er_out" | grep -c '^override=')" = "1" ] \
+  && ok "the bare table prints an override= line for the row executors.toml pins, beside its default" || bad "executor-route override= line wrong: $er_out"
+printf '[claude.mid]\nmodel = "opus"\neffort = "medium"\n' > "$F/executors.toml"
+er_out=$(er)
+printf '%s\n' "$er_out" | grep -q '^override=mid opus@medium same as the default ' \
+  && ok "a row set to its default prints override=... same as the default" || bad "executor-route same-as-default override wrong: $er_out"
+printf '[claude.cheap]\nmodel = "haiku"\neffort = "high"\n' > "$F/executors.toml"
 er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 scripts/workflow.py executor-route --explore 2>&1 )
 printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=Explore' \
   && ok "behind the same proxy executor-route --explore falls back to sonnet" || bad "executor-route --explore proxy fallback wrong: $er_out"
 er_out=$(er --drafter)
 printf '%s\n' "$er_out" | grep -qx 'agent=design-drafter' && printf '%s\n' "$er_out" | grep -qx 'route=design' \
   && ! printf '%s\n' "$er_out" | grep -q '^tier=' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-drafter' \
-  && printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'effort=xhigh' \
-  && ok "executor-route --drafter names design-drafter on its own design row (no tier= line, opus@xhigh)" || bad "executor-route --drafter wrong: $er_out"
+  && printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \
+  && ok "executor-route --drafter names design-drafter on its own design row (no tier= line, opus@high)" || bad "executor-route --drafter wrong: $er_out"
 # P36.S5B, P39.S1, v75: the critic and the judge both run design-critic; either may share the drafter's model.
 er_out=$(er --critic); er_j=$(er --judge)
 printf '%s\n' "$er_out" | grep -qx 'route=critic' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-critic' \
-  && printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && printf '%s\n' "$er_out" | grep -qx 'effort=xhigh' \
+  && printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \
   && printf '%s\n' "$er_j" | grep -qx 'route=judge' && printf '%s\n' "$er_j" | grep -qx 'subagent_type=design-critic' \
-  && printf '%s\n' "$er_j" | grep -qx 'model=opus' && printf '%s\n' "$er_j" | grep -qx 'effort=xhigh' && ! printf '%s\n' "$er_j" | grep -q '^tier=' \
-  && ok "executor-route --critic (sonnet@xhigh) and --judge (opus@xhigh) both dispatch design-critic" || bad "executor-route --critic/--judge wrong: $er_out / $er_j"
-printf '[claude.critic]\nmodel = "opus"\n' > "$F/executors.toml"
+  && printf '%s\n' "$er_j" | grep -qx 'model=opus' && printf '%s\n' "$er_j" | grep -qx 'effort=high' && ! printf '%s\n' "$er_j" | grep -q '^tier=' \
+  && ok "executor-route --critic (opus@high) and --judge (opus@high) both dispatch design-critic" || bad "executor-route --critic/--judge wrong: $er_out / $er_j"
+printf '[claude.critic]\nmodel = "opus"\neffort = "xhigh"\n' > "$F/executors.toml"
 er_out=$( cd "$F" && env -u ANTHROPIC_BASE_URL python3 scripts/workflow.py executor-route --critic 2>&1 ); er_rc=$?
 [ "$er_rc" -eq 0 ] && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
   && ! printf '%s\n' "$(er)" | grep -q '^warning=fairness' \
@@ -1640,8 +1653,9 @@ rm -f "$F/executors.toml"
 cp "$SRC/executors.toml" "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed on the repo's own executors.toml"
 er_out=$(er)
-printf '%s\n' "$er_out" | grep -qE '^cheap +slice-executor +haiku +xhigh +executors\.toml$' && printf '%s\n' "$er_out" | grep -qx 'agent files: in sync' \
-  && ok "the repo's executors.toml turns the cheap route on (haiku@xhigh from executors.toml), agent files in sync" || bad "executor-route on the repo's executors.toml wrong: $er_out"
+printf '%s\n' "$er_out" | grep -qE '^cheap +slice-executor +haiku +xhigh +default$' && printf '%s\n' "$er_out" | grep -qx 'agent files: in sync' \
+  && ! printf '%s\n' "$er_out" | grep -q '^override=' \
+  && ok "the shipped executors.toml sets no row: the engine defaults, no override= line, agent files in sync" || bad "executor-route on the shipped executors.toml wrong: $er_out"
 ( cd "$F" && python3 scripts/workflow.py executor-mode 2>&1 | grep -q 'invalid choice' ) \
   && ok "executor-mode is gone from the engine (v53: executor-route replaces it)" || bad "the engine still accepts executor-mode"
 # v61 dispatch record + transcript meter (P37.S2): record-dispatch keeps only the verdict (the pre-v61
@@ -1733,7 +1747,7 @@ grep -q 'spends money:' "$SRC/claude/skills/do-whole-phase/reference/decompositi
   && ok "a DECOMP estimates time only and writes a per-slice spends-money line (both references, the executor, the [means] header)" || bad "the DECOMP time-only / spends-money wording is missing or a session-\$ estimate remains"
 # v66: one slice-executor runs every slice row, so the meter reads its route from the kind and the model
 # (research by kind, haiku as cheap, the high row's family as high, else mid); an old slice-executor-high
-# span keeps its reading. A second transcript dir on the engine defaults (high opus, mid sonnet).
+# span keeps its reading. v80: on the defaults high and mid are both opus, so the span's effort tells them apart.
 rm -f "$MT/ws/executors.toml"
 python3 - "$MT" <<'PY'
 import json, os, sys
@@ -1743,15 +1757,15 @@ os.makedirs(sub)
 def row(ts, kind, payload):
     return json.dumps({"type": kind, "timestamp": ts, "message": payload}) + "\n"
 open(os.path.join(proj, "sess2.jsonl"), "w").write(row("2026-01-01T10:29:00.000Z", "user", {"role": "user", "content": "go"}))
-for n, (agent, model, sid) in enumerate((("slice-executor", "claude-opus-5-5", "P1.S7"), ("slice-executor", "claude-sonnet-5-5", "P1.S7"),
-                                         ("slice-executor", "claude-haiku-5-5", "P1.S7"), ("slice-executor", "claude-opus-5-5", "P1.S2"),
-                                         ("slice-executor-high", "claude-opus-5-5", "P1.S7"))):
+for n, (agent, model, sid, effort) in enumerate((("slice-executor", "claude-opus-5-5", "P1.S7", "high"), ("slice-executor", "claude-opus-5-5", "P1.S7", "medium"),
+                                                 ("slice-executor", "claude-haiku-5-5", "P1.S7", None), ("slice-executor", "claude-opus-5-5", "P1.S2", None),
+                                                 ("slice-executor-high", "claude-opus-5-5", "P1.S7", None), ("slice-executor", "claude-sonnet-5-5", "P1.S7", None))):
     ts = f"2026-01-01T10:3{n}:00.000Z"
     with open(os.path.join(sub, f"agent-x{n}.jsonl"), "w") as f:
         f.write(row(ts, "user", {"role": "user", "content": f"slice: {sid}"}))
         f.write(row(ts, "assistant", {"id": f"x{n}", "model": model, "content": [{"type": "text", "text": "- status: done"}], "stop_reason": "end_turn",
                                       "usage": {"input_tokens": 10, "output_tokens": 5}}))
-    json.dump({"agentType": agent, "finished": True}, open(os.path.join(sub, f"agent-x{n}.meta.json"), "w"))
+    json.dump({"agentType": agent, "finished": True, **({"effort": effort} if effort else {})}, open(os.path.join(sub, f"agent-x{n}.meta.json"), "w"))
 PY
 mt2=$( cd "$MT/ws" && python3 scripts/workflow.py dispatch-summary --phase P1 --json --transcripts "$MT/projects/-fixture2" 2>&1 )
 printf '%s\n' "$mt2" | python3 -c '
@@ -1759,8 +1773,8 @@ import json, sys
 slices = json.load(sys.stdin)["metered"]["slices"]
 routes = {s["id"]: (s["agent"], s["route"]) for d in slices.values() for s in d["spans"]}
 assert routes == {"x0": ("slice-executor", "high"), "x1": ("slice-executor", "mid"), "x2": ("slice-executor", "cheap"),
-                  "x3": ("slice-executor", "research"), "x4": ("slice-executor-high", "high")}, routes
-' && ok "the meter reads slice-executor spans by kind and model (opus high, sonnet mid, haiku cheap, a research slice research) and still reads an old slice-executor-high span" \
+                  "x3": ("slice-executor", "research"), "x4": ("slice-executor-high", "high"), "x5": ("slice-executor", "mid")}, routes
+' && ok "the meter reads slice-executor spans by kind, model and effort (opus@high high, opus@medium mid, haiku cheap, sonnet mid, a research slice research) and still reads an old slice-executor-high span" \
   || bad "the meter misread slice-executor routes: $mt2"
 # P44: a minted slice id attributes by its `slice:` line, and dispatch-summary --phase takes the brief name (a bare token).
 mt_tok=$( cd "$MT/ws" && python3 scripts/workflow.py new-phase --name "Meter token" --objective probe 2>&1 | sed -n 's/^created phase P-\([^:]*\):.*/\1/p' )
@@ -1950,7 +1964,7 @@ else bad "--update listed a directory -- $update_out"; fi
 rm -rf "$F/.agents" "$F/.codex" "$F/AGENTS.md" "$F/AGENTS.workspace.md" "$F/.claude/skills/explain"
 printf '%s\n' "$update_out" | grep -q 'python3 scripts/workflow.py sync-agents' \
   && ok "--update instructs the adopter to re-run sync-agents" || bad "--update omitted the sync-agents migration step"
-grep -q '^effort: xhigh$' "$F/.claude/agents/slice-executor.md" \
+grep -q '^effort: medium$' "$F/.claude/agents/slice-executor.md" \
   && ok "--update resets agent files to upstream defaults (re-run sync-agents after updates)" || bad "--update did not reset the agent files"
 ( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) \
   && bad "preserved executor override should require re-sync after update" || ok "--update leaves a detectable executor drift until sync-agents"
@@ -2081,11 +2095,8 @@ works/templates/intent.md
 works/templates/phase.md
 .github/workflows/workspace-ci.yml
 .gitattributes"
-# executors.toml is the one derived payload: the adopter seed (cheap-route block commented out), not the live file.
-newtmp DUALT
-python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from build import derive_executors_seed; print(derive_executors_seed(open(sys.argv[2]).read()), end="")' "$REPO_ROOT/installer" "$SRC/executors.toml" > "$DUALT/executors.seed.toml"
 for rel in $DUAL_FIXED CLAUDE.md; do
-  src="$SRC/${rel#.}"; [ "$rel" = "executors.toml" ] && src="$DUALT/executors.seed.toml"; [ "$rel" = "CLAUDE.md" ] && src="$SRC/contract.md"
+  src="$SRC/${rel#.}"; [ "$rel" = "CLAUDE.md" ] && src="$SRC/contract.md"
   diff -q "$src" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
     || bad "DRIFT: $rel differs from the bootstrap-embedded copy"

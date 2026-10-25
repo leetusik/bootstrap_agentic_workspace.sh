@@ -14,6 +14,33 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v80 — 2026-10-26
+
+- **New defaults.** Every opus row (`high`, `research`, `design`, `judge`) runs at `high` instead of
+  `xhigh`. The `critic` moves from sonnet @ xhigh to opus @ high. The `mid` row, where most slices
+  land, moves from sonnet @ xhigh to opus @ medium. `explore` stays on haiku @ xhigh. The shipped
+  `slice-executor`, `design-drafter` and `design-critic` frontmatter follows.
+- **The cheap row runs on haiku @ xhigh by default.** It no longer copies the mid row. It falls back to
+  the mid row (model and effort) by itself in two places:
+  - behind a loopback `ANTHROPIC_BASE_URL` (ocx/Kiro), as before, which now also takes the mid row's effort;
+  - on Bedrock, Vertex and Foundry (`CLAUDE_CODE_USE_BEDROCK`, `_VERTEX` or `_FOUNDRY`), where the
+    `haiku` alias is Haiku 4.5. Set `ANTHROPIC_DEFAULT_HAIKU_MODEL` there to keep haiku.
+
+  `executor-route` prints a `fallback=` line when either fires. The seed's commented-out cheap-route
+  block is gone, and so is the build's derived seed. `executors.toml` ships verbatim, with every row
+  commented out at its default.
+- **`executor-route` prints an `override=` line for each row `executors.toml` sets.** The line shows
+  the row's value beside the engine default, or says `same as the default`: a row you set stops
+  following later defaults. `/update-workspace` now shows these lines and asks before dropping each one.
+- **The dispatch meter tells high from mid when both run on opus.** It reads each span's recorded
+  effort, and review, decomposition and co-work spans read as high by kind.
+- **Migration notes.** After `--update` and `sync-agents`, run `executor-route` and read the
+  `override=` lines. An install that pinned the old defaults (for example `[claude.mid]` sonnet @
+  xhigh) keeps them until you delete those tables. An install that opted in to the cheap route
+  (`[claude.cheap]` haiku @ xhigh) now repeats the default and can drop it. On Bedrock, Vertex or
+  Foundry with no override, docs and qa slices rated low move from the old mid row (sonnet @ xhigh)
+  to opus @ medium.
+
 ## v79 — 2026-10-24
 
 - **Six docs retire: `experience`, `frontend`, `backend`, `data`, `api` and `security`.** These docs are

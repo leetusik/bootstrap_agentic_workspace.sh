@@ -2,8 +2,8 @@
 name: design-critic
 description: "The design critic. Judges exactly one drafted design round with fresh eyes, in one pass, against the round's handoff, the operator's bar and the drafter's craft standard: it reads the drafter's render (the contact sheets and preview.json it left in .preview/), re-renders only interaction states, hovers, types and clicks where judgment needs a live state, and writes one critique file of findings with severity, confidence and evidence. In judge mode, on a stronger model, it rules only on the items a critique escalated. It reads and renders; it never edits a board, publishes, signs or talks to the operator. Dispatched by the orchestrator inside a co-work slice's draft-critique step; returns a structured verdict."
 tools: Read, Glob, Grep, Bash, Write
-model: sonnet
-effort: xhigh
+model: opus
+effort: high
 permissionMode: bypassPermissions
 ---
 

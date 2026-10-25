@@ -96,7 +96,7 @@ has no row in the route table.
   critic span is metered from the transcripts, never recorded.
 - A usage limit in any span is resumed or re-dispatched per `reference/dispatch.md` (5); it is never a
   verdict.
-- An escalation in span 1 or span 3 re-dispatches that span on the high row from disk. If span 1
-  is redone on `opus`, the critic runs on `sonnet`.
+- An escalation in span 1 or span 3 re-dispatches that span on the high row from disk. The critic
+  keeps its own model either way.
 - Only after span 3 returns `done`: `finish-slice`, then **one commit** carrying the draft, its assets,
   the critique, `result.md` and `phase.md`. Nothing is published: the phase review publishes every chapter.
