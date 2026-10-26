@@ -14,6 +14,19 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v82 — 2026-10-26
+
+- **The project `autoCompactWindow` ships at 500000** (it was 450000 from v66 to v81, and 500000 in
+  v57-v60). It is the operator's window for every workspace install. A 200k-context model still
+  compacts at its own limit, since the window is capped at the model's context, and Claude Code's own
+  idle compaction is unchanged.
+- **`--update` moves a window still at a value the workspace shipped.** 450000 (v66-v81) and 300000
+  (v56, v61-v65) become 500000, each with a `changed: … autoCompactWindow <old> -> 500000` line; any
+  other value you chose is kept. A nested install's `.claude/settings.local.json` moves the same way.
+- **Migration notes.** None beyond `--update`. Relaunch Claude Code to pick up the new window;
+  `/autocompact` with no argument shows the window in effect. If you had chosen 450000 yourself, set
+  it back after the update, as the `changed:` line says.
+
 ## v81 — 2026-10-26
 
 - **A book runs on the knowledge plugin's research pipeline** (plugin **0.6.0** or later). An

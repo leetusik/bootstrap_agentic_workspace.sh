@@ -58,7 +58,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 81
+WORKSPACE_VERSION = 82
 ROOT = TARGET.resolve()
 # Nested personal install (P28; the default layout since P29): TARGET is a HOST git repo -- one the
 # operator may not own, or a new/empty dir this run `git init`s. The engine and all workflow state go
@@ -381,7 +381,7 @@ RETIRED_MECHANISMS = [
 # _merge_settings_dict) removes exactly our retired hook handlers -- matched by command -- and moves a window
 # still at a value we shipped to today's; it reports both through SETTINGS_CHANGES.
 RETIRED_HOOK_COMMANDS = {m["hook"]: f"retired in v{m['retired']}" for m in RETIRED_MECHANISMS if m.get("hook")}
-SHIPPED_COMPACT_WINDOWS = {300000, 500000}  # 300000: v56 and v61-v65; 500000: v57-v60; today's value is 450000
+SHIPPED_COMPACT_WINDOWS = {300000, 450000}  # 300000: v56 and v61-v65; 450000: v66-v81; today's value is 500000 (v57-v60, again since v82)
 SETTINGS_CHANGES = {"removed": [], "changed": []}
 
 
@@ -396,9 +396,9 @@ def _merge_settings_dict(theirs: dict, ours: dict, label: str = None) -> dict:
       same `matcher` (creating the event list / group when absent) unless a handler with the same
       `command` already exists anywhere under that event. Never removes, reorders or rewrites an
       adopter's entries.
-    - autoCompactWindow (v56; 450000 since the release after v65): copied from `ours` when the target has no
+    - autoCompactWindow (v56; 500000 since v82, as in v57-v60): copied from `ours` when the target has no
       such key; a value equal to one we shipped (SHIPPED_COMPACT_WINDOWS: 300000, v56 and v61-v65;
-      500000, v57-v60) moves to ours; any other value the adopter chose is kept.
+      450000, v66-v81) moves to ours; any other value the adopter chose is kept.
     With `label` (the file's shown path), each removal and change is recorded in SETTINGS_CHANGES.
     Idempotent. Raises ValueError on a malformed target shape (a non-object
     `permissions`/`hooks`, a non-list `allow`/`deny`/event/`hooks`, a non-object

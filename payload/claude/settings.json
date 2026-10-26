@@ -1,5 +1,5 @@
 {
-  "autoCompactWindow": 450000,
+  "autoCompactWindow": 500000,
   "permissions": {
     "allow": [
       "Bash(python3 scripts/workflow.py:*)",

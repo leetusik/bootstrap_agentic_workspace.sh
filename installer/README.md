@@ -174,7 +174,7 @@ Below, each entry is the source, then the emit path where it differs:
   `payload/claude/agents/design-critic.md`, `payload/claude/agents/Explore.md` → `.claude/agents/…` (the design subagent and the design critic; `sync-agents` keeps each on its own row, `design` and `critic`)
 - `payload/executors.toml` → `executors.toml` (seed-once executor-route config — created if absent,
   never overwritten on update; every row commented out at its engine default)
-- `payload/claude/settings.json` → `.claude/settings.json` (the project `autoCompactWindow` ships at 450000; Claude Code also compacts an idle session by itself, on by default, and `idleCompaction: false` in your user settings turns that off; a 200k-context model compacts at its own limit, since the window is capped at the model's context. No compaction hook and no `idleCompaction` key ships; the `SessionStart` `compact` hook only prints the resume card)
+- `payload/claude/settings.json` → `.claude/settings.json` (the project `autoCompactWindow` ships at 500000; Claude Code also compacts an idle session by itself, on by default, and `idleCompaction: false` in your user settings turns that off; a 200k-context model compacts at its own limit, since the window is capped at the model's context. No compaction hook and no `idleCompaction` key ships; the `SessionStart` `compact` hook only prints the resume card)
 - `payload/works/templates/{deferred_brief,intent,phase}.md` → `works/templates/…`
 - `payload/github/workflows/workspace-ci.yml` → `.github/workflows/workspace-ci.yml` (**seed-once** repo policy file — created when
   absent, never overwritten, on install/retrofit/update alike; one workflow
