@@ -84,7 +84,7 @@ What differs is the work it reviews, which is a book rather than product code, a
 
 ## Fix slices republish
 
-A `changes_requested` verdict, or an operator-reported failure at the gate (`review-phase <P> --verdict changes_requested --note "operator-reported: …"`), becomes one fix slice per chapter that needs changes: `<P>.F<n>`, `--kind fix`. Rate it as `reference/review.md` says: `high` when the chapter's `result.md` reads `route: mid` or `route: cheap`.
+A `changes_requested` verdict, or an operator-reported failure at the gate (`review-phase <P> --verdict changes_requested --note "operator-reported: …"`), becomes one fix slice per chapter that needs changes: `<P>.F<n>`, `--kind fix`. Rate it as `reference/review.md` says: `high` when the chapter's `result.md` reads `route: mid` (or a pre-v83 `route: cheap`).
 
 A fix slice:
 1. revises `book/<key>.md`, its assets and `trace-<key>.md`, and nothing else in `book/research/`: it adds no evidence (a fix the frozen indexes and the chapter's overlays cannot support removes the sentence or states the point as open, as the skill's §4.10 says) and dispatches no research agent;

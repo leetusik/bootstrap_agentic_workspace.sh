@@ -14,6 +14,26 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v83 — 2026-10-26
+
+- **The cheap row is retired.** Docs and qa slices rated `low` ran on it, on haiku @ xhigh since v80.
+  They now run on the mid row (opus @ medium), like implementation and fix slices. Docs work is not
+  mechanical: a `/rotate-backlog` docs phase merges many phases' `## Doc impact` notes into a few
+  durable docs, deciding what is still true and keeping only what the code cannot say. A wrong or
+  dropped line there misleads every later agent that reads the docs, and Haiku is weakest on exactly
+  that kind of long, multi-file synthesis. A large consolidation can still be rated `high` for a wide
+  blast radius.
+- **What goes with it.** `executor-route` prints seven rows, and a low docs or qa slice reads
+  `route=mid`. The cheap row's fallbacks are gone (behind a loopback proxy, and on Bedrock, Vertex
+  and Foundry), and so is the executor's cheap-route wording. The verdict's `route:` is `high`,
+  `research` or `mid`. The review still rates a fix to a slice whose older verdict reads
+  `route: cheap` as `high`, and the meter still reads old Haiku spans and records as `cheap`.
+- **Haiku stays on `explore` only**, the read-only `Explore` lookup agent, which judges nothing.
+- **Migration notes.** An `executors.toml` with a `[claude.cheap]` table is refused, naming its line,
+  by `executor-route` and `sync-agents`: delete the table (to change the model those slices run on,
+  set `[claude.mid]`). A seeded file that only has it commented out is fine. In-flight slices whose
+  `plan.md` pinned `route=cheap` should re-run `executor-route <slice>` before their next dispatch.
+
 ## v82 — 2026-10-26
 
 - **The project `autoCompactWindow` ships at 500000** (it was 450000 from v66 to v81, and 500000 in

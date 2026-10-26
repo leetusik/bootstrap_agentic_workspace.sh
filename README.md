@@ -396,8 +396,7 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 | `design` | Opus@high | `design-drafter` | 디자인 하위 에이전트의 라운드 초안(`executor-route --drafter`). slice 행이 아니며 `high` 행을 따르지 않음 |
 | `critic` | Opus@high | `design-critic` | 초안 라운드를 새 눈으로 평가하는 디자인 비평가(`executor-route --critic`). `design` 행과 같은 모델이어도 됨 |
 | `judge` | Opus@high | `design-critic` | 비평가가 확신하지 못한 항목만 판정하는 판정 모드(`executor-route --judge`, 별칭만). `design` 행과 같은 모델이어도 됨. Fable로 바꾼 경우 루프백 프록시에서는 건너뜀 |
-| `mid` | Opus@medium | `slice-executor` | 기본 — `risk: low`인 구현·수정(`fix`) slice. 실제 코드 작성과 여러 파일에 걸친 변경도 포함 |
-| `cheap` | Haiku@xhigh | `slice-executor` | `risk: low`인 문서(`docs`)·QA slice — 싼 경로. 루프백 프록시(ocx/Kiro)와 Bedrock·Vertex·Foundry(`haiku` 별칭이 Haiku 4.5)에서는 `mid` 행으로 대체 |
+| `mid` | Opus@medium | `slice-executor` | 기본 — `risk: low`인 구현·수정(`fix`)·문서(`docs`)·QA slice. 실제 코드 작성과 여러 파일에 걸친 변경도 포함 |
 | `explore` | Haiku@xhigh | `Explore` | 읽기 전용 조회(계획 조사, 실행자의 큰 읽기). slice 라우트는 아님 |
 
 `high`는 네 가지 이유 중 하나가 있을 때만 붙습니다: **열린 설계**(계획이 접근법을 정해 둘 수
@@ -424,9 +423,8 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 `executor-route <slice_id>`는 그 slice의 dispatch 결정(행·모델·노력 수준·에이전트)을 보여 줍니다. 모든
 slice dispatch의 판정은 `record-dispatch`로 `works/events.jsonl`에 기록되고, `dispatch-summary`는
 Claude Code의 트랜스크립트에서 메인 스레드와 각 하위 에이전트가 실제로 처리한 토큰과 정가 기준 비용을
-slice별로 계량해 나란히 보여 줍니다 — 라우트 표는 이 워크스페이스 자신의 실행 기록으로 조정합니다. 싼 경로(`cheap`)는 이
-저장소에서는 켜져 있고(Haiku 5.5), 설치 시드에서는 주석 처리되어 있습니다 — `haiku` 별칭이
-Bedrock·Vertex·Foundry에서는 Haiku 4.5이기 때문입니다. 실행자는 큰 읽기 전용 조회를 `Explore`(Haiku)
+slice별로 계량해 나란히 보여 줍니다 — 라우트 표는 이 워크스페이스 자신의 실행 기록으로 조정합니다. v83부터 Haiku로 도는 slice는
+없습니다(문서·QA slice도 `mid`). 실행자는 큰 읽기 전용 조회를 `Explore`(Haiku)
 하위 에이전트에 맡길 수 있지만, `result.md`·`phase.md`·코드·검증·판정은 절대 맡기지 않습니다.
 
 ## 문서 통합: docs phase

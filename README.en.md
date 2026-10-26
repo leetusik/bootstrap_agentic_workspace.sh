@@ -550,13 +550,11 @@ unset or unrecognized value always lands on the high row, and the decomposition 
 slice explicitly. When an executor on the mid row needs a design decision the plan did not make, hits a
 trigger its rating missed, or fails the same validation twice, it returns an `escalate` verdict; the
 orchestrator folds the findings into the plan and re-dispatches on the high row (once per
-slice), and a review finding against mid- or cheap-row work gets a `high` fix slice — so most slices run on
+slice), and a review finding against mid-row work gets a `high` fix slice — so most slices run on
 the mid row's lower effort while the high row takes what is genuinely hard or has already failed once. Model and effort come from one engine-owned **route table**, resolved per slice at dispatch time:
 `high` (opus @ high — review, decomposition, the mockup span, any risk but `low`, every second
-attempt), `research` (opus @ high), `mid` (opus @ medium — implementation and fix rated `low`),
-`cheap` (haiku @ xhigh — docs and qa rated `low`; it falls back to the mid row behind a loopback proxy
-such as ocx/Kiro and on Bedrock, Vertex and Foundry, where the `haiku` alias is Haiku 4.5) and
-`explore` (haiku @ xhigh, the read-only `Explore` lookup agent). Three rows serve design, never a slice: `design` (opus @ high, `design-drafter`), `critic` (opus @ high, `design-critic`) and `judge` (opus @ high, alias only, the same critic file in judge mode); the critic and the judge may share the drafter's model. The repo-root
+attempt), `research` (opus @ high), `mid` (opus @ medium — implementation, fix, docs and qa rated `low`) and
+`explore` (haiku @ xhigh, the read-only `Explore` lookup agent; no slice runs on haiku since v83). Three rows serve design, never a slice: `design` (opus @ high, `design-drafter`), `critic` (opus @ high, `design-critic`) and `judge` (opus @ high, alias only, the same critic file in judge mode); the critic and the judge may share the drafter's model. The repo-root
 `executors.toml` overrides rows one by one (`[claude.<row>]`, seed-once — updates never overwrite it),
 applied to the agent files with `python3 scripts/workflow.py sync-agents`; the presets are gone, and a
 leftover `mode = "…"` line is refused with the migration step. `python3 scripts/workflow.py

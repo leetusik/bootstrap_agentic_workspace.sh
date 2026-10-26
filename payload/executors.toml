@@ -11,8 +11,8 @@
 #
 #   python3 scripts/workflow.py sync-agents
 #
-# The rows (default; what each serves). high, research, mid and cheap all
-# run the one slice executor (.claude/agents/slice-executor.md), whose
+# The rows (default; what each serves). high, research and mid all run
+# the one slice executor (.claude/agents/slice-executor.md), whose
 # frontmatter carries the mid row; the others pass their model per dispatch.
 #   high      opus @ high    review, decomposition, the co-work mockup span,
 #                            any risk but low, every second attempt
@@ -23,22 +23,24 @@
 #                            drafted round: executor-route --critic
 #   judge     opus @ high    design-critic in judge mode, ruling on the items
 #                            the critic escalates (alias only): --judge
-#   mid       opus @ medium  implementation and fix rated low (the default)
-#   cheap     haiku @ xhigh  docs and qa rated low; falls back to the mid row
-#                            where `haiku` is not Haiku 5.5 (below)
+#   mid       opus @ medium  implementation, fix, docs and qa rated low (the
+#                            default)
 #   explore   haiku @ xhigh  read-only lookups (.claude/agents/Explore.md)
 #
 # Grammar: [claude.<row>] tables holding model = "..." and effort = "...",
 # double-quoted. effort is low, medium, high, xhigh or max, or "" to write no
 # effort line and pass no effort (for a model that rejects the parameter).
 # mid, design, critic and explore own an agent file, so they also take a full
-# model id or "inherit"; high, research, cheap and judge run a file another row
+# model id or "inherit"; high, research and judge run a file another row
 # owns, so they take an Agent-tool alias only (opus, sonnet, haiku, fable).
 # The critic and the judge may run on the drafter's model (no row must differ).
 #
 # From v52 or earlier: a top-level mode = "..." line is refused since v53 —
 # delete it. flex was xhigh on both executors; to keep it, set effort = "xhigh"
 # under [claude.mid] and [claude.high].
+# From v82 or earlier: the cheap row (haiku, for docs and qa rated low) was
+# retired in v83 and a [claude.cheap] table is refused — delete it; those
+# slices run on the mid row.
 #
 # This file is yours: the installer seeds it once and updates never overwrite
 # it; deleting it is also fine (the defaults live in the engine). It holds no
@@ -46,10 +48,6 @@
 # /update-workspace, re-run sync-agents (updates reset the agent files to
 # upstream defaults; `validate` warns while they drift).
 
-# The cheap row falls back to the mid row by itself (executor-route prints a fallback= line)
-# under a loopback ANTHROPIC_BASE_URL (ocx/Kiro serves no Haiku 5.5) and on Bedrock, Vertex and
-# Foundry, where the `haiku` alias is Haiku 4.5; set ANTHROPIC_DEFAULT_HAIKU_MODEL there to keep it.
-#
 # Every row at its default: uncomment and edit to override. A row you set stops
 # following later defaults; executor-route prints an override= line for each.
 # [claude.high]
@@ -70,9 +68,6 @@
 # [claude.mid]
 # model = "opus"
 # effort = "medium"
-# [claude.cheap]
-# model = "haiku"   # alias only
-# effort = "xhigh"
 # [claude.explore]
 # model = "haiku"
 # effort = "xhigh"
