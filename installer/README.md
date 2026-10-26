@@ -171,7 +171,7 @@ Below, each entry is the source, then the emit path where it differs:
   Knowledge block in [README.en.md](../README.en.md)). The updater never creates, edits, removes or
   reports a path with an `explain` component, and `RETIRED_FILES` never lists one.
 - `payload/claude/agents/slice-executor.md`, `payload/claude/agents/design-drafter.md`,
-  `payload/claude/agents/design-critic.md`, `payload/claude/agents/explain-critic.md`, `payload/claude/agents/Explore.md` → `.claude/agents/…` (the design subagent and the design critic; `sync-agents` keeps each on its own row, `design` and `critic`; the explain critic judges one drafted chapter of an explain phase and has no row: its model is its own frontmatter)
+  `payload/claude/agents/design-critic.md`, `payload/claude/agents/Explore.md` → `.claude/agents/…` (the design subagent and the design critic; `sync-agents` keeps each on its own row, `design` and `critic`)
 - `payload/executors.toml` → `executors.toml` (seed-once executor-route config — created if absent,
   never overwritten on update; every row commented out at its engine default)
 - `payload/claude/settings.json` → `.claude/settings.json` (the project `autoCompactWindow` ships at 450000; Claude Code also compacts an idle session by itself, on by default, and `idleCompaction: false` in your user settings turns that off; a 200k-context model compacts at its own limit, since the window is capped at the model's context. No compaction hook and no `idleCompaction` key ships; the `SessionStart` `compact` hook only prints the resume card)

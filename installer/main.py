@@ -58,7 +58,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 80
+WORKSPACE_VERSION = 81
 ROOT = TARGET.resolve()
 # Nested personal install (P28; the default layout since P29): TARGET is a HOST git repo -- one the
 # operator may not own, or a new/empty dir this run `git init`s. The engine and all workflow state go
@@ -232,7 +232,7 @@ MANAGED_FILES = [
     *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md", "phase.md")],
     "scripts/workflow.py",
     ".claude/agents/slice-executor.md", ".claude/agents/design-drafter.md",
-    ".claude/agents/design-critic.md", ".claude/agents/Explore.md", ".claude/agents/explain-critic.md",
+    ".claude/agents/design-critic.md", ".claude/agents/Explore.md",
     ".claude/settings.json",
     "executors.toml",
 ]
@@ -680,7 +680,7 @@ def write_json(path, data) -> None:
 # Before any write, nested_plan() also asks git whether every host-side target WILL be ignored
 # (a host .gitignore negation outranks info/exclude); after the writes, nested_verify_clean()
 # asserts the host's git status lists none of them.
-NESTED_AGENTS = ["slice-executor", "design-drafter", "design-critic", "explain-critic", "Explore"]
+NESTED_AGENTS = ["slice-executor", "design-drafter", "design-critic", "Explore"]
 NESTED_KINDS = ("skills", "agents")
 # The engine's subcommands, read from the embedded engine: a hyphenated skill name that is not one
 # of them only ever names the skill, so its plain backticked form is renamed too.
@@ -1812,6 +1812,7 @@ RETIRED_FILES = {
     '.agents/skills/rotate-backlog/agents/openai.yaml': (30, ('6d0256fe50e14bebef26818397323412ab68cbe7cacc4599af1bca1a7582e2c3',)),  # 4ee5c22
     '.agents/skills/update-workspace/SKILL.md': (30, ('4f25b084dbfd896148f240ea3c663af40848a35041ba7aaed92d7abb8a6be30e',)),  # 4ee5c22
     '.agents/skills/update-workspace/agents/openai.yaml': (30, ('0631c41fd8e1ec98331777d3e078d1ef4fdc1ec6c6cbf07cffcf73e1e1101206',)),  # 4ee5c22
+    '.claude/agents/explain-critic.md': (80, ('9884de281812c30718d8a96a8210c9057020b8c109cd42fd00b057bd6495ff14', '855f34a90ded840a0402d8c1bfc04e188272faabea48327840cf008f6b85b693', 'f82cbdcb86cf9d37356ed6378ccbc5f3b3a83b2ccd90233eba647496bb98cf65', '7a59c619824460c8532da58fb25943bafd23c3a78b4259977567e779d3a84aff', '2c66e29d087b3ce4990323c9ce3c6d290a7bd38334f9760ef253c15ede6deb58', '118e9d3b8478b14f237e0216631cfa213c11e0cb12184bdc0fd6a110d60acd53')),  # 9b64bcb (v75-v80), 8fa6476 (v66-v74), d0759a4 (v65)
     '.claude/agents/slice-executor-high.md': (65, ('7a76f8dbe6d10b50333d34b2008fb576dd48f3720f9e2ba67847f4d5eed41f36', '0eafa7ed541f7d21f075878686179c186ac3cbacec96a7fb562d53279964ac4d')),  # d0759a4, route lines dropped
     '.claude/agents/slice-executor-low.md': (22, ('3d798df8b1170cf3aff4bbf10fbe83e6f7d8a8721a990a8d74333b7c08c731df',)),  # 097041d
     '.claude/agents/slice-executor-mid.md': (65, ('3c74ce9945cae627de3588f3ea01533cb8990a48e0b12d813af61d0ba04ded8a', 'faaa25e5cdc62e625d3720030f24e94388ec1cbeb5e80de6deafc39820f2654b')),  # d0759a4, route lines dropped
@@ -2810,13 +2811,12 @@ for name in ([] if NESTED else CLAUDE_SKILLS):
 # Subagents: the one full-permission slice executor that carries out one already-planned slice,
 # its route's model and effort passed per dispatch (embedded verbatim from the live repo), plus
 # the design subagent that drafts one design round (its own design row, [claude.design]), the design
-# critic that judges a drafted round (the critic row; the judge row runs it in judge mode), the explain critic that judges one drafted chapter of an explain phase (no row: the orchestrator passes its model per call, always different from the chapter executor's) and the
+# critic that judges a drafted round (the critic row; the judge row runs it in judge mode) and the
 # read-only Explore lookup agent (the explore row).
 if not NESTED:
     write_text(".claude/agents/slice-executor.md", PAYLOADS[".claude/agents/slice-executor.md"])
     write_text(".claude/agents/design-drafter.md", PAYLOADS[".claude/agents/design-drafter.md"])
     write_text(".claude/agents/design-critic.md", PAYLOADS[".claude/agents/design-critic.md"])
-    write_text(".claude/agents/explain-critic.md", PAYLOADS[".claude/agents/explain-critic.md"])
     write_text(".claude/agents/Explore.md", PAYLOADS[".claude/agents/Explore.md"])
 
 # ---- Executor route config (seeded once — commented defaults; operator-owned) ----
@@ -3082,14 +3082,14 @@ elif RETROFIT:
 else:
     print(f"Bootstrapped agentic workspace at {TARGET}")
     print("Contract: CLAUDE.md")
-    print("Claude Code: 18 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, explain critic .claude/agents/explain-critic.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
+    print("Claude Code: 18 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
     print("Visual design: design-cowork fires automatically; the design-drafter subagent drafts each design job as a working canvas under docs/reference/design/jobs/ (clickable Pages, a board per component), the design-critic judges it when the job's critique is on, the orchestrator publishes each job to its own Design canvas Artifact in the Claude app, and the operator decides: picks a style (build-after / design-only / paired) and signs each job in their own words, or on an in-product mockup they ask for, before separate implementation and browser fidelity")
     print("One executor, routed per dispatch by kind, then risk, then attempt (mid is the default row, real code included; high for decomposition, research, review, named triggers and retries), through one route table whose rows set each dispatch's model and effort; python3 scripts/workflow.py executor-route shows it (and executor-route <slice> the decision for one slice); override a row in executors.toml, then run sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
     print("CI: .github/workflows/workspace-ci.yml runs validate on every push/PR (seeded once — yours to edit); .gitattributes carries the merge rules for machine-written files")
     print("Canonical state: phase.json / slice.json / deferred.json; generated: works/backlog.md, works/deferred.md")
     print("Versioned docs: docs/versions/<doc>/v<yyMMddHHmm>_*.md (a new version is named by its UTC minute; v0001_bootstrap.md is the first) with generated docs/current/*.md")
-    print("Knowledge: /explain is the knowledge plugin's, not this workspace's (plugin 0.5.0+): /plugin marketplace add leetusik/knowledge, then /plugin install knowledge@knowledge; run /knowledge:setup once, then /knowledge:explain P<N> for one chapter")
-    print("  a book (outlined, signed, critic-checked, published private) is an explain phase: ask /create-phase — see docs/current/operations.md")
+    print("Knowledge: /explain is the knowledge plugin's, not this workspace's (plugin 0.6.0+): /plugin marketplace add leetusik/knowledge, then /plugin install knowledge@knowledge; run /knowledge:setup once, then /knowledge:explain P<N> for one chapter")
+    print("  a book (researched, outlined, signed, critic-checked, published private) is an explain phase: ask /create-phase — see docs/current/operations.md")
     print("No phases yet — the workspace starts empty on purpose.")
     print("Next: create the first phase with /create-phase (Claude Code) or python3 scripts/workflow.py new-phase ...")

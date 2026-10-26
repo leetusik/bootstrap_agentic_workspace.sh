@@ -215,7 +215,7 @@ under `workflow/` instead and the skills and agents untracked in the host's `.cl
 
 - [`CLAUDE.md`](payload/contract.md) — the compact routing contract every agent session works under.
 - [`scripts/workflow.py`](payload/scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` — the 18 Agent Skills (`/slash` commands), the risk-routed `slice-executor` subagent (`.claude/agents/slice-executor.md`, one file dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ high), the `design-critic` that judges each draft (the `critic` row, opus @ high; in judge mode the `judge` row, opus @ high), the `explain-critic` that judges one drafted chapter of an explain phase (no row: opus @ xhigh from its own frontmatter), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
+- `.claude/` — the 18 Agent Skills (`/slash` commands), the risk-routed `slice-executor` subagent (`.claude/agents/slice-executor.md`, one file dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ high), the `design-critic` that judges each draft (the `critic` row, opus @ high; in judge mode the `judge` row, opus @ high), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - [`works/`](works/) — the state machine, starting with **no phases**: a `deferred/` area,
@@ -265,7 +265,7 @@ It writes only untracked files, all hidden by the host's `.git/info/exclude` (ne
 
 - `workflow/`: a **nested git repo** holding the engine, `works/`, `docs/`, `executors.toml` and
   the contract (as `CLAUDE.workspace.md`). It is versioned there, separately from the host.
-- the 18 skills and 5 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
+- the 18 skills and 4 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
   path rewritten to reach `workflow/` (`python3 workflow/scripts/workflow.py …`);
 - a `.gitignore` of `*` in each of those skill directories, so a skill directory hides itself
   even where the host's `.gitignore` re-includes `.claude/skills/`;
@@ -532,7 +532,7 @@ commands in Claude Code:
 > then run `/knowledge:setup` once (connect to the hosted KB, or scaffold your own) and use
 > `/knowledge:explain <topic>`. A whole book (researched, outlined and signed, each chapter checked by a
 > fresh-eyes critic, published private) is an **explain phase**: ask `/create-phase` to explain something
-> as a book. Plugin version 0.5.0 or later is required. To update: `/plugin marketplace update knowledge`,
+> as a book. Plugin version 0.6.0 or later is required; a book's research runs on your session's permissions and web-search cap (the plugin's README, *Explain: permissions and the search cap*). To update: `/plugin marketplace update knowledge`,
 > then update `knowledge@knowledge` from the `/plugin` panel's Installed tab (or, from a shell,
 > `claude plugin update knowledge@knowledge`). The review never writes an explainer; it only reports
 > `explain: not written — run /knowledge:explain P<N> for one chapter, or create an explain phase for a book`.
@@ -694,7 +694,7 @@ parallelism it never used. The mechanism itself is unchanged.)
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
 │   ├── skills/                    # 18 Agent Skills (/slash commands)
-│   ├── agents/                    # slice-executor + design-drafter + design-critic + explain-critic (models from executors.toml)
+│   ├── agents/                    # slice-executor + design-drafter + design-critic (models from executors.toml)
 │   └── settings.json              # pre-approves workflow.py; denies force-push & rm -rf
 └── .github/
     └── workflows/

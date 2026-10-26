@@ -52,7 +52,7 @@ document API, so they stay in step. Install it once:
 then run `/knowledge:setup` once (connect to the hosted KB, or scaffold your own) and use
 `/knowledge:explain <topic>`. A whole book (researched, outlined and signed, each chapter
 checked by a fresh-eyes critic, published private) is an **explain phase**: ask
-`/create-phase` to explain something as a book. Plugin version 0.5.0 or later is required.
+`/create-phase` to explain something as a book. Plugin version 0.6.0 or later is required. A book's research runs on your session's permissions (auto mode needs nothing; manual mode needs the rules its preflight prints, in `.claude/settings.local.json`) and its web searches count against Claude Code's per-session cap: raise `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` in your user settings' `env` (the plugin's README, *Explain: permissions and the search cap*).
 To update: `/plugin marketplace update knowledge`, then update `knowledge@knowledge` from the
 `/plugin` panel's Installed tab (or, from a shell, `claude plugin update knowledge@knowledge`).
 The review never writes an explainer; it only reports

@@ -75,7 +75,6 @@ FIXED_LIVE_FILES = [
     ".claude/agents/slice-executor.md",
     ".claude/agents/design-drafter.md",
     ".claude/agents/design-critic.md",
-    ".claude/agents/explain-critic.md",
     ".claude/agents/Explore.md",
     "executors.toml",
     "works/templates/deferred_brief.md",

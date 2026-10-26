@@ -17,12 +17,16 @@ What differs is the work it reviews, which is a book rather than product code, a
    - its `## Publish` section.
 
    Then run `python3 scripts/workflow.py validate`. A chapter not done is a finding.
+
+   **Then check the freeze** (the skill's §9.2): the book's research indexes are unedited since the outline's signature. The last `DECOMP` commit is `git log -1 --format=%h -- works/phases/active/P<N>/slices/<P>.DECOMP`. In `git log --format='%h %s' --name-status -- works/phases/active/P<N>/book/research`, every later commit may add or change only files named for one chapter (`ch<k>-…`, `…-ch<k>.md`, `trace-<key>.md`), never `library.md`, `ledger.md` or another file of the whole-book run. (Nested: run both in the nested repo, `git -C workflow …`, with paths relative to it.) One that does is a finding: its chapters were written against indexes that moved.
 2. **Reads the whole book** in the outline's order: `book/<key>.md` against `book/outline.md`. It reads for:
    - the flow between chapters;
    - repetition: a term taught twice, or a diagram drawn twice;
    - a term used before the chapter that defines it;
    - the outline's promises: every chapter's goal met, every planned diagram and figure present, every quiz target tested.
-3. **Decides every `disputed` critic finding.** Each `Cnn · disputed` line in a chapter's `## Critique answers` is read beside the finding in `book/critique/<key>.md` and the chapter, then ruled on:
+   - the reader tasks: each chapter serves the tasks its outline entry names, with their deliverables where the reader needs them;
+   - **the optional `sources` chapter** ("Sources and further reading"), when the outline has one: every item it lists is in the book's `library.md` or a chapter's `library-ch<k>.md`, under the id the index gives it, rung 1 first; it lists no source the indexes lack, and leaves out no rung-1 source a chapter's main claims rest on.
+3. **Decides every `disputed` critic finding.** Each `Cnn · disputed` line in a chapter's `## Critique answers` is read beside the finding in `book/critique/<key>.md`, the chapter and the evidence it cites in `book/research/` (the frozen indexes and that chapter's overlays), then ruled on:
    - **upheld:** it becomes a finding and a fix slice;
    - **overruled:** it gets a line in `result.md` saying why.
 
@@ -83,7 +87,7 @@ What differs is the work it reviews, which is a book rather than product code, a
 A `changes_requested` verdict, or an operator-reported failure at the gate (`review-phase <P> --verdict changes_requested --note "operator-reported: …"`), becomes one fix slice per chapter that needs changes: `<P>.F<n>`, `--kind fix`. Rate it as `reference/review.md` says: `high` when the chapter's `result.md` reads `route: mid` or `route: cheap`.
 
 A fix slice:
-1. revises `book/<key>.md` and its assets;
+1. revises `book/<key>.md`, its assets and `trace-<key>.md`, and nothing else in `book/research/`: it adds no evidence (a fix the frozen indexes and the chapter's overlays cannot support removes the sentence or states the point as open, as the skill's §4.10 says) and dispatches no research agent;
 2. re-reads the result (§4.8);
 3. re-runs `knowledge check` (§4.9) to exit 0;
 4. **republishes** the chapter with its `## Publish` command (rewritten if a flag changed), with the target added and `check` swapped for `save`. This is a new version of the same document: the id and URL are kept, and it stays private. Its plan says so; that one publish is the fix slice's carve-out. A chapter that never published (step 4's exit 1) is published by its fix in the same way.

@@ -14,6 +14,39 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v81 — 2026-10-26
+
+- **A book runs on the knowledge plugin's research pipeline** (plugin **0.6.0** or later). An
+  explain phase's `DECOMP` now leads the explain skill's whole-book research (§9.2) before it
+  outlines: the dossier is the phase's `book/research/` (committed; fetched `pages/` ignored), and
+  the outline gate links `book/research/summary.md` (key sources, open disagreements, weak spots,
+  expected top-ups). The operator's signature freezes the book's `library.md` and `ledger.md`.
+  Each chapter slice tops up its own research into per-chapter overlays (§9.3), writes from the
+  reader tasks its outline entry names, keeps `trace-<key>.md`, and is judged by the plugin's
+  **`knowledge:explain-critic`** (`kind: chapter`). The critic runs on opus with
+  `same-model: accepted`, as v75 lets a critic run on the writer's model, so its
+  `(same model, degraded)` label is expected. Chapters are rated `high` (an Opus research lead).
+  The review checks the freeze and the optional "Sources and further reading" chapter.
+- **`/create-phase`'s explain route** asks `must-cover`, `leave-out` and `trusted sources`, defaults
+  `lang` to `en`, and takes a proposal from the plugin's `/knowledge:explain` that the operator
+  accepted with a literal yes as already confirmed.
+- **Explain executors may dispatch the plugin's research agents.** `slice-executor`'s Agent tool
+  stays read-only `Explore` lookups, with one carve-out: in an explain phase, the `DECOMP` and
+  chapter executors dispatch the research roles and probe agents the explain skill names, each
+  prompt starting `slice: <id>` so `dispatch-summary` attributes it. Explain chapters still run one
+  at a time, never in a wave.
+- **The workspace's own `explain-critic` agent is retired** (four agents ship).
+
+- **Migration notes.** `/update-workspace` lists `.claude/agents/explain-critic.md` as stale (by
+  content, any text v65 to v80 shipped; nested: the host's copy, renamed or not); delete it.
+  Update the knowledge plugin to 0.6.0 or later. A book's research runs on the session's
+  permissions: interactive auto mode needs nothing; manual mode needs the rules the skill's
+  preflight prints, in `.claude/settings.local.json` (the shipped `settings.json` is unchanged).
+  Raise `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` in your user settings' `env` (for example
+  `1000`): a book's research can pass the default 200, and the workspace never sets it. An explain
+  phase created earlier reads its three new fields as `none`; one already past its outline gate
+  has no `book/research/`, so re-run its `DECOMP` before its next chapter.
+
 ## v80 — 2026-10-26
 
 - **New defaults.** Every opus row (`high`, `research`, `design`, `judge`) runs at `high` instead of

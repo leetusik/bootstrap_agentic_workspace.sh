@@ -209,6 +209,18 @@ for rel in ("claude/agents/slice-executor.md",
 for p in [*(root / "payload").rglob("*.md"), root / "installer/main.py", root / "installer/payloads/doc_bodies/operations.md"]:
     t = p.read_text(encoding="utf-8")
     assert "run /explain for this phase" not in t and "run /knowledge:explain for this phase" not in t, p
+# A book runs on the knowledge plugin's research pipeline (plugin 0.6.0+). The route keeps the heading
+# and the must-cover field the plugin's readiness check reads; a chapter dispatches the plugin's critic on opus
+# with same-model: accepted (v75); only explain executors may dispatch the plugin's research agents; the
+# workspace's own explain-critic is retired.
+assert "must-cover" in create_phase and "0.6.0" in create_phase and "**A confirmed proposal.**" in create_phase
+_chapter = (root / "payload/claude/skills/do-whole-phase/reference/explain-chapter.md").read_text(encoding="utf-8")
+assert "knowledge:explain-critic" in _chapter and "kind: chapter" in _chapter and "trace-<key>.md" in _chapter
+assert "same-model: accepted" in _chapter and "`model: opus`" in _chapter and "model: sonnet" not in _chapter
+_decomp = (root / "payload/claude/skills/do-whole-phase/reference/explain-decomposition.md").read_text(encoding="utf-8")
+assert "installed_plugins.json" in _decomp and "pages/.gitignore" in _decomp and "slice: <P>.DECOMP" in _decomp
+assert "**The explain carve-out" in (root / "payload/claude/agents/slice-executor.md").read_text(encoding="utf-8")
+assert not (root / "payload/claude/agents/explain-critic.md").exists()
 
 # Only skills that *document the removal* may still say "Codex": update-workspace's
 # pre-v31 migration step. Anywhere else it is a regression.
@@ -1176,11 +1188,25 @@ grep -q '^model: opus$' "$F/.claude/agents/slice-executor.md" && grep -q '^effor
   && grep -q '^effort: high$' "$F/.claude/agents/design-critic.md" && grep -q '^tools: ' "$F/.claude/agents/design-critic.md" \
   && ! grep -Eq '^tools: (.*, )?Edit(,.*)?$' "$F/.claude/agents/design-critic.md" \
   && ok "fresh install ships the design-critic subagent (opus@high, no Edit in tools)" || bad "fresh install design-critic missing, off its row defaults, or carries Edit"
-# The explain critic ships as a sixth agent, opus @ xhigh, and writes only its critique file: no Edit.
-[ -f "$F/.claude/agents/explain-critic.md" ] && grep -q '^model: opus$' "$F/.claude/agents/explain-critic.md" \
-  && grep -q '^effort: xhigh$' "$F/.claude/agents/explain-critic.md" && grep -q '^tools: ' "$F/.claude/agents/explain-critic.md" \
-  && ! grep -Eq '^tools: (.*, )?Edit(,.*)?$' "$F/.claude/agents/explain-critic.md" \
-  && ok "fresh install ships the explain-critic subagent (opus@xhigh, no Edit in tools)" || bad "fresh install explain-critic missing, off its frontmatter, or carries Edit"
+# An explain phase's critic is the knowledge plugin's knowledge:explain-critic (plugin 0.6.0); the workspace ships none.
+[ ! -e "$F/.claude/agents/explain-critic.md" ] \
+  && ok "fresh install ships no explain-critic (the plugin's knowledge:explain-critic judges chapters)" \
+  || bad "fresh install still ships .claude/agents/explain-critic.md"
+# ... and --update lists a copy holding the text v75-v80 shipped (tests/fixtures/v80, as v66's test plants
+# tests/fixtures/v65) as stale (ours, unchanged), never deleting it; an edited copy is yours, kept.
+newtmp ECR
+ECRW="$ECR/ws"
+sh "$BOOT" "$ECRW" --at-root --name "ECR" --summary "ecr" >/dev/null 2>&1 || bad "explain-critic retirement: fresh install failed"
+cp "$REPO_ROOT/tests/fixtures/v80/explain-critic.md" "$ECRW/.claude/agents/explain-critic.md"
+ecr_out=$(sh "$BOOT" "$ECRW" --update 2>&1); ecr_rc=$?
+[ "$ecr_rc" -eq 0 ] && printf '%s\n' "$ecr_out" | sed -n '/^  stale (ours, unchanged/,/^  [^ ]/p' \
+  | grep -qxE '    - \.claude/agents/explain-critic\.md  \(unchanged since v[0-9]+\)' \
+  && [ -f "$ECRW/.claude/agents/explain-critic.md" ] \
+  && ok "--update lists the retired explain-critic as stale (by content) and leaves it in place" \
+  || bad "--update did not list the retired explain-critic as stale (rc=$ecr_rc) -- $ecr_out"
+printf '\nmy own rule\n' >> "$ECRW/.claude/agents/explain-critic.md"
+printf '%s\n' "$(sh "$BOOT" "$ECRW" --update 2>&1)" | grep -qxE '    - \.claude/agents/explain-critic\.md  \(differs from what v[0-9]+ shipped\)' \
+  && ok "an edited explain-critic is yours, kept" || bad "an edited explain-critic was misclassified"
 # v61 (P37.S7): shape pins on the two design agents -- one drafter output (no build-prompt.md bar as legacy), the
 # strict self-check and the state-bar rules in the drafter, the render reuse in the critic.
 D="$F/.claude/agents/design-drafter.md"; C="$F/.claude/agents/design-critic.md"
@@ -2086,7 +2112,6 @@ done
 DUAL_FIXED=".claude/agents/slice-executor.md
 .claude/agents/design-drafter.md
 .claude/agents/design-critic.md
-.claude/agents/explain-critic.md
 .claude/agents/Explore.md
 .claude/settings.json
 executors.toml
