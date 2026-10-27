@@ -57,7 +57,7 @@ For each repo, take the `base=` and `head=` of its `phase-scope` block and read 
 
 1. Subjects follow that repo's commit convention (`python3 scripts/workflow.py nested-convention [--repo <name>]`).
 2. Authorship and trailers: the author is who the convention says; `Co-Authored-By` or any AI attribution appears only where it says `allowed`.
-3. No phase, slice or deferred IDs (`P<N>`, `P<N>.S<n>`, `D<N>`: `P12` and `P-7kq2` alike) and no workspace paths (`workflow/`, `CLAUDE.local.md`, `.claude/settings.local.json`) in subjects, bodies or branch names.
+3. No phase, slice or deferred IDs (`P<N>`, `P<N>.S<n>`, `D<N>`: `P46-k2`, `P12` and `P-7kq2` alike) and no workspace paths (`workflow/`, `CLAUDE.local.md`, `.claude/settings.local.json`) in subjects, bodies or branch names.
 4. The branch follows that repo's branch pattern, with no IDs in it.
 5. A pull request, when one exists: `gh pr view <branch> --json title,body,commits,baseRefName`, run in the repo. Its title, body and base follow the repo's PR rules, with no IDs, workspace paths or workspace files. No pull request yet, or no `gh` here, is `n/a`, not a failure.
 6. The repo's own rules files (`nested-repos` lists each repo's `rules`) were held for what the phase changed, e.g. the checks or guards they require before a merge.

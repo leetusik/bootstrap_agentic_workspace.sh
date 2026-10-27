@@ -52,9 +52,9 @@ Just in time, and only what the work in front of you needs:
 
 ## IDs and Status
 
-- Ids are minted: omit `--phase` / `--id` to get `P-7kq2` / `D-m3xa`; old `P12` / `D12` stay
+- Omit `--phase`/`--id`: `P46-k2`/`D92-x4` (number + tail; type `46` if unique); `P12`, `P-7kq2` stay
 - Phases: `planned | in_progress | in_review | pending | blocked | done`
-- Slices `P-7kq2.S1`, …: `todo | ready | in_progress | in_review | changes_requested | pending | blocked | done`. **`DECOMP2` has two origins**, a findings-only `research` slice or the `build-after` design style, and is never pre-planned until its input lands; a third pass is `P<N>.DECOMP3`
+- Slices `P46-k2.S1`, …: `todo | ready | in_progress | in_review | changes_requested | pending | blocked | done`. **`DECOMP2` has two origins**, a findings-only `research` slice or the `build-after` design style, and is never pre-planned until its input lands; a third pass is `P<N>.DECOMP3`
 - Slice kinds: `--kind` is a **closed set**: `implementation`, `review`, `decomposition`, `research`, `fix`, `docs`, `qa`, `co-work`
 - Deferred: `deferred | ready | promoted | done | dropped`; verdicts `pass | changes_requested | blocked`
 

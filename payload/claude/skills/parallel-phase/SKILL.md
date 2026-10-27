@@ -42,7 +42,7 @@ the detail lives here.
    never does, and neither does `/do-whole-phases`. A phase already carrying the stamp is entered
    without asking again.
 2. **Where** — `<repo>/.claude/worktrees/P<N>-<slug>` on branch `phase/P<N>-<slug>` (`P<N>` is the
-   phase's id, `P12` or `P-7kq2`; `--worktree` overrides); the engine puts `.claude/worktrees/` in `.git/info/exclude` (common dir), never in
+   phase's id, `P46-k2`, `P12` or `P-7kq2`; `--worktree` overrides); the engine puts `.claude/worktrees/` in `.git/info/exclude` (common dir), never in
    `.gitignore`. **Nested install:** a pair — the host worktree `<host>/.claude/worktrees/P<N>-<slug>`
    on the operator-confirmed host branch, with the nested worktree at its `workflow/` on
    `phase/P<N>-<slug>`; the engine adds `/.claude/worktrees/` to the host's `info/exclude`.

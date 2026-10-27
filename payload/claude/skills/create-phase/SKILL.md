@@ -38,14 +38,14 @@ Turn an operator request for new work into one or more phases — or a deferred 
    ```
    python3 scripts/workflow.py defer-job --title "..." --reason "..." --trigger "..." [--source ...]
    ```
-   Leave out `--id`: the engine mints the job's id (`D-m3xa`) and prints it on the `created deferred job` line; never pick a number. This parks the job under `works/deferred/open/<DID>/` and never affects next-slice selection until promoted (the same command the `defer-job` skill wraps). Commit it as step 5 says, report and STOP.
+   Leave out `--id`: the engine mints the job's id (`D92-x4`: the next number and a random tail) and prints it on the `created deferred job` line; never pick a number. This parks the job under `works/deferred/open/<DID>/` and never affects next-slice selection until promoted (the same command the `defer-job` skill wraps). Commit it as step 5 says, report and STOP.
 
    **Make a phase (or several)** → for each phase, in operator-confirmed order:
    1. Create it, leaving out `--phase`:
       ```
       python3 scripts/workflow.py new-phase --name "..." --objective "..."
       ```
-      The engine mints the id (`P-7kq2`: `P-` and a 4-symbol token) and prints it on the `created phase` line; never pick a number, and use that printed id as `P<N>` in every step below. `new-phase` creates only `P<N>.DECOMP` and `P<N>.REVIEW`, scaffolds `intent.md`, and links it near the top of `phase.md`.
+      The engine mints the id (`P46-k2`: the next number and a random tail) and prints it on the `created phase` line; never pick it, and use that printed id as `P<N>` in every step below. `new-phase` creates only `P<N>.DECOMP` and `P<N>.REVIEW`, scaffolds `intent.md`, and links it near the top of `phase.md`.
    2. Fill `works/phases/active/P<N>/intent.md`:
       - leave **Origin** as `operator`;
       - paste the operator's request **word-for-word** under *Original Input (verbatim)* — do not fix grammar or wording;
@@ -80,7 +80,7 @@ Durable docs are versioned **in a docs phase the operator creates** — never pe
 1. **Read the debt** (read-only): `python3 scripts/workflow.py docs-debt`. It prints every owing phase with its `## Doc impact` notes, the docs those notes touch, and the command that pays each phase.
 2. **Propose that as the scope** in step 2 — the phases and the docs it names. The operator may narrow it; a phase left out simply keeps owing and stays in `active/`.
 3. **Confirm the name and objective at step 3, unchanged.** An objective that works: *"consolidate the `## Doc impact` notes from P12–P16 into new versions of architecture, operations and qa"* — name the phases, because they are what gets cleared at the end.
-4. **`new-phase`, fill `intent.md`, STOP.** Create it with `--consolidates <the confirmed phases>` (for example `--consolidates P12,P-7kq2`: any id form works) — that flag is what marks it a docs phase, so `rotate-backlog` and `docs-debt` see those phases' debt as being paid and never propose a second docs phase for them; it refuses, writing nothing, for an id that is not an active phase owing consolidation, and a phase left out of the list keeps owing. A docs phase runs on the default stream, like every phase (v43) — nothing to pass, nothing to pin. It has to: `doc-new-version`, `docs-consolidated` and `parallel-consolidated` only run there, so **never ask for a worktree on a docs phase**, whatever hint `new-phase` or `next` prints. Record the `docs-debt` scope in `intent.md`; decomposition is the docs phase's own `DECOMP` slice, later.
+4. **`new-phase`, fill `intent.md`, STOP.** Create it with `--consolidates <the confirmed phases>` (for example `--consolidates 46,P12,P-7kq2`: any brief form works) — that flag is what marks it a docs phase, so `rotate-backlog` and `docs-debt` see those phases' debt as being paid and never propose a second docs phase for them; it refuses, writing nothing, for an id that is not an active phase owing consolidation, and a phase left out of the list keeps owing. A docs phase runs on the default stream, like every phase (v43) — nothing to pass, nothing to pin. It has to: `doc-new-version`, `docs-consolidated` and `parallel-consolidated` only run there, so **never ask for a worktree on a docs phase**, whatever hint `new-phase` or `next` prints. Record the `docs-debt` scope in `intent.md`; decomposition is the docs phase's own `DECOMP` slice, later.
 
 **What that `DECOMP` will cut** (write it into `intent.md`; do not cut it here): **one slice per doc**, `--kind docs` — `doc-new-version` is per doc and one doc usually collects notes from several phases, so per-doc keeps each doc to a single new version. Risk by the normal rule. Each slice runs, per note it covers:
 
@@ -107,7 +107,7 @@ Explaining one thing once stays the knowledge plugin's one-shot skill: `/knowled
 1. **Ask the `## Explain` fields at step 2.** Suggest a value for each, with your reason; the operator confirms or overrides:
    - **subject**: a phase id (`P30`), a slice id (`P30.S4`) or a free topic;
    - **mode**: `codebase` (the subject is this repo's code or its work records) or `general` (no repo behind it; the web and the operator's material are the evidence). This is the book's mode. It is not the skill's §1 mode (change, topic or general), which the outline sets for each chapter;
-   - **book**: its slug and title, placed by the skill's §1 rules. A phase or slice subject gets that phase's own book, `p<N>` titled `P<N>: <phase name>`, as §1 names it for a slice (§1 counts numbered phases; a minted id keeps its form, so `P-7kq2` suggests the book `p-7kq2`, titled `P-7kq2: <phase name>`); §1's `phases` book holds one chapter per phase, which is the one-shot's job. Anything else is a named book, of kind `codebase` or `subject`;
+   - **book**: its slug and title, placed by the skill's §1 rules. A phase or slice subject gets that phase's own book, `p<N>` titled `P<N>: <phase name>`, as §1 names it for a slice (§1 counts numbered phases; a tailed or v73 id keeps its form, so `P46-k2` suggests the book `p46-k2`, titled `P46-k2: <phase name>`); §1's `phases` book holds one chapter per phase, which is the one-shot's job. Anything else is a named book, of kind `codebase` or `subject`;
    - **lang**: `en` (translations: none), unless the operator names another language for the chapters. The research is written in English either way. A translation names the published original's version (§5), so translations follow the accepted book: the review lists them as a deferred job for the orchestrator to file;
    - **reader**: who it is for, what they already know, and what they will do with the book. The outline turns that into each chapter's reader tasks, and every chapter and the critic write for this reader;
    - **depth**: about how many chapters;
