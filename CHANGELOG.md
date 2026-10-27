@@ -14,6 +14,59 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v85 — 2026-10-27
+
+- **The instrument.** Every real-browser check the workspace makes (implementation and fix
+  verification, design fidelity, a requested mockup, the gated review's stages 2–4, the explain
+  review's reader read) now drives Claude in Chrome's `mcp__claude-in-chrome__*` tools instead of
+  Aside. The doctrine is unchanged: the operator's runtime and access path from `## Operator Runtime`,
+  the agent picking each next action rather than a pre-written assertion suite, the instrument named
+  in `result.md`, and no run claimed that was not made. The whole Aside procedure is gone (`aside
+  repl` over Bash, `aside exec`, the re-attach preamble, `--account <id>`, the MCP escape hatch); the
+  contract's rule, `design-cowork`'s `reference/build.md` (which carries the procedure in full), its
+  mockup reference, `review-phase`'s stage 2 and `do-whole-phase`'s wave, decomposition and explain
+  review references all name the new instrument.
+- **Who can drive it.** `slice-executor`'s `tools:` gains `mcp__claude-in-chrome__*`, listed last.
+  A session without Chrome still launches the executor with its other tools (the wildcard matches
+  nothing; proven live), so the line is safe everywhere. `design-drafter`, `design-critic` and
+  `Explore` carry none: the drafter and critic render headless through `design-preview`, a self-check
+  rather than verification. The main thread inherits every tool the session has.
+- **The dedicated profile, selected first.** The agent drives a separate Chrome profile with the
+  extension, signed into none of the operator's accounts and into the same claude.ai account and org
+  as Claude Code. On every run, before any other browser tool, it calls `list_connected_browsers`
+  and `select_browser`s the entry whose `deviceId` is the one `## Operator Runtime` records: with one
+  browser connected the tools would otherwise act on it unasked, and that one may be the operator's.
+  The key is the `deviceId`, never the `name`: Claude in Chrome hides the names you give and labels
+  browsers by position ("Browser 1", "Browser 2"), and a label can move to another browser between
+  connections (anthropics/claude-code #74902, #90153), so a recorded label could select the
+  operator's own profile. The recorded id is also the operator's answer, given ahead of time, to the
+  tool's own "ask the user which browser". No Chrome tools in the session, no recorded id, or no
+  connected browser with it is the **third halt**: `needs_operator` → `pending`, never a fallback to
+  a label, never borrowing another browser or creating a profile. `slice-executor` reaches the tools
+  without `ToolSearch` (proven live, list-only).
+- **The fallback is the manifest's choice.** Where Claude in Chrome cannot run (WSL, CI, an API-key or
+  Bedrock/Vertex/Foundry session), `## Operator Runtime` names another real browser the agent drives
+  step by step on a throwaway profile (e.g. the project's Playwright), running the same sweep. The
+  agent never falls back mid-run: Chrome missing from a session whose manifest names it is the halt.
+- **The Operator Runtime template's two fields.** A fresh install's seed now reads
+  `- Browser instrument for the agent:` (Claude in Chrome by default, a blank meaning it, or the named
+  fallback) and `- Agent's Chrome deviceId:` (the `deviceId` `list_connected_browsers` prints for
+  the agent profile while it is the only browser connected). The smoke suite pins the new rule and fails on any shipped
+  body that still names Aside or its CLI.
+- **Migration notes.** Enable Chrome in Claude Code (`/chrome` → "Enabled by default", or start with
+  `claude --chrome`; a claude.ai login is required). Set up a separate Chrome profile with the Claude
+  in Chrome extension, signed into none of your accounts and into the same claude.ai account and
+  org as Claude Code. Read its id: with **only** that profile connected (close your other Chrome
+  profiles' windows for the moment), ask Claude in a Chrome-on session to call
+  `list_connected_browsers` and copy the one entry's `deviceId`. In `## Operator Runtime` (in
+  `workflow/docs/current/operations.md` for a nested install, `docs/current/operations.md` at the
+  root), replace the Aside lines with `- Browser instrument for the agent: Claude in Chrome` (or your
+  fallback browser) and `- Agent's Chrome deviceId: <that id>` through a new doc version
+  (`doc-new-version --doc operations`). A manifest that still names Aside counts as unfilled: the first
+  slice claiming a real-browser check stops `needs_operator` once to ask for the id. Reinstalling the
+  extension or signing it out changes the id; the run then halts until you record the new one. Aside
+  itself may be uninstalled.
+
 ## v84 — 2026-10-27
 
 - **Phase and deferred ids you can say.** v73's minted tokens (`P-7kq2`) kept two branches from colliding,
