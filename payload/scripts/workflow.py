@@ -4744,6 +4744,15 @@ def streams_section(phases: list, state: dict, live=None) -> list:
     return ["## Streams", "", "| " + " | ".join(head) + " |", "|" + "---|" * len(head)] + rows + [""]
 
 
+def installed_workspace_version():
+    """The installer's marker version (`works/.workspace-version.json`), or None when missing, unreadable or not an int."""
+    try:
+        version = read_json(WORKS / ".workspace-version.json").get("workspace_version")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return version if isinstance(version, int) and not isinstance(version, bool) else None
+
+
 def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
     lines = [
         "# Backlog", "", "> Generated dashboard. Do not put detailed task context here; edit phase/slice/deferred folders instead.",
@@ -4757,8 +4766,10 @@ def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
     if state.get("stream"):  # only in a parallel-phase checkout; absent on the default stream
         lines.append(f"- Stream: `{clean_cell(state['stream'])}` (parallel phase checkout; the pointer above is scoped to it)")
     live = {}  # phase id -> (phase data, slices, where) for every phase streams_section read from elsewhere
+    version = installed_workspace_version()
     lines += [
-        f"- Open deferred jobs: `{index.get('deferred_open_count', 0)}`", "",
+        f"- Open deferred jobs: `{index.get('deferred_open_count', 0)}`",
+        f"- Workspace version: `{'unknown' if version is None else f'v{version}'}`", "",
         *streams_section(phases, state, live),
         "## Active Phases", "", "| Phase | Status | Review | Name | Current Slice | Path |", "|---|---|---|---|---|---|",
     ]

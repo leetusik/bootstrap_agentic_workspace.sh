@@ -1151,6 +1151,14 @@ marker_version = json.loads(marker_path.read_text())["workspace_version"]
 assert main_version == top_changelog == marker_version, (main_version, top_changelog, marker_version)
 PY
 then ok "release version agrees across installer, top changelog heading, and fresh marker"; else bad "release version markers disagree"; fi
+# backlog.md's Pointer ends with the installed version; a missing marker reads `unknown`, never an error.
+mv_ver=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["workspace_version"])' "$F/works/.workspace-version.json" 2>/dev/null)
+newtmp VW; cp -R "$F" "$VW/ws"; rm -f "$VW/ws/works/.workspace-version.json"
+vout=$( cd "$VW/ws" && python3 scripts/workflow.py rebuild 2>&1 ); vrc=$?
+grep -qxF -e "- Workspace version: \`v$mv_ver\`" "$F/works/backlog.md" && [ "$vrc" -eq 0 ] \
+  && grep -qxF -e '- Workspace version: `unknown`' "$VW/ws/works/backlog.md" \
+  && ok "backlog.md shows the marker's version (v$mv_ver), and \`unknown\` once the marker is gone" \
+  || bad "backlog.md version line wrong (marker v$mv_ver, rebuild rc=$vrc) -- $(grep -F 'Workspace version' "$F/works/backlog.md" "$VW/ws/works/backlog.md") $vout"
 # v37: every released section carries a Migration notes line -- the file's own intro
 # promises one whenever a sync needs manual steps, and /update-workspace prints exactly
 # those lines to adopting repos. v37's sharpest instruction (remove a v36 `aside mcp`

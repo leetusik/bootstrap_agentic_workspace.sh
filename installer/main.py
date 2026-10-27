@@ -3027,22 +3027,23 @@ if UPDATE:
 if DRY_RUN:
     pass  # previewed only — no rebuild/validate, no marker
 elif UPDATE:
+    # The marker first: the rebuild renders its version into backlog.md.
+    write_version_marker()
     if UPDATE_DOCS:
         run_workflow("rebuild")
         run_workflow("validate")
     else:
         # No docs subsystem here (retrofitted repo) — the docs rebuild would crash.
         run_workflow("next")
-    write_version_marker()
 elif RETROFIT and not INSTALL_DOCS:
     # The target owns docs/ — rebuild only the works side; do not run our docs
     # rebuild/validate against a foreign doc system.
-    run_workflow("next")
     write_version_marker()
+    run_workflow("next")
 else:
+    write_version_marker()
     run_workflow("rebuild")
     run_workflow("validate")
-    write_version_marker()
 
 if NESTED:
     if not DRY_RUN:
