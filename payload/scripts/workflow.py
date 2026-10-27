@@ -57,7 +57,12 @@ NESTED_CONVERTED_KEYS = ("repo", "old_nested", "at")
 NESTED_HOST_BRANCH_REQUIRED = (
     "parallel-start in a nested install needs --host-branch <name>: the host repo's branch for this phase's product commits, "
     "named by the host's own convention for branches (see nested-convention), with no workspace phase/slice IDs in it; "
-    "an existing branch is reused when no host worktree has it checked out -- nothing was written")
+    "an existing branch is reused when no host worktree has it checked out (an explain phase may omit it: v86 cuts its host worktree "
+    "detached, since an explain makes no host commit) -- nothing was written")
+# v86 (§9.4): a worktree SET's repos ride beside a host BRANCH; only an explain phase's lone pair may be detached.
+NESTED_SET_NEEDS_HOST_BRANCH = (
+    "--repo and --repo-base need --host-branch <name>: a worktree set's host half is a branch the operator names; only an explain "
+    "phase's plain pair may omit it (a detached host worktree, no host branch) -- nothing was written")
 # phase.json `host_anchors` (nested only): the host HEAD at new-phase and at the passing review --
 # phase-scope's range in the host repo, whose commits the nested repo never sees. `review_base`
 # (P40, optional) is written at the passing review only when the base rule resolved something other
@@ -2459,6 +2464,17 @@ def phase_in_flight(data) -> bool:
 
 
 NESTED_EXECUTION_HOST_KEYS = ("host_worktree", "host_branch", "host_base", "host_base_sha", "host_branch_created")
+HOST_DETACHED = object()  # v86: the ## Streams Host branch cell of a detached host worktree (never a branch name)
+
+
+def _host_branch_cell(execution: dict):
+    """The Host branch cell's value: the stamped branch, `HOST_DETACHED` for an explain phase's detached
+    host worktree (`host_branch` stamped null beside the other host keys, v86), else None (`-`)."""
+    if execution.get("host_branch"):
+        return execution["host_branch"]
+    if "host_branch" in execution and "host_worktree" in execution:
+        return HOST_DETACHED
+    return None
 
 
 def _nested_execution_problems(phase_id: str, execution: dict) -> list:
@@ -2469,7 +2485,9 @@ def _nested_execution_problems(phase_id: str, execution: dict) -> list:
     -- plus `base_branch` (the nested repo's branch at start). The five appear together, and only in a
     nested install; `base_branch` comes with them there, and is otherwise only type-checked (a root
     stamp of it is additive). `worktree` is the nested worktree: `<host_worktree>/<workflow>` while
-    both are set. A block without any of them (every at-root block, and a legacy one) is untouched."""
+    both are set. A block without any of them (every at-root block, and a legacy one) is untouched.
+    v86 (§9.4): `host_branch` may be null -- a DETACHED host worktree (an explain phase's) -- and then
+    `host_branch_created` must be false and the block carries no `repos` (a set needs a host branch)."""
     problems = []
     present = [k for k in NESTED_EXECUTION_HOST_KEYS if k in execution]
     if "base_branch" in execution:
@@ -2486,8 +2504,18 @@ def _nested_execution_problems(phase_id: str, execution: dict) -> list:
         problems.append(f"phase {phase_id} has a partial nested execution block: missing {', '.join(missing)} (parallel-start writes all six together)")
     for key in ("host_branch", "host_base"):
         value = execution.get(key)
+        if key == "host_branch" and value is None:
+            continue  # v86: a detached host worktree; its consistency is checked below
         if key in execution and not (isinstance(value, str) and value.strip()):
-            problems.append(f"phase {phase_id} has invalid execution.{key} {value!r}; expected a non-empty string")
+            problems.append(f"phase {phase_id} has invalid execution.{key} {value!r}"
+                            + ("; expected a non-empty string, or null for a detached host worktree" if key == "host_branch" else "; expected a non-empty string"))
+    if "host_branch" in execution and execution.get("host_branch") is None:
+        if execution.get("host_branch_created") is not False:
+            problems.append(f"phase {phase_id} has execution.host_branch null (a detached host worktree) but host_branch_created "
+                            f"{execution.get('host_branch_created')!r}; a detached host worktree creates no branch, so it must be false")
+        if "repos" in execution:
+            problems.append(f"phase {phase_id} has execution.host_branch null (a detached host worktree) with execution.repos; "
+                            f"a worktree set needs a host branch (parallel-start --host-branch)")
     sha = execution.get("host_base_sha")
     if "host_base_sha" in execution and not (isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{7,64}", sha)):
         problems.append(f"phase {phase_id} has invalid execution.host_base_sha {sha!r}; expected a host commit sha")
@@ -4706,7 +4734,7 @@ def streams_section(phases: list, state: dict, live=None) -> list:
         cells = [f"`{clean_cell(stream_cell)}`", f"`{clean_cell(phase_id)}`" if phase_id else "-", clean_cell(status) or "-",
                  f"`{clean_cell(cur)}`" if cur else "-", done or "-"]
         if nested:
-            cells.append(f"`{clean_cell(host)}`" if host else "-")
+            cells.append("detached" if host is HOST_DETACHED else f"`{clean_cell(host)}`" if host else "-")
         cells += [f"`{clean_cell(worktree)}`" if worktree else "-", clean_cell(source)]
         rows.append("| " + " | ".join(cells) + " |")
 
@@ -4715,7 +4743,7 @@ def streams_section(phases: list, state: dict, live=None) -> list:
         cur, done = _phase_progress(own, own["slices"])
         short = _parallel_verdict_pair(own["id"], own.get("status"), (own.get("review") or {}).get("status"), own["slices"],
                                        phase_consolidation(own), None, False, True)[0]
-        add(stream, own["id"], short, cur, done, execution.get("host_branch"), execution.get("worktree"), "working tree")
+        add(stream, own["id"], short, cur, done, _host_branch_cell(execution), execution.get("worktree"), "working tree")
 
     # The default row.
     if own is None:
@@ -4770,7 +4798,7 @@ def streams_section(phases: list, state: dict, live=None) -> list:
         short = _parallel_verdict_pair(p["id"], data.get("status"), (data.get("review") or {}).get("status"), slices,
                                        phase_consolidation(p), merged, branch_gone, False)[0]
         cur, done = _phase_progress(data, slices)
-        add(branch or "-", p["id"], short, cur, done, execution.get("host_branch"), execution.get("worktree"), source)
+        add(branch or "-", p["id"], short, cur, done, _host_branch_cell(execution), execution.get("worktree"), source)
 
     head = ["Stream", "Phase", "Status", "Current slice", "Done"] + (["Host branch"] if nested else []) + ["Worktree", "Source"]
     return ["## Streams", "", "| " + " | ".join(head) + " |", "|" + "---|" * len(head)] + rows + [""]
@@ -5913,18 +5941,23 @@ def parallel_start(args: argparse.Namespace) -> None:
     achieve that by construction; this can.
 
     In a nested personal install (P35) the phase gets a worktree PAIR instead -- see
-    `_parallel_start_nested`; `--host-branch` is required there and refused at root.
+    `_parallel_start_nested`; `--host-branch` is required there and refused at root. v86 (§9.4): an
+    explain phase (`## Explain` in intent.md) may omit it -- its host worktree is cut DETACHED at the
+    host base (`execution.host_branch` null), since an explain makes no host commit; `--host-branch`
+    is still honoured for it, a non-explain phase still needs it, and `--repo` never goes without it.
     """
     host_branch = getattr(args, "host_branch", None)
     host_base = getattr(args, "host_base", None)
+    repo_args = getattr(args, "repo", None) or []
+    repo_base_args = getattr(args, "repo_base", None) or []
     if NESTED is None:
         if host_branch is not None or host_base is not None:
             raise SystemExit("--host-branch and --host-base are for a nested personal install only (they name the host repo's branch and base); "
                              "at root the phase branch is the only branch -- nothing was written")
-    elif not (host_branch or "").strip():
-        raise SystemExit(NESTED_HOST_BRANCH_REQUIRED)
-    repo_args = getattr(args, "repo", None) or []
-    repo_base_args = getattr(args, "repo_base", None) or []
+    else:
+        host_branch = (host_branch or "").strip() or None
+        if host_branch is None and (repo_args or repo_base_args):
+            raise SystemExit(NESTED_SET_NEEDS_HOST_BRANCH)
     set_repos = []
     if repo_args or repo_base_args:  # P40.S6: a worktree set's repos, multi-repo hosts only
         if NESTED is None:
@@ -5936,6 +5969,8 @@ def parallel_start(args: argparse.Namespace) -> None:
                              f"and the pair is all there is; register repos with {WORKFLOW_CMD} nested-repos --add <path>) -- nothing was written")
         set_repos = _parse_set_repo_args(repo_args, repo_base_args, repos)
     pdir = require_phase(args.phase)
+    if NESTED is not None and host_branch is None and not explain_phase(pdir):
+        raise SystemExit(NESTED_HOST_BRANCH_REQUIRED)  # v86: below require_phase, so an explain phase may go detached
     data = read_json(pdir / "phase.json")
     if data.get("status") != "planned":
         raise SystemExit(f"phase {args.phase} is {data.get('status')!r}; a phase enters its worktree before it starts (parallel-start needs status 'planned') -- a phase already in flight finishes on this stream")
@@ -5959,7 +5994,7 @@ def parallel_start(args: argparse.Namespace) -> None:
         if execution and execution.get("branch") == branch:
             raise SystemExit(f"branch {branch} is already stamped on phase {p['id']}")
     if NESTED is not None:
-        _parallel_start_nested(args, pdir, data, branch, host_branch.strip(), host_base, set_repos)
+        _parallel_start_nested(args, pdir, data, branch, host_branch, host_base, set_repos)
         return
     if args.worktree:
         worktree = Path(os.path.abspath(str(Path(args.worktree).expanduser())))
@@ -6226,7 +6261,7 @@ def _set_repo_line(plan: dict, by: str = "parallel-start") -> str:
             f"repo_anchors.{plan['name']}.created={plan['anchor']} ({anchor})")
 
 
-def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, branch: str, host_branch: str, host_base_arg, set_repos=()) -> None:
+def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, branch: str, host_branch, host_base_arg, set_repos=()) -> None:
     """`parallel-start` in a nested personal install (P35): a host worktree with the nested worktree inside.
 
     The pair is `<host>/.claude/worktrees/P<N>-<slug>` on `host_branch` (the operator names it, by the
@@ -6242,21 +6277,27 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
     `--repo-base`) makes the pair a SET: every repo's guards run after the host's, in one combined
     refusal; the stamp adds `execution.repos` and re-stamps each named repo's `repo_anchors` through
     `_stamp_set_repo`; each repo worktree is cut at `<host-wt>/<path>` after the nested worktree.
-    Without `set_repos` every step and line is exactly the pair's."""
+    Without `set_repos` every step and line is exactly the pair's.
+
+    v86 (§9.4): `host_branch` None (an explain phase, never a set: the caller refused both other
+    cases) cuts the host worktree DETACHED at the resolved host base (`git worktree add --detach`):
+    no branch to name, create, reuse or integrate. The stamp carries `host_branch: null` and
+    `host_branch_created: false`; `host_anchors.created` is the base; everything else is the pair's."""
     host = HOST_ROOT
+    detached = host_branch is None
     if host is None or not _git_available(cwd=host):
         raise SystemExit(f"the nested install's host {host} is not a git work tree; parallel-start cuts a host worktree, so it needs one -- nothing was written")
     busy = _git_operation_in_progress(cwd=host)
     if busy:
         raise SystemExit(f"a {busy} is in progress in the host checkout {host}; finish or abort it first -- nothing was written")
-    if host_branch.startswith("-") or _git(["check-ref-format", "--branch", host_branch], cwd=host, check=False).returncode != 0:
+    if not detached and (host_branch.startswith("-") or _git(["check-ref-format", "--branch", host_branch], cwd=host, check=False).returncode != 0):
         raise SystemExit(f"--host-branch {host_branch!r} is not a valid branch name in the host repo -- nothing was written")
     host_entries = _worktree_entries(cwd=host)
-    holder = next((path for path, ref in host_entries if ref == f"refs/heads/{host_branch}"), None)
+    holder = None if detached else next((path for path, ref in host_entries if ref == f"refs/heads/{host_branch}"), None)
     if holder:
         raise SystemExit(f"host branch {host_branch} is checked out in {holder}; a branch lives in one worktree at a time, so pick another --host-branch "
                          f"or switch that checkout off it -- nothing was written")
-    host_branch_created = _git(["rev-parse", "--verify", "--quiet", f"refs/heads/{host_branch}"], cwd=host, check=False).returncode != 0
+    host_branch_created = (not detached) and _git(["rev-parse", "--verify", "--quiet", f"refs/heads/{host_branch}"], cwd=host, check=False).returncode != 0
     rel = Path(os.path.relpath(ROOT, host))
     if args.worktree:
         host_wt = Path(os.path.abspath(str(Path(args.worktree).expanduser())))
@@ -6272,7 +6313,7 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
         if os.path.realpath(str(path)) in registered:
             raise SystemExit(f"{path} is still registered as a git worktree (a stale entry); run `git worktree prune` in that repo first -- nothing was written")
     base_ref, base_sha = _resolve_host_base(host, host_base_arg)
-    if host_branch_created:
+    if detached or host_branch_created:
         anchor = base_sha
     else:
         proc = _git(["merge-base", base_sha, f"refs/heads/{host_branch}"], cwd=host, check=False)
@@ -6316,7 +6357,8 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
     _git(["commit", "--only", "-m", f"chore(works): opt {args.phase} into parallel execution", "--", *stamp_paths])
 
     q = shlex.quote
-    host_add = (["worktree", "add", "-b", host_branch, str(host_wt), base_sha] if host_branch_created
+    host_add = (["worktree", "add", "--detach", str(host_wt), base_sha] if detached
+                else ["worktree", "add", "-b", host_branch, str(host_wt), base_sha] if host_branch_created
                 else ["worktree", "add", str(host_wt), host_branch])
     steps = [
         (["git", "-C", str(host), *host_add], host),
@@ -6353,9 +6395,12 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
     print(f"branch={branch}")
     print(f"worktree={nested_wt}")
     print(f"host_worktree={host_wt}")
-    print(f"host_branch={host_branch} ({'created by parallel-start' if host_branch_created else 'reused: it existed and was not checked out'})")
+    if detached:
+        print(f"host_branch=- (detached host worktree at the base: an explain phase makes no host commit, so it has no host branch)")
+    else:
+        print(f"host_branch={host_branch} ({'created by parallel-start' if host_branch_created else 'reused: it existed and was not checked out'})")
     print(f"host_base={base_ref} ({base_sha})")
-    print(f"host_anchors.created={anchor} ({'the base' if host_branch_created else 'merge-base of the base and the reused branch'}) -- phase-scope's base")
+    print(f"host_anchors.created={anchor} ({'the base' if detached or host_branch_created else 'merge-base of the base and the reused branch'}) -- phase-scope's base")
     for plan in plans:
         print(_set_repo_line(plan))
     if nested_repos():  # P40.S6: multi-repo only
@@ -6368,6 +6413,11 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
     print("CLAUDE.local.md copied into the host worktree" if copied else f"note: no {local_md} to copy -- a session in the host worktree loads no workspace contract")
     print(f"next: enter the host worktree in this session (Claude Code: EnterWorktree with path={host_wt}) or open a session there, run "
           f"{WORKFLOW_CMD} next (it prints stream={branch}), and drive the phase from that checkout")
+    if detached:
+        print(f"there: no product commits -- the host worktree is detached and read-only by intent (an explain reads the host code at {base_sha[:12]}); "
+              f"workflow commits go to git -C {rel.as_posix()} (the nested worktree, on {branch})")
+        print(f"this stream's pointer now skips {args.phase}; the host side has no branch, so there is nothing to integrate there -- merge {branch} in the nested repo")
+        return
     if plans:
         print(f"there: product commits go to each repo's branch in its worktree (git -C <repo path>); workflow commits go to git -C {rel.as_posix()} "
               f"(the nested worktree, on {branch}); {host_branch} carries only the host's own files")
@@ -6509,7 +6559,7 @@ def parallel_skip(args: argparse.Namespace) -> None:
         print(f"phase {args.phase} carries v42's legacy pin (execution.mode=default) and runs on the default stream -- as it would with no block at all")
     else:
         print(f"phase {args.phase} already runs on the default stream")
-        print(f"to run it in its own worktree instead, ask for one: {WORKFLOW_CMD} parallel-start {args.phase}{NESTED_HOST_BRANCH_ARG}")
+        print(f"to run it in its own worktree instead, ask for one: {WORKFLOW_CMD} parallel-start {args.phase}{'' if explain_phase(pdir) else NESTED_HOST_BRANCH_ARG}")
 
 
 def parallel_teardown(args: argparse.Namespace) -> None:
@@ -6883,13 +6933,14 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
         ignored += [(host_wt, entry) for entry in _ignored_worktree_files(host_wt, skip)]
         dirty = _git(["status", "--porcelain", "--untracked-files=normal"], cwd=host_wt).stdout.splitlines()
         if dirty:
-            problems.append(f"the host worktree {host_wt} has uncommitted work (commit it on {host_branch}, or move or discard it):\n"
+            problems.append(f"the host worktree {host_wt} has uncommitted work "
+                            f"({f'commit it on {host_branch}' if host_branch else 'it is detached: put it on a branch'}, or move or discard it):\n"
                             + "\n".join(f"      {line}" for line in dirty))
         orphan = _detached_orphans(host_wt, base_sha)
         if orphan:
             problems.append(f"the host worktree {host_wt} is detached at {orphan[0]} with {orphan[1]} commit(s) beyond the base that no branch, tag or "
                             f"remote ref holds; removing it would orphan them -- put them on a branch first "
-                            f"(git -C {q(host_wt)} switch -c <name>, or switch {host_branch} to them)")
+                            f"(git -C {q(host_wt)} switch -c <name>" + (f", or switch {host_branch} to them)" if host_branch else ")"))
     if ignored and not discard_ignored:
         problems.append("ignored, worktree-only files would be deleted with the worktrees (git worktree remove does not ask):\n"
                         + "\n".join(f"      {os.path.join(where, entry)}" for where, entry in ignored)
@@ -7045,6 +7096,8 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
     if kept_repo_branch:
         print(f"each repo branch follows its repo's own custom (nested-convention --repo <name>): integrate it there; "
               f"the engine pushed, opened and merged nothing")
+    if not host_branch:
+        print("no host branch: the host worktree was detached (an explain phase), so there is no branch to keep or delete")
     if host_branch and not delete_host_branch:
         if host_branch_exists:
             print(f"kept host branch {host_branch}: {keep_reason}")
@@ -7053,7 +7106,7 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
         else:
             print(f"host branch {host_branch} is already gone; nothing to keep")
     print(f"execution.worktree=null, execution.host_worktree=null; mode/branch/consolidation and host_branch/host_base/host_base_sha/"
-          f"host_branch_created/base_branch kept as history (branch={branch}, host_branch={host_branch}, consolidation={phase_consolidation(data)})")
+          f"host_branch_created/base_branch kept as history (branch={branch}, host_branch={host_branch or '- (detached)'}, consolidation={phase_consolidation(data)})")
     if set_repos:
         print(f"execution.repos.<name>.worktree=null for {', '.join(repo['name'] for repo in set_repos)}; branch/base/base_sha/branch_created "
               f"kept as history")
@@ -7486,8 +7539,12 @@ def parallel_status(args: argparse.Namespace) -> None:
         print(f"  branch={branch or '- (stamped parallel with no branch; fix phase.json)'}")
         print(f"  worktree={worktree or '- (plain clone, or already torn down)'}")
         if NESTED is not None:  # P35: the host half of the pair, as stamped at parallel-start
-            if execution.get("host_branch"):
-                print(f"  host_branch={execution['host_branch']}" + (" (created by parallel-start)" if execution.get("host_branch_created") else " (reused)"))
+            detached = "host_branch" in execution and execution.get("host_branch") is None and "host_worktree" in execution
+            if execution.get("host_branch") or detached:
+                if detached:  # v86 (§9.4): an explain phase's pair
+                    print("  host_branch=- (detached host worktree)")
+                else:
+                    print(f"  host_branch={execution['host_branch']}" + (" (created by parallel-start)" if execution.get("host_branch_created") else " (reused)"))
                 print(f"  host_base={execution.get('host_base') or '-'} ({execution.get('host_base_sha') or '-'})")
                 print(f"  host_worktree={execution.get('host_worktree') or '- (already torn down)'}")
             else:
@@ -13542,7 +13599,7 @@ def main(argv=None) -> int:
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--worktree", default=None, help="worktree path (default: <repo>/.claude/worktrees/P<N>-<slug>, which EnterWorktree can enter in the same session; elsewhere means opening a second session there)")
     p.add_argument("--slug", default=None, help="branch slug override (default: slugified phase name); branch is phase/<phase>-<slug>")
-    p.add_argument("--host-branch", default=None, help="nested install only, and required there: the host repo's branch for this phase's product commits, named by the host's convention (no workspace IDs); reused when it exists and no host worktree has it checked out. In nested the pair is <host>/.claude/worktrees/P<N>-<slug> on this branch, with the nested worktree inside it (--worktree overrides the host worktree's path)")
+    p.add_argument("--host-branch", default=None, help="nested install only, and required there except for an explain phase (## Explain in intent.md), whose host worktree is then cut detached at the host base with no host branch (v86: an explain makes no host commit; --repo still needs it): the host repo's branch for this phase's product commits, named by the host's convention (no workspace IDs); reused when it exists and no host worktree has it checked out. In nested the pair is <host>/.claude/worktrees/P<N>-<slug> on this branch, with the nested worktree inside it (--worktree overrides the host worktree's path)")
     p.add_argument("--host-base", default=None, help="nested install only: the host ref the host branch starts from (default: origin/HEAD, else init.defaultBranch if it exists locally, else main, then master; never fetched)")
     p.add_argument("--repo", action="append", default=None, metavar="NAME=BRANCH", help="multi-repo host only, repeatable: also cut a worktree for registered repo NAME at <host worktree>/<its path> on BRANCH (required, named by that repo's convention: nested-convention --repo NAME); reused when it exists and is checked out nowhere. A registered repo not named here is not in this set: inside it, phase-scope skips it")
     p.add_argument("--repo-base", action="append", default=None, dest="repo_base", metavar="NAME=REF", help="multi-repo host only, repeatable: the ref repo NAME's branch starts from (default: its registry default_branch as a local branch; never fetched); NAME must also be given with --repo")

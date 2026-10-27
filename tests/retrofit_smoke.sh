@@ -3367,7 +3367,7 @@ if printf '%s\n' "$sup_out" | grep -Fq 'critique off (a superseding round'"'"'s 
 else bad "the superseding round's critique or the generated SIGNOFF.md is wrong (close rc=$close_rc) -- $sup_out / $close_out / $(cat "$RD/SIGNOFF.md" 2>&1)"; fi
 
 # ---------------------------------------------------------------------------
-echo "== Test 14: P28 nested engine -- workflow/.agentic-nested.json: host anchors, host-side phase-scope, the paired worktree lifecycle, the convention gate, the agent rename map, a malformed marker fails validate =="
+echo "== Test 14: P28 nested engine -- workflow/.agentic-nested.json: host anchors, host-side phase-scope, the paired worktree lifecycle (v86: an explain phase's detached pair), the convention gate, the agent rename map, a malformed marker fails validate =="
 # A host repo with one product commit, and the live engine + templates (+ a seed install's docs) in a
 # nested git repo at host/workflow/ beside the marker. Every command runs from the host root, the way
 # a nested session does. The at-root invariant is every earlier test passing unchanged.
@@ -3500,6 +3500,29 @@ if [ "$td_rc" -eq 0 ] && [ -n "$nested_at" ] && [ -n "$host_at" ] && [ "$nested_
     && ! git -C "$NH" worktree list --porcelain | grep -q '^prunable' && ! git -C "$NW" worktree list --porcelain | grep -q '^prunable'; then
   ok "paired parallel-teardown --discard-ignored removes the nested worktree before the host worktree and keeps the host branch feat/side"
 else bad "paired teardown wrong (rc=$td_rc) -- $td_out"; fi
+# v86 (§9.4): an explain phase's pair goes detached without --host-branch -- no host branch is made, kept or deleted.
+{ nw new-phase --phase P2 --name "Explain: probe" --objective "detached host" \
+    && printf '\n## Explain\n\n- unit: document\n' >> "$NW/works/phases/active/P2/intent.md"; } >/dev/null 2>&1 || bad "detached pair: could not create the explain phase"
+hb_before=$(git -C "$NH" branch --list | wc -l | tr -d ' ')
+ps_out=$(nw parallel-start P2 2>&1); ps_rc=$?
+HWT2=$(printf '%s\n' "$ps_out" | sed -n 's/^host_worktree=//p'); PBR2=$(printf '%s\n' "$ps_out" | sed -n 's/^branch=//p')
+if [ "$ps_rc" -eq 0 ] && printf '%s\n' "$ps_out" | grep -q '^host_branch=- (detached host worktree' && [ -d "$HWT2/workflow" ] \
+    && ! git -C "$HWT2" symbolic-ref -q HEAD >/dev/null 2>&1 && [ "$(git -C "$NH" branch --list | wc -l | tr -d ' ')" = "$hb_before" ] \
+    && python3 -c 'import json,sys; e=json.load(open(sys.argv[1]))["execution"]; assert e["host_branch"] is None and e["host_branch_created"] is False, e' "$NW/works/phases/active/P2/phase.json" \
+    && nw validate >/dev/null 2>&1; then
+  ok "nested parallel-start of an explain phase with no --host-branch cuts a detached host worktree: host_branch null, no host branch made, validate passes"
+else bad "detached explain pair wrong (rc=$ps_rc) -- $ps_out -- $(nw validate 2>&1 | tail -3)"; fi
+PG="$HWT2/workflow/works/phases/active/P2/doc/pages"
+mkdir -p "$PG" && printf '*\n!.gitignore\n' > "$PG/.gitignore" && printf 'cached\n' > "$PG/p1.html" \
+  && git -C "$HWT2/workflow" add works/phases/active/P2/doc >/dev/null 2>&1 && git -C "$HWT2/workflow" commit -qm "dossier" >/dev/null 2>&1 \
+  && git -C "$NW" add -A >/dev/null 2>&1 && { git -C "$NW" commit -qm "default state" >/dev/null 2>&1; git -C "$NW" merge --no-ff -q -m "merge P2" "$PBR2" >/dev/null 2>&1; } \
+  || bad "detached pair: could not commit the dossier or merge $PBR2"
+td_out=$(nw parallel-teardown P2 --discard-ignored 2>&1); td_rc=$?
+if [ "$td_rc" -eq 0 ] && printf '%s\n' "$td_out" | grep -q '^no host branch: the host worktree was detached' && printf '%s\n' "$td_out" | grep -q '^deleted 1 ignored' \
+    && [ ! -e "$HWT2" ] && [ "$(git -C "$NH" branch --list | wc -l | tr -d ' ')" = "$hb_before" ] \
+    && ! git -C "$NH" worktree list | grep -qF "$HWT2" && ! git -C "$NW" worktree list | grep -qF "$HWT2" && nw validate >/dev/null 2>&1; then
+  ok "the detached pair's teardown --discard-ignored drops the ignored pages/ and both worktrees and leaves no host branch"
+else bad "detached pair teardown wrong (rc=$td_rc) -- $td_out"; fi
 
 
 # ---------------------------------------------------------------------------
