@@ -363,21 +363,30 @@ SLICE_STOP_KINDS = {
 }
 DEFERRED_STATUSES = {"deferred", "ready", "promoted", "done", "dropped"}
 REVIEW_VERDICTS = {"pass", "changes_requested", "blocked"}
-# Ids (v73, P44): an id minted on any branch or machine never collides at merge. New phase and
-# deferred ids are `P-` / `D-` plus a 4-symbol token, Crockford base32 in lowercase without the
-# look-alikes `i l o u` (32^4 values, drawn with `secrets`); the old `P<n>` / `D<n>` ids stay valid
-# and are never renamed. These patterns are the ONE predicate every reader of a stored id uses, and
-# `id_sort_key` the one order a listing uses (numeric ids first by number, tokens after by creation).
-# A token is re-drawn when it is all digits (so a bare `12` always means `P12`), a mode word the do-*
-# skills strip from the operator's words, or the token of any id this workspace can see (one pool for
-# phases and deferred jobs, so a bare token names exactly one thing). Slice ids keep their per-phase
-# suffixes: `P-7kq2.S1`.
+# Ids (readable ids, after v83): an id the operator can say. New phase and deferred ids are the next
+# NUMBER plus a two-symbol random tail -- `P46-k2`, `D92-x4`, slices `P46-k2.S1` -- the number one more than the highest
+# numbered id of that kind the workspace can see (old `P45` and tailed `P45-m9` alike, archived included),
+# the tail drawn with `secrets` from v73's alphabet (Crockford base32 in lowercase without the look-alikes
+# `i l o u`) and holding at least one letter, so `P46-12` never reads as a range. Two branches that each
+# make the next id draw the same number but (923 times in 924) different tails; a same-number same-tail
+# pair surfaces as a git add/add conflict on the phase folder at merge, never a silent mix (no engine
+# guard). Older ids are never renamed: v72's `P<n>` / `D<n>` and v73's minted `P-<token>` / `D-<token>`
+# (4 symbols) stay valid beside the new shape. These patterns are the ONE predicate every reader of a
+# stored id uses (a digit after `P` means numbered, with or without a tail; a dash after `P` means a v73
+# token), and `id_sort_key` the one order a listing uses (numbered ids by number, then v73 tokens by
+# creation). Slice ids keep their per-phase suffixes: `P46-k2.S1`, `P-7kq2.S1`, `P12.S1`.
 ID_TOKEN_ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz"
-ID_TOKEN_LENGTH = 4
+ID_TOKEN_LENGTH = 4  # a v73 token: guards only an explicit `--phase P-7kq2` / `--id D-m3xa` now
 ID_TOKEN_PATTERN = "[0-9a-hjkmnp-tv-z]{4}"
+ID_TAIL_LENGTH = 2
+ID_TAIL_LETTERS = "abcdefghjkmnpqrstvwxyz"
+# Two alphabet symbols, at least one a letter (never all digits): 32^2 - 10^2 = 924 tails per number.
+ID_TAIL_PATTERN = "(?:[a-hjkmnp-tv-z][0-9a-hjkmnp-tv-z]|[0-9][a-hjkmnp-tv-z])"
 ID_MODE_WORDS = frozenset({"gate", "plan"})  # `auto` and `only` cannot be drawn: u, o and l are not in the alphabet
-PHASE_ID_PATTERN = rf"P(?:[0-9]+|-{ID_TOKEN_PATTERN})"
-DEFERRED_ID_PATTERN = rf"D(?:[0-9]+|-{ID_TOKEN_PATTERN})"
+PHASE_ID_PATTERN = rf"P(?:[0-9]+(?:-{ID_TAIL_PATTERN})?|-{ID_TOKEN_PATTERN})"
+DEFERRED_ID_PATTERN = rf"D(?:[0-9]+(?:-{ID_TAIL_PATTERN})?|-{ID_TOKEN_PATTERN})"
+# A numbered id, tailed or not, any prefix: group 1 the number, group 2 the tail (None when untailed).
+NUMBERED_ID_RE = re.compile(rf"[PD]([0-9]+)(?:-({ID_TAIL_PATTERN}))?")
 SLICE_SUFFIX_PATTERN = "[A-Z][A-Z0-9]*"
 PHASE_ID_RE = re.compile(PHASE_ID_PATTERN)
 DEFERRED_ID_RE = re.compile(DEFERRED_ID_PATTERN)
@@ -1161,7 +1170,7 @@ PRICES = {
 # is over the threshold pays the second row, cache hit or not.
 PRICES_LONG_PROMPT = {"claude-haiku-5-5": (100_000, (0.50, 0.625, 1.0, 0.05, 2.50))}
 METER_PRICES_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing, fetched 2026-10-20"
-# Composed from the id block's patterns (v73), so a minted `P-7kq2.S1` attributes beside `P12.S1`.
+# Composed from the id block's patterns, so a tailed `P46-k2.S1` and a v73 `P-7kq2.S1` attribute beside `P12.S1`.
 METER_SLICE_ID_RE = re.compile(rf"\b{PHASE_ID_PATTERN}\.{SLICE_SUFFIX_PATTERN}\b")
 METER_SLICE_LINE_RE = re.compile(rf"(?im)^[\s>*`-]*slice[`*]*\s*:\s*[`*]*({PHASE_ID_PATTERN}\.[A-Za-z][A-Za-z0-9]*)")
 METER_ROUND_RE = re.compile(r"\b(\d{2}-[a-z0-9][a-z0-9-]*)/(\d{2}-[a-z0-9][a-z0-9-]*)\b")
@@ -2275,14 +2284,15 @@ def _created_sort_stamp(created_at) -> str:
 
 
 def id_sort_key(value, created_at=None) -> tuple:
-    """The ONE order of phase and deferred ids in a listing (v73): numeric ids first, by number --
-    `(0, n, "")`, exactly the order v72 gave an all-numeric list -- then minted tokens, by creation
-    time and then token -- `(1, created_at, token)`; an id of neither shape sorts last, as written.
-    Phases still SELECT by `order`; this key lists them, and breaks a tie in `order`."""
+    """The ONE order of phase and deferred ids in a listing: numbered ids first, tailed or not, by number
+    and then tail -- `(0, n, tail or "")`, so `P46` before `P46-k2` before `P46-x4` and an all-numeric
+    list sorts exactly as v72 sorted it -- then v73's minted tokens, by creation time and then token --
+    `(1, created_at, token)`; an id of neither shape sorts last, as written. Deterministic: a numbered
+    id reads no record. Phases still SELECT by `order`; this key lists them, and breaks a tie in `order`."""
     text = str(value)
-    numeric = re.fullmatch(r"[PD]([0-9]+)", text)
+    numeric = NUMBERED_ID_RE.fullmatch(text)
     if numeric:
-        return (0, int(numeric.group(1)), "")
+        return (0, int(numeric.group(1)), numeric.group(2) or "")
     token = re.fullmatch(rf"[PD]-({ID_TOKEN_PATTERN})", text)
     if token:
         return (1, _created_sort_stamp(created_at), token.group(1))
@@ -2346,7 +2356,7 @@ def deferred_jobs() -> dict:
             data = read_json(djson)
             data["path"] = str(ddir.relative_to(ROOT))
             groups[label].append(data)
-        # v73: in id order (D2 before D10, then minted D- tokens by creation), not folder-name order.
+        # In id order (D2 before D10 before D10-x4, then v73's minted D- tokens by creation), not folder-name order.
         groups[label].sort(key=lambda d: id_sort_key(Path(d["path"]).name, d.get("created_at")))
     return groups
 
@@ -2694,16 +2704,16 @@ def deferred_folder_ids() -> set:
 
 
 def _id_token(value):
-    """The lowercase token of a `P-`/`D-` id, any case, or None for any other shape."""
+    """The lowercase token of a v73 `P-`/`D-` id, any case, or None for any other shape (a numbered id,
+    tailed or not, has no token)."""
     match = re.fullmatch(r"[PDpd]-([0-9A-Za-z]+)", str(value))
     return match.group(1).lower() if match else None
 
 
-def visible_id_tokens() -> set:
-    """The tokens of every phase and deferred id this workspace can see -- ONE pool for both kinds:
-    active phases (folder and `phase.json` id), archived phases (`archived_phase_ids`) and every
-    deferred folder. A minted token is drawn outside it, so a bare token names exactly one thing."""
-    ids = set(archived_phase_ids()) | deferred_folder_ids()
+def visible_phase_ids() -> set:
+    """Every phase id this workspace can see: each active folder's name and its `phase.json` id, and every
+    archived id (`archived_phase_ids`: an archived id is spent)."""
+    ids = set(archived_phase_ids())
     for pdir in (ACTIVE.iterdir() if ACTIVE.is_dir() else []):
         if pdir.is_dir():
             ids.add(pdir.name)
@@ -2711,16 +2721,29 @@ def visible_id_tokens() -> set:
                 ids.add(str(read_json(pdir / "phase.json").get("id", "")))
             except Exception:  # noqa: BLE001 - an unreadable phase.json still has its folder name
                 pass
-    return {tok for tok in (_id_token(i) for i in ids) if tok}
+    ids.discard("")
+    return ids
+
+
+def visible_ids(prefix: str) -> set:
+    """The ids of one kind this workspace can see: phases (`P`, `visible_phase_ids`) or deferred jobs (`D`,
+    every folder in open/, promoted/ and dropped/)."""
+    return visible_phase_ids() if prefix == "P" else deferred_folder_ids()
+
+
+def visible_id_tokens() -> set:
+    """The v73 tokens of every phase and deferred id this workspace can see -- ONE pool for both kinds.
+    It now guards only an explicit v73-shape id (`--phase P-7kq2`, `--id D-m3xa`): the mint draws no token."""
+    return {tok for tok in (_id_token(i) for i in visible_phase_ids() | deferred_folder_ids()) if tok}
 
 
 def id_token_refusal(token: str, taken=None):
-    """Why `token` cannot be a new id's token, or None: all digits (it would read as an old number), a
-    mode word (`gate`, `plan`), a `p`/`d` and three digits (typed bare it would read as the old `P123` / `D123`),
-    or a token some visible phase or deferred id already has."""
+    """Why `token` cannot be an explicit v73-shape id's token, or None: all digits (it would read as a
+    number), a mode word (`gate`, `plan`), a `p`/`d` and three digits (typed bare it would read as the old
+    `P123` / `D123`), or a token some visible phase or deferred id already has."""
     token = token.lower()
     if token.isdigit():
-        return f"its token {token} is all digits, which reads as an old number"
+        return f"its token {token} is all digits, which reads as a number"
     if token in ID_MODE_WORDS:
         return f"its token {token} is a mode word"
     if re.fullmatch(r"[pd][0-9]{3}", token):
@@ -2730,43 +2753,76 @@ def id_token_refusal(token: str, taken=None):
     return None
 
 
+def id_number(value):
+    """`(n, tail)` of a numbered id of either prefix (`P46` -> `(46, None)`, `D92-x4` -> `(92, "x4")`), or
+    None for any other shape (a v73 token, an odd name)."""
+    match = NUMBERED_ID_RE.fullmatch(str(value))
+    return (int(match.group(1)), match.group(2)) if match else None
+
+
+def next_id_number(prefix: str, visible=None) -> int:
+    """1 + the highest number of every visible numbered id of this kind, untailed (`P45`) and tailed
+    (`P45-m9`) alike (`visible_ids`: phases active and archived, deferred jobs open, promoted and dropped);
+    v73 tokens carry no number and are ignored. An empty workspace gives 1."""
+    numbers = [id_number(i)[0] for i in (visible_ids(prefix) if visible is None else visible)
+               if str(i).startswith(prefix) and id_number(i)]
+    return max(numbers, default=0) + 1
+
+
+def draw_id_tail() -> str:
+    """Two symbols of `ID_TOKEN_ALPHABET`, drawn with `secrets` until one is a letter (never all digits)."""
+    while True:
+        tail = "".join(secrets.choice(ID_TOKEN_ALPHABET) for _ in range(ID_TAIL_LENGTH))
+        if any(c in ID_TAIL_LETTERS for c in tail):
+            return tail
+
+
 def mint_id(prefix: str) -> str:
-    """A new `<prefix>-<token>` id (prefix `P` or `D`), the token drawn with `secrets` until
-    `id_token_refusal` accepts it. Nothing else allocates a phase or deferred id (v73)."""
-    taken = visible_id_tokens()
+    """A new `<prefix><n>-<tail>` id (prefix `P` or `D`): `next_id_number` and a tail re-drawn while the full
+    id is visible. Nothing else allocates a phase or deferred id. Two branches that each mint draw the same
+    number; the tail keeps them apart, and a same-tail pair (1 in 924) is a git add/add conflict at merge."""
+    visible = visible_ids(prefix)
+    number = next_id_number(prefix, visible)
     for _ in range(10000):
-        token = "".join(secrets.choice(ID_TOKEN_ALPHABET) for _ in range(ID_TOKEN_LENGTH))
-        if id_token_refusal(token, taken) is None:
-            return f"{prefix}-{token}"
-    raise SystemExit(f"could not mint a free {prefix}- id: {len(taken)} tokens are taken")
+        candidate = f"{prefix}{number}-{draw_id_tail()}"
+        if candidate not in visible:
+            return candidate
+    raise SystemExit(f"could not mint a free {prefix}{number}- id: every tail is taken")
 
 
 def mint_phase_id() -> str:
-    """`P-<token>`: `new-phase` without `--phase`, `promote-deferred --create-phase` without `--phase`, and
-    rotate-backlog's docs-phase proposal. It supersedes v72's `max + 1` (`P<n>`), which two branches drew alike."""
+    """`P<n>-<tail>`: `new-phase` without `--phase`, `promote-deferred --create-phase` without `--phase`, and
+    rotate-backlog's docs-phase proposal. It supersedes v73's `P-<token>`, which no one could say."""
     return mint_id("P")
 
 
-# Brief names (v73, P44.S2): what an operator may TYPE for an id, and the one place it becomes the id as
-# stored. `7kq2`, `P-7kq2`, `p-7KQ2` are the minted `P-7kq2`; `12`, `p12`, `P12` the old `P12` (a deferred
-# job likewise: `m3xa`, `D-m3xa`, `d12`, `12`). A token needs a letter (a bare number is always an old id), is
-# never a mode word (`gate`), and its dash is required once the prefix is written: `P7kq2` names nothing.
-# `brief_id` is the parser; `resolve_id_arg` is what a command argument goes through (a stored id keeps its
-# exact name, and an id of no known shape is refused with the shapes); `normalize_id_args` applies it to every
-# phase / deferred-id argument after argparse, so no command parses one on its own. Slice ids are full-form only.
+# Brief names: what an operator may TYPE for an id, and the one place it becomes the id as stored. A
+# numbered id is typed by its number: `46`, `p46`, `P46` name `P46-k2` while it is the only phase numbered
+# 46 (an exact stored `P46` always wins), and `46-k2`, `p46-K2` name it always -- the tail is needed only when
+# two branches each made a P46. v73's minted ids keep their brief forms: `7kq2`, `P-7kq2`, `p-7KQ2` are
+# `P-7kq2` (a token needs a letter, is never a mode word, and keeps its dash once the prefix is written:
+# `P7kq2` names nothing; `46k2` is the token `P-46k2`, never a tailed id). A deferred job likewise (`92`,
+# `d92-X4`, `m3xa`, `D-m3xa`). Two contexts, both in `normalize_id_args`, the ONE choke point after argparse:
+# CREATING an id (`new-phase --phase`, `defer-job --id`) reads the form statically (`brief_id`: `46` is `P46`);
+# REFERENCING one (every other argument) looks a number up among the stored ids (`resolve_id_ref`).
 ID_ARG_KINDS = {"P": "phase", "D": "deferred job"}
-PHASE_ARG_HELP = "the phase, in any brief form: 7kq2 or P-7kq2 (minted), 12 or P12 (numbered), any case"
-ID_ARG_EXAMPLES = {"P": ("P-7kq2", "7kq2", "P12", "12"), "D": ("D-m3xa", "m3xa", "D12", "12")}
+PHASE_ARG_HELP = ("the phase, in any brief form: 46 or P46 (numbered; type the tail, 46-k2, only when two phases share"
+                  " the number), 7kq2 or P-7kq2 (a v73 id), any case")
+ID_ARG_EXAMPLES = {"P": ("P46-k2", "46", "P12", "P-7kq2", "7kq2"), "D": ("D92-x4", "92", "D12", "D-m3xa", "m3xa")}
 
 
 def brief_id(prefix: str, raw) -> "str | None":
-    """The stored id (`P-7kq2`, `P12`; prefix `D` for a deferred job) that `raw` names in any brief form, or
-    None when it names none: the optional `P-`/`p-` and four token symbols with a letter and no mode word,
-    or the optional `P`/`p` and digits (leading zeros dropped, as `run-phases` always did)."""
+    """The id `raw` names read STATICALLY (prefix `P` for a phase, `D` for a deferred job), or None when it is
+    no brief form: the optional `P`/`p` and digits (`P46`; leading zeros dropped, as `run-phases` always did),
+    the same plus a dash and a valid tail (`P46-k2`, the tail lowercased), or the optional `P-`/`p-` and four
+    v73 token symbols with a letter and no mode word (`P-7kq2`). A number is not looked up here."""
     text = str(raw).strip()
     number = re.fullmatch(rf"{prefix}?([0-9]+)", text, re.I)
     if number:
         return f"{prefix}{int(number.group(1))}"
+    tailed = re.fullmatch(rf"{prefix}?([0-9]+)-([0-9A-Za-z]{{{ID_TAIL_LENGTH}}})", text, re.I)
+    if tailed and re.fullmatch(ID_TAIL_PATTERN, tailed.group(2).lower()):
+        return f"{prefix}{int(tailed.group(1))}-{tailed.group(2).lower()}"
     token = re.fullmatch(rf"(?:{prefix}-)?({ID_TOKEN_PATTERN})", text, re.I)
     if token and not token.group(1).isdigit() and token.group(1).lower() not in ID_MODE_WORDS:
         return f"{prefix}-{token.group(1).lower()}"
@@ -2774,14 +2830,41 @@ def brief_id(prefix: str, raw) -> "str | None":
 
 
 def id_arg_refusal(prefix: str, raw) -> str:
-    """Why `raw` is not a phase (`P`) or deferred job (`D`) id, with the shapes that are."""
+    """Why `raw` is not a phase (`P`) or deferred job (`D`) id, with the three shapes that are."""
     text = str(raw).strip()
-    minted, bare, old, number = ID_ARG_EXAMPLES[prefix]
-    msg = (f"{raw!r} is not a {ID_ARG_KINDS[prefix]} id: write {minted} or {bare} (minted), or {old} or {number} (numbered)")
+    tailed, number, old, minted, bare = ID_ARG_EXAMPLES[prefix]
+    msg = (f"{raw!r} is not a {ID_ARG_KINDS[prefix]} id: write {number} or {tailed} (numbered, the tail typed only when"
+           f" two share the number), {old} (an old numbered id), or {bare} or {minted} (a minted v73 id)")
     lone = re.fullmatch(rf"{prefix}({ID_TOKEN_PATTERN})", text, re.I)
     if lone:
         msg += f"; a minted id keeps its dash: {prefix}-{lone.group(1).lower()} (or just {lone.group(1).lower()})"
     return msg
+
+
+def lookup_id_number(prefix: str, number: int, stored=None) -> tuple:
+    """`(id, tailed)` for the number `number` of this kind: an exact stored `P46` wins (`(P46, [])`); else the
+    stored `P46-<tail>` ids -- exactly one gives `(it, [it])`, none `(None, [])`, several `(None, [them, sorted])`.
+    `stored` defaults to `visible_ids(prefix)`; an active `P46` folder answers without reading the rest."""
+    exact = f"{prefix}{number}"
+    if stored is None:
+        if prefix == "P" and (ACTIVE / exact).is_dir():
+            return exact, []
+        stored = visible_ids(prefix)
+    if exact in stored:
+        return exact, []
+    tailed = sorted((i for i in stored if str(i).startswith(prefix) and (id_number(i) or (None, None))[0] == number
+                     and id_number(i)[1]), key=id_sort_key)
+    return (tailed[0] if len(tailed) == 1 else None), tailed
+
+
+def id_number_refusal(prefix: str, raw, number: int, tailed: list) -> str:
+    """Why the number `raw` names no single id: no stored id has it, or several tailed ids share it."""
+    kind = ID_ARG_KINDS[prefix]
+    if tailed:
+        return (f"{str(raw).strip()!r} names {len(tailed)} {kind}s numbered {number}: {', '.join(tailed)} -- type the tail"
+                f" (e.g. {tailed[0]} or {tailed[0][1:]})")
+    where = "active or archived" if prefix == "P" else "open, promoted or dropped"
+    return f"{str(raw).strip()!r} names no {kind}: none is {prefix}{number} or {prefix}{number}-<tail>, {where}"
 
 
 def _stored_id_named(prefix: str, text: str) -> bool:
@@ -2795,8 +2878,9 @@ def _stored_id_named(prefix: str, text: str) -> bool:
 
 
 def resolve_id_arg(prefix: str, raw) -> str:
-    """A phase (`P`) or deferred job (`D`) id as typed -> the id as stored; SystemExit with the shapes when
-    it is neither. An id already in a stored shape (`PHASE_ID_RE` / `DEFERRED_ID_RE`) is returned untouched."""
+    """A phase (`P`) or deferred job (`D`) id as typed when CREATING one -> the id as stored, read statically
+    (`46` is `P46`); SystemExit with the shapes when it is no id. An id already in a stored shape
+    (`PHASE_ID_RE` / `DEFERRED_ID_RE`) is returned untouched."""
     text = str(raw).strip()
     if (PHASE_ID_RE if prefix == "P" else DEFERRED_ID_RE).fullmatch(text):
         return text
@@ -2808,22 +2892,76 @@ def resolve_id_arg(prefix: str, raw) -> str:
     raise SystemExit(id_arg_refusal(prefix, raw))
 
 
+def resolve_id_ref(prefix: str, raw, stored=None) -> str:
+    """A phase (`P`) or deferred job (`D`) id as typed when REFERENCING one -> the stored id: a bare number
+    (`46`, `p46`, `P46`) is looked up (`lookup_id_number`: an exact `P46` wins, else the one `P46-<tail>`), and
+    refused when it names none or several (the several listed); every other form reads as `resolve_id_arg`."""
+    number = re.fullmatch(rf"{prefix}?([0-9]+)", str(raw).strip(), re.I)
+    if number:
+        found, tailed = lookup_id_number(prefix, int(number.group(1)), stored)
+        if found is None:
+            raise SystemExit(id_number_refusal(prefix, raw, int(number.group(1)), tailed))
+        return found
+    return resolve_id_arg(prefix, raw)
+
+
+def _resolve_slice_arg(raw: str) -> str:
+    """A slice id typed as `<brief phase>.<suffix>` -> its stored phase part (`46.S1` -> `P46-k2.S1`, `p-7KQ2.S1`
+    -> `P-7kq2.S1`). A bare suffix (`S1`), a full id, a phase part that is no brief form, and a number that names
+    no phase pass untouched (the command reports it); a number several phases share is refused."""
+    head, dot, suffix = raw.partition(".")
+    if not dot or not head or PHASE_ID_RE.fullmatch(head) and not re.fullmatch(r"P[0-9]+", head):
+        return raw
+    number = re.fullmatch(r"[Pp]?([0-9]+)", head)
+    if number:
+        found, tailed = lookup_id_number("P", int(number.group(1)))
+        if found is None and len(tailed) > 1:
+            raise SystemExit(id_number_refusal("P", head, int(number.group(1)), tailed))
+        return f"{found}.{suffix}" if found else raw
+    stored = brief_id("P", head)
+    return f"{stored}.{suffix}" if stored else raw
+
+
 def normalize_id_args(args: argparse.Namespace) -> None:
     """The ONE choke point for an id typed on a command line, run once after argparse: every `phase` /
-    `--phase` argument is a phase id, every `deferred_id` and `defer-job --id` a deferred job's, and
-    `new-phase --consolidates` a comma list of phase ids (an item that names nothing is left for that flag's own
-    refusal). A command then only ever sees the stored shape. Slice ids are not touched (full-form only)."""
+    `--phase` argument is a phase id, every `deferred_id` and `defer-job --id` a deferred job's, `new-phase
+    --consolidates` a comma list of phase ids, and the `slice` attribute (positional `slice` and `--slice`) a
+    slice whose phase part may be brief (`46.S1`). CREATING an id (`new-phase --phase`, `defer-job --id`) reads
+    it statically; `promote-deferred --create-phase --phase` references an existing phase when the number names
+    one and otherwise creates statically; every other argument REFERENCES a stored id (`resolve_id_ref`). A
+    `--consolidates` item that names nothing is left for that flag's own refusal; `--depends-on` stays full-form.
+    A command then only ever sees the stored shape."""
+    cmd = getattr(args, "cmd", None)
     phase = getattr(args, "phase", None)
     if isinstance(phase, str):
-        args.phase = resolve_id_arg("P", phase)
+        if cmd == "new-phase":
+            args.phase = resolve_id_arg("P", phase)
+        elif cmd == "promote-deferred" and getattr(args, "create_phase", False):
+            number = re.fullmatch(r"[Pp]?([0-9]+)", phase.strip())
+            found, tailed = lookup_id_number("P", int(number.group(1))) if number else (None, [])
+            if len(tailed) > 1 and found is None:
+                raise SystemExit(id_number_refusal("P", phase, int(number.group(1)), tailed))
+            args.phase = found or resolve_id_arg("P", phase)
+        else:
+            args.phase = resolve_id_ref("P", phase)
     deferred = getattr(args, "deferred_id", None)
     if isinstance(deferred, str):
-        args.deferred_id = resolve_id_arg("D", deferred)
-    if getattr(args, "cmd", None) == "defer-job" and isinstance(getattr(args, "id", None), str) and args.id:
+        args.deferred_id = resolve_id_ref("D", deferred)
+    if cmd == "defer-job" and isinstance(getattr(args, "id", None), str) and args.id:
         args.id = resolve_id_arg("D", args.id)
     consolidates = getattr(args, "consolidates", None)
     if isinstance(consolidates, str):
-        args.consolidates = ",".join(brief_id("P", part) or part.strip() for part in consolidates.split(","))
+        parts = []
+        for part in consolidates.split(","):
+            number = re.fullmatch(r"[Pp]?([0-9]+)", part.strip())
+            found, tailed = lookup_id_number("P", int(number.group(1))) if number else (None, [])
+            if found is None and len(tailed) > 1:
+                raise SystemExit(f"--consolidates: {id_number_refusal('P', part, int(number.group(1)), tailed)}; nothing was written")
+            parts.append(found or brief_id("P", part) or part.strip())
+        args.consolidates = ",".join(parts)
+    slice_arg = getattr(args, "slice", None)
+    if isinstance(slice_arg, str):
+        args.slice = _resolve_slice_arg(slice_arg.strip())
 
 
 def stale_docs(phases=None) -> dict:
@@ -3049,19 +3187,34 @@ def phase_parked(phase: dict) -> bool:
                 and not any(s.get("status") in ("pending", "blocked") for s in phase.get("slices", [])))
 
 
-def run_phase_tokens(tokens) -> tuple:
-    """`(phase ids, refused tokens)`: any brief form of a phase id (`brief_id`: `7kq2`, `P-7kq2`, `P12`, `p12`,
-    `12`, any case), separated by commas and/or spaces, in the given order, duplicates dropped. Anything else
-    (a range, `worktree`, a mode word such as `gate`, `P7kq2` without its dash) is refused."""
-    ids, refused = [], []
+def run_phase_tokens(tokens, stored=None) -> tuple:
+    """`(phase ids, refused)`: any brief form of a phase id, separated by commas and/or spaces, in the given
+    order, duplicates dropped. A number (`46`, `p46`, `P46`) is looked up like any referencing argument
+    (`lookup_id_number`: an exact `P46` wins, else the one `P46-<tail>`; one that names none stays `P46` for the
+    caller's no-such-phase refusal); `46-k2`, `P46-k2`, `7kq2`, `P-7kq2` and `P12` read as `brief_id`, any case.
+    `refused` is `[(token, why)]`: `why` None for a token that is no phase id (a range, `worktree`, a mode word
+    such as `gate`, `P7kq2` without its dash), else the text naming the phases a shared number names."""
+    ids, refused, seen = [], [], set()
     for raw in tokens or []:
         for piece in re.split(r"[,\s]+", raw):
-            if not piece:
+            if not piece or piece in seen:
                 continue
-            pid = brief_id("P", piece)
-            if pid is None and piece not in refused:
-                refused.append(piece)
-            elif pid is not None and pid not in ids:
+            number = re.fullmatch(r"[Pp]?([0-9]+)", piece)
+            if number:
+                if stored is None:
+                    stored = visible_phase_ids()
+                found, tailed = lookup_id_number("P", int(number.group(1)), stored)
+                if found is None and len(tailed) > 1:
+                    seen.add(piece)
+                    refused.append((piece, f"names {', '.join(tailed)}: type the tail"))
+                    continue
+                pid = found or f"P{int(number.group(1))}"
+            else:
+                pid = brief_id("P", piece)
+            if pid is None:
+                seen.add(piece)
+                refused.append((piece, None))
+            elif pid not in ids:
                 ids.append(pid)
     return ids, refused
 
@@ -3115,8 +3268,11 @@ def cmd_run_phases(args: argparse.Namespace) -> None:
     archived = archived_phase_ids() if any(pid not in active for pid in ids) else set()
     unknown = [pid for pid in ids if pid not in active and pid not in archived]
     if refused or unknown:
-        for token in refused:
-            print(f"refused={token} -- not a phase id (7kq2, P-7kq2, P12 or 12, any case, separated by commas and/or spaces"
+        for token, why in refused:
+            if why:
+                print(f"refused={token} -- {why}; the run starts nothing")
+                continue
+            print(f"refused={token} -- not a phase id (46, P46 or 46-k2; P12; 7kq2 or P-7kq2; any case, separated by commas and/or spaces"
                   + (f"; a minted id keeps its dash: P-{token[1:].lower()}" if re.fullmatch(rf"[Pp]{ID_TOKEN_PATTERN}", token, re.I) else "")
                   + "); the run starts nothing")
         for pid in unknown:
@@ -4647,10 +4803,10 @@ def validate() -> int:
         if p["id"] in seen_phases:
             errors.append(f"duplicate phase id: {p['id']}")
         seen_phases.add(p["id"])
-        # v73 ids: both shapes are valid and nothing is renamed, so these two only WARN -- an adopter's
+        # Ids: all three shapes are valid and nothing is renamed, so these two only WARN -- an adopter's
         # history must keep validating. Creation is the hard gate (new-phase refuses either case).
         if not PHASE_ID_RE.fullmatch(str(p["id"])):
-            warnings.append(f"phase id {p['id']!r} has an unknown shape; expected P<n> (P12) or a minted P-<token> (P-7kq2) -- nothing renames it")
+            warnings.append(f"phase id {p['id']!r} has an unknown shape; expected P<n>-<tail> (P46-k2), P<n> (P12) or a minted P-<token> (P-7kq2) -- nothing renames it")
         if p["id"] in archived_ids:
             warnings.append(f"active phase {p['id']} has the same id as an archived phase; an archived id is spent, so lookups by id "
                             "(phase-scope, the meter, events.jsonl) mix the two -- new phases are minted (new-phase without --phase)")
@@ -4671,7 +4827,7 @@ def validate() -> int:
         if "consolidates" in p:
             paid = p.get("consolidates")
             if not (isinstance(paid, list) and paid and all(isinstance(v, str) and PHASE_ID_RE.fullmatch(v) for v in paid)):
-                errors.append(f"phase {p['id']} has invalid consolidates {paid!r}; expected a non-empty list of phase ids such as [\"P26\", \"P-7kq2\"] (written by new-phase --consolidates)")
+                errors.append(f"phase {p['id']} has invalid consolidates {paid!r}; expected a non-empty list of phase ids such as [\"P26\", \"P46-k2\", \"P-7kq2\"] (written by new-phase --consolidates)")
         # Optional parallel-execution block. Absent = default stream = nothing to check.
         # A phase that merged `done` while its doc consolidation is still pending
         # (`consolidation: "pending"`) is a legitimate state and passes cleanly here.
@@ -4803,7 +4959,7 @@ def validate() -> int:
                 continue
             data = read_json(djson)
             if not DEFERRED_ID_RE.fullmatch(ddir.name):
-                warnings.append(f"deferred id {ddir.name!r} has an unknown shape; expected D<n> (D12) or a minted D-<token> (D-m3xa) -- nothing renames it")
+                warnings.append(f"deferred id {ddir.name!r} has an unknown shape; expected D<n>-<tail> (D92-x4), D<n> (D12) or a minted D-<token> (D-m3xa) -- nothing renames it")
             if data.get("status") not in DEFERRED_STATUSES:
                 errors.append(f"invalid deferred status {data.get('id')}: {data.get('status')}")
             if data.get("status") not in allowed:
@@ -5025,7 +5181,7 @@ def _with_repo_anchors(data: dict, entries: dict) -> dict:
 
 
 def _parse_consolidates(raw) -> list:
-    """`new-phase --consolidates P26,P-7kq2` -> `["P26", "P-7kq2"]`: comma-separated, spaces tolerated,
+    """`new-phase --consolidates P26,P46-k2` -> `["P26", "P46-k2"]`: comma-separated, spaces tolerated,
     duplicates dropped in order. Refuses (before `new-phase` writes anything) when the flag names
     nothing, or names an id that is not an ACTIVE phase still owing doc consolidation -- a docs phase
     can only pay debt that stands. `None` (flag absent) is `[]`."""
@@ -5037,7 +5193,7 @@ def _parse_consolidates(raw) -> list:
         if part and part not in ids:
             ids.append(part)
     if not ids:
-        raise SystemExit("--consolidates needs at least one phase id (e.g. --consolidates P26,P-7kq2)")
+        raise SystemExit("--consolidates needs at least one phase id (e.g. --consolidates P26,P46-k2)")
     active = {p["id"]: p for p in all_active_phases()}
     bad = []
     for pid in ids:
@@ -5051,11 +5207,13 @@ def _parse_consolidates(raw) -> list:
 
 
 def explicit_phase_id(phase_id: str) -> str:
-    """An explicit `new-phase --phase` id, checked before anything is written: either shape (`P12`, or a
-    `P-` token as minted), never one that exists active or archived (an archived id is spent), and a
-    token only as the mint would draw it (`id_token_refusal`). SystemExit otherwise."""
+    """An explicit `new-phase --phase` id, checked before anything is written: any of the three shapes
+    (`P46-k2` with a valid tail -- its number need not be the next one --, an old `P12`, or a v73 `P-` token),
+    never one that exists active or archived (an archived id is spent), and a v73 token only as v73's mint
+    would have drawn it (`id_token_refusal`). SystemExit otherwise."""
     if not PHASE_ID_RE.fullmatch(phase_id):
-        raise SystemExit(f"phase must look like P12 or P-7kq2 (got {phase_id!r}); omit --phase and the engine mints one")
+        raise SystemExit(f"phase must look like P46-k2 (a number and a two-symbol tail with a letter), P12 or P-7kq2"
+                         f" (got {phase_id!r}); omit --phase and the engine mints one")
     if (ACTIVE / phase_id).exists():
         raise SystemExit(f"phase already exists: {phase_id}")
     if phase_id in archived_phase_ids():
@@ -8960,16 +9118,17 @@ def cmd_deferred(args: argparse.Namespace) -> None:
 
 
 def mint_deferred_id() -> str:
-    """`D-<token>`: `defer-job` without `--id`. It supersedes v72's `max + 1` (`D<n>`), which two branches drew alike."""
+    """`D<n>-<tail>`: `defer-job` without `--id`. It supersedes v73's `D-<token>`, which no one could say."""
     return mint_id("D")
 
 
 def explicit_deferred_id(did: str) -> str:
-    """An explicit `defer-job --id`, checked before anything is written: either shape (`D12`, or a `D-`
-    token as minted), never an id with a folder in open/, promoted/ or dropped/, and a token only as
-    the mint would draw it (`id_token_refusal`). SystemExit otherwise."""
+    """An explicit `defer-job --id`, checked before anything is written: any of the three shapes (`D92-x4`
+    with a valid tail, an old `D12`, or a v73 `D-` token), never an id with a folder in open/, promoted/ or
+    dropped/, and a v73 token only as v73's mint would have drawn it (`id_token_refusal`). SystemExit otherwise."""
     if not DEFERRED_ID_RE.fullmatch(did):
-        raise SystemExit(f"deferred id must look like D12 or D-m3xa (got {did!r}); omit --id and the engine mints one")
+        raise SystemExit(f"deferred id must look like D92-x4 (a number and a two-symbol tail with a letter), D12 or D-m3xa"
+                         f" (got {did!r}); omit --id and the engine mints one")
     if did in deferred_folder_ids():
         raise SystemExit(f"deferred job already exists: {did}")
     token = _id_token(did)
@@ -8995,7 +9154,7 @@ def defer_job(args: argparse.Namespace) -> None:
 
 
 def full_slice_id(phase_id: str, raw: str) -> str:
-    """`--slice` as stored: a bare suffix (`S1`, `F2`) is prefixed with its phase id (`P-7kq2.S1`), so a
+    """`--slice` as stored: a bare suffix (`S1`, `F2`) is prefixed with its phase id (`P46-k2.S1`), so a
     slice of a phase the same command mints can be named before its id is known; a full id stays as is."""
     return f"{phase_id}.{raw}" if re.fullmatch(SLICE_SUFFIX_PATTERN, raw) else raw
 
@@ -9187,13 +9346,14 @@ def archive_all(args: argparse.Namespace) -> None:
 
 
 def _phase_range_label(ids: list) -> str:
-    """`P26`, the en-dash range `P26–P29` when EVERY id is numeric and the numbers run consecutively,
-    else `P26, P28, P29` (a minted token never joins a range: `P26, P27, P-7kq2`). For an all-numeric
-    list the label is byte-identical to v72's."""
+    """`P26`, the en-dash range `P26–P29` when EVERY id is numbered (tailed or not) and the numbers run
+    consecutively with none repeated, the ends written in full (`P45–P47-m9`), else `P26, P28, P29` (a v73
+    token never joins a range: `P26, P27, P-7kq2`; nor does a repeated number: `P46-k2, P46-x4`). For an
+    all-numeric list the label is byte-identical to v72's."""
     if len(ids) == 1:
         return ids[0]
-    matches = [re.fullmatch(r"P([0-9]+)", str(i)) for i in ids]
-    numbers = [int(m.group(1)) for m in matches if m]
+    parsed = [id_number(i) if str(i).startswith("P") else None for i in ids]
+    numbers = [n[0] for n in parsed if n]
     if len(numbers) == len(ids) and all(b - a == 1 for a, b in zip(numbers, numbers[1:])):
         return f"{ids[0]}\u2013{ids[-1]}"
     return ", ".join(ids)
@@ -9337,9 +9497,9 @@ def _docs_debt_split(phases: list) -> tuple:
 
 def _debt_sort_key(phase_id: str, phases: list):
     """The order a docs phase's ids are listed in (`_docs_debt_split`'s uncovered list, a proposal's
-    `consolidates`): `id_sort_key`, a token's `created_at` read from `phases` -- numeric ids by number,
-    exactly v72's order, then minted tokens by creation. The one place `rotate-backlog` turns an id
-    into a sort key."""
+    `consolidates`): `id_sort_key`, a token's `created_at` read from `phases` -- numbered ids by number
+    and tail (an all-numeric list in exactly v72's order), then v73 tokens by creation. The one place
+    `rotate-backlog` turns an id into a sort key."""
     return id_sort_key(phase_id, next((p.get("created_at") for p in phases if p.get("id") == phase_id), None))
 
 
@@ -9392,7 +9552,7 @@ def _print_docs_phase_proposal(uncovered: list, order) -> None:
     ids = [p["id"] for p in uncovered]
     listing = ", ".join(ids)
     name, objective = _docs_phase_draft(ids, uncovered)
-    phase_id = mint_phase_id()  # v73: a minted token, passed to new-phase as --phase (the create: line runs as is)
+    phase_id = mint_phase_id()  # a minted P<n>-<tail>, passed to new-phase as --phase (the create: line runs as is)
     order_arg = f" --order {order}" if order is not None else ""
     print(f"docs_phase_proposal={listing}")
     print(f"phase={phase_id}")
@@ -13138,7 +13298,7 @@ def main(argv=None) -> int:
     p.set_defaults(func=cmd_record_dispatch)
 
     p = sub.add_parser("dispatch-summary", help="Read-only: what a phase really cost -- the main thread beside its subagent spans per slice and per phase (requests, context, output, list-price $, minutes, limit hits, verdicts) metered from Claude Code's transcripts, the means a DECOMP estimates time from, then the recorded verdicts; no transcripts found prints one line and the recorded tables")
-    p.add_argument("--phase", help="one phase (a brief id: 7kq2, P-7kq2, 12 or P12): its slices, read from the sessions overlapping its slice windows")
+    p.add_argument("--phase", help="one phase (a brief id: 46, P46 or 46-k2; P12; 7kq2 or P-7kq2): its slices, read from the sessions overlapping its slice windows")
     p.add_argument("--slice", help="one slice: its metered rows and its recorded attempts, one per line")
     p.add_argument("--json", action="store_true", help="print everything as one JSON object")
     p.add_argument("--transcripts", action="append", metavar="DIR", help="read this projects/<slug> directory instead of discovering the session root's (repeatable)")
@@ -13148,9 +13308,9 @@ def main(argv=None) -> int:
     p.add_argument("--card", action="store_true", help="print the resume card instead: the pointer, the next action or the typed stop, the open gates, the running spans (from the newest session's subagents/*.meta.json) and the slice's file paths, computed from state, at most 2,048 bytes -- what compact-resume prints after a compaction")
     p.set_defaults(func=cmd_next)
 
-    run_help = "Read-only, writes nothing: the phase list and the next target of a /do-whole-phases run, recomputed from disk on every call (re-run it at each phase boundary and after a compaction). Prints run=, stream=, queue= (this stream's non-done phases of the run, in order), skipped=<P> reason=done | done (archived) | other-stream stream=<branch or default>, parked=<P> (pending, its acceptance gate open, no slice pending or blocked: the run passes it), then target_phase= / target_slice= / slice_path= / next_slice= (plus notebook_over_budget= / notebook_move= when the target phase's notebook is over 40,960 B: run the moves before the dispatch; plus gate_cleared= when a cleared gate's review awaits its recorded pass), or halt=<item> status= with stop_kind= / on_words= for a pending slice and halt_reason= (any other pending or blocked phase, or a pending or blocked current slice: the whole run stops), or run_done=yes. Phase tokens are brief ids: 7kq2 / P-7kq2 (minted) or 12 / P12 (numbered), any case. Exits 2 with refused= lines and nothing else for a token that is not a phase id or names no phase. The plain pointer (next, works/state.json, the resume card's stop) is unchanged and still halts at a parked phase"
+    run_help = "Read-only, writes nothing: the phase list and the next target of a /do-whole-phases run, recomputed from disk on every call (re-run it at each phase boundary and after a compaction). Prints run=, stream=, queue= (this stream's non-done phases of the run, in order), skipped=<P> reason=done | done (archived) | other-stream stream=<branch or default>, parked=<P> (pending, its acceptance gate open, no slice pending or blocked: the run passes it), then target_phase= / target_slice= / slice_path= / next_slice= (plus notebook_over_budget= / notebook_move= when the target phase's notebook is over 40,960 B: run the moves before the dispatch; plus gate_cleared= when a cleared gate's review awaits its recorded pass), or halt=<item> status= with stop_kind= / on_words= for a pending slice and halt_reason= (any other pending or blocked phase, or a pending or blocked current slice: the whole run stops), or run_done=yes. Phase tokens are brief ids: 46 / P46 (numbered: the one P46, else the one P46-<tail>; 46-k2 names the tail), P12, or 7kq2 / P-7kq2 (a v73 id), any case. Exits 2 with refused= lines and nothing else for a token that is not a phase id, names no phase, or is a number two tailed phases share (refused=46 -- names P46-k2, P46-x4: type the tail). The plain pointer (next, works/state.json, the resume card's stop) is unchanged and still halts at a parked phase"
     p = sub.add_parser("run-phases", help=run_help, description=run_help)
-    p.add_argument("tokens", nargs="*", metavar="PHASE", help="a phase id in any brief form: 7kq2 or P-7kq2 (a minted id), 12 or P12 (a numbered one), any case, separated by commas and/or spaces; the given order is kept and duplicates are dropped; none = every non-done phase on this stream, by order. Ranges, mode words, `worktree` and a minted id without its dash (P7kq2) are refused")
+    p.add_argument("tokens", nargs="*", metavar="PHASE", help="a phase id in any brief form: 46 or P46 (numbered; 46-k2 when two phases share the number), P12, or 7kq2 or P-7kq2 (a v73 id), any case, separated by commas and/or spaces; the given order is kept and duplicates are dropped; none = every non-done phase on this stream, by order. Ranges, mode words, `worktree` and a minted id without its dash (P7kq2) are refused")
     p.set_defaults(func=cmd_run_phases)
 
     p = sub.add_parser("compact-resume", help="The SessionStart hook (matcher compact): after a compaction, print compaction=done source=compact and the resume card (next --card; the running spans from the hook's transcript_path session), falling back to the plain pointer on any error; never fails, always exits 0")
@@ -13160,20 +13320,20 @@ def main(argv=None) -> int:
     p.set_defaults(func=cmd_deferred)
 
     p = sub.add_parser("new-phase", help="Create a new phase with DECOMP and REVIEW slices")
-    p.add_argument("--phase", help="the phase id; omit it and the engine mints one (P-7kq2), printed on the created line. "
-                   "Given, either shape (P12 or P-7kq2; 12 and 7kq2 are read as those); refused when it exists active or archived")
+    p.add_argument("--phase", help="the phase id; omit it and the engine mints one (P46-k2: the next number and a random tail), printed on the created line. "
+                   "Given, any shape (P46-k2, P12 or P-7kq2; 46-k2, 12 and 7kq2 are read as those); refused when it exists active or archived")
     p.add_argument("--name", required=True)
     p.add_argument("--objective", required=True)
     p.add_argument("--order", type=float, help="sort position among phases; a fractional value (e.g. 4.5) inserts between two neighbors without renumbering")
     p.add_argument("--on-main", action="store_true", dest="on_main",
                    help="no-op since v43 (the default stream is the default); accepted so v42 habits and scripts keep working")
     p.add_argument("--consolidates", metavar="P26,P27",
-                   help="docs phase: the comma-separated ids (any brief form: P26, 26, P-7kq2, 7kq2) of active phases whose doc consolidation debt this phase pays; refused (nothing written) for an id that is not an active phase owing consolidation. Stored as `consolidates` in phase.json -- the only docs-phase marker; `docs-debt` shows it as 'paid by' and `rotate-backlog` proposes no second docs phase for what it covers")
+                   help="docs phase: the comma-separated ids (any brief form: P26, 26, 46-k2, P-7kq2, 7kq2) of active phases whose doc consolidation debt this phase pays; refused (nothing written) for an id that is not an active phase owing consolidation. Stored as `consolidates` in phase.json -- the only docs-phase marker; `docs-debt` shows it as 'paid by' and `rotate-backlog` proposes no second docs phase for what it covers")
     p.set_defaults(func=new_phase)
 
     p = sub.add_parser("new-slice", help="Create a new slice folder with slice.json + markdown files")
-    p.add_argument("--phase", required=True, help="the phase, in any brief form (7kq2, P-7kq2, 12 or P12)")
-    p.add_argument("--slice", required=True, help="the slice id (P-7kq2.S1), or its bare suffix (S1)")
+    p.add_argument("--phase", required=True, help=PHASE_ARG_HELP)
+    p.add_argument("--slice", required=True, help="the slice id (P46-k2.S1, or 46.S1 while one phase is numbered 46), or its bare suffix (S1)")
     p.add_argument("--name", required=True)
     p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work (closed set; unknown kinds are rejected). research is findings-only: no product code, findings land in phase.md, and it always routes to the research row")
     p.add_argument("--risk", default="high", help="low (the mid row for implementation, fix, docs and qa -- the default since v46, real code included) or high (the high row: only for a named trigger -- open design, a core invariant, an unlocated root cause, a wide blast radius -- or a fix to mid-row work); unset or unrecognized values route to high; kind decomposition, review, co-work and research route by kind whatever this says; `executor-route <slice>` prints the decision")
@@ -13349,7 +13509,7 @@ def main(argv=None) -> int:
     p = sub.add_parser("design-open", help=f"Open the next design round of a job in a co-work slice: {DESIGN_ROOT_REL}/jobs/NN-<slug>/ (job.json, created on the slice's first round, or by --new-job for another job of the slice) and jobs/<job>/rounds/NN-<slug>/round.json, status open, with its critique level; refuses only while the target job has an open round",
                        description=f"A co-work slice holds one job or several (a wave, about 3-4, drafted in parallel), each with at most one open round; rounds of different jobs may be open at once. The target: with neither flag, the slice's only job (its first round creates it; two or more jobs refuse and ask for --job); --new-job creates another job for the slice (re-running it with the same --slug resumes that job); --job <job> opens the next round of that job, which must belong to --slice. A later round supersedes the job's previous one (a signed job is reopened; an implemented one refuses). Rounds number inside the job. Re-running an open with the open round's slug writes nothing. --critique records the round's critique level in round.json (absent in an older round reads as off). More than {DESIGN_WAVE_OPEN_MAX} open rounds in one slice prints a warning, never a refusal. The orchestrator writes the round's handoff.md next (with a critique: line); the drafter writes the canvas tree in jobs/<job>/canvas/project/.")
     p.add_argument("--slug", required=True, help="the round's slug (and the job's, when the round creates its job): lowercase words joined by hyphens")
-    p.add_argument("--slice", required=True, help="the co-work slice that owns the job (e.g. P48.S1)")
+    p.add_argument("--slice", required=True, help="the co-work slice that owns the job (e.g. P48-k2.S1)")
     p.add_argument("--title", default=None, help="display title (default: the slug)")
     g = p.add_mutually_exclusive_group()
     g.add_argument("--new-job", action="store_true", help="create another job for a slice that already has one (a wave's next surface)")
@@ -13418,7 +13578,7 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("design-sign", help="Sign every job presented at a stop on the operator's literal words: each open round of the slice that recorded a publish (design-canvas --version) is signed as design-close --words would; all or nothing -- one presented round without a settled read-back, without its build contract or failing design-check signs none; one line per job",
                        description="Rounds of the slice that published nothing yet are held, not signed. Each signed round gets a generated SIGNOFF.md (the words verbatim, the canvas version, the read-back, the open-item ids), its snapshot, and its job marked signed. With a mockup requested, the words at PENDING #1 are its go-ahead, not a signoff: sign at PENDING #2.")
-    p.add_argument("--slice", required=True, help="the co-work slice whose presented jobs are signed (e.g. P48.S1)")
+    p.add_argument("--slice", required=True, help="the co-work slice whose presented jobs are signed (e.g. P48-k2.S1)")
     p.add_argument("--words", required=True, help="the operator's literal signoff words, recorded verbatim")
     p.set_defaults(func=design_sign)
 
@@ -13438,7 +13598,7 @@ def main(argv=None) -> int:
     p.set_defaults(func=design_migrate)
 
     p = sub.add_parser("defer-job", help="Create a deferred job folder")
-    p.add_argument("--id", help="the deferred id; omit it and the engine mints one (D-m3xa). Given, either shape (D12 or D-m3xa; 12 and m3xa are read as those); "
+    p.add_argument("--id", help="the deferred id; omit it and the engine mints one (D92-x4: the next number and a random tail). Given, any shape (D92-x4, D12 or D-m3xa; 92-x4, 12 and m3xa are read as those); "
                    "refused when any deferred folder holds it")
     p.add_argument("--title", required=True)
     p.add_argument("--reason", required=True)
@@ -13447,9 +13607,9 @@ def main(argv=None) -> int:
     p.set_defaults(func=defer_job)
 
     p = sub.add_parser("promote-deferred", help="Promote an open deferred job into an active slice")
-    p.add_argument("deferred_id", help="the deferred job, in any brief form (m3xa, D-m3xa, 12 or D12)")
-    p.add_argument("--phase", help="the target phase, in any brief form (7kq2, P-7kq2, 12 or P12); omit it with --create-phase and the engine mints the new phase's id")
-    p.add_argument("--slice", required=True, help="the new slice's id (P-7kq2.S1), or its bare suffix (S1) -- the only way to name it in a phase being minted")
+    p.add_argument("deferred_id", help="the deferred job, in any brief form (92, D92 or 92-x4; D12; m3xa or D-m3xa)")
+    p.add_argument("--phase", help="the target phase, in any brief form (46, P46 or 46-k2; P12; 7kq2 or P-7kq2); omit it with --create-phase and the engine mints the new phase's id")
+    p.add_argument("--slice", required=True, help="the new slice's id (P46-k2.S1), or its bare suffix (S1) -- the only way to name it in a phase being minted")
     p.add_argument("--name")
     p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work (closed set; unknown kinds are rejected). research is findings-only: no product code, findings land in phase.md, and it always routes to the research row")
     p.add_argument("--risk", default="high", help="low (the mid row for implementation, fix, docs and qa -- the default since v46, real code included) or high (the high row: only for a named trigger -- open design, a core invariant, an unlocated root cause, a wide blast radius -- or a fix to mid-row work); unset or unrecognized values route to high; kind decomposition, review, co-work and research route by kind whatever this says; `executor-route <slice>` prints the decision")
@@ -13461,7 +13621,7 @@ def main(argv=None) -> int:
     p.set_defaults(func=promote_deferred)
 
     p = sub.add_parser("drop-deferred", help="Drop an open deferred job")
-    p.add_argument("deferred_id", help="the deferred job, in any brief form (m3xa, D-m3xa, 12 or D12)")
+    p.add_argument("deferred_id", help="the deferred job, in any brief form (92, D92 or 92-x4; D12; m3xa or D-m3xa)")
     p.add_argument("--reason", required=True)
     p.set_defaults(func=drop_deferred)
 
@@ -13484,7 +13644,7 @@ def main(argv=None) -> int:
         # Never fall back to at-root mode on a broken marker: refuse, and let validate list it all.
         raise SystemExit(f"{shown(ROOT / NESTED_MARKER)} is malformed, so this nested install cannot run {args.cmd}: "
                          f"{'; '.join(NESTED_PROBLEMS)} -- fix the file (run: {WORKFLOW_CMD} validate)")
-    normalize_id_args(args)  # v73: every typed phase / deferred-id argument becomes its stored id here, once
+    normalize_id_args(args)  # every typed phase / deferred-id / slice argument becomes its stored id here, once
     result = args.func(args)
     if isinstance(result, tuple):
         return 0

@@ -26,9 +26,12 @@
 # (a run's tokens resolve in order and a non-phase token refuses; a run passes a parked acceptance gate and
 # halts at a pending slice while plain `next` still waits there), the P42 ready-set invariants (an undeclared phase
 # keeps its plain pointer and prints no wave line; a declared slice is never ready before its dependency is done;
-# a running barrier is never a wave slice, so a declared phase's open acceptance gate reads as a stop), the P44 minted-id
-# invariants (new-phase, defer-job and promote-deferred mint P-/D- tokens when no id is given; an archived id is spent;
-# listings put numeric ids first and rotate's all-numeric labels stay v72's; two branches mint and merge clean), the v43
+# a running barrier is never a wave slice, so a declared phase's open acceptance gate reads as a stop), the id
+# invariants (new-phase, defer-job, promote-deferred and rotate's proposal mint P<n>-/D<n>-<tail> with the next number
+# over every visible numbered id when no id is given, archived and promoted included; v73's P-/D- tokens and old P<n>
+# stay valid; an archived id is spent; listings sort numbered ids by number then tokens, and rotate's all-numeric labels
+# stay v72's; a number resolves when one phase holds it and is refused, listed, when two do; two branches mint the same
+# number and merge clean), the v43
 # worktree-on-request invariants (nothing enters a worktree unhinted or unasked; parallel-start
 # on a dirty tree commits only the phase folder plus the regenerated works/ files and cuts a
 # nested .claude/worktrees/ checkout hidden by the repo's info/exclude; parallel-skip and
@@ -1800,10 +1803,12 @@ assert routes == {"x0": ("slice-executor", "high"), "x1": ("slice-executor", "mi
                   "x3": ("slice-executor", "research"), "x4": ("slice-executor-high", "high"), "x5": ("slice-executor", "mid")}, routes
 ' && ok "the meter reads slice-executor spans by kind, model and effort (opus@high high, opus@medium mid, haiku cheap, sonnet mid, a research slice research) and still reads an old slice-executor-high span" \
   || bad "the meter misread slice-executor routes: $mt2"
-# P44: a minted slice id attributes by its `slice:` line, and dispatch-summary --phase takes the brief name (a bare token).
-mt_tok=$( cd "$MT/ws" && python3 scripts/workflow.py new-phase --name "Meter token" --objective probe 2>&1 | sed -n 's/^created phase P-\([^:]*\):.*/\1/p' )
-( cd "$MT/ws" && python3 scripts/workflow.py new-slice --phase "$mt_tok" --slice S1 --name "token meter" --kind implementation --risk low ) >/dev/null 2>&1 || bad "token meter probe: new-slice failed"
-python3 - "$MT" "P-$mt_tok.S1" <<'PY'
+# A minted, tailed slice id (P<n>-<tail>.S1) attributes by its `slice:` line, and dispatch-summary --phase takes the
+# brief name (the bare number, while one phase holds it).
+mt_tok=$( cd "$MT/ws" && python3 scripts/workflow.py new-phase --name "Meter token" --objective probe 2>&1 | sed -n 's/^created phase \(P[^:]*\):.*/\1/p' )
+mt_num=$(printf '%s\n' "$mt_tok" | sed -nE 's/^P([0-9]+)-[0-9a-z]{2}$/\1/p')
+( cd "$MT/ws" && python3 scripts/workflow.py new-slice --phase "$mt_num" --slice S1 --name "token meter" --kind implementation --risk low ) >/dev/null 2>&1 || bad "token meter probe: new-slice failed"
+python3 - "$MT" "$mt_tok.S1" <<'PY'
 import json, os, sys
 sub = os.path.join(sys.argv[1], "projects", "-fixture2", "sess2", "subagents")
 with open(os.path.join(sys.argv[1], "ws", "works", "events.jsonl"), "a") as f:  # the slice's window, so the phase filter finds the session
@@ -1815,12 +1820,12 @@ with open(os.path.join(sub, "agent-t0.jsonl"), "w") as f:
                                                                                               "stop_reason": "end_turn", "usage": {"input_tokens": 10, "output_tokens": 5}}}) + "\n")
 json.dump({"agentType": "slice-executor", "finished": True}, open(os.path.join(sub, "agent-t0.meta.json"), "w"))
 PY
-mt3=$( cd "$MT/ws" && python3 scripts/workflow.py dispatch-summary --phase "$mt_tok" --json --transcripts "$MT/projects/-fixture2" 2>&1 )
+mt3=$( cd "$MT/ws" && python3 scripts/workflow.py dispatch-summary --phase "$mt_num" --json --transcripts "$MT/projects/-fixture2" 2>&1 )
 printf '%s\n' "$mt3" | python3 -c '
 import json, sys
 spans = [s for d in json.load(sys.stdin)["metered"]["slices"].values() for s in d["spans"]]
-assert [(s["slice"], s["attributed_by"]) for s in spans] == [("P-" + sys.argv[1] + ".S1", "slice-line")], spans
-' "$mt_tok" && ok "the meter attributes a minted slice id (P-xxxx.S1) by its slice: line, and dispatch-summary --phase takes the bare token" \
+assert [(s["slice"], s["attributed_by"]) for s in spans] == [(sys.argv[1] + ".S1", "slice-line")], spans
+' "$mt_tok" && [ -n "$mt_num" ] && ok "the meter attributes a minted, tailed slice id ($mt_tok.S1) by its slice: line, and dispatch-summary --phase takes the bare number" \
   || bad "the meter did not attribute a minted slice id: $mt3"
 # v61 pure compaction (P37.S3): compaction is Claude Code's own -- no PreCompact hook, no compact-gate. After
 # a compaction the SessionStart hook runs compact-resume, which prints the resume card (also `next --card`):
@@ -2491,81 +2496,118 @@ rs finish-slice P4.DECOMP --outcome cut >/dev/null 2>&1; fe_rc=$?
   || bad "forced declaration wrong (refuse rc=$fr_rc, pass rc=$fp_rc, explain rc=$fe_rc) -- $fr / $fp"
 
 # ---------------------------------------------------------------------------
-echo "== Test 10e: P44 minted ids -- P-/D- tokens beside P<n>/D<n>, one listing order, an archived id is spent, two branches mint and merge clean =="
-# On a copy of $F emptied of its phases, deferred jobs and git history. Explicit P<n>/D<n> ids keep working beside the tokens.
+echo "== Test 10e: ids -- P<n>-/D<n>-<tail> minted with the next number beside P<n>/D<n> and v73's P-/D- tokens, one listing order, an archived id is spent, two branches mint the same number and merge clean =="
+# On a copy of $F emptied of its phases, deferred jobs and git history. Explicit P<n>/D<n>, tailed and v73 token ids keep working.
 newtmp MIW; cp -R "$F" "$MIW/ws"; MW="$MIW/ws"; rm -rf "$MW/.git" "$MW/works/phases/active/"* "$MW/works/phases/archived/"* "$MW/works/deferred/"*/*
 mi() { ( cd "$MW" && python3 scripts/workflow.py "$@" ); }
-tok='[0-9abcdefghjkmnpqrstvwxyz]{4}'
+tail_re='([a-hjkmnp-tv-z][0-9a-hjkmnp-tv-z]|[0-9][a-hjkmnp-tv-z])'  # two Crockford symbols, a letter among them
 mi_note() { python3 -c 'import sys; from pathlib import Path; p = Path(sys.argv[1]); p.write_text(p.read_text().replace("## Operator Questions", "- architecture.md: a durable change (" + sys.argv[2] + ".S1)\n\n## Operator Questions", 1))' "$MW/works/phases/active/$1/phase.md" "$1"; }
 mi_owe() { mi_note "$1" && mi accept-gate "$1" --waive --note probe && mi set-slice-status "$1.DECOMP" done && mi set-slice-status "$1.REVIEW" done && mi review-phase "$1" --verdict pass; }
-m1=$(mi new-phase --name "Minted" --objective "mint probe" 2>&1); mp=$(printf '%s\n' "$m1" | sed -n 's/^created phase \(P-[^:]*\):.*/\1/p')
-md=$(mi defer-job --title "minted" --reason r --trigger t --source manual 2>&1); mdid=$(printf '%s\n' "$md" | sed -n 's/^created deferred job \(D-[^:]*\):.*/\1/p')
-printf '%s\n' "$mp" | grep -qxE "P-$tok" && printf '%s\n' "${mp#P-}" | grep -q '[a-z]' && [ -d "$MW/works/phases/active/$mp/slices/$mp.DECOMP" ] && [ -d "$MW/works/phases/active/$mp/slices/$mp.REVIEW" ] \
-  && printf '%s\n' "$mdid" | grep -qxE "D-$tok" && printf '%s\n' "${mdid#D-}" | grep -q '[a-z]' && [ -f "$MW/works/deferred/open/$mdid/deferred.json" ] \
-  && ok "new-phase without --phase mints a P- token (Crockford lowercase, never all digits) with its DECOMP and REVIEW; defer-job without --id mints a D- token" \
+m1=$(mi new-phase --name "Minted" --objective "mint probe" 2>&1); mp=$(printf '%s\n' "$m1" | sed -n 's/^created phase \(P[^:]*\):.*/\1/p')
+md=$(mi defer-job --title "minted" --reason r --trigger t --source manual 2>&1); mdid=$(printf '%s\n' "$md" | sed -n 's/^created deferred job \(D[^:]*\):.*/\1/p')
+printf '%s\n' "$mp" | grep -qxE "P1-$tail_re" && [ -d "$MW/works/phases/active/$mp/slices/$mp.DECOMP" ] && [ -d "$MW/works/phases/active/$mp/slices/$mp.REVIEW" ] \
+  && printf '%s\n' "$mdid" | grep -qxE "D1-$tail_re" && [ -f "$MW/works/deferred/open/$mdid/deferred.json" ] \
+  && ok "new-phase without --phase mints P1-<tail> on an empty workspace (two Crockford symbols, a letter among them) with its DECOMP and REVIEW; defer-job without --id mints D1-<tail>" \
   || bad "minted ids wrong -- $m1 / $md"
 pm=$(mi defer-job --id D5 --title "to promote" --reason r --trigger t --source manual >/dev/null 2>&1 && mi promote-deferred D5 --create-phase --slice S1 --name "promoted" 2>&1)
-pp=$(printf '%s\n' "$pm" | sed -n 's/^promoted D5 -> \(P-[^.]*\)\.S1: .*/\1/p')
-printf '%s\n' "$pp" | grep -qxE "P-$tok" && [ -f "$MW/works/phases/active/$pp/slices/$pp.S1/slice.json" ] && [ -d "$MW/works/deferred/promoted/D5" ] \
-  && ok "promote-deferred --create-phase without --phase mints the phase and takes a bare --slice S1" || bad "promote-deferred did not mint (or refused the bare suffix) -- $pm"
+pp=$(printf '%s\n' "$pm" | sed -n 's/^promoted D5 -> \(P[^.]*\)\.S1: .*/\1/p')
+printf '%s\n' "$pp" | grep -qxE "P2-$tail_re" && [ -f "$MW/works/phases/active/$pp/slices/$pp.S1/slice.json" ] && [ -d "$MW/works/deferred/promoted/D5" ] \
+  && ok "promote-deferred --create-phase without --phase mints the next number (P2-<tail> after P1-<tail>) and takes a bare --slice S1" || bad "promote-deferred did not mint (or refused the bare suffix) -- $pm"
 mi archive-phase "$pp" --force >/dev/null 2>&1; arch=$(ls "$MW/works/phases/archived")
 re_tok=$(mi new-phase --phase "$pp" --name again --objective again 2>&1); re_act=$(mi new-phase --phase "$mp" --name again --objective again 2>&1)
+nact=$(ls "$MW/works/phases/active" | wc -l | tr -d ' ')
+p3=$(mi new-phase --name "After archive" --objective probe 2>&1 | sed -n 's/^created phase \(P[^:]*\):.*/\1/p')
+d6=$(mi defer-job --title "after promote" --reason r --trigger t --source manual 2>&1 | sed -n 's/^created deferred job \(D[^:]*\):.*/\1/p')
 printf '%s\n' "$arch" | grep -qE "^[0-9]{8}_[0-9]{6}_${pp}_to_promote$" && printf '%s\n' "$re_tok" | grep -q "phase already exists (archived): $pp" \
-  && printf '%s\n' "$re_act" | grep -q "phase already exists: $mp" && [ "$(ls "$MW/works/phases/active" | wc -l | tr -d ' ')" = 1 ] \
-  && ok "a token phase archives as <stamp>_P-xxxx_<slug>, and new-phase refuses an explicit id that exists active or archived (an archived id is spent)" \
-  || bad "archived token id not spent -- $arch / $re_tok / $re_act"
+  && printf '%s\n' "$re_act" | grep -q "phase already exists: $mp" && [ "$nact" = 1 ] \
+  && printf '%s\n' "$p3" | grep -qxE "P3-$tail_re" && printf '%s\n' "$d6" | grep -qxE "D6-$tail_re" \
+  && ok "a tailed phase archives as <stamp>_P2-<tail>_<slug>; new-phase refuses an explicit id that exists active or archived (an archived id is spent); the next mint counts the archived P2 (P3-<tail>) and the promoted D5 (D6-<tail>)" \
+  || bad "archived tailed id not spent, or the next number missed it -- $arch / $re_tok / $re_act / $nact / $p3 / $d6"
 ( for n in 9 10; do mi new-phase --phase "P$n" --name "Numeric $n" --objective probe || exit 1; done \
   && for d in D10 D2; do mi defer-job --id "$d" --title "$d" --reason r --trigger t --source manual || exit 1; done && mi_owe P9 && mi_owe P10 ) >/dev/null 2>&1 \
   || bad "mixed-id probe: setup failed"
 rot_num=$(mi rotate-backlog 2>&1)
 printf '%s\n' "$rot_num" | grep -qx 'docs_phase_proposal=P9, P10' && printf '%s\n' "$rot_num" | grep -qx 'name=Consolidate the doc impact of P9–P10' \
-  && printf '%s\n' "$rot_num" | grep -qE "^phase=P-$tok$" \
-  && ok "an all-numeric debt keeps v72's order and en-dash label (P9–P10), and the proposal's phase= is a minted token" || bad "all-numeric rotate label changed -- $rot_num"
-mi_owe "$mp" >/dev/null 2>&1 || bad "mixed-id probe: could not pass $mp"
+  && printf '%s\n' "$rot_num" | grep -qE "^phase=P11-$tail_re$" \
+  && ok "an all-numeric debt keeps v72's order and en-dash label (P9–P10), and the proposal's phase= mints the next number (P11-<tail>)" || bad "all-numeric rotate label changed -- $rot_num"
+( mi new-phase --phase P11-ab --name "Tailed 11" --objective probe && mi_owe P11-ab ) >/dev/null 2>&1 || bad "mixed-id probe: tailed P11-ab setup failed"
+rot_tail=$(mi rotate-backlog 2>&1)
+printf '%s\n' "$rot_tail" | grep -qx 'docs_phase_proposal=P9, P10, P11-ab' && printf '%s\n' "$rot_tail" | grep -qx 'name=Consolidate the doc impact of P9–P11-ab' \
+  && printf '%s\n' "$rot_tail" | grep -qE "^phase=P12-$tail_re$" \
+  && ok "a tailed id joins a consecutive range with its ends written in full (P9–P11-ab), and an explicit tailed id counts toward the next number (P12-<tail>)" || bad "tailed range label wrong -- $rot_tail"
+( mi new-phase --phase P46-k2 --name "Tailed 46" --objective probe && mi new-phase --phase P-7kq2 --name "Token" --objective probe \
+  && mi defer-job --id D-m3xa --title token --reason r --trigger t --source manual && mi_owe "$mp" && mi_owe P46-k2 && mi_owe P-7kq2 ) >/dev/null 2>&1 || bad "mixed-id probe: could not pass $mp, P46-k2 or P-7kq2"
 rot_mix=$(mi rotate-backlog 2>&1); val_mix=$(mi validate 2>&1); val_rc=$?
 dlist=$(sed -n '/^## Open/,/^## Promoted/p' "$MW/works/deferred.md" | sed -n 's/^| `\([^`]*\)` |.*/\1/p' | tr '\n' ' ')
-printf '%s\n' "$rot_mix" | grep -qx "docs_phase_proposal=P9, P10, $mp" && printf '%s\n' "$rot_mix" | grep -qx "name=Consolidate the doc impact of P9, P10, $mp" \
-  && [ "$dlist" = "D2 D10 $mdid " ] && [ "$val_rc" -eq 0 ] && printf '%s\n' "$val_mix" | grep -q '^Workflow validation passed' \
-  && ok "mixed ids list numeric first by number, then tokens (rotate's proposal, the deferred dashboard: $dlist), and validate passes" \
+printf '%s\n' "$rot_mix" | grep -qx "docs_phase_proposal=$mp, P9, P10, P11-ab, P46-k2, P-7kq2" && printf '%s\n' "$rot_mix" | grep -qx "name=Consolidate the doc impact of $mp, P9, P10, P11-ab, P46-k2, P-7kq2" \
+  && [ "$dlist" = "$mdid D2 $d6 D10 D-m3xa " ] && [ "$val_rc" -eq 0 ] && printf '%s\n' "$val_mix" | grep -q '^Workflow validation passed' \
+  && ok "mixed ids (P1-<tail>, P9, P46-k2, P-7kq2) list numbered ids by number, then v73 tokens (rotate's proposal, the deferred dashboard: $dlist), and validate passes" \
   || bad "mixed ids out of order or invalid -- $rot_mix / deferred: $dlist / $val_mix"
-# Two branches of one repo each mint a phase and a deferred job: the merge conflicts in generated files only, and
-# taking either side then `rebuild` (payload/gitattributes) leaves both phases and both jobs, valid.
+# Two branches of one repo each mint a phase and a deferred job unseen by the other, so both draw number 1: the
+# merge conflicts in generated files only, and taking either side then `rebuild` (payload/gitattributes) leaves
+# both phases and both jobs, valid, and the shared number is refused until the tail is typed.
 newtmp TBW; cp -R "$F" "$TBW/ws"; TW="$TBW/ws"; rm -rf "$TW/.git" "$TW/works/phases/active/"* "$TW/works/phases/archived/"* "$TW/works/deferred/"*/*; : > "$TW/works/events.jsonl"
 tw() { ( cd "$TW" && python3 scripts/workflow.py "$@" ); }
 tg() { git -C "$TW" -c user.email=smoke@example.invalid -c user.name=smoke "$@"; }
 ( tw rebuild && tg init -q && tg add -A && tg commit -qm base \
   && tg checkout -q -b one && tw new-phase --name "Branch one" --objective one && tw defer-job --title one --reason r --trigger t --source manual && tg add -A && tg commit -qm one \
-  && tg checkout -q - && tg checkout -q -b two && tw new-phase --name "Branch two" --objective two && tw defer-job --title two --reason r --trigger t --source manual && tg add -A && tg commit -qm two ) >/dev/null 2>&1 \
+  && tg checkout -q - && tg checkout -q -b two && tw new-phase --name "Branch two" --objective two && tw defer-job --title two --reason r --trigger t --source manual ) >/dev/null 2>&1 \
   || bad "two-branch probe: setup failed"
+tb_p1=$(tg show --name-only --format= one | sed -n 's|^works/phases/active/\([^/]*\)/phase.json$|\1|p'); tb_d1=$(tg show --name-only --format= one | sed -n 's|^works/deferred/open/\([^/]*\)/deferred.json$|\1|p')
+# Deterministic: a same-tail draw (1 in 924 per kind) is the add/add conflict the engine documents, never a silent
+# mix -- so when branch two drew branch one's tail, it redoes its side with explicit, distinct tails.
+if [ -d "$TW/works/phases/active/$tb_p1" ] || [ -d "$TW/works/deferred/open/$tb_d1" ]; then
+  tb_t=ab; [ "$tb_p1" = P1-ab ] && tb_t=ac; tb_u=ab; [ "$tb_d1" = D1-ab ] && tb_u=ac
+  ( tg reset -q --hard && tg clean -qfd && tw new-phase --phase "P1-$tb_t" --name "Branch two" --objective two \
+    && tw defer-job --id "D1-$tb_u" --title two --reason r --trigger t --source manual ) >/dev/null 2>&1 || bad "two-branch probe: the same-tail redo failed"
+fi
+( tg add -A && tg commit -qm two ) >/dev/null 2>&1 || bad "two-branch probe: branch two did not commit"
 tg merge -q --no-edit one >/dev/null 2>&1; conflicted=$(tg diff --name-only --diff-filter=U | tr '\n' ' ')
 outside=$(printf '%s\n' $conflicted | grep -vxE 'works/(state\.json|index\.json|backlog\.md|deferred\.md)')
 ( for f in $conflicted; do tg checkout --theirs -- "$f" || exit 1; done; tw rebuild && tg add -A && tg commit -qm merge ) >/dev/null 2>&1
-tb_val=$(tw validate 2>&1); tb_rc=$?
-[ -z "$outside" ] && [ "$(ls "$TW/works/phases/active" | grep -cE "^P-$tok$")" = 2 ] && [ "$(ls "$TW/works/deferred/open" | grep -cE "^D-$tok$")" = 2 ] \
+tb_val=$(tw validate 2>&1); tb_rc=$?; tb_run=$(tw run-phases 1 2>&1); tb_run_rc=$?
+[ -z "$outside" ] && [ "$(ls "$TW/works/phases/active" | grep -cE "^P1-$tail_re$")" = 2 ] && [ "$(ls "$TW/works/deferred/open" | grep -cE "^D1-$tail_re$")" = 2 ] \
   && [ "$tb_rc" -eq 0 ] && [ -z "$(tg status --porcelain)" ] && [ "$(grep -c '"type": "phase_created"' "$TW/works/events.jsonl")" = 2 ] \
-  && ok "two branches each mint a phase and a deferred job and merge with conflicts only in generated files (${conflicted:-none}); either side + rebuild validates" \
-  || bad "two-branch mint did not merge clean -- conflicted: $conflicted / outside: $outside / $tb_val"
+  && [ "$tb_run_rc" -eq 2 ] && printf '%s\n' "$tb_run" | grep -qE "^refused=1 -- names P1-$tail_re, P1-$tail_re: type the tail" \
+  && ok "two branches each mint a phase and a deferred job with the same number (P1-, D1-) and merge with conflicts only in generated files (${conflicted:-none}); either side + rebuild validates, and run-phases 1 then lists both" \
+  || bad "two-branch mint did not merge clean -- conflicted: $conflicted / outside: $outside / $tb_val / $tb_run"
 
 # ---------------------------------------------------------------------------
-echo "== Test 10f: P44 brief names -- 7kq2, P-7kq2, 12 and P12 name the same phases wherever an id is typed, and the CI seed parses a token branch =="
-# Same emptied copy of $F as 10c, minted phase beside an explicit P12. Brief names go through one choke point after argparse.
+echo "== Test 10f: brief names -- 13 / P13 name the one P13-<tail>, a shared number is refused and listed, an exact P12 wins, 7kq2 / P-7kq2 still name a v73 id, and the CI seed parses all three branch shapes =="
+# Same emptied copy of $F as 10c: a v73 token phase beside P12 and P12-ab. Brief names go through one choke point after argparse.
 newtmp BNW; cp -R "$F" "$BNW/ws"; BN="$BNW/ws"; rm -rf "$BN/.git" "$BN/works/phases/active/"* "$BN/works/phases/archived/"* "$BN/works/deferred/"*/*; bn() { ( cd "$BN" && python3 scripts/workflow.py "$@" ); }
-bn_pid=$(bn new-phase --name "Brief" --objective probe 2>&1 | sed -n 's/^created phase P-\([^:]*\):.*/\1/p'); bn_up=$(printf '%s' "$bn_pid" | tr '[:lower:]' '[:upper:]')
-bn new-phase --phase P12 --name "Numbered" --objective probe >/dev/null 2>&1 || bad "brief-name probe: new-phase P12 failed"
+bn_pid=7kq2; bn_up=7KQ2
+( bn new-phase --phase "P-$bn_pid" --name "Brief" --objective probe && bn new-phase --phase 12 --name "Numbered" --objective probe \
+  && bn new-phase --phase P12-ab --name "Twelve tailed" --objective probe ) >/dev/null 2>&1 || bad "brief-name probe: setup failed"
 r1=$(bn run-phases "$bn_pid" 12 2>&1); r2=$(bn run-phases "P-$bn_up, p12" "$bn_pid" 2>&1); r3=$(bn run-phases "P$bn_pid" 2>&1); r3_rc=$?; r4=$(bn run-phases gate 2>&1); r4_rc=$?
 printf '%s\n' "$r1" | grep -qx "run=P-$bn_pid,P12" && printf '%s\n' "$r2" | grep -qx "queue=P-$bn_pid,P12" \
   && [ "$r3_rc" -eq 2 ] && printf '%s\n' "$r3" | grep -q "^refused=P$bn_pid .*P-$bn_pid" && ! printf '%s\n' "$r3" | grep -q '^queue=' && [ "$r4_rc" -eq 2 ] && printf '%s\n' "$r4" | grep -q '^refused=gate ' \
-  && ok "run-phases takes a bare token, P-token in any case and 12/p12, keeps the order and drops duplicates, and refuses P<token> without its dash and a mode word" \
+  && ok "run-phases takes a bare token, P-token in any case and 12/p12 (the exact P12 wins over P12-ab), keeps the order and drops duplicates, and refuses P<token> without its dash and a mode word" \
   || bad "run-phases brief names wrong -- $r1 / $r2 / $r3 / $r4"
 bn_gate=$(bn accept-gate "$bn_pid" --waive --note probe 2>&1); bn_show=$(bn accept-gate "p-$bn_up" 2>&1); bn_old=$(bn accept-gate 12 2>&1); bn_bad=$(bn accept-gate "P$bn_pid" 2>&1); bn_bad_rc=$?
-bn_did=$(bn defer-job --title brief --reason r --trigger t --source manual 2>&1 | sed -n 's/^created deferred job D-\([^:]*\):.*/\1/p'); bn_drop=$(bn drop-deferred "$bn_did" --reason x 2>&1)
+bn_did=$(bn defer-job --title brief --reason r --trigger t --source manual 2>&1 | sed -n 's/^created deferred job \(D[^:]*\):.*/\1/p'); bn_drop=$(bn drop-deferred 1 --reason x 2>&1)
 printf '%s\n' "$bn_gate" | grep -qx "phase P-$bn_pid: operator acceptance WAIVED -- probe" && printf '%s\n' "$bn_show" | grep -qx "phase=P-$bn_pid" && printf '%s\n' "$bn_old" | grep -qx 'phase=P12' \
-  && [ "$bn_bad_rc" -ne 0 ] && printf '%s\n' "$bn_bad" | grep -q "not a phase id" && printf '%s\n' "$bn_drop" | grep -q "^dropped D-$bn_did:" \
-  && ok "a phase or deferred-id argument takes the brief name (accept-gate 7kq2, p-7KQ2, 12; drop-deferred m3xa) and refuses P7kq2 with the shapes" || bad "brief names on commands wrong -- $bn_gate / $bn_show / $bn_old / $bn_bad / $bn_drop"
-seed_sed=$(grep -o "sed -nE '[^']*'" "$SRC/github/workflows/workspace-ci.yml")
-c1=$(printf 'phase/P-%s-slug\n' "$bn_pid" | eval "$seed_sed"); c2=$(printf 'phase/P12-slug\n' | eval "$seed_sed"); c3=$(printf 'phase/feature-x\n' | eval "$seed_sed")
-[ -n "$seed_sed" ] && [ "$c1" = "P-$bn_pid" ] && [ "$c2" = "P12" ] && [ -z "$c3" ] \
-  && ok "the CI seed's branch parse gives P-token for phase/P-token-slug and P12 for phase/P12-slug (and nothing for another branch)" || bad "the CI seed's branch parse is wrong -- [$seed_sed] [$c1] [$c2] [$c3]"
+  && [ "$bn_bad_rc" -ne 0 ] && printf '%s\n' "$bn_bad" | grep -q "not a phase id" && printf '%s\n' "$bn_did" | grep -qxE "D1-$tail_re" && printf '%s\n' "$bn_drop" | grep -q "^dropped $bn_did:" \
+  && ok "a phase or deferred-id argument takes the brief name (accept-gate 7kq2, p-7KQ2, 12; drop-deferred 1 names the one D1-<tail>) and refuses P7kq2 with the shapes" || bad "brief names on commands wrong -- $bn_gate / $bn_show / $bn_old / $bn_bad / $bn_did / $bn_drop"
+bn_t=$(bn new-phase --name "Tailed" --objective probe 2>&1 | sed -n 's/^created phase \(P[^:]*\):.*/\1/p'); bn_tu=$(printf '%s' "${bn_t#P13-}" | tr '[:lower:]' '[:upper:]')
+r5=$(bn run-phases 13 "p13-$bn_tu" 2>&1); bn_ag=$(bn accept-gate p13 2>&1)
+bn_sl=$(bn new-slice --phase 13 --slice 13.S1 --name brief --kind implementation --risk low --depends-on none 2>&1)
+bn_t2=ab; [ "$bn_t" = P13-ab ] && bn_t2=ac
+bn new-phase --phase "13-$bn_t2" --name "Twin" --objective probe >/dev/null 2>&1 || bad "brief-name probe: the twin P13-$bn_t2 failed"
+r6=$(bn run-phases 13 2>&1); r6_rc=$?; bn_amb=$(bn accept-gate 13 2>&1); bn_amb_rc=$?; bn_full=$(bn accept-gate "p13-$(printf '%s' "$bn_t2" | tr '[:lower:]' '[:upper:]')" 2>&1)
+printf '%s\n' "$bn_t" | grep -qxE "P13-$tail_re" && printf '%s\n' "$r5" | grep -qx "run=$bn_t" && printf '%s\n' "$bn_ag" | grep -qx "phase=$bn_t" \
+  && printf '%s\n' "$bn_sl" | grep -q "^created slice $bn_t.S1: " \
+  && [ "$r6_rc" -eq 2 ] && printf '%s\n' "$r6" | grep -q "^refused=13 -- names .*$bn_t" && printf '%s\n' "$r6" | grep -q "^refused=13 -- names .*P13-$bn_t2" && ! printf '%s\n' "$r6" | grep -q '^queue=' \
+  && [ "$bn_amb_rc" -ne 0 ] && printf '%s\n' "$bn_amb" | grep -q "names 2 phases numbered 13: .*type the tail" && printf '%s\n' "$bn_full" | grep -qx "phase=P13-$bn_t2" \
+  && ok "a bare new-phase mints the next number over P12 and P12-ab ($bn_t); 13, p13 and p13-<TAIL> name it while it is the only P13 (run-phases, accept-gate, new-slice --slice 13.S1); a second P13 makes 13 a refusal listing both, and 13-<tail> still names one" \
+  || bad "the number lookup is wrong -- $bn_t / $r5 / $bn_ag / $bn_sl / $r6 / $bn_amb / $bn_full"
+seed_block=$(sed -n '/# branch-parse:begin/,/# branch-parse:end/p' "$SRC/github/workflows/workspace-ci.yml")
+newtmp CIW; mkdir -p "$CIW/works/phases/active/P46-k2" && : > "$CIW/works/phases/active/P46-k2/phase.json"
+ci_parse() { ( cd "$CIW" && HEAD_REF=$1 && phase= && eval "$seed_block" && printf '%s' "$phase" ); }
+c1=$(ci_parse "phase/P-$bn_pid-slug"); c2=$(ci_parse phase/P12-slug); c3=$(ci_parse phase/feature-x); c4=$(ci_parse phase/P46-k2-some-slug); c5=$(ci_parse phase/P12-ab-slug)
+[ -n "$seed_block" ] && [ "$c1" = "P-$bn_pid" ] && [ "$c2" = "P12" ] && [ -z "$c3" ] && [ "$c4" = "P46-k2" ] && [ "$c5" = "P12" ] \
+  && ok "the CI seed's branch parse gives P46-k2 for phase/P46-k2-slug (its folder exists), P12 for phase/P12-slug and for phase/P12-ab-slug (no P12-ab folder: a slug word), P-token for phase/P-token-slug, and nothing for another branch" \
+  || bad "the CI seed's branch parse is wrong -- [$c1] [$c2] [$c3] [$c4] [$c5]"
 
 # ---------------------------------------------------------------------------
 echo "== Test 10g: P44 doc versions by minute -- v<yyMMddHHmm> in UTC beside v0001, a same-minute second version takes the next minute, docs/current follows latest, validate takes both shapes =="

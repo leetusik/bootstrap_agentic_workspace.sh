@@ -1,8 +1,8 @@
 # Agentic workspace CI.
 #
 # It checks the workflow state (`validate`) on every push and
-# pull request, and gates a phase/P<N>-<slug> (or phase/P-<token>-<slug>) pull request on the
-# quiet point.
+# pull request, and gates a phase/<phase id>-<slug> pull request (phase/P46-k2-<slug>,
+# phase/P12-<slug> or phase/P-<token>-<slug>) on the quiet point.
 #
 # It is seeded once by the installer and never overwritten afterwards: this is your
 # CI file, edit it freely.
@@ -23,7 +23,7 @@ jobs:
         run: python3 scripts/workflow.py validate
 
   # Quiet-point gate for parallel phase execution: a pull request from a
-  # phase/P<N>-<slug> (or phase/P-<token>-<slug>, the minted id) branch is mergeable only when
+  # phase/<phase id>-<slug> branch (P46-k2, P12 or a minted P-<token>) is mergeable only when
   # that phase is done + review
   # pass on its own branch AND the default stream is quiet. GATE CLOSED exits
   # non-zero, so this check goes red; whether that blocks the merge is the repo's
@@ -46,11 +46,21 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           set -eu
-          # phase/P<N>-<slug> -> P<N>, phase/P-<token>-<slug> -> P-<token>  (the branch formats parallel-start
-          # writes: a numbered phase, and a minted one whose token is 4 lowercase base32 symbols)
+          # The branch formats parallel-start writes, phase/<phase id>-<slug>:
+          #   phase/P46-k2-<slug> -> P46-k2  (a number and a two-symbol tail with a letter)
+          #   phase/P12-<slug>    -> P12     (an old numbered id)
+          #   phase/P-7kq2-<slug> -> P-7kq2  (a minted id: 4 lowercase base32 symbols)
+          # A tail and a first slug word look alike (phase/P12-ab-x), so the tailed id wins only when its
+          # phase folder exists in this head; otherwise the untailed number does.
+          # branch-parse:begin
           phase=$(printf '%s\n' "$HEAD_REF" | sed -nE 's#^phase/(P([0-9]+|-[0-9a-hjkmnp-tv-z]{4}))-.*$#\1#p')
+          tailed=$(printf '%s\n' "$HEAD_REF" | sed -nE 's#^phase/(P[0-9]+-([a-hjkmnp-tv-z][0-9a-hjkmnp-tv-z]|[0-9][a-hjkmnp-tv-z]))-.*$#\1#p')
+          if [ -n "$tailed" ] && [ -f "works/phases/active/$tailed/phase.json" ]; then
+            phase=$tailed
+          fi
+          # branch-parse:end
           if [ -z "$phase" ]; then
-            echo "head branch '$HEAD_REF' is not phase/P<N>-<slug> or phase/P-<token>-<slug> -- nothing to gate"
+            echo "head branch '$HEAD_REF' is not phase/<phase id>-<slug> (P46-k2, P12 or P-<token>) -- nothing to gate"
             exit 0
           fi
           git fetch --no-tags --quiet origin "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF" || true
