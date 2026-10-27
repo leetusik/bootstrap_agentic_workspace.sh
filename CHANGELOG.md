@@ -14,6 +14,49 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v86 — 2026-10-27
+
+- **One phase per publishable unit.** `create-phase`'s explain route now makes every explain its own
+  phase: a standalone document by default, a book or one chapter of a book only when asked, and a v2
+  of an earlier one. `## Explain` carries seventeen lines for every unit (it adds `unit`, `chapter`,
+  `prior`, `run`, `outline sign-off` and `worktree`), with a required set per unit; a section with no
+  `unit` line is a pre-v86 book and reads as `unit: book`. `validate` errors on an unknown unit, and
+  `next` prints `explain_unit=`.
+- **Created and run after one confirmation.** On a literal yes the route creates the phase, commits,
+  starts its worktree and runs `do-whole-phase` in `auto`, like `/rotate-backlog`'s docs phase. The
+  contract names both exceptions (*Making a phase* and the worktree rule: "for an explain, its
+  confirmation"), paid by trims in the same file. Asked from inside a phase worktree the route refuses
+  ("start an explain from the main checkout"); a chapter for a book in a public project is refused at
+  the confirmation, since `visibility: private` is absolute.
+- **The document path.** The three `explain-*` references branch per unit: a document's or chapter's
+  `DECOMP` leads the research into `doc/` (`doc/outline.md`) and always cuts one write slice `S1`,
+  critiqued `kind: document` (no critic under `run: quick`); the evidence gate is a typed `decision`
+  stop; outline sign-off stops only when it is `on`; the review proves the document private (an API
+  read-back fallback, no stop) and writes a `## Report`. The acceptance gate is waived for a document
+  and a chapter (published private; a v2 is cheap) and required for a book. Every knowledge-plugin §
+  citation carries its heading beside the number.
+- **Its own worktree, merged back by itself.** An explain phase is the one worktree exception (its
+  confirmation is the asking). In a nested install `parallel-start` with no `--host-branch` cuts a
+  detached host worktree (`host_branch: null`; `parallel-status` shows `detached`), since an explain
+  makes no host commit; `--repo`/`--repo-base` without `--host-branch` are refused. `parallel-gate`
+  now prints `exemption=` and drops the busy-default-stream reason when the branch's diff since its
+  merge-base touches only its phase folder, the five works files and paths added under
+  `works/deferred/open/`. A passing review with no `## Doc impact` note settles a worktree phase's
+  consolidation to `done`. When the automatic merge cannot run, the branch stays done and unmerged
+  and `next` on the default stream prints `merge_ready=<P>:<branch>`; the closing report comes after
+  the merge.
+- **The review pointer** now reads `explain: not written — run /knowledge:explain P<N> for a document,
+  or ask it for a book` (slice-executor, review-phase, both review references, the operations doc
+  body, `README.en.md`); the install's closing message and the shipped explain prose describe the
+  phase path.
+- **Migration notes.** None beyond `--update`. Explain phases now start in their own worktree under
+  `.claude/worktrees/` (already in `.git/info/exclude`) and merge back by themselves; a nested install
+  names no host branch for one. An explain phase created earlier reads `unit: book` and runs as
+  before, on the stream it is on (`parallel-start` refuses a phase that is not `planned`, so nothing
+  retrofits a worktree). Until the knowledge plugin's next release, `/knowledge:explain` still writes
+  single documents on its own; ask `/create-phase` to explain something to use the phase path now.
+  Plugin 0.6.0 or later stays required.
+
 ## v85 — 2026-10-27
 
 - **The instrument.** Every real-browser check the workspace makes (implementation and fix
