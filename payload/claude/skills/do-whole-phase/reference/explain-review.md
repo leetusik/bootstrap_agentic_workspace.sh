@@ -54,7 +54,7 @@ What differs is the work it reviews, which is a book rather than product code, a
    - **A transport failure** is verified before any retry, per §5.1. Never re-send blind.
    - **A `chapter:` link warning** for a sibling not yet published is expected mid-run; step 6 confirms the link lands.
 6. **Reads the book in the real reader.**
-   - **The instrument and agent account** come from `## Operator Runtime`: Aside, with `--account <id>` on every call. If the section is absent or still `UNFILLED`, return `needs_operator`.
+   - **The instrument and agent browser** come from `## Operator Runtime`: Claude in Chrome on the agent's own Chrome profile (signed into the reader as an org member, never the operator's own account), selected first with `list_connected_browsers` → `select_browser` on the recorded `Agent's Chrome browser name:` (`design-cowork`'s `reference/build.md`). If the section is absent or still `UNFILLED`, or no Chrome tools, no name or not exactly one match, return `needs_operator`.
    - **The sign-in.** A private book shows only to a signed-in member of its org, so the agent's own profile needs that sign-in. If the book page is a 404 there, return `needs_operator` (the operator signs the agent profile into the reader). Never use the operator's own profile.
    - **What to verify.** Open the book page and every chapter at the viewports the manifest names, and check that:
      - every chapter renders, with no error block and no raw block text;

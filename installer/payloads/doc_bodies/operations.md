@@ -25,8 +25,8 @@ the production build when the two differ.
 - Mode: <dev or production build; say where they differ — dev may enable StrictMode / Fast Refresh, production does not>
 - Origin / host the operator browses: <localhost, LAN IP, Tailscale host, deployed URL>
 - Devices / viewports / browsers: <e.g. desktop 1440px Chrome, phone 390px Safari>
-- Browser instrument for the agent: <Aside (driven as `aside repl` over Bash) if installed here, else the real browser it may drive — optional; its absence alone never stops a slice>
-- Agent's Aside account id (required whenever the instrument above is Aside): <the dedicated agent profile, e.g. u1 — never the operator's signed-in one; `aside account list` shows what exists. No instrument named above, no profile to record>
+- Browser instrument for the agent: <Claude in Chrome (the default; blank means it), or, where it cannot run here (WSL, CI, an API-key or Bedrock/Vertex/Foundry session), the other real browser the agent drives on a throwaway profile, e.g. the project's Playwright>
+- Agent's Chrome browser name: <the dedicated agent profile's name exactly as `list_connected_browsers` prints it, e.g. agent: a separate Chrome profile with the Claude in Chrome extension, signed into none of the operator's accounts; not needed when the instrument above is another browser>
 - Production build command + origin (when different):
 - Also needed to see what the operator sees: <auth/test account, seeded data, feature flags>
 - Status: UNFILLED — fill before any slice claims real-browser verification
