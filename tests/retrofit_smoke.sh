@@ -244,6 +244,25 @@ for _n in ("do-next-slice", "do-whole-phase"):
     _d = (root / "payload/claude/skills" / _n / "reference/decomposition.md").read_text(encoding="utf-8")
     assert "declares by its unit" in _d and "explain chapter: published private; a v2 is cheap" in _d, _n
     assert "always takes `--require` (the operator reads the book)" not in _d, _n
+# v86 (P-mtrt.S5): the three explain references branch per unit. A document or chapter's DECOMP leads
+# the research into `doc/` and cuts one S1; the evidence gate is a typed stop; the gate waives per unit;
+# S1's critic is `kind: document` (none under quick); the review proves a document private on its own
+# route and falls back to an API read-back; the merge back is pointed to, not restated.
+_review = (root / "payload/claude/skills/do-whole-phase/reference/explain-review.md").read_text(encoding="utf-8")
+for _txt, _pins in (
+    (_decomp, ("## A document or a chapter", "works/phases/active/P<N>/doc/", "doc/pages/.gitignore",
+               "--kind implementation --risk high --order 10", "**`STOPPED: evidence gate`**",
+               "narrow the subject: DECOMP resumes from run.md", "explain document: published private; a v2 is cheap",
+               "outline sign-off: on", "under `## The book`", "§3.9 *`quick` and `no-research`*")),
+    (_chapter, ("## A document or a chapter: its one write slice", "mode: critique · kind: document",
+                "`critique: none (quick)`", "works/phases/active/P<N>/doc/body.md")),
+    (_review, ("## Plan a document's or a chapter's review", "/api/documents/by-path/<rel_path>",
+               "/app/orgs/<org>/<project>/<slug>", "**Otherwise, the API read-back,**", "A chapter's order check",
+               "§8 *D9: the report*", "§9.1 *The book suggestion*", "(*An explain phase merges back by itself*)")),
+):
+    for _p in _pins:
+        assert _p in _txt, _p
+    assert "all eleven fields are present" not in _txt
 
 # Only skills that *document the removal* may still say "Codex": update-workspace's
 # pre-v31 migration step. Anywhere else it is a regression.
