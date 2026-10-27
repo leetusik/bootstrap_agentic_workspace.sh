@@ -206,11 +206,21 @@ for gone in ("ask which design tool", "Design tool: drafter", "Design tool: clau
 assert "## The explain route" in create_phase and "## Explain" in create_phase
 for ref in ("explain-decomposition.md", "explain-chapter.md", "explain-review.md"):
     assert f".claude/skills/do-next-slice/reference/{ref}" in SHARED_SKILL_FILES, ref
-POINTER = "not written — run /knowledge:explain P<N> for one chapter, or create an explain phase for a book"
+POINTER = "not written — run /knowledge:explain P<N> for a document, or ask it for a book"
 for rel in ("claude/agents/slice-executor.md",
             "claude/skills/review-phase/SKILL.md", "claude/skills/do-whole-phase/reference/review.md",
             "claude/skills/do-next-slice/reference/review.md"):
     assert POINTER in (root / "payload" / rel).read_text(encoding="utf-8"), rel
+# v86 (P-mtrt.S6): the pointer names a document, not a chapter; every explain is its own phase, and the
+# shipped prose says so. The old split's pointer survives only in tests/fixtures/ (history).
+OLD_POINTER = "run /knowledge:explain P<N> for one chapter, or create an explain phase for a book"
+for p in [*(root / "payload").rglob("*.md"), root / "installer/main.py", root / "installer/payloads/doc_bodies/operations.md",
+          root / "README.en.md"]:
+    assert OLD_POINTER not in p.read_text(encoding="utf-8"), p
+for p in (root / "installer/payloads/doc_bodies/operations.md", root / "README.en.md"):
+    _t = p.read_text(encoding="utf-8")
+    assert POINTER in _t and "Every explain is its own **explain phase**" in _t and "merge" in _t, p
+assert "every explain is its own explain phase" in (root / "installer/main.py").read_text(encoding="utf-8")
 for p in [*(root / "payload").rglob("*.md"), root / "installer/main.py", root / "installer/payloads/doc_bodies/operations.md"]:
     t = p.read_text(encoding="utf-8")
     assert "run /explain for this phase" not in t and "run /knowledge:explain for this phase" not in t, p

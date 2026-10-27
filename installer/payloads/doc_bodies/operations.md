@@ -50,13 +50,18 @@ document API, so they stay in step. Install it once:
     /plugin install knowledge@knowledge
 
 then run `/knowledge:setup` once (connect to the hosted KB, or scaffold your own) and use
-`/knowledge:explain <topic>`. A whole book (researched, outlined and signed, each chapter
-checked by a fresh-eyes critic, published private) is an **explain phase**: ask
-`/create-phase` to explain something as a book. Plugin version 0.6.0 or later is required. A book's research runs on your session's permissions (auto mode needs nothing; manual mode needs the rules its preflight prints, in `.claude/settings.local.json`) and its web searches count against Claude Code's per-session cap: raise `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` in your user settings' `env` (the plugin's README, *Explain: permissions and the search cap*).
+`/knowledge:explain <topic>`. Every explain is its own **explain phase**, one per publishable
+unit: a standalone document by default, a book or one chapter of a book only when you ask. After
+one confirmation the phase is created **and** run: researched, written, checked by a fresh-eyes
+critic and published private, in its own worktree under `.claude/worktrees/`, merged back by
+itself (a nested install names no host branch for it). A book still stops for its outline
+sign-off and its acceptance gate. Until the plugin's next release, `/knowledge:explain` still
+writes single documents on its own; ask `/create-phase` to explain something to use the phase
+path now. Plugin version 0.6.0 or later is required. An explain's research runs on your session's permissions (auto mode needs nothing; manual mode needs the rules its preflight prints, in `.claude/settings.local.json`) and its web searches count against Claude Code's per-session cap: raise `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` in your user settings' `env` (the plugin's README, *Explain: permissions and the search cap*).
 To update: `/plugin marketplace update knowledge`, then update `knowledge@knowledge` from the
 `/plugin` panel's Installed tab (or, from a shell, `claude plugin update knowledge@knowledge`).
 The review never writes an explainer; it only reports
-`explain: not written — run /knowledge:explain P<N> for one chapter, or create an explain phase for a book`.
+`explain: not written — run /knowledge:explain P<N> for a document, or ask it for a book`.
 
 ## Deployment
 
