@@ -476,6 +476,15 @@ UNASSIGNED_DOC = "(unassigned)"
 # A default-stream phase in any of these states means main is mid-flight, so a phase
 # branch may not be merged into it yet (the quiet-point gate, `parallel-gate`).
 BUSY_PHASE_STATUSES = ("in_progress", "in_review", "pending", "blocked")
+# The quiet point's checked exemption (v86, §9.2): a branch whose diff since its merge-base with the
+# default side touches only its own phase folder, the STAMP_WORKS_FILES, or paths ADDED under this
+# folder (a deferred job filed on the branch: a new minted-id folder cannot conflict) cannot collide
+# with in-flight default-stream work, so `parallel-gate` drops the busy-default-stream reason for it.
+GATE_EXEMPT_ADDED_PREFIX = "works/deferred/open/"
+# An explain phase's publishable unit (`- unit:` in intent.md's `## Explain`); absent reads `book`,
+# the only unit before v86.
+EXPLAIN_UNITS = ("document", "book", "chapter")
+EXPLAIN_UNIT_DEFAULT = "book"
 # Regenerated from works/phases/** and docs/versions/** by `parallel-merge-finish`;
 # never merged by hand (see .gitattributes).
 GENERATED_FILES = ("works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "docs/current/*.md")
@@ -3594,6 +3603,29 @@ def explain_phase(pdir: Path) -> bool:
     return intent.is_file() and any(line.strip() == "## Explain" for line in intent.read_text(encoding="utf-8").split("\n"))
 
 
+def explain_unit(pdir: Path):
+    """An explain phase's publishable unit: the `- unit:` value in intent.md's `## Explain` section
+    (`document` | `book` | `chapter`, lower-cased, as written: `validate` reports an unknown one), or
+    `book` when the field is absent -- every explain phase before v86 is a book. None for a phase that
+    is not an explain phase. `next` prints it so the orchestrator picks its reference branch."""
+    if not explain_phase(pdir):
+        return None
+    inside = False
+    for line in (pdir / "intent.md").read_text(encoding="utf-8").split("\n"):
+        text = line.strip()
+        if text.startswith("## "):
+            if inside:
+                break
+            inside = text == "## Explain"
+            continue
+        if inside:
+            m = re.match(r"[-*]\s+unit\s*:\s*(.*)$", text, re.IGNORECASE)
+            if m:
+                value = m.group(1).strip().strip("`").strip()
+                return value.split()[0].lower() if value else EXPLAIN_UNIT_DEFAULT
+    return EXPLAIN_UNIT_DEFAULT
+
+
 def undeclared_middle_slices(phase: dict) -> list:
     """The open (not `done`) slices of a phase that are neither a barrier kind, a fix nor declared, by order: a
     fix slice is cut after a review, outside any decomposition's reach, and stays undeclared unless its set is known."""
@@ -4904,6 +4936,10 @@ def validate() -> int:
             _repo_anchor_problems(p, errors, warnings)
         if not (ACTIVE / p["id"] / "intent.md").exists():
             warnings.append(f"phase {p['id']} has no intent.md (expected {p['id']}/intent.md); capture operator intent via the create-phase skill")
+        unit = explain_unit(ACTIVE / p["id"])
+        if unit is not None and unit not in EXPLAIN_UNITS:
+            errors.append(f"phase {p['id']} has an unknown explain unit {unit!r} in intent.md's ## Explain; expected one of "
+                          f"{', '.join(EXPLAIN_UNITS)} (an absent unit reads {EXPLAIN_UNIT_DEFAULT})")
         # Bounded notebook (v35). Warnings only: `validate` prints them and still exits 0.
         # A `done` phase is skipped for the budget: its notebook is closed history waiting
         # to be archived, so "rewrite it under budget" is advice nobody can act on -- the
@@ -5568,6 +5604,17 @@ def review_phase(args: argparse.Namespace) -> None:
             print(f"docs: {len(notes)} '## Doc impact' note(s) recorded -- durable docs are NOT versioned here.")
             print("  consolidation is deferred: the operator creates a docs phase for it (doc-new-version per note, then rebuild-docs).")
             print(f"  when those versions land: {WORKFLOW_CMD} {done_cmd} {args.phase}   (until then {args.phase} is held out of archiving)")
+        else:
+            # v86 (§9.3): parallel-start stamps every worktree phase `pending` up front; a phase whose
+            # pass leaves no note changed no durable truth, so it owes nothing -- settle the debt here
+            # (both fields, through the setter) or it would sit unarchivable forever.
+            data = read_json(pdir / "phase.json")
+            if phase_execution(data) and phase_consolidation(data) == "pending":
+                set_phase_consolidation(data, "done")
+                write_json(pdir / "phase.json", data)
+                append_event("phase_consolidation_settled", phase=args.phase, notes=0)
+                rebuild_index_and_state()
+                print("docs: no '## Doc impact' note -- this worktree phase owes no doc consolidation (consolidation=done)")
         print(f"phase {args.phase} is done and stays in active/. Do NOT archive a single phase now.")
         print("Archive done phases later, whole phases only: `rotate-backlog` (it pays the doc debt first, then archives every done phase), or `archive-all` once every active phase is done.")
 
@@ -7015,6 +7062,34 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
     print("phase.json changed -- commit it in the nested repo with the rest of the merge cleanup")
 
 
+def _gate_exemption(phase_id: str, main_side: str, branch_ref: str) -> tuple:
+    """(exempt, detail) for the quiet point's checked exemption (v86, §9.2).
+
+    Reads `git diff --name-status <merge-base> <branch_ref>` -- what merging the branch into the
+    default side would bring -- and is exempt only when every path is inside the phase's own folder,
+    one of the STAMP_WORKS_FILES (generated, regenerated by parallel-merge-finish; events.jsonl merges
+    as union), or ADDED under GATE_EXEMPT_ADDED_PREFIX. `detail` is the path count when exempt, else
+    the first offending path (or why git could not answer: then nothing is exempt)."""
+    base = _git(["merge-base", main_side, branch_ref], check=False)
+    if base.returncode != 0 or not base.stdout.strip():
+        return False, f"(no merge-base between {main_side} and {branch_ref})"
+    proc = _git(["diff", "--name-status", "--no-renames", "-z", base.stdout.strip(), branch_ref], check=False)
+    if proc.returncode != 0:
+        return False, f"(git diff {base.stdout.strip()[:12]}..{branch_ref} failed)"
+    prefix = _repo_prefix()
+    own = f"works/phases/active/{phase_id}/"
+    fields = [f for f in proc.stdout.split("\0") if f]
+    count = 0
+    for status, path in zip(fields[0::2], fields[1::2]):
+        count += 1
+        rel = path[len(prefix):] if prefix and path.startswith(prefix) else (path if not prefix else None)
+        if rel is not None and (rel.startswith(own) or rel in STAMP_WORKS_FILES
+                                or (status == "A" and rel.startswith(GATE_EXEMPT_ADDED_PREFIX))):
+            continue
+        return False, f"{path} ({status})"
+    return True, f"{count} path{'' if count == 1 else 's'}"
+
+
 def parallel_gate(args: argparse.Namespace) -> None:
     """The quiet-point gate: may this parallel phase's branch be merged into the default stream now?
 
@@ -7023,7 +7098,10 @@ def parallel_gate(args: argparse.Namespace) -> None:
     * **branch side** -- the phase is `done` with a `pass` review *on its own branch*. Main's copy
       is stale before the merge, so it is never trusted here.
     * **main side** -- the default stream is quiet: every non-parallel active phase is `planned` or
-      `done`. Merging into a live phase is what this gate exists to prevent.
+      `done`. Merging into a live phase is what this gate exists to prevent. v86: a busy default
+      stream is skipped when the branch's diff since its merge-base with the default side touches
+      only its own phase folder, the generated works/ files and added deferred jobs
+      (`_gate_exemption`, printed as `exemption=`): such a merge cannot collide with live work.
 
     Read-only and CI-shaped: `GATE OPEN` + exit 0, or `GATE CLOSED` + numbered reasons + exit 1.
     In a nested install (P35) both sides are read in the nested repo, which owns the state.
@@ -7062,7 +7140,7 @@ def parallel_gate(args: argparse.Namespace) -> None:
         if main_phases is None:
             reasons.append(f"cannot read the default stream's phase state at {args.main_ref} (unknown ref?)")
             main_phases = []
-        source = args.main_ref
+        source = main_side = args.main_ref
     else:
         # Without --main-ref the working tree stands in for main -- unless it IS the phase
         # branch: checked out by name (its worktree) or detached at its tip (how CI checks out a
@@ -7084,15 +7162,28 @@ def parallel_gate(args: argparse.Namespace) -> None:
                 reasons.append(f"cannot read the default stream's phase state at {default} (unknown ref?)")
                 main_phases = []
             source = f"{default} (local default branch; this checkout is the phase branch)"
+            main_side = default
         else:
             main_phases = all_active_phases()
             source = "working tree"
+            main_side = "HEAD"  # the working tree's own history: what a merge here would merge into
     print(f"main_state_source={source}")
+    busy = []
     for p in main_phases:
         if p.get("id") == args.phase or phase_execution(p):
             continue  # parallel phases run on their own stream; they do not make main busy
         if p.get("status") in BUSY_PHASE_STATUSES:
-            reasons.append(f"the default stream is not quiet: phase {p.get('id')} is {p.get('status')!r} (finish or park it, then re-run the gate)")
+            busy.append(f"the default stream is not quiet: phase {p.get('id')} is {p.get('status')!r} (finish or park it, then re-run the gate)")
+    # v86 (§9.2): the checked exemption. Only the busy-default-stream reasons can be dropped, and only
+    # when git shows the branch touches nothing the default stream could be holding; the branch-side
+    # reasons (done, pass) never are. Decided by the diff, never by what kind of phase it is.
+    exempt, detail = _gate_exemption(args.phase, main_side, branch_ref)
+    print(f"exemption=phase-folder-only ({detail})" if exempt else f"exemption=none: {detail}")
+    if busy and exempt:
+        notes.append(f"{len(busy)} busy default-stream phase(s) skipped: the branch touches only its own phase folder, the generated works/ files "
+                     f"and added {GATE_EXEMPT_ADDED_PREFIX} paths, so its merge cannot collide with them")
+    else:
+        reasons.extend(busy)
     for p in main_phases:
         other = phase_execution(p)
         if p.get("id") != args.phase and other and phase_consolidation(p) == "pending" and p.get("status") == "done":
@@ -7427,6 +7518,36 @@ def parallel_status(args: argparse.Namespace) -> None:
         else:
             print("  slices: none readable at that source")
         print(f"  verdict: {_parallel_verdict(pid, status, review, slices, phase_consolidation(phase), merged, branch_gone, own_stream)}")
+
+
+def merge_ready_line(stream, phases: list):
+    """`merge_ready=<P>:<branch>, ...` on the default stream (v86, §9.5): every stamped phase whose
+    branch copy is `done` with a `pass` review while this stream's copy is not `done` yet -- an
+    integration nobody has run (an explain run that could not merge by itself leaves it so). Read at
+    the branch ref, never trusted from the stale local copy. None on a phase stream or without git."""
+    if stream or not _git_available():
+        return None
+    ready = []
+    for p in phases:
+        execution = phase_execution(p)
+        branch = (execution or {}).get("branch")
+        if not branch or p.get("status") == "done":
+            continue
+        branch_data = _phase_json_at_ref(branch, p["id"])
+        if isinstance(branch_data, dict) and branch_data.get("status") == "done" and (branch_data.get("review") or {}).get("status") == "pass":
+            ready.append(f"{p['id']}:{branch}")
+    if not ready:
+        return None
+    return (f"merge_ready={', '.join(ready)} (done with a passing review on its branch, not merged here: "
+            f"whoever drives this stream merges it at a slice boundary, past {WORKFLOW_CMD} parallel-gate <P>)")
+
+
+def explain_unit_lines(phase_id) -> list:
+    """`explain_unit=<unit>` for an explain phase (v86), so the orchestrator picks the document, book
+    or chapter branch of the explain references without re-reading intent.md; nothing otherwise."""
+    pdir = ACTIVE / phase_id if phase_id else None
+    unit = explain_unit(pdir) if pdir is not None and pdir.is_dir() else None
+    return [f"explain_unit={unit}"] if unit else []
 
 
 def parallel_start_hint(state: dict, index: dict) -> str:
@@ -8810,6 +8931,9 @@ def cmd_next(args: argparse.Namespace) -> None:
     ]
     if elsewhere:
         print(f"parallel_phases_elsewhere={', '.join(elsewhere)} (not in this stream; each runs from its own branch)")
+    ready = merge_ready_line(stream, index.get("active_phases", []))
+    if ready:
+        print(ready)
     # Deferred doc consolidation, printed before every return below so no path hides it. Purely
     # advisory: it names the debt and the command, selects nothing, and is silent when nothing owes.
     debt = consolidation_debt_line(index.get("active_phases", []))
@@ -8828,6 +8952,8 @@ def cmd_next(args: argparse.Namespace) -> None:
                 gate = phase_acceptance(pdata)
                 clear = f"accept-gate {waiting} --clear"
         print(f"current_phase={state.get('current_phase')}")
+        for line in explain_unit_lines(state.get("current_phase")):
+            print(line)
         print(f"waiting_on_operator={waiting}")
         print(f"WAITING ON OPERATOR: {kind} {waiting} is pending [~] -- operator co-work needed (validation or an operator-run action).")
         if kind == "slice":
@@ -8857,12 +8983,16 @@ def cmd_next(args: argparse.Namespace) -> None:
     if not current_slice:
         if state.get("current_phase"):
             print(f"current_phase={state['current_phase']}")
+            for line in explain_unit_lines(state["current_phase"]):
+                print(line)
             print("no open slice in the current phase; review/archive it or create a new phase")
         else:
             print("no active slice; create a phase or promote deferred work")
         return
     sdir = require_slice(current_slice)
     print(f"current_phase={current_slice.split('.', 1)[0]}")
+    for line in explain_unit_lines(current_slice.split(".", 1)[0]):
+        print(line)
     print(f"current_slice={current_slice}")
     print(f"slice_path={shown(sdir)}")
     print(f"next_slice={state.get('next_slice') or 'none'}")
@@ -13315,7 +13445,7 @@ def main(argv=None) -> int:
     p.add_argument("--transcripts", action="append", metavar="DIR", help="read this projects/<slug> directory instead of discovering the session root's (repeatable)")
     p.set_defaults(func=cmd_dispatch_summary)
 
-    p = sub.add_parser("next", help="Print the current phase/slice selection; when the phase's notebook is over 40,960 B, also notebook_over_budget= with up to 3 notebook_move= commands to run before the next dispatch (required form), or none when nothing can move (advisory form)")
+    p = sub.add_parser("next", help="Print the current phase/slice selection (plus explain_unit=<document|book|chapter> on an explain phase, and on the default stream merge_ready=<P>:<branch> for a parallel phase done with a passing review on its branch but not merged yet); when the phase's notebook is over 40,960 B, also notebook_over_budget= with up to 3 notebook_move= commands to run before the next dispatch (required form), or none when nothing can move (advisory form)")
     p.add_argument("--card", action="store_true", help="print the resume card instead: the pointer, the next action or the typed stop, the open gates, the running spans (from the newest session's subagents/*.meta.json) and the slice's file paths, computed from state, at most 2,048 bytes -- what compact-resume prints after a compaction")
     p.set_defaults(func=cmd_next)
 
@@ -13383,7 +13513,7 @@ def main(argv=None) -> int:
     p.add_argument("status")
     p.set_defaults(func=set_phase_status)
 
-    p = sub.add_parser("review-phase", help="Record a phase review verdict (pass/changes_requested/blocked)")
+    p = sub.add_parser("review-phase", help="Record a phase review verdict (pass/changes_requested/blocked); a pass stamps doc consolidation pending when '## Doc impact' has notes, and settles a worktree phase's to done when it has none")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--verdict", required=True, choices=sorted(REVIEW_VERDICTS))
     p.add_argument("--reviewer", default=None)
@@ -13432,7 +13562,7 @@ def main(argv=None) -> int:
     p = sub.add_parser("parallel-status", help="Read-only cross-stream view: this checkout's pointer plus every parallel phase's branch-side slice state (never writes anything)")
     p.set_defaults(func=parallel_status)
 
-    p = sub.add_parser("parallel-gate", help="Quiet-point gate: is this parallel phase's branch mergeable now (branch done+pass, default stream quiet)? Exit 0 = open")
+    p = sub.add_parser("parallel-gate", help="Quiet-point gate: is this parallel phase's branch mergeable now (branch done+pass, default stream quiet -- or, v86, exemption=phase-folder-only: its diff since the merge-base touches only its phase folder, the generated works/ files and added works/deferred/open/ paths)? Exit 0 = open")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--branch-ref", default=None, help="git ref holding the phase branch's state (default: the phase's stamped execution.branch; e.g. HEAD or origin/phase/P2-x in CI)")
     p.add_argument("--main-ref", default=None, help="git ref holding the default stream's state (default: this working tree; e.g. origin/main when running from a PR checkout)")

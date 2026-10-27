@@ -2754,7 +2754,7 @@ nogit_scope=$( cd "$F" && PATH="/var/empty" "$nogit_py" scripts/workflow.py phas
   || bad "phase-scope failed or was silent without git (rc=$nogit_rc) -- $nogit_scope"
 
 # ---------------------------------------------------------------------------
-echo "== Test 12: v43 worktree on request -- nothing unasked, parallel-start on a dirty tree, the nested worktree, the exclude line, the retired pins =="
+echo "== Test 12: v43 worktree on request -- nothing unasked, parallel-start on a dirty tree, the nested worktree, the exclude line, the retired pins; v86 the no-notes consolidation flip and the gate's checked exemption =="
 newtmp W
 sh "$BOOT" "$W" --at-root --name "Worktree" --summary "worktree probe" >/dev/null 2>&1 || bad "v43 probe: fresh install failed"
 ( cd "$W" && git init -q -b main . 2>/dev/null || git init -q . ; git config user.email smoke@example.invalid && git config user.name smoke \
@@ -2833,6 +2833,23 @@ if ( cd "$W" && python3 scripts/workflow.py parallel-start P2 2>&1 | grep -q "le
     && git add -A >/dev/null 2>&1 && git commit -qm "P1 done" >/dev/null 2>&1 ) || bad "v43 probe: could not finish P1 on the branch"
 ( cd "$wt" && python3 scripts/workflow.py parallel-gate P1 2>&1 | grep -q "^main_state_source=main (local default branch" ) \
   && ok "parallel-gate run from the worktree reads the default stream from the local default branch" || bad "parallel-gate from the worktree did not fall back to the local default branch"
+# (i) v86: a no-notes pass settles a worktree phase's debt; the gate's checked exemption, both ways.
+python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(not (d.get('consolidation') == d['execution'].get('consolidation') == 'done'))" \
+    "$wt/works/phases/active/P1/phase.json" \
+  && ok "a passing review with no Doc impact note flips a worktree phase's consolidation to done (both fields)" \
+  || bad "the no-notes pass left the worktree phase owing consolidation"
+( cd "$W" && python3 scripts/workflow.py set-phase-status P2 in_progress >/dev/null 2>&1 ) || bad "v86 probe: could not make the default stream busy"
+g_out=$( cd "$W" && python3 scripts/workflow.py parallel-gate P1 2>&1 ); g_rc=$?
+[ "$g_rc" -eq 0 ] && printf '%s\n' "$g_out" | grep -q "^exemption=phase-folder-only (" && printf '%s\n' "$g_out" | grep -q "^GATE OPEN" \
+  && ok "parallel-gate opens on a busy default stream for a branch touching only its phase folder and the works files" \
+  || bad "the checked exemption did not open the gate (rc=$g_rc) -- $g_out"
+( cd "$wt" && git checkout -q -b probe/extra && mkdir -p src && printf 'x\n' > src/probe.py && git add src/probe.py \
+    && git commit -qm "probe: a product file" && git checkout -q phase/P1-worktree_probe ) >/dev/null 2>&1 || bad "v86 probe: could not cut the product-file branch"
+g_out=$( cd "$W" && python3 scripts/workflow.py parallel-gate P1 --branch-ref probe/extra 2>&1 ); g_rc=$?
+[ "$g_rc" -ne 0 ] && printf '%s\n' "$g_out" | grep -q "^exemption=none: src/probe.py" && printf '%s\n' "$g_out" | grep -q "default stream is not quiet: phase P2" \
+  && ok "a branch touching any other path gets no exemption: the busy default stream still closes the gate" \
+  || bad "the exemption let a product-file branch past a busy default stream (rc=$g_rc) -- $g_out"
+( cd "$W" && git branch -q -D probe/extra && python3 scripts/workflow.py set-phase-status P2 planned >/dev/null 2>&1 ) || bad "v86 probe: could not reset the probe"
 ( cd "$W" && git restore --staged src/staged.py && git add -A works >/dev/null 2>&1 && git commit -qm "workflow state" >/dev/null 2>&1 ) \
   || bad "v43 probe: could not commit the default-stream workflow state before merging"
 # Both sides regenerated the dashboards, so the merge conflicts in generated files -- resolved the
