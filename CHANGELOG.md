@@ -14,6 +14,55 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v84 — 2026-10-27
+
+- **Phase and deferred ids you can say.** v73's minted tokens (`P-7kq2`) kept two branches from colliding,
+  but they were hard to say and to remember. A new id is the next number plus a two-symbol random tail:
+  `P46-k2`, `D92-x4`, slices `P46-k2.S1`. The number is what you say; the tail is what keeps two branches
+  (two worktrees, or two team members' feature branches in an at-root install) that each create the next
+  phase from taking the same id. The tail is two symbols of v73's Crockford alphabet drawn with `secrets`,
+  at least one of them a letter, so `P46-12` never reads as a range.
+- **Allocation.** `new-phase` without `--phase`, `defer-job` without `--id` and `promote-deferred
+  --create-phase` take one more than the highest number among the ids of that kind the checkout can see,
+  old and tailed alike (phases active and archived; deferred jobs open, promoted and dropped; v73 tokens
+  carry no number and are ignored), and redraw the tail while the full id is visible. An explicit `P12`
+  or `P-7kq2` keeps v73's rules; an explicit `P46-k2` is accepted when its tail is valid and the id is not
+  visible.
+- **Brief names by lookup.** Wherever a phase or deferred id is typed, `46`, `p46` and `P46` name `P46-k2`
+  while it is the only phase numbered 46 (an exact stored `P46` always wins); `46-k2` names it always. A
+  number two tailed ids share is refused with both listed (`'46' names 2 phases numbered 46: P46-k2,
+  P46-x4 -- type the tail (e.g. P46-k2 or 46-k2)`), as is one that names nothing. Slice arguments read the same way (`46.S1`),
+  as do `run-phases`, `/do-whole-phases` and `new-phase --consolidates`; `--depends-on` stays full-form.
+  `new-phase --phase 46` and `defer-job --id 92` create `P46` / `D92` as typed.
+- **`promote-deferred --create-phase --phase 46`** reuses the one existing `P46` or `P46-<tail>` and
+  creates `P46` only when none exists.
+- **Sorting and range labels.** Numbered ids sort by number, then untailed before tailed, tails
+  alphabetical (`P46`, `P46-k2`, `P46-x4`), with v73 tokens after them by creation time. Rotate's range
+  labels collapse consecutive numbers of either shape with full ends (`P45–P47-m9`); an all-numeric
+  backlog's labels are byte-identical to v83.
+- **One known limit.** Two branches that draw the same number and the same tail (about 1 in 924 per
+  pair) create the same folder; that surfaces as a git add/add conflict at the merge, never silently,
+  and the engine adds no guard for it.
+- **The adopter CI seed** resolves `phase/P46-k2-<slug>` by folder: a tail and a first slug word look
+  alike (`phase/P12-ab-x`), so the tailed id wins only when its phase folder exists in the head, and the
+  untailed number otherwise. `P12` and `P-7kq2` branches parse as before.
+- **The workspace version on `backlog.md`.** The generated backlog's `## Pointer` block now ends with a
+  `Workspace version:` line naming the installed version (`v83` style), read from the install's
+  `works/.workspace-version.json`; it says `unknown` when that marker is missing or unreadable. `next`
+  does not print it.
+- **Texts.** The engine's help and refusals, the contract's IDs and Status, `create-phase`, `defer-job`,
+  `promote-deferred`, `deferred`, `do-whole-phases`, `parallel-phase`, `review-phase`, `doc-new-version`
+  and both READMEs teach the new shape and the brief number. The contract stays under its 12,288 B cap.
+
+- **Migration notes.** Nothing is renamed: old `P12` / `D12` and v73 `P-7kq2` / `D-m3xa` ids keep their
+  folders, branches and brief forms, and `validate` accepts all three shapes. `--update` brings the engine,
+  skills and contract. **The CI seed is seed-once**, so an existing `.github/workflows/workspace-ci.yml`
+  keeps v73's parse, which reads `phase/P46-k2-<slug>` as `P46`; the engine looks that number up, so the
+  gate still checks the right phase until two phases share the number, and then the check fails on the
+  refusal. To take the new parse, copy the lines between `# branch-parse:begin` and `# branch-parse:end`
+  from a fresh install's seed into yours. Scripts of your own that match `P\d+` or `P-[0-9a-z]{4}` need
+  the tailed shape too (`P\d+-[0-9a-z]{2}`).
+
 ## v83 — 2026-10-26
 
 - **The cheap row is retired.** Docs and qa slices rated `low` ran on it, on haiku @ xhigh since v80.
