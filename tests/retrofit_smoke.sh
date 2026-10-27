@@ -226,6 +226,24 @@ _decomp = (root / "payload/claude/skills/do-whole-phase/reference/explain-decomp
 assert "installed_plugins.json" in _decomp and "pages/.gitignore" in _decomp and "slice: <P>.DECOMP" in _decomp
 assert "**The explain carve-out" in (root / "payload/claude/agents/slice-executor.md").read_text(encoding="utf-8")
 assert not (root / "payload/claude/agents/explain-critic.md").exists()
+# v86 (P-mtrt.S3): every explain unit is a phase, created AND run after one confirmation. The route
+# refuses from a phase worktree and for a book or chapter in a public project, keeps a literal `unit`
+# line (absent reads as a 0.6.0 book, which still STOPs after creation), cites plugin sections with
+# their headings, and declares the gate per unit; the contract carries both exceptions.
+for required in ("every unit is a phase", "**one confirmation**", "Explain — confirm once; then it runs to publish.",
+                 "start an explain from the main checkout", "`visibility: private` is absolute",
+                 "The literal `unit` line", "**The required set, per unit:**", "- worktree: yes",
+                 "- outline sign-off: off", "parallel-start <P>` (nested: with no `--host-branch`",
+                 "in **`auto`**", "--stop-kind decision", "operator-action", "**with no `unit` line**",
+                 "Run `/do-whole-phase` to research and write it.", "§9.2 *Research for a book (an explain phase)*",
+                 "**The acceptance gate, per unit:**", "**An explain phase is the one exception:**"):
+    assert required in create_phase, required
+for gone in ("A single chapter is not a phase", "**A book is a phase, and this route makes one.**"):
+    assert gone not in create_phase, gone
+for _n in ("do-next-slice", "do-whole-phase"):
+    _d = (root / "payload/claude/skills" / _n / "reference/decomposition.md").read_text(encoding="utf-8")
+    assert "declares by its unit" in _d and "explain chapter: published private; a v2 is cheap" in _d, _n
+    assert "always takes `--require` (the operator reads the book)" not in _d, _n
 
 # Only skills that *document the removal* may still say "Codex": update-workspace's
 # pre-v31 migration step. Anywhere else it is a regression.
@@ -979,6 +997,9 @@ for required in (
     "(`/do-whole-phases` parks it and continues; every other stop halts the run)",
     # v71 (P42): the reversal of "never fan out slices" -- a declared phase's independent slices run at once.
     "a phase's declared, independent slices may run at once (`do-whole-phase`'s wave), all others alone",
+    # v86 (P-mtrt.S3): the explain route creates and runs its phase; its confirmation is the worktree word.
+    "Exceptions: `/rotate-backlog` and the explain route (after one confirmation) create and run their phase.",
+    "A worktree starts only on the operator's word (for an explain, its confirmation)",
 ):
     assert required in claude, required
 assert "never fan out slices" not in claude, "the contract still forbids fanning out slices"
