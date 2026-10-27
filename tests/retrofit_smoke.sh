@@ -685,6 +685,24 @@ for required in ("Worktree rules", "**When — only when asked**", "retired no-o
 for gone in ("runs in its own worktree by default", "enters its worktree at **first execution**",
              "the do-* skills do this for you"):
     assert gone not in parallel, gone
+# v86 (P-mtrt.S4): an explain phase is the one worktree exception (its confirmation is the asking),
+# a nested one cuts a detached host worktree, and it merges back by itself past a busy main when the
+# engine's exemption holds; a no-notes pass settles consolidation; an unmerged branch shows as merge_ready=.
+for required in ("**One exception: an explain phase (v86).**", "### An explain phase merges back by itself",
+                 "**An explain phase needs no host branch (v86).**", "`exemption=phase-folder-only (<n> paths)`",
+                 "`merge_ready=<P>:<branch>`", "`parallel-teardown <P> --discard-ignored`",
+                 "**A phase with no debt settles itself (v86):**", "the main checkout's `.claude/settings.local.json`",
+                 "(an explain phase's confirmation is the asking)"):
+    assert required in parallel, required
+for _n in ("do-next-slice", "do-whole-phase"):
+    _w = " ".join((root / "payload/claude/skills" / _n / "reference/worktree.md").read_text(encoding="utf-8").split())
+    _c = (root / "payload/claude/skills" / _n / "SKILL.md").read_text(encoding="utf-8")
+    assert "**An explain phase**" in _w or "**One exception: an explain phase (v86).**" in _w, _n
+    assert "merge_ready=" in _w and "merge_ready=" in _c and "(an explain: its confirmation asked)" in _c, _n
+_ww = " ".join((root / "payload/claude/skills/do-whole-phase/reference/worktree.md").read_text(encoding="utf-8").split())
+for required in ("**An explain phase merges back by itself, with no stop.**", "**When the automatic merge cannot run**",
+                 "**The closing report** of an explain run comes last", "`parallel-teardown <P> --discard-ignored`"):
+    assert required in _ww, required
 
 # v32 review procedure: the gate stages, the returned walkthrough, and the two
 # workflow commands a review slice must never run.
