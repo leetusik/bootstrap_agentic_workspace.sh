@@ -776,36 +776,31 @@ for tier in ("slice-executor",):
     ):
         assert required in body, (tier, required)
     assert "`depends_on` is advisory" not in body, (tier, "advisory depends_on")
-    # v36: Aside is the prescribed real-browser instrument in BOTH bodies -- the
-    # implementation bullet, the mockup span, and the review's gate stage 2.
+    # v36: a named real-browser instrument in the implementation bullet, the mockup span and the
+    # review's gate stage 2. P-zqhy: Claude in Chrome replaces Aside -- the executor holds its tools,
+    # selects the agent's dedicated browser before any other browser tool, halts a third way when it
+    # cannot, and takes a fallback only when the manifest names one.
     for required in (
-        "Drive that browser with **Aside**",
+        "Drive that browser with **Claude in Chrome**",
+        "its `mcp__claude-in-chrome__*` tools in your tool list",
         "the doctrine's demands bind, the instrument does not",
         "Name in `result.md` which instrument you used",
-        "driven with the same instrument (Aside first)",
-        "driving it with the same instrument (Aside first, the fallback browser otherwise)",
-    ):
-        assert required in body, (tier, required)
-    # v37: the concrete default an executor actually runs is in BOTH bodies -- the
-    # `repl` surface over Bash with a reachable re-attach preamble, never a standing
-    # MCP registration, and against no pre-written suite.
-    for required in (
-        "Run its `repl` surface over Bash",
-        "`aside repl \"<js>\"`",
-        "`listBrowserTabs()` → `attachBrowserTab()`",
-        "never a standing `aside mcp` registration",
         "in place of a pre-written assertion suite",
-        # v37: and on the agent's own Aside profile, named per invocation, with
-        # the personal-profile case as a third halt of its own.
-        "Every call names the agent's own Aside profile",
-        '`aside repl --account <id> "<js>"`',
         "never the operator's signed-in one",
+        "**Before any other browser tool**, call `list_connected_browsers`",
+        "`select_browser` with its `deviceId` — never act before selecting",
+        "the `Agent's Chrome browser name:` recorded in `## Operator Runtime`",
+        "If your session has no Chrome tools, the manifest records no agent browser name, or not exactly one connected browser carries it",
         "return `needs_operator` (a third halt, distinct from the runtime one)",
+        "**The fallback is the manifest's choice, never yours mid-run:**",
+        "Chrome missing from your session is the halt above, never a silent fallback.",
+        "driven with the same instrument and the same select-first rule (Claude in Chrome, or the fallback the manifest names)",
+        "driving it with the same instrument and the same select-first rule (Claude in Chrome, or the fallback the manifest names)",
     ):
         assert required in body, (tier, required)
     for gone in ("MCP surface first", "scripted Playwright-style automation",
-                 # nothing tells an executor to move the default account.
-                 "aside account use"):
+                 # P-zqhy: no Aside procedure survives in the executor.
+                 "Aside", "aside repl", "aside mcp", "aside account", "--account <id>", "attachBrowserTab"):
         assert gone not in body, (tier, gone)
     assert "On a gated phase (`acceptance.required` is `true` — and only then) also run the gate stages" in body, tier
     assert "- `walkthrough`:" in body, tier
@@ -845,7 +840,9 @@ for tier in ("slice-executor",):
     for gone in ("the light tier", "essentially all code writing", "- `tier`", "slice-executor-mid", "slice-executor-high",
                  "mid tier", "high tier", "top tier", "capability tiers"):
         assert gone not in body, (tier, gone)
-    assert "tools: Read, Edit, Write, Glob, Grep, Bash, WebSearch, WebFetch, Agent\n" in body, tier
+    # P-zqhy: the Chrome wildcard rides last on a non-empty list (a Chrome-off session launches it
+    # with the rest; an all-MCP list would be refused).
+    assert "tools: Read, Edit, Write, Glob, Grep, Bash, WebSearch, WebFetch, Agent, mcp__claude-in-chrome__*\n" in fm, tier
     # v53 (P32.S3): the Agent tool is for read-only Explore lookups only; the verdict block
     # records model and effort beside tier.
     for required in ("## Delegate reads, never writes", "subagent_type: Explore",
@@ -853,6 +850,13 @@ for tier in ("slice-executor",):
                      "never to spawn another executor"):
         assert required in body, (tier, required)
     assert "never an executor tier" not in body, tier
+
+# P-zqhy: only slice-executor drives a real browser; the drafter, the critic and Explore render
+# headless or read, so none of them carries the Claude in Chrome tools.
+for _agent in ("design-drafter", "design-critic", "Explore"):
+    _fm = (root / f"payload/claude/agents/{_agent}.md").read_text().split("---\n", 2)[1]
+    assert "mcp__claude-in-chrome" not in _fm, _agent
+assert "Aside" not in (root / "payload/claude/agents/design-drafter.md").read_text(), "design-drafter still names Aside"
 
 # v53 (P32.S3): the Explore agent's final body, and no Agent tool on it (it never nests).
 explore = (root / "payload/claude/agents/Explore.md").read_text()
@@ -916,16 +920,19 @@ for required in (
     "the **kind wins** a disagreement",
     "**`DECOMP2` has two origins**", "`P<N>.DECOMP3`",
     "`research`, `fix`, `docs`, `qa`, `co-work`",
-    # v36: Aside is the named instrument, with a binding fallback. v37: it rejects the
-    # pre-written suite, not Playwright (v44: its surfaces live in design-cowork).
-    "**Real-browser verification runs through Aside, not a pre-written assertion suite.**",
+    # v36: a named instrument, with a binding fallback. v37: it rejects the pre-written suite, not
+    # Playwright. P-zqhy: the instrument is Claude in Chrome (its setup lives in design-cowork).
+    "**Real-browser verification runs through Claude in Chrome, not a pre-written assertion suite.**",
     "**the doctrine's demands bind, the instrument does not.**",
-    # v37: whose browser -- a dedicated profile via a per-invocation flag, and the
-    # personal-profile case as a third halt, distinct from the runtime one.
+    # v37: whose browser -- a dedicated profile, and the personal-profile case as a third halt.
+    # P-zqhy: every run lists the connected browsers, then selects the manifest's, before any other
+    # browser tool; no tools, no name or not exactly one match halts; the manifest picks a fallback.
     "**Whose browser: a dedicated profile.**",
-    "pass `--account <id>` on every invocation",
-    "is a **third** halt: `needs_operator` → `pending`",
-    "an agent never drives a profile signed into the operator's accounts",
+    "An agent never drives a profile signed into the operator's accounts",
+    "each run calls `list_connected_browsers`, then `select_browser` on the browser `## Operator Runtime` names, before any other browser tool",
+    "No Chrome tools, no name, or not exactly one match is a **third** halt: `needs_operator` → `pending`, never borrowing another browser",
+    "The manifest picks any fallback, never the agent mid-run",
+    "Name the instrument in `result.md`; never claim a run you did not make",
     # v41: the review reviews the boundary of the phase (phase-scope's synopsis left
     # with Workflow Commands in v44).
     "**The review reviews the boundary of the phase, not the whole system:**",
@@ -950,6 +957,8 @@ assert len((root / "payload/contract.md").read_bytes()) <= 12288, "contract over
 # v41 negative: the whole-list re-run is retired from the contract.
 for gone in ("Prefer the **MCP** surface", "scripted Playwright-style automation",
              "runs through Aside, not a script", "re-runs the whole cumulative",
+             # P-zqhy: Aside is retired from the contract, procedure and name alike.
+             "Aside", "--account <id>",
              # v42 negatives: the mandatory mockup and the "not an approval" return are
              # retired from the contract. (v42 also retired parallel mode's opt-in framing;
              # v43 deliberately restored it, so those two negatives are gone with it --
@@ -986,7 +995,7 @@ compact = claude.split("## Compact Instructions", 1)[1]
 assert "resume card" in compact and "never re-dispatch a running executor" in compact
 assert "re-read" not in compact, "Compact Instructions carry a re-read instruction"
 PY
-then ok "18 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with waves and opt-in critique, mockups on request, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v71 wave protocol (do-whole-phase's reference/wave.md, DECOMP's disjoint-sets rule, the executor's wave section, the contract's reversal of "never fan out slices"); the v44 contract's never-stubs (acceptance gate, runtime, Aside dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
+then ok "18 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with waves and opt-in critique, mockups on request, Aside surfaces), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v71 wave protocol (do-whole-phase's reference/wave.md, DECOMP's disjoint-sets rule, the executor's wave section, the contract's reversal of "never fan out slices"); the v44 contract's never-stubs (acceptance gate, runtime, Claude in Chrome dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
