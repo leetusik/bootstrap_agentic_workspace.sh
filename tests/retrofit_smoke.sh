@@ -11,9 +11,10 @@
 # invariants (the kind is in the closed set and its semantics are in the
 # contract, both agent bodies and both do-* skills), the real-browser instrument
 # invariants (v36's doctrine, since P-zqhy on Claude in Chrome: the agent's dedicated
-# Chrome profile selected with list_connected_browsers -> select_browser before any
-# other browser tool, a third halt, and a fallback the manifest chooses that excuses
-# no check, in the contract, the executor body and the design/review skills),
+# Chrome profile selected with list_connected_browsers -> select_browser on its recorded
+# deviceId, never a name label, before any other browser tool, a third halt, and a
+# fallback the manifest chooses that excuses no check, in the contract, the executor
+# body and the design/review skills),
 # the v39 doc-staleness invariants (the last-updated marker at write time, with and
 # without git, and the STALE flag an owed '## Doc impact' note raises), the v41 review-boundary
 # invariants (every review surface re-runs the checklist inside the phase's boundary, never whole,
@@ -412,7 +413,12 @@ for required in (
     "start with `claude --chrome`, or run `/chrome` and pick \"Enabled by default\"",
     "**A separate Chrome profile for the agent**, signed into **none** of the operator's accounts",
     "**same claude.ai account and organization** as Claude Code",
-    "`Agent's Chrome browser name:`, exactly as `list_connected_browsers` prints it",
+    # P-zqhy.F1: the key is the deviceId, read with only the agent profile connected; never the
+    # name, which Claude in Chrome anonymizes to a position label that moves between connections.
+    "**Record its `deviceId`** in `## Operator Runtime` as `Agent's Chrome deviceId:`. Never a name:",
+    "labels browsers by position (\"Browser 1\",",
+    "connect **only** the agent profile",
+    "Reinstalling the extension or signing it out gives the profile a new",
     # v37: what the doctrine rejects is the pre-written suite, not the library --
     # what differs is who picks the next action.
     "in place of a pre-written assertion suite",
@@ -423,10 +429,13 @@ for required in (
     # generalizing the principle to the fallback browser.
     "**Whose browser — the agent's profile, selected first, on every run.**",
     "So **before any other browser tool**:",
-    "`select_browser` with its `deviceId`",
+    "find the entry whose `deviceId` equals the recorded `Agent's Chrome deviceId:`. Never match on `name`",
+    "`select_browser` with that `deviceId`",
     "Never pick a browser by guess, never act before selecting.",
-    "No Chrome tools in the session, no recorded browser name, or not exactly one connected browser with that name returns **`needs_operator`**",
-    "Never borrow another connected browser, and never create a profile on the operator's behalf.",
+    "the recorded `deviceId` **is** the operator's answer, given ahead of time in the manifest",
+    "No Chrome tools in the session, no recorded `deviceId`, or no connected browser with that `deviceId` returns **`needs_operator`**",
+    "its `deviceId` re-recorded after an extension reinstall or sign-out",
+    "Never fall back to a label, never borrow another connected browser, and never create a profile on the operator's behalf.",
     "That is a **third** halt condition and it is not the runtime one",
     "A manifest that still names an older instrument counts as unfilled here",
     "**The fallback — chosen by the manifest, never by the agent mid-run; the doctrine's demands bind, the instrument does not.**",
@@ -670,7 +679,8 @@ for required in ("## Gate stages", "`walkthrough`", "`## Operator Runtime`", "`#
                  # selected first, the third halt, and the manifest's fallback, by reference.
                  "its `mcp__claude-in-chrome__*` tools", "in place of a pre-written assertion suite",
                  "**before any other browser tool**, `list_connected_browsers`, then `select_browser`",
-                 "means `needs_operator` (the third halt), never borrowing the operator's browser",
+                 "on the entry whose `deviceId` is `## Operator Runtime`'s `Agent's Chrome deviceId:` (never a `name`",
+                 "no recorded id, or no match means `needs_operator` (the third halt), never borrowing the operator's browser",
                  "The fallback is the manifest's choice, never yours mid-run",
                  "Setup, the halt and the fallback in full: `design-cowork`'s `reference/build.md`.",
                  # v41: the review reviews the boundary of the phase, never the whole system --
@@ -711,10 +721,11 @@ assert "## Operator Runtime" in ops and "UNFILLED" in ops
 # default (blank means it), and the fallback is a named real browser on a throwaway profile.
 assert "- Browser instrument for the agent: <Claude in Chrome (the default; blank means it)" in ops
 assert "the other real browser the agent drives on a throwaway profile" in ops
-# P-zqhy: the second field names the agent's dedicated Chrome profile exactly as the
-# tools print it -- the name slice-executor's select-first rule matches.
-assert "- Agent's Chrome browser name: <" in ops
-assert "exactly as `list_connected_browsers` prints it" in ops
+# P-zqhy.F1: the second field records the agent profile's deviceId -- the key slice-executor's
+# select-first rule matches -- never its name, an anonymized position label.
+assert "- Agent's Chrome deviceId: <the `deviceId` that `list_connected_browsers` prints for the dedicated agent profile" in ops
+assert "while it is the only browser connected; never its `name`" in ops
+assert "re-record after an extension reinstall or sign-out" in ops
 assert "signed into none of the operator's accounts" in ops
 for gone in ("Aside", "aside repl", "aside mcp", "aside account"):
     assert gone not in ops, gone
@@ -790,9 +801,12 @@ for tier in ("slice-executor",):
         "in place of a pre-written assertion suite",
         "never the operator's signed-in one",
         "**Before any other browser tool**, call `list_connected_browsers`",
-        "`select_browser` with its `deviceId` — never act before selecting",
-        "the `Agent's Chrome browser name:` recorded in `## Operator Runtime`",
-        "If your session has no Chrome tools, the manifest records no agent browser name, or not exactly one connected browser carries it",
+        "find the entry whose `deviceId` equals the `Agent's Chrome deviceId:` recorded in `## Operator Runtime`, and `select_browser` with it",
+        "never match on `name` (a position label",
+        "and never act before selecting",
+        "The recorded id is the operator's answer, given ahead of time",
+        "If your session has no Chrome tools, the manifest records no `deviceId`, or no connected browser carries it",
+        "or its `deviceId` re-recorded after an extension reinstall or sign-out) rather than falling back to a label",
         "return `needs_operator` (a third halt, distinct from the runtime one)",
         "**The fallback is the manifest's choice, never yours mid-run:**",
         "Chrome missing from your session is the halt above, never a silent fallback.",
@@ -867,6 +881,14 @@ for _base in ("payload", "installer/payloads"):
             _t = _f.read_text(encoding="utf-8", errors="replace")
             for _gone in ("Aside", "aside repl", "aside mcp", "aside exec", "aside account"):
                 assert _gone not in _t, (str(_f.relative_to(root)), _gone)
+            # P-zqhy.F1: the agent's browser is keyed on its deviceId; no shipped body keeps the
+            # name-keyed field or a rule matching the anonymized `name` label.
+            for _gone in ("Agent's Chrome browser name", "whose `name` is", "connected under that name"):
+                assert _gone not in _t, (str(_f.relative_to(root)), _gone)
+# P-zqhy.F1: the explain review's reader check selects by the same key.
+_er = (root / "payload/claude/skills/do-whole-phase/reference/explain-review.md").read_text(encoding="utf-8")
+assert "`select_browser` on the recorded `Agent's Chrome deviceId:`, never a `name` label" in _er
+assert "no recorded id or no browser with it, return `needs_operator`" in _er
 
 # v53 (P32.S3): the Explore agent's final body, and no Agent tool on it (it never nests).
 explore = (root / "payload/claude/agents/Explore.md").read_text()
@@ -936,11 +958,12 @@ for required in (
     "**the doctrine's demands bind, the instrument does not.**",
     # v37: whose browser -- a dedicated profile, and the personal-profile case as a third halt.
     # P-zqhy: every run lists the connected browsers, then selects the manifest's, before any other
-    # browser tool; no tools, no name or not exactly one match halts; the manifest picks a fallback.
+    # browser tool, by the deviceId it records (P-zqhy.F1: never a label); no tools, no id or no
+    # match halts; the manifest picks a fallback.
     "**Whose browser: a dedicated profile.**",
     "An agent never drives a profile signed into the operator's accounts",
-    "each run calls `list_connected_browsers`, then `select_browser` on the browser `## Operator Runtime` names, before any other browser tool",
-    "No Chrome tools, no name, or not exactly one match is a **third** halt: `needs_operator` → `pending`, never borrowing another browser",
+    "each run calls `list_connected_browsers`, then `select_browser` on the `deviceId` `## Operator Runtime` records (never a label), before any other browser tool",
+    "No Chrome tools, no id, or no match is a **third** halt: `needs_operator` → `pending`, never borrowing another browser",
     "The manifest picks any fallback, never the agent mid-run",
     "Name the instrument in `result.md`; never claim a run you did not make",
     # v41: the review reviews the boundary of the phase (phase-scope's synopsis left

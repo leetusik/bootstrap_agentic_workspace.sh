@@ -72,8 +72,13 @@ project cannot enable Chrome, and the extension owns site permissions.
   (mail, banking, Google), with the Claude in Chrome extension installed and signed in to the
   **same claude.ai account and organization** as Claude Code (the connection requires it), its site
   permissions allowing the manifest's origin(s).
-- **Name it at connect** (e.g. `agent`) and record that name in `## Operator Runtime` as
-  `Agent's Chrome browser name:`, exactly as `list_connected_browsers` prints it.
+- **Record its `deviceId`** in `## Operator Runtime` as `Agent's Chrome deviceId:`. Never a name:
+  `list_connected_browsers` hides the names you give and labels browsers by position ("Browser 1",
+  "Browser 2"), a label can move to another browser between connections, and the `deviceId` stays.
+  To read it, connect **only** the agent profile (close the other profiles' Chrome windows for the
+  moment), ask Claude in a Chrome-on Claude Code session to call `list_connected_browsers`, and copy
+  the one entry's `deviceId`. Reinstalling the extension or signing it out gives the profile a new
+  id: the run then halts (below) until you record the new one.
 
 **Whose browser — the agent's profile, selected first, on every run.** With one browser connected
 the tools act on it unasked, and that one may be the operator's, where an agent could read their
@@ -81,18 +86,22 @@ mail, spend from saved cards and authenticate as them. So **before any other bro
 
 1. `list_connected_browsers` (it returns `deviceId`, `name`, `osPlatform`, `connectedAt`, `isLocal`,
    `inUse` for every browser on this claude.ai account);
-2. find the **one** entry whose `name` is the recorded `Agent's Chrome browser name:`;
-3. `select_browser` with its `deviceId`. The choice holds for the session even when another browser
-   connects. Never pick a browser by guess, never act before selecting.
+2. find the entry whose `deviceId` equals the recorded `Agent's Chrome deviceId:`. Never match on
+   `name`: it is a position label that another browser, the operator's included, can hold next time;
+3. `select_browser` with that `deviceId`. The choice holds for the session even when another browser
+   connects. Never pick a browser by guess, never act before selecting. The tool's own description
+   says to ask the user when several browsers are connected: the recorded `deviceId` **is** the
+   operator's answer, given ahead of time in the manifest, so selecting it is not a pick.
 
-**The halt.** No Chrome tools in the session, no recorded browser name, or not exactly one connected
-browser with that name returns **`needs_operator`** (the orchestrator sets the slice `pending`),
-naming the fix: Chrome enabled in the session (`/chrome` → "Enabled by default", or `claude
---chrome`), or the agent's profile connected under that name. Never borrow another connected
-browser, and never create a profile on the operator's behalf. That is a **third** halt condition
-and it is not the runtime one: the runtime halt fires on an absent or `UNFILLED` manifest. A
-manifest that still names an older instrument counts as unfilled here, so the first real-browser
-slice stops once to ask for the name.
+**The halt.** No Chrome tools in the session, no recorded `deviceId`, or no connected browser with
+that `deviceId` returns **`needs_operator`** (the orchestrator sets the slice `pending`), naming the
+fix: Chrome enabled in the session (`/chrome` → "Enabled by default", or `claude --chrome`), the
+agent's profile connected, or its `deviceId` re-recorded after an extension reinstall or sign-out.
+Never fall back to a label, never borrow another connected browser, and never create a profile on
+the operator's behalf. That is a **third** halt condition and it is not the runtime one: the
+runtime halt fires on an absent or `UNFILLED` manifest. A manifest that still names an older
+instrument counts as unfilled here, so the first real-browser slice stops once to ask for the
+`deviceId`.
 
 **Why the executor drives, and not a pre-written suite.** What the doctrine rejects is **deciding
 every check in advance**. "Type into it and wait", "watch a timer tick", "the browser defaults the
