@@ -180,7 +180,7 @@ Read this before the first board and again before you return. Each line is somet
 - **Text beside a control sits on the control's centre line** (kind `beside-control`).
 - **One control height per row**: every control in a row is the same height, a field and its button equal, from the frame's control height for that size (kind `control-height`).
 - **No sub-label inside one control of an equal row**: put the mark outside the row, or give every segment the same structure (kind `segment-label`).
-- **No near-miss edges**: two edges 1–4 px apart are one edge (kind `near-edge`).
+- **No near-miss edges**: two edges 0.5–4 px apart are one edge (kind `near-edge`).
 - **Labels sit centred in their controls by measurement**: load the face the product declares (the frame does), then check the ink, Hangul included, against the box; never nudge it by eye (kind `label-ink`).
 - **An action sits with the thing it acts on**: at the end of its row or its card, or in the toolbar of the list it changes, never in a far column or all of them stacked left (the operator: "make the buttons are located in right side not all left aligned").
 

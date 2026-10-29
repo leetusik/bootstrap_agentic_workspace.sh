@@ -303,11 +303,11 @@ for name in ("do-next-slice", "do-whole-phase"):
         # words stay inline, and the round closes through the engine.
         "`design-drafter`", "mockup build is the one span dispatched to a slice executor",
         "lifecycle and the operator's words stay inline",
-        # P36.S6 / P46-nb: one drafter per round (a co-work slice designs one connected group as
-        # one job), the critique dispatched to design-critic, one PENDING stop per round. v61 (P37.S5): the
+        # P36.S6 / P46-nb / P47: a round runs in passes (a frame, the pages at once, a join; a
+        # co-work slice designs one job), the critique dispatched to design-critic, one PENDING stop per round. v61 (P37.S5): the
         # round procedure (the handoff, the drafter's prompt, the read-back, the publish, the closes)
         # lives once, in design-cowork's references, pinned there; the drivers point at them.
-        "`design-critic`", "One drafter runs per round", "once per round",
+        "`design-critic`", "Each round runs in passes, once per round", "its page drafters at once",
         "design-cowork/reference/opening.md", "`reference/publish.md`", "`reference/operator.md`",
         # P36.S1: a phase whose intent still says `Design tool: claude-design` is legacy -- the
         # drivers point at design-cowork's legacy rule instead of carrying the retired branch.
@@ -514,13 +514,14 @@ for required in (
     "`python3 scripts/workflow.py design-close <job>/<round> --superseded`",
     'design-close <job>/<round> --words "<their literal words>"',
     "the round's lifecycle and the operator's words stay inline",
-    # P36.S6: the schema-2 Artifact loop (P46-nb: one connected group per slice, one drafter per round); critique is
+    # P36.S6: the schema-2 Artifact loop (P46-nb: one connected group per slice; P47: a frame, the pages at once, a join); critique is
     # opt-in per job, decided at DECOMP; the judge runs beside the drafter's next pass and is skipped
     # under a proxy; only the main thread publishes (from design-publish-plan), never forcing over an
     # operator's edit; one PENDING stop per round; the session's words are the record; the working
     # canvas replaces the mockup by default; the system is re-synced from code with tokens.css; and
     # built canvases are deleted only on the operator's yes.
-    "**One drafter per round.**", "**One design slice is one connected group, one job:**",
+    "**The passes — a frame, the pages at once, a join.**", "**One design slice is one connected group, one job:**",
+    "**A one-page round skips the frame and the join:**", "**Publish only after the join.**",
     "**Foundations come first.**", "`off | critic | critic+judge`, unset = `off`",
     "**`critique: <level>`**", "**beside the drafter's answer pass**", "**`skip=yes`**",
     "**Only the main thread publishes**", "**Never `force`.**", "## PENDING #1 — one stop per round",
@@ -550,7 +551,7 @@ for required in (
     "a critic pass took 25–36 minutes on a flow-board job",
     # Moved from the drivers' pins (v61, P37.S5): the rule lives here once.
     "write the new round's handoff", "The new round edits the job's canvas in place",
-    "and the round address `<job>/<round>`", "`new visual direction: yes` or `no`",
+    "line, the round address `<job>/<round>` and a `pass:` line", "`new visual direction: yes` or `no`",
     # v61 (P37.S5): the design lifecycle as engine one-liners and a slimmer record. The read-back
     # fetches only what the listing names; the engine writes SIGNOFF.md and one word signs every job
     # presented; a superseding round re-drafts with critique off; the stop report is a short chat
@@ -567,8 +568,10 @@ for required in (
     "**One drafter output per round: `result.md`**", "**Repo-relative paths only.**",
     "**The notebook gets one gist line per signed job**", "| `design-sign --slice S --words \"…\"` |",
     # P46-nb: one connected group per co-work slice, one canvas and one artifact per round; a
-    # legacy multi-job slice finishes as drawn.
-    "**One connected group, one canvas.**", "**unrelated groups are separate co-work slices**",
+    # legacy multi-job slice finishes as drawn. P47 (OQ1): a small unrelated surface may share the
+    # slice's canvas, unlinked; a bigger unrelated group stays a co-work slice of its own.
+    "**One connected group, one canvas.**", "**A small unrelated surface of the same phase may share a slice's canvas:**",
+    "A bigger unrelated group is a co-work slice of its own, never a second job of a slice.",
     "**Never `--new-job` for another surface:**", "### Legacy record: a multi-job slice", "**It finishes as drawn:**",
 ):
     assert required in design, required
@@ -589,14 +592,14 @@ for rel in ("claude/skills/do-whole-phase/SKILL.md", "claude/skills/do-next-slic
     _t = (root / "payload" / rel).read_text(encoding="utf-8")
     assert "stops `pending` once per round" in _t and "once per wave" not in _t, rel
 _t = (root / "payload/claude/skills/do-whole-phase/reference/verdicts.md").read_text(encoding="utf-8")
-assert "one drafter per round" in _t and "is its spans:** one drafter per job at once" not in _t
+assert "its page drafters are dispatched at once, then its page critics" in _t and "is its spans:** one drafter per job at once" not in _t
 assert "a design wave's spans" not in (root / "payload/claude/skills/do-whole-phase/reference/wave.md").read_text(encoding="utf-8")
 _ko, _en = ((root / n).read_text(encoding="utf-8") for n in ("README.md", "README.en.md"))
-assert "### 시각 디자인 작업: 라운드마다 여러분이 승인" in _ko and "서로 관련 없는 묶음은 각자 별도의 디자인 slice가 됩니다" in _ko
+assert "### 시각 디자인 작업: 라운드마다 여러분이 승인" in _ko and "더 큰 무관한 묶음은 각자 별도의 디자인 slice가 됩니다" in _ko and "관련 없는 작은 화면은 링크 없이 같은 캔버스에 함께 그릴 수 있고" in _ko
 assert "라운드마다 연결된 캔버스 하나를 Design canvas Artifact 하나로 게시" in _ko
 for gone in ("job마다 여러분이 승인", "job 3–4개", "job마다 별도의 Design canvas", "wave 전체"):
     assert gone not in _ko, gone
-assert "### Visual work: you sign each design round" in _en and "unrelated groups are design slices of their own" in _en
+assert "### Visual work: you sign each design round" in _en and "a bigger unrelated group is a design slice of its own" in _en and "a small unrelated surface may share its canvas, drawn unlinked" in _en
 assert "one connected canvas as one Design canvas Artifact" in _en and 'signs the round' in _en
 for gone in ("you sign each design job", "wave** of 3–4 jobs", "publishes each job to its", "once for the whole wave"):
     assert gone not in _en, gone
@@ -700,7 +703,10 @@ for required in ("`new visual direction: yes` in the handoff licenses setting a 
                  "**Fix every `check=` line before you return**", "--strict`, with **no `--out`**",
                  "**never a reason to fold a component's states into a static board**",
                  # P46-nb: the connected canvas opens on its entry Page.
-                 "**The connected canvas.**", "board 01 is the **entry Page**, `Main.dc.html`"):
+                 "**The connected canvas.**", "board 01 is the **entry Page**, `Main.dc.html`",
+                 # P47: a round drafts in three passes, named on the dispatch's one pass line.
+                 "`pass: frame | page <slug> | join`", "### Frame rules (`pass: frame`)",
+                 "### Page rules (`pass: page <slug>`)", "### Join rules (`pass: join`)"):
     assert required in drafter, required
 for gone in ("your **only** licence to load it", "load it through `Skill`", "`frontend_design`",
              "A **direction round** is one whose handoff says", "A job open in the same wave"):
@@ -715,8 +721,13 @@ for required in ("**You get one pass**", "**The bar, line by line**", "**The sta
                  "w.DesignBrowser(w.design_preview_browser(None), tempfile.mkdtemp())", "--states-only",
                  "You rule once, beside the drafter's answer pass",
                  # P46-nb: the connected checks replace the cross-job look.
-                 "**the connected checks, each a Part 1 must-fix under the bar.**"):
+                 "**the connected checks, each a Part 1 must-fix under the bar.**",
+                 # P47: a critic judges one page or the joined canvas; measured lines are facts.
+                 "`scope: page <slug>` or `scope: cross`", "**The measured lines are facts.**",
+                 "They are `high`-confidence facts either way, never argued away by taste."):
     assert required in critic, required
+# P47: the advisory measured lines (check=align, M1-M14) never block; the blocking set stays the four WCAG checks.
+assert 'DESIGN_PREVIEW_BLOCKING = ("non-text-contrast", "reflow", "overprint", "keyboard")' in (root / "payload/scripts/workflow.py").read_text(encoding="utf-8")
 for gone in ("passes 02 and 03", "Passes 02 and 03", "- repeated: N", "`repeated`:", "at pass 03",
              "`wave: <job>, <job>, …`", "**The cross-job look", "`wave choice`", "or `choice` (a cross-job conflict"):
     assert gone not in critic, gone
@@ -1031,10 +1042,10 @@ for required in (
     # v47 (P26.S4): the design subagent drafts, the operator decides; drafting and the mockup
     # dispatch to two different agents and the round's lifecycle stays inline.
     "The design subagent drafts, the operator decides:",
-    # P36.S6 / P46-nb: one drafter per round, the critique to design-critic, and one publisher;
-    # each design slice is one connected group with one canvas and one artifact per round.
-    "Each design slice is one connected group: one canvas drafted into the repo",
-    "dispatching its drafting to `design-drafter` (one per round), its critique to `design-critic` when the job's level asks, and its mockup build (only on request) to `slice-executor` on the high row",
+    # P36.S6 / P46-nb / P47: the drafting in passes (frame, pages at once, join), the critique to
+    # design-critic, and one publisher; each design slice is one canvas drafted page by page, one artifact per round.
+    "Each design slice is one canvas drafted into the repo page by page",
+    "dispatching its drafting to `design-drafter` (frame, pages at once, join), its critique to `design-critic` when the job's level asks, and its mockup build (only on request) to `slice-executor` on the high row",
     "the round's lifecycle and the operator's words stay inline, and only the main thread publishes",
     "executors never get `Artifact`",
     "`--kind` is a **closed set**",

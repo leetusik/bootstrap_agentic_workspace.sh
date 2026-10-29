@@ -418,7 +418,9 @@ time, as before, and `/do-next-slice` always runs exactly one.
 never designs** — a dedicated design subagent (`design-drafter`) drafts, a separate critic
 (`design-critic`) judges the draft when it is switched on, and you make every visual decision. A design
 slice designs one connected group of related surfaces (one tab, one flow, the views a user moves
-between) as one **job**; unrelated groups are design slices of their own. The job is one **working
+between) as one **job**; a small unrelated surface may share its canvas, drawn unlinked, and
+a bigger unrelated group is a design slice of its own. Each round drafts a frame of shared choices
+first, then the pages at once, then a join into one connected canvas. The job is one **working
 canvas** written as plain files under `docs/reference/design/jobs/`: a prototype first, an entry Page
 whose clicks reach every surface of the group, every screen as a clickable Page with real or
 realistic data (a flow carries the item you clicked onto the next screen, and a grey "Prototype only"
