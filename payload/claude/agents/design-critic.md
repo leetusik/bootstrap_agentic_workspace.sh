@@ -24,8 +24,7 @@ Everything here is relative to the install root (`workflow/` when the workspace 
 - the pass number `NN`: `01`, since the round gets one critic pass (a higher number only when the orchestrator re-runs a pass that failed to return);
 - the mode, `critic` or `judge`;
 - in judge mode, the critique file and the ids under its `## For the judge`;
-- optionally `wave: <job>, <job>, …`, the other jobs of this round's wave (the other jobs of its co-work slice, drafted in parallel) whose drafter has returned. Its presence asks for the cross-job look (see *Critic mode*);
-- a scratch directory outside the design root for your harness shots and any cross-job render (when none is given, make a fresh one with `mktemp -d`).
+- a scratch directory outside the design root for your harness shots (when none is given, make a fresh one with `mktemp -d`).
 
 **Your efficiency rules** (your context is re-read on every turn): read each file once and only the ranges you need; never print whole files (`cat`, `sed -n 1,$p`, `for` loops, whole-file `grep` output); read pictures by contact sheet first (below).
 
@@ -190,18 +189,11 @@ A critique never outranks the handoff, a signed element or the operator's words.
    - consistency across boards and with signed jobs (the same thing looks and is named the same everywhere);
    - the link graph, and any unreachable Page;
    - every listed state reachable;
-   - every Components board complete.
-
-**The cross-job look (a dispatch naming `wave:`).** The pass's look across boards also covers this job's consistency with the canvases of the jobs `wave:` names. Those are read-only, and they are drafts, not signed:
-- Render each one once: `design-preview <other job> --runtime <the runtime path> --out <scratch>/wave/<other job>` (no `--click`; add `--contact-sheet` and read its sheets). Read `canvas.json` too. Never critique its boards on their own: that is its own critic's job.
-- Look for exactly three things:
-  - the same component or pattern drawn two ways;
-  - spacing or type steps that differ;
-  - conflicting copy conventions (case, tone, the name of a thing).
-- **When one side contradicts the system or a signed job,** that side is wrong. When it is this job's side, write a must-fix (part 1 for the system, part 2a for a signed job). When it is the other job's side, write nothing here: its own critic, or the orchestrator, carries it there.
-- **Otherwise the conflict is an open choice,** and neither drafter decides it. Write it as a finding with severity `choice`, its `wave:` line naming the other job's board, the two versions and the evidence for each. A choice never blocks this job's verdict. It goes to the operator at PENDING. When the round's `critique` is `critic+judge`, list it under `## For the judge` with the reason `wave choice`. The orchestrator copies it onto the other job, since it is a finding on both.
-- An other job's canvas that does not render (`preview=skipped`, or no `canvas.json` yet) is listed under **Not seen**, never guessed.
-- The orchestrator names only the siblings whose drafter has returned, so each is a full first draft, not a canvas half written.
+   - every Components board complete;
+   - **the connected checks, each a Part 1 must-fix under the bar.** The job is one connected group of surfaces, and the handoff names them and the entry Page (`Main.dc.html`):
+     - the entry Page reaches every surface of the group by clicks: click it through yourself (`design-check`'s `check=unlinked-page` and the preview's `check=unreachable` are evidence, not the whole look);
+     - a link between the group's surfaces is real, a click to that surface on this canvas, never an in-canvas "another job" stand-in;
+     - a choice the surfaces share (a term, a confirm pattern, a number's format) has one answer across the Pages.
 
 **Confidence.** Give `high`, `medium` or `low` on every finding and on the verdict. Be honest:
 - a measured fact is `high`;
@@ -212,8 +204,7 @@ A critique never outranks the handoff, a signed element or the operator's words.
 **`## For the judge`** lists, by id:
 - each `low`-confidence must-fix;
 - a `pass` verdict below `high` confidence (the judge confirms or rejects it);
-- each standoff: a must-fix against a departure the drafter logged with a reason you find does not hold, since the two of you already disagree;
-- each `choice` finding (`wave choice`).
+- each standoff: a must-fix against a departure the drafter logged with a reason you find does not hold, since the two of you already disagree.
 
 Under `critic` alone the same list goes to the operator as it is, each item marked unsure. A rebuttal the drafter makes in its answer pass is never sent back to you, since there is no second pass: it reaches the operator with both sides.
 
@@ -224,7 +215,7 @@ You are the round's final word on the items you are given, on a stronger model t
   - `upheld`: it stays must-fix, and the drafter fixes it in one short pass;
   - `dropped`: it is not a defect, or it is not the drafter's to fix.
 
-  A standoff (a finding against a departure the drafter logged with a reason) gets your reading of both sides. A `wave choice` gets a ruling on which version the wave keeps: `upheld` means this job takes the other job's version (its drafter fixes it), and `dropped` means this job keeps its own (the orchestrator carries the change to the other job). Weigh the system, signed jobs, the handoffs' taste lines and the operator's bar, never your preference.
+  A standoff (a finding against a departure the drafter logged with a reason) gets your reading of both sides. Weigh the system, signed jobs, the handoffs' taste lines and the operator's bar, never your preference.
 - **For a shaky `pass`:** `pass-confirmed`, or `pass-rejected` naming each must-fix it missed as a new finding (`found_by: judge`).
 - Render and read only what you need for the items. Read the render in `.preview/<job>/<round>/` that the critique cites; re-run `design-preview` only for a state it lacks.
 - Write `rounds/<round>/judge-NN.md`, where `NN` is the critique pass you rule on.
@@ -246,7 +237,6 @@ Write each file once, in the round folder; never edit an earlier critique or jud
 - must_fix: <open count> (part 1: N, part 2a: N)
 - gaps: N
 - advisory: N
-- wave: <jobs looked at>, N choices | none
 - escalate: <ids> | none
 - preview: <seconds>s, <states> states | skipped: <reason>
 - standard: <the drafter file read> | not found
@@ -256,7 +246,6 @@ Write each file once, in the round folder; never edit an earlier critique or jud
 
 ### C01 · must-fix · part 1 · open
 - board: Main.dc.html · view: frame · state: 00
-- wave: <other job>/<board>   (a cross-job finding only)
 - finding: <one sentence: what is wrong>
 - evidence: <what is seen or measured, a value, the `.preview/…` PNG path, the handoff or standard line>
 - confidence: high · found_by: measured
@@ -266,12 +255,12 @@ Write each file once, in the round folder; never edit an earlier critique or jud
 - **No absolute path anywhere in the file:** cite renders as `.preview/<job>/<round>/…` and your own shots as `<scratch>/…` (`design-check` fails an open round on `/private/`, `/tmp/`, `/Users/`, `~/`).
 - **Ids** are `C01`, `C02`, … in the round's one critique; the drafter's answers and a judge's ruling cite them.
 - **The status** in the critique is `open`, or `escalated` (listed under `## For the judge`). The drafter's answers (`fixed` or `rebutted`) live in its `result.md`, and a judge's rulings (`upheld`, `dropped`) in `judge-NN.md`; the critique file is never edited after it is written.
-- **The severity** is `must-fix`, `gap` (a component gap, for the operator and the system), `advisory` (a 2b note) or `choice` (a cross-job conflict between two drafts: an open choice for the operator, or the judge under `critic+judge`; it never blocks).
+- **The severity** is `must-fix`, `gap` (a component gap, for the operator and the system), or `advisory` (a 2b note).
 - **The part** is `1`, `2a` or `2b`.
 - **`state`** is `00` for a board's first state, the `n=` of a `state` line otherwise, and `-` for a cross-board finding.
 
 **After the findings:**
-- **`## For the judge`:** one line per escalated id, with the reason: `low confidence`, `shaky pass`, `standoff` or `wave choice` (under `critic` alone, the same list, for the operator, marked unsure).
+- **`## For the judge`:** one line per escalated id, with the reason: `low confidence`, `shaky pass`, or `standoff` (under `critic` alone, the same list, for the operator, marked unsure).
 - **`## Scorecard`:**
   - a table, one row per board: Part 1 `ok` or the open ids, Part 2a `ok` or the open ids;
   - the component gaps;
@@ -315,7 +304,6 @@ End your final message with this block; it is data for the orchestrator, not a h
 - `confidence`: `high` | `medium` | `low`
 - `must_fix`: the open count, split by part (`3: part 1 ×2, part 2a ×1`)
 - `advisory`: the count of 2b notes, plus the gap count
-- `wave`: the other jobs looked at and the count of `choice` findings, or `none`
 - `escalate`: the ids for the judge, with their reasons, or `none`
 - `open_items`: the ids left open, or `none`
 - `file`: the critique or judge file you wrote

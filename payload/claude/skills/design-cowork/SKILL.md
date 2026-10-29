@@ -1,6 +1,6 @@
 ---
 name: design-cowork
-description: "How to run product visual design in this workspace — the design subagent drafts, the operator decides. Each design job is a working canvas (interactive Pages and component boards) written as files in the repo, optionally critiqued by a separate critic, published by you to its own Design canvas Artifact, and signed only by the operator's literal words in the session. You open rounds, write the handoffs, run the drafters (several at once in a wave), publish, stop for the operator, record their words and close. Use when a phase or slice touches a design system, a redesign, mockups, a design gate, brand/palette/typography, or the look of user-facing pages. NOT for non-visual design (schema, API, architecture)."
+description: "How to run product visual design in this workspace — the design subagent drafts, the operator decides. Each co-work slice designs one connected group of surfaces as one working canvas (interactive Pages and component boards) written as files in the repo, optionally critiqued by a separate critic, published by you to its own Design canvas Artifact, and signed only by the operator's literal words in the session. You open each round, write its handoff, run the drafter, publish, stop for the operator, record their words and close. Use when a phase or slice touches a design system, a redesign, mockups, a design gate, brand/palette/typography, or the look of user-facing pages. NOT for non-visual design (schema, API, architecture)."
 allowed-tools: Bash(python3 scripts/workflow.py:*), Read, Edit, Write, Glob, Grep, Bash, Agent, Artifact, ArtifactComments
 ---
 
@@ -29,8 +29,8 @@ paths are relative to the design root, `docs/reference/design/`, unless they sta
   stop, the operator's words (`feedback.md`, the signoff) and every commit. **Only the main thread
   publishes**: a watch on a canvas lives only in the main loop, and one writer handles a publish
   refused over the operator's edit. Executors never get `Artifact`.
-- **`design-drafter`** (`.claude/agents/design-drafter.md`) drafts one round of one job into that
-  job's canvas tree on disk, checks it with a local render, and answers a critique.
+- **`design-drafter`** (`.claude/agents/design-drafter.md`) drafts one round into the job's canvas
+  tree on disk, checks it with a local render, and answers a critique.
 - **`design-critic`** (`.claude/agents/design-critic.md`) critiques one drafted round with fresh eyes
   (`mode: critic`), or rules only on the items a critique escalated (`mode: judge`). It reads and
   renders; it edits nothing.
@@ -46,24 +46,28 @@ cannot see a canvas: stop `pending` (`--stop-kind operator-action`) and say so; 
 ## The loop
 
 ```
-per co-work slice (one wave of 1–4 jobs; every job runs this, in parallel)
-design-open → canvas + preview prep → wave brief + each job's handoff.md      [INLINE]
+per co-work slice: one connected group, one job, one canvas
+design-open → canvas + preview prep → the slice's brief + the round's handoff.md [INLINE]
   → drafter pass, self-checked with design-preview --click  [DISPATCHED, design-drafter]
   → critique on?  one critic pass                          [DISPATCHED, design-critic]
       → any must-fix open?  one drafter answer pass
         (critic+judge: the judge rules beside it; its upheld items get one short drafter pass)
   → design-readback → publish → design-canvas --version                       [INLINE]
-→ commit → PENDING #1, once for the whole wave       [the operator opens the canvases]
-→ per job, the operator's words:
+→ commit → PENDING #1, one stop per round   [the operator opens the canvas]
+→ the operator's words:
     feedback   → feedback.md → design-close --superseded → next round, critique off
-    sign-off   → design-sign (all presented)         (no mockup requested)
+    sign-off   → design-sign  (no mockup requested)
     go-ahead   → mockup [DISPATCHED, slice-executor high row] → PENDING #2 → SIGNOFF
-→ the slice finishes when every job is signed or dropped → implement [separate slices]
+→ the slice finishes when its job is signed or dropped → implement [separate slices]
 ```
 
-**The operator's return closes the round.** At PENDING #1 they open each job's canvas; when they come
-back, their words decide each job separately. **Literal approval** ("approved", "ship it", or words to
-that effect) signs that job; when a mockup was requested it is the go-ahead for the mockup instead.
+**One connected group, one canvas.** The surfaces a user moves between are one job, judged by
+clicking through: one artifact, one publish, one stop per round. An unrelated group is a co-work
+slice of its own.
+
+**The operator's return closes the round.** At PENDING #1 they open the canvas; on their return,
+their words decide the job. **Literal approval** ("approved", "ship it", or words to that effect)
+signs the job; when a mockup was requested it is the go-ahead for the mockup instead.
 **Anything else is feedback:** recorded verbatim, the round closes **superseded**, and a new round of
 the same job re-drafts it. You never infer approval from silence, from a drafter's `done`, from a
 critic's `pass` or from the canvas looking finished. **PENDING #2 exists only when a mockup was
@@ -71,16 +75,16 @@ requested.**
 
 ## References — read each when its moment comes
 
-- `reference/shape.md`: a phase or `DECOMP` shaping design work (styles, sizing, waves, critique, the gate).
+- `reference/shape.md`: a phase or `DECOMP` shaping design work (styles, sizing, critique, the gate).
 - `reference/record.md`: the on-disk record, who writes what, the `design-*` commands.
-- `reference/opening.md`: opening a round, the wave brief, the handoffs.
-- `reference/drafting.md`: dispatching the drafters, the critic and the judge.
+- `reference/opening.md`: opening a round, the slice's brief, the handoff.
+- `reference/drafting.md`: dispatching the drafter, the critic and the judge.
 - `reference/publish.md`: the read-back, the publish, PENDING #1, its report.
 - `reference/operator.md`: the operator's return (edits, comments, feedback, sign-off).
 - `reference/system.md`: syncing the Design System Artifact.
 - `reference/mockup.md`: a mockup the operator asked for.
 - `reference/build.md`: an implement or fidelity slice (RESPECT THE DESIGN, the sweep, Claude in Chrome).
-- `reference/legacy.md`: a phase's first design slice (the tool), a legacy record, the review's cleanup.
+- `reference/legacy.md`: a phase's first design slice (the tool), a legacy record or multi-job slice, cleanup.
 
 ## Never
 

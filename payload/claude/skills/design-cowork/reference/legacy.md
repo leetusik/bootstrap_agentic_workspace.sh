@@ -30,6 +30,14 @@ as history and design memory; **never write it**. **`claude-design/` is outside 
 `python3 scripts/workflow.py design-migrate`, a dry run, then
 `python3 scripts/workflow.py design-migrate --apply`, and commits the renames, before `design-init`.
 
+### Legacy record: a multi-job slice
+
+A co-work slice opened before one connected canvas per round may hold several jobs (a wave). **It
+finishes as drawn:** each job's next round opens with `design-open --job <job>`, rounds are drafted
+and critiqued one at a time, without a cross-job look, and `design-sign --slice` signs the jobs
+presented at the stop. A new surface goes to a new co-work slice, or, once every other round of the
+slice is closed, into a merged job opened with `--new-job`.
+
 ## Cleanup and legacy
 
 - **Built canvases.** At the phase review the walkthrough lists each implemented job's canvas
@@ -37,5 +45,7 @@ as history and design memory; **never write it**. **`claude-design/` is outside 
   operator's yes; `job.json` keeps its url as history. Superseded rounds leave nothing to delete: each
   is a canvas version and a snapshot.
 - **`Design tool: claude-design`** in an `intent.md`: the *Legacy rule* above.
+- **A multi-job slice** opened before one connected canvas per round: *Legacy record: a multi-job
+  slice* above.
 - **`schema1/` and `claude-design/`** are design memory: the drafter and the critic read their
   signoffs and feedback; nobody writes them.

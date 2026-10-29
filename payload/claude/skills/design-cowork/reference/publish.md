@@ -2,7 +2,7 @@
 
 ## Read back, then publish
 
-**Read back each job yourself; a `done` is a claim, not your check:**
+**Read back the job yourself; a `done` is a claim, not your check:**
 
 1. **`python3 scripts/workflow.py design-check <job>`.** **Never rest on the drafter's own
    `design_check` line.** Exit 1 goes back to the drafter on the same open round with exactly the
@@ -53,31 +53,33 @@
    `force`.**
 
 **Land the notebook's half.** Spec **pointers** into `phase.md`, entry by entry through
-`phase-section` (never `Edit` or `Write` on the file): each job's address and canvas link,
+`phase-section` (never `Edit` or `Write` on the file): the job's address, canvas link and entry Page,
 the mockup route once one exists, and the decisions later slices must not re-litigate. The boards and
 the full spec stay in the record, linked by path.
 
-## PENDING #1 — one stop per wave
+## PENDING #1 — one stop per round
 
-When every job of the wave is published or held: commit,
-`set-slice-status <slice> pending --stop-kind wave --on-words "<what their words will do>"`, and STOP. The commit is `feat(design): <slice> drafted — <job>/<round>, …` (a superseding round:
-`… — supersedes <job>/<round>`), carrying the wave brief, the handoffs, the canvas trees, the round
-records, the critique files and the closes of superseded rounds.
+When the round is published or held: commit,
+`set-slice-status <slice> pending --stop-kind wave --on-words "<what their words will do>"`, and
+STOP (the stop kind keeps its name: the slice's canvas is published and the operator reviews it).
+The commit is `feat(design): <slice> drafted — <job>/<round>` (a superseding round:
+`… — supersedes <job>/<round>`), carrying the slice's brief, the handoff, the canvas tree, the round
+record, the critique files and the close of a superseded round.
 
 **The stop report** is a chat message, never a file in the record: about 2,000 characters or less,
-plus each job's canvas link (and what each Page is for, in a few words).
+plus the canvas link (the entry Page first, and what each Page is for, in a few words).
 
-- **At most about 5 decisions**, across the wave. A decision is an item that changes a contract,
-  contradicts the operator's own words, or is costly to reverse after the build. Each names its job
-  and open-item ID, and both sides where the answer pass left a rebuttal or the critic was unsure.
-- **Everything else is one "decided as drawn" list** the operator can skim, by job and ID: the
+- **At most about 5 decisions**, across the round. A decision is an item that changes a contract,
+  contradicts the operator's own words, or is costly to reverse after the build. Each names its
+  open-item ID, and both sides where the answer pass left a rebuttal or the critic was unsure.
+- **Everything else is one "decided as drawn" list** the operator can skim, by ID: the
   drafter's departures and `component_gaps`, the critique items the answer pass settled, the taste
-  (2b) notes, the wave choices, the unsure and low-confidence items that are not decisions.
-- **A held job's exact need** (`needs_operator`, `blocked`, a failed read-back), and the jobs that
-  are not presented with it.
+  (2b) notes, the unsure and low-confidence items that are not decisions.
+- **A held round's exact need** (`needs_operator`, `blocked`, a failed read-back); nothing is
+  presented with it.
 - **What their words will do:** one word ("accept", "moveon", or words to that effect) **signs
-  everything presented** (`design-sign`); with a mockup requested it is that job's go-ahead instead;
-  anything else is feedback, and a superseding round re-drafts that job. Comments they send to Claude
+  everything presented** (`design-sign`); with a mockup requested it is the job's go-ahead instead;
+  anything else is feedback, and a superseding round re-drafts the job. Comments they send to Claude
   and edits they make in the canvas are read when they return.
 
 ## Never — the round's channels

@@ -2,7 +2,7 @@
 
 ## Drafting and the inner loop
 
-**Dispatch the drafters.** Resolve once with `executor-route --drafter`, and pass its `model` /
+**Dispatch the drafter.** Resolve once with `executor-route --drafter`, and pass its `model` /
 `effort` on every Agent call (`subagent_type` = its `subagent_type=` line; `subagent_type:
 design-drafter` in a plain install). The prompt is **only a `slice: <id>` line and the round address
 `<job>/<round>`**; on the answer pass add `critique-01.md` and, under `critic+judge`, the ids held for the
@@ -10,17 +10,17 @@ judge; on the judge's short follow-up pass add `judge-01.md` (*below*). The draf
 nothing. Run it
 as a background task (never pass `run_in_background: false`).
 
-**A wave dispatches one drafter per job at once.** That is the design-wave carve-out from "one executor
-at a time": the jobs' folders are disjoint and these are design spans only. Every later span of the wave
-(critic, judge, the next drafter pass) runs as soon as its own job is ready for it.
+**One drafter per round.** The slice designs one connected group as one job with one round open, so
+one drafter drafts it, and every later span (critic, judge, the next drafter pass) follows it in turn.
+The design-wave carve-out from "one executor at a time" is retired: a pre-change multi-job slice's
+rounds are dispatched one at a time (`reference/legacy.md`).
 
 **The drafter's verdict.** `done` → the loop below. `needs_operator` → the handoff is thin or
-contradictory: hold that job (never fill the gap yourself, never tell it to guess), let the rest of
-the
-wave run on, and raise exactly what it named at the wave's stop. The operator's answer amends that
-open round's handoff, and the job is drafted again from there. `blocked` → `design-check` problems
-it could not fix: same, reported as named. Fields to read: `boards_written`, `render_loop`,
-`component_gaps`, `departures`, `open_questions`, `open_items`, `critique_answers`, `design_check`.
+contradictory: hold the round (never fill the gap yourself, never tell it to guess), and raise
+exactly what it named at the round's stop. The operator's answer amends that open round's handoff,
+and the job is drafted again from there. `blocked` → `design-check` problems it could not fix:
+same, reported as named. Fields to read: `boards_written`, `render_loop`, `component_gaps`,
+`departures`, `open_questions`, `open_items`, `critique_answers`, `design_check`.
 
 **What you read of a span: its verdict block, and the round `result.md`'s `## Summary`** (1 KB or
 less). Never the drafter's other output, the canvas's JS or CSS, a critique's findings or any whole
@@ -28,20 +28,19 @@ design file: their detail is the next span's input, and the operator's when they
 
 **When the job's critique is `off`,** go straight to the read-back.
 
-**When it is `critic` or `critic+judge`, run the inner loop per job, before the operator sees
+**When it is `critic` or `critic+judge`, run the inner loop, before the operator sees
 anything:** one critic pass, then at most one drafter answer pass. There is no second critic pass.
 
 1. **The critic pass** (`executor-route --critic`; its `model` / `effort` per call). The prompt:
-   `mode: critic`, the round address, `pass: 01` and a scratch directory outside the design root. In a
-   multi-job wave add `wave: <the wave's other jobs whose drafter has returned>`. It renders the
-   canvas itself, hovers, types and clicks every row at desktop and phone width, checks the bar line
-   by line, and writes `rounds/<round>/critique-01.md`; read **only its verdict block**: `verdict`,
-   `confidence`, `must_fix`, `escalate`, `wave`.
+   `mode: critic`, the round address, `pass: 01` and a scratch directory outside the design root. It
+   renders the canvas itself, hovers, types and clicks every row at desktop and phone width, checks
+   the bar line by line, and writes `rounds/<round>/critique-01.md`; read **only its verdict block**: `verdict`,
+   `confidence`, `must_fix`, `escalate`.
 2. **The answer pass.** With no must-fix open, go to the read-back. Otherwise dispatch the drafter
    once with `critique-01.md`; it fixes or rebuts each must-fix, and what it leaves open (a rebuttal,
    a fix that did not hold) reaches the operator with both sides.
 3. **What the critic was unsure of** (its `escalate` ids: a low-confidence must-fix, a `pass` below
-   `high`, a standoff over a logged departure, a wave choice):
+   `high`, a standoff over a logged departure):
    - **under `critic`**, no judge exists, so **nothing is held**: the drafter answers a listed
      must-fix like any other finding, and the operator still sees every listed item marked
      **unsure**, with its reasons, beside the drafter's answer;
@@ -55,11 +54,6 @@ anything:** one critic pass, then at most one drafter answer pass. There is no s
      its one pass.
    - **`skip=yes`** (the judge row overridden to Fable behind a loopback proxy, which serves no Fable): dispatch no judge; the escalated items go to the
      operator marked **low confidence**.
-4. **A wave choice** (a `choice` finding, a cross-job conflict) never blocks. Copy it onto the other
-   job too. Under `critic+judge` the judge rules: `upheld` means this job takes the other's version,
-   in its short pass; `dropped` means the other job changes, which you report on that job at the stop
-   as the judge's ruling, for its next round when the operator agrees. Under `critic` it reaches the
-   operator unruled.
 
 **Cost** (measured in P36.S8B, critic at sonnet @ max; v61 runs the critic at high and reuses the drafter's render): a critic pass took 25–36 minutes on a
 flow-board job, and the judge about 2 minutes per item. A job took about 55–100 agent-minutes with a
