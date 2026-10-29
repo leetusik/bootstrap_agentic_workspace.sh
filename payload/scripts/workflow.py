@@ -11966,9 +11966,37 @@ DESIGN_PREVIEW_POP_PROBES = 4  # keyboard: click-only controls (by tag and class
 # hover-contrast). v61 (P37.S6): non-text-contrast and state-bar in every view and state; reflow and
 # overprint in the w320 and text200 views of a PAGE; keyboard on each interactive board.
 DESIGN_PREVIEW_CHECKS = ("contrast", "unmeasured", "target", "clipped", "dead-link", "image", "name", "checks",
-                         "non-text-contrast", "state-bar", "reflow", "overprint", "keyboard")
+                         "non-text-contrast", "state-bar", "reflow", "overprint", "keyboard", "align",
+                         "cramped-padding", "heading-rhythm", "flat-type-steps", "size-count", "line-length", "tight-leading",
+                         "tiny-text", "wide-tracking", "ragged-edges", "off-centre", "ragged-row", "radius-mix", "nested-radii",
+                         "numeric-align", "straggler")
 # The self-check's blocking checks: self_check=fail names them, and --strict exits 1 on any.
 DESIGN_PREVIEW_BLOCKING = ("non-text-contrast", "reflow", "overprint", "keyboard")
+# v88 (P47-p5.S5): the advisory measured lines, never blocking (self_check= keeps its meaning). check=align
+# (P47-p5.S1's probe core) has these kinds; the type and spacing rules M1-M14 (P47-p5.S3, ideas from
+# Impeccable, taste-skill and Vercel's guidelines, Apache-2.0 / MIT, in our own words) are check names of
+# their own. Both run in the frame view and every --click state of it, never the phone or WCAG views.
+DESIGN_PREVIEW_ALIGN_KINDS = ("first-line", "label-value", "beside-control", "segment-label", "control-height", "near-edge", "label-ink")
+DESIGN_PREVIEW_MEASURE_RULES = ("cramped-padding", "heading-rhythm", "flat-type-steps", "size-count", "line-length", "tight-leading",
+                                "tiny-text", "wide-tracking", "ragged-edges", "off-centre", "ragged-row", "radius-mix", "nested-radii",
+                                "numeric-align", "straggler")
+# check=align thresholds, px (P47-p5.S1): first-line > firstLine, segment-label >= segLabel, beside-control >= beside,
+# label-value >= labelValue (fonts within 4px), near-edge within edge, control-height > ctlH, label-ink >= ink.
+DESIGN_PREVIEW_ALIGN = {"firstLine": 4, "segLabel": 1, "beside": 2, "labelValue": 1.5, "edge": [0.5, 4], "ctlH": 0.5, "ink": 1.5}
+# M1-M14 thresholds (P47-p5.S3): pad px (M1), step ratio (M3), sizes (M3b), measure chars a line (M4), leading
+# x font-size (M5), ui / body px (M6), tracking em (M7), rag [clusters, blocks, px, share] (M8), centre px (M9),
+# ragRow px (M10), radii (M11), nest px (M12), figures in a column (M13).
+DESIGN_PREVIEW_MEASURES = {"pad": 8, "step": 1.25, "sizes": 6, "measure": 80, "leading": 1.3, "ui": 11, "body": 12, "tracking": 0.05,
+                           "rag": [6, 8, 10, 0.6], "centre": 40, "ragRow": 24, "radii": 3, "nest": 24, "figures": 3}
+DESIGN_PREVIEW_CROPS = 12  # align zoom crops per board (frame view and states together); later align lines get none
+DESIGN_PREVIEW_CROP_SCALE = 2  # a crop's device scale: 2-4 px read at full size
+DESIGN_PREVIEW_CROP_MARGIN = 24  # px of context around the line's two boxes
+DESIGN_PREVIEW_CROP_MAX = (800, 400)  # px: a crop's largest CSS size, from the boxes' top-left
+# Render concurrency (v88): at most this many design-preview runs render at once on a machine (N page
+# drafters render together); the rest wait for a slot. Slots are flock()ed files in a fixed temp folder,
+# released when the process exits, so no lock goes stale.
+DESIGN_PREVIEW_SLOTS = 3
+DESIGN_PREVIEW_SLOTS_ENV = "AGENTIC_DESIGN_PREVIEW_SLOTS"
 # Render reuse (v61): the default --out, per job and round, under the design root, git-ignored like .type/.
 DESIGN_PREVIEW_DIR = ".preview"
 DESIGN_PREVIEW_SHEET_W = 1568  # px: a contact sheet's width (about the largest an image is read at without downscaling)
@@ -12124,6 +12152,192 @@ for (const b of bars) {
   else if (!named.length) out.statebar.push({kind: 'unnamed'});
 }
 """
+# v88 (P47-p5.S5): check=align and M1-M14, the advisory measured lines, run inside the measured checks when
+# the capture asks (window.__dcAlign holds {T, M, page}: the frame view and its --click states). Raw facts
+# with a page box each; the engine words and folds them. check=align (P47-p5.S1's probe): a row is a flex row,
+# a grid or a table-row, its children grouped into lines by vertical overlap; first-line (bare text cells, one
+# wrapping: their first baselines), label-value (bare single-line cells within 4px of size: one baseline),
+# beside-control (single-line text vs a boxed control's centre), segment-label (controls of one class: one label
+# baseline), control-height (controls of one line: one height), near-edge (stacked siblings' left edges, box or
+# text, 0.5-4px apart), label-ink (a single-line label's ink centre in its own control or badge, per text style).
+# Designed-out false positives: visually hidden text (an absolute 1px or clipped box), a fill the same as what is
+# under it (not a box), cells holding a text field, no column-drift, centre gaps under 2px (they are label-ink).
+# The baseline comes from canvas font metrics scaled to the line box. M1-M14: cramped-padding (multi-line text
+# under pad px from an edge of its own box that has a border or a fill there; a control's top and bottom exempt),
+# heading-rhythm (2+ headings with no more space above than below), flat-type-steps (every step of the heading
+# and body sizes under step x), size-count (over sizes font sizes), line-length (over measure characters a line),
+# tight-leading (a line pitch under leading x font-size, display text exempt), tiny-text (under ui px, or body
+# text under body px), wide-tracking (over tracking em on 20+ mixed-case characters), ragged-edges (a PAGE's
+# headings and long paragraphs at too many left edges), off-centre (a PAGE's content margins differ; a left
+# nav exempts it), ragged-row (panels of one row ending apart), radius-mix (over radii panel radii), nested-radii
+# (an inner corner rounder than its outer one, or far from concentric), numeric-align (a table column of 3+
+# figures set left, or without tabular-nums), straggler (a paragraph's one-word last line; a heading's short one).
+DESIGN_PREVIEW_ALIGN_JS = r"""(A => {
+const T = A.T, M = A.M, out = {align: [], ink: [], measure: [], rows: 0, runs: 0};
+const CS = e => getComputedStyle(e), cv = document.createElement('canvas').getContext('2d');
+const vis = e => { const r = e.getBoundingClientRect(); if (r.width < 1 || r.height < 1) return false;
+  for (let a = e; a; a = a.parentElement) { const s = CS(a); if (s.display === 'none' || +s.opacity === 0) return false; }
+  return CS(e).visibility === 'visible'; };
+const sr = e => { for (let a = e; a; a = a.parentElement) { const s = CS(a);  // visually hidden text (.sr, a clip)
+  if (s.position === 'absolute' && (parseFloat(s.width) <= 1 || s.clip !== 'auto' || s.clipPath !== 'none')) return true; } return false; };
+const FIELD = 'input:not([type=checkbox]):not([type=radio]):not([type=hidden]),textarea,select';
+const CTL = 'button,input:not([type=hidden]):not([type=checkbox]):not([type=radio]),select,[role=button],[role=tab],a.btn';
+const clear = c => /rgba\(0, 0, 0, 0\)|transparent/.test(c);
+const under = e => { for (let a = e; a; a = a.parentElement) if (!clear(CS(a).backgroundColor)) return CS(a).backgroundColor; return 'rgb(255, 255, 255)'; };
+// a visible box: a top and bottom border, or a fill unlike what is under it
+const boxed = e => { const s = CS(e); return parseFloat(s.borderTopWidth) > 0 && s.borderTopStyle !== 'none' && parseFloat(s.borderBottomWidth) > 0
+  || !clear(s.backgroundColor) && s.backgroundColor !== under(e.parentElement); };
+const chrome = e => !!e.closest('[data-proto]');
+const kids = e => [...e.children].filter(c => vis(c) && !sr(c) && !/absolute|fixed/.test(CS(c).position));
+const leafCtl = c => c.matches(CTL) ? c : (q => q.length === 1 && c.getBoundingClientRect().height - q[0].getBoundingClientRect().height < 2 ? q[0] : null)(c.querySelectorAll(CTL));
+const sig = e => { const c = typeof e.className === 'string' ? e.className.trim().split(/\s+/)[0] : ''; return e.tagName.toLowerCase() + (c ? '.' + c : ''); };
+const say = e => { const t = (e.innerText || '').replace(/\s+/g, ' ').trim(); return e.tagName.toLowerCase() + ' "' + (t.length > 20 ? t.slice(0, 19) + '…' : t) + '"'; };
+const box = (...es) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const e of es) { if (!e) continue; const r = e.getBoundingClientRect(); x0 = Math.min(x0, r.left); y0 = Math.min(y0, r.top); x1 = Math.max(x1, r.right); y1 = Math.max(y1, r.bottom); }
+  return [x0 + scrollX, y0 + scrollY, x1 - x0, y1 - y0].map(v => Math.round(v)); };
+function text(e) {  // the first visible line of e: baseline, ink centre, left, style, and whether e's text wraps
+  const W = () => document.createTreeWalker(e, NodeFilter.SHOW_TEXT, {acceptNode: n => n.data.trim() ? 1 : 3}); const w = W(); let n;
+  while ((n = w.nextNode())) { const p = n.parentElement; if (!vis(p) || sr(p)) continue; const g = document.createRange(); g.selectNodeContents(n);
+    const rs = [...g.getClientRects()].filter(r => r.width >= 1); if (!rs.length) continue; const r = rs[0], s = CS(p);
+    cv.font = `${s.fontWeight} ${s.fontSize} ${s.fontFamily}`; const m = cv.measureText(n.data.trim().slice(0, 40));
+    const k = r.height / (m.fontBoundingBoxAscent + m.fontBoundingBoxDescent), base = r.top + m.fontBoundingBoxAscent * k;
+    const tops = new Set(), w2 = W(); let t;
+    while ((t = w2.nextNode())) { if (!vis(t.parentElement) || sr(t.parentElement)) continue; const g2 = document.createRange(); g2.selectNodeContents(t);
+      [...g2.getClientRects()].filter(q => q.width >= 1).forEach(q => tops.add(Math.round(q.top / 4))); }
+    return {r, base, ink: base - (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2, left: r.left, fs: s.fontSize, lh: s.lineHeight, ff: s.fontFamily, p, wraps: tops.size > 1}; }
+  return null; }
+const add = (kind, px, a, b, note) => { if (chrome(a)) return;
+  out.align.push({kind, px: +px.toFixed(1), a: say(a), b: b ? say(b) : '', key: sig(a) + '|' + (b ? sig(b) : ''), box: box(a, b), note: note || ''}); };
+const ink = {};
+document.querySelectorAll('body *').forEach(p => { if (!vis(p) || p.closest('svg')) return; const s = CS(p), ks = kids(p); if (ks.length < 2) return;
+  const row = (/flex/.test(s.display) && !/column/.test(s.flexDirection)) || /grid/.test(s.display) || s.display === 'table-row';
+  if (row) { out.rows++; const L = [];
+    ks.forEach(c => { const r = c.getBoundingClientRect(); const l = L.find(l => Math.min(l.b, r.bottom) - Math.max(l.t, r.top) > Math.min(l.b - l.t, r.height) / 2);
+      l ? (l.i.push(c), l.t = Math.min(l.t, r.top), l.b = Math.max(l.b, r.bottom)) : L.push({t: r.top, b: r.bottom, i: [c]}); });
+    L.filter(l => l.i.length > 1).forEach(l => { const ctl = l.i.map(leafCtl).filter(Boolean);
+      const bare = l.i.filter(c => !boxed(c) && !c.matches(FIELD) && !c.querySelector(FIELD)).map(c => ({c, t: text(c)}))
+        .filter(x => x.t && !(x.t.p.closest(CTL) && boxed(x.t.p.closest(CTL))));
+      if (ctl.length > 1) { const h = ctl.map(c => c.getBoundingClientRect().height);  // controls on one line: one height; one class: one label baseline
+        if (Math.max(...h) - Math.min(...h) > T.ctlH) add('control-height', Math.max(...h) - Math.min(...h), ctl[h.indexOf(Math.max(...h))], ctl[h.indexOf(Math.min(...h))]);
+        const same = ctl.filter(c => c.className === ctl[0].className).map(c => ({c, t: text(c)})).filter(x => x.t);
+        if (same.length > 1) { const b = same.map(x => x.t.base), d = Math.max(...b) - Math.min(...b); if (d >= T.segLabel) add('segment-label', d, same[0].c, same[1].c); } }
+      if (bare.length > 1) { const b = bare.map(x => x.t.base), d = Math.max(...b) - Math.min(...b);  // bare text cells: first lines, or one baseline
+        if (bare.some(x => x.t.wraps)) { if (d > T.firstLine) add('first-line', d, bare.find(x => x.t.wraps).c, (bare.find(x => !x.t.wraps) || {}).c, `align-items: ${s.alignItems}; vertical-align: ${s.verticalAlign}`); }
+        else if (d >= T.labelValue && Math.abs(parseFloat(bare[0].t.fs) - parseFloat(bare[1].t.fs)) <= 4) add('label-value', d, bare[0].c, bare[1].c, d < 3 ? 'under 3px: confirm on the crop' : ''); }
+      ctl.filter(boxed).forEach(c => { const cr = c.getBoundingClientRect(), cy = (cr.top + cr.bottom) / 2;  // bare single-line text beside a boxed control: on its centre
+        bare.filter(x => !x.t.wraps).forEach(x => { const d = Math.abs(x.t.ink - cy); if (d >= T.beside && d < cr.height) add('beside-control', d, x.c, c, `align-items: ${s.alignItems}`); }); }); }); }
+  else { const st = ks.filter(c => !/inline/.test(CS(c).display));  // stacked siblings: near-miss left edges
+    for (let i = 1; i < st.length; i++) { const A2 = st[i - 1], B = st[i], ta = text(A2), tb = text(B);
+      if (!ta || !tb || A2.querySelector('svg,img') && !boxed(A2)) continue;
+      const la = boxed(A2) ? A2.getBoundingClientRect().left : ta.left, lb = boxed(B) ? B.getBoundingClientRect().left : tb.left, d = Math.abs(la - lb);
+      if (d > T.edge[0] && d <= T.edge[1] && CS(A2).textAlign === 'start' && CS(B).textAlign === 'start') add('near-edge', d, A2, B); } } });
+document.querySelectorAll(CTL + ',[class*=badge],[class*=chip]').forEach(c => {  // a label's ink centre in its own box, once per text style
+  if (!vis(c) || chrome(c) || c.matches('input,select')) return; const t = text(c); if (!t || t.wraps) return;
+  const r = c.getBoundingClientRect(), s = CS(c), d = t.ink - (r.top + parseFloat(s.borderTopWidth) + r.bottom - parseFloat(s.borderBottomWidth)) / 2;
+  if (Math.abs(d) >= T.ink) { const k = `${t.ff.split(',')[0].replace(/["']/g, '')} ${t.fs}/${t.lh} in ${Math.round(r.height)}px`;
+    (ink[k] = ink[k] || {style: k, n: 0, px: +Math.abs(d).toFixed(1), dir: d < 0 ? 'high' : 'low', eg: say(c), box: box(c)}).n++; } });
+out.ink = Object.values(ink);
+// The measured type and spacing rules (M1-M14), raw facts the engine words; [data-proto] chrome is left out.
+const mes = (rule, key, msg, el) => out.measure.push({rule, key, msg, box: el ? box(el) : null});
+const runs = [], bodyFs = {};
+for (const e of document.body.querySelectorAll('*')) {
+  if (e.closest('script,style,template,noscript,svg,head,[data-proto]') || ![...e.childNodes].some(c => c.nodeType === 3 && c.data.trim())) continue;
+  if (!vis(e) || sr(e)) continue; const s = CS(e), t = [...e.childNodes].filter(c => c.nodeType === 3).map(c => c.data).join('').replace(/\s+/g, ' ').trim();
+  const g = document.createRange(); g.selectNodeContents(e); const rs = [...g.getClientRects()].filter(r => r.width >= 1 && r.height >= 1); if (!rs.length) continue;
+  const lines = []; rs.forEach(r => { const l = lines.find(l => Math.abs(l.top - r.top) < r.height / 2); l ? (l.l = Math.min(l.l, r.left), l.r = Math.max(l.r, r.right)) : lines.push({top: r.top, l: r.left, r: r.right, h: r.height}); });
+  lines.sort((a, b) => a.top - b.top);
+  const fs = parseFloat(s.fontSize), item = {e, s, t, fs, lines, n: lines.length, heading: /^H[1-6]$/.test(e.tagName)};
+  runs.push(item); bodyFs[fs] = (bodyFs[fs] || 0) + t.length; }
+out.runs = runs.length;
+const body = +Object.entries(bodyFs).sort((a, b) => b[1] - a[1]).concat([['16', 0]])[0][0];
+const ctlOf = e => e.closest(CTL + ',label,[role=switch],[role=checkbox],[role=radio],[role=menuitem],[role=option]');
+// M1 cramped-padding: text closer than M.pad px to the edge of the box it sits in (a border or a fill of its own)
+const cramped = new Map();
+for (const r of runs) { let b = r.e; while (b && b !== document.body && !boxed(b)) b = b.parentElement;
+  if (!b || b === document.body || chrome(b) || b.matches(FIELD) || cramped.has(b)) continue; cramped.set(b, 1);
+  const s = CS(b), bb = b.getBoundingClientRect(); if (bb.width < 24 || bb.height < 16) continue;
+  const g = document.createRange(), tops = new Set(); let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT, {acceptNode: n => n.data.trim() ? 1 : 3}); let n;
+  while ((n = w.nextNode())) { let o = n.parentElement; if (!vis(o) || sr(o)) continue; while (o && o !== b && !boxed(o)) o = o.parentElement; if (o !== b) continue;
+    g.selectNodeContents(n); for (const q of g.getClientRects()) if (q.width >= 1) { if (![...tops].some(t => Math.abs(t - (q.top + q.bottom) / 2) < q.height / 2)) tops.add((q.top + q.bottom) / 2); x0 = Math.min(x0, q.left); y0 = Math.min(y0, q.top); x1 = Math.max(x1, q.right); y1 = Math.max(y1, q.bottom); } }
+  if (x0 === Infinity || tops.size < 2) continue;  // a single-line box (a badge, a chip, a control) is the align check's
+  const fill = !clear(s.backgroundColor) && s.backgroundColor !== under(b.parentElement), ctl = b.matches(CTL) || !!ctlOf(b);
+  const side = k => fill || parseFloat(s['border' + k + 'Width']) > 0 && s['border' + k + 'Style'] !== 'none';
+  const gaps = {Top: y0 - bb.top - parseFloat(s.borderTopWidth), Bottom: bb.bottom - parseFloat(s.borderBottomWidth) - y1,
+                Left: x0 - bb.left - parseFloat(s.borderLeftWidth), Right: bb.right - parseFloat(s.borderRightWidth) - x1};
+  const tight = Object.entries(gaps).filter(([k, v]) => side(k) && v < M.pad && v > -1 && !(ctl && (k === 'Top' || k === 'Bottom')) && !(s.display === 'table-cell' && !fill));
+  if (tight.length) { const [k, v] = tight.sort((a, b) => a[1] - b[1])[0];
+    mes('cramped-padding', sig(b), `${say(b)}: text ${Math.max(0, v).toFixed(1)}px from its ${k.toLowerCase()} edge, under ${M.pad}px`, b); } }
+// M2 heading-rhythm: more space above a heading than below it
+const hs = runs.filter(r => r.heading); let hf = [];
+for (const h of hs) { const e = h.e, prev = (() => { let p = e.previousElementSibling; while (p && !vis(p)) p = p.previousElementSibling; return p; })(),
+    next = (() => { let p = e.nextElementSibling; while (p && !vis(p)) p = p.nextElementSibling; return p; })();
+  if (!prev || !next) continue; const r = e.getBoundingClientRect(), above = r.top - prev.getBoundingClientRect().bottom, below = next.getBoundingClientRect().top - r.bottom;
+  if (above >= 0 && below >= 0 && above <= below) hf.push({h, above, below}); }
+if (hf.length >= 2) mes('heading-rhythm', '-', `${hf.length} of ${hs.length} heading(s) have no more space above than below (first: ${say(hf[0].h.e)}, ${Math.round(hf[0].above)}px above, ${Math.round(hf[0].below)}px below)`, hf[0].h.e);
+// M3 flat-type-steps and M3b size-count
+const steps = [...new Set([body, ...hs.map(h => h.fs)])].sort((a, b) => a - b);
+if (hs.length && steps.length >= 2 && steps.every((v, i) => !i || v / steps[i - 1] < M.step))
+  mes('flat-type-steps', '-', `the heading and body sizes ${steps.map(v => v + 'px').join(', ')} step by under ${M.step}x each`, hs[0].e);
+const sizes = [...new Set(runs.map(r => Math.round(r.fs * 2) / 2))].sort((a, b) => a - b);
+if (sizes.length > M.sizes) mes('size-count', '-', `${sizes.length} font sizes on one board (${sizes.map(v => v + 'px').join(', ')}), over ${M.sizes}`, null);
+for (const r of runs) { const e = r.e, s = r.s, len = r.t.length;
+  // M4 line-length, M5 tight-leading, M14 straggler (paragraph text of two lines or more)
+  if (r.n >= 2 && /^(block|list-item|table-cell)$/.test(s.display) && !ctlOf(e)) {
+    const per = len / r.n; if (per > M.measure && r.n >= 2) mes('line-length', sig(e), `${say(e)}: about ${Math.round(per)} characters a line over ${r.n} lines, over ${M.measure}`, e);
+    const pitch = (r.lines[r.n - 1].top - r.lines[0].top) / (r.n - 1);
+    if (r.fs < 2 * body && pitch > 0 && pitch < M.leading * r.fs - 0.5) mes('tight-leading', sig(e) + '|' + r.fs, `${say(e)}: ${r.fs}px text on a ${pitch.toFixed(1)}px line pitch, under ${M.leading}x`, e);
+    const last = r.lines[r.n - 1], prev = r.lines[r.n - 2], words = r.t.split(' ');
+    if (words.length >= 4) { const tail = words[words.length - 1]; cv.font = `${s.fontWeight} ${s.fontSize} ${s.fontFamily}`;
+      if (last.r - last.l <= cv.measureText(tail).width + 2 && !r.heading) mes('straggler', sig(e), `${say(e)}: its last line holds one word ("${tail.slice(0, 16)}"); text-wrap: pretty`, e);
+      else if (r.heading && last.r - last.l < (prev.r - prev.l) / 3) mes('straggler', sig(e), `${say(e)}: the heading's last line is under a third of the line above; text-wrap: balance`, e); } }
+  // M6 tiny-text: body text under M.body px, any text under M.ui px
+  if (r.fs < M.ui && len >= 1) mes('tiny-text', sig(e) + '|' + r.fs, `${say(e)}: ${r.fs}px text, under ${M.ui}px`, e);
+  else if (r.fs < M.body && len >= 40 && /^(P|LI|DD|BLOCKQUOTE)$/.test(e.tagName)) mes('tiny-text', sig(e) + '|' + r.fs, `${say(e)}: ${r.fs}px body text, under ${M.body}px`, e);
+  // M7 wide-tracking
+  const ls = parseFloat(s.letterSpacing) || 0; if (len > 20 && s.textTransform !== 'uppercase' && ls > M.tracking * r.fs)
+    mes('wide-tracking', sig(e), `${say(e)}: letter-spacing ${(ls / r.fs).toFixed(2)}em on ${len} characters of mixed case, over ${M.tracking}em`, e); }
+// M8 ragged-edges: too many left edges among headings and long paragraphs
+const lefts = runs.filter(r => (r.heading || r.t.length >= 60 && r.fs >= 14) && /start|left/.test(r.s.textAlign)).map(r => r.lines[0].l).sort((a, b) => a - b);
+if (A.page && lefts.length >= M.rag[1]) { const cl = []; lefts.forEach(x => { const c = cl.find(c => Math.abs(c.x - x) <= M.rag[2]); c ? c.n++ : cl.push({x, n: 1}); });
+  const top3 = cl.map(c => c.n).sort((a, b) => b - a).slice(0, 3).reduce((a, b) => a + b, 0);
+  if (cl.length > M.rag[0] && top3 / lefts.length < M.rag[3]) mes('ragged-edges', '-', `${lefts.length} headings and paragraphs start at ${cl.length} left edges; the three most used hold ${Math.round(100 * top3 / lefts.length)}%`, null); }
+// M9 off-centre: the content's left and right margins in a PAGE differ
+if (A.page) { let l = Infinity, rr = -Infinity, side = false;
+  for (const r of runs) { const b = r.e.getBoundingClientRect(); l = Math.min(l, b.left); rr = Math.max(rr, b.right); }
+  for (const e of document.querySelectorAll('nav,aside,[role=navigation]')) { const b = e.getBoundingClientRect(); if (!chrome(e) && vis(e) && b.left <= 1 && b.height >= innerHeight / 2) side = true; }
+  const W = innerWidth, ml = l, mr = W - rr, d = Math.abs(ml - mr);
+  if (!side && l < Infinity && d >= Math.max(M.centre, 0.045 * W) && Math.max(ml, mr) >= 0.07 * W)
+    mes('off-centre', '-', `the content's margins are ${Math.round(ml)}px left and ${Math.round(mr)}px right in ${W}px`, null); }
+// M10 ragged-row, M11 radius-mix, M12 nested-radii: panels (boxed, not controls, at least 120x48)
+const panels = [...document.body.querySelectorAll('*')].filter(e => !e.closest('[data-proto],svg') && vis(e) && boxed(e) && !e.matches(CTL + ',' + FIELD) && !ctlOf(e)
+  && (r => r.width >= 120 && r.height >= 48)(e.getBoundingClientRect()) && !/^(TD|TH|TR|TBODY|THEAD|TABLE)$/.test(e.tagName));
+const radii = {}; panels.forEach(e => { const v = parseFloat(CS(e).borderTopLeftRadius) || 0; if (v > 0) radii[v] = (radii[v] || 0) + 1; });
+const used = Object.entries(radii).filter(([, n]) => n >= 2).map(([v]) => +v).sort((a, b) => a - b);
+if (used.length > M.radii) mes('radius-mix', '-', `${used.length} panel radii (${used.map(v => v + 'px').join(', ')}), over ${M.radii}`, null);
+const rowsDone = new Set();
+for (const e of panels) { const p = e.parentElement; if (!p || rowsDone.has(p)) continue; const s = CS(p);
+  if (!((/flex/.test(s.display) && !/column/.test(s.flexDirection)) || /grid/.test(s.display))) continue; rowsDone.add(p);
+  const sib = [...p.children].filter(c => panels.includes(c)), lines = [];
+  sib.forEach(c => { const r = c.getBoundingClientRect(), l = lines.find(l => Math.abs(l.t - r.top) <= 4); l ? l.i.push(c) : lines.push({t: r.top, i: [c]}); });
+  for (const l of lines) { if (l.i.length < 2) continue; const bs = l.i.map(c => c.getBoundingClientRect()), hi = Math.max(...bs.map(b => b.height)), d = Math.max(...bs.map(b => b.bottom)) - Math.min(...bs.map(b => b.bottom));
+    if (d > Math.max(M.ragRow, 0.12 * hi)) mes('ragged-row', sig(l.i[0]), `${l.i.length} panels in one row (first ${say(l.i[0])}) end ${Math.round(d)}px apart: cards that share a row share a bottom edge`, p); } }
+for (const e of panels) { const rc = parseFloat(CS(e).borderTopLeftRadius) || 0; if (!rc) continue; let p = e.parentElement; while (p && p !== document.body && !boxed(p)) p = p.parentElement;
+  if (!p || p === document.body || chrome(p)) continue; const rp = parseFloat(CS(p).borderTopLeftRadius) || 0; if (!rp) continue;
+  const a = e.getBoundingClientRect(), b = p.getBoundingClientRect(), gap = Math.min(a.left - b.left, a.top - b.top, b.right - a.right, b.bottom - a.bottom);
+  if (gap < 0 || gap > M.nest) continue;
+  if (rc > rp + 0.5) mes('nested-radii', sig(e), `${say(e)}: radius ${rc}px inside ${sig(p)}'s ${rp}px, ${Math.round(gap)}px in: an inner corner is no rounder than the outer one`, e);
+  else if (rp - gap > 0 && Math.abs(rc - (rp - gap)) > 2) mes('nested-radii', sig(e), `${say(e)}: radius ${rc}px ${Math.round(gap)}px inside a ${rp}px corner: concentric is about ${Math.round(rp - gap)}px`, e); }
+// M13 numeric-align: a column of figures set left, or without tabular figures
+const NUM = /^[+\-\u2212\u00B1]?[$\u20AC\u00A3\u00A5\u20A9]?\s?\d[\d.,:\s]*(%|\uC6D0|\uAC74|\uACF3|\uBA85|\uAC1C|px|ms|s|x)?$/;
+for (const t of document.querySelectorAll('table')) { if (chrome(t) || !vis(t)) continue; const cols = {};
+  for (const tr of t.rows) [...tr.cells].forEach((c, i) => { const s = (c.innerText || '').trim(); if (vis(c) && NUM.test(s) && c.tagName === 'TD') (cols[i] = cols[i] || []).push(c); });
+  for (const [i, cs2] of Object.entries(cols)) { if (cs2.length < M.figures) continue;
+    const left = cs2.filter(c => /^(left|start)$/.test(CS(c).textAlign)), plain = cs2.filter(c => { const q = c.querySelector('*') || c; return !/tabular-nums/.test(CS(q).fontVariantNumeric) && !/tabular-nums/.test(CS(c).fontVariantNumeric); });
+    if (left.length === cs2.length) mes('numeric-align', 'left|' + sig(t) + '|' + i, `column ${+i + 1} of ${say(t)}: ${cs2.length} figures set left (figures set right, or on a decimal)`, cs2[0]);
+    if (plain.length === cs2.length) mes('numeric-align', 'tab|' + sig(t) + '|' + i, `column ${+i + 1} of ${say(t)}: ${cs2.length} figures without font-variant-numeric: tabular-nums`, cs2[0]); } }
+return out;
+})"""
 # The measured checks, run on the settled page right before its screenshot. Raw facts only; the engine
 # words them. contrast: every visible text run (one per element) against the background its ancestors
 # paint under it, alpha-composited (color alpha, background alpha, ancestor opacity) over the white
@@ -12145,7 +12359,7 @@ for (const e of controls()) {
   for (const b of [e, ...(e.labels || [])]) { const r = b.getBoundingClientRect(); if (!r.width && !r.height) continue;
     x0 = Math.min(x0, r.left); y0 = Math.min(y0, r.top); x1 = Math.max(x1, r.right); y1 = Math.max(y1, r.bottom); }
   const w = x1 - x0, h = y1 - y0;
-  if (w < 43.99 || h < 43.99) out.target.push({el: desc(e), w: Math.round(w * 10) / 10, h: Math.round(h * 10) / 10, labelled: !!(e.labels && e.labels.length)});
+  if (w < 43.99 || h < 43.99) out.target.push({el: desc(e), cls: tagOf(e), w: Math.round(w * 10) / 10, h: Math.round(h * 10) / 10, labelled: !!(e.labels && e.labels.length)});
 }
 """ + DESIGN_PREVIEW_NTC_JS + r"""
 const ownText = e => [...e.childNodes].some(c => c.nodeType === 3 && c.data.trim())
@@ -12175,6 +12389,8 @@ for (const e of document.querySelectorAll('input,select,textarea')) {
   if (e.matches('textarea,input:not([type]),input[type=text],input[type=email],input[type=password],input[type=search],input[type=tel],input[type=url],input[type=number]')) out.fields++;
   const named = [...(e.labels || [])].some(l => !!textOf(l)) || !!(e.getAttribute('aria-label') || '').trim() || byIds(e);
   if (!named) out.names.push({el: desc(e), kind: 'field', placeholder: clip(e.getAttribute('placeholder') || '', 30)}); }
+if (window.__dcAlign) { try { out.align = (""" + DESIGN_PREVIEW_ALIGN_JS + r""")(window.__dcAlign); } catch (x) { out.align = {failed: String(x)}; }
+  delete window.__dcAlign; }
 return out; })()"""
 # --click: the visible DOM's identity (each shown element's tag, class, style, its open/expanded/
 # selected/current/disabled attributes and every shown text run, hashed; a checkbox's checked state and
@@ -12608,9 +12824,10 @@ class DesignBrowser:
                 pass
 
 
-def design_preview_capture(page: "DesignBrowser", width: int, height: int, grow: bool, settled: bool) -> dict:
+def design_preview_capture(page: "DesignBrowser", width: int, height: int, grow: bool, settled: bool, align=None) -> dict:
     """Measure the settled page, grow the viewport to a taller content when the view grows (relayout,
-    settle again), run the measured checks and take the screenshot."""
+    settle again), run the measured checks and take the screenshot. align (v88): None, or {"page": bool}
+    to run check=align and M1-M14 with the measured checks (the frame view and its states)."""
     shape = page.evaluate(DESIGN_PREVIEW_MEASURE_JS)
     if grow and shape["h"] > height:
         height = min(shape["h"], DESIGN_PREVIEW_MAX)
@@ -12618,6 +12835,9 @@ def design_preview_capture(page: "DesignBrowser", width: int, height: int, grow:
         settled = page.settle() and settled
         shape = page.evaluate(DESIGN_PREVIEW_MEASURE_JS)
     try:
+        if align is not None:
+            page.evaluate("window.__dcAlign=" + json.dumps({"T": DESIGN_PREVIEW_ALIGN, "M": DESIGN_PREVIEW_MEASURES,
+                                                             "page": bool(align.get("page"))}))
         checks = page.evaluate(DESIGN_PREVIEW_CHECKS_JS)
     except RuntimeError as exc:  # the checks never block a screenshot; their failure is said
         checks = {"failed": str(exc)}
@@ -12627,14 +12847,14 @@ def design_preview_capture(page: "DesignBrowser", width: int, height: int, grow:
             "errors": page.errors()}
 
 
-def design_preview_render(page: "DesignBrowser", url: str, width: int, height: int, grow: bool) -> dict:
+def design_preview_render(page: "DesignBrowser", url: str, width: int, height: int, grow: bool, align=None) -> dict:
     """Lay the board out in an exact width x height viewport, let it settle, measure it, and -- when it
     grows (a PAGE, or the phone render) and its content is taller -- relayout at the content height."""
     page.call("Emulation.setDeviceMetricsOverride", {"width": width, "height": height, "deviceScaleFactor": 1, "mobile": False})
     page.events.clear()
     page.call("Page.navigate", {"url": url})
     loaded = page.wait_event("Page.loadEventFired", DESIGN_PREVIEW_SETTLE)
-    shot = design_preview_capture(page, width, height, grow, page.settle())
+    shot = design_preview_capture(page, width, height, grow, page.settle(), align)
     shot["loaded"] = loaded
     return shot
 
@@ -12655,8 +12875,9 @@ def design_preview_link(rel: str, href: str, boards: dict, project: Path) -> tup
 
 
 def design_preview_fold(message: str) -> str:
-    """An issue message without its "(+N more like it)" count, to tell a repeated finding apart."""
-    return re.sub(r" \(\+\d+ more like it\)$", "", message)
+    """An issue message without its "(+N more like it)" count and its " crop=<png>" (v88), to tell a
+    repeated finding apart."""
+    return re.sub(r" \(\+\d+ more like it\)$", "", re.sub(r" crop=.*$", "", message))
 
 
 def design_preview_num(value) -> str:
@@ -12680,16 +12901,18 @@ def design_preview_measured(ctx: dict, rel: str, checks: dict) -> list:
         first = unmeasured[0]
         found.append(("unmeasured", "-", f"{len(unmeasured)} text run(s) sit on {first['why']} (first: {first['el']}): "
                                          "contrast not measured; judge it on the PNG"))
-    for t in checks.get("target", []):
+    for t in checks.get("target", []):  # v88: folded per control class (tag and first class), like non-text-contrast
         what = " with its label" if t.get("labelled") else ""
-        found.append(("target", f"{t['w']}x{t['h']}",
+        found.append(("target", t.get("cls") or f"{t['w']}x{t['h']}",
                       f"{t['el']} is {design_preview_num(t['w'])}x{design_preview_num(t['h'])}px{what}, "
                       f"under {DESIGN_PREVIEW_TARGET}x{DESIGN_PREVIEW_TARGET}"))
     for c in checks.get("clipped", []):
         found.append(("clipped", c["el"], f"{c['el']} has text cut off: content {c['sw']}x{c['sh']} in a {c['cw']}x{c['ch']} box "
                                           "that hides overflow, with no ellipsis or line clamp"))
     for link in checks.get("links", []):
-        kind, target = design_preview_link(rel, link["href"], ctx["boards"], ctx["project"])
+        if ctx.get("page_slug") and link["href"].startswith("#to:"):  # a page's placeholder for the join (design-check's)
+            continue
+        kind, target = design_preview_link(rel, link["href"], ctx.get("link_boards", ctx["boards"]), ctx["project"])
         if link.get("anchor") == "placeholder":
             found.append(("dead-link", link["href"], f"{link['el']} href=\"{link['href']}\" goes nowhere (a placeholder)"))
         elif link.get("anchor") == "missing":
@@ -12745,11 +12968,95 @@ def design_preview_measured(ctx: dict, rel: str, checks: dict) -> list:
             message = ("the state bar has no [role=group] named by the page (aria-label or aria-labelledby): the preview "
                        "cannot tell which page is on screen")
         found.append(("state-bar", b["kind"], message))
+    found += design_preview_align_lines(ctx, rel, checks.get("align"))
     folded: dict = {}
-    for check, key, message in found:
+    for check, key, message, *box in found:
         entry = folded.setdefault((check, key), [message, 0])
         entry[1] += 1
-    return [(check, message, count) for (check, _), (message, count) in folded.items()]
+        if box and box[0] and check == "align":  # the first line's boxes: its zoom crop (design_preview_crops)
+            ctx.setdefault("align_boxes", {})[(rel, message)] = box[0]
+    # v88: target, align and the M lines are named once per board and fold key -- a later view or --click
+    # state that shows the same control class or the same pair of elements again counts it, never repeats it.
+    once, named = ("target", "align") + DESIGN_PREVIEW_MEASURE_RULES, ctx.setdefault("advisory_named", set())
+    kept = []
+    for (check, key), (message, count) in folded.items():
+        if check in once:
+            if (rel, check, key) in named:
+                record = ctx["report"]["boards"].get(rel)
+                if record is not None:
+                    record["named_before"] = record.get("named_before", 0) + count
+                continue
+            named.add((rel, check, key))
+        kept.append((check, message, count))
+    return kept
+
+
+def design_preview_align_lines(ctx: dict, rel: str, align) -> list:
+    """v88 (P47-p5.S5): word check=align and the M1-M14 rules as (check, fold key, message, box) items.
+    An align line folds per board, kind and the two elements' tag and class; label-ink once per text style
+    per run (later boards count it, a closing note lists them); an M line per board, rule and element class."""
+    if not isinstance(align, dict):
+        return []
+    if "failed" in align:
+        return [("checks", "align", f"the align and type checks did not run: {align['failed']}", None)]
+    found = []
+    for f in align.get("align", []):
+        pair = f"{f['a']} vs {f['b']}" if f.get("b") else f["a"]
+        note = f": {f['note']}" if f.get("note") else ""
+        found.append(("align", f"{f['kind']}|{f['key']}", f"{f['kind']} {design_preview_num(f['px'])}px ({pair}){note}", f.get("box")))
+    named = ctx.setdefault("ink_named", {})
+    for i in align.get("ink", []):
+        if i["style"] in named:
+            if named[i["style"]]["board"] != rel:
+                named[i["style"]]["more"].setdefault(rel, 0)
+                named[i["style"]]["more"][rel] += i["n"]
+            continue
+        named[i["style"]] = {"board": rel, "more": {}}
+        found.append(("align", f"label-ink|{i['style']}",
+                      f"label-ink {design_preview_num(i['px'])}px ({i['n']} label(s) in {i['style']}, e.g. {i['eg']}): the ink sits "
+                      f"{i['dir']} of the box's centre; later boards do not repeat this style", i.get("box")))
+    for m in align.get("measure", []):
+        found.append((m["rule"], m["key"], m["msg"], None))
+    return found
+
+
+def design_preview_crops(ctx: dict, rel: str, issues: list, state=None) -> list:
+    """v88 (P47-p5.S5): a 2x zoom crop per printed check=align line, taken while the page still shows the
+    shot: a clip around the line's two boxes plus DESIGN_PREVIEW_CROP_MARGIN, at device scale
+    DESIGN_PREVIEW_CROP_SCALE, saved beside the render as <stem>.[state-NN.]align-NN.png; its path ends the
+    line (crop=<png>). At most DESIGN_PREVIEW_CROPS per board."""
+    boxes, kept = ctx.get("align_boxes", {}), []
+    record = ctx["report"]["boards"][rel]
+    stem = rel[:-len(DESIGN_BOARD_SUFFIX)].replace("/", "__")
+    taken = record.setdefault("crops", [])
+    for check, message in issues:
+        box = boxes.get((rel, design_preview_fold(message))) if check == "align" else None
+        if not box:
+            kept.append((check, message))
+            continue
+        if len(taken) >= DESIGN_PREVIEW_CROPS:
+            if not record.get("crops_capped"):
+                record["crops_capped"] = True
+                print(f"note board={rel}: {DESIGN_PREVIEW_CROPS} align crops taken; later align lines on this board have none")
+            kept.append((check, message))
+            continue
+        x, y, w, h = box
+        m = DESIGN_PREVIEW_CROP_MARGIN
+        x0, y0 = max(0, x - m), max(0, y - m)
+        clip = {"x": x0, "y": y0, "width": max(1, min(w + 2 * m, DESIGN_PREVIEW_CROP_MAX[0])),
+                "height": max(1, min(h + 2 * m, DESIGN_PREVIEW_CROP_MAX[1])), "scale": DESIGN_PREVIEW_CROP_SCALE}
+        n = sum(1 for c in taken if c.get("state") == state) + 1
+        png = ctx["out"] / (f"{stem}." + (f"state-{state:02d}." if state is not None else "") + f"align-{n:02d}.png")
+        try:
+            import base64
+            data = ctx["page"].call("Page.captureScreenshot", {"format": "png", "clip": clip, "captureBeyondViewport": True})["data"]
+            png.write_bytes(base64.b64decode(data))
+        except (RuntimeError, OSError, ValueError, KeyError) as exc:
+            kept.append((check, message + f" crop=none ({exc})"))
+            continue
+        taken.append({"state": state, "png": design_preview_shown(png), "clip": clip, "line": design_preview_fold(message)})
+        kept.append((check, message + f" crop={design_preview_shown(png)}"))
+    return kept
 
 
 def design_preview_issues(ctx: dict, rel: str, shot: dict, grow: bool, height: int, clip_h: int = None) -> list:
@@ -12797,7 +13104,8 @@ def design_preview_view(ctx: dict, rel: str, board: dict, view: str) -> int:
     record = ctx["report"]["boards"][rel]
     ctx["misses"].clear()
     try:
-        shot = design_preview_render(ctx["page"], f"{ctx['base']}/{rel}", width, height, grow)
+        shot = design_preview_render(ctx["page"], f"{ctx['base']}/{rel}", width, height, grow,
+                                     {"page": page_board} if view == "frame" else None)
     except (RuntimeError, OSError, ValueError, KeyError, TypeError) as exc:
         print(f"board={rel} png=none w={width} h={height} view={view} error=browser")
         print(f"issue board={rel} view={view} check=screenshot: no screenshot: {exc}")
@@ -12812,6 +13120,8 @@ def design_preview_view(ctx: dict, rel: str, board: dict, view: str) -> int:
         named = {(i["check"], design_preview_fold(i["message"])) for i in record["views"]["frame"]["issues"]}
         kept = [(c, m) for c, m in issues if c not in DESIGN_PREVIEW_CHECKS or (c, design_preview_fold(m)) not in named]
         issues, repeated = kept, len(issues) - len(kept)
+    if view == "frame":  # v88: the align lines' zoom crops, while the page still shows this shot
+        issues = design_preview_crops(ctx, rel, issues)
     print(f"board={rel} png={design_preview_shown(png)} w={shot['width']} h={shot['height']} view={view} content={shape['w']}x{shape['h']} "
           f"unmounted={len(shape['unmounted'])} errors={len(shape['errors']) + len(shot['errors'])} issues={len(issues)}")
     for check, message in issues:
@@ -13031,6 +13341,46 @@ def design_preview_blocking(report: dict) -> dict:
             if item.get("check") in DESIGN_PREVIEW_BLOCKING:
                 counts[item["check"]] = counts.get(item["check"], 0) + 1
     return {c: counts[c] for c in DESIGN_PREVIEW_BLOCKING if c in counts}
+
+
+def design_preview_advisory(report: dict) -> dict:
+    """v88: {check: count} of the advisory measured lines (check=align, M1-M14) over every board."""
+    names = ("align",) + DESIGN_PREVIEW_MEASURE_RULES
+    counts: dict = {}
+    for rec in report["boards"].values():
+        items = [i for v in rec.get("views", {}).values() for i in v.get("issues", [])]
+        items += [i for s in rec.get("states", []) for i in s.get("issues", [])]
+        for item in items:
+            if item.get("check") in names:
+                counts[item["check"]] = counts.get(item["check"], 0) + 1
+    return {c: counts[c] for c in names if c in counts}
+
+
+def design_preview_slot():
+    """v88 (P47-p5.S5): wait for one of DESIGN_PREVIEW_SLOTS render slots (${DESIGN_PREVIEW_SLOTS_ENV} sets
+    another cap, at least 1): an flock()ed file in a fixed temp folder, held by the returned open file
+    until it is closed or the process exits. One 'waiting for a render slot' line when all are taken."""
+    import fcntl
+    try:
+        cap = max(1, int(os.environ.get(DESIGN_PREVIEW_SLOTS_ENV) or DESIGN_PREVIEW_SLOTS))
+    except ValueError:
+        cap = DESIGN_PREVIEW_SLOTS
+    folder = Path(tempfile.gettempdir()) / "agentic-design-preview-slots"
+    folder.mkdir(parents=True, exist_ok=True)
+    said = False
+    while True:
+        for n in range(cap):
+            handle = open(folder / f"slot-{n}", "a")
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return handle
+            except OSError:
+                handle.close()
+        if not said:
+            print(f"note: waiting for a render slot ({cap} design-preview run(s) render at once; {DESIGN_PREVIEW_SLOTS_ENV} sets the cap)",
+                  flush=True)
+            said = True
+        time.sleep(0.5)
 
 
 def design_preview_shown(path: Path) -> str:
@@ -13396,7 +13746,8 @@ def design_preview_explore(ctx: dict, rel: str, board: dict, view: str = "frame"
             (ahead if first_of_page else queue).append(new["n"])
             page.call("Emulation.setDeviceMetricsOverride", {"width": width, "height": height, "deviceScaleFactor": 1, "mobile": False})
             ctx["misses"].clear()
-            shot = design_preview_capture(page, width, height, grow, page.settle(**quick))
+            shot = design_preview_capture(page, width, height, grow, page.settle(**quick),
+                                          {"page": page_board} if view == "frame" else None)
             shot["errors"] = []  # the click's errors, said once below as click-error
             png = ctx["out"] / f"{stem}.{view}.state-{new['n']:02d}.png"
             png.write_bytes(shot["png"])
@@ -13404,6 +13755,8 @@ def design_preview_explore(ctx: dict, rel: str, board: dict, view: str = "frame"
             found += [("click-error", f"clicking \"{shown}\" threw: {text}") for text in errors
                       if (control["label"], text) not in thrown]
             thrown.update((control["label"], text) for text in errors)
+            if view == "frame":  # v88: the align lines' zoom crops, while the page still shows this state
+                found = design_preview_crops(ctx, rel, found, new["n"])
             shape = shot["shape"]
             print(f"state board={rel} view={view} n={new['n']:02d} path=\"{shown}\" png={design_preview_shown(png)} w={shot['width']} "
                   f"h={shot['height']} content={shape['w']}x{shape['h']} issues={len(found)}")
@@ -13475,17 +13828,45 @@ def design_preview(args: argparse.Namespace) -> int:
     design_require_manifest(scan, root, "design-preview")
     job = design_find_job(scan, args.job, "design-preview")
     project = job["path"] / "canvas" / "project"
-    try:
-        index = read_json(project / "canvas.json")
-    except (ValueError, OSError) as exc:
-        raise SystemExit(f"design-preview: refused -- jobs/{args.job}/canvas/project/canvas.json is not readable "
-                         f"({exc}); the drafter writes the canvas tree first")
-    boards = index.get("boards") if isinstance(index, dict) else None
-    if not isinstance(boards, dict) or not boards:
-        raise SystemExit(f"design-preview: refused -- jobs/{args.job}/canvas/project/canvas.json lists no boards")
+    rounds = sorted(job["rounds"], key=lambda r: r["number"])
+    current = next((r for r in rounds if r["data"] and r["data"]["status"] == "open"), rounds[-1] if rounds else None)
+    slug = getattr(args, "page", None)
+    if slug is not None:
+        # v88 (P47-p5.S5): one page of a per-page round, from its boards.json -- a synthesized board index,
+        # written only into the render folder (index.json), never into canvas.json; frame is the frame pass's.
+        pages = (current or {}).get("data", {}).get("pages") if current and current["data"] else None
+        if not pages or current["data"]["status"] != "open":
+            raise SystemExit(f"design-preview: --page needs job {args.job}'s open round to be a per-page round "
+                             f"(design-open --pages a,b,c)")
+        if slug != DESIGN_FRAME_PAGE and slug not in pages:
+            raise SystemExit(f"design-preview: --page {slug!r} is not a page of {design_address(job, current)} "
+                             f"(pages: {', '.join(pages)}; or {DESIGN_FRAME_PAGE})")
+        prel = f"jobs/{args.job}/rounds/{current['id']}/{DESIGN_PAGES_DIR}/{slug}"
+        boards, found = design_page_boards(current["path"] / DESIGN_PAGES_DIR / slug / DESIGN_PAGE_BOARDS)
+        missing = [k for k in boards if not (project / k).is_file()]
+        if found or missing or not boards:
+            raise SystemExit(f"design-preview: refused -- {prel}/{DESIGN_PAGE_BOARDS} cannot be rendered:\n"
+                             + "\n".join(f"- {p}" for p in found + [f"board {k!r}: the file is missing" for k in missing])
+                             + f"\n(run: {WORKFLOW_CMD} design-check {args.job} --page {slug})")
+        try:
+            index = read_json(project / "canvas.json")
+        except (ValueError, OSError):
+            index = {}
+        index = {"page": slug, "round": current["id"], "boards": boards,
+                 "designSystems": (index.get("designSystems") if isinstance(index, dict) else None) or []}
+    else:
+        try:
+            index = read_json(project / "canvas.json")
+        except (ValueError, OSError) as exc:
+            raise SystemExit(f"design-preview: refused -- jobs/{args.job}/canvas/project/canvas.json is not readable "
+                             f"({exc}); the drafter writes the canvas tree first")
+        boards = index.get("boards") if isinstance(index, dict) else None
+        if not isinstance(boards, dict) or not boards:
+            raise SystemExit(f"design-preview: refused -- jobs/{args.job}/canvas/project/canvas.json lists no boards")
     unknown = [b for b in args.board or [] if b not in boards]
     if unknown:
-        raise SystemExit(f"design-preview: no board {', '.join(map(repr, unknown))} in canvas.json "
+        where = f"page {slug}'s {DESIGN_PAGE_BOARDS}" if slug is not None else "canvas.json"
+        raise SystemExit(f"design-preview: no board {', '.join(map(repr, unknown))} in {where} "
                          f"(boards: {', '.join(sorted(boards))})")
     runtime = Path(args.runtime).expanduser()
     if not runtime.is_file():
@@ -13494,10 +13875,10 @@ def design_preview(args: argparse.Namespace) -> int:
     # v61 (P37.S6) render reuse: the default --out is one stable folder per job and round under the design
     # root's git-ignored .preview/, so the critic finds the drafter's final render (preview.json, the PNGs,
     # the contact sheets) without re-rendering it. An --out elsewhere in the design root is refused.
-    rounds = sorted(job["rounds"], key=lambda r: r["number"])
-    current = next((r for r in rounds if r["data"] and r["data"]["status"] == "open"), rounds[-1] if rounds else None)
     reuse = root / DESIGN_PREVIEW_DIR
     default_out = reuse / args.job / (current["id"] if current else "no-round")
+    if slug is not None:
+        default_out = default_out / DESIGN_PAGES_DIR / slug
     out = Path(args.out).expanduser().resolve() if args.out else default_out.resolve()
     try:
         out.relative_to(root.resolve())
@@ -13528,6 +13909,7 @@ def design_preview(args: argparse.Namespace) -> int:
         print("preview=skipped reason=unsupported-platform")
         print("hint: nothing was rendered or written; design-preview drives the browser over a pipe that needs os.posix_spawn")
         return 0
+    slot = design_preview_slot()  # held until this process exits
     runtime_bytes = runtime.read_bytes()
     if b"DCLogic" not in runtime_bytes:
         print(f"warning: {runtime} does not look like the Design canvas runtime (no DCLogic in it)")
@@ -13552,6 +13934,8 @@ def design_preview(args: argparse.Namespace) -> int:
     if out == default_out.resolve() and not (reuse / ".gitignore").is_file():  # the renders are local only
         write_text(reuse / ".gitignore", "*\n")
     out.mkdir(parents=True, exist_ok=True)
+    if slug is not None:
+        (out / "index.json").write_text(json.dumps(index, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
     if earlier is None:
         try:
             earlier = read_json(out / "preview.json") if (args.board and (out / "preview.json").is_file()) else None
@@ -13563,11 +13947,11 @@ def design_preview(args: argparse.Namespace) -> int:
     # named as this command names them (<stem>.<view>[.state-NN].png, <stem>.sheet.png); --states-only
     # drops only the states and sheets.
     import glob
-    shot_name = re.compile(r"\.(?:(?:frame|phone|w320|text200)(\.state-\d+)?|(sheet))\.png$")
+    shot_name = re.compile(r"\.(?:(?:frame|phone|w320|text200)(\.state-\d+)?|(sheet)|(state-\d+\.)?align-\d+)\.png$")
     for stem in {rel[:-len(DESIGN_BOARD_SUFFIX)].replace("/", "__") for rel in (args.board or boards)}:
         for old in out.glob(f"{glob.escape(stem)}.*.png"):
             match = shot_name.fullmatch(old.name[len(stem):])
-            if match and (not args.states_only or match.group(1) or match.group(2)):
+            if match and (not args.states_only or match.group(1) or match.group(2) or match.group(3)):
                 old.unlink()
 
     def reading(key):
@@ -13577,7 +13961,7 @@ def design_preview(args: argparse.Namespace) -> int:
 
     print(f"runtime=real path={runtime}")
     misses: list = []
-    report = {"schema": 1, "job": args.job, "round": current["id"] if current else None, "out": design_preview_shown(out),
+    report = {"schema": 1, "job": args.job, "round": current["id"] if current else None, "page": slug, "out": design_preview_shown(out),
               "runtime": str(runtime), "click": bool(args.click), "phone": bool(args.phone),
               "phone_click": bool(args.phone_click), "states_only": bool(args.states_only),
               "boards": {}, "links": [], "issues": [], "totals": {}, "sheets": {}}
@@ -13596,6 +13980,9 @@ def design_preview(args: argparse.Namespace) -> int:
         pass  # the keyboard check then reads the on* properties and the pointer cursor only
     ctx = {"page": page, "out": out, "misses": misses, "base": f"http://127.0.0.1:{server.server_address[1]}",
            "boards": boards, "project": project, "report": report, "unmeasured": set(), "edges": {}, "states": 0}
+    if slug is not None:  # a page's links to another page's or the frame's boards are not dead: the join places them
+        ctx["page_slug"] = slug
+        ctx["link_boards"] = set(boards) | {f for f in design_tree_files(project) if f.endswith(DESIGN_BOARD_SUFFIX)}
     shots = issues = failed = 0
     rendered = []
     try:
@@ -13616,6 +14003,10 @@ def design_preview(args: argparse.Namespace) -> int:
                 for kept_view in report["boards"][rel]["views"].values():  # their boundaries are named already
                     for c in (kept_view.get("measured") or {}).get("ntc", []):
                         ctx.setdefault("ntc_named", {}).setdefault((c["part"], c["fg"], c["bg"]), rel)
+                    align = (kept_view.get("measured") or {}).get("align")
+                    for i in align.get("ink", []) if isinstance(align, dict) else []:  # and their label-ink styles
+                        ctx.setdefault("ink_named", {}).setdefault(i["style"], {"board": rel, "more": {}})
+                report["boards"][rel]["crops"] = [c for c in old_board.get("crops", []) if c.get("state") is None]
             try:
                 w, h = int(board["w"]), int(board["h"])
             except (KeyError, TypeError, ValueError):
@@ -13687,6 +14078,12 @@ def design_preview(args: argparse.Namespace) -> int:
               f"{len(more)} other board(s): {named}")
         report.setdefault("ntc_also", []).append({"part": part, "fg": fg, "bg": bg, "first": ctx["ntc_named"][(part, fg, bg)],
                                                  "boards": more})
+    for style, seen in ctx.get("ink_named", {}).items():  # v88: where a label-ink style is drawn again
+        if seen["more"]:
+            more = seen["more"]
+            named = ", ".join(f"{r} ({n})" for r, n in list(more.items())[:3]) + (f" (+{len(more) - 3} more)" if len(more) > 3 else "")
+            print(f"note: check=align label-ink {style} (first named on {seen['board']}) is also on {len(more)} other board(s): {named}")
+        report.setdefault("label_ink", []).append({"style": style, "first": seen["board"], "boards": seen["more"]})
     for rel in sorted(ctx["edges"]):
         for target, kind in sorted(ctx["edges"][rel].items()):
             report["links"].append({"from": rel, "to": target, "external": kind == "external"})
@@ -13720,13 +14117,18 @@ def design_preview(args: argparse.Namespace) -> int:
         report["merged"] = sorted(set(report["boards"]) - redone)
     blocking = design_preview_blocking(report)
     report["self_check"] = {"result": "fail" if blocking else "pass", "blocking": blocking}
+    report["advisory"] = design_preview_advisory(report)
     (out / "preview.json").write_text(json.dumps(report, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"preview={'failed' if failed and not shots else 'done'} pngs={shots} failed={failed} issues={issues} "
           f"states={ctx['states']} seconds={seconds:g} out={design_preview_shown(out)}")
     if report.get("merged"):
         print(f"note: preview.json keeps the earlier render of {len(report['merged'])} board(s) not rendered now")
+    advisory = report["advisory"]
+    if advisory:  # v88: the measured lines the drafter answers (fixed, or logged as intended) and the critic takes as facts
+        print("advisory=" + ",".join(f"{c}:{n}" for c, n in advisory.items()))
     print(f"self_check={'fail' if blocking else 'pass'} blocking="
           + (",".join(f"{c}:{n}" for c, n in blocking.items()) or "none"))
+    del slot
     if failed:
         return 1
     return 1 if args.strict and blocking else 0
@@ -14199,12 +14601,12 @@ def main(argv=None) -> int:
     p.add_argument("job", help="the job id, e.g. 01-signin")
     p.set_defaults(func=design_publish_plan)
 
-    p = sub.add_parser("design-preview", help="Render each board of a job's canvas locally for the drafter's self-check: serve canvas/project/ (its ds/ system cache included) with the Design canvas type's real runtime as ./support.js over http on 127.0.0.1, screenshot every board in an exact viewport with a throwaway headless Chrome/Chromium profile driven over the DevTools pipe (no port), print one board=<file> png=<path> w= h= line per screenshot plus its issues, then the WCAG machine checks (non-text-contrast, reflow and overprint at 320px and 200%% text, keyboard) and a final self_check=pass|fail line; the render stays in the job's git-ignored round folder for the critic; no browser prints preview=skipped reason=no-browser, writes nothing and exits 0",
+    p = sub.add_parser("design-preview", help="Render each board of a job's canvas locally for the drafter's self-check: serve canvas/project/ (its ds/ system cache included) with the Design canvas type's real runtime as ./support.js over http on 127.0.0.1, screenshot every board in an exact viewport with a throwaway headless Chrome/Chromium profile driven over the DevTools pipe (no port), print one board=<file> png=<path> w= h= line per screenshot plus its issues, then the WCAG machine checks (non-text-contrast, reflow and overprint at 320px and 200%% text, keyboard), the advisory alignment and type lines (check=align, M1-M14) with a 2x zoom crop per align line, and a final self_check=pass|fail line; --page <slug> renders one page of a per-page round; at most 3 runs render at once on a machine; the render stays in the job's git-ignored round folder for the critic; no browser prints preview=skipped reason=no-browser, writes nothing and exits 0",
                        description=f"Never views the published canvas and never calls claude.ai. --runtime is the type's artifact-type/dc-runtime.js, which the orchestrator saves per job (never vendored); it renders standalone, so no stand-in ships. A board renders at its canvas.json w x h; a PAGE (expand: fill) grows to its content and also renders {DESIGN_PREVIEW_PHONE[0]} px wide (--phone: every board). Each line also gives the content size, unmounted parts (an x-import whose system global is missing, a dc-import whose board is missing), script errors and the issue count; issue lines name a clipped frame, a sideways overflow, runtime errors and files not found. Browser: --browser, else ${DESIGN_PREVIEW_BROWSER_ENV} (a named one is the only candidate), else the known Chrome/Chromium paths, else chromium/google-chrome on PATH. Writes only the PNGs, preview.json and the contact sheets -- by default into {DESIGN_ROOT_SHOWN}/{DESIGN_PREVIEW_DIR}/<job>/<round>/ (the job's open round, else its last; git-ignored, so outside the design record: the critic reads the drafter's final render there instead of rendering again; a whole run replaces the folder's shots, a --board run only that board's, and preview.json keeps the other boards' earlier render) -- and, once, canvas/project/ds/.gitignore (*) when ds/ exists; a system the canvas installs but ds/<namespace>/ lacks is a warning (the engine never fetches it). Exit 1 when a screenshot failed, or with --strict when the self-check fails. "
                                    f"SELF-CHECK (v61): the last line is self_check=pass|fail blocking=<check:count,...>|none over the whole (merged) render, where blocking = {', '.join(DESIGN_PREVIEW_BLOCKING)}; preview.json repeats it as self_check: {{result, blocking}}. "
                                    f"MEASURED CHECKS, in every view and state; every issue line reads 'issue board=<file> [view=<v>] [state=NN] check=<name>: ...'. "
                                    f"contrast: each visible text run (one per element; aria-hidden, invisible and zero-size text skipped) against the background its ancestors paint, color alpha, background alpha and ancestor opacity composited over white, colors in any CSS syntax; WCAG 4.5:1, or 3:1 for text >= 24px or >= 18.66px bold. A background image, gradient, filter or blend mode in the way makes the text 'unmeasured' (one line per board: judge it on the PNG), never a guess; not seen: a positioned sibling or <img> under the text, text-shadow, placeholder and field-value text, SVG text. "
-                                   f"target: an a[href], button, input, select, textarea, summary, ARIA button/link/checkbox/radio/switch/tab/menuitem or tabindex>=0 element (visible, enabled) whose box is under {DESIGN_PREVIEW_TARGET}x{DESIGN_PREVIEW_TARGET}px, a field's <label> counted with it; a link inside a run of text is exempt (WCAG's inline exception). "
+                                   f"target: an a[href], button, input, select, textarea, summary, ARIA button/link/checkbox/radio/switch/tab/menuitem or tabindex>=0 element (visible, enabled) whose box is under {DESIGN_PREVIEW_TARGET}x{DESIGN_PREVIEW_TARGET}px, a field's <label> counted with it; a link inside a run of text is exempt (WCAG's inline exception); one line per control class (tag and first class) and shot, the rest counted ('+N more like it'). "
                                    "clipped: an element's own text cut off by overflow hidden/clip, unless it ends in an ellipsis or a line clamp. "
                                    "dead-link: an <a href> to a .dc.html that is no canvas.json board, to another relative file not in the tree, to an #id with no element, or a bare # placeholder; absolute URLs (https:, mailto:) are listed as external, never fetched. "
                                    "image: an <img> that loaded with naturalWidth 0 (background images are not checked). "
@@ -14213,16 +14615,20 @@ def main(argv=None) -> int:
                                    f"state-bar: the bar ([data-proto=\"state-bar\"]) or an ancestor position fixed or sticky; two or more bars on one board (a board showing one page in several windows carries exactly one, above all the windows and inside none); a bar showing more than one page's named group; a bar with no named [role=group]; with --click, a preset that moves to another page. design-check lints what the source shows (a pinned bar in a style or rule; an interactive board mounting one board as windows with no bar of its own). "
                                    f"WCAG VIEWS of each PAGE (expand: fill), each growing to its content: w320 ({DESIGN_PREVIEW_REFLOW}px wide) and text200 ({DESIGN_PREVIEW_PHONE[0]}px wide with every element's computed font-size read, then set to {DESIGN_PREVIEW_TEXT_SCALE}x, so nothing compounds); each names reflow (content wider than the view: a sideways scroll; WCAG 1.4.10/1.4.4), overprint (two text runs of different elements, neither containing the other, whose glyph boxes -- the middle half of each line box, cut to every overflow/clip-path ancestor -- cross where it shows: the topmost element there is one of them and nothing opaque hides the other; [data-proto] left out; identical pairs folded) and the clipped check, plus render issues the frame and phone views did not name (<stem>.w320.png, <stem>.text200.png). Not seen: real browser text zoom or a minimum-font setting, text in images or SVG, overlap with non-text shapes, an overprint a scroll or a click reveals. "
                                    f"keyboard (WCAG 2.1.1), on each is_interactive board from the settled frame view: Tab (Input.dispatchKeyEvent) until focus comes back to its first stop, at most {DESIGN_PREVIEW_TABS} presses; a control of the target set (outside [data-proto], not tabindex < 0, inside an open modal when there is one) the order never reached is unreachable (judged only when it came back). A click-only control -- an element with a click/mousedown/pointerdown listener (an on* property, or addEventListener) or, failing that, a pointer cursor its parent lacks, neither natively focusable nor tabindex >= 0, inside no control or label, holding none and under a quarter of the viewport -- is one line per tag and class; the first {DESIGN_PREVIEW_POP_PROBES} are clicked from a fresh load and one that opens a dialog, menu, tooltip, listbox or popover is named so. Not seen: focus order sense, a visible focus indicator, keys other than Tab (arrows, Escape, Enter on a fake control), a listener delegated to an ancestor with no pointer cursor. "
+                                   f"ADVISORY MEASURED LINES (v88), in the frame view and every --click state of it, never the phone or WCAG views; never blocking (self_check= keeps its meaning), each one answered: the drafter fixes it or logs it as intended, the critic takes it as a measured fact. check=align, line 'issue board=<file> view=frame [state=NN] check=align: <kind> <px>px (<a> vs <b>)[: <note>] [(+N more like it)] crop=<png>', kinds {', '.join(DESIGN_PREVIEW_ALIGN_KINDS)}: a row is a flex row, a grid or a table-row, its children grouped into lines by vertical overlap; first-line: bare text cells of one line, one wrapping, whose first baselines spread more than {DESIGN_PREVIEW_ALIGN['firstLine']}px; label-value: bare single-line cells within 4px of size whose baselines spread {DESIGN_PREVIEW_ALIGN['labelValue']}px or more (under 3px: confirm it on the crop); beside-control: single-line text whose ink centre is {DESIGN_PREVIEW_ALIGN['beside']}px or more off a boxed control's centre in the same line; segment-label: controls of one class in one line whose label baselines spread {DESIGN_PREVIEW_ALIGN['segLabel']}px or more; control-height: controls in one line more than {DESIGN_PREVIEW_ALIGN['ctlH']}px apart in height; near-edge: stacked siblings whose left edges (the box when it has one, else the first text) are {DESIGN_PREVIEW_ALIGN['edge'][0]}-{DESIGN_PREVIEW_ALIGN['edge'][1]}px apart; label-ink: a single-line label whose ink centre sits {DESIGN_PREVIEW_ALIGN['ink']}px or more off its own control's or badge's centre, one line per text style per run (later boards counted, a closing note names them). Left out: visually hidden text, a fill the same as what is under it (no box), cells holding a text field. Baselines come from canvas font metrics, so a fallback face the DOM and the canvas resolve differently skews them. An align line folds per board, kind and the two elements' tag and class ('+N more like it'). Each printed align line gets a zoom crop: a clip around its two boxes plus {DESIGN_PREVIEW_CROP_MARGIN}px, at most {DESIGN_PREVIEW_CROP_MAX[0]}x{DESIGN_PREVIEW_CROP_MAX[1]}px, at device scale {DESIGN_PREVIEW_CROP_SCALE}, written beside the render as <stem>.align-NN.png (a state's: <stem>.state-NN.align-NN.png), at most {DESIGN_PREVIEW_CROPS} per board (a note says when the cap bites). The type and spacing rules M1-M14, each its own check name, one line per board, rule and element class: cramped-padding (multi-line text under {DESIGN_PREVIEW_MEASURES['pad']}px from an edge of its own box that has a border or a fill there; a control's top and bottom and single-line boxes exempt), heading-rhythm (two or more headings with no more space above than below), flat-type-steps (every step of the heading and body sizes under {DESIGN_PREVIEW_MEASURES['step']}x), size-count (over {DESIGN_PREVIEW_MEASURES['sizes']} font sizes on a board), line-length (paragraph text over {DESIGN_PREVIEW_MEASURES['measure']} characters a line), tight-leading (multi-line text on a line pitch under {DESIGN_PREVIEW_MEASURES['leading']}x its size; display text exempt), tiny-text (any text under {DESIGN_PREVIEW_MEASURES['ui']}px, or a paragraph under {DESIGN_PREVIEW_MEASURES['body']}px), wide-tracking (letter-spacing over {DESIGN_PREVIEW_MEASURES['tracking']}em on 20+ mixed-case characters), ragged-edges (a PAGE's headings and long paragraphs starting at more than {DESIGN_PREVIEW_MEASURES['rag'][0]} left edges, the three most used holding under {round(DESIGN_PREVIEW_MEASURES['rag'][3] * 100)}%), off-centre (a PAGE's content margins differing by {DESIGN_PREVIEW_MEASURES['centre']}px and 4.5% of the width or more; a left nav exempts it), ragged-row (panels of one row whose bottoms differ by more than {DESIGN_PREVIEW_MEASURES['ragRow']}px and 12% of the taller), radius-mix (over {DESIGN_PREVIEW_MEASURES['radii']} panel radii), nested-radii (a panel corner rounder than the panel it sits {DESIGN_PREVIEW_MEASURES['nest']}px or less inside, or more than 2px off concentric), numeric-align (a table column of {DESIGN_PREVIEW_MEASURES['figures']}+ figures set left, or without font-variant-numeric: tabular-nums), straggler (a paragraph's one-word last line: text-wrap: pretty; a heading's last line under a third of the one above: text-wrap: balance). [data-proto] chrome is left out of both. The line advisory=<check:count,...> before self_check= counts them. "
                                    "The canvas-only prototype chrome ([data-proto]: the state bar, the board-link strip) is exempt from target, non-text-contrast, overprint, keyboard, layout-shift and hover-contrast, and is never sampled as a list. "
                                    "Identical findings fold into one line ('+N more like it'); the phone view and the states repeat none the frame view named. The render's own issues are check=load, settle, too-tall, frame-clip, page-clip (a PAGE's state taller than its frame h, in the frame view: the render grows a PAGE, the canvas frame does not), overflow, unmounted, runtime-error, script-error, not-found, screenshot, size and browser. "
                                    f"--click: link lines and check=unreachable (a PAGE board, expand: fill, that no chain of links from Main.dc.html reaches; a Components board is not expected to be linked); on each is_interactive board, real mouse clicks (Input.dispatchMouseEvent) at each visible, enabled, uncovered control's centre, breadth first from the settled initial state, never a link that leaves the board. A state is a new visible DOM (shown elements with their class, style and open/expanded/selected/current/disabled attributes, and shown text, plus whether every visible text field holds text); a ticked box or a typed value alone is not a state. The state bar's presets ([data-proto=\"state-bar\"] buttons) are tried first, once per page (a preset sets its page's complete state), and a state on a page not met before is explored ahead of the rest; the page on screen is the bar's visible [role=group] name, else the first h1. A list of {DESIGN_PREVIEW_LIST_SAMPLE}+ alike rows is sampled: its first, second and last row. The type pass types a realistic sample into each visible text field (email, phone, name, postcode, search from the listed text, ...) and fills a form of two or more empty fields whole in one step, each a step of the path; select, date and other native pickers are not explored. After a step the page settles, the short timers it set are waited for (up to 3s: 'Saving...' is passed through to 'Saved') and its animations end. Each state's PNG is taken on its path replayed from a fresh load. A click that throws is check=click-error, once per control. check=layout-shift: a step that stays on the same page and resizes a control (outside [data-proto]) by more than {DESIGN_PREVIEW_SHIFT}px, or moves a header, nav or main by more than {DESIGN_PREVIEW_SHIFT}px; a step to another page is navigation, never a shift. check=same-target: two or more sampled rows of one list open the same state of another page. check=hover-contrast (PAGE boards, frame view, each state): the pointer rests on each button and link once per board (transitions off), and a text run of the hovered control that newly fails contrast is an issue (the a:hover color beating a system Button rendered as <a>). Frame view only, unless --phone-click; at most {DESIGN_PREVIEW_STATES} states, {DESIGN_PREVIEW_DEPTH} steps deep, {DESIGN_PREVIEW_CLICKS} steps and {DESIGN_PREVIEW_BOARD_SECONDS}s per board and view, each cap said on the board's note line. "
                                    "--states-only takes only the states again (--click implied), reusing the earlier render's views in --out; --contact-sheet writes <stem>.sheet.png per board, its shots tiled at half size or less under captions (a sheet line gives its token cost against the PNGs one by one). "
-                                   "preview.json: {schema, job, round, out, runtime, click, phone, phone_click, states_only, boards: {<file>: {title, page, interactive, views: {frame|phone|w320|text200: {png, w, h, content, issues: [{check, message}], as_in_frame, measured}}, states: [{n, view, page, path, png, w, h, content, issues, measured}], click_errors, interaction: [{view, state, check, message}], click: {frame|phone: {states, clicks, notes}}, keyboard: {controls, reached, presses, wrapped, missed, click_only, opened}}}, links: [{from, to, external}], issues: [board-level {board, check, message} and every interaction finding {board, view, state, check, message}], sheets: {<file>: {png, w, h, tiles, scale, tokens}}, ntc_also, merged (the boards kept from the earlier render), self_check: {result, blocking}, totals: {pngs, failed, issues, states, seconds}}; png paths are repo-relative under the workspace; measured holds every raw finding (contrast: el, size, weight, need, ratio, fg, bg; target: el, w, h; clipped; links; images; names; ntc: el, part, ratio, fg, bg, width; statebar; overprint in the WCAG views) and the counts texts, targets, fields, boundaries, bars.")
+                                   f"--page <slug> (v88): one page of the job's open per-page round, its boards from rounds/<round>/{DESIGN_PAGES_DIR}/<slug>/{DESIGN_PAGE_BOARDS} (a synthesized board index, written to the render folder as index.json, never to canvas.json; refused while that file does not pass, or names a missing board), rendered into {DESIGN_PREVIEW_DIR}/<job>/<round>/{DESIGN_PAGES_DIR}/<slug>/ with every flag as for the whole canvas and self_check= over that page; {DESIGN_FRAME_PAGE} renders the frame pass's boards; a link to another page's or the frame's board is not dead, and a #to: placeholder is design-check's. "
+                                   f"CONCURRENCY (v88): at most {DESIGN_PREVIEW_SLOTS} design-preview runs render at once on a machine (N page drafters render together); another waits for a slot, saying 'waiting for a render slot' once. Slots are flock()ed files in the temp folder's agentic-design-preview-slots/, released when a run exits (no stale lock); ${DESIGN_PREVIEW_SLOTS_ENV} sets another cap. "
+                                   "preview.json: {schema, job, round, page, out, runtime, click, phone, phone_click, states_only, boards: {<file>: {title, page, interactive, crops: [{state, png, clip, line}], crops_capped, views: {frame|phone|w320|text200: {png, w, h, content, issues: [{check, message}], as_in_frame, measured}}, states: [{n, view, page, path, png, w, h, content, issues, measured}], click_errors, interaction: [{view, state, check, message}], click: {frame|phone: {states, clicks, notes}}, keyboard: {controls, reached, presses, wrapped, missed, click_only, opened}}}, links: [{from, to, external}], issues: [board-level {board, check, message} and every interaction finding {board, view, state, check, message}], sheets: {<file>: {png, w, h, tiles, scale, tokens}}, ntc_also, label_ink: [{style, first, boards}], advisory: {check: count}, merged (the boards kept from the earlier render), self_check: {result, blocking}, totals: {pngs, failed, issues, states, seconds}}; png paths are repo-relative under the workspace; measured holds every raw finding (contrast: el, size, weight, need, ratio, fg, bg; target: el, w, h; clipped; links; images; names; ntc: el, part, ratio, fg, bg, width; statebar; overprint in the WCAG views; align in the frame view and its states: {align: [{kind, px, a, b, key, box, note}], ink: [{style, n, px, dir, eg, box}], measure: [{rule, key, msg, box}], rows, runs}) and the counts texts, targets, fields, boundaries, bars.")
     p.add_argument("job", help="the job id, e.g. 01-signin")
     p.add_argument("--runtime", required=True, help="the path of the Design canvas type's runtime (artifact-type/dc-runtime.js) the orchestrator saved for this job")
     p.add_argument("--out", default=None, help=f"the folder for the PNGs, preview.json and the contact sheets (default: the job's round folder under the design root's git-ignored {DESIGN_PREVIEW_DIR}/, {DESIGN_ROOT_SHOWN}/{DESIGN_PREVIEW_DIR}/<job>/<round>/, where the critic finds the drafter's final render); never elsewhere inside the design root")
     p.add_argument("--browser", default=None, help=f"the Chrome/Chromium executable (default: ${DESIGN_PREVIEW_BROWSER_ENV}, then the known paths)")
     p.add_argument("--board", action="append", default=None, help="render only this board (its canvas.json key, e.g. Main.dc.html); repeatable")
+    p.add_argument("--page", default=None, metavar="SLUG", help=f"v88: render one page of the job's open per-page round (design-open --pages), its boards read from rounds/<round>/{DESIGN_PAGES_DIR}/<slug>/{DESIGN_PAGE_BOARDS} as a synthesized board index (written to the render folder as index.json, never to canvas.json), into {DESIGN_PREVIEW_DIR}/<job>/<round>/{DESIGN_PAGES_DIR}/<slug>/; {DESIGN_FRAME_PAGE} renders the frame pass's boards; the other flags work as for the whole canvas; a link to a board outside the page is not dead and a #to: placeholder is left to design-check")
     p.add_argument("--phone", action="store_true", help=f"also render every board {DESIGN_PREVIEW_PHONE[0]} px wide (a PAGE always is)")
     p.add_argument("--phone-click", action="store_true", help=f"with --click (implied), also click through each interactive PAGE at {DESIGN_PREVIEW_PHONE[0]} px wide (<stem>.phone.state-NN.png); about doubles the time")
     p.add_argument("--click", action="store_true", help=f"also click through: print the link graph (link from= to= lines; a PAGE no link chain from Main.dc.html reaches is an issue) and, on each is_interactive board, try the state-bar presets first, then every control (list rows sampled) and a sample typed into each text field, breadth first, and screenshot each new state (state lines, <stem>.frame.state-NN.png), checking layout-shift, same-target, page-clip and, on PAGE boards, hover-contrast; at most {DESIGN_PREVIEW_STATES} states, {DESIGN_PREVIEW_DEPTH} steps deep, {DESIGN_PREVIEW_CLICKS} steps and {DESIGN_PREVIEW_BOARD_SECONDS}s per board, in the frame view only (--phone-click: also at {DESIGN_PREVIEW_PHONE[0]} px)")

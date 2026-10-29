@@ -3493,6 +3493,54 @@ if [ "$un_rc" -eq 0 ] && printf '%s\n' "$un" | grep -Fq "Detail.dc.html: Page no
     && printf '%s\n' "$ex" | grep -Fq 'ListRow.dc.html: transition: all (check=transition-all)'; then
   ok "join.json's unrelated list exempts a Page from check=unlinked-page (a reached one warns); check=token-drift names raw values a token names, allowing 1px borders, % and [data-proto] chrome; check=transition-all warns"
 else bad "the unrelated-page exemption or the style lints are wrong (rc=$un_rc/$ex_rc) -- $un $ex $reached"; fi
+# 6c. v88 (P47-p5.S5): design-preview --page renders one page of a per-page round from its boards.json (a
+# synthesized index.json in the render folder, never canvas.json), into .preview/<job>/<round>/pages/<slug>/,
+# and only that page's boards; check=align names one known miss per cheap kind (first-line, beside-control,
+# control-height), each printed line with its 2x zoom crop beside the render, and self_check is unchanged
+# (advisory). With no browser the block says so and asserts nothing.
+AL="$DZ/align"; AR="$AL/docs/reference/design"; AJ="$AR/jobs/01-rows"; AP="$AJ/canvas/project"; ARD="$AJ/rounds/01-rows"
+mkdir -p "$AL/scripts" && cp "$F/scripts/workflow.py" "$AL/scripts/"
+aw() { ( cd "$AL" && python3 scripts/workflow.py "$@" ); }
+{ aw design-init --id align && aw design-open --slug rows --slice P9.S7 --pages list,detail; } >/dev/null 2>&1 || bad "align probe: design-init or design-open --pages failed"
+printf '# handoff\n' > "$ARD/handoff.md"
+python3 - "$AP" "$ARD" <<'ALIGN' || bad "align probe: could not write the page fixtures"
+import json, pathlib, sys
+project, rdir = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+project.mkdir(parents=True, exist_ok=True)
+head = '<!doctype html>\n<html><head>\n<script src="./support.js"></script>\n</head>\n'
+btn = 'style="width:64px;height:{h}px;background:#fff;border:1px solid #555;color:#111;font:16px Arial,sans-serif"'
+(project / "ListAlign.dc.html").write_text(head + '<body style="margin:0;background:#fff;color:#111;font:16px/1.25 Arial,sans-serif"><x-dc>\n'
+    '<div style="display:flex;align-items:center;gap:16px;width:420px;margin:24px"><span style="width:140px">A cell that wraps onto two lines</span><span>Short</span></div>\n'
+    f'<div style="display:flex;align-items:flex-start;gap:16px;margin:24px"><span>Label</span><button type="button" {btn.format(h=44)}>Act</button></div>\n'
+    f'<div style="display:flex;align-items:flex-start;gap:16px;margin:24px"><button type="button" {btn.format(h=44)}>One</button><button type="button" {btn.format(h=40)}>Two</button></div>\n'
+    '</x-dc></body></html>\n', encoding="utf-8")
+(project / "Detail.dc.html").write_text(head + '<body><x-dc><p>detail</p></x-dc></body></html>\n', encoding="utf-8")
+for slug, boards in (("list", {"ListAlign.dc.html": {"w": 520, "h": 360, "title": "Rows"}}),
+                     ("detail", {"Detail.dc.html": {"w": 400, "h": 200, "title": "Detail"}})):
+    (rdir / "pages" / slug).mkdir(parents=True, exist_ok=True)
+    (rdir / "pages" / slug / "boards.json").write_text(json.dumps(boards), encoding="utf-8")
+ALIGN
+printf '/* a stand-in runtime: the fixture boards need none */\n' > "$AL/stub-runtime.js"
+al_out=$(aw design-preview 01-rows --runtime stub-runtime.js --page list 2>&1); al_rc=$?
+bad_out=$(aw design-preview 01-rows --runtime stub-runtime.js --page nope 2>&1); bad_rc=$?
+if printf '%s\n' "$al_out" | grep -qx 'preview=skipped reason=no-browser'; then
+  printf 'SKIP: %s\n' "design-preview --page and check=align on fixture boards: no Chrome/Chromium on this machine (nothing asserted)"
+else
+  ALO="$AR/.preview/01-rows/01-rows/pages/list"
+  has() { printf '%s\n' "$al_out" | grep -Eq "$1"; }
+  [ "$al_rc" -eq 0 ] && has '^board=ListAlign\.dc\.html ' && ! has 'board=Detail\.dc\.html' && [ -f "$ALO/ListAlign.frame.png" ] \
+    && [ -f "$ALO/index.json" ] && [ ! -e "$AP/canvas.json" ] && has '^self_check=pass blocking=none$' \
+    && [ "$bad_rc" -ne 0 ] && printf '%s\n' "$bad_out" | grep -Fq "design-preview: --page 'nope' is not a page of 01-rows/01-rows (pages: list, detail; or frame)" \
+    && ok "design-preview --page renders only that page's boards from its boards.json into .preview/<job>/<round>/pages/<slug>/ (index.json there, no canvas.json written), self_check unchanged; an unknown page refuses" \
+    || bad "design-preview --page is wrong (rc=$al_rc/$bad_rc) -- $al_out $bad_out"
+  has 'board=ListAlign\.dc\.html view=frame check=align: first-line [0-9.]+px \(span "A cell that wraps o…" vs span "Short"\)' \
+    && has 'check=align: beside-control [0-9.]+px \(span "Label" vs button "Act"\)' \
+    && has 'check=align: control-height 4px \(button "One" vs button "Two"\)' \
+    && has 'check=align: first-line .* crop=.*/ListAlign\.align-0[1-9]\.png$' && [ -f "$ALO/ListAlign.align-01.png" ] \
+    && has '^advisory=align:[0-9]' \
+    && ok "check=align names a first-line, a beside-control and a control-height miss, each line ending with its 2x zoom crop beside the render; advisory= counts them" \
+    || bad "check=align missed a fixture miss or its crop -- $(printf '%s\n' "$al_out" | grep -E 'align|advisory')"
+fi
 # 7. P36.S8C: the board lint and the board count. A link to an outside https page (Google Fonts CSS
 # excepted) and a <sc-for> whose every row links to one board are warnings; a board another board
 # <dc-import>s is not counted (34 boards, 4 mounted: 30 counted, no size warning); bar.md at the root is no stray.
