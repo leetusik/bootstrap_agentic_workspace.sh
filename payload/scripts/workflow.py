@@ -587,7 +587,11 @@ RETIRED_ROUTES = ("cheap",)
 # The defaults are the operator's own routes (workspace v80, v83): every opus row at high, mid on opus at
 # medium, haiku at xhigh for explore only.
 EXECUTOR_ROUTES = ("high", "research", "design", "critic", "judge", "mid", "explore")  # print order
-METER_ROUTES = EXECUTOR_ROUTES + RETIRED_ROUTES  # the meter's order: history still holds cheap spans
+# v88 (P47-p5.S4): a per-page design round's spans carry `pass: frame | page <slug> | join` (drafter) or
+# `scope: page | cross` (critic) in their prompt; the meter labels them apart so the means estimate a round.
+# They run the design / critic rows: no executor-route row of their own.
+METER_PASS_ROUTES = ("design-frame", "design-page", "design-join", "critic-page", "critic-cross")
+METER_ROUTES = EXECUTOR_ROUTES + METER_PASS_ROUTES + RETIRED_ROUTES  # the meter's order: history still holds cheap spans
 ROUTE_DEFAULTS = {
     "high": {"model": "opus", "effort": "high"},
     "research": {"model": "opus", "effort": "high"},
@@ -1192,6 +1196,8 @@ METER_LIMIT_RE = re.compile(r"(?i)\b(usage|rate|spend|session|weekly|monthly|dai
 METER_RESET_RE = re.compile(r"(?i)\bresets?\s+(?:at\s+)?([^·\n]+?)\s*(?:·|$)")
 METER_VERDICT_RE = re.compile(r"(?im)^[\s>*-]*[`*_]*(status|verdict)[`*_]*\s*:\s*[`*_]*([a-z][a-z_]*)")
 METER_JUDGE_RE = re.compile(r"(?im)^\s*mode\s*:\s*judge\b")
+METER_PASS_RE = re.compile(r"(?im)^[\s>*-]*[`*_]*pass[`*_]*\s*:\s*[`*_]*(frame|page|join)\b")
+METER_SCOPE_RE = re.compile(r"(?im)^[\s>*-]*[`*_]*scope[`*_]*\s*:\s*[`*_]*(page|cross)\b")
 
 
 def _meter_ts(value) -> "float | None":
@@ -1524,10 +1530,14 @@ def _meter_route(agent: str, prompt: str, model, kind, families=None, effort=Non
     (opus at v80's defaults) the span's recorded effort tells them apart; anything else reads as mid.
     The retired pair (v23-v65, still in old transcripts) keeps its reading: slice-executor-high is
     research by kind, else high; slice-executor-mid is cheap on haiku, else mid. Other agents keep their name."""
-    if agent == "design-drafter":
-        return "design"
+    if agent == "design-drafter":  # v88: a per-page round's pass, from the prompt's `pass:` line
+        found = METER_PASS_RE.search(prompt or "")
+        return f"design-{found.group(1).lower()}" if found else "design"
     if agent == "design-critic":
-        return "judge" if METER_JUDGE_RE.search(prompt or "") else "critic"
+        if METER_JUDGE_RE.search(prompt or ""):
+            return "judge"
+        found = METER_SCOPE_RE.search(prompt or "")
+        return f"critic-{found.group(1).lower()}" if found else "critic"
     if agent == "Explore":
         return "explore"
     if agent == "slice-executor-high":
@@ -9965,7 +9975,10 @@ DESIGN_ROUND_KEYS = ("schema", "round", "title", "slice", "status", "opened_at",
 # this round last published (design-canvas --version), and `readback`, the last design-readback
 # ({version, base, result, files, removed, at}: base is the published version it compared against).
 # design-close --words and design-sign need a settled read-back of the round's last publish.
-DESIGN_ROUND_OPTIONAL_KEYS = ("critique", "published", "readback")
+# v88 (P47-p5.S4): `pages`, the round's page list (design-open --pages a,b,c): a per-page round, drawn
+# frame -> pages -> join. Absent = a v87 single-drafter round, unchanged. Its progress is never written:
+# design-check derives it from disk (design_round_stage) and prints it as stage=.
+DESIGN_ROUND_OPTIONAL_KEYS = ("critique", "published", "readback", "pages")
 DESIGN_READBACK_KEYS = ("version", "base", "result", "files", "removed", "at")
 # A listing gives unchanged / changed / changed-unlocated; fetching settles changed ones as unchanged
 # (the app re-saved on open), differs (not copied in yet) or edited (the operator's files copied in).
@@ -9994,15 +10007,16 @@ DESIGN_ABS_PATH_RE = re.compile(r"(?:file://|(?<![\w.:/-]))(?:/Users/|/home/|/pr
 DESIGN_TEXT_SUFFIXES = (".md", ".json", ".html", ".htm", ".css", ".js", ".mjs", ".svg", ".txt")
 DESIGN_CRITIQUE_LEVELS = ("off", "critic", "critic+judge")
 # One co-work slice designs one connected group of surfaces (one tab, one flow, the views a user moves
-# between) as one job, one canvas and one publish per round; an unrelated group is a co-work slice of its
-# own (P46-nb.S1). design-open --new-job refuses while another job of the slice has an open round. A
+# between) as one job, one canvas and one publish per round (P46-nb.S1); v88 (P47-p5, OQ1): an unrelated page
+# of the same slice is drawn in that job and stays on its canvas, unlinked (listed in the round's join.json). design-open --new-job refuses while another job of the slice has an open round. A
 # legacy multi-job slice (a wave from before P46-nb) stays readable and finishes as drawn (--job), with no new problem.
 # One job is sized for one review sitting of a connected group: design-check warns when an open job's
 # canvas holds more than DESIGN_JOB_PAGES_MAX Pages (boards with expand: "fill") or DESIGN_JOB_BOARDS_MAX
 # boards (P46-nb.S1: 10 / 30, from P145's signed connected job at 7 Pages / 17 counted boards).
 # A board another board mounts with <dc-import name="..."> (a flow board's screen, a component gap's
 # one-instance board) is reviewed through the board that mounts it, so the board count leaves it out
-# (v60, P36.S8C): the flow-board recipe draws each screen twice, alone and in its flow.
+# (v60, P36.S8C): the flow-board recipe draws each screen twice, alone and in its flow. The frame pass's
+# boards count like any other (v88); past the size, split into rounds or slices along the least-connected seam.
 DESIGN_JOB_PAGES_MAX = 10
 DESIGN_JOB_BOARDS_MAX = 30
 # design-check's static lint on a canvas's boards (warnings, never problems; v60, P36.S8C): a link that
@@ -10045,6 +10059,54 @@ DESIGN_ALLOWED_REFS = ("#", "data:", "https://", "/_blob/")
 DESIGN_REF_WHY = (("//", "protocol-relative: it does not resolve inside the canvas"),
                   ("http://", "plain http, not https"))
 DESIGN_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+# v88 (P47-p5.S4) the per-page round record: rounds/<round>/{frame.md,join.json,pages/<slug>/{boards.json,
+# result.md,critique-01.md}}. A page owns the canvas files whose stem starts with its page stem (the slug's
+# hyphen-separated words, each capitalised: list -> List*.dc.html, order-detail -> OrderDetail*); when two
+# page stems match, the longer one owns the file. `frame` is the frame pass's record (pages/frame/), never a
+# page; `main` and `shell` would own the join's Main.dc.html and the frame's Shell.dc.html, so --pages
+# refuses all three. A page drafter leaves href="#to:<slug>" for a link the join wires (check=pending-link).
+DESIGN_PAGES_DIR = "pages"
+DESIGN_FRAME_PAGE = "frame"
+DESIGN_RESERVED_PAGES = (DESIGN_FRAME_PAGE, "main", "shell")
+DESIGN_FRAME_FILE = "frame.md"
+DESIGN_JOIN_FILE = "join.json"
+DESIGN_PAGE_BOARDS = "boards.json"
+DESIGN_TO_RE = re.compile(r"""\bhref\s*=\s*["']#to:([^"']*)["']""", re.I)
+DESIGN_DONE_RE = re.compile(r"(?im)^[\s>*-]*[`*_]*status[`*_]*\s*:\s*[`*_]*done\b")
+
+
+def design_page_stem(slug: str) -> str:
+    """The file stem a page owns: list -> List, order-detail -> OrderDetail."""
+    return "".join(word[:1].upper() + word[1:] for word in slug.split("-"))
+
+
+def design_stem_owner(stem: str, pages: list):
+    """The page (slug) that owns a canvas file stem -- the longest page stem it starts with -- or None."""
+    owners = [p for p in pages if stem.startswith(design_page_stem(p))]
+    return max(owners, key=lambda p: len(design_page_stem(p))) if owners else None
+
+
+def design_round_stage(rnd: dict):
+    """A per-page round's progress, from disk alone (never written): frame (no frame.md yet), pages <done>/<n>
+    (a page is done when its pages/<slug>/result.md verdict says status: done), join (every page done, no
+    join.json), joined (join.json written). A one-page round has no frame and no join: pages 0/1, then joined.
+    None for a round without `pages` (a v87 single-drafter round)."""
+    pages = (rnd.get("data") or {}).get("pages")
+    if not isinstance(pages, list) or not pages:
+        return None
+    rdir = rnd["path"]
+    if (rdir / DESIGN_JOIN_FILE).is_file():
+        return "joined"
+    if len(pages) > 1 and not (rdir / DESIGN_FRAME_FILE).is_file():
+        return "frame"
+    done = 0
+    for slug in pages:
+        result = rdir / DESIGN_PAGES_DIR / slug / "result.md"
+        if result.is_file() and DESIGN_DONE_RE.search(result.read_text(encoding="utf-8", errors="replace")):
+            done += 1
+    if done < len(pages):
+        return f"pages {done}/{len(pages)}"
+    return "joined" if len(pages) == 1 else "join"
 
 
 def design_root() -> Path:
@@ -10279,6 +10341,8 @@ def design_round_problems(rid: str, data, rdir: Path) -> list:
         problems.append(f"round.json: published {data['published']!r} is not a version id (non-empty, no spaces) or null")
     if data.get("readback") is not None:
         problems.extend(design_readback_problems(data["readback"]))
+    if "pages" in data:
+        problems.extend(design_pages_problems(data["pages"]))
     if not (rdir / "handoff.md").exists():
         problems.append("handoff.md missing (every round has its brief)")
     if status == "signed" and not (rdir / "SIGNOFF.md").exists():
@@ -10287,6 +10351,18 @@ def design_round_problems(rid: str, data, rdir: Path) -> list:
         problems.append("snapshot canvas/project/canvas.json missing (a signed round keeps the canvas tree as it was at close)")
     if status == "signed" and data.get("readback") is not None and design_build_problem(rdir):
         problems.append(design_build_problem(rdir))  # signed on v61 (a read-back): the one drafter output
+    return problems
+
+
+def design_pages_problems(pages) -> list:
+    """round.json `pages` (v88): a non-empty list of distinct page slugs, none reserved."""
+    if not (isinstance(pages, list) and pages and all(isinstance(p, str) for p in pages)):
+        return ["round.json: pages must be a non-empty list of page slugs (design-open --pages a,b,c)"]
+    problems = [f"round.json: page {p!r} is not lowercase words joined by hyphens" for p in pages if not DESIGN_SLUG_RE.match(p)]
+    problems += [f"round.json: page {p!r} is reserved ({', '.join(DESIGN_RESERVED_PAGES)}: the frame's record, "
+                 "the join's Main.dc.html and the frame's Shell.dc.html)" for p in pages if p in DESIGN_RESERVED_PAGES]
+    if len(set(pages)) != len(pages):
+        problems.append("round.json: pages lists a page twice")
     return problems
 
 
@@ -10393,15 +10469,144 @@ def design_board_lint(text: str, rel: str) -> list:
     return found
 
 
-def design_unlinked_page_lint(texts: dict, boards: dict) -> list:
+# v88 (P47-p5.S4) the static style lints of a board (design-check warnings, never problems):
+# check=token-drift -- a raw value where the design system (canvas/project/ds/**/*.css, the local copy) or
+# canvas/project/frame.css names a token, by custom property: a hex colour when they name any colour, a
+# font-family or a border-radius literal when they name any font family or radius, and a px length that
+# equals a length token's value exactly (a px literal is too common to flag on its own). Allowed: 0, 1px on
+# border* / outline*, %, currentColor, inherit, initial, unset, transparent, var(...) with its fallback, a
+# board's own custom-property definitions, and everything in [data-proto] chrome (a rule whose selector names
+# [data-proto], a style="" on a tag carrying data-proto). And three of Vercel's web-interface guidelines as
+# text matches: check=transition-all (transition: all), check=outline-none (outline: none or 0 with no
+# :focus-visible rule in the board or frame.css), check=zoom-disabled (a viewport meta with user-scalable=no
+# or maximum-scale=1).
+DESIGN_CUSTOM_PROP_RE = re.compile(r"(--[\w-]+)\s*:\s*([^;{}]+)")
+DESIGN_HEX_RE = re.compile(r"#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})(?![\w-])")
+DESIGN_PX_RE = re.compile(r"(?<![\w.#-])(\d*\.?\d+)px\b")
+DESIGN_STYLE_ATTR_RE = re.compile(r"""\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')""", re.I)
+DESIGN_TAG_RE = re.compile(r"<[a-zA-Z][\w-]*\b[^>]*>")
+DESIGN_STYLE_BLOCK_RE = re.compile(r"<style\b[^>]*>(.*?)</style>", re.S | re.I)
+DESIGN_VIEWPORT_RE = re.compile(r"""<meta\b[^>]*\bname\s*=\s*["']viewport["'][^>]*>""", re.I)
+DESIGN_DRIFT_OK = ("inherit", "initial", "unset", "transparent", "currentcolor", "none", "revert")
+
+
+def design_hex(value: str) -> str:
+    """A hex colour in its 6/8-digit lowercase form, so #FFF and #ffffff compare equal."""
+    digits = value.lstrip("#").lower()
+    return "#" + ("".join(c * 2 for c in digits) if len(digits) in (3, 4) else digits)
+
+
+def design_tokens(project: Path) -> dict:
+    """The tokens a board may use instead of a raw value: the custom properties of the system's local copy
+    (canvas/project/ds/**/*.css) and of canvas/project/frame.css, by kind -- color {hex: [names]}, font
+    (names), radius {value: [names]}, length {px value: [names]} -- plus whether frame.css styles
+    :focus-visible."""
+    tokens = {"color": {}, "font": [], "radius": {}, "length": {}, "focus": False}
+    files = sorted((project / "ds").rglob("*.css")) if (project / "ds").is_dir() else []
+    frame = project / "frame.css"
+    if frame.is_file():
+        files.append(frame)
+    for path in files:
+        text = re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8", errors="replace"), flags=re.S)
+        if path == frame and ":focus-visible" in text:
+            tokens["focus"] = True
+        for name, value in DESIGN_CUSTOM_PROP_RE.findall(text):
+            value, low = value.strip(), name.lower()
+            for hexv in DESIGN_HEX_RE.findall(value):
+                tokens["color"].setdefault(design_hex(hexv), []).append(name)
+            if "radius" in low or "rounded" in low:
+                tokens["radius"].setdefault(value, []).append(name)
+            elif ("family" in low or "font" in low or "typeface" in low) and not re.search(
+                    r"size|weight|leading|line|height|tracking|letter|spacing", low) and not re.match(r"^-?[\d.]", value):
+                tokens["font"].append(name)
+            elif re.fullmatch(r"-?\d*\.?\d+px", value):
+                tokens["length"].setdefault(value, []).append(name)
+    return tokens
+
+
+def design_board_styles(text: str) -> list:
+    """(selector or None, declarations text) of a board's styling outside [data-proto] chrome: each rule of
+    its <style> blocks (comments stripped) and each style="" of a tag that carries no data-proto."""
+    found = []
+    for block in DESIGN_STYLE_BLOCK_RE.findall(text):
+        for selector, body in DESIGN_CSS_RULE_RE.findall(re.sub(r"/\*.*?\*/", "", block, flags=re.S)):
+            if "[data-proto" not in selector:
+                found.append((selector.strip(), body))
+    for tag in DESIGN_TAG_RE.findall(text):
+        if re.search(r"\bdata-proto\b", tag, re.I) or tag.lower().startswith("<style"):
+            continue
+        for first, second in DESIGN_STYLE_ATTR_RE.findall(tag):
+            found.append((None, first or second))
+    return found
+
+
+def design_style_lint(text: str, rel: str, tokens: dict) -> list:
+    """The style lints of one board (check=token-drift and the three Vercel checks), as warnings."""
+    found, drift = [], []
+    styles = design_board_styles(text)
+    for _selector, body in styles:
+        if "{{" in body:
+            continue
+        for decl in body.split(";"):
+            prop, sep, value = decl.partition(":")
+            prop, value = prop.strip().lower(), value.strip()
+            if not sep or not prop or prop.startswith("--"):
+                continue
+            bare = re.sub(r"var\([^()]*(?:\([^()]*\)[^()]*)*\)|url\([^)]*\)", " ", value)
+            if bare.strip().lower() in DESIGN_DRIFT_OK:
+                continue
+            if tokens["color"]:
+                for hexv in DESIGN_HEX_RE.findall(bare):
+                    named = tokens["color"].get(design_hex(hexv))
+                    drift.append(f"{hexv} ({prop}{' = var(' + named[0] + ')' if named else ''})")
+            if prop == "font-family":
+                if tokens["font"] and bare.strip():
+                    drift.append(f"{bare.strip()[:30]} (font-family)")
+                continue
+            if re.fullmatch(r"border(-[a-z]+)*-radius", prop):
+                parts = [v for v in bare.split() if v not in ("/",) and v != "0" and "%" not in v
+                         and v.lower() not in DESIGN_DRIFT_OK]
+                if tokens["radius"] and parts:
+                    named = tokens["radius"].get(" ".join(parts))
+                    drift.append(f"{' '.join(parts)} ({prop}{' = var(' + named[0] + ')' if named else ''})")
+                continue
+            for num in DESIGN_PX_RE.findall(bare):
+                if float(num) == 0 or (float(num) == 1 and prop.startswith(("border", "outline"))):
+                    continue
+                named = tokens["length"].get(f"{num}px")
+                if named:
+                    drift.append(f"{num}px ({prop} = var({named[0]}))")
+    if drift:
+        unique = list(dict.fromkeys(drift))
+        shown = ", ".join(unique[:4]) + (f" (+{len(unique) - 4} more)" if len(unique) > 4 else "")
+        found.append(f"{rel}: {len(drift)} raw value(s) where the system or frame.css names a token (check=token-drift): "
+                     f"{shown} -- use the token, var(--…); 0, 1px borders, %, currentColor, inherit, transparent and "
+                     "[data-proto] chrome are allowed")
+    css = "\n".join(body for _s, body in styles)
+    if re.search(r"\btransition(?:-property)?\s*:\s*all\b", css, re.I):
+        found.append(f"{rel}: transition: all (check=transition-all) -- name the properties that animate")
+    focus = tokens["focus"] or any(selector and ":focus-visible" in selector for selector, _b in styles)
+    if re.search(r"\boutline\s*:\s*(?:none|0)(?![\w.])", css, re.I) and not focus:
+        found.append(f"{rel}: outline: none with no :focus-visible rule (check=outline-none) -- keep a visible focus "
+                     "ring: style :focus-visible")
+    for meta in DESIGN_VIEWPORT_RE.findall(text):
+        if re.search(r"user-scalable\s*=\s*(?:no|0)\b|maximum-scale\s*=\s*1(?:\.0*)?(?![\d.])", meta, re.I):
+            found.append(f"{rel}: the viewport meta disables zoom (user-scalable=no or maximum-scale=1) "
+                         "(check=zoom-disabled) -- let the page zoom")
+    return found
+
+
+def design_unlinked_page_lint(texts: dict, boards: dict, unrelated=(), pages=()) -> list:
     """P46-nb.S1: check=unlinked-page: on a canvas of 2+ Pages (boards with expand: "fill"), every Page
     the entry Page reaches by no chain of links or mounts. The entry Page is Main.dc.html when it is a Page,
     else the Page with the lowest title number. Edges: a board's literal href naming a board of the tree
     (#fragment and a leading ./ stripped, {{holes}} skipped; tried as written and against the board's folder)
-    and every <dc-import name="X"> (the board whose stem is X). The walk runs over all boards."""
+    and every <dc-import name="X"> (the board whose stem is X). The walk runs over all boards.
+    v88: a Page the round's join.json lists in `unrelated` (by board path, by stem, or by page slug: the
+    Pages that slug owns) stays on the canvas, unlinked: no warning while unreached, a warning once reached."""
     keys = [k for k, b in boards.items() if isinstance(b, dict) and k.endswith(DESIGN_BOARD_SUFFIX)]
-    pages = [k for k in keys if boards[k].get("expand") == "fill"]
-    if len(pages) < 2:
+    pages_found = [k for k in keys if boards[k].get("expand") == "fill"]
+    if len(pages_found) < 2:
         return []
 
     def number(key: str):
@@ -10410,7 +10615,7 @@ def design_unlinked_page_lint(texts: dict, boards: dict) -> list:
         found = design_number(match.group(1)) if match else None
         return (found is None, found or 0, key)
 
-    entry = DESIGN_ENTRY_BOARD if DESIGN_ENTRY_BOARD in pages else min(pages, key=number)
+    entry = DESIGN_ENTRY_BOARD if DESIGN_ENTRY_BOARD in pages_found else min(pages_found, key=number)
     known = set(keys)
     by_stem = {k.rsplit("/", 1)[-1][:-len(DESIGN_BOARD_SUFFIX)]: k for k in keys}
 
@@ -10436,9 +10641,21 @@ def design_unlinked_page_lint(texts: dict, boards: dict) -> list:
         for nxt in edges(todo.pop()) - seen:
             seen.add(nxt)
             todo.append(nxt)
-    return [f"{page}: Page not reachable from the entry Page {entry} by a link or a mount (check=unlinked-page) -- "
-            "link it from a board the entry reaches, or give an unrelated surface a co-work slice of its own"
-            for page in sorted(pages, key=number) if page not in seen]
+    def listed(key: str) -> bool:
+        stem = key.rsplit("/", 1)[-1][:-len(DESIGN_BOARD_SUFFIX)]
+        return any(u in (key, stem) or (u in slugs and design_stem_owner(stem, slugs) == u) for u in unrelated)
+
+    slugs = list(pages)
+    found = []
+    for page in sorted(pages_found, key=number):
+        if page not in seen and not listed(page):
+            found.append(f"{page}: Page not reachable from the entry Page {entry} by a link or a mount (check=unlinked-page) -- "
+                         "link it from a board the entry reaches, or list it as unrelated in the round's join.json "
+                         "(it stays on this canvas, unlinked)")
+        elif page in seen and page != entry and listed(page):
+            found.append(f"{page}: the round's join.json lists this Page as unrelated, but the entry Page {entry} reaches it "
+                         "(check=unlinked-page) -- unlink it, or take it off join.json's unrelated list")
+    return found
 
 
 DESIGN_STATE_BAR_TAG_RE = re.compile(r"""<[a-zA-Z][\w-]*\b[^>]*?\bdata-proto\s*=\s*["']?state-bar\b[^>]*>""", re.I)
@@ -10496,10 +10713,11 @@ def design_state_bar_lint(project: Path, texts: dict, boards: dict) -> list:
     return found
 
 
-def design_canvas_problems(project: Path, system: dict) -> tuple:
+def design_canvas_problems(project: Path, system: dict, unrelated=(), pages=()) -> tuple:
     """(problems, warnings, board count, Page count, lint, mounted count) for one job's canvas tree,
     each path under project/. A Page is a board with expand: "fill". lint is the static board lint
-    (design_board_lint); mounted counts the boards another board <dc-import>s."""
+    (design_board_lint, design_style_lint); mounted counts the boards another board <dc-import>s.
+    unrelated / pages: the current round's join.json unrelated list and round.json pages (v88)."""
     files = design_tree_files(project)
     if "canvas.json" not in files:
         return ["canvas.json missing (the canvas index: v, boards, order, createdOnFiles)"], [], 0, 0, [], 0
@@ -10565,6 +10783,7 @@ def design_canvas_problems(project: Path, system: dict) -> tuple:
     problems.extend(f"gap in the board titles' reading numbers: no board titled \"{n:02d} · …\""
                     for n in range(1, max(numbers, default=0) + 1) if n not in numbers)
     lint, mounts, texts = [], set(), {}
+    tokens = design_tokens(project)
     for rel in files:
         if not rel.lower().endswith((".html", ".htm", ".css")):
             continue
@@ -10574,10 +10793,11 @@ def design_canvas_problems(project: Path, system: dict) -> tuple:
         problems.extend(f"{rel}: {p}" for p in design_reference_problems(text, rel))
         if rel.endswith(DESIGN_BOARD_SUFFIX):
             lint.extend(design_board_lint(text, rel))
+            lint.extend(design_style_lint(text, rel, tokens))
             stem = rel.rsplit("/", 1)[-1][:-len(DESIGN_BOARD_SUFFIX)]
             mounts.update(name.strip() for name in DESIGN_DC_IMPORT_RE.findall(text) if name.strip() != stem)
     lint.extend(design_state_bar_lint(project, texts, boards))
-    lint.extend(design_unlinked_page_lint(texts, boards))
+    lint.extend(design_unlinked_page_lint(texts, boards, unrelated, pages))
     records = index.get("designSystems", [])
     if not isinstance(records, list):
         problems.append("canvas.json: designSystems must be a list of install records")
@@ -10656,22 +10876,73 @@ def design_read_job(entry: Path, number: int, system: dict) -> dict:
         problems.append(f"{rel}: more than one open round: {', '.join(opened)} (at most one round is open per job)")
     if job["data"] and job["data"]["status"] != "open" and opened:
         problems.append(f"{rel}: job.json status is {job['data']['status']} but a round is open (an open round belongs to an open job)")
+    # v88: the round the canvas belongs to (the open one, else the last), its page list and its join.json.
+    live = [r for r in job["rounds"] if r["data"]]
+    current = next((r for r in live if r["data"]["status"] == "open"), None)
+    job["current"] = current = current or max(live, key=lambda r: r["number"], default=None)
+    pages = list((current["data"].get("pages") or []) if current else [])
+    job["stage"] = design_round_stage(current) if current and current["data"]["status"] == "open" else None
+    join, joined = None, bool(current and (current["path"] / DESIGN_JOIN_FILE).is_file())
+    if joined:
+        join, why = design_read_join(current["path"] / DESIGN_JOIN_FILE)
+        if why:
+            problems.append(f"{rel}/rounds/{current['id']}/{DESIGN_JOIN_FILE}: {why}")
+    unrelated = [u for u in (join or {}).get("unrelated", []) if isinstance(u, str)]
     project = entry / "canvas" / "project"
-    if project.is_dir():
+    # Mid-round, before the join, the page drafters' files stand without a canvas.json: nothing to index yet.
+    unjoined = bool(pages) and not joined and current["data"]["status"] == "open" and not (project / "canvas.json").exists()
+    if project.is_dir() and unjoined:
         job["drafted"] = True
-        found, warned, job["boards"], job["pages"], lint, mounted = design_canvas_problems(project, system)
+    elif project.is_dir():
+        job["drafted"] = True
+        found, warned, job["boards"], job["pages"], lint, mounted = design_canvas_problems(project, system, unrelated, pages)
         problems.extend(f"{rel}/canvas/project/{p}" if not p.startswith("gap ") else f"{rel}: {p}" for p in found)
         job["warnings"].extend(f"{rel}/canvas/project/{w}" for w in warned)
         job["lint"] = [f"{rel}/canvas/project/{w}" for w in lint]
-        counted = job["boards"] - mounted  # a board another board mounts is reviewed through it
+        counted = job["boards"] - mounted  # a board another board mounts is reviewed through it (the frame's count)
         if (job["data"] or {}).get("status") == "open" and (job["pages"] > DESIGN_JOB_PAGES_MAX or counted > DESIGN_JOB_BOARDS_MAX):
             more = f" (+{mounted} mounted by another board, not counted)" if mounted else ""
             job["warnings"].append(f"job {entry.name} has {job['pages']} Pages / {counted} boards{more} — past one review of a "
-                                   "connected group; split unrelated surfaces into co-work slices of their own")
+                                   "connected group; split into rounds or slices along the least-connected seam")
+    if project.is_dir():  # check=pending-link: a warning before the join, a problem once join.json exists
+        for line in design_pending_links(project):
+            if joined and current["data"]["status"] == "open":
+                problems.append(f"{rel}/canvas/project/{line} -- the join rewires each to a real link; "
+                                "design-close --words refuses while one is left")
+            else:
+                job["lint"].append(f"{rel}/canvas/project/{line} -- the join rewires each to a real link")
     elif job["data"] and job["data"]["status"] != "open":
         problems.append(f"{rel}: a {job['data']['status']} job has no canvas tree (canvas/project/)")
     design_record_lint(job, entry, rel)
     return job
+
+
+def design_read_join(path: Path) -> tuple:
+    """(join.json data, "") or (None, why): an object whose related / unrelated, when present, are lists of
+    strings (page slugs, board stems or board paths); its other keys (the settled choices) are free."""
+    try:
+        data = read_json(path)
+    except (ValueError, OSError) as exc:
+        return None, f"not valid JSON: {exc}"
+    if not isinstance(data, dict):
+        return None, "not a JSON object (related, unrelated, the settled choices)"
+    for key in ("related", "unrelated"):
+        if key in data and not (isinstance(data[key], list) and all(isinstance(v, str) for v in data[key])):
+            return None, f"{key} must be a list of page slugs, board stems or board paths"
+    return data, ""
+
+
+def design_pending_links(project: Path, only=None) -> list:
+    """check=pending-link lines: per board, the #to:<slug> placeholder links a page drafter left for the join
+    (`only`: the board paths to read, else every board of the tree)."""
+    found = []
+    for rel in only if only is not None else [f for f in design_tree_files(project) if f.endswith(DESIGN_BOARD_SUFFIX)]:
+        path = project / rel
+        targets = DESIGN_TO_RE.findall(path.read_text(encoding="utf-8", errors="replace")) if path.is_file() else []
+        if targets:
+            found.append(f"{rel}: {len(targets)} #to: placeholder link(s) left ({', '.join(sorted(set(targets)))}) "
+                         "(check=pending-link)")
+    return found
 
 
 def design_abs_path_finding(path: Path, label: str) -> str:
@@ -10848,10 +11119,130 @@ def design_address(job: dict, rnd: dict) -> str:
     return f"{job['id']}/{rnd['id']}"
 
 
+def design_stage_lines(jobs: list) -> list:
+    """One `stage=` line per open per-page round of these jobs (v88), derived from disk."""
+    return [f"design-check: {design_address(j, j['current'])} stage={j['stage']}" for j in jobs if j.get("stage")]
+
+
+def design_page_boards(path: Path) -> tuple:
+    """(boards {path: entry}, problems) of a page's boards.json: its boards' canvas.json entries, keyed by
+    board path, without x, y, the "NN · " title number or order (the join places and numbers them). A
+    {"boards": {...}} wrapper reads the same."""
+    if not path.is_file():
+        return {}, [f"{DESIGN_PAGE_BOARDS} missing (the page's boards: their canvas.json entries without x, y, NN or order)"]
+    try:
+        data = read_json(path)
+    except (ValueError, OSError) as exc:
+        return {}, [f"{DESIGN_PAGE_BOARDS} is not valid JSON: {exc}"]
+    problems = []
+    if isinstance(data, dict) and isinstance(data.get("boards"), dict):
+        problems += [f"{DESIGN_PAGE_BOARDS}: key {k!r} -- order belongs to the join's canvas.json" for k in data if k == "order"]
+        data = data["boards"]
+    if not isinstance(data, dict) or not data:
+        return {}, problems + [f"{DESIGN_PAGE_BOARDS} is not a non-empty object keyed by board path"]
+    for key, entry in data.items():
+        if not key.endswith(DESIGN_BOARD_SUFFIX):
+            problems.append(f"{DESIGN_PAGE_BOARDS}: board {key!r} does not end {DESIGN_BOARD_SUFFIX}")
+            continue
+        if not isinstance(entry, dict):
+            problems.append(f"{DESIGN_PAGE_BOARDS}: board {key!r} is not an object (w, h, title, …)")
+            continue
+        placed = [k for k in ("x", "y", "order") if k in entry]
+        if placed:
+            problems.append(f"{DESIGN_PAGE_BOARDS}: board {key!r} has {', '.join(placed)} (the join places boards)")
+        title = entry.get("title")
+        if not (isinstance(title, str) and title.strip()):
+            problems.append(f"{DESIGN_PAGE_BOARDS}: board {key!r} needs a title")
+        elif DESIGN_TITLE_RE.match(title):
+            problems.append(f"{DESIGN_PAGE_BOARDS}: board {key!r} title {title!r} carries a reading number (the join numbers titles 01..N)")
+        for dim in ("w", "h"):
+            if not (isinstance(entry.get(dim), (int, float)) and not isinstance(entry.get(dim), bool) and entry[dim] > 0):
+                problems.append(f"{DESIGN_PAGE_BOARDS}: board {key!r} needs a positive {dim}")
+    return data, problems
+
+
+def design_check_page(scan: dict, args: argparse.Namespace) -> int:
+    """design-check <job> --page <slug> (v88): one page of the job's open per-page round, without canvas.json --
+    its boards.json, the files its stem owns, their support line and references, #to: only to a page of the
+    round, the abs-path rule, and the board and style lints as warnings. --page frame checks the frame pass's
+    boards (pages/frame/boards.json, stems no page owns) and frame.css."""
+    job = next((j for j in scan["jobs"] if j["id"] == args.job), None)
+    rnd = (job or {}).get("current")
+    if job is None or rnd is None or rnd["data"]["status"] != "open" or not rnd["data"].get("pages"):
+        raise SystemExit(f"design-check: --page needs job {args.job}'s open round to be a per-page round "
+                         f"(design-open --pages a,b,c)")
+    pages, slug = rnd["data"]["pages"], args.page
+    if slug != DESIGN_FRAME_PAGE and slug not in pages:
+        raise SystemExit(f"design-check: --page {slug!r} is not a page of {design_address(job, rnd)} "
+                         f"(pages: {', '.join(pages)}; or {DESIGN_FRAME_PAGE})")
+    rel = f"jobs/{job['id']}"
+    canvas_rel = f"{rel}/canvas/project/"
+    # The record's own problems stay; another page's canvas files are not this page's to answer.
+    problems = [p for p in scan["problems"] if not p.startswith(canvas_rel) and not p.startswith(f"{rel}: gap in the board")]
+    warnings = [w for w in scan["warnings"] if not w.startswith(canvas_rel)]
+    pdir = rnd["path"] / DESIGN_PAGES_DIR / slug
+    prel = f"{rel}/rounds/{rnd['id']}/{DESIGN_PAGES_DIR}/{slug}"
+    boards, found = design_page_boards(pdir / DESIGN_PAGE_BOARDS)
+    problems += [f"{prel}/{p}" for p in found]
+    project = job["path"] / "canvas" / "project"
+    stem_of = lambda key: key.rsplit("/", 1)[-1][:-len(DESIGN_BOARD_SUFFIX)]
+    files = design_tree_files(project)
+    for key in boards:
+        owner = design_stem_owner(stem_of(key), pages) if key.endswith(DESIGN_BOARD_SUFFIX) else None
+        if slug == DESIGN_FRAME_PAGE and owner:
+            problems.append(f"{prel}/{DESIGN_PAGE_BOARDS}: board {key!r} has page {owner}'s stem prefix "
+                            f"{design_page_stem(owner)} (the frame's boards are shared: a stem no page owns)")
+        elif slug != DESIGN_FRAME_PAGE and owner != slug:
+            problems.append(f"{prel}/{DESIGN_PAGE_BOARDS}: board {key!r} is outside page {slug}'s files (a page writes only "
+                            f"files whose stem starts {design_page_stem(slug)}" + (f"; this stem is page {owner}'s)" if owner else ")"))
+        if key.endswith(DESIGN_BOARD_SUFFIX) and key not in files:
+            problems.append(f"{canvas_rel}{key}: listed in {prel}/{DESIGN_PAGE_BOARDS} but the file is missing")
+    if slug == DESIGN_FRAME_PAGE:
+        mine = sorted(k for k in boards if k in files) + (["frame.css"] if "frame.css" in files else [])
+    else:
+        mine = [f for f in files if f.lower().endswith((".html", ".htm", ".css"))
+                and design_stem_owner(f.rsplit("/", 1)[-1].split(".", 1)[0], pages) == slug]
+        problems += [f"{canvas_rel}{f}: page {slug}'s file, not listed in {prel}/{DESIGN_PAGE_BOARDS} (every .dc.html is a board)"
+                     for f in mine if f.endswith(DESIGN_BOARD_SUFFIX) and f not in boards]
+    tokens = design_tokens(project)
+    for f in mine:
+        text = (project / f).read_bytes().decode("utf-8", errors="replace")
+        if f.endswith(DESIGN_BOARD_SUFFIX) and not any(line.strip() == DESIGN_SUPPORT_LINE for line in text.splitlines()):
+            problems.append(f"{canvas_rel}{f}: missing the exact line {DESIGN_SUPPORT_LINE} (the type's runtime)")
+        problems += [f"{canvas_rel}{f}: {p}" for p in design_reference_problems(text, f)]
+        for target in sorted(set(DESIGN_TO_RE.findall(text))):
+            if target not in pages:
+                problems.append(f"{canvas_rel}{f}: links #to:{target}, which is not a page of {design_address(job, rnd)} "
+                                f"(pages: {', '.join(pages)}): a #to: placeholder names the page the join wires it to")
+        if f.endswith(DESIGN_BOARD_SUFFIX):
+            warnings += [f"{canvas_rel}{w}" for w in design_board_lint(text, f) + design_style_lint(text, f, tokens)]
+        finding = design_abs_path_finding(project / f, f"{canvas_rel}{f}")
+        if finding:
+            problems.append(finding)
+    for line in design_stage_lines([job]):
+        print(line)
+    for warning in warnings:
+        print(f"design-check: warning: {warning}")
+    if problems:
+        print(f"design-check: {len(problems)} problem(s) in {DESIGN_ROOT_SHOWN}/{rel}/ page {slug}")
+        for problem in problems:
+            print(f"- {problem}")
+        return 1
+    print(f"design-check: OK -- page {slug} of {design_address(job, rnd)}: {len(boards)} board(s), {len(mine)} file(s)"
+          + (f", {len(warnings)} warning(s)" if warnings else ""))
+    return 0
+
+
 def design_check(args: argparse.Namespace) -> int:
+    if getattr(args, "page", None) is not None and args.job is None:
+        raise SystemExit("design-check: --page needs a job id (design-check <job> --page <slug>)")
     scan = design_scan(design_root(), args.job)
+    if getattr(args, "page", None) is not None:
+        return design_check_page(scan, args)
     problems, warnings = scan["problems"], scan["warnings"]
     where = f"{DESIGN_ROOT_SHOWN}/" + (f"jobs/{args.job}/" if args.job else "")
+    for line in design_stage_lines([j for j in scan["jobs"] if args.job is None or j["id"] == args.job]):
+        print(line)
     for warning in warnings:
         print(f"design-check: warning: {warning}")
     if problems:
@@ -10991,8 +11382,8 @@ def design_open_target(scan: dict, args: argparse.Namespace):
             busy = [design_address(j, r) for j in mine for r in j["rounds"] if r["data"]["status"] == "open"]
             if busy:
                 raise SystemExit(f"design-open: refused -- {args.slice} has {', '.join(busy)} open; a co-work slice designs one "
-                                 f"connected group as one job: draw this surface in that job (--job {busy[0].split('/', 1)[0]}), "
-                                 f"or give an unrelated surface a co-work slice of its own (a new job is allowed once every "
+                                 f"connected group as one job: draw it in this job (--job {busy[0].split('/', 1)[0]}): an unrelated page stays "
+                                 f"on this canvas, unlinked (a new job is allowed once every "
                                  f"other job's rounds in {args.slice} are closed)")
             return None
         job = same[-1]
@@ -11006,7 +11397,7 @@ def design_open_target(scan: dict, args: argparse.Namespace):
                 "(or, every round of the slice closed, merge them into one connected job with --new-job)")
         raise SystemExit(f"design-open: refused -- {args.slice} has {len(mine)} jobs ({', '.join(j['id'] for j in mine)}); "
                          f"name the one this round belongs to with --job <job> {hint}; a co-work slice designs one "
-                         f"connected group as one job, so give an unrelated surface a co-work slice of its own")
+                         f"connected group as one job; draw it in this job: an unrelated page stays on this canvas, unlinked")
     return mine[0] if mine else None
 
 
@@ -11020,6 +11411,12 @@ def design_open(args: argparse.Namespace) -> None:
         raise SystemExit(f"design-open: --slice {args.slice!r} is not a slice id (P<N>.<ID>)")
     if args.critique is not None and args.critique not in DESIGN_CRITIQUE_LEVELS:
         raise SystemExit(f"design-open: --critique {args.critique!r} is not one of {', '.join(DESIGN_CRITIQUE_LEVELS)}")
+    pages = None
+    if getattr(args, "pages", None) is not None:
+        pages = [p.strip() for p in args.pages.split(",") if p.strip()]
+        found = design_pages_problems(pages)
+        if found:
+            raise SystemExit("design-open: --pages refused -- " + "; ".join(f.replace("round.json: ", "") for f in found))
     broken = [f"jobs/{j['id']}" for j in scan["jobs"] if j["data"] is None]
     broken += [f"jobs/{j['id']}/rounds/{r['id']}" for j in scan["jobs"] for r in j["rounds"] if r["data"] is None]
     if broken:
@@ -11059,13 +11456,22 @@ def design_open(args: argparse.Namespace) -> None:
         "opened_at": now_iso(), "closed_at": None, "supersedes": [rounds[-1]["id"]] if rounds else [],
         "signoff_words": None, "canvas_version": None, "critique": critique,
     }
+    if pages:
+        data["pages"] = pages
     write_json(job["path"] / "rounds" / rid / "round.json", data)
     cache = root / DESIGN_TYPE_CACHE / ".gitignore"  # the type's runtime and references: local only
     if not cache.is_file():
         write_text(cache, "*\n")
     default = " (a superseding round's default; --critique sets another)" if rounds and args.critique is None else ""
     print(f"design-open: opened {DESIGN_ROOT_SHOWN}/jobs/{job['id']}/rounds/{rid}/ for {args.slice}"
-          + (f" (supersedes {rounds[-1]['id']})" if rounds else "") + f", critique {critique}{default}")
+          + (f" (supersedes {rounds[-1]['id']})" if rounds else "") + f", critique {critique}{default}"
+          + (f", pages {', '.join(pages)}" if pages else ""))
+    if pages:
+        print(f"next: write jobs/{job['id']}/rounds/{rid}/handoff.md (with the line critique: {critique} and its ## Pages); "
+              f"the drafter's passes write frame.md, pages/<slug>/ and join.json there and the canvas tree in "
+              f"jobs/{job['id']}/canvas/project/; design-check {job['id']} prints the round's stage=; close with "
+              f"design-close {job['id']}/{rid}")
+        return
     print(f"next: write jobs/{job['id']}/rounds/{rid}/handoff.md (with the line critique: {critique}); the drafter writes "
           f"the canvas tree in jobs/{job['id']}/canvas/project/; close with design-close {job['id']}/{rid}")
 
@@ -13762,8 +14168,8 @@ def main(argv=None) -> int:
     p.add_argument("--files", default=None, help="comma-separated system files a canvas installs (replaces the recorded list)")
     p.set_defaults(func=design_system)
 
-    p = sub.add_parser("design-open", help=f"Open the next design round of a job in a co-work slice: {DESIGN_ROOT_REL}/jobs/NN-<slug>/ (job.json, created on the slice's first round) and jobs/<job>/rounds/NN-<slug>/round.json, status open, with its critique level; refuses while the target job has an open round, and --new-job while another job of the slice has one",
-                       description=f"A co-work slice designs one connected group of surfaces (one tab, one flow, the views a user moves between) as one job: one canvas, one publish per round, at most one open round; an unrelated group is a co-work slice of its own. The target: with neither flag, the slice's only job (its first round creates it; two or more jobs refuse and ask for --job); --new-job creates another job for the slice, refused while another job of the slice has an open round (draw the surface in that job with --job, or give it a co-work slice of its own) and allowed once every other job's rounds are closed, e.g. to merge the slice's surfaces into one connected job (re-running it with the same --slug resumes that job, as does a half-landed open); --job <job> opens the next round of that job, which must belong to --slice. A later round supersedes the job's previous one (a signed job is reopened; an implemented one refuses). Rounds number inside the job. Re-running an open with the open round's slug writes nothing. --critique records the round's critique level in round.json (absent in an older round reads as off). A legacy multi-job slice (a wave drawn before this rule) stays valid: each job's next round opens with --job, and holding several open jobs is no problem and no warning. The orchestrator writes the round's handoff.md next (with a critique: line); the drafter writes the canvas tree in jobs/<job>/canvas/project/.")
+    p = sub.add_parser("design-open", help=f"Open the next design round of a job in a co-work slice: {DESIGN_ROOT_REL}/jobs/NN-<slug>/ (job.json, created on the slice's first round) and jobs/<job>/rounds/NN-<slug>/round.json, status open, with its critique level and (v88, --pages) its page list; refuses while the target job has an open round, and --new-job while another job of the slice has one",
+                       description=f"A co-work slice designs one connected group of surfaces (one tab, one flow, the views a user moves between) as one job: one canvas, one publish per round, at most one open round; an unrelated page of the slice is drawn in the same job and stays on its canvas, unlinked (the round's join.json lists it as unrelated). The target: with neither flag, the slice's only job (its first round creates it; two or more jobs refuse and ask for --job); --new-job creates another job for the slice, refused while another job of the slice has an open round (draw it in that job with --job: an unrelated page stays on this canvas, unlinked) and allowed once every other job's rounds are closed, e.g. to merge the slice's surfaces into one connected job (re-running it with the same --slug resumes that job, as does a half-landed open); --job <job> opens the next round of that job, which must belong to --slice. A later round supersedes the job's previous one (a signed job is reopened; an implemented one refuses). Rounds number inside the job. Re-running an open with the open round's slug writes nothing. --critique records the round's critique level in round.json (absent in an older round reads as off). --pages a,b,c (v88) records the round's page list in round.json (pages): a per-page round, drawn as a frame pass (rounds/<round>/frame.md, canvas/project/frame.css and Shell.dc.html), one page drafter per page (rounds/<round>/pages/<slug>/{{boards.json,result.md}}, owning the canvas files whose stem starts with the page stem: the slug's words capitalised, list -> List*.dc.html, order-detail -> OrderDetail*, the longer stem winning), and a join (canvas.json, Main.dc.html, rounds/<round>/join.json); frame, main and shell are reserved. Its progress is derived from disk and printed by design-check as stage=, never written. Without --pages the round is a single-drafter round, as before. A legacy multi-job slice (a wave drawn before this rule) stays valid: each job's next round opens with --job, and holding several open jobs is no problem and no warning. The orchestrator writes the round's handoff.md next (with a critique: line); the drafter writes the canvas tree in jobs/<job>/canvas/project/.")
     p.add_argument("--slug", required=True, help="the round's slug (and the job's, when the round creates its job): lowercase words joined by hyphens")
     p.add_argument("--slice", required=True, help="the co-work slice that owns the job (e.g. P48-k2.S1)")
     p.add_argument("--title", default=None, help="display title (default: the slug)")
@@ -13771,11 +14177,13 @@ def main(argv=None) -> int:
     g.add_argument("--new-job", action="store_true", help="create another job for a slice whose other jobs have no open round (refused while one does: a co-work slice designs one connected group as one job)")
     g.add_argument("--job", default=None, help="open the next round of this job (e.g. 02-settings); it must belong to --slice")
     p.add_argument("--critique", default=None, metavar="{" + ",".join(DESIGN_CRITIQUE_LEVELS) + "}", help=f"the round's critique level: {' | '.join(DESIGN_CRITIQUE_LEVELS)} (default off; a superseding round, the scoped re-draft after an operator note, stays off unless this is passed)")
+    p.add_argument("--pages", default=None, metavar="a,b,c", help="v88: the round's pages, comma-separated slugs (lowercase words joined by hyphens; frame, main and shell reserved), recorded in round.json: a per-page round (frame -> pages -> join)")
     p.set_defaults(func=design_open)
 
-    p = sub.add_parser("design-check", help=f"Check {DESIGN_ROOT_REL}/ against the design contract -- well-formed design.json, job.json and round.json (a critique level, when present, is off, critic or critic+judge), at most one open round per job, and each job's canvas tree (canvas.json keys, boards listed and present, Main.dc.html, path rules, the ./support.js line, board titles numbered 01..N, references inside project/), no stray HTML, waves/<slice>/ folders and every brief a handoff names, and (v61) no absolute or home path in the record's text (a problem while open, a warning once closed); warnings exit 0, problems exit 1",
-                       description=f"Read-only. With a job id, only design.json and that job. Board titles start \"NN · \" with NN forming 01..N as a set (the layout is free). A canvas pinning another system version than design.json's is a warning, and so is an open job past {DESIGN_JOB_PAGES_MAX} Pages (boards with expand: fill) or {DESIGN_JOB_BOARDS_MAX} boards (one job is one connected group of surfaces, sized for one review sitting; a board another board mounts with <dc-import name=...>, a flow board's screen or a gap component's one-instance board, is not counted). Board lint, also warnings, for an open job or a job named by id: check=leaves-canvas (an href to an https URL other than Google Fonts CSS: the link leaves the prototype) and check=same-target-list (a link with a literal .dc.html target inside a <sc-for>: every row opens the same board) and, on a canvas of 2+ Pages, check=unlinked-page (a Page the entry Page -- Main.dc.html when it is a Page, else the Page with the lowest title number -- reaches by no chain of literal .dc.html hrefs or <dc-import> mounts: link it, or give an unrelated surface a co-work slice of its own). A legacy multi-job slice (a wave drawn before one job per slice) passes as drawn: several open jobs are no problem and no warning. The OK line lists every open round. {DESIGN_LEGACY_DIR}/ and {DESIGN_SCHEMA1_DIR}/ are legacy records and never read.")
+    p = sub.add_parser("design-check", help=f"Check {DESIGN_ROOT_REL}/ against the design contract -- well-formed design.json, job.json and round.json (a critique level, when present, is off, critic or critic+judge), at most one open round per job, and each job's canvas tree (canvas.json keys, boards listed and present, Main.dc.html, path rules, the ./support.js line, board titles numbered 01..N, references inside project/), no stray HTML, waves/<slice>/ folders and every brief a handoff names, and (v61) no absolute or home path in the record's text (a problem while open, a warning once closed); v88: a per-page round's stage= line, --page <slug> for one page's files, check=pending-link, and the style lints (check=token-drift, transition-all, outline-none, zoom-disabled); warnings exit 0, problems exit 1",
+                       description=f"Read-only. With a job id, only design.json and that job. Board titles start \"NN · \" with NN forming 01..N as a set (the layout is free). A canvas pinning another system version than design.json's is a warning, and so is an open job past {DESIGN_JOB_PAGES_MAX} Pages (boards with expand: fill) or {DESIGN_JOB_BOARDS_MAX} boards (one job is one connected group of surfaces, sized for one review sitting; a board another board mounts with <dc-import name=...>, a flow board's screen or a gap component's one-instance board, is not counted). Board lint, also warnings, for an open job or a job named by id: check=leaves-canvas (an href to an https URL other than Google Fonts CSS: the link leaves the prototype) and check=same-target-list (a link with a literal .dc.html target inside a <sc-for>: every row opens the same board) and, on a canvas of 2+ Pages, check=unlinked-page (a Page the entry Page -- Main.dc.html when it is a Page, else the Page with the lowest title number -- reaches by no chain of literal .dc.html hrefs or <dc-import> mounts: link it, or list it as unrelated in the round's join.json, where it stays on this canvas, unlinked; a Page join.json lists as unrelated is skipped, and warns once the entry reaches it). v88 style lints, warnings too: check=token-drift (a raw value where the system's local copy, canvas/project/ds/**/*.css, or canvas/project/frame.css names a token by custom property: a hex colour when they name a colour, a font-family or border-radius literal when they name a font family or a radius, a px length equal to a length token's value; allowed: 0, 1px on border*/outline*, %, currentColor, inherit, initial, unset, transparent, var(...), a board's own custom properties and [data-proto] chrome), check=transition-all (transition: all), check=outline-none (outline: none or 0 with no :focus-visible rule in the board or frame.css) and check=zoom-disabled (a viewport meta with user-scalable=no or maximum-scale=1). v88 per-page rounds (design-open --pages): one stage= line per open per-page round -- frame (no frame.md yet), pages <done>/<n> (a page is done when rounds/<round>/pages/<slug>/result.md says status: done), join (every page done, no join.json) or joined (join.json present); a one-page round has no frame or join -- derived from disk; before the join, a canvas tree without canvas.json is not checked as a canvas. check=pending-link names each href=\"#to:<slug>\" placeholder left in a board: a warning before the round's join.json exists, a problem once it does, so design-close --words refuses it. --page <slug> checks one page of the job's open per-page round with no canvas.json needed: rounds/<round>/pages/<slug>/boards.json well-formed (the page's canvas.json board entries keyed by board path, with w, h and a title, without x, y, order or the \"NN · \" number), each listed board owned by the page's stem prefix (a foreign-prefix board is a problem) and present, every .dc.html the page owns listed, the files it owns carrying the ./support.js line and references inside project/, #to: only to a page of the round, no absolute path, and the board and style lints as warnings; --page frame checks the frame pass's boards (pages/frame/boards.json, stems no page owns) and frame.css. A legacy multi-job slice (a wave drawn before one job per slice) passes as drawn: several open jobs are no problem and no warning. The OK line lists every open round. {DESIGN_LEGACY_DIR}/ and {DESIGN_SCHEMA1_DIR}/ are legacy records and never read.")
     p.add_argument("job", nargs="?", default=None, help="a job id, e.g. 01-signin (default: every job)")
+    p.add_argument("--page", default=None, metavar="SLUG", help="v88: check one page of the job's open per-page round (a slug of round.json's pages, or frame): its boards.json and the files its stem owns (list -> List*), no canvas.json needed")
     p.set_defaults(func=design_check)
 
     p = sub.add_parser("design-canvas", help="Record a job's canvas Artifact in its job.json: --url after creating it, --version after each publish (also records the published file list), --implemented once the signed job is built",
@@ -13839,7 +14247,7 @@ def main(argv=None) -> int:
     p.set_defaults(func=design_sign)
 
     p = sub.add_parser("design-close", help="Close an open design round of a job: snapshot the job's canvas tree (ds/ left out) into the round folder, record canvas_version, then with --words generate SIGNOFF.md and mark the round and its job signed, or with --superseded mark the round superseded; idempotent",
-                       description="--words needs the round's recorded publish of the job's canvas, a settled read-back of it (design-readback: unchanged or edited), the build contract (result.md ## Build, or a legacy build-prompt.md) and a passing design-check of the job; it generates SIGNOFF.md from the words, the canvas version, the read-back and the open_items: ids of the round's verdict blocks (a hand-written SIGNOFF.md is kept, with a warning). --canvas-version defaults to the read-back's live version, else the job's recorded canvas.version. Re-run a half-landed close; a closed round is never rewritten.")
+                       description="--words needs the round's recorded publish of the job's canvas, a settled read-back of it (design-readback: unchanged or edited), the build contract (result.md ## Build, or a legacy build-prompt.md) and a passing design-check of the job (v88: so a #to: placeholder left after a per-page round's join, check=pending-link, refuses it); it generates SIGNOFF.md from the words, the canvas version, the read-back and the open_items: ids of the round's verdict blocks (a hand-written SIGNOFF.md is kept, with a warning). --canvas-version defaults to the read-back's live version, else the job's recorded canvas.version. Re-run a half-landed close; a closed round is never rewritten.")
     p.add_argument("round", help="the round: <job>/<round> (e.g. 01-signin/02-revise), or the bare round id when only one job has it")
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--words", default=None, help="the operator's literal signoff words, recorded verbatim in round.json")

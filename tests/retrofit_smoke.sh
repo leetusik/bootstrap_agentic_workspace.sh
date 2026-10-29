@@ -3318,11 +3318,11 @@ b_out=$(ww design-open --slug settings --slice P9.S4 --new-job 2>&1); b_rc=$?
 bad_out=$(ww design-open --slug loud --slice P9.S4 --new-job --critique judge 2>&1); bad_rc=$?
 printf '# handoff\n\ncritique: critic\n' > "$WR/jobs/01-checkout/rounds/01-checkout/handoff.md"
 if [ "$a_rc" -eq 0 ] && [ "$b_rc" -ne 0 ] \
-    && printf '%s\n' "$b_out" | grep -Fq 'refused -- P9.S4 has 01-checkout/01-checkout open; a co-work slice designs one connected group as one job: draw this surface in that job (--job 01-checkout), or give an unrelated surface a co-work slice of its own' \
+    && printf '%s\n' "$b_out" | grep -Fq 'refused -- P9.S4 has 01-checkout/01-checkout open; a co-work slice designs one connected group as one job: draw it in this job (--job 01-checkout): an unrelated page stays on this canvas, unlinked' \
     && [ ! -e "$WR/jobs/02-settings" ] \
     && [ "$bad_rc" -ne 0 ] && printf '%s\n' "$bad_out" | grep -Fq -e "--critique 'judge' is not one of off, critic, critic+judge" \
     && [ ! -e "$WR/jobs/02-loud" ] && ww design-check >/dev/null 2>&1; then
-  ok "--new-job refuses while another job of the slice has an open round, names it and points at --job or a slice of its own, and writes nothing; a bad --critique level is refused and creates nothing"
+  ok "--new-job refuses while another job of the slice has an open round, names it and points at --job (an unrelated page stays on that canvas, unlinked), and writes nothing; a bad --critique level is refused and creates nothing"
 else bad "--new-job with a round open in the slice, or the critique level, is wrong (rc=$a_rc/$b_rc/$bad_rc) -- $a_out $b_out $bad_out"; fi
 m_out=$( { ww design-close 01-checkout/01-checkout --superseded >/dev/null && ww design-open --slug settings --slice P9.S4 --new-job; } 2>&1); m_rc=$?
 printf '# handoff\n\ncritique: off\n' > "$WR/jobs/02-settings/rounds/01-settings/handoff.md"
@@ -3336,7 +3336,7 @@ else bad "the merge path (--new-job after the close) failed (rc=$m_rc/$chk_rc) -
 bare=$(ww design-open --slug again --slice P9.S4 2>&1); bare_rc=$?
 { ww design-close 02-settings/01-settings --superseded \
     && ww design-open --slug settings-v2 --slice P9.S4 --job 02-settings; } >/dev/null 2>&1; job_rc=$?
-if [ "$bare_rc" -ne 0 ] && printf '%s\n' "$bare" | grep -Fq 'P9.S4 has 2 jobs (01-checkout, 02-settings); name the one this round belongs to with --job <job> (02-settings/01-settings open); a co-work slice designs one connected group as one job, so give an unrelated surface a co-work slice of its own' \
+if [ "$bare_rc" -ne 0 ] && printf '%s\n' "$bare" | grep -Fq 'P9.S4 has 2 jobs (01-checkout, 02-settings); name the one this round belongs to with --job <job> (02-settings/01-settings open); a co-work slice designs one connected group as one job; draw it in this job: an unrelated page stays on this canvas, unlinked' \
     && ! printf '%s\n' "$bare" | grep -Fq -e '--new-job' \
     && [ "$job_rc" -eq 0 ] && [ ! -e "$WR/jobs/03-again" ] \
     && python3 -c 'import json, sys; d = json.load(open(sys.argv[1])); assert d["status"] == "open" and d["supersedes"] == ["01-settings"] and d["critique"] == "off", d' \
@@ -3373,7 +3373,7 @@ pages_canvas "$WR/jobs/02-settings/canvas/project" 11 || bad "wave probe: could 
 out=$(ww design-check 2>&1); rc=$?
 pages_canvas "$WR/jobs/02-settings/canvas/project" 10 || bad "wave probe: could not write the ten-Page canvas"
 ten=$(ww design-check 2>&1); ten_rc=$?
-if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -Fq 'warning: job 02-settings has 11 Pages / 11 boards — past one review of a connected group; split unrelated surfaces into co-work slices of their own' \
+if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -Fq 'warning: job 02-settings has 11 Pages / 11 boards — past one review of a connected group; split into rounds or slices along the least-connected seam' \
     && [ "$ten_rc" -eq 0 ] && ! printf '%s\n' "$ten" | grep -Fq 'past one review' && ! printf '%s\n' "$out$ten" | grep -Fq 'check=unlinked-page'; then
   ok "a job past the size threshold (11 Pages) makes design-check warn with the connected-group text, exit 0; 10 Pages does not warn"
 else bad "the size warning is wrong at 11 / 10 Pages (rc=$rc/$ten_rc) -- $out $ten"; fi
@@ -3393,10 +3393,106 @@ un=$(ww design-check 2>&1); un_rc=$?
 CV="$WR/jobs/02-settings/canvas/project"
 printf '<dc-import name="Flow"></dc-import>\n' >> "$CV/Main.dc.html"; printf '<a href="./Other.dc.html#top">other</a>\n' >> "$CV/Flow.dc.html"
 linked=$(ww design-check 2>&1); linked_rc=$?
-if [ "$un_rc" -eq 0 ] && printf '%s\n' "$un" | grep -Fq 'jobs/02-settings/canvas/project/Other.dc.html: Page not reachable from the entry Page Main.dc.html by a link or a mount (check=unlinked-page) -- link it from a board the entry reaches, or give an unrelated surface a co-work slice of its own' \
+if [ "$un_rc" -eq 0 ] && printf '%s\n' "$un" | grep -Fq "jobs/02-settings/canvas/project/Other.dc.html: Page not reachable from the entry Page Main.dc.html by a link or a mount (check=unlinked-page) -- link it from a board the entry reaches, or list it as unrelated in the round's join.json (it stays on this canvas, unlinked)" \
     && [ "$linked_rc" -eq 0 ] && ! printf '%s\n' "$linked" | grep -Fq 'check=unlinked-page'; then
   ok "design-check warns on a Page the entry Page reaches by no link or mount (check=unlinked-page), exit 0; a mounted flow board linking it clears the warning"
 else bad "check=unlinked-page is wrong (rc=$un_rc/$linked_rc) -- $un $linked"; fi
+# 6b. v88 (P47-p5.S4): the per-page round record. design-open --pages records the page list (a reserved
+# slug refuses and writes nothing); design-check prints the round's stage= from disk; --page checks one
+# page without canvas.json (a foreign-prefix board and a #to: to a non-page are problems); check=pending-link
+# warns before join.json and is a problem after it, so design-close --words refuses; join.json's unrelated
+# list exempts a Page from check=unlinked-page; check=token-drift and check=transition-all warn.
+PG="$DZ/pages"; PR="$PG/docs/reference/design"; PJ="$PR/jobs/01-board"; PP="$PJ/canvas/project"; PRD="$PJ/rounds/01-board"
+mkdir -p "$PG/scripts" && cp "$F/scripts/workflow.py" "$PG/scripts/"
+pw() { ( cd "$PG" && HOME="$DZ/home" python3 scripts/workflow.py "$@" ); }
+pw design-init --id pages >/dev/null 2>&1 || bad "pages probe: design-init failed"
+res_out=$(pw design-open --slug board --slice P9.S6 --pages list,frame 2>&1); res_rc=$?
+open_out=$(pw design-open --slug board --slice P9.S6 --pages list,detail 2>&1); open_rc=$?
+printf '# handoff\n' > "$PRD/handoff.md"; st_frame=$(pw design-check 01-board 2>&1)
+if [ "$res_rc" -ne 0 ] && printf '%s\n' "$res_out" | grep -Fq "page 'frame' is reserved" && [ "$open_rc" -eq 0 ] \
+    && python3 -c 'import json, sys; assert json.load(open(sys.argv[1]))["pages"] == ["list", "detail"]' "$PRD/round.json" \
+    && printf '%s\n' "$st_frame" | grep -Fqx 'design-check: 01-board/01-board stage=frame'; then
+  ok "design-open --pages records the round's page list in round.json (a reserved slug refuses), and design-check prints stage=frame"
+else bad "design-open --pages or the stage line is wrong (rc=$res_rc/$open_rc) -- $res_out $open_out $st_frame"; fi
+# page_files <project> <round> <boards.json body> [extra List.dc.html line]: the list page's files.
+page_files() { python3 - "$@" <<'PAGE'
+import pathlib, sys
+project, rdir, boards = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sys.argv[3]
+extra = sys.argv[4] if len(sys.argv) > 4 else '<a href="#to:detail">open</a>'
+project.mkdir(parents=True, exist_ok=True); (rdir / "pages/list").mkdir(parents=True, exist_ok=True)
+head = '<!doctype html>\n<script src="./support.js"></script>\n'
+(project / "List.dc.html").write_text(head + extra + "\n")
+(project / "ListRow.dc.html").write_text(head + "<p>row</p>\n")
+(rdir / "pages/list/boards.json").write_text(boards)
+(rdir / "frame.md").write_text("# frame\n")
+PAGE
+}
+LB='{"List.dc.html": {"w": 1440, "h": 900, "title": "List", "expand": "fill"}, "ListRow.dc.html": {"w": 400, "h": 80, "title": "List row"}}'
+page_files "$PP" "$PRD" "$LB" || bad "pages probe: could not write the list page"
+clean=$(pw design-check 01-board --page list 2>&1); clean_rc=$?
+whole=$(pw design-check 01-board 2>&1); whole_rc=$?
+page_files "$PP" "$PRD" "${LB%\}}, \"Detail.dc.html\": {\"w\": 1440, \"h\": 900, \"title\": \"Detail\"}}" '<a href="#to:settings">x</a>' \
+  && printf '<!doctype html>\n<script src="./support.js"></script>\n' > "$PP/Detail.dc.html" || bad "pages probe: could not write the foreign board"
+foreign=$(pw design-check 01-board --page list 2>&1); foreign_rc=$?
+rm -f "$PP/Detail.dc.html"; page_files "$PP" "$PRD" "$LB"
+if [ "$clean_rc" -eq 0 ] && printf '%s\n' "$clean" | grep -Fq 'design-check: OK -- page list of 01-board/01-board: 2 board(s), 2 file(s)' \
+    && printf '%s\n' "$clean" | grep -Fqx 'design-check: 01-board/01-board stage=pages 0/2' \
+    && [ "$whole_rc" -eq 0 ] && printf '%s\n' "$whole" | grep -Fq 'List.dc.html: 1 #to: placeholder link(s) left (detail) (check=pending-link)' \
+    && [ "$foreign_rc" -ne 0 ] && printf '%s\n' "$foreign" | grep -Fq "board 'Detail.dc.html' is outside page list's files (a page writes only files whose stem starts List; this stem is page detail's)" \
+    && printf '%s\n' "$foreign" | grep -Fq 'List.dc.html: links #to:settings, which is not a page of 01-board/01-board'; then
+  ok "design-check --page passes a clean page with no canvas.json and flags a foreign-prefix board and a #to: to a non-page; the whole-job check warns check=pending-link before the join"
+else bad "design-check --page is wrong (rc=$clean_rc/$whole_rc/$foreign_rc) -- $clean $whole $foreign"; fi
+# The join: every page done, canvas.json written, then join.json -- the #to: left becomes a problem.
+python3 - "$PP" "$PRD" <<'JOIN' || bad "pages probe: could not write the joined canvas"
+import json, pathlib, sys
+project, rdir = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+for slug in ("list", "detail"):
+    (rdir / "pages" / slug).mkdir(parents=True, exist_ok=True)
+    (rdir / "pages" / slug / "result.md").write_text("- status: done\n")
+boards = {"Main.dc.html": {"x": 0, "y": 0, "w": 1440, "h": 900, "title": "01 · Main", "expand": "fill"},
+          "List.dc.html": {"x": 1500, "y": 0, "w": 1440, "h": 900, "title": "02 · List", "expand": "fill"},
+          "ListRow.dc.html": {"x": 0, "y": 1000, "w": 400, "h": 80, "title": "03 · List row"}}
+(project / "canvas.json").write_text(json.dumps({"v": 3, "createdOnFiles": {"v": 1}, "boards": boards, "order": list(boards)}))
+(project / "Main.dc.html").write_text('<!doctype html>\n<script src="./support.js"></script>\n<a href="List.dc.html">list</a>\n')
+JOIN
+pre=$(pw design-check 01-board 2>&1); pre_rc=$?
+printf '{"related": ["list"], "unrelated": []}\n' > "$PRD/join.json"
+post=$(pw design-check 01-board 2>&1); post_rc=$?
+pw design-canvas 01-board --url https://claude.ai/artifact/pages1 --version 1700000000-pg >/dev/null 2>&1
+close=$(pw design-close 01-board/01-board --words "ship it" 2>&1); close_rc=$?
+if [ "$pre_rc" -eq 0 ] && printf '%s\n' "$pre" | grep -Fqx 'design-check: 01-board/01-board stage=join' && printf '%s\n' "$pre" | grep -Fq 'warning: jobs/01-board/canvas/project/List.dc.html: 1 #to: placeholder link(s) left (detail) (check=pending-link)' \
+    && [ "$post_rc" -ne 0 ] && printf '%s\n' "$post" | grep -Fqx 'design-check: 01-board/01-board stage=joined' \
+    && printf '%s\n' "$post" | grep -Fq -- '- jobs/01-board/canvas/project/List.dc.html: 1 #to: placeholder link(s) left (detail) (check=pending-link) -- the join rewires each to a real link; design-close --words refuses while one is left' \
+    && [ "$close_rc" -ne 0 ] && printf '%s\n' "$close" | grep -Fq 'check=pending-link' \
+    && python3 -c 'import json, sys; assert json.load(open(sys.argv[1]))["status"] == "open"' "$PRD/round.json"; then
+  ok "check=pending-link is a warning before join.json (stage=join) and a problem after it (stage=joined), and design-close --words refuses the round"
+else bad "check=pending-link or the close refusal is wrong (rc=$pre_rc/$post_rc/$close_rc) -- $pre $post $close"; fi
+# The unrelated-page exemption, and the style lints on a frame.css that names tokens.
+python3 - "$PP" <<'UNREL' || bad "pages probe: could not write the unrelated Page"
+import json, pathlib, sys
+project = pathlib.Path(sys.argv[1]); index = json.loads((project / "canvas.json").read_text())
+index["boards"]["Detail.dc.html"] = {"x": 3000, "y": 0, "w": 1440, "h": 900, "title": "04 · Detail", "expand": "fill"}
+index["order"].append("Detail.dc.html"); (project / "canvas.json").write_text(json.dumps(index))
+head = '<!doctype html>\n<script src="./support.js"></script>\n'
+(project / "Detail.dc.html").write_text(head + "<p>detail</p>\n")
+(project / "List.dc.html").write_text(head + '<a href="Main.dc.html">back</a>\n')
+(project / "frame.css").write_text(":root { --ink: #1a1a1a; --radius-md: 6px; --space-4: 16px; }\n")
+(project / "ListRow.dc.html").write_text(head + '<style>.row { color: #1A1A1A; border: 1px solid var(--ink); padding: 16px; '
+    'border-radius: 50%; transition: all .2s; } [data-proto="state-bar"] { background: #ff0000; }</style>\n<p class="row">row</p>\n')
+UNREL
+un=$(pw design-check 01-board 2>&1); un_rc=$?
+printf '{"related": ["list"], "unrelated": ["detail"]}\n' > "$PRD/join.json"
+ex=$(pw design-check 01-board 2>&1); ex_rc=$?
+printf '<a href="Detail.dc.html">detail</a>\n' >> "$PP/Main.dc.html"
+reached=$(pw design-check 01-board 2>&1)
+if [ "$un_rc" -eq 0 ] && printf '%s\n' "$un" | grep -Fq "Detail.dc.html: Page not reachable from the entry Page Main.dc.html by a link or a mount (check=unlinked-page) -- link it from a board the entry reaches, or list it as unrelated in the round's join.json (it stays on this canvas, unlinked)" \
+    && [ "$ex_rc" -eq 0 ] && ! printf '%s\n' "$ex" | grep -Fq 'check=unlinked-page' \
+    && printf '%s\n' "$reached" | grep -Fq "Detail.dc.html: the round's join.json lists this Page as unrelated, but the entry Page Main.dc.html reaches it (check=unlinked-page)" \
+    && printf '%s\n' "$ex" | grep -Fq 'ListRow.dc.html: 2 raw value(s) where the system or frame.css names a token (check=token-drift): #1A1A1A (color = var(--ink)), 16px (padding = var(--space-4))' \
+    && ! printf '%s\n' "$ex" | grep -Fq -e '#ff0000' -e '50%' \
+    && printf '%s\n' "$ex" | grep -Fq 'ListRow.dc.html: transition: all (check=transition-all)'; then
+  ok "join.json's unrelated list exempts a Page from check=unlinked-page (a reached one warns); check=token-drift names raw values a token names, allowing 1px borders, % and [data-proto] chrome; check=transition-all warns"
+else bad "the unrelated-page exemption or the style lints are wrong (rc=$un_rc/$ex_rc) -- $un $ex $reached"; fi
 # 7. P36.S8C: the board lint and the board count. A link to an outside https page (Google Fonts CSS
 # excepted) and a <sc-for> whose every row links to one board are warnings; a board another board
 # <dc-import>s is not counted (34 boards, 4 mounted: 30 counted, no size warning); bar.md at the root is no stray.
