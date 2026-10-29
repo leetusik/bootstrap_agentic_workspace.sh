@@ -38,8 +38,9 @@
 # on a dirty tree commits only the phase folder plus the regenerated works/ files and cuts a
 # nested .claude/worktrees/ checkout hidden by the repo's info/exclude; parallel-skip and
 # new-phase --on-main are no-ops that stamp nothing), the design-contract invariants on schema 2
-# (P36.S3; P36.S5C: several jobs per co-work slice, one open round per job, --new-job / --job, a per-round
-# critique level and design-check's size warning; design-check names a missing
+# (P36.S3; P36.S5C: one open round per job, --new-job / --job, a per-round critique level; P46-nb: one
+# connected job per co-work slice -- --new-job refused while another job of the slice has an open round, a
+# legacy multi-job slice still valid, the size warning at 10 Pages / 30 boards, check=unlinked-page; design-check names a missing
 # board, a missing support line, a .. reference and a title gap in a canvas tree; design-canvas,
 # design-system and the read-only design-publish-plan (v60: the system copies only on a first publish or a
 # changed pin, canvas.system optional); P36.S4: design-preview with no browser is an honest skip
@@ -2933,7 +2934,7 @@ g_out=$( cd "$W" && python3 scripts/workflow.py parallel-gate P1 --branch-ref pr
   || bad "merge, merge-finish or teardown failed"
 
 # ---------------------------------------------------------------------------
-echo "== Test 13: schema-2 design record -- design-open makes a job and refuses a second open round of it, a wave of several jobs in one slice (--new-job / --job, --critique, size warnings, mounted boards not counted), the board lint (leaves-canvas, same-target-list), design-check names a missing board, a missing support line, a .. reference and a title gap, design-canvas / design-system / design-publish-plan (system copies on a first publish or a changed pin only), design-preview skips honestly without a browser, v61 design-preview machine checks on fixture boards (non-text-contrast, reflow and overprint, keyboard, the state bar, --strict, the .preview render and contact sheets; skipped with no browser), design-close snapshots and signs, a superseded round's slice reuses its job, v61 design-readback / design-sign / a generated SIGNOFF.md / the absolute-path lint and wave briefs, design-migrate --to 2; claude-design/ is skipped, the pre-v47 design-migrate, design-register is gone =="
+echo "== Test 13: schema-2 design record -- design-open makes a job and refuses a second open round of it, one connected job per slice (P46-nb: --new-job refused while the slice has an open round, the merge after the close, a legacy multi-job slice still passes and takes --job, --critique, the 10-Page size warning, mounted boards not counted), the board lint (leaves-canvas, same-target-list, unlinked-page), design-check names a missing board, a missing support line, a .. reference and a title gap, design-canvas / design-system / design-publish-plan (system copies on a first publish or a changed pin only), design-preview skips honestly without a browser, v61 design-preview machine checks on fixture boards (non-text-contrast, reflow and overprint, keyboard, the state bar, --strict, the .preview render and contact sheets; skipped with no browser), design-close snapshots and signs, a superseded round's slice reuses its job, v61 design-readback / design-sign / a generated SIGNOFF.md / the absolute-path lint and wave briefs, design-migrate --to 2; claude-design/ is skipped, the pre-v47 design-migrate, design-register is gone =="
 # Runs in the fresh workspace $F.
 newtmp DZ
 DR="$F/docs/reference/design"
@@ -3251,25 +3252,46 @@ if [ "$rc" -eq 0 ] && [ "$(ls -A "$SD" | tr '\n' ' ')" = "design.json schema1 " 
   ok "design-migrate --to 2 --apply moves cards/, tokens.css and rounds/ under schema1/ byte-identical, rewrites design.json to schema 2, and design-check passes after"
 else bad "design-migrate --to 2 lost, changed or left an entry, or did not rewrite design.json (rc=$rc) -- $out"; fi
 
-# 6. P36.S5C: a wave -- several jobs in one co-work slice, each with its own open round, and a critique level per round.
+# 6. P46-nb.S1: one connected group per co-work slice, one job. --new-job refuses while another job of the
+# slice has an open round and writes nothing; once the slice's other rounds are closed it creates the job
+# (a merge into one connected job); a legacy multi-job slice (a wave drawn before the rule) still passes and
+# takes --job; a critique level per round. The size warning sits at 10 Pages / 30 boards.
 WV="$DZ/wave"; WR="$WV/docs/reference/design"
 mkdir -p "$WV/scripts" && cp "$F/scripts/workflow.py" "$WV/scripts/"
 ww() { ( cd "$WV" && HOME="$DZ/home" python3 scripts/workflow.py "$@" ); }
+# legacy_job <design root> <src job> <src round> <new job> <new round>: a second job of the same slice,
+# hand-written beside the first with its round open, the way a pre-P46-nb wave left it.
+legacy_job() { python3 - "$@" <<'LEGACY'
+import json, pathlib, sys
+root, sjob, srnd, njob, nrnd = pathlib.Path(sys.argv[1]), *sys.argv[2:]
+job = json.loads((root / "jobs" / sjob / "job.json").read_text())
+rnd = json.loads((root / "jobs" / sjob / "rounds" / srnd / "round.json").read_text())
+(root / "jobs" / njob / "rounds" / nrnd).mkdir(parents=True)
+(root / "jobs" / njob / "job.json").write_text(json.dumps(dict(job, job=njob, title=njob.split("-", 1)[1])))
+(root / "jobs" / njob / "rounds" / nrnd / "round.json").write_text(json.dumps(dict(rnd, round=nrnd, title=nrnd.split("-", 1)[1])))
+LEGACY
+}
 ww design-init --id wave >/dev/null 2>&1 || bad "wave probe: design-init failed"
 a_out=$(ww design-open --slug checkout --slice P9.S4 --critique critic 2>&1); a_rc=$?
 b_out=$(ww design-open --slug settings --slice P9.S4 --new-job 2>&1); b_rc=$?
 bad_out=$(ww design-open --slug loud --slice P9.S4 --new-job --critique judge 2>&1); bad_rc=$?
 printf '# handoff\n\ncritique: critic\n' > "$WR/jobs/01-checkout/rounds/01-checkout/handoff.md"
+if [ "$a_rc" -eq 0 ] && [ "$b_rc" -ne 0 ] \
+    && printf '%s\n' "$b_out" | grep -Fq 'refused -- P9.S4 has 01-checkout/01-checkout open; a co-work slice designs one connected group as one job: draw this surface in that job (--job 01-checkout), or give an unrelated surface a co-work slice of its own' \
+    && [ ! -e "$WR/jobs/02-settings" ] \
+    && [ "$bad_rc" -ne 0 ] && printf '%s\n' "$bad_out" | grep -Fq -e "--critique 'judge' is not one of off, critic, critic+judge" \
+    && [ ! -e "$WR/jobs/02-loud" ] && ww design-check >/dev/null 2>&1; then
+  ok "--new-job refuses while another job of the slice has an open round, names it and points at --job or a slice of its own, and writes nothing; a bad --critique level is refused and creates nothing"
+else bad "--new-job with a round open in the slice, or the critique level, is wrong (rc=$a_rc/$b_rc/$bad_rc) -- $a_out $b_out $bad_out"; fi
+m_out=$( { ww design-close 01-checkout/01-checkout --superseded >/dev/null && ww design-open --slug settings --slice P9.S4 --new-job; } 2>&1); m_rc=$?
 printf '# handoff\n\ncritique: off\n' > "$WR/jobs/02-settings/rounds/01-settings/handoff.md"
 chk=$(ww design-check 2>&1); chk_rc=$?
-if [ "$a_rc" -eq 0 ] && [ "$b_rc" -eq 0 ] && [ -f "$WR/jobs/02-settings/rounds/01-settings/round.json" ] \
+if [ "$m_rc" -eq 0 ] && [ -f "$WR/jobs/02-settings/rounds/01-settings/round.json" ] \
     && python3 -c 'import json, sys; assert [json.load(open(p)).get("critique") for p in sys.argv[1:]] == ["critic", "off"]' \
          "$WR/jobs/01-checkout/rounds/01-checkout/round.json" "$WR/jobs/02-settings/rounds/01-settings/round.json" \
-    && [ "$bad_rc" -ne 0 ] && printf '%s\n' "$bad_out" | grep -Fq -e "--critique 'judge' is not one of off, critic, critic+judge" \
-    && [ ! -e "$WR/jobs/03-loud" ] \
-    && [ "$chk_rc" -eq 0 ] && printf '%s\n' "$chk" | grep -Fq 'open rounds: 01-checkout/01-checkout, 02-settings/01-settings'; then
-  ok "--new-job opens a second job's round in the same slice and design-check passes with both open; --critique critic is stored, a bad level is refused and creates nothing"
-else bad "the wave's second job, the critique level or design-check with two open rounds failed (rc=$a_rc/$b_rc/$bad_rc/$chk_rc) -- $a_out $b_out $bad_out $chk"; fi
+    && [ "$chk_rc" -eq 0 ] && printf '%s\n' "$chk" | grep -Fq 'open rounds: 02-settings/01-settings'; then
+  ok "once every other round of the slice is closed, --new-job creates the merged job; --critique critic is stored, a new job's default is off, and design-check passes"
+else bad "the merge path (--new-job after the close) failed (rc=$m_rc/$chk_rc) -- $m_out $chk"; fi
 bare=$(ww design-open --slug again --slice P9.S4 2>&1); bare_rc=$?
 { ww design-close 02-settings/01-settings --superseded \
     && ww design-open --slug settings-v2 --slice P9.S4 --job 02-settings; } >/dev/null 2>&1; job_rc=$?
@@ -3280,28 +3302,67 @@ if [ "$bare_rc" -ne 0 ] && printf '%s\n' "$bare" | grep -Fq 'P9.S4 has 2 jobs (0
   ok "a bare design-open in a slice with two jobs refuses and asks for --job, and --job opens the job's next round after a close"
 else bad "the bare design-open was not refused, or --job did not open the superseding round (rc=$bare_rc/$job_rc) -- $bare"; fi
 printf '# handoff\n' > "$WR/jobs/02-settings/rounds/02-settings-v2/handoff.md"
-python3 - "$WR/jobs/02-settings/canvas/project" <<'PAGES' || bad "wave probe: could not write the seven-Page canvas"
-import json, pathlib, sys
-project = pathlib.Path(sys.argv[1]); project.mkdir(parents=True, exist_ok=True)
-names = ["Main"] + [f"Step{n}" for n in range(2, 8)]
+# A legacy multi-job slice: P9.S5's jobs 03-alpha and 04-beta both open, hand-written as a wave left them.
+ww design-open --slug alpha --slice P9.S5 >/dev/null 2>&1 && legacy_job "$WR" 03-alpha 01-alpha 04-beta 01-beta \
+  || bad "wave probe: could not write the legacy two-job slice"
+printf '# handoff\n' > "$WR/jobs/03-alpha/rounds/01-alpha/handoff.md"; printf '# handoff\n' > "$WR/jobs/04-beta/rounds/01-beta/handoff.md"
+leg=$(ww design-check 2>&1); leg_rc=$?
+leg_job=$( { ww design-close 04-beta/01-beta --superseded >/dev/null && ww design-open --slug beta-v2 --slice P9.S5 --job 04-beta; } 2>&1); leg_job_rc=$?
+if [ "$leg_rc" -eq 0 ] && printf '%s\n' "$leg" | grep -Fq '03-alpha/01-alpha, 04-beta/01-beta' && ! printf '%s\n' "$leg" | grep -q 'warning' \
+    && [ "$leg_job_rc" -eq 0 ] && [ -f "$WR/jobs/04-beta/rounds/02-beta-v2/round.json" ]; then
+  ok "a legacy slice with two open jobs passes design-check with no problem and no warning, and --job opens a job's next round as before"
+else bad "the legacy multi-job slice got a problem or a warning, or refused --job (rc=$leg_rc/$leg_job_rc) -- $leg $leg_job"; fi
+printf '# handoff\n' > "$WR/jobs/04-beta/rounds/02-beta-v2/handoff.md"
+# pages_canvas <project> <N>: N Pages (expand: fill), Main first, each linking to the next.
+pages_canvas() { python3 - "$1" "$2" <<'PAGES'
+import json, pathlib, shutil, sys
+project, count = pathlib.Path(sys.argv[1]), int(sys.argv[2])
+shutil.rmtree(project, ignore_errors=True); project.mkdir(parents=True)
+names = ["Main"] + [f"Step{n}" for n in range(2, count + 1)]
 boards = {f"{n}.dc.html": {"x": i * 1500, "y": 0, "w": 1440, "h": 900, "title": f"{i + 1:02d} · {n}", "expand": "fill"}
           for i, n in enumerate(names)}
 (project / "canvas.json").write_text(json.dumps({"v": 3, "createdOnFiles": {"v": 1}, "boards": boards, "order": list(boards)}))
-for name in boards:
-    (project / name).write_text('<!doctype html>\n<script src="./support.js"></script>\n<p>page</p>\n')
+for i, name in enumerate(boards):
+    nxt = f'<a href="{names[i + 1]}.dc.html">next</a>\n' if i + 1 < len(names) else ""
+    (project / name).write_text('<!doctype html>\n<script src="./support.js"></script>\n<p>page</p>\n' + nxt)
 PAGES
+}
+pages_canvas "$WR/jobs/02-settings/canvas/project" 11 || bad "wave probe: could not write the eleven-Page canvas"
 out=$(ww design-check 2>&1); rc=$?
-[ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -Fq 'warning: job 02-settings has 7 Pages / 7 boards — too big for one review; split it into jobs by surface' \
-  && ok "a job past the size threshold (7 Pages) makes design-check warn, exit 0" \
-  || bad "design-check did not warn on a seven-Page job, or failed on it (rc=$rc) -- $out"
+pages_canvas "$WR/jobs/02-settings/canvas/project" 10 || bad "wave probe: could not write the ten-Page canvas"
+ten=$(ww design-check 2>&1); ten_rc=$?
+if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -Fq 'warning: job 02-settings has 11 Pages / 11 boards — past one review of a connected group; split unrelated surfaces into co-work slices of their own' \
+    && [ "$ten_rc" -eq 0 ] && ! printf '%s\n' "$ten" | grep -Fq 'past one review' && ! printf '%s\n' "$out$ten" | grep -Fq 'check=unlinked-page'; then
+  ok "a job past the size threshold (11 Pages) makes design-check warn with the connected-group text, exit 0; 10 Pages does not warn"
+else bad "the size warning is wrong at 11 / 10 Pages (rc=$rc/$ten_rc) -- $out $ten"; fi
+# check=unlinked-page: a second Page the entry Page reaches by no link or mount warns; a mount of a flow
+# board that links to it (fragment and ./ stripped) clears it.
+python3 - "$WR/jobs/02-settings/canvas/project" <<'UNLINKED' || bad "wave probe: could not write the unlinked canvas"
+import json, pathlib, shutil, sys
+project = pathlib.Path(sys.argv[1]); shutil.rmtree(project); project.mkdir(parents=True)
+boards = {"Main.dc.html": {"x": 0, "y": 0, "w": 1440, "h": 900, "title": "01 · Main", "expand": "fill"},
+          "Flow.dc.html": {"x": 1500, "y": 0, "w": 400, "h": 300, "title": "02 · Flow"},
+          "Other.dc.html": {"x": 2000, "y": 0, "w": 1440, "h": 900, "title": "03 · Other", "expand": "fill"}}
+(project / "canvas.json").write_text(json.dumps({"v": 3, "createdOnFiles": {"v": 1}, "boards": boards, "order": list(boards)}))
+for name in boards:
+    (project / name).write_text('<!doctype html>\n<script src="./support.js"></script>\n<a href="{{ next }}">x</a>\n')
+UNLINKED
+un=$(ww design-check 2>&1); un_rc=$?
+CV="$WR/jobs/02-settings/canvas/project"
+printf '<dc-import name="Flow"></dc-import>\n' >> "$CV/Main.dc.html"; printf '<a href="./Other.dc.html#top">other</a>\n' >> "$CV/Flow.dc.html"
+linked=$(ww design-check 2>&1); linked_rc=$?
+if [ "$un_rc" -eq 0 ] && printf '%s\n' "$un" | grep -Fq 'jobs/02-settings/canvas/project/Other.dc.html: Page not reachable from the entry Page Main.dc.html by a link or a mount (check=unlinked-page) -- link it from a board the entry reaches, or give an unrelated surface a co-work slice of its own' \
+    && [ "$linked_rc" -eq 0 ] && ! printf '%s\n' "$linked" | grep -Fq 'check=unlinked-page'; then
+  ok "design-check warns on a Page the entry Page reaches by no link or mount (check=unlinked-page), exit 0; a mounted flow board linking it clears the warning"
+else bad "check=unlinked-page is wrong (rc=$un_rc/$linked_rc) -- $un $linked"; fi
 # 7. P36.S8C: the board lint and the board count. A link to an outside https page (Google Fonts CSS
 # excepted) and a <sc-for> whose every row links to one board are warnings; a board another board
-# <dc-import>s is not counted (18 boards, 3 mounted: no size warning); bar.md at the root is no stray.
+# <dc-import>s is not counted (34 boards, 4 mounted: 30 counted, no size warning); bar.md at the root is no stray.
 python3 - "$WR" <<'LINT' || bad "lint probe: could not write the canvas"
 import json, pathlib, sys
 root = pathlib.Path(sys.argv[1]); project = root / "jobs/01-checkout/canvas/project"; project.mkdir(parents=True, exist_ok=True)
 (root / "bar.md").write_text("# The operator's bar\n\n- none beyond the shipped bar\n")
-names = ["Main", "Item"] + [f"Part{n}" for n in range(1, 17)]
+names = ["Main", "Item"] + [f"Part{n}" for n in range(1, 33)]
 boards = {f"{n}.dc.html": {"x": i * 500, "y": 0, "w": 400, "h": 300, "title": f"{i + 1:02d} · {n}"} for i, n in enumerate(names)}
 (project / "canvas.json").write_text(json.dumps({"v": 3, "createdOnFiles": {"v": 1}, "boards": boards, "order": list(boards)}))
 head = '<!doctype html>\n<script src="./support.js"></script>\n'
@@ -3310,7 +3371,7 @@ for name in boards:
 (project / "Main.dc.html").write_text(head + '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter">\n'
     '<sc-for list="{{ rows }}" as="r"><a href="Item.dc.html">{{ r.name }}</a></sc-for>\n'
     '<a href="https://elsewhere.example/sign-in">Sign in</a>\n'
-    '<dc-import name="Part1"></dc-import><dc-import name="Part2"></dc-import><dc-import name="Part3"></dc-import>\n')
+    '<dc-import name="Part1"></dc-import><dc-import name="Part2"></dc-import><dc-import name="Part3"></dc-import><dc-import name="Part4"></dc-import>\n')
 LINT
 out=$(ww design-check 01-checkout 2>&1); rc=$?
 all_out=$(ww design-check 2>&1); all_rc=$?
@@ -3318,20 +3379,21 @@ if [ "$rc" -eq 0 ] && [ "$all_rc" -eq 0 ] && ! printf '%s\n' "$all_out" | grep -
     && printf '%s\n' "$out" | grep -Fq 'Main.dc.html: 1 link(s) leave the prototype (check=leaves-canvas): https://elsewhere.example/sign-in' \
     && ! printf '%s\n' "$out" | grep -Fq 'fonts.googleapis.com' \
     && printf '%s\n' "$out" | grep -Fq 'Main.dc.html: every row of a <sc-for> list links to Item.dc.html (check=same-target-list)' \
-    && ! printf '%s\n' "$out" | grep -Fq 'too big for one review' && ! printf '%s\n' "$out" | grep -Fq 'bar.md'; then
-  ok "design-check warns on a link leaving the prototype (not Google Fonts) and on a list whose rows all link to one board, exit 0; boards another board mounts are not counted (18 boards, 3 mounted: no size warning); bar.md is no stray"
+    && ! printf '%s\n' "$out" | grep -Fq 'past one review' && ! printf '%s\n' "$out" | grep -Fq 'bar.md'; then
+  ok "design-check warns on a link leaving the prototype (not Google Fonts) and on a list whose rows all link to one board, exit 0; boards another board mounts are not counted (34 boards, 4 mounted: no size warning); bar.md is no stray"
 else bad "the board lint, the mounted-board count or bar.md is wrong (rc=$rc/$all_rc) -- $out $all_out"; fi
 
 # 8. v61 (P37.S5): the design lifecycle one-liners. The publish records a size manifest; design-readback
 # reads a canvas listing (no hash) and names only what to fetch; --fetched diffs, --apply copies in;
 # design-close generates SIGNOFF.md and refuses without a read-back; design-sign signs every presented job
 # or none; a superseding round's critique defaults off; the record carries repo-relative paths only, and a
-# brief a handoff names must exist.
+# brief a handoff names must exist. Its second job is a legacy wave's (hand-written: --new-job now refuses
+# while the slice's first round is open), so design-sign --slice signs a legacy slice's presented jobs.
 LF="$DZ/life"; LR="$LF/docs/reference/design"
 mkdir -p "$LF/scripts" && cp "$F/scripts/workflow.py" "$LF/scripts/"
 lw() { ( cd "$LF" && HOME="$DZ/home" python3 scripts/workflow.py "$@" ); }
 lw design-init --id life >/dev/null 2>&1 && lw design-open --slug one --slice P9.S7 --critique critic >/dev/null 2>&1 \
-  && lw design-open --slug two --slice P9.S7 --new-job >/dev/null 2>&1 || bad "life probe: design-open failed"
+  && legacy_job "$LR" 01-one 01-one 02-two 01-two || bad "life probe: design-open failed"
 python3 - "$LR" <<'LIFE' || bad "life probe: could not write the canvases"
 import json, pathlib, sys
 root = pathlib.Path(sys.argv[1])

@@ -359,7 +359,7 @@ SLICE_STATUSES = {"todo", "ready", "in_progress", "in_review", "changes_requeste
 # return will do. Stored on the slice as `pending: {kind, on_words, since}` while it is `pending`, and
 # cleared whenever it leaves `pending`. A closed set; `other` is the escape hatch.
 SLICE_STOP_KINDS = {
-    "wave": "a design wave stop (the jobs are published; the operator reviews them)",
+    "wave": "a design-round stop (the slice's canvas is published; the operator reviews it)",
     "mockup": "the mockup gate (the operator walks the requested mockup)",
     "decision": "a question only the operator answers (DECOMP's design style, a needs_operator)",
     "operator-action": "the operator must run or provide something",
@@ -9992,18 +9992,21 @@ DESIGN_ABS_PATH_RE = re.compile(r"(?:file://|(?<![\w.:/-]))(?:/Users/|/home/|/pr
                                 r"|(?:^|(?<=[\s\"'`(=\[,]))~/|(?<![\w])C:\\", re.M)
 DESIGN_TEXT_SUFFIXES = (".md", ".json", ".html", ".htm", ".css", ".js", ".mjs", ".svg", ".txt")
 DESIGN_CRITIQUE_LEVELS = ("off", "critic", "critic+judge")
-# A wave: one co-work slice holds several jobs (about 3-4), each with its own open round, drafted in
-# parallel. design-open warns past DESIGN_WAVE_OPEN_MAX open rounds in one slice; never a refusal.
-DESIGN_WAVE_OPEN_MAX = 4
-# One job is one surface, sized for one review sitting: design-check warns when an open job's canvas
-# holds more than DESIGN_JOB_PAGES_MAX Pages (boards with expand: "fill") or DESIGN_JOB_BOARDS_MAX boards.
+# One co-work slice designs one connected group of surfaces (one tab, one flow, the views a user moves
+# between) as one job, one canvas and one publish per round; an unrelated group is a co-work slice of its
+# own (P46-nb.S1). design-open --new-job refuses while another job of the slice has an open round. A
+# legacy multi-job slice (a wave from before P46-nb) stays readable and finishes as drawn (--job), with no new problem.
+# One job is sized for one review sitting of a connected group: design-check warns when an open job's
+# canvas holds more than DESIGN_JOB_PAGES_MAX Pages (boards with expand: "fill") or DESIGN_JOB_BOARDS_MAX
+# boards (P46-nb.S1: 10 / 30, from P145's signed connected job at 7 Pages / 17 counted boards).
 # A board another board mounts with <dc-import name="..."> (a flow board's screen, a component gap's
 # one-instance board) is reviewed through the board that mounts it, so the board count leaves it out
 # (v60, P36.S8C): the flow-board recipe draws each screen twice, alone and in its flow.
-DESIGN_JOB_PAGES_MAX = 6
-DESIGN_JOB_BOARDS_MAX = 16
+DESIGN_JOB_PAGES_MAX = 10
+DESIGN_JOB_BOARDS_MAX = 30
 # design-check's static lint on a canvas's boards (warnings, never problems; v60, P36.S8C): a link that
-# leaves the prototype, and a repeated list whose every row links to the same board.
+# leaves the prototype, and a repeated list whose every row links to the same board; P46-nb.S1 adds a Page the
+# entry Page reaches by no link or mount (check=unlinked-page), on a canvas of 2+ Pages.
 DESIGN_FONT_CSS = ("https://fonts.googleapis.com/", "https://fonts.gstatic.com/")  # Google Fonts: the one outside href allowed
 DESIGN_HREF_RE = re.compile(r"""\bhref\s*=\s*["']([^"']*)["']""", re.I)
 DESIGN_DC_IMPORT_RE = re.compile(r"""<dc-import\b[^>]*?\bname\s*=\s*["']([^"'{}]+)["']""", re.I)
@@ -10389,6 +10392,54 @@ def design_board_lint(text: str, rel: str) -> list:
     return found
 
 
+def design_unlinked_page_lint(texts: dict, boards: dict) -> list:
+    """P46-nb.S1: check=unlinked-page: on a canvas of 2+ Pages (boards with expand: "fill"), every Page
+    the entry Page reaches by no chain of links or mounts. The entry Page is Main.dc.html when it is a Page,
+    else the Page with the lowest title number. Edges: a board's literal href naming a board of the tree
+    (#fragment and a leading ./ stripped, {{holes}} skipped; tried as written and against the board's folder)
+    and every <dc-import name="X"> (the board whose stem is X). The walk runs over all boards."""
+    keys = [k for k, b in boards.items() if isinstance(b, dict) and k.endswith(DESIGN_BOARD_SUFFIX)]
+    pages = [k for k in keys if boards[k].get("expand") == "fill"]
+    if len(pages) < 2:
+        return []
+
+    def number(key: str):
+        title = boards[key].get("title")
+        match = DESIGN_TITLE_RE.match(title) if isinstance(title, str) else None
+        found = design_number(match.group(1)) if match else None
+        return (found is None, found or 0, key)
+
+    entry = DESIGN_ENTRY_BOARD if DESIGN_ENTRY_BOARD in pages else min(pages, key=number)
+    known = set(keys)
+    by_stem = {k.rsplit("/", 1)[-1][:-len(DESIGN_BOARD_SUFFIX)]: k for k in keys}
+
+    def edges(key: str) -> set:
+        text = texts.get(key, "")
+        folder = key.rsplit("/", 1)[0] if "/" in key else ""
+        out = set()
+        for match in DESIGN_HREF_RE.finditer(text):
+            ref = match.group(1).strip().split("#", 1)[0]
+            if not ref or "{{" in ref:
+                continue
+            while ref.startswith("./"):
+                ref = ref[2:]
+            for cand in (ref, posixpath.normpath(f"{folder}/{ref}") if folder else None):
+                if cand in known:
+                    out.add(cand)
+                    break
+        out.update(by_stem[n.strip()] for n in DESIGN_DC_IMPORT_RE.findall(text) if n.strip() in by_stem)
+        return out
+
+    seen, todo = {entry}, [entry]
+    while todo:
+        for nxt in edges(todo.pop()) - seen:
+            seen.add(nxt)
+            todo.append(nxt)
+    return [f"{page}: Page not reachable from the entry Page {entry} by a link or a mount (check=unlinked-page) -- "
+            "link it from a board the entry reaches, or give an unrelated surface a co-work slice of its own"
+            for page in sorted(pages, key=number) if page not in seen]
+
+
 DESIGN_STATE_BAR_TAG_RE = re.compile(r"""<[a-zA-Z][\w-]*\b[^>]*?\bdata-proto\s*=\s*["']?state-bar\b[^>]*>""", re.I)
 DESIGN_CSS_RULE_RE = re.compile(r"([^{}]+)\{([^{}]*)\}")
 DESIGN_PINNED_RE = re.compile(r"\bposition\s*:\s*(fixed|sticky)\b", re.I)
@@ -10525,6 +10576,7 @@ def design_canvas_problems(project: Path, system: dict) -> tuple:
             stem = rel.rsplit("/", 1)[-1][:-len(DESIGN_BOARD_SUFFIX)]
             mounts.update(name.strip() for name in DESIGN_DC_IMPORT_RE.findall(text) if name.strip() != stem)
     lint.extend(design_state_bar_lint(project, texts, boards))
+    lint.extend(design_unlinked_page_lint(texts, boards))
     records = index.get("designSystems", [])
     if not isinstance(records, list):
         problems.append("canvas.json: designSystems must be a list of install records")
@@ -10613,8 +10665,8 @@ def design_read_job(entry: Path, number: int, system: dict) -> dict:
         counted = job["boards"] - mounted  # a board another board mounts is reviewed through it
         if (job["data"] or {}).get("status") == "open" and (job["pages"] > DESIGN_JOB_PAGES_MAX or counted > DESIGN_JOB_BOARDS_MAX):
             more = f" (+{mounted} mounted by another board, not counted)" if mounted else ""
-            job["warnings"].append(f"job {entry.name} has {job['pages']} Pages / {counted} boards{more} — too big for one review; "
-                                   "split it into jobs by surface")
+            job["warnings"].append(f"job {entry.name} has {job['pages']} Pages / {counted} boards{more} — past one review of a "
+                                   "connected group; split unrelated surfaces into co-work slices of their own")
     elif job["data"] and job["data"]["status"] != "open":
         problems.append(f"{rel}: a {job['data']['status']} job has no canvas tree (canvas/project/)")
     design_record_lint(job, entry, rel)
@@ -10762,7 +10814,7 @@ def design_scan(root: Path, only: str = None) -> dict:
     problems.extend(f"gap in the job numbering: no job numbered {n:02d}"
                     for n in range(1, max(jnumbers, default=0) + 1) if n not in jnumbers)
     design_waves_check(root, scan)
-    # A co-work slice may hold several jobs (a wave), each with at most one open round (design_read_job).
+    # A co-work slice holds one job (a legacy wave may hold several), each with at most one open round (design_read_job).
     # Parts that are not schema 2: a pre-v47 record, and a schema-1 record left outside schema1/.
     if hint:
         problems.append(f"pre-v47 parts at the root; {hint}")
@@ -10934,7 +10986,13 @@ def design_open_target(scan: dict, args: argparse.Namespace):
         return job
     if args.new_job:
         same = [j for j in mine if j["id"].split("-", 1)[1] == args.slug]
-        if not same:
+        if not same:  # the create path: refused while another job of the slice has an open round (P46-nb.S1)
+            busy = [design_address(j, r) for j in mine for r in j["rounds"] if r["data"]["status"] == "open"]
+            if busy:
+                raise SystemExit(f"design-open: refused -- {args.slice} has {', '.join(busy)} open; a co-work slice designs one "
+                                 f"connected group as one job: draw this surface in that job (--job {busy[0].split('/', 1)[0]}), "
+                                 f"or give an unrelated surface a co-work slice of its own (a new job is allowed once every "
+                                 f"other job's rounds in {args.slice} are closed)")
             return None
         job = same[-1]
         if job["rounds"] and not any(r["data"]["status"] == "open" and r["id"].split("-", 1)[1] == args.slug for r in job["rounds"]):
@@ -10962,7 +11020,7 @@ def design_open(args: argparse.Namespace) -> None:
     if broken:
         raise SystemExit(f"design-open: refused -- {', '.join(broken)} have no well-formed job.json / round.json (run design-check)")
     job = design_open_target(scan, args)
-    # One open round per job; other jobs' rounds (the rest of a wave) may be open at the same time.
+    # One open round per job; a legacy wave's other jobs may still hold open rounds (--job finishes them).
     opened = [r for r in (job or {}).get("rounds", []) if r["data"]["status"] == "open"]
     for rnd in opened:
         if rnd["id"].split("-", 1)[1] == args.slug:
@@ -11005,11 +11063,6 @@ def design_open(args: argparse.Namespace) -> None:
           + (f" (supersedes {rounds[-1]['id']})" if rounds else "") + f", critique {critique}{default}")
     print(f"next: write jobs/{job['id']}/rounds/{rid}/handoff.md (with the line critique: {critique}); the drafter writes "
           f"the canvas tree in jobs/{job['id']}/canvas/project/; close with design-close {job['id']}/{rid}")
-    wave = [design_address(j, r) for j, r in design_open_rounds(scan)
-            if j["data"]["slice"] == args.slice and j["id"] != job["id"]] + [f"{job['id']}/{rid}"]
-    if len(wave) > DESIGN_WAVE_OPEN_MAX:
-        print(f"design-open: warning: {args.slice} now has {len(wave)} open rounds ({', '.join(wave)}) -- a wave is about "
-              f"3-4 jobs; consider drafting the rest in a later wave")
 
 
 def design_find_round(scan: dict, ref: str) -> tuple:
@@ -13704,19 +13757,19 @@ def main(argv=None) -> int:
     p.add_argument("--files", default=None, help="comma-separated system files a canvas installs (replaces the recorded list)")
     p.set_defaults(func=design_system)
 
-    p = sub.add_parser("design-open", help=f"Open the next design round of a job in a co-work slice: {DESIGN_ROOT_REL}/jobs/NN-<slug>/ (job.json, created on the slice's first round, or by --new-job for another job of the slice) and jobs/<job>/rounds/NN-<slug>/round.json, status open, with its critique level; refuses only while the target job has an open round",
-                       description=f"A co-work slice holds one job or several (a wave, about 3-4, drafted in parallel), each with at most one open round; rounds of different jobs may be open at once. The target: with neither flag, the slice's only job (its first round creates it; two or more jobs refuse and ask for --job); --new-job creates another job for the slice (re-running it with the same --slug resumes that job); --job <job> opens the next round of that job, which must belong to --slice. A later round supersedes the job's previous one (a signed job is reopened; an implemented one refuses). Rounds number inside the job. Re-running an open with the open round's slug writes nothing. --critique records the round's critique level in round.json (absent in an older round reads as off). More than {DESIGN_WAVE_OPEN_MAX} open rounds in one slice prints a warning, never a refusal. The orchestrator writes the round's handoff.md next (with a critique: line); the drafter writes the canvas tree in jobs/<job>/canvas/project/.")
+    p = sub.add_parser("design-open", help=f"Open the next design round of a job in a co-work slice: {DESIGN_ROOT_REL}/jobs/NN-<slug>/ (job.json, created on the slice's first round) and jobs/<job>/rounds/NN-<slug>/round.json, status open, with its critique level; refuses while the target job has an open round, and --new-job while another job of the slice has one",
+                       description=f"A co-work slice designs one connected group of surfaces (one tab, one flow, the views a user moves between) as one job: one canvas, one publish per round, at most one open round; an unrelated group is a co-work slice of its own. The target: with neither flag, the slice's only job (its first round creates it; two or more jobs refuse and ask for --job); --new-job creates another job for the slice, refused while another job of the slice has an open round (draw the surface in that job with --job, or give it a co-work slice of its own) and allowed once every other job's rounds are closed, e.g. to merge the slice's surfaces into one connected job (re-running it with the same --slug resumes that job, as does a half-landed open); --job <job> opens the next round of that job, which must belong to --slice. A later round supersedes the job's previous one (a signed job is reopened; an implemented one refuses). Rounds number inside the job. Re-running an open with the open round's slug writes nothing. --critique records the round's critique level in round.json (absent in an older round reads as off). A legacy multi-job slice (a wave drawn before this rule) stays valid: each job's next round opens with --job, and holding several open jobs is no problem and no warning. The orchestrator writes the round's handoff.md next (with a critique: line); the drafter writes the canvas tree in jobs/<job>/canvas/project/.")
     p.add_argument("--slug", required=True, help="the round's slug (and the job's, when the round creates its job): lowercase words joined by hyphens")
     p.add_argument("--slice", required=True, help="the co-work slice that owns the job (e.g. P48-k2.S1)")
     p.add_argument("--title", default=None, help="display title (default: the slug)")
     g = p.add_mutually_exclusive_group()
-    g.add_argument("--new-job", action="store_true", help="create another job for a slice that already has one (a wave's next surface)")
+    g.add_argument("--new-job", action="store_true", help="create another job for a slice whose other jobs have no open round (refused while one does: a co-work slice designs one connected group as one job)")
     g.add_argument("--job", default=None, help="open the next round of this job (e.g. 02-settings); it must belong to --slice")
     p.add_argument("--critique", default=None, metavar="{" + ",".join(DESIGN_CRITIQUE_LEVELS) + "}", help=f"the round's critique level: {' | '.join(DESIGN_CRITIQUE_LEVELS)} (default off; a superseding round, the scoped re-draft after an operator note, stays off unless this is passed)")
     p.set_defaults(func=design_open)
 
     p = sub.add_parser("design-check", help=f"Check {DESIGN_ROOT_REL}/ against the design contract -- well-formed design.json, job.json and round.json (a critique level, when present, is off, critic or critic+judge), at most one open round per job, and each job's canvas tree (canvas.json keys, boards listed and present, Main.dc.html, path rules, the ./support.js line, board titles numbered 01..N, references inside project/), no stray HTML, waves/<slice>/ folders and every brief a handoff names, and (v61) no absolute or home path in the record's text (a problem while open, a warning once closed); warnings exit 0, problems exit 1",
-                       description=f"Read-only. With a job id, only design.json and that job. Board titles start \"NN · \" with NN forming 01..N as a set (the layout is free). A canvas pinning another system version than design.json's is a warning, and so is an open job past {DESIGN_JOB_PAGES_MAX} Pages (boards with expand: fill) or {DESIGN_JOB_BOARDS_MAX} boards (one job is one surface, sized for one review; a board another board mounts with <dc-import name=...>, a flow board's screen or a gap component's one-instance board, is not counted). Board lint, also warnings, for an open job or a job named by id: check=leaves-canvas (an href to an https URL other than Google Fonts CSS: the link leaves the prototype) and check=same-target-list (a link with a literal .dc.html target inside a <sc-for>: every row opens the same board). A co-work slice may hold several jobs. The OK line lists every open round. {DESIGN_LEGACY_DIR}/ and {DESIGN_SCHEMA1_DIR}/ are legacy records and never read.")
+                       description=f"Read-only. With a job id, only design.json and that job. Board titles start \"NN · \" with NN forming 01..N as a set (the layout is free). A canvas pinning another system version than design.json's is a warning, and so is an open job past {DESIGN_JOB_PAGES_MAX} Pages (boards with expand: fill) or {DESIGN_JOB_BOARDS_MAX} boards (one job is one connected group of surfaces, sized for one review sitting; a board another board mounts with <dc-import name=...>, a flow board's screen or a gap component's one-instance board, is not counted). Board lint, also warnings, for an open job or a job named by id: check=leaves-canvas (an href to an https URL other than Google Fonts CSS: the link leaves the prototype) and check=same-target-list (a link with a literal .dc.html target inside a <sc-for>: every row opens the same board) and, on a canvas of 2+ Pages, check=unlinked-page (a Page the entry Page -- Main.dc.html when it is a Page, else the Page with the lowest title number -- reaches by no chain of literal .dc.html hrefs or <dc-import> mounts: link it, or give an unrelated surface a co-work slice of its own). A legacy multi-job slice (a wave drawn before one job per slice) passes as drawn: several open jobs are no problem and no warning. The OK line lists every open round. {DESIGN_LEGACY_DIR}/ and {DESIGN_SCHEMA1_DIR}/ are legacy records and never read.")
     p.add_argument("job", nargs="?", default=None, help="a job id, e.g. 01-signin (default: every job)")
     p.set_defaults(func=design_check)
 
