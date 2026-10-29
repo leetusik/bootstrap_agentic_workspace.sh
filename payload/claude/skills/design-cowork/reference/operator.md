@@ -25,7 +25,10 @@
      `python3 scripts/workflow.py design-close <job>/<round> --words "<their literal words>"`.
    - **Feedback, anything but literal approval:** their words go verbatim into `feedback.md`; run
      `python3 scripts/workflow.py design-close <job>/<round> --superseded`, then `design-open --slug
-     <s> --slice <S> --job <job>`, write the new round's handoff, and run the loop again. **A
+     <s> --slice <S> --job <job>`, write the new round's handoff, and dispatch **one scoped revise pass**: one drafter
+     (`pass: join`, the owner of the joined canvas) edits the canvas in place, with no frame and no
+     page passes. Only when the feedback adds a page does the round run a page pass for it
+     (`design-open … --pages <slug>`, `pass: page <slug>`) and then a join. **A
      superseding round's critique is off by default**: it is the scoped re-draft of an operator note.
      Pass `--critique <level>` only when the operator asks for it or the change reopens the look. The
      republish is a new canvas version of the same Artifact. A superseding round is a **new immutable

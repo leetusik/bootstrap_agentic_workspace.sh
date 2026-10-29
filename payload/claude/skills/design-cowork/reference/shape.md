@@ -62,25 +62,34 @@
 
 - **One design slice is one connected group, one job:** the surfaces a user moves between (one tab,
   one flow, the views of one task), drawn as one canvas the operator judges by clicking through, and
-  sized for one review sitting. Cut design work by connected group from the build inventory;
-  **unrelated groups are separate co-work slices**, each with its own canvas and artifact, never
-  several jobs of one slice. `design-check` warns on an open job past 10 Pages or 30 boards (a
-  warning, never an error; a board another board mounts, such as a flow board's screen, is not
-  counted): past it, split the group along its least-connected seam into slices, each with its own
-  entry Page.
+  sized for one review sitting. Cut design work by connected group first, from the build inventory.
+  **A small unrelated surface of the same phase may share a slice's canvas:** drawn on it unlinked
+  (the join lists it in `join.json`), with one artifact and one stop for the whole slice, within the
+  size warning. A bigger unrelated group is a co-work slice of its own, never a second job of a
+  slice. `design-check` warns on an open job past 10 Pages or 30 boards (a warning, never an error;
+  the frame's boards count like any other; a board another board mounts, such as a flow board's
+  screen, is not counted): past it, split along the least-connected seam into rounds or slices, each
+  with its own entry Page.
+- **Each round is drafted page by page:** a frame pass decides the shared choices, the page passes
+  run at once, and a join wires them into one canvas (`reference/drafting.md`). A one-page round
+  skips the frame and the join.
 - **Foundations come first.** A greenfield product's first job settles the look on its own (a
   Foundations board, the core components, one key page); with a design system, the system is the
   foundation. Later jobs build on signed ones, and the most central surface goes first.
-- **A `co-work` slice is a barrier that runs alone,** so N unrelated groups are N slices drafted one
-  after another, each with its own PENDING #1 stop. Multi-job waves are retired; a pre-change one
+- **A `co-work` slice is a barrier that runs alone,** so groups cut as separate slices are drafted
+  one after another, each with its own PENDING #1 stop; inside a slice, its page passes and its page
+  critics run at once. Multi-job waves are retired; a pre-change one
   finishes as drawn (`reference/legacy.md`).
 - **Each job's critique level:** `off | critic | critic+judge`, unset = `off`. On for new or central
   surfaces, greenfield foundations, many-state flows and public pages; off for small follow-ups,
   internal screens and established patterns. A connected group of several surfaces is a many-state
-  flow, so `critic` is its usual level. `critic+judge` where a wrong call is costly (foundations,
-  a public flow). The operator may override it per round.
+  flow, so `critic` is its usual level. **Two critique scopes:** `critic` runs a page critic per
+  page and the cross-page critic after the join, `off` runs neither, and the judge rules only on
+  escalated items. `critic+judge` where a wrong call is costly (foundations, a public flow). The
+  operator may override it per round. A page critic tier costs about $20 at three pages and $40 at
+  seven (`reference/drafting.md` *Cost*).
 - **How many design slices there are is decided at the opening `DECOMP`**, from the inventory: one
-  co-work slice per connected group. A job's revisions are superseding rounds inside it, never cut in
+  co-work slice per connected group, a small unrelated surface riding along where it fits. A job's revisions are superseding rounds inside it, never cut in
   advance.
 - **`DECOMP` records a build inventory in `topics/breakdown.md`** (its `## Build inventory`, never in
   `phase.md`): the candidate surface list, **what** to build,

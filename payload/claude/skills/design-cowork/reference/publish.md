@@ -2,6 +2,9 @@
 
 ## Read back, then publish
 
+**Publish only after the join.** A page pass's draft, the frame and a half-joined canvas are never
+published: the operator sees the joined canvas, critiqued at the level the job asks, or nothing.
+
 **Read back the job yourself; a `done` is a claim, not your check:**
 
 1. **`python3 scripts/workflow.py design-check <job>`.** **Never rest on the drafter's own
@@ -9,7 +12,7 @@
    named problems; if they survive that pass, report them and hold the job.
 2. **Read only the verdict blocks and `## Summary`:** the drafter's verdict, the round `result.md`'s
    `## Summary` (1 KB or less: what was drawn, departures, open items with their IDs) and, when
-   critique was on, the critique's verdict block. Never the rest of the drafter's output, canvas JS or
+   critique was on, each critique's verdict block (each page's and the cross-page one). Never the rest of the drafter's output, canvas JS or
    CSS, or a whole design file: `## Build` is for the mockup builder and the build slices. Render it
    yourself with `design-preview` when you need to see something; never view the published canvas to
    check it.
@@ -18,7 +21,8 @@
    the gaps named. A question only the operator can settle goes to them at the stop as a decision to
    take. **Never fill a design gap yourself.**
 
-**Then publish** (main thread only):
+**Then publish** (main thread only: a watch on a canvas lives only in the main loop, and one writer
+handles a publish refused over the operator's edit):
 
 1. **Read back first, from the second round on** (and at the operator's return, *The operator's
    words*). Never pull the canvas whole:

@@ -8,7 +8,9 @@ when its moment comes. This file keeps only what this skill adds.
   dispatched to `design-drafter`** every round, the **critique to `design-critic`** (its judge mode
   too) when a job's level asks for it, and the **mockup build is the one span dispatched to a slice
   executor** (`slice-executor` on the high row, like any code slice), **when the operator asked for one, and only
-  then**. One drafter runs per round: a `co-work` slice designs one connected group as one job.
+  then**. Each round runs in passes, once per round: a `co-work` slice designs one job, its frame
+  drafter first, then its page drafters at once (each page's critic as its drafter returns), then the
+  join and the cross-page critic.
 - **Legacy tool.** A phase whose `intent.md` still says `Design tool: claude-design` is a legacy one:
   at its first design slice set the slice `pending` (`--stop-kind decision`) and ask the operator to
   re-confirm it on `drafter`, per `design-cowork`'s legacy rule.
