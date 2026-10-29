@@ -14,6 +14,15 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v87 — 2026-10-29
+
+- **One connected group per co-work slice.** A design slice designs the surfaces a user moves between (one tab, one flow) as one job, one canvas and one Design canvas Artifact, published once per round, its entry Page reaching every surface by clicks. Unrelated surfaces are co-work slices of their own, each with its own artifact and its own stop. Multi-job waves retire: one drafter runs per round, and the contract, the do-* references (the `DECOMP` cut and the stop counts included), the executor's decomposition rule, both READMEs and the installer banner say so.
+- **`design-open --new-job` refuses while another job of the same slice has an open round**, writing nothing and pointing at `--job <job>` or a co-work slice of its own. It is allowed again once the slice's other rounds are closed, to merge surfaces into a new job. `--job` and the resume of a half-landed open are unchanged; a bare open on a slice holding several jobs still refuses, now naming the open round and suggesting `--new-job` only when every round of the slice is closed.
+- **The canvas size warning is now 10 Pages / 30 boards** (was 6 / 16), sized for one review of a connected group; mounted boards are still not counted. The per-open wave warning is gone.
+- **New `design-check` warning `check=unlinked-page`:** on a canvas of two or more Pages, a Page no link or mount reaches from the entry Page (`Main.dc.html`, else the lowest-numbered Page) is named. A warning, never a problem.
+- **The critic's cross-job look retires** (its `wave:` input, the `choice` finding and the `wave choice` ruling); its look across boards checks the connected canvas instead: the entry reaches every surface, links between surfaces are real, a shared choice has one answer.
+- **Migration notes.** An open multi-job wave finishes as drawn (each job's rounds by `--job`, signed by `design-sign --slice`); otherwise none beyond `--update`.
+
 ## v86 — 2026-10-27
 
 - **One phase per publishable unit.** `create-phase`'s explain route now makes every explain its own
