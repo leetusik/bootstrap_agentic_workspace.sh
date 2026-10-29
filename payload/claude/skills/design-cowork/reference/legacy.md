@@ -2,9 +2,9 @@
 
 ## Design tool
 
-**`drafter` is the only design tool.** `design-drafter` drafts each job into the on-disk record under
-`docs/reference/design/` (schema 2), and you publish each job to its own Design canvas Artifact,
-which the operator opens in the Claude app (desktop, web or mobile). The `claude-design` tool (the
+**`drafter` is the only design tool.** `design-drafter` drafts each co-work slice's one job (its
+connected group) into the on-disk record under `docs/reference/design/` (schema 2), and you publish
+each round of it to that job's Design canvas Artifact, which the operator opens in the Claude app (desktop, web or mobile). The `claude-design` tool (the
 operator designing in Claude Design) and its viewer were retired in P36.
 
 **Legacy rule.** A phase whose `intent.md` still says `Design tool: claude-design` was created for the

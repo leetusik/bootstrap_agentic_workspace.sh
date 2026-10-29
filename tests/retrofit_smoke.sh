@@ -574,6 +574,34 @@ for required in (
     assert required in design, required
 # P46-nb: the wave choice is retired from the drafting procedure.
 assert "**A wave choice**" not in design, "**A wave choice**"
+# P46-nb.F1: the retired cut (one job per surface, a wave of 3-4 jobs, an artifact per job, one stop per
+# wave) is gone from every shipped surface that prescribes it: the DECOMP references, the slice executor,
+# the do-* cores and verdicts, and both READMEs; the DECOMP references and READMEs say the new cut.
+_cut = "**one co-work slice per connected group of related surfaces**"
+for rel in ("claude/skills/do-whole-phase/reference/decomposition.md", "claude/skills/do-next-slice/reference/decomposition.md"):
+    _t = (root / "payload" / rel).read_text(encoding="utf-8")
+    assert _cut in _t and "each slice's one job with its critique level" in _t, rel
+    for gone in ("one job per surface", "a wave of about 3–4 jobs", "each slice's jobs with their critique level"):
+        assert gone not in _t, (rel, gone)
+_t = (root / "payload/claude/agents/slice-executor.md").read_text(encoding="utf-8")
+assert "each co-work slice's one job with its critique level" in _t and "co-work slice's jobs with their critique levels" not in _t
+for rel in ("claude/skills/do-whole-phase/SKILL.md", "claude/skills/do-next-slice/SKILL.md"):
+    _t = (root / "payload" / rel).read_text(encoding="utf-8")
+    assert "stops `pending` once per round" in _t and "once per wave" not in _t, rel
+_t = (root / "payload/claude/skills/do-whole-phase/reference/verdicts.md").read_text(encoding="utf-8")
+assert "one drafter per round" in _t and "is its spans:** one drafter per job at once" not in _t
+assert "a design wave's spans" not in (root / "payload/claude/skills/do-whole-phase/reference/wave.md").read_text(encoding="utf-8")
+_ko, _en = ((root / n).read_text(encoding="utf-8") for n in ("README.md", "README.en.md"))
+assert "### 시각 디자인 작업: 라운드마다 여러분이 승인" in _ko and "서로 관련 없는 묶음은 각자 별도의 디자인 slice가 됩니다" in _ko
+assert "라운드마다 연결된 캔버스 하나를 Design canvas Artifact 하나로 게시" in _ko
+for gone in ("job마다 여러분이 승인", "job 3–4개", "job마다 별도의 Design canvas", "wave 전체"):
+    assert gone not in _ko, gone
+assert "### Visual work: you sign each design round" in _en and "unrelated groups are design slices of their own" in _en
+assert "one connected canvas as one Design canvas Artifact" in _en and 'signs the round' in _en
+for gone in ("you sign each design job", "wave** of 3–4 jobs", "publishes each job to its", "once for the whole wave"):
+    assert gone not in _en, gone
+_t = (root / "payload/scripts/workflow.py").read_text(encoding="utf-8")
+assert "or pass --new-job for another" not in _t and "merge them into one connected job with --new-job" in _t
 # v61 (P37.S5): the orchestrator never hand-writes SIGNOFF.md, never reads build-prompt.md in a new
 # round, and never pulls the canvas whole at the read-back.
 for gone in ("**Write `SIGNOFF.md`** in the round folder", "and `build-prompt.md`, the", "`read` the canvas's files with `out_dir` and diff"):
@@ -3308,11 +3336,12 @@ else bad "the merge path (--new-job after the close) failed (rc=$m_rc/$chk_rc) -
 bare=$(ww design-open --slug again --slice P9.S4 2>&1); bare_rc=$?
 { ww design-close 02-settings/01-settings --superseded \
     && ww design-open --slug settings-v2 --slice P9.S4 --job 02-settings; } >/dev/null 2>&1; job_rc=$?
-if [ "$bare_rc" -ne 0 ] && printf '%s\n' "$bare" | grep -Fq 'P9.S4 has 2 jobs (01-checkout, 02-settings); name the one this round belongs to with --job <job>' \
+if [ "$bare_rc" -ne 0 ] && printf '%s\n' "$bare" | grep -Fq 'P9.S4 has 2 jobs (01-checkout, 02-settings); name the one this round belongs to with --job <job> (02-settings/01-settings open); a co-work slice designs one connected group as one job, so give an unrelated surface a co-work slice of its own' \
+    && ! printf '%s\n' "$bare" | grep -Fq -e '--new-job' \
     && [ "$job_rc" -eq 0 ] && [ ! -e "$WR/jobs/03-again" ] \
     && python3 -c 'import json, sys; d = json.load(open(sys.argv[1])); assert d["status"] == "open" and d["supersedes"] == ["01-settings"] and d["critique"] == "off", d' \
          "$WR/jobs/02-settings/rounds/02-settings-v2/round.json"; then
-  ok "a bare design-open in a slice with two jobs refuses and asks for --job, and --job opens the job's next round after a close"
+  ok "a bare design-open in a slice with two jobs (one closed, one open) refuses, asks for --job and names the open round, never the refused --new-job, and --job opens the job's next round after a close"
 else bad "the bare design-open was not refused, or --job did not open the superseding round (rc=$bare_rc/$job_rc) -- $bare"; fi
 printf '# handoff\n' > "$WR/jobs/02-settings/rounds/02-settings-v2/handoff.md"
 # A legacy multi-job slice: P9.S5's jobs 03-alpha and 04-beta both open, hand-written as a wave left them.

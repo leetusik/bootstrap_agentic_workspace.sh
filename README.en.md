@@ -412,25 +412,26 @@ Slices the decomposition declared independent (what each depends on, and files t
 together under `/do-whole-phase`, in the same checkout. A phase that declares nothing runs one slice at a
 time, as before, and `/do-next-slice` always runs exactly one.
 
-### Visual work: you sign each design job
+### Visual work: you sign each design round
 
 `design-cowork` fires automatically when the work changes a product's visual appearance. **The agent
 never designs** — a dedicated design subagent (`design-drafter`) drafts, a separate critic
-(`design-critic`) judges the draft when it is switched on, and you make every visual decision. Design
-work is cut into **jobs**, one surface each (a flow or a small cluster of screens), and a design slice
-can draft a **wave** of 3–4 jobs in parallel. Each job is a **working canvas** written as plain files
-under `docs/reference/design/jobs/`: a prototype first, every screen as a clickable Page with real or
+(`design-critic`) judges the draft when it is switched on, and you make every visual decision. A design
+slice designs one connected group of related surfaces (one tab, one flow, the views a user moves
+between) as one **job**; unrelated groups are design slices of their own. The job is one **working
+canvas** written as plain files under `docs/reference/design/jobs/`: a prototype first, an entry Page
+whose clicks reach every surface of the group, every screen as a clickable Page with real or
 realistic data (a flow carries the item you clicked onto the next screen, and a grey "Prototype only"
 bar on each Page jumps to that page's other states), and every component on its own board in all its
-states, in one direction unless you ask for options. The agent writes one brief for the wave and a short
-handoff per job from your repo (every screen and state with a check, the data, the components, your
+states, in one direction unless you ask for options. The agent writes one brief for the slice and a short
+handoff per round from your repo (every screen and state with a check, the data, the components, your
 taste words and your standing design rules quoted), the drafter builds the canvas and checks it with a local render that
 clicks, types and hovers through it, and — when the decomposition turned critique on for that job —
 the critic gives it one fresh-eyed pass against your bar and the drafter fixes or rebuts each finding
-once (a stronger judge rules on the calls the critic is unsure of). The agent then publishes each job to its
-own Design canvas Artifact, which you open in the Claude app, and stops once for the whole wave with
+once (a stronger judge rules on the calls the critic is unsure of). The agent then publishes the round's
+one connected canvas as one Design canvas Artifact, which you open in the Claude app, and stops once with
 a short report: a handful of decisions, and a "decided as drawn" list to skim. One literal word in the
-session ("accept") signs every job presented, and the engine records it; anything short of a literal
+session ("accept") signs the round, and the engine records it; anything short of a literal
 approval — including comments you send to Claude and edits you make in the canvas, copied word for
 word — becomes the next round of that job, a new version of the same canvas. If you want to see it running inside your product first, ask
 for a mockup: the agent builds a throwaway, stubbed route in the project's own frontend and stops
