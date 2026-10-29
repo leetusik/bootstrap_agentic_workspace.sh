@@ -303,11 +303,11 @@ for name in ("do-next-slice", "do-whole-phase"):
         # words stay inline, and the round closes through the engine.
         "`design-drafter`", "mockup build is the one span dispatched to a slice executor",
         "lifecycle and the operator's words stay inline",
-        # P36.S6: waves -- one drafter per job at once (the one carve-out from one executor at a
-        # time), the critique dispatched to design-critic, one PENDING stop per wave. v61 (P37.S5): the
+        # P36.S6 / P46-nb: one drafter per round (a co-work slice designs one connected group as
+        # one job), the critique dispatched to design-critic, one PENDING stop per round. v61 (P37.S5): the
         # round procedure (the handoff, the drafter's prompt, the read-back, the publish, the closes)
         # lives once, in design-cowork's references, pinned there; the drivers point at them.
-        "`design-critic`", "carve-out from one executor at a time", "once per wave",
+        "`design-critic`", "One drafter runs per round", "once per round",
         "design-cowork/reference/opening.md", "`reference/publish.md`", "`reference/operator.md`",
         # P36.S1: a phase whose intent still says `Design tool: claude-design` is legacy -- the
         # drivers point at design-cowork's legacy rule instead of carrying the retired branch.
@@ -514,16 +514,16 @@ for required in (
     "`python3 scripts/workflow.py design-close <job>/<round> --superseded`",
     'design-close <job>/<round> --words "<their literal words>"',
     "the round's lifecycle and the operator's words stay inline",
-    # P36.S6: the schema-2 Artifact loop. Waves dispatch one drafter per job at once; critique is
+    # P36.S6: the schema-2 Artifact loop (P46-nb: one connected group per slice, one drafter per round); critique is
     # opt-in per job, decided at DECOMP; the judge runs beside the drafter's next pass and is skipped
     # under a proxy; only the main thread publishes (from design-publish-plan), never forcing over an
-    # operator's edit; one PENDING stop per wave; the session's words are the record; the working
+    # operator's edit; one PENDING stop per round; the session's words are the record; the working
     # canvas replaces the mockup by default; the system is re-synced from code with tokens.css; and
     # built canvases are deleted only on the operator's yes.
-    "**A wave dispatches one drafter per job at once.**", "**One job is one surface:**",
+    "**One drafter per round.**", "**One design slice is one connected group, one job:**",
     "**Foundations come first.**", "`off | critic | critic+judge`, unset = `off`",
     "**`critique: <level>`**", "**beside the drafter's answer pass**", "**`skip=yes`**",
-    "**Only the main thread publishes**", "**Never `force`.**", "## PENDING #1 — one stop per wave",
+    "**Only the main thread publishes**", "**Never `force`.**", "## PENDING #1 — one stop per round",
     "**The session's words are the record.**", "**The working canvas replaces the in-product mockup by default.**",
     "**Every sync writes `tokens.css`**", "**after the build slice that implemented a signed job lands**",
     "You delete one only on the operator's yes", "The loop needs the `Artifact` tool on the main thread",
@@ -554,7 +554,7 @@ for required in (
     # v61 (P37.S5): the design lifecycle as engine one-liners and a slimmer record. The read-back
     # fetches only what the listing names; the engine writes SIGNOFF.md and one word signs every job
     # presented; a superseding round re-drafts with critique off; the stop report is a short chat
-    # message; the wave brief once, a delta per job; one drafter output; repo-relative paths only.
+    # message; the slice's brief once, a delta per round; one drafter output; repo-relative paths only.
     "design-readback <job> --listing <file|->", "design-readback <job> --fetched <dir>",
     "`--fetched <dir> --apply`", "python3 scripts/workflow.py design-sign --slice <S> --words",
     "**All or nothing:**", "**Never write `SIGNOFF.md` yourself**",
@@ -562,12 +562,18 @@ for required in (
     "**The stop report** is a chat message, never a file in the record",
     "**At most about 5 decisions**", '**Everything else is one "decided as drawn" list**',
     "**signs everything presented** (`design-sign`)",
-    "**The wave brief, once per wave: `waves/<slice>/brief.md`**", "**Each round's `handoff.md`, a short delta**",
+    "**The slice's brief, once per slice: `waves/<slice>/brief.md`**", "**Each round's `handoff.md`, a short delta**",
     "**What you read of a span: its verdict block, and the round `result.md`'s `## Summary`**",
     "**One drafter output per round: `result.md`**", "**Repo-relative paths only.**",
     "**The notebook gets one gist line per signed job**", "| `design-sign --slice S --words \"…\"` |",
+    # P46-nb: one connected group per co-work slice, one canvas and one artifact per round; a
+    # legacy multi-job slice finishes as drawn.
+    "**One connected group, one canvas.**", "**unrelated groups are separate co-work slices**",
+    "**Never `--new-job` for another surface:**", "### Legacy record: a multi-job slice", "**It finishes as drawn:**",
 ):
     assert required in design, required
+# P46-nb: the wave choice is retired from the drafting procedure.
+assert "**A wave choice**" not in design, "**A wave choice**"
 # v61 (P37.S5): the orchestrator never hand-writes SIGNOFF.md, never reads build-prompt.md in a new
 # round, and never pulls the canvas whole at the read-back.
 for gone in ("**Write `SIGNOFF.md`** in the round folder", "and `build-prompt.md`, the", "`read` the canvas's files with `out_dir` and diff"):
@@ -664,10 +670,12 @@ for required in ("`new visual direction: yes` in the handoff licenses setting a 
                  "Scope page link colors to text links (`a:not([class])`)",
                  "**Toss-level care (the rules, never Toss's look).**",
                  "**Fix every `check=` line before you return**", "--strict`, with **no `--out`**",
-                 "**never a reason to fold a component's states into a static board**"):
+                 "**never a reason to fold a component's states into a static board**",
+                 # P46-nb: the connected canvas opens on its entry Page.
+                 "**The connected canvas.**", "board 01 is the **entry Page**, `Main.dc.html`"):
     assert required in drafter, required
 for gone in ("your **only** licence to load it", "load it through `Skill`", "`frontend_design`",
-             "A **direction round** is one whose handoff says"):
+             "A **direction round** is one whose handoff says", "A job open in the same wave"):
     assert gone not in drafter, gone
 # P36.S8C: the critic gives one pass on the bar rubric, hovers, types and clicks at desktop and 390 px
 # with the engine's checks and a harness recipe for the rest, never restyles the state bar, and
@@ -677,9 +685,12 @@ for required in ("**You get one pass**", "**The bar, line by line**", "**The sta
                  "**The state-bar exemption.**", "**The direction rule follows the handoff.**",
                  "**The interaction pass is yours where it needs judgment.**", "**What it still cannot do**",
                  "w.DesignBrowser(w.design_preview_browser(None), tempfile.mkdtemp())", "--states-only",
-                 "You rule once, beside the drafter's answer pass"):
+                 "You rule once, beside the drafter's answer pass",
+                 # P46-nb: the connected checks replace the cross-job look.
+                 "**the connected checks, each a Part 1 must-fix under the bar.**"):
     assert required in critic, required
-for gone in ("passes 02 and 03", "Passes 02 and 03", "- repeated: N", "`repeated`:", "at pass 03"):
+for gone in ("passes 02 and 03", "Passes 02 and 03", "- repeated: N", "`repeated`:", "at pass 03",
+             "`wave: <job>, <job>, …`", "**The cross-job look", "`wave choice`", "or `choice` (a cross-job conflict"):
     assert gone not in critic, gone
 # v37 negatives: the MCP-first prescription is retired -- no config block to copy,
 # no surface preference, and no "Playwright-style automation" framing anywhere.
@@ -992,8 +1003,10 @@ for required in (
     # v47 (P26.S4): the design subagent drafts, the operator decides; drafting and the mockup
     # dispatch to two different agents and the round's lifecycle stays inline.
     "The design subagent drafts, the operator decides:",
-    # P36.S6: a wave's drafters at once, the critique to design-critic, and one publisher.
-    "dispatching its drafting to `design-drafter` (one per job, a wave's at once), its critique to `design-critic` when the job's level asks, and its mockup build (only on request) to `slice-executor` on the high row",
+    # P36.S6 / P46-nb: one drafter per round, the critique to design-critic, and one publisher;
+    # each design slice is one connected group with one canvas and one artifact per round.
+    "Each design slice is one connected group: one canvas drafted into the repo",
+    "dispatching its drafting to `design-drafter` (one per round), its critique to `design-critic` when the job's level asks, and its mockup build (only on request) to `slice-executor` on the high row",
     "the round's lifecycle and the operator's words stay inline, and only the main thread publishes",
     "executors never get `Artifact`",
     "`--kind` is a **closed set**",
@@ -1097,7 +1110,7 @@ compact = claude.split("## Compact Instructions", 1)[1]
 assert "resume card" in compact and "never re-dispatch a running executor" in compact
 assert "re-read" not in compact, "Compact Instructions carry a re-read instruction"
 PY
-then ok "18 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with waves and opt-in critique, mockups on request, the Claude in Chrome instrument), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v71 wave protocol (do-whole-phase's reference/wave.md, DECOMP's disjoint-sets rule, the executor's wave section, the contract's reversal of "never fan out slices"); the v44 contract's never-stubs (acceptance gate, runtime, Claude in Chrome dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
+then ok "18 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with one connected canvas per round and opt-in critique, mockups on request, the Claude in Chrome instrument), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v71 wave protocol (do-whole-phase's reference/wave.md, DECOMP's disjoint-sets rule, the executor's wave section, the contract's reversal of "never fan out slices"); the v44 contract's never-stubs (acceptance gate, runtime, Claude in Chrome dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
