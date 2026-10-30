@@ -274,6 +274,10 @@ for _txt, _pins in (
     for _p in _pins:
         assert _p in _txt, _p
     assert "all eleven fields are present" not in _txt
+# The explain references point at the plugin's rules (B5 *Your dispatch* is the critic block's format):
+# both critic blocks carry B5's `title:` line, and no restated title or order rule is left.
+assert _chapter.count("title: <") >= 2 and "title: <" in _chapter.split("kind: document", 1)[1], "title:"
+assert "titled `P<N>: <phase name>`" not in create_phase and "taught twice" not in _review
 
 # Only skills that *document the removal* may still say "Codex": update-workspace's
 # pre-v31 migration step. Anywhere else it is a regression.
