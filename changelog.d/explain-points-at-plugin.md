@@ -1,0 +1,5 @@
+# Explain references point at the knowledge plugin's rules and pass its critic the title
+
+- **Pointers, not restatements.** The explain references in `create-phase` and `do-whole-phase` no longer restate the knowledge plugin's writing rules: a phase book's title follows the plugin's §1 title rule, and a chapter's order and recaps are judged by B5 *Order and prerequisites* and §4 *Standalone* (a short recap of an earlier chapter's idea, a `chapter:` link only as an extra), each cited by section and heading. A change to how explain text is written now needs only a plugin release.
+- **The critic gets the title.** Both critic dispatch blocks carry B5's `title:` line (`· kept` for an existing chapter's next version, `· book:` on a new book's first chapter), and B5 *Your dispatch*, read from the installed skill, is declared the blocks' format: a line it has and a block lacks is filled from it. An older plugin's critic ignores a line it does not know, so the plugin floor stays 0.6.0.
+- **Migration notes.** None beyond `--update`.
