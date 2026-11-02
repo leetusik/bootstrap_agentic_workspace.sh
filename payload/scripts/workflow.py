@@ -1542,7 +1542,7 @@ def _meter_slice_families() -> tuple:
             routes["high"]["effort"], routes["mid"]["effort"])
 
 
-def _meter_route(agent: str, prompt: str, model, kind, families=None, effort=None) -> str:
+def _meter_route(agent: str, prompt: str, model, kind, families=None, effort=None, row=None) -> str:
     """The route row a span most likely ran on, for the means: the agent type, the judge mode, the
     slice kind (research) and the model. Approximate by nature, and more so for the one
     `slice-executor` (v66), which every slice row runs: a research kind reads as research, review,
@@ -1567,6 +1567,8 @@ def _meter_route(agent: str, prompt: str, model, kind, families=None, effort=Non
     if agent == "slice-executor-mid":
         return "cheap" if isinstance(model, str) and "haiku" in model else "mid"
     if agent == SLICE_AGENT:
+        if kind == "cycle" and row:  # P50: a loop cycle reads as its charter stage's row (screen, high, ...)
+            return row
         if kind == "research":
             return "research"
         if kind in ("review", "decomposition", "co-work"):
@@ -1593,16 +1595,22 @@ def _meter_verdict(agent: str, final) -> str:
     return found.get("status") or found.get("verdict") or "?"
 
 
-def _meter_collect(dirs: list, known: dict, windows: "_MeterWindows", selected, lo, hi) -> dict:
+def _meter_collect(dirs: list, known: dict, windows: "_MeterWindows", selected, lo, hi,
+                   only_sessions=None, span_filter=None) -> dict:
     """Read the sessions overlapping [lo, hi] (None = unbounded) and meter them. `selected(slice)` says
-    whether a slice is in the report; everything else is `before`, `after` or `other`."""
+    whether a slice is in the report; everything else is `before`, `after` or `other`. A loop's close
+    (P50) narrows the read: `only_sessions` (session ids) skips every other session file unread, and
+    `span_filter(path)` skips a span file before its full read."""
     canon = {installed_agent_name(a): a for a in (*ROUTE_AGENT.values(), *RETIRED_AGENTS)}
     canon.update({f"wf-{a}": a for a in RETIRED_AGENTS})  # a nested rename the marker no longer records
     families = _meter_slice_families()
+    cycle_rows: dict = {}
     res = {"sessions": [], "main": {}, "spans": [], "outside": {}, "found": 0, "windows": windows, "kinds": known}
     for d in dirs:
         for path in sorted(d.glob("*.jsonl")):
             res["found"] += 1
+            if only_sessions is not None and path.stem not in only_sessions:
+                continue
             first, last = _meter_session_range(path)
             if first is None or (lo is not None and last is not None and last < lo) or (hi is not None and first > hi):
                 continue
@@ -1621,6 +1629,8 @@ def _meter_collect(dirs: list, known: dict, windows: "_MeterWindows", selected, 
                 _meter_add(sess["main"], one)
                 _meter_main_bucket(res, windows.at(ts), ts, selected, lo, hi, one)
             for jl in sorted((path.parent / path.stem / "subagents").glob("agent-*.jsonl")):
+                if span_filter is not None and not span_filter(jl):
+                    continue
                 meta = {}
                 mp = jl.with_name(jl.name[:-len(".jsonl")] + ".meta.json")
                 if mp.exists():
@@ -1644,8 +1654,11 @@ def _meter_collect(dirs: list, known: dict, windows: "_MeterWindows", selected, 
                 else:
                     outcome = _meter_verdict(agent, sp["final"])
                 minutes = round((sp["last"] - sp["first"]) / 60, 1) if sp["first"] is not None and sp["last"] is not None else None
+                if known.get(sid) == "cycle" and sid not in cycle_rows:
+                    cycle_rows[sid] = _meter_cycle_row(sid)
                 span = {"id": jl.stem[len("agent-"):], "session": path.stem, "agent": agent, "model": model,
-                        "effort": meta.get("effort"), "route": _meter_route(agent, sp["prompt"], model, known.get(sid), families, meta.get("effort")),
+                        "effort": meta.get("effort"), "route": _meter_route(agent, sp["prompt"], model, known.get(sid), families,
+                                                                            meta.get("effort"), cycle_rows.get(sid)),
                         "slice": sid, "attributed_by": how, "start": sp["first"], "minutes": minutes,
                         "resumes": sp["resumes"], "outcome": outcome, "reset": sp["last_limit"] or None,
                         "usage": agg}
@@ -1654,6 +1667,27 @@ def _meter_collect(dirs: list, known: dict, windows: "_MeterWindows", selected, 
                     res["spans"].append(span)
             res["sessions"].append(sess)
     return res
+
+
+def _meter_cycle_row(sid: str):
+    """The row a loop cycle ran on, for the means: its charter stage's row from its slice.json (active phases),
+    else the `route` its ledger line recorded (a cycle whose folder has left the tree), else None."""
+    pid = sid.split(".", 1)[0]
+    pdir = ACTIVE / pid
+    try:
+        sdata = read_json(pdir / "slices" / sid / "slice.json")
+        _stage, row = loop_cycle_stage(pdir, sdata)
+        if row:
+            return row
+    except (OSError, ValueError, SystemExit):
+        pass
+    try:
+        for line in loop_read(pdir, "ledger.jsonl"):
+            if line.get("cycle") == sid and isinstance(line.get("route"), str):
+                return line["route"]
+    except (OSError, SystemExit):
+        pass
+    return None
 
 
 def _meter_main_bucket(res: dict, sid, ts, selected, lo, hi, one: dict) -> None:
@@ -9072,6 +9106,11 @@ def cmd_next(args: argparse.Namespace) -> None:
     debt = consolidation_debt_line(index.get("active_phases", []))
     if debt:
         print(debt)
+    try:  # P50: a loop phase's one line on its own stream; loops_elsewhere= on the default stream
+        for line in loop_next_lines(stream, index):
+            print(line)
+    except Exception as exc:  # noqa: BLE001 - the pointer must print whatever a loop's files hold
+        print(f"loop=unreadable error={_one_line(str(exc)) or type(exc).__name__}")
     waiting = state.get("waiting_on_operator")
     if waiting:
         kind = "slice" if "." in waiting else "phase"
@@ -9079,11 +9118,17 @@ def cmd_next(args: argparse.Namespace) -> None:
         # An open acceptance gate is the same `pending` halt with a concrete script attached:
         # print the walkthrough, and clear through accept-gate so cleared_at gets stamped.
         gate = None
+        loop_halt_record = None
         if kind == "phase" and (ACTIVE / waiting / "phase.json").exists():
             pdata = read_json(ACTIVE / waiting / "phase.json")
             if acceptance_gate_is_open(pdata):
                 gate = phase_acceptance(pdata)
                 clear = f"accept-gate {waiting} --clear"
+            halt = (phase_loop(pdata) or {}).get("halt")
+            if isinstance(halt, dict):  # P50: a halted loop's typed stop; its words lift it, never set-phase-status
+                loop_halt_record = halt
+                clear = (f"loop-control {waiting} resume --words \"<the operator's words>\"" if halt.get("reason") not in LOOP_HALT_NEEDS_CHARTER
+                         else f"loop-sign {waiting} --version <N+1> --words \"<the operator's words>\" (a new charter version with a higher bound)")
         print(f"current_phase={state.get('current_phase')}")
         for line in explain_unit_lines(state.get("current_phase")):
             print(line)
@@ -9099,6 +9144,10 @@ def cmd_next(args: argparse.Namespace) -> None:
                 print(f"on_words={_one_line(record.get('on_words') or '')}")
             else:
                 print("stop_kind=untyped (set it with --stop-kind/--on-words)")
+        if loop_halt_record:
+            print(f"loop_halt={loop_halt_record.get('reason')} detail={_one_line(loop_halt_record.get('detail') or '')}")
+            print(f"stop_kind={loop_halt_record.get('stop_kind')}")
+            print(f"on_words={_one_line(loop_halt_record.get('on_words') or '')}")
         print("Do not start, finish, or advance past it. Report what you need, then wait for the operator.")
         for line in wave_lines(_active_phase(state.get("current_phase"))):  # P42: declared phases only
             print(line)
@@ -9250,6 +9299,8 @@ def _card_next_action(sid: str, sdata: dict, sdir: Path, spans) -> str:
     start = f"start-slice {sid}, then " if status in ("todo", "ready") else ""
     if status == "blocked":
         return "blocked: report the blocker (result.md) to the operator; nothing advances until it clears"
+    if kind == "cycle":
+        return f"a loop cycle: run `loop-tick {sid.split('.', 1)[0]}` and follow its action= (never finish-slice; close with loop-cycle-close)"
     if (sdir / "result.md").is_file():
         return f"read result.md's verdict head, then finish-slice {sid} --outcome \"<its summary>\", validate, commit"
     if not (sdir / "plan.md").is_file():
@@ -9298,6 +9349,10 @@ def resume_card(transcript_path=None) -> str:
         if phase_parked(phase):  # informational only: the stop above stands for every plain session
             lines.append(f"run: {phase_id} is parked; only a /do-whole-phases run passes it -- re-run `run-phases <the run's phases>` "
                          "for that run's next target; outside such a run this is a stop")
+    elif phase.get("status") == "pending" and isinstance((phase_loop(phase) or {}).get("halt"), dict):
+        halt = phase_loop(phase)["halt"]
+        lines.append(f"stop: loop {phase_id} halted ({halt.get('reason')}, stop_kind={halt.get('stop_kind')}) -- the operator's words: "
+                     f"{_card_cut(halt.get('on_words'))}")
     elif phase.get("status") == "pending":
         lines.append(f"stop: phase {phase_id} pending -- report what you need; the operator's words clear it with set-phase-status {phase_id} in_progress")
     elif phase.get("status") == "blocked":
@@ -9310,8 +9365,16 @@ def resume_card(transcript_path=None) -> str:
         lines.append(f"next action: wait for the operator; their words clear it with set-slice-status {sid} in_progress")
     elif sdata:
         lines.append(f"next action: {_card_next_action(sid, sdata, sdir, spans)}")
+    elif phase_loop(phase) is not None:
+        lines.append(f"next action: the loop line's next (run `loop-tick {phase_id}` and follow its action=)")
     else:
         lines.append("next action: no open slice -- review or archive the phase")
+    try:
+        loop_line = loop_card_line(phase)  # P50: the loop, its last cycle, the cycle in flight, the next action
+    except Exception:  # noqa: BLE001 - the card always prints
+        loop_line = None
+    if loop_line:
+        lines.append(loop_line)
     lines.extend(wave_card_lines(phase, sid))  # P42: declared phases only
     gates = []
     if acceptance is None:
@@ -14458,7 +14521,7 @@ def design_migrate_pre_v47(args: argparse.Namespace) -> None:
 # Cycles are slices `<P>.C<k>` of kind `cycle`, ordered LOOP_CYCLE_ORDER_BASE + 2k (a checkpoint takes the odd
 # order after its cycle); the phase's own REVIEW moves to LOOP_REVIEW_ORDER and the pointer hides it until the
 # loop stops. The lease is `loop.inflight`: one cycle at a time, never double-dispatched.
-LOOP_STATUSES = ("drafting", "signed", "running", "paused", "halted", "stopped")  # the last three are set by the tick (P50.S2)
+LOOP_STATUSES = ("drafting", "signed", "running", "paused", "halted", "stopped")  # the last three: loop-control and the halts (P50.S2)
 LOOP_VERDICTS = ("pass", "fail", "survivor", "parked", "error")
 LOOP_STAGE_ROWS = ("screen", "mid", "high", "research")  # the rows a charter stage may name
 LOOP_ITEM_SOURCES = ("operator", "orchestrator", "engine")
@@ -14482,6 +14545,7 @@ CHARTER_BOUNDS_DEFAULTS = {
     "checkpoint_every": 25,
     "digest_every_hours": 24,
     "keep_cycles": 10,
+    "cycle_timeout_minutes": 120,
     "outputs": [],
 }
 
@@ -14660,7 +14724,7 @@ def _charter_bounds_problems(text: str) -> tuple:
                 if row not in LOOP_STAGE_ROWS:
                     problems.append(f"stages.{name} names row {row!r}; expected one of {', '.join(LOOP_STAGE_ROWS)}")
             bounds["stages"] = dict(stages)
-    for k in ("checkpoint_every", "keep_cycles", "digest_every_hours"):
+    for k in ("checkpoint_every", "keep_cycles", "digest_every_hours", "cycle_timeout_minutes"):
         if k in raw:
             if _is_int(raw[k]) and raw[k] >= 1:
                 bounds[k] = raw[k]
@@ -14916,16 +14980,20 @@ def loop_sign(args: argparse.Namespace) -> None:
         raise SystemExit(f"{cmd} --version {version}: refused, nothing was written -- {'; '.join(problems)}")
     record = {"version": version, "path": charter_rel(version), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
               "words": words, "signed_at": now_iso()}
+    data = read_json(pdir / "phase.json")
     loop["charter"] = record
     loop["charters"] = list(loop.get("charters") or []) + [record]
     if loop.get("status") == "drafting":
         loop["status"] = "signed"
-    write_loop_block(pdir, loop)
+    lifted = _loop_sign_lift(pdir, data, loop, _bounds)
+    write_loop_block(pdir, loop, data)
     append_event("loop_charter_signed", phase=pdir.name, version=version, sha256=record["sha256"])
     rebuild_index_and_state()
     print(f"signed {pdir.name} charter v{version}: {shown(path)}")
     print(f"sha256={record['sha256']}")
     print(f"loop_status={loop['status']}")
+    if lifted:
+        print(lifted)
 
 
 def loop_queue(args: argparse.Namespace) -> None:
@@ -14968,6 +15036,7 @@ def loop_cycle_start(args: argparse.Namespace) -> None:
     loop = phase_loop(data)
     if loop is None:
         raise SystemExit(f"{cmd}: {pid} is not a loop phase; refused, nothing was written")
+    _driver_refuse(loop, cmd, pid)
     ok, why = loop_charter_ok(pdir)
     if not ok:
         raise SystemExit(f"{cmd}: {why}; refused, nothing was written")
@@ -15054,22 +15123,60 @@ def loop_cycle_start(args: argparse.Namespace) -> None:
 
 
 def loop_ledger_line(pdir: Path, sdata: dict, inflight: dict, verdict: str, metrics: dict, summary: str,
-                     route: str, closed_at: str) -> dict:
-    """The one ledger line of a closed cycle. `usd`, `minutes` and `usd_source` are the meter's to fill (P50.S2:
-    `_meter_collect` over the cycle's window); until then a cycle is recorded `unmetered`."""
+                     route: str, closed_at: str, loop=None, transcripts=None) -> dict:
+    """The one ledger line of a closed cycle, metered (`loop_meter_cycle`): `usd` is the main thread's share plus
+    every span's cost, `minutes` the wall clock from start to close, `span_minutes` the spans' own; an `assumed`
+    cycle (nothing priced found) is charged its full per_cycle_usd, so the budget stays enforceable."""
     info = sdata.get("loop") or {}
+    started = (inflight or {}).get("started_at") or sdata.get("started_at")
+    loop = loop if loop is not None else (loop_block(pdir) or {})
+    driver = loop.get("driver") if isinstance(loop.get("driver"), dict) else {}
+    try:
+        meter = loop_meter_cycle(sdata.get("id"), started, driver.get("session"), transcripts)
+    except Exception:  # noqa: BLE001 - a close never fails on the meter: an unreadable read is an assumed cycle
+        meter = {"usd": None, "usd_source": "assumed", "span_minutes": None, "model": None, "spans": 0}
+    t0, t1 = _meter_ts(started), _meter_ts(closed_at)
+    usd = meter["usd"]
+    if meter["usd_source"] == "assumed":
+        usd = loop_bounds_of(LoopSource(pdir.name, pdir), loop)["budget"]["per_cycle_usd"]
     return {"cycle": sdata.get("id"), "k": info.get("k"), "key": info.get("key"), "title": info.get("title"),
             "stage": info.get("stage"), "verdict": verdict, "metrics": metrics, "summary": summary, "route": route,
             "attempt": (inflight or {}).get("attempt", info.get("attempt", 1)), "charter": info.get("charter"),
-            "started_at": (inflight or {}).get("started_at") or sdata.get("started_at"), "closed_at": closed_at,
-            "usd": None, "minutes": None, "usd_source": "unmetered"}
+            "started_at": started, "closed_at": closed_at,
+            "usd": usd, "minutes": round((t1 - t0) / 60, 1) if t0 is not None and t1 is not None else None,
+            "span_minutes": meter["span_minutes"], "usd_source": meter["usd_source"], "model": meter["model"]}
 
 
-def loop_after_close(pdir: Path) -> None:
-    """The seam after a cycle closes (its ledger line, lists, counters and slice are on disk): P50.S2's halt checks
-    (budget, consecutive failures, max cycles) and P50.S3's rollup and checkpoint scheduling hook in here. A no-op
-    until then."""
-    return None
+def loop_after_close(pdir: Path):
+    """After a cycle closes (its ledger line, lists, counters and slice are on disk): halt the loop when
+    max_consecutive_failures is reached (`failures`), this cycle cost over per_cycle_usd (`cycle-over-budget`),
+    the total spend reached total_usd (`budget-total`) or the cycles max_cycles (`max-cycles`). Returns the halt
+    record, else None. P50.S3's rollup and checkpoint scheduling append below the halt checks."""
+    data = read_json(pdir / "phase.json")
+    loop = phase_loop(data) or {}
+    halt = None
+    if loop.get("status") != "halted":
+        bounds = loop_bounds_of(LoopSource(pdir.name, pdir), loop)
+        budget = bounds["budget"]
+        ledger = loop_read(pdir, "ledger.jsonl")
+        last = ledger[-1] if ledger else {}
+        counters = loop.get("counters") or {}
+        spent = sum(l.get("usd") for l in ledger if _is_number(l.get("usd")))
+        usd = last.get("usd") if _is_number(last.get("usd")) else 0.0
+        checks = [
+            ("failures", counters.get("consecutive_failures", 0) >= bounds["stops"]["max_consecutive_failures"],
+             f"{counters.get('consecutive_failures', 0)} failed cycles in a row (max_consecutive_failures {bounds['stops']['max_consecutive_failures']})"),
+            ("cycle-over-budget", usd > budget["per_cycle_usd"],
+             f"{last.get('cycle')} cost {_usd(usd)} ({last.get('usd_source')}), over per_cycle_usd {_usd(budget['per_cycle_usd'])}"),
+            ("budget-total", spent >= budget["total_usd"], f"spent {_usd(spent)} of total_usd {_usd(budget['total_usd'])}"),
+            ("max-cycles", _is_int(budget.get("max_cycles")) and counters.get("cycles", 0) >= budget["max_cycles"],
+             f"{counters.get('cycles', 0)} of max_cycles {budget.get('max_cycles')} cycles"),
+        ]
+        reason = next(((r, d) for r, hit, d in checks if hit), None)
+        if reason:
+            halt = loop_halt(pdir, reason[0], reason[1], data)
+    # -- P50.S3: the rollup and checkpoint scheduling go here (after the halt checks, before the rebuild) --
+    return halt
 
 
 def loop_cycle_close(args: argparse.Namespace) -> None:
@@ -15088,6 +15195,7 @@ def loop_cycle_close(args: argparse.Namespace) -> None:
     if loop is None or not isinstance(inflight, dict) or inflight.get("cycle") != sid:
         held = inflight.get("cycle") if isinstance(inflight, dict) else "none"
         raise SystemExit(f"{cmd}: it is not the cycle in flight (in flight: {held}); refused, nothing was written")
+    _driver_refuse(loop, cmd, pdir.name)
     verdict = args.verdict
     question = _one_line(args.question) if args.question is not None else None
     on_words = _one_line(args.on_words) if args.on_words is not None else None
@@ -15108,7 +15216,8 @@ def loop_cycle_close(args: argparse.Namespace) -> None:
     names = list(stages)
     route = stages.get(stage) or "high"
     closed_at = now_iso()
-    line = loop_ledger_line(pdir, sdata, inflight, verdict, metrics, summary, route, closed_at)
+    line = loop_ledger_line(pdir, sdata, inflight, verdict, metrics, summary, route, closed_at, loop,
+                            getattr(args, "transcripts", None))
     queue = loop_read(pdir, "queue.jsonl")
     for name in ("ledger.jsonl", "dead.jsonl", "survivors.jsonl", "parked.jsonl"):
         loop_read(pdir, name)  # refuse now, before any write, on a list that cannot be read
@@ -15160,15 +15269,21 @@ def loop_cycle_close(args: argparse.Namespace) -> None:
     loop["inflight"] = None
     loop["last_cycle"] = {"cycle": sid, "verdict": verdict, "closed_at": closed_at}
     write_loop_block(pdir, loop, data)
-    append_event("loop_cycle_closed", phase=pdir.name, slice=sid, key=key, stage=stage, verdict=verdict)
-    loop_after_close(pdir)
+    append_event("loop_cycle_closed", phase=pdir.name, slice=sid, key=key, stage=stage, verdict=verdict,
+                 usd=line["usd"], usd_source=line["usd_source"])
+    halt = loop_after_close(pdir)
     rebuild_index_and_state()
     print(f"closed {sid}: {outcome}")
+    print(f"metered usd={line['usd']} usd_source={line['usd_source']} minutes={line['minutes']} "
+          f"span_minutes={line['span_minutes']} model={line['model']}")
     if where == "queue":
         print(f"queued key={key} stage={record['stage']}" + (f" errors={record['errors']}" if verdict == "error" else " (next stage, at the head)"))
     else:
         print(f"{where.split('.')[0]}: key={key}" + (f" ({record.get('reason')})" if where == "dead.jsonl" else ""))
     print("counters=" + " ".join(f"{k}:{counters[k]}" for k in LOOP_COUNTERS))
+    if halt:
+        print(f"halted reason={halt['reason']} stop_kind={halt['stop_kind']} detail={halt['detail']}")
+        print(f"on_words={halt['on_words']}")
 
 
 def loop_unpark(args: argparse.Namespace) -> None:
@@ -15272,6 +15387,22 @@ def loop_validate(p: dict, errors: list, warnings: list) -> None:
     last = loop.get("last_cycle")
     if last is not None and not (isinstance(last, dict) and last.get("verdict") in LOOP_VERDICTS):
         errors.append(f"phase {pid}: loop.last_cycle {last!r} is not {{cycle, verdict, closed_at}}")
+    halt = loop.get("halt")
+    if status == "halted" and not (isinstance(halt, dict) and halt.get("reason") in LOOP_HALT_REASONS):
+        errors.append(f"phase {pid}: loop.status is halted but loop.halt {halt!r} names no reason ({', '.join(LOOP_HALT_REASONS)})")
+    elif halt is not None and status != "halted":
+        warnings.append(f"phase {pid}: loop.halt is set but loop.status is {status}")
+    driver = loop.get("driver")
+    if driver is not None and not (isinstance(driver, dict) and "session" in driver and "claimed_at" in driver):
+        errors.append(f"phase {pid}: loop.driver {driver!r} is not {{session, pid, proc_start, claimed_at}}")
+    control = pdir / "loop" / LOOP_CONTROL_FILE
+    if control.exists():
+        try:
+            parsed = json.loads(control.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            parsed = None
+        if not (isinstance(parsed, dict) and isinstance(parsed.get("requests"), list)):
+            errors.append(f"phase {pid}: {shown(control)} is not {{\"requests\": [...]}}")
     for name in LOOP_FILES:
         try:
             loop_read(pdir, name)
@@ -15281,6 +15412,1109 @@ def loop_validate(p: dict, errors: list, warnings: list) -> None:
         ok, why = loop_charter_ok(pdir)
         if not ok:
             warnings.append(f"phase {pid}: {why} (the loop halts until it is resolved)")
+
+
+# ---- Loop phases: the driver, the tick, budgets, halts, control and the operator view (P50.S2) ----------
+# One loop is driven by one Claude Code session at a time (`loop.driver`, `loop-claim`): the first guard against
+# a double dispatch. The second is `loop-cycle-dispatch`, run right before each Agent dispatch, which refuses
+# while a live span of the cycle exists. `loop-tick` is read-only: it prints the one next action and when to wake.
+# Spend is the ledger's metered list-price `usd` (an `assumed` cycle is charged its full per_cycle_usd); the
+# in-flight cycle is reserved at per_cycle_usd until it closes. Only the charter's stops halt the loop
+# (`loop.halt`, the phase `pending`); control words from another stream queue in the loop worktree's
+# `loop/control.json` and apply at its next tick.
+LOOP_HALT_REASONS = ("failures", "cycle-over-budget", "budget-total", "max-cycles", "limit", "spend", "charter", "other")
+LOOP_HALT_NEEDS_CHARTER = ("budget-total", "max-cycles")  # resume refuses these: a new charter version lifts them
+LOOP_CONTROL_HALT_REASONS = ("spend", "limit", "charter", "other")  # what `loop-control halt` records
+LOOP_CONTROL_ACTIONS = ("pause", "resume", "stop", "halt", "apply")
+LOOP_CONTROL_QUEUEABLE = ("pause", "resume", "stop")  # the operator's words that cross streams
+LOOP_CONTROL_FILE = "control.json"
+LOOP_HEARTBEAT = 1800        # s: the wake of a tick that can only look again (a wait's notification is the real wake)
+LOOP_LIMIT_WAKE = 1800       # s: a reset time the tick could not parse
+LOOP_DISPATCH_GRACE = 300    # s after loop-cycle-dispatch in which a span not yet on disk counts as starting
+LOOP_DIGEST_MAX = 1500
+LOOP_CARD_LINE = 200
+LOOP_LSTART_RE = re.compile(r"[A-Z][a-z]{2} [A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4}")
+_LOOP_MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+
+
+def _claude_config_dir() -> Path:
+    return Path(os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude").expanduser()
+
+
+def _ps_field(pid: int, field: str):
+    """One `ps -o <field>=` value of a pid (C locale, UTC: the form Claude Code's registry writes), else None."""
+    try:
+        proc = subprocess.run(["ps", "-o", f"{field}=", "-p", str(int(pid))], capture_output=True, text=True, timeout=5,
+                              env={**os.environ, "LC_ALL": "C", "LANG": "C", "TZ": "UTC"})
+    except Exception:  # noqa: BLE001 - liveness degrades, never fails
+        return None
+    out = " ".join(proc.stdout.split())
+    return out if proc.returncode == 0 and out else None
+
+
+def _session_file(pid):
+    """Claude Code's registry entry `sessions/<pid>.json`, read defensively (never written), or None."""
+    try:
+        data = json.loads((_claude_config_dir() / "sessions" / f"{int(pid)}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    if not (isinstance(data, dict) and isinstance(data.get("sessionId"), str) and data["sessionId"]):
+        return None
+    if not _is_int(data.get("pid")):
+        data["pid"] = int(pid)
+    return data
+
+
+def _session_registry() -> dict:
+    """{sessionId: {session, pid, proc_start, cwd}} over the registry, a live entry preferred when two files share
+    a session; {} when the registry is missing or unreadable (the callers then fall back to the time rules)."""
+    out: dict = {}
+    try:
+        files = sorted((_claude_config_dir() / "sessions").glob("*.json"))
+    except OSError:
+        return out
+    for f in files:
+        if not f.stem.isdigit():
+            continue
+        rec = _session_file(f.stem)
+        if rec is None:
+            continue
+        entry = {"session": rec["sessionId"], "pid": rec["pid"], "proc_start": rec.get("procStart"), "cwd": rec.get("cwd")}
+        prev = out.get(entry["session"])
+        if prev is None or (not session_alive(prev) and session_alive(entry)):
+            out[entry["session"]] = entry
+    return out
+
+
+_SESSION_ME: list = []
+
+
+def session_identity():
+    """The calling Claude Code session, `{session, pid, proc_start, cwd}`: the first pid up the parent chain that
+    has a registry entry. None from a plain shell or CI (two None callers are the same driver). Cached per run."""
+    if _SESSION_ME:
+        return _SESSION_ME[0]
+    found = None
+    if (_claude_config_dir() / "sessions").is_dir():
+        pid, seen = os.getppid(), {os.getpid()}
+        while _is_int(pid) and pid > 1 and pid not in seen and len(seen) < 64:
+            seen.add(pid)
+            rec = _session_file(pid)
+            if rec is not None:
+                found = {"session": rec["sessionId"], "pid": pid,
+                         "proc_start": rec.get("procStart") if isinstance(rec.get("procStart"), str) else None,
+                         "cwd": rec.get("cwd") if isinstance(rec.get("cwd"), str) else None}
+                break
+            parent = _ps_field(pid, "ppid")
+            pid = int(parent) if parent and parent.isdigit() else None
+    _SESSION_ME.append(found)
+    return found
+
+
+def session_alive(record) -> bool:
+    """True when a session record's pid answers `os.kill(pid, 0)`, the registry does not now give that pid to
+    another session, and (where both exist) its start time still matches: a reused pid is a dead session."""
+    if not isinstance(record, dict) or not _is_int(record.get("pid")) or record["pid"] <= 0:
+        return False
+    pid = record["pid"]
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        pass  # alive, another user's
+    except OSError:
+        return False
+    reg = _session_file(pid)
+    if reg is not None and record.get("session") and reg.get("sessionId") != record.get("session"):
+        return False
+    want = record.get("proc_start") or (reg or {}).get("procStart")
+    if isinstance(want, str) and LOOP_LSTART_RE.fullmatch(" ".join(want.split())):
+        now = _ps_field(pid, "lstart")
+        if now and LOOP_LSTART_RE.fullmatch(now) and now != " ".join(want.split()):
+            return False
+    return True
+
+
+def _same_driver(driver, me) -> bool:
+    session = driver.get("session") if isinstance(driver, dict) else None
+    return (me is None and session is None) or (me is not None and session == me.get("session"))
+
+
+def _driver_alive(driver) -> bool:
+    """The claim's process is alive, or the registry shows its session alive in another process (a session resumed
+    after a restart keeps its id). A claim with no session (a plain shell's) proves nothing: any session replaces it."""
+    if not isinstance(driver, dict) or driver.get("session") is None:
+        return False
+    if session_alive(driver):
+        return True
+    rec = _session_registry().get(driver["session"])
+    return rec is not None and session_alive(rec)
+
+
+def _driver_label(driver) -> str:
+    pid = driver.get("pid")
+    if not session_alive(driver):  # the session lives on in another process: name that one
+        rec = _session_registry().get(driver.get("session")) or {}
+        pid = rec.get("pid", pid)
+    reg = _session_file(pid) if _is_int(pid) else None
+    cwd = (reg or {}).get("cwd") or driver.get("cwd") or "?"
+    return f"session {driver.get('session')} (pid {pid}, cwd {cwd})"
+
+
+def loop_driver_refusal(loop: dict):
+    """Why the caller may not drive this loop (another live session holds the claim), else None."""
+    driver = loop.get("driver")
+    if not isinstance(driver, dict):
+        return None
+    if _same_driver(driver, session_identity()) or not _driver_alive(driver):
+        return None
+    return (f"{_driver_label(driver)} drives this loop and is alive; drive it from that session, or claim it "
+            f"once that session has ended ({WORKFLOW_CMD} loop-claim {{pid}})")
+
+
+def _driver_refuse(loop: dict, cmd: str, pid: str) -> None:
+    why = loop_driver_refusal(loop)
+    if why:
+        raise SystemExit(f"{cmd}: {why.replace('{pid}', pid)}; refused, nothing was written")
+
+
+def loop_claim(args: argparse.Namespace) -> None:
+    """Record the calling session as the loop's one driver; refused while another live session holds it."""
+    pdir = require_phase(args.phase)
+    pid = pdir.name
+    data = read_json(pdir / "phase.json")
+    loop = phase_loop(data)
+    if loop is None:
+        raise SystemExit(f"loop-claim {pid}: {pid} is not a loop phase; refused, nothing was written")
+    _driver_refuse(loop, f"loop-claim {pid}", pid)
+    me = session_identity()
+    old = loop.get("driver") if isinstance(loop.get("driver"), dict) else None
+    loop["driver"] = {"session": (me or {}).get("session"), "pid": (me or {}).get("pid"),
+                      "proc_start": (me or {}).get("proc_start"), "cwd": (me or {}).get("cwd") or str(Path.cwd()),
+                      "claimed_at": now_iso()}
+    write_loop_block(pdir, loop, data)
+    replaced = old.get("session") if old and not _same_driver(old, me) else None
+    append_event("loop_claimed", phase=pid, session=loop["driver"]["session"], replaced=replaced)
+    rebuild_index_and_state()
+    print(f"claimed {pid}: driver={loop['driver']['session'] or 'none (no Claude Code session: a plain shell)'}"
+          + (f" (replaced {replaced}, no longer alive)" if replaced else ""))
+
+
+class LoopSource:
+    """Where a loop's files are read: a phase folder on disk (this checkout's, or the loop worktree's from another
+    stream, its uncommitted progress included), or a git ref (`git show <branch>:...`) when that worktree is not
+    on disk. Read-only."""
+
+    def __init__(self, pid: str, base=None, ref=None, where: str = "local"):
+        self.pid, self.base, self.ref, self.where = pid, base, ref, where
+        self._cache: dict = {}
+
+    @property
+    def local(self) -> bool:
+        return self.base is not None and self.where == "local"
+
+    def text(self, rel: str):
+        if self.base is not None:
+            try:
+                return (self.base / rel).read_text(encoding="utf-8")
+            except OSError:
+                return None
+        if rel not in self._cache:
+            proc = _git(["show", f"{self.ref}:{_repo_prefix()}works/phases/active/{self.pid}/{rel}"], check=False)
+            self._cache[rel] = proc.stdout if proc.returncode == 0 else None
+        return self._cache[rel]
+
+    def is_file(self, rel: str) -> bool:
+        return (self.base / rel).is_file() if self.base is not None else self.text(rel) is not None
+
+    def json(self, rel: str):
+        raw = self.text(rel)
+        try:
+            value = json.loads(raw) if raw is not None else None
+        except ValueError:
+            return None
+        return value if isinstance(value, dict) else None
+
+    def jsonl(self, name: str) -> list:
+        """A loop/ JSONL list: strict in this checkout (loop_read refuses an unreadable line), lenient elsewhere."""
+        if self.local:
+            return loop_read(self.base, name)
+        out = []
+        for raw in (self.text(f"loop/{name}") or "").split("\n"):
+            try:
+                record = json.loads(raw) if raw.strip() else None
+            except ValueError:
+                record = None
+            if isinstance(record, dict):
+                out.append(record)
+        return out
+
+    def phase(self) -> dict:
+        return self.json("phase.json") or {}
+
+
+def _loop_cross_stream(data: dict, stream) -> bool:
+    execution = phase_execution(data)
+    return bool(execution and execution.get("branch") and execution.get("branch") != stream)
+
+
+def _loop_worktree_pdir(data: dict):
+    """The loop phase's folder in its own worktree (a nested pair's `execution.worktree` is already the nested
+    worktree), or None when that folder is not on disk."""
+    worktree = (phase_execution(data) or {}).get("worktree")
+    if not isinstance(worktree, str) or not worktree:
+        return None
+    pdir = Path(worktree) / _repo_prefix() / "works" / "phases" / "active" / data.get("id", "")
+    return pdir if (pdir / "phase.json").is_file() else None
+
+
+def loop_source(pdir: Path, stream="unset") -> LoopSource:
+    """The source a view of this loop reads: this checkout on the loop's own stream; from another stream the loop
+    worktree's live files when they are on disk, else its branch through git, else the local (stale) copy."""
+    pid = pdir.name
+    data = read_json(pdir / "phase.json")
+    if stream == "unset":
+        stream = current_stream(all_active_phases()) if phase_execution(data) else None
+    if not _loop_cross_stream(data, stream):
+        return LoopSource(pid, pdir)
+    other = _loop_worktree_pdir(data)
+    if other is not None:
+        return LoopSource(pid, other, where=f"worktree {other}")
+    branch = phase_execution(data).get("branch")
+    if _git_available() and _json_at_ref(branch, f"works/phases/active/{pid}/phase.json") is not None:
+        return LoopSource(pid, ref=branch, where=f"branch {branch}")
+    return LoopSource(pid, pdir, where="local copy (the loop's worktree and branch could not be read)")
+
+
+def loop_bounds_of(src: LoopSource, loop: dict) -> dict:
+    """The signed charter's bounds (every absent key at its default); the defaults when it cannot be read."""
+    charter = loop.get("charter") if isinstance(loop.get("charter"), dict) else {}
+    version = charter.get("version")
+    text = src.text(str(charter.get("path") or charter_rel(version))) if _is_int(version) else None
+    if text is not None:
+        bounds, problems = _charter_bounds_problems(text)
+        if not problems:
+            return bounds
+    return json.loads(json.dumps(CHARTER_BOUNDS_DEFAULTS))
+
+
+def _loop_charter_ok_src(src: LoopSource, loop: dict) -> tuple:
+    if src.base is not None:
+        return loop_charter_ok(src.base)
+    charter = loop.get("charter")
+    if not isinstance(charter, dict):
+        return False, "no signed charter"
+    text = src.text(str(charter.get("path") or charter_rel(charter.get("version"))))
+    if text is None:
+        return False, f"the signed charter v{charter.get('version')} is missing on {src.where}"
+    if hashlib.sha256(text.encode("utf-8")).hexdigest() != charter.get("sha256"):
+        return False, f"the signed charter v{charter.get('version')} has changed since it was signed (on {src.where})"
+    return True, f"charter v{charter.get('version')} signed, pin holds"
+
+
+def _loop_local_day(iso):
+    t = _meter_ts(iso)
+    return datetime.fromtimestamp(t).astimezone().date() if t is not None else None
+
+
+def loop_spend(ledger: list, loop: dict, bounds: dict, since=None) -> dict:
+    """Spend from the ledger's `usd` fields: today (the local calendar day of `closed_at`) and in total, each with
+    the in-flight cycle reserved at per_cycle_usd; `window` is the spend closed after `since` (an ISO time)."""
+    budget = bounds["budget"]
+    today = datetime.now().astimezone().date()
+    since_t = _meter_ts(since) if since else None
+    total = day = window = 0.0
+    assumed = 0
+    for line in ledger:
+        usd = line.get("usd") if _is_number(line.get("usd")) else 0.0
+        total += usd
+        assumed += 1 if line.get("usd_source") == "assumed" else 0
+        if _loop_local_day(line.get("closed_at")) == today:
+            day += usd
+        closed = _meter_ts(line.get("closed_at"))
+        if since_t is None or (closed is not None and closed > since_t):
+            window += usd
+    reserved = float(budget["per_cycle_usd"]) if isinstance(loop.get("inflight"), dict) else 0.0
+    return {"today": round(day + reserved, 4), "total": round(total + reserved, 4), "reserved": reserved,
+            "window": round(window, 4), "assumed": assumed, "per_cycle": budget["per_cycle_usd"],
+            "per_day": budget["per_day_usd"], "total_cap": budget["total_usd"], "max_cycles": budget.get("max_cycles")}
+
+
+def _usd(x) -> str:
+    return f"${x:.2f}"
+
+
+def _loop_first_line(path: Path):
+    """The first JSON entry of a transcript (one line read), else None."""
+    try:
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            entry = json.loads(fh.readline() or "null")
+    except (OSError, ValueError):
+        return None
+    return entry if isinstance(entry, dict) else None
+
+
+def _loop_span_cycle(path: Path):
+    """The `slice: <id>` a span's first prompt names, from its first entry only, else None."""
+    entry = _loop_first_line(path)
+    msg = entry.get("message") if entry and isinstance(entry.get("message"), dict) else {}
+    found = METER_SLICE_LINE_RE.search(_meter_text(msg.get("content")))
+    return found.group(1) if found else None
+
+
+def loop_cycle_spans(sid: str, driver_session, since: float, transcripts=None) -> list:
+    """The cycle's spans, oldest first: `subagents/agent-*.jsonl` whose first prompt names `slice: <sid>`, in the
+    driver's session folder (every session folder touched since the cycle started when that is unknown). Reads
+    directory listings, each candidate's first line and its .meta.json -- never a whole transcript."""
+    dirs = [d for d in _meter_project_dirs(transcripts)[0] if d.is_dir()]
+    folders = []
+    if driver_session:
+        folders = [d / driver_session for d in dirs if (d / driver_session / "subagents").is_dir()]
+        if not folders and not transcripts:  # a session started elsewhere (EnterWorktree): its folder by id
+            base = _claude_config_dir() / "projects"
+            try:
+                folders = [p for p in base.glob(f"*/{driver_session}") if (p / "subagents").is_dir()]
+            except OSError:
+                folders = []
+    if not folders:
+        for d in dirs:
+            try:
+                kids = list(d.iterdir())
+            except OSError:
+                continue
+            for sd in kids:
+                sub = sd / "subagents"
+                try:
+                    if sub.is_dir() and sub.stat().st_mtime >= since - 60:
+                        folders.append(sd)
+                except OSError:
+                    continue
+    spans = []
+    for sd in folders:
+        for jl in (sd / "subagents").glob("agent-*.jsonl"):
+            try:
+                mtime = jl.stat().st_mtime
+            except OSError:
+                continue
+            if mtime < since - 60 or _loop_span_cycle(jl) != sid:
+                continue
+            meta = {}
+            mp = jl.with_name(jl.name[:-len(".jsonl")] + ".meta.json")
+            try:
+                meta = json.loads(mp.read_text(encoding="utf-8")) if mp.exists() else {}
+            except (OSError, ValueError):
+                meta = {}
+            first = _meter_ts((_loop_first_line(jl) or {}).get("timestamp"))
+            spans.append({"id": jl.stem[len("agent-"):], "path": jl, "session": sd.name,
+                          "finished": isinstance(meta, dict) and meta.get("finished") is True,
+                          "mtime": mtime, "first": first if first is not None else mtime})
+    return sorted(spans, key=lambda s: (s["first"], s["mtime"]))
+
+
+def _loop_reset_epoch(text: str, hit: float):
+    """The next moment after `hit` that a limit's reset text names (`3pm`, `2:30pm (Asia/Seoul)`, `Nov 3, 9am`),
+    as epoch seconds, else None."""
+    t = (text or "").strip()
+    tz = None
+    m = re.search(r"\(([^()]+)\)\s*$", t)
+    if m:
+        try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo(m.group(1).strip())
+        except Exception:  # noqa: BLE001 - an unknown zone reads as local time
+            tz = None
+        t = t[:m.start()].strip()
+    base = datetime.fromtimestamp(hit, tz) if tz is not None else datetime.fromtimestamp(hit).astimezone()
+    tm = re.search(r"(\d{1,2})(?::(\d{2}))?\s*([ap])\.?\s*m\.?\s*$|(\d{1,2}):(\d{2})\s*$", t, re.I)
+    if not tm:
+        return None
+    if tm.group(1):
+        hour, minute = int(tm.group(1)) % 12 + (12 if tm.group(3).lower() == "p" else 0), int(tm.group(2) or 0)
+    else:
+        hour, minute = int(tm.group(4)), int(tm.group(5))
+    if hour > 23 or minute > 59:
+        return None
+    rest = re.sub(r"\s+at$", "", t[:tm.start()].strip(" ,")).strip(" ,")  # `Oct 26 at 5am`
+    day = base.date()
+    if rest:
+        dm = re.fullmatch(r"(?:[A-Za-z]+,?\s+)?([A-Za-z]{3})[A-Za-z]*\.?\s+(\d{1,2})", rest)
+        if not dm or dm.group(1).lower() not in _LOOP_MONTHS:
+            return None
+        try:
+            day = day.replace(month=_LOOP_MONTHS.index(dm.group(1).lower()) + 1, day=int(dm.group(2)))
+        except ValueError:
+            return None
+        if day < base.date() - timedelta(days=1):
+            day = day.replace(year=day.year + 1)
+    cand = datetime(day.year, day.month, day.day, hour, minute, tzinfo=base.tzinfo)
+    if not rest and cand.timestamp() <= hit:
+        cand += timedelta(days=1)
+    return cand.timestamp()
+
+
+def loop_inflight_state(pdir: Path, src=None, loop=None, bounds=None, transcripts=None) -> dict:
+    """The in-flight cycle's state, from small files (never a whole-transcript parse, bar one span on a limit):
+    `{state, cycle, attempt, ...}` with state one of none | close | plan | wait | overdue | resume-limit | halt |
+    dispatch. The first rule that holds wins: a verdict on disk -> close; no plan.md -> plan; a live span (alive
+    session, or no registry and a fresh transcript) -> wait, or overdue past cycle_timeout_minutes; the current
+    attempt's last span ended on a usage limit -> resume-limit (until=) or halt (no reset); a dead span -> dispatch
+    attempt n+1; no span yet -> dispatch attempt n (or wait, within LOOP_DISPATCH_GRACE of loop-cycle-dispatch)."""
+    src = src or LoopSource(pdir.name, pdir)
+    loop = loop if loop is not None else (phase_loop(src.phase()) or {})
+    inflight = loop.get("inflight")
+    if not isinstance(inflight, dict) or not inflight.get("cycle"):
+        return {"state": "none"}
+    sid = inflight["cycle"]
+    n = inflight.get("attempt") if _is_int(inflight.get("attempt")) else 1
+    out = {"cycle": sid, "attempt": n}
+    result = src.text(f"slices/{sid}/result.md")
+    if result and METER_VERDICT_RE.search(result):
+        return {**out, "state": "close"}
+    if not src.is_file(f"slices/{sid}/plan.md"):
+        return {**out, "state": "plan"}
+    bounds = bounds or loop_bounds_of(src, loop)
+    timeout = bounds["cycle_timeout_minutes"] * 60
+    now = time.time()
+    started = _meter_ts(inflight.get("started_at")) or now
+    dispatched = _meter_ts(inflight.get("dispatched_at"))
+    driver = loop.get("driver") if isinstance(loop.get("driver"), dict) else {}
+    spans = loop_cycle_spans(sid, driver.get("session"), started, transcripts)
+    registry = _session_registry()
+    live = []
+    for s in spans:
+        if s["finished"]:
+            continue
+        rec = registry.get(s["session"])
+        if rec is not None:
+            s["alive"] = session_alive(rec)
+        elif registry:
+            s["alive"] = False  # the registry is readable and no longer lists the session: it has ended
+        else:
+            s["alive"] = now - s["mtime"] <= timeout  # no registry: the time rule
+        if s["alive"]:
+            live.append(s)
+    if live:
+        state = "overdue" if now - started > timeout else "wait"
+        return {**out, "state": state, "span": live[-1]["id"], "age_minutes": round((now - started) / 60, 1)}
+    current = [s for s in spans if dispatched is None or s["first"] >= dispatched - 5]
+    if current:
+        last = current[-1]
+        scan = _meter_scan(last["path"], span=True)
+        cleared = _meter_ts(inflight.get("limit_cleared_at"))
+        hit = scan["limits"][-1][0] if scan["limits"] else None
+        if scan["last_limit"] is not None and not (cleared is not None and (hit is None or hit <= cleared)):
+            reset = scan["last_limit"]
+            if not reset:
+                return {**out, "state": "halt", "reason": "limit", "span": last["id"],
+                        "detail": f"span {last['id']} stopped on a usage limit with no reset time"}
+            at = _loop_reset_epoch(reset, hit or now)
+            wake = max(0, int(at - now) + 60) if at is not None else LOOP_LIMIT_WAKE
+            until = datetime.fromtimestamp(at).astimezone().replace(microsecond=0).isoformat() if at is not None else reset
+            return {**out, "state": "resume-limit", "span": last["id"], "until": until, "wake_in": wake}
+        return {**out, "state": "dispatch", "attempt": n + 1, "span": last["id"],
+                "reason": "dead-span (finished with no verdict on disk, or its session ended): re-dispatch from disk"}
+    if dispatched is not None and now - dispatched < LOOP_DISPATCH_GRACE:
+        return {**out, "state": "wait", "reason": "dispatching", "wake_in": int(LOOP_DISPATCH_GRACE - (now - dispatched)) + 5}
+    if dispatched is not None:
+        return {**out, "state": "dispatch", "attempt": n + 1, "reason": "the last dispatch left no span"}
+    return {**out, "state": "dispatch", "attempt": n}
+
+
+def loop_checkpoint_due(pdir) -> bool:
+    """The seam P50.S3's checkpoints plug into: True when a checkpoint is due. False until then."""
+    return False
+
+
+def _loop_control_requests(src: LoopSource) -> list:
+    data = src.json(f"loop/{LOOP_CONTROL_FILE}")
+    requests = (data or {}).get("requests")
+    return [r for r in requests if isinstance(r, dict)] if isinstance(requests, list) else []
+
+
+def _loop_next_midnight() -> datetime:
+    now = datetime.now().astimezone()
+    return (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def loop_view(src: LoopSource, me="unset", transcripts=None, as_driver: bool = False) -> dict:
+    """The loop's whole state and its tick: what `loop-tick`, `loop-status`, `next` and the resume card print.
+    `as_driver` computes the next action as the driver would see it (a view from any stream)."""
+    data = src.phase()
+    loop = phase_loop(data) or {}
+    pid = data.get("id", src.pid)
+    bounds = loop_bounds_of(src, loop)
+    ledger, queue = src.jsonl("ledger.jsonl"), src.jsonl("queue.jsonl")
+    parked = [p for p in src.jsonl("parked.jsonl") if p.get("resolved") is None]
+    survivors = src.jsonl("survivors.jsonl")
+    spend = loop_spend(ledger, loop, bounds, loop.get("digest_at"))
+    counters = loop.get("counters") if isinstance(loop.get("counters"), dict) else {}
+    driver = loop.get("driver") if isinstance(loop.get("driver"), dict) else None
+    me = session_identity() if me == "unset" else me
+    if driver is not None and _same_driver(driver, me):
+        driver_cell = "me"
+    elif driver is not None and _driver_alive(driver):
+        driver_cell = str(driver.get("session"))
+    else:
+        driver_cell = "none"
+    status = loop.get("status")
+    inflight = loop.get("inflight") if isinstance(loop.get("inflight"), dict) else None
+    ok, why = _loop_charter_ok_src(src, loop)
+    charter = loop.get("charter") if isinstance(loop.get("charter"), dict) else None
+    stages = bounds["stages"]
+    order = loop_take_order(queue, stages)
+    cycle = (loop.get("next_cycle") - 1) if _is_int(loop.get("next_cycle")) else 0
+    view = {"loop": pid, "source": src.where, "status": status, "phase_status": data.get("status"),
+            "driver": {"cell": driver_cell, **(driver or {})} if driver else {"cell": "none"},
+            "charter": {"version": (charter or {}).get("version"), "signed_at": (charter or {}).get("signed_at"),
+                        "ok": ok, "why": why},
+            "cycle": cycle, "counters": counters, "inflight": None, "spend": spend,
+            "parked": [{"key": p.get("key"), "cycle": p.get("cycle"), "question": p.get("question"),
+                        "on_words": p.get("on_words")} for p in parked],
+            "survivors": [{"key": s.get("key"), "cycle": s.get("cycle"), "metrics": s.get("metrics")} for s in survivors[-5:]],
+            "survivors_count": len(survivors), "queue": [{"key": q.get("key"), "stage": q.get("stage"),
+                                                         "priority": q.get("priority")} for q in order[:5]],
+            "queue_count": len(queue), "halt": loop.get("halt"), "last_cycle": loop.get("last_cycle"),
+            "digest_at": loop.get("digest_at"), "bounds": bounds, "next": {}}
+    st = {"state": "none"}
+    if inflight:
+        st = loop_inflight_state(src.base or ACTIVE / pid, src, loop, bounds, transcripts)
+        view["inflight"] = {**inflight, **{k: v for k, v in st.items() if k not in ("cycle", "attempt")},
+                            "next_attempt": st.get("attempt")}
+
+    def act(action: str, wake_in: int, **extra):
+        view["next"] = {"action": action, "wake_in": max(0, int(wake_in)), **extra}
+        return view
+
+    if not as_driver and driver_cell not in ("me", "none"):
+        return act("not-driver", LOOP_HEARTBEAT, detail=f"session {driver_cell} drives this loop; this session does nothing")
+    if _loop_control_requests(src):
+        return act("apply-control", 0, requests=len(_loop_control_requests(src)))
+    if not as_driver and driver_cell == "none":
+        return act("claim", 0)
+    if inflight:
+        s = st["state"]
+        if not (status == "halted" and s in ("plan", "dispatch", "resume-limit", "halt")):
+            extra = {k: v for k, v in st.items() if k in ("attempt", "span", "until", "reason", "detail", "age_minutes")}
+            wake = st.get("wake_in", LOOP_HEARTBEAT if s == "wait" else 0)
+            return act(s, wake if s in ("wait", "resume-limit") else 0, cycle=st.get("cycle"), **extra)
+    if status == "drafting":
+        return act("sign", LOOP_HEARTBEAT, detail="the charter is not signed: the operator signs it (loop-sign)")
+    if status == "halted":
+        halt = loop.get("halt") if isinstance(loop.get("halt"), dict) else {}
+        return act("halted", LOOP_HEARTBEAT, reason=halt.get("reason"), on_words=halt.get("on_words"))
+    if status == "paused":
+        return act("paused", LOOP_HEARTBEAT, on_words="the operator's \"resume\"")
+    if status == "stopped":
+        return act("review", 0, slice=f"{pid}.REVIEW")
+    if data.get("status") in ("pending", "blocked", "done"):
+        return act("wait", LOOP_HEARTBEAT, reason=f"phase-{data.get('status')}")
+    if not ok:
+        return act("halt", 0, reason="charter", detail=why)
+    if spend["total"] >= spend["total_cap"]:
+        return act("halt", 0, reason="budget-total", detail=f"spent {_usd(spend['total'])} of {_usd(spend['total_cap'])}")
+    if _is_int(spend["max_cycles"]) and counters.get("cycles", 0) >= spend["max_cycles"]:
+        return act("halt", 0, reason="max-cycles", detail=f"{counters.get('cycles', 0)} of {spend['max_cycles']} cycles")
+    if spend["today"] + spend["per_cycle"] > spend["per_day"]:
+        midnight = _loop_next_midnight()
+        return act("wait", midnight.timestamp() - time.time() + 5, reason="budget-day", until=midnight.isoformat())
+    since = _meter_ts(loop.get("digest_at")) or (_meter_ts(ledger[0].get("started_at")) if ledger else None)
+    if since is not None and time.time() - since >= bounds["digest_every_hours"] * 3600:
+        return act("digest", 0)
+    if src.base is not None and loop_checkpoint_due(src.base):
+        return act("checkpoint", 0)
+    last_close = _meter_ts((loop.get("last_cycle") or {}).get("closed_at")) if isinstance(loop.get("last_cycle"), dict) else None
+    gap = bounds["cadence"]["min_gap_minutes"] * 60
+    if last_close is not None and time.time() - last_close < gap:
+        return act("wait", gap - (time.time() - last_close) + 1, reason="cadence")
+    setup = next((s for s in (src.json(f"slices/{sid}/slice.json") for sid in _loop_slice_ids(src))
+                  if s and s.get("kind") != "cycle" and s.get("id") != f"{pid}.REVIEW" and s.get("status") != "done"), None)
+    if setup is not None:
+        return act("setup", 0, slice=setup.get("id"), detail="run the open setup slice the ordinary way first")
+    head = order[0] if order else None
+    return act("start", 0, stage=head.get("stage") if head else next(iter(stages)), item=head.get("key") if head else "author")
+
+
+def _loop_slice_ids(src: LoopSource) -> list:
+    if src.base is not None:
+        sdir = src.base / "slices"
+        return sorted(p.name for p in sdir.iterdir() if (p / "slice.json").is_file()) if sdir.is_dir() else []
+    proc = _git(["ls-tree", "--name-only", src.ref, f"{_repo_prefix()}works/phases/active/{src.pid}/slices/"], check=False)
+    return [line.strip().rstrip("/").rsplit("/", 1)[-1] for line in proc.stdout.splitlines() if line.strip()] if proc.returncode == 0 else []
+
+
+def _loop_context_lines(view: dict) -> list:
+    sp = view["spend"]
+    inflight = view["inflight"]
+    return [f"loop={view['loop']}", f"status={view['status']}", f"driver={view['driver']['cell']}",
+            f"charter={'v' + str(view['charter']['version']) if view['charter']['version'] else 'none'}",
+            f"cycle={view['cycle']}",
+            f"inflight={inflight['cycle'] + ':' + str(inflight.get('state')) if inflight else 'none'}",
+            f"spend_today={_usd(sp['today'])}/{_usd(sp['per_day'])}", f"spend_total={_usd(sp['total'])}/{_usd(sp['total_cap'])}",
+            f"parked={len(view['parked'])}", f"survivors={view['survivors_count']}", f"queue={view['queue_count']}"]
+
+
+def _loop_next_lines(nxt: dict) -> list:
+    lines = [f"action={nxt.get('action')}", f"wake_in={nxt.get('wake_in')}"]
+    for k, v in nxt.items():
+        if k not in ("action", "wake_in") and v is not None:
+            lines.append(f"{k}={_one_line(str(v))}")
+    return lines
+
+
+def loop_tick(args: argparse.Namespace) -> None:
+    """Read-only: the loop's context, then exactly one action= and wake_in=, then the action's own lines."""
+    pdir = require_phase(args.phase)
+    require_loop(pdir, "loop-tick")
+    view = loop_view(loop_source(pdir), transcripts=args.transcripts)
+    for line in _loop_context_lines(view) + _loop_next_lines(view["next"]):
+        print(line)
+
+
+def loop_cycle_dispatch(args: argparse.Namespace) -> None:
+    """Record the dispatch the orchestrator makes next (dispatched_at, attempt). Refused while a live span of the
+    cycle exists (the second double-dispatch guard), for a caller that is not the driver, on a halted loop, and
+    when the cycle needs a close or a plan instead."""
+    sid = args.slice
+    sdir = require_slice(sid)
+    cmd = f"loop-cycle-dispatch {sid}"
+    sdata = read_json(sdir / "slice.json")
+    if sdata.get("kind") != "cycle":
+        raise SystemExit(f"{cmd}: kind {sdata.get('kind')}, not a loop cycle; refused, nothing was written")
+    pdir = sdir.parents[1]
+    data = read_json(pdir / "phase.json")
+    loop = phase_loop(data) or {}
+    inflight = loop.get("inflight")
+    if not isinstance(inflight, dict) or inflight.get("cycle") != sid:
+        held = inflight.get("cycle") if isinstance(inflight, dict) else "none"
+        raise SystemExit(f"{cmd}: it is not the cycle in flight (in flight: {held}); refused, nothing was written")
+    _driver_refuse(loop, cmd, pdir.name)
+    if loop.get("status") == "halted":
+        raise SystemExit(f"{cmd}: the loop is halted ({(loop.get('halt') or {}).get('reason')}); nothing advances past a stop "
+                         f"({WORKFLOW_CMD} loop-control {pdir.name} resume --words \"...\" first); refused, nothing was written")
+    st = loop_inflight_state(pdir, loop=loop, transcripts=args.transcripts)
+    state = st["state"]
+    if state in ("wait", "overdue"):
+        why = f"span {st['span']} of it is live" if st.get("span") else "a dispatch was recorded moments ago and its span is starting"
+        raise SystemExit(f"{cmd}: {why} -- one dispatch at a time: wait for its notification; refused, nothing was written")
+    if state == "close":
+        raise SystemExit(f"{cmd}: its result.md holds a verdict -- close it ({WORKFLOW_CMD} loop-cycle-close {sid} --verdict ...); refused, nothing was written")
+    if state == "plan":
+        raise SystemExit(f"{cmd}: {shown(sdir / 'plan.md')} does not exist -- write the plan first; refused, nothing was written")
+    if state == "halt":
+        raise SystemExit(f"{cmd}: {st.get('detail')} -- record the halt ({WORKFLOW_CMD} loop-control {pdir.name} halt --reason limit); "
+                         "refused, nothing was written")
+    attempt = st.get("attempt") if state == "dispatch" else inflight.get("attempt", 1)  # a limit re-dispatch is no new attempt
+    at = now_iso()
+    inflight["dispatched_at"] = at
+    inflight["attempt"] = attempt
+    inflight["dispatches"] = (inflight.get("dispatches") if _is_int(inflight.get("dispatches")) else 0) + 1
+    info = sdata.get("loop") if isinstance(sdata.get("loop"), dict) else {}
+    info["attempt"] = attempt
+    sdata["loop"] = info
+    write_json(sdir / "slice.json", sdata)
+    write_loop_block(pdir, loop, data)
+    append_event("loop_cycle_dispatched", phase=pdir.name, slice=sid, attempt=attempt, state=state)
+    rebuild_index_and_state()
+    print(f"dispatch recorded: {sid} attempt={attempt} at={at}")
+    print(f"route: {WORKFLOW_CMD} executor-route {sid}" + (" --retry" if attempt >= 2 else "")
+          + f" (the prompt's first line: slice: {sid})")
+
+
+def _loop_on_words(reason: str, version, pid: str) -> str:
+    if reason in LOOP_HALT_NEEDS_CHARTER:
+        nxt = (version if _is_int(version) else 0) + 1
+        return (f"sign charter v{nxt} with a higher bound ({WORKFLOW_CMD} loop-sign {pid} --version {nxt} --words \"...\"); "
+                "resume refuses this halt")
+    words = f"the operator's \"resume\" ({WORKFLOW_CMD} loop-control {pid} resume --words \"...\")"
+    if reason == "charter":
+        words += ", once the signed charter file is restored from git or a new version is signed"
+    return words
+
+
+def loop_halt(pdir: Path, reason: str, detail: str, data=None) -> dict:
+    """Halt the loop: `loop.halt`, status halted, the phase pending, event loop_halted. Returns the halt record."""
+    data = read_json(pdir / "phase.json") if data is None else data
+    loop = data["loop"]
+    pid = data.get("id", pdir.name)
+    version = (loop.get("charter") or {}).get("version") if isinstance(loop.get("charter"), dict) else None
+    halt = {"reason": reason, "detail": _one_line(detail or reason), "at": now_iso(),
+            "stop_kind": "limit" if reason == "limit" else "decision", "on_words": _loop_on_words(reason, version, pid)}
+    loop["halt"] = halt
+    loop["status"] = "halted"
+    old = data.get("status")
+    if old != "pending":
+        data["status"] = "pending"
+        append_event("phase_status_changed", phase=pid, old_status=old, new_status="pending")
+    write_loop_block(pdir, loop, data)
+    append_event("loop_halted", phase=pid, reason=reason, detail=halt["detail"])
+    return halt
+
+
+def _loop_unhalt(loop: dict, data: dict, pid: str) -> None:
+    """Lift a halt: keep it as `last_halt`, and return a phase the halt made pending to in_progress."""
+    if isinstance(loop.get("halt"), dict):
+        loop["last_halt"] = {**loop["halt"], "lifted_at": now_iso()}
+    loop["halt"] = None
+    if data.get("status") == "pending":
+        data["status"] = "in_progress"
+        append_event("phase_status_changed", phase=pid, old_status="pending", new_status="in_progress")
+
+
+def _loop_control_apply(pdir: Path, action: str, words=None, reason=None, detail=None, source=None) -> str:
+    """Apply one control action in this checkout; SystemExit (nothing written) on a refusal. Returns its line."""
+    data = read_json(pdir / "phase.json")
+    loop = data["loop"]
+    pid = data.get("id", pdir.name)
+    status = loop.get("status")
+    cmd = f"loop-control {pid} {action}"
+    at = now_iso()
+    record = {"words": words, "at": at, "from": source or "this stream", "from_status": status}
+    if action == "pause":
+        if status not in ("running", "signed"):
+            raise SystemExit(f"{cmd}: the loop is {status}; pause applies to a running or signed loop; refused, nothing was written")
+        loop["status"] = "paused"
+        loop["paused"] = record
+        write_loop_block(pdir, loop, data)
+        append_event("loop_paused", phase=pid, words=words, source=record["from"])
+        return f"paused {pid} (was {status}): no new cycle starts; the cycle in flight may still close"
+    if action == "resume":
+        if status not in ("paused", "halted"):
+            raise SystemExit(f"{cmd}: the loop is {status}; resume applies to a paused or halted loop; refused, nothing was written")
+        if status == "halted":
+            halt = loop.get("halt") if isinstance(loop.get("halt"), dict) else {}
+            if not words:
+                raise SystemExit(f"{cmd}: a halted loop resumes only on the operator's literal words (--words \"...\"); refused, nothing was written")
+            if halt.get("reason") in LOOP_HALT_NEEDS_CHARTER:
+                raise SystemExit(f"{cmd}: a {halt.get('reason')} halt is lifted only by a new charter: {halt.get('on_words')}; refused, nothing was written")
+            if halt.get("reason") == "charter":
+                ok, why = loop_charter_ok(pdir)
+                if not ok:
+                    raise SystemExit(f"{cmd}: {why}; refused, nothing was written")
+            if halt.get("reason") == "failures":
+                loop.setdefault("counters", {})["consecutive_failures"] = 0
+            if halt.get("reason") == "limit" and isinstance(loop.get("inflight"), dict):
+                loop["inflight"]["limit_cleared_at"] = at
+            _loop_unhalt(loop, data, pid)
+        counters = loop.get("counters") if isinstance(loop.get("counters"), dict) else {}
+        ran = counters.get("cycles", 0) or loop.get("inflight") or (_is_int(loop.get("next_cycle")) and loop["next_cycle"] > 1)
+        loop["status"] = "running" if ran else "signed"
+        loop["paused"] = None
+        loop["resumed"] = record
+        write_loop_block(pdir, loop, data)
+        append_event("loop_resumed", phase=pid, words=words, source=record["from"], was=status)
+        return f"resumed {pid}: {status} -> {loop['status']}"
+    if action == "stop":
+        if not words:
+            raise SystemExit(f"{cmd}: stop needs the operator's literal words (--words \"...\"); refused, nothing was written")
+        if status == "stopped":
+            raise SystemExit(f"{cmd}: the loop is already stopped; refused, nothing was written")
+        if status == "halted":
+            _loop_unhalt(loop, data, pid)
+        loop["status"] = "stopped"
+        loop["stopped"] = record
+        write_loop_block(pdir, loop, data)
+        append_event("loop_stopped", phase=pid, words=words, source=record["from"], was=status)
+        tail = "; the cycle in flight may still close, then" if isinstance(loop.get("inflight"), dict) else ";"
+        return f"stopped {pid} (was {status}){tail} {pid}.REVIEW is selectable"
+    if action == "halt":
+        if reason not in LOOP_CONTROL_HALT_REASONS:
+            raise SystemExit(f"{cmd}: --reason must be one of {', '.join(LOOP_CONTROL_HALT_REASONS)}; refused, nothing was written")
+        if status == "halted":
+            raise SystemExit(f"{cmd}: the loop is already halted ({(loop.get('halt') or {}).get('reason')}); refused, nothing was written")
+        if status in ("drafting", "stopped"):
+            raise SystemExit(f"{cmd}: the loop is {status}; refused, nothing was written")
+        halt = loop_halt(pdir, reason, detail or reason, data)
+        return f"halted {pid}: reason={reason} stop_kind={halt['stop_kind']} on_words={halt['on_words']}"
+    raise SystemExit(f"{cmd}: unknown action; refused, nothing was written")
+
+
+def loop_control(args: argparse.Namespace) -> None:
+    """pause | resume | stop | halt | apply. In the loop's own stream every action applies at once; from another
+    stream pause, resume and stop queue in the loop worktree's loop/control.json for its next tick."""
+    pdir = require_phase(args.phase)
+    pid = pdir.name
+    action = args.action
+    cmd = f"loop-control {pid} {action}"
+    data = read_json(pdir / "phase.json")
+    loop = phase_loop(data)
+    if loop is None:
+        raise SystemExit(f"{cmd}: {pid} is not a loop phase; refused, nothing was written")
+    words = _one_line(args.words) if args.words is not None and _one_line(args.words) else None
+    if action != "halt" and (args.reason is not None or args.detail is not None):
+        raise SystemExit(f"{cmd}: --reason/--detail belong to halt; refused, nothing was written")
+    stream = current_stream(all_active_phases()) if phase_execution(data) else None
+    if _loop_cross_stream(data, stream):
+        branch = phase_execution(data).get("branch")
+        if action not in LOOP_CONTROL_QUEUEABLE:
+            raise SystemExit(f"{cmd}: {action} runs only on the loop's own stream (branch {branch}); from here only "
+                             f"{', '.join(LOOP_CONTROL_QUEUEABLE)} queue; refused, nothing was written")
+        if action in ("resume", "stop") and not words:
+            raise SystemExit(f"{cmd}: {action} needs the operator's literal words (--words \"...\"); refused, nothing was written")
+        target = _loop_worktree_pdir(data)
+        if target is None:
+            raise SystemExit(f"{cmd}: the loop's worktree ({phase_execution(data).get('worktree')}) is not on disk here; run it "
+                             "from the loop's checkout; refused, nothing was written")
+        path = target / "loop" / LOOP_CONTROL_FILE
+        try:
+            current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        except (OSError, ValueError):
+            raise SystemExit(f"{cmd}: {path} is not readable JSON; fix it first; refused, nothing was written")
+        requests = current.get("requests") if isinstance(current, dict) and isinstance(current.get("requests"), list) else []
+        me = session_identity()
+        source = f"stream {stream or 'default'}" + (f", session {me['session']}" if me else "")
+        requests.append({"action": action, "words": words, "at": now_iso(), "from": source})
+        write_json(path, {"requests": requests})
+        append_event("loop_control_queued", phase=pid, action=action, words=words, control=str(path))
+        rebuild_index_and_state()
+        print(f"queued {action} for {pid} in {path} ({len(requests)} request(s)): the loop applies it at its next tick")
+        return
+    if action not in ("stop", "pause"):
+        _driver_refuse(loop, cmd, pid)
+    if action == "apply":
+        requests = _loop_control_requests(LoopSource(pid, pdir))
+        applied = []
+        for req in requests:
+            try:
+                applied.append("applied: " + _loop_control_apply(pdir, str(req.get("action")), req.get("words"),
+                                                                  source=req.get("from")))
+            except SystemExit as exc:
+                applied.append(f"skipped {req.get('action')} from {req.get('from')}: {exc}")
+        write_json(loop_path(pdir, LOOP_CONTROL_FILE), {"requests": []})
+        append_event("loop_control_applied", phase=pid, requests=len(requests))
+        rebuild_index_and_state()
+        for line in applied or ["no queued control requests"]:
+            print(line)
+        return
+    line = _loop_control_apply(pdir, action, words, args.reason, args.detail)
+    rebuild_index_and_state()
+    print(line)
+
+
+def _loop_sign_lift(pdir: Path, data: dict, loop: dict, bounds: dict) -> str:
+    """loop-sign of a new version lifts a budget-total or max-cycles halt when the new bounds clear it (the
+    operator's word is the signature). Mutates `loop`/`data` (the caller writes); returns a line, or ''."""
+    halt = loop.get("halt") if isinstance(loop.get("halt"), dict) else None
+    if loop.get("status") != "halted" or not halt or halt.get("reason") not in LOOP_HALT_NEEDS_CHARTER:
+        return ""
+    cycles = (loop.get("counters") or {}).get("cycles", 0)
+    spent = sum(l.get("usd") for l in loop_read(pdir, "ledger.jsonl") if _is_number(l.get("usd")))
+    cap = bounds["budget"]
+    clears = (spent < cap["total_usd"]) if halt["reason"] == "budget-total" else (cap.get("max_cycles") is None or cycles < cap["max_cycles"])
+    if not clears:
+        halt["on_words"] = _loop_on_words(halt["reason"], (loop.get("charter") or {}).get("version"), data.get("id", pdir.name))
+        return f"halt={halt['reason']} stands: the new bounds do not clear it (on_words={halt['on_words']})"
+    _loop_unhalt(loop, data, data.get("id", pdir.name))
+    loop["status"] = "running" if cycles else "signed"
+    append_event("loop_resumed", phase=data.get("id", pdir.name), words=None, source="loop-sign", was="halted")
+    return f"lifted the {halt['reason']} halt: the new bounds clear it (loop_status={loop['status']})"
+
+
+def _loop_text_cut(text, limit: int) -> str:
+    text = _one_line(text or "")
+    return text if len(text) <= limit else text[: max(1, limit - 3)].rstrip() + "..."
+
+
+def loop_digest(src: LoopSource, view: dict) -> str:
+    """At most LOOP_DIGEST_MAX characters over the window since loop.digest_at: cycles and trials, verdict counts,
+    new survivors, every open parked question, spend against budget, any halt, the next action."""
+    since = view.get("digest_at")
+    since_t = _meter_ts(since)
+    ledger = [l for l in src.jsonl("ledger.jsonl") if since_t is None or (_meter_ts(l.get("closed_at")) or 0) > since_t]
+    stages = list(view["bounds"]["stages"])
+    trials = sum(1 for l in ledger if stages and l.get("stage") == stages[0] and l.get("verdict") != "error")
+    verdicts: dict = {}
+    for l in ledger:
+        verdicts[l.get("verdict")] = verdicts.get(l.get("verdict"), 0) + 1
+    fresh = [s for s in src.jsonl("survivors.jsonl") if since_t is None or (_meter_ts(s.get("at")) or 0) > since_t]
+    sp = view["spend"]
+    halt = view.get("halt") if isinstance(view.get("halt"), dict) else None
+    nxt = view["next"]
+    head = [f"digest {view['loop']} since {since or 'the start'} (status {view['status']})",
+            f"cycles {len(ledger)}, trials {trials}; verdicts " + (" ".join(f"{k}={v}" for k, v in sorted(verdicts.items())) or "none"),
+            f"spend: window {_usd(sp['window'])}; today {_usd(sp['today'])}/{_usd(sp['per_day'])}; "
+            f"total {_usd(sp['total'])}/{_usd(sp['total_cap'])}" + (f"; assumed cycles {sp['assumed']}" if sp["assumed"] else ""),
+            f"halt: {halt['reason']} -- {halt.get('on_words')}" if halt else "halt: none",
+            f"next: {nxt.get('action')}" + "".join(f" {k}={v}" for k, v in nxt.items() if k in ("reason", "stage", "item", "until"))]
+    names = [s.get("key") for s in fresh]
+    surv = f"new survivors ({len(names)}): " + (", ".join(str(n) for n in names) if names else "none")
+    parked = view["parked"]
+    room = LOOP_DIGEST_MAX - sum(len(l) + 1 for l in head) - min(len(surv), 200) - 40
+    each = room // max(1, len(parked)) - 3 if parked else 0
+    if each >= 40:  # every open question, each cut to its share
+        plines = ["- " + _loop_text_cut(f"{p.get('key')}: {p.get('question')} -> {p.get('on_words')}", each) for p in parked]
+    else:  # too many to quote: every key still named, the questions one command away
+        plines = [_loop_text_cut("keys: " + ", ".join(str(p.get("key")) for p in parked)
+                                 + f" (each question: loop-status {view['loop']})", max(40, room))]
+    body = head[:2] + [_loop_text_cut(surv, 200), f"parked open ({len(parked)}):" if parked else "parked open: none"] + plines + head[2:]
+    text = "\n".join(body)
+    return text if len(text) <= LOOP_DIGEST_MAX else text[: LOOP_DIGEST_MAX - 4].rstrip() + "\n..."
+
+
+def loop_status(args: argparse.Namespace) -> None:
+    """The operator's view of one loop, from any stream (cross-stream: the loop worktree's live files, else its
+    branch): plain, --json, or --digest [--write]."""
+    pdir = require_phase(args.phase)
+    pid = pdir.name
+    data = read_json(pdir / "phase.json")
+    if phase_loop(data) is None:
+        raise SystemExit(f"loop-status {pid}: {pid} is not a loop phase")
+    if args.write and not args.digest:
+        raise SystemExit(f"loop-status {pid}: --write belongs to --digest; refused, nothing was written")
+    stream = current_stream(all_active_phases()) if phase_execution(data) else None
+    src = loop_source(pdir, stream)
+    view = loop_view(src, transcripts=args.transcripts, as_driver=True)
+    if args.digest:
+        text = loop_digest(src, view)
+        if args.write:
+            if not src.local:
+                raise SystemExit(f"loop-status {pid} --digest --write: writes only on the loop's own stream ({src.where}); refused, nothing was written")
+            loop = data["loop"]
+            _driver_refuse(loop, f"loop-status {pid} --digest --write", pid)
+            write_text(loop_path(pdir, "digest.md"), text + "\n")
+            loop["digest_at"] = now_iso()
+            write_loop_block(pdir, loop, data)
+            append_event("loop_digest_written", phase=pid, chars=len(text))
+            rebuild_index_and_state()
+        print(text)
+        if args.write:
+            print(f"wrote {shown(loop_path(pdir, 'digest.md'))} ({len(text)} chars); digest_at={data['loop']['digest_at']}")
+        return
+    if args.json:
+        print(json.dumps(view, ensure_ascii=False, indent=2, default=str))
+        return
+    sp, inflight, ch = view["spend"], view["inflight"], view["charter"]
+    driver = view["driver"]
+    print(f"loop={pid} status={view['status']} phase={view['phase_status']} source={view['source']}")
+    print(f"driver={driver['cell']}" + (f" (session {driver.get('session')}, pid {driver.get('pid')}, claimed {driver.get('claimed_at')})"
+                                         if driver.get("claimed_at") else ""))
+    print(f"charter=" + (f"v{ch['version']} signed {ch['signed_at']} ({ch['why']})" if ch["version"] else f"none ({ch['why']})"))
+    print("counters: " + " ".join(f"{k}={view['counters'].get(k, 0)}" for k in LOOP_COUNTERS))
+    if inflight:
+        print(f"inflight: {inflight.get('cycle')} state={inflight.get('state')} attempt={inflight.get('attempt')} "
+              f"started={inflight.get('started_at')}" + (f" dispatched={inflight['dispatched_at']}" if inflight.get("dispatched_at") else ""))
+    else:
+        print("inflight: none")
+    print(f"spend: today {_usd(sp['today'])}/{_usd(sp['per_day'])}  total {_usd(sp['total'])}/{_usd(sp['total_cap'])}  "
+          f"per_cycle {_usd(sp['per_cycle'])}" + (f"  reserved {_usd(sp['reserved'])}" if sp["reserved"] else "")
+          + f"  assumed_cycles={sp['assumed']}" + (f"  max_cycles={sp['max_cycles']}" if sp["max_cycles"] else ""))
+    print(f"parked ({len(view['parked'])} open):" + ("" if view["parked"] else " none"))
+    for p in view["parked"]:
+        print(f"  - key={p['key']} ({p['cycle']}) question={_one_line(p.get('question') or '')} on_words={_one_line(p.get('on_words') or '')}")
+    print(f"survivors ({view['survivors_count']}; last 5): " + (", ".join(f"{s['key']} ({s['cycle']})" for s in view["survivors"]) or "none"))
+    print(f"queue ({view['queue_count']}; head 5): " + (", ".join(f"{q['key']}@{q['stage']}" for q in view["queue"]) or "empty"))
+    halt = view.get("halt") if isinstance(view.get("halt"), dict) else None
+    print(f"halt: reason={halt['reason']} detail={halt.get('detail')} stop_kind={halt.get('stop_kind')} on_words={halt.get('on_words')}"
+          if halt else "halt: none")
+    nxt = view["next"]
+    print("next: " + " ".join(f"{k}={_one_line(str(v))}" for k, v in nxt.items() if v is not None))
+
+
+def loop_next_lines(stream, index: dict) -> list:
+    """`next`'s loop lines: on the loop's own stream one `loop=` line per loop phase; on the default stream one
+    `loops_elsewhere=` line naming each loop phase running on another stream. Small-file reads only."""
+    own, elsewhere = [], []
+    for entry in index.get("active_phases", []):
+        if entry.get("status") == "done":
+            continue
+        pdir = ACTIVE / entry["id"]
+        try:
+            data = read_json(pdir / "phase.json")
+        except (OSError, ValueError):
+            continue
+        if phase_loop(data) is None:
+            continue
+        cross = _loop_cross_stream(data, stream)
+        try:
+            if not cross and (stream is None or (phase_execution(data) or {}).get("branch") == stream):
+                view = loop_view(LoopSource(entry["id"], pdir))
+                sp = view["spend"]
+                own.append(f"loop={view['loop']} status={view['status']} cycle={view['cycle']} "
+                           f"inflight={(view['inflight'] or {}).get('cycle') or 'none'} "
+                           f"spend_today={_usd(sp['today'])}/{_usd(sp['per_day'])} spend_total={_usd(sp['total'])}/{_usd(sp['total_cap'])} "
+                           f"parked={len(view['parked'])} survivors={view['survivors_count']} queue={view['queue_count']} "
+                           f"action={view['next'].get('action')}")
+            elif cross and stream is None and phase_in_flight(data):
+                src = loop_source(pdir, stream)
+                loop = phase_loop(src.phase()) or {}
+                parked = sum(1 for p in src.jsonl("parked.jsonl") if p.get("resolved") is None)
+                cycle = (loop.get("next_cycle") - 1) if _is_int(loop.get("next_cycle")) else 0
+                elsewhere.append(f"{entry['id']}:{loop.get('status')}:{cycle}:parked={parked}")
+        except (SystemExit, OSError, ValueError) as exc:
+            own.append(f"loop={entry['id']} error={_one_line(str(exc))}")
+    if elsewhere:
+        own.append(f"loops_elsewhere={','.join(elsewhere)}")
+    return own
+
+
+def loop_card_line(phase: dict):
+    """The resume card's one loop line (at most LOOP_CARD_LINE bytes), or None for an ordinary phase."""
+    if phase_loop(phase) is None:
+        return None
+    try:
+        view = loop_view(LoopSource(phase["id"], ACTIVE / phase["id"]))
+    except (SystemExit, OSError, ValueError) as exc:
+        return _card_cut(f"loop: {phase['id']} unreadable ({exc})", LOOP_CARD_LINE)
+    last = view.get("last_cycle") if isinstance(view.get("last_cycle"), dict) else None
+    inflight = view["inflight"]
+    nxt = view["next"]
+    text = (f"loop: {view['loop']} {view['status']}; last {last['cycle'].rsplit('.', 1)[-1] + ' ' + str(last.get('verdict')) if last else 'none'}; "
+            f"inflight {inflight['cycle'].rsplit('.', 1)[-1] + ' ' + str(inflight.get('state')) if inflight else 'none'}; "
+            f"next {nxt.get('action')}" + (f" ({nxt['reason']})" if nxt.get("reason") else "") + f" (loop-tick {view['loop']})")
+    return _card_cut(text, LOOP_CARD_LINE)
+
+
+def _meter_events() -> list:
+    """Every event the meter reads, as dispatch-summary reads them (P50.S3 adds the loops' own event files)."""
+    events = []
+    ev = WORKS / "events.jsonl"
+    if ev.exists():
+        for line in ev.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                obj = json.loads(line) if line.strip() else None
+            except ValueError:
+                continue
+            if isinstance(obj, dict):
+                events.append(obj)
+    return events
+
+
+def loop_meter_cycle(sid: str, started_at, driver_session=None, transcripts=None) -> dict:
+    """Meter one cycle at its close: the main thread's share plus every span's cost over [start, now], read from
+    the driver's session only (every session overlapping the window when it is unknown), each span filtered by
+    its first line before its full read. `usd_source` is metered, metered-floor (some output is a floor) or
+    assumed (nothing priced found: the caller charges per_cycle_usd)."""
+    out = {"usd": None, "usd_source": "assumed", "span_minutes": None, "model": None, "spans": 0}
+    dirs = [d for d in _meter_project_dirs(transcripts)[0] if d.is_dir()]
+    if not dirs:
+        return out
+    events = _meter_events()
+    windows = _MeterWindows(events)
+    known = _meter_known_slices(events)
+    lo = _meter_ts(started_at)
+    hi = time.time()
+    only = {driver_session} if driver_session and any((d / f"{driver_session}.jsonl").is_file() for d in dirs) else None
+
+    def span_filter(jl: Path) -> bool:
+        try:
+            if lo is not None and jl.stat().st_mtime < lo - 60:
+                return False
+        except OSError:
+            return False
+        return _loop_span_cycle(jl) == sid
+
+    res = _meter_collect(dirs, known, windows, lambda s: s == sid, lo, hi, only_sessions=only, span_filter=span_filter)
+    row = _meter_report(res, [sid])["slices"][sid]
+    agg = _meter_add(_meter_new(), row["main"])
+    for s in row["spans"]:
+        _meter_add(agg, s["usage"])
+    out["spans"] = len(row["spans"])
+    out["span_minutes"] = round(sum(s["minutes"] or 0.0 for s in row["spans"]), 1)
+    done = [s for s in row["spans"] if s["outcome"] not in ("running", "limit", "?")] or row["spans"]
+    out["model"] = done[-1]["model"] if done else None
+    if agg["requests"] - agg["unpriced"] <= 0:
+        return out
+    out["usd"] = round(agg["cost"], 4)
+    out["usd_source"] = "metered-floor" if agg["no_final"] else "metered"
+    return out
 
 
 def main(argv=None) -> int:
@@ -15698,7 +16932,38 @@ def main(argv=None) -> int:
     p.add_argument("--metrics", help="the product's metrics, a JSON object")
     p.add_argument("--question", help="parked only: what the operator must decide")
     p.add_argument("--on-words", dest="on_words", help="parked only: what the operator's words will do")
+    p.add_argument("--transcripts", action="append", metavar="DIR", help="meter from this projects/<slug> directory instead of discovering the session root's (repeatable)")
     p.set_defaults(func=loop_cycle_close)
+
+    p = sub.add_parser("loop-claim", help="Record the calling Claude Code session (found up the parent-process chain in ${CLAUDE_CONFIG_DIR:-~/.claude}/sessions/<pid>.json; none from a plain shell) as the loop's one driver: loop.driver = {session, pid, proc_start, cwd, claimed_at}. Refused (nothing written) while a different live session holds the claim, naming it and its cwd; an absent or dead holder is replaced. loop-cycle-start, -dispatch, -close and loop-control (bar stop and pause) refuse for a caller that is not the driver")
+    p.add_argument("phase", help=PHASE_ARG_HELP)
+    p.set_defaults(func=loop_claim)
+
+    p = sub.add_parser("loop-tick", help="Read-only, writes nothing: the loop's context (loop, status, driver me|<session>|none, charter, cycle, inflight, spend_today, spend_total, parked, survivors, queue), then exactly one action= and wake_in=<seconds>, then the action's own lines. First rule wins: apply-control; claim | not-driver; the cycle in flight (close, plan, dispatch attempt=, wait, resume-limit until=, overdue, halt reason=limit); the status (halted, paused, stopped -> review; drafting -> sign); halt reason=charter | budget-total | max-cycles; wait reason=budget-day until=<local midnight>; digest; checkpoint; wait reason=cadence; setup; start stage= item=<queue head key | author>. On action=halt the orchestrator records it with loop-control <P> halt --reason <r>")
+    p.add_argument("phase", help=PHASE_ARG_HELP)
+    p.add_argument("--transcripts", action="append", metavar="DIR", help="read spans from this projects/<slug> directory instead of discovering the session root's (repeatable)")
+    p.set_defaults(func=loop_tick)
+
+    p = sub.add_parser("loop-cycle-dispatch", help="Run immediately before each Agent dispatch of a cycle: records inflight.dispatched_at and the attempt (a re-dispatch from disk after a dead span is attempt n+1, mirrored in slice.json loop.attempt; a usage-limit re-dispatch keeps n). Refused (nothing written) while a live span of the cycle exists or a dispatch was recorded moments ago (the second double-dispatch guard), for a caller that is not the driver, on a halted loop, and when the cycle needs a plan.md or a close instead")
+    p.add_argument("slice", help="the cycle in flight (<P>.C<k>)")
+    p.add_argument("--transcripts", action="append", metavar="DIR", help="read spans from this projects/<slug> directory (repeatable)")
+    p.set_defaults(func=loop_cycle_dispatch)
+
+    p = sub.add_parser("loop-control", help="The operator's words to a loop: pause (running|signed -> paused: no new start, the cycle in flight may close), resume (paused|halted -> running, or signed before any cycle; --words required from halted; refused for a budget-total or max-cycles halt, which a new charter version lifts; clears the halt, resets consecutive_failures after a failures halt, the phase back to in_progress), stop (--words required: any status -> stopped, after which the REVIEW is selectable), halt (the orchestrator records a tick halt or an uncovered spend: --reason spend|limit|charter|other [--detail D]; the phase goes pending), apply (applies loop/control.json's queued requests in order, then empties it). From another stream pause, resume and stop queue in the loop worktree's loop/control.json for its next tick. Every action but stop and pause refuses a caller that is not the driver")
+    p.add_argument("phase", help=PHASE_ARG_HELP)
+    p.add_argument("action", choices=LOOP_CONTROL_ACTIONS)
+    p.add_argument("--words", help="the operator's literal words, verbatim (stop; resume from halted; recorded for pause)")
+    p.add_argument("--reason", help="halt only: spend | limit | charter | other")
+    p.add_argument("--detail", help="halt only: one line saying what happened")
+    p.set_defaults(func=loop_control)
+
+    p = sub.add_parser("loop-status", help="The operator's view of one loop, from any stream (another stream's loop is read from its worktree's live files when on disk, else git show <branch>:...): status, driver, charter, counters, the cycle in flight and its state, spend today and in total against each budget (with the assumed-cycle count), every open parked item, the last 5 survivors, the queue head, the halt and the next action (the tick's, as the driver sees it). --json: the same view as one object; --digest: at most 1,500 characters over the window since loop.digest_at; --digest --write also writes loop/digest.md and stamps loop.digest_at (own stream, driver only)")
+    p.add_argument("phase", help=PHASE_ARG_HELP)
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--digest", action="store_true")
+    p.add_argument("--write", action="store_true", help="with --digest: write loop/digest.md and stamp loop.digest_at")
+    p.add_argument("--transcripts", action="append", metavar="DIR", help="read spans from this projects/<slug> directory (repeatable)")
+    p.set_defaults(func=loop_status)
 
     p = sub.add_parser("loop-unpark", help="Resolve a loop's open parked item on the operator's literal words: back in the queue at its stage (exempt from the tried rule), a survivor, or dead; refused for an unknown or already-resolved key")
     p.add_argument("phase", help=PHASE_ARG_HELP)

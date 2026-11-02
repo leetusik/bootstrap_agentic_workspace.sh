@@ -26,7 +26,7 @@ UNFILLED: keep, edit or extend the list below (each cycle plan carries it verbat
 
 ## Bounds
 
-The engine reads the first `json` fence below (`loop-sign` validates it). `budget` is in metered list-price USD and its three caps are required; `stages` maps each stage, in pass order, to the row it runs on (`screen`, `mid`, `high` or `research`); `outputs` are the product paths cycles may write, relative to the product root.
+The engine reads the first `json` fence below (`loop-sign` validates it). `budget` is in metered list-price USD and its three caps are required; `stages` maps each stage, in pass order, to the row it runs on (`screen`, `mid`, `high` or `research`); `cycle_timeout_minutes` is how long a cycle may run before the tick calls it overdue (a timeout is a failed cycle); `outputs` are the product paths cycles may write, relative to the product root.
 
 ```json
 {
@@ -38,6 +38,7 @@ The engine reads the first `json` fence below (`loop-sign` validates it). `budge
   "checkpoint_every": 25,
   "digest_every_hours": 24,
   "keep_cycles": 10,
+  "cycle_timeout_minutes": 120,
   "outputs": []
 }
 ```
