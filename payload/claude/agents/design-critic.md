@@ -89,7 +89,7 @@ If `preview.json` is missing or is older than the canvas, say so under **Not see
 
 **Re-render only the interaction states** the drafter's pass does not show (a hovered, focused or pressed look, a transient state): `python3 scripts/workflow.py design-preview <job> --runtime <the runtime path> --states-only [--board B]`, no `--out` (the result merges into the same `preview.json`). `design-preview --help` ends each check with a "Not seen" note; what it says the machine cannot see is what still needs your eyes.
 
-Run `python3 scripts/workflow.py design-check <job>` (a page scope: `design-check <job> --page <slug>`). A problem there is a Part 1 finding, and so is each `check=leaves-canvas` or `check=same-target-list` warning; in the cross scope, each `check=pending-link` and `check=unlinked-page` line too.
+Run `python3 scripts/workflow.py design-check <job>` (a page scope: `design-check <job> --page <slug>`). A problem there is a Part 1 finding, and so is each `check=leaves-canvas` or `check=same-target-list` warning; in the cross scope, each `check=pending-link` and `check=unlinked-page` line too. A style-lint warning (`check=token-drift`, `transition-all`, `outline-none`, `zoom-disabled`) is answered like an advisory line: neither fixed nor logged with a reason is a 2a must-fix.
 
 **The interaction pass is yours where it needs judgment.** The drafter's render already tried the presets and every control and measured `layout-shift`, `same-target`, `hover-contrast` and `page-clip`. **What it still cannot do**, you must, with a short harness of your own when a finding depends on it:
 - show a hovered, focused or pressed look (it measures contrast on hover, it never screenshots it);

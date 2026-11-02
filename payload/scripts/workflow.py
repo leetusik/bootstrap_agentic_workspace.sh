@@ -10473,10 +10473,16 @@ def design_board_lint(text: str, rel: str) -> list:
 # check=token-drift -- a raw value where the design system (canvas/project/ds/**/*.css, the local copy) or
 # canvas/project/frame.css names a token, by custom property: a hex colour when they name any colour, a
 # font-family or a border-radius literal when they name any font family or radius, and a px length that
-# equals a length token's value exactly (a px literal is too common to flag on its own). Allowed: 0, 1px on
-# border* / outline*, %, currentColor, inherit, initial, unset, transparent, var(...) with its fallback, a
-# board's own custom-property definitions, and everything in [data-proto] chrome (a rule whose selector names
-# [data-proto], a style="" on a tag carrying data-proto). And three of Vercel's web-interface guidelines as
+# equals the value of a length token of the property's role (a px literal is too common to flag on its own).
+# v90 (P47-p5.F3) the role rule: a token's role is its name's family -- space/spacing/gap/gutter (padding*,
+# margin*, gap, inset, top/right/bottom/left), fs/font/text (font-size), lh/leading/line-height (line-height),
+# tracking/letter (letter-spacing); radius tokens serve border*-radius alone -- and a px is matched only to a
+# token of its property's role or of an unknown family, so a cross-role suggestion cannot happen; no such
+# token, no line. Allowed: 0, 1px on border* / outline*, %, currentColor, inherit, initial, unset,
+# transparent, a board's own custom-property definitions, everything in [data-proto] chrome (a rule whose
+# selector names [data-proto], a style="" on a tag carrying data-proto), and any declaration whose value holds
+# var(...) anywhere (inside calc/min/max/clamp, in a shorthand, with its fallback): it is token-derived.
+# And three of Vercel's web-interface guidelines as
 # text matches: check=transition-all (transition: all), check=outline-none (outline: none or 0 with no
 # :focus-visible rule in the board or frame.css), check=zoom-disabled (a viewport meta with user-scalable=no
 # or maximum-scale=1).
@@ -10540,6 +10546,56 @@ def design_board_styles(text: str) -> list:
     return found
 
 
+DESIGN_SPACING_PROP_RE = re.compile(r"(?:padding|margin|scroll-padding|scroll-margin|inset)(?:-[a-z]+)*|"
+                                    r"(?:grid-)?(?:row-|column-)?gap|top|right|bottom|left")
+
+
+def design_token_role(name: str):
+    """v90 (P47-p5.F3) a length token's role, from its name's family: spacing, font-size, line-height,
+    letter-spacing, or None (an unknown family, which serves any property)."""
+    low = name.lower().lstrip("-")
+    segs = set(re.split(r"[-_]+", low))
+    if segs & {"lh", "leading"} or "line-height" in low or "lineheight" in low:
+        return "line-height"
+    if segs & {"tracking", "letter"}:
+        return "letter-spacing"
+    if segs & {"fs", "font", "text"} or "fontsize" in low:
+        return "font-size"
+    if segs & {"space", "spacing", "gap", "gutter"}:
+        return "spacing"
+    return None
+
+
+def design_prop_role(prop: str) -> str:
+    """v90 (P47-p5.F3) the role of a property a px length sits in (the font shorthand's size; its /line-height
+    is matched as line-height by the caller); every other property is "other", served by unknown families only."""
+    if prop in ("font-size", "font"):
+        return "font-size"
+    if prop in ("line-height", "letter-spacing"):
+        return prop
+    return "spacing" if DESIGN_SPACING_PROP_RE.fullmatch(prop) else "other"
+
+
+def design_role_token(names: list, role: str):
+    """The first token of names whose family is role, else the first of an unknown family, else None."""
+    same = [n for n in names if design_token_role(n) == role]
+    return (same or [n for n in names if design_token_role(n) is None] or [None])[0]
+
+
+def design_css_terms(value: str) -> list:
+    """The top-level whitespace-separated terms of a CSS value, a function call kept whole."""
+    terms, depth, cur = [], 0, ""
+    for ch in value:
+        depth += (ch == "(") - (ch == ")")
+        if ch.isspace() and depth == 0:
+            if cur:
+                terms.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    return terms + ([cur] if cur else [])
+
+
 def design_style_lint(text: str, rel: str, tokens: dict) -> list:
     """The style lints of one board (check=token-drift and the three Vercel checks), as warnings."""
     found, drift = [], []
@@ -10550,9 +10606,9 @@ def design_style_lint(text: str, rel: str, tokens: dict) -> list:
         for decl in body.split(";"):
             prop, sep, value = decl.partition(":")
             prop, value = prop.strip().lower(), value.strip()
-            if not sep or not prop or prop.startswith("--"):
-                continue
-            bare = re.sub(r"var\([^()]*(?:\([^()]*\)[^()]*)*\)|url\([^)]*\)", " ", value)
+            if not sep or not prop or prop.startswith("--") or "var(" in value.lower():
+                continue  # v90: a value holding var(...) anywhere is token-derived
+            bare = re.sub(r"url\([^)]*\)", " ", value)
             if bare.strip().lower() in DESIGN_DRIFT_OK:
                 continue
             if tokens["color"]:
@@ -10564,24 +10620,28 @@ def design_style_lint(text: str, rel: str, tokens: dict) -> list:
                     drift.append(f"{bare.strip()[:30]} (font-family)")
                 continue
             if re.fullmatch(r"border(-[a-z]+)*-radius", prop):
-                parts = [v for v in bare.split() if v not in ("/",) and v != "0" and "%" not in v
+                parts = [v for v in design_css_terms(bare) if v != "/" and v != "0" and "%" not in v
                          and v.lower() not in DESIGN_DRIFT_OK]
                 if tokens["radius"] and parts:
-                    named = tokens["radius"].get(" ".join(parts))
+                    named = tokens["radius"].get(" ".join(parts)) or (
+                        tokens["radius"].get(parts[0]) if len(set(parts)) == 1 else None)
                     drift.append(f"{' '.join(parts)} ({prop}{' = var(' + named[0] + ')' if named else ''})")
                 continue
-            for num in DESIGN_PX_RE.findall(bare):
+            role = design_prop_role(prop)
+            for match in DESIGN_PX_RE.finditer(bare):
+                num = match.group(1)
                 if float(num) == 0 or (float(num) == 1 and prop.startswith(("border", "outline"))):
                     continue
-                named = tokens["length"].get(f"{num}px")
+                at = "line-height" if prop == "font" and bare[:match.start()].rstrip().endswith("/") else role
+                named = design_role_token(tokens["length"].get(f"{num}px", []), at)
                 if named:
-                    drift.append(f"{num}px ({prop} = var({named[0]}))")
+                    drift.append(f"{num}px ({prop} = var({named}))")
     if drift:
         unique = list(dict.fromkeys(drift))
         shown = ", ".join(unique[:4]) + (f" (+{len(unique) - 4} more)" if len(unique) > 4 else "")
         found.append(f"{rel}: {len(drift)} raw value(s) where the system or frame.css names a token (check=token-drift): "
-                     f"{shown} -- use the token, var(--…); 0, 1px borders, %, currentColor, inherit, transparent and "
-                     "[data-proto] chrome are allowed")
+                     f"{shown} -- use the token, var(--…); 0, 1px borders, %, currentColor, inherit, transparent, "
+                     "var(...)-derived values and [data-proto] chrome are allowed")
     css = "\n".join(body for _s, body in styles)
     if re.search(r"\btransition(?:-property)?\s*:\s*all\b", css, re.I):
         found.append(f"{rel}: transition: all (check=transition-all) -- name the properties that animate")
@@ -14583,7 +14643,7 @@ def main(argv=None) -> int:
     p.set_defaults(func=design_open)
 
     p = sub.add_parser("design-check", help=f"Check {DESIGN_ROOT_REL}/ against the design contract -- well-formed design.json, job.json and round.json (a critique level, when present, is off, critic or critic+judge), at most one open round per job, and each job's canvas tree (canvas.json keys, boards listed and present, Main.dc.html, path rules, the ./support.js line, board titles numbered 01..N, references inside project/), no stray HTML, waves/<slice>/ folders and every brief a handoff names, and (v61) no absolute or home path in the record's text (a problem while open, a warning once closed); v88: a per-page round's stage= line, --page <slug> for one page's files, check=pending-link, and the style lints (check=token-drift, transition-all, outline-none, zoom-disabled); warnings exit 0, problems exit 1",
-                       description=f"Read-only. With a job id, only design.json and that job. Board titles start \"NN · \" with NN forming 01..N as a set (the layout is free). A canvas pinning another system version than design.json's is a warning, and so is an open job past {DESIGN_JOB_PAGES_MAX} Pages (boards with expand: fill) or {DESIGN_JOB_BOARDS_MAX} boards (one job is one connected group of surfaces, sized for one review sitting; a board another board mounts with <dc-import name=...>, a flow board's screen or a gap component's one-instance board, is not counted). Board lint, also warnings, for an open job or a job named by id: check=leaves-canvas (an href to an https URL other than Google Fonts CSS: the link leaves the prototype) and check=same-target-list (a link with a literal .dc.html target inside a <sc-for>: every row opens the same board) and, on a canvas of 2+ Pages, check=unlinked-page (a Page the entry Page -- Main.dc.html when it is a Page, else the Page with the lowest title number -- reaches by no chain of literal .dc.html hrefs or <dc-import> mounts: link it, or list it as unrelated in the round's join.json, where it stays on this canvas, unlinked; a Page join.json lists as unrelated is skipped, and warns once the entry reaches it). v88 style lints, warnings too: check=token-drift (a raw value where the system's local copy, canvas/project/ds/**/*.css, or canvas/project/frame.css names a token by custom property: a hex colour when they name a colour, a font-family or border-radius literal when they name a font family or a radius, a px length equal to a length token's value; allowed: 0, 1px on border*/outline*, %, currentColor, inherit, initial, unset, transparent, var(...), a board's own custom properties and [data-proto] chrome), check=transition-all (transition: all), check=outline-none (outline: none or 0 with no :focus-visible rule in the board or frame.css) and check=zoom-disabled (a viewport meta with user-scalable=no or maximum-scale=1). v88 per-page rounds (design-open --pages): one stage= line per open per-page round -- frame (no frame.md yet), pages <done>/<n> (a page is done when rounds/<round>/pages/<slug>/result.md says status: done), join (every page done, no join.json) or joined (join.json present); a one-page round has no frame or join -- derived from disk; before the join, a canvas tree without canvas.json is not checked as a canvas. check=pending-link names each href=\"#to:<slug>\" placeholder left in a board: a warning before the round's join.json exists, a problem once it does, so design-close --words refuses it. --page <slug> checks one page of the job's open per-page round with no canvas.json needed: rounds/<round>/pages/<slug>/boards.json well-formed (the page's canvas.json board entries keyed by board path, with w, h and a title, without x, y, order or the \"NN · \" number), each listed board owned by the page's stem prefix (a foreign-prefix board is a problem) and present, every .dc.html the page owns listed, the files it owns carrying the ./support.js line and references inside project/, #to: only to a page of the round, no absolute path, and the board and style lints as warnings; --page frame checks the frame pass's boards (pages/frame/boards.json, stems no page owns) and frame.css. A legacy multi-job slice (a wave drawn before one job per slice) passes as drawn: several open jobs are no problem and no warning. The OK line lists every open round. {DESIGN_LEGACY_DIR}/ and {DESIGN_SCHEMA1_DIR}/ are legacy records and never read.")
+                       description=f"Read-only. With a job id, only design.json and that job. Board titles start \"NN · \" with NN forming 01..N as a set (the layout is free). A canvas pinning another system version than design.json's is a warning, and so is an open job past {DESIGN_JOB_PAGES_MAX} Pages (boards with expand: fill) or {DESIGN_JOB_BOARDS_MAX} boards (one job is one connected group of surfaces, sized for one review sitting; a board another board mounts with <dc-import name=...>, a flow board's screen or a gap component's one-instance board, is not counted). Board lint, also warnings, for an open job or a job named by id: check=leaves-canvas (an href to an https URL other than Google Fonts CSS: the link leaves the prototype) and check=same-target-list (a link with a literal .dc.html target inside a <sc-for>: every row opens the same board) and, on a canvas of 2+ Pages, check=unlinked-page (a Page the entry Page -- Main.dc.html when it is a Page, else the Page with the lowest title number -- reaches by no chain of literal .dc.html hrefs or <dc-import> mounts: link it, or list it as unrelated in the round's join.json, where it stays on this canvas, unlinked; a Page join.json lists as unrelated is skipped, and warns once the entry reaches it). v88 style lints, warnings too: check=token-drift (a raw value where the system's local copy, canvas/project/ds/**/*.css, or canvas/project/frame.css names a token by custom property: a hex colour when they name a colour, a font-family or border-radius literal when they name a font family or a radius, a px length equal to the value of a length token of the property's role -- v90: a token's role is its name's family, space/spacing/gap/gutter for padding, margin, gap, inset and top/right/bottom/left, fs/font/text for font-size, lh/leading/line-height for line-height, tracking/letter for letter-spacing, radius tokens for border-radius alone, an unknown family for any property, so no cross-role token is suggested and a px no same-role token holds is not flagged; allowed: 0, 1px on border*/outline*, %, currentColor, inherit, initial, unset, transparent, a value holding var(...) anywhere (inside calc, min, max or clamp, in a shorthand: token-derived), a board's own custom properties and [data-proto] chrome), check=transition-all (transition: all), check=outline-none (outline: none or 0 with no :focus-visible rule in the board or frame.css) and check=zoom-disabled (a viewport meta with user-scalable=no or maximum-scale=1). v88 per-page rounds (design-open --pages): one stage= line per open per-page round -- frame (no frame.md yet), pages <done>/<n> (a page is done when rounds/<round>/pages/<slug>/result.md says status: done), join (every page done, no join.json) or joined (join.json present); a one-page round has no frame or join -- derived from disk; before the join, a canvas tree without canvas.json is not checked as a canvas. check=pending-link names each href=\"#to:<slug>\" placeholder left in a board: a warning before the round's join.json exists, a problem once it does, so design-close --words refuses it. --page <slug> checks one page of the job's open per-page round with no canvas.json needed: rounds/<round>/pages/<slug>/boards.json well-formed (the page's canvas.json board entries keyed by board path, with w, h and a title, without x, y, order or the \"NN · \" number), each listed board owned by the page's stem prefix (a foreign-prefix board is a problem) and present, every .dc.html the page owns listed, the files it owns carrying the ./support.js line and references inside project/, #to: only to a page of the round, no absolute path, and the board and style lints as warnings; --page frame checks the frame pass's boards (pages/frame/boards.json, stems no page owns) and frame.css. A legacy multi-job slice (a wave drawn before one job per slice) passes as drawn: several open jobs are no problem and no warning. The OK line lists every open round. {DESIGN_LEGACY_DIR}/ and {DESIGN_SCHEMA1_DIR}/ are legacy records and never read.")
     p.add_argument("job", nargs="?", default=None, help="a job id, e.g. 01-signin (default: every job)")
     p.add_argument("--page", default=None, metavar="SLUG", help="v88: check one page of the job's open per-page round (a slug of round.json's pages, or frame): its boards.json and the files its stem owns (list -> List*), no canvas.json needed")
     p.set_defaults(func=design_check)

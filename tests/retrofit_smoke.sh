@@ -3436,7 +3436,8 @@ else bad "check=unlinked-page is wrong (rc=$un_rc/$linked_rc) -- $un $linked"; f
 # slug refuses and writes nothing); design-check prints the round's stage= from disk; --page checks one
 # page without canvas.json (a foreign-prefix board and a #to: to a non-page are problems); check=pending-link
 # warns before join.json and is a problem after it, so design-close --words refuses; join.json's unrelated
-# list exempts a Page from check=unlinked-page; check=token-drift and check=transition-all warn.
+# list exempts a Page from check=unlinked-page; check=token-drift and check=transition-all warn; v90 (P47-p5.F3):
+# a calc(var()) radius is token-derived (silent) and a padding px only an fs- token holds gets no suggestion.
 PG="$DZ/pages"; PR="$PG/docs/reference/design"; PJ="$PR/jobs/01-board"; PP="$PJ/canvas/project"; PRD="$PJ/rounds/01-board"
 mkdir -p "$PG/scripts" && cp "$F/scripts/workflow.py" "$PG/scripts/"
 pw() { ( cd "$PG" && HOME="$DZ/home" python3 scripts/workflow.py "$@" ); }
@@ -3511,9 +3512,10 @@ index["order"].append("Detail.dc.html"); (project / "canvas.json").write_text(js
 head = '<!doctype html>\n<script src="./support.js"></script>\n'
 (project / "Detail.dc.html").write_text(head + "<p>detail</p>\n")
 (project / "List.dc.html").write_text(head + '<a href="Main.dc.html">back</a>\n')
-(project / "frame.css").write_text(":root { --ink: #1a1a1a; --radius-md: 6px; --space-4: 16px; }\n")
+(project / "frame.css").write_text(":root { --ink: #1a1a1a; --radius-md: 6px; --space-4: 16px; --fs-14: 14px; }\n")
 (project / "ListRow.dc.html").write_text(head + '<style>.row { color: #1A1A1A; border: 1px solid var(--ink); padding: 16px; '
-    'border-radius: 50%; transition: all .2s; } [data-proto="state-bar"] { background: #ff0000; }</style>\n<p class="row">row</p>\n')
+    'border-radius: 50%; transition: all .2s; } .cap { border-radius: calc(var(--radius-md) - 1px); padding: 14px; } '
+    '[data-proto="state-bar"] { background: #ff0000; }</style>\n<p class="row">row</p>\n')
 UNREL
 un=$(pw design-check 01-board 2>&1); un_rc=$?
 printf '{"related": ["list"], "unrelated": ["detail"]}\n' > "$PRD/join.json"
@@ -3524,9 +3526,9 @@ if [ "$un_rc" -eq 0 ] && printf '%s\n' "$un" | grep -Fq "Detail.dc.html: Page no
     && [ "$ex_rc" -eq 0 ] && ! printf '%s\n' "$ex" | grep -Fq 'check=unlinked-page' \
     && printf '%s\n' "$reached" | grep -Fq "Detail.dc.html: the round's join.json lists this Page as unrelated, but the entry Page Main.dc.html reaches it (check=unlinked-page)" \
     && printf '%s\n' "$ex" | grep -Fq 'ListRow.dc.html: 2 raw value(s) where the system or frame.css names a token (check=token-drift): #1A1A1A (color = var(--ink)), 16px (padding = var(--space-4))' \
-    && ! printf '%s\n' "$ex" | grep -Fq -e '#ff0000' -e '50%' \
+    && ! printf '%s\n' "$ex" | grep -Fq -e '#ff0000' -e '50%' -e 'calc(' -e 'fs-14' \
     && printf '%s\n' "$ex" | grep -Fq 'ListRow.dc.html: transition: all (check=transition-all)'; then
-  ok "join.json's unrelated list exempts a Page from check=unlinked-page (a reached one warns); check=token-drift names raw values a token names, allowing 1px borders, % and [data-proto] chrome; check=transition-all warns"
+  ok "join.json's unrelated list exempts a Page from check=unlinked-page (a reached one warns); check=token-drift names raw values a token names, allowing 1px borders, %, [data-proto] chrome and a calc(var()) radius and suggesting no cross-role token; check=transition-all warns"
 else bad "the unrelated-page exemption or the style lints are wrong (rc=$un_rc/$ex_rc) -- $un $ex $reached"; fi
 # 6c. v88 (P47-p5.S5): design-preview --page renders one page of a per-page round from its boards.json (a
 # synthesized index.json in the render folder, never canvas.json), into .preview/<job>/<round>/pages/<slug>/,
