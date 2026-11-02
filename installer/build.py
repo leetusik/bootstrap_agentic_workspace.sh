@@ -52,7 +52,7 @@ SRC = REPO / "payload"                          # the shipped sources (never liv
 HEREDOC_DELIM = "INSTALLER_PY"                  # distinctive: no payload/body line may equal it
 PAYLOAD_MARKER = "#@@GENERATED_PAYLOADS@@"      # in main.py — replaced by generated constants
 BODY_MARKER = "#@@PYTHON_BODY@@\n"              # in wrapper.sh — replaced by the python body
-EXPECTED_SKILL_COUNT = 18
+EXPECTED_SKILL_COUNT = 19
 
 # Release stamping (--release). The smoke suite reads the same two shapes (WORKSPACE_VERSION in
 # installer/main.py, the numbered `## v<N> ` headings in CHANGELOG.md), so they are named once here.

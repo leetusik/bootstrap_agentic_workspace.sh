@@ -8,7 +8,9 @@ disable-model-invocation: true
 
 # executor-route
 
-The engine owns one executor route table: each row (`high`, `research`, `mid`, `explore`) names the agent file it dispatches and the model and effort passed on the Agent call. A per-row `[claude.<row>]` block in the repo-root `executors.toml` overrides the engine default, and `python3 scripts/workflow.py sync-agents` writes it into the agent files' frontmatter (the fallback when no per-dispatch value is passed). There are no presets.
+The engine owns one executor route table: each row (`high`, `research`, `mid`, `screen`, `explore`, and the design rows) names the agent file it dispatches and the model and effort passed on the Agent call. A per-row `[claude.<row>]` block in the repo-root `executors.toml` overrides the engine default, and `python3 scripts/workflow.py sync-agents` writes it into the agent files' frontmatter (the fallback when no per-dispatch value is passed). There are no presets.
+
+**The `screen` row** is a loop phase's first-stage row. It owns no agent file (it runs `slice-executor` with its model and effort passed per call) and defaults to the mid row's values; `[claude.screen]` sets it cheaper, and takes an Agent-tool alias only. A `cycle` slice routes by its stage through the signed charter's `stages` (by default `screen` → `screen`, `confirm` → `high`), and a retry (`--retry`) always goes to `high`. Ordinary `research` slices keep their row.
 
 Run `python3 scripts/workflow.py executor-route $ARGUMENTS` and relay its output:
 

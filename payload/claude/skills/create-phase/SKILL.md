@@ -28,6 +28,8 @@ Turn an operator request for new work into one or more phases — or a deferred 
 
    **If the request is "consolidate the docs" / "run a docs phase" — or the operator is clearing a `consolidation_owed=` line from `next` — the scope is already written down.** Run `python3 scripts/workflow.py docs-debt` and propose what it prints; see *The docs-phase route* below. It is an ordinary phase through this same procedure, confirmed at step 3 like any other.
 
+   **If the request is recurring or near-endless work under bounds** (strategy mining, a research sweep, a bug hunt: "keep trying X until …", "run this every hour within $Y"), it is a **loop phase**: follow *The loop route* below.
+
    **If the request is to explain something** (`/knowledge:explain <topic>`, "explain P30", "write a book on X", "add a chapter on Y to book Z", an explain phase), every unit is a phase: a standalone **document** by default, a **book** or a **chapter** of one only when the operator asks. Follow *The explain route* below: it gathers the `## Explain` fields into **one confirmation** and, on the yes, creates and runs the phase. A request that arrives from `/knowledge:explain` with a proposal the operator accepted with a literal yes is already confirmed: *A confirmed proposal* in the route.
 
 3. **Confirm.** Present your refined understanding back to the operator — for each phase, the proposed **name** and **objective**; for deferred work, the title, reason, and trigger. Get explicit confirmation. Per the contract, do **not** run `new-phase` until the operator confirms. (An explain phase is confirmed once, by *The explain route*'s one confirmation, which also covers its fields, its worktree and its run; one the plugin's `/knowledge:explain` proposed, and the operator accepted with a literal yes, arrives confirmed: *A confirmed proposal*.)
@@ -73,6 +75,9 @@ Turn an operator request for new work into one or more phases — or a deferred 
       **An explain phase is the one exception:** its route starts the phase's own worktree,
       because its one confirmation (`worktree: yes`, the default) is the operator's word for it;
       `worktree: no` keeps it on this stream.
+      **A loop phase records its answer and starts nothing here:** its `worktree:` line in
+      `intent.md` is the operator's word, and `do-whole-phase` acts on it before the loop's `DECOMP`
+      (*The loop route*).
 
 5. **Commit, then STOP and report** (an explain phase confirmed with a `unit:` field commits here, then runs on: *The explain route*). Commit what the intake wrote, and only that: the new phase folders (or the deferred job's folder) and the regenerated `works/` files (`state.json`, `index.json`, `backlog.md`, `deferred.md`, `events.jsonl`), never other changes the tree holds. **(nested)** Commit in the nested repo, `git -C workflow …`, with paths relative to it. One commit for the whole intake, in the contract's Commit Convention: `chore(P<N>): create <name> and record the operator's intent` (a deferred job: `chore(D<N>): defer <title>`). Never push. Then list the phases created — IDs, names, and `intent.md` paths — or the deferred job created. Do **not** decompose into middle slices, write any slice's `plan.md`, or implement code. Decomposition is the `DECOMP` slice's own job, later, when the operator executes the phase (`/do-next-slice`, `/do-whole-phase`, `/do-whole-phases`) or explicitly tells you to.
 
@@ -102,6 +107,16 @@ Two things that keep the route from feeding itself: a docs phase leaves **no `##
 The phase review re-runs only the `## Regression Checklist` lines inside its phase's boundary (`python3 scripts/workflow.py phase-scope <P>`: the phase's own surfaces plus every earlier line a changed file feeds), so the **whole** cumulative list is re-run only when the operator asks for it — "run the full regression sweep", "QA sweep", "re-run the checklist" all land here. Nothing is special-cased: same refine → clarify → **confirm at step 3** → `new-phase` → stop. An objective that works: *"re-run every `## Regression Checklist` line in the manifest runtime and report what no longer holds"*.
 
 **What that `DECOMP` will cut** (write it into `intent.md`; do not cut it here): `--kind qa --risk low` slices (the mid row — a sweep re-runs written lines, it designs nothing), one per checklist block (one for the whole list when it is short), each re-running its lines with the instrument and viewports `## Operator Runtime` names and recording the result line by line in `result.md`. Failures become findings the phase's review turns into fix slices or deferred jobs; a line whose precondition no longer exists is reported for the review to strike or rewrite in its `## Regression Checklist` write. A QA phase changes no product code, leaves no `## Doc impact` notes of its own, appends no new checklist lines, and changes no operator-visible surface — so its acceptance gate is normally `--waive`d at the `DECOMP` boundary.
+
+## The loop route
+
+A **loop phase** runs bounded cycles under a signed charter, one item each, until the operator stops it or a charter stop halts it (the `run-loop` skill drives it). Requests for recurring or near-endless work under bounds land here: strategy mining, research sweeps, bug hunts. Nothing is special-cased in the intake: the same refine → clarify → **confirm at step 3** → `new-phase` → stop.
+
+- **Clarify** the objective, what one cycle does to one item, what is forbidden, the money and the bounds (per cycle, per day, in total), in the operator's own words.
+- **Ask in the confirmation whether the loop runs in its own worktree, defaulting to yes**: a loop is long-lived and should not block the default stream. Record the answer as a `worktree: yes|no` line in `intent.md`; on yes, `do-whole-phase` runs `parallel-start` before the `DECOMP` (`.claude/skills/do-whole-phase/reference/worktree.md`), with the branch name the operator confirms.
+- **Create it** with `python3 scripts/workflow.py new-phase --name "…" --objective "…" --loop` (or `loop-init <P>` on an already-planned phase), and record the objective and the operator's bounds wording, verbatim, in `intent.md`.
+
+**What its `DECOMP` will do** (write it into `intent.md`; never cut it here): draft `loop/charter/v1.md` from `intent.md` (every `UNFILLED` filled, each bound proposed with a one-line reason, `## Forbidden` from the operator's own words, `outputs` as narrow as the product allows), cut any setup slices the cycles need, declare the acceptance gate, and present the charter for the operator's literal signature (`loop-sign`). The cycles are never planned at intake: `/run-loop <P>` runs them once the charter is signed.
 
 ## The explain route
 

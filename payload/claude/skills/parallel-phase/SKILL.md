@@ -393,6 +393,27 @@ at its next slice boundary by this same sequence, from the default checkout. Sev
 merge one at a time; two can conflict only in the generated files (take either side, regenerate), and
 `works/events.jsonl` merges as `union`.
 
+### A loop phase lands at its checkpoints
+
+A loop phase (the `run-loop` skill) runs for a long time in its own worktree, so its outputs reach the
+default branch at each **passing checkpoint**, not at the end. The loop's session lands the checkpoint
+(`loop-checkpoint <P> --landed`, committed); the default stream's session merges it:
+
+1. `next` on the default stream prints `merge_ready=<P>:<sha7>` (nested: `merge_ready=<P>:<sha7> host=<sha7>`):
+   the passing checkpoint's commit, **not the branch tip** (cycles keep landing on the branch after it).
+2. At a slice boundary, `parallel-gate <P>`. It prints `merge_commit=<sha>`, and its `exemption=` line
+   covers the charter's `outputs`: a busy default stream admits the merge only while the diff stays in
+   the phase folder, the `works/` files and those `outputs` (nested: the host diff, `host_base..host_commit`,
+   must stay in `outputs`; the gate's next line names the host commit to merge first, in the host's
+   conventions).
+3. `git merge <merge_commit>` (never the branch tip; take either side of a generated `works/` conflict
+   first, then regenerate) → `parallel-merge-finish` → `parallel-consolidated <P>` when that checkpoint
+   stamped consolidation debt.
+4. The loop worktree takes the default branch back at its next cycle boundary: `git merge <default>` there,
+   then `parallel-merge-finish` (it re-stamps a debt whose checkpoint has not reached the default branch).
+5. `parallel-teardown <P>` only after the loop's final REVIEW passes; never while it runs or is stopped
+   awaiting its review.
+
 ### The remote variant — push → PR → CI → `gh pr merge`
 
 (At-root installs; a nested install's host side is step 7 above.)

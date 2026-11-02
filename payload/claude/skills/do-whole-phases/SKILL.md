@@ -38,7 +38,7 @@ The mode word applies to every phase in the run (`.claude/skills/do-whole-phase/
 
 ## Streams
 
-A run stays on the stream it starts on. A phase running in another worktree is skipped and named (`reason=other-stream stream=<branch>`): it runs from its own branch. This skill takes no `worktree` word and never runs `parallel-start`; inside a phase worktree it holds only that phase. A worktree phase's `pass` integration follows `.claude/skills/do-whole-phase/reference/worktree.md`, unchanged.
+A run stays on the stream it starts on. A phase running in another worktree is skipped and named (`reason=other-stream stream=<branch>`): it runs from its own branch. A loop phase prints `skipped=<P> reason=loop` and is never run or parked by a run: `/run-loop <P>` drives it. This skill takes no `worktree` word and never runs `parallel-start`; inside a phase worktree it holds only that phase. A worktree phase's `pass` integration follows `.claude/skills/do-whole-phase/reference/worktree.md`, unchanged.
 
 ## After a compaction mid-run
 
