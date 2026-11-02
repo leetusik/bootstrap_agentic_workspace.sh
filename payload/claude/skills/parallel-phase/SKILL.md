@@ -406,7 +406,12 @@ default branch at each **passing checkpoint**, not at the end. The loop's sessio
    the phase folder, the `works/` files and those `outputs` (nested: the host diff, `host_base..host_commit`,
    must stay in `outputs`; the gate's next line names the host commit to merge first, in the host's
    conventions).
-3. `git merge <merge_commit>` (never the branch tip; take either side of a generated `works/` conflict
+3. Commit this checkout's `works/` first (`git add works && git commit`): the loop's worktree regenerates
+   its dashboards here as it runs (v67), and git refuses a merge over uncommitted changes to the files it
+   touches. The operator's words from here (`loop-control <P> pause|resume|stop`, `loop-checkpoint <P> --now`)
+   only queue in the loop worktree's `loop/control.json` and write nothing in this checkout (they print the
+   commit-first line when `works/` is dirty); every other loop command refuses from here. Then
+   `git merge <merge_commit>` (never the branch tip; take either side of a generated `works/` conflict
    first, then regenerate) → `parallel-merge-finish` → `parallel-consolidated <P>` when that checkpoint
    stamped consolidation debt.
 4. The loop worktree takes the default branch back at its next cycle boundary: `git merge <default>` there,

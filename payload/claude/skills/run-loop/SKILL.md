@@ -80,14 +80,14 @@ At each cycle boundary, when the default branch has moved (`git merge-base --is-
 
 ## The operator's words
 
-They work from any session; from another stream the engine queues them in `loop/control.json` and the driver applies them at its next tick.
+Pause, resume, stop and "checkpoint now" work from any session: from another stream the engine queues them in the loop worktree's `loop/control.json`, writes nothing in the calling checkout, and the driver applies them at its next tick. Every other loop command (sign, unpark, queue, claim, the cycle commands) runs only on the loop's own stream and refuses elsewhere.
 
 - "pause" → `loop-control <P> pause`.
-- "resume" → `loop-control <P> resume --words "<their words>"`.
+- "resume" → `loop-control <P> resume --words "<their words>"`. It never resumes past a charter-level stop (a changed signed charter, `total_usd` spent, `max_cycles` run): it prints `not resumed`, the loop halts on that stop, and you relay its `on_words` (usually a new charter version). A new version that clears one cap but not the other likewise halts on the other.
 - "stop" → `loop-control <P> stop --words "<their words>"`.
 - "sign" on a charter → `loop-sign <P> --words "<their words>"`, only on the operator's literal words (a new version: `--version N`).
 - "checkpoint now" → `loop-checkpoint <P> --now --words "<their words>"`.
-- An answer to a parked item → `loop-unpark <P> <key> --to queue|survivor|dead --words "<their words>"`.
+- An answer to a parked item → `loop-unpark <P> <key> --to queue|survivor|dead --words "<their words>"`. A parked item a review or checkpoint routes to a deferred job: `defer-job`, then `loop-unpark <P> <key> --to deferred --pointer <DID>`. The final review cannot pass while one is open.
 - "status" → `loop-status <P>`.
 
 ## Usage limits

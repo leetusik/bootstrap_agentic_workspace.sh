@@ -31,4 +31,4 @@ The executor returns `review_verdict: pass|changes_requested|blocked`, a summary
 - **`changes_requested`**: the loop pauses (`paused_by: checkpoint`). The tick prints `fix`: cut one `fix` slice per finding class from the checkpoint's `result.md` (`new-slice --kind fix`, on the loop stream), commit; the tick then prints `setup slice=<F> reason=checkpoint` for each open one (run it the ordinary way, `do-next-slice`), then `resume reason=checkpoint` → `loop-control <P> resume` (no words needed once the fixes are done).
 - **`blocked`**: the loop halts (`halted reason=checkpoint`); only the operator's words resume it.
 
-Route the window's parked items into the digest: after a checkpoint, run `loop-status <P> --digest --write` when the digest is due, and show the operator every open parked question.
+Route the window's parked items into the digest: after a checkpoint, run `loop-status <P> --digest --write` when the digest is due, and show the operator every open parked question. A parked item the checkpoint routed to a deferred job: file it (`defer-job`), then `loop-unpark <P> <key> --to deferred --pointer <DID>`, which resolves it.

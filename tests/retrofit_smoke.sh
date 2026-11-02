@@ -4368,6 +4368,17 @@ if printf '%s\n' "$r_disp" | grep -q "attempt=2 " && printf '%s\n' "$r_disp" | g
     && printf '%s\n' "$r_line" | grep -q '"route": "high", "stage_route": "screen", "attempt": 2'; then
   ok "a retry after a dead span: loop-cycle-dispatch records attempt 2 on the high row, executor-route prints high with no --retry, and the close's ledger line reads route=high stage_route=screen"
 else bad "the retry's attempt or row is wrong -- dispatch: $r_disp | route: $r_route | ledger: $r_line"; fi
+# (g) P50-fr.F2: no resume runs past a charter-level stop (here the signed charter edited under a pause: the
+# resume halts on charter instead), and the final review refuses a pass while a parked item (c) is open.
+lw loop-control P1 pause >/dev/null 2>&1; cp "$LPC/v2.md" "$LPW/v2.signed"; printf '\nedited\n' >> "$LPC/v2.md"
+g_res=$(lw loop-control P1 resume 2>&1); g_tick=$(lp_tick); cp "$LPW/v2.signed" "$LPC/v2.md"
+g_ok=$(lw loop-control P1 resume --words "go on" 2>&1); lw loop-control P1 stop --words "stop" >/dev/null 2>&1
+g_rev=$(lw review-phase P1 --verdict pass 2>&1); g_rc=$?
+if printf '%s\n' "$g_res" | grep -q '^not resumed P1: the loop was paused, but a charter-level stop holds -- halted reason=charter ' \
+    && printf '%s\n' "$g_tick" | grep -qx 'reason=charter' && printf '%s\n' "$g_ok" | grep -q '^resumed P1: halted -> running' \
+    && [ "$g_rc" -ne 0 ] && printf '%s\n' "$g_rev" | grep -q 'parked item(s) still open: c .*loop-unpark' && [ "$(lp_field status)" != done ]; then
+  ok "no resume past a charter-level stop: a paused loop whose signed charter changed halts on charter (not resumed), resumes once restored, and review-phase refuses the pass while parked key c is open"
+else bad "a resume ran past a charter-level stop or the review passed over an open parked item -- $g_res | $g_tick | $g_ok | $g_rev"; fi
 lw validate >/dev/null 2>&1 && ok "validate passes on the loop install after every probe" || bad "validate failed on the loop install -- $(lw validate 2>&1 | tail -5)"
 # the run-loop core stays a do-* sized core: <= 16 KB, its resume line inside the first 16 KB.
 python3 - "$REPO_ROOT/payload/claude/skills/run-loop/SKILL.md" <<'PY' && ok "run-loop/SKILL.md stays <= 16 KB with its resume line inside the first 16 KB" || bad "run-loop/SKILL.md is over 16 KB or its resume line moved past the first 16 KB"

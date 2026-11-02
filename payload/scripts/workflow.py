@@ -5787,6 +5787,10 @@ def set_phase_status(args: argparse.Namespace) -> None:
     if args.status not in PHASE_STATUSES:
         raise SystemExit(f"invalid phase status: {args.status}")
     pdir = require_phase(args.phase)
+    if args.status == "done":  # P50-fr.F2: a loop phase reaches done only past its final review's guard
+        why = loop_done_refusal(pdir, read_json(pdir / "phase.json"))
+        if why:
+            raise SystemExit(f"set-phase-status {args.phase} done: {why}; refused, nothing was written")
     old = _set_phase_status(pdir, args.status)
     append_event("phase_status_changed", phase=args.phase, old_status=old, new_status=args.status)
     rebuild_index_and_state()
@@ -5819,6 +5823,31 @@ def _require_acceptance_cleared(phase_id: str, data: dict) -> None:
             f"  {WORKFLOW_CMD} accept-gate {phase_id} --clear --note \"...\"          (after the operator walks it; --note is optional)")
 
 
+def loop_done_refusal(pdir: Path, data: dict):
+    """Why a loop phase may not reach `done` yet, else None (an ordinary phase: always None, nothing read). The
+    final review passes only once the loop is stopped, nothing is in flight, and no parked item is open: the
+    parked list is the loop's question list, and a done phase would archive its open questions (P50-fr.F2)."""
+    loop = phase_loop(data)
+    if loop is None:
+        return None
+    pid = data.get("id", pdir.name)
+    src = loop_source(pdir)
+    live = phase_loop(src.phase()) or loop
+    why = []
+    if live.get("status") != "stopped":
+        why.append(f"the loop is {live.get('status')}: its final review runs only after the stop "
+                   f"({WORKFLOW_CMD} loop-control {pid} stop --words \"...\")")
+    inflight = live.get("inflight") if isinstance(live.get("inflight"), dict) else None
+    if inflight and inflight.get("cycle"):
+        why.append(f"{inflight['cycle']} is still in flight (close it first)")
+    still = [str(e.get("key")) for e in src.jsonl("parked.jsonl") if e.get("resolved") is None]
+    if still:
+        why.append(f"{len(still)} parked item(s) still open: {', '.join(still)} -- resolve each on the operator's words "
+                   f"({WORKFLOW_CMD} loop-unpark {pid} <key> --to queue|survivor|dead --words \"...\") or route it to a "
+                   f"filed deferred job ({WORKFLOW_CMD} loop-unpark {pid} <key> --to deferred --pointer <DID>)")
+    return "; ".join(why) or None
+
+
 def review_phase(args: argparse.Namespace) -> None:
     if args.verdict not in REVIEW_VERDICTS:
         raise SystemExit(f"verdict must be one of: {', '.join(sorted(REVIEW_VERDICTS))}")
@@ -5826,6 +5855,9 @@ def review_phase(args: argparse.Namespace) -> None:
     data = read_json(pdir / "phase.json")
     # Gate check first, before anything is written: a refused pass must leave no trace.
     if args.verdict == "pass":
+        why = loop_done_refusal(pdir, data)
+        if why:
+            raise SystemExit(f"review-phase {args.phase} --verdict pass: {why}; refused, nothing was written")
         _require_acceptance_cleared(args.phase, data)
     data["review"] = {"status": args.verdict, "reviewed_at": now_iso(), "reviewer": args.reviewer, "note": args.note}
     if args.verdict == "changes_requested":
@@ -15160,6 +15192,7 @@ def _loop_init_lines(pdir: Path, path: Path) -> list:
 
 def loop_init(args: argparse.Namespace) -> None:
     pdir = require_phase(args.phase)
+    _loop_own_stream_refuse(pdir, f"loop-init {pdir.name}")
     path = _loop_init(pdir)
     rebuild_index_and_state()
     for line in _loop_init_lines(pdir, path):
@@ -15172,6 +15205,7 @@ def loop_sign(args: argparse.Namespace) -> None:
     pdir = require_phase(args.phase)
     loop = require_loop(pdir, "loop-sign")
     cmd = f"loop-sign {pdir.name}"
+    _loop_own_stream_refuse(pdir, cmd)
     words = (args.words or "").strip()
     if not words:
         raise SystemExit(f"{cmd}: --words must carry the operator's literal words; refused, nothing was written")
@@ -15229,6 +15263,7 @@ def loop_queue(args: argparse.Namespace) -> None:
                   f"errors={item.get('errors', 0)} source={item.get('source')} title={_one_line(item.get('title') or '')}")
         return
     cmd = f"loop-queue {pdir.name} add"
+    _loop_own_stream_refuse(pdir, cmd)
     key = _loop_text_arg(args.key, "--key", cmd)
     title = _loop_text_arg(args.title, "--title", cmd)
     payload = _loop_json_arg(args.payload, "--payload", cmd)
@@ -15254,6 +15289,7 @@ def loop_cycle_start(args: argparse.Namespace) -> None:
     loop = phase_loop(data)
     if loop is None:
         raise SystemExit(f"{cmd}: {pid} is not a loop phase; refused, nothing was written")
+    _loop_own_stream_refuse(pdir, cmd, data)
     _driver_refuse(loop, cmd, pid)
     ok, why = loop_charter_ok(pdir)
     if not ok:
@@ -15439,6 +15475,7 @@ def loop_cycle_close(args: argparse.Namespace) -> None:
     if loop is None or not isinstance(inflight, dict) or inflight.get("cycle") != sid:
         held = inflight.get("cycle") if isinstance(inflight, dict) else "none"
         raise SystemExit(f"{cmd}: it is not the cycle in flight (in flight: {held}); refused, nothing was written")
+    _loop_own_stream_refuse(pdir, cmd, data)
     _driver_refuse(loop, cmd, pdir.name)
     verdict = args.verdict
     question = _one_line(args.question) if args.question is not None else None
@@ -15544,12 +15581,25 @@ def loop_cycle_close(args: argparse.Namespace) -> None:
 
 def loop_unpark(args: argparse.Namespace) -> None:
     """Resolve an open parked item on the operator's literal words: back in the queue (exempt from the tried rule:
-    the operator asked), a survivor, or dead."""
+    the operator asked), a survivor, or dead; or route it to a deferred job already filed (`--to deferred
+    --pointer <DID>`, a review's or checkpoint's routing: words optional), which carries the question on."""
     pdir = require_phase(args.phase)
     loop = require_loop(pdir, "loop-unpark")
     cmd = f"loop-unpark {pdir.name} {args.key}"
+    _loop_own_stream_refuse(pdir, cmd)
     words = (args.words or "").strip()
-    if not words:
+    pointer = None
+    if args.to == "deferred":
+        if not (args.pointer or "").strip():
+            raise SystemExit(f"{cmd} --to deferred: --pointer <DID> names the deferred job that carries the question (file it "
+                             f"first: {WORKFLOW_CMD} defer-job ...); refused, nothing was written")
+        pointer = resolve_id_ref("D", args.pointer.strip())
+        if pointer not in deferred_folder_ids():
+            raise SystemExit(f"{cmd} --to deferred: no deferred job {pointer} in this checkout (file it first: {WORKFLOW_CMD} "
+                             "defer-job ...); refused, nothing was written")
+    elif args.pointer is not None:
+        raise SystemExit(f"{cmd}: --pointer belongs to --to deferred; refused, nothing was written")
+    elif not words:
         raise SystemExit(f"{cmd}: --words must carry the operator's literal words; refused, nothing was written")
     parked = loop_read(pdir, "parked.jsonl")
     mine = [p for p in parked if p.get("key") == args.key]
@@ -15566,9 +15616,11 @@ def loop_unpark(args: argparse.Namespace) -> None:
         if reason:
             raise SystemExit(f"{cmd}: {reason}; refused, nothing was written")
     at = now_iso()
-    entry["resolved"] = {"to": args.to, "words": words, "at": at}
+    entry["resolved"] = {"to": args.to, "words": words or None, "at": at, **({"pointer": pointer} if pointer else {})}
     loop_rewrite(pdir, "parked.jsonl", parked)
-    if args.to == "queue":
+    if args.to == "deferred":
+        pass  # the deferred job carries the question; the key stays tried (the job, once promoted, decides it)
+    elif args.to == "queue":
         item = loop_queue_item(args.key, entry.get("title") or args.key, stage, entry.get("payload"), 0, "operator")
         item["unparked_from"] = entry.get("cycle")
         loop_append(pdir, "queue.jsonl", item)
@@ -15582,9 +15634,9 @@ def loop_unpark(args: argparse.Namespace) -> None:
         _loop_drop_queued(pdir, args.key)
     loop_recount(pdir, loop)
     write_loop_block(pdir, loop)
-    append_event("loop_item_unparked", phase=pdir.name, key=args.key, to=args.to)
+    append_event("loop_item_unparked", phase=pdir.name, key=args.key, to=args.to, **({"pointer": pointer} if pointer else {}))
     rebuild_index_and_state()
-    print(f"unparked key={args.key} -> {args.to} (from {entry.get('cycle')}, stage {stage})")
+    print(f"unparked key={args.key} -> {args.to}" + (f" {pointer}" if pointer else "") + f" (from {entry.get('cycle')}, stage {stage})")
 
 
 def loop_validate(p: dict, errors: list, warnings: list) -> None:
@@ -15676,6 +15728,14 @@ def loop_validate(p: dict, errors: list, warnings: list) -> None:
             loop_read(pdir, name)
         except SystemExit as exc:
             errors.append(f"phase {pid}: {exc}")
+    if p.get("status") == "done":  # P50-fr.F2: a done loop never keeps an open question (the final review's guard)
+        try:
+            still = [str(e.get("key")) for e in loop_read(pdir, "parked.jsonl") if e.get("resolved") is None]
+        except SystemExit:
+            still = []
+        if still:
+            warnings.append(f"phase {pid} is done with open parked item(s) {', '.join(still)}: resolve each "
+                            f"({WORKFLOW_CMD} loop-unpark {pid} <key> --to queue|survivor|dead|deferred) before it archives")
     if isinstance(charter, dict):
         ok, why = loop_charter_ok(pdir)
         if not ok:
@@ -15924,6 +15984,7 @@ def loop_claim(args: argparse.Namespace) -> None:
     loop = phase_loop(data)
     if loop is None:
         raise SystemExit(f"loop-claim {pid}: {pid} is not a loop phase; refused, nothing was written")
+    _loop_own_stream_refuse(pdir, f"loop-claim {pid}", data)
     _driver_refuse(loop, f"loop-claim {pid}", pid)
     me = session_identity()
     old = loop.get("driver") if isinstance(loop.get("driver"), dict) else None
@@ -15994,6 +16055,20 @@ class LoopSource:
 def _loop_cross_stream(data: dict, stream) -> bool:
     execution = phase_execution(data)
     return bool(execution and execution.get("branch") and execution.get("branch") != stream)
+
+
+def _loop_own_stream_refuse(pdir: Path, cmd: str, data=None) -> None:
+    """P50-fr.F2: a loop writer runs only on the loop's own stream. From another checkout it would write that
+    checkout's stale copy of the loop folder (and regenerate its works/ files), which diverges from the loop and
+    blocks the checkpoint merge; only the queued words cross (loop-control pause|resume|stop, loop-checkpoint
+    --now), and they write only the loop worktree's control.json."""
+    data = read_json(pdir / "phase.json") if data is None else data
+    if not phase_execution(data):
+        return
+    if _loop_cross_stream(data, current_stream(all_active_phases())):
+        raise SystemExit(f"{cmd}: runs only on the loop's own stream (branch {phase_execution(data).get('branch')}, worktree "
+                         f"{phase_execution(data).get('worktree')}); from here only loop-control pause|resume|stop and "
+                         "loop-checkpoint --now cross, queued in the loop worktree's loop/control.json; refused, nothing was written")
 
 
 def _loop_worktree_pdir(data: dict):
@@ -16518,6 +16593,7 @@ def loop_cycle_dispatch(args: argparse.Namespace) -> None:
     if not isinstance(inflight, dict) or inflight.get("cycle") != sid:
         held = inflight.get("cycle") if isinstance(inflight, dict) else "none"
         raise SystemExit(f"{cmd}: it is not the cycle in flight (in flight: {held}); refused, nothing was written")
+    _loop_own_stream_refuse(pdir, cmd, data)
     _driver_refuse(loop, cmd, pdir.name)
     queued = _loop_control_requests(LoopSource(pdir.name, pdir))
     if queued:
@@ -16594,14 +16670,58 @@ def _loop_on_words(reason: str, version, pid: str) -> str:
     return words
 
 
-def loop_halt(pdir: Path, reason: str, detail: str, data=None) -> dict:
+def _loop_halt_record(loop: dict, pid: str, reason: str, detail: str) -> dict:
+    version = (loop.get("charter") or {}).get("version") if isinstance(loop.get("charter"), dict) else None
+    return {"reason": reason, "detail": _one_line(detail or reason), "at": now_iso(),
+            "stop_kind": "limit" if reason == "limit" else "decision", "on_words": _loop_on_words(reason, version, pid)}
+
+
+def loop_standing_stop(pdir: Path, loop: dict, bounds=None):
+    """The charter-level stop that holds right now, whatever halt is recorded: (reason, detail) for a changed
+    signed charter (`charter`), the total spend at total_usd (`budget-total`) or the closed cycles at max_cycles
+    (`max-cycles`), else None. These are the tick's stops before any start, and no "resume" lifts them: every way
+    a halt is lifted (resume, a checkpoint pause's resume, loop-sign of a new version) checks them first and
+    halts on the one that holds instead (P50-fr.F2). `bounds`: a version being signed (its pin is fresh)."""
+    if bounds is None:
+        ok, why = loop_charter_ok(pdir)
+        if not ok:
+            return ("charter", why)
+        bounds = loop_bounds_of(LoopSource(pdir.name, pdir), loop)
+    budget = bounds["budget"]
+    spent = sum(l.get("usd") for l in loop_spend_lines(pdir) if _is_number(l.get("usd")))
+    if spent >= budget["total_usd"]:
+        return ("budget-total", f"spent {_usd(spent)} of total_usd {_usd(budget['total_usd'])}")
+    cycles = (loop.get("counters") or {}).get("cycles", 0) if isinstance(loop.get("counters"), dict) else 0
+    if _is_int(budget.get("max_cycles")) and cycles >= budget["max_cycles"]:
+        return ("max-cycles", f"{cycles} of max_cycles {budget['max_cycles']} cycles")
+    return None
+
+
+def _loop_convert_halt(loop: dict, data: dict, pid: str, standing: tuple, lifted_by: dict) -> dict:
+    """A lifted halt whose loop still meets a charter-level stop becomes that stop's halt (the loop stays halted,
+    the phase pending): the old one kept as `last_halt`, the new one carrying `converted_from`. Returns it."""
+    old = loop.get("halt") if isinstance(loop.get("halt"), dict) else {}
+    loop["last_halt"] = {**old, "lifted_at": now_iso(), "lifted_by": lifted_by}
+    halt = _loop_halt_record(loop, pid, standing[0], standing[1])
+    halt["converted_from"] = {"reason": old.get("reason"), "detail": old.get("detail"), "at": old.get("at")}
+    loop["halt"] = halt
+    loop["status"] = "halted"
+    append_event("loop_halt_converted", phase=pid, old_reason=old.get("reason"), reason=halt["reason"],
+                 detail=halt["detail"], source=lifted_by.get("from"))
+    return halt
+
+
+def _loop_standing_line(pid: str, lifted: str, halt: dict) -> str:
+    return (f"not resumed {pid}: {lifted}, but a charter-level stop holds -- halted reason={halt['reason']} "
+            f"detail={halt['detail']}; on_words={halt['on_words']}")
+
+
+def loop_halt(pdir: Path, reason: str, detail: str, data=None, extra=None) -> dict:
     """Halt the loop: `loop.halt`, status halted, the phase pending, event loop_halted. Returns the halt record."""
     data = read_json(pdir / "phase.json") if data is None else data
     loop = data["loop"]
     pid = data.get("id", pdir.name)
-    version = (loop.get("charter") or {}).get("version") if isinstance(loop.get("charter"), dict) else None
-    halt = {"reason": reason, "detail": _one_line(detail or reason), "at": now_iso(),
-            "stop_kind": "limit" if reason == "limit" else "decision", "on_words": _loop_on_words(reason, version, pid)}
+    halt = {**_loop_halt_record(loop, pid, reason, detail), **(extra or {})}
     loop["halt"] = halt
     loop["status"] = "halted"
     old = data.get("status")
@@ -16623,7 +16743,7 @@ def _loop_unhalt(loop: dict, data: dict, pid: str) -> None:
         append_event("phase_status_changed", phase=pid, old_status="pending", new_status="in_progress")
 
 
-def _loop_control_apply(pdir: Path, action: str, words=None, reason=None, detail=None, source=None) -> str:
+def _loop_control_apply(pdir: Path, action: str, words=None, reason=None, detail=None, source=None, queued_at=None) -> str:
     """Apply one control action in this checkout; SystemExit (nothing written) on a refusal. Returns its line."""
     data = read_json(pdir / "phase.json")
     loop = data["loop"]
@@ -16632,6 +16752,8 @@ def _loop_control_apply(pdir: Path, action: str, words=None, reason=None, detail
     cmd = f"loop-control {pid} {action}"
     at = now_iso()
     record = {"words": words, "at": at, "from": source or "this stream", "from_status": status}
+    if queued_at:  # another stream's words: the queue time rides on the record (the queue wrote nothing there)
+        record["queued_at"] = queued_at
     if action == "pause":
         if status not in ("running", "signed"):
             raise SystemExit(f"{cmd}: the loop is {status}; pause applies to a running or signed loop; refused, nothing was written")
@@ -16672,6 +16794,30 @@ def _loop_control_apply(pdir: Path, action: str, words=None, reason=None, detail
                 loop.setdefault("counters", {})["consecutive_failures"] = 0
             if halt.get("reason") == "limit" and isinstance(loop.get("inflight"), dict):
                 loop["inflight"]["limit_cleared_at"] = at
+        # P50-fr.F2: the words lift every resumable stop (a failures count reached under another halt included);
+        # a charter-level stop that holds is never resumed past: the loop halts on it, as the next tick would.
+        bounds = loop_bounds_of(LoopSource(pid, pdir), loop)
+        if not isinstance(loop.get("counters"), dict):
+            loop["counters"] = {}
+        counters = loop["counters"]
+        reset = ""
+        if counters.get("consecutive_failures", 0) >= bounds["stops"]["max_consecutive_failures"]:
+            reset = f"; consecutive_failures {counters['consecutive_failures']} reset to 0"
+            counters["consecutive_failures"] = 0
+        standing = loop_standing_stop(pdir, loop)
+        if standing is not None:
+            lifted_by = {"words": words, "from": record["from"], "action": "resume"}
+            if status == "halted":
+                old = loop["halt"].get("reason") if isinstance(loop.get("halt"), dict) else None
+                halt = _loop_convert_halt(loop, data, pid, standing, lifted_by)
+                write_loop_block(pdir, loop, data)
+                return _loop_standing_line(pid, f"your words lift the {old} halt{reset}", halt)
+            loop["paused"] = None
+            loop["paused_by"] = None
+            halt = loop_halt(pdir, standing[0], standing[1], data,
+                             extra={"converted_from": {"status": status, "at": at}, "lifted_by": lifted_by})
+            return _loop_standing_line(pid, f"the loop was {status}{reset}", halt)
+        if status == "halted":
             _loop_unhalt(loop, data, pid)
         counters = loop.get("counters") if isinstance(loop.get("counters"), dict) else {}
         ran = counters.get("cycles", 0) or loop.get("inflight") or (_is_int(loop.get("next_cycle")) and loop["next_cycle"] > 1)
@@ -16681,7 +16827,7 @@ def _loop_control_apply(pdir: Path, action: str, words=None, reason=None, detail
         loop["resumed"] = record
         write_loop_block(pdir, loop, data)
         append_event("loop_resumed", phase=pid, words=words, source=record["from"], was=status)
-        return f"resumed {pid}: {status} -> {loop['status']}"
+        return f"resumed {pid}: {status} -> {loop['status']}{reset}"
     if action == "stop":
         if not words:
             raise SystemExit(f"{cmd}: stop needs the operator's literal words (--words \"...\"); refused, nothing was written")
@@ -16729,24 +16875,7 @@ def loop_control(args: argparse.Namespace) -> None:
                              f"{', '.join(LOOP_CONTROL_QUEUEABLE)} queue; refused, nothing was written")
         if action in ("resume", "stop") and not words:
             raise SystemExit(f"{cmd}: {action} needs the operator's literal words (--words \"...\"); refused, nothing was written")
-        target = _loop_worktree_pdir(data)
-        if target is None:
-            raise SystemExit(f"{cmd}: the loop's worktree ({phase_execution(data).get('worktree')}) is not on disk here; run it "
-                             "from the loop's checkout; refused, nothing was written")
-        path = target / "loop" / LOOP_CONTROL_FILE
-        try:
-            current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-        except (OSError, ValueError):
-            raise SystemExit(f"{cmd}: {path} is not readable JSON; fix it first; refused, nothing was written")
-        requests = current.get("requests") if isinstance(current, dict) and isinstance(current.get("requests"), list) else []
-        me = session_identity()
-        source = f"stream {stream or 'default'}" + (f", session {me['session']}" if me else "")
-        requests.append({"action": action, "words": words, "at": now_iso(), "from": source})
-        write_json(path, {"requests": requests})
-        append_event("loop_control_queued", phase=pid, action=action, words=words, control=str(path))
-        rebuild_index_and_state()
-        print(f"queued {action} for {pid} in {path} ({len(requests)} request(s)): the loop applies it at its next tick")
-        return
+        return _loop_queue_control(pdir, data, action, words, cmd)
     if action not in ("stop", "pause"):
         _driver_refuse(loop, cmd, pid)
     if action == "apply":
@@ -16755,7 +16884,7 @@ def loop_control(args: argparse.Namespace) -> None:
         for req in requests:
             try:
                 applied.append("applied: " + _loop_control_apply(pdir, str(req.get("action")), req.get("words"),
-                                                                  source=req.get("from")))
+                                                                  source=req.get("from"), queued_at=req.get("at")))
             except SystemExit as exc:
                 applied.append(f"skipped {req.get('action')} from {req.get('from')}: {exc}")
         write_json(loop_path(pdir, LOOP_CONTROL_FILE), {"requests": []})
@@ -16782,6 +16911,14 @@ def _loop_sign_lift(pdir: Path, data: dict, loop: dict, bounds: dict) -> str:
     if not clears:
         halt["on_words"] = _loop_on_words(halt["reason"], (loop.get("charter") or {}).get("version"), data.get("id", pdir.name))
         return f"halt={halt['reason']} stands: the new bounds do not clear it (on_words={halt['on_words']})"
+    # P50-fr.F2: the new bounds clear this halt; another charter-level stop they do not clear becomes the halt
+    standing = loop_standing_stop(pdir, loop, bounds)
+    if standing is not None:
+        version = (loop.get("charter") or {}).get("version")
+        new = _loop_convert_halt(loop, data, data.get("id", pdir.name), standing,
+                                 {"words": None, "from": f"loop-sign v{version}", "action": "loop-sign"})
+        return (f"the new bounds clear the {halt['reason']} halt, but not {new['reason']} -- halted reason={new['reason']} "
+                f"detail={new['detail']}; on_words={new['on_words']}")
     _loop_unhalt(loop, data, data.get("id", pdir.name))
     loop["status"] = "running" if cycles else "signed"
     append_event("loop_resumed", phase=data.get("id", pdir.name), words=None, source="loop-sign", was="halted")
@@ -17301,9 +17438,16 @@ def _loop_queue_control(pdir: Path, data: dict, action: str, words, cmd: str) ->
     source = f"stream {stream or 'default'}" + (f", session {me['session']}" if me else "")
     requests.append({"action": action, "words": words, "at": now_iso(), "from": source})
     write_json(path, {"requests": requests})
-    append_event("loop_control_queued", phase=pid, action=action, words=words, control=str(path))
-    rebuild_index_and_state()
+    # P50-fr.F2: nothing in this checkout is written -- no event, no regenerated works/ file -- so a queued word
+    # never dirties the default checkout ahead of a checkpoint merge; the loop records it when it applies it
     print(f"queued {action} for {pid} in {path} ({len(requests)} request(s)): the loop applies it at its next tick")
+    print("this checkout: nothing written here (the request lives in the loop worktree; its apply records it)")
+    dirty = _git(["status", "--porcelain", "--", str(WORKS)], check=False) if _git_available() else None
+    if dirty is not None and dirty.returncode == 0 and dirty.stdout.strip():
+        # the loop worktree refreshes this checkout's generated works/ files as it runs (v67); git refuses a
+        # merge over them, so they are committed before the checkpoint merge (parallel-phase skill)
+        print(f"before the checkpoint merge: commit this checkout's works/ first ({len(dirty.stdout.splitlines())} uncommitted "
+              f"path(s), regenerated here by the loop's worktree as it runs): git add {shown(WORKS)} && git commit")
 
 
 def loop_checkpoint(args: argparse.Namespace) -> None:
@@ -17731,7 +17875,7 @@ def main(argv=None) -> int:
     p.add_argument("status")
     p.set_defaults(func=set_phase_status)
 
-    p = sub.add_parser("review-phase", help="Record a phase review verdict (pass/changes_requested/blocked); a pass stamps doc consolidation pending when '## Doc impact' has notes, and settles a worktree phase's to done when it has none")
+    p = sub.add_parser("review-phase", help="Record a phase review verdict (pass/changes_requested/blocked); a pass stamps doc consolidation pending when '## Doc impact' has notes, and settles a worktree phase's to done when it has none. A loop phase's pass is refused (nothing written) until the loop is stopped, nothing is in flight and no parked item is open (loop-unpark); set-phase-status <loop P> done is held to the same guard")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--verdict", required=True, choices=sorted(REVIEW_VERDICTS))
     p.add_argument("--reviewer", default=None)
@@ -17994,7 +18138,7 @@ def main(argv=None) -> int:
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.set_defaults(func=loop_init)
 
-    p = sub.add_parser("loop-sign", help="Sign a loop charter version on the operator's literal words: pin its sha256 and record it (a drafting loop becomes signed); refused (nothing written) for empty words, a missing file, invalid bounds, an UNFILLED placeholder left, or a version already signed or not past the signed one. The orchestrator runs it only after the operator's words")
+    p = sub.add_parser("loop-sign", help="Sign a loop charter version on the operator's literal words: pin its sha256 and record it (a drafting loop becomes signed); refused (nothing written) for empty words, a missing file, invalid bounds, an UNFILLED placeholder left, or a version already signed or not past the signed one. A budget-total or max-cycles halt the new bounds clear is lifted; one they clear while the other still holds becomes that halt. The loop's own stream only. The orchestrator runs it only after the operator's words")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--words", required=True, help="the operator's literal words, verbatim")
     p.add_argument("--version", type=int, help="the charter version N (loop/charter/vN.md); default the highest on disk")
@@ -18042,7 +18186,7 @@ def main(argv=None) -> int:
     p.add_argument("--transcripts", action="append", metavar="DIR", help="read spans from this projects/<slug> directory (repeatable)")
     p.set_defaults(func=loop_cycle_dispatch)
 
-    p = sub.add_parser("loop-control", help="The operator's words to a loop: pause (running|signed -> paused: no new start, the cycle in flight may close), resume (paused|halted -> running, or signed before any cycle; --words required from halted; refused for a budget-total or max-cycles halt, which a new charter version lifts; clears the halt, resets consecutive_failures after a failures halt, the phase back to in_progress), stop (--words required: any status -> stopped, after which the REVIEW is selectable), halt (the orchestrator records a tick halt verbatim or an uncovered spend: --reason charter|budget-total|max-cycles|limit|spend|other [--detail D]; the one halt writer a close uses: the phase goes pending, stop_kind limit for limit, budget-total and max-cycles lifted only by loop-sign of a new version), apply (applies loop/control.json's queued requests in order, then empties it). From another stream pause, resume and stop queue in the loop worktree's loop/control.json for its next tick. Every action but stop and pause refuses a caller that is not the driver")
+    p = sub.add_parser("loop-control", help="The operator's words to a loop: pause (running|signed -> paused: no new start, the cycle in flight may close), resume (paused|halted -> running, or signed before any cycle; --words required from halted; refused for a budget-total or max-cycles halt, which a new charter version lifts; clears the halt, resets consecutive_failures once it reached max_consecutive_failures, the phase back to in_progress; when a charter-level stop holds -- a changed signed charter, the total spend at total_usd, the cycles at max_cycles -- it never resumes past it: the loop halts on that stop instead and prints 'not resumed' with its on_words), stop (--words required: any status -> stopped, after which the REVIEW is selectable), halt (the orchestrator records a tick halt verbatim or an uncovered spend: --reason charter|budget-total|max-cycles|limit|spend|other [--detail D]; the one halt writer a close uses: the phase goes pending, stop_kind limit for limit, budget-total and max-cycles lifted only by loop-sign of a new version), apply (applies loop/control.json's queued requests in order, then empties it). From another stream pause, resume and stop queue in the loop worktree's loop/control.json for its next tick, and write nothing in this checkout. Every action but stop and pause refuses a caller that is not the driver")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("action", choices=LOOP_CONTROL_ACTIONS)
     p.add_argument("--words", help="the operator's literal words, verbatim (stop; resume from halted; recorded for pause)")
@@ -18069,11 +18213,12 @@ def main(argv=None) -> int:
     p.add_argument("--transcripts", action="append", metavar="DIR", help="--verdict: meter from this projects/<slug> directory (repeatable)")
     p.set_defaults(func=loop_checkpoint)
 
-    p = sub.add_parser("loop-unpark", help="Resolve a loop's open parked item on the operator's literal words: back in the queue at its stage (exempt from the tried rule), a survivor, or dead; refused for an unknown or already-resolved key")
+    p = sub.add_parser("loop-unpark", help="Resolve a loop's open parked item on the operator's literal words: back in the queue at its stage (exempt from the tried rule), a survivor, or dead; or --to deferred --pointer <DID>: routed to a deferred job already filed (defer-job), which carries the question (words optional). Refused for an unknown or already-resolved key; the loop's own stream only. The final review cannot pass while one is open")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("key")
-    p.add_argument("--to", required=True, choices=("queue", "survivor", "dead"))
-    p.add_argument("--words", required=True, help="the operator's literal words, verbatim")
+    p.add_argument("--to", required=True, choices=("queue", "survivor", "dead", "deferred"))
+    p.add_argument("--words", help="the operator's literal words, verbatim (required but for --to deferred)")
+    p.add_argument("--pointer", help="--to deferred only: the deferred job's id (D<n>, D-<token>)")
     p.set_defaults(func=loop_unpark)
 
     p = sub.add_parser("archive-phase", help="Archive a single review-passed phase (first-class; use when only some phases are done)")
