@@ -4260,8 +4260,10 @@ lp_t0=$(date +%s)
 newtmp LPW; LP="$LPW/ws"; LPCC="$LPW/cc"; LPX="$LPCC/projects/fixture"; mkdir -p "$LPCC/sessions" "$LPX"
 sh "$BOOT" "$LP" --at-root --name "Loop" --summary "loop" >/dev/null 2>&1 || bad "loop probe: the fresh install failed"
 lw() { ( cd "$LP" && CLAUDE_CONFIG_DIR="$LPCC" python3 scripts/workflow.py "$@" ); }
-lgc() { ( cd "$LP" && git add -A && git -c user.email=smoke@example.invalid -c user.name=smoke commit -qm "$1" ) >/dev/null 2>&1 || bad "loop probe: commit $1 failed"; }
-( cd "$LP" && git init -q . ) >/dev/null 2>&1; lgc baseline
+lgc() { ( cd "$LP" && git add -A && git commit -qm "$1" ) >/dev/null 2>&1 || bad "loop probe: commit $1 failed"; }
+# The identity lives in the repo's config, not on lgc's commits alone: the engine commits too (parallel-start's
+# stamp in (h)), and a CI runner has no global identity to fall back on.
+( cd "$LP" && git init -q . && git config user.email smoke@example.invalid && git config user.name smoke ) >/dev/null 2>&1; lgc baseline
 LPP="$LP/works/phases/active/P1"; LPC="$LPP/loop/charter"
 # lp_fill <src> <dst> <total_usd>: fill every UNFILLED section of the charter and set the bounds.
 lp_fill() { python3 - "$1" "$2" "$3" <<'PY'
