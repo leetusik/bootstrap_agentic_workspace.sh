@@ -1104,11 +1104,9 @@ def slice_route(kind, risk, retry: bool, cycle_stage=None) -> tuple:
     (`loop_cycle_stage`); a cycle with none routes high, the safe direction."""
     if retry:
         return "high", "second attempt"
-    if kind == "cycle":
+    if kind == "cycle":  # executor-route passes the engine's attempt instead (loop_attempt_row, P50-fr.F1)
         stage, row = cycle_stage if cycle_stage else (None, None)
-        if row not in LOOP_STAGE_ROWS:
-            return "high", f"kind cycle, stage {stage or 'unknown'} (no charter row: high)"
-        return row, f"kind cycle, stage {stage}"
+        return loop_attempt_row(stage, row, 1)
     if kind in ("review", "decomposition", "co-work"):
         return "high", f"kind {kind}"
     if kind == "research":
@@ -1159,17 +1157,27 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
         sdata = read_json(sdir / "slice.json")
         kind, risk = sdata.get("kind"), sdata.get("risk")
         cycle_stage = loop_cycle_stage(sdir.parents[1], sdata) if kind == "cycle" else None
-        row, reason = slice_route(kind, risk, args.retry, cycle_stage=cycle_stage)
+        if kind == "cycle":  # P50-fr.F1: the engine numbers a cycle's attempts, so the row never rests on --retry
+            attempt = loop_cycle_attempt(sdir.parents[1], sdata)
+            if args.retry and attempt < 2:
+                raise SystemExit(f"executor-route: {args.slice} is a loop cycle at attempt {attempt}: the engine numbers a cycle's "
+                                 "attempts (loop-tick's dispatch attempt=, loop-cycle-dispatch) and routes attempt 2 to high by "
+                                 "itself; drop --retry")
+            row, reason = loop_attempt_row(cycle_stage[0], cycle_stage[1], attempt)
+        else:
+            attempt = 2 if args.retry else 1
+            row, reason = slice_route(kind, risk, args.retry, cycle_stage=cycle_stage)
         lines, fallback = _dispatch_lines(row, routes, proxy)
         print(f"slice={args.slice}")
         print(f"phase={args.slice.split('.', 1)[0]}")
         print(f"kind={kind if kind not in (None, '') else 'unset'}")
         print(f"risk={risk if risk not in (None, '') else 'unset'}")
-        print(f"attempt={2 if args.retry else 1}")
+        print(f"attempt={attempt}")
         print(f"route={row}")
         print(f"reason={reason}")
         if kind == "cycle":
             print(f"stage={cycle_stage[0] or 'unknown'}")
+            print(f"stage_route={cycle_stage[1] or 'none'}")
         print(f"subagent_type={installed_agent_name(ROUTE_AGENT[row])}")
         print("\n".join(lines))
         extra = [fallback] if fallback else []
@@ -1755,7 +1763,8 @@ def _meter_collect(dirs: list, known: dict, windows: "_MeterWindows", selected, 
                     cycle_rows[sid] = _meter_cycle_row(sid)
                 span = {"id": jl.stem[len("agent-"):], "session": path.stem, "agent": agent, "model": model,
                         "effort": meta.get("effort"), "route": _meter_route(agent, sp["prompt"], model, known.get(sid), families,
-                                                                            meta.get("effort"), cycle_rows.get(sid)),
+                                                                            meta.get("effort"),
+                                                                            _meter_cycle_span_row(cycle_rows.get(sid), sp["first"])),
                         "slice": sid, "attributed_by": how, "start": sp["first"], "minutes": minutes,
                         "resumes": sp["resumes"], "outcome": outcome, "reset": sp["last_limit"] or None,
                         "usage": agg}
@@ -1767,24 +1776,50 @@ def _meter_collect(dirs: list, known: dict, windows: "_MeterWindows", selected, 
 
 
 def _meter_cycle_row(sid: str):
-    """The row a loop cycle ran on, for the means: its charter stage's row from its slice.json (active phases),
-    else the `route` its ledger line recorded (a cycle whose folder has left the tree), else None."""
+    """The rows a loop cycle's spans ran on, for the means: `{"default": row, "dispatches": [(epoch, row), ...]}`.
+    The dispatches are the ones loop-cycle-dispatch recorded (the in-flight cycle's `inflight.history`, else its ledger
+    line's `dispatches`, which outlives a rolled folder), each with its attempt's row (a retry: high); `default` is the
+    stage's charter row from slice.json, else the ledger's `stage_route`, else (a pre-F1 line) its `route`. None when
+    nothing is known."""
     pid = sid.split(".", 1)[0]
     pdir = ACTIVE / pid
+    default, dispatches = None, []
     try:
         sdata = read_json(pdir / "slices" / sid / "slice.json")
-        _stage, row = loop_cycle_stage(pdir, sdata)
-        if row:
-            return row
+        default = loop_cycle_stage(pdir, sdata)[1]
     except (OSError, ValueError, SystemExit):
         pass
     try:
-        for line in loop_read(pdir, "ledger.jsonl"):
-            if line.get("cycle") == sid and isinstance(line.get("route"), str):
-                return line["route"]
-    except (OSError, SystemExit):
+        inflight = (loop_block(pdir) or {}).get("inflight")
+        if isinstance(inflight, dict) and inflight.get("cycle") == sid:
+            dispatches = list(inflight.get("history") or [])
+        else:
+            for line in loop_read(pdir, "ledger.jsonl"):
+                if line.get("cycle") == sid:
+                    dispatches = list(line.get("dispatches") or [])
+                    if default is None:
+                        row = line.get("stage_route") if "stage_route" in line else line.get("route")
+                        default = row if isinstance(row, str) else None
+    except (OSError, ValueError, SystemExit):
         pass
-    return None
+    marks = sorted((_meter_ts(d.get("at")), d.get("route")) for d in dispatches
+                   if isinstance(d, dict) and _meter_ts(d.get("at")) is not None and isinstance(d.get("route"), str))
+    if default is None and not marks:
+        return None
+    return {"default": default, "dispatches": marks}
+
+
+def _meter_cycle_span_row(info, first):
+    """The row of one span of a cycle: the last recorded dispatch at or before its first entry (loop-cycle-dispatch
+    runs right before the Agent call; its `at` carries milliseconds), else the default (`_meter_cycle_row`)."""
+    if not isinstance(info, dict):
+        return None
+    row = info.get("default")
+    if first is not None:
+        for at, route in info.get("dispatches") or []:
+            if at <= first:
+                row = route
+    return row
 
 
 def _meter_main_bucket(res: dict, sid, ts, selected, lo, hi, one: dict) -> None:
@@ -15027,9 +15062,12 @@ def loop_key_refusal(key: str, stage: str, stages: dict, queue: list, ledger: li
     return None
 
 
-def loop_queue_item(key: str, title: str, stage: str, payload, priority, source: str, errors: int = 0) -> dict:
-    return {"key": key, "title": title, "stage": stage, "payload": payload, "priority": priority,
+def loop_queue_item(key: str, title: str, stage: str, payload, priority, source: str, errors: int = 0, footprint=None) -> dict:
+    item = {"key": key, "title": title, "stage": stage, "payload": payload, "priority": priority,
             "added_at": now_iso(), "source": source, "errors": errors}
+    if footprint:
+        item["footprint"] = footprint  # an error close's uncommitted outputs: the item's next cycle reconciles them
+    return item
 
 
 def loop_recount(pdir: Path, loop: dict) -> None:
@@ -15249,7 +15287,7 @@ def loop_cycle_start(args: argparse.Namespace) -> None:
         item = {"key": key, "title": title, "stage": stage,
                 "payload": payload if args.payload is not None else (taken or {}).get("payload"),
                 "priority": (taken or {}).get("priority", 0), "errors": (taken or {}).get("errors", 0),
-                "source": (taken or {}).get("source", "orchestrator")}
+                "source": (taken or {}).get("source", "orchestrator"), "footprint": (taken or {}).get("footprint")}
     else:
         if args.title is not None or args.payload is not None:
             raise SystemExit(f"{cmd}: --title/--payload author a new item and need --key; refused, nothing was written")
@@ -15262,7 +15300,8 @@ def loop_cycle_start(args: argparse.Namespace) -> None:
         reason = loop_key_refusal(key, stage, stages, queue, ledger, dead, check_queued=False,
                                   check_tried=not taken.get("unparked_from"))
         item = {"key": key, "title": taken.get("title") or key, "stage": stage, "payload": taken.get("payload"),
-                "priority": taken.get("priority", 0), "errors": taken.get("errors", 0), "source": taken.get("source")}
+                "priority": taken.get("priority", 0), "errors": taken.get("errors", 0), "source": taken.get("source"),
+                "footprint": taken.get("footprint")}
     if reason:
         raise SystemExit(f"{cmd}: {reason}; refused, nothing was written")
     k = loop.get("next_cycle") if _is_int(loop.get("next_cycle")) else 1
@@ -15281,6 +15320,8 @@ def loop_cycle_start(args: argparse.Namespace) -> None:
     sdata["loop"] = {"k": k, "stage": stage, "key": key, "title": item["title"], "payload": item["payload"],
                      "charter": signed_version, "attempt": 1, "priority": item["priority"], "errors": item["errors"],
                      "source": item["source"]}
+    if item.get("footprint"):
+        sdata["loop"]["footprint"] = item["footprint"]
     write_json(sdir / "slice.json", sdata)
     old = _set_slice_status(sdir, "in_progress")
     append_event("slice_status_changed", slice=sid, old_status=old, new_status="in_progress")
@@ -15302,20 +15343,29 @@ def loop_cycle_start(args: argparse.Namespace) -> None:
     print(f"stage={stage}")
     print(f"key={key}")
     print(f"slice_path={shown(sdir)}")
+    if item.get("footprint"):
+        print(f"footprint={_loop_footprint_text(item['footprint'])} (reconcile first: run-loop reference/cycle-plan.md)")
 
 
 def loop_ledger_line(pdir: Path, sdata: dict, inflight: dict, verdict: str, metrics: dict, summary: str,
-                     route: str, closed_at: str, loop=None, transcripts=None) -> dict:
+                     route: str, closed_at: str, loop=None, transcripts=None, stage_route=None, dirty=None) -> dict:
     """The one ledger line of a closed cycle, metered (`loop_meter_cycle`): `usd` is the main thread's share plus
     every span's cost, `minutes` the wall clock from start to close, `span_minutes` the spans' own; an `assumed`
-    cycle (nothing priced found) is charged its full per_cycle_usd, so the budget stays enforceable."""
+    cycle (nothing priced found) is charged its full per_cycle_usd, so the budget stays enforceable. `route` is the
+    row the closing attempt ran on, `stage_route` the stage's charter row, `dispatches` each recorded dispatch's
+    attempt, row and time (the meter labels a rolled cycle's spans from them), `dirty_outputs` what an error close
+    left uncommitted on the charter's outputs."""
     info = sdata.get("loop") or {}
     started = (inflight or {}).get("started_at") or sdata.get("started_at")
     meter = loop_meter_part(pdir, sdata.get("id"), started, closed_at, loop, transcripts)
-    return {"cycle": sdata.get("id"), "k": info.get("k"), "key": info.get("key"), "title": info.get("title"),
+    line = {"cycle": sdata.get("id"), "k": info.get("k"), "key": info.get("key"), "title": info.get("title"),
             "stage": info.get("stage"), "verdict": verdict, "metrics": metrics, "summary": summary, "route": route,
-            "attempt": (inflight or {}).get("attempt", info.get("attempt", 1)), "charter": info.get("charter"),
-            "started_at": started, "closed_at": closed_at, **meter}
+            "stage_route": stage_route, "attempt": (inflight or {}).get("attempt", info.get("attempt", 1)),
+            "charter": info.get("charter"), "started_at": started, "closed_at": closed_at, **meter,
+            "dispatches": [h for h in ((inflight or {}).get("history") or []) if isinstance(h, dict)]}
+    if dirty:
+        line["dirty_outputs"] = list(dirty)
+    return line
 
 
 def loop_meter_part(pdir: Path, sid: str, started, closed_at: str, loop=None, transcripts=None) -> dict:
@@ -15408,10 +15458,13 @@ def loop_cycle_close(args: argparse.Namespace) -> None:
     key, stage, title = str(info.get("key")), info.get("stage"), info.get("title") or str(info.get("key"))
     stages = loop_stages(pdir, info.get("charter"))
     names = list(stages)
-    route = stages.get(stage) or "high"
+    attempt = inflight.get("attempt") if _is_int(inflight.get("attempt")) else 1
+    stage_row = stages.get(stage)
+    route = loop_attempt_row(stage, stage_row, attempt)[0]  # the closing attempt's row: a retry ran on high
+    dirty = loop_dirty_outputs(loop_bounds_of(LoopSource(pdir.name, pdir), loop).get("outputs")) if verdict == "error" else []
     closed_at = now_iso()
     line = loop_ledger_line(pdir, sdata, inflight, verdict, metrics, summary, route, closed_at, loop,
-                            getattr(args, "transcripts", None))
+                            getattr(args, "transcripts", None), stage_route=stage_row, dirty=dirty)
     queue = loop_read(pdir, "queue.jsonl")
     for name in ("ledger.jsonl", "dead.jsonl", "survivors.jsonl", "parked.jsonl"):
         loop_read(pdir, name)  # refuse now, before any write, on a list that cannot be read
@@ -15435,7 +15488,8 @@ def loop_cycle_close(args: argparse.Namespace) -> None:
             effect = ("dead.jsonl", {"key": key, "cycle": sid, "stage": stage, "reason": f"errors x{errors}"})
         else:
             effect = ("queue", loop_queue_item(key, title, stage, info.get("payload"), info.get("priority", 0),
-                                               info.get("source") if info.get("source") in LOOP_ITEM_SOURCES else "engine", errors))
+                                               info.get("source") if info.get("source") in LOOP_ITEM_SOURCES else "engine", errors,
+                                               footprint={"cycle": sid, "paths": dirty} if dirty else None))
     # -- writes: the ledger line first, the counters in this same call --
     loop_append(pdir, "ledger.jsonl", line)
     where, record = effect
@@ -15476,6 +15530,11 @@ def loop_cycle_close(args: argparse.Namespace) -> None:
     else:
         print(f"{where.split('.')[0]}: key={key}" + (f" ({record.get('reason')})" if where == "dead.jsonl" else ""))
     print("counters=" + " ".join(f"{k}:{counters[k]}" for k in LOOP_COUNTERS))
+    if dirty:
+        print(f"dirty_outputs={_loop_dirty_text(dirty)}")
+        print("settle: these are the dead attempt's writes on the charter's outputs; commit them with this close, never "
+              "revert them (it may have acted outside the repo), and the item's next cycle reconciles them first "
+              + ("(footprint= on its start)" if where == "queue" else "(the key is dead: none follows)"))
     if halt:
         print(f"halted reason={halt['reason']} stop_kind={halt['stop_kind']} detail={halt['detail']}")
         print(f"on_words={halt['on_words']}")
@@ -15642,6 +15701,14 @@ LOOP_CONTROL_FILE = "control.json"
 LOOP_HEARTBEAT = 1800        # s: the wake of a tick that can only look again (a wait's notification is the real wake)
 LOOP_LIMIT_WAKE = 1800       # s: a reset time the tick could not parse
 LOOP_DISPATCH_GRACE = 300    # s after loop-cycle-dispatch in which a span not yet on disk counts as starting
+# The attempt protocol (P50-fr.F1). The engine numbers a cycle's attempts and picks each one's row: attempt 1 runs on
+# the stage's charter row, attempt 2 (the one retry: a dead span, a failed or empty return, an `escalate`) on high.
+# A dispatch that left no span (no executor ever ran) re-dispatches at the same attempt on the same row; a usage
+# limit resumes the same attempt. Attempt 2 dying too closes the cycle `error` (a checkpoint `blocked`).
+LOOP_MAX_ATTEMPTS = 2
+LOOP_NONTERMINAL_STATUSES = ("escalate",)  # a result.md status that is no verdict: the next attempt runs instead
+LOOP_DISPATCH_HISTORY = 8     # dispatch records kept per in-flight cycle (and copied onto its ledger line)
+LOOP_DIRTY_MAX = 20           # dirty_outputs= entries printed before `+N more`
 LOOP_DIGEST_MAX = 1500
 LOOP_CARD_LINE = 200
 LOOP_LSTART_RE = re.compile(r"[A-Z][a-z]{2} [A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4}")
@@ -15650,6 +15717,67 @@ _LOOP_MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "
 
 def _claude_config_dir() -> Path:
     return Path(os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude").expanduser()
+
+
+def loop_attempt_row(stage, stage_row, attempt) -> tuple:
+    """(row, reason) of one attempt of a cycle: attempt 2 and later on high (the retry), attempt 1 on the stage's
+    charter row (high when the charter names none). The one rule executor-route, loop-cycle-dispatch, the ledger
+    line and the meter all read, so the row a retry ran on is never a matter of memory."""
+    if _is_int(attempt) and attempt >= 2:
+        return "high", f"kind cycle, stage {stage or 'unknown'}, attempt {attempt} (the retry: high)"
+    if stage_row not in LOOP_STAGE_ROWS:
+        return "high", f"kind cycle, stage {stage or 'unknown'} (no charter row: high)"
+    return stage_row, f"kind cycle, stage {stage}"
+
+
+def _loop_result_status(text):
+    """The `status:` (else `verdict:`) value of a result.md, lowercased, else None."""
+    found: dict = {}
+    for key, value in METER_VERDICT_RE.findall(text or ""):
+        found.setdefault(key.lower(), value.lower())
+    return found.get("status") or found.get("verdict")
+
+
+def _loop_sha(text) -> "str | None":
+    return hashlib.sha256(text.encode("utf-8")).hexdigest() if isinstance(text, str) else None
+
+
+def loop_dirty_outputs(outputs) -> list:
+    """`git status --porcelain` of the charter's `outputs` (repo-relative; the host's in a nested install), one
+    `<XY> <path>` entry each, untracked files listed one by one: what an attempt left uncommitted on the product
+    paths. [] with no outputs or no git (it never fails a tick)."""
+    specs = [str(o).strip() for o in (outputs or []) if isinstance(o, str) and str(o).strip()]
+    if not specs:
+        return []
+    cwd = HOST_ROOT
+    if cwd is None:
+        top = _git(["rev-parse", "--show-toplevel"], check=False)
+        if top.returncode != 0 or not top.stdout.strip():
+            return []
+        cwd = Path(top.stdout.strip())
+    try:
+        proc = _git(["status", "--porcelain", "-z", "--untracked-files=all", "--", *specs], cwd=cwd, check=False)
+    except SystemExit:
+        return []
+    if proc.returncode != 0:
+        return []
+    out, parts, i = [], proc.stdout.split("\0"), 0
+    while i < len(parts):
+        entry = parts[i]
+        i += 1
+        if len(entry) < 4:
+            continue
+        code, path = entry[:2], entry[3:]
+        if code[0] in "RC":
+            i += 1  # the rename's source path follows
+        out.append(f"{code.strip() or code} {path}")
+    return out
+
+
+def _loop_dirty_text(dirty: list) -> str:
+    shown_ = dirty[:LOOP_DIRTY_MAX]
+    more = len(dirty) - len(shown_)
+    return ", ".join(shown_) + (f", +{more} more" if more > 0 else "")
 
 
 def _ps_field(pid: int, field: str):
@@ -16065,10 +16193,15 @@ def _loop_reset_epoch(text: str, hit: float):
 def loop_inflight_state(pdir: Path, src=None, loop=None, bounds=None, transcripts=None) -> dict:
     """The in-flight cycle's state, from small files (never a whole-transcript parse, bar one span on a limit):
     `{state, cycle, attempt, ...}` with state one of none | close | plan | wait | overdue | resume-limit | halt |
-    dispatch. The first rule that holds wins: a verdict on disk -> close; no plan.md -> plan; a live span (alive
-    session, or no registry and a fresh transcript) -> wait, or overdue past cycle_timeout_minutes; the current
-    attempt's last span ended on a usage limit -> resume-limit (until=) or halt (no reset); a dead span -> dispatch
-    attempt n+1; no span yet -> dispatch attempt n (or wait, within LOOP_DISPATCH_GRACE of loop-cycle-dispatch)."""
+    dispatch. `attempt` is the one the next dispatch records (`loop_attempt_row` gives its row). The first rule that
+    holds wins: a verdict on disk -> close; no plan.md -> plan; a live span (alive session, or no registry and a fresh
+    transcript) -> wait, or overdue past cycle_timeout_minutes; the attempt's executor returned `escalate` -> the next
+    attempt; the current attempt's last span ended on a usage limit -> resume-limit (until=) or halt (no reset); a dead
+    span -> the next attempt; no span yet -> dispatch at the same attempt (or wait, within LOOP_DISPATCH_GRACE of
+    loop-cycle-dispatch while the session that recorded it lives). "The next attempt" past LOOP_MAX_ATTEMPTS is a
+    close with `verdict=error` (a checkpoint's `blocked`). A result.md the last dispatch already saw (its sha256 is
+    `inflight.prior_result_sha256`) belongs to an earlier attempt and is no verdict. On a local source, `dirty_outputs`
+    lists the charter's outputs left uncommitted, on every dispatch, overdue and close-as-error."""
     src = src or LoopSource(pdir.name, pdir)
     loop = loop if loop is not None else (phase_loop(src.phase()) or {})
     inflight = loop.get("inflight")
@@ -16077,12 +16210,31 @@ def loop_inflight_state(pdir: Path, src=None, loop=None, bounds=None, transcript
     sid = inflight["cycle"]
     n = inflight.get("attempt") if _is_int(inflight.get("attempt")) else 1
     out = {"cycle": sid, "attempt": n}
+    checkpoint = inflight.get("kind") == "checkpoint"
+    bounds = bounds or loop_bounds_of(src, loop)
+
+    def dirty(st: dict) -> dict:
+        if src.local and not checkpoint:
+            found = loop_dirty_outputs(bounds.get("outputs"))
+            if found:
+                st["dirty_outputs"] = found
+        return st
+
+    def next_attempt(why: str, **extra) -> dict:
+        if n + 1 > LOOP_MAX_ATTEMPTS:
+            return dirty({**out, "state": "close", "verdict": "blocked" if checkpoint else "error", **extra,
+                          "reason": f"{why}; attempt {n} was the last (a cycle runs at most {LOOP_MAX_ATTEMPTS} attempts)"})
+        return dirty({**out, "state": "dispatch", "attempt": n + 1, **extra, "reason": f"{why}: re-dispatch from disk"})
+
     result = src.text(f"slices/{sid}/result.md")
-    if result and METER_VERDICT_RE.search(result):
+    fresh = result if result and _loop_sha(result) != inflight.get("prior_result_sha256") else None
+    status = _loop_result_status(fresh)
+    if status and status not in LOOP_NONTERMINAL_STATUSES:
         return {**out, "state": "close"}
     if not src.is_file(f"slices/{sid}/plan.md"):
-        return {**out, "state": "plan"}
-    bounds = bounds or loop_bounds_of(src, loop)
+        info = (src.json(f"slices/{sid}/slice.json") or {}).get("loop")
+        foot = info.get("footprint") if isinstance(info, dict) else None
+        return {**out, "state": "plan", **({"footprint": foot} if foot else {})}
     timeout = bounds["cycle_timeout_minutes"] * 60
     now = time.time()
     started = _meter_ts(inflight.get("started_at")) or now
@@ -16105,8 +16257,14 @@ def loop_inflight_state(pdir: Path, src=None, loop=None, bounds=None, transcript
             live.append(s)
     if live:
         state = "overdue" if now - started > timeout else "wait"
-        return {**out, "state": state, "span": live[-1]["id"], "age_minutes": round((now - started) / 60, 1)}
-    current = [s for s in spans if dispatched is None or s["first"] >= dispatched - 5]
+        st = {**out, "state": state, "span": live[-1]["id"], "age_minutes": round((now - started) / 60, 1)}
+        return dirty(st) if state == "overdue" else st
+    if status in LOOP_NONTERMINAL_STATUSES:
+        return next_attempt(f"the attempt-{n} executor returned {status}")
+    # the current dispatch's spans: started at or after it (dispatched_at carries milliseconds since F1, and an older
+    # record's whole second is never later than the span it precedes; a slack would let a quick-dying earlier
+    # attempt's span count as this one's and close the cycle as error)
+    current = [s for s in spans if dispatched is None or s["first"] >= dispatched]
     if current:
         last = current[-1]
         scan = _meter_scan(last["path"], span=True)
@@ -16121,13 +16279,54 @@ def loop_inflight_state(pdir: Path, src=None, loop=None, bounds=None, transcript
             wake = max(0, int(at - now) + 60) if at is not None else LOOP_LIMIT_WAKE
             until = datetime.fromtimestamp(at).astimezone().replace(microsecond=0).isoformat() if at is not None else reset
             return {**out, "state": "resume-limit", "span": last["id"], "until": until, "wake_in": wake}
-        return {**out, "state": "dispatch", "attempt": n + 1, "span": last["id"],
-                "reason": "dead-span (finished with no verdict on disk, or its session ended): re-dispatch from disk"}
+        return next_attempt("dead-span (finished with no verdict on disk, or its session ended)", span=last["id"])
+    gone = None
     if dispatched is not None and now - dispatched < LOOP_DISPATCH_GRACE:
-        return {**out, "state": "wait", "reason": "dispatching", "wake_in": int(LOOP_DISPATCH_GRACE - (now - dispatched)) + 5}
+        disp = inflight.get("dispatcher")
+        if not (isinstance(disp, dict) and disp.get("session") and not _driver_alive(disp)):
+            return {**out, "state": "wait", "reason": "dispatching", "wake_in": int(LOOP_DISPATCH_GRACE - (now - dispatched)) + 5}
+        gone = disp.get("session")
     if dispatched is not None:
-        return {**out, "state": "dispatch", "attempt": n + 1, "reason": "the last dispatch left no span"}
-    return {**out, "state": "dispatch", "attempt": n}
+        why = (f"session {gone}, which recorded the dispatch, ended before its span started" if gone
+               else "the last dispatch left no span")
+        return dirty({**out, "state": "dispatch", "attempt": n,
+                      "reason": f"{why} (no executor ran: the same attempt, on its row)"})
+    return dirty({**out, "state": "dispatch", "attempt": n})
+
+
+def _loop_cycle_stage_src(src: LoopSource, sid: str) -> tuple:
+    """(stage, stage row) of a cycle read through a LoopSource: its charter version's map on disk, else the bounds'."""
+    sdata = src.json(f"slices/{sid}/slice.json") or {}
+    info = sdata.get("loop") if isinstance(sdata.get("loop"), dict) else {}
+    stage = info.get("stage")
+    if src.base is not None:
+        return stage, loop_stages(src.base, info.get("charter")).get(stage)
+    return stage, loop_bounds_of(src, phase_loop(src.phase()) or {})["stages"].get(stage)
+
+
+def loop_cycle_attempt(pdir: Path, sdata: dict) -> int:
+    """The attempt a cycle's next (or current) dispatch runs: in flight, the one the tick names (a dispatch state's
+    `attempt`, else the recorded one); closed or not yet in flight, its slice.json `loop.attempt`."""
+    loop = loop_block(pdir) or {}
+    inflight = loop.get("inflight") if isinstance(loop.get("inflight"), dict) else None
+    info = sdata.get("loop") if isinstance(sdata.get("loop"), dict) else {}
+    if inflight and inflight.get("cycle") == sdata.get("id"):
+        st = loop_inflight_state(pdir, loop=loop)
+        n = st.get("attempt") if st.get("state") == "dispatch" else inflight.get("attempt")
+        return n if _is_int(n) else 1
+    return info.get("attempt") if _is_int(info.get("attempt")) else 1
+
+
+def _loop_inflight_row(src: LoopSource, st: dict):
+    """The row the attempt a `dispatch` state names runs on (`loop_attempt_row`)."""
+    stage, stage_row = _loop_cycle_stage_src(src, st.get("cycle"))
+    return loop_attempt_row(stage, stage_row, st.get("attempt"))[0]
+
+
+def _loop_footprint_text(foot) -> str:
+    if not isinstance(foot, dict):
+        return _one_line(str(foot))
+    return f"{foot.get('cycle')} left " + _loop_dirty_text([str(x) for x in foot.get("paths") or []])
 
 
 def _loop_control_requests(src: LoopSource) -> list:
@@ -16201,7 +16400,15 @@ def loop_view(src: LoopSource, me="unset", transcripts=None, as_driver: bool = F
     if inflight:
         s = st["state"]
         if not (status == "halted" and s in ("plan", "dispatch", "resume-limit", "halt")):
-            extra = {k: v for k, v in st.items() if k in ("attempt", "span", "until", "reason", "detail", "age_minutes")}
+            extra = {k: v for k, v in st.items() if k in ("attempt", "verdict", "span", "until", "reason", "detail", "age_minutes")}
+            if st.get("state") == "dispatch":
+                row = "high" if inflight.get("kind") == "checkpoint" else _loop_inflight_row(src, st)
+                if row:
+                    extra["route"] = row
+            if st.get("footprint"):
+                extra["footprint"] = _loop_footprint_text(st["footprint"])
+            if st.get("dirty_outputs"):
+                extra["dirty_outputs"] = _loop_dirty_text(st["dirty_outputs"])
             if inflight.get("kind") == "checkpoint":  # P50.S3: the lease holds a checkpoint; close = loop-checkpoint --verdict
                 extra["kind"] = "checkpoint"
             wake = st.get("wake_in", LOOP_HEARTBEAT if s == "wait" else 0)
@@ -16292,9 +16499,12 @@ def loop_tick(args: argparse.Namespace) -> None:
 
 
 def loop_cycle_dispatch(args: argparse.Namespace) -> None:
-    """Record the dispatch the orchestrator makes next (dispatched_at, attempt). Refused while a live span of the
-    cycle exists (the second double-dispatch guard), for a caller that is not the driver, on a halted loop, and
-    when the cycle needs a close or a plan instead."""
+    """Record the dispatch the orchestrator makes next: dispatched_at, the attempt the engine numbers
+    (`loop_inflight_state`: a retry after a dead span or an `escalate` is n+1, a dispatch that left no span and a
+    limit re-dispatch keep n), its row (`loop_attempt_row`), the recording session (the hold-off ends when it does)
+    and the result.md it saw. Refused while a live span of the cycle exists (the second double-dispatch guard), for a
+    caller that is not the driver, while loop/control.json holds requests (the tick applies them first), on a halted
+    loop, and when the cycle needs a close or a plan instead."""
     sid = args.slice
     sdir = require_slice(sid)
     cmd = f"loop-cycle-dispatch {sid}"
@@ -16309,14 +16519,24 @@ def loop_cycle_dispatch(args: argparse.Namespace) -> None:
         held = inflight.get("cycle") if isinstance(inflight, dict) else "none"
         raise SystemExit(f"{cmd}: it is not the cycle in flight (in flight: {held}); refused, nothing was written")
     _driver_refuse(loop, cmd, pdir.name)
+    queued = _loop_control_requests(LoopSource(pdir.name, pdir))
+    if queued:
+        what = ", ".join(str(r.get("action")) for r in queued)
+        raise SystemExit(f"{cmd}: loop/{LOOP_CONTROL_FILE} holds {len(queued)} unapplied control request(s) ({what}); the tick "
+                         f"applies them first ({WORKFLOW_CMD} loop-control {pdir.name} apply, then loop-tick); refused, nothing was written")
     if loop.get("status") == "halted":
         raise SystemExit(f"{cmd}: the loop is halted ({(loop.get('halt') or {}).get('reason')}); nothing advances past a stop "
                          f"({WORKFLOW_CMD} loop-control {pdir.name} resume --words \"...\" first); refused, nothing was written")
     st = loop_inflight_state(pdir, loop=loop, transcripts=args.transcripts)
     state = st["state"]
+    checkpoint = loop_checkpoint_slice(sdata)
     if state in ("wait", "overdue"):
         why = f"span {st['span']} of it is live" if st.get("span") else "a dispatch was recorded moments ago and its span is starting"
         raise SystemExit(f"{cmd}: {why} -- one dispatch at a time: wait for its notification; refused, nothing was written")
+    if state == "close" and st.get("verdict"):
+        how = (f"{WORKFLOW_CMD} loop-checkpoint {pdir.name} --verdict blocked --summary \"...\"" if checkpoint
+               else f"{WORKFLOW_CMD} loop-cycle-close {sid} --verdict error --summary \"...\"")
+        raise SystemExit(f"{cmd}: {st.get('reason')} -- close it: {how}; refused, nothing was written")
     if state == "close":
         raise SystemExit(f"{cmd}: its result.md holds a verdict -- close it ({WORKFLOW_CMD} loop-cycle-close {sid} --verdict ...); refused, nothing was written")
     if state == "plan":
@@ -16324,21 +16544,43 @@ def loop_cycle_dispatch(args: argparse.Namespace) -> None:
     if state == "halt":
         raise SystemExit(f"{cmd}: {st.get('detail')} -- record the halt ({WORKFLOW_CMD} loop-control {pdir.name} halt --reason limit); "
                          "refused, nothing was written")
-    attempt = st.get("attempt") if state == "dispatch" else inflight.get("attempt", 1)  # a limit re-dispatch is no new attempt
-    at = now_iso()
+    previous = inflight.get("attempt") if _is_int(inflight.get("attempt")) else 1
+    attempt = st.get("attempt") if state == "dispatch" else previous  # a limit re-dispatch is no new attempt
+    info = sdata.get("loop") if isinstance(sdata.get("loop"), dict) else {}
+    if checkpoint:
+        row, stage_row = "high", "high"
+    else:
+        stage = info.get("stage")
+        stage_row = loop_stages(pdir, info.get("charter")).get(stage)
+        row = loop_attempt_row(stage, stage_row, attempt)[0]
+    at = datetime.now().astimezone().isoformat(timespec="milliseconds")  # sub-second: a span belongs to the dispatch it follows
+    me = session_identity()
+    result = sdir / "result.md"
+    seen = result.read_text(encoding="utf-8") if result.is_file() else None
     inflight["dispatched_at"] = at
     inflight["attempt"] = attempt
+    inflight["route"] = row
+    inflight["dispatcher"] = ({"session": me.get("session"), "pid": me.get("pid"), "proc_start": me.get("proc_start")}
+                              if isinstance(me, dict) else None)
+    inflight["prior_result_sha256"] = _loop_sha(seen)
     inflight["dispatches"] = (inflight.get("dispatches") if _is_int(inflight.get("dispatches")) else 0) + 1
-    info = sdata.get("loop") if isinstance(sdata.get("loop"), dict) else {}
+    history = [h for h in (inflight.get("history") or []) if isinstance(h, dict)]
+    history.append({"attempt": attempt, "route": row, "at": at})
+    inflight["history"] = history[-LOOP_DISPATCH_HISTORY:]
     info["attempt"] = attempt
     sdata["loop"] = info
     write_json(sdir / "slice.json", sdata)
     write_loop_block(pdir, loop, data)
-    append_event("loop_cycle_dispatched", phase=pdir.name, slice=sid, attempt=attempt, state=state)
+    append_event("loop_cycle_dispatched", phase=pdir.name, slice=sid, attempt=attempt, route=row, state=state)
     rebuild_index_and_state()
     print(f"dispatch recorded: {sid} attempt={attempt} at={at}")
-    print(f"route: {WORKFLOW_CMD} executor-route {sid}" + (" --retry" if attempt >= 2 else "")
-          + f" (the prompt's first line: slice: {sid})")
+    print(f"route={row}" + ("" if checkpoint else f" stage_route={stage_row or 'none'}"))
+    if attempt > previous:
+        print(f"retry: attempt {attempt} on the high row ({st.get('reason')}); re-pin ## Dispatch and add ## Retry to "
+              "plan.md (run-loop reference/cycle-plan.md)")
+    if st.get("dirty_outputs"):
+        print(f"dirty_outputs={_loop_dirty_text(st['dirty_outputs'])}")
+    print(f"route: {WORKFLOW_CMD} executor-route {sid} (the engine's attempt picks the row; the prompt's first line: slice: {sid})")
 
 
 def _loop_on_words(reason: str, version, pid: str) -> str:
@@ -16772,7 +17014,9 @@ def loop_meter_cycle(sid: str, started_at, driver_session=None, transcripts=None
         _meter_add(agg, s["usage"])
     out["spans"] = len(row["spans"])
     out["span_minutes"] = round(sum(s["minutes"] or 0.0 for s in row["spans"]), 1)
-    done = [s for s in row["spans"] if s["outcome"] not in ("running", "limit", "?")] or row["spans"]
+    spans = sorted(row["spans"], key=lambda s: s["start"] if s.get("start") is not None else 0.0)
+    # the verdict span's model: the last span that returned a verdict (an `escalate` is none: the retry's is), else the last
+    done = [s for s in spans if s["outcome"] not in ("running", "limit", "?") + LOOP_NONTERMINAL_STATUSES] or spans
     out["model"] = done[-1]["model"] if done else None
     if agg["requests"] - agg["unpriced"] <= 0:
         return out
@@ -17394,7 +17638,7 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("executor-route", help="Print the executor routing decision, one key=value per line, writing nothing: bare, the resolved route table (high, research, design, critic, judge, mid, screen, explore), the agent files' sync state and an override= line per row executors.toml sets (its value against the default); with a slice id, the route, subagent_type (slice-executor for every slice row), model, effort and attribution its dispatch uses (kind first, then risk, then attempt; a loop's cycle routes by its charter stage and prints stage=); --drafter / --critic / --judge / --explore, a non-slice agent's dispatch; plus fallback=, skip= and warning= lines for the environment. The critic and the judge may share the design row's model (v75)")
     p.add_argument("slice", nargs="?", help="the slice to route; omit for the table")
-    p.add_argument("--retry", action="store_true", help="the slice's second attempt (an escalation, a failed or empty return, a fix of mid-row work): always the high row")
+    p.add_argument("--retry", action="store_true", help="the slice's second attempt (an escalation, a failed or empty return, a fix of mid-row work): always the high row. A loop cycle needs none: the engine's attempt picks its row (attempt 2 is high), and --retry on a cycle's attempt 1 is refused")
     p.add_argument("--drafter", action="store_true", help="the design-drafter's dispatch (its own design row, [claude.design]; not a slice route)")
     p.add_argument("--critic", action="store_true", help="the design-critic's dispatch in critic mode (the critic row, [claude.critic]); it may share the drafter's model")
     p.add_argument("--judge", action="store_true", help="the design-critic's dispatch in judge mode (the judge row, [claude.judge], alias only); never refused for sharing the drafter's model; skip=yes only when the judge row is overridden to Fable behind a loopback proxy that serves no Fable")
@@ -17788,12 +18032,12 @@ def main(argv=None) -> int:
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.set_defaults(func=loop_claim)
 
-    p = sub.add_parser("loop-tick", help="Read-only, writes nothing: the loop's context (loop, status, driver me|<session>|none, charter, cycle, inflight, spend_today, spend_total, parked, survivors, queue), then exactly one action= and wake_in=<seconds>, then the action's own lines. First rule wins: apply-control; claim | not-driver; the cycle in flight (close, plan, dispatch attempt=, wait, resume-limit until=, overdue, halt reason=limit); the status (halted, paused, stopped -> review; drafting -> sign); halt reason=charter | budget-total | max-cycles; wait reason=budget-day until=<local midnight>; digest; checkpoint reason=every|requested j=; wait reason=cadence; setup; start stage= item=<queue head key | author>. A checkpoint in flight prints kind=checkpoint beside its state (close = loop-checkpoint --verdict); a loop paused by a checkpoint prints setup slice= reason=checkpoint, then resume reason=checkpoint, or fix while no fix slice is cut. On action=halt the orchestrator records it with loop-control <P> halt --reason <r>")
+    p = sub.add_parser("loop-tick", help="Read-only, writes nothing: the loop's context (loop, status, driver me|<session>|none, charter, cycle, inflight, spend_today, spend_total, parked, survivors, queue), then exactly one action= and wake_in=<seconds>, then the action's own lines. First rule wins: apply-control; claim | not-driver; the cycle in flight (close, close verdict=error once attempt 2 left no verdict, plan, dispatch attempt= route=, wait, resume-limit until=, overdue, halt reason=limit; dirty_outputs= and footprint= when the charter outputs carry an earlier attempt's writes); the status (halted, paused, stopped -> review; drafting -> sign); halt reason=charter | budget-total | max-cycles; wait reason=budget-day until=<local midnight>; digest; checkpoint reason=every|requested j=; wait reason=cadence; setup; start stage= item=<queue head key | author>. A checkpoint in flight prints kind=checkpoint beside its state (close = loop-checkpoint --verdict); a loop paused by a checkpoint prints setup slice= reason=checkpoint, then resume reason=checkpoint, or fix while no fix slice is cut. On action=halt the orchestrator records it with loop-control <P> halt --reason <r>")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--transcripts", action="append", metavar="DIR", help="read spans from this projects/<slug> directory instead of discovering the session root's (repeatable)")
     p.set_defaults(func=loop_tick)
 
-    p = sub.add_parser("loop-cycle-dispatch", help="Run immediately before each Agent dispatch of a cycle: records inflight.dispatched_at and the attempt (a re-dispatch from disk after a dead span is attempt n+1, mirrored in slice.json loop.attempt; a usage-limit re-dispatch keeps n). Refused (nothing written) while a live span of the cycle exists or a dispatch was recorded moments ago (the second double-dispatch guard), for a caller that is not the driver, on a halted loop, and when the cycle needs a plan.md or a close instead")
+    p = sub.add_parser("loop-cycle-dispatch", help="Run immediately before each Agent dispatch of a cycle: records inflight.dispatched_at, the attempt the engine numbers (a re-dispatch after a dead span, a failed or empty return or an escalate is attempt n+1, mirrored in slice.json loop.attempt; a dispatch that left no span and a usage-limit re-dispatch keep n), its row (route=, attempt 2 high; stage_route=), the recording session and the result.md it saw; prints dirty_outputs= (the charter outputs left uncommitted) and, on a retry, the ## Retry hint. Refused (nothing written) while a live span of the cycle exists or a dispatch was recorded moments ago by a session still alive (the second double-dispatch guard), for a caller that is not the driver, while loop/control.json holds requests, on a halted loop, and when the cycle needs a plan.md or a close instead (attempt 2 left no verdict: close it as error)")
     p.add_argument("slice", help="the cycle in flight (<P>.C<k>)")
     p.add_argument("--transcripts", action="append", metavar="DIR", help="read spans from this projects/<slug> directory (repeatable)")
     p.set_defaults(func=loop_cycle_dispatch)

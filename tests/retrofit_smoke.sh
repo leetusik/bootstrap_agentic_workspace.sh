@@ -990,8 +990,8 @@ for tier in ("slice-executor",):
     # v46: mid is the default row, escalates on named reasons (never for real code
     # or several files); v66: every verdict names its route (the `tier` field retired).
     for required in ("the default row, where most slices land", "**two strikes**",
-                     "- `route`: `high` | `research` | `mid` —", "work the mid row got wrong never goes back to it",
-                     "## Escalate early instead of thrashing (mid row only)",
+                     "- `route`: `high` | `research` | `mid` | `screen` —", "work the mid row got wrong never goes back to it",
+                     "## Escalate early instead of thrashing (mid and screen rows only)",
                      "The `high` and `research` rows never return `escalate`."):
         assert required in body, (tier, required)
     for gone in ("the light tier", "essentially all code writing", "- `tier`", "slice-executor-mid", "slice-executor-high",
@@ -4358,6 +4358,16 @@ if [ -n "$ksid" ] && printf '%s\n' "$t_plan" | grep -qx 'action=plan' && printf 
     && printf '%s\n' "$t_dead" | grep -qx 'action=dispatch' && printf '%s\n' "$t_dead" | grep -qx 'attempt=2' && printf '%s\n' "$t_close" | grep -qx 'action=close'; then
   ok "the tick resumes from disk with a cycle in flight: no plan.md -> plan, a plan with no span -> dispatch attempt=1, a span whose session is a live process -> wait, the same once it is killed -> dispatch attempt=2, a verdict in result.md -> close"
 else bad "the tick's resume states are wrong -- plan: $t_plan | dispatch: $t_disp | wait: $t_wait | dead: $t_dead | close: $t_close"; fi
+# (f) P50-fr.F1: the engine numbers the retry and routes it -- the dead span's re-dispatch records attempt 2 on high,
+# executor-route prints high with no --retry, and the close's ledger line reads the closing attempt's row.
+rm -f "$LPP/slices/$ksid/result.md"; r_disp=$(lw loop-cycle-dispatch "$ksid" --transcripts "$LPX" 2>&1); r_route=$(lw executor-route "$ksid" 2>&1)
+printf -- '- status: done\n- item_verdict: fail\n' > "$LPP/slices/$ksid/result.md"; lw loop-cycle-close "$ksid" --verdict fail --summary "toy fail" --transcripts "$LPX" >/dev/null 2>&1
+r_line=$(tail -1 "$LPP/loop/ledger.jsonl")
+if printf '%s\n' "$r_disp" | grep -q "attempt=2 " && printf '%s\n' "$r_disp" | grep -qx 'route=high stage_route=screen' \
+    && printf '%s\n' "$r_route" | grep -qx 'route=high' && printf '%s\n' "$r_route" | grep -qx 'attempt=2' \
+    && printf '%s\n' "$r_line" | grep -q '"route": "high", "stage_route": "screen", "attempt": 2'; then
+  ok "a retry after a dead span: loop-cycle-dispatch records attempt 2 on the high row, executor-route prints high with no --retry, and the close's ledger line reads route=high stage_route=screen"
+else bad "the retry's attempt or row is wrong -- dispatch: $r_disp | route: $r_route | ledger: $r_line"; fi
 lw validate >/dev/null 2>&1 && ok "validate passes on the loop install after every probe" || bad "validate failed on the loop install -- $(lw validate 2>&1 | tail -5)"
 # the run-loop core stays a do-* sized core: <= 16 KB, its resume line inside the first 16 KB.
 python3 - "$REPO_ROOT/payload/claude/skills/run-loop/SKILL.md" <<'PY' && ok "run-loop/SKILL.md stays <= 16 KB with its resume line inside the first 16 KB" || bad "run-loop/SKILL.md is over 16 KB or its resume line moved past the first 16 KB"

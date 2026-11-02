@@ -54,9 +54,11 @@ When the queue is empty (`item=author`), you author the next item from the chart
 - Executor `done` with `item_verdict` → `loop-cycle-close <cycle> --verdict <item_verdict> --metrics '<json>' --summary "…"`.
 - `needs_operator` with `need_scope: item` → `loop-cycle-close <cycle> --verdict parked --question "…" --on-words "…"`. The loop goes on.
 - `needs_operator` with `need_scope: spend` → `loop-cycle-close <cycle> --verdict error --summary "uncovered spend: …"`, then `loop-control <P> halt --reason spend --detail "…"`, then report and stop.
-- `blocked`, or a failed or empty high-row return → `--verdict error`.
-- A mid-row `escalate`, or a failed or empty mid-row return → once more on the high row: `executor-route <cycle> --retry`, `loop-cycle-dispatch <cycle>`, re-dispatch.
+- `blocked` → `--verdict error`.
+- On attempt 1 (the stage's row: `screen`, `mid`, …), an `escalate`, or a failed or empty return → the tick prints `dispatch attempt=2 route=high`: `loop-cycle-dispatch <cycle>`, `executor-route <cycle>` (it prints the high row by itself), `## Retry` in the plan (`reference/cycle-plan.md`), re-dispatch.
+- On attempt 2 (high), any of those → the tick prints `close verdict=error`: `--verdict error`. A cycle runs at most two attempts.
 - `overdue` → `TaskStop` this session's span, then `--verdict error`.
+- **An `error` close with dirty outputs** prints `dirty_outputs=`: read that diff, then commit it with the close (never revert it: the dead attempt may have acted outside the repo). The engine carries the paths onto the re-queued item, and its next cycle's plan reconciles them first (`## Prior footprint`), so it cannot file twice.
 
 Record each dispatch with `record-dispatch`, as for every slice. **The commit**, at root: one commit holding the product outputs and the state, `chore(<P>): cycle C<k> <verdict> <key>`. In a nested install the host commit comes first, in the host's recorded conventions (`nested-convention`: no phase or slice IDs, no `workflow/` paths), then the nested state commit (`git -C workflow …`). Attribute each commit to the dispatch's `attribution=`. A close may print `rolled …` lines: the old cycle folders it removed ride in this same commit.
 

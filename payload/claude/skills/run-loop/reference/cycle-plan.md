@@ -38,14 +38,27 @@ per_cycle_usd: <the bounds' per_cycle_usd>. Spend the charter's `spend_covered` 
 The cycle writes no `phase.md` (bar `## Now`), runs no `loop-*` or other state command, and never commits.
 
 ## Dispatch
-<the lines `executor-route <P>.C<k>` printed (with --retry from attempt 2)>
+<the lines `executor-route <P>.C<k>` printed (the engine's attempt picks the row: no --retry)>
+```
+
+Two sections join the template only when the engine asks for them, each a few lines, placed before `## Dispatch`:
+
+```markdown
+## Prior footprint
+<the `footprint=` line of loop-cycle-start or the tick's `plan`: the cycle that closed `error` and the outputs it
+left, committed>. Reconcile first: read what is already filed there for this item, and never file it again.
+
+## Retry (attempt 2)
+Attempt 1 left no verdict: <the tick's `reason=`>. <its result.md, when it returned `escalate`: the escalation's
+findings, one or two lines>. dirty_outputs: <the `dirty_outputs=` line, or none>. Reconcile first: read what
+attempt 1 already wrote there and filed, finish or skip it, and never repeat a filing; then run the cycle.
 ```
 
 Keep the plan short: one cycle is one item's run through the product's own steps, and the executor reads only this file, the charter's paths it names and the product code those steps touch. Add the ledger lines it needs (a prior attempt's failure, the `screen` metrics a `confirm` stage re-checks) as one line each, never the whole ledger.
 
 ## The route
 
-`executor-route <cycle>` routes a cycle by its stage through the signed charter's `stages` (by default `screen` → the `screen` row, `confirm` → `high`); a retry always goes to `high`. Pin the printed lines as `## Dispatch` and pass its `model`/`effort` on the Agent call.
+`executor-route <cycle>` routes a cycle by the engine's attempt: attempt 1 by its stage through the signed charter's `stages` (by default `screen` → the `screen` row, `confirm` → `high`), attempt 2 (the retry) on `high`. It prints `attempt=`, `route=` and `stage_route=`, needs no `--retry` (it refuses one on attempt 1) and, after `loop-cycle-dispatch` recorded a retry, already prints the high row. Pin the printed lines as `## Dispatch` and pass its `model`/`effort` on the Agent call; on attempt 2, re-pin it and add `## Retry`.
 
 ## Authoring an item (`item=author`)
 
