@@ -717,6 +717,18 @@ for required in ("`new visual direction: yes` in the handoff licenses setting a 
                  "an entity the fixture lacks included", "a link to an entity of this round opens that entity's own drawn item"):
     assert required in drafter, required
 assert "the shared fixture (every entity a page shows, lists or links to, with its figures)" in design, "drafting.md frame pass: fixture coverage"
+# P47-p5.F2: drafting.md states the shipped critique default and the one measured round, defers the
+# critic row's effort to executor-route, and no shipped file names a phase-internal round or an
+# xhigh critic row (D-q0ba).
+for required in ("**`critic` is the usual level for a connected group of new surfaces**",
+                 "**One measured round, not a norm**", "16 spans, $71.50, 3 h 43 min wall clock",
+                 "cost $19.90, 28 % of the round", "cost $28.60", "`executor-route --critic` and `--judge` print"):
+    assert required in design, ("drafting.md critique default / cost", required)
+for _f in sorted((root / "payload").rglob("*")):
+    if _f.is_file() and _f.suffix in (".md", ".py", ".toml", ".json", ".yml"):
+        _t = _f.read_text(encoding="utf-8")
+        for gone in ("live per-page round", "that phase's review", "`xhigh` by default since v66", "Opus @ xhigh by default"):
+            assert gone not in _t, (str(_f), gone)
 for gone in ("your **only** licence to load it", "load it through `Skill`", "`frontend_design`",
              "A **direction round** is one whose handoff says", "A job open in the same wave"):
     assert gone not in drafter, gone

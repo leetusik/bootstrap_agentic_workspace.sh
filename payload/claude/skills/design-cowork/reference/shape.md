@@ -86,8 +86,8 @@
   flow, so `critic` is its usual level. **Two critique scopes:** `critic` runs a page critic per
   page and the cross-page critic after the join, `off` runs neither, and the judge rules only on
   escalated items. `critic+judge` where a wrong call is costly (foundations, a public flow). The
-  operator may override it per round. A page critic tier costs about $20 at three pages and $40 at
-  seven (`reference/drafting.md` *Cost*).
+  operator may override it per round. A page critic tier costs about $5 a page ($19.90 at four
+  pages in the one measured round, `reference/drafting.md` *Cost*).
 - **How many design slices there are is decided at the opening `DECOMP`**, from the inventory: one
   co-work slice per connected group, a small unrelated surface riding along where it fits. A job's revisions are superseding rounds inside it, never cut in
   advance.

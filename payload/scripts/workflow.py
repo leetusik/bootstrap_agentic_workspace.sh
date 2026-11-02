@@ -631,7 +631,7 @@ MODEL_ATTRIBUTION = {"opus": "Claude Opus 5.5", "sonnet": "Claude Sonnet 5.5",
 # `fallback=` line by executor-route.
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 EXPLORE_PROXY_MODEL = "sonnet"
-# The same proxy serves no Fable either. The judge row (Opus @ xhigh by default, so this never fires
+# The same proxy serves no Fable either. The judge row (Opus @ high by default, so this never fires
 # at the default) does NOT fall back: a judge is the stronger second opinion, so a substitute would be
 # a weaker one. Only when an operator overrides the judge row to Fable and runs behind a loopback proxy
 # does `executor-route --judge` print a `skip=yes` line instead: the orchestrator dispatches no judge

@@ -61,8 +61,10 @@ span's input, and the operator's when they open the canvas.
 
 **The levels.** `off` runs no critic at either scope: the passes go straight to the read-back.
 `critic` runs a **page critic** for each page and the **cross-page critic** after the join.
-`critic+judge` adds the judge on escalated items. The live per-page round runs at `critic`; the
-shipped default is decided at that phase's review from the round's metering.
+`critic+judge` adds the judge on escalated items. **`critic` is the usual level for a connected
+group of new surfaces**: a page critic reads inside its page, which the cross-page critic never
+does, so the two scopes catch different defects. `off` suits small follow-ups and superseding
+revision rounds, and an unset level is `off` (`shape.md`'s critique-level bullet).
 
 **Inside each scope, before the operator sees anything:** one critic pass, then at most one drafter answer pass. There is no second critic pass.
 
@@ -104,24 +106,44 @@ since a hook only some machines run gives each machine a different result.
 
 ## Cost
 
-Estimated from P145-ek.S9's meter in changple5 (two v87 rounds, $91 in all) and scaled per span:
-frame $5–7 (20–30 min); page drafter $5–7 (25–35 min); page critic $3–4 and page answer $2–3
-(10–15 min each); join $5 + $1 per page (25 min + 4 min per page); cross critic $4–6 (15–22 min);
-join answer $2–4 (10–15 min); main thread $8–12.
+**One measured round, not a norm** (4 pages at `critic`, fixing a built product's screens, every
+span on opus @ high; main thread not included): 16 spans, $71.50, 3 h 43 min wall clock.
+
+| pass | spans | $ | minutes per span |
+|---|---|---|---|
+| frame | 1 | 6.63 | 20 |
+| pages at once | 4 | 22.50 | 22–26 (wall about 26) |
+| page critics | 4 | 10.44 | 5–12 |
+| page answers | 4 | 9.46 | 5–16 |
+| join | 1 | 7.43 | 36 |
+| cross-page critic | 1 | 3.60 | 11 |
+| join answer | 1 | 11.44 | 47 |
+
+The page-critic tier (the page critics and their answers) cost $19.90, 28 % of the round, and
+raised 13 must-fix items inside pages that the cross-page critic, never reading page internals,
+could not see; the cross-page critic raised 6 more. The join answer was the costliest span: each
+page had grown the shared fixture with entities of its own, and it rewrote them onto one (the
+frame's fixture covering every entity a page shows, lists or links to is the guard). A superseding
+revision, one drafter editing the canvas in place with a whole-round critic and its answer, cost
+$28.60 (3 spans, about 1 h 50 min). Page count, states per page and how much the pages share
+move every figure.
+
+**Estimates for other sizes**, scaled per span from earlier metering; the measured round came in
+under them on dollars (about $81 predicted at 4 pages) and over on wall clock (about 2.7 h):
 
 | pages | spans at `critic` | $ at `critic` | wall clock | $ with no page critics |
 |---|---|---|---|---|
-| 3 | 13 | about $67 ($55–80) | about 2.5 h | about $49 |
-| 7 | 25 | about $122 ($100–150) | about 3–3.5 h | about $80 |
+| 3 | 13 | about $67 ($55–80) | 2.5 h or more | about $49 |
+| 7 | 25 | about $122 ($100–150) | 3.5 h or more | about $80 |
 
-At seven pages that is about 3× a v87 one-drafter round (about $39) and slower in wall clock (about
-3 h against about 2 h): the frame and the join add serial stages the parallel pages do not win back.
-The passes buy quality per page and cross-page consistency, not speed or cost. Span-minutes of
-parallel spans sum past wall clock, so read `dispatch-summary`'s means with the slice's window. The
-critic's model and effort are the `[claude.critic]` row's (`xhigh` by default since v66, `max` the
-step up) and the judge's the `[claude.judge]` row's: the operator tunes them in `executors.toml`,
-never in a prompt. (For the record, from v87: a critic pass took 25–36 minutes on a flow-board job, and the
-judge about 2 minutes per item.)
+At seven pages that is about 3× a one-drafter round (about $39) and slower in wall clock: the frame
+and the join add serial stages the parallel pages do not win back. The passes buy quality per page
+and cross-page consistency, not speed or cost. Span-minutes of parallel spans sum past wall clock,
+so read `dispatch-summary`'s means with the slice's window. The critic's model and effort are the
+`[claude.critic]` row's and the judge's the `[claude.judge]` row's (`executor-route --critic` and
+`--judge` print what this install resolves; `max` is the step up): the operator tunes them in
+`executors.toml`, never in a prompt. (For the record, on an earlier whole-round critic: a critic
+pass took 25–36 minutes on a flow-board job, and the judge about 2 minutes per item.)
 
 **Every span's prompt starts with its `slice: <id>` line** — drafter, critic and judge alike: the
 meter attributes the span by it, and labels it by its `pass:` or `scope:` line (`design-frame`,
