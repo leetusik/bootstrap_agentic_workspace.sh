@@ -229,7 +229,7 @@ MANAGED_FILES = [
     *[f"docs/current/{doc_id}.md" for doc_id in DOC_TYPES],
     *[f"docs/versions/{doc_id}/v0001_bootstrap.md" for doc_id in DOC_TYPES],
     "works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/events.jsonl",
-    *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md", "phase.md")],
+    *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md", "phase.md", "charter.md")],
     "scripts/workflow.py",
     ".claude/agents/slice-executor.md", ".claude/agents/design-drafter.md",
     ".claude/agents/design-critic.md", ".claude/agents/Explore.md",
@@ -1430,7 +1430,7 @@ def nested_plan() -> dict:
     for x in NESTED_AGENTS:
         files[f".claude/agents/{renames['agents'].get(x, x)}.md"] = nested_rewrite(PAYLOADS[f".claude/agents/{x}.md"], renames)
     engine_side = {NESTED_CONTRACT: nested_rewrite(f"# CLAUDE.md\n\n{CONTRACT_BODY}", renames)}
-    for name in ("deferred_brief.md", "intent.md", "phase.md"):
+    for name in ("deferred_brief.md", "intent.md", "phase.md", "charter.md"):
         engine_side[f"works/templates/{name}"] = nested_rewrite(PAYLOADS[f"works/templates/{name}"], renames)
     # Agents at the host root read both of these, and their comments and text name the engine and
     # workspace paths. Rendered whenever written: executors.toml is seed-once (an existing one is
@@ -2786,12 +2786,14 @@ write_text("docs/README.md", NESTED_PLAN["engine_side"]["docs/README.md"] if NES
 # ---- Templates --------------------------------------------------------------
 # No plan.md or result.md template: the orchestrator writes its free-form native plan
 # into plan.md at the slice's turn, and the executor writes a free-form result.md at
-# slice end. Scaffolded seeds: the phase notebook, the phase intent, and the deferred brief.
+# slice end. Scaffolded seeds: the phase notebook, the phase intent, the deferred brief, and a loop
+# phase's charter (P50: loop-init seeds loop/charter/v1.md from it).
 # Nested: rewritten, because agents at the host root read the phase files made from them.
 _TEMPLATES = NESTED_PLAN["engine_side"] if NESTED else PAYLOADS
 write_text("works/templates/deferred_brief.md", _TEMPLATES["works/templates/deferred_brief.md"])
 write_text("works/templates/intent.md", _TEMPLATES["works/templates/intent.md"])
 write_text("works/templates/phase.md", _TEMPLATES["works/templates/phase.md"])
+write_text("works/templates/charter.md", _TEMPLATES["works/templates/charter.md"])
 
 # ---- Works state: starts with NO phases --------------------------------------
 # The workspace intentionally bootstraps empty: the operator's first real task is

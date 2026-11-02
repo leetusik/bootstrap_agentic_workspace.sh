@@ -2316,6 +2316,7 @@ executors.toml
 works/templates/deferred_brief.md
 works/templates/intent.md
 works/templates/phase.md
+works/templates/charter.md
 .github/workflows/workspace-ci.yml
 .gitattributes"
 for rel in $DUAL_FIXED CLAUDE.md; do

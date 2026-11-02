@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import bisect
 import difflib
+import hashlib
 import json
 import os
 import posixpath
@@ -417,7 +418,12 @@ ARCHIVE_FOLDER_ID_RE = re.compile(rf"_({PHASE_ID_PATTERN})_")
 # must never be routable to the mid row by a `low` rating. Set `--risk high`
 # on one so the recorded rating cannot contradict the routing; if the two ever disagree, the kind
 # wins.
-SLICE_KINDS = {"implementation", "review", "decomposition", "research", "fix", "docs", "qa", "co-work"}
+# `cycle` (workspace v91, P50) is one cycle of a loop phase (`P<N>.C<k>`): created ONLY by
+# `loop-cycle-start` (new-slice and promote-deferred refuse it), closed only by `loop-cycle-close`, and
+# routed by its STAGE before risk is read -- the signed charter's `stages` map names each stage's row
+# (by default screen -> the `screen` row, confirm -> high). The wave helpers and the forced declaration
+# ignore cycles, as they run one at a time under the loop's lease (`loop.inflight`).
+SLICE_KINDS = {"implementation", "review", "decomposition", "research", "fix", "docs", "qa", "co-work", "cycle"}
 # Phase-notebook budget (v35; an index since v61): phase.md is read and written ONE SECTION at a
 # time (`phase-section`), so it is an index of what the next slice needs, not a store. Long
 # material -- a contract, a signed-design summary -- lives in `topics/<slug>.md` beside it,
@@ -579,14 +585,18 @@ RETIRED_ROUTES = ("cheap",)
 # a dispatch names its row (`route=`), and the verdict records it (`route:`).
 # Only the rows that own their file (FILE_ROWS: mid, design, critic, explore) are written into
 # frontmatter, so only they accept a full model id or "inherit"; every other row (high, research,
-# judge) runs a file another row owns with its model passed per call, and the Agent tool's
+# judge, screen) runs a file another row owns with its model passed per call, and the Agent tool's
 # `model` is an enum, so those rows take an alias only.
 # effort = "" is the escape hatch for a model that rejects the parameter: no effort line in the
 # agent file and no per-dispatch effort. The named modes of v29-v52 (a top-level
 # `mode` key) are retired; read_executors_toml refuses one.
 # The defaults are the operator's own routes (workspace v80, v83): every opus row at high, mid on opus at
 # medium, haiku at xhigh for explore only.
-EXECUTOR_ROUTES = ("high", "research", "design", "critic", "judge", "mid", "explore")  # print order
+# `screen` (workspace v91, P50) is a loop phase's first-pass row: the cycles at a charter stage mapped to
+# it (by default the `screen` stage) run on it. It defaults to the mid row's values, owns no agent file
+# (it runs slice-executor with its model and effort passed per dispatch, like high and research), so
+# [claude.screen] takes an Agent-tool alias only; set a cheaper one there to screen cheaper.
+EXECUTOR_ROUTES = ("high", "research", "design", "critic", "judge", "mid", "screen", "explore")  # print order
 # v88 (P47-p5.S4): a per-page design round's spans carry `pass: frame | page <slug> | join` (drafter) or
 # `scope: page | cross` (critic) in their prompt; the meter labels them apart so the means estimate a round.
 # They run the design / critic rows: no executor-route row of their own.
@@ -599,6 +609,7 @@ ROUTE_DEFAULTS = {
     "critic": {"model": "opus", "effort": "high"},
     "judge": {"model": "opus", "effort": "high"},
     "mid": {"model": "opus", "effort": "medium"},
+    "screen": {"model": "opus", "effort": "medium"},
     "explore": {"model": "haiku", "effort": "xhigh"},
 }
 # The agent file each row dispatches to (canonical name; `installed_agent_name` applies a nested
@@ -607,7 +618,7 @@ ROUTE_DEFAULTS = {
 # design-critic; the judge row runs that same file in judge mode.
 SLICE_AGENT = "slice-executor"
 ROUTE_AGENT = {"high": SLICE_AGENT, "research": SLICE_AGENT, "design": "design-drafter", "critic": "design-critic",
-               "judge": "design-critic", "mid": SLICE_AGENT, "explore": "Explore"}
+               "judge": "design-critic", "mid": SLICE_AGENT, "screen": SLICE_AGENT, "explore": "Explore"}
 # The rows that own their agent file: sync-agents writes each one's resolved model/effort into its
 # frontmatter, so only these accept a full model id or "inherit".
 FILE_ROWS = ("mid", "design", "critic", "explore")
@@ -986,14 +997,21 @@ def _route_env_warnings() -> list:
     return lines
 
 
-def slice_route(kind, risk, retry: bool) -> tuple:
+def slice_route(kind, risk, retry: bool, cycle_stage=None) -> tuple:
     """(row, reason) for one dispatch: kind first, then risk, then attempt -- bump up, never down.
     A second attempt is always the high row; review, decomposition and co-work (the mockup span)
     route high by kind and research to the research row, whatever `risk` says; otherwise only a
     risk of exactly `low` reaches the mid row (implementation, fix, docs and qa; v83 retired the
-    Haiku cheap row that docs and qa rated low ran on)."""
+    Haiku cheap row that docs and qa rated low ran on). A loop's `cycle` routes by its stage:
+    `cycle_stage` is its `(stage, row)` pair from the signed charter's `stages` map
+    (`loop_cycle_stage`); a cycle with none routes high, the safe direction."""
     if retry:
         return "high", "second attempt"
+    if kind == "cycle":
+        stage, row = cycle_stage if cycle_stage else (None, None)
+        if row not in LOOP_STAGE_ROWS:
+            return "high", f"kind cycle, stage {stage or 'unknown'} (no charter row: high)"
+        return row, f"kind cycle, stage {stage}"
     if kind in ("review", "decomposition", "co-work"):
         return "high", f"kind {kind}"
     if kind == "research":
@@ -1040,9 +1058,11 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
     routes = resolve_routes()
     proxy = _loopback_base_url()
     if args.slice is not None:
-        sdata = read_json(require_slice(args.slice) / "slice.json")
+        sdir = require_slice(args.slice)
+        sdata = read_json(sdir / "slice.json")
         kind, risk = sdata.get("kind"), sdata.get("risk")
-        row, reason = slice_route(kind, risk, args.retry)
+        cycle_stage = loop_cycle_stage(sdir.parents[1], sdata) if kind == "cycle" else None
+        row, reason = slice_route(kind, risk, args.retry, cycle_stage=cycle_stage)
         lines, fallback = _dispatch_lines(row, routes, proxy)
         print(f"slice={args.slice}")
         print(f"phase={args.slice.split('.', 1)[0]}")
@@ -1051,6 +1071,8 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
         print(f"attempt={2 if args.retry else 1}")
         print(f"route={row}")
         print(f"reason={reason}")
+        if kind == "cycle":
+            print(f"stage={cycle_stage[0] or 'unknown'}")
         print(f"subagent_type={installed_agent_name(ROUTE_AGENT[row])}")
         print("\n".join(lines))
         extra = [fallback] if fallback else []
@@ -3189,6 +3211,31 @@ def stream_phases(phases: list, stream) -> list:
     return scoped
 
 
+def phase_loop(phase):
+    """A phase's `loop` block (a phase.json dict or an all_active_phases entry) when it is a loop phase, else None."""
+    loop = phase.get("loop") if isinstance(phase, dict) else None
+    return loop if isinstance(loop, dict) else None
+
+
+def loop_review_hidden(phase: dict, s: dict) -> bool:
+    """True for a loop phase's own `<P>.REVIEW` while its loop is not `stopped`: it runs only after the stop."""
+    loop = phase_loop(phase)
+    return bool(loop is not None and loop.get("status") != "stopped" and isinstance(s, dict)
+                and s.get("id") == f"{phase.get('id')}.REVIEW")
+
+
+def loop_wave_hidden(phase: dict, s: dict) -> bool:
+    """True for a slice the wave helpers never see: a loop's cycle, or its hidden REVIEW."""
+    return isinstance(s, dict) and (s.get("kind") == "cycle" or loop_review_hidden(phase, s))
+
+
+def selectable_slices(phase: dict, slices=None) -> list:
+    """The open slices the pointer may select, by order: every not-`done` slice, except a loop phase's REVIEW
+    while its loop runs (`loop_review_hidden`). For every phase without a loop block, exactly its open slices."""
+    slices = phase.get("slices", []) if slices is None else slices
+    return [s for s in slices if s.get("status") != "done" and not loop_review_hidden(phase, s)]
+
+
 def resolve_current(phases: list) -> tuple:
     for phase in phases:
         if phase.get("status") == "done":
@@ -3196,7 +3243,7 @@ def resolve_current(phases: list) -> tuple:
         current_phase = phase["id"]
         if phase.get("status") in ("blocked", "pending"):
             return current_phase, None, None
-        open_slices = [s for s in phase["slices"] if s.get("status") != "done"]
+        open_slices = selectable_slices(phase)  # a loop phase hides its REVIEW until the loop stops
         if open_slices:
             return current_phase, open_slices[0]["id"], open_slices[1]["id"] if len(open_slices) > 1 else None
         return current_phase, None, None
@@ -3274,7 +3321,7 @@ def _run_halt(phase: dict):
         if status == "pending" and stuck is not None and acceptance_gate_is_open(phase):
             return stuck, f"phase {pid}'s acceptance gate is open, but slice {stuck['id']} is {stuck.get('status')}, so it is not parked"
         return phase, f"phase {pid} is {status}" + (" without an open acceptance gate" if status == "pending" else "")
-    cur = next((s for s in slices if s.get("status") != "done"), None)
+    cur = next(iter(selectable_slices(phase)), None)
     cur = wave_stop(phase) or cur  # P42: a declared phase halts at a stop anywhere by order
     if cur is not None and cur.get("status") in ("pending", "blocked"):
         return cur, f"slice {cur['id']} is {cur.get('status')}"
@@ -3302,7 +3349,7 @@ def run_selection(phases: list, stream, ids=None) -> dict:
         elif out["target"] is None and out["halt"] is None:
             out["halt"] = _run_halt(phase)
             if out["halt"] is None:
-                open_slices = [s for s in phase.get("slices", []) if s.get("status") != "done"] + [None, None]
+                open_slices = selectable_slices(phase) + [None, None]
                 out["target"] = (phase, open_slices[0], open_slices[1])
     return out
 
@@ -3421,8 +3468,9 @@ def ready_set(phase: dict) -> dict:
     barrier in progress, or the phase itself `pending`/`blocked`, leaves `ready` empty. Else a walk over the
     open slices admits a barrier only as the first open slice with nothing running, ends at the first barrier
     either way, and admits a declared slice that is todo/ready with every dependency `done`. So an undeclared
-    phase's ready set is its first open slice when that can start: the pointer."""
-    slices = phase.get("slices", [])
+    phase's ready set is its first open slice when that can start: the pointer. A loop phase's cycles (and its
+    REVIEW while the loop runs) are never part of it: they run one at a time under the loop's lease."""
+    slices = [s for s in phase.get("slices", []) if not loop_wave_hidden(phase, s)]
     done = {s.get("id") for s in slices if s.get("status") == "done"}
     open_slices = [s for s in slices if s.get("status") != "done"]
     in_progress = [s for s in open_slices if s.get("status") == "in_progress"]
@@ -3541,7 +3589,7 @@ def start_warning(slice_id: str):
         return None
     by_id = {s.get("id"): s for s in phase["slices"]}
     me = by_id.get(slice_id)
-    if me is None:
+    if me is None or me.get("kind") == "cycle":  # a loop's cycle is started by loop-cycle-start, under its lease
         return None
     reasons = []
     if slice_declared(me):
@@ -3550,7 +3598,8 @@ def start_warning(slice_id: str):
         if deps:
             reasons.append(f"depends on {', '.join(deps)}, not done yet")
     if slice_barrier(me):
-        beside = [s["id"] for s in phase["slices"] if s.get("status") == "in_progress" and s.get("id") != slice_id]
+        beside = [s["id"] for s in phase["slices"] if s.get("status") == "in_progress" and s.get("id") != slice_id
+                  and s.get("kind") != "cycle"]
         if beside:
             reasons.append(f"is a barrier that runs alone, but {', '.join(beside)} {'is' if len(beside) == 1 else 'are'} in_progress")
     if not reasons:
@@ -3666,8 +3715,9 @@ def explain_unit(pdir: Path):
 
 def undeclared_middle_slices(phase: dict) -> list:
     """The open (not `done`) slices of a phase that are neither a barrier kind, a fix nor declared, by order: a
-    fix slice is cut after a review, outside any decomposition's reach, and stays undeclared unless its set is known."""
-    return [s for s in phase.get("slices", []) if s.get("status") != "done" and s.get("kind") not in BARRIER_KINDS + ("fix",)
+    fix slice is cut after a review, outside any decomposition's reach, and stays undeclared unless its set is known;
+    a loop's `cycle` is created by loop-cycle-start, never cut, so it is exempt too."""
+    return [s for s in phase.get("slices", []) if s.get("status") != "done" and s.get("kind") not in BARRIER_KINDS + ("fix", "cycle")
             and not slice_declared(s)]
 
 
@@ -3677,7 +3727,7 @@ def parallel_plan(phase: dict) -> list:
     all done (or in an earlier round) share a round; an undeclared slice runs alone, like a barrier. Pure:
     it reads the slice records and writes nothing."""
     done = {s.get("id") for s in phase.get("slices", []) if s.get("status") == "done"}
-    pending = [s for s in phase.get("slices", []) if s.get("status") != "done"]
+    pending = [s for s in phase.get("slices", []) if s.get("status") != "done" and not loop_wave_hidden(phase, s)]
     rounds = []
     while pending:
         batch = []
@@ -4620,7 +4670,7 @@ def rebuild_index_and_state() -> None:
                 "id": p["id"], "name": p["name"], "objective": p["objective"], "status": p["status"],
                 "order": p.get("order"), "path": p["path"],
                 "review_status": p.get("review", {}).get("status"),
-                "current_slice": next((s["id"] for s in p["slices"] if s.get("status") != "done"), None),
+                "current_slice": next((s["id"] for s in selectable_slices(p)), None),
                 "slice_count": len(p["slices"]),
                 "done_slice_count": sum(1 for s in p["slices"] if s.get("status") == "done"),
                 **({"execution": phase_execution(p)} if phase_execution(p) else {}),
@@ -4847,7 +4897,7 @@ def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
         lines.append("| - | - | - | - | - | - |")
     for p in phases:
         data, slices, _ = live.get(p["id"], (p, p["slices"], None))
-        current = next((s["id"] for s in slices if s.get("status") != "done"), "none")
+        current = next((s["id"] for s in selectable_slices(data, slices)), "none")
         name = clean_cell(p.get("name", ""))
         review = clean_cell((data.get("review") or {}).get("status"))
         current_cell = f"`{current}`"
@@ -4972,6 +5022,7 @@ def validate() -> int:
                         errors.append(f"phase {p['id']} has invalid host_anchors.{key} {value!r}; expected a host commit sha or null")
         if "repo_anchors" in p and nested_repos():
             _repo_anchor_problems(p, errors, warnings)
+        loop_validate(p, errors, warnings)  # P50: the loop block and loop/ files; silent for an ordinary phase
         if not (ACTIVE / p["id"] / "intent.md").exists():
             warnings.append(f"phase {p['id']} has no intent.md (expected {p['id']}/intent.md); capture operator intent via the create-phase skill")
         unit = explain_unit(ACTIVE / p["id"])
@@ -5315,6 +5366,12 @@ def new_phase(args: argparse.Namespace) -> None:
     phase_id = mint_phase_id() if raw is None else explicit_phase_id(raw)
     pdir = ACTIVE / phase_id
     consolidates = _parse_consolidates(getattr(args, "consolidates", None))  # refuses before anything is written
+    loop = getattr(args, "loop", False)
+    if loop and consolidates:
+        raise SystemExit("new-phase --loop --consolidates: a docs phase never loops; refused, nothing was written")
+    if loop and not (WORKS / "templates" / CHARTER_TEMPLATE).is_file():
+        raise SystemExit(f"new-phase --loop: the charter template {shown(WORKS / 'templates' / CHARTER_TEMPLATE)} is missing "
+                         "(update the workspace); refused, nothing was written")
     order = _clean_order(args.order) if args.order is not None else max([read_json(p / "phase.json").get("order", 0) for p in phase_dirs()], default=0) + 1
     phase_data = {
         "id": phase_id, "name": args.name, "objective": args.objective, "status": "planned", "order": order,
@@ -5356,8 +5413,12 @@ def new_phase(args: argparse.Namespace) -> None:
     create_slice(phase_id, f"{phase_id}.DECOMP", "decompose phase", "decomposition", 0, "high", source={"type": "new_phase", "id": phase_id})
     create_slice(phase_id, f"{phase_id}.REVIEW", "phase review", "review", 9999, "high", source={"type": "new_phase", "id": phase_id})
     append_event("phase_created", phase=phase_id)
+    charter = _loop_init(pdir) if loop else None  # new-phase --loop: the same init as loop-init
     rebuild_index_and_state()
     print(f"created phase {phase_id}: {shown(pdir)}")
+    if charter is not None:
+        for line in _loop_init_lines(pdir, charter):
+            print(line)
     for line in repo_stamp_lines:
         print(line)
     if consolidates:
@@ -5388,6 +5449,8 @@ def _auto_order(pdir: Path, explicit):
 
 
 def new_slice(args: argparse.Namespace) -> None:
+    if args.kind == "cycle":
+        raise SystemExit(f"new-slice --kind cycle: a loop's cycles are created only by {WORKFLOW_CMD} loop-cycle-start <P>; refused, nothing was written")
     pdir = require_phase(args.phase)
     args.slice = full_slice_id(args.phase, args.slice)  # v73: a bare suffix (S1) names a slice of --phase
     order = _auto_order(pdir, args.order)
@@ -5507,6 +5570,9 @@ def start_slice(args: argparse.Namespace) -> None:
 def finish_slice(args: argparse.Namespace) -> None:
     sdir = require_slice(args.slice)
     pdir = sdir.parents[1]  # .../<phase>/slices/<slice> -> <phase>
+    if read_json(sdir / "slice.json").get("kind") == "cycle":  # the ledger line and the lease close with it
+        raise SystemExit(f"finish-slice {args.slice}: a loop's cycle closes with {WORKFLOW_CMD} loop-cycle-close {args.slice} "
+                         "--verdict pass|fail|survivor|parked|error; refused, nothing was written")
     decomposition = read_json(sdir / "slice.json").get("kind") == "decomposition"
     if decomposition and not explain_phase(pdir):  # v77: the cut decides parallelism, never the default
         loose = undeclared_middle_slices(_active_phase(pdir.name) or {})
@@ -9374,6 +9440,8 @@ def promote_deferred(args: argparse.Namespace) -> None:
         raise SystemExit(f"open deferred job not found: {did}")
     data = read_json(ddir / "deferred.json")
     require_slice_kind(args.kind)  # before --create-phase, so a bad kind leaves no half-created phase
+    if args.kind == "cycle":
+        raise SystemExit(f"promote-deferred --kind cycle: a loop's cycles are created only by {WORKFLOW_CMD} loop-cycle-start <P>; refused, nothing was written")
     if args.phase is None and not args.create_phase:
         raise SystemExit("promote-deferred needs --phase <id>, or --create-phase to create a phase (without --phase the engine "
                          "mints its id; name the slice by its bare suffix, e.g. --slice S1); refused, nothing was written")
@@ -14377,6 +14445,844 @@ def design_migrate_pre_v47(args: argparse.Namespace) -> None:
           + ("" if (root / "design.json").exists() else "; run design-init only if this repo will use the drafter"))
 
 
+# ---- Loop phases (workspace v91, P50) ---------------------------------------------------------------
+# A loop phase is an ordinary phase with a `loop` block in phase.json (`new-phase --loop`, or `loop-init <P>`
+# on a phase not yet past its DECOMP). Absent block = an ordinary phase: every path below is skipped. The
+# block is the loop's state; its memory lives in `<phase>/loop/`, created on demand:
+#   charter/v<N>.md   the charter: prose (objective, one cycle, forbidden list) plus one fenced `json` bounds
+#                     block; `loop-sign` pins a version's sha256 on the operator's literal words
+#   queue.jsonl       items waiting (rewritten whole when an item is taken; it stays small)
+#   ledger.jsonl      one line per closed cycle: the TRUTH. The block's `counters` are a cache of it, always
+#                     written in the same call as the ledger line
+#   dead.jsonl, survivors.jsonl, parked.jsonl   the item lists (parked is the loop's question list)
+# Cycles are slices `<P>.C<k>` of kind `cycle`, ordered LOOP_CYCLE_ORDER_BASE + 2k (a checkpoint takes the odd
+# order after its cycle); the phase's own REVIEW moves to LOOP_REVIEW_ORDER and the pointer hides it until the
+# loop stops. The lease is `loop.inflight`: one cycle at a time, never double-dispatched.
+LOOP_STATUSES = ("drafting", "signed", "running", "paused", "halted", "stopped")  # the last three are set by the tick (P50.S2)
+LOOP_VERDICTS = ("pass", "fail", "survivor", "parked", "error")
+LOOP_STAGE_ROWS = ("screen", "mid", "high", "research")  # the rows a charter stage may name
+LOOP_ITEM_SOURCES = ("operator", "orchestrator", "engine")
+LOOP_COUNTERS = ("cycles", "attempts", "trials", "consecutive_failures", "survivors", "parked", "dead")
+LOOP_FILES = ("queue.jsonl", "ledger.jsonl", "dead.jsonl", "survivors.jsonl", "parked.jsonl")
+LOOP_CYCLE_ORDER_BASE = 10000
+LOOP_REVIEW_ORDER = 1_000_000_000
+LOOP_UNFILLED = "UNFILLED"  # the charter template's placeholder token; loop-sign refuses while one is left
+LOOP_ERROR_LIMIT = 2  # an item's second `error` sends it to dead (`errors x2`)
+CHARTER_TEMPLATE = "charter.md"
+CHARTER_VERSION_RE = re.compile(r"v([1-9][0-9]*)\.md")
+LOOP_STAGE_NAME_RE = re.compile(r"[a-z][a-z0-9_-]*")
+# The bounds block's shape and defaults: an absent optional key takes its default; `budget`'s three caps are
+# required. `stages` is an ordered map (stage -> row); its first key is the first pass.
+CHARTER_BOUNDS_DEFAULTS = {
+    "cadence": {"min_gap_minutes": 0},
+    "budget": {"per_cycle_usd": 5.0, "per_day_usd": 50.0, "total_usd": 500.0, "max_cycles": None},
+    "stops": {"max_consecutive_failures": 3},
+    "spend_covered": [],
+    "stages": {"screen": "screen", "confirm": "high"},
+    "checkpoint_every": 25,
+    "digest_every_hours": 24,
+    "keep_cycles": 10,
+    "outputs": [],
+}
+
+
+def new_loop_block() -> dict:
+    return {"status": "drafting", "charter": None, "charters": [], "next_cycle": 1, "inflight": None,
+            "counters": {k: 0 for k in LOOP_COUNTERS}, "last_cycle": None}
+
+
+def loop_block(pdir: Path):
+    """The phase's `loop` block from its phase.json, or None for an ordinary phase."""
+    return phase_loop(read_json(pdir / "phase.json"))
+
+
+def loop_phase(pdir: Path) -> bool:
+    """True when the phase folder's phase.json carries a `loop` block (the predicate, as `explain_phase` is)."""
+    try:
+        return loop_block(pdir) is not None
+    except (OSError, ValueError):
+        return False
+
+
+def require_loop(pdir: Path, cmd: str) -> dict:
+    loop = loop_block(pdir)
+    if loop is None:
+        raise SystemExit(f"{cmd}: {pdir.name} is not a loop phase (make one with: {WORKFLOW_CMD} loop-init {pdir.name}); "
+                         "refused, nothing was written")
+    return loop
+
+
+def write_loop_block(pdir: Path, loop: dict, data=None) -> dict:
+    """The one writer of the `loop` block: `data` (the phase.json dict, re-read when None) with `loop` set, written."""
+    data = read_json(pdir / "phase.json") if data is None else data
+    data["loop"] = loop
+    write_json(pdir / "phase.json", data)
+    return data
+
+
+def loop_path(pdir: Path, name: str) -> Path:
+    return pdir / "loop" / name
+
+
+def loop_read(pdir: Path, name: str) -> list:
+    """The records of one loop/ JSONL file (none when it does not exist yet); a line that is not a JSON object
+    refuses, naming it -- a loop must never act on a list it cannot read."""
+    path = loop_path(pdir, name)
+    if not path.exists():
+        return []
+    out = []
+    for n, raw in enumerate(path.read_text(encoding="utf-8").split("\n"), start=1):
+        if not raw.strip():
+            continue
+        try:
+            record = json.loads(raw)
+        except ValueError:
+            record = None
+        if not isinstance(record, dict):
+            raise SystemExit(f"{shown(path)} line {n} is not a JSON object; fix or remove the line (git holds its history)")
+        out.append(record)
+    return out
+
+
+def loop_append(pdir: Path, name: str, record: dict) -> None:
+    """The one JSONL appender: one record, one line."""
+    path = loop_path(pdir, name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def loop_rewrite(pdir: Path, name: str, records: list) -> None:
+    """Rewrite one JSONL file whole (the queue when an item is taken, parked when one is resolved)."""
+    write_text(loop_path(pdir, name), "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records))
+
+
+def charter_rel(version: int) -> str:
+    return f"loop/charter/v{version}.md"
+
+
+def charter_versions(pdir: Path) -> list:
+    """The charter versions on disk, ascending."""
+    cdir = pdir / "loop" / "charter"
+    if not cdir.is_dir():
+        return []
+    return sorted(int(m.group(1)) for m in (CHARTER_VERSION_RE.fullmatch(p.name) for p in cdir.iterdir() if p.is_file()) if m)
+
+
+def _is_int(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _charter_bounds_problems(text: str) -> tuple:
+    """(bounds with defaults filled, [problems]) from a charter's text: the first ```json fence under `## Bounds`."""
+    lines = text.split("\n")
+    start = next((i for i, line in enumerate(lines) if line.strip() == "## Bounds"), None)
+    if start is None:
+        return None, ["no `## Bounds` section"]
+    fence = None
+    for i in range(start + 1, len(lines)):
+        stripped = lines[i].strip()
+        if stripped.startswith("## "):
+            break
+        if re.fullmatch(r"```\s*json\s*", stripped):
+            fence = i
+            break
+    if fence is None:
+        return None, ["`## Bounds` holds no ```json fence"]
+    end = next((j for j in range(fence + 1, len(lines)) if lines[j].strip() == "```"), None)
+    if end is None:
+        return None, ["the `## Bounds` ```json fence is never closed"]
+    try:
+        raw = json.loads("\n".join(lines[fence + 1:end]))
+    except ValueError as exc:
+        return None, [f"the bounds block is not valid JSON ({exc})"]
+    if not isinstance(raw, dict):
+        return None, ["the bounds block is not a JSON object"]
+    bounds = json.loads(json.dumps(CHARTER_BOUNDS_DEFAULTS))
+    problems = []
+    for key in raw:
+        if key not in CHARTER_BOUNDS_DEFAULTS:
+            problems.append(f"unknown key {key!r} (known: {', '.join(CHARTER_BOUNDS_DEFAULTS)})")
+
+    def sub(name: str, required=()):
+        value = raw.get(name)
+        if name not in raw:
+            if required:
+                problems.append(f"{name} is required ({', '.join(required)})")
+            return {}
+        if not isinstance(value, dict):
+            problems.append(f"{name} must be an object")
+            return {}
+        for k in value:
+            if k not in CHARTER_BOUNDS_DEFAULTS[name]:
+                problems.append(f"unknown key {name}.{k} (known: {', '.join(CHARTER_BOUNDS_DEFAULTS[name])})")
+        for k in required:
+            if k not in value:
+                problems.append(f"{name}.{k} is required")
+        return value
+
+    cadence = sub("cadence")
+    if "min_gap_minutes" in cadence:
+        if _is_int(cadence["min_gap_minutes"]) and cadence["min_gap_minutes"] >= 0:
+            bounds["cadence"]["min_gap_minutes"] = cadence["min_gap_minutes"]
+        else:
+            problems.append(f"cadence.min_gap_minutes must be an integer >= 0 (got {cadence['min_gap_minutes']!r})")
+    budget = sub("budget", required=("per_cycle_usd", "per_day_usd", "total_usd"))
+    for k in ("per_cycle_usd", "per_day_usd", "total_usd"):
+        if k in budget:
+            if _is_number(budget[k]) and budget[k] > 0:
+                bounds["budget"][k] = budget[k]
+            else:
+                problems.append(f"budget.{k} must be a positive number (got {budget[k]!r})")
+    if "max_cycles" in budget:
+        if budget["max_cycles"] is None or (_is_int(budget["max_cycles"]) and budget["max_cycles"] >= 1):
+            bounds["budget"]["max_cycles"] = budget["max_cycles"]
+        else:
+            problems.append(f"budget.max_cycles must be null or an integer >= 1 (got {budget['max_cycles']!r})")
+    stops = sub("stops")
+    if "max_consecutive_failures" in stops:
+        if _is_int(stops["max_consecutive_failures"]) and stops["max_consecutive_failures"] >= 1:
+            bounds["stops"]["max_consecutive_failures"] = stops["max_consecutive_failures"]
+        else:
+            problems.append(f"stops.max_consecutive_failures must be an integer >= 1 (got {stops['max_consecutive_failures']!r})")
+    if "stages" in raw:
+        stages = raw["stages"]
+        if not isinstance(stages, dict) or not stages:
+            problems.append("stages must be a non-empty object mapping each stage to its row, in pass order")
+        else:
+            for name, row in stages.items():
+                if not LOOP_STAGE_NAME_RE.fullmatch(name):
+                    problems.append(f"stage name {name!r} must be lower-case letters, digits, - or _ (starting with a letter)")
+                if row not in LOOP_STAGE_ROWS:
+                    problems.append(f"stages.{name} names row {row!r}; expected one of {', '.join(LOOP_STAGE_ROWS)}")
+            bounds["stages"] = dict(stages)
+    for k in ("checkpoint_every", "keep_cycles", "digest_every_hours"):
+        if k in raw:
+            if _is_int(raw[k]) and raw[k] >= 1:
+                bounds[k] = raw[k]
+            else:
+                problems.append(f"{k} must be an integer >= 1 (got {raw[k]!r})")
+    for k in ("spend_covered", "outputs"):
+        if k not in raw:
+            continue
+        value = raw[k]
+        if not isinstance(value, list) or not all(isinstance(v, str) and v.strip() for v in value):
+            problems.append(f"{k} must be a list of non-empty strings")
+            continue
+        if k == "outputs":
+            for v in value:
+                if v.startswith("/") or ".." in v.replace("\\", "/").split("/"):
+                    problems.append(f"outputs path {v!r} must be relative to the product root, with no leading / and no ..")
+        bounds[k] = list(value)
+    return bounds, problems
+
+
+def charter_bounds(path: Path) -> dict:
+    """The charter's bounds, validated, with every absent optional key at its default; one SystemExit naming every
+    problem at once on a bad charter."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        raise SystemExit(f"charter {shown(path)} does not exist")
+    bounds, problems = _charter_bounds_problems(text)
+    if problems:
+        raise SystemExit(f"charter {shown(path)}: invalid bounds -- {'; '.join(problems)}")
+    return bounds
+
+
+def charter_unfilled(text: str) -> list:
+    """The sections (by heading) of a charter that still hold an UNFILLED placeholder, in order."""
+    found, heading = [], "(title)"
+    for line in text.split("\n"):
+        if line.startswith("#"):
+            heading = line.lstrip("#").strip() or heading
+        if LOOP_UNFILLED in line and heading not in found:
+            found.append(heading)
+    return found
+
+
+def loop_stages(pdir: Path, version=None) -> dict:
+    """The ordered stage -> row map of one charter version (the signed one when None; before signing, the newest
+    draft), or the default map when that file is missing or its bounds are invalid."""
+    loop = loop_block(pdir) or {}
+    if version is None:
+        version = (loop.get("charter") or {}).get("version")
+    if version is None:
+        drafts = charter_versions(pdir)
+        version = drafts[-1] if drafts else None
+    if isinstance(version, int):
+        try:
+            bounds, problems = _charter_bounds_problems((pdir / charter_rel(version)).read_text(encoding="utf-8"))
+        except OSError:
+            bounds, problems = None, ["missing"]
+        if not problems:
+            return bounds["stages"]
+    return dict(CHARTER_BOUNDS_DEFAULTS["stages"])
+
+
+def loop_charter_ok(pdir: Path) -> tuple:
+    """(ok, reason): a signed charter whose file still hashes to its pin. loop-cycle-start refuses on a failure;
+    the tick (P50.S2) halts on one."""
+    loop = loop_block(pdir)
+    if loop is None:
+        return False, f"{pdir.name} is not a loop phase"
+    charter = loop.get("charter")
+    if not isinstance(charter, dict):
+        return False, f"no signed charter: fill it, then sign it on the operator's literal words ({WORKFLOW_CMD} loop-sign {pdir.name} --words \"...\")"
+    version = charter.get("version")
+    path = pdir / str(charter.get("path") or charter_rel(version))
+    if not path.is_file():
+        return False, f"the signed charter v{version} ({shown(path)}) is missing"
+    sha = hashlib.sha256(path.read_bytes()).hexdigest()
+    if sha != charter.get("sha256"):
+        nxt = max(charter_versions(pdir) + [version if _is_int(version) else 0]) + 1
+        return False, (f"the signed charter v{version} ({shown(path)}) has changed since it was signed (sha256 {sha[:12]}, "
+                       f"pinned {str(charter.get('sha256'))[:12]}): a change of charter is a new version -- restore v{version} "
+                       f"from git, or write {charter_rel(nxt)} and sign it")
+    return True, f"charter v{version} signed, pin holds"
+
+
+def loop_cycle_stage(pdir: Path, sdata: dict) -> tuple:
+    """(stage, row) of one cycle slice: its `loop.stage`, mapped by the charter version it started under."""
+    info = sdata.get("loop") if isinstance(sdata.get("loop"), dict) else {}
+    stage = info.get("stage")
+    return stage, loop_stages(pdir, info.get("charter")).get(stage)
+
+
+def loop_take_order(queue: list, stages: dict) -> list:
+    """The queue in take order: later stages first, then priority descending, then first in, first out."""
+    names = list(stages)
+
+    def prio(item):
+        value = item.get("priority", 0)
+        return value if _is_number(value) else 0
+    ranked = sorted(enumerate(queue), key=lambda e: (-(names.index(e[1].get("stage")) if e[1].get("stage") in names else -1),
+                                                    -prio(e[1]), e[0]))
+    return [item for _i, item in ranked]
+
+
+def loop_key_refusal(key: str, stage: str, stages: dict, queue: list, ledger: list, dead: list,
+                     check_queued: bool = True, check_tried: bool = True):
+    """Why `key` may not run (or be queued) at `stage`, else None: a dead key, a stage the charter does not name,
+    a key already tried at that stage (a ledger line whose verdict is not `error`), or one already queued there."""
+    gone = next((d for d in dead if d.get("key") == key), None)
+    if gone is not None:
+        return f"key {key!r} is dead (cycle {gone.get('cycle')}, stage {gone.get('stage')}: {gone.get('reason')}); a dead key is never retried"
+    if stage not in stages:
+        return f"stage {stage!r} is not one the charter names ({', '.join(stages)})"
+    if check_tried:
+        tried = next((l for l in ledger if l.get("key") == key and l.get("stage") == stage and l.get("verdict") != "error"), None)
+        if tried is not None:
+            return f"key {key!r} was already tried at stage {stage} (cycle {tried.get('cycle')}: {tried.get('verdict')})"
+    if check_queued and any(q.get("key") == key and q.get("stage") == stage for q in queue):
+        return f"key {key!r} is already queued at stage {stage}"
+    return None
+
+
+def loop_queue_item(key: str, title: str, stage: str, payload, priority, source: str, errors: int = 0) -> dict:
+    return {"key": key, "title": title, "stage": stage, "payload": payload, "priority": priority,
+            "added_at": now_iso(), "source": source, "errors": errors}
+
+
+def loop_recount(pdir: Path, loop: dict) -> None:
+    """Keep the survivors, dead and parked counters equal to their files (parked: its open entries)."""
+    counters = loop.setdefault("counters", {k: 0 for k in LOOP_COUNTERS})
+    counters["survivors"] = len(loop_read(pdir, "survivors.jsonl"))
+    counters["dead"] = len(loop_read(pdir, "dead.jsonl"))
+    counters["parked"] = sum(1 for p in loop_read(pdir, "parked.jsonl") if p.get("resolved") is None)
+
+
+def _loop_json_arg(raw, flag: str, cmd: str, want_object: bool = False):
+    if raw is None:
+        return None
+    try:
+        value = json.loads(raw)
+    except ValueError as exc:
+        raise SystemExit(f"{cmd}: {flag} is not valid JSON ({exc}); refused, nothing was written")
+    if want_object and not isinstance(value, dict):
+        raise SystemExit(f"{cmd}: {flag} must be a JSON object; refused, nothing was written")
+    return value
+
+
+def _loop_text_arg(raw, flag: str, cmd: str) -> str:
+    text = _one_line(raw or "")
+    if not text:
+        raise SystemExit(f"{cmd}: {flag} must not be empty; refused, nothing was written")
+    return text
+
+
+def _loop_drop_queued(pdir: Path, key: str) -> None:
+    """A key that goes dead leaves the queue in the same call, so the queue head is never a dead key."""
+    queue = loop_read(pdir, "queue.jsonl")
+    kept = [q for q in queue if q.get("key") != key]
+    if len(kept) != len(queue):
+        loop_rewrite(pdir, "queue.jsonl", kept)
+
+
+def loop_init_problems(pdir: Path, data: dict) -> list:
+    """Why `loop-init` must refuse this phase (empty: it may proceed)."""
+    problems = []
+    pid = data.get("id", pdir.name)
+    if phase_loop(data) is not None:
+        problems.append("it is already a loop phase")
+    if "consolidates" in data:
+        problems.append("it is a docs phase (consolidates), which never loops")
+    if explain_phase(pdir):
+        problems.append("it is an explain phase (## Explain in intent.md), which never loops")
+    status = data.get("status")
+    if status not in ("planned", "in_progress"):
+        problems.append(f"it is {status}; a phase becomes a loop while planned, or in progress with nothing past its DECOMP started")
+    else:  # a slice can start while its phase still reads planned: either way, nothing past the DECOMP may have
+        started = [s.get("id") for s in (read_json(d / "slice.json") for d in slice_dirs(pdir))
+                   if s.get("id") != f"{pid}.DECOMP" and (s.get("status") not in ("todo", "ready") or s.get("started_at"))]
+        if started:
+            problems.append(f"slices past its DECOMP have started ({', '.join(started)})")
+    if not (WORKS / "templates" / CHARTER_TEMPLATE).is_file():
+        problems.append(f"the charter template {shown(WORKS / 'templates' / CHARTER_TEMPLATE)} is missing (update the workspace)")
+    if (pdir / charter_rel(1)).exists():
+        problems.append(f"{shown(pdir / charter_rel(1))} already exists")
+    return problems
+
+
+def _loop_init(pdir: Path) -> Path:
+    """Make `pdir` a loop phase: the block, charter v1 from the template, REVIEW moved past every cycle. Refuses,
+    writing nothing, when loop_init_problems names anything. Returns the charter path; the caller rebuilds."""
+    data = read_json(pdir / "phase.json")
+    problems = loop_init_problems(pdir, data)
+    if problems:
+        raise SystemExit(f"loop-init {pdir.name}: refused, nothing was written -- {'; '.join(problems)}")
+    pid = data.get("id", pdir.name)
+    charter = render_template(load_template(CHARTER_TEMPLATE), PHASE_ID=pid, NAME=str(data.get("name", "")))
+    write_loop_block(pdir, new_loop_block(), data)
+    path = pdir / charter_rel(1)
+    write_text(path, charter)
+    review = pdir / "slices" / f"{pid}.REVIEW" / "slice.json"
+    if review.exists():
+        sdata = read_json(review)
+        sdata["order"] = LOOP_REVIEW_ORDER
+        write_json(review, sdata)
+    append_event("loop_initialized", phase=pid, charter=charter_rel(1))
+    return path
+
+
+def _loop_init_lines(pdir: Path, path: Path) -> list:
+    return [f"loop={pdir.name} status=drafting (a loop phase: cycles {pdir.name}.C<k>; its REVIEW runs after the loop stops)",
+            f"charter={shown(path)}",
+            f"next: fill every {LOOP_UNFILLED} line of the charter, then sign it on the operator's literal words: "
+            f"{WORKFLOW_CMD} loop-sign {pdir.name} --words \"<the operator's words>\""]
+
+
+def loop_init(args: argparse.Namespace) -> None:
+    pdir = require_phase(args.phase)
+    path = _loop_init(pdir)
+    rebuild_index_and_state()
+    for line in _loop_init_lines(pdir, path):
+        print(line)
+
+
+def loop_sign(args: argparse.Namespace) -> None:
+    """Sign a charter version on the operator's literal words: pin its sha256, record it, and turn a drafting loop
+    signed. The orchestrator runs it only after those words; an executor never does."""
+    pdir = require_phase(args.phase)
+    loop = require_loop(pdir, "loop-sign")
+    cmd = f"loop-sign {pdir.name}"
+    words = (args.words or "").strip()
+    if not words:
+        raise SystemExit(f"{cmd}: --words must carry the operator's literal words; refused, nothing was written")
+    versions = charter_versions(pdir)
+    version = args.version if args.version is not None else (versions[-1] if versions else None)
+    if version is None:
+        raise SystemExit(f"{cmd}: no charter on disk ({shown(pdir / 'loop' / 'charter')}); refused, nothing was written")
+    path = pdir / charter_rel(version)
+    if not path.is_file():
+        raise SystemExit(f"{cmd}: {shown(path)} does not exist; refused, nothing was written")
+    text = path.read_text(encoding="utf-8")
+    _bounds, bad = _charter_bounds_problems(text)
+    problems = [f"invalid bounds: {'; '.join(bad)}"] if bad else []
+    unfilled = charter_unfilled(text)
+    if unfilled:
+        problems.append(f"{LOOP_UNFILLED} placeholders are left in: {', '.join(unfilled)}")
+    signed = {c.get("version") for c in loop.get("charters") or [] if isinstance(c, dict)}
+    current = (loop.get("charter") or {}).get("version")
+    if version in signed:
+        problems.append(f"v{version} is already signed (a change of charter is a new version: write {charter_rel(max(versions) + 1)})")
+    elif _is_int(current) and version <= current:
+        problems.append(f"v{version} is not past the signed v{current}")
+    if problems:
+        raise SystemExit(f"{cmd} --version {version}: refused, nothing was written -- {'; '.join(problems)}")
+    record = {"version": version, "path": charter_rel(version), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+              "words": words, "signed_at": now_iso()}
+    loop["charter"] = record
+    loop["charters"] = list(loop.get("charters") or []) + [record]
+    if loop.get("status") == "drafting":
+        loop["status"] = "signed"
+    write_loop_block(pdir, loop)
+    append_event("loop_charter_signed", phase=pdir.name, version=version, sha256=record["sha256"])
+    rebuild_index_and_state()
+    print(f"signed {pdir.name} charter v{version}: {shown(path)}")
+    print(f"sha256={record['sha256']}")
+    print(f"loop_status={loop['status']}")
+
+
+def loop_queue(args: argparse.Namespace) -> None:
+    """`add`: queue one item (refused for a dead key, one tried or queued at that stage, or a stage the charter
+    does not name); `list`: the queue in take order."""
+    pdir = require_phase(args.phase)
+    require_loop(pdir, f"loop-queue {args.action}")
+    stages = loop_stages(pdir)
+    queue = loop_read(pdir, "queue.jsonl")
+    if args.action == "list":
+        order = loop_take_order(queue, stages)
+        print(f"queue={pdir.name} items={len(order)} stages={','.join(stages)}")
+        for n, item in enumerate(order, start=1):
+            print(f"{n}. key={item.get('key')} stage={item.get('stage')} priority={item.get('priority')} "
+                  f"errors={item.get('errors', 0)} source={item.get('source')} title={_one_line(item.get('title') or '')}")
+        return
+    cmd = f"loop-queue {pdir.name} add"
+    key = _loop_text_arg(args.key, "--key", cmd)
+    title = _loop_text_arg(args.title, "--title", cmd)
+    payload = _loop_json_arg(args.payload, "--payload", cmd)
+    signed = isinstance((loop_block(pdir) or {}).get("charter"), dict)
+    stage = args.stage or (next(iter(stages)) if signed else "screen")
+    reason = loop_key_refusal(key, stage, stages, queue, loop_read(pdir, "ledger.jsonl"), loop_read(pdir, "dead.jsonl"))
+    if reason:
+        raise SystemExit(f"{cmd}: {reason}; refused, nothing was written")
+    item = loop_queue_item(key, title, stage, payload, args.priority, args.source)
+    loop_append(pdir, "queue.jsonl", item)
+    append_event("loop_item_queued", phase=pdir.name, key=key, stage=stage, source=args.source)
+    rebuild_index_and_state()
+    print(f"queued key={key} stage={stage} priority={args.priority} (queue: {len(queue) + 1} item(s))")
+
+
+def loop_cycle_start(args: argparse.Namespace) -> None:
+    """Start the next cycle `<P>.C<k>` under the lease: the queue head, or a new item the orchestrator authors with
+    --key/--title. Writes no plan.md; the orchestrator does."""
+    pdir = require_phase(args.phase)
+    pid = pdir.name
+    cmd = f"loop-cycle-start {pid}"
+    data = read_json(pdir / "phase.json")
+    loop = phase_loop(data)
+    if loop is None:
+        raise SystemExit(f"{cmd}: {pid} is not a loop phase; refused, nothing was written")
+    ok, why = loop_charter_ok(pdir)
+    if not ok:
+        raise SystemExit(f"{cmd}: {why}; refused, nothing was written")
+    if loop.get("status") not in ("signed", "running"):
+        raise SystemExit(f"{cmd}: the loop is {loop.get('status')}; a cycle starts only on a signed or running loop; refused, nothing was written")
+    if data.get("status") in ("pending", "blocked", "done"):
+        raise SystemExit(f"{cmd}: phase {pid} is {data.get('status')}, and nothing starts past a stop; refused, nothing was written")
+    inflight = loop.get("inflight")
+    if inflight:
+        raise SystemExit(f"{cmd}: cycle {inflight.get('cycle') if isinstance(inflight, dict) else inflight} is in flight "
+                         "(one cycle at a time: close it with loop-cycle-close first); refused, nothing was written")
+    setup = [s for s in (read_json(d / "slice.json") for d in slice_dirs(pdir))
+             if s.get("kind") != "cycle" and s.get("id") != f"{pid}.REVIEW" and s.get("status") != "done"]
+    if setup:
+        named = ", ".join(f"{s.get('id')} ({s.get('status')})" for s in setup)
+        raise SystemExit(f"{cmd}: {named} must finish first (the DECOMP and the setup slices run before any cycle); "
+                         "refused, nothing was written")
+    stages = loop_stages(pdir)
+    first = next(iter(stages))
+    queue, ledger, dead = loop_read(pdir, "queue.jsonl"), loop_read(pdir, "ledger.jsonl"), loop_read(pdir, "dead.jsonl")
+    if args.key is not None:
+        key = _loop_text_arg(args.key, "--key", cmd)
+        title = _loop_text_arg(args.title, "--title", cmd)
+        payload = _loop_json_arg(args.payload, "--payload", cmd)
+        stage = first
+        reason = loop_key_refusal(key, stage, stages, queue, ledger, dead, check_queued=False)
+        taken = next((q for q in queue if q.get("key") == key and q.get("stage") == stage), None)
+        item = {"key": key, "title": title, "stage": stage,
+                "payload": payload if args.payload is not None else (taken or {}).get("payload"),
+                "priority": (taken or {}).get("priority", 0), "errors": (taken or {}).get("errors", 0),
+                "source": (taken or {}).get("source", "orchestrator")}
+    else:
+        if args.title is not None or args.payload is not None:
+            raise SystemExit(f"{cmd}: --title/--payload author a new item and need --key; refused, nothing was written")
+        order = loop_take_order(queue, stages)
+        if not order:
+            raise SystemExit(f"{cmd}: the queue is empty -- author a new item: {WORKFLOW_CMD} {cmd} --key K --title T "
+                             "[--payload JSON]; refused, nothing was written")
+        taken = order[0]
+        key, stage = str(taken.get("key")), taken.get("stage")
+        reason = loop_key_refusal(key, stage, stages, queue, ledger, dead, check_queued=False,
+                                  check_tried=not taken.get("unparked_from"))
+        item = {"key": key, "title": taken.get("title") or key, "stage": stage, "payload": taken.get("payload"),
+                "priority": taken.get("priority", 0), "errors": taken.get("errors", 0), "source": taken.get("source")}
+    if reason:
+        raise SystemExit(f"{cmd}: {reason}; refused, nothing was written")
+    k = loop.get("next_cycle") if _is_int(loop.get("next_cycle")) else 1
+    sid = f"{pid}.C{k}"
+    if (pdir / "slices" / sid).exists():
+        raise SystemExit(f"{cmd}: slice {sid} already exists while next_cycle is {k}; repair loop.next_cycle; refused, nothing was written")
+    signed_version = loop["charter"]["version"]
+    started = now_iso()
+    # -- writes, after every refusal --
+    if taken is not None:
+        loop_rewrite(pdir, "queue.jsonl", [q for q in queue if q is not taken])
+    sdir = create_slice(pid, sid, f"cycle {k}: {item['title']}", "cycle", LOOP_CYCLE_ORDER_BASE + 2 * k, "low",
+                        source={"type": "loop", "id": pid})
+    append_event("slice_created", phase=pid, slice=sid)
+    sdata = read_json(sdir / "slice.json")
+    sdata["loop"] = {"k": k, "stage": stage, "key": key, "title": item["title"], "payload": item["payload"],
+                     "charter": signed_version, "attempt": 1, "priority": item["priority"], "errors": item["errors"],
+                     "source": item["source"]}
+    write_json(sdir / "slice.json", sdata)
+    old = _set_slice_status(sdir, "in_progress")
+    append_event("slice_status_changed", slice=sid, old_status=old, new_status="in_progress")
+    data = read_json(pdir / "phase.json")
+    if data.get("status") != "in_progress":
+        old_phase = data.get("status")
+        data["status"] = "in_progress"
+        if not data.get("started_at"):
+            data["started_at"] = started
+        append_event("phase_status_changed", phase=pid, old_status=old_phase, new_status="in_progress")
+    loop = data["loop"]
+    loop["inflight"] = {"cycle": sid, "started_at": started, "attempt": 1}
+    loop["status"] = "running"
+    loop["next_cycle"] = k + 1
+    write_loop_block(pdir, loop, data)
+    append_event("loop_cycle_started", phase=pid, slice=sid, key=key, stage=stage, charter=signed_version)
+    rebuild_index_and_state()
+    print(f"cycle={sid}")
+    print(f"stage={stage}")
+    print(f"key={key}")
+    print(f"slice_path={shown(sdir)}")
+
+
+def loop_ledger_line(pdir: Path, sdata: dict, inflight: dict, verdict: str, metrics: dict, summary: str,
+                     route: str, closed_at: str) -> dict:
+    """The one ledger line of a closed cycle. `usd`, `minutes` and `usd_source` are the meter's to fill (P50.S2:
+    `_meter_collect` over the cycle's window); until then a cycle is recorded `unmetered`."""
+    info = sdata.get("loop") or {}
+    return {"cycle": sdata.get("id"), "k": info.get("k"), "key": info.get("key"), "title": info.get("title"),
+            "stage": info.get("stage"), "verdict": verdict, "metrics": metrics, "summary": summary, "route": route,
+            "attempt": (inflight or {}).get("attempt", info.get("attempt", 1)), "charter": info.get("charter"),
+            "started_at": (inflight or {}).get("started_at") or sdata.get("started_at"), "closed_at": closed_at,
+            "usd": None, "minutes": None, "usd_source": "unmetered"}
+
+
+def loop_after_close(pdir: Path) -> None:
+    """The seam after a cycle closes (its ledger line, lists, counters and slice are on disk): P50.S2's halt checks
+    (budget, consecutive failures, max cycles) and P50.S3's rollup and checkpoint scheduling hook in here. A no-op
+    until then."""
+    return None
+
+
+def loop_cycle_close(args: argparse.Namespace) -> None:
+    """Close the cycle in flight with its item verdict: one ledger line, the list effects, the counters, then
+    finish-slice semantics. Every refusal comes before the first write."""
+    sid = args.slice
+    sdir = require_slice(sid)
+    sdata = read_json(sdir / "slice.json")
+    cmd = f"loop-cycle-close {sid}"
+    if sdata.get("kind") != "cycle":
+        raise SystemExit(f"{cmd}: kind {sdata.get('kind')}, not a loop cycle (finish it with finish-slice); refused, nothing was written")
+    pdir = sdir.parents[1]
+    data = read_json(pdir / "phase.json")
+    loop = phase_loop(data)
+    inflight = (loop or {}).get("inflight")
+    if loop is None or not isinstance(inflight, dict) or inflight.get("cycle") != sid:
+        held = inflight.get("cycle") if isinstance(inflight, dict) else "none"
+        raise SystemExit(f"{cmd}: it is not the cycle in flight (in flight: {held}); refused, nothing was written")
+    verdict = args.verdict
+    question = _one_line(args.question) if args.question is not None else None
+    on_words = _one_line(args.on_words) if args.on_words is not None else None
+    if verdict == "parked" and not (question and on_words):
+        raise SystemExit(f"{cmd}: a parked item needs --question \"<what the operator must decide>\" and --on-words "
+                         "\"<what their words will do>\"; refused, nothing was written")
+    if verdict != "parked" and (question is not None or on_words is not None):
+        raise SystemExit(f"{cmd}: --question/--on-words belong to --verdict parked; refused, nothing was written")
+    result = sdir / "result.md"
+    if verdict != "error" and not (result.is_file() and result.read_text(encoding="utf-8").strip()):
+        raise SystemExit(f"{cmd}: {shown(result)} is missing; only --verdict error closes a cycle without one; refused, nothing was written")
+    metrics = _loop_json_arg(args.metrics, "--metrics", cmd, want_object=True)
+    metrics = {} if metrics is None else metrics
+    summary = _one_line(args.summary or "")
+    info = sdata.get("loop") if isinstance(sdata.get("loop"), dict) else {}
+    key, stage, title = str(info.get("key")), info.get("stage"), info.get("title") or str(info.get("key"))
+    stages = loop_stages(pdir, info.get("charter"))
+    names = list(stages)
+    route = stages.get(stage) or "high"
+    closed_at = now_iso()
+    line = loop_ledger_line(pdir, sdata, inflight, verdict, metrics, summary, route, closed_at)
+    queue = loop_read(pdir, "queue.jsonl")
+    for name in ("ledger.jsonl", "dead.jsonl", "survivors.jsonl", "parked.jsonl"):
+        loop_read(pdir, name)  # refuse now, before any write, on a list that cannot be read
+    survivor = {"key": key, "title": title, "cycle": sid, "stage": stage, "metrics": metrics, "at": closed_at}
+    if verdict == "pass":
+        nxt = names[names.index(stage) + 1] if stage in names and names.index(stage) + 1 < len(names) else None
+        if nxt:
+            effect = ("queue", loop_queue_item(key, title, nxt, info.get("payload"), info.get("priority", 0), "engine"))
+        else:
+            effect = ("survivors.jsonl", survivor)
+    elif verdict == "survivor":
+        effect = ("survivors.jsonl", survivor)
+    elif verdict == "fail":
+        effect = ("dead.jsonl", {"key": key, "cycle": sid, "stage": stage, "reason": summary or "failed"})
+    elif verdict == "parked":
+        effect = ("parked.jsonl", {"key": key, "title": title, "cycle": sid, "stage": stage, "payload": info.get("payload"),
+                                   "question": question, "on_words": on_words, "parked_at": closed_at, "resolved": None})
+    else:  # error: back in the queue, or dead at the second error
+        errors = (info.get("errors") if _is_int(info.get("errors")) else 0) + 1
+        if errors >= LOOP_ERROR_LIMIT:
+            effect = ("dead.jsonl", {"key": key, "cycle": sid, "stage": stage, "reason": f"errors x{errors}"})
+        else:
+            effect = ("queue", loop_queue_item(key, title, stage, info.get("payload"), info.get("priority", 0),
+                                               info.get("source") if info.get("source") in LOOP_ITEM_SOURCES else "engine", errors))
+    # -- writes: the ledger line first, the counters in this same call --
+    loop_append(pdir, "ledger.jsonl", line)
+    where, record = effect
+    if where == "queue":
+        loop_rewrite(pdir, "queue.jsonl", [record] + queue)  # at the head
+    else:
+        loop_append(pdir, where, record)
+        if where == "dead.jsonl":
+            _loop_drop_queued(pdir, key)
+    counters = loop.setdefault("counters", {k: 0 for k in LOOP_COUNTERS})
+    for k in LOOP_COUNTERS:
+        counters.setdefault(k, 0)
+    counters["cycles"] += 1
+    counters["attempts"] += 1
+    if names and stage == names[0] and verdict != "error":
+        counters["trials"] += 1
+    counters["consecutive_failures"] = counters["consecutive_failures"] + 1 if verdict == "error" else 0
+    loop_recount(pdir, loop)
+    outcome = f"{verdict} {key}: {summary}" if summary else f"{verdict} {key}"
+    sdata = read_json(sdir / "slice.json")
+    sdata["outcome"] = outcome
+    write_json(sdir / "slice.json", sdata)
+    old = _set_slice_status(sdir, "done")
+    append_event("slice_status_changed", slice=sid, old_status=old, new_status="done")
+    loop["inflight"] = None
+    loop["last_cycle"] = {"cycle": sid, "verdict": verdict, "closed_at": closed_at}
+    write_loop_block(pdir, loop, data)
+    append_event("loop_cycle_closed", phase=pdir.name, slice=sid, key=key, stage=stage, verdict=verdict)
+    loop_after_close(pdir)
+    rebuild_index_and_state()
+    print(f"closed {sid}: {outcome}")
+    if where == "queue":
+        print(f"queued key={key} stage={record['stage']}" + (f" errors={record['errors']}" if verdict == "error" else " (next stage, at the head)"))
+    else:
+        print(f"{where.split('.')[0]}: key={key}" + (f" ({record.get('reason')})" if where == "dead.jsonl" else ""))
+    print("counters=" + " ".join(f"{k}:{counters[k]}" for k in LOOP_COUNTERS))
+
+
+def loop_unpark(args: argparse.Namespace) -> None:
+    """Resolve an open parked item on the operator's literal words: back in the queue (exempt from the tried rule:
+    the operator asked), a survivor, or dead."""
+    pdir = require_phase(args.phase)
+    loop = require_loop(pdir, "loop-unpark")
+    cmd = f"loop-unpark {pdir.name} {args.key}"
+    words = (args.words or "").strip()
+    if not words:
+        raise SystemExit(f"{cmd}: --words must carry the operator's literal words; refused, nothing was written")
+    parked = loop_read(pdir, "parked.jsonl")
+    mine = [p for p in parked if p.get("key") == args.key]
+    entry = next((p for p in mine if p.get("resolved") is None), None)
+    if entry is None:
+        why = "its parked entry is already resolved" if mine else "no parked entry holds that key"
+        raise SystemExit(f"{cmd}: {why}; refused, nothing was written")
+    stage = entry.get("stage")
+    queue = loop_read(pdir, "queue.jsonl")
+    if args.to == "queue":
+        stages = loop_stages(pdir)
+        reason = loop_key_refusal(args.key, stage, stages, queue, loop_read(pdir, "ledger.jsonl"),
+                                  loop_read(pdir, "dead.jsonl"), check_tried=False)
+        if reason:
+            raise SystemExit(f"{cmd}: {reason}; refused, nothing was written")
+    at = now_iso()
+    entry["resolved"] = {"to": args.to, "words": words, "at": at}
+    loop_rewrite(pdir, "parked.jsonl", parked)
+    if args.to == "queue":
+        item = loop_queue_item(args.key, entry.get("title") or args.key, stage, entry.get("payload"), 0, "operator")
+        item["unparked_from"] = entry.get("cycle")
+        loop_append(pdir, "queue.jsonl", item)
+    elif args.to == "survivor":
+        cycle_line = next((l for l in loop_read(pdir, "ledger.jsonl") if l.get("cycle") == entry.get("cycle")), {})
+        loop_append(pdir, "survivors.jsonl", {"key": args.key, "title": entry.get("title"), "cycle": entry.get("cycle"),
+                                              "stage": stage, "metrics": cycle_line.get("metrics") or {}, "at": at})
+    else:
+        loop_append(pdir, "dead.jsonl", {"key": args.key, "cycle": entry.get("cycle"), "stage": stage,
+                                         "reason": f"unparked to dead: {_one_line(words)}"})
+        _loop_drop_queued(pdir, args.key)
+    loop_recount(pdir, loop)
+    write_loop_block(pdir, loop)
+    append_event("loop_item_unparked", phase=pdir.name, key=args.key, to=args.to)
+    rebuild_index_and_state()
+    print(f"unparked key={args.key} -> {args.to} (from {entry.get('cycle')}, stage {stage})")
+
+
+def loop_validate(p: dict, errors: list, warnings: list) -> None:
+    """validate's checks of one phase's loop block and loop/ files; a cycle slice outside a loop phase warns.
+    Silent for an ordinary phase with no cycle slice."""
+    pid = p["id"]
+    if "loop" not in p:
+        stray = [s["id"] for s in p.get("slices", []) if s.get("kind") == "cycle"]
+        if stray:
+            warnings.append(f"phase {pid} has cycle slices ({', '.join(stray)}) but no loop block; cycles belong to a loop phase")
+        return
+    loop = p.get("loop")
+    if not isinstance(loop, dict):
+        errors.append(f"phase {pid} has a non-object loop block: {loop!r}")
+        return
+    pdir = ACTIVE / pid
+    status = loop.get("status")
+    if status not in LOOP_STATUSES:
+        errors.append(f"phase {pid} has invalid loop.status {status!r}; expected one of {', '.join(LOOP_STATUSES)}")
+
+    def charter_problems(record, label):
+        if not isinstance(record, dict):
+            return [f"{label} is not an object"]
+        out = []
+        if not (_is_int(record.get("version")) and record["version"] >= 1):
+            out.append(f"{label}.version {record.get('version')!r} is not an integer >= 1")
+        if not (isinstance(record.get("sha256"), str) and re.fullmatch(r"[0-9a-f]{64}", record["sha256"])):
+            out.append(f"{label}.sha256 is not a sha256")
+        for field in ("path", "words", "signed_at"):
+            if not (isinstance(record.get(field), str) and record[field].strip()):
+                out.append(f"{label}.{field} is missing")
+        return out
+
+    charter = loop.get("charter")
+    if charter is not None:
+        errors.extend(f"phase {pid}: {x}" for x in charter_problems(charter, "loop.charter"))
+    elif status in ("signed", "running"):
+        errors.append(f"phase {pid}: loop.status is {status} but no charter is signed")
+    charters = loop.get("charters")
+    if not isinstance(charters, list):
+        errors.append(f"phase {pid}: loop.charters is not a list")
+    else:
+        for i, record in enumerate(charters):
+            errors.extend(f"phase {pid}: {x}" for x in charter_problems(record, f"loop.charters[{i}]"))
+    if not (_is_int(loop.get("next_cycle")) and loop["next_cycle"] >= 1):
+        errors.append(f"phase {pid}: loop.next_cycle {loop.get('next_cycle')!r} is not an integer >= 1")
+    counters = loop.get("counters")
+    if not isinstance(counters, dict) or any(not (_is_int(counters.get(k)) and counters[k] >= 0) for k in LOOP_COUNTERS):
+        errors.append(f"phase {pid}: loop.counters must hold {', '.join(LOOP_COUNTERS)}, each an integer >= 0")
+    inflight = loop.get("inflight")
+    if inflight is not None:
+        by_id = {s["id"]: s for s in p.get("slices", [])}
+        held = by_id.get(inflight.get("cycle")) if isinstance(inflight, dict) else None
+        if held is None or held.get("kind") != "cycle" or held.get("status") == "done":
+            errors.append(f"phase {pid}: loop.inflight {inflight!r} names no open cycle slice of the phase")
+    last = loop.get("last_cycle")
+    if last is not None and not (isinstance(last, dict) and last.get("verdict") in LOOP_VERDICTS):
+        errors.append(f"phase {pid}: loop.last_cycle {last!r} is not {{cycle, verdict, closed_at}}")
+    for name in LOOP_FILES:
+        try:
+            loop_read(pdir, name)
+        except SystemExit as exc:
+            errors.append(f"phase {pid}: {exc}")
+    if isinstance(charter, dict):
+        ok, why = loop_charter_ok(pdir)
+        if not ok:
+            warnings.append(f"phase {pid}: {why} (the loop halts until it is resolved)")
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Manage the agentic workflow state.")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -14403,7 +15309,7 @@ def main(argv=None) -> int:
     p.add_argument("--check", action="store_true", help="Report drift without writing; exit 1 if out of sync")
     p.set_defaults(func=sync_agents)
 
-    p = sub.add_parser("executor-route", help="Print the executor routing decision, one key=value per line, writing nothing: bare, the resolved route table (high, research, design, critic, judge, mid, explore), the agent files' sync state and an override= line per row executors.toml sets (its value against the default); with a slice id, the route, subagent_type (slice-executor for every slice row), model, effort and attribution its dispatch uses (kind first, then risk, then attempt); --drafter / --critic / --judge / --explore, a non-slice agent's dispatch; plus fallback=, skip= and warning= lines for the environment. The critic and the judge may share the design row's model (v75)")
+    p = sub.add_parser("executor-route", help="Print the executor routing decision, one key=value per line, writing nothing: bare, the resolved route table (high, research, design, critic, judge, mid, screen, explore), the agent files' sync state and an override= line per row executors.toml sets (its value against the default); with a slice id, the route, subagent_type (slice-executor for every slice row), model, effort and attribution its dispatch uses (kind first, then risk, then attempt; a loop's cycle routes by its charter stage and prints stage=); --drafter / --critic / --judge / --explore, a non-slice agent's dispatch; plus fallback=, skip= and warning= lines for the environment. The critic and the judge may share the design row's model (v75)")
     p.add_argument("slice", nargs="?", help="the slice to route; omit for the table")
     p.add_argument("--retry", action="store_true", help="the slice's second attempt (an escalation, a failed or empty return, a fix of mid-row work): always the high row")
     p.add_argument("--drafter", action="store_true", help="the design-drafter's dispatch (its own design row, [claude.design]; not a slice route)")
@@ -14451,6 +15357,8 @@ def main(argv=None) -> int:
     p.add_argument("--order", type=float, help="sort position among phases; a fractional value (e.g. 4.5) inserts between two neighbors without renumbering")
     p.add_argument("--on-main", action="store_true", dest="on_main",
                    help="no-op since v43 (the default stream is the default); accepted so v42 habits and scripts keep working")
+    p.add_argument("--loop", action="store_true",
+                   help="make it a loop phase at once: new-phase followed by loop-init (the loop block, loop/charter/v1.md from the charter template, REVIEW ordered after every cycle); refused with --consolidates")
     p.add_argument("--consolidates", metavar="P26,P27",
                    help="docs phase: the comma-separated ids (any brief form: P26, 26, 46-k2, P-7kq2, 7kq2) of active phases whose doc consolidation debt this phase pays; refused (nothing written) for an id that is not an active phase owing consolidation. Stored as `consolidates` in phase.json -- the only docs-phase marker; `docs-debt` shows it as 'paid by' and `rotate-backlog` proposes no second docs phase for what it covers")
     p.set_defaults(func=new_phase)
@@ -14754,6 +15662,50 @@ def main(argv=None) -> int:
     p.add_argument("deferred_id", help="the deferred job, in any brief form (92, D92 or 92-x4; D12; m3xa or D-m3xa)")
     p.add_argument("--reason", required=True)
     p.set_defaults(func=drop_deferred)
+
+    p = sub.add_parser("loop-init", help="Make a phase a loop phase (P50): write its loop block, seed loop/charter/v1.md from the charter template and order its REVIEW after every cycle; refused (nothing written) unless the phase is planned, or in progress with nothing past its DECOMP started, and on a loop, docs or explain phase")
+    p.add_argument("phase", help=PHASE_ARG_HELP)
+    p.set_defaults(func=loop_init)
+
+    p = sub.add_parser("loop-sign", help="Sign a loop charter version on the operator's literal words: pin its sha256 and record it (a drafting loop becomes signed); refused (nothing written) for empty words, a missing file, invalid bounds, an UNFILLED placeholder left, or a version already signed or not past the signed one. The orchestrator runs it only after the operator's words")
+    p.add_argument("phase", help=PHASE_ARG_HELP)
+    p.add_argument("--words", required=True, help="the operator's literal words, verbatim")
+    p.add_argument("--version", type=int, help="the charter version N (loop/charter/vN.md); default the highest on disk")
+    p.set_defaults(func=loop_sign)
+
+    p = sub.add_parser("loop-queue", help="A loop's item queue: add one item (refused for a dead key, a key already tried or queued at that stage, or a stage the charter does not name), or list it in take order (later stages first, then priority descending, then first in, first out)")
+    p.add_argument("phase", help=PHASE_ARG_HELP)
+    p.add_argument("action", choices=("add", "list"))
+    p.add_argument("--key", help="add: the item's unique key")
+    p.add_argument("--title", help="add: one line naming the item")
+    p.add_argument("--stage", help="add: the stage (default the charter's first stage; before signing, screen)")
+    p.add_argument("--payload", help="add: the item's product-owned specification, a JSON string")
+    p.add_argument("--priority", type=int, default=0, help="add: higher is taken first within a stage (default 0)")
+    p.add_argument("--source", choices=("operator", "orchestrator"), default="operator", help="add: who authored it (default operator)")
+    p.set_defaults(func=loop_queue)
+
+    p = sub.add_parser("loop-cycle-start", help="Start a loop's next cycle <P>.C<k> (kind cycle, in_progress) under the lease: the queue head, or a new item with --key/--title; prints cycle=, stage=, key= and slice_path=. Refused (nothing written) on a non-loop phase, an unsigned or changed charter, a loop not signed or running, a cycle in flight, an open setup slice, or a dead or tried key")
+    p.add_argument("phase", help=PHASE_ARG_HELP)
+    p.add_argument("--key", help="author a new item instead of taking the queue head")
+    p.add_argument("--title", help="the new item's one-line title (with --key)")
+    p.add_argument("--payload", help="the new item's product-owned specification, a JSON string (with --key)")
+    p.set_defaults(func=loop_cycle_start)
+
+    p = sub.add_parser("loop-cycle-close", help="Close the cycle in flight with its item verdict: one ledger line, the list effects (a pass queues the next stage or makes a survivor; fail -> dead; parked -> the parked list; error -> back in the queue, dead at the second), the counters, then finish-slice. Refused (nothing written) for a non-cycle or a cycle not in flight, parked without --question/--on-words, or a missing result.md (except --verdict error)")
+    p.add_argument("slice", help="the cycle slice (<P>.C<k>)")
+    p.add_argument("--verdict", required=True, choices=LOOP_VERDICTS)
+    p.add_argument("--summary", help="one line: the outcome and, for fail, the reason")
+    p.add_argument("--metrics", help="the product's metrics, a JSON object")
+    p.add_argument("--question", help="parked only: what the operator must decide")
+    p.add_argument("--on-words", dest="on_words", help="parked only: what the operator's words will do")
+    p.set_defaults(func=loop_cycle_close)
+
+    p = sub.add_parser("loop-unpark", help="Resolve a loop's open parked item on the operator's literal words: back in the queue at its stage (exempt from the tried rule), a survivor, or dead; refused for an unknown or already-resolved key")
+    p.add_argument("phase", help=PHASE_ARG_HELP)
+    p.add_argument("key")
+    p.add_argument("--to", required=True, choices=("queue", "survivor", "dead"))
+    p.add_argument("--words", required=True, help="the operator's literal words, verbatim")
+    p.set_defaults(func=loop_unpark)
 
     p = sub.add_parser("archive-phase", help="Archive a single review-passed phase (first-class; use when only some phases are done)")
     p.add_argument("phase", help=PHASE_ARG_HELP)

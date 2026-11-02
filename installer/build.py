@@ -80,6 +80,7 @@ FIXED_LIVE_FILES = [
     "works/templates/deferred_brief.md",
     "works/templates/intent.md",
     "works/templates/phase.md",
+    "works/templates/charter.md",
     # Repo-level policy files. Embedded like any other shipped file; main.py emits them
     # through their own write policy (CI seed-once, .gitattributes line-merge) so an
     # adopting repo's own CI / attributes are never clobbered.
