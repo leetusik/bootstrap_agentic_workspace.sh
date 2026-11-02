@@ -71,7 +71,7 @@ The operator asked for a canvas that works: "fully functional whole page even wi
 - **Every list item opens its own item.** No list whose every row links to the same board (`design-check`'s `check=same-target-list`), and no rows that all open the same state (the preview's `check=same-target`).
 - **Search and filters work on the data**, and their counts are true.
 - **The sign-in, join and signed-in states the job touches are visible on the prototype**: by a click, or by the state bar.
-- **Every link stays in the prototype.** No `href` to an absolute URL except Google Fonts CSS (`design-check`'s `check=leaves-canvas`). A destination outside this slice (sign in, house rules, a surface another co-work slice draws) is an in-canvas state that says plainly what would be there ("Sign in — drawn elsewhere"), or is left out; a surface of this group is never one.
+- **Every link stays in the prototype.** No `href` to an absolute URL except Google Fonts CSS (`design-check`'s `check=leaves-canvas`). A destination outside this slice (sign in, house rules, a surface another co-work slice draws) is an in-canvas state that says plainly what would be there ("Sign in — drawn elsewhere"), or is left out; a surface of this group, or an item it lists, is never one.
 
 ### The state bar (on every interactive Page)
 
@@ -106,7 +106,7 @@ The operator's words: "Canvase only show state nav just very good. I Want it fro
 - **Components.** One board per component, every state side by side in a wrapping flex row with `gap`, each under a small plain caption naming its state. A system component is mounted through `x-import` with the real props that produce each state; a state no prop can force (hover, focus) is reached by interacting with a Page and named in `result.md`, never faked by restyling the component. Size each Components board to hold its states: a fixed board that is too small gets the preview's `clips the rest` issue. A system component that fails the standard (a 40 px target, a contrast miss) is logged as a gap, never restyled. A component the system lacks is a **component gap**: draw it as markup in its own `.dc.html` that takes its state as a prop, show its states by `<dc-import>`ing it once per state on its Components board, and log it.
 - **Directions** appear only when the operator asked for options (below).
 - **Layout** (the join's, or a whole-round drafter's). Pages on the first row (the entry flow board first, then each related page in flow order, then the unrelated pages), Components on the row below, Directions (when asked for) above both; 80 px between frames in a row, 120 between rows. Titles read in that order: `01 · Page — Inbox (the flow)`, …, `05 · Component — Message row`. Name files after what they are (`Inbox.dc.html`, `MessageRow.dc.html`).
-- **Data.** Real repo data first: fixtures, seed data, real copy from the product and its docs. Otherwise realistic made-up data with variety: long names, an empty, one and many, overflowing values, non-ASCII names. Never lorem. A real fact you do not know is a visible placeholder such as `[PRICE]`. **Never secrets, credentials, or real personal or production user data without the operator's word**: the canvas leaves the machine. In a paged round the data is the frame's **shared fixture**: every page shows the same named entities with the same figures.
+- **Data.** Real repo data first: fixtures, seed data, real copy from the product and its docs. Otherwise realistic made-up data with variety: long names, an empty, one and many, overflowing values, non-ASCII names. Never lorem. A real fact you do not know is a visible placeholder such as `[PRICE]`. **Never secrets, credentials, or real personal or production user data without the operator's word**: the canvas leaves the machine. One fixture per round (in a paged round, the frame's **shared fixture**): every entity a page shows, lists or links to is one named entity with the same figures on every page, and a link to it opens its own drawn item.
 - **Greenfield** (no system recorded in `design.json`): the canvas carries its own `tokens.css` inside `project/`, linked relatively from every board, and a `Foundations` board (type steps, color roles with their contrast, spacing scale, radii) before the Pages; the frame pass draws both. Promoting it to a system after signoff is the orchestrator's job.
 
 ### Frame rules (`pass: frame`)
@@ -117,7 +117,7 @@ A shared choice is design, so you decide it, once, before any page is drawn. You
   - the formats of numbers, dates and money, each with an example;
   - the confirm pattern (when to ask, and its one design), the notices and shared message sentences, the empty, loading and error patterns;
   - house style: the back-link label, the title steps, the tone (합니다 or 해요);
-  - **the shared fixture**: the named entities and their exact figures every page shows;
+  - **the shared fixture**: every named entity a page shows, lists or links to (every row's destination, every linked item), each with all the figures any page draws of it;
   - the layout rules: the column width, the gutters, **one control height per size**, the row rules, the type steps;
   - **the page contract**: per page, the props it takes (the carried item) and the events it emits (`on-open-<page>`), from the handoff's relations, plus **the file prefix each page owns** (its file stem: page `list` owns `List*.dc.html`).
   A choice the repo already answers is quoted as existing; a choice only the operator can make is an `open_questions` entry, never an answer.
@@ -133,7 +133,7 @@ You draw one page, its states and its page-local components, and nothing else:
 - **`rounds/<round>/pages/<slug>/boards.json`**: your boards' `canvas.json` entries without `x`, `y`, the `NN · ` number or `order`; and **`pages/<slug>/result.md`**, your page's one output (*Do*, step 6).
 - **The page's own state bar**, with only its presets, on its Page.
 - **No prototype**: no flow board and no link to another page. A link that carries nothing is the placeholder `href="#to:<slug>"` (to a page of this round only); a link that carries an item is an `on-*` event from the frame's page contract. Your page takes its item as props and renders a sensible default alone (the flow-board rule for a screen).
-- **Every shared choice comes from `frame.md`.** A choice the frame did not foresee is logged as a `frame_gaps:` entry with the answer you drew; a departure from `frame.md` without one is a defect.
+- **Every shared choice comes from `frame.md`.** A choice the frame did not foresee, an entity the fixture lacks included, is logged as a `frame_gaps:` entry with the answer you drew (an entity with its figures); a departure from `frame.md` without one, a silently added id included, is a defect.
 - **Never published**: nothing you draw reaches an Artifact before the join.
 
 ### Join rules (`pass: join`)
@@ -143,9 +143,9 @@ You connect the pages into the one canvas the operator clicks through, and give 
 - **The connected canvas.** The round's related pages are one connected group of surfaces (one tab, one flow, the views a user moves between), and the operator judges it by clicking through it:
   - board 01 is the **entry Page**, `Main.dc.html`: a flow board through the related pages that holds the carried item in its `state`, mounts each page with `<dc-import>` and reaches every related page by clicks (`design-check`'s `check=unlinked-page` names a Page the entry does not reach by a link or a mount);
   - each page stays a Page of its own, which keeps each board's click-through within `design-preview`'s state cap;
-  - every `#to:<slug>` becomes a real link, a click to that page on this canvas, never an "another job" stand-in (`check=pending-link` names one left);
+  - every `#to:<slug>` becomes a real link, a click to that page on this canvas, never an "another job" stand-in (`check=pending-link` names one left), and a link to an entity of this round opens that entity's own drawn item; a stand-in is only for a destination outside the slice;
   - the foot strips (`data-proto="screens"`) are added.
-- **One answer per shared choice**: every page's `frame_gaps:` entry is settled once, appended to `frame.md` as a new `F<n>`, and applied on every page it touches. You edit a page's files only for link wiring, a shared-choice reconciliation and a frame `h` fix, and log each edit.
+- **One answer per shared choice**: every page's `frame_gaps:` entry is settled once, appended to `frame.md` as a new `F<n>`, and applied on every page it touches (an entity gap joins the fixture, its item drawn). You edit a page's files only for link wiring, a shared-choice reconciliation and a frame `h` fix, and log each edit.
 - **An unrelated page stays on the canvas, unlinked.** A page with no event or link to or from the others is listed in `rounds/<round>/join.json` (`related`, `unrelated`, the settled choices); it keeps its own state bar and boards, and the entry Page does not reach it.
 - **The round `result.md`**, its `## Build` assembled from the frame, each page's fragment and the wiring, its open items merged from the pages.
 

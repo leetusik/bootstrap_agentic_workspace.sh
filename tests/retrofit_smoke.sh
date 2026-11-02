@@ -710,8 +710,13 @@ for required in ("`new visual direction: yes` in the handoff licenses setting a 
                  "**The connected canvas.**", "board 01 is the **entry Page**, `Main.dc.html`",
                  # P47: a round drafts in three passes, named on the dispatch's one pass line.
                  "`pass: frame | page <slug> | join`", "### Frame rules (`pass: frame`)",
-                 "### Page rules (`pass: page <slug>`)", "### Join rules (`pass: join`)"):
+                 "### Page rules (`pass: page <slug>`)", "### Join rules (`pass: join`)",
+                 # P47-p5.F1: the frame's fixture covers every entity a page shows, lists or links to; an entity
+                 # it lacks is a frame gap; the join opens each in-round entity's own drawn item.
+                 "every named entity a page shows, lists or links to (every row's destination, every linked item)",
+                 "an entity the fixture lacks included", "a link to an entity of this round opens that entity's own drawn item"):
     assert required in drafter, required
+assert "the shared fixture (every entity a page shows, lists or links to, with its figures)" in design, "drafting.md frame pass: fixture coverage"
 for gone in ("your **only** licence to load it", "load it through `Skill`", "`frontend_design`",
              "A **direction round** is one whose handoff says", "A job open in the same wave"):
     assert gone not in drafter, gone
@@ -728,7 +733,10 @@ for required in ("**You get one pass**", "**The bar, line by line**", "**The sta
                  "**the connected checks, each a Part 1 must-fix under the bar.**",
                  # P47: a critic judges one page or the joined canvas; measured lines are facts.
                  "`scope: page <slug>` or `scope: cross`", "**The measured lines are facts.**",
-                 "They are `high`-confidence facts either way, never argued away by taste."):
+                 "They are `high`-confidence facts either way, never argued away by taste.",
+                 # P47-p5.F1: the page critic names an entity outside the fixture; the cross critic checks coverage.
+                 "an entity outside the fixture included, is a Part 1 must-fix**",
+                 "**fixture coverage**: every link to an entity of this round lands on that entity's own drawn item"):
     assert required in critic, required
 # P47: the advisory measured lines (check=align, M1-M14) never block; the blocking set stays the four WCAG checks.
 assert 'DESIGN_PREVIEW_BLOCKING = ("non-text-contrast", "reflow", "overprint", "keyboard")' in (root / "payload/scripts/workflow.py").read_text(encoding="utf-8")

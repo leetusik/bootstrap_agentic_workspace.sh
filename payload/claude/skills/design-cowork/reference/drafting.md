@@ -17,9 +17,10 @@ the round is drafted in passes, from the page list `design-open --pages` recorde
 1. **The frame pass** (one span, `pass: frame`). Deciding a shared choice is design, so a drafter
    makes it, once, before any page: `rounds/<round>/frame.md` (the shared-choice ledger, `F<n>` with
    one answer each: the term glossary, number / date / currency formats, the confirm pattern, the
-   shared messages, empty / loading / error patterns, house style, the shared fixture, the layout
-   rules, and the page contract: per page the item it takes and the events it emits, plus the file
-   prefix it owns), `canvas/project/frame.css` (the layout primitives and tokens, on the system's
+   shared messages, empty / loading / error patterns, house style, the shared fixture (every entity a
+   page shows, lists or links to, with its figures), the layout rules, and the page contract: per
+   page the item it takes and the events it emits, plus the file prefix it owns),
+   `canvas/project/frame.css` (the layout primitives and tokens, on the system's
    tokens), `canvas/project/Shell.dc.html` and every shared component two pages use, each with its
    board. It loads the face the product declares (an `@font-face` from its https source) and applies
    no optical nudge: a product that declares a face it never loads is logged as a system gap, which
@@ -28,9 +29,9 @@ the round is drafted in passes, from the page list `design-open --pages` recorde
    page, in one message.** Each draws its page, its states (with its state bar) and its page-local
    components, writes only files starting with its page's stem plus `rounds/<round>/pages/<slug>/`
    (`boards.json`, `result.md`), leaves a link that carries nothing as `href="#to:<slug>"` for the
-   join, logs a choice the frame did not foresee as `frame_gaps:`, and self-checks with
-   `design-preview <job> --page <slug>` and `design-check <job> --page <slug>`. A page draft is
-   **never published**.
+   join, logs a choice the frame did not foresee (an entity the fixture lacks included) as
+   `frame_gaps:`, and self-checks with `design-preview <job> --page <slug>` and
+   `design-check <job> --page <slug>`. A page draft is **never published**.
 3. **The join pass** (one span, `pass: join`), after every page's loop is done: `canvas.json` (the
    frame's and every page's `boards.json`, laid out and numbered `01..N`), `Main.dc.html` (the entry
    Page, the flow through the related pages), every `#to:` rewired to a real link, **one answer per
@@ -76,8 +77,8 @@ shipped default is decided at that phase's review from the round's metering.
    `pass: 01`, the scratch directory. It reads the frame, `join.json`, the round `result.md`, the
    entry Page, the click graph and each Page's contact sheet, never page internals: the entry reaches
    every related page, the links carry the item, unrelated pages are complete and unlinked, one answer
-   per shared choice. It writes the round's `critique-01.md`. **The joiner answers it once**
-   (`pass: join` with the critique).
+   per shared choice, every in-round link landing on its own drawn item. It writes the round's
+   `critique-01.md`. **The joiner answers it once** (`pass: join` with the critique).
 3. Read **only each critique's verdict block**: `verdict`, `confidence`, `must_fix`, `escalate`. With
    no must-fix open, skip that answer pass. What an answer leaves open (a rebuttal, a fix that did not
    hold) reaches the operator with both sides.
