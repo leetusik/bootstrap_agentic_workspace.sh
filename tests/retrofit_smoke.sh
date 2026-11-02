@@ -4379,6 +4379,25 @@ if printf '%s\n' "$g_res" | grep -q '^not resumed P1: the loop was paused, but a
     && [ "$g_rc" -ne 0 ] && printf '%s\n' "$g_rev" | grep -q 'parked item(s) still open: c .*loop-unpark' && [ "$(lp_field status)" != done ]; then
   ok "no resume past a charter-level stop: a paused loop whose signed charter changed halts on charter (not resumed), resumes once restored, and review-phase refuses the pass while parked key c is open"
 else bad "a resume ran past a charter-level stop or the review passed over an open parked item -- $g_res | $g_tick | $g_ok | $g_rev"; fi
+# (h) P50-fr.F4: one stream predicate. P1 runs on the default stream; from another phase's worktree the operator's
+# words queue in the default checkout's control.json and write nothing there, every other loop writer refuses,
+# and the reads name the live loop.
+lw new-phase --phase P2 --name "Side" --objective "side work" >/dev/null 2>&1; lgc "loop probe: P2"
+lw parallel-start P2 >/dev/null 2>&1 || bad "loop probe: parallel-start P2 failed"
+LPWT=$(ls -d "$LP"/.claude/worktrees/P2-* 2>/dev/null | head -1)
+hw() { ( cd "$LPWT" && CLAUDE_CONFIG_DIR="$LPCC" python3 scripts/workflow.py "$@" ) 2>&1; }
+h_next=$(hw next); h_stat=$(hw loop-status P1 | head -1)
+h_mid=$(git -C "$LPWT" status --porcelain)
+h_pause=$(hw loop-control P1 pause); h_add=$(hw loop-queue P1 add --key z --title Z); h_add_rc=$?
+h_after=$(git -C "$LPWT" status --porcelain)
+h_req=$(python3 -c 'import json,sys; print(",".join(r["action"] for r in json.load(open(sys.argv[1]))["requests"]))' "$LPP/loop/control.json" 2>&1)
+lw loop-control P1 apply >/dev/null 2>&1
+if [ -n "$LPWT" ] && printf '%s\n' "$h_pause" | grep -q "^queued pause for P1 in .*/ws/works/phases/active/P1/loop/control.json " && [ "$h_req" = pause ] \
+    && [ "$h_add_rc" -ne 0 ] && printf '%s\n' "$h_add" | grep -q "runs only on the loop's own stream (the default stream" \
+    && [ "$h_mid" = "$h_after" ] \
+    && printf '%s\n' "$h_stat" | grep -q "source=default checkout .*/ws/works/phases/active/P1$" && printf '%s\n' "$h_next" | grep -q '^loops_elsewhere=P1:stopped:'; then
+  ok "a default-stream loop from another phase's worktree: pause queues in the default checkout's control.json writing nothing there, loop-queue add refuses, loop-status reads the live loop and next lists it as loops_elsewhere"
+else bad "a default-stream loop addressed from a worktree wrote the stale copy or read it -- pause: $h_pause | add: $h_add | requests: $h_req | status: $h_stat | next: $(printf '%s\n' "$h_next" | grep loops_) | worktree: [$h_mid] -> [$h_after]"; fi
 lw validate >/dev/null 2>&1 && ok "validate passes on the loop install after every probe" || bad "validate failed on the loop install -- $(lw validate 2>&1 | tail -5)"
 # the run-loop core stays a do-* sized core: <= 16 KB, its resume line inside the first 16 KB.
 python3 - "$REPO_ROOT/payload/claude/skills/run-loop/SKILL.md" <<'PY' && ok "run-loop/SKILL.md stays <= 16 KB with its resume line inside the first 16 KB" || bad "run-loop/SKILL.md is over 16 KB or its resume line moved past the first 16 KB"

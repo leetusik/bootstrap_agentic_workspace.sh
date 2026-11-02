@@ -743,8 +743,7 @@ def _event_loop_pdir(event_type: str, payload: dict, loop_slice=None):
         return None
     if phase_loop(data) is None:
         return None
-    branch = (phase_execution(data) or {}).get("branch")
-    if branch and git_current_branch() != branch:  # the loop runs on another stream: its folder is not ours to write
+    if not loop_home(pdir, data).own:  # the loop runs on another stream (P50-fr.F4): its folder is not ours to write
         return None
     return pdir
 
@@ -3164,7 +3163,15 @@ def normalize_id_args(args: argparse.Namespace) -> None:
                 raise SystemExit(id_number_refusal("P", phase, int(number.group(1)), tailed))
             args.phase = found or resolve_id_arg("P", phase)
         else:
-            args.phase = resolve_id_ref("P", phase)
+            try:
+                args.phase = resolve_id_ref("P", phase)
+            except SystemExit:
+                # P50-fr.F4: a phase worktree cut before a loop phase existed has no folder for it; a loop command
+                # names it through the default checkout's copy (its own-stream rule then queues or refuses)
+                other = _loop_default_phase_id(phase) if cmd in LOOP_PHASE_COMMANDS else None
+                if other is None:
+                    raise
+                args.phase = other
     deferred = getattr(args, "deferred_id", None)
     if isinstance(deferred, str):
         args.deferred_id = resolve_id_ref("D", deferred)
@@ -5788,7 +5795,10 @@ def set_phase_status(args: argparse.Namespace) -> None:
         raise SystemExit(f"invalid phase status: {args.status}")
     pdir = require_phase(args.phase)
     if args.status == "done":  # P50-fr.F2: a loop phase reaches done only past its final review's guard
-        why = loop_done_refusal(pdir, read_json(pdir / "phase.json"))
+        data = read_json(pdir / "phase.json")
+        if phase_loop(data) is not None:  # P50-fr.F4: and only on the loop's own stream (this copy is stale elsewhere)
+            _loop_own_stream_refuse(pdir, f"set-phase-status {args.phase} done", data)
+        why = loop_done_refusal(pdir, data)
         if why:
             raise SystemExit(f"set-phase-status {args.phase} done: {why}; refused, nothing was written")
     old = _set_phase_status(pdir, args.status)
@@ -5853,6 +5863,8 @@ def review_phase(args: argparse.Namespace) -> None:
         raise SystemExit(f"verdict must be one of: {', '.join(sorted(REVIEW_VERDICTS))}")
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
+    if phase_loop(data) is not None:  # P50-fr.F4: a loop's final review is recorded on the loop's own stream only
+        _loop_own_stream_refuse(pdir, f"review-phase {args.phase} --verdict {args.verdict}", data)
     # Gate check first, before anything is written: a refused pass must leave no trace.
     if args.verdict == "pass":
         why = loop_done_refusal(pdir, data)
@@ -15191,7 +15203,7 @@ def _loop_init_lines(pdir: Path, path: Path) -> list:
 
 
 def loop_init(args: argparse.Namespace) -> None:
-    pdir = require_phase(args.phase)
+    pdir = _loop_require_phase(args.phase)
     _loop_own_stream_refuse(pdir, f"loop-init {pdir.name}")
     path = _loop_init(pdir)
     rebuild_index_and_state()
@@ -15202,7 +15214,7 @@ def loop_init(args: argparse.Namespace) -> None:
 def loop_sign(args: argparse.Namespace) -> None:
     """Sign a charter version on the operator's literal words: pin its sha256, record it, and turn a drafting loop
     signed. The orchestrator runs it only after those words; an executor never does."""
-    pdir = require_phase(args.phase)
+    pdir = _loop_require_phase(args.phase)
     loop = require_loop(pdir, "loop-sign")
     cmd = f"loop-sign {pdir.name}"
     _loop_own_stream_refuse(pdir, cmd)
@@ -15251,19 +15263,23 @@ def loop_sign(args: argparse.Namespace) -> None:
 def loop_queue(args: argparse.Namespace) -> None:
     """`add`: queue one item (refused for a dead key, one tried or queued at that stage, or a stage the charter
     does not name); `list`: the queue in take order."""
-    pdir = require_phase(args.phase)
+    pdir = _loop_require_phase(args.phase)
     require_loop(pdir, f"loop-queue {args.action}")
-    stages = loop_stages(pdir)
-    queue = loop_read(pdir, "queue.jsonl")
+    home = loop_home(pdir)
+    live = pdir if home.own or home.pdir is None else home.pdir  # P50-fr.F4: off-stream, list the live loop's queue
+    stages = loop_stages(live)
+    queue = loop_read(live, "queue.jsonl")
     if args.action == "list":
         order = loop_take_order(queue, stages)
         print(f"queue={pdir.name} items={len(order)} stages={','.join(stages)}")
+        if not home.own:
+            print(f"source={home.where}" if home.pdir is not None else f"source=local copy (stale: {home.where})")
         for n, item in enumerate(order, start=1):
             print(f"{n}. key={item.get('key')} stage={item.get('stage')} priority={item.get('priority')} "
                   f"errors={item.get('errors', 0)} source={item.get('source')} title={_one_line(item.get('title') or '')}")
         return
     cmd = f"loop-queue {pdir.name} add"
-    _loop_own_stream_refuse(pdir, cmd)
+    _loop_own_stream_refuse(pdir, cmd, home=home)
     key = _loop_text_arg(args.key, "--key", cmd)
     title = _loop_text_arg(args.title, "--title", cmd)
     payload = _loop_json_arg(args.payload, "--payload", cmd)
@@ -15282,7 +15298,7 @@ def loop_queue(args: argparse.Namespace) -> None:
 def loop_cycle_start(args: argparse.Namespace) -> None:
     """Start the next cycle `<P>.C<k>` under the lease: the queue head, or a new item the orchestrator authors with
     --key/--title. Writes no plan.md; the orchestrator does."""
-    pdir = require_phase(args.phase)
+    pdir = _loop_require_phase(args.phase)
     pid = pdir.name
     cmd = f"loop-cycle-start {pid}"
     data = read_json(pdir / "phase.json")
@@ -15460,9 +15476,9 @@ def loop_cycle_close(args: argparse.Namespace) -> None:
     """Close the cycle in flight with its item verdict: one ledger line, the list effects, the counters, then
     finish-slice semantics. Every refusal comes before the first write."""
     sid = args.slice
-    sdir = require_slice(sid)
-    sdata = read_json(sdir / "slice.json")
     cmd = f"loop-cycle-close {sid}"
+    sdir = _loop_require_slice(sid, cmd)
+    sdata = read_json(sdir / "slice.json")
     if sdata.get("kind") != "cycle":
         if loop_checkpoint_slice(sdata):
             raise SystemExit(f"{cmd}: a loop checkpoint closes with {WORKFLOW_CMD} loop-checkpoint {sdir.parents[1].name} "
@@ -15471,11 +15487,12 @@ def loop_cycle_close(args: argparse.Namespace) -> None:
     pdir = sdir.parents[1]
     data = read_json(pdir / "phase.json")
     loop = phase_loop(data)
+    if loop is not None:  # P50-fr.F4: before any read of this checkout's copy, which off the loop's stream is stale
+        _loop_own_stream_refuse(pdir, cmd, data)
     inflight = (loop or {}).get("inflight")
     if loop is None or not isinstance(inflight, dict) or inflight.get("cycle") != sid:
         held = inflight.get("cycle") if isinstance(inflight, dict) else "none"
         raise SystemExit(f"{cmd}: it is not the cycle in flight (in flight: {held}); refused, nothing was written")
-    _loop_own_stream_refuse(pdir, cmd, data)
     _driver_refuse(loop, cmd, pdir.name)
     verdict = args.verdict
     question = _one_line(args.question) if args.question is not None else None
@@ -15583,7 +15600,7 @@ def loop_unpark(args: argparse.Namespace) -> None:
     """Resolve an open parked item on the operator's literal words: back in the queue (exempt from the tried rule:
     the operator asked), a survivor, or dead; or route it to a deferred job already filed (`--to deferred
     --pointer <DID>`, a review's or checkpoint's routing: words optional), which carries the question on."""
-    pdir = require_phase(args.phase)
+    pdir = _loop_require_phase(args.phase)
     loop = require_loop(pdir, "loop-unpark")
     cmd = f"loop-unpark {pdir.name} {args.key}"
     _loop_own_stream_refuse(pdir, cmd)
@@ -15748,8 +15765,9 @@ def loop_validate(p: dict, errors: list, warnings: list) -> None:
 # while a live span of the cycle exists. `loop-tick` is read-only: it prints the one next action and when to wake.
 # Spend is the ledger's metered list-price `usd` (an `assumed` cycle is charged its full per_cycle_usd); the
 # in-flight cycle is reserved at per_cycle_usd until it closes. Only the charter's stops halt the loop
-# (`loop.halt`, the phase `pending`); control words from another stream queue in the loop worktree's
-# `loop/control.json` and apply at its next tick.
+# (`loop.halt`, the phase `pending`); control words from another stream queue in the live loop's
+# `loop/control.json` (the loop worktree's, or the default checkout's for a loop on the default stream: `loop_home`)
+# and apply at its next tick.
 LOOP_HALT_REASONS = ("failures", "cycle-over-budget", "budget-total", "max-cycles", "limit", "spend", "charter", "checkpoint", "other")
 LOOP_HALT_NEEDS_CHARTER = ("budget-total", "max-cycles")  # resume refuses these: a new charter version lifts them
 LOOP_TICK_HALT_REASONS = ("charter", "budget-total", "max-cycles", "limit")  # every reason `loop-tick` prints with action=halt
@@ -15978,7 +15996,7 @@ def _driver_refuse(loop: dict, cmd: str, pid: str) -> None:
 
 def loop_claim(args: argparse.Namespace) -> None:
     """Record the calling session as the loop's one driver; refused while another live session holds it."""
-    pdir = require_phase(args.phase)
+    pdir = _loop_require_phase(args.phase)
     pid = pdir.name
     data = read_json(pdir / "phase.json")
     loop = phase_loop(data)
@@ -16052,23 +16070,143 @@ class LoopSource:
         return self.json("phase.json") or {}
 
 
-def _loop_cross_stream(data: dict, stream) -> bool:
-    execution = phase_execution(data)
-    return bool(execution and execution.get("branch") and execution.get("branch") != stream)
+class LoopHome:
+    """Where a loop lives, as seen from this checkout (P50-fr.F4): the one answer every loop command routes through.
+
+    `own` is True when this checkout is the loop's own stream. A loop's placement is `default` (no
+    `execution.branch`: it runs in the default checkout) or `worktree` (its own worktree on `execution.branch`).
+    From any other checkout `pdir` is the live loop folder on disk (the default checkout's for a default-stream
+    loop, the loop worktree's for a worktree loop), `ref` the loop branch when only git can read it, and both
+    None when the live loop cannot be reached from here; `data` is the placement-authoritative phase.json."""
+
+    def __init__(self, pid: str, own: bool, placement: str, data: dict, pdir=None, ref=None, where: str = "local"):
+        self.pid, self.own, self.placement, self.data = pid, own, placement, data
+        self.pdir, self.ref, self.where = pdir, ref, where
+
+    @property
+    def branch(self):
+        return (phase_execution(self.data) or {}).get("branch")
+
+    def label(self) -> str:
+        """The loop's own stream, as the refusals name it."""
+        if self.placement == "worktree":
+            return f"branch {self.branch}, worktree {(phase_execution(self.data) or {}).get('worktree')}"
+        root = self.pdir.parents[3] if self.pdir is not None else None
+        return f"the default stream, in the default checkout {root if root is not None else '(not on disk here)'}"
+
+    def control_text(self) -> str:
+        return ("queued in the loop worktree's loop/control.json" if self.placement == "worktree"
+                else "queued in the default checkout's loop/control.json")
 
 
-def _loop_own_stream_refuse(pdir: Path, cmd: str, data=None) -> None:
-    """P50-fr.F2: a loop writer runs only on the loop's own stream. From another checkout it would write that
-    checkout's stale copy of the loop folder (and regenerate its works/ files), which diverges from the loop and
-    blocks the checkpoint merge; only the queued words cross (loop-control pause|resume|stop, loop-checkpoint
-    --now), and they write only the loop worktree's control.json."""
+def _loop_default_pdir(pid: str):
+    """This phase's folder in the repo's default checkout when this checkout is one of its linked worktrees and that
+    folder is on disk, else None (`_default_checkout_root`, the path v67's refresh already uses)."""
+    root = _default_checkout_root()
+    pdir = root / "works" / "phases" / "active" / pid if root is not None else None
+    return pdir if pdir is not None and (pdir / "phase.json").is_file() else None
+
+
+def loop_home(pdir: Path, data=None, stream="unset") -> LoopHome:
+    """Is this checkout the loop's own stream, and if not, where does the live loop live? The one stream predicate
+    for every loop command (P50-fr.F4), from the loop's placement and the caller's:
+    - the default checkout (stream None): its own stream for a default-stream loop; a worktree loop lives in its
+      worktree (its live files on disk, else its branch through git);
+    - a phase worktree (stream = its branch): the loop's own stream only when the loop is stamped with that branch;
+      otherwise the default checkout's copy is the authority on where the loop lives (parallel-start stamps the
+      placement there before it cuts a worktree, so this checkout's copy may predate the stamp): a default-stream
+      loop lives in the default checkout, a worktree loop in its worktree. A nested pair resolves the same way: the
+      stream is the nested repo's branch, and both paths are the nested repo's checkouts.
+    A folder that is not this checkout's (the default checkout's copy of a loop absent here) is never own."""
+    pid = pdir.name
     data = read_json(pdir / "phase.json") if data is None else data
-    if not phase_execution(data):
+    if stream == "unset":
+        stream = current_stream(all_active_phases())
+    here = pdir.resolve().parent == ACTIVE.resolve()
+    branch = (phase_execution(data) or {}).get("branch")
+    if here and branch == stream:  # the default checkout and a default-stream loop, or the loop's own worktree
+        return LoopHome(pid, True, "worktree" if branch else "default", data, pdir=pdir)
+    if stream is not None or not here:
+        default = pdir if not here else _loop_default_pdir(pid)
+        if default is not None:
+            try:
+                authority = read_json(default / "phase.json")
+            except (OSError, ValueError):
+                authority = None
+            if isinstance(authority, dict):
+                data, branch = authority, (phase_execution(authority) or {}).get("branch")
+                if not branch:
+                    return LoopHome(pid, False, "default", data, pdir=default, where=f"default checkout {default}")
+                if here and branch == stream:  # cannot happen: a worktree is cut after its stamp; never misread it
+                    return LoopHome(pid, True, "worktree", read_json(pdir / "phase.json"), pdir=pdir)
+        if not branch:
+            return LoopHome(pid, False, "default", data,
+                            where="local copy (stale: the loop runs on the default stream, whose checkout is not on disk here)")
+    other = _loop_worktree_pdir(data)
+    if other is not None:
+        return LoopHome(pid, False, "worktree", data, pdir=other, where=f"worktree {other}")
+    if _git_available() and _json_at_ref(branch, f"works/phases/active/{pid}/phase.json") is not None:
+        return LoopHome(pid, False, "worktree", data, ref=branch, where=f"branch {branch}")
+    return LoopHome(pid, False, "worktree", data, where="local copy (the loop's worktree and branch could not be read)")
+
+
+def _loop_own_stream_refuse(pdir: Path, cmd: str, data=None, home=None) -> None:
+    """P50-fr.F2/F4: a loop writer runs only on the loop's own stream (`loop_home`). From another checkout it would
+    write that checkout's stale copy of the loop folder (and regenerate its works/ files), which diverges from the
+    live loop and blocks the merge; only the queued words cross (loop-control pause|resume|stop, loop-checkpoint
+    --now), and they write only the live loop's control.json."""
+    home = home or loop_home(pdir, data)
+    if home.own:
         return
-    if _loop_cross_stream(data, current_stream(all_active_phases())):
-        raise SystemExit(f"{cmd}: runs only on the loop's own stream (branch {phase_execution(data).get('branch')}, worktree "
-                         f"{phase_execution(data).get('worktree')}); from here only loop-control pause|resume|stop and "
-                         "loop-checkpoint --now cross, queued in the loop worktree's loop/control.json; refused, nothing was written")
+    raise SystemExit(f"{cmd}: runs only on the loop's own stream ({home.label()}); from here only loop-control "
+                     f"pause|resume|stop and loop-checkpoint --now cross, {home.control_text()}; refused, nothing was written")
+
+
+LOOP_PHASE_COMMANDS = frozenset({"loop-init", "loop-sign", "loop-queue", "loop-cycle-start", "loop-claim", "loop-tick",
+                                 "loop-control", "loop-status", "loop-checkpoint", "loop-unpark"})
+
+
+def _loop_default_phase_id(raw):
+    """The stored id `raw` names in the default checkout's active phases (a loop command typed in a phase worktree
+    that has no folder for it), else None. Only ever consulted after this checkout's own lookup found nothing."""
+    root = _default_checkout_root()
+    active = root / "works" / "phases" / "active" if root is not None else None
+    if active is None or not active.is_dir():
+        return None
+    ids = {d.name for d in active.iterdir() if (d / "phase.json").is_file()}
+    text = str(raw).strip()
+    number = re.fullmatch(r"[Pp]?([0-9]+)", text)
+    if number:
+        found, _ = lookup_id_number("P", int(number.group(1)), ids)
+        return found
+    stored = brief_id("P", text) or text
+    return stored if stored in ids else None
+
+
+def _loop_require_phase(phase_id: str) -> Path:
+    """A loop command's phase folder: this checkout's, else (a phase worktree cut before the loop phase existed) the
+    default checkout's copy, which `loop_home` reads as another stream's loop, never this checkout's own."""
+    if not (ACTIVE / phase_id / "phase.json").exists():
+        other = _loop_default_pdir(phase_id)
+        if other is not None:
+            return other
+    return require_phase(phase_id)
+
+
+def _loop_require_slice(slice_id: str, cmd: str) -> Path:
+    """A loop slice's folder (a cycle or a checkpoint). When this checkout has none, and its loop phase (this
+    checkout's copy, else the default checkout's) runs on another stream, the own-stream refusal names where the
+    slice lives, rather than a bare "slice not found"."""
+    pid = slice_id.split(".", 1)[0]
+    if not (ACTIVE / pid / "slices" / slice_id / "slice.json").exists():
+        pdir = ACTIVE / pid if (ACTIVE / pid / "phase.json").is_file() else _loop_default_pdir(pid)
+        try:
+            data = read_json(pdir / "phase.json") if pdir is not None else None
+        except (OSError, ValueError):
+            data = None
+        if phase_loop(data) is not None:
+            _loop_own_stream_refuse(pdir, cmd, data)
+    return require_slice(slice_id)
 
 
 def _loop_worktree_pdir(data: dict):
@@ -16081,22 +16219,18 @@ def _loop_worktree_pdir(data: dict):
     return pdir if (pdir / "phase.json").is_file() else None
 
 
-def loop_source(pdir: Path, stream="unset") -> LoopSource:
-    """The source a view of this loop reads: this checkout on the loop's own stream; from another stream the loop
-    worktree's live files when they are on disk, else its branch through git, else the local (stale) copy."""
-    pid = pdir.name
-    data = read_json(pdir / "phase.json")
-    if stream == "unset":
-        stream = current_stream(all_active_phases()) if phase_execution(data) else None
-    if not _loop_cross_stream(data, stream):
-        return LoopSource(pid, pdir)
-    other = _loop_worktree_pdir(data)
-    if other is not None:
-        return LoopSource(pid, other, where=f"worktree {other}")
-    branch = phase_execution(data).get("branch")
-    if _git_available() and _json_at_ref(branch, f"works/phases/active/{pid}/phase.json") is not None:
-        return LoopSource(pid, ref=branch, where=f"branch {branch}")
-    return LoopSource(pid, pdir, where="local copy (the loop's worktree and branch could not be read)")
+def loop_source(pdir: Path, stream="unset", home=None) -> LoopSource:
+    """The source a view of this loop reads (`loop_home`): this checkout on the loop's own stream; from another
+    checkout the live loop folder when it is on disk (the default checkout's, or the loop worktree's), else the
+    loop branch through git, else the local copy, labelled stale."""
+    home = home or loop_home(pdir, stream=stream)
+    if home.own:
+        return LoopSource(home.pid, pdir)
+    if home.pdir is not None:
+        return LoopSource(home.pid, home.pdir, where=home.where)
+    if home.ref is not None:
+        return LoopSource(home.pid, ref=home.ref, where=home.where)
+    return LoopSource(home.pid, pdir, where=home.where)
 
 
 def loop_bounds_of(src: LoopSource, loop: dict) -> dict:
@@ -16566,7 +16700,7 @@ def _loop_next_lines(nxt: dict) -> list:
 
 def loop_tick(args: argparse.Namespace) -> None:
     """Read-only: the loop's context, then exactly one action= and wake_in=, then the action's own lines."""
-    pdir = require_phase(args.phase)
+    pdir = _loop_require_phase(args.phase)
     require_loop(pdir, "loop-tick")
     view = loop_view(loop_source(pdir), transcripts=args.transcripts)
     for line in _loop_context_lines(view) + _loop_next_lines(view["next"]):
@@ -16581,19 +16715,20 @@ def loop_cycle_dispatch(args: argparse.Namespace) -> None:
     caller that is not the driver, while loop/control.json holds requests (the tick applies them first), on a halted
     loop, and when the cycle needs a close or a plan instead."""
     sid = args.slice
-    sdir = require_slice(sid)
     cmd = f"loop-cycle-dispatch {sid}"
+    sdir = _loop_require_slice(sid, cmd)
     sdata = read_json(sdir / "slice.json")
     if sdata.get("kind") != "cycle" and not loop_checkpoint_slice(sdata):
         raise SystemExit(f"{cmd}: kind {sdata.get('kind')}, not a loop cycle or checkpoint; refused, nothing was written")
     pdir = sdir.parents[1]
     data = read_json(pdir / "phase.json")
     loop = phase_loop(data) or {}
+    if phase_loop(data) is not None:  # P50-fr.F4: before any read of this checkout's copy, stale off the loop's stream
+        _loop_own_stream_refuse(pdir, cmd, data)
     inflight = loop.get("inflight")
     if not isinstance(inflight, dict) or inflight.get("cycle") != sid:
         held = inflight.get("cycle") if isinstance(inflight, dict) else "none"
         raise SystemExit(f"{cmd}: it is not the cycle in flight (in flight: {held}); refused, nothing was written")
-    _loop_own_stream_refuse(pdir, cmd, data)
     _driver_refuse(loop, cmd, pdir.name)
     queued = _loop_control_requests(LoopSource(pdir.name, pdir))
     if queued:
@@ -16855,8 +16990,8 @@ def _loop_control_apply(pdir: Path, action: str, words=None, reason=None, detail
 
 def loop_control(args: argparse.Namespace) -> None:
     """pause | resume | stop | halt | apply. In the loop's own stream every action applies at once; from another
-    stream pause, resume and stop queue in the loop worktree's loop/control.json for its next tick."""
-    pdir = require_phase(args.phase)
+    stream pause, resume and stop queue in the live loop's loop/control.json for its next tick (`loop_home`)."""
+    pdir = _loop_require_phase(args.phase)
     pid = pdir.name
     action = args.action
     cmd = f"loop-control {pid} {action}"
@@ -16867,15 +17002,15 @@ def loop_control(args: argparse.Namespace) -> None:
     words = _one_line(args.words) if args.words is not None and _one_line(args.words) else None
     if action != "halt" and (args.reason is not None or args.detail is not None):
         raise SystemExit(f"{cmd}: --reason/--detail belong to halt; refused, nothing was written")
-    stream = current_stream(all_active_phases()) if phase_execution(data) else None
-    if _loop_cross_stream(data, stream):
-        branch = phase_execution(data).get("branch")
+    home = loop_home(pdir, data)
+    if not home.own:
+        where = f"branch {home.branch}" if home.placement == "worktree" else home.label()
         if action not in LOOP_CONTROL_QUEUEABLE:
-            raise SystemExit(f"{cmd}: {action} runs only on the loop's own stream (branch {branch}); from here only "
+            raise SystemExit(f"{cmd}: {action} runs only on the loop's own stream ({where}); from here only "
                              f"{', '.join(LOOP_CONTROL_QUEUEABLE)} queue; refused, nothing was written")
         if action in ("resume", "stop") and not words:
             raise SystemExit(f"{cmd}: {action} needs the operator's literal words (--words \"...\"); refused, nothing was written")
-        return _loop_queue_control(pdir, data, action, words, cmd)
+        return _loop_queue_control(pdir, data, action, words, cmd, home)
     if action not in ("stop", "pause"):
         _driver_refuse(loop, cmd, pid)
     if action == "apply":
@@ -16969,22 +17104,23 @@ def loop_digest(src: LoopSource, view: dict) -> str:
 
 
 def loop_status(args: argparse.Namespace) -> None:
-    """The operator's view of one loop, from any stream (cross-stream: the loop worktree's live files, else its
-    branch): plain, --json, or --digest [--write]."""
-    pdir = require_phase(args.phase)
+    """The operator's view of one loop, from any stream (cross-stream, `loop_home`: the live loop's files -- the loop
+    worktree's or the default checkout's -- else its branch, else the local copy labelled stale): plain, --json, or
+    --digest [--write]."""
+    pdir = _loop_require_phase(args.phase)
     pid = pdir.name
     data = read_json(pdir / "phase.json")
     if phase_loop(data) is None:
         raise SystemExit(f"loop-status {pid}: {pid} is not a loop phase")
     if args.write and not args.digest:
         raise SystemExit(f"loop-status {pid}: --write belongs to --digest; refused, nothing was written")
-    stream = current_stream(all_active_phases()) if phase_execution(data) else None
-    src = loop_source(pdir, stream)
+    home = loop_home(pdir, data)
+    src = loop_source(pdir, home=home)
     view = loop_view(src, transcripts=args.transcripts, as_driver=True)
     if args.digest:
         text = loop_digest(src, view)
         if args.write:
-            if not src.local:
+            if not home.own:
                 raise SystemExit(f"loop-status {pid} --digest --write: writes only on the loop's own stream ({src.where}); refused, nothing was written")
             _driver_refuse(data["loop"], f"loop-status {pid} --digest --write", pid)
             text = _loop_write_digest(pdir, args.transcripts)
@@ -17034,37 +17170,51 @@ def loop_status(args: argparse.Namespace) -> None:
 
 
 def loop_next_lines(stream, index: dict) -> list:
-    """`next`'s loop lines: on the loop's own stream one `loop=` line per loop phase; on the default stream one
-    `loops_elsewhere=` line naming each loop phase running on another stream. Small-file reads only."""
+    """`next`'s loop lines: one `loop=` line per loop phase whose own stream this checkout is; one `loops_elsewhere=`
+    line naming each live loop phase whose own stream it is not (`loop_home`: a worktree loop seen from the default
+    checkout or another worktree, a default-stream loop seen from a phase worktree, read from its live files). In a
+    phase worktree the default checkout's loop phases absent from this checkout count too. Small-file reads only."""
     own, elsewhere = [], []
+    seen, dirs = set(), []
     for entry in index.get("active_phases", []):
-        if entry.get("status") == "done":
-            continue
-        pdir = ACTIVE / entry["id"]
+        if entry.get("status") != "done":
+            seen.add(entry["id"])
+            dirs.append(ACTIVE / entry["id"])
+    if stream is not None:  # a phase worktree may predate a loop phase created on the default stream
+        root = _default_checkout_root()
+        active = root / "works" / "phases" / "active" if root is not None else None
+        if active is not None and active.is_dir():
+            dirs.extend(d for d in sorted(active.iterdir()) if d.name not in seen and (d / "phase.json").is_file())
+    for pdir in dirs:
         try:
             data = read_json(pdir / "phase.json")
         except (OSError, ValueError):
             continue
         if phase_loop(data) is None:
             continue
-        cross = _loop_cross_stream(data, stream)
         try:
-            if not cross and (stream is None or (phase_execution(data) or {}).get("branch") == stream):
-                view = loop_view(LoopSource(entry["id"], pdir))
+            home = loop_home(pdir, data, stream)
+            if home.own:
+                view = loop_view(LoopSource(pdir.name, pdir))
                 sp = view["spend"]
                 own.append(f"loop={view['loop']} status={view['status']} cycle={view['cycle']} "
                            f"inflight={(view['inflight'] or {}).get('cycle') or 'none'} "
                            f"spend_today={_usd(sp['today'])}/{_usd(sp['per_day'])} spend_total={_usd(sp['total'])}/{_usd(sp['total_cap'])} "
                            f"parked={len(view['parked'])} survivors={view['survivors_count']} queue={view['queue_count']} "
                            f"action={view['next'].get('action')}")
-            elif cross and stream is None and phase_in_flight(data):
-                src = loop_source(pdir, stream)
-                loop = phase_loop(src.phase()) or {}
-                parked = sum(1 for p in src.jsonl("parked.jsonl") if p.get("resolved") is None)
-                cycle = (loop.get("next_cycle") - 1) if _is_int(loop.get("next_cycle")) else 0
-                elsewhere.append(f"{entry['id']}:{loop.get('status')}:{cycle}:parked={parked}")
+                continue
+            if home.placement == "worktree" and not phase_in_flight(home.data):
+                continue
+            src = loop_source(pdir, home=home)
+            live = src.phase()
+            if home.placement == "default" and live.get("status") == "done":
+                continue
+            loop = phase_loop(live) or {}
+            parked = sum(1 for p in src.jsonl("parked.jsonl") if p.get("resolved") is None)
+            cycle = (loop.get("next_cycle") - 1) if _is_int(loop.get("next_cycle")) else 0
+            elsewhere.append(f"{pdir.name}:{loop.get('status')}:{cycle}:parked={parked}")
         except (SystemExit, OSError, ValueError) as exc:
-            own.append(f"loop={entry['id']} error={_one_line(str(exc))}")
+            own.append(f"loop={pdir.name} error={_one_line(str(exc))}")
     if elsewhere:
         own.append(f"loops_elsewhere={','.join(elsewhere)}")
     return own
@@ -17420,14 +17570,19 @@ def _loop_anchor(pdir: Path, data: dict) -> dict:
     return out
 
 
-def _loop_queue_control(pdir: Path, data: dict, action: str, words, cmd: str) -> None:
-    """Queue one control request in the loop worktree's loop/control.json (another stream's words), print it."""
-    pid = data.get("id", pdir.name)
-    stream = current_stream(all_active_phases()) if phase_execution(data) else None
-    target = _loop_worktree_pdir(data)
-    if target is None:
-        raise SystemExit(f"{cmd}: the loop's worktree ({phase_execution(data).get('worktree')}) is not on disk here; run it "
+def _loop_queue_control(pdir: Path, data: dict, action: str, words, cmd: str, home=None) -> None:
+    """Queue one control request in the live loop's loop/control.json (another stream's words: the loop worktree's
+    for a worktree loop, the default checkout's for a default-stream loop), print it. Writes nothing here."""
+    home = home or loop_home(pdir, data)
+    pid = home.pid
+    stream = current_stream(all_active_phases())
+    target = home.pdir
+    if target is None and home.placement == "worktree":
+        raise SystemExit(f"{cmd}: the loop's worktree ({(phase_execution(home.data) or {}).get('worktree')}) is not on disk here; run it "
                          "from the loop's checkout; refused, nothing was written")
+    if target is None:
+        raise SystemExit(f"{cmd}: the loop runs on the default stream, and the default checkout is not on disk here; run it "
+                         "from the default checkout; refused, nothing was written")
     path = target / "loop" / LOOP_CONTROL_FILE
     try:
         current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
@@ -17441,7 +17596,12 @@ def _loop_queue_control(pdir: Path, data: dict, action: str, words, cmd: str) ->
     # P50-fr.F2: nothing in this checkout is written -- no event, no regenerated works/ file -- so a queued word
     # never dirties the default checkout ahead of a checkpoint merge; the loop records it when it applies it
     print(f"queued {action} for {pid} in {path} ({len(requests)} request(s)): the loop applies it at its next tick")
+    if home.placement != "worktree":
+        print("this checkout: nothing written here (the request lives in the default checkout, the loop's own; its apply records it)")
+        return
     print("this checkout: nothing written here (the request lives in the loop worktree; its apply records it)")
+    if stream is not None:  # the checkpoint merge lands in the default checkout, never in another phase's worktree
+        return
     dirty = _git(["status", "--porcelain", "--", str(WORKS)], check=False) if _git_available() else None
     if dirty is not None and dirty.returncode == 0 and dirty.stdout.strip():
         # the loop worktree refreshes this checkout's generated works/ files as it runs (v67); git refuses a
@@ -17455,7 +17615,7 @@ def loop_checkpoint(args: argparse.Namespace) -> None:
     action=checkpoint: create <P>.K<j> and hold the lease) | --verdict pass|changes_requested|blocked (close
     it: meter, record, then continue, pause for fixes, or halt) | --landed (after the passing checkpoint's
     commit: record that commit as the merge point)."""
-    pdir = require_phase(args.phase)
+    pdir = _loop_require_phase(args.phase)
     pid = pdir.name
     chosen = [a for a in LOOP_CHECKPOINT_ACTIONS if getattr(args, a, None)]
     if len(chosen) != 1:
@@ -17470,19 +17630,19 @@ def loop_checkpoint(args: argparse.Namespace) -> None:
         raise SystemExit(f"{cmd}: --summary belongs to --verdict; refused, nothing was written")
     if action == "now":
         words = _one_line(args.words) if args.words and _one_line(args.words) else None
-        stream = current_stream(all_active_phases()) if phase_execution(data) else None
-        if _loop_cross_stream(data, stream):
-            return _loop_queue_control(pdir, data, "checkpoint", words, cmd)
+        home = loop_home(pdir, data)
+        if not home.own:
+            return _loop_queue_control(pdir, data, "checkpoint", words, cmd, home)
         line = _loop_control_apply(pdir, "checkpoint", words)
         rebuild_index_and_state()
         print(line)
         return
     if args.words is not None:
         raise SystemExit(f"{cmd}: --words belongs to --now; refused, nothing was written")
-    stream = current_stream(all_active_phases()) if phase_execution(data) else None
-    if _loop_cross_stream(data, stream):
-        raise SystemExit(f"{cmd}: runs only on the loop's own stream (branch {phase_execution(data).get('branch')}); "
-                         "refused, nothing was written")
+    home = loop_home(pdir, data)
+    if not home.own:
+        where = f"branch {home.branch}" if home.placement == "worktree" else home.label()
+        raise SystemExit(f"{cmd}: runs only on the loop's own stream ({where}); refused, nothing was written")
     _driver_refuse(loop, cmd, pid)
     if action == "start":
         return _loop_checkpoint_start(pdir, data, loop, cmd)
@@ -18186,7 +18346,7 @@ def main(argv=None) -> int:
     p.add_argument("--transcripts", action="append", metavar="DIR", help="read spans from this projects/<slug> directory (repeatable)")
     p.set_defaults(func=loop_cycle_dispatch)
 
-    p = sub.add_parser("loop-control", help="The operator's words to a loop: pause (running|signed -> paused: no new start, the cycle in flight may close), resume (paused|halted -> running, or signed before any cycle; --words required from halted; refused for a budget-total or max-cycles halt, which a new charter version lifts; clears the halt, resets consecutive_failures once it reached max_consecutive_failures, the phase back to in_progress; when a charter-level stop holds -- a changed signed charter, the total spend at total_usd, the cycles at max_cycles -- it never resumes past it: the loop halts on that stop instead and prints 'not resumed' with its on_words), stop (--words required: any status -> stopped, after which the REVIEW is selectable), halt (the orchestrator records a tick halt verbatim or an uncovered spend: --reason charter|budget-total|max-cycles|limit|spend|other [--detail D]; the one halt writer a close uses: the phase goes pending, stop_kind limit for limit, budget-total and max-cycles lifted only by loop-sign of a new version), apply (applies loop/control.json's queued requests in order, then empties it). From another stream pause, resume and stop queue in the loop worktree's loop/control.json for its next tick, and write nothing in this checkout. Every action but stop and pause refuses a caller that is not the driver")
+    p = sub.add_parser("loop-control", help="The operator's words to a loop: pause (running|signed -> paused: no new start, the cycle in flight may close), resume (paused|halted -> running, or signed before any cycle; --words required from halted; refused for a budget-total or max-cycles halt, which a new charter version lifts; clears the halt, resets consecutive_failures once it reached max_consecutive_failures, the phase back to in_progress; when a charter-level stop holds -- a changed signed charter, the total spend at total_usd, the cycles at max_cycles -- it never resumes past it: the loop halts on that stop instead and prints 'not resumed' with its on_words), stop (--words required: any status -> stopped, after which the REVIEW is selectable), halt (the orchestrator records a tick halt verbatim or an uncovered spend: --reason charter|budget-total|max-cycles|limit|spend|other [--detail D]; the one halt writer a close uses: the phase goes pending, stop_kind limit for limit, budget-total and max-cycles lifted only by loop-sign of a new version), apply (applies loop/control.json's queued requests in order, then empties it). From another stream pause, resume and stop queue in the live loop's loop/control.json (the loop worktree's, or the default checkout's for a loop on the default stream) for its next tick, and write nothing in this checkout; every other action refuses there. Every action but stop and pause refuses a caller that is not the driver")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("action", choices=LOOP_CONTROL_ACTIONS)
     p.add_argument("--words", help="the operator's literal words, verbatim (stop; resume from halted; recorded for pause)")
@@ -18194,7 +18354,7 @@ def main(argv=None) -> int:
     p.add_argument("--detail", help="halt only: one line saying what happened")
     p.set_defaults(func=loop_control)
 
-    p = sub.add_parser("loop-status", help="The operator's view of one loop, from any stream (another stream's loop is read from its worktree's live files when on disk, else git show <branch>:...): status, driver, charter, counters, the cycle in flight and its state, spend today and in total against each budget (with the assumed-cycle count), every open parked item, the last 5 survivors, the queue head, the halt and the next action (the tick's, as the driver sees it). --json: the same view as one object; --digest: at most 1,500 characters over the window since loop.digest_at; --digest --write also writes loop/digest.md and stamps loop.digest_at (own stream, driver only)")
+    p = sub.add_parser("loop-status", help="The operator's view of one loop, from any stream (another stream's loop is read from its live files when on disk -- its worktree's, or the default checkout's for a loop on the default stream -- else git show <branch>:..., else the local copy, labelled stale; source= names which): status, driver, charter, counters, the cycle in flight and its state, spend today and in total against each budget (with the assumed-cycle count), every open parked item, the last 5 survivors, the queue head, the halt and the next action (the tick's, as the driver sees it). --json: the same view as one object; --digest: at most 1,500 characters over the window since loop.digest_at; --digest --write also writes loop/digest.md and stamps loop.digest_at (own stream, driver only)")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--json", action="store_true")
     p.add_argument("--digest", action="store_true")
@@ -18202,7 +18362,7 @@ def main(argv=None) -> int:
     p.add_argument("--transcripts", action="append", metavar="DIR", help="read spans from this projects/<slug> directory (repeatable)")
     p.set_defaults(func=loop_status)
 
-    p = sub.add_parser("loop-checkpoint", help="A loop's checkpoint <P>.K<j> (kind review), which reviews its window of cycles. --now: the operator's ask, a checkpoint at the next cycle boundary (from another stream it queues in the loop worktree's loop/control.json). --start (on the tick's action=checkpoint; driver only): create <P>.K<j> in_progress, ordered after its last cycle, and hold the lease (loop.inflight kind checkpoint: no cycle starts while it is open; loop-cycle-dispatch and the tick's in-flight rules apply); refused when none is due. --verdict pass|changes_requested|blocked --summary S: meter it like a cycle, append loop/checkpoints.jsonl, finish it and free the lease; pass writes the digest and stamps the consolidation debt when ## Doc impact gained notes since the last pass; changes_requested pauses the loop (paused_by checkpoint: fix slices run on the loop stream, then resume); blocked halts it (reason checkpoint). Refused with no checkpoint open, or no result.md (bar blocked). --landed (after committing a passing checkpoint): record the works repo's HEAD (and the host's in a nested pair) as the commit the default stream merges; refused unless the last checkpoint passed and the phase folder is fully committed")
+    p = sub.add_parser("loop-checkpoint", help="A loop's checkpoint <P>.K<j> (kind review), which reviews its window of cycles. --now: the operator's ask, a checkpoint at the next cycle boundary (from another stream it queues in the live loop's loop/control.json: the loop worktree's, or the default checkout's for a loop on the default stream). --start (on the tick's action=checkpoint; driver only): create <P>.K<j> in_progress, ordered after its last cycle, and hold the lease (loop.inflight kind checkpoint: no cycle starts while it is open; loop-cycle-dispatch and the tick's in-flight rules apply); refused when none is due. --verdict pass|changes_requested|blocked --summary S: meter it like a cycle, append loop/checkpoints.jsonl, finish it and free the lease; pass writes the digest and stamps the consolidation debt when ## Doc impact gained notes since the last pass; changes_requested pauses the loop (paused_by checkpoint: fix slices run on the loop stream, then resume); blocked halts it (reason checkpoint). Refused with no checkpoint open, or no result.md (bar blocked). --landed (after committing a passing checkpoint): record the works repo's HEAD (and the host's in a nested pair) as the commit the default stream merges; refused unless the last checkpoint passed and the phase folder is fully committed")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--now", action="store_true", help="the operator's ask: a checkpoint at the next cycle boundary")
     p.add_argument("--start", action="store_true", help="on action=checkpoint: create <P>.K<j> and hold the lease")

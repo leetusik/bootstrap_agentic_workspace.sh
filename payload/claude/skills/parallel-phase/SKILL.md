@@ -410,7 +410,10 @@ default branch at each **passing checkpoint**, not at the end. The loop's sessio
    its dashboards here as it runs (v67), and git refuses a merge over uncommitted changes to the files it
    touches. The operator's words from here (`loop-control <P> pause|resume|stop`, `loop-checkpoint <P> --now`)
    only queue in the loop worktree's `loop/control.json` and write nothing in this checkout (they print the
-   commit-first line when `works/` is dirty); every other loop command refuses from here. Then
+   commit-first line when `works/` is dirty); every other loop command refuses from here. From another
+   phase's worktree the words queue the same way, in the loop worktree's `loop/control.json`, and so do
+   the words to a loop running on the default stream, in the default checkout's; every other loop
+   command refuses there too. Then
    `git merge <merge_commit>` (never the branch tip; take either side of a generated `works/` conflict
    first, then regenerate) → `parallel-merge-finish` → `parallel-consolidated <P>` when that checkpoint
    stamped consolidation debt.
