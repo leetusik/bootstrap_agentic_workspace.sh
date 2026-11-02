@@ -60,7 +60,8 @@
 # invariants (a bare install nests and git-inits a new dir, --update detects the layout, --at-root
 # keeps the at-root path, a bare install over an at-root workspace refuses), the multi-repo host
 # invariants (a fresh install over a folder of repos, per-repo phase-scope, a worktree set's start and
-# safe teardown, the lossless --to-multi-repo conversion), the v61 skill
+# safe teardown, the lossless --to-multi-repo conversion), the P50 loop phases (the charter gate, the
+# budget stop, park don't halt, the bounded rollup, the tick's resume states), the v61 skill
 # directories (cores of 8 KB or less plus their reference files, on fresh, retrofit, --update and
 # nested installs, a renamed skill included), and the v31 Codex-removal negatives. Re-runnable; self-cleaning.
 #
@@ -1124,6 +1125,10 @@ for required in (
     # v86 (P-mtrt.S3): the explain route creates and runs its phase; its confirmation is the worktree word.
     "Exceptions: `/rotate-backlog` and the explain route (after one confirmation) create and run their phase.",
     "A worktree starts only on the operator's word (for an explain, its confirmation)",
+    # P50 (loop phases): only the charter stops a loop, its item questions park, `cycle` joins the kinds.
+    "stop the run (a loop phase: only its charter's stops, `run-loop`)",
+    "`## Operator Questions` (a loop's item questions: its parked list)",
+    "`qa`, `co-work`, `cycle`",
 ):
     assert required in claude, required
 assert "never fan out slices" not in claude, "the contract still forbids fanning out slices"
@@ -4245,6 +4250,125 @@ if [ "$rc" -eq 0 ] && [ "$(git -C "$MX" rev-list --count HEAD)" = 1 ] && [ "$(gi
     && [ "$(git -C "$MXR" status --porcelain)" = "?? notes.txt" ] && (cd "$MX" && mr python3 workflow/scripts/workflow.py validate >/dev/null 2>&1); then
   ok "--to-multi-repo makes the parent a host: one empty host commit, the nested repo moved up, R's confirmed convention carried over and S unconfirmed, converted_from recorded, phase-scope P1 --repo R equal to the one before, R left with only its untracked file, validate passing"
 else bad "--to-multi-repo did not convert cleanly (rc=$rc, scope rc=$sc_rc) -- $mk_out $out"; fi
+
+# ---------------------------------------------------------------------------
+echo "== Test 18: P50 loop phases -- the charter gate, the budget stop, park don't halt, the bounded rollup, the tick's resume states, the run-loop core cap =="
+# Tiny and core only (the operator's five); the rest is proven live. A fresh --at-root install in git, a
+# fake CLAUDE_CONFIG_DIR inside the test's tmp dir (never the real one), no transcripts, so every cycle
+# meters `assumed` at per_cycle_usd.
+lp_t0=$(date +%s)
+newtmp LPW; LP="$LPW/ws"; LPCC="$LPW/cc"; LPX="$LPCC/projects/fixture"; mkdir -p "$LPCC/sessions" "$LPX"
+sh "$BOOT" "$LP" --at-root --name "Loop" --summary "loop" >/dev/null 2>&1 || bad "loop probe: the fresh install failed"
+lw() { ( cd "$LP" && CLAUDE_CONFIG_DIR="$LPCC" python3 scripts/workflow.py "$@" ); }
+lgc() { ( cd "$LP" && git add -A && git -c user.email=smoke@example.invalid -c user.name=smoke commit -qm "$1" ) >/dev/null 2>&1 || bad "loop probe: commit $1 failed"; }
+( cd "$LP" && git init -q . ) >/dev/null 2>&1; lgc baseline
+LPP="$LP/works/phases/active/P1"; LPC="$LPP/loop/charter"
+# lp_fill <src> <dst> <total_usd>: fill every UNFILLED section of the charter and set the bounds.
+lp_fill() { python3 - "$1" "$2" "$3" <<'PY'
+import json, sys
+src, dst, total = sys.argv[1], sys.argv[2], float(sys.argv[3])
+text = "\n".join(l for l in open(src).read().split("\n") if "UNFILLED" not in l)
+text = text.replace("## Objective\n", "## Objective\n\nScore toy items.\n").replace("## One cycle\n", "## One cycle\n\nRun the toy scorer.\n")
+bounds = {"cadence": {"min_gap_minutes": 0}, "budget": {"per_cycle_usd": 1.0, "per_day_usd": 1000.0, "total_usd": total, "max_cycles": None},
+          "stops": {"max_consecutive_failures": 2}, "spend_covered": [], "stages": {"screen": "screen"}, "checkpoint_every": 1000,
+          "digest_every_hours": 100000, "keep_cycles": 2, "cycle_timeout_minutes": 120, "outputs": []}
+i = text.index("```json"); j = text.index("```", i + 7)
+open(dst, "w").write(text[:i] + "```json\n" + json.dumps(bounds, indent=2) + "\n" + text[j:])
+PY
+}
+# lp_cycle <key> <verdict> [close args]: start -> plan -> result -> close, one cycle.
+lp_cycle() { local k=$1 v=$2 out sid; shift 2
+  out=$(lw loop-cycle-start P1 --key "$k" --title "item $k" 2>&1) || { printf 'start refused: %s\n' "$out"; return 1; }
+  sid=$(printf '%s\n' "$out" | sed -n 's/^cycle=//p')
+  printf 'plan\n' > "$LPP/slices/$sid/plan.md"; printf -- '- status: done\n- item_verdict: %s\n' "$v" > "$LPP/slices/$sid/result.md"
+  lw loop-cycle-close "$sid" --verdict "$v" --summary "toy $v" --transcripts "$LPX" "$@" 2>&1; }
+lp_tick() { lw loop-tick P1 --transcripts "$LPX" 2>&1; }
+lp_field() { python3 -c 'import json,sys
+d = json.load(open(sys.argv[1]))
+for k in sys.argv[2].split("."): d = (d or {}).get(k) if isinstance(d, dict) else None
+print(d)' "$LPP/phase.json" "$1"; }
+lw new-phase --phase P1 --name "Toy loop" --objective "score toy items" --loop >/dev/null 2>&1 || bad "loop probe: new-phase --loop failed"
+lw start-slice P1.DECOMP >/dev/null 2>&1 && lw finish-slice P1.DECOMP --outcome "cut" >/dev/null 2>&1 || bad "loop probe: DECOMP did not finish"
+# (a) the charter gate: no cycle before a signature, no signature over an UNFILLED line, no cycle once the signed file changed.
+s_out=$(lw loop-cycle-start P1 --key a --title A 2>&1); s_rc=$?
+g_out=$(lw loop-sign P1 --words "sign it" 2>&1); g_rc=$?
+lp_fill "$LPC/v1.md" "$LPC/v1.md" 2.0; cp "$LPC/v1.md" "$LPW/v1.signed"
+lw loop-sign P1 --words "sign it" >/dev/null 2>&1 || bad "loop probe: loop-sign of a filled charter failed"
+printf '\nedited after signing\n' >> "$LPC/v1.md"
+e_out=$(lw loop-cycle-start P1 --key a --title A 2>&1); e_rc=$?
+cp "$LPW/v1.signed" "$LPC/v1.md"
+[ "$s_rc" -ne 0 ] && printf '%s\n' "$s_out" | grep -q 'no signed charter' && [ "$g_rc" -ne 0 ] && printf '%s\n' "$g_out" | grep -q 'UNFILLED' \
+  && [ "$e_rc" -ne 0 ] && printf '%s\n' "$e_out" | grep -q 'has changed since it was signed' && [ ! -d "$LPP/slices/P1.C1" ] \
+  && ok "the charter gate: loop-cycle-start refuses an unsigned charter, loop-sign refuses one with UNFILLED left, and loop-cycle-start refuses again once the signed file is edited (no cycle folder made)" \
+  || bad "the charter gate leaked (start rc=$s_rc, sign rc=$g_rc, edited rc=$e_rc) -- $s_out | $g_out | $e_out"
+lgc signed; lw loop-claim P1 >/dev/null 2>&1 || bad "loop probe: loop-claim failed"
+# (b) the budget stop: total_usd 2 at 1 per assumed cycle -- the second close halts budget-total, the phase goes pending,
+# next waits on it, resume is refused, and signing v2 with a higher total lifts it.
+lp_cycle a fail >/dev/null || bad "loop probe: cycle a failed"
+c_out=$(lp_cycle b fail); w_out=$(lw next 2>&1)
+r_out=$(lw loop-control P1 resume --words "go on" 2>&1); r_rc=$?
+lp_fill "$LPC/v1.md" "$LPC/v2.md" 50.0; v_out=$(lw loop-sign P1 --version 2 --words "raise it" 2>&1); v_rc=$?
+if printf '%s\n' "$c_out" | grep -q '^halted reason=budget-total ' && printf '%s\n' "$c_out" | grep -q 'usd_source=assumed' \
+    && printf '%s\n' "$w_out" | grep -q '^WAITING ON OPERATOR: phase P1 is pending' && printf '%s\n' "$w_out" | grep -q '^on_words=sign charter v2 with a higher bound' \
+    && [ "$r_rc" -ne 0 ] && printf '%s\n' "$r_out" | grep -q 'lifted only by a new charter' \
+    && [ "$v_rc" -eq 0 ] && printf '%s\n' "$v_out" | grep -q 'lifted the budget-total halt' \
+    && [ "$(lp_field status)" = in_progress ] && [ "$(lp_field loop.status)" = running ] && lp_tick | grep -qx 'action=start'; then
+  ok "the budget stop: the close that reaches total_usd (assumed cycles) halts budget-total and the phase goes pending, next prints the WAITING block with its on_words, loop-control resume is refused, and loop-sign of v2 with a higher total lifts it (phase in_progress, tick start)"
+else bad "the budget stop went wrong (resume rc=$r_rc, sign v2 rc=$v_rc) -- $c_out | $w_out | $r_out | $v_out"; fi
+# (c) park, don't halt: a parked close leaves the loop running and the tick starts the next; two error closes in a row halt it.
+p_out=$(lp_cycle c parked --question "keep c?" --on-words "requeue c"); p_tick=$(lp_tick)
+lp_cycle d error >/dev/null; f_out=$(lp_cycle e error)
+if printf '%s\n' "$p_out" | grep -q '^parked: key=c' && ! printf '%s\n' "$p_out" | grep -q '^halted' && printf '%s\n' "$p_tick" | grep -qx 'status=running' \
+    && printf '%s\n' "$p_tick" | grep -qx 'action=start' && printf '%s\n' "$f_out" | grep -q '^halted reason=failures ' && [ "$(lp_field loop.halt.reason)" = failures ]; then
+  ok "park, don't halt: a parked close leaves the loop running and the tick says start; max_consecutive_failures (2) error closes in a row halt it with failures"
+else bad "park/failures wrong -- $p_out | $p_tick | $f_out"; fi
+lw loop-control P1 resume --words "go on" >/dev/null 2>&1 || bad "loop probe: resume after failures was refused"
+# (d) the bounded rollup: keep_cycles + 3 cycles, each committed, leave keep_cycles closed folders; the global
+# works/events.jsonl stays flat over the last 3; ## Slices shows the rollup row.
+lgc resumed
+for k in f g; do lp_cycle "$k" fail >/dev/null; lgc "$k"; done
+ev_before=$(wc -l < "$LP/works/events.jsonl" | tr -d ' ')
+for k in h i j; do lp_cycle "$k" fail >/dev/null; lgc "$k"; done
+ev_after=$(wc -l < "$LP/works/events.jsonl" | tr -d ' '); left=$(ls -d "$LPP"/slices/P1.C* 2>/dev/null | wc -l | tr -d ' ')
+if [ "$left" = 2 ] && [ "$ev_before" = "$ev_after" ] && grep -q '^| `C1–C8` | rolled up (8) → `loop/ledger.jsonl`' "$LPP/phase.md" \
+    && [ -d "$LPP/slices/P1.C9" ] && [ -d "$LPP/slices/P1.C10" ]; then
+  ok "the bounded rollup: after keep_cycles + 3 committed cycles exactly keep_cycles (2) closed cycle folders remain, the global events.jsonl line count is flat over the last 3 cycles ($ev_after), and ## Slices shows the C1–C8 rollup row"
+else bad "the rollup did not bound the state (folders=$left, events $ev_before -> $ev_after) -- $(grep -n 'rolled' "$LPP/phase.md")"; fi
+# (e) the tick's resume states with a cycle in flight: a verdict on disk -> close; a plan with no span -> dispatch;
+# a span whose session is a live process in the registry -> wait; the same once it is dead -> dispatch attempt=2.
+k_out=$(lw loop-cycle-start P1 --key k --title "item k" 2>&1); ksid=$(printf '%s\n' "$k_out" | sed -n 's/^cycle=//p')
+t_plan=$(lp_tick); printf 'plan\n' > "$LPP/slices/$ksid/plan.md"; t_disp=$(lp_tick)
+sleep 300 & lp_pid=$!
+python3 - "$LPCC" "$LPX" "$lp_pid" "$ksid" "$LP" <<'PY'
+import json, os, subprocess, sys, time
+cc, proj, pid, sid, root = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], sys.argv[5]
+start = " ".join(subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True,
+                                env={**os.environ, "LC_ALL": "C", "TZ": "UTC"}).stdout.split())
+json.dump({"pid": pid, "sessionId": "sess-live", "cwd": root, "procStart": start}, open(f"{cc}/sessions/{pid}.json", "w"))
+d = f"{proj}/sess-live/subagents"; os.makedirs(d, exist_ok=True)
+t = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+open(f"{d}/agent-a1.jsonl", "w").write(json.dumps({"type": "user", "isSidechain": True, "timestamp": t,
+    "message": {"role": "user", "content": f"slice: {sid}\nslice folder: x\n"}}) + "\n")
+json.dump({"agentType": "slice-executor", "description": sid}, open(f"{d}/agent-a1.meta.json", "w"))
+PY
+t_wait=$(lp_tick); kill "$lp_pid" 2>/dev/null; wait "$lp_pid" 2>/dev/null; t_dead=$(lp_tick)
+printf -- '- status: done\n- item_verdict: fail\n' > "$LPP/slices/$ksid/result.md"; t_close=$(lp_tick)
+if [ -n "$ksid" ] && printf '%s\n' "$t_plan" | grep -qx 'action=plan' && printf '%s\n' "$t_disp" | grep -qx 'action=dispatch' \
+    && printf '%s\n' "$t_disp" | grep -qx 'attempt=1' && printf '%s\n' "$t_wait" | grep -qx 'action=wait' && printf '%s\n' "$t_wait" | grep -qx 'span=a1' \
+    && printf '%s\n' "$t_dead" | grep -qx 'action=dispatch' && printf '%s\n' "$t_dead" | grep -qx 'attempt=2' && printf '%s\n' "$t_close" | grep -qx 'action=close'; then
+  ok "the tick resumes from disk with a cycle in flight: no plan.md -> plan, a plan with no span -> dispatch attempt=1, a span whose session is a live process -> wait, the same once it is killed -> dispatch attempt=2, a verdict in result.md -> close"
+else bad "the tick's resume states are wrong -- plan: $t_plan | dispatch: $t_disp | wait: $t_wait | dead: $t_dead | close: $t_close"; fi
+lw validate >/dev/null 2>&1 && ok "validate passes on the loop install after every probe" || bad "validate failed on the loop install -- $(lw validate 2>&1 | tail -5)"
+# the run-loop core stays a do-* sized core: <= 16 KB, its resume line inside the first 16 KB.
+python3 - "$REPO_ROOT/payload/claude/skills/run-loop/SKILL.md" <<'PY' && ok "run-loop/SKILL.md stays <= 16 KB with its resume line inside the first 16 KB" || bad "run-loop/SKILL.md is over 16 KB or its resume line moved past the first 16 KB"
+import sys
+raw = open(sys.argv[1], "rb").read()
+assert len(raw) <= 16384, len(raw)
+line = "**Resume (after a compaction or a restart):**".encode()
+i = raw.find(line)
+assert i >= 0 and raw.find(b"\n", i) <= 16384, i
+PY
+echo "loop test runtime: $(( $(date +%s) - lp_t0 ))s"
 
 # ---------------------------------------------------------------------------
 echo

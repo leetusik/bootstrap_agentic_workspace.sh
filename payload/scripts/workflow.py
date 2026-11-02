@@ -15633,7 +15633,9 @@ def loop_validate(p: dict, errors: list, warnings: list) -> None:
 # `loop/control.json` and apply at its next tick.
 LOOP_HALT_REASONS = ("failures", "cycle-over-budget", "budget-total", "max-cycles", "limit", "spend", "charter", "checkpoint", "other")
 LOOP_HALT_NEEDS_CHARTER = ("budget-total", "max-cycles")  # resume refuses these: a new charter version lifts them
-LOOP_CONTROL_HALT_REASONS = ("spend", "limit", "charter", "other")  # what `loop-control halt` records
+LOOP_TICK_HALT_REASONS = ("charter", "budget-total", "max-cycles", "limit")  # every reason `loop-tick` prints with action=halt
+LOOP_CONTROL_HALT_REASONS = LOOP_TICK_HALT_REASONS + ("spend", "other")  # what `loop-control halt` records, verbatim (P50.S5)
+assert set(LOOP_CONTROL_HALT_REASONS) <= set(LOOP_HALT_REASONS)  # validate, next, loop-status and loop-sign read one set
 LOOP_CONTROL_ACTIONS = ("pause", "resume", "stop", "halt", "apply")
 LOOP_CONTROL_QUEUEABLE = ("pause", "resume", "stop")  # the operator's words that cross streams
 LOOP_CONTROL_FILE = "control.json"
@@ -17796,11 +17798,11 @@ def main(argv=None) -> int:
     p.add_argument("--transcripts", action="append", metavar="DIR", help="read spans from this projects/<slug> directory (repeatable)")
     p.set_defaults(func=loop_cycle_dispatch)
 
-    p = sub.add_parser("loop-control", help="The operator's words to a loop: pause (running|signed -> paused: no new start, the cycle in flight may close), resume (paused|halted -> running, or signed before any cycle; --words required from halted; refused for a budget-total or max-cycles halt, which a new charter version lifts; clears the halt, resets consecutive_failures after a failures halt, the phase back to in_progress), stop (--words required: any status -> stopped, after which the REVIEW is selectable), halt (the orchestrator records a tick halt or an uncovered spend: --reason spend|limit|charter|other [--detail D]; the phase goes pending), apply (applies loop/control.json's queued requests in order, then empties it). From another stream pause, resume and stop queue in the loop worktree's loop/control.json for its next tick. Every action but stop and pause refuses a caller that is not the driver")
+    p = sub.add_parser("loop-control", help="The operator's words to a loop: pause (running|signed -> paused: no new start, the cycle in flight may close), resume (paused|halted -> running, or signed before any cycle; --words required from halted; refused for a budget-total or max-cycles halt, which a new charter version lifts; clears the halt, resets consecutive_failures after a failures halt, the phase back to in_progress), stop (--words required: any status -> stopped, after which the REVIEW is selectable), halt (the orchestrator records a tick halt verbatim or an uncovered spend: --reason charter|budget-total|max-cycles|limit|spend|other [--detail D]; the one halt writer a close uses: the phase goes pending, stop_kind limit for limit, budget-total and max-cycles lifted only by loop-sign of a new version), apply (applies loop/control.json's queued requests in order, then empties it). From another stream pause, resume and stop queue in the loop worktree's loop/control.json for its next tick. Every action but stop and pause refuses a caller that is not the driver")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("action", choices=LOOP_CONTROL_ACTIONS)
     p.add_argument("--words", help="the operator's literal words, verbatim (stop; resume from halted; recorded for pause)")
-    p.add_argument("--reason", help="halt only: spend | limit | charter | other")
+    p.add_argument("--reason", help="halt only: the tick's reason verbatim (charter | budget-total | max-cycles | limit), or spend | other")
     p.add_argument("--detail", help="halt only: one line saying what happened")
     p.set_defaults(func=loop_control)
 
