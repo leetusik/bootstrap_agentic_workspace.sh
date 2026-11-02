@@ -17,6 +17,9 @@ slice: <P>.C<k>
 
 ## One cycle
 <the charter's `## One cycle` procedure: what to run, in order, for this stage>
+Run each command plainly, one per Bash call: never chain with `;`, `&&`, `||`, `|` or `$(…)`, and read a
+command's exit status from the tool's result, not from `echo $?`. A compound command can be denied where its
+plain form is allowed, and a denial leaves the cycle no verdict.
 
 ## Forbidden
 <the charter's `## Forbidden` list, verbatim>

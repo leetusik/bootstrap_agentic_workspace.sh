@@ -19,13 +19,30 @@ disable-model-invocation: true
 - **The forbidden list rides in every plan**, verbatim from the signed charter. The charter changes only through a new version the operator signs (`loop-sign`).
 - **Cycle slices never write `phase.md`** (bar `## Now`). The loop's memory is `loop/` (queue, ledger, dead, survivors, parked).
 
-**Resume (after a compaction or a restart):** the resume card's loop line and `loop-tick <P>` say what to do; run the tick and act on it. The tick prints `wait` for a live span: never re-dispatch it. After a restart, run `/loop /run-loop <P>` again: `loop-claim` takes over a dead driver and refuses while another live session drives the loop.
+**Resume (after a compaction or a restart):** the resume card's loop line and `loop-tick <P>` say what to do; run the tick and act on it. The tick prints `wait` for a live span: never re-dispatch it. After a restart, run `/loop /run-loop <P>` again: `loop-claim` takes over a dead driver and refuses while another live session drives the loop. Which session is alive comes from Claude Code's internal session registry; without it the guards weaken (*The driver's environment*).
 
 ## When it applies
 
 A loop phase (`next` prints a `loop=` line) whose charter is signed (until it is, the tick prints `sign`) and whose setup slices are done (until they are, `setup`). Start it in the loop's own session, and in its worktree when the operator asked for one: `/loop /run-loop <P>` for dynamic pacing, or `/run-loop <P>` to run ticks back to back until a wait or a halt. If the Skill tool refuses an invocation that `/loop` fired, read this SKILL.md and follow it: the operator's `/loop` is the invocation.
 
 The loop's DECOMP (the charter draft, the setup slices) and its final REVIEW run by `do-whole-phase` / `do-next-slice`; this skill runs everything in between.
+
+## The driver's environment
+
+**A headless driver** (`claude -p "/run-loop <P>"` from cron, launchd or a script) runs in the loop's own checkout (its worktree, when it has one), like any driver, and no one answers its permission prompts:
+
+- In a directory Claude Code has not trusted, the install's `.claude/settings.json` allow list is ignored (it prints `Ignoring … permissions.allow entries … not been trusted`) and only `--allowedTools` applies. Trust the directory once in an interactive `claude` there, or pass a list that covers the cycle's own commands, for example: `--permission-mode acceptEdits --allowedTools 'Bash(python3 scripts/workflow.py:*)' 'Bash(git:*)' '<the product's cycle command, e.g. Bash(python3 toy/*)>' Read Write Edit Glob Grep Agent`. Never `--dangerously-skip-permissions`.
+- The cycle plan asks the executor for plain commands (`reference/cycle-plan.md`): one per Bash call, nothing chained. A compound command can be denied where its plain form is allowed.
+- A denied call the executor cannot work around leaves no item verdict, so the cycle closes `error`, by design: it counts toward `max_consecutive_failures` and toward `max_cycles` like any closed cycle, so a denial that repeats halts the loop (`failures`) instead of spinning. The two rules above avoid it; never widen the bounds to absorb it.
+
+**The session registry.** `loop-claim`, the not-driver refusal, span liveness and the dispatch hold-off identify sessions through Claude Code's session registry, `${CLAUDE_CONFIG_DIR:-~/.claude}/sessions/<pid>.json`, found up the caller's parent-process chain. That file is internal to Claude Code and undocumented: the engine only reads it, and a Claude Code release may change or drop it. `CLAUDE_CONFIG_DIR` also locates the transcripts the meter and the span check read. Without the registry (a plain shell, CI, a changed layout), the loop degrades:
+
+- a claim records no session (`driver=none`) and is never alive: any session's `loop-claim` replaces it;
+- two callers with no session count as the same driver, so nothing keeps two plain shells apart;
+- a span is live while its transcript changed within `cycle_timeout_minutes`, not by its session's process;
+- `loop-cycle-dispatch` records no dispatcher, so only its 300 s window guards a double dispatch: past it, a dispatch with no span on disk is re-dispatched.
+
+So drive a loop from one Claude Code session only. `loop-claim` printing `driver=none (no Claude Code session …)` from inside a session means the registry was not found (check it again after a Claude Code upgrade).
 
 ## One tick
 

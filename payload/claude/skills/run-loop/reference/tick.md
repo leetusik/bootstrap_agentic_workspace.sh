@@ -7,7 +7,7 @@
 | `action=` | What you run |
 |---|---|
 | `apply-control` | `loop-control <P> apply`: applies the requests other sessions queued in `loop/control.json`. |
-| `claim` | `loop-claim <P>`: this session becomes the driver (it takes over a dead driver). |
+| `claim` | `loop-claim <P>`: this session becomes the driver (it takes over a dead driver). The session and its liveness come from Claude Code's internal session registry: without it the claim is `driver=none` and never alive (SKILL.md, *The driver's environment*). |
 | `not-driver` | Nothing: another live session drives this loop. Keep the heartbeat (`wake_in` 1,800 s) and relay the operator's words as control requests. |
 | `start` (`stage=`, `item=<key\|author>`) | `loop-cycle-start <P>`: it creates `<P>.C<k>`, takes the queue head and holds the lease. On `item=author`: `loop-cycle-start <P> --key <key> --title "…" [--payload '<json>']`, an item you authored (`reference/cycle-plan.md`). A `footprint=` line means an earlier cycle of this item closed `error` leaving writes on `outputs`: the plan gets `## Prior footprint`. Commit the start with the next close, never alone. |
 | `plan` (`cycle=`, `footprint=`) | Write the cycle's `plan.md` (`reference/cycle-plan.md`; the forbidden list verbatim, `## Prior footprint` on a `footprint=` line), with its `## Dispatch` from `executor-route <cycle>`. |
