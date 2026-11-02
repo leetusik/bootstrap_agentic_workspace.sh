@@ -4,6 +4,15 @@
 # wanted: `union` is a built-in git merge driver and needs no per-clone config.
 works/events.jsonl merge=union
 
+# A loop phase's strictly append-only files take the same rule (its own events
+# file is pruned only by the rollup, on the loop's own stream). The rewritten
+# ones (queue.jsonl, parked.jsonl, control.json) never take union.
+works/phases/**/loop/ledger.jsonl merge=union
+works/phases/**/loop/events.jsonl merge=union
+works/phases/**/loop/dead.jsonl merge=union
+works/phases/**/loop/survivors.jsonl merge=union
+works/phases/**/loop/checkpoints.jsonl merge=union
+
 # The files below are GENERATED -- never hand-authored -- from the folders that
 # hold the real truth (works/phases/**, works/deferred/**, docs/versions/**):
 #

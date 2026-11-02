@@ -291,6 +291,15 @@ def _atomic_write(p, text: str, executable: bool = False) -> None:
 CI_WORKFLOW_PATH = ".github/workflows/workspace-ci.yml"
 GITATTRIBUTES_PATH = ".gitattributes"
 GITATTRIBUTES_MERGE_LINE = "works/events.jsonl merge=union"
+# A loop phase's append-only files (workspace v91): line-merged the same way, so --update brings them to a
+# .gitattributes that already holds the events rule.
+GITATTRIBUTES_LOOP_LINES = tuple(f"works/phases/**/loop/{name} merge=union"
+                                 for name in ("ledger.jsonl", "events.jsonl", "dead.jsonl", "survivors.jsonl", "checkpoints.jsonl"))
+GITATTRIBUTES_LOOP_NOTE = (
+    "\n# Added by the agentic workspace: a loop phase's append-only files merge by\n"
+    "# union too (its events file is pruned only by the rollup, on the loop's own stream);\n"
+    "# the rewritten ones (queue.jsonl, parked.jsonl, control.json) never take union.\n"
+)
 GITATTRIBUTES_APPEND_NOTE = (
     "\n# Added by the agentic workspace: works/events.jsonl is an append-only log, so\n"
     "# both sides of a merge are always wanted (`union` is a built-in git merge driver\n"
@@ -310,7 +319,8 @@ def _gitattributes_action() -> str:
         existing = p.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return "unchanged"  # unreadable/binary -- never touch it
-    if any(ln.strip() == GITATTRIBUTES_MERGE_LINE for ln in existing.splitlines()):
+    have = {ln.strip() for ln in existing.splitlines()}
+    if GITATTRIBUTES_MERGE_LINE in have and all(line in have for line in GITATTRIBUTES_LOOP_LINES):
         return "unchanged"
     return "merge"
 
@@ -329,7 +339,14 @@ def _apply_gitattributes(text: str, action: str) -> None:
         return
     existing = p.read_text(encoding="utf-8")
     sep = "" if (not existing or existing.endswith("\n")) else "\n"
-    _atomic_write(p, existing + sep + _nested_engine_cmd(GITATTRIBUTES_APPEND_NOTE) + GITATTRIBUTES_MERGE_LINE + "\n")
+    have = {ln.strip() for ln in existing.splitlines()}
+    add = ""
+    if GITATTRIBUTES_MERGE_LINE not in have:
+        add += _nested_engine_cmd(GITATTRIBUTES_APPEND_NOTE) + GITATTRIBUTES_MERGE_LINE + "\n"
+    missing = [line for line in GITATTRIBUTES_LOOP_LINES if line not in have]
+    if missing:
+        add += GITATTRIBUTES_LOOP_NOTE + "".join(line + "\n" for line in missing)
+    _atomic_write(p, existing + sep + add)
 
 
 def emit_policy_files(ci: bool = True) -> None:
