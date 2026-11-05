@@ -53,5 +53,5 @@ Then print the walkthrough lines: each PR's URL, and what to read on GitHub (the
 
 - **Ready runs at the close** (`reference/close.md`), on the operator's `accept` or `close`, never before. A draft's names are plain text, never `@`: it notifies nobody.
 - **Never merge a team repo's PR**; the close leaves it Ready and prints the reviewer lines. A solo repo merges by its own custom: in a repo that lands locally, never GitHub's merge button.
-- **A phase stacked on an open PR** (`pr_stack=`): `reference/stack.md`. **Team changes after the phase is done**: `reference/reopen.md`.
+- **A phase stacked on an open PR** (`pr_stack=`): `reference/stack.md`. **Changes after the phase is done**: `reference/reopen.md`.
 - **Review replies** stay at most five lines and link the fixing commit.

@@ -4773,6 +4773,15 @@ checks = [
     ([L[".claude/skills/pr/reference/reopen.md"]], ["**One rule.**", "`git -C <host> switch <default>`", "No worktree is cut or claimed", "`git worktree add <sibling> <branch>`",
                                                     "**At root, commit the reopen with the fix round's first commit**"], ["## Team-reported changes after the phase is done"]),
     ([L["scripts/workflow.py"]], ["a change request (the team's or the operator's) reopens it on the PR branch", "--note is empty; say whose change request it is and what it asks"], ["a team's change request reopens it in its own worktree", "say what the team asked for"]),
+    # P52 F4: the reopen names both reporters everywhere it ships (help, docstring, re-review, pr core, review.md, READMEs).
+    ([L["scripts/workflow.py"]], ["(a change request after the phase was done, the team's or the operator's)", 'help="whose change request it is and what it asks: \\"team-reported: <what>\\" or \\"operator-reported: <what>\\" (recorded as the review note'],
+     ["a team asked for changes after the phase was done", "what the team asked for:", "a team's new change request becomes a new phase", "# A team asks for changes after the phase is done"]),
+    ([(root / "payload/claude/agents/slice-executor.md").read_text()], ["(its review note reads `team-reported: …` or `operator-reported: …`): the request is the claims to verify"],
+     ["(its review note reads `team-reported: …`): the team's review comments"]),
+    ([sk("pr")], ["**Changes after the phase is done**: `reference/reopen.md`"], ["**Team changes after the phase is done**"]),
+    (both("review.md"), ["or a change request after a reopen, the team's or the operator's)"], ["or a team's review after a reopen)"]),
+    ([(root / "README.en.md").read_text(encoding="utf-8")], ["(the team's review, or your own) reopens the same"], ["fix\n   slice in the same phase"]),
+    ([(root / "README.md").read_text(encoding="utf-8")], ["(팀 리뷰든 내 요청이든) 같은 phase를 열린 PR 위에서 다시 엽니다"], ["같은 phase의 fix slice"]),
     ([sk("archive-phase")], ["**A phase with an open PR is held too:**"], []),
     ([sk("create-phase")], ["**One question rides on that confirmation, never a stop of its own:**"], []),
     ([flat(sk("parallel-phase"))], ["### A reopened phase — a change request on its open PR", "`--note \"operator-reported: <what>\"`", "Then `pr-sync <P>` there (the default branch's record is stale)"], ["### A reopened phase — a team's changes on its open PR"]),
@@ -4995,11 +5004,13 @@ else bad "the nested reopen wrong (rc $q_rorc/$q_wsrc/$q_rprc) -- $q_ro / $(prin
   qw parallel-merge-finish && qn add -A && qn commit -qm "chore: integrated"; } > "$QW/merge.txt" 2>&1
 q_st=$(qw reopen-phase P1 --note "team-reported: again" 2>&1); q_strc=$?
 { qw parallel-teardown P1 && qn add -A && qn commit -qm "chore: teardown" && qn branch phase/P1-toy; } > "$QW/teardown.txt" 2>&1
-q_r2=$(qw reopen-phase P1 --note "team-reported: again" 2>&1); q_r2rc=$?
+q_r2=$(qw reopen-phase P1 --note "operator-reported: again" 2>&1); q_r2rc=$?
 if [ "$(qj P1 status)" != null ] && [ "$q_strc" -ne 0 ] && printf '%s\n' "$q_st" | grep -q 'parallel-teardown P1 first' \
     && [ "$q_r2rc" -eq 0 ] && printf '%s\n' "$q_r2" | grep -qx 'branch=phase/P1-toy-reopen2' && printf '%s\n' "$q_r2" | grep -q '^reopened=P1 branch=host:feat/one ' \
+    && printf '%s\n' "$q_r2" | grep -q "^next: .* -- read the operator's request (the reopen note 'operator-reported: again', plus any PR comment or failing check it points at), cut fix slices" \
+    && ! printf '%s\n' "$q_r2" | grep -q "team's review" && printf '%s\n' "$q_ro" | grep -q "^next: .* -- read the team's review (gh pr view <n> --json reviews,comments), cut fix slices" \
     && [ "$q_m0" = "$(qg rev-parse main)" ] && ! git -C "$QH" merge-base --is-ancestor feat/one main; then
-  ok "after the integration a still-stamped pair refuses a second reopen (parallel-teardown first); after the teardown, with the old phase branch still present, the second reopen cuts phase/P1-toy-reopen2; host main never moved and feat/one is not in it"
+  ok "after the integration a still-stamped pair refuses a second reopen (parallel-teardown first); after the teardown, with the old phase branch still present, the second reopen (operator-reported) cuts phase/P1-toy-reopen2 and its next: line reads the operator's request, never the team's review (the first, team-reported, reads the team's); host main never moved and feat/one is not in it"
 else bad "the still-stamped refusal or -reopen2 wrong (rc $q_strc/$q_r2rc) -- $q_st / $q_r2 / $(tail -3 "$QW/merge.txt") / $(tail -3 "$QW/teardown.txt")"; fi
 # (10) root: pr-team reads unknown with no origin and no commits; the reopen refuses --worktree, a checkout off the PR branch and a
 # side branch, then runs in place on feat/toy; with the reopen committed beside the fix, phase-scope ends at the second pass.

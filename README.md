@@ -203,10 +203,10 @@ git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하�
    컨벤션대로 들어갑니다.
 4. `/review-phase`: `phase-scope`가 기록해 둔 기준점부터 **호스트** diff를 읽습니다(`workflow/`는
    보지 않습니다).
-5. 리뷰가 통과하면 `pr` 스킬이 phase의 draft PR을 바로 엽니다(멈춤도, 따로 할 말도 없습니다). 게이트가 필요한 phase라면 GitHub에서 draft를 읽고 `accept` 한 마디로 마칩니다. PR에는 제품 커밋만 들어가고, 워크플로우 경로나 phase/slice
+5. 리뷰가 통과하면 `pr` 스킬이 phase의 draft PR을 바로 엽니다(멈춤도, 따로 할 말도 없습니다). 게이트가 필요한 phase라면 GitHub에서 draft를 읽고 `accept` 한 마디로 마칩니다. 그러면 PR을 Ready로 바꾸고, 혼자 쓰는 repo라면 merge까지 합니다(팀 repo의 merge는 팀이 합니다). PR에는 제품 커밋만 들어가고, 워크플로우 경로나 phase/slice
    ID는 없습니다.
-6. 팀 리뷰에서 수정 요청이 오면 fix slice로 만들어(`/create-phase` 또는 같은 phase의 fix slice)
-   3번부터 다시 진행합니다.
+6. phase가 끝난 뒤 수정 요청이 오면(팀 리뷰든 내 요청이든) 같은 phase를 열린 PR 위에서 다시 엽니다
+   (`reopen-phase`). 3번부터 다시 진행하고, 수정은 같은 PR에 push합니다. 두 번째 PR이나 force-push는 없습니다.
 
 **업데이트.** `/update-workspace`, 또는
 `sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo --update`(먼저

@@ -318,10 +318,11 @@ file is left byte for byte as it was.
    convention, with no phase or slice IDs in the message, and the workflow state goes to
    `workflow/` in this workspace's convention.
 4. `/review-phase`. `phase-scope` reads the **host** diff from the recorded base, never `workflow/`.
-5. When the review passes, the `pr` skill opens the phase's draft PR, with no stop and no word to say; on a gated phase you read the draft on GitHub and one `accept` clears the gate. It carries only product commits: no workflow paths and no
+5. When the review passes, the `pr` skill opens the phase's draft PR, with no stop and no word to say; on a gated phase you read the draft on GitHub and one `accept` clears the gate and closes the PR: Ready, then the merge in a repo that is yours alone (a team repo's merge stays the team's). It carries only product commits: no workflow paths and no
    phase or slice IDs.
-6. When the team's review asks for changes, turn them into fix slices (`/create-phase`, or a fix
-   slice in the same phase) and repeat from step 3.
+6. A change request after the phase is done (the team's review, or your own) reopens the same
+   phase on its open PR (`reopen-phase`); repeat from step 3, and the fix is pushed to the same PR,
+   never a second PR or a force-push.
 
 **Updating.** `/update-workspace`, or
 `sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo --update` (preview with

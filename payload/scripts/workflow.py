@@ -6763,8 +6763,9 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
 
 
 # --- reopen a done phase whose PR is still open (P52) -----------------------------------------------
-# A team asks for changes after the phase is done and its PR is open (a team repo leaves it open at the
-# close). The operator's word reopens the SAME phase: `in_progress` + `changes_requested`, a required gate
+# A change request after the phase is done and its PR is open, the team's (a team repo leaves the PR open at
+# the close) or the operator's (a waived gate's close, a red CI, a request after Ready). The operator's word
+# reopens the SAME phase: `in_progress` + `changes_requested`, a required gate
 # re-opened, and its fix round runs on the existing PR branch -- never a second PR, never a force-push.
 # Nested: its own worktree pair, the host worktree ON that branch, so a phase running at the time never
 # waits. At root the PR branch carries the phase's record itself, so the reopen runs IN PLACE in the
@@ -6824,7 +6825,19 @@ def _reopen_apply(pdir: Path, data: dict, note: str) -> dict:
             gate = "waived"
     data["status"] = "in_progress"
     driven = _drive_review_slices(pdir, "changes_requested")
-    return {"old_status": old_status, "gate": gate, "slices": driven}
+    return {"old_status": old_status, "gate": gate, "slices": driven, "note": note}
+
+
+def _reopen_read_hint(note: str) -> str:
+    """What the fix round reads first, by whose request the reopen note says it is (P52 F4)."""
+    who = note.strip().lower()
+    team = "the team's review (gh pr view <n> --json reviews,comments)"
+    operator = f"the operator's request (the reopen note {note.strip()!r}, plus any PR comment or failing check it points at)"
+    if who.startswith("team-reported:"):
+        return f"read {team}"
+    if who.startswith("operator-reported:"):
+        return f"read {operator}"
+    return "read the change request: a team's review (gh pr view <n> --json reviews,comments), or an operator's request (the reopen note, plus any PR comment or failing check it points at)"
 
 
 def _reopen_report(phase_id: str, label: str, where, outcome: dict) -> None:
@@ -6834,15 +6847,16 @@ def _reopen_report(phase_id: str, label: str, where, outcome: dict) -> None:
     print(f"reopened={phase_id} branch={label} worktree={where}")
     print(f"phase {phase_id}: {outcome['old_status']} -> in_progress, review changes_requested ({slices}); {gate}; "
           f"completed_at, the pr block and the doc-consolidation state kept")
-    print(f"next: the fix round in that checkout, on {label} -- read the team's review (gh pr view <n> --json reviews,comments), cut fix slices "
+    print(f"next: the fix round in that checkout, on {label} -- {_reopen_read_hint(outcome.get('note') or '')}, cut fix slices "
           f"({WORKFLOW_CMD} new-slice --phase {phase_id} --slice {phase_id}.F<n> --kind fix), then the re-review; at its would-pass push the fixes "
           f"(git push, never --force) and replace the body (pr-check, then gh pr edit <n> --body-file <body>), never a second PR; then the gate if "
           f"required and the close again: the pr skill's reference/reopen.md")
 
 
 def cmd_reopen_phase(args: argparse.Namespace) -> None:
-    """`reopen-phase <P> --note "team-reported: <what>" [--slug <s>] [--worktree <path>] [--branch <b>]
-    [--host-branch <name>]` (P52): reopen a DONE phase whose PR is still open, on the operator's word.
+    """`reopen-phase <P> --note "team-reported: <what>"|"operator-reported: <what>" [--slug <s>] [--worktree <path>] [--branch <b>]
+    [--host-branch <name>]` (P52): reopen a DONE phase whose PR is still open, on the operator's word, for
+    a change request after the pass, the team's or the operator's.
 
     Guards, all before any write, each naming itself: the phase is active (an archived one is refused as
     archived), `done`, has an open PR (`_pr_open_entries`: every PR merged is refused, naming pr-sync),
@@ -6863,7 +6877,7 @@ def cmd_reopen_phase(args: argparse.Namespace) -> None:
     if not (pdir / "phase.json").exists():
         if phase_id in archived_phase_ids():
             _reopen_refuse(phase_id, f"{phase_id} is archived; a reopen works on an active phase only (an archived phase's PR merged, or "
-                                     f"its hold was forced) -- a team's new change request becomes a new phase (create-phase)")
+                                     f"its hold was forced) -- a new change request (the team's or the operator's) becomes a new phase (create-phase)")
         raise SystemExit(f"phase not found: {phase_id}")
     data = read_json(pdir / "phase.json")
     if data.get("status") != "done":
@@ -20070,9 +20084,9 @@ def main(argv=None) -> int:
     p.add_argument("--repo-base", action="append", default=None, dest="repo_base", metavar="NAME=REF", help="multi-repo host only, repeatable: the ref repo NAME's branch starts from (default: its registry default_branch as a local branch; never fetched); NAME must also be given with --repo")
     p.set_defaults(func=parallel_start)
 
-    p = sub.add_parser("reopen-phase", help="Reopen a DONE phase whose PR is still open, on the operator's word (a team asked for changes after the phase was done): status in_progress, review changes_requested with --note, its REVIEW slice changes_requested, a required acceptance gate re-opened (a waived one stays waived); completed_at, the pr block and the doc-consolidation state kept. Nested: the phase's own worktree pair, the host worktree ON its existing PR branch (reused, never a second PR), the nested side on phase/P<N>-<slug> (or -reopen<k> when taken), the verdict in the same stamp commit; a multi-repo host's set takes each repo's open PR branch. Root: in place, in the checkout that holds the PR branch (it carries the phase's record), with no worktree and no commit. Refused, nothing written: an archived phase, a phase not done, every PR merged (pr-sync first), an empty --note, a parallel stream, a git operation in progress, a PR branch checked out elsewhere (the host's main checkout: switch it off). Prints reopened=<P> branch=<label> worktree=<path>. Never pushes, merges or calls gh. Orchestrator command -- executors never run it")
+    p = sub.add_parser("reopen-phase", help="Reopen a DONE phase whose PR is still open, on the operator's word (a change request after the phase was done, the team's or the operator's): status in_progress, review changes_requested with --note, its REVIEW slice changes_requested, a required acceptance gate re-opened (a waived one stays waived); completed_at, the pr block and the doc-consolidation state kept. Nested: the phase's own worktree pair, the host worktree ON its existing PR branch (reused, never a second PR), the nested side on phase/P<N>-<slug> (or -reopen<k> when taken), the verdict in the same stamp commit; a multi-repo host's set takes each repo's open PR branch. Root: in place, in the checkout that holds the PR branch (it carries the phase's record), with no worktree and no commit. Refused, nothing written: an archived phase, a phase not done, every PR merged (pr-sync first), an empty --note, a parallel stream, a git operation in progress, a PR branch checked out elsewhere (the host's main checkout: switch it off). Prints reopened=<P> branch=<label> worktree=<path>. Never pushes, merges or calls gh. Orchestrator command -- executors never run it")
     p.add_argument("phase", help=PHASE_ARG_HELP)
-    p.add_argument("--note", required=True, help="what the team asked for: \"team-reported: <what>\" (recorded as the review note; must not be empty)")
+    p.add_argument("--note", required=True, help="whose change request it is and what it asks: \"team-reported: <what>\" or \"operator-reported: <what>\" (recorded as the review note; must not be empty)")
     p.add_argument("--slug", default=None, help="nested only: the nested phase branch's slug (default: the phase name's; phase/<phase>-<slug>, with -reopen<k> appended when that branch exists)")
     p.add_argument("--worktree", default=None, help="nested only: the host worktree's path (default: <host>/.claude/worktrees/P<N>-<slug>)")
     p.add_argument("--branch", default=None, help="the open PR branch that takes the fixes, when the phase has several open PRs in one repo (a split) and no single top of the stack")
