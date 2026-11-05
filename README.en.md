@@ -247,6 +247,11 @@ directory with no flag and the installer `git init`s it as the host repo and put
 it. If collaborators should receive the workspace through the repo, install with `--at-root`
 instead. Parallel worktrees work in a nested install too (see [Phase worktrees](#phase-worktrees-on-request)).
 
+**Choose nested for any repo whose PRs must stay clean.** Under the PR rule every phase opens a
+draft PR. An at-root install's PR carries the workspace's state (`works/` and the workspace's
+`docs/` files), which GitHub folds as generated; a nested install's state never enters the PR at
+all, so pick nested for a team repo or any repo whose PRs must show product changes only.
+
 **Install.** Point the installer at the host repo's root (a git work tree):
 
 ```sh

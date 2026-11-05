@@ -31,3 +31,14 @@ works/phases/**/loop/checkpoints.jsonl merge=union
 #
 # (or `python3 scripts/workflow.py rebuild`), which rewrites all of them from the
 # merged folders and reports what still needs post-merge doc consolidation.
+
+# The workspace's machine-written state is marked GENERATED for GitHub: it folds
+# these files in a pull request's diff and leaves them out of language stats, and
+# the PR rule's size count (`pr-check`) skips them. Only the workspace's own paths
+# are listed, so a product's own docs/ files stay visible. A nested install never
+# puts this state in a host PR at all (it lives in workflow/, its own repo), so
+# there these lines are harmless.
+works/** linguist-generated=true
+docs/versions/** linguist-generated=true
+docs/current/** linguist-generated=true
+docs/index.json linguist-generated=true

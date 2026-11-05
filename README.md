@@ -129,6 +129,11 @@ tracked 파일도, CI 파일도, `.gitattributes`도, `docs/`도 없고, PR diff
 `workflow/`를 안에 둡니다. 협업하는 사람이 워크스페이스를 저장소에서 받아야 한다면 `--at-root`로
 설치하세요. 병렬 worktree는 nested 설치에서도 동작합니다([phase별 worktree](#phase별-worktree-요청할-때만) 참고).
 
+**PR을 깨끗하게 지켜야 하는 저장소라면 nested를 고르세요.** PR 규칙에서는 phase마다 draft PR이
+열립니다. at-root 설치의 PR에는 워크스페이스 상태(`works/`, `docs/`의 워크스페이스 파일)가 함께
+실리고, GitHub는 이를 generated 파일로 접어서 보여 줍니다. 팀 저장소처럼 PR에 워크스페이스
+파일이 섞이면 안 되는 곳에서는 nested 설치를 쓰세요. nested의 상태는 PR에 아예 들어가지 않습니다.
+
 **설치.** 호스트 저장소의 루트(git work tree)를 지정합니다.
 
 ```sh

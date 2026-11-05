@@ -300,6 +300,15 @@ GITATTRIBUTES_LOOP_NOTE = (
     "# union too (its events file is pruned only by the rollup, on the loop's own stream);\n"
     "# the rewritten ones (queue.jsonl, parked.jsonl, control.json) never take union.\n"
 )
+# The at-root workspace's machine-written state, marked generated (PR rule v1): GitHub folds it in a PR
+# diff and pr-check's size count skips it. Line-merged like the loop lines, so --update brings it too.
+GITATTRIBUTES_GENERATED_LINES = tuple(f"{path} linguist-generated=true"
+                                      for path in ("works/**", "docs/versions/**", "docs/current/**", "docs/index.json"))
+GITATTRIBUTES_GENERATED_NOTE = (
+    "\n# Added by the agentic workspace: its machine-written state is marked generated, so\n"
+    "# GitHub folds it in a pull request's diff and the PR rule's size count (pr-check)\n"
+    "# skips it. Only the workspace's own paths: a product's own docs/ files stay visible.\n"
+)
 GITATTRIBUTES_APPEND_NOTE = (
     "\n# Added by the agentic workspace: works/events.jsonl is an append-only log, so\n"
     "# both sides of a merge are always wanted (`union` is a built-in git merge driver\n"
@@ -320,7 +329,7 @@ def _gitattributes_action() -> str:
     except (OSError, UnicodeDecodeError):
         return "unchanged"  # unreadable/binary -- never touch it
     have = {ln.strip() for ln in existing.splitlines()}
-    if GITATTRIBUTES_MERGE_LINE in have and all(line in have for line in GITATTRIBUTES_LOOP_LINES):
+    if GITATTRIBUTES_MERGE_LINE in have and all(line in have for line in GITATTRIBUTES_LOOP_LINES + GITATTRIBUTES_GENERATED_LINES):
         return "unchanged"
     return "merge"
 
@@ -346,6 +355,9 @@ def _apply_gitattributes(text: str, action: str) -> None:
     missing = [line for line in GITATTRIBUTES_LOOP_LINES if line not in have]
     if missing:
         add += GITATTRIBUTES_LOOP_NOTE + "".join(line + "\n" for line in missing)
+    missing = [line for line in GITATTRIBUTES_GENERATED_LINES if line not in have]
+    if missing:
+        add += GITATTRIBUTES_GENERATED_NOTE + "".join(line + "\n" for line in missing)
     _atomic_write(p, existing + sep + add)
 
 
