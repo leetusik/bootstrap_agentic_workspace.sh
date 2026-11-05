@@ -677,7 +677,7 @@ exits the worktree and, on `main`, runs `git merge --no-ff phase/P<N>-<slug>` �
 — followed by `parallel-merge-finish` (regenerates the shared dashboards), the doc versions for the
 two gate sections the branch review recorded, and `parallel-teardown <P>`, which retires the
 worktree and branch. Everything else on the phase's "Doc impact" list waits for a docs phase, as on
-`main`. **Every phase opens a draft PR when its review passes** (Ready and merge are yours) — merging it on GitHub
+`main`. **Every phase opens a draft PR when its review passes**, and your `accept` closes it (Ready, then a solo repo's merge by its landing custom; a team repo's merge is the team's) — merging it on GitHub
 (push → PR → CI → merge) is the remote variant, and
 CI (`.github/workflows/workspace-ci.yml`) runs `validate` on every push and PR plus a
 `parallel-gate` check on `phase/*` pull requests for it. A closed gate stops the sequence with a

@@ -503,7 +503,7 @@ worktree에서 진행한 phase의 리뷰가 통과하면 에이전트가 통합�
 `parallel-gate <P>`(조용한 시점인지 확인) → worktree에서 나와 `main`으로 → `git merge --no-ff`
 (로컬 merge) → `parallel-merge-finish` → 리뷰가 남긴 두 게이트 섹션의 문서 버전 →
 `parallel-teardown <P>`. phase마다 리뷰가 통과하면
-draft PR이 열리고(Ready와 merge는 여러분 몫입니다), 그 PR을 GitHub에서 merge하는 것이 원격 변형입니다(push → PR → CI → merge). 나머지 문서 버전 작업은 평소처럼 나중에 docs phase에서 한 번에 처리합니다.
+draft PR이 열리고, 여러분이 `accept`하면 close가 그 PR을 Ready로 바꿉니다(혼자 쓰는 repo는 그 repo의 landing 관례대로 merge까지 하고, 팀 repo의 merge는 팀 몫입니다), 그 PR을 GitHub에서 merge하는 것이 원격 변형입니다(push → PR → CI → merge). 나머지 문서 버전 작업은 평소처럼 나중에 docs phase에서 한 번에 처리합니다.
 어느 checkout에서든 `parallel-status`로 모든 stream의 진행 상황을 볼 수 있고, `works/backlog.md`의
 `## Streams` 표에는 기본 stream과 진행 중인 모든 worktree phase가 각자의 branch에서 바로 읽은
 상태로 나열됩니다(nested에서는 호스트 branch 열이 함께 나옵니다). 그 phase의 `## Active Phases`
