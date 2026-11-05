@@ -1,0 +1,50 @@
+---
+name: pr
+description: "Write, check and open a phase's pull requests under PR rule v1: one body per recorded branch, measured by pr-check, opened as drafts only on the operator's push word."
+allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch --show-current), Bash(git branch --list:*), Bash(git rev-parse:*), Bash(git check-attr:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh api repos/*/community/profile), Bash(python3 scripts/workflow.py next), Bash(python3 scripts/workflow.py pr-check:*), Bash(python3 scripts/workflow.py pr-rules-decide), Read, Write, Edit, Glob, Grep
+---
+
+# pr
+
+A phase that changes product files ships as **one branch per repo it changed, one draft PR each**. This skill is the one procedure for writing, checking and opening those PRs. Three callers use it:
+
+- **the phase review's body step**, which writes and checks a body for each recorded branch, then hands back for the stop;
+- **the orchestrator at the `push` stop**, which opens the drafts on the operator's `push` (or `accept`);
+- **the operator by hand** (`/pr`), for a change made outside a phase: the same steps, with the body in a scratch file passed to `pr-check --body`.
+
+Nothing here is pre-allowed to write to a remote. `git push`, `gh pr create`, `gh pr comment`, `gh pr edit` and `gh pr ready` each reach the permission prompt, or need the operator's explicit word in auto mode. Recording (`pr-branch`, `pr-record`, `pr-rules-decide --rule`) is the orchestrator's, never an executor's.
+
+## Write and check (the review's body step)
+
+1. **Find the branches.** `python3 scripts/workflow.py next` prints one `pr_branch=<repo|host>:<b> base=<base> url=<url|none>` line per recorded branch; the phase's `phase.json` `pr` block holds the same. Write **one body per recorded branch**. A branch is recorded only in a repo the phase changed: there is no un-record command, so never record one speculatively.
+2. **Read the team rules live**, read-only, every time (they are never cached):
+   - PR templates: `.github/pull_request_template.md`, the `.github/PULL_REQUEST_TEMPLATE/` forms, and the root and `docs/` copies;
+   - `CONTRIBUTING*` lines about PRs and review; `CODEOWNERS`;
+   - tracked `AGENTS.md` and `CLAUDE.md` lines about PRs;
+   - tracked agent skills about PRs: `.agents/skills/*/SKILL.md` and `.claude/skills/*/SKILL.md` whose name or description is about pull requests (a team's `create-pull-request`, say);
+   - `gh api repos/<owner>/<repo>/community/profile`, when `gh` is authenticated;
+   - the decided conflicts: `python3 scripts/workflow.py pr-rules-decide`, bare.
+
+   **Precedence:** the team wins where it speaks (headings, title format, language, trailers, merge method); ours fills the gaps (the budgets, `## Review`, size, draft-first, the series line). A conflict nobody has decided goes into the stop report's "decided as drawn" list; the operator's answer is recorded afterwards with `pr-rules-decide --rule … --choice team|ours`.
+3. **Write the body** to the phase's `topics/pr-body.md` (`works/phases/active/<P>/topics/`), or `topics/pr-body-<repo>.md` on a multi-repo host. Depth this review alone needs goes to `topics/pr-details.md` (`-<repo>` likewise), posted as one comment at push. Follow `reference/body.md`: the skeleton, the budgets, the visual rule and the prose rules. Write from the final diff, the commits, the issue and the phase's recorded decisions, never from the slice log.
+4. **Check it.** `python3 scripts/workflow.py pr-check <P> [--repo <name>] [--branch <b>]`. Rewrite and re-run until it prints `pr_check=pass`, or `pr_check=warn` with every warning justified in your hand-back. A fail is a budget, a leak or a heading line: shorten, move depth to the details file, or fix the heading. Never pad, abbreviate or game the counts.
+5. **Size over the flag** (`size_status=flag`, over 1,000 counted lines): offer a split by `reference/split.md`, or a **named exception** (a first-of-feature drop, a fixture set, bulk tests) stated in `## Review` with its reason. Size never splits the phase itself.
+6. **Hand back** for the stop, per branch: the body path (and details path), the `pr-check` lines, the size, the series line if any, the `<!-- screenshot -->` spots the operator must fill on GitHub, and the undecided team-rule conflicts for the "decided as drawn" list.
+
+## On the operator's `push`, and only then
+
+For each recorded branch, **bottom-up** in a stack or series (`reference/split.md`):
+
+1. `git push -u origin <b>`
+2. `gh pr create --draft --base <base> --head <b> --title "<title>" --body-file <body>`. The title is an imperative "what" in the repo's title convention, with no phase or slice IDs. **If GitHub refuses the draft** (drafts in private repos need a paid plan; the error names draft pull requests), retry **once** without `--draft`, request no reviewers, and say so in the report: in a solo repo that is the same preview.
+3. When a details file exists: `gh pr comment <n> --body-file <details>`, take the comment's URL from its output, point the body's details link at it, re-run `pr-check` on the edited body, then `gh pr edit <n> --body-file <body>`.
+4. `python3 scripts/workflow.py pr-record <P> [--repo <name>] --branch <b> --url <url>`
+5. In a cross-repo series, update the wave index in the series' first PR (`gh pr edit` on its body, after `pr-check`).
+
+Then print the walkthrough lines: each PR's URL, and what to read on GitHub (the first screen, the Review asks, the diagram's render, any screenshot spot to fill while previewing the draft).
+
+## Ready, reviewers, merging
+
+- **Ready is the operator's call.** In a draft, names are plain text, never `@`, so opening it notifies nobody. When the operator says a PR is ready, **print** (never run unasked) `gh pr ready <n>` and one `gh pr edit <n> --add-reviewer <login>` line per name in `## Review`.
+- **Never merge a team repo's PR.** The workflow binds only the operator's own PRs and never tells a team when to merge; each repo merges by its own custom. A repo that lands locally (a `--no-ff` merge plus its release step, as its `CLAUDE.md` says) opens the draft for the read only: never use GitHub's merge button there.
+- **Review replies** stay at most five lines and link the fixing commit; a longer answer becomes a body edit or a repo doc.
