@@ -9164,8 +9164,9 @@ def _pr_tracked_changes(path: Path, repo) -> list:
 
 def cmd_pr_branch(args: argparse.Namespace) -> None:
     """Cut or record the phase's PR branch in one repo's checkout, and record it in phase.json's `pr`
-    block. The branch already checked out there is only recorded; an existing branch that is not
-    checked out is refused (switch to it, then re-run); otherwise `git switch --no-track -c <b> <base>`."""
+    block. The branch already checked out there is only recorded; `--base` on an already-recorded branch
+    re-records its base with no switch (P52 stacking); an unrecorded existing branch that is not checked
+    out is refused (switch to it, then re-run); otherwise `git switch --no-track -c <b> <base>`."""
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
     branch = (args.name or "").strip()
@@ -9190,6 +9191,22 @@ def cmd_pr_branch(args: argparse.Namespace) -> None:
     if branch in {base, args.base.strip() if args.base else base, default_name}:
         raise SystemExit(f"pr-branch --name {branch}: that is the base or default branch itself; a PR branch carries the phase's "
                          f"product commits on top of it -- name a new one (the host's convention for branches) -- nothing was written")
+    held = phase_pr(data)
+    recorded = next((e for e in held["branches"] if e.get("repo") == target["repo"] and e.get("branch") == branch), None) if held else None
+    if args.base and recorded is not None:
+        # P52 stacking: a recorded branch's base is re-recorded in place -- no switch, no dirty-tree check,
+        # checked out or not (nothing moves in the checkout); the lifecycle fields describe the same PR and stay.
+        old = recorded.get("base")
+        old_shown = _pr_read_base(path, old)
+        recorded["base"] = base
+        write_json(pdir / "phase.json", data)
+        append_event("pr_branch_recorded", phase=args.phase, repo=target["repo"], branch=branch, base=base, old_base=old,
+                     created=False, rerecorded=True)
+        rebuild_index_and_state()
+        print(f"pr_branch={label} base={base}")
+        print(f"pr-branch: {branch} base re-recorded from {old_shown}" + (" (unchanged)" if old_shown == base else "")
+              + f" -- no switch; nothing moved in {path}")
+        return
     current = _repo_current_branch(path)
     created = False
     if current != branch:
@@ -9679,6 +9696,140 @@ def pr_open_card_line(phases: list):
     pid, ph, e = items[0]
     more = f" +{len(items) - 1} more (`next` lists them)" if len(items) > 1 else ""
     return f"pr_open: {pid} {_pr_label(e)} state={e.get('state') or 'unsynced'} ({_pr_open_hint(pid, ph, e, short=True)}){more}"
+
+
+# --- stacked PRs (P52): a phase's PR based on another open PR's branch ---------------------------
+
+def _pr_archived_phase_data() -> list:
+    """Every archived phase.json, read cheaply; an unreadable one is skipped, never fatal."""
+    out = []
+    if not ARCHIVED.is_dir():
+        return out
+    for d in sorted(ARCHIVED.iterdir()):
+        try:
+            data = read_json(d / "phase.json")
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict):
+            out.append(data)
+    return out
+
+
+def _pr_lower_merged_record(phases: list, repo, branch: str) -> bool:
+    """True when some phase's `pr` block (active or archived) records `(repo, branch)` with state=merged."""
+    for data in phases:
+        block = phase_pr(data)
+        if block and any(e.get("repo") == repo and e.get("branch") == branch and e.get("state") == "merged"
+                         for e in block["branches"]):
+            return True
+    return False
+
+
+def _pr_checkout_of(path: Path, branch: str):
+    """The worktree path holding `branch` checked out (from `git worktree list`), else None."""
+    try:
+        entries = _worktree_entries(cwd=path)
+    except (SystemExit, OSError, Exception):  # noqa: BLE001 - a git error only drops the hint
+        return None
+    return next((Path(p) for p, ref in entries if ref == f"refs/heads/{branch}"), None)
+
+
+def _pr_stack_check(phase_id: str, phase: dict, entry: dict, lower_phases) -> tuple:
+    """`(lower, steps)` for one stacked entry needing action, else None: `merged` (a phase records the base
+    branch merged, or its tip -- not the default tip itself -- is an ancestor of the default's tip), `gone`
+    (no local or origin ref of the base), `moved` (the base's tip is not in the dependent branch). Local refs
+    only, never the network. `lower_phases` is a zero-argument callable giving active + archived phase data."""
+    branch = entry.get("branch")
+    if not branch or entry.get("state") == "merged":
+        return None
+    path = _pr_entry_path(entry, phase)
+    if path is None or not Path(path).is_dir() or not _git_available(cwd=path):
+        return None
+    repo = entry.get("repo")
+    reg = next((r for r in nested_repos() if r.get("name") == repo), None) if repo else None
+    default = _repo_default_branch(path, reg.get("default_branch") if reg else None)
+    base = _pr_read_base(path, entry.get("base"))
+    if not default or not isinstance(base, str) or not base or base == default:
+        return None
+    default_tip = next((r for r in (f"origin/{default}", default)
+                        if _rev_parse(f"refs/{'remotes/' if r.startswith('origin/') else 'heads/'}{r}", cwd=path)), None)
+    base_tip = _pr_branch_tip(path, base)
+    merged = _pr_lower_merged_record(lower_phases(), repo, base)
+    if not merged and base_tip and default_tip:
+        merged = (_rev_parse(base_tip, cwd=path) != _rev_parse(default_tip, cwd=path)
+                  and _is_ancestor(path, base_tip, default_tip))
+    where = _pr_checkout_of(path, branch)
+    git = f"git -C {where or path}"
+    switch = "" if where else f"{git} switch {branch}; "
+    repo_flag = f" --repo {repo}" if repo else ""
+    if merged or base_tip is None:
+        url = entry.get("url")
+        steps = [f"git -C {where or path} fetch origin", f"{switch}{git} merge --no-ff origin/{default}", f"{git} push"]
+        if url:
+            m = re.search(r"/pull/(\d+)", url)
+            steps.append(f"gh pr edit {m.group(1) if m else url} --base {default}")
+        steps.append(f"{WORKFLOW_CMD} pr-branch {phase_id}{repo_flag} --name {branch} --base {default}")
+        return ("merged" if merged else "gone"), "; ".join(steps)
+    dep_tip = _pr_branch_tip(path, branch)
+    if dep_tip is None:
+        return None
+    # moved: the base's origin copy or its local branch holds commits the dependent lacks; merge the origin
+    # copy when it is the one ahead (a teammate's push), else the local branch (an unpushed lower fix)
+    ahead = [ref for full, ref in ((f"refs/remotes/origin/{base}", f"origin/{base}"), (f"refs/heads/{base}", base))
+             if _rev_parse(full, cwd=path) and not _is_ancestor(path, ref, dep_tip)]
+    if not ahead:
+        return None
+    return "moved", f"{switch}{git} merge --no-ff {ahead[0]}; {git} push"
+
+
+def pr_stack_items(phases: list) -> list:
+    """`[(phase_id, entry, base, lower, steps)]` for every stacked PR entry (a URL or a branch, base not the
+    repo's default) of every active phase given (done or not) whose lower PR merged, vanished or moved.
+    A missing checkout, a git error or an unreadable phase skips that entry silently."""
+    cache = {}
+
+    def lower_phases():
+        if "all" not in cache:
+            cache["all"] = [p for p in phases if isinstance(p, dict)] + _pr_archived_phase_data()
+        return cache["all"]
+
+    items = []
+    for phase in phases:
+        block = phase_pr(phase)
+        if block is None or isinstance(block.get("waived"), dict):
+            continue
+        for entry in block["branches"]:
+            if not (entry.get("url") or entry.get("branch")):
+                continue
+            try:
+                hit = _pr_stack_check(phase.get("id"), phase, entry, lower_phases)
+            except Exception:  # noqa: BLE001 - one entry's git trouble never stops `next`
+                hit = None
+            if hit:
+                items.append((phase.get("id"), entry, _pr_shown_base(entry, phase), hit[0], hit[1]))
+    return items
+
+
+def pr_stack_lines(index: dict) -> list:
+    """`next`'s `pr_stack=<P> <label> base=<lower> lower=merged|gone|moved -- <steps>` lines, for every active
+    phase in index.json (done or not). Merge, never rebase; never a force-push; never the network."""
+    phases = []
+    for p in index.get("active_phases", []):
+        try:
+            phases.append(read_json(ROOT / p["path"] / "phase.json"))
+        except (OSError, ValueError, KeyError):
+            continue
+    return [f"pr_stack={pid} {_pr_label(e)} base={base} lower={lower} -- {steps}" for pid, e, base, lower, steps in pr_stack_items(phases)]
+
+
+def pr_stack_card_line(phases: list):
+    """The resume card's compact `pr_stack:` line (the first stacked PR needing action and `+N more`), or None."""
+    items = pr_stack_items(phases)
+    if not items:
+        return None
+    pid, e, base, lower, _steps = items[0]
+    more = f" +{len(items) - 1} more" if len(items) > 1 else ""
+    return f"pr_stack: {pid} {_pr_label(e)} base={base} lower={lower}{more} (`next` prints the steps)"
 
 
 # --- the PR rules record (decided team-rule conflicts) ------------------------------------------
@@ -10877,6 +11028,11 @@ def cmd_next(args: argparse.Namespace) -> None:
             print(line)
     except Exception as exc:  # noqa: BLE001 - the pointer must print whatever a phase's pr block holds
         print(f"pr_open=unreadable error={_one_line(str(exc)) or type(exc).__name__}")
+    try:  # P52: a stacked PR whose lower PR merged, vanished or moved; local refs only, never the network
+        for line in pr_stack_lines(index):
+            print(line)
+    except Exception as exc:  # noqa: BLE001 - the pointer must print whatever a phase's pr block holds
+        print(f"pr_stack=unreadable error={_one_line(str(exc)) or type(exc).__name__}")
     try:  # P50: a loop phase's one line on its own stream; loops_elsewhere= on the default stream
         for line in loop_next_lines(stream, index):
             print(line)
@@ -11107,11 +11263,17 @@ def resume_card(transcript_path=None) -> str:
         pr_open = pr_open_card_line(phases)
     except Exception:  # noqa: BLE001 - the card always prints
         pr_open = None
+    try:  # P52: a stacked PR needing a merge and a retarget; never the network
+        pr_stack = pr_stack_card_line(phases)
+    except Exception:  # noqa: BLE001 - the card always prints
+        pr_stack = None
     if not phase_id:
         lines.append("pointer: no active phase")
         lines.append("next action: create a phase (/create-phase) or promote deferred work")
         if pr_open:
             lines.append(pr_open)
+        if pr_stack:
+            lines.append(pr_stack)
         return _card_fit(lines)
     phase = next(p for p in phases if p["id"] == phase_id)
     pdir = ACTIVE / phase_id
@@ -11174,6 +11336,8 @@ def resume_card(transcript_path=None) -> str:
     lines.append("gates: " + "; ".join(gates))
     if pr_open:
         lines.append(pr_open)
+    if pr_stack:
+        lines.append(pr_stack)
     pr = pr_lines(phase)  # P51: silent for a phase without a pr block or with no branch recorded
     if pr:
         lines.append("pr: " + "; ".join(ln.replace("pr_branch=", "", 1) for ln in pr))
@@ -19675,7 +19839,7 @@ def main(argv=None) -> int:
     p.add_argument("--repo", action="append", default=None, metavar="NAME", help="multi-repo host only: measure only this registered repo (repeatable); with exactly one --repo, --base/--head set that repo's range instead of the host's")
     p.set_defaults(func=phase_scope)
 
-    p = sub.add_parser("pr-branch", help="Cut or record the phase's PR branch in one repo's checkout (the host for a single-repo host or a root install; the registered repo's for a multi-repo host) and record it in phase.json's pr block (added to a phase from before P51): the branch already checked out there is only recorded; an existing branch that is not checked out is refused (git switch to it, then re-run); otherwise git switch --no-track -c <branch> <base>, refused while tracked changes would ride along. Prints pr_branch=<repo|host|root>:<branch> base=<base>. Never pushes. Orchestrator command -- executors never run it")
+    p = sub.add_parser("pr-branch", help="Cut or record the phase's PR branch in one repo's checkout (the host for a single-repo host or a root install; the registered repo's for a multi-repo host) and record it in phase.json's pr block (added to a phase from before P51): the branch already checked out there is only recorded; --base on an already-recorded branch re-records its base with no switch, checked out or not (a stacked PR retargeted after its lower PR merged); an unrecorded existing branch that is not checked out is refused (git switch to it, then re-run); otherwise git switch --no-track -c <branch> <base>, refused while tracked changes would ride along. Prints pr_branch=<repo|host|root>:<branch> base=<base>. Never pushes. Orchestrator command -- executors never run it")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--repo", default=None, metavar="NAME", help="multi-repo host only, and required there: the registered repo whose checkout holds the branch")
     p.add_argument("--name", required=True, help="the branch, named by the host's convention for branches (nested-convention), with no workspace IDs; never the base or default branch itself")
