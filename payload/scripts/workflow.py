@@ -3450,9 +3450,45 @@ def operator_wait_target(phases: list, current_phase, current_slice):
 
 def phase_parked(phase: dict) -> bool:
     """True when a run may pass this phase: `pending` with its acceptance gate open and no slice of it
-    `pending` or `blocked`. Every other `pending`, and every `blocked`, halts a run."""
-    return bool(phase.get("status") == "pending" and acceptance_gate_is_open(phase)
-                and not any(s.get("status") in ("pending", "blocked") for s in phase.get("slices", [])))
+    `pending` or `blocked`, or parked at its PR `push` stop (`pr_push_parked`). Every other `pending`, and
+    every `blocked`, halts a run."""
+    if (phase.get("status") == "pending" and acceptance_gate_is_open(phase)
+            and not any(s.get("status") in ("pending", "blocked") for s in phase.get("slices", []))):
+        return True
+    return pr_push_parked(phase)
+
+
+def _pr_push_stop_why(phase: dict):
+    """Why a phase whose `<P>.REVIEW` is `pending` with a `decision` stop is not parked at its PR `push` stop
+    (P51-b1.S12), or None when it is. Not that stop at all (no such REVIEW, no `pr` block): the string "-"."""
+    slices = phase.get("slices", [])
+    rid = f"{phase.get('id')}.REVIEW"
+    review = next((s for s in slices if s.get("id") == rid), None)
+    record = review.get("pending") if review and review.get("status") == "pending" else None
+    block = phase_pr(phase)
+    if not isinstance(record, dict) or record.get("kind") != "decision" or block is None:
+        return "-"
+    if phase.get("status") in ("pending", "blocked"):
+        return f"the phase itself is {phase.get('status')}"
+    if acceptance_gate_is_open(phase):
+        return "its acceptance gate is open, so the gate is the stop"
+    other = next((s for s in slices if s.get("id") != rid and s.get("status") in ("pending", "blocked")), None)
+    if other is not None:
+        return f"slice {other['id']} is {other.get('status')}"
+    if isinstance(block.get("waived"), dict):
+        return "its PR is waived, so no push is waited on: clear the REVIEW and record the verdict"
+    if not any(not e.get("url") for e in block["branches"]):
+        return "every recorded PR branch has its URL, so the push is done: clear the REVIEW to in_progress and record the pass"
+    return None
+
+
+def pr_push_parked(phase: dict) -> bool:
+    """True when a run may pass a phase parked at its PR `push` stop on a waived, cleared or absent gate
+    (P51-b1.S12): its only `pending` slice is its `<P>.REVIEW`, typed `decision`; no slice is `blocked`; its `pr`
+    block is not waived and holds a branch with no URL (`pr_push=waiting`); and its acceptance gate is not open
+    (on an open gate the gate is the stop, and `phase_parked` parks it). Only a run reads it: `next`, state.json and
+    the card still halt there."""
+    return _pr_push_stop_why(phase) is None
 
 
 def run_phase_tokens(tokens, stored=None) -> tuple:
@@ -3498,6 +3534,9 @@ def _run_halt(phase: dict):
     cur = next(iter(selectable_slices(phase)), None)
     cur = wave_stop(phase) or cur  # P42: a declared phase halts at a stop anywhere by order
     if cur is not None and cur.get("status") in ("pending", "blocked"):
+        why = _pr_push_stop_why(phase) if cur.get("id") == f"{pid}.REVIEW" else "-"
+        if why not in ("-", None):
+            return cur, f"slice {cur['id']} is pending at the PR push stop but not parked: {why}"
         return cur, f"slice {cur['id']} is {cur.get('status')}"
     return None
 
@@ -3563,6 +3602,11 @@ def cmd_run_phases(args: argparse.Namespace) -> None:
             print(f"skipped={pid} reason={reason} stream={where} -- {home}")
     for phase in run["parked"]:
         pid = phase["id"]
+        if pr_push_parked(phase):  # P51-b1.S12: a waived (cleared, absent) gate's PR push stop parks like the gate
+            since = (next(s for s in phase["slices"] if s.get("id") == f"{pid}.REVIEW").get("pending") or {}).get("since")
+            print(f"parked={pid} since={since} -- PR push stop ({pid}.REVIEW pending, decision; pr_push=waiting): the run passes it; "
+                  f"the operator's push opens the drafts (pr skill), then the REVIEW clears to in_progress and the pass is recorded")
+            continue
         print(f"parked={pid} since={phase_acceptance(phase).get('requested_at')} -- acceptance gate open, no slice pending or blocked: "
               f"the run passes it; accept-gate {pid} prints the walkthrough, accept-gate {pid} --clear clears it")
     if run["halt"] is not None:

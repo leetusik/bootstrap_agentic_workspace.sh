@@ -215,7 +215,7 @@ under `workflow/` instead and the skills and agents untracked in the host's `.cl
 
 - [`CLAUDE.md`](payload/contract.md) — the compact routing contract every agent session works under.
 - [`scripts/workflow.py`](payload/scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` — the 19 Agent Skills (`/slash` commands), the risk-routed `slice-executor` subagent (`.claude/agents/slice-executor.md`, one file dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ high), the `design-critic` that judges each draft (the `critic` row, opus @ high; in judge mode the `judge` row, opus @ high), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
+- `.claude/` — the 20 Agent Skills (`/slash` commands), the risk-routed `slice-executor` subagent (`.claude/agents/slice-executor.md`, one file dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ high), the `design-critic` that judges each draft (the `critic` row, opus @ high; in judge mode the `judge` row, opus @ high), the `pr-reader` that reads each phase's draft PR with fresh eyes (the `reader` row, opus @ high), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
 - [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - [`works/`](works/) — the state machine, starting with **no phases**: a `deferred/` area,
@@ -270,7 +270,7 @@ It writes only untracked files, all hidden by the host's `.git/info/exclude` (ne
 
 - `workflow/`: a **nested git repo** holding the engine, `works/`, `docs/`, `executors.toml` and
   the contract (as `CLAUDE.workspace.md`). It is versioned there, separately from the host.
-- the 19 skills and 4 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
+- the 20 skills and 5 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
   path rewritten to reach `workflow/` (`python3 workflow/scripts/workflow.py …`);
 - a `.gitignore` of `*` in each of those skill directories, so a skill directory hides itself
   even where the host's `.gitignore` re-includes `.claude/skills/`;
@@ -318,7 +318,7 @@ file is left byte for byte as it was.
    convention, with no phase or slice IDs in the message, and the workflow state goes to
    `workflow/` in this workspace's convention.
 4. `/review-phase`. `phase-scope` reads the **host** diff from the recorded base, never `workflow/`.
-5. Push and open the PR the usual way. It carries only product commits: no workflow paths and no
+5. At the review's `push` stop, say `push`: the `pr` skill opens the phase's draft PR. It carries only product commits: no workflow paths and no
    phase or slice IDs.
 6. When the team's review asks for changes, turn them into fix slices (`/create-phase`, or a fix
    slice in the same phase) and repeat from step 3.
@@ -508,7 +508,7 @@ The full command list is `python3 scripts/workflow.py --help` (and `<command> -h
 
 ### The same operations as Agent Skills
 
-The common workflows also ship as **19 Agent Skills** in `.claude/skills/`, invoked as `/slash`
+The common workflows also ship as **20 Agent Skills** in `.claude/skills/`, invoked as `/slash`
 commands in Claude Code:
 
 | Skill | What it does |
@@ -519,6 +519,7 @@ commands in Claude Code:
 | `do-whole-phases` | Run several phases back to back (`46, P12, 7kq2`, or every phase not done): an open acceptance gate is parked and the run continues; any other stop halts it |
 | `run-loop` | Drive a loop phase's bounded cycles under its signed charter (`/loop /run-loop <P>`, one tick per wake): items that need you are parked and the loop goes on; only the charter's stops halt it |
 | `review-phase` | Review a phase and record a `pass` / `changes_requested` / `blocked` verdict |
+| `pr` | Write and check a phase's draft PR bodies (read first with fresh eyes by the `pr-reader` agent), and open the drafts when you say `push` at the review's stop |
 | `parallel-phase` | Run a phase in its own branch + worktree when you ask for one, and integrate it back: quiet-point gate, local merge by default, the review's gate sections, teardown |
 | `doc-new-version` | Create a new versioned durable doc instead of patching the current one |
 | `defer-job` | Park work as a deferred job, outside active selection |
@@ -569,7 +570,7 @@ slice), and a review finding against mid-row work gets a `high` fix slice — so
 the mid row's lower effort while the high row takes what is genuinely hard or has already failed once. Model and effort come from one engine-owned **route table**, resolved per slice at dispatch time:
 `high` (opus @ high — review, decomposition, the mockup span, any risk but `low`, every second
 attempt), `research` (opus @ high), `mid` (opus @ medium — implementation, fix, docs and qa rated `low`), `screen` (a loop phase's first-stage cycles; the mid row's values unless `[claude.screen]` sets it cheaper) and
-`explore` (haiku @ xhigh, the read-only `Explore` lookup agent; no slice runs on haiku since v83). Three rows serve design, never a slice: `design` (opus @ high, `design-drafter`), `critic` (opus @ high, `design-critic`) and `judge` (opus @ high, alias only, the same critic file in judge mode); the critic and the judge may share the drafter's model. The repo-root
+`explore` (haiku @ xhigh, the read-only `Explore` lookup agent; no slice runs on haiku since v83). Three rows serve design, never a slice: `design` (opus @ high, `design-drafter`), `critic` (opus @ high, `design-critic`) and `judge` (opus @ high, alias only, the same critic file in judge mode); the critic and the judge may share the drafter's model. One more, `reader` (opus @ high, `pr-reader`), reads a phase's draft PR, never a slice. The repo-root
 `executors.toml` overrides rows one by one (`[claude.<row>]`, seed-once — updates never overwrite it),
 applied to the agent files with `python3 scripts/workflow.py sync-agents`; the presets are gone, and a
 leftover `mode = "…"` line is refused with the migration step. `python3 scripts/workflow.py
@@ -653,7 +654,8 @@ record with `nested-convention` (commits, branches and pull requests), and you c
 defaults to the host's default branch (`--host-base` overrides it), and the agent runs `git fetch`
 first when your custom says to branch from fresh main. The host side follows your custom (one PR per
 ticket or per phase, or several phases folded onto one branch by rebase, with the checks re-run on the
-combined commit); the workspace never pushes, opens a PR or merges into the host's default branch.
+combined commit); the engine never pushes or merges into the host's default branch, and the `pr` skill
+opens the phase's draft PR only on your `push` at the review's stop.
 Teardown keeps your host branch (it deletes only an empty branch the engine created). A worktree
 isolates files only: docker containers, ports, local databases and caches stay shared across streams,
 so coordinate them yourself.
@@ -666,8 +668,8 @@ becomes a **set**: the same two worktrees plus one per repo the phase changes, a
 branch name follows that repo's custom and you confirm it. `parallel-teardown` removes the repo
 worktrees first, then the nested one, then the host's, and it refuses any git worktree in the host
 worktree that it did not stamp, even with `--discard-ignored`: remove it by hand after integrating
-its branch, or adopt it with `parallel-add-repo ... --adopt`. The workspace never fetches, pushes,
-opens a PR or merges into any repo's default branch.
+its branch, or adopt it with `parallel-add-repo ... --adopt`. The workspace never fetches, pushes
+or merges into any repo's default branch; each repo's draft PR opens only on your `push` at the review's stop.
 
 **Integrating back.** Once the branch review passes, the agent runs the integration itself:
 `parallel-gate <P>` checks the quiet point (the branch's phase done + `main` between phases), then it
@@ -675,7 +677,8 @@ exits the worktree and, on `main`, runs `git merge --no-ff phase/P<N>-<slug>` �
 — followed by `parallel-merge-finish` (regenerates the shared dashboards), the doc versions for the
 two gate sections the branch review recorded, and `parallel-teardown <P>`, which retires the
 worktree and branch. Everything else on the phase's "Doc impact" list waits for a docs phase, as on
-`main`. **Push and PR happen only when you ask** — push → PR → CI → merge is the remote variant, and
+`main`. **Every phase opens a draft PR at the review's `push` stop, on your word** — merging it on GitHub
+(push → PR → CI → merge) is the remote variant, and
 CI (`.github/workflows/workspace-ci.yml`) runs `validate` on every push and PR plus a
 `parallel-gate` check on `phase/*` pull requests for it. A closed gate stops the sequence with a
 report instead of merging.
@@ -706,8 +709,8 @@ parallelism it never used. The mechanism itself is unchanged.)
 │   │   └── archived/             # finished phases
 │   └── deferred/                  # one folder per parked job
 ├── .claude/
-│   ├── skills/                    # 19 Agent Skills (/slash commands)
-│   ├── agents/                    # slice-executor + design-drafter + design-critic (models from executors.toml)
+│   ├── skills/                    # 20 Agent Skills (/slash commands)
+│   ├── agents/                    # slice-executor + design-drafter + design-critic + pr-reader (models from executors.toml)
 │   └── settings.json              # pre-approves workflow.py; denies force-push & rm -rf
 └── .github/
     └── workflows/
