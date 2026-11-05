@@ -16,6 +16,8 @@ The engine decides; this skill runs the chain. `python3 scripts/workflow.py rota
 
 ## Procedure
 
+**First, sync the open PRs (both paths).** A done phase whose recorded PR has not merged is held out of archiving until `pr-sync` reads it `state=merged`; the hold never hides its doc debt, which the docs-phase route below still pays. Run `python3 scripts/workflow.py next` and, for each phase in a `pr_open=` line, `python3 scripts/workflow.py pr-sync <P>` (read-only on GitHub; it updates only that phase's `pr` record). Commit the changed `phase.json` files on their own (`chore(works): sync PR state with rotate-backlog`, naming each path) before the engine runs. A `pr-sync` failure writes nothing: relay its line and go on, the phase staying held. At the end of the run, relay the `pr_open=` lines `next` still prints: those phases stay active until their PRs merge (a closed one: the operator's `archive-phase <P> --force`).
+
 1. **`archive-only` in the invocation args:** run `python3 scripts/workflow.py rotate-backlog --archive-only`, relay its report, and **STOP**. That is the plain archive-and-report path: it creates, reorders and runs nothing, and it is not refused on a parallel stream.
 
 2. **Otherwise run the engine** and read its **stdout before its exit code** (`refused` exits 1):
