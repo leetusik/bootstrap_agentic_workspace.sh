@@ -6884,7 +6884,7 @@ def cmd_reopen_phase(args: argparse.Namespace) -> None:
             why = "it records no opened PR (no pr branch entry with a URL)"
         _reopen_refuse(phase_id, why)
     if not note:
-        _reopen_refuse(phase_id, "--note is empty; say what the team asked for: --note \"team-reported: <what>\"")
+        _reopen_refuse(phase_id, "--note is empty; say whose change request it is and what it asks: --note \"team-reported: <what>\" or --note \"operator-reported: <what>\"")
     _require_git_repo()
     phases = all_active_phases()
     stream = current_stream(phases)

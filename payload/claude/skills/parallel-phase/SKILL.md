@@ -432,22 +432,25 @@ default branch at each **passing checkpoint**, not at the end. The loop's sessio
 5. `parallel-teardown <P>` only after the loop's final REVIEW passes; never while it runs or is stopped
    awaiting its review.
 
-### A reopened phase — a team's changes on its open PR
+### A reopened phase — a change request on its open PR
 
-A done phase whose open PR a team asked to change reopens on the operator's word, which is also the
-worktree word (`.claude/skills/pr/reference/reopen.md`): `python3 scripts/workflow.py pr-sync <P>`, then
-`python3 scripts/workflow.py reopen-phase <P> --note "team-reported: <what>"`. It prints
-`reopened=<P> branch=<label> worktree=<path>`, and refuses an archived phase, one not `done`, and one whose
-every PR reads `state=merged`.
+A done phase whose open PR gets a change request, the team's or the operator's, reopens on the operator's
+word, which is also the worktree word (`.claude/skills/pr/reference/reopen.md`), with
+`reopen-phase <P> --note "team-reported: <what>"` or `--note "operator-reported: <what>"`. It prints
+`reopened=<P> branch=<label> worktree=<path>`, and refuses an empty note, an archived phase, one not `done`,
+and one whose every PR reads `state=merged`.
 
-- **Nested install:** a normal pair on the existing host PR branch. The host's main checkout must be off
-  that branch first (`git -C <host> switch <default>`). Enter the printed host worktree, run the fix round
-  and its re-review there, and integrate the nested side as *Integrating in a nested install* says. The
-  teardown keeps the host branch, which the engine never merges: the open PR carries it, and the close runs
-  again after the re-review.
-- **At root:** `reopen-phase` reopens in place, in the checkout where the PR branch is checked out: no
-  worktree, no stamp, nothing to integrate. From another branch it refuses; with another phase running in the
-  main checkout, `git worktree add <sibling> <branch>`, then reopen and run the fix round there.
+- **Nested install:** first switch the host's main checkout off the PR branch
+  (`git -C <host> switch <default>`), then `python3 scripts/workflow.py pr-sync <P>`, then `reopen-phase`:
+  a normal pair on the existing host PR branch. Enter the printed host worktree, run the fix round and its
+  re-review there, and integrate the nested side as *Integrating in a nested install* says. The teardown
+  keeps the host branch, which the engine never merges: the open PR carries it, and the close runs again
+  after the re-review.
+- **At root:** in place, no worktree. First check out the PR branch: stay where it is checked out, switch to
+  it at a slice boundary (`git switch <branch>`), or, with another phase running in the main checkout,
+  `git worktree add <sibling> <branch>` and `cd` there. Then `pr-sync <P>` there (the default branch's
+  record is stale), then `reopen-phase`: no worktree, no stamp, nothing to integrate. Commit the reopen with
+  the fix round's first commit, then run the fix round there.
 
 ### The remote variant — CI → `gh pr merge`
 

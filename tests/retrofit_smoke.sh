@@ -4765,17 +4765,17 @@ checks = [
                          "**A refused draft** (a private repo on a free plan) is never retried as a plain PR, which notifies people: set the `REVIEW` slice `pending --stop-kind decision` for the operator's `plain` or `waive`"], push_stop + ["push opens the draft PR(s); the pass is recorded after"]),
     (both("verdicts.md"), ["**The only pushes are the draft opening when the review passes**", "**the close's solo landing, and a fix round's or a stack merge's `git push` to an open PR's branch**"],
      ["do not branch unless the operator asks", "Do not branch unless the operator asks", "**The only push is the draft opening", "Never force-push, request reviewers, merge a team repo's PR or flip one Ready"] + push_stop),
-    (both("review.md"), ["**With a draft open, the close runs around the pass**", "5. **Team-reported changes after the phase is done**", "**Ready and a solo repo's merge come only at the close**"], ["Ready and merge stay the operator's"]),
-    ([sk("review-phase")], ["**A reopened phase's re-review**"], []),
+    (both("review.md"), ["**With a draft open, the close runs around the pass**", "5. **A change request after the phase is done**", "and in place at root, where the PR branch is checked out", "**Ready and a solo repo's merge come only at the close**"], ["Ready and merge stay the operator's"]),
+    ([sk("review-phase")], ["**A reopened phase's re-review**", "or `operator-reported: …`, from `reopen-phase`"], []),
     ([sk("rotate-backlog")], ["**First, sync the open PRs (both paths).**"], []),
     ([L[".claude/skills/pr/reference/close.md"]], ["**Pass recorded or not.**", "always goes through `reopen-phase`", "never `review-phase`, which the engine refuses",
                                                    "--note \"operator-reported: CI red: <checks>\"", "**A change asked for after Ready**"], []),
     ([L[".claude/skills/pr/reference/reopen.md"]], ["**One rule.**", "`git -C <host> switch <default>`", "No worktree is cut or claimed", "`git worktree add <sibling> <branch>`",
                                                     "**At root, commit the reopen with the fix round's first commit**"], ["## Team-reported changes after the phase is done"]),
-    ([L["scripts/workflow.py"]], ["a change request (the team's or the operator's) reopens it on the PR branch"], ["a team's change request reopens it in its own worktree"]),
+    ([L["scripts/workflow.py"]], ["a change request (the team's or the operator's) reopens it on the PR branch", "--note is empty; say whose change request it is and what it asks"], ["a team's change request reopens it in its own worktree", "say what the team asked for"]),
     ([sk("archive-phase")], ["**A phase with an open PR is held too:**"], []),
     ([sk("create-phase")], ["**One question rides on that confirmation, never a stop of its own:**"], []),
-    ([flat(sk("parallel-phase"))], ["### A reopened phase — a team's changes on its open PR"], []),
+    ([flat(sk("parallel-phase"))], ["### A reopened phase — a change request on its open PR", "`--note \"operator-reported: <what>\"`", "Then `pr-sync <P>` there (the default branch's record is stale)"], ["### A reopened phase — a team's changes on its open PR"]),
     ([(root / "payload/claude/agents/slice-executor.md").read_text()], ["plus `pr-sync`, `pr-team --record` and `reopen-phase`"], []),
     (both("decomposition.md"), ["--base <that branch>"], []),
     (both("decomposition.md"), ["**Record the phase's PR branches at the same boundary (PR rule v1).**", "**Size never splits a phase:**"], []),
@@ -4964,7 +4964,7 @@ q_c4=$(qw reopen-phase P3 --note "team-reported: x" 2>&1); q_c4rc=$?
 qg switch -q feat/one; q_c5=$(qw reopen-phase P1 --note "team-reported: x" 2>&1); q_c5rc=$?; qg switch -q main
 cp "$P1J" "$QW/p1.bak"; python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["pr"]["branches"][0]["state"]="merged"; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$P1J"
 q_c6=$(qw reopen-phase P1 --note "team-reported: x" 2>&1); q_c6rc=$?; cp "$QW/p1.bak" "$P1J"; r1=$(qsig)
-if [ "$q_c1rc" -ne 0 ] && printf '%s\n' "$q_c1" | grep -q 'P1 is done and its PR is still open .*reopen-phase P1' && [ "$q_c2rc" -ne 0 ] && printf '%s\n' "$q_c2" | grep -q -- '--note is empty' \
+if [ "$q_c1rc" -ne 0 ] && printf '%s\n' "$q_c1" | grep -q 'P1 is done and its PR is still open .*reopen-phase P1' && [ "$q_c2rc" -ne 0 ] && printf '%s\n' "$q_c2" | grep -q -- '--note is empty.*operator-reported: <what>' \
     && [ "$q_c3rc" -ne 0 ] && printf '%s\n' "$q_c3" | grep -q "P4 is 'planned', not 'done'" && [ "$q_c4rc" -ne 0 ] && printf '%s\n' "$q_c4" | grep -q 'P3 is archived' \
     && [ "$q_c5rc" -ne 0 ] && printf '%s\n' "$q_c5" | grep -q "checked out in the main checkout .* switch main" && [ "$q_c6rc" -ne 0 ] && printf '%s\n' "$q_c6" | grep -q 'every recorded PR reads state=merged .*pr-sync P1' \
     && [ "$(printf '%s\n' "$q_c1" "$q_c2" "$q_c3" "$q_c4" "$q_c5" "$q_c6" | grep -c 'nothing was written')" = 6 ] && [ "$r0" = "$r1" ] && [ "$(qj P1 status)" = '"done"' ]; then
