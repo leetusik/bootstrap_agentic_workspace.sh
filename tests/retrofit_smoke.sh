@@ -4744,7 +4744,7 @@ if printf '%s\n' "$o1" | grep -qx 'pr_branch=host:feat/o base=main' && printf '%
   ok "with an origin, pr-branch records the PR base as a branch name (default main, --base origin/main as main, a stack part's feat/o) and refuses a sha; pr-check prints diff_base=origin/main, or the local branch with no remote ref; an old base=origin/main record reads as main; a nested host keeps host: and a missing default body warns, never passes"
 else bad "PR base as a branch name wrong (sha rc $o4, validate rc $o_vrc) -- $o1 / $o2 / $o3 / $(cat "$PRO/o4.txt") / $oc1 / $oc3 / $oc_old / $(printf '%s\n' "$o_nx" | grep pr_) / $(printf '%s\n' "$o_val" | tail -3)"; fi
 # (S9) the PR rule's wiring phrases in the contract and the shipped skills, and the negatives they replaced.
-python3 - "$REPO_ROOT" <<'PY' && ok "the PR rule's wiring: the contract's PR-rule sentence, review-phase's PR step, both review.md's reader and the drafts opening when the review passes, verdicts/decomposition/create-phase/executor/parallel-phase/do-whole-phases/pr lines, and the retired no-branch/no-push and push-stop lines" || bad "a PR-rule wiring phrase moved or a retired line is back"
+python3 - "$REPO_ROOT" <<'PY' && ok "the PR rule's wiring: the contract's PR-rule sentence, review-phase's PR step, both review.md's reader and the drafts opening when the review passes, verdicts/decomposition/create-phase/executor/parallel-phase/do-whole-phases/pr lines, and the retired no-branch/no-push and push-stop lines; the close and reopen references route a change request after the pass to reopen-phase (P52 F1)" || bad "a PR-rule wiring phrase moved or a retired line is back"
 import sys
 from pathlib import Path
 root = Path(sys.argv[1]); sys.path.insert(0, str(root / "installer"))
@@ -4768,6 +4768,11 @@ checks = [
     (both("review.md"), ["**With a draft open, the close runs around the pass**", "5. **Team-reported changes after the phase is done**", "**Ready and a solo repo's merge come only at the close**"], ["Ready and merge stay the operator's"]),
     ([sk("review-phase")], ["**A reopened phase's re-review**"], []),
     ([sk("rotate-backlog")], ["**First, sync the open PRs (both paths).**"], []),
+    ([L[".claude/skills/pr/reference/close.md"]], ["**Pass recorded or not.**", "always goes through `reopen-phase`", "never `review-phase`, which the engine refuses",
+                                                   "--note \"operator-reported: CI red: <checks>\"", "**A change asked for after Ready**"], []),
+    ([L[".claude/skills/pr/reference/reopen.md"]], ["**One rule.**", "`git -C <host> switch <default>`", "No worktree is cut or claimed", "`git worktree add <sibling> <branch>`",
+                                                    "**At root, commit the reopen with the fix round's first commit**"], ["## Team-reported changes after the phase is done"]),
+    ([L["scripts/workflow.py"]], ["a change request (the team's or the operator's) reopens it on the PR branch"], ["a team's change request reopens it in its own worktree"]),
     ([sk("archive-phase")], ["**A phase with an open PR is held too:**"], []),
     ([sk("create-phase")], ["**One question rides on that confirmation, never a stop of its own:**"], []),
     ([flat(sk("parallel-phase"))], ["### A reopened phase — a team's changes on its open PR"], []),

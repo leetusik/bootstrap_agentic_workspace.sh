@@ -5893,12 +5893,14 @@ def review_phase(args: argparse.Namespace) -> None:
         _require_acceptance_cleared(args.phase, data)
         _require_pr_opened(args.phase, data)  # P51: beside the gate, never instead of it; each names only itself
     if args.verdict == "changes_requested" and data.get("status") == "done" and _pr_open_entries(data):
-        # P52: a done phase with an open PR reopens through reopen-phase, which also cuts its worktree on the
-        # PR branch; recorded here it would reopen with no worktree. A done phase with no open PR is unchanged.
+        # P52: a done phase with an open PR reopens through reopen-phase (any change request, the team's or the
+        # operator's), which also cuts a nested install's worktree on the PR branch; recorded here it would reopen
+        # with no worktree. A done phase with no open PR is unchanged.
         open_prs = ", ".join(f"{_pr_label(e)} ({e.get('state') or 'unsynced'})" for e in _pr_open_entries(data))
         raise SystemExit(f"review-phase {args.phase} --verdict changes_requested: refused -- {args.phase} is done and its PR is still open "
-                         f"({open_prs}); a team's change request reopens it in its own worktree on the PR branch: "
-                         f"{WORKFLOW_CMD} reopen-phase {args.phase} --note \"team-reported: <what>\" (pr-sync {args.phase} first) -- nothing was written")
+                         f"({open_prs}); a change request (the team's or the operator's) reopens it on the PR branch: "
+                         f"{WORKFLOW_CMD} reopen-phase {args.phase} --note \"team-reported: <what>\" (or \"operator-reported: <what>\"; "
+                         f"pr-sync {args.phase} first) -- nothing was written")
     data["review"] = {"status": args.verdict, "reviewed_at": now_iso(), "reviewer": args.reviewer, "note": args.note}
     if args.verdict == "changes_requested":
         acceptance = phase_acceptance(data)
