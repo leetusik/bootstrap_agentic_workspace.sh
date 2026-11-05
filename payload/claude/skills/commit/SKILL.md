@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 Inspect pending changes, group them by logical topic, and create one focused commit per group using `type(scope): summary` (imperative, no trailing period).
 
-Never push, force-push, use `git add -A`, or skip hooks unless explicitly asked. A phase's one push is its draft PR opening when its review passes (the `pr` skill), never this skill's.
+Never push, force-push, use `git add -A`, or skip hooks unless explicitly asked. A phase's pushes are the `pr` skill's, never this skill's: the draft opening when its review passes, the close's solo landing, and a fix round's or a stack merge's push to an open PR's branch.
 
 **Nested personal install** (`workflow/.agentic-nested.json` exists). The host and `workflow/` are two separate git repos, so a slice is two commits:
 - product changes go to the host, on the phase's branch (`pr-branch`, recorded at `DECOMP`'s end; before that, or outside a phase, the current branch), in the host's conventions (commits, branches and pull requests) that `python3 scripts/workflow.py nested-convention` prints. Add Claude `Co-Authored-By` trailers only when it says `allowed`, and put no phase or slice IDs, `workflow/` paths or workspace files in the message;

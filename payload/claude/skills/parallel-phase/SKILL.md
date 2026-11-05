@@ -90,8 +90,10 @@ the detail lives here.
    (an orchestrator commit; a conflict in a generated file = take either side + regenerate) →
    `parallel-merge-finish` → the review's tagged gate-section notes via `doc-new-version` +
    `rebuild-docs` → commit → `parallel-teardown <P>` (worktree must be clean) → commit. The phase's
-   draft PR opened when the review passed, before the pass was recorded (the `pr` skill); merging it on GitHub
-   (CI, `gh pr merge`) instead is the **remote variant**, only when the operator asks or repo policy requires.
+   draft PR opened when the review passed, before the pass was recorded (the `pr` skill), and the close
+   follows the pass on the operator's `accept` (`.claude/skills/pr/reference/close.md`): Ready, then a solo
+   repo's merge by its custom (a repo that lands locally pushes the default branch holding this merge; with no
+   stated custom, the close's `gh pr merge` is the **remote variant** below); a team repo's merge is the team's.
 8. **Staying on `main` needs nothing** — it *is* the default: no flag, no stamp, no `execution`
    block. `parallel-skip <P>` and `new-phase --on-main` are **retired no-ops** (v43), kept callable
    only so v42 habits and scripts survive the upgrade: they write nothing and report where the phase
@@ -358,9 +360,11 @@ when its review passes.
 6. `git -C workflow commit` the follow-up.
 7. **The host side, by the recorded custom.** The host branch is the phase's PR branch (`pr-branch`
    recorded it at `DECOMP`'s end), and its draft PR opened when the review passed, before the pass was
-   recorded. Never merge into the host's default branch, and beyond that draft never push, open or merge
-   without the operator's word; where the custom is silent, ask.
-   - **One draft PR per phase** is the default: Ready and merge are the operator's, by the custom.
+   recorded. The engine never merges into the host's default branch; beyond that draft only the close
+   pushes or merges (on the operator's `accept`, or `close` on a waived gate:
+   `.claude/skills/pr/reference/close.md`), and where the custom is silent, ask.
+   - **One draft PR per phase** is the default: the close flips it Ready and merges it in a solo repo by the
+     custom; a team repo's merge is the team's.
    - **A ticket's phases folded into one PR**, only on the operator's ask: rebase or cherry-pick each phase's host commits onto
      the ticket branch (no merge commits: a squash-merging host publishes every branch subject);
      re-run the host's pre-merge checks on the combined commit; keep each phase's host branch until
@@ -428,6 +432,26 @@ default branch at each **passing checkpoint**, not at the end. The loop's sessio
 5. `parallel-teardown <P>` only after the loop's final REVIEW passes; never while it runs or is stopped
    awaiting its review.
 
+### A reopened phase — a change request on its open PR
+
+A done phase whose open PR gets a change request, the team's or the operator's, reopens on the operator's
+word, which is also the worktree word (`.claude/skills/pr/reference/reopen.md`), with
+`reopen-phase <P> --note "team-reported: <what>"` or `--note "operator-reported: <what>"`. It prints
+`reopened=<P> branch=<label> worktree=<path>`, and refuses an empty note, an archived phase, one not `done`,
+and one whose every PR reads `state=merged`.
+
+- **Nested install:** first switch the host's main checkout off the PR branch
+  (`git -C <host> switch <default>`), then `python3 scripts/workflow.py pr-sync <P>`, then `reopen-phase`:
+  a normal pair on the existing host PR branch. Enter the printed host worktree, run the fix round and its
+  re-review there, and integrate the nested side as *Integrating in a nested install* says. The teardown
+  keeps the host branch, which the engine never merges: the open PR carries it, and the close runs again
+  after the re-review.
+- **At root:** in place, no worktree. First check out the PR branch: stay where it is checked out, switch to
+  it at a slice boundary (`git switch <branch>`), or, with another phase running in the main checkout,
+  `git worktree add <sibling> <branch>` and `cd` there. Then `pr-sync <P>` there (the default branch's
+  record is stale), then `reopen-phase`: no worktree, no stamp, nothing to integrate. Commit the reopen with
+  the fix round's first commit, then run the fix round there.
+
 ### The remote variant — CI → `gh pr merge`
 
 (At-root installs; a nested install's host side is step 7 above.)
@@ -438,13 +462,14 @@ passes, before the pass is recorded (`pr-branch` recorded `phase/P<N>-<slug>` at
 `Bash(git push:*)` deny in `.claude/settings.json` deletes it by hand first (settings merges are
 additive, so an update cannot remove it); keep `Bash(git push --force:*)`.
 
-Merging that PR on GitHub instead of locally runs only when the operator asks or the repo's policy
-requires it. It replaces steps 2-4 above:
+Merging that PR on GitHub instead of locally is the close's merge in a solo repo with no stated landing
+custom, or runs when the operator asks or the repo's policy requires it. It replaces steps 2-4 above:
 
 1. **Wait for CI.** `gh pr checks --watch`. The `validate` job runs everywhere; the `parallel-gate`
    job re-runs the quiet point server-side on `phase/*` PRs. Red → stop and report.
-2. **Merge with a merge commit**, on the operator's word: `gh pr merge --merge` — the slice-by-slice
-   history is worth keeping, so no squash and no rebase. Never in a team repo, whose merge is its own.
+2. **Merge at the close**, the operator's `accept` (or `close`) being the word: `gh pr merge` with the
+   repo's only allowed method, else `--merge` — the slice-by-slice history is worth keeping. Never
+   `--delete-branch`, and never in a team repo, whose merge is its own.
 3. **Back on the default checkout** (`ExitWorktree` `keep` if you are still in the worktree), `git pull`,
    then continue at step 5 above.
 
@@ -519,9 +544,11 @@ inside the set, merge the phase branch again and re-run the teardown.
 - Never enter a path the engine did not print / `git worktree list` does not show.
 - Slices running together inside a phase are `do-whole-phase`'s wave, in the phase's own checkout; never a worktree per slice.
 - The phase branch and the stamp commit are part of executing a phase; pushing is not — the only
-  push is the draft opening when the review passes (the `pr` skill).
-- Nested install: never merge a host branch into the host's default branch, and beyond the draft the
-  review's pass opens, never push, open a PR or merge on the host without the operator's word; the host's custom decides the shape.
-- Multi-repo host: the same for every repo — beyond each branch's draft, never push, open a PR or merge into
+  pushes are the draft opening when the review passes, the close's solo landing, and a fix round's or
+  stack merge's push to an open PR's branch (the `pr` skill).
+- Nested install: the engine never merges a host branch into the host's default branch, and beyond the
+  draft the review's pass opens and the close the operator's `accept` runs, never push, open a PR or merge
+  on the host without the operator's word; the host's custom decides the shape.
+- Multi-repo host: the same for every repo — beyond each branch's draft and its close, never push, open a PR or merge into
   any repo's default branch without the operator's word; never remove a git worktree inside the host worktree that the phase's
   stamp does not name before its branch is integrated, and never force the teardown past one.

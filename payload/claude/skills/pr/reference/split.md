@@ -14,7 +14,7 @@ Cut at **slice-commit boundaries** on the phase branch: each slice commit is a c
 2. **The phase branch stays the top part.** Re-record its base onto part k-1: `python3 scripts/workflow.py pr-branch <P> --name <b> --base <b>-<k-1>`.
 3. **Each part gets its own body and its own `pr-check`** (`--branch <b>-<n>`), each with the series line `> Part n/k of <feature> · merges after <repo>#<n-1>`.
 4. **Open them bottom-up** when the drafts open. Use `gh stack` only if it is already installed; otherwise the PRs open chained (each based on the one below) and the operator clicks GitHub's "Create stack" banner. A native stack rebases and retargets the parts itself when the bottom one merges, in squash-only repos too.
-5. **Without a native stack** (no banner clicked, or GitHub Enterprise Server): after each parent merges, the next part needs a rebase onto the default branch and `gh pr edit <n> --base <default>`. Print those lines; never run them unasked.
+5. **Without a native stack** (no banner clicked, or GitHub Enterprise Server): after each parent merges, the next part follows its `pr_stack=` steps (`reference/stack.md`): merge the default branch in (never a rebase), push, `gh pr edit <n> --base <default>`, and re-record its base.
 
 ## Across repos: a series
 

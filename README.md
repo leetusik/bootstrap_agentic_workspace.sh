@@ -203,10 +203,10 @@ git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하�
    컨벤션대로 들어갑니다.
 4. `/review-phase`: `phase-scope`가 기록해 둔 기준점부터 **호스트** diff를 읽습니다(`workflow/`는
    보지 않습니다).
-5. 리뷰가 통과하면 `pr` 스킬이 phase의 draft PR을 바로 엽니다(멈춤도, 따로 할 말도 없습니다). 게이트가 필요한 phase라면 GitHub에서 draft를 읽고 `accept` 한 마디로 마칩니다. PR에는 제품 커밋만 들어가고, 워크플로우 경로나 phase/slice
+5. 리뷰가 통과하면 `pr` 스킬이 phase의 draft PR을 바로 엽니다(멈춤도, 따로 할 말도 없습니다). 게이트가 필요한 phase라면 GitHub에서 draft를 읽고 `accept` 한 마디로 마칩니다. 그러면 PR을 Ready로 바꾸고, 혼자 쓰는 repo라면 merge까지 합니다(팀 repo의 merge는 팀이 합니다). PR에는 제품 커밋만 들어가고, 워크플로우 경로나 phase/slice
    ID는 없습니다.
-6. 팀 리뷰에서 수정 요청이 오면 fix slice로 만들어(`/create-phase` 또는 같은 phase의 fix slice)
-   3번부터 다시 진행합니다.
+6. phase가 끝난 뒤 수정 요청이 오면(팀 리뷰든 내 요청이든) 같은 phase를 열린 PR 위에서 다시 엽니다
+   (`reopen-phase`). 3번부터 다시 진행하고, 수정은 같은 PR에 push합니다. 두 번째 PR이나 force-push는 없습니다.
 
 **업데이트.** `/update-workspace`, 또는
 `sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo --update`(먼저
@@ -503,7 +503,7 @@ worktree에서 진행한 phase의 리뷰가 통과하면 에이전트가 통합�
 `parallel-gate <P>`(조용한 시점인지 확인) → worktree에서 나와 `main`으로 → `git merge --no-ff`
 (로컬 merge) → `parallel-merge-finish` → 리뷰가 남긴 두 게이트 섹션의 문서 버전 →
 `parallel-teardown <P>`. phase마다 리뷰가 통과하면
-draft PR이 열리고(Ready와 merge는 여러분 몫입니다), 그 PR을 GitHub에서 merge하는 것이 원격 변형입니다(push → PR → CI → merge). 나머지 문서 버전 작업은 평소처럼 나중에 docs phase에서 한 번에 처리합니다.
+draft PR이 열리고, 여러분이 `accept`하면 close가 그 PR을 Ready로 바꿉니다(혼자 쓰는 repo는 그 repo의 landing 관례대로 merge까지 하고, 팀 repo의 merge는 팀 몫입니다), 그 PR을 GitHub에서 merge하는 것이 원격 변형입니다(push → PR → CI → merge). 나머지 문서 버전 작업은 평소처럼 나중에 docs phase에서 한 번에 처리합니다.
 어느 checkout에서든 `parallel-status`로 모든 stream의 진행 상황을 볼 수 있고, `works/backlog.md`의
 `## Streams` 표에는 기본 stream과 진행 중인 모든 worktree phase가 각자의 branch에서 바로 읽은
 상태로 나열됩니다(nested에서는 호스트 branch 열이 함께 나옵니다). 그 phase의 `## Active Phases`
