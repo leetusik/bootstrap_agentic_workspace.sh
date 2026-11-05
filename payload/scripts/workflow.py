@@ -39,8 +39,10 @@ NESTED_TRAILERS = ("allowed", "forbidden", "unknown")
 NESTED_RENAME_KINDS = ("skills", "agents")
 # Optional, but strict when present: the installer's record of which host-side skill directories
 # and agent files are the workspace's own (so `--update --nested` never mistakes them for a clash),
-# and (P40) `repos`, the multi-repo host's registry of its product repos.
-NESTED_OPTIONAL_KEYS = ("installed", "repos")
+# (P40) `repos`, the multi-repo host's registry of its product repos, and (P51) `pr_rules`, the operator's
+# decided team-rule conflicts for PRs (`load_pr_rules`; validate checks it as an error, never a marker problem,
+# so a malformed record never stops the other commands).
+NESTED_OPTIONAL_KEYS = ("installed", "repos", "pr_rules")
 # P40: one registry entry per product repo of a multi-repo host (a host that tracks nothing and
 # holds its repos at depth 1). The install is multi-repo iff `repos` is a non-empty list
 # (`nested_repos()`); without it every code path is the single-repo nested one, byte-for-byte.
@@ -5192,6 +5194,9 @@ def validate() -> int:
                         errors.append(f"phase {p['id']} has invalid host_anchors.{key} {value!r}; expected a host commit sha or null")
         if "repo_anchors" in p and nested_repos():
             _repo_anchor_problems(p, errors, warnings)
+        # P51: the PR block. Absent = a phase from before P51 = nothing to check, and no warning.
+        if "pr" in p:
+            errors.extend(f"phase {p['id']} {problem}" for problem in pr_block_problems(p["pr"], _pr_registry_names()))
         loop_validate(p, errors, warnings)  # P50: the loop block and loop/ files; silent for an ordinary phase
         if not (ACTIVE / p["id"] / "intent.md").exists():
             warnings.append(f"phase {p['id']} has no intent.md (expected {p['id']}/intent.md); capture operator intent via the create-phase skill")
@@ -5326,6 +5331,7 @@ def validate() -> int:
                     errors.append(f"nested install: the host {HOST_ROOT} is not a git work tree (phase-scope and the host product commits need one)")
         if nested_repos() and HOST_ROOT is not None and HOST_ROOT.is_dir():
             nested_repo_checks(errors, warnings)
+    pr_rules_validate(errors)  # P51: the marker's pr_rules key, or at root works/pr-rules.json, where present
     validate_docs(errors, warnings)
     for w in warnings:
         print(f"warning: {w}")
@@ -5548,6 +5554,7 @@ def new_phase(args: argparse.Namespace) -> None:
         "created_at": now_iso(), "started_at": None, "completed_at": None,
         "review": {"status": "pending", "reviewed_at": None, "reviewer": None, "note": None},
         "acceptance": new_acceptance(),
+        "pr": new_pr_block(),  # P51: the phase's PR branches (pr-branch / pr-record); the pass guard reads it
         "paths": {"phase_md": "phase.md", "intent_md": "intent.md", "slices_dir": "slices"},
         "archive": {"archived": False, "archived_at": None, "archive_path": None},
     }
@@ -5871,6 +5878,7 @@ def review_phase(args: argparse.Namespace) -> None:
         if why:
             raise SystemExit(f"review-phase {args.phase} --verdict pass: {why}; refused, nothing was written")
         _require_acceptance_cleared(args.phase, data)
+        _require_pr_opened(args.phase, data)  # P51: beside the gate, never instead of it; each names only itself
     data["review"] = {"status": args.verdict, "reviewed_at": now_iso(), "reviewer": args.reviewer, "note": args.note}
     if args.verdict == "changes_requested":
         acceptance = phase_acceptance(data)
@@ -7537,7 +7545,7 @@ def parallel_gate(args: argparse.Namespace) -> None:
         print(f"merge_commit={commit}")
         if loop_target.get("host_commit"):
             print(f"host_commit={loop_target['host_commit']}")
-        if _is_ancestor(commit, main_side):
+        if _ref_is_ancestor(commit, main_side):
             reasons.append(f"checkpoint {loop_target.get('slice')} ({commit[:12]}) is already merged into {main_side}; nothing to merge "
                            "until the next passing checkpoint lands")
         outputs = _loop_outputs_at(commit, args.phase)
@@ -7619,7 +7627,7 @@ def parallel_merge_finish(args: argparse.Namespace) -> None:
         execution = phase_execution(p)
         if execution and phase_loop(p) is not None and p.get("status") != "done":  # P50.S3: a checkpoint's debt, once merged
             commit = loop_debt_commit(loop_landing_data(p))
-            if commit and git_ok and _is_ancestor(commit, "HEAD"):
+            if commit and git_ok and _ref_is_ancestor(commit, "HEAD"):
                 awaiting.append((p, execution))
             continue
         if not execution or p.get("status") != "done":
@@ -7664,7 +7672,7 @@ def parallel_consolidated(args: argparse.Namespace) -> None:
         if not commit:
             raise SystemExit(f"phase {args.phase} is a running loop with no landed passing checkpoint in this checkout; its debt settles "
                              f"once that checkpoint's commit is merged here (merge_ready= in next, past parallel-gate {args.phase})")
-        if not (_git_available() and _is_ancestor(commit, "HEAD")):
+        if not (_git_available() and _ref_is_ancestor(commit, "HEAD")):
             raise SystemExit(f"phase {args.phase}: checkpoint commit {commit[:12]} is not merged into this stream yet; merge it first "
                              f"(past parallel-gate {args.phase}), then consolidate")
     elif data.get("status") != "done":
@@ -7953,7 +7961,7 @@ def merge_ready_line(stream, phases: list):
             continue
         record = loop_branch_checkpoint(branch_data)  # P50.S3: a loop is merge-ready at each passing, landed checkpoint
         commit = record.get("commit") if record and record.get("verdict") == "pass" else None
-        if commit and not _is_ancestor(commit, "HEAD"):
+        if commit and not _ref_is_ancestor(commit, "HEAD"):
             host = record.get("host_commit")
             loops.append(f"{p['id']}:{commit[:7]}" + (f" host={str(host)[:7]}" if host else ""))
     lines = []
@@ -8791,6 +8799,939 @@ def _phase_scope_multi(args: argparse.Namespace, data: dict, out: dict, header: 
     emit(lines)
 
 
+# ---------------------------------------------------------------------------
+# P51 (PR rule v1): one draft PR per repo branch per phase.
+#
+# phase.json's `pr` block records each repo branch the phase's product commits ride on, its base
+# and, once the operator's `push` opened it (the `pr` skill), the draft's URL:
+#
+#     "pr": {"branches": [{"repo": null | "<repos-key name>", "branch": "<name>", "base": "<ref>",
+#                          "url": null | "<url>", "recorded_at": "<iso>", "opened_at": null | "<iso>"}],
+#            "waived": null | {"note": "<why>", "at": "<iso>"}}
+#
+# `repo` is null on a single-repo host and at root; on a multi-repo host it names a `repos` entry.
+# `new-phase` stamps an empty block on every phase; a phase created before P51 carries none, so
+# nothing here reads or refuses it (the way a pre-v32 phase has no acceptance gate), until
+# `pr-branch` records a branch and adds the block. `pr-branch` cuts or records a branch,
+# `pr-record` stores the draft's URL (or waives the PR), `pr-check` measures a branch (size, body
+# budgets, leaks, heading order), and `review-phase --verdict pass` refuses while a recorded branch
+# has no URL, or while an empty block meets a phase that changed product files
+# (`_require_pr_opened`, beside the acceptance gate's refusal). The operator's decided team-rule
+# conflicts live in the nested marker's optional `pr_rules` key, or at root in works/pr-rules.json
+# (`load_pr_rules`). The team's rules themselves are read live each time a body is written.
+# ---------------------------------------------------------------------------
+
+PR_BLOCK_KEYS = ("branches", "waived")
+PR_BRANCH_KEYS = ("repo", "branch", "base", "url", "recorded_at", "opened_at")
+PR_WAIVED_KEYS = ("note", "at")
+PR_SIZE_TARGET = 400    # changed hand-written lines (added + deleted): the target a PR aims under
+PR_SIZE_FLAG = 1000     # over this, the REVIEW's PR drafting may split the branch (D4); a warning, never a fail
+PR_BODY_BUDGETS = (("first_screen", 1500), ("visible", 3500), ("whole", 6000))
+PR_LOCKFILES = frozenset(("package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "uv.lock", "Pipfile.lock",
+                          "Cargo.lock", "Gemfile.lock", "composer.lock", "go.sum"))
+# A team's PR template, first hit wins: GitHub reads the file name case-insensitively in .github/, docs/
+# and the root, then a lone file in .github/PULL_REQUEST_TEMPLATE/.
+PR_TEMPLATE_DIRS = (".github", "docs", ".")
+PR_TEMPLATE_NAME = "pull_request_template.md"
+PR_TEMPLATE_MULTI_DIR = ".github/PULL_REQUEST_TEMPLATE"
+PR_DEFAULT_HEADINGS = ("Summary", "Review", "What is changed", "Why", "Related issue")  # D3 as amended
+PR_RULES_FILE = "pr-rules.json"  # root installs: works/pr-rules.json; nested: the marker's pr_rules key
+PR_RULE_KEYS = ("rule", "choice", "note", "at")
+PR_RULE_OPTIONAL_KEYS = ("repo",)  # a multi-repo host's decision about one repo's rule; absent or null = every repo
+PR_RULE_CHOICES = ("team", "ours")
+PR_PUSH_WAITING = "pr_push=waiting -- the operator's push opens the draft (pr skill)"
+
+
+def new_pr_block() -> dict:
+    """A fresh `pr` block: no branch recorded, not waived."""
+    return {"branches": [], "waived": None}
+
+
+def phase_pr(data):
+    """The phase's `pr` block when it is readable, else None: absent (a phase from before P51) or
+    malformed (validate's error). Read the block only through this helper."""
+    if not isinstance(data, dict):
+        return None
+    block = data.get("pr")
+    if not isinstance(block, dict) or not isinstance(block.get("branches"), list):
+        return None
+    if not all(isinstance(e, dict) for e in block["branches"]):
+        return None
+    if block.get("waived") is not None and not isinstance(block.get("waived"), dict):
+        return None
+    return block
+
+
+def _pr_registry_names():
+    """The multi-repo registry's names when the marker's `repos` key holds entries, else None."""
+    if NESTED is None or not isinstance(NESTED.get("repos"), list) or not NESTED["repos"]:
+        return None
+    return [r.get("name") for r in NESTED["repos"] if isinstance(r, dict)]
+
+
+def pr_block_problems(block, repo_names=None) -> list:
+    """Every way a phase.json `pr` block breaks its shape (empty when well-formed): exactly
+    PR_BLOCK_KEYS; each branch entry exactly PR_BRANCH_KEYS with the right types, a unique
+    (repo, branch) pair, and a `repo` naming a registry entry whenever the marker has `repos`
+    (`repo_names`), null otherwise; `waived` null or exactly PR_WAIVED_KEYS with a note."""
+    if not isinstance(block, dict):
+        return [f"has a non-object pr block {block!r}; expected {{\"branches\": [...], \"waived\": null}}"]
+    problems = []
+    missing = [k for k in PR_BLOCK_KEYS if k not in block]
+    unknown = sorted(str(k) for k in block if k not in PR_BLOCK_KEYS)
+    if missing:
+        problems.append(f"pr: missing field(s) {', '.join(missing)}")
+    if unknown:
+        problems.append(f"pr: unknown field(s) {', '.join(unknown)} (the block has exactly {', '.join(PR_BLOCK_KEYS)})")
+    branches = block.get("branches", [])
+    if not isinstance(branches, list):
+        problems.append("pr.branches must be a list of branch entries")
+        branches = []
+    seen = set()
+    for i, entry in enumerate(branches):
+        label = f"pr.branches[{i}]"
+        if not isinstance(entry, dict):
+            problems.append(f"{label} is not an object")
+            continue
+        gone = [k for k in PR_BRANCH_KEYS if k not in entry]
+        extra = sorted(str(k) for k in entry if k not in PR_BRANCH_KEYS)
+        if gone:
+            problems.append(f"{label}: missing field(s) {', '.join(gone)}")
+        if extra:
+            problems.append(f"{label}: unknown field(s) {', '.join(extra)} (an entry has exactly {', '.join(PR_BRANCH_KEYS)})")
+        repo = entry.get("repo")
+        if repo is not None and not (isinstance(repo, str) and NESTED_REPO_NAME.fullmatch(repo)):
+            problems.append(f"{label}.repo {repo!r} must be null or a registered repo's name")
+        elif repo_names:
+            if repo is None:
+                problems.append(f"{label}.repo is null, but this multi-repo host registers repos ({', '.join(map(str, repo_names))}): name one")
+            elif repo not in repo_names:
+                problems.append(f"{label}.repo {repo!r} names no registered repo (registered: {', '.join(map(str, repo_names))})")
+        elif repo is not None:
+            problems.append(f"{label}.repo {repo!r}: this install has no repos registry, so repo is null (the host, or the root repo)")
+        for key in ("branch", "base", "recorded_at"):
+            value = entry.get(key)
+            if key in entry and not (isinstance(value, str) and value.strip()):
+                problems.append(f"{label}.{key} must be a non-empty string")
+        branch = entry.get("branch")
+        if isinstance(branch, str) and branch.strip() and re.search(r"\s", branch):
+            problems.append(f"{label}.branch {branch!r} has whitespace")
+        url = entry.get("url")
+        if url is not None and not _pr_url_ok(url):
+            problems.append(f"{label}.url {url!r} must be null or an http(s) URL")
+        opened = entry.get("opened_at")
+        if opened is not None and not (isinstance(opened, str) and opened.strip()):
+            problems.append(f"{label}.opened_at must be null or a timestamp string")
+        if (url is None) != (opened is None) and "url" in entry and "opened_at" in entry:
+            problems.append(f"{label}: url and opened_at are set together (pr-record writes both)")
+        key = (repo, branch)
+        if isinstance(branch, str):
+            if key in seen:
+                problems.append(f"{label}: {repo or 'host'}:{branch} is recorded twice")
+            seen.add(key)
+    waived = block.get("waived")
+    if waived is not None:
+        if not isinstance(waived, dict) or sorted(waived) != sorted(PR_WAIVED_KEYS):
+            problems.append(f"pr.waived must be null or an object with exactly {', '.join(PR_WAIVED_KEYS)}")
+        else:
+            if not (isinstance(waived.get("note"), str) and waived["note"].strip()):
+                problems.append("pr.waived.note must be a non-empty string (why the phase needs no PR)")
+            if not (isinstance(waived.get("at"), str) and waived["at"].strip()):
+                problems.append("pr.waived.at must be a timestamp string")
+    return problems
+
+
+def _pr_url_ok(url) -> bool:
+    if not isinstance(url, str) or not url.strip() or re.search(r"\s", url):
+        return False
+    parsed = urlparse(url)
+    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+
+
+def _ensure_pr(data: dict) -> dict:
+    """The phase's `pr` block, created on demand (how a phase from before P51 gets one), placed right
+    after `acceptance` (else appended). SystemExit on a malformed block: never overwrite it silently."""
+    block = phase_pr(data)
+    if block is not None:
+        return block
+    if "pr" in data:
+        problems = pr_block_problems(data["pr"], _pr_registry_names())
+        raise SystemExit(f"phase {data.get('id')} has a malformed pr block ({'; '.join(problems) or 'unreadable'}); "
+                         f"fix phase.json first (run: {WORKFLOW_CMD} validate) -- nothing was written")
+    block = new_pr_block()
+    ordered = {}
+    for key, value in data.items():
+        ordered[key] = value
+        if key == "acceptance":
+            ordered["pr"] = block
+    ordered.setdefault("pr", block)
+    data.clear()
+    data.update(ordered)
+    return block
+
+
+def _pr_label(entry: dict) -> str:
+    return f"{entry.get('repo') or 'host'}:{entry.get('branch')}"
+
+
+def _pr_target(data: dict, repo_arg, cmd: str) -> dict:
+    """Where a PR command works: `{label, repo, path, default}`. A multi-repo host needs `--repo` (the
+    registered repo's checkout, through `_phase_repo_path`); a single-repo nested host is HOST_ROOT
+    and a root install is ROOT, both refusing `--repo`. `default` is the registry's default_branch."""
+    repos = nested_repos()
+    if repos:
+        names = [r["name"] for r in repos]
+        if not repo_arg:
+            raise SystemExit(f"{cmd}: this multi-repo host needs --repo <name> (registered: {', '.join(names)}) -- nothing was written")
+        repo = next((r for r in repos if r["name"] == repo_arg), None)
+        if repo is None:
+            raise SystemExit(f"{cmd} --repo {repo_arg}: no registered repo has that name (registered: {', '.join(names)}) -- nothing was written")
+        path, why = _phase_repo_path(repo, data)
+        if path is None:
+            raise SystemExit(f"{cmd} --repo {repo_arg}: cannot be read here: {why} -- nothing was written")
+        return {"label": repo_arg, "repo": repo_arg, "path": path, "default": repo.get("default_branch")}
+    if repo_arg:
+        raise SystemExit(f"{cmd} --repo: refused -- a multi-repo host only; a single-repo host or a root install has one repo: drop --repo")
+    path = HOST_ROOT if NESTED is not None else ROOT
+    if path is None or not _git_available(cwd=path):
+        raise SystemExit(f"{cmd}: {path} is not inside a git work tree -- a PR branch needs one")
+    return {"label": "host", "repo": None, "path": path, "default": None}
+
+
+def _pr_default_base(path: Path, configured=None):
+    """The base a PR branch is cut from and measured against when `--base` is not given, resolved to a
+    ref that exists: the repo's default branch D (the registry's default_branch, else origin/HEAD's
+    target, else main/master), as `origin/D` when that remote-tracking ref exists -- what GitHub diffs
+    the PR against -- else the local `D`. None when neither exists. Never fetched."""
+    name = _repo_default_branch(path, configured) or "main"
+    for ref in (f"origin/{name}", name):
+        if _rev_parse(ref, cwd=path):
+            return ref
+    return None
+
+
+def _pr_branch_tip(path: Path, branch: str):
+    """The ref holding `branch` in `path`: the local branch, else its origin copy, else None."""
+    if _rev_parse(f"refs/heads/{branch}", cwd=path):
+        return branch
+    if _rev_parse(f"refs/remotes/origin/{branch}", cwd=path):
+        return f"origin/{branch}"
+    return None
+
+
+def _pr_tracked_changes(path: Path, repo) -> list:
+    """The tracked, uncommitted changes in `path` a branch switch would carry (untracked files belong to
+    no branch). Product paths only: at root the workflow state (works/, docs/) is excluded, and a
+    nested host excludes its nested workflow repo."""
+    if repo is not None:
+        spec = ["."]
+    elif NESTED is not None:
+        spec = _host_pathspec()
+    else:
+        spec = PRODUCT_PATHSPEC
+    proc = _git(["status", "--porcelain", "--untracked-files=no", "--", *spec], cwd=path, check=False)
+    return [ln[3:] for ln in proc.stdout.splitlines() if len(ln) > 3]
+
+
+def cmd_pr_branch(args: argparse.Namespace) -> None:
+    """Cut or record the phase's PR branch in one repo's checkout, and record it in phase.json's `pr`
+    block. The branch already checked out there is only recorded; an existing branch that is not
+    checked out is refused (switch to it, then re-run); otherwise `git switch --no-track -c <b> <base>`."""
+    pdir = require_phase(args.phase)
+    data = read_json(pdir / "phase.json")
+    branch = (args.name or "").strip()
+    target = _pr_target(data, args.repo, "pr-branch")
+    path, label = target["path"], f"{target['label']}:{branch}"
+    if not branch or _git(["check-ref-format", "--branch", branch], cwd=path, check=False).returncode != 0:
+        raise SystemExit(f"pr-branch --name {args.name!r}: not a valid branch name -- nothing was written")
+    if "pr" in data and phase_pr(data) is None:
+        _ensure_pr(data)  # raises: a malformed block is never overwritten
+    if args.base:
+        base = args.base.strip()
+        if not _rev_parse(base, cwd=path):
+            raise SystemExit(f"pr-branch --base {base}: not a commit in {path} -- nothing was written")
+    else:
+        base = _pr_default_base(path, target["default"])
+        if base is None:
+            raise SystemExit(f"pr-branch: cannot find the default branch in {path} (no origin/HEAD, no main or master) -- "
+                             f"pass --base <ref>; nothing was written")
+    default_name = _repo_default_branch(path, target["default"])
+    base_name = base[len("origin/"):] if base.startswith("origin/") else base
+    if branch in {base, base_name, default_name}:
+        raise SystemExit(f"pr-branch --name {branch}: that is the base or default branch itself; a PR branch carries the phase's "
+                         f"product commits on top of it -- name a new one (the host's convention for branches) -- nothing was written")
+    current = _repo_current_branch(path)
+    created = False
+    if current != branch:
+        if _git_operation_in_progress(cwd=path):
+            raise SystemExit(f"pr-branch: {path} is mid-{_git_operation_in_progress(cwd=path)}; finish it first -- nothing was written")
+        if _rev_parse(f"refs/heads/{branch}", cwd=path):
+            raise SystemExit(f"pr-branch: branch {branch} already exists in {path} and is not checked out there; switch to it, then re-run "
+                             f"to record it:\n  git -C {path} switch {branch}\n  {WORKFLOW_CMD} pr-branch {args.phase}"
+                             f"{' --repo ' + target['repo'] if target['repo'] else ''} --name {branch}\nnothing was written")
+        dirty = _pr_tracked_changes(path, target["repo"])
+        if dirty:
+            shown_files = ", ".join(dirty[:5]) + (f" (+{len(dirty) - 5} more)" if len(dirty) > 5 else "")
+            raise SystemExit(f"pr-branch: {path} has uncommitted tracked changes a switch would carry onto {branch}: {shown_files}; "
+                             f"commit or stash them first -- nothing was written")
+        _git(["switch", "--no-track", "-c", branch, base], cwd=path)
+        created = True
+    block = _ensure_pr(data)
+    entry = next((e for e in block["branches"] if e.get("repo") == target["repo"] and e.get("branch") == branch), None)
+    if entry is None:
+        entry = {"repo": target["repo"], "branch": branch, "base": base, "url": None, "recorded_at": now_iso(), "opened_at": None}
+        block["branches"].append(entry)
+        how = "created and recorded" if created else "recorded (already checked out)"
+    else:
+        if args.base:
+            entry["base"] = base
+        how = "already recorded" + (" (base updated)" if args.base else "")
+    write_json(pdir / "phase.json", data)
+    append_event("pr_branch_recorded", phase=args.phase, repo=target["repo"], branch=branch, base=entry["base"], created=created)
+    rebuild_index_and_state()
+    print(f"pr_branch={label} base={entry['base']}")
+    print(f"pr-branch: {branch} {how}" + (f" -- cut from {base} with git switch --no-track -c" if created else "") + f" in {path}")
+
+
+def cmd_pr_record(args: argparse.Namespace) -> None:
+    """Record the draft PR the operator's `push` opened (`--url`, on the matching branch entry), or
+    waive the phase's PR (`--waive --note`): a phase with no product change worth a PR."""
+    pdir = require_phase(args.phase)
+    data = read_json(pdir / "phase.json")
+    if args.waive:
+        if args.url or args.branch or args.repo:
+            raise SystemExit("pr-record --waive takes only --note: it waives the phase's PR as a whole -- nothing was written")
+        if not (args.note or "").strip():
+            raise SystemExit(f"pr-record {args.phase} --waive requires --note \"why this phase needs no PR\" -- nothing was written")
+        block = _ensure_pr(data)
+        block["waived"] = {"note": args.note.strip(), "at": now_iso()}
+        write_json(pdir / "phase.json", data)
+        append_event("pr_waived", phase=args.phase)
+        rebuild_index_and_state()
+        print(f"pr_waived={_one_line(args.note)}")
+        print(f"pr-record: phase {args.phase}'s PR waived -- review-phase --verdict pass no longer waits on a draft PR")
+        return
+    if args.note:
+        raise SystemExit("pr-record --note belongs to --waive -- nothing was written")
+    if not _pr_url_ok(args.url):
+        raise SystemExit(f"pr-record needs --url <the draft PR's http(s) URL> (or --waive --note \"why\"); got {args.url!r} -- nothing was written")
+    repos = nested_repos()
+    if args.repo and not repos:
+        raise SystemExit("pr-record --repo: refused -- a multi-repo host only; a single-repo host or a root install has one repo: drop --repo")
+    if "pr" in data and phase_pr(data) is None:
+        _ensure_pr(data)  # raises on a malformed block
+    block = phase_pr(data)
+    entries = block["branches"] if block else []
+    hits = [e for e in entries if (args.repo is None or e.get("repo") == args.repo) and (args.branch is None or e.get("branch") == args.branch)]
+    recorded = ", ".join(_pr_label(e) for e in entries) or "none"
+    if not hits:
+        asked = f"{args.repo or 'host'}:{args.branch}" if args.branch else (args.repo or "this phase")
+        raise SystemExit(f"pr-record: no recorded PR branch matches {asked} (recorded: {recorded}); record it first: "
+                         f"{WORKFLOW_CMD} pr-branch {args.phase}{' --repo <name>' if repos else ''} --name <branch> -- nothing was written")
+    if len(hits) > 1:
+        raise SystemExit(f"pr-record: {len(hits)} recorded branches match ({', '.join(_pr_label(e) for e in hits)}); name one with "
+                         f"{'--repo and ' if repos else ''}--branch -- nothing was written")
+    entry = hits[0]
+    url = args.url.strip()
+    if entry.get("url") != url or not entry.get("opened_at"):
+        entry["opened_at"] = now_iso()
+    entry["url"] = url
+    write_json(pdir / "phase.json", data)
+    append_event("pr_recorded", phase=args.phase, repo=entry.get("repo"), branch=entry.get("branch"), url=url)
+    rebuild_index_and_state()
+    print(f"pr_branch={_pr_label(entry)} base={entry.get('base')} url={url}")
+    left = [e for e in entries if not e.get("url")]
+    if left:
+        print(f"pr-record: {len(left)} recorded branch(es) still have no draft PR: {', '.join(_pr_label(e) for e in left)}")
+
+
+def _phase_scope_product_files(phase_id: str):
+    """The product files `phase-scope <P>` lists in the phase's committed range (its JSON `files`, the
+    union over repos on a multi-repo host), or None when it cannot answer. Uncommitted files do not
+    count: a phase's product lands in commits before its pass, and an operator's stray working-tree
+    file must never hold a docs phase's review."""
+    import contextlib
+    import io
+    ns = argparse.Namespace(phase=phase_id, base=None, head=None, json=True, repo=None)
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            phase_scope(ns)
+        out = json.loads(buf.getvalue())
+    except (SystemExit, Exception):  # noqa: BLE001 - an unreadable scope is reported by the caller, never fatal here
+        return None
+    files = out.get("files") if isinstance(out, dict) else None
+    return [f.get("path") for f in files if isinstance(f, dict)] if isinstance(files, list) else None
+
+
+def _require_pr_opened(phase_id: str, data: dict) -> None:
+    """Refuse a passing review while the phase's PR is not opened: (a) a recorded branch has no URL, or
+    (b) the block records no branch while `phase-scope` lists product files -- unless `pr.waived` is set.
+
+    Called beside `_require_acceptance_cleared`, before `review_phase` writes anything; each refusal
+    names only itself, and both must clear. A phase with no `pr` block (created before P51) is never
+    refused; only `pass` is ever checked."""
+    if "pr" not in data:
+        return
+    block = phase_pr(data)
+    if block is None:
+        print(f"pr: phase {phase_id} has a malformed pr block -- treated as absent (run: {WORKFLOW_CMD} validate)")
+        return
+    waived = block.get("waived")
+    if isinstance(waived, dict):
+        print(f"pr: waived ({_one_line(waived.get('note') or '')}) -- pass recorded without a draft PR")
+        return
+    multi = bool(nested_repos())
+    repo_flag = " --repo <name>" if multi else ""
+    missing = [e for e in block["branches"] if not e.get("url")]
+    if missing:
+        listed = "\n".join(f"  {_pr_label(e)} (base {e.get('base')}) has no draft PR" for e in missing)
+        raise SystemExit(
+            f"phase {phase_id} records {len(missing)} PR branch(es) with no draft PR yet; a pass cannot be recorded until each is opened:\n"
+            f"{listed}\n"
+            f"  on the operator's `push` (pr skill), push and open the draft, then: {WORKFLOW_CMD} pr-record {phase_id}{repo_flag} --branch <branch> --url <url>\n"
+            f"  or, for a phase with no product change worth a PR: {WORKFLOW_CMD} pr-record {phase_id} --waive --note \"why\"\n"
+            f"nothing was written")
+    if not block["branches"]:
+        files = _phase_scope_product_files(phase_id)
+        if files is None:
+            print(f"pr: phase-scope {phase_id} could not be read -- the no-branch check was skipped")
+        elif files:
+            raise SystemExit(
+                f"phase {phase_id} changed {len(files)} product file(s) (phase-scope {phase_id}) but records no PR branch; a pass cannot be recorded:\n"
+                f"  record the branch its product commits are on: {WORKFLOW_CMD} pr-branch {phase_id}{repo_flag} --name <branch>\n"
+                f"  then, on the operator's `push` (pr skill): {WORKFLOW_CMD} pr-record {phase_id}{repo_flag} --branch <branch> --url <url>\n"
+                f"  or, for a phase with no product change worth a PR: {WORKFLOW_CMD} pr-record {phase_id} --waive --note \"why\"\n"
+                f"nothing was written")
+
+
+def _pr_push_due(phase: dict) -> bool:
+    """True once the review is at its stop: the phase is in_review or pending, or its REVIEW slice is
+    in_review or pending (`phase` may carry `slices`, as all_active_phases builds it)."""
+    if phase.get("status") in ("in_review", "pending"):
+        return True
+    rid = f"{phase.get('id')}.REVIEW"
+    slices = phase.get("slices")
+    if isinstance(slices, list):
+        review = next((s for s in slices if isinstance(s, dict) and s.get("id") == rid), None)
+    else:
+        sj = ACTIVE / str(phase.get("id")) / "slices" / rid / "slice.json"
+        try:
+            review = read_json(sj) if sj.is_file() else None
+        except (OSError, ValueError):
+            review = None
+    return bool(review and review.get("status") in ("in_review", "pending"))
+
+
+def pr_lines(phase: dict) -> list:
+    """`next`'s PR lines for a phase with a `pr` block (silent without one): one `pr_branch=` per entry,
+    `pr_waived=` when waived, and `pr_push=waiting` once the review is at its stop with a branch unopened."""
+    block = phase_pr(phase)
+    if block is None:
+        return []
+    lines = [f"pr_branch={_pr_label(e)} base={e.get('base')} url={e.get('url') or 'none'}" for e in block["branches"]]
+    waived = block.get("waived")
+    if isinstance(waived, dict):
+        lines.append(f"pr_waived={_one_line(waived.get('note') or '')}")
+    elif any(not e.get("url") for e in block["branches"]) and _pr_push_due(phase):
+        lines.append(PR_PUSH_WAITING)
+    return lines
+
+
+def _pr_next_lines(phase_id) -> list:
+    if not phase_id:
+        return []
+    try:
+        return pr_lines(read_json(ACTIVE / phase_id / "phase.json"))
+    except (OSError, ValueError, SystemExit):
+        return []
+
+
+# --- the PR rules record (decided team-rule conflicts) ------------------------------------------
+
+def pr_rules_problems(raw, label: str = "pr_rules") -> list:
+    """Every way a PR rules record breaks its shape: `{"decided": [{"rule", "choice", "note", "at"[, "repo"]}]}`,
+    `choice` team or ours, `rule` and `at` non-empty strings, `note` a string or null, `repo` null or a name."""
+    if not isinstance(raw, dict) or sorted(raw) != ["decided"]:
+        return [f"{label} must be an object with exactly decided (a list of decisions)"]
+    decided = raw["decided"]
+    if not isinstance(decided, list):
+        return [f"{label}.decided must be a list of decisions"]
+    problems = []
+    for i, entry in enumerate(decided):
+        lab = f"{label}.decided[{i}]"
+        if not isinstance(entry, dict):
+            problems.append(f"{lab} is not an object")
+            continue
+        gone = [k for k in PR_RULE_KEYS if k not in entry]
+        extra = sorted(str(k) for k in entry if k not in PR_RULE_KEYS + PR_RULE_OPTIONAL_KEYS)
+        if gone:
+            problems.append(f"{lab}: missing field(s) {', '.join(gone)}")
+        if extra:
+            problems.append(f"{lab}: unknown field(s) {', '.join(extra)} (a decision has {', '.join(PR_RULE_KEYS)}, and optionally repo)")
+        for key in ("rule", "at"):
+            if key in entry and not (isinstance(entry[key], str) and entry[key].strip()):
+                problems.append(f"{lab}.{key} must be a non-empty string")
+        if "choice" in entry and entry["choice"] not in PR_RULE_CHOICES:
+            problems.append(f"{lab}.choice {entry['choice']!r} is not one of {', '.join(PR_RULE_CHOICES)}")
+        if entry.get("note") is not None and not isinstance(entry.get("note"), str):
+            problems.append(f"{lab}.note must be a string or null")
+        repo = entry.get("repo")
+        if repo is not None and not (isinstance(repo, str) and NESTED_REPO_NAME.fullmatch(repo)):
+            problems.append(f"{lab}.repo {repo!r} must be null or a registered repo's name")
+    return problems
+
+
+def _pr_rules_source():
+    """`(raw, where)`: the nested marker's `pr_rules` value, or at root works/pr-rules.json's parsed
+    content; raw is None when absent, and the string "unreadable" names a root file that is not JSON."""
+    if NESTED is not None:
+        return NESTED.get("pr_rules"), shown(ROOT / NESTED_MARKER)
+    path = WORKS / PR_RULES_FILE
+    if not path.is_file():
+        return None, shown(path)
+    try:
+        return json.loads(path.read_text(encoding="utf-8")), shown(path)
+    except (OSError, ValueError):
+        return "unreadable", shown(path)
+
+
+def load_pr_rules() -> list:
+    """The operator's decided team-rule conflicts: the nested marker's `pr_rules.decided`, or at root
+    works/pr-rules.json's. `[]` when absent or malformed (validate reports a malformed record). The team's
+    rules themselves are never recorded: the `pr` skill reads them live from the repo each time."""
+    raw, _where = _pr_rules_source()
+    if raw is None or raw == "unreadable" or pr_rules_problems(raw):
+        return []
+    return list(raw["decided"])
+
+
+def pr_rules_validate(errors: list) -> None:
+    """validate's rows for the PR rules record, where one exists. Errors, never marker problems: a
+    malformed record must not stop every other command, it only empties `load_pr_rules`."""
+    raw, where = _pr_rules_source()
+    if raw is None:
+        return
+    if raw == "unreadable":
+        errors.append(f"{where} cannot be read as JSON")
+        return
+    errors.extend(f"{where}: {p}" for p in pr_rules_problems(raw))
+
+
+def cmd_pr_rules_decide(args: argparse.Namespace) -> None:
+    """Show (bare) or record (--rule --choice) one team-rule conflict the operator decided -- the record
+    update-workspace and the installer keep; the team's rules themselves are read live, never stored."""
+    repos = nested_repos()
+    if args.repo is not None:
+        if not repos:
+            raise SystemExit("pr-rules-decide --repo: refused -- a multi-repo host only; drop --repo")
+        if args.repo not in [r["name"] for r in repos]:
+            raise SystemExit(f"pr-rules-decide --repo {args.repo}: no registered repo has that name")
+    if args.rule is None:
+        if args.choice is not None or args.note is not None or args.repo is not None:
+            raise SystemExit("pr-rules-decide: --choice, --note and --repo belong to --rule \"<what>\"")
+        decided = load_pr_rules()
+        print(f"pr_rules={len(decided)} decided")
+        for d in decided:
+            print(f"  {d.get('repo') or 'every repo'}: {_one_line(d.get('rule'))} -> {d.get('choice')}"
+                  + (f" ({_one_line(d.get('note'))})" if d.get("note") else "") + f" [{d.get('at')}]")
+        return
+    if not args.rule.strip() or args.choice is None:
+        raise SystemExit("pr-rules-decide needs --rule \"<what the team rule says>\" and --choice team|ours")
+    raw, where = _pr_rules_source()
+    if raw == "unreadable" or (raw is not None and pr_rules_problems(raw)):
+        raise SystemExit(f"pr-rules-decide: {where} is malformed; fix it first (run: {WORKFLOW_CMD} validate) -- nothing was written")
+    record = {"decided": list(raw["decided"])} if raw is not None else {"decided": []}
+    entry = {"rule": args.rule.strip(), "choice": args.choice, "note": (args.note or "").strip() or None, "at": now_iso()}
+    if args.repo is not None:
+        entry["repo"] = args.repo
+    replaced = [d for d in record["decided"] if d.get("rule") == entry["rule"] and d.get("repo") == entry.get("repo")]
+    record["decided"] = [d for d in record["decided"] if d not in replaced] + [entry]
+    if NESTED is not None:
+        path = ROOT / NESTED_MARKER
+        marker = read_json(path)
+        marker["pr_rules"] = record
+        problems = nested_marker_problems(marker) + pr_rules_problems(record)
+        if problems:
+            raise SystemExit(f"pr-rules-decide: refused -- the marker would be malformed: {'; '.join(problems)}")
+        write_json(path, marker)
+    else:
+        path = WORKS / PR_RULES_FILE
+        write_json(path, record)
+    append_event("pr_rule_decided", rule=entry["rule"], choice=entry["choice"], repo=entry.get("repo"))
+    print(f"pr-rules-decide: {'replaced' if replaced else 'recorded'} -- {entry.get('repo') or 'every repo'}: {entry['rule']} -> {entry['choice']} ({shown(path)})")
+    print(f"pr_rules={len(record['decided'])} decided")
+
+
+# --- pr-check: size, body budgets, leaks and heading order --------------------------------------
+
+_PR_FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})\s*([^\s`]*)")
+_PR_FENCE_CLOSE = re.compile(r"^ {0,3}(`{3,}|~{3,})\s*$")
+_PR_H2 = re.compile(r"^ {0,3}##(?!#)[ \t]+(.*?)[ \t]*#*[ \t]*$")
+_PR_COMMENT = re.compile(r"<!--.*?(?:-->|\Z)", re.S)
+_PR_DETAILS_TAG = re.compile(r"<(/?)details\b[^>]*>", re.I)
+_PR_IMAGE = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
+_PR_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_PR_TAG = re.compile(r"</?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?/?>")
+# Leaks fail the check. Phase ids are case-sensitive on purpose: a percentile written `p95` passes, while
+# `P95`, or a version like `P5`, fails even inside a code span -- authors write those another way (pr skill).
+# A bare `S<n>` counts only in an ID position (after "slice", or in a run like `S6-S12` / `S6, S7`), so an
+# `S3 bucket` passes; `DECOMP` always counts; a bare `REVIEW` counts only with its phase prefix.
+_PR_LEAKS = (
+    ("slice_id", re.compile(r"\bP\d+(?:-[a-z0-9]+)?\.(?:S\d+|F\d+|C\d+|K\d+|DECOMP\d*|REVIEW)\b")),
+    ("slice_id", re.compile(r"\bDECOMP\d*\b")),
+    ("slice_id", re.compile(r"(?i:\bslices?)[ \t]+S\d+\b")),
+    ("slice_id", re.compile(r"\bS\d+[ \t]*(?:[\u2013\u2014/,-]|\band\b|\bto\b)[ \t]*S\d+\b")),
+    ("phase_id", re.compile(r"\bP\d+(?:-[a-z0-9]{2,4})?\b")),
+    ("phase_id", re.compile(r"\bP-[a-z0-9]{4}\b")),
+    ("workflow_path", re.compile(r"(?<![\w./-])workflow/")),
+    ("workspace_file", re.compile(r"(?<![\w.-])(?:phase|result|plan|intent)\.md\b|(?<![\w.-])(?:slice|phase)\.json\b")),
+)
+# Workspace vocabulary: a warning, never a fail ("slice" is also an ordinary word, a Go slice).
+_PR_LEAK_WARNINGS = (
+    ("orchestrator", re.compile(r"\borchestrators?\b", re.I)),
+    ("executor", re.compile(r"\bexecutors?\b", re.I)),
+    ("phase notebook", re.compile(r"\bphase notebooks?\b", re.I)),
+    ("slice", re.compile(r"\bslices?\b", re.I)),
+)
+PR_LEAKS_SHOWN = 10
+
+
+def _pr_fenced(lines: list) -> list:
+    """`[(line, in_fence, mermaid)]`: each line with whether it sits inside a fenced code block (the
+    fence lines included) and whether that block is Mermaid source."""
+    out, fence = [], None
+    for ln in lines:
+        if fence is None:
+            m = _PR_FENCE_OPEN.match(ln)
+            if m:
+                fence = (m.group(1)[0], len(m.group(1)), m.group(2).lower().startswith("mermaid"))
+                out.append((ln, True, fence[2]))
+            else:
+                out.append((ln, False, False))
+            continue
+        out.append((ln, True, fence[2]))
+        m = _PR_FENCE_CLOSE.match(ln)
+        if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= fence[1]:
+            fence = None
+    return out
+
+
+def _pr_h2(text: str) -> list:
+    """The H2 headings of a markdown text, in order: outside fenced code and HTML comments."""
+    lines = _PR_COMMENT.sub("", text).split("\n")
+    return [m.group(1) for ln, fenced, _mm in _pr_fenced(lines) if not fenced for m in [_PR_H2.match(ln)] if m]
+
+
+def _pr_norm(heading: str) -> str:
+    return " ".join(re.sub(r"[^\w\s]", " ", heading.lower()).split())
+
+
+def _pr_drop_details(text: str) -> str:
+    """`text` without its <details>...</details> blocks (nested ones included; an unclosed one runs to the end)."""
+    out, depth, pos = [], 0, 0
+    for m in _PR_DETAILS_TAG.finditer(text):
+        if m.group(1):  # </details>
+            if depth:
+                depth -= 1
+                if depth == 0:
+                    pos = m.end()
+            continue
+        if depth == 0:
+            out.append(text[pos:m.start()])
+        depth += 1
+    if depth == 0:
+        out.append(text[pos:])
+    return "".join(out)
+
+
+def _pr_reading_chars(lines: list) -> int:
+    """Reading chars of markdown lines (comments and Mermaid fences already gone): <details> blocks
+    dropped, link and image URLs dropped (their text kept), HTML tags dropped (their text kept), and
+    each whitespace run counted as one char."""
+    text = _pr_drop_details("\n".join(lines))
+    text = _PR_IMAGE.sub(r"\1", text)
+    text = _PR_LINK.sub(r"\1", text)
+    text = _PR_TAG.sub("", text)
+    return len(" ".join(text.split()))
+
+
+def pr_body_measure(text: str) -> dict:
+    """The body's three budgeted counts: `whole` (raw source chars), `visible` (reading chars outside
+    <details>) and `first_screen` (the visible reading chars before the first H2 after `## Review` -- the
+    series line, Summary and Review; with no `## Review`, through the first H2 section)."""
+    lines = [ln for ln, _fenced, mermaid in _pr_fenced(_PR_COMMENT.sub("", text).split("\n")) if not mermaid]
+    heads = [i for i, (ln, fenced, _mm) in enumerate(_pr_fenced(lines)) if not fenced and _PR_H2.match(ln)]
+    review = next((i for i in heads if _pr_norm(_PR_H2.match(lines[i]).group(1)) == "review"), None)
+    after = [i for i in heads if i > (review if review is not None else (heads[0] if heads else len(lines)))]
+    cut = after[0] if after else len(lines)
+    return {"first_screen": _pr_reading_chars(lines[:cut]), "visible": _pr_reading_chars(lines), "whole": len(text)}
+
+
+def pr_leaks(text: str, where: str) -> tuple:
+    """`(fails, warns)`: each fail `(kind, match, where:line)`, each warning `(term, where:line)`."""
+    fails, warns = [], []
+    for n, line in enumerate(text.split("\n"), 1):
+        taken = []
+        for kind, rx in _PR_LEAKS:
+            for m in rx.finditer(line):
+                if any(m.start() < e and s < m.end() for s, e in taken):
+                    continue
+                taken.append((m.start(), m.end()))
+                fails.append((kind, m.group(0), f"{where}:{n}"))
+        for term, rx in _PR_LEAK_WARNINGS:
+            for _m in rx.finditer(line):
+                warns.append((term, f"{where}:{n}"))
+    return fails, warns
+
+
+def pr_team_template(path: Path):
+    """`(relpath, [H2 headings])` of the repo's PR template, first hit wins (PR_TEMPLATE_DIRS, the file
+    name read case-insensitively, then a lone file in .github/PULL_REQUEST_TEMPLATE/), or `(None, None)`.
+    `(<dir>, None)` names a template directory holding several files: no single template applies."""
+    for d in PR_TEMPLATE_DIRS:
+        base = path / d
+        try:
+            names = sorted(os.listdir(base))
+        except OSError:
+            continue
+        for name in names:
+            if name.lower() == PR_TEMPLATE_NAME and (base / name).is_file():
+                rel = name if d == "." else f"{d}/{name}"
+                try:
+                    return rel, _pr_h2((base / name).read_text(encoding="utf-8", errors="replace"))
+                except OSError:
+                    continue
+    multi = path / PR_TEMPLATE_MULTI_DIR
+    try:
+        files = sorted(f for f in os.listdir(multi) if (multi / f).is_file() and not f.startswith("."))
+    except OSError:
+        files = []
+    if len(files) == 1:
+        return f"{PR_TEMPLATE_MULTI_DIR}/{files[0]}", _pr_h2((multi / files[0]).read_text(encoding="utf-8", errors="replace"))
+    if len(files) > 1:
+        return f"{PR_TEMPLATE_MULTI_DIR}/", None
+    return None, None
+
+
+def pr_heading_problems(body_heads: list, expected) -> list:
+    """`missing:<h>` / `order:<h>` for each expected H2 the body lacks, or holds out of order; extra H2s
+    anywhere are fine."""
+    norm = [_pr_norm(h) for h in body_heads]
+    problems, pos = [], -1
+    for h in expected:
+        n = _pr_norm(h)
+        idx = next((i for i in range(pos + 1, len(norm)) if norm[i] == n), None)
+        if idx is None:
+            problems.append(f"{'order' if n in norm else 'missing'}:{h}")
+        else:
+            pos = idx
+    return problems
+
+
+def _pr_generated_paths(path: Path, tip: str, paths: list) -> set:
+    """The paths `git check-attr linguist-generated` marks set or true, read at the branch tip's
+    attributes (`--source`, git >= 2.40), else the working tree's."""
+    if not paths:
+        return set()
+    stdin = "\0".join(paths) + "\0"
+    for cmd in (["check-attr", "--source", tip, "-z", "--stdin", "linguist-generated"], ["check-attr", "-z", "--stdin", "linguist-generated"]):
+        try:
+            proc = subprocess.run(["git", *cmd], cwd=str(path), input=stdin, capture_output=True, text=True, timeout=60)
+        except Exception:  # noqa: BLE001 - no attributes readable: nothing is excluded as generated
+            return set()
+        if proc.returncode == 0:
+            break
+    else:
+        return set()
+    toks = proc.stdout.split("\0")
+    return {toks[i] for i in range(0, len(toks) - 2, 3) if toks[i + 2] in ("set", "true")}
+
+
+def pr_size(path: Path, base: str, branch: str):
+    """`(size, None)` or `(None, why)`: the changed hand-written lines (added + deleted) of
+    `git diff --numstat <base>...<branch>`, excluding linguist-generated paths, lockfiles and whole-file
+    deletions; binary rows are excluded and counted. Tests and migrations count."""
+    tip = _pr_branch_tip(path, branch)
+    if tip is None:
+        return None, f"branch {branch} is not in {path} (no local branch, no origin/{branch})"
+    if not _rev_parse(base, cwd=path):
+        return None, f"base {base} is not a commit in {path}"
+    rng = f"{base}...{tip}"
+    num = _git(["diff", "--numstat", "-z", "-M", rng], cwd=path, check=False)
+    if num.returncode != 0:
+        return None, f"git diff {rng} failed: {(num.stderr or '').strip()}"
+    deleted = set(t for t in _git(["diff", "--name-only", "-z", "-M", "--diff-filter=D", rng], cwd=path, check=False).stdout.split("\0") if t)
+    rows, toks, i = [], num.stdout.split("\0"), 0
+    while i < len(toks):
+        tok = toks[i]
+        i += 1
+        if not tok:
+            continue
+        parts = tok.split("\t")
+        if len(parts) < 3:
+            continue
+        added, removed, p = parts[0], parts[1], parts[2]
+        if not p:  # a rename or copy: the old path, then the new one, as their own tokens
+            p = toks[i + 1] if i + 1 < len(toks) else ""
+            i += 2
+        rows.append((added, removed, p))
+    generated = _pr_generated_paths(path, tip, [p for _a, _r, p in rows])
+    size = {"lines": 0, "files": 0, "generated": 0, "lockfiles": 0, "deleted": 0, "binary": 0, "tip": tip}
+    for added, removed, p in rows:
+        if p in deleted:
+            size["deleted"] += 1
+        elif p in generated:
+            size["generated"] += 1
+        elif posixpath.basename(p) in PR_LOCKFILES:
+            size["lockfiles"] += 1
+        elif added == "-" or removed == "-":
+            size["binary"] += 1
+        else:
+            size["lines"] += int(added) + int(removed)
+            size["files"] += 1
+    return size, None
+
+
+def _pr_where(path: Path, pdir: Path) -> str:
+    try:
+        return path.resolve().relative_to(pdir.resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _pr_check_one(pdir: Path, data: dict, entry: dict, body_arg) -> tuple:
+    """`(lines, status)` for one recorded branch: size, body budgets, leaks, headings. status is
+    pass, warn or fail."""
+    repo = entry.get("repo")
+    lines = [f"pr_check={_pr_label(entry)} base={entry.get('base')}"]
+    if entry.get("note"):
+        lines.append(f"note={entry['note']}")
+    status = {"v": "pass"}
+
+    def mark(level):
+        order = ("pass", "warn", "fail")
+        if order.index(level) > order.index(status["v"]):
+            status["v"] = level
+
+    if repo is not None:
+        reg = next((r for r in nested_repos() if r["name"] == repo), None)
+        path, why = _phase_repo_path(reg, data) if reg else (None, f"{repo} is not a registered repo")
+    else:
+        path, why = (HOST_ROOT if NESTED is not None else ROOT), None
+    # Size
+    size, why_size = pr_size(path, entry.get("base"), entry.get("branch")) if path is not None else (None, why)
+    if size is None:
+        lines.append(f"size=unknown ({why_size})")
+        mark("warn")
+    else:
+        n = size["lines"]
+        state = "ok" if n <= PR_SIZE_TARGET else "over_target" if n <= PR_SIZE_FLAG else "flag"
+        lines.append(f"size={n} target={PR_SIZE_TARGET} flag={PR_SIZE_FLAG} size_status={state}")
+        excluded = size["generated"] + size["lockfiles"] + size["deleted"] + size["binary"]
+        lines.append(f"size_excluded={excluded} files (generated {size['generated']}, lockfiles {size['lockfiles']}, "
+                     f"deleted {size['deleted']}, binary {size['binary']}; counted {size['files']} files)")
+        lines.append(f"size_binary={size['binary']}")
+        if state == "flag":
+            lines.append(f"size_flag=over {PR_SIZE_FLAG} changed lines -- the REVIEW's PR drafting may split this branch (a stack or a series), "
+                         "or name the exception in ## Review")
+            mark("warn")
+    # Body
+    suffix = f"-{repo}" if repo else ""
+    body = Path(body_arg) if body_arg else pdir / "topics" / f"pr-body{suffix}.md"
+    details = pdir / "topics" / f"pr-details{suffix}.md"
+    text = None
+    if not body.is_file():
+        lines.append(f"body=missing ({_pr_where(body, pdir)})")
+        if body_arg:
+            mark("fail")
+    else:
+        text = body.read_text(encoding="utf-8", errors="replace")
+        lines.append(f"body={_pr_where(body, pdir)}")
+        measured = pr_body_measure(text)
+        for key, budget in PR_BODY_BUDGETS:
+            over = measured[key] > budget
+            lines.append(f"{key}={measured[key]}/{budget} {'over' if over else 'ok'}")
+            if over:
+                mark("fail")
+    # Leaks: the body and the details file
+    fails, warns = [], []
+    for f in (body, details):
+        if f.is_file():
+            got = pr_leaks(f.read_text(encoding="utf-8", errors="replace"), _pr_where(f, pdir))
+            fails += got[0]
+            warns += got[1]
+    for kind, match, at in fails[:PR_LEAKS_SHOWN]:
+        lines.append(f"leak={kind}:{match} ({at})")
+    if len(fails) > PR_LEAKS_SHOWN:
+        lines.append(f"leak=+{len(fails) - PR_LEAKS_SHOWN} more")
+    if fails:
+        mark("fail")
+    terms = {}
+    for term, at in warns:
+        terms.setdefault(term, []).append(at)
+    for term, ats in terms.items():
+        lines.append(f"leak_warn={term} x{len(ats)} (first {ats[0]})")
+        mark("warn")
+    if not fails and not warns and (body.is_file() or details.is_file()):
+        lines.append("leaks=none")
+    # Headings
+    if text is not None:
+        rel, team = pr_team_template(path) if path is not None else (None, None)
+        expected = team if team is not None else PR_DEFAULT_HEADINGS
+        problems = pr_heading_problems(_pr_h2(text), expected)
+        lines.append(f"headings={'ok' if not problems else ','.join(problems)}")
+        lines.append(f"template={rel if team is not None else 'default'}" + (f" (ambiguous: {rel} holds several templates)" if rel and team is None else ""))
+        if problems:
+            mark("fail")
+        if team is not None and "review" not in [_pr_norm(h) for h in _pr_h2(text)]:
+            lines.append("review_heading=missing -- ours fills the team template's gap: add ## Review after its first heading")
+            mark("warn")
+    return lines, status["v"]
+
+
+def cmd_pr_check(args: argparse.Namespace) -> int:
+    """Read-only: measure each recorded PR branch (size, body budgets, leaks, heading order) and print
+    key=value lines. Exit 1 on a fail; 0 on a pass, a warning or a size flag."""
+    pdir = require_phase(args.phase)
+    data = read_json(pdir / "phase.json")
+    repos = nested_repos()
+    names = [r["name"] for r in repos]
+    if args.repo and not repos:
+        raise SystemExit("pr-check --repo: refused -- a multi-repo host only; a single-repo host or a root install has one repo: drop --repo")
+    if args.repo and args.repo not in names:
+        raise SystemExit(f"pr-check --repo {args.repo}: no registered repo has that name (registered: {', '.join(names)})")
+    block = phase_pr(data)
+    entries = [dict(e) for e in (block["branches"] if block else [])
+               if (args.repo is None or e.get("repo") == args.repo) and (args.branch is None or e.get("branch") == args.branch)]
+    if args.body and len({e.get("repo") for e in entries}) > 1:
+        raise SystemExit("pr-check --body names one body, but several repos' branches match: add --repo <name>")
+    if not entries:
+        if repos and not args.repo:
+            print(f"pr_branches=none recorded for phase {args.phase} -- record them (pr-branch {args.phase} --repo <name> --name <branch>) or pass --repo")
+            print(f"pr_rules={len(load_pr_rules())} decided")
+            print("pr_check=pass")
+            return 0
+        target = _pr_target(data, args.repo, "pr-check")
+        branch = args.branch or _repo_current_branch(target["path"])
+        if not branch:
+            raise SystemExit(f"pr-check: no recorded PR branch, and {target['path']} has no branch checked out (detached HEAD); pass --branch")
+        base = _pr_default_base(target["path"], target["default"]) or "main"
+        entries = [{"repo": target["repo"], "branch": branch, "base": base,
+                    "note": f"no recorded PR branch -- measured {branch} against the default base {base}"}]
+    worst = "pass"
+    for entry in entries:
+        lines, status = _pr_check_one(pdir, data, entry, args.body)
+        prefix = f"repo={entry['repo']} " if repos else ""
+        for ln in lines:
+            print(prefix + ln)
+        if ("pass", "warn", "fail").index(status) > ("pass", "warn", "fail").index(worst):
+            worst = status
+    print(f"pr_rules={len(load_pr_rules())} decided")
+    print(f"pr_check={worst}")
+    return 1 if worst == "fail" else 0
+
+
 def _one_line(text) -> str:
     """A stored free-text value collapsed onto one printable line."""
     return " ".join(str(text).split())
@@ -9389,6 +10330,8 @@ def cmd_next(args: argparse.Namespace) -> None:
         print(f"current_phase={state.get('current_phase')}")
         for line in explain_unit_lines(state.get("current_phase")):
             print(line)
+        for line in _pr_next_lines(state.get("current_phase")):  # P51: silent for a phase without a pr block
+            print(line)
         print(f"waiting_on_operator={waiting}")
         print(f"WAITING ON OPERATOR: {kind} {waiting} is pending [~] -- operator co-work needed (validation or an operator-run action).")
         if kind == "slice":
@@ -9424,6 +10367,8 @@ def cmd_next(args: argparse.Namespace) -> None:
             print(f"current_phase={state['current_phase']}")
             for line in explain_unit_lines(state["current_phase"]):
                 print(line)
+            for line in _pr_next_lines(state["current_phase"]):
+                print(line)
             print("no open slice in the current phase; review/archive it or create a new phase")
         else:
             print("no active slice; create a phase or promote deferred work")
@@ -9431,6 +10376,8 @@ def cmd_next(args: argparse.Namespace) -> None:
     sdir = require_slice(current_slice)
     print(f"current_phase={current_slice.split('.', 1)[0]}")
     for line in explain_unit_lines(current_slice.split(".", 1)[0]):
+        print(line)
+    for line in _pr_next_lines(current_slice.split(".", 1)[0]):
         print(line)
     print(f"current_slice={current_slice}")
     print(f"slice_path={shown(sdir)}")
@@ -9646,6 +10593,9 @@ def resume_card(transcript_path=None) -> str:
     if execution:
         gates.append(f"parallel={execution.get('branch')} (merge only past parallel-gate {phase_id})")
     lines.append("gates: " + "; ".join(gates))
+    pr = pr_lines(phase)  # P51: silent for a phase without a pr block or with no branch recorded
+    if pr:
+        lines.append("pr: " + "; ".join(ln.replace("pr_branch=", "", 1) for ln in pr))
     step = notebook_step(phase_id) if phase.get("status") != "done" else None  # §6: silent under budget
     if step:
         lines.append(f"notebook: over budget ({step['bytes']}/{PHASE_MD_BUDGET} B) -- "
@@ -17863,7 +18813,10 @@ def loop_branch_checkpoint(branch_data):
     return record if isinstance(record, dict) else None
 
 
-def _is_ancestor(commit: str, ref: str) -> bool:
+def _ref_is_ancestor(commit: str, ref: str) -> bool:
+    """`commit` is an ancestor of `ref` in this workspace's own repo (ROOT). Named apart from P40's
+    `_is_ancestor(path, older, newer)`: sharing that name shadowed it, and broke the nested base rule
+    (`resolve_repo_base`) for every phase whose host branch had left the default branch (P51.S6)."""
     return _git(["merge-base", "--is-ancestor", commit, ref], check=False).returncode == 0
 
 
@@ -17894,7 +18847,7 @@ def _loop_restamp_debt(pdir: Path) -> str:
     if not isinstance(debt, dict) or phase_consolidation(data) == "pending":
         return ""
     default = _default_branch() if _git_available() else None
-    if not default or (debt.get("commit") and _is_ancestor(debt["commit"], default)):
+    if not default or (debt.get("commit") and _ref_is_ancestor(debt["commit"], default)):
         return ""
     set_phase_consolidation(data, "pending")
     write_json(pdir / "phase.json", data)
@@ -17965,7 +18918,7 @@ def main(argv=None) -> int:
     p.add_argument("--transcripts", action="append", metavar="DIR", help="read this projects/<slug> directory instead of discovering the session root's (repeatable)")
     p.set_defaults(func=cmd_dispatch_summary)
 
-    p = sub.add_parser("next", help="Print the current phase/slice selection (plus explain_unit=<document|book|chapter> on an explain phase, and on the default stream merge_ready=<P>:<branch> for a parallel phase done with a passing review on its branch but not merged yet, and merge_ready=<P>:<commit7> for a loop whose passing, landed checkpoint is not merged yet); when the phase's notebook is over 40,960 B, also notebook_over_budget= with up to 3 notebook_move= commands to run before the next dispatch (required form), or none when nothing can move (advisory form)")
+    p = sub.add_parser("next", help="Print the current phase/slice selection (plus explain_unit=<document|book|chapter> on an explain phase, and on the default stream merge_ready=<P>:<branch> for a parallel phase done with a passing review on its branch but not merged yet, and merge_ready=<P>:<commit7> for a loop whose passing, landed checkpoint is not merged yet); when the phase's notebook is over 40,960 B, also notebook_over_budget= with up to 3 notebook_move= commands to run before the next dispatch (required form), or none when nothing can move (advisory form); for a phase with a pr block, one pr_branch=<repo|host>:<branch> base=<base> url=<url|none> per recorded branch, pr_waived=<note> when waived, and pr_push=waiting once the review is at its stop (the phase in_review or pending, or its REVIEW slice in_review or pending) with a branch unopened")
     p.add_argument("--card", action="store_true", help="print the resume card instead: the pointer, the next action or the typed stop, the open gates, the running spans (from the newest session's subagents/*.meta.json) and the slice's file paths, computed from state, at most 2,048 bytes -- what compact-resume prints after a compaction")
     p.set_defaults(func=cmd_next)
 
@@ -18035,7 +18988,7 @@ def main(argv=None) -> int:
     p.add_argument("status")
     p.set_defaults(func=set_phase_status)
 
-    p = sub.add_parser("review-phase", help="Record a phase review verdict (pass/changes_requested/blocked); a pass stamps doc consolidation pending when '## Doc impact' has notes, and settles a worktree phase's to done when it has none. A loop phase's pass is refused (nothing written) until the loop is stopped, nothing is in flight and no parked item is open (loop-unpark); set-phase-status <loop P> done is held to the same guard")
+    p = sub.add_parser("review-phase", help="Record a phase review verdict (pass/changes_requested/blocked); a pass stamps doc consolidation pending when '## Doc impact' has notes, and settles a worktree phase's to done when it has none. A loop phase's pass is refused (nothing written) until the loop is stopped, nothing is in flight and no parked item is open (loop-unpark); set-phase-status <loop P> done is held to the same guard. A pass is also refused, beside the acceptance gate's refusal and naming only itself, while the phase's pr block records a branch with no draft PR URL, or records none while phase-scope lists product files, unless the PR is waived (pr-record --url / --waive); a phase with no pr block is never refused")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--verdict", required=True, choices=sorted(REVIEW_VERDICTS))
     p.add_argument("--reviewer", default=None)
@@ -18129,6 +19082,36 @@ def main(argv=None) -> int:
     p.add_argument("--json", action="store_true", help="print the same answer as one JSON object")
     p.add_argument("--repo", action="append", default=None, metavar="NAME", help="multi-repo host only: measure only this registered repo (repeatable); with exactly one --repo, --base/--head set that repo's range instead of the host's")
     p.set_defaults(func=phase_scope)
+
+    p = sub.add_parser("pr-branch", help="Cut or record the phase's PR branch in one repo's checkout (the host for a single-repo host or a root install; the registered repo's for a multi-repo host) and record it in phase.json's pr block (added to a phase from before P51): the branch already checked out there is only recorded; an existing branch that is not checked out is refused (git switch to it, then re-run); otherwise git switch --no-track -c <branch> <base>, refused while tracked changes would ride along. Prints pr_branch=<repo|host>:<branch> base=<base>. Never pushes. Orchestrator command -- executors never run it")
+    p.add_argument("phase", help=PHASE_ARG_HELP)
+    p.add_argument("--repo", default=None, metavar="NAME", help="multi-repo host only, and required there: the registered repo whose checkout holds the branch")
+    p.add_argument("--name", required=True, help="the branch, named by the host's convention for branches (nested-convention), with no workspace IDs; never the base or default branch itself")
+    p.add_argument("--base", default=None, help="the ref the branch starts from and pr-check measures against (default: the repo's default branch -- the registry's default_branch, else origin/HEAD's target, else main -- as origin/<it> when that exists, else the local branch; never fetched); recorded resolved")
+    p.set_defaults(func=cmd_pr_branch)
+
+    p = sub.add_parser("pr-record", help="Record the draft PR the operator's push opened on a recorded PR branch (--url: sets url and opened_at), or waive the phase's PR (--waive --note: a phase with no product change worth a PR); refuses an unrecorded branch. review-phase --verdict pass waits on one of the two. Orchestrator command -- executors never run it")
+    p.add_argument("phase", help=PHASE_ARG_HELP)
+    p.add_argument("--repo", default=None, metavar="NAME", help="multi-repo host only: the registered repo of the branch")
+    p.add_argument("--branch", default=None, help="the recorded branch (may be omitted when exactly one recorded branch matches)")
+    p.add_argument("--url", default=None, help="the draft PR's http(s) URL, as gh pr create printed it")
+    p.add_argument("--waive", action="store_true", help="waive the phase's PR as a whole instead; needs --note")
+    p.add_argument("--note", default=None, help="mandatory with --waive: why this phase needs no PR")
+    p.set_defaults(func=cmd_pr_record)
+
+    p = sub.add_parser("pr-check", help="Read-only: measure each recorded PR branch and its body, one key=value per line -- size= (git diff --numstat <base>...<branch> minus linguist-generated paths, lockfiles and whole-file deletions; binary rows excluded and counted; target 400, flag over 1,000, a warning), body= and the budgets first_screen=/1500, visible=/3500, whole=/6000 (topics/pr-body[-<repo>].md, or --body), leak= (phase or slice IDs, workflow/ paths, workspace file names: a fail) and leak_warn= (orchestrator, executor, phase notebook, slice), headings= against the repo's PR template's H2s in order, else Summary, Review, What is changed, Why, Related issue (template=), pr_rules=<n> decided, and pr_check=pass|warn|fail. Exit 1 on a fail, else 0. With no recorded branch, measures the checked-out branch against the default base. On a multi-repo host each line starts repo=<name>")
+    p.add_argument("phase", help=PHASE_ARG_HELP)
+    p.add_argument("--repo", default=None, metavar="NAME", help="multi-repo host only: check only this registered repo's branch(es); without it every recorded branch is checked in turn")
+    p.add_argument("--branch", default=None, help="check only this recorded branch (a stack records several per repo)")
+    p.add_argument("--body", default=None, help="check this body file instead of the phase's topics/pr-body[-<repo>].md; a missing --body file is a fail (a missing default body only prints body=missing)")
+    p.set_defaults(func=cmd_pr_check)
+
+    p = sub.add_parser("pr-rules-decide", help="Show (bare) or record (--rule --choice) one team PR rule conflict the operator decided -- whether the team's rule or ours applies -- in the nested marker's pr_rules key, or at root in works/pr-rules.json; a decision on the same rule (and repo) replaces the earlier one. The team's rules themselves are read live by the pr skill, never recorded. Orchestrator (update-workspace) command -- executors never run it")
+    p.add_argument("--rule", default=None, help="what the team rule says, in one line (e.g. \"PR template headings: Summary, What is changed, Why, Related issue\")")
+    p.add_argument("--choice", default=None, choices=PR_RULE_CHOICES, help="team: the team's rule wins; ours: the workspace's rule applies")
+    p.add_argument("--note", default=None, help="optional: the operator's reason")
+    p.add_argument("--repo", default=None, metavar="NAME", help="multi-repo host only: the decision concerns this registered repo's rule (default: every repo)")
+    p.set_defaults(func=cmd_pr_rules_decide)
 
     p = sub.add_parser("phase-section", help="Read or write ONE `## ` section of a phase's phase.md, or one entry of it: no name = the index (a line per heading with its bytes; with its budget and over/long flags, then the move commands, when a section is over its budget or holds long entries), a name prints that section (paged: --page N), --list its entries, --entry K one entry; --replace / --append write one section (stdin or --file), --entry K --replace / --remove write one entry, --resolve OQ<n> --pointer <ref> collapses an Operator Questions entry, --to-topic <slug> moves entries verbatim to topics/<slug>.md behind one gist line each, --topic <slug> reads that file; every other byte of the notebook stays identical",
                        description="phase.md is an index: read one section or one entry, write one section or one entry, never the whole file. Put the section name BEFORE the flags: phase-section P1 Now --replace --file now.md. Names match case-insensitively (Now, Decisions, 'Doc impact', 'Operator Questions', 'Notes for later slices', Objective, Slices). Slices is generated and refused; Doc impact and Operator Questions are append-only (--append, or --resolve to collapse an answered entry). "
