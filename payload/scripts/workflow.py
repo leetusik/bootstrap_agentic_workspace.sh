@@ -9055,15 +9055,101 @@ def _pr_target(data: dict, repo_arg, cmd: str) -> dict:
 
 
 def _pr_default_base(path: Path, configured=None):
-    """The base a PR branch is cut from and measured against when `--base` is not given, resolved to a
-    ref that exists: the repo's default branch D (the registry's default_branch, else origin/HEAD's
-    target, else main/master), as `origin/D` when that remote-tracking ref exists -- what GitHub diffs
-    the PR against -- else the local `D`. None when neither exists. Never fetched."""
+    """The base a PR branch is recorded against when `--base` is not given: the repo's default branch
+    NAME D (the registry's default_branch, else origin/HEAD's target, else main/master), what
+    `gh pr create --base` takes, when `origin/D` or the local `D` exists. None when neither exists.
+    Never fetched. A diff resolves the ref itself at check time (`_pr_diff_ref`)."""
     name = _repo_default_branch(path, configured) or "main"
-    for ref in (f"origin/{name}", name):
-        if _rev_parse(ref, cwd=path):
-            return ref
+    return name if _pr_diff_ref(path, name)[0] else None
+
+
+def _pr_remotes(path: Path) -> list:
+    """`git remote`'s names in `path`, longest first (so `a/b` matches before `a`)."""
+    proc = _git(["remote"], cwd=path, check=False)
+    names = [r.strip() for r in proc.stdout.splitlines() if r.strip()] if proc.returncode == 0 else []
+    return sorted(names, key=len, reverse=True)
+
+
+def _pr_ref_exists(path: Path, full: str) -> bool:
+    return _git(["show-ref", "--verify", "--quiet", full], cwd=path, check=False).returncode == 0
+
+
+def _pr_remote_branch(path: Path, ref: str):
+    """`<x>` when `ref` (`<remote>/<x>` or `refs/remotes/<remote>/<x>`) names a remote-tracking ref of a
+    remote `git remote` lists (origin/HEAD read through to its target), else None."""
+    rest = ref[len("refs/remotes/"):] if ref.startswith("refs/remotes/") else ref
+    for remote in _pr_remotes(path):
+        if rest.startswith(remote + "/") and len(rest) > len(remote) + 1 and _pr_ref_exists(path, f"refs/remotes/{rest}"):
+            name = rest[len(remote) + 1:]
+            if name == "HEAD":
+                proc = _git(["symbolic-ref", "-q", "--short", f"refs/remotes/{rest}"], cwd=path, check=False)
+                target = proc.stdout.strip() if proc.returncode == 0 else ""
+                return target[len(remote) + 1:] if target.startswith(remote + "/") and len(target) > len(remote) + 1 else None
+            return name
     return None
+
+
+def _pr_base_branch(path: Path, ref: str):
+    """`(name, None)` or `(None, why)`: an explicit `--base` as the branch NAME `gh pr create --base`
+    takes. A local branch stays as given (even one literally named `origin/foo`); a remote-tracking
+    ref (`refs/remotes/<remote>/<x>` for a listed remote) records `<x>`; a sha or a tag is refused."""
+    ref = ref.strip()
+    if ref.startswith("refs/heads/") and _pr_ref_exists(path, ref):
+        return ref[len("refs/heads/"):], None
+    if _pr_ref_exists(path, f"refs/heads/{ref}"):
+        return ref, None
+    name = _pr_remote_branch(path, ref)
+    if name:
+        return name, None
+    if _rev_parse(ref, cwd=path):
+        return None, f"{ref} is a commit or a tag, not a branch -- a PR base must be a branch"
+    return None, f"{ref} is not a branch in {path}"
+
+
+def _pr_read_base(path, base):
+    """A recorded base read as its branch NAME: a record from before P51-b1.S13 may hold a remote-tracking
+    ref (`origin/main`), normalized here the way `pr-branch` now writes it. Unchanged without a path."""
+    if not isinstance(base, str) or path is None:
+        return base
+    if base.startswith("refs/heads/"):
+        return base[len("refs/heads/"):]
+    if _pr_ref_exists(path, f"refs/heads/{base}"):
+        return base
+    return _pr_remote_branch(path, base) or base
+
+
+def _pr_diff_ref(path: Path, base):
+    """`(full_ref, shown)` a diff of `base...branch` uses, resolved at check time: `origin/<base>` when
+    that remote-tracking ref exists (what GitHub diffs the PR against), else the local `<base>`; an old
+    record's own remote ref last. `(None, None)` when none exists."""
+    if not isinstance(base, str) or not base.strip() or path is None:
+        return None, None
+    name = _pr_read_base(path, base)
+    cands = [(f"refs/remotes/origin/{name}", f"origin/{name}"), (f"refs/heads/{name}", name)]
+    if name != base:
+        full = base if base.startswith("refs/") else f"refs/remotes/{base}"
+        cands.append((full, base))
+    for full, shown in cands:
+        if _pr_ref_exists(path, full):
+            return full, shown
+    return None, None
+
+
+def _pr_entry_path(entry: dict, data):
+    """The checkout a recorded branch entry lives in (the host or root, or its registered repo), or None."""
+    repo = entry.get("repo")
+    if repo is None:
+        return HOST_ROOT if NESTED is not None else ROOT
+    reg = next((r for r in nested_repos() if r["name"] == repo), None)
+    return _phase_repo_path(reg, data)[0] if reg else None
+
+
+def _pr_shown_base(entry: dict, data):
+    """An entry's base as printed: its branch name, an old record's remote prefix read away."""
+    try:
+        return _pr_read_base(_pr_entry_path(entry, data), entry.get("base"))
+    except (OSError, SystemExit):
+        return entry.get("base")
 
 
 def _pr_branch_tip(path: Path, branch: str):
@@ -9103,17 +9189,18 @@ def cmd_pr_branch(args: argparse.Namespace) -> None:
     if "pr" in data and phase_pr(data) is None:
         _ensure_pr(data)  # raises: a malformed block is never overwritten
     if args.base:
-        base = args.base.strip()
-        if not _rev_parse(base, cwd=path):
-            raise SystemExit(f"pr-branch --base {base}: not a commit in {path} -- nothing was written")
+        base, why = _pr_base_branch(path, args.base)
+        if base is None:
+            raise SystemExit(f"pr-branch --base {args.base.strip()}: {why} -- nothing was written")
+        cut_from = args.base.strip()
     else:
         base = _pr_default_base(path, target["default"])
         if base is None:
             raise SystemExit(f"pr-branch: cannot find the default branch in {path} (no origin/HEAD, no main or master) -- "
-                             f"pass --base <ref>; nothing was written")
+                             f"pass --base <branch>; nothing was written")
+        cut_from = _pr_diff_ref(path, base)[1]
     default_name = _repo_default_branch(path, target["default"])
-    base_name = base[len("origin/"):] if base.startswith("origin/") else base
-    if branch in {base, base_name, default_name}:
+    if branch in {base, args.base.strip() if args.base else base, default_name}:
         raise SystemExit(f"pr-branch --name {branch}: that is the base or default branch itself; a PR branch carries the phase's "
                          f"product commits on top of it -- name a new one (the host's convention for branches) -- nothing was written")
     current = _repo_current_branch(path)
@@ -9130,7 +9217,7 @@ def cmd_pr_branch(args: argparse.Namespace) -> None:
             shown_files = ", ".join(dirty[:5]) + (f" (+{len(dirty) - 5} more)" if len(dirty) > 5 else "")
             raise SystemExit(f"pr-branch: {path} has uncommitted tracked changes a switch would carry onto {branch}: {shown_files}; "
                              f"commit or stash them first -- nothing was written")
-        _git(["switch", "--no-track", "-c", branch, base], cwd=path)
+        _git(["switch", "--no-track", "-c", branch, cut_from], cwd=path)
         created = True
     block = _ensure_pr(data)
     entry = next((e for e in block["branches"] if e.get("repo") == target["repo"] and e.get("branch") == branch), None)
@@ -9146,7 +9233,7 @@ def cmd_pr_branch(args: argparse.Namespace) -> None:
     append_event("pr_branch_recorded", phase=args.phase, repo=target["repo"], branch=branch, base=entry["base"], created=created)
     rebuild_index_and_state()
     print(f"pr_branch={label} base={entry['base']}")
-    print(f"pr-branch: {branch} {how}" + (f" -- cut from {base} with git switch --no-track -c" if created else "") + f" in {path}")
+    print(f"pr-branch: {branch} {how}" + (f" -- cut from {cut_from} with git switch --no-track -c" if created else "") + f" in {path}")
 
 
 def cmd_pr_record(args: argparse.Namespace) -> None:
@@ -9195,7 +9282,7 @@ def cmd_pr_record(args: argparse.Namespace) -> None:
     write_json(pdir / "phase.json", data)
     append_event("pr_recorded", phase=args.phase, repo=entry.get("repo"), branch=entry.get("branch"), url=url)
     rebuild_index_and_state()
-    print(f"pr_branch={_pr_label(entry)} base={entry.get('base')} url={url}")
+    print(f"pr_branch={_pr_label(entry)} base={_pr_shown_base(entry, data)} url={url}")
     left = [e for e in entries if not e.get("url")]
     if left:
         print(f"pr-record: {len(left)} recorded branch(es) still have no draft PR: {', '.join(_pr_label(e) for e in left)}")
@@ -9241,7 +9328,7 @@ def _require_pr_opened(phase_id: str, data: dict) -> None:
     repo_flag = " --repo <name>" if multi else ""
     missing = [e for e in block["branches"] if not e.get("url")]
     if missing:
-        listed = "\n".join(f"  {_pr_label(e)} (base {e.get('base')}) has no draft PR" for e in missing)
+        listed = "\n".join(f"  {_pr_label(e)} (base {_pr_shown_base(e, data)}) has no draft PR" for e in missing)
         raise SystemExit(
             f"phase {phase_id} records {len(missing)} PR branch(es) with no draft PR yet; a pass cannot be recorded until each is opened:\n"
             f"{listed}\n"
@@ -9285,7 +9372,7 @@ def pr_lines(phase: dict) -> list:
     block = phase_pr(phase)
     if block is None:
         return []
-    lines = [f"pr_branch={_pr_label(e)} base={e.get('base')} url={e.get('url') or 'none'}" for e in block["branches"]]
+    lines = [f"pr_branch={_pr_label(e)} base={_pr_shown_base(e, phase)} url={e.get('url') or 'none'}" for e in block["branches"]]
     waived = block.get("waived")
     if isinstance(waived, dict):
         lines.append(f"pr_waived={_one_line(waived.get('note') or '')}")
@@ -9660,7 +9747,7 @@ def _pr_check_one(pdir: Path, data: dict, entry: dict, body_arg) -> tuple:
     """`(lines, status)` for one recorded branch: size, body budgets, leaks, headings. status is
     pass, warn or fail."""
     repo = entry.get("repo")
-    lines = [f"pr_check={_pr_label(entry)} base={entry.get('base')}"]
+    lines = [f"pr_check={_pr_label(entry)} base={_pr_shown_base(entry, data)}"]
     if entry.get("note"):
         lines.append(f"note={entry['note']}")
     status = {"v": "pass"}
@@ -9675,8 +9762,17 @@ def _pr_check_one(pdir: Path, data: dict, entry: dict, body_arg) -> tuple:
         path, why = _phase_repo_path(reg, data) if reg else (None, f"{repo} is not a registered repo")
     else:
         path, why = (HOST_ROOT if NESTED is not None else ROOT), None
-    # Size
-    size, why_size = pr_size(path, entry.get("base"), entry.get("branch")) if path is not None else (None, why)
+    # Size: against origin/<base> when it exists (what GitHub diffs), else the local <base>
+    if path is None:
+        size, why_size = None, why
+    else:
+        diff_full, diff_shown = _pr_diff_ref(path, entry.get("base"))
+        if diff_full is None:
+            name = _pr_read_base(path, entry.get("base"))
+            size, why_size = None, f"base {name} is neither origin/{name} nor a local branch in {path}"
+        else:
+            lines.append(f"diff_base={diff_shown}")
+            size, why_size = pr_size(path, diff_full, entry.get("branch"))
     if size is None:
         lines.append(f"size=unknown ({why_size})")
         mark("warn")
@@ -19144,7 +19240,7 @@ def main(argv=None) -> int:
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--repo", default=None, metavar="NAME", help="multi-repo host only, and required there: the registered repo whose checkout holds the branch")
     p.add_argument("--name", required=True, help="the branch, named by the host's convention for branches (nested-convention), with no workspace IDs; never the base or default branch itself")
-    p.add_argument("--base", default=None, help="the ref the branch starts from and pr-check measures against (default: the repo's default branch -- the registry's default_branch, else origin/HEAD's target, else main -- as origin/<it> when that exists, else the local branch; never fetched); recorded resolved")
+    p.add_argument("--base", default=None, help="the PR's base branch: recorded as the branch NAME gh pr create --base takes (a remote-tracking ref such as origin/main records main; a sha or a tag is refused); default: the repo's default branch -- the registry's default_branch, else origin/HEAD's target, else main. The branch is cut from it, and pr-check diffs against origin/<base> when that exists, else the local <base> (diff_base=); never fetched")
     p.set_defaults(func=cmd_pr_branch)
 
     p = sub.add_parser("pr-record", help="Record the draft PR the operator's push opened on a recorded PR branch (--url: sets url and opened_at), or waive the phase's PR (--waive --note: a phase with no product change worth a PR); refuses an unrecorded branch. review-phase --verdict pass waits on one of the two. Orchestrator command -- executors never run it")
@@ -19156,7 +19252,7 @@ def main(argv=None) -> int:
     p.add_argument("--note", default=None, help="mandatory with --waive: why this phase needs no PR")
     p.set_defaults(func=cmd_pr_record)
 
-    p = sub.add_parser("pr-check", help="Read-only: measure each recorded PR branch and its body, one key=value per line -- size= (git diff --numstat <base>...<branch> minus linguist-generated paths, lockfiles and whole-file deletions; binary rows excluded and counted; target 400, flag over 1,000, a warning), body= and the budgets first_screen=/1500, visible=/3500, whole=/6000 (topics/pr-body[-<repo>].md, or --body), leak= (phase or slice IDs, workflow/ paths, workspace file names: a fail) and leak_warn= (orchestrator, executor, phase notebook, slice), headings= against the repo's PR template's H2s in order, else Summary, Review, What is changed, Why, Related issue (template=), pr_rules=<n> decided, and pr_check=pass|warn|fail. Exit 1 on a fail, else 0. With no recorded branch, measures the checked-out branch against the default base. On a multi-repo host each line starts repo=<name>")
+    p = sub.add_parser("pr-check", help="Read-only: measure each recorded PR branch and its body, one key=value per line -- diff_base= (origin/<base> when that remote-tracking ref exists, else the local <base>), size= (git diff --numstat <diff_base>...<branch> minus linguist-generated paths, lockfiles and whole-file deletions; binary rows excluded and counted; target 400, flag over 1,000, a warning), body= and the budgets first_screen=/1500, visible=/3500, whole=/6000 (topics/pr-body[-<repo>].md, or --body), leak= (phase or slice IDs, workflow/ paths, workspace file names: a fail) and leak_warn= (orchestrator, executor, phase notebook, slice), headings= against the repo's PR template's H2s in order, else Summary, Review, What is changed, Why, Related issue (template=), pr_rules=<n> decided, and pr_check=pass|warn|fail. Exit 1 on a fail, else 0. With no recorded branch, measures the checked-out branch against the default base. On a multi-repo host each line starts repo=<name>")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--repo", default=None, metavar="NAME", help="multi-repo host only: check only this registered repo's branch(es); without it every recorded branch is checked in turn")
     p.add_argument("--branch", default=None, help="check only this recorded branch (a stack records several per repo)")

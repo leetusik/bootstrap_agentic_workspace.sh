@@ -4659,6 +4659,34 @@ assert not [k for k, v in names.items() if v > 1], [k for k, v in names.items() 
 PY
 then ok "a nested phase whose host branch left main gets its phase-scope and a passing review (no _is_ancestor TypeError), and no engine function is defined twice"
 else bad "the _is_ancestor regression is back (scope rc=$s_rc, review rc=$v_rc) -- $s_out / $v_out"; fi
+# (S13) on a nested host with an origin, a PR base is recorded as the branch name gh pr create --base takes, and pr-check
+# diffs origin/<base>: the default records main (not origin/main); --base origin/main records main; a stack part's base stays
+# feat/o; a sha is refused; an old record holding base=origin/main reads as main; a base with no remote ref diffs the local branch.
+newtmp PRO; git init -q --bare "$PRO/origin.git"; NH="$PRO/host"; mkdir -p "$NH"; ngit() { git -C "$NH" "$@"; }
+nw() { ( cd "$NH" && python3 workflow/scripts/workflow.py "$@" ); }
+{ ngit init -q . && ngit symbolic-ref HEAD refs/heads/main && ngit config user.email smoke@example.invalid && ngit config user.name smoke \
+  && echo a > "$NH/app.txt" && ngit add app.txt && ngit commit -qm "chore: init" && ngit remote add origin "$PRO/origin.git" \
+  && ngit push -q origin main && ngit remote set-head origin main && ( cd "$NH" && sh "$BOOT" . ) \
+  && git -C "$NH/workflow" config user.email smoke@example.invalid && git -C "$NH/workflow" config user.name smoke \
+  && nw new-phase --phase P1 --name base --objective toy; } >/dev/null 2>&1 || bad "pr base probe: the nested host with an origin failed to set up"
+o1=$(nw pr-branch P1 --name feat/o 2>&1); { echo b >> "$NH/app.txt" && ngit commit -qam "feat: b"; } >/dev/null 2>&1
+o2=$(nw pr-branch P1 --name feat/p --base origin/main 2>&1); ngit switch -q feat/o
+o3=$(nw pr-branch P1 --name feat/q --base feat/o 2>&1); ngit switch -q feat/o
+nw pr-branch P1 --name feat/s --base "$(ngit rev-parse main)" > "$PRO/o4.txt" 2>&1; o4=$?
+oc1=$(nw pr-check P1 --branch feat/o 2>&1); oc3=$(nw pr-check P1 --branch feat/q 2>&1)
+python3 - "$NH/workflow/works/phases/active/P1/phase.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1])); d["pr"]["branches"][0]["base"] = "origin/main"; json.dump(d, open(sys.argv[1], "w"), indent=2)
+PY
+oc_old=$(nw pr-check P1 --branch feat/o 2>&1); o_nx=$(nw next 2>&1); o_val=$(nw validate 2>&1); o_vrc=$?
+if printf '%s\n' "$o1" | grep -qx 'pr_branch=host:feat/o base=main' && printf '%s\n' "$o2" | grep -qx 'pr_branch=host:feat/p base=main' \
+    && printf '%s\n' "$o3" | grep -qx 'pr_branch=host:feat/q base=feat/o' && [ "$o4" -eq 1 ] && grep -q 'a PR base must be a branch' "$PRO/o4.txt" \
+    && printf '%s\n' "$oc1" | grep -qx 'pr_check=host:feat/o base=main' && printf '%s\n' "$oc1" | grep -qx 'diff_base=origin/main' \
+    && printf '%s\n' "$oc1" | grep -qx 'size=1 target=400 flag=1000 size_status=ok' && printf '%s\n' "$oc3" | grep -qx 'diff_base=feat/o' \
+    && printf '%s\n' "$oc_old" | grep -qx 'pr_check=host:feat/o base=main' && printf '%s\n' "$oc_old" | grep -qx 'diff_base=origin/main' \
+    && printf '%s\n' "$o_nx" | grep -qx 'pr_branch=host:feat/o base=main url=none' && [ "$o_vrc" -eq 0 ]; then
+  ok "with an origin, pr-branch records the PR base as a branch name (default main, --base origin/main as main, a stack part's feat/o) and refuses a sha; pr-check prints diff_base=origin/main, or the local branch with no remote ref; an old base=origin/main record reads as main"
+else bad "PR base as a branch name wrong (sha rc $o4, validate rc $o_vrc) -- $o1 / $o2 / $o3 / $(cat "$PRO/o4.txt") / $oc1 / $oc3 / $oc_old / $(printf '%s\n' "$o_nx" | grep pr_) / $(printf '%s\n' "$o_val" | tail -3)"; fi
 # (S9) the PR rule's wiring phrases in the contract and the shipped skills, and the negatives they replaced.
 python3 - "$REPO_ROOT" <<'PY' && ok "the PR rule's wiring: the contract's PR-rule sentence, review-phase's PR step, both review.md's reader and push stop, verdicts/decomposition/create-phase/executor/parallel-phase/do-whole-phases lines, and the retired no-branch/no-push lines" || bad "a PR-rule wiring phrase moved or a retired line is back"
 import sys

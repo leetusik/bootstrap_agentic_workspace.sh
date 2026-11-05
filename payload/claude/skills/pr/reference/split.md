@@ -9,7 +9,7 @@ Cut at **slice-commit boundaries** on the phase branch: each slice commit is a c
 1. For each part 1..k-1, at its last commit `<sha>` (the orchestrator runs these; they write):
    - `git branch <b>-<n> <sha>`
    - `git switch <b>-<n>`
-   - `python3 scripts/workflow.py pr-branch <P> --name <b>-<n> --base <previous part, or the default branch for part 1>` (it records the checked-out branch)
+   - `python3 scripts/workflow.py pr-branch <P> --name <b>-<n> --base <previous part, or the default branch for part 1>` (it records the checked-out branch). Give the base as a branch name (`<b>-<n-1>`, `main`); a remote-tracking ref such as `origin/main` is recorded as `main`, and a sha or tag is refused
    - switch back to `<b>`.
 2. **The phase branch stays the top part.** Re-record its base onto part k-1: `python3 scripts/workflow.py pr-branch <P> --name <b> --base <b>-<k-1>`.
 3. **Each part gets its own body and its own `pr-check`** (`--branch <b>-<n>`), each with the series line `> Part n/k of <feature> · merges after <repo>#<n-1>`.
