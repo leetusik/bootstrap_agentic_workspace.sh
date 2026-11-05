@@ -5892,6 +5892,13 @@ def review_phase(args: argparse.Namespace) -> None:
             raise SystemExit(f"review-phase {args.phase} --verdict pass: {why}; refused, nothing was written")
         _require_acceptance_cleared(args.phase, data)
         _require_pr_opened(args.phase, data)  # P51: beside the gate, never instead of it; each names only itself
+    if args.verdict == "changes_requested" and data.get("status") == "done" and _pr_open_entries(data):
+        # P52: a done phase with an open PR reopens through reopen-phase, which also cuts its worktree on the
+        # PR branch; recorded here it would reopen with no worktree. A done phase with no open PR is unchanged.
+        open_prs = ", ".join(f"{_pr_label(e)} ({e.get('state') or 'unsynced'})" for e in _pr_open_entries(data))
+        raise SystemExit(f"review-phase {args.phase} --verdict changes_requested: refused -- {args.phase} is done and its PR is still open "
+                         f"({open_prs}); a team's change request reopens it in its own worktree on the PR branch: "
+                         f"{WORKFLOW_CMD} reopen-phase {args.phase} --note \"team-reported: <what>\" (pr-sync {args.phase} first) -- nothing was written")
     data["review"] = {"status": args.verdict, "reviewed_at": now_iso(), "reviewer": args.reviewer, "note": args.note}
     if args.verdict == "changes_requested":
         acceptance = phase_acceptance(data)
@@ -5914,12 +5921,7 @@ def review_phase(args: argparse.Namespace) -> None:
     write_json(pdir / "phase.json", data)
     # Drive the phase's REVIEW slice from the same verdict so the phase and its
     # review slice never diverge (a pass no longer leaves REVIEW stuck in_progress).
-    slice_verdict = {"pass": "done", "changes_requested": "changes_requested", "blocked": "blocked"}[args.verdict]
-    for sdir in slice_dirs(pdir):
-        sdata = read_json(sdir / "slice.json")
-        if sdata.get("kind") == "review" and not loop_checkpoint_slice(sdata):  # a loop's checkpoints keep their own verdicts
-            old = _set_slice_status(sdir, slice_verdict)
-            append_event("slice_status_changed", slice=sdata["id"], old_status=old, new_status=slice_verdict)
+    _drive_review_slices(pdir, args.verdict)
     append_event("phase_reviewed", phase=args.phase, verdict=args.verdict, reviewer=args.reviewer)
     rebuild_index_and_state()
     print(f"phase {args.phase} review: {args.verdict} (status -> {new_status})")
@@ -5952,6 +5954,21 @@ def review_phase(args: argparse.Namespace) -> None:
                 print("docs: no '## Doc impact' note -- this worktree phase owes no doc consolidation (consolidation=done)")
         print(f"phase {args.phase} is done and stays in active/. Do NOT archive a single phase now.")
         print("Archive done phases later, whole phases only: `rotate-backlog` (it pays the doc debt first, then archives every done phase), or `archive-all` once every active phase is done.")
+
+
+def _drive_review_slices(pdir: Path, verdict: str) -> list:
+    """Set the phase's REVIEW slice(s) from a phase verdict (`review-phase`, and `reopen-phase`'s
+    changes_requested), so the phase and its review slice never diverge; a loop's checkpoints keep
+    their own verdicts. Returns `[(slice id, old status)]`."""
+    slice_verdict = {"pass": "done", "changes_requested": "changes_requested", "blocked": "blocked"}[verdict]
+    driven = []
+    for sdir in slice_dirs(pdir):
+        sdata = read_json(sdir / "slice.json")
+        if sdata.get("kind") == "review" and not loop_checkpoint_slice(sdata):
+            old = _set_slice_status(sdir, slice_verdict)
+            append_event("slice_status_changed", slice=sdata["id"], old_status=old, new_status=slice_verdict)
+            driven.append((sdata["id"], old))
+    return driven
 
 
 def _ensure_acceptance(data: dict) -> dict:
@@ -6568,7 +6585,8 @@ def _set_repo_line(plan: dict, by: str = "parallel-start") -> str:
             f"repo_anchors.{plan['name']}.created={plan['anchor']} ({anchor})")
 
 
-def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, branch: str, host_branch, host_base_arg, set_repos=()) -> None:
+def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, branch: str, host_branch, host_base_arg, set_repos=(),
+                           on_stamp=None, stamp_message=None, consolidation: str = "pending") -> tuple:
     """`parallel-start` in a nested personal install (P35): a host worktree with the nested worktree inside.
 
     The pair is `<host>/.claude/worktrees/P<N>-<slug>` on `host_branch` (the operator names it, by the
@@ -6589,7 +6607,12 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
     v86 (§9.4): `host_branch` None (an explain phase, never a set: the caller refused both other
     cases) cuts the host worktree DETACHED at the resolved host base (`git worktree add --detach`):
     no branch to name, create, reuse or integrate. The stamp carries `host_branch: null` and
-    `host_branch_created: false`; `host_anchors.created` is the base; everything else is the pair's."""
+    `host_branch_created: false`; `host_anchors.created` is the base; everything else is the pair's.
+
+    P52 (`reopen-phase`): `on_stamp(data, host_wt, nested_wt)` runs once every guard has passed and
+    before the stamp is written, so a reopen's verdict lands in the same stamp commit; `stamp_message`
+    replaces the commit subject and `consolidation` the stamped debt (a reopen keeps the phase's own).
+    Returns `(host_wt, nested_wt)`."""
     host = HOST_ROOT
     detached = host_branch is None
     if host is None or not _git_available(cwd=host):
@@ -6641,8 +6664,10 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
     _ensure_worktrees_excluded(cwd=host)
     if not args.worktree:
         host_wt.parent.mkdir(parents=True, exist_ok=True)
+    if on_stamp is not None:  # P52: reopen-phase's verdict, in the same stamp commit
+        on_stamp(data, host_wt, nested_wt)
     data["execution"] = {
-        "mode": "parallel", "branch": branch, "worktree": str(nested_wt), "consolidation": "pending",
+        "mode": "parallel", "branch": branch, "worktree": str(nested_wt), "consolidation": consolidation,
         "host_worktree": str(host_wt), "host_branch": host_branch, "host_base": base_ref, "host_base_sha": base_sha,
         "host_branch_created": host_branch_created, "base_branch": base_branch,
     }
@@ -6660,8 +6685,9 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
                      host_branch=host_branch, host_worktree=str(host_wt))
     rebuild_index_and_state()
     stamp_paths = [str(pdir.relative_to(ROOT)), *STAMP_WORKS_FILES]
+    subject = stamp_message or f"chore(works): opt {args.phase} into parallel execution"
     _git(["add", "--", *stamp_paths])
-    _git(["commit", "--only", "-m", f"chore(works): opt {args.phase} into parallel execution", "--", *stamp_paths])
+    _git(["commit", "--only", "-m", subject, "--", *stamp_paths])
 
     q = shlex.quote
     host_add = (["worktree", "add", "--detach", str(host_wt), base_sha] if detached
@@ -6714,7 +6740,7 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
         outside = [r["name"] for r in nested_repos() if r["name"] not in {p["name"] for p in plans}]
         if outside:
             print(f"not in this set: {', '.join(outside)} -- inside the set phase-scope skips them, never reading their main checkouts")
-    print(f"stamp committed in the nested repo: chore(works): opt {args.phase} into parallel execution -- only {shown(pdir)}/ plus the regenerated works/ files; "
+    print(f"stamp committed in the nested repo: {subject} -- only {shown(pdir)}/ plus the regenerated works/ files; "
           f"everything else dirty or staged stayed behind, uncommitted")
     print(f"the nested worktree starts from that commit (HEAD); /{WORKTREES_DIR}/ is excluded via the host's .git/info/exclude")
     print("CLAUDE.local.md copied into the host worktree" if copied else f"note: no {local_md} to copy -- a session in the host worktree loads no workspace contract")
@@ -6724,13 +6750,267 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
         print(f"there: no product commits -- the host worktree is detached and read-only by intent (an explain reads the host code at {base_sha[:12]}); "
               f"workflow commits go to git -C {rel.as_posix()} (the nested worktree, on {branch})")
         print(f"this stream's pointer now skips {args.phase}; the host side has no branch, so there is nothing to integrate there -- merge {branch} in the nested repo")
-        return
+        return host_wt, nested_wt
     if plans:
         print(f"there: product commits go to each repo's branch in its worktree (git -C <repo path>); workflow commits go to git -C {rel.as_posix()} "
               f"(the nested worktree, on {branch}); {host_branch} carries only the host's own files")
     else:
         print(f"there: product commits go to {host_branch} in the host worktree; workflow commits go to git -C {rel.as_posix()} (the nested worktree, on {branch})")
     print(f"this stream's pointer now skips {args.phase}; the host branch is integrated by the host's own custom (nested-convention), never merged by the engine")
+    return host_wt, nested_wt
+
+
+# --- reopen a done phase whose PR is still open (P52) -----------------------------------------------
+# A team asks for changes after the phase is done and its PR is open (a team repo leaves it open at the
+# close). The operator's word reopens the SAME phase: `in_progress` + `changes_requested`, a required gate
+# re-opened, and its fix round runs on the existing PR branch -- never a second PR, never a force-push.
+# Nested: its own worktree pair, the host worktree ON that branch, so a phase running at the time never
+# waits. At root the PR branch carries the phase's record itself, so the reopen runs IN PLACE in the
+# checkout that holds it (see `_reopen_root`). Local only: no push, merge, force-push or gh call.
+
+REOPEN_REFUSED = "nothing was written"
+
+
+def _reopen_refuse(phase_id: str, why: str) -> None:
+    raise SystemExit(f"reopen-phase {phase_id}: refused -- {why} -- {REOPEN_REFUSED}")
+
+
+def _reopen_pick(phase_id: str, entries: list, branch_arg) -> list:
+    """The open PR entry per repo the reopen works on: the only one; else `--branch`'s; else the unique
+    top of a stack (an entry no other open entry of that repo is based on). Refuses an ambiguous repo."""
+    by_repo = {}
+    for e in entries:
+        by_repo.setdefault(e.get("repo"), []).append(e)
+    picked = []
+    for repo, group in by_repo.items():
+        if branch_arg:
+            hit = [e for e in group if e.get("branch") == branch_arg]
+            if hit:
+                picked.append(hit[0])
+                continue
+            if len(by_repo) == 1:
+                _reopen_refuse(phase_id, f"--branch {branch_arg} names no open PR of {phase_id} "
+                                         f"(open: {', '.join(_pr_label(e) for e in group)})")
+        if len(group) == 1:
+            picked.append(group[0])
+            continue
+        bases = {e.get("base") for e in group}
+        tops = [e for e in group if e.get("branch") not in bases]
+        if len(tops) == 1:
+            picked.append(tops[0])
+            continue
+        _reopen_refuse(phase_id, f"{len(group)} open PRs in {repo or _pr_one_repo()} ({', '.join(_pr_label(e) for e in group)}) and no single "
+                                 f"top of a stack; name the one whose branch takes the fixes with --branch <b>")
+    return picked
+
+
+def _reopen_apply(pdir: Path, data: dict, note: str) -> dict:
+    """The reopen's verdict, as `review-phase --verdict changes_requested` records it: `status` ->
+    in_progress, `review` = changes_requested with the note, the REVIEW slice(s) driven the same way, and
+    a REQUIRED gate re-opened (walkthrough, requested_at, cleared_at -> null; `required` and the operator's
+    note survive). A waived gate stays waived. `completed_at`, the `pr` block, the doc-consolidation state
+    and the anchors are kept. Writes the slice files and their events; the caller writes phase.json."""
+    old_status = data.get("status")
+    data["review"] = {"status": "changes_requested", "reviewed_at": now_iso(), "reviewer": None, "note": note}
+    acceptance = phase_acceptance(data)
+    gate = "none"
+    if acceptance is not None:
+        if acceptance.get("required") is True:
+            acceptance.update({"walkthrough": None, "requested_at": None, "cleared_at": None})
+            gate = "reopened"
+        elif acceptance.get("required") is False:
+            gate = "waived"
+    data["status"] = "in_progress"
+    driven = _drive_review_slices(pdir, "changes_requested")
+    return {"old_status": old_status, "gate": gate, "slices": driven}
+
+
+def _reopen_report(phase_id: str, label: str, where, outcome: dict) -> None:
+    slices = ", ".join(f"{sid} {old} -> changes_requested" for sid, old in outcome["slices"]) or "no REVIEW slice"
+    gate = {"reopened": "the required acceptance gate is re-opened (walkthrough, requested_at, cleared_at reset)",
+            "waived": "the waived acceptance gate stays waived", "none": "no acceptance gate block"}[outcome["gate"]]
+    print(f"reopened={phase_id} branch={label} worktree={where}")
+    print(f"phase {phase_id}: {outcome['old_status']} -> in_progress, review changes_requested ({slices}); {gate}; "
+          f"completed_at, the pr block and the doc-consolidation state kept")
+    print(f"next: the fix round in that checkout, on {label} -- read the team's review (gh pr view <n> --json reviews,comments), cut fix slices "
+          f"({WORKFLOW_CMD} new-slice --phase {phase_id} --slice {phase_id}.F<n> --kind fix), then the re-review; at its would-pass push the fixes "
+          f"(git push, never --force) and replace the body (pr-check, then gh pr edit <n> --body-file <body>), never a second PR; then the gate if "
+          f"required and the close again: the pr skill's reference/reopen.md")
+
+
+def cmd_reopen_phase(args: argparse.Namespace) -> None:
+    """`reopen-phase <P> --note "team-reported: <what>" [--slug <s>] [--worktree <path>] [--branch <b>]
+    [--host-branch <name>]` (P52): reopen a DONE phase whose PR is still open, on the operator's word.
+
+    Guards, all before any write, each naming itself: the phase is active (an archived one is refused as
+    archived), `done`, has an open PR (`_pr_open_entries`: every PR merged is refused, naming pr-sync),
+    a non-empty note, runs from the default stream with no git operation in progress, and its PR branch is
+    free (checked out in no worktree; the host's main checkout holding it is told how to switch off it).
+
+    Nested (the main case): `_parallel_start_nested` on the recorded host branch (reused, anchored at the
+    merge-base of the recorded base and the branch), the reopen's verdict applied inside its stamp commit
+    (`on_stamp`), the phase's own consolidation state kept. The nested side gets `phase/P<N>-<slug>`, or
+    `-reopen<k>` when that name is taken (never a merged branch). An `execution` block left by an earlier,
+    torn-down run is replaced (its facts go into the `phase_reopened` event); one still holding a worktree,
+    or v42's pin, is refused. A multi-repo host builds the set from each repo's open PR branch.
+
+    Root: `_reopen_root`, in place. Never pushes, merges, force-pushes or calls gh."""
+    phase_id = args.phase
+    note = (args.note or "").strip()
+    pdir = ACTIVE / phase_id
+    if not (pdir / "phase.json").exists():
+        if phase_id in archived_phase_ids():
+            _reopen_refuse(phase_id, f"{phase_id} is archived; a reopen works on an active phase only (an archived phase's PR merged, or "
+                                     f"its hold was forced) -- a team's new change request becomes a new phase (create-phase)")
+        raise SystemExit(f"phase not found: {phase_id}")
+    data = read_json(pdir / "phase.json")
+    if data.get("status") != "done":
+        _reopen_refuse(phase_id, f"{phase_id} is {data.get('status')!r}, not 'done'; a phase still in flight takes the change request in its "
+                                 f"own fix round ({WORKFLOW_CMD} review-phase {phase_id} --verdict changes_requested)"
+                       + ("" if NESTED is not None else f" -- at root a phase's record is only as current as this checkout's branch: if {phase_id} "
+                                                        f"is done on its PR branch, run reopen-phase where that branch is checked out"))
+    entries = _pr_open_entries(data)
+    if not entries:
+        block = phase_pr(data)
+        if block is not None and isinstance(block.get("waived"), dict):
+            why = "its PR is waived, so there is no PR to reopen"
+        elif block is not None and any(e.get("url") for e in block["branches"]):
+            why = (f"every recorded PR reads state=merged ({', '.join(_pr_label(e) for e in block['branches'] if e.get('url'))}); "
+                   f"merged state is only as fresh as the last sync -- refresh it with {WORKFLOW_CMD} pr-sync {phase_id}, and a change "
+                   f"request on merged work is a new phase")
+        else:
+            why = "it records no opened PR (no pr branch entry with a URL)"
+        _reopen_refuse(phase_id, why)
+    if not note:
+        _reopen_refuse(phase_id, "--note is empty; say what the team asked for: --note \"team-reported: <what>\"")
+    _require_git_repo()
+    phases = all_active_phases()
+    stream = current_stream(phases)
+    old = data.get("execution")
+    own_branch = (phase_execution(data) or {}).get("branch")
+    if stream and not (NESTED is None and stream == own_branch):
+        _reopen_refuse(phase_id, f"this checkout is on parallel stream {stream}; run reopen-phase from the default stream")
+    busy = _git_operation_in_progress()
+    if busy:
+        _reopen_refuse(phase_id, f"a {busy} is in progress in this checkout; finish or abort it first")
+    picked = _reopen_pick(phase_id, entries, getattr(args, "branch", None))
+    if NESTED is None:
+        _reopen_root(args, pdir, data, picked, note, stream)
+        return
+    if getattr(args, "host_branch", None) and not nested_repos():
+        _reopen_refuse(phase_id, "--host-branch is for a multi-repo host only; a single-repo host's worktree goes on the PR branch itself")
+    if phase_pinned(data):
+        _reopen_refuse(phase_id, f"{phase_id} carries v42's legacy pin to the default stream (execution.mode=default); un-pin it by hand: "
+                                 f"delete the execution block from {shown(pdir)}/phase.json first")
+    if old is not None and phase_execution(data) is None:
+        _reopen_refuse(phase_id, f"{phase_id} carries an execution block that is not a parallel stamp: {json.dumps(old, ensure_ascii=False)}")
+    if old is not None and (old.get("worktree") is not None or old.get("host_worktree") is not None):
+        _reopen_refuse(phase_id, f"{phase_id}'s earlier worktree pair is still stamped (worktree={old.get('host_worktree') or old.get('worktree')}); "
+                                 f"finish its integration and {WORKFLOW_CMD} parallel-teardown {phase_id} first, then re-run")
+    host = HOST_ROOT
+    if host is None or not _git_available(cwd=host):
+        _reopen_refuse(phase_id, f"the nested install's host {host} is not a git work tree")
+    repos = nested_repos()
+    set_repos, host_branch, host_base = [], None, None
+    if repos:
+        registry = {r["name"]: r for r in repos}
+        for e in picked:
+            repo = registry.get(e.get("repo"))
+            if repo is None:
+                _reopen_refuse(phase_id, f"{_pr_label(e)} names no registered repo")
+            main = nested_repo_path(repo)
+            base = _pr_diff_ref(main, e.get("base"))[1]
+            if not base:
+                _reopen_refuse(phase_id, f"{_pr_label(e)}: its recorded base {e.get('base')} is neither origin/{e.get('base')} nor a local branch in "
+                                         f"{main} (the engine never fetches)")
+            set_repos.append((repo, e["branch"], base))
+        host_branch = (getattr(args, "host_branch", None) or (old or {}).get("host_branch") or "").strip() or None
+        if host_branch is None:
+            _reopen_refuse(phase_id, "a multi-repo host's worktree needs a host branch (it carries no product), and no earlier run of this phase "
+                                     "recorded one; name it by the host's custom: --host-branch <name>")
+    else:
+        entry = picked[0]
+        host_branch = entry["branch"]
+        host_base = _pr_diff_ref(host, entry.get("base"))[1]
+        if not host_base:
+            _reopen_refuse(phase_id, f"{_pr_label(entry)}: its recorded base {entry.get('base')} is neither origin/{entry.get('base')} nor a local "
+                                     f"branch in the host {host} (the engine never fetches: fetch first)")
+    checks = [(host, b) for b in ([host_branch] if not repos else [])] + [(nested_repo_path(r), b) for r, b, _base in set_repos]
+    for path, b in checks:
+        if not _rev_parse(f"refs/heads/{b}", cwd=path):
+            remote = _rev_parse(f"refs/remotes/origin/{b}", cwd=path)
+            _reopen_refuse(phase_id, f"the PR branch {b} is not a local branch in {path}" + (
+                f"; it exists as origin/{b} -- create it there first: git -C {path} branch {b} origin/{b}" if remote else
+                " (the engine never fetches and never invents the branch: fetch it first)"))
+        holder = next((p for p, ref in _worktree_entries(cwd=path) if ref == f"refs/heads/{b}"), None)
+        if holder:
+            if os.path.realpath(holder) == os.path.realpath(str(path)):
+                default = _repo_default_branch(path) or "<default>"
+                _reopen_refuse(phase_id, f"the PR branch {b} is checked out in the main checkout {path}; a branch lives in one worktree at a time, "
+                                         f"so switch that checkout off it first (the engine never switches it for you): git -C {path} switch {default}")
+            _reopen_refuse(phase_id, f"the PR branch {b} is checked out in {holder}; a branch lives in one worktree at a time -- run the fix round "
+                                     f"there, or switch that checkout off it first")
+    branch = _phase_branch(phase_id, data.get("name") or phase_id, args.slug)
+    taken = lambda b: _branch_exists(b) or any((phase_execution(p) or {}).get("branch") == b for p in phases if p.get("id") != phase_id)  # noqa: E731
+    if taken(branch):
+        if args.slug:
+            _reopen_refuse(phase_id, f"branch {branch} already exists or is stamped on another phase (pass another --slug)")
+        branch = next((f"{branch}-reopen{k}" for k in range(2, 100) if not taken(f"{branch}-reopen{k}")), None)
+        if branch is None:
+            _reopen_refuse(phase_id, "no free phase branch name; pass --slug <s>")
+    labels = ",".join(_pr_label(e) for e in picked)
+    outcome = {}
+
+    def on_stamp(stamped: dict, host_wt: Path, nested_wt: Path) -> None:
+        outcome.update(_reopen_apply(pdir, stamped, note))
+        append_event("phase_reopened", phase=phase_id, note=note, branch=labels, worktree=str(host_wt), nested_branch=branch,
+                     previous_execution=old)
+
+    host_wt, _nested_wt = _parallel_start_nested(args, pdir, data, branch, host_branch, host_base, set_repos, on_stamp=on_stamp,
+                                                 stamp_message=f"chore(works): reopen {phase_id} in its own worktree",
+                                                 consolidation=phase_consolidation(data) or "done")
+    if old is not None:
+        print(f"replaced the earlier run's execution block (branch={old.get('branch')}, worktree=null); its facts are in the phase_reopened event")
+    _reopen_report(phase_id, labels, host_wt, outcome)
+
+
+def _reopen_root(args: argparse.Namespace, pdir: Path, data: dict, picked: list, note: str, stream) -> None:
+    """The root shape of `reopen-phase` (P52, decided in S3): IN PLACE, in the checkout that holds the PR
+    branch. At root the PR branch carries the product AND the phase's record (pr-branch switched the
+    checkout to it, and the slice commits landed there), so a done record with an open PR exists only
+    where that branch -- or one stacked on it -- is checked out. A worktree on the PR branch would need the
+    reopen's stamp on a second branch, forking the phase's record into a conflict at the next stack merge,
+    and a local integration the open PR forbids. So: no worktree, no stamp, no commit (like review-phase);
+    the transition is written here and the fix round commits on the PR branch. A phase running in this
+    checkout on another branch keeps running: cut a worktree on the PR branch by hand and reopen there."""
+    phase_id = args.phase
+    if args.worktree or args.slug or getattr(args, "host_branch", None):
+        _reopen_refuse(phase_id, "--worktree, --slug and --host-branch are for a nested install; at root the reopen runs in place, in the "
+                                 "checkout that holds the PR branch (no worktree is cut)")
+    entry = picked[0]
+    branch = entry["branch"]
+    current = git_current_branch()
+    if current != branch:
+        holder = next((p for p, ref in _worktree_entries() if ref == f"refs/heads/{branch}"), None)
+        if holder:
+            _reopen_refuse(phase_id, f"at root the reopen runs in place on the PR branch, and {branch} is checked out in {holder}: run it there "
+                                     f"(cd {holder} && {WORKFLOW_CMD} reopen-phase {phase_id} --note \"...\")")
+        q = shlex.quote
+        # a sibling of the repo, never inside it: a worktree under the repo shows as untracked there unless excluded
+        wt = ROOT.parent / f"{ROOT.name}-{slugify(branch.replace('/', '-'), fallback=phase_id.lower())}"
+        _reopen_refuse(phase_id, f"at root the PR branch carries {phase_id}'s record, so the reopen runs in place where {branch} is checked out, "
+                                 f"and this checkout is on {current or 'a detached HEAD'}. Either switch here at a slice boundary "
+                                 f"(git switch {branch}), or, so a phase running here never waits, check it out beside this one and reopen there: "
+                                 f"git worktree add {q(str(wt))} {branch} && cd {q(str(wt))} && {WORKFLOW_CMD} reopen-phase {phase_id} --note \"...\"")
+    outcome = _reopen_apply(pdir, data, note)
+    write_json(pdir / "phase.json", data)
+    append_event("phase_reopened", phase=phase_id, note=note, branch=_pr_label(entry), worktree=str(ROOT), nested_branch=None,
+                 previous_execution=data.get("execution"))
+    rebuild_index_and_state()
+    print(f"reopen: in place -- at root {branch} carries {phase_id}'s record and this checkout is on it"
+          + (f" (the phase's own stream {stream})" if stream else "")
+          + "; no worktree was cut and nothing was committed (commit the phase folder and works/ with the round's first commit)")
+    _reopen_report(phase_id, _pr_label(entry), ROOT, outcome)
 
 
 def parallel_add_repo(args: argparse.Namespace) -> None:
@@ -8330,17 +8610,26 @@ def _repo_anchor_problems(p: dict, errors: list, warnings: list) -> None:
 
 
 def _phase_review_commit(phase_id: str, base: str, tip: str):
-    """The first commit in base..tip whose recorded phase.json says `review.status == "pass"`.
+    """The commit in base..tip that recorded the phase's LAST passing review: the first commit of the
+    final run of commits whose phase.json says `review.status == "pass"`.
 
     A done phase's boundary ends where its review was recorded, not at today's HEAD -- otherwise
-    every later commit on the stream would leak into it."""
+    every later commit on the stream would leak into it. P52: a reopened phase (`reopen-phase`)
+    records `changes_requested` after its first pass and passes again after the fix round, so a
+    non-pass record resets the run and the second pass ends the range; a phase passed once reads
+    exactly as before. A commit whose phase.json cannot be read (the archive move) never resets it."""
     rng = tip if base == EMPTY_TREE else f"{base}..{tip}"
     proc = _git(["log", "--reverse", "--format=%H", rng, "--", f"works/phases/active/{phase_id}/phase.json"], check=False)
+    start = None
     for sha in proc.stdout.split():
         data = _phase_json_at_ref(sha, phase_id)
-        if data and (data.get("review") or {}).get("status") == "pass":
-            return sha
-    return None
+        if not data:
+            continue
+        if (data.get("review") or {}).get("status") == "pass":
+            start = start or sha
+        else:
+            start = None
+    return start
 
 
 def phase_scope(args: argparse.Namespace) -> None:
@@ -19778,6 +20067,15 @@ def main(argv=None) -> int:
     p.add_argument("--repo", action="append", default=None, metavar="NAME=BRANCH", help="multi-repo host only, repeatable: also cut a worktree for registered repo NAME at <host worktree>/<its path> on BRANCH (required, named by that repo's convention: nested-convention --repo NAME); reused when it exists and is checked out nowhere. A registered repo not named here is not in this set: inside it, phase-scope skips it")
     p.add_argument("--repo-base", action="append", default=None, dest="repo_base", metavar="NAME=REF", help="multi-repo host only, repeatable: the ref repo NAME's branch starts from (default: its registry default_branch as a local branch; never fetched); NAME must also be given with --repo")
     p.set_defaults(func=parallel_start)
+
+    p = sub.add_parser("reopen-phase", help="Reopen a DONE phase whose PR is still open, on the operator's word (a team asked for changes after the phase was done): status in_progress, review changes_requested with --note, its REVIEW slice changes_requested, a required acceptance gate re-opened (a waived one stays waived); completed_at, the pr block and the doc-consolidation state kept. Nested: the phase's own worktree pair, the host worktree ON its existing PR branch (reused, never a second PR), the nested side on phase/P<N>-<slug> (or -reopen<k> when taken), the verdict in the same stamp commit; a multi-repo host's set takes each repo's open PR branch. Root: in place, in the checkout that holds the PR branch (it carries the phase's record), with no worktree and no commit. Refused, nothing written: an archived phase, a phase not done, every PR merged (pr-sync first), an empty --note, a parallel stream, a git operation in progress, a PR branch checked out elsewhere (the host's main checkout: switch it off). Prints reopened=<P> branch=<label> worktree=<path>. Never pushes, merges or calls gh. Orchestrator command -- executors never run it")
+    p.add_argument("phase", help=PHASE_ARG_HELP)
+    p.add_argument("--note", required=True, help="what the team asked for: \"team-reported: <what>\" (recorded as the review note; must not be empty)")
+    p.add_argument("--slug", default=None, help="nested only: the nested phase branch's slug (default: the phase name's; phase/<phase>-<slug>, with -reopen<k> appended when that branch exists)")
+    p.add_argument("--worktree", default=None, help="nested only: the host worktree's path (default: <host>/.claude/worktrees/P<N>-<slug>)")
+    p.add_argument("--branch", default=None, help="the open PR branch that takes the fixes, when the phase has several open PRs in one repo (a split) and no single top of the stack")
+    p.add_argument("--host-branch", default=None, help="multi-repo host only: the host worktree's branch (it carries no product), when no earlier worktree run of this phase recorded one")
+    p.set_defaults(func=cmd_reopen_phase)
 
     p = sub.add_parser("parallel-add-repo", help="Multi-repo host only, run INSIDE a phase's worktree set: add one registered repo mid-phase -- cut its worktree at <host worktree>/<its path> on BRANCH, or with --adopt stamp the worktree of it already there -- and commit the stamp on the phase branch")
     p.add_argument("phase", help=PHASE_ARG_HELP)
