@@ -4614,7 +4614,8 @@ if [ "$vk" != 0 ] && [ "$vd" != 0 ] && [ "$vu" != 0 ] && [ "$vr" != 0 ] && [ "$v
   ok "validate flags a malformed pr block (unknown key, duplicate pair, non-http(s) URL, a repo with no registry) and a malformed pr_rules, and passes once restored"
 else bad "validate missed a malformed pr block or pr_rules (rc $vk/$vd/$vu/$vr/$vp) -- $(cat "$PRW"/val-*.txt | grep -i 'pr' | head -8)"; fi
 # (8 stub) the pr skill's two push commands, taken from its text, run against a local bare origin and a stub gh:
-# a --draft create with --body-file; a stub draft refusal, then exactly one retry without --draft (the skill's fallback).
+# a --draft create with --body-file; a stub draft refusal is exactly one create call and a stop for the operator's plain|waive
+# (reference/open.md; never an automatic retry), and only on plain the same create runs without --draft and with no --reviewer.
 newtmp GHS; git init -q --bare "$GHS/origin.git"; pgit remote add origin "$GHS/origin.git"
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s/gh.log"\ncase "$*" in *--draft*) [ -n "${GH_STUB_REFUSE_DRAFT:-}" ] && { echo "Draft pull requests are not supported in this repository" >&2; exit 1; };; esac\necho https://github.com/example/toy/pull/9\n' "$GHS" > "$GHS/gh"; chmod +x "$GHS/gh"
 pr_cmds=$(python3 - "$SRC/claude/skills/pr/SKILL.md" <<'PY'
@@ -4628,15 +4629,27 @@ PY
 pr_gitpush=$(printf '%s\n' "$pr_cmds" | sed -n 1p); pr_create=$(printf '%s\n' "$pr_cmds" | sed -n 2p | sed "s|BODY|$PRW/body-ok.md|")
 ( cd "$PRR" && eval "$pr_gitpush" ) >/dev/null 2>&1; s_push=$?
 ( cd "$PRR" && export PATH="$GHS:$PATH" && eval "$pr_create" ) >/dev/null 2>&1; s_create=$?
-( cd "$PRR" && export PATH="$GHS:$PATH" GH_STUB_REFUSE_DRAFT=1 && { eval "$pr_create" || eval "$(printf '%s' "$pr_create" | sed 's/ --draft//')"; } ) >/dev/null 2>&1; s_retry=$?
-if [ "$s_push" -eq 0 ] && git -C "$GHS/origin.git" rev-parse --verify --quiet refs/heads/feat/c >/dev/null && [ "$s_create" -eq 0 ] && [ "$s_retry" -eq 0 ] \
+( cd "$PRR" && export PATH="$GHS:$PATH" GH_STUB_REFUSE_DRAFT=1 && eval "$pr_create" ) >/dev/null 2>&1; s_refused=$?; n_refused=$(wc -l < "$GHS/gh.log" | tr -d ' ')
+( cd "$PRR" && export PATH="$GHS:$PATH" GH_STUB_REFUSE_DRAFT=1 && eval "$(printf '%s' "$pr_create" | sed 's/ --draft//')" ) >/dev/null 2>&1; s_plain=$?
+if [ "$s_push" -eq 0 ] && git -C "$GHS/origin.git" rev-parse --verify --quiet refs/heads/feat/c >/dev/null && [ "$s_create" -eq 0 ] && [ "$s_refused" -ne 0 ] && [ "$n_refused" = 2 ] && [ "$s_plain" -eq 0 ] \
     && [ "$(sed -n 1p "$GHS/gh.log")" = "pr create --draft --base main --head feat/c --title Toy change --body-file $PRW/body-ok.md" ] \
-    && [ "$(wc -l < "$GHS/gh.log" | tr -d ' ')" = 3 ] && sed -n 3p "$GHS/gh.log" | grep -q -- '--body-file' && ! sed -n 3p "$GHS/gh.log" | grep -q -- '--draft' \
-    && grep -q 'retry \*\*once\*\* without `--draft`' "$SRC/claude/skills/pr/SKILL.md"; then
-  ok "the pr skill's push commands push to the (local) origin and create a --draft PR with --body-file on a stub gh; a stub draft refusal gets exactly one retry without --draft"
-else bad "pr skill push commands wrong (push $s_push, create $s_create, retry $s_retry) -- $pr_cmds / $(cat "$GHS/gh.log" 2>/dev/null)"; fi
+    && [ "$(wc -l < "$GHS/gh.log" | tr -d ' ')" = 3 ] && sed -n 3p "$GHS/gh.log" | grep -q -- '--body-file' && ! sed -n 3p "$GHS/gh.log" | grep -q -- '--draft' && ! grep -q -- '--reviewer' "$GHS/gh.log" \
+    && python3 - "$SRC/claude/skills/pr" <<'PY'
+import sys
+from pathlib import Path
+d = Path(sys.argv[1]); core = (d / "SKILL.md").read_text(); ref = (d / "reference/open.md").read_text(); flat = lambda s: " ".join(s.split())
+for t in (core, ref): assert "retry **once**" not in t and "retries once" not in t
+for s in ("**If GitHub refuses the draft**", "never retry it as a plain PR, which notifies people: stop for the operator's `plain` or `waive` (`reference/open.md`)."): assert s in core, s
+for s in ("Set the `REVIEW` slice `pending --stop-kind decision --on-words \"plain opens it as a plain PR (ready for review at once: it requests code-owner reviews and notifies watchers; no reviewers are requested); waive records pr-record --waive and the pass\"`",
+          "attempt no second one before the operator's word", "**`plain`:** the same `gh pr create` without `--draft`, and no `--reviewer`.",
+          "**`waive`:** `python3 scripts/workflow.py pr-record <P> --waive --note", "Drafts already opened stay open. On `plain`, the open continues bottom-up from the refused one"):
+    assert flat(s) in flat(ref), s
+PY
+then
+  ok "the pr skill's push commands push to the (local) origin and create a --draft PR with --body-file on a stub gh; a stub draft refusal is one create call and a stop for plain|waive (no automatic retry); plain creates without --draft and no --reviewer"
+else bad "pr skill push commands or refused-draft stop wrong (push $s_push, create $s_create, refused $s_refused/$n_refused, plain $s_plain) -- $pr_cmds / $(cat "$GHS/gh.log" 2>/dev/null)"; fi
 # (S7) the pr skill: its name, an allowed-tools list with no remote write and no recording command, its two references, its core size.
-python3 - "$SRC/claude/skills/pr" <<'PY' && ok "the pr skill: name: pr, no git push / gh pr create|comment|edit|ready|merge / pr-record / pr-branch / bare Bash in allowed-tools, its core names exactly reference/body.md and reference/split.md (both shipped), core <= 8,192 B" || bad "the pr skill's frontmatter, references or core size changed"
+python3 - "$SRC/claude/skills/pr" <<'PY' && ok "the pr skill: name: pr, no git push / gh pr create|comment|edit|ready|merge / pr-record / pr-branch / bare Bash in allowed-tools, its core names exactly reference/body.md, split.md and open.md (all shipped), core <= 8,192 B" || bad "the pr skill's frontmatter, references or core size changed"
 import re, sys
 from pathlib import Path
 d = Path(sys.argv[1]); core = (d / "SKILL.md").read_bytes(); text = core.decode()
@@ -4646,7 +4659,7 @@ tools = re.search(r"^allowed-tools: (.*)$", fm, re.M).group(1)
 for gone in ("git push", "gh pr create", "gh pr comment", "gh pr edit", "gh pr ready", "gh pr merge", "pr-record", "pr-branch"):
     assert gone not in tools, gone
 assert "Bash" not in [t.strip() for t in tools.split(",")], "bare Bash"
-assert set(re.findall(r"`reference/([\w.-]+\.md)`", text)) == {"body.md", "split.md"} == {p.name for p in (d / "reference").glob("*.md")}
+assert set(re.findall(r"`reference/([\w.-]+\.md)`", text)) == {"body.md", "split.md", "open.md"} == {p.name for p in (d / "reference").glob("*.md")}
 assert len(core) <= 8192, len(core)
 PY
 # (S8) pr-reader: the reader row's dispatch lines; the agent installs fresh and comes back on --update.
@@ -4743,7 +4756,8 @@ checks = [
                             "then opens the drafts with no stop and no word"], push_stop),
     (both("review.md"), ["## The PR step: the reader, then the drafts open (PR rule v1)", "executor-route --reader`", "restart the session; the reader then runs",
                          "**The drafts open then, with no stop and no word.**", "**On a waived gate** record the pass once the drafts are open", "never a second `gh pr create` and never a force-push",
-                         "--stop-kind operator-action --on-words \"<what fixing it resumes>\""], push_stop + ["push opens the draft PR(s); the pass is recorded after"]),
+                         "--stop-kind operator-action --on-words \"<what fixing it resumes>\"",
+                         "**A refused draft** (a private repo on a free plan) is never retried as a plain PR, which notifies people: set the `REVIEW` slice `pending --stop-kind decision` for the operator's `plain` or `waive`"], push_stop + ["push opens the draft PR(s); the pass is recorded after"]),
     (both("verdicts.md"), ["**The only push is the draft opening when the review passes**"], ["do not branch unless the operator asks", "Do not branch unless the operator asks"] + push_stop),
     (both("decomposition.md"), ["**Record the phase's PR branches at the same boundary (PR rule v1).**", "**Size never splits a phase:**"], []),
     ([sk("create-phase")], ["`Branches:` line", "Never split a phase for size"], push_stop),
