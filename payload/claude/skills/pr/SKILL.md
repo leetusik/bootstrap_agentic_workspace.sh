@@ -1,6 +1,6 @@
 ---
 name: pr
-description: "Write, check and open a phase's pull requests under PR rule v1: one body per recorded branch, measured by pr-check, opened as drafts only on the operator's push word."
+description: "Write, check and open a phase's pull requests under PR rule v1: one body per recorded branch, measured by pr-check, opened as drafts when the review passes."
 allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch --show-current), Bash(git branch --list:*), Bash(git rev-parse:*), Bash(git check-attr:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh api repos/*/community/profile), Bash(python3 scripts/workflow.py next), Bash(python3 scripts/workflow.py pr-check:*), Bash(python3 scripts/workflow.py pr-rules-decide), Read, Write, Edit, Glob, Grep
 disable-model-invocation: true
 ---
@@ -9,11 +9,11 @@ disable-model-invocation: true
 
 A phase that changes product files ships as **one branch per repo it changed, one draft PR each**. This skill is the one procedure for writing, checking and opening those PRs. It is explicit-invocation only, like every workflow command-skill: the operator types `/pr`, and the review and the orchestrator read `.claude/skills/pr/SKILL.md` by path and follow it. Three callers use it:
 
-- **the phase review's body step**, which writes and checks a body for each recorded branch, then hands back for the stop;
-- **the orchestrator at the `push` stop**, which opens the drafts on the operator's `push` (or `accept`);
+- **the phase review's body step**, which writes and checks a body for each recorded branch, then hands back;
+- **the orchestrator when the review passes**, which opens the drafts (*Open the drafts*), before the acceptance gate opens or the pass is recorded;
 - **the operator by hand** (`/pr`), for a change made outside a phase: steps 2, 3, 5 and 6 below, with the body in a scratch file, checked with no phase by `python3 scripts/workflow.py pr-check --body <file> [--base <branch>] [--branch <b>]`. It measures the checked-out branch (or `--branch`) against `--base`, else the repo's default branch, and checks that body; there is no details file.
 
-Nothing here is pre-allowed to write to a remote. `git push`, `gh pr create`, `gh pr comment`, `gh pr edit` and `gh pr ready` each reach the permission prompt, or need the operator's explicit word in auto mode. Recording (`pr-branch`, `pr-record`, `pr-rules-decide --rule`) is the orchestrator's, never an executor's.
+Nothing here is pre-allowed to write to a remote. `git push`, `gh pr create`, `gh pr comment`, `gh pr edit` and `gh pr ready` each reach the harness's permission prompt. The authority to open the drafts is the operator's run of the phase: no separate word is asked for. Recording (`pr-branch`, `pr-record`, `pr-rules-decide --rule`) is the orchestrator's, never an executor's.
 
 ## Write and check (the review's body step)
 
@@ -26,23 +26,27 @@ Nothing here is pre-allowed to write to a remote. `git push`, `gh pr create`, `g
    - `gh api repos/<owner>/<repo>/community/profile`, when `gh` is authenticated;
    - the decided conflicts: `python3 scripts/workflow.py pr-rules-decide`, bare.
 
-   **Precedence:** the team wins where it speaks (headings, title format, language, trailers, merge method); ours fills the gaps (the budgets, `## Review`, size, draft-first, the series line). A conflict nobody has decided goes into the stop report's "decided as drawn" list; the operator's answer is recorded afterwards with `pr-rules-decide --rule … --choice team|ours`.
-3. **Write the body** to the phase's `topics/pr-body.md` (`works/phases/active/<P>/topics/`), or `topics/pr-body-<repo>.md` on a multi-repo host. Depth this review alone needs goes to `topics/pr-details.md` (`-<repo>` likewise), posted as one comment at push. Follow `reference/body.md`: the skeleton, the budgets, the visual rule and the prose rules. Write from the final diff, the commits, the issue and the phase's recorded decisions, never from the slice log.
+   **Precedence:** the team wins where it speaks (headings, title format, language, trailers, merge method); ours fills the gaps (the budgets, `## Review`, size, draft-first, the series line). A conflict nobody has decided goes into the "decided as drawn" list of the gate's walkthrough (or the pass report); the operator's answer is recorded afterwards with `pr-rules-decide --rule … --choice team|ours`.
+3. **Write the body** to the phase's `topics/pr-body.md` (`works/phases/active/<P>/topics/`), or `topics/pr-body-<repo>.md` on a multi-repo host. Depth this review alone needs goes to `topics/pr-details.md` (`-<repo>` likewise), posted as one comment when the draft opens. Follow `reference/body.md`: the skeleton, the budgets, the visual rule and the prose rules. Write from the final diff, the commits, the issue and the phase's recorded decisions, never from the slice log.
 4. **Check it.** `python3 scripts/workflow.py pr-check <P> [--repo <name>] [--branch <b>]`. Rewrite and re-run until it prints `pr_check=pass`. Only `warn` lines the body itself causes (a `leak_warn=`, a `review_heading=`) or the size (`size_flag=`, step 5), each justified in your hand-back, may end the loop at `pr_check=warn`; `body=missing` never ends it, since a missing body is never a pass. A fail is a budget, a leak or a heading line: shorten, move depth to the details file, or fix the heading. Never pad, abbreviate or game the counts.
 5. **Size over the flag** (`size_status=flag`, over 1,000 counted lines): offer a split by `reference/split.md`, or a **named exception** (a first-of-feature drop, a fixture set, bulk tests) stated in `## Review` with its reason. Size never splits the phase itself.
-6. **Hand back** for the stop, per branch: the body path (and details path), the `pr-check` lines, the size, the series line if any, the `<!-- screenshot -->` spots the operator must fill on GitHub, and the undecided team-rule conflicts for the "decided as drawn" list.
+6. **Hand back**, per branch: the body path (and details path), the `pr-check` lines, the size, the series line if any, the `<!-- screenshot -->` spots the operator must fill on GitHub, and the undecided team-rule conflicts for the gate's (or the pass report's) "decided as drawn" list.
 
-## On the operator's `push`, and only then
+## Open the drafts, when the review passes
 
-For each recorded branch, **bottom-up** in a stack or series (`reference/split.md`):
+The review's verdict would pass and the reader's one revision is done: open the drafts now, with no stop and no word. For each recorded branch, **bottom-up** in a stack or series (`reference/split.md`):
 
-1. `git push -u origin <b>`
+1. `git push -u origin <b>`, never `--force`.
 2. `gh pr create --draft --base <base> --head <b> --title "<title>" --body-file <body>`. `<base>` is the recorded base exactly as `pr_branch=` prints it: a branch name (`main`, `feat/x-1`), passed as-is, never prefixed with `origin/`. The title is an imperative "what" in the repo's title convention, with no phase or slice IDs. **If GitHub refuses the draft** (drafts in private repos need a paid plan; the error names draft pull requests), retry **once** without `--draft`, request no reviewers, and say so in the report: in a solo repo that is the same preview.
 3. When a details file exists: `gh pr comment <n> --body-file <details>`, take the comment's URL from its output, point the body's details link at it, re-run `pr-check` on the edited body, then `gh pr edit <n> --body-file <body>`.
 4. `python3 scripts/workflow.py pr-record <P> [--repo <name>] --branch <b> --url <url>`
 5. In a cross-repo series, update the wave index in the series' first PR (`gh pr edit` on its body, after `pr-check`).
 
-Then print the walkthrough lines: each PR's URL, and what to read on GitHub (the first screen, the Review asks, the diagram's render, any screenshot spot to fill while previewing the draft).
+Then print the walkthrough lines: each PR's URL, and what to read on GitHub (the first screen, the Review asks, the diagram's render, any screenshot spot to fill while previewing the draft). On a required gate they open the walkthrough passed to `accept-gate <P> --open`, and the operator's `accept` after reading the draft clears the gate; on a waived gate they are the pass report.
+
+**An open failure** (no `gh`, no auth, the network, a refused push): set the `REVIEW` slice `pending --stop-kind operator-action --on-words "<what fixing it resumes>"` and STOP. Never retry with `--force`, and never record the pass without the URL (the engine refuses it).
+
+**A draft already open** (a fix round after failures the operator reported on GitHub): at the next would-pass, push the fix commits (`git push`, never `--force`) and replace the body (`gh pr edit <n> --body-file <body>`, after `pr-check`). Never a second `gh pr create`.
 
 ## Ready, reviewers, merging
 

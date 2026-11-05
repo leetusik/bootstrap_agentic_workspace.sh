@@ -3450,45 +3450,10 @@ def operator_wait_target(phases: list, current_phase, current_slice):
 
 def phase_parked(phase: dict) -> bool:
     """True when a run may pass this phase: `pending` with its acceptance gate open and no slice of it
-    `pending` or `blocked`, or parked at its PR `push` stop (`pr_push_parked`). Every other `pending`, and
-    every `blocked`, halts a run."""
-    if (phase.get("status") == "pending" and acceptance_gate_is_open(phase)
-            and not any(s.get("status") in ("pending", "blocked") for s in phase.get("slices", []))):
-        return True
-    return pr_push_parked(phase)
-
-
-def _pr_push_stop_why(phase: dict):
-    """Why a phase whose `<P>.REVIEW` is `pending` with a `decision` stop is not parked at its PR `push` stop
-    (P51-b1.S12), or None when it is. Not that stop at all (no such REVIEW, no `pr` block): the string "-"."""
-    slices = phase.get("slices", [])
-    rid = f"{phase.get('id')}.REVIEW"
-    review = next((s for s in slices if s.get("id") == rid), None)
-    record = review.get("pending") if review and review.get("status") == "pending" else None
-    block = phase_pr(phase)
-    if not isinstance(record, dict) or record.get("kind") != "decision" or block is None:
-        return "-"
-    if phase.get("status") in ("pending", "blocked"):
-        return f"the phase itself is {phase.get('status')}"
-    if acceptance_gate_is_open(phase):
-        return "its acceptance gate is open, so the gate is the stop"
-    other = next((s for s in slices if s.get("id") != rid and s.get("status") in ("pending", "blocked")), None)
-    if other is not None:
-        return f"slice {other['id']} is {other.get('status')}"
-    if isinstance(block.get("waived"), dict):
-        return "its PR is waived, so no push is waited on: clear the REVIEW and record the verdict"
-    if not any(not e.get("url") for e in block["branches"]):
-        return "every recorded PR branch has its URL, so the push is done: clear the REVIEW to in_progress and record the pass"
-    return None
-
-
-def pr_push_parked(phase: dict) -> bool:
-    """True when a run may pass a phase parked at its PR `push` stop on a waived, cleared or absent gate
-    (P51-b1.S12): its only `pending` slice is its `<P>.REVIEW`, typed `decision`; no slice is `blocked`; its `pr`
-    block is not waived and holds a branch with no URL (`pr_push=waiting`); and its acceptance gate is not open
-    (on an open gate the gate is the stop, and `phase_parked` parks it). Only a run reads it: `next`, state.json and
-    the card still halt there."""
-    return _pr_push_stop_why(phase) is None
+    `pending` or `blocked`. Every other `pending` (a `<P>.REVIEW` decision stop included: the drafts open when
+    the review passes, so the PR rule adds nothing to park, P51-b1.F3), and every `blocked`, halts a run."""
+    return bool(phase.get("status") == "pending" and acceptance_gate_is_open(phase)
+                and not any(s.get("status") in ("pending", "blocked") for s in phase.get("slices", [])))
 
 
 def run_phase_tokens(tokens, stored=None) -> tuple:
@@ -3534,9 +3499,6 @@ def _run_halt(phase: dict):
     cur = next(iter(selectable_slices(phase)), None)
     cur = wave_stop(phase) or cur  # P42: a declared phase halts at a stop anywhere by order
     if cur is not None and cur.get("status") in ("pending", "blocked"):
-        why = _pr_push_stop_why(phase) if cur.get("id") == f"{pid}.REVIEW" else "-"
-        if why not in ("-", None):
-            return cur, f"slice {cur['id']} is pending at the PR push stop but not parked: {why}"
         return cur, f"slice {cur['id']} is {cur.get('status')}"
     return None
 
@@ -3602,11 +3564,6 @@ def cmd_run_phases(args: argparse.Namespace) -> None:
             print(f"skipped={pid} reason={reason} stream={where} -- {home}")
     for phase in run["parked"]:
         pid = phase["id"]
-        if pr_push_parked(phase):  # P51-b1.S12: a waived (cleared, absent) gate's PR push stop parks like the gate
-            since = (next(s for s in phase["slices"] if s.get("id") == f"{pid}.REVIEW").get("pending") or {}).get("since")
-            print(f"parked={pid} since={since} -- PR push stop ({pid}.REVIEW pending, decision; pr_push=waiting): the run passes it; "
-                  f"the operator's push opens the drafts (pr skill), then the REVIEW clears to in_progress and the pass is recorded")
-            continue
         print(f"parked={pid} since={phase_acceptance(phase).get('requested_at')} -- acceptance gate open, no slice pending or blocked: "
               f"the run passes it; accept-gate {pid} prints the walkthrough, accept-gate {pid} --clear clears it")
     if run["halt"] is not None:
@@ -8859,7 +8816,7 @@ def _phase_scope_multi(args: argparse.Namespace, data: dict, out: dict, header: 
 # P51 (PR rule v1): one draft PR per repo branch per phase.
 #
 # phase.json's `pr` block records each repo branch the phase's product commits ride on, its base
-# and, once the operator's `push` opened it (the `pr` skill), the draft's URL:
+# and, once the draft opened when the review passed (the `pr` skill's *Open the drafts*), its URL:
 #
 #     "pr": {"branches": [{"repo": null | "<repos-key name>", "branch": "<name>", "base": "<ref>",
 #                          "url": null | "<url>", "recorded_at": "<iso>", "opened_at": null | "<iso>"}],
@@ -8895,7 +8852,8 @@ PR_RULES_FILE = "pr-rules.json"  # root installs: works/pr-rules.json; nested: t
 PR_RULE_KEYS = ("rule", "choice", "note", "at")
 PR_RULE_OPTIONAL_KEYS = ("repo",)  # a multi-repo host's decision about one repo's rule; absent or null = every repo
 PR_RULE_CHOICES = ("team", "ours")
-PR_PUSH_WAITING = "pr_push=waiting -- the operator's push opens the draft (pr skill)"
+PR_DRAFT_DUE = ("pr_draft=due -- when the review would pass: open the draft(s) (pr skill: Open the drafts, then pr-record --url), "
+                "then the gate or the pass")
 
 
 def new_pr_block() -> dict:
@@ -9244,7 +9202,7 @@ def cmd_pr_branch(args: argparse.Namespace) -> None:
 
 
 def cmd_pr_record(args: argparse.Namespace) -> None:
-    """Record the draft PR the operator's `push` opened (`--url`, on the matching branch entry), or
+    """Record the draft PR opened when the review passed (`--url`, on the matching branch entry), or
     waive the phase's PR (`--waive --note`): a phase with no product change worth a PR."""
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
@@ -9339,7 +9297,7 @@ def _require_pr_opened(phase_id: str, data: dict) -> None:
         raise SystemExit(
             f"phase {phase_id} records {len(missing)} PR branch(es) with no draft PR yet; a pass cannot be recorded until each is opened:\n"
             f"{listed}\n"
-            f"  on the operator's `push` (pr skill), push and open the draft, then: {WORKFLOW_CMD} pr-record {phase_id}{repo_flag} --branch <branch> --url <url>\n"
+            f"  the draft opens when the review passes (pr skill: Open the drafts): push the branch, open it, then: {WORKFLOW_CMD} pr-record {phase_id}{repo_flag} --branch <branch> --url <url>\n"
             f"  or, for a phase with no product change worth a PR: {WORKFLOW_CMD} pr-record {phase_id} --waive --note \"why\"\n"
             f"nothing was written")
     if not block["branches"]:
@@ -9350,15 +9308,16 @@ def _require_pr_opened(phase_id: str, data: dict) -> None:
             raise SystemExit(
                 f"phase {phase_id} changed {len(files)} product file(s) (phase-scope {phase_id}) but records no PR branch; a pass cannot be recorded:\n"
                 f"  record the branch its product commits are on: {WORKFLOW_CMD} pr-branch {phase_id}{repo_flag} --name <branch>\n"
-                f"  then, on the operator's `push` (pr skill): {WORKFLOW_CMD} pr-record {phase_id}{repo_flag} --branch <branch> --url <url>\n"
+                f"  then, once the draft opened when the review passed (pr skill: Open the drafts): {WORKFLOW_CMD} pr-record {phase_id}{repo_flag} --branch <branch> --url <url>\n"
                 f"  or, for a phase with no product change worth a PR: {WORKFLOW_CMD} pr-record {phase_id} --waive --note \"why\"\n"
                 f"nothing was written")
 
 
-def _pr_push_due(phase: dict) -> bool:
-    """True once the review is at its stop: the phase is in_review or pending, or its REVIEW slice is
-    in_review or pending (`phase` may carry `slices`, as all_active_phases builds it)."""
-    if phase.get("status") in ("in_review", "pending"):
+def _pr_draft_due(phase: dict) -> bool:
+    """True while the phase is at its review: its REVIEW slice is in_progress, in_review or pending, the phase is
+    in_review, or its acceptance gate is open (`phase` may carry `slices`, as all_active_phases builds it). The
+    drafts open when the review would pass, before the gate opens or the pass is recorded (P51-b1.F3)."""
+    if phase.get("status") == "in_review" or (phase.get("status") == "pending" and acceptance_gate_is_open(phase)):
         return True
     rid = f"{phase.get('id')}.REVIEW"
     slices = phase.get("slices")
@@ -9370,12 +9329,12 @@ def _pr_push_due(phase: dict) -> bool:
             review = read_json(sj) if sj.is_file() else None
         except (OSError, ValueError):
             review = None
-    return bool(review and review.get("status") in ("in_review", "pending"))
+    return bool(review and review.get("status") in ("in_progress", "in_review", "pending"))
 
 
 def pr_lines(phase: dict) -> list:
     """`next`'s PR lines for a phase with a `pr` block (silent without one): one `pr_branch=` per entry,
-    `pr_waived=` when waived, and `pr_push=waiting` once the review is at its stop with a branch unopened."""
+    `pr_waived=` when waived, and `pr_draft=due` while the phase is at its review with a branch unopened."""
     block = phase_pr(phase)
     if block is None:
         return []
@@ -9383,8 +9342,8 @@ def pr_lines(phase: dict) -> list:
     waived = block.get("waived")
     if isinstance(waived, dict):
         lines.append(f"pr_waived={_one_line(waived.get('note') or '')}")
-    elif any(not e.get("url") for e in block["branches"]) and _pr_push_due(phase):
-        lines.append(PR_PUSH_WAITING)
+    elif any(not e.get("url") for e in block["branches"]) and _pr_draft_due(phase):
+        lines.append(PR_DRAFT_DUE)
     return lines
 
 
@@ -19117,7 +19076,7 @@ def main(argv=None) -> int:
     p.add_argument("--transcripts", action="append", metavar="DIR", help="read this projects/<slug> directory instead of discovering the session root's (repeatable)")
     p.set_defaults(func=cmd_dispatch_summary)
 
-    p = sub.add_parser("next", help="Print the current phase/slice selection (plus explain_unit=<document|book|chapter> on an explain phase, and on the default stream merge_ready=<P>:<branch> for a parallel phase done with a passing review on its branch but not merged yet, and merge_ready=<P>:<commit7> for a loop whose passing, landed checkpoint is not merged yet); when the phase's notebook is over 40,960 B, also notebook_over_budget= with up to 3 notebook_move= commands to run before the next dispatch (required form), or none when nothing can move (advisory form); for a phase with a pr block, one pr_branch=<repo|host|root>:<branch> base=<base> url=<url|none> per recorded branch, pr_waived=<note> when waived, and pr_push=waiting once the review is at its stop (the phase in_review or pending, or its REVIEW slice in_review or pending) with a branch unopened")
+    p = sub.add_parser("next", help="Print the current phase/slice selection (plus explain_unit=<document|book|chapter> on an explain phase, and on the default stream merge_ready=<P>:<branch> for a parallel phase done with a passing review on its branch but not merged yet, and merge_ready=<P>:<commit7> for a loop whose passing, landed checkpoint is not merged yet); when the phase's notebook is over 40,960 B, also notebook_over_budget= with up to 3 notebook_move= commands to run before the next dispatch (required form), or none when nothing can move (advisory form); for a phase with a pr block, one pr_branch=<repo|host|root>:<branch> base=<base> url=<url|none> per recorded branch, pr_waived=<note> when waived, and pr_draft=due while the phase is at its review (its REVIEW slice in_progress, in_review or pending, the phase in_review, or its acceptance gate open) with a branch unopened: the drafts open when the review would pass")
     p.add_argument("--card", action="store_true", help="print the resume card instead: the pointer, the next action or the typed stop, the open gates, the running spans (from the newest session's subagents/*.meta.json) and the slice's file paths, computed from state, at most 2,048 bytes -- what compact-resume prints after a compaction")
     p.set_defaults(func=cmd_next)
 
@@ -19289,7 +19248,7 @@ def main(argv=None) -> int:
     p.add_argument("--base", default=None, help="the PR's base branch: recorded as the branch NAME gh pr create --base takes (a remote-tracking ref such as origin/main records main; a sha or a tag is refused); default: the repo's default branch -- the registry's default_branch, else origin/HEAD's target, else main. The branch is cut from it, and pr-check diffs against origin/<base> when that exists, else the local <base> (diff_base=); never fetched")
     p.set_defaults(func=cmd_pr_branch)
 
-    p = sub.add_parser("pr-record", help="Record the draft PR the operator's push opened on a recorded PR branch (--url: sets url and opened_at), or waive the phase's PR (--waive --note: a phase with no product change worth a PR); refuses an unrecorded branch. review-phase --verdict pass waits on one of the two. Orchestrator command -- executors never run it")
+    p = sub.add_parser("pr-record", help="Record the draft PR opened when the review passed (pr skill: Open the drafts) on a recorded PR branch (--url: sets url and opened_at), or waive the phase's PR (--waive --note: a phase with no product change worth a PR); refuses an unrecorded branch. review-phase --verdict pass waits on one of the two. Orchestrator command -- executors never run it")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--repo", default=None, metavar="NAME", help="multi-repo host only: the registered repo of the branch")
     p.add_argument("--branch", default=None, help="the recorded branch (may be omitted when exactly one recorded branch matches)")

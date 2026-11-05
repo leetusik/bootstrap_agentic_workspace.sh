@@ -1105,7 +1105,7 @@ def nested_team_pr_rules(base: Path) -> list:
                 found.append(f"{rel} ({len(lines)} line{'s' if len(lines) != 1 else ''} about PRs)")
                 speaks += [(rel, ln) for ln in lines]
     if not found:
-        return ["team PR rules: none on file -- the pr skill's default (glide template + Review) applies"]
+        return ["team PR rules: none on file -- the pr skill's default template (Summary · Review · What is changed · Why · Related issue) applies"]
     out_lines = [f"team PR rules: {', '.join(found[:6])}{' ...' if len(found) > 6 else ''} -- the pr skill reads them live; the team wins where it speaks"]
     decide = "decide at /update-workspace (pr-rules-decide)"
     if template_heads is not None:
@@ -1394,7 +1394,7 @@ def _multi_repo_local_block(renames: dict, repos: list, converted=()) -> list:
         f"  - product code goes to its own repo with `git -C <repo> ...`, on the phase's branch there (one per repo, recorded with `{cmd} pr-branch --repo <name>`), in that repo's conventions for commits, branches and pull requests, which `{cmd} nested-convention --repo <name>` prints. Add Claude `Co-Authored-By` trailers only when it says `allowed`. The host folder itself never gets a commit;",
         f"  - workflow state goes to the nested repo (`git -C {NESTED_DIR} ...`) in the contract's Commit Convention.",
         f"- If `next` shows `host_commit_convention=UNCONFIRMED` or an UNCONFIRMED repo in `repo_conventions=`, confirm those conventions with the operator before that repo's first product commit, then record them: `{cmd} nested-convention --confirm [--repo <name>] --text \"<conventions>\" --trailers allowed|forbidden` (no `--repo`: the rules for every repo).",
-        f"- **Parallel phases, only on the operator's word:** `{cmd} parallel-start <P> --host-branch <name> [--host-base <ref>] [--repo <name>=<branch> ...] [--repo-base <name>=<ref> ...]` cuts a set: a host worktree under `.claude/worktrees/`, the nested worktree at its `{NESTED_DIR}/`, and one worktree per named repo at its `<repo>/`; add a repo mid-phase from inside the set with `parallel-add-repo <P> --repo <name>=<branch>`. Propose each branch name from that repo's recorded custom (`nested-convention --repo <name>`) and let the operator confirm it. Each repo's side follows its own custom; the engine never fetches, pushes or merges into any repo's default branch; the `pr` skill opens the phase's draft PR(s) only on the operator's `push`.",
+        f"- **Parallel phases, only on the operator's word:** `{cmd} parallel-start <P> --host-branch <name> [--host-base <ref>] [--repo <name>=<branch> ...] [--repo-base <name>=<ref> ...]` cuts a set: a host worktree under `.claude/worktrees/`, the nested worktree at its `{NESTED_DIR}/`, and one worktree per named repo at its `<repo>/`; add a repo mid-phase from inside the set with `parallel-add-repo <P> --repo <name>=<branch>`. Propose each branch name from that repo's recorded custom (`nested-convention --repo <name>`) and let the operator confirm it. Each repo's side follows its own custom; the engine never fetches, pushes or merges into any repo's default branch; the `pr` skill opens the phase's draft PR(s) when its review passes.",
         f"- A pull request's title, body and commits (and every product commit, in every repo) carry no phase or slice IDs, no `{NESTED_DIR}/` paths and no workspace files.",
         f"- Never stage `{NESTED_DIR}/`, `CLAUDE.local.md`, `.claude/settings.local.json` or the workspace's skills and agents into any repo or the host (the exclude block lists them).",
     ]
@@ -1424,7 +1424,7 @@ def _nested_local_block(renames: dict, repos=(), converted=()) -> list:
         f"  - product code goes to this repo, on the phase's branch (one per repo, recorded with `{cmd} pr-branch`), in the host's conventions for commits, branches and pull requests, which `{cmd} nested-convention` prints. Add Claude `Co-Authored-By` trailers only when it says `allowed`;",
         f"  - workflow state goes to the nested repo (`git -C {NESTED_DIR} ...`) in the contract's Commit Convention.",
         f"- If `next` shows `host_commit_convention=UNCONFIRMED`, confirm the host's conventions (commits, branches and pull requests) with the operator before the first product commit, then record them: `{cmd} nested-convention --confirm --text \"<conventions>\" --trailers allowed|forbidden`.",
-        f"- **Parallel phases, only on the operator's word:** `{cmd} parallel-start <P> --host-branch <name> [--host-base <ref>]` cuts a pair: a host worktree under `.claude/worktrees/` on the host branch, with the nested worktree at its `{NESTED_DIR}/`. Propose the branch name from the host's recorded custom and let the operator confirm it. The host side follows that custom; the engine never pushes or merges into the host's default branch; the `pr` skill opens the phase's draft PR(s) only on the operator's `push`.",
+        f"- **Parallel phases, only on the operator's word:** `{cmd} parallel-start <P> --host-branch <name> [--host-base <ref>]` cuts a pair: a host worktree under `.claude/worktrees/` on the host branch, with the nested worktree at its `{NESTED_DIR}/`. Propose the branch name from the host's recorded custom and let the operator confirm it. The host side follows that custom; the engine never pushes or merges into the host's default branch; the `pr` skill opens the phase's draft PR(s) when its review passes.",
         f"- A pull request's title, body and commits (and every product commit) carry no phase or slice IDs, no `{NESTED_DIR}/` paths and no workspace files.",
         f"- Never stage `{NESTED_DIR}/`, `CLAUDE.local.md`, `.claude/settings.local.json` or the workspace's skills and agents into this repo (the exclude block lists them).",
     ]
@@ -1607,7 +1607,7 @@ def nested_plan() -> dict:
     if problems:
         _nested_refuse("the nested rewrite left unprefixed or un-renamed references; nothing was written:", *[f"  - {p}" for p in problems[:12]])
 
-    # P51.S10: a host whose `.claude/skills` is a tracked symlink to a directory inside it (glide-ilab:
+    # P51.S10: a host whose `.claude/skills` is a tracked symlink to a directory inside it (e.g.
     # `../.agents/skills`) gets the skill copies physically in that directory. Git matches paths, never a
     # resolved symlink, so a pathspec through `.claude/skills/<name>` matches nothing: every git check and
     # exclude line about the skills is also made at the resolved path. The team's files and the link stay

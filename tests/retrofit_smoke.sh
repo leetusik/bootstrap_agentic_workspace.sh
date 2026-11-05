@@ -64,7 +64,7 @@
 # budget stop, park don't halt, the bounded rollup, the tick's resume states), the v61 skill
 # directories (cores of 8 KB or less plus their reference files, on fresh, retrofit, --update and
 # nested installs, a renamed skill included), the P51 PR rule v1 invariants (the pr block, pr-branch / pr-record /
-# pr-check and the pass guard, validate and next, a waived gate's push stop a run parks while next halts, the pr skill and
+# pr-check and the pass guard, validate and next, the drafts opening with no stop (no park rule: a REVIEW stop halts a run), the pr skill and
 # pr-reader, the team-rule banner, the symlinked .claude/skills exclude, the root linguist-generated lines, the _is_ancestor
 # regression; zero GitHub writes: a local bare origin and a stub gh), and the v31 Codex-removal negatives. Re-runnable; self-cleaning.
 #
@@ -4424,7 +4424,7 @@ PY
 echo "loop test runtime: $(( $(date +%s) - lp_t0 ))s"
 
 # ---------------------------------------------------------------------------
-echo "== Test 19: P51 PR rule v1 -- the pr block and its commands, pr-check's size/budgets/leaks/headings, the pass guard, validate and next, the push stop a run parks, the pr skill and pr-reader, the team-rule banner, the symlinked skills exclude, the root linguist lines, the _is_ancestor regression; zero GitHub writes =="
+echo "== Test 19: P51 PR rule v1 -- the pr block and its commands, pr-check's size/budgets/leaks/headings, the pass guard, validate and next, the drafts opening with no stop (a REVIEW stop halts a run), the pr skill and pr-reader, the team-rule banner, the symlinked skills exclude, the root linguist lines, the _is_ancestor regression; zero GitHub writes =="
 # Tiny and core only. Every remote is local (a bare origin) and gh is a stub on PATH: nothing reaches GitHub.
 pr_t0=$(date +%s)
 newtmp PRW; PRR="$PRW/ws"
@@ -4442,7 +4442,7 @@ seq 1 50 | sed 's/^/old /' > "$PRR/src/old.py"; printf 'a\nb\nc\n' > "$PRR/src/a
 ( cd "$PRR" && git add -A && git commit -qm baseline ) >/dev/null 2>&1 || bad "pr probe: baseline commit failed"
 # (a) a fresh at-root install marks the workspace's state linguist-generated (S11), and prints the team-rule line.
 grep -qx 'works/\*\* linguist-generated=true' "$PRR/.gitattributes" && grep -qx 'docs/index.json linguist-generated=true' "$PRR/.gitattributes" \
-  && grep -q "team PR rules: none on file -- the pr skill's default (glide template + Review) applies" "$PRW/install.txt" \
+  && grep -q "team PR rules: none on file -- the pr skill's default template (Summary · Review · What is changed · Why · Related issue) applies" "$PRW/install.txt" \
   && ok "a fresh at-root install marks works/** and the workspace's docs/ paths linguist-generated and prints the bare team-rule line" \
   || bad "fresh at-root install: no linguist-generated lines or no team-rule line -- $(grep -n 'linguist\|team PR' "$PRR/.gitattributes" "$PRW/install.txt")"
 # (1) new-phase stamps the empty pr block.
@@ -4519,31 +4519,34 @@ if [ "$a4" = 1 ] && pcl nobody "body=missing ($PRW/no-such-body.md)" && pcl nobo
     && [ "$a8" = 0 ] && grep -q '^size=[0-9]* target=400 flag=1000 size_status=flag$' "$PRW/check-big.txt" && pcl big 'pr_check=warn'; then
   ok "pr-check: a missing --body file fails (exit 1); by hand with no phase, a clean --body on feat/a passes against the default branch main; no phase and no --body is refused in one line naming both forms, writing nothing; an over-flag branch with a clean body is size_status=flag and pr_check=warn"
 else bad "pr-check missing --body / by-hand route wrong (rc $a4/$a6/$a7/$a8) -- $(cat "$PRW/check-nobody.txt" "$PRW/check-hand.txt" "$PRW/check-none.txt" "$PRW/check-big.txt")"; fi
-# (6a) + the park rule (S12): a waived gate's REVIEW pending/decision with an unopened branch -- a run parks it,
-# plain next still halts there, and the pass guard refuses writing nothing.
+# (6a) the drafts open when the review passes, with no stop (F3): while the REVIEW runs with a branch unopened, next prints
+# pr_draft=due and run-phases targets the REVIEW (no parked= line); the pass guard refuses, writing nothing; a REVIEW stop
+# (pending/decision on a waived gate, or an open failure's operator-action) halts a run like any stop -- no park rule.
 { pw finish-slice P1.DECOMP --outcome cut && pw accept-gate P1 --waive --note toy && pw start-slice P1.REVIEW \
-  && : > "$PRR/works/phases/active/P1/slices/P1.REVIEW/result.md" \
-  && pw set-slice-status P1.REVIEW pending --stop-kind decision --on-words "push opens the draft PR(s); the pass is recorded after"; } >/dev/null 2>&1 \
-  || bad "pr probe: could not bring P1 to its push stop"
+  && : > "$PRR/works/phases/active/P1/slices/P1.REVIEW/result.md"; } >/dev/null 2>&1 \
+  || bad "pr probe: could not bring P1 to its review"
 P1D="$PRR/works/phases/active/P1"; gsig() { cat "$P1D/phase.json" "$PRR/works/events.jsonl" "$P1D/slices/P1.REVIEW/slice.json" | sha_stdin; }
 run=$(pw run-phases P1 2>&1); plain=$(pw next 2>&1); g0=$(gsig)
 g_out=$(pw review-phase P1 --verdict pass 2>&1); g_rc=$?; g1=$(gsig)
-if printf '%s\n' "$run" | grep -q '^parked=P1 since=.* -- PR push stop ' && printf '%s\n' "$run" | grep -q '^run_done=yes' && ! printf '%s\n' "$run" | grep -q '^halt=' \
-    && printf '%s\n' "$plain" | grep -qx 'waiting_on_operator=P1.REVIEW' && printf '%s\n' "$plain" | grep -q '^pr_push=waiting ' \
+if printf '%s\n' "$run" | grep -qx 'target_phase=P1' && printf '%s\n' "$run" | grep -qx 'target_slice=P1.REVIEW' && ! printf '%s\n' "$run" | grep -q '^parked=\|^halt=' \
+    && printf '%s\n' "$plain" | grep -q '^pr_draft=due -- when the review would pass: open the draft(s) (pr skill: Open the drafts' \
     && printf '%s\n' "$plain" | grep -qx 'pr_branch=root:feat/a base=main url=none'; then
-  ok "a waived gate's PR push stop (REVIEW pending/decision, a branch unopened) is parked by run-phases, while plain next still halts there and prints pr_branch= and pr_push=waiting"
-else bad "push-stop park wrong -- run: $run / next: $plain"; fi
+  ok "while a waived gate's REVIEW runs with a branch unopened, next prints pr_branch= and pr_draft=due, and run-phases targets the REVIEW with no parked= line"
+else bad "the drafts' due line or the run target wrong -- run: $run / next: $plain"; fi
 [ "$g_rc" -ne 0 ] && printf '%s\n' "$g_out" | grep -q 'root:feat/a (base main) has no draft PR' && printf '%s\n' "$g_out" | grep -qx 'nothing was written' && [ "$g0" = "$g1" ] \
-  && ok "the pass guard refuses an unopened recorded branch and writes nothing (phase.json, events.jsonl, the REVIEW's slice.json unchanged)" || bad "pass guard (a) wrong (rc=$g_rc, $g0 -> $g1) -- $g_out"
-cp "$P1D/phase.json" "$PRW/p1.json"
-pw pr-record P1 --waive --note "probe" >/dev/null 2>&1; run_w=$(pw run-phases P1 2>&1); cp "$PRW/p1.json" "$P1D/phase.json"
+    && printf '%s\n' "$g_out" | grep -q 'the draft opens when the review passes (pr skill: Open the drafts)' && ! printf '%s\n' "$g_out" | grep -q "operator's .push" \
+  && ok "the pass guard refuses an unopened recorded branch, names the draft opening when the review passes, and writes nothing (phase.json, events.jsonl, the REVIEW's slice.json unchanged)" || bad "pass guard (a) wrong (rc=$g_rc, $g0 -> $g1) -- $g_out"
+pw set-slice-status P1.REVIEW pending --stop-kind decision --on-words "an answer resumes it" >/dev/null 2>&1; run_d=$(pw run-phases P1 2>&1)
+pw set-slice-status P1.REVIEW in_progress >/dev/null 2>&1
+pw set-slice-status P1.REVIEW pending --stop-kind operator-action --on-words "gh auth login resumes the open" >/dev/null 2>&1; run_o=$(pw run-phases P1 2>&1); nx_o=$(pw next 2>&1)
+pw set-slice-status P1.REVIEW in_progress >/dev/null 2>&1
 u_out=$(pw pr-record P1 --url https://github.com/example/toy/pull/1 2>&1); run_u=$(pw run-phases P1 2>&1); nx_u=$(pw next 2>&1)
-if printf '%s\n' "$run_w" | grep -qx 'halt=P1.REVIEW status=pending' && printf '%s\n' "$run_w" | grep -q '^halt_reason=.*its PR is waived' \
-    && printf '%s\n' "$run_u" | grep -qx 'halt=P1.REVIEW status=pending' && printf '%s\n' "$run_u" | grep -q '^halt_reason=.*every recorded PR branch has its URL' \
-    && ! printf '%s\n%s\n' "$run_w" "$run_u" | grep -q '^parked=' && printf '%s\n' "$nx_u" | grep -qx 'pr_branch=root:feat/a base=main url=https://github.com/example/toy/pull/1' \
-    && ! printf '%s\n' "$nx_u" | grep -q '^pr_push='; then
-  ok "the push stop stops parking once its PR is waived or every branch has its URL (a halt naming why), and next prints the recorded url"
-else bad "push stop after waive/url wrong -- waived: $run_w / url: $run_u / next: $nx_u"; fi
+if printf '%s\n' "$run_d" | grep -qx 'halt=P1.REVIEW status=pending' && printf '%s\n' "$run_d" | grep -qx 'stop_kind=decision' && printf '%s\n' "$run_d" | grep -qx 'halt_reason=slice P1.REVIEW is pending -- the whole run stops here: report it, start nothing past it' \
+    && printf '%s\n' "$run_o" | grep -qx 'halt=P1.REVIEW status=pending' && printf '%s\n' "$run_o" | grep -qx 'stop_kind=operator-action' && printf '%s\n' "$nx_o" | grep -q '^pr_draft=due ' \
+    && ! printf '%s\n%s\n%s\n' "$run_d" "$run_o" "$run_u" | grep -q '^parked=' && printf '%s\n' "$run_u" | grep -qx 'target_slice=P1.REVIEW' \
+    && printf '%s\n' "$nx_u" | grep -qx 'pr_branch=root:feat/a base=main url=https://github.com/example/toy/pull/1' && ! printf '%s\n' "$nx_u" | grep -q '^pr_draft=\|^pr_push='; then
+  ok "a REVIEW stop on a waived gate (decision, or an open failure's operator-action) halts run-phases like any stop, never parked; once pr-record --url ran, next prints the url and no due line"
+else bad "REVIEW stop / url wrong -- decision: $run_d / operator-action: $run_o / url: $run_u / next: $nx_u"; fi
 { pw set-slice-status P1.REVIEW in_progress && pw review-phase P1 --verdict pass; } > "$PRW/pass1.txt" 2>&1 \
   && grep -q '^phase P1 review: pass' "$PRW/pass1.txt" && ok "pr-record --url clears the guard: the pass records" || bad "pass after pr-record --url refused -- $(cat "$PRW/pass1.txt")"
 ( cd "$PRR" && git add -A && git commit -qm "p1 done" ) >/dev/null 2>&1
@@ -4555,9 +4558,9 @@ e_out=$(pw review-phase P2 --verdict pass 2>&1); e_rc=$?
 k_out=$(pw pr-branch P2 --name feat/c 2>&1); pw set-slice-status P2.REVIEW in_review >/dev/null 2>&1; nx2=$(pw next 2>&1)
 pw pr-record P2 --waive --note "toy change" >/dev/null 2>&1; nx3=$(pw next 2>&1); w_out=$(pw review-phase P2 --verdict pass 2>&1); w_rc=$?
 if [ "$e_rc" -ne 0 ] && printf '%s\n' "$e_out" | grep -q 'changed 1 product file(s) (phase-scope P2) but records no PR branch' \
-    && printf '%s\n' "$k_out" | grep -q '^pr-branch: feat/c recorded (already checked out)' && printf '%s\n' "$nx2" | grep -q '^pr_push=waiting ' \
+    && printf '%s\n' "$k_out" | grep -q '^pr-branch: feat/c recorded (already checked out)' && printf '%s\n' "$nx2" | grep -q '^pr_draft=due ' \
     && printf '%s\n' "$nx3" | grep -qx 'pr_waived=toy change' && [ "$w_rc" -eq 0 ] && printf '%s\n' "$w_out" | grep -q '^pr: waived (toy change) -- pass recorded without a draft PR'; then
-  ok "an empty pr block with committed product files refuses the pass; pr-branch records a checked-out branch; next prints pr_push=waiting (REVIEW in_review) then pr_waived=; --waive clears the guard"
+  ok "an empty pr block with committed product files refuses the pass; pr-branch records a checked-out branch; next prints pr_draft=due (REVIEW in_review) then pr_waived=; --waive clears the guard"
 else bad "pass guard (b) / waive wrong (rc $e_rc/$w_rc) -- $e_out / $k_out / $nx2 / $nx3 / $w_out"; fi
 ( cd "$PRR" && git add -A && git commit -qm "p2 done" ) >/dev/null 2>&1
 # (6c) an uncleared required gate still refuses with the PR waived, and still parks a run as before; (6d) a phase with
@@ -4605,14 +4608,14 @@ newtmp GHS; git init -q --bare "$GHS/origin.git"; pgit remote add origin "$GHS/o
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s/gh.log"\ncase "$*" in *--draft*) [ -n "${GH_STUB_REFUSE_DRAFT:-}" ] && { echo "Draft pull requests are not supported in this repository" >&2; exit 1; };; esac\necho https://github.com/example/toy/pull/9\n' "$GHS" > "$GHS/gh"; chmod +x "$GHS/gh"
 pr_cmds=$(python3 - "$SRC/claude/skills/pr/SKILL.md" <<'PY'
 import re, sys
-t = open(sys.argv[1]).read().split("## On the operator's `push`", 1)[1]
+t = open(sys.argv[1]).read().split("## Open the drafts, when the review passes", 1)[1]
 push = re.search(r"^1\. `(git push [^`]+)`", t, re.M).group(1); create = re.search(r"^2\. `(gh pr create [^`]+)`", t, re.M).group(1)
 for c in (push, create):
     print(c.replace("<b>", "feat/c").replace("<base>", "main").replace('"<title>"', '"Toy change"').replace("<body>", "BODY"))
 PY
 )
-pr_push=$(printf '%s\n' "$pr_cmds" | sed -n 1p); pr_create=$(printf '%s\n' "$pr_cmds" | sed -n 2p | sed "s|BODY|$PRW/body-ok.md|")
-( cd "$PRR" && eval "$pr_push" ) >/dev/null 2>&1; s_push=$?
+pr_gitpush=$(printf '%s\n' "$pr_cmds" | sed -n 1p); pr_create=$(printf '%s\n' "$pr_cmds" | sed -n 2p | sed "s|BODY|$PRW/body-ok.md|")
+( cd "$PRR" && eval "$pr_gitpush" ) >/dev/null 2>&1; s_push=$?
 ( cd "$PRR" && export PATH="$GHS:$PATH" && eval "$pr_create" ) >/dev/null 2>&1; s_create=$?
 ( cd "$PRR" && export PATH="$GHS:$PATH" GH_STUB_REFUSE_DRAFT=1 && { eval "$pr_create" || eval "$(printf '%s' "$pr_create" | sed 's/ --draft//')"; } ) >/dev/null 2>&1; s_retry=$?
 if [ "$s_push" -eq 0 ] && git -C "$GHS/origin.git" rev-parse --verify --quiet refs/heads/feat/c >/dev/null && [ "$s_create" -eq 0 ] && [ "$s_retry" -eq 0 ] \
@@ -4649,21 +4652,21 @@ if grep -q '^  merged (additive): .*\.gitattributes' "$PRW/u1.txt" && grep -q '+
     && grep -q "team PR rules: none on file" "$PRW/u1.txt"; then
   ok "an at-root --update appends the four linguist-generated lines once (merged (additive), then unchanged), restores pr-reader.md and prints the team-rule line"
 else bad "at-root --update linguist lines or pr-reader wrong -- $(grep -n 'merged\|added\|pr-reader\|team PR' "$PRW/u1.txt" "$PRW/u2.txt") / $(grep -c 'linguist-generated=true' "$PRR/.gitattributes")"; fi
-# (S10) nested banners: a bare host's team-rule line; a glide-like host (a 4-heading template, a PR agent skill, .claude/skills
+# (S10) nested banners: a bare host's team-rule line; a team-template host (a 4-heading template, a PR agent skill, .claude/skills
 # a symlink to .agents/skills) gets the conflict line, the resolved-path exclude lines and the note, with a clean status.
-newtmp PRH; for h in bare glide; do mkdir -p "$PRH/$h" && ( cd "$PRH/$h" && git init -q . && git symbolic-ref HEAD refs/heads/main \
+newtmp PRH; for h in bare team; do mkdir -p "$PRH/$h" && ( cd "$PRH/$h" && git init -q . && git symbolic-ref HEAD refs/heads/main \
   && git config user.email smoke@example.invalid && git config user.name smoke && echo hi > README.md ) >/dev/null 2>&1; done
-( cd "$PRH/glide" && mkdir -p .github .agents/skills/create-pull-request .claude && printf '## Summary\n\n## What is changed\n\n## Why\n\n## Related issue\n' > .github/pull_request_template.md \
+( cd "$PRH/team" && mkdir -p .github .agents/skills/create-pull-request .claude && printf '## Summary\n\n## What is changed\n\n## Why\n\n## Related issue\n' > .github/pull_request_template.md \
   && printf -- '---\nname: create-pull-request\ndescription: Open a pull request with the team template.\n---\nUse the template.\n' > .agents/skills/create-pull-request/SKILL.md \
   && ln -s ../.agents/skills .claude/skills ) >/dev/null 2>&1
-for h in bare glide; do ( cd "$PRH/$h" && git add -A && git commit -qm "chore: init" && sh "$BOOT" . ) > "$PRH/$h.txt" 2>&1; done
-if grep -q "team PR rules: none on file -- the pr skill's default (glide template + Review) applies" "$PRH/bare.txt" \
-    && grep -q "team PR rules: .*\.agents/skills/create-pull-request/SKILL.md, .github/pull_request_template.md" "$PRH/glide.txt" \
-    && grep -q "PR-rules conflict: headings -- the team's template has no ## Review; ours adds ## Review after ## Summary" "$PRH/glide.txt" \
-    && grep -q "note: .claude/skills is a symlink" "$PRH/glide.txt" && grep -qx '/.agents/skills/pr/' "$PRH/glide/.git/info/exclude" \
-    && [ -f "$PRH/glide/.agents/skills/pr/SKILL.md" ] && [ -z "$(git -C "$PRH/glide" status --porcelain)" ] && [ -f "$PRH/glide/.claude/agents/pr-reader.md" ]; then
-  ok "nested banners: a bare host's 'none on file' line; a glide-like host's team-rule and ## Review conflict lines, and its symlinked .claude/skills gets resolved-path exclude lines, the note and a clean git status"
-else bad "nested team-rule banner or symlink exclude wrong -- $(grep -n 'PR rules\|PR-rules\|note:' "$PRH/bare.txt" "$PRH/glide.txt") / $(git -C "$PRH/glide" status --porcelain)"; fi
+for h in bare team; do ( cd "$PRH/$h" && git add -A && git commit -qm "chore: init" && sh "$BOOT" . ) > "$PRH/$h.txt" 2>&1; done
+if grep -q "team PR rules: none on file -- the pr skill's default template (Summary · Review · What is changed · Why · Related issue) applies" "$PRH/bare.txt" \
+    && grep -q "team PR rules: .*\.agents/skills/create-pull-request/SKILL.md, .github/pull_request_template.md" "$PRH/team.txt" \
+    && grep -q "PR-rules conflict: headings -- the team's template has no ## Review; ours adds ## Review after ## Summary" "$PRH/team.txt" \
+    && grep -q "note: .claude/skills is a symlink" "$PRH/team.txt" && grep -qx '/.agents/skills/pr/' "$PRH/team/.git/info/exclude" \
+    && [ -f "$PRH/team/.agents/skills/pr/SKILL.md" ] && [ -z "$(git -C "$PRH/team" status --porcelain)" ] && [ -f "$PRH/team/.claude/agents/pr-reader.md" ]; then
+  ok "nested banners: a bare host's 'none on file' line; a team-template host's team-rule and ## Review conflict lines, and its symlinked .claude/skills gets resolved-path exclude lines, the note and a clean git status"
+else bad "nested team-rule banner or symlink exclude wrong -- $(grep -n 'PR rules\|PR-rules\|note:' "$PRH/bare.txt" "$PRH/team.txt") / $(git -C "$PRH/team" status --porcelain)"; fi
 # (9) the regression S6 fixed: a nested phase whose host branch left the default branch (merge-base != anchor != HEAD) gets a
 # phase-scope and a passing review, no TypeError (a duplicate _is_ancestor shadowed P40's); no top-level def is defined twice.
 BH="$PRH/bare"; bw() { ( cd "$BH" && python3 workflow/scripts/workflow.py "$@" ); }
@@ -4712,7 +4715,7 @@ if printf '%s\n' "$o1" | grep -qx 'pr_branch=host:feat/o base=main' && printf '%
   ok "with an origin, pr-branch records the PR base as a branch name (default main, --base origin/main as main, a stack part's feat/o) and refuses a sha; pr-check prints diff_base=origin/main, or the local branch with no remote ref; an old base=origin/main record reads as main; a nested host keeps host: and a missing default body warns, never passes"
 else bad "PR base as a branch name wrong (sha rc $o4, validate rc $o_vrc) -- $o1 / $o2 / $o3 / $(cat "$PRO/o4.txt") / $oc1 / $oc3 / $oc_old / $(printf '%s\n' "$o_nx" | grep pr_) / $(printf '%s\n' "$o_val" | tail -3)"; fi
 # (S9) the PR rule's wiring phrases in the contract and the shipped skills, and the negatives they replaced.
-python3 - "$REPO_ROOT" <<'PY' && ok "the PR rule's wiring: the contract's PR-rule sentence, review-phase's PR step, both review.md's reader and push stop, verdicts/decomposition/create-phase/executor/parallel-phase/do-whole-phases lines, and the retired no-branch/no-push lines" || bad "a PR-rule wiring phrase moved or a retired line is back"
+python3 - "$REPO_ROOT" <<'PY' && ok "the PR rule's wiring: the contract's PR-rule sentence, review-phase's PR step, both review.md's reader and the drafts opening when the review passes, verdicts/decomposition/create-phase/executor/parallel-phase/do-whole-phases/pr lines, and the retired no-branch/no-push and push-stop lines" || bad "a PR-rule wiring phrase moved or a retired line is back"
 import sys
 from pathlib import Path
 root = Path(sys.argv[1]); sys.path.insert(0, str(root / "installer"))
@@ -4721,18 +4724,26 @@ L = collect_live_payloads()
 sk = lambda n: "\n".join(v for k, v in sorted(L.items()) if k.startswith(f".claude/skills/{n}/"))
 flat = lambda s: " ".join(s.split())
 both = lambda ref: [L[f".claude/skills/{s}/reference/{ref}"] for s in ("do-whole-phase", "do-next-slice")]
+push_stop = ["`push` stop", "push stop", "On the operator's `push`", "on the operator's `push`", "say `push`", "pr_push=waiting", "PR_PUSH_WAITING"]
 checks = [
-    ([(root / "payload/contract.md").read_text()], ["A phase is one branch per repo it changes (`pr-branch`), one draft PR each (`pr` skill), opened at the review's `push` stop, which holds the pass; push only on the operator's word."], ["Create no branch unless asked", "Never push unasked"]),
-    ([sk("review-phase")], ["## The PR step — one body per recorded branch", "**Writing the body is a review lens.**", "**Return `pr_bodies`**", "**A phase with PR bodies**"], []),
-    (both("review.md"), ["## The PR step, the reader and the one `push` stop (PR rule v1)", "executor-route --reader`", "restart the session; the reader then runs",
-                         "push opens the draft PR(s); the pass is recorded after", "never a second `gh pr create`"], []),
-    (both("verdicts.md"), ["**The only push is the review's `push` stop**"], ["do not branch unless the operator asks", "Do not branch unless the operator asks"]),
+    ([(root / "payload/contract.md").read_text()], ["A phase is one branch per repo it changes (`pr-branch`), one draft PR each (`pr` skill), opened when its review passes; Ready and merge are the operator's."],
+     ["Create no branch unless asked", "Never push unasked", "push only on the operator's word"] + push_stop),
+    ([sk("review-phase")], ["## The PR step — one body per recorded branch", "**Writing the body is a review lens.**", "**Return `pr_bodies`**", "**A phase with PR bodies**",
+                            "then opens the drafts with no stop and no word"], push_stop),
+    (both("review.md"), ["## The PR step: the reader, then the drafts open (PR rule v1)", "executor-route --reader`", "restart the session; the reader then runs",
+                         "**The drafts open then, with no stop and no word.**", "**On a waived gate** record the pass once the drafts are open", "never a second `gh pr create` and never a force-push",
+                         "--stop-kind operator-action --on-words \"<what fixing it resumes>\""], push_stop + ["push opens the draft PR(s); the pass is recorded after"]),
+    (both("verdicts.md"), ["**The only push is the draft opening when the review passes**"], ["do not branch unless the operator asks", "Do not branch unless the operator asks"] + push_stop),
     (both("decomposition.md"), ["**Record the phase's PR branches at the same boundary (PR rule v1).**", "**Size never splits a phase:**"], []),
-    ([sk("create-phase")], ["`Branches:` line", "Never split a phase for size"], []),
-    ([(root / "payload/claude/agents/slice-executor.md").read_text()], ["- `pr_bodies`:", "`pr-branch`, `pr-record` and `pr-rules-decide --rule`"], []),
-    ([flat(sk("parallel-phase"))], ["This skill carries no second PR procedure."], ["1. **Push the branch.**", "**Open the PR.**"]),
-    ([sk("do-whole-phases")], ["With PR bodies the parked gate is the `push` stop", "parks the same way (`parked=<P>`); the operator's `push` later resumes it"], ["which `run-phases` halts on"]),
-    ([sk("update-workspace")], ["the phase's draft PR opens at the review's `push` stop (`pr` skill); merging it on GitHub is the remote variant"], ["push → PR → CI is the remote variant"]),
+    ([sk("create-phase")], ["`Branches:` line", "Never split a phase for size"], push_stop),
+    ([(root / "payload/claude/agents/slice-executor.md").read_text()], ["- `pr_bodies`:", "`pr-branch`, `pr-record` and `pr-rules-decide --rule`"], push_stop),
+    ([flat(sk("parallel-phase"))], ["This skill carries no second PR procedure."], ["1. **Push the branch.**", "**Open the PR.**"] + push_stop),
+    ([sk("do-whole-phases")], ["so the parked gate is the acceptance gate only", "nothing about the PR parks"], ["which `run-phases` halts on"] + push_stop),
+    ([sk("update-workspace")], ["the phase's draft PR opens when the review passes (`pr` skill); merging it on GitHub is the remote variant"], ["push → PR → CI is the remote variant"] + push_stop),
+    ([sk("pr")], ["## Open the drafts, when the review passes", "opened as drafts when the review passes.\"", "`git push -u origin <b>`, never `--force`."], push_stop),
+    ([sk("commit")], ["A phase's one push is its draft PR opening when its review passes"], push_stop),
+    ([L["scripts/workflow.py"]], ["pr_draft=due -- when the review would pass", "the draft opens when the review passes (pr skill: Open the drafts)"],
+     ["pr_push_parked", "_pr_push_stop_why", "PR push stop", "the operator's push opens"] + push_stop),
 ]
 for texts, required, gone in checks:
     for t in texts:

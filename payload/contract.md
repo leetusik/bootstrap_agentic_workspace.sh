@@ -60,7 +60,7 @@ Just in time, and only what the work in front of you needs:
 
 ## Commit Convention
 
-`type(scope): summary`, imperative, no period; types `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `build`, `perf`, `revert`; a phase branch merges as `merge(P<N>): <phase name>`. Commit after each slice, `create-phase` and `update-workspace`; else only when asked. Attribute each commit to the model that did the work, never another session's trailer. A phase is one branch per repo it changes (`pr-branch`), one draft PR each (`pr` skill), opened at the review's `push` stop, which holds the pass; push only on the operator's word.
+`type(scope): summary`, imperative, no period; types `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `build`, `perf`, `revert`; a phase branch merges as `merge(P<N>): <phase name>`. Commit after each slice, `create-phase` and `update-workspace`; else only when asked. Attribute each commit to the model that did the work, never another session's trailer. A phase is one branch per repo it changes (`pr-branch`), one draft PR each (`pr` skill), opened when its review passes; Ready and merge are the operator's.
 
 ## Compact Instructions
 

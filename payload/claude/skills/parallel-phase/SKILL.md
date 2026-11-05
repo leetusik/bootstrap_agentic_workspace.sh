@@ -1,6 +1,6 @@
 ---
 name: parallel-phase
-description: "Run a phase in its own git worktree when the operator asks for one, and integrate it back: quiet-point gate, local merge, the review's two gate sections, teardown; the phase's draft PR is the pr skill's, opened at the review's push stop."
+description: "Run a phase in its own git worktree when the operator asks for one, and integrate it back: quiet-point gate, local merge, the review's two gate sections, teardown; the phase's draft PR is the pr skill's, opened when the review passes."
 allowed-tools: Bash(python3 scripts/workflow.py:*), Read, Edit, Write, Glob, Grep, Bash
 disable-model-invocation: true
 ---
@@ -90,7 +90,7 @@ the detail lives here.
    (an orchestrator commit; a conflict in a generated file = take either side + regenerate) →
    `parallel-merge-finish` → the review's tagged gate-section notes via `doc-new-version` +
    `rebuild-docs` → commit → `parallel-teardown <P>` (worktree must be clean) → commit. The phase's
-   draft PR opened before the pass, at the review's `push` stop (the `pr` skill); merging it on GitHub
+   draft PR opened when the review passed, before the pass was recorded (the `pr` skill); merging it on GitHub
    (CI, `gh pr merge`) instead is the **remote variant**, only when the operator asks or repo policy requires.
 8. **Staying on `main` needs nothing** — it *is* the default: no flag, no stamp, no `execution`
    block. `parallel-skip <P>` and `new-phase --on-main` are **retired no-ops** (v43), kept callable
@@ -345,8 +345,8 @@ Afterwards the phase is `done` and archivable the normal way (`archive-phase <P>
 
 The nested repo (`workflow/`) is the workspace's own, so its integration is the local merge above,
 run with `git -C workflow` from the main host checkout. The host side is the host's: the engine
-never pushes or merges into the host's default branch; the `pr` skill opens the phase's draft PR at
-the `push` stop, on the operator's word.
+never pushes or merges into the host's default branch; the `pr` skill opens the phase's draft PR
+when its review passes.
 
 1. `python3 scripts/workflow.py parallel-gate <P>` from the host worktree; `GATE OPEN` continues.
 2. `ExitWorktree` with `action: "keep"`.
@@ -357,9 +357,9 @@ the `push` stop, on the operator's word.
 5. The tagged gate-section notes (`doc-new-version` + `rebuild-docs`), as in step 6.
 6. `git -C workflow commit` the follow-up.
 7. **The host side, by the recorded custom.** The host branch is the phase's PR branch (`pr-branch`
-   recorded it at `DECOMP`'s end), and its draft PR opened at the review's `push` stop, before the pass.
-   Never merge into the host's default branch, and never push, open or merge without the operator's
-   word; where the custom is silent, ask.
+   recorded it at `DECOMP`'s end), and its draft PR opened when the review passed, before the pass was
+   recorded. Never merge into the host's default branch, and beyond that draft never push, open or merge
+   without the operator's word; where the custom is silent, ask.
    - **One draft PR per phase** is the default: Ready and merge are the operator's, by the custom.
    - **A ticket's phases folded into one PR**, only on the operator's ask: rebase or cherry-pick each phase's host commits onto
      the ticket branch (no merge commits: a squash-merging host publishes every branch subject);
@@ -432,8 +432,8 @@ default branch at each **passing checkpoint**, not at the end. The loop's sessio
 
 (At-root installs; a nested install's host side is step 7 above.)
 
-The push and the draft PR are no variant: the `pr` skill opens the phase's draft at the review's
-`push` stop, on the operator's word, before the pass (`pr-branch` recorded `phase/P<N>-<slug>` at
+The push and the draft PR are no variant: the `pr` skill opens the phase's draft when the review
+passes, before the pass is recorded (`pr-branch` recorded `phase/P<N>-<slug>` at
 `DECOMP`'s end). This skill carries no second PR procedure. An adopter still holding the old blanket
 `Bash(git push:*)` deny in `.claude/settings.json` deletes it by hand first (settings merges are
 additive, so an update cannot remove it); keep `Bash(git push --force:*)`.
@@ -455,7 +455,7 @@ several product repos), a phase worktree is a **set**: the host worktree, the ne
 `workflow/`, and one worktree per repo the phase will change, at `<host worktree>/<repo>/`. Sections
 1-5 and the nested paragraphs above still hold; this is what changes. Everything on a repo's side
 follows **that repo's** custom, on the operator's word: the engine never fetches, pushes or merges
-into any repo's default branch, and the `pr` skill opens each repo branch's draft at the `push` stop.
+into any repo's default branch, and the `pr` skill opens each repo branch's draft when the review passes.
 
 **Starting.** The orchestrator prepares each repo, as it prepares the host in a nested install:
 
@@ -486,7 +486,7 @@ host + nested only.
 **Working.** Product commits go to each repo's branch in its own worktree (`git -C <repo> ...` from
 the host worktree), never to the host folder; the nested worktree's workflow commits are unchanged.
 `parallel-status` adds one `repo <name>:` line per stamped repo. Each repo branch is recorded by
-`pr-branch --repo <name>`, opened as one draft PR at the review's `push` stop, and integrated by
+`pr-branch --repo <name>`, opened as one draft PR when the review passes, and integrated by
 that repo's custom; the nested repo merges as in
 "Integrating in a nested install".
 
@@ -519,9 +519,9 @@ inside the set, merge the phase branch again and re-run the teardown.
 - Never enter a path the engine did not print / `git worktree list` does not show.
 - Slices running together inside a phase are `do-whole-phase`'s wave, in the phase's own checkout; never a worktree per slice.
 - The phase branch and the stamp commit are part of executing a phase; pushing is not — the only
-  push is the review's `push` stop, on the operator's word (the `pr` skill).
-- Nested install: never merge a host branch into the host's default branch, and never push, open a
-  PR or merge on the host without the operator's word; the host's custom decides the shape.
-- Multi-repo host: the same for every repo — never push, open a PR or merge into any repo's default
-  branch without the operator's word; never remove a git worktree inside the host worktree that the phase's
+  push is the draft opening when the review passes (the `pr` skill).
+- Nested install: never merge a host branch into the host's default branch, and beyond the draft the
+  review's pass opens, never push, open a PR or merge on the host without the operator's word; the host's custom decides the shape.
+- Multi-repo host: the same for every repo — beyond each branch's draft, never push, open a PR or merge into
+  any repo's default branch without the operator's word; never remove a git worktree inside the host worktree that the phase's
   stamp does not name before its branch is integrated, and never force the teardown past one.

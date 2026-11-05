@@ -318,7 +318,7 @@ file is left byte for byte as it was.
    convention, with no phase or slice IDs in the message, and the workflow state goes to
    `workflow/` in this workspace's convention.
 4. `/review-phase`. `phase-scope` reads the **host** diff from the recorded base, never `workflow/`.
-5. At the review's `push` stop, say `push`: the `pr` skill opens the phase's draft PR. It carries only product commits: no workflow paths and no
+5. When the review passes, the `pr` skill opens the phase's draft PR, with no stop and no word to say; on a gated phase you read the draft on GitHub and one `accept` clears the gate. It carries only product commits: no workflow paths and no
    phase or slice IDs.
 6. When the team's review asks for changes, turn them into fix slices (`/create-phase`, or a fix
    slice in the same phase) and repeat from step 3.
@@ -519,7 +519,7 @@ commands in Claude Code:
 | `do-whole-phases` | Run several phases back to back (`46, P12, 7kq2`, or every phase not done): an open acceptance gate is parked and the run continues; any other stop halts it |
 | `run-loop` | Drive a loop phase's bounded cycles under its signed charter (`/loop /run-loop <P>`, one tick per wake): items that need you are parked and the loop goes on; only the charter's stops halt it |
 | `review-phase` | Review a phase and record a `pass` / `changes_requested` / `blocked` verdict |
-| `pr` | Write and check a phase's draft PR bodies (read first with fresh eyes by the `pr-reader` agent), and open the drafts when you say `push` at the review's stop |
+| `pr` | Write and check a phase's draft PR bodies (read first with fresh eyes by the `pr-reader` agent), and open the drafts when the review passes (on a gated phase you read them on GitHub, then `accept`) |
 | `parallel-phase` | Run a phase in its own branch + worktree when you ask for one, and integrate it back: quiet-point gate, local merge by default, the review's gate sections, teardown |
 | `doc-new-version` | Create a new versioned durable doc instead of patching the current one |
 | `defer-job` | Park work as a deferred job, outside active selection |
@@ -655,7 +655,7 @@ defaults to the host's default branch (`--host-base` overrides it), and the agen
 first when your custom says to branch from fresh main. The host side follows your custom (one PR per
 ticket or per phase, or several phases folded onto one branch by rebase, with the checks re-run on the
 combined commit); the engine never pushes or merges into the host's default branch, and the `pr` skill
-opens the phase's draft PR only on your `push` at the review's stop.
+opens the phase's draft PR when its review passes.
 Teardown keeps your host branch (it deletes only an empty branch the engine created). A worktree
 isolates files only: docker containers, ports, local databases and caches stay shared across streams,
 so coordinate them yourself.
@@ -669,7 +669,7 @@ branch name follows that repo's custom and you confirm it. `parallel-teardown` r
 worktrees first, then the nested one, then the host's, and it refuses any git worktree in the host
 worktree that it did not stamp, even with `--discard-ignored`: remove it by hand after integrating
 its branch, or adopt it with `parallel-add-repo ... --adopt`. The workspace never fetches, pushes
-or merges into any repo's default branch; each repo's draft PR opens only on your `push` at the review's stop.
+or merges into any repo's default branch; each repo's draft PR opens when the review passes.
 
 **Integrating back.** Once the branch review passes, the agent runs the integration itself:
 `parallel-gate <P>` checks the quiet point (the branch's phase done + `main` between phases), then it
@@ -677,7 +677,7 @@ exits the worktree and, on `main`, runs `git merge --no-ff phase/P<N>-<slug>` �
 — followed by `parallel-merge-finish` (regenerates the shared dashboards), the doc versions for the
 two gate sections the branch review recorded, and `parallel-teardown <P>`, which retires the
 worktree and branch. Everything else on the phase's "Doc impact" list waits for a docs phase, as on
-`main`. **Every phase opens a draft PR at the review's `push` stop, on your word** — merging it on GitHub
+`main`. **Every phase opens a draft PR when its review passes** (Ready and merge are yours) — merging it on GitHub
 (push → PR → CI → merge) is the remote variant, and
 CI (`.github/workflows/workspace-ci.yml`) runs `validate` on every push and PR plus a
 `parallel-gate` check on `phase/*` pull requests for it. A closed gate stops the sequence with a
