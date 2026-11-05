@@ -8819,7 +8819,10 @@ def _phase_scope_multi(args: argparse.Namespace, data: dict, out: dict, header: 
 # and, once the draft opened when the review passed (the `pr` skill's *Open the drafts*), its URL:
 #
 #     "pr": {"branches": [{"repo": null | "<repos-key name>", "branch": "<name>", "base": "<ref>",
-#                          "url": null | "<url>", "recorded_at": "<iso>", "opened_at": null | "<iso>"}],
+#                          "url": null | "<url>", "recorded_at": "<iso>", "opened_at": null | "<iso>",
+#                          # optional (P52), written only by pr-sync from GitHub; absent on a P51-era entry:
+#                          "state": null | "draft|ready|merged|closed", "synced_at": null | "<iso>",
+#                          "ready_at": null | "<iso>", "merged_at": null | "<iso>"}],
 #            "waived": null | {"note": "<why>", "at": "<iso>"}}
 #
 # `repo` is null on a single-repo host and at root; on a multi-repo host it names a `repos` entry.
@@ -8836,6 +8839,11 @@ def _phase_scope_multi(args: argparse.Namespace, data: dict, out: dict, header: 
 
 PR_BLOCK_KEYS = ("branches", "waived")
 PR_BRANCH_KEYS = ("repo", "branch", "base", "url", "recorded_at", "opened_at")
+# P52: the PR's lifecycle after the draft opened, read from GitHub by `pr-sync` (the engine's only network
+# read) and by nothing else: an entry without them (P51-era, or never synced) reads `unsynced`. `state=merged`
+# alone releases the archive hold (`_phase_blocker_kinds`' kind "pr"); `ready_at` is stamped once, never cleared.
+PR_BRANCH_OPTIONAL_KEYS = ("state", "synced_at", "ready_at", "merged_at")
+PR_STATES = ("draft", "ready", "merged", "closed")
 PR_WAIVED_KEYS = ("note", "at")
 # Size has no default limit (D4 as amended): pr-check prints the changed-line count as information, and
 # only a team's own limit, read live from their rules and passed as `--limit <n>`, can make it warn.
@@ -8852,6 +8860,10 @@ PR_RULES_FILE = "pr-rules.json"  # root installs: works/pr-rules.json; nested: t
 PR_RULE_KEYS = ("rule", "choice", "note", "at")
 PR_RULE_OPTIONAL_KEYS = ("repo",)  # a multi-repo host's decision about one repo's rule; absent or null = every repo
 PR_RULE_CHOICES = ("team", "ours")
+# P52: the record's optional `ownership` list -- one entry per repo, whether its PRs are a solo owner's (the
+# close merges) or a team's (the close waits on their merge); written by `pr-team --record`, read by pr_team_mode.
+PR_OWNERSHIP_KEYS = ("repo", "mode", "evidence", "at")
+PR_OWNERSHIP_MODES = ("solo", "team")
 PR_DRAFT_DUE = ("pr_draft=due -- when the review would pass: open the draft(s) (pr skill: Open the drafts, then pr-record --url), "
                 "then the gate or the pass")
 
@@ -8885,7 +8897,7 @@ def _pr_registry_names():
 
 def pr_block_problems(block, repo_names=None) -> list:
     """Every way a phase.json `pr` block breaks its shape (empty when well-formed): exactly
-    PR_BLOCK_KEYS; each branch entry exactly PR_BRANCH_KEYS with the right types, a unique
+    PR_BLOCK_KEYS; each branch entry PR_BRANCH_KEYS (plus the optional PR_BRANCH_OPTIONAL_KEYS) with the right types, a unique
     (repo, branch) pair, and a `repo` naming a registry entry whenever the marker has `repos`
     (`repo_names`), null otherwise; `waived` null or exactly PR_WAIVED_KEYS with a note."""
     if not isinstance(block, dict):
@@ -8908,11 +8920,21 @@ def pr_block_problems(block, repo_names=None) -> list:
             problems.append(f"{label} is not an object")
             continue
         gone = [k for k in PR_BRANCH_KEYS if k not in entry]
-        extra = sorted(str(k) for k in entry if k not in PR_BRANCH_KEYS)
+        extra = sorted(str(k) for k in entry if k not in PR_BRANCH_KEYS + PR_BRANCH_OPTIONAL_KEYS)
         if gone:
             problems.append(f"{label}: missing field(s) {', '.join(gone)}")
         if extra:
-            problems.append(f"{label}: unknown field(s) {', '.join(extra)} (an entry has exactly {', '.join(PR_BRANCH_KEYS)})")
+            problems.append(f"{label}: unknown field(s) {', '.join(extra)} (an entry has exactly {', '.join(PR_BRANCH_KEYS)}, "
+                            f"and optionally {', '.join(PR_BRANCH_OPTIONAL_KEYS)})")
+        state = entry.get("state")
+        if state is not None and state not in PR_STATES:
+            problems.append(f"{label}.state {state!r} must be null or one of {', '.join(PR_STATES)}")
+        for key in ("synced_at", "ready_at", "merged_at"):
+            value = entry.get(key)
+            if value is not None and not (isinstance(value, str) and value.strip()):
+                problems.append(f"{label}.{key} must be null or a timestamp string")
+        if state is not None and not entry.get("url"):
+            problems.append(f"{label}: state is set but url is not (only pr-sync writes state, and it reads the recorded url)")
         repo = entry.get("repo")
         if repo is not None and not (isinstance(repo, str) and NESTED_REPO_NAME.fullmatch(repo)):
             problems.append(f"{label}.repo {repo!r} must be null or a registered repo's name")
@@ -9243,6 +9265,9 @@ def cmd_pr_record(args: argparse.Namespace) -> None:
     url = args.url.strip()
     if entry.get("url") != url or not entry.get("opened_at"):
         entry["opened_at"] = now_iso()
+    if entry.get("url") != url:  # P52: a new PR -- the old one's synced lifecycle no longer describes it
+        for key in PR_BRANCH_OPTIONAL_KEYS:
+            entry.pop(key, None)
     entry["url"] = url
     write_json(pdir / "phase.json", data)
     append_event("pr_recorded", phase=args.phase, repo=entry.get("repo"), branch=entry.get("branch"), url=url)
@@ -9314,9 +9339,11 @@ def _require_pr_opened(phase_id: str, data: dict) -> None:
 
 
 def _pr_draft_due(phase: dict) -> bool:
-    """True while the phase is at its review: its REVIEW slice is in_progress, in_review or pending, the phase is
+    """True while the phase is at its review: its REVIEW slice is in_progress or in_review, the phase is
     in_review, or its acceptance gate is open (`phase` may carry `slices`, as all_active_phases builds it). The
-    drafts open when the review would pass, before the gate opens or the pass is recorded (P51-b1.F3)."""
+    drafts open when the review would pass, before the gate opens or the pass is recorded (P51-b1.F3). A REVIEW
+    slice that is `pending` (e.g. a refused draft's plain|waive stop) is not due: its typed stop governs, and no
+    replacement line prints (D120)."""
     if phase.get("status") == "in_review" or (phase.get("status") == "pending" and acceptance_gate_is_open(phase)):
         return True
     rid = f"{phase.get('id')}.REVIEW"
@@ -9329,7 +9356,7 @@ def _pr_draft_due(phase: dict) -> bool:
             review = read_json(sj) if sj.is_file() else None
         except (OSError, ValueError):
             review = None
-    return bool(review and review.get("status") in ("in_progress", "in_review", "pending"))
+    return bool(review and review.get("status") in ("in_progress", "in_review"))
 
 
 def pr_lines(phase: dict) -> list:
@@ -9356,17 +9383,316 @@ def _pr_next_lines(phase_id) -> list:
         return []
 
 
+# --- the PR after its draft opened (P52): pr-sync, pr-team, pr_open=, the archive hold -----------------
+#
+# `pr-sync` and `pr-team` are the engine's only network reads, both through the GitHub CLI and read-only
+# (`gh pr view`, a GET `gh api`); the orchestrator runs them. Nothing else calls the network: `next`, the
+# resume card and the archive hold read only what pr-sync last recorded on each branch entry.
+
+PR_GH_TIMEOUT = 30  # seconds per gh call
+PR_SYNC_FIELDS = "state,isDraft,mergedAt,baseRefName,headRefOid,reviewDecision"
+PR_TEAM_SHOWN_LOGINS = 5
+
+
+def _gh(argv: list, cwd=None):
+    """`(stdout, None)` for a `gh <argv>` that exited 0, else `(None, why)` -- why naming the cause and the fix
+    (install gh, gh auth login, the network). Never raises; never writes anything to GitHub (callers pass reads)."""
+    exe = shutil.which("gh")
+    if exe is None:
+        return None, "gh (the GitHub CLI) is not installed or not on PATH -- install it (https://cli.github.com), then gh auth login"
+    try:
+        proc = subprocess.run([exe, *argv], cwd=str(cwd) if cwd else None, capture_output=True, text=True, timeout=PR_GH_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return None, f"gh {argv[0]} timed out after {PR_GH_TIMEOUT}s -- check the network, then re-run"
+    except OSError as exc:
+        return None, f"gh could not run ({_one_line(str(exc))}) -- reinstall it (https://cli.github.com)"
+    if proc.returncode != 0:
+        detail = _one_line((proc.stderr or proc.stdout or "").strip()) or f"exit {proc.returncode}"
+        low = detail.lower()
+        if "auth login" in low or "not logged" in low or "authentication" in low or "http 401" in low:
+            return None, f"gh is not authenticated ({detail}) -- run gh auth login, then re-run"
+        return None, f"gh {argv[0]} failed: {detail}"
+    return proc.stdout, None
+
+
+def _pr_gh_state(view: dict):
+    """The lifecycle state for a `gh pr view --json` answer, or None when it is not one GitHub gives:
+    MERGED -> merged, CLOSED -> closed, OPEN and isDraft -> draft, OPEN -> ready."""
+    state = view.get("state")
+    if state == "MERGED":
+        return "merged"
+    if state == "CLOSED":
+        return "closed"
+    if state == "OPEN":
+        return "draft" if view.get("isDraft") is True else "ready"
+    return None
+
+
+def cmd_pr_sync(args: argparse.Namespace) -> None:
+    """Read each recorded PR's lifecycle from GitHub (`gh pr view <url> --json ...`, read-only) and record it
+    on its branch entry: state, synced_at, merged_at, and ready_at the first time it is seen ready or merged.
+    All or nothing: any gh failure writes nothing and exits non-zero."""
+    pdir = require_phase(args.phase)
+    data = read_json(pdir / "phase.json")
+    repos = nested_repos()
+    if args.repo and not repos:
+        raise SystemExit("pr-sync --repo: refused -- a multi-repo host only; a single-repo host or a root install has one repo: drop --repo")
+    if "pr" in data and phase_pr(data) is None:
+        _ensure_pr(data)  # raises on a malformed block: never read or overwrite it
+    block = phase_pr(data)
+    entries = block["branches"] if block else []
+    if not entries:
+        print(f"pr_sync=none (phase {args.phase} records no PR branch) -- nothing to read")
+        return
+    hits = [e for e in entries if (args.repo is None or e.get("repo") == args.repo) and (args.branch is None or e.get("branch") == args.branch)]
+    if not hits:
+        asked = f"{args.repo or _pr_one_repo()}:{args.branch}" if args.branch else args.repo
+        raise SystemExit(f"pr-sync: no recorded PR branch matches {asked} (recorded: {', '.join(_pr_label(e) for e in entries)}) -- nothing was written")
+    read = []
+    for entry in hits:
+        if not entry.get("url"):
+            continue
+        out, why = _gh(["pr", "view", entry["url"], "--json", PR_SYNC_FIELDS], cwd=_pr_entry_path(entry, data))
+        if why is None:
+            try:
+                view = json.loads(out)
+            except ValueError:
+                view = None
+            state = _pr_gh_state(view) if isinstance(view, dict) else None
+            if state is None:
+                why = f"gh pr view answered something that is not a PR's state ({_one_line((out or '').strip())[:120] or 'empty'})"
+        if why is not None:
+            raise SystemExit(f"pr-sync: {_pr_label(entry)} ({entry['url']}): {why} -- nothing was written")
+        read.append((entry, view, state))
+    now = now_iso()
+    lines = []
+    for entry in hits:
+        if not entry.get("url"):
+            lines.append(f"pr_sync={_pr_label(entry)} state=unopened")
+            continue
+        _e, view, state = next(r for r in read if r[0] is entry)
+        merged_at = view.get("mergedAt") if isinstance(view.get("mergedAt"), str) and view.get("mergedAt").strip() else None
+        entry["state"] = state
+        entry["synced_at"] = now
+        if not entry.get("ready_at"):
+            entry["ready_at"] = now if state in ("ready", "merged") else None
+        entry["merged_at"] = merged_at
+        gh_base = view.get("baseRefName") or "none"
+        head = (view.get("headRefOid") or "")[:7] or "none"
+        review = view.get("reviewDecision") or "none"
+        lines.append(f"pr_sync={_pr_label(entry)} state={state} base={gh_base} head={head} review={review} merged_at={merged_at or 'none'}")
+        recorded = _pr_shown_base(entry, data)
+        if view.get("baseRefName") and view["baseRefName"] != recorded:
+            lines.append(f"pr_sync_base={_pr_label(entry)} recorded={recorded} github={view['baseRefName']} -- GitHub's base differs from the "
+                         f"record (advisory; nothing re-recorded): when GitHub's is right, {WORKFLOW_CMD} pr-branch {args.phase}"
+                         f"{' --repo ' + entry['repo'] if entry.get('repo') else ''} --name {entry.get('branch')} --base {view['baseRefName']}")
+    if read:
+        write_json(pdir / "phase.json", data)
+        append_event("pr_synced", phase=args.phase,
+                     entries=[{"repo": e.get("repo"), "branch": e.get("branch"), "state": st} for e, _v, st in read])
+        rebuild_index_and_state()
+    for line in lines:
+        print(line)
+
+
+def _pr_origin_repo(path: Path):
+    """`(host, "owner/repo")` parsed from the `origin` remote's URL (https, ssh or scp-like form), or None. No network."""
+    proc = _git(["remote", "get-url", "origin"], cwd=path, check=False)
+    url = proc.stdout.strip() if proc.returncode == 0 else ""
+    m = (re.fullmatch(r"(?:https?|ssh|git)://(?:[^@/]+@)?([^/:]+)(?::\d+)?/([^/]+)/([^/]+?)(?:\.git)?/?", url)
+         or re.fullmatch(r"(?:[^@/]+@)?([^/:]+):([^/]+)/([^/]+?)(?:\.git)?/?", url))
+    return (m.group(1), f"{m.group(2)}/{m.group(3)}") if m else None
+
+
+def _pr_people(identities: list) -> int:
+    """How many people a list of `(name, email)` identities is, merged loosely: two identities sharing a
+    (case-folded) name or email are one person."""
+    parent = list(range(len(identities)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    first = {}
+    for i, (name, email) in enumerate(identities):
+        for key in (("n", name.strip().casefold()), ("e", email.strip().casefold())):
+            if not key[1]:
+                continue
+            if key in first:
+                parent[find(i)] = find(first[key])
+            else:
+                first[key] = i
+    return len({find(i) for i in range(len(identities))})
+
+
+def _pr_is_bot(name: str, email: str) -> bool:
+    """A service identity, never a person: a `[bot]` name or address, or a GitHub service address
+    (`noreply@github.com`, `*@noreply.github.com`) that is not a user's `*@users.noreply.github.com`."""
+    name, email = name.strip().casefold(), email.strip().casefold()
+    if name.endswith("[bot]") or "[bot]@" in email:
+        return True
+    return email.endswith("noreply.github.com") and not email.endswith("@users.noreply.github.com") or email == "noreply@github.com"
+
+
+def _pr_team_detect(target: dict) -> dict:
+    """Read-only evidence for solo or team in one repo: the collaborators API where it answers (it needs
+    write access, so a refusal or a missing gh makes it `unavailable`, never an error) and the distinct
+    non-bot commit authors on the default branch. Detected `team` when either shows more than one
+    person, `solo` when every source that answered shows exactly one, else `unknown`."""
+    path = target["path"]
+    logins = None
+    origin = _pr_origin_repo(path)
+    if origin is not None:
+        host, slug = origin
+        argv = ["api", f"repos/{slug}/collaborators", "--paginate", "--jq", ".[].login"]
+        if host != "github.com":
+            argv[1:1] = ["--hostname", host]
+        out, why = _gh(argv, cwd=path)
+        if why is None:
+            logins = sorted({ln.strip() for ln in out.splitlines() if ln.strip() and not ln.strip().casefold().endswith("[bot]")}, key=str.casefold)
+    authors = None
+    default = _repo_default_branch(path, target.get("default"))
+    ref = _pr_diff_ref(path, default)[0] if default else None
+    if ref:
+        proc = _git(["log", ref, "--format=%aN%x09%aE"], cwd=path, check=False)
+        if proc.returncode == 0:
+            idents = set()
+            for ln in proc.stdout.splitlines():
+                name, _tab, email = ln.partition("\t")
+                if (name.strip() or email.strip()) and not _pr_is_bot(name, email):
+                    idents.add((name, email))
+            authors = _pr_people(sorted(idents)) if idents else None
+    counts = [n for n in ((len(logins) if logins else None), authors) if n]
+    detected = "team" if any(n > 1 for n in counts) else "solo" if counts else "unknown"
+    if logins is not None:
+        shown_logins = ", ".join(logins[:PR_TEAM_SHOWN_LOGINS]) + (f" +{len(logins) - PR_TEAM_SHOWN_LOGINS} more" if len(logins) > PR_TEAM_SHOWN_LOGINS else "")
+        collab = f"collaborators: {len(logins)}" + (f" ({shown_logins})" if logins else "")
+    else:
+        collab = "collaborators: unavailable"
+    return {"detected": detected, "evidence": f"{collab}; authors: {authors if authors else 'unavailable'}"}
+
+
+def cmd_pr_team(args: argparse.Namespace) -> None:
+    """Bare: detect, read-only, whether a repo's PRs are a solo owner's or a team's, beside what is recorded.
+    `--record solo|team --evidence "..."` (the orchestrator's, after the operator's word): record it in the PR
+    rules record's `ownership` list, replacing that repo's earlier record."""
+    repos = nested_repos()
+    if args.record is None:
+        if args.evidence is not None:
+            raise SystemExit("pr-team --evidence belongs to --record solo|team")
+        target = _pr_target({}, args.repo, "pr-team")
+        found = _pr_team_detect(target)
+        recorded = pr_team_mode(target["repo"]) or "none"
+        print(f"pr_team={target['label']} recorded={recorded} detected={found['detected']} evidence=\"{found['evidence']}\"")
+        return
+    if repos:
+        names = [r["name"] for r in repos]
+        if not args.repo:
+            raise SystemExit(f"pr-team --record: this multi-repo host needs --repo <name> (registered: {', '.join(names)}) -- nothing was written")
+        if args.repo not in names:
+            raise SystemExit(f"pr-team --record --repo {args.repo}: no registered repo has that name (registered: {', '.join(names)}) -- nothing was written")
+    elif args.repo:
+        raise SystemExit("pr-team --repo: refused -- a multi-repo host only; a single-repo host or a root install has one repo: drop --repo")
+    evidence = _one_line(args.evidence or "")
+    if not evidence:
+        raise SystemExit("pr-team --record needs --evidence \"<what showed it: the detection line, the operator's word>\" -- nothing was written")
+    raw, where = _pr_rules_source()
+    if raw == "unreadable" or (raw is not None and pr_rules_problems(raw)):
+        raise SystemExit(f"pr-team --record: {where} is malformed; fix it first (run: {WORKFLOW_CMD} validate) -- nothing was written")
+    record = dict(raw) if raw is not None else {"decided": []}
+    repo = args.repo or None
+    old = [o for o in (record.get("ownership") or []) if o.get("repo") == repo]
+    entry = {"repo": repo, "mode": args.record, "evidence": evidence, "at": now_iso()}
+    record["ownership"] = [o for o in (record.get("ownership") or []) if o.get("repo") != repo] + [entry]
+    path = _pr_rules_write(record, "pr-team --record")
+    append_event("pr_team_recorded", repo=repo, mode=args.record)
+    label = repo or _pr_one_repo()
+    print(f"pr_team={label} recorded={args.record} evidence=\"{evidence}\"")
+    print(f"pr-team: {'replaced' if old else 'recorded'} -- {label} is {args.record} ({shown(path)})")
+
+
+def _pr_open_entries(phase: dict) -> list:
+    """A phase's recorded PRs that are still open business: the entries with a URL whose `state` is not
+    merged, in an unwaived `pr` block. Empty for a phase without a block (pre-P51), a waived one, or all merged."""
+    block = phase_pr(phase)
+    if block is None or isinstance(block.get("waived"), dict):
+        return []
+    return [e for e in block["branches"] if e.get("url") and e.get("state") != "merged"]
+
+
+def _pr_open_hint(phase_id: str, phase: dict, entry: dict, short: bool = False) -> str:
+    """What to do about one open PR of a done phase, never from the network: the close (the pr skill's) is
+    due on an accepted gate; a waived gate's draft waits on the operator's word `close`; a ready PR waits on
+    the team's merge (a solo repo: the close's merge is due); a closed-unmerged one holds archiving."""
+    state = entry.get("state")
+    acceptance = phase_acceptance(phase)
+    accepted = bool(acceptance and acceptance.get("required") is True and acceptance.get("cleared_at"))
+    mode = pr_team_mode(entry.get("repo"))
+    sync = f"pr-sync {phase_id}"
+    if state == "closed":
+        return ("closed unmerged; holds archiving" if short else
+                f"closed without merging: it holds archiving -- reopen it on GitHub and {sync}, or archive-phase {phase_id} --force")
+    if state == "ready":
+        if mode == "solo":
+            return "solo: merge due" if short else f"solo repo: the close's merge is due (pr skill; {sync} first)"
+        if short:
+            return "awaiting the team's merge"
+        return f"waiting on the team's merge ({sync} sees it land" + (")" if mode == "team" else "; solo or team unrecorded: pr-team)")
+    # draft, or never synced
+    if accepted:
+        return "close due" if short else f"the close is due (pr skill; {sync} first)"
+    return ("the operator's word close" if short else
+            f"a waived-gate draft: the operator's word `close` runs the pr skill's close ({sync} first)")
+
+
+def pr_open_items(phases: list) -> list:
+    """`[(phase_id, phase, entry)]` for every done phase (phase.json data, as all_active_phases or read_json
+    gives it) with an open PR (`_pr_open_entries`), in the order given."""
+    items = []
+    for phase in phases:
+        if isinstance(phase, dict) and phase.get("status") == "done":
+            items.extend((phase.get("id"), phase, e) for e in _pr_open_entries(phase))
+    return items
+
+
+def pr_open_lines(index: dict) -> list:
+    """`next`'s `pr_open=<P> <label> state=<s|unsynced> url=<url> -- <hint>` lines, one per open PR of every
+    done, unarchived active phase (read from index.json's active_phases and each phase.json). Never the network."""
+    phases = []
+    for p in index.get("active_phases", []):
+        if p.get("status") != "done":
+            continue
+        try:
+            phases.append(read_json(ROOT / p["path"] / "phase.json"))
+        except (OSError, ValueError, KeyError):
+            continue
+    return [f"pr_open={pid} {_pr_label(e)} state={e.get('state') or 'unsynced'} url={e.get('url')} -- {_pr_open_hint(pid, ph, e)}"
+            for pid, ph, e in pr_open_items(phases)]
+
+
+def pr_open_card_line(phases: list):
+    """The resume card's one compact `pr_open:` line (the first open PR and `+N more`), or None."""
+    items = pr_open_items(phases)
+    if not items:
+        return None
+    pid, ph, e = items[0]
+    more = f" +{len(items) - 1} more (`next` lists them)" if len(items) > 1 else ""
+    return f"pr_open: {pid} {_pr_label(e)} state={e.get('state') or 'unsynced'} ({_pr_open_hint(pid, ph, e, short=True)}){more}"
+
+
 # --- the PR rules record (decided team-rule conflicts) ------------------------------------------
 
 def pr_rules_problems(raw, label: str = "pr_rules") -> list:
     """Every way a PR rules record breaks its shape: `{"decided": [{"rule", "choice", "note", "at"[, "repo"]}]}`,
-    `choice` team or ours, `rule` and `at` non-empty strings, `note` a string or null, `repo` null or a name."""
-    if not isinstance(raw, dict) or sorted(raw) != ["decided"]:
-        return [f"{label} must be an object with exactly decided (a list of decisions)"]
+    `choice` team or ours, `rule` and `at` non-empty strings, `note` a string or null, `repo` null or a name;
+    plus (P52) an optional `"ownership": [{"repo", "mode", "evidence", "at"}]`, `mode` solo or team, one per repo."""
+    if not isinstance(raw, dict) or "decided" not in raw or any(k not in ("decided", "ownership") for k in raw):
+        return [f"{label} must be an object with decided (a list of decisions) and optionally ownership (a list of solo/team records)"]
     decided = raw["decided"]
     if not isinstance(decided, list):
         return [f"{label}.decided must be a list of decisions"]
-    problems = []
+    problems = _pr_ownership_problems(raw["ownership"], f"{label}.ownership") if "ownership" in raw else []
     for i, entry in enumerate(decided):
         lab = f"{label}.decided[{i}]"
         if not isinstance(entry, dict):
@@ -9388,6 +9714,42 @@ def pr_rules_problems(raw, label: str = "pr_rules") -> list:
         repo = entry.get("repo")
         if repo is not None and not (isinstance(repo, str) and NESTED_REPO_NAME.fullmatch(repo)):
             problems.append(f"{lab}.repo {repo!r} must be null or a registered repo's name")
+    return problems
+
+
+def _pr_ownership_problems(ownership, label: str) -> list:
+    """Every way the record's `ownership` list breaks its shape: entries of exactly PR_OWNERSHIP_KEYS, `mode`
+    solo or team, `evidence` and `at` non-empty strings, `repo` null or a registered repo's name, one per repo."""
+    if not isinstance(ownership, list):
+        return [f"{label} must be a list of solo/team records"]
+    problems, seen = [], set()
+    names = _pr_registry_names()
+    for i, entry in enumerate(ownership):
+        lab = f"{label}[{i}]"
+        if not isinstance(entry, dict):
+            problems.append(f"{lab} is not an object")
+            continue
+        gone = [k for k in PR_OWNERSHIP_KEYS if k not in entry]
+        extra = sorted(str(k) for k in entry if k not in PR_OWNERSHIP_KEYS)
+        if gone:
+            problems.append(f"{lab}: missing field(s) {', '.join(gone)}")
+        if extra:
+            problems.append(f"{lab}: unknown field(s) {', '.join(extra)} (a record has exactly {', '.join(PR_OWNERSHIP_KEYS)})")
+        if "mode" in entry and entry["mode"] not in PR_OWNERSHIP_MODES:
+            problems.append(f"{lab}.mode {entry['mode']!r} is not one of {', '.join(PR_OWNERSHIP_MODES)}")
+        for key in ("evidence", "at"):
+            if key in entry and not (isinstance(entry[key], str) and entry[key].strip()):
+                problems.append(f"{lab}.{key} must be a non-empty string")
+        repo = entry.get("repo")
+        if repo is not None and not (isinstance(repo, str) and NESTED_REPO_NAME.fullmatch(repo)):
+            problems.append(f"{lab}.repo {repo!r} must be null or a registered repo's name")
+        elif repo is not None and names is None:
+            problems.append(f"{lab}.repo {repo!r}: this install has no repos registry, so repo is null (the host, or the root repo)")
+        elif repo is not None and repo not in names:
+            problems.append(f"{lab}.repo {repo!r} names no registered repo (registered: {', '.join(map(str, names))})")
+        if repo in seen:
+            problems.append(f"{lab}: {repo or 'the repo'} is recorded twice (one record per repo; a re-record replaces it)")
+        seen.add(repo)
     return problems
 
 
@@ -9413,6 +9775,46 @@ def load_pr_rules() -> list:
     if raw is None or raw == "unreadable" or pr_rules_problems(raw):
         return []
     return list(raw["decided"])
+
+
+def load_pr_ownership() -> list:
+    """The record's `ownership` list (`pr-team --record`); `[]` when absent or the record is malformed."""
+    raw, _where = _pr_rules_source()
+    if raw is None or raw == "unreadable" or pr_rules_problems(raw):
+        return []
+    return list(raw.get("ownership") or [])
+
+
+def pr_team_mode(repo=None):
+    """"solo" or "team" as recorded for `repo` (None: a single-repo host's or a root install's one repo), else
+    None (never recorded, or the record is malformed). A multi-repo host's null record answers for any repo it
+    does not name. Read-only, no network: what `pr_open=`, the close and the stacking advice consult."""
+    records = load_pr_ownership()
+    hit = next((r for r in records if r.get("repo") == repo), None)
+    if hit is None and repo is not None:
+        hit = next((r for r in records if r.get("repo") is None), None)
+    return hit.get("mode") if hit else None
+
+
+def _pr_rules_write(record: dict, cmd: str):
+    """Write the PR rules record where it lives (the nested marker's `pr_rules` key, or at root
+    works/pr-rules.json) after checking it; SystemExit (nothing written) when it would be malformed.
+    Returns the path written."""
+    if NESTED is not None:
+        path = ROOT / NESTED_MARKER
+        marker = read_json(path)
+        marker["pr_rules"] = record
+        problems = nested_marker_problems(marker) + pr_rules_problems(record)
+        if problems:
+            raise SystemExit(f"{cmd}: refused -- the marker would be malformed: {'; '.join(problems)}")
+        write_json(path, marker)
+        return path
+    problems = pr_rules_problems(record)
+    if problems:
+        raise SystemExit(f"{cmd}: refused -- the record would be malformed: {'; '.join(problems)}")
+    path = WORKS / PR_RULES_FILE
+    write_json(path, record)
+    return path
 
 
 def pr_rules_validate(errors: list) -> None:
@@ -9450,23 +9852,14 @@ def cmd_pr_rules_decide(args: argparse.Namespace) -> None:
     raw, where = _pr_rules_source()
     if raw == "unreadable" or (raw is not None and pr_rules_problems(raw)):
         raise SystemExit(f"pr-rules-decide: {where} is malformed; fix it first (run: {WORKFLOW_CMD} validate) -- nothing was written")
-    record = {"decided": list(raw["decided"])} if raw is not None else {"decided": []}
+    record = dict(raw) if raw is not None else {"decided": []}  # keeps `ownership` (P52) as it stands
+    record["decided"] = list(record["decided"])
     entry = {"rule": args.rule.strip(), "choice": args.choice, "note": (args.note or "").strip() or None, "at": now_iso()}
     if args.repo is not None:
         entry["repo"] = args.repo
     replaced = [d for d in record["decided"] if d.get("rule") == entry["rule"] and d.get("repo") == entry.get("repo")]
     record["decided"] = [d for d in record["decided"] if d not in replaced] + [entry]
-    if NESTED is not None:
-        path = ROOT / NESTED_MARKER
-        marker = read_json(path)
-        marker["pr_rules"] = record
-        problems = nested_marker_problems(marker) + pr_rules_problems(record)
-        if problems:
-            raise SystemExit(f"pr-rules-decide: refused -- the marker would be malformed: {'; '.join(problems)}")
-        write_json(path, marker)
-    else:
-        path = WORKS / PR_RULES_FILE
-        write_json(path, record)
+    path = _pr_rules_write(record, "pr-rules-decide")
     append_event("pr_rule_decided", rule=entry["rule"], choice=entry["choice"], repo=entry.get("repo"))
     print(f"pr-rules-decide: {'replaced' if replaced else 'recorded'} -- {entry.get('repo') or 'every repo'}: {entry['rule']} -> {entry['choice']} ({shown(path)})")
     print(f"pr_rules={len(record['decided'])} decided")
@@ -10479,6 +10872,11 @@ def cmd_next(args: argparse.Namespace) -> None:
     debt = consolidation_debt_line(index.get("active_phases", []))
     if debt:
         print(debt)
+    try:  # P52: every done phase's open PR, before every return below; read from the record, never the network
+        for line in pr_open_lines(index):
+            print(line)
+    except Exception as exc:  # noqa: BLE001 - the pointer must print whatever a phase's pr block holds
+        print(f"pr_open=unreadable error={_one_line(str(exc)) or type(exc).__name__}")
     try:  # P50: a loop phase's one line on its own stream; loops_elsewhere= on the default stream
         for line in loop_next_lines(stream, index):
             print(line)
@@ -10705,9 +11103,15 @@ def resume_card(transcript_path=None) -> str:
     lines = [f"resume card (computed from state; files are named, not quoted; commands run as `{WORKFLOW_CMD} <command>`)"]
     if stream:
         lines.append(f"stream={stream}")
+    try:  # P52: a done phase's open PR (the close, a team's merge, an archive hold); never the network
+        pr_open = pr_open_card_line(phases)
+    except Exception:  # noqa: BLE001 - the card always prints
+        pr_open = None
     if not phase_id:
         lines.append("pointer: no active phase")
         lines.append("next action: create a phase (/create-phase) or promote deferred work")
+        if pr_open:
+            lines.append(pr_open)
         return _card_fit(lines)
     phase = next(p for p in phases if p["id"] == phase_id)
     pdir = ACTIVE / phase_id
@@ -10768,6 +11172,8 @@ def resume_card(transcript_path=None) -> str:
     if execution:
         gates.append(f"parallel={execution.get('branch')} (merge only past parallel-gate {phase_id})")
     lines.append("gates: " + "; ".join(gates))
+    if pr_open:
+        lines.append(pr_open)
     pr = pr_lines(phase)  # P51: silent for a phase without a pr block or with no branch recorded
     if pr:
         lines.append("pr: " + "; ".join(ln.replace("pr_branch=", "", 1) for ln in pr))
@@ -10951,7 +11357,7 @@ def drop_deferred(args: argparse.Namespace) -> None:
 
 def _phase_blocker_kinds(pdir: Path) -> list:
     """Reasons a phase is not cleanly archivable, typed: `[(kind, text)]`, kind one of "slices",
-    "review" or "consolidation". Empty list means ready. `_phase_blockers` is this list's text, so
+    "review", "consolidation" or "pr" (P52: a recorded PR not yet merged). Empty list means ready. `_phase_blockers` is this list's text, so
     every refusal prints exactly what it always did; the kind lets `rotate-backlog` ask "is the
     doc debt the ONLY thing holding this phase?" without matching strings."""
     phase = read_json(pdir / "phase.json")
@@ -10969,6 +11375,14 @@ def _phase_blocker_kinds(pdir: Path) -> list:
     if phase_consolidation(phase) == "pending":
         cmd = consolidation_command(phase)
         reasons.append(("consolidation", f"docs not consolidated -- run a docs phase over its '## Doc impact' notes, then: {WORKFLOW_CMD} {cmd} {phase['id']}"))
+    # P52: a recorded, unwaived PR that GitHub has not merged (as pr-sync last read it) holds the phase:
+    # archiving would take its record out of `next`'s pr_open= lines. Only state=merged releases it.
+    for entry in _pr_open_entries(phase):
+        state = entry.get("state") or "unsynced"
+        text = f"PR {_pr_label(entry)} is {state}, not merged -- once it merges: {WORKFLOW_CMD} pr-sync {phase['id']}"
+        if state == "closed":
+            text += f"; it was closed without merging: {WORKFLOW_CMD} archive-phase {phase['id']} --force is the way out"
+        reasons.append(("pr", text))
     return reasons
 
 
@@ -10991,8 +11405,10 @@ def _parallel_branch_merged(execution: dict, git_ok: bool = None) -> bool:
 def _debt_only(pdir: Path) -> bool:
     """True when doc consolidation is the ONLY thing holding this phase from archiving: every slice
     done, review `pass`, `consolidation: pending`. A parallel phase whose branch is not yet merged is
-    never debt-only -- its docs cannot be consolidated until the merge lands."""
-    if [kind for kind, _ in _phase_blocker_kinds(pdir)] != ["consolidation"]:
+    never debt-only -- its docs cannot be consolidated until the merge lands. An open PR (kind "pr")
+    is ignored here, so it never hides the phase's doc debt from rotate-backlog's docs-phase route;
+    the archive sweeps still read `_phase_blockers`, which keeps it held (P52)."""
+    if [kind for kind, _ in _phase_blocker_kinds(pdir) if kind != "pr"] != ["consolidation"]:
         return False
     execution = phase_execution(read_json(pdir / "phase.json"))
     return execution is None or _parallel_branch_merged(execution)
@@ -19274,6 +19690,18 @@ def main(argv=None) -> int:
     p.add_argument("--waive", action="store_true", help="waive the phase's PR as a whole instead; needs --note")
     p.add_argument("--note", default=None, help="mandatory with --waive: why this phase needs no PR")
     p.set_defaults(func=cmd_pr_record)
+
+    p = sub.add_parser("pr-sync", help="Read each recorded draft PR's lifecycle from GitHub and record it on its branch entry -- the engine's only network read besides pr-team, read-only: gh pr view <url> --json state,isDraft,mergedAt,baseRefName,headRefOid,reviewDecision. Records state (draft|ready|merged|closed), synced_at, merged_at, and ready_at the first time it reads ready or merged (never cleared). Prints pr_sync=<label> state=<s> base=<b> head=<sha7> review=<decision|none> merged_at=<ts|none> per URL (pr_sync=<label> state=unopened for a branch with no URL), plus an advisory pr_sync_base= line when GitHub's base differs from the record (never re-recorded here). All or nothing: gh missing, unauthenticated, offline or answering oddly writes nothing and exits non-zero naming the fix. Only state=merged releases the phase's archive hold. Orchestrator command -- executors never run it")
+    p.add_argument("phase", help=PHASE_ARG_HELP)
+    p.add_argument("--repo", default=None, metavar="NAME", help="multi-repo host only: read only this registered repo's PR(s)")
+    p.add_argument("--branch", default=None, help="read only this recorded branch's PR")
+    p.set_defaults(func=cmd_pr_sync)
+
+    p = sub.add_parser("pr-team", help="Bare, read-only: detect whether a repo's PRs are a solo owner's or a team's -- the collaborators API where it answers (gh api, a GET needing write access; a refusal or no gh reads unavailable) and the distinct non-bot commit authors on the default branch; prints pr_team=<label> recorded=<solo|team|none> detected=<solo|team|unknown> evidence=\"<collaborators: N (logins)|unavailable>; authors: M\" (team when either shows more than one person). --record solo|team --evidence \"...\": record it (after the operator's word) in the PR rules record's ownership list -- the nested marker's pr_rules key, or at root works/pr-rules.json -- replacing that repo's earlier record. --record is an orchestrator command -- executors never run it")
+    p.add_argument("--repo", default=None, metavar="NAME", help="multi-repo host only, and required there: the registered repo")
+    p.add_argument("--record", default=None, choices=PR_OWNERSHIP_MODES, help="record the repo as solo (the close merges) or team (the close waits on the team's merge)")
+    p.add_argument("--evidence", default=None, help="mandatory with --record: what showed it (the detection's evidence, the operator's word)")
+    p.set_defaults(func=cmd_pr_team)
 
     p = sub.add_parser("pr-check", help="Read-only: measure each recorded PR branch and its body, one key=value per line -- diff_base= (origin/<base> when that remote-tracking ref exists, else the local <base>), size= (git diff --numstat <diff_base>...<branch> minus linguist-generated paths, lockfiles and whole-file deletions; binary rows excluded and counted), size_status=info (no default limit: the count is information) or, with a team's --limit <n>, size_status=ok|over plus size_over= (a warning), body= and the budgets first_screen=/1500, visible=/3500, whole=/6000 (topics/pr-body[-<repo>].md, or --body), leak= (phase or slice IDs, workflow/ paths, workspace file names: a fail) and leak_warn= (orchestrator, executor, phase notebook, slice), headings= against the repo's PR template's H2s in order, else Summary, Review, What is changed, Why, Related issue (template=), pr_rules=<n> decided, and pr_check=pass|warn|fail: a missing body is never a pass (body=missing is a warning; a missing --body file a fail). Exit 1 on a fail, else 0. With no recorded branch, measures the checked-out branch against the default base. By hand, outside a phase: pr-check --body <file> [--base <branch>] [--branch <b>] measures the checked-out branch (or --branch) against --base, else the default branch, and checks that body. On a multi-repo host each line starts repo=<name>")
     p.add_argument("phase", nargs="?", default=None, help=PHASE_ARG_HELP + "; omit it only with --body, for the by-hand route outside a phase")
