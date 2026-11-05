@@ -8983,7 +8983,7 @@ def pr_block_problems(block, repo_names=None) -> list:
         key = (repo, branch)
         if isinstance(branch, str):
             if key in seen:
-                problems.append(f"{label}: {repo or 'host'}:{branch} is recorded twice")
+                problems.append(f"{label}: {repo or _pr_one_repo()}:{branch} is recorded twice")
             seen.add(key)
     waived = block.get("waived")
     if waived is not None:
@@ -9026,8 +9026,15 @@ def _ensure_pr(data: dict) -> dict:
     return block
 
 
+def _pr_one_repo() -> str:
+    """The label of the one repo a single-repo install has: `host` in a nested install (the host beside
+    its nested workflow repo), `root` at root (one repo, no host/nested split). A multi-repo host labels
+    each entry by its registered repo's name instead."""
+    return "host" if NESTED is not None else "root"
+
+
 def _pr_label(entry: dict) -> str:
-    return f"{entry.get('repo') or 'host'}:{entry.get('branch')}"
+    return f"{entry.get('repo') or _pr_one_repo()}:{entry.get('branch')}"
 
 
 def _pr_target(data: dict, repo_arg, cmd: str) -> dict:
@@ -9051,7 +9058,7 @@ def _pr_target(data: dict, repo_arg, cmd: str) -> dict:
     path = HOST_ROOT if NESTED is not None else ROOT
     if path is None or not _git_available(cwd=path):
         raise SystemExit(f"{cmd}: {path} is not inside a git work tree -- a PR branch needs one")
-    return {"label": "host", "repo": None, "path": path, "default": None}
+    return {"label": _pr_one_repo(), "repo": None, "path": path, "default": None}
 
 
 def _pr_default_base(path: Path, configured=None):
@@ -9268,7 +9275,7 @@ def cmd_pr_record(args: argparse.Namespace) -> None:
     hits = [e for e in entries if (args.repo is None or e.get("repo") == args.repo) and (args.branch is None or e.get("branch") == args.branch)]
     recorded = ", ".join(_pr_label(e) for e in entries) or "none"
     if not hits:
-        asked = f"{args.repo or 'host'}:{args.branch}" if args.branch else (args.repo or "this phase")
+        asked = f"{args.repo or _pr_one_repo()}:{args.branch}" if args.branch else (args.repo or "this phase")
         raise SystemExit(f"pr-record: no recorded PR branch matches {asked} (recorded: {recorded}); record it first: "
                          f"{WORKFLOW_CMD} pr-branch {args.phase}{' --repo <name>' if repos else ''} --name <branch> -- nothing was written")
     if len(hits) > 1:
@@ -9736,16 +9743,19 @@ def pr_size(path: Path, base: str, branch: str):
     return size, None
 
 
-def _pr_where(path: Path, pdir: Path) -> str:
+def _pr_where(path: Path, pdir) -> str:
+    if pdir is None:
+        return str(path)
     try:
         return path.resolve().relative_to(pdir.resolve()).as_posix()
     except ValueError:
         return str(path)
 
 
-def _pr_check_one(pdir: Path, data: dict, entry: dict, body_arg) -> tuple:
+def _pr_check_one(pdir, data: dict, entry: dict, body_arg) -> tuple:
     """`(lines, status)` for one recorded branch: size, body budgets, leaks, headings. status is
-    pass, warn or fail."""
+    pass, warn or fail. A missing body is never a pass: a missing `--body` file fails, a missing default
+    body warns (the size read still runs). `pdir` is None on the by-hand route (no phase, `--body`)."""
     repo = entry.get("repo")
     lines = [f"pr_check={_pr_label(entry)} base={_pr_shown_base(entry, data)}"]
     if entry.get("note"):
@@ -9791,12 +9801,11 @@ def _pr_check_one(pdir: Path, data: dict, entry: dict, body_arg) -> tuple:
     # Body
     suffix = f"-{repo}" if repo else ""
     body = Path(body_arg) if body_arg else pdir / "topics" / f"pr-body{suffix}.md"
-    details = pdir / "topics" / f"pr-details{suffix}.md"
+    details = pdir / "topics" / f"pr-details{suffix}.md" if pdir is not None else None
     text = None
     if not body.is_file():
         lines.append(f"body=missing ({_pr_where(body, pdir)})")
-        if body_arg:
-            mark("fail")
+        mark("fail" if body_arg else "warn")  # never a pass: the pr skill loops until pass
     else:
         text = body.read_text(encoding="utf-8", errors="replace")
         lines.append(f"body={_pr_where(body, pdir)}")
@@ -9809,7 +9818,7 @@ def _pr_check_one(pdir: Path, data: dict, entry: dict, body_arg) -> tuple:
     # Leaks: the body and the details file
     fails, warns = [], []
     for f in (body, details):
-        if f.is_file():
+        if f is not None and f.is_file():
             got = pr_leaks(f.read_text(encoding="utf-8", errors="replace"), _pr_where(f, pdir))
             fails += got[0]
             warns += got[1]
@@ -9825,7 +9834,7 @@ def _pr_check_one(pdir: Path, data: dict, entry: dict, body_arg) -> tuple:
     for term, ats in terms.items():
         lines.append(f"leak_warn={term} x{len(ats)} (first {ats[0]})")
         mark("warn")
-    if not fails and not warns and (body.is_file() or details.is_file()):
+    if not fails and not warns and (body.is_file() or (details is not None and details.is_file())):
         lines.append("leaks=none")
     # Headings
     if text is not None:
@@ -9844,7 +9853,14 @@ def _pr_check_one(pdir: Path, data: dict, entry: dict, body_arg) -> tuple:
 
 def cmd_pr_check(args: argparse.Namespace) -> int:
     """Read-only: measure each recorded PR branch (size, body budgets, leaks, heading order) and print
-    key=value lines. Exit 1 on a fail; 0 on a pass, a warning or a size flag."""
+    key=value lines. Exit 1 on a fail; 0 on a pass, a warning or a size flag. A missing body is never a
+    pass. With no phase it is the by-hand route (`pr-check --body <file> [--base <b>] [--branch <b>]`):
+    the checked-out branch (or `--branch`) against `--base`, else the repo's default branch."""
+    if not args.phase:
+        return _pr_check_by_hand(args)
+    if args.base:
+        raise SystemExit(f"pr-check {args.phase} --base: refused -- --base belongs to the by-hand route (no phase); "
+                         f"a phase's branch is measured against its recorded base (pr-branch {args.phase} --base <branch> records one)")
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
     repos = nested_repos()
@@ -9862,7 +9878,7 @@ def cmd_pr_check(args: argparse.Namespace) -> int:
         if repos and not args.repo:
             print(f"pr_branches=none recorded for phase {args.phase} -- record them (pr-branch {args.phase} --repo <name> --name <branch>) or pass --repo")
             print(f"pr_rules={len(load_pr_rules())} decided")
-            print("pr_check=pass")
+            print("pr_check=warn")  # nothing measured and no body checked: never a pass
             return 0
         target = _pr_target(data, args.repo, "pr-check")
         branch = args.branch or _repo_current_branch(target["path"])
@@ -9871,17 +9887,47 @@ def cmd_pr_check(args: argparse.Namespace) -> int:
         base = _pr_default_base(target["path"], target["default"]) or "main"
         entries = [{"repo": target["repo"], "branch": branch, "base": base,
                     "note": f"no recorded PR branch -- measured {branch} against the default base {base}"}]
+    return _pr_check_print(pdir, data, entries, args.body, bool(repos))
+
+
+def _pr_check_print(pdir, data: dict, entries: list, body_arg, multi: bool) -> int:
+    """Print each entry's pr-check lines, then `pr_rules=` and the worst `pr_check=`; the exit code."""
     worst = "pass"
+    order = ("pass", "warn", "fail")
     for entry in entries:
-        lines, status = _pr_check_one(pdir, data, entry, args.body)
-        prefix = f"repo={entry['repo']} " if repos else ""
+        lines, status = _pr_check_one(pdir, data, entry, body_arg)
+        prefix = f"repo={entry['repo']} " if multi else ""
         for ln in lines:
             print(prefix + ln)
-        if ("pass", "warn", "fail").index(status) > ("pass", "warn", "fail").index(worst):
+        if order.index(status) > order.index(worst):
             worst = status
     print(f"pr_rules={len(load_pr_rules())} decided")
     print(f"pr_check={worst}")
     return 1 if worst == "fail" else 0
+
+
+def _pr_check_by_hand(args: argparse.Namespace) -> int:
+    """`pr-check --body <file> [--base <b>] [--branch <b>] [--repo <name>]` with no phase: the pr skill's
+    by-hand route (`/pr`, a change made outside a phase). Measures the checked-out branch (or `--branch`)
+    against `--base` (a branch, recorded as its name, as `pr-branch` does), else the repo's default branch,
+    and checks the body; there is no details file. Writes nothing."""
+    if not args.body:
+        raise SystemExit("pr-check: name a phase (pr-check <P> [--repo <name>] [--branch <b>] [--body <file>]) "
+                         "or, by hand outside a phase, a body (pr-check --body <file> [--base <branch>] [--branch <b>])")
+    target = _pr_target({}, args.repo, "pr-check")
+    path = target["path"]
+    branch = args.branch or _repo_current_branch(path)
+    if not branch:
+        raise SystemExit(f"pr-check --body: {path} has no branch checked out (detached HEAD); pass --branch")
+    if args.base:
+        base, why = _pr_base_branch(path, args.base)
+        if base is None:
+            raise SystemExit(f"pr-check --base {args.base.strip()}: {why}")
+    else:
+        base = _pr_default_base(path, target["default"]) or _repo_default_branch(path, target["default"]) or "main"
+    entry = {"repo": target["repo"], "branch": branch, "base": base,
+             "note": f"by hand (no phase) -- measured {branch} against {'--base' if args.base else 'the default branch'} {base}"}
+    return _pr_check_print(None, {}, [entry], args.body, bool(nested_repos()))
 
 
 def _one_line(text) -> str:
@@ -19071,7 +19117,7 @@ def main(argv=None) -> int:
     p.add_argument("--transcripts", action="append", metavar="DIR", help="read this projects/<slug> directory instead of discovering the session root's (repeatable)")
     p.set_defaults(func=cmd_dispatch_summary)
 
-    p = sub.add_parser("next", help="Print the current phase/slice selection (plus explain_unit=<document|book|chapter> on an explain phase, and on the default stream merge_ready=<P>:<branch> for a parallel phase done with a passing review on its branch but not merged yet, and merge_ready=<P>:<commit7> for a loop whose passing, landed checkpoint is not merged yet); when the phase's notebook is over 40,960 B, also notebook_over_budget= with up to 3 notebook_move= commands to run before the next dispatch (required form), or none when nothing can move (advisory form); for a phase with a pr block, one pr_branch=<repo|host>:<branch> base=<base> url=<url|none> per recorded branch, pr_waived=<note> when waived, and pr_push=waiting once the review is at its stop (the phase in_review or pending, or its REVIEW slice in_review or pending) with a branch unopened")
+    p = sub.add_parser("next", help="Print the current phase/slice selection (plus explain_unit=<document|book|chapter> on an explain phase, and on the default stream merge_ready=<P>:<branch> for a parallel phase done with a passing review on its branch but not merged yet, and merge_ready=<P>:<commit7> for a loop whose passing, landed checkpoint is not merged yet); when the phase's notebook is over 40,960 B, also notebook_over_budget= with up to 3 notebook_move= commands to run before the next dispatch (required form), or none when nothing can move (advisory form); for a phase with a pr block, one pr_branch=<repo|host|root>:<branch> base=<base> url=<url|none> per recorded branch, pr_waived=<note> when waived, and pr_push=waiting once the review is at its stop (the phase in_review or pending, or its REVIEW slice in_review or pending) with a branch unopened")
     p.add_argument("--card", action="store_true", help="print the resume card instead: the pointer, the next action or the typed stop, the open gates, the running spans (from the newest session's subagents/*.meta.json) and the slice's file paths, computed from state, at most 2,048 bytes -- what compact-resume prints after a compaction")
     p.set_defaults(func=cmd_next)
 
@@ -19236,7 +19282,7 @@ def main(argv=None) -> int:
     p.add_argument("--repo", action="append", default=None, metavar="NAME", help="multi-repo host only: measure only this registered repo (repeatable); with exactly one --repo, --base/--head set that repo's range instead of the host's")
     p.set_defaults(func=phase_scope)
 
-    p = sub.add_parser("pr-branch", help="Cut or record the phase's PR branch in one repo's checkout (the host for a single-repo host or a root install; the registered repo's for a multi-repo host) and record it in phase.json's pr block (added to a phase from before P51): the branch already checked out there is only recorded; an existing branch that is not checked out is refused (git switch to it, then re-run); otherwise git switch --no-track -c <branch> <base>, refused while tracked changes would ride along. Prints pr_branch=<repo|host>:<branch> base=<base>. Never pushes. Orchestrator command -- executors never run it")
+    p = sub.add_parser("pr-branch", help="Cut or record the phase's PR branch in one repo's checkout (the host for a single-repo host or a root install; the registered repo's for a multi-repo host) and record it in phase.json's pr block (added to a phase from before P51): the branch already checked out there is only recorded; an existing branch that is not checked out is refused (git switch to it, then re-run); otherwise git switch --no-track -c <branch> <base>, refused while tracked changes would ride along. Prints pr_branch=<repo|host|root>:<branch> base=<base>. Never pushes. Orchestrator command -- executors never run it")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--repo", default=None, metavar="NAME", help="multi-repo host only, and required there: the registered repo whose checkout holds the branch")
     p.add_argument("--name", required=True, help="the branch, named by the host's convention for branches (nested-convention), with no workspace IDs; never the base or default branch itself")
@@ -19252,11 +19298,12 @@ def main(argv=None) -> int:
     p.add_argument("--note", default=None, help="mandatory with --waive: why this phase needs no PR")
     p.set_defaults(func=cmd_pr_record)
 
-    p = sub.add_parser("pr-check", help="Read-only: measure each recorded PR branch and its body, one key=value per line -- diff_base= (origin/<base> when that remote-tracking ref exists, else the local <base>), size= (git diff --numstat <diff_base>...<branch> minus linguist-generated paths, lockfiles and whole-file deletions; binary rows excluded and counted; target 400, flag over 1,000, a warning), body= and the budgets first_screen=/1500, visible=/3500, whole=/6000 (topics/pr-body[-<repo>].md, or --body), leak= (phase or slice IDs, workflow/ paths, workspace file names: a fail) and leak_warn= (orchestrator, executor, phase notebook, slice), headings= against the repo's PR template's H2s in order, else Summary, Review, What is changed, Why, Related issue (template=), pr_rules=<n> decided, and pr_check=pass|warn|fail. Exit 1 on a fail, else 0. With no recorded branch, measures the checked-out branch against the default base. On a multi-repo host each line starts repo=<name>")
-    p.add_argument("phase", help=PHASE_ARG_HELP)
-    p.add_argument("--repo", default=None, metavar="NAME", help="multi-repo host only: check only this registered repo's branch(es); without it every recorded branch is checked in turn")
-    p.add_argument("--branch", default=None, help="check only this recorded branch (a stack records several per repo)")
-    p.add_argument("--body", default=None, help="check this body file instead of the phase's topics/pr-body[-<repo>].md; a missing --body file is a fail (a missing default body only prints body=missing)")
+    p = sub.add_parser("pr-check", help="Read-only: measure each recorded PR branch and its body, one key=value per line -- diff_base= (origin/<base> when that remote-tracking ref exists, else the local <base>), size= (git diff --numstat <diff_base>...<branch> minus linguist-generated paths, lockfiles and whole-file deletions; binary rows excluded and counted; target 400, flag over 1,000, a warning), body= and the budgets first_screen=/1500, visible=/3500, whole=/6000 (topics/pr-body[-<repo>].md, or --body), leak= (phase or slice IDs, workflow/ paths, workspace file names: a fail) and leak_warn= (orchestrator, executor, phase notebook, slice), headings= against the repo's PR template's H2s in order, else Summary, Review, What is changed, Why, Related issue (template=), pr_rules=<n> decided, and pr_check=pass|warn|fail: a missing body is never a pass (body=missing is a warning; a missing --body file a fail). Exit 1 on a fail, else 0. With no recorded branch, measures the checked-out branch against the default base. By hand, outside a phase: pr-check --body <file> [--base <branch>] [--branch <b>] measures the checked-out branch (or --branch) against --base, else the default branch, and checks that body. On a multi-repo host each line starts repo=<name>")
+    p.add_argument("phase", nargs="?", default=None, help=PHASE_ARG_HELP + "; omit it only with --body, for the by-hand route outside a phase")
+    p.add_argument("--repo", default=None, metavar="NAME", help="multi-repo host only: check only this registered repo's branch(es); without it every recorded branch is checked in turn (by hand: the repo whose branch is measured, required there)")
+    p.add_argument("--branch", default=None, help="check only this recorded branch (a stack records several per repo); by hand, the branch to measure instead of the checked-out one")
+    p.add_argument("--body", default=None, help="check this body file instead of the phase's topics/pr-body[-<repo>].md; a missing --body file is a fail, a missing default body is a warning (body=missing): a missing body is never a pass")
+    p.add_argument("--base", default=None, help="by hand only (no phase): the branch to measure against, as its name (origin/main reads as main; a sha or a tag is refused); default: the repo's default branch, resolved as pr-branch does")
     p.set_defaults(func=cmd_pr_check)
 
     p = sub.add_parser("pr-rules-decide", help="Show (bare) or record (--rule --choice) one team PR rule conflict the operator decided -- whether the team's rule or ours applies -- in the nested marker's pr_rules key, or at root in works/pr-rules.json; a decision on the same rule (and repo) replaces the earlier one. The team's rules themselves are read live by the pr skill, never recorded. Orchestrator (update-workspace) command -- executors never run it")

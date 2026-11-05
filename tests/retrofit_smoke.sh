@@ -179,7 +179,7 @@ for gone in ("AGENTS.md", ".agents", ".codex"):
 # by the agent WHEN INSTRUCTED, never on its own initiative -- its confirmation gate,
 # not its invocation, is the safety). Every other skill must still carry the marker.
 # (The Claude analogue of the retired allow_implicit_invocation metadata.)
-model_invocable = {"design-cowork", "create-phase", "pr"}  # P51-b1: the pr skill has no disable marker
+model_invocable = {"design-cowork", "create-phase"}  # the pr skill carries the marker too: callers read it by path
 for name in sorted(skills):
     body = (root / "payload/claude/skills" / name / "SKILL.md").read_text()
     marker = "disable-model-invocation: true"
@@ -4178,6 +4178,13 @@ sc=$(hw phase-scope P1 2>&1); sc_rc=$?; a_head=$(git -C "$MH/alpha" rev-parse --
 [ "$sc_rc" -eq 0 ] && printf '%s\n' "$sc" | grep -q "^repo=alpha path=alpha/ .*head=$a_head .*commits=1$" && printf '%s\n' "$sc" | grep -qx '    A alpha/one.txt' \
   && printf '%s\n' "$sc" | grep -q "^repo=beta path=beta/ commits=0 " \
   && ok "phase-scope prints one block per repo: alpha holds its commit and file, beta shows no commits" || bad "multi-repo phase-scope wrong (rc=$sc_rc) -- $sc"
+# (c2) pr-check on a multi-repo host never passes a repo with no body: alpha's lines say body=missing and warn; with no
+# branch recorded and no --repo nothing is measured, which warns too.
+pc_a=$(hw pr-check P1 --repo alpha 2>&1); pc_a_rc=$?; pc_n=$(hw pr-check P1 2>&1); pc_n_rc=$?
+[ "$pc_a_rc" -eq 0 ] && printf '%s\n' "$pc_a" | grep -qx 'repo=alpha pr_check=alpha:main base=main' && printf '%s\n' "$pc_a" | grep -q '^repo=alpha body=missing (topics/pr-body-alpha.md)$' \
+  && printf '%s\n' "$pc_a" | grep -qx 'pr_check=warn' && [ "$pc_n_rc" -eq 0 ] && printf '%s\n' "$pc_n" | grep -q '^pr_branches=none recorded' && printf '%s\n' "$pc_n" | grep -qx 'pr_check=warn' \
+  && ok "multi-repo pr-check: a repo with no topics/pr-body-<repo>.md prints repo=<name> body=missing and pr_check=warn; no recorded branch and no --repo warns too, never pass" \
+  || bad "multi-repo pr-check missing-body verdict wrong (rc $pc_a_rc/$pc_n_rc) -- $pc_a / $pc_n"
 # (d) a worktree set: parallel-start --repo cuts a worktree per repo; teardown refuses a dirty repo worktree and a hand-made one it did not stamp, then retires the set.
 git -C "$MH/workflow" add -A >/dev/null 2>&1 && mr git -C "$MH/workflow" commit -qm "chore: install and create the phase" >/dev/null 2>&1 || bad "multi-repo probe: could not commit the nested repo"
 ps_out=$(hw parallel-start P1 --host-branch hb --repo alpha=feat/a --repo beta=feat/b --repo-base alpha=main --repo-base beta=main 2>&1); ps_rc=$?
@@ -4451,7 +4458,7 @@ h1=$(sha "$PRR/works/phases/active/P1/phase.json")
 b_out=$(pw pr-branch P1 --name feat/a 2>&1); b_rc=$?
 [ "$r1" -eq 1 ] && grep -q "already exists .* is not checked out there" "$PRW/r1.txt" && [ "$r2" -eq 1 ] && grep -q "that is the base or default branch itself" "$PRW/r2.txt" \
   && [ "$r3" -eq 1 ] && grep -q "uncommitted tracked changes a switch would carry onto feat/b: src/app.py" "$PRW/r3.txt" && [ "$h0" = "$h1" ] \
-  && [ "$b_rc" -eq 0 ] && printf '%s\n' "$b_out" | grep -qx 'pr_branch=host:feat/a base=main' && [ "$(pgit branch --show-current)" = feat/a ] \
+  && [ "$b_rc" -eq 0 ] && printf '%s\n' "$b_out" | grep -qx 'pr_branch=root:feat/a base=main' && [ "$(pgit branch --show-current)" = feat/a ] \
   && [ "$(pj P1 pr.branches.0.branch)" = '"feat/a"' ] && [ "$(pj P1 pr.branches.0.url)" = null ] \
   && ok "pr-branch refuses an existing unchecked-out branch, the default branch and a dirty tracked tree (phase.json byte-identical), then cuts feat/a from main and records it" \
   || bad "pr-branch wrong (rc $r1/$r2/$r3/$b_rc, sha $h0 -> $h1) -- $(cat "$PRW/r1.txt" "$PRW/r2.txt" "$PRW/r3.txt") / $b_out"
@@ -4462,7 +4469,9 @@ seq 1 20 | sed 's/^/assert /' > "$PRR/tests/test_app.py"; printf 'd\ne\n' >> "$P
 c_out=$(pw pr-check P1 2>&1); c_rc=$?
 [ "$c_rc" -eq 0 ] && printf '%s\n' "$c_out" | grep -qx 'size=22 target=400 flag=1000 size_status=ok' \
   && printf '%s\n' "$c_out" | grep -qx 'size_excluded=4 files (generated 1, lockfiles 1, deleted 1, binary 1; counted 2 files)' \
-  && ok "pr-check size excludes the generated file, the lockfile, the deletion and the binary (size_excluded=4) and counts the test lines" || bad "pr-check size wrong (rc=$c_rc) -- $c_out"
+  && printf '%s\n' "$c_out" | grep -qx 'pr_check=root:feat/a base=main' && printf '%s\n' "$c_out" | grep -q '^body=missing (topics/pr-body.md)$' \
+  && printf '%s\n' "$c_out" | grep -qx 'pr_check=warn' \
+  && ok "pr-check size excludes the generated file, the lockfile, the deletion and the binary (size_excluded=4) and counts the test lines; at root the label is root:, and a missing default body is body=missing and pr_check=warn (exit 0), never pass" || bad "pr-check size or missing-body verdict wrong (rc=$c_rc) -- $c_out"
 # (4)(5) bodies: the three budgets, the leaks, the warn, the passes, and the headings (default order, then a team template).
 python3 - "$PRW" <<'PY'
 import sys
@@ -4496,6 +4505,20 @@ if [ "$(pcb ok)" = 0 ] && pcl ok 'template=.github/pull_request_template.md' && 
   ok "pr-check headings: out-of-order and missing headings fail against the team's template too, and a body keeping its order passes"
 else bad "pr-check template headings wrong -- $(cat "$PRW/check-ok.txt" "$PRW/check-order.txt" "$PRW/check-missing.txt")"; fi
 rm -f "$PRR/.github/pull_request_template.md"
+# (F2) a missing --body file fails; by hand (no phase) a clean --body passes against the default branch; no phase and no
+# --body is refused in one line naming both forms, writing nothing; an over-flag branch with a clean body warns.
+pw pr-check P1 --body "$PRW/no-such-body.md" > "$PRW/check-nobody.txt" 2>&1; a4=$?
+pw pr-check --body "$PRW/body-ok.md" > "$PRW/check-hand.txt" 2>&1; a6=$?
+e0=$(sha "$PRR/works/events.jsonl"); pw pr-check > "$PRW/check-none.txt" 2>&1; a7=$?; e1=$(sha "$PRR/works/events.jsonl")
+{ pgit switch -qc feat/big && seq 1 1100 > "$PRR/src/big.py" && pgit add src/big.py && pgit commit -qm "feat: big" && pgit switch -q feat/a; } >/dev/null 2>&1
+pw pr-check --body "$PRW/body-ok.md" --branch feat/big > "$PRW/check-big.txt" 2>&1; a8=$?
+if [ "$a4" = 1 ] && pcl nobody "body=missing ($PRW/no-such-body.md)" && pcl nobody 'pr_check=fail' \
+    && [ "$a6" = 0 ] && pcl hand 'pr_check=root:feat/a base=main' && pcl hand 'note=by hand (no phase) -- measured feat/a against the default branch main' \
+    && pcl hand 'size=22 target=400 flag=1000 size_status=ok' && pcl hand 'headings=ok' && pcl hand 'pr_check=pass' \
+    && [ "$a7" -ne 0 ] && [ "$(wc -l < "$PRW/check-none.txt" | tr -d ' ')" = 1 ] && grep -q 'pr-check <P>' "$PRW/check-none.txt" && grep -q 'pr-check --body <file>' "$PRW/check-none.txt" && [ "$e0" = "$e1" ] \
+    && [ "$a8" = 0 ] && grep -q '^size=[0-9]* target=400 flag=1000 size_status=flag$' "$PRW/check-big.txt" && pcl big 'pr_check=warn'; then
+  ok "pr-check: a missing --body file fails (exit 1); by hand with no phase, a clean --body on feat/a passes against the default branch main; no phase and no --body is refused in one line naming both forms, writing nothing; an over-flag branch with a clean body is size_status=flag and pr_check=warn"
+else bad "pr-check missing --body / by-hand route wrong (rc $a4/$a6/$a7/$a8) -- $(cat "$PRW/check-nobody.txt" "$PRW/check-hand.txt" "$PRW/check-none.txt" "$PRW/check-big.txt")"; fi
 # (6a) + the park rule (S12): a waived gate's REVIEW pending/decision with an unopened branch -- a run parks it,
 # plain next still halts there, and the pass guard refuses writing nothing.
 { pw finish-slice P1.DECOMP --outcome cut && pw accept-gate P1 --waive --note toy && pw start-slice P1.REVIEW \
@@ -4507,17 +4530,17 @@ run=$(pw run-phases P1 2>&1); plain=$(pw next 2>&1); g0=$(gsig)
 g_out=$(pw review-phase P1 --verdict pass 2>&1); g_rc=$?; g1=$(gsig)
 if printf '%s\n' "$run" | grep -q '^parked=P1 since=.* -- PR push stop ' && printf '%s\n' "$run" | grep -q '^run_done=yes' && ! printf '%s\n' "$run" | grep -q '^halt=' \
     && printf '%s\n' "$plain" | grep -qx 'waiting_on_operator=P1.REVIEW' && printf '%s\n' "$plain" | grep -q '^pr_push=waiting ' \
-    && printf '%s\n' "$plain" | grep -qx 'pr_branch=host:feat/a base=main url=none'; then
+    && printf '%s\n' "$plain" | grep -qx 'pr_branch=root:feat/a base=main url=none'; then
   ok "a waived gate's PR push stop (REVIEW pending/decision, a branch unopened) is parked by run-phases, while plain next still halts there and prints pr_branch= and pr_push=waiting"
 else bad "push-stop park wrong -- run: $run / next: $plain"; fi
-[ "$g_rc" -ne 0 ] && printf '%s\n' "$g_out" | grep -q 'host:feat/a (base main) has no draft PR' && printf '%s\n' "$g_out" | grep -qx 'nothing was written' && [ "$g0" = "$g1" ] \
+[ "$g_rc" -ne 0 ] && printf '%s\n' "$g_out" | grep -q 'root:feat/a (base main) has no draft PR' && printf '%s\n' "$g_out" | grep -qx 'nothing was written' && [ "$g0" = "$g1" ] \
   && ok "the pass guard refuses an unopened recorded branch and writes nothing (phase.json, events.jsonl, the REVIEW's slice.json unchanged)" || bad "pass guard (a) wrong (rc=$g_rc, $g0 -> $g1) -- $g_out"
 cp "$P1D/phase.json" "$PRW/p1.json"
 pw pr-record P1 --waive --note "probe" >/dev/null 2>&1; run_w=$(pw run-phases P1 2>&1); cp "$PRW/p1.json" "$P1D/phase.json"
 u_out=$(pw pr-record P1 --url https://github.com/example/toy/pull/1 2>&1); run_u=$(pw run-phases P1 2>&1); nx_u=$(pw next 2>&1)
 if printf '%s\n' "$run_w" | grep -qx 'halt=P1.REVIEW status=pending' && printf '%s\n' "$run_w" | grep -q '^halt_reason=.*its PR is waived' \
     && printf '%s\n' "$run_u" | grep -qx 'halt=P1.REVIEW status=pending' && printf '%s\n' "$run_u" | grep -q '^halt_reason=.*every recorded PR branch has its URL' \
-    && ! printf '%s\n%s\n' "$run_w" "$run_u" | grep -q '^parked=' && printf '%s\n' "$nx_u" | grep -qx 'pr_branch=host:feat/a base=main url=https://github.com/example/toy/pull/1' \
+    && ! printf '%s\n%s\n' "$run_w" "$run_u" | grep -q '^parked=' && printf '%s\n' "$nx_u" | grep -qx 'pr_branch=root:feat/a base=main url=https://github.com/example/toy/pull/1' \
     && ! printf '%s\n' "$nx_u" | grep -q '^pr_push='; then
   ok "the push stop stops parking once its PR is waived or every branch has its URL (a halt naming why), and next prints the recorded url"
 else bad "push stop after waive/url wrong -- waived: $run_w / url: $run_u / next: $nx_u"; fi
@@ -4572,7 +4595,7 @@ pw validate > "$PRW/val-$1.txt" 2>&1; v=$?; cp "$PRW/p1.json" "$P1D/phase.json";
 vk=$(pr_bad key); vd=$(pr_bad dup); vu=$(pr_bad url); vr=$(pr_bad repo)
 printf '{"decided": [{"rule": "x"}]}\n' > "$PRR/works/pr-rules.json"; pw validate > "$PRW/val-rules.txt" 2>&1; vp=$?; rm -f "$PRR/works/pr-rules.json"
 if [ "$vk" != 0 ] && [ "$vd" != 0 ] && [ "$vu" != 0 ] && [ "$vr" != 0 ] && [ "$vp" -ne 0 ] && grep -q 'pr: unknown field(s) extra' "$PRW/val-key.txt" \
-    && grep -q 'host:feat/a is recorded twice' "$PRW/val-dup.txt" && grep -q "url 'ftp://example/x' must be null or an http(s) URL" "$PRW/val-url.txt" \
+    && grep -q 'root:feat/a is recorded twice' "$PRW/val-dup.txt" && grep -q "url 'ftp://example/x' must be null or an http(s) URL" "$PRW/val-url.txt" \
     && grep -q "repo 'nosuch': this install has no repos registry" "$PRW/val-repo.txt" && grep -q 'pr-rules.json: pr_rules.decided\[0\]: missing field' "$PRW/val-rules.txt" && pw validate >/dev/null 2>&1; then
   ok "validate flags a malformed pr block (unknown key, duplicate pair, non-http(s) URL, a repo with no registry) and a malformed pr_rules, and passes once restored"
 else bad "validate missed a malformed pr block or pr_rules (rc $vk/$vd/$vu/$vr/$vp) -- $(cat "$PRW"/val-*.txt | grep -i 'pr' | head -8)"; fi
@@ -4683,9 +4706,10 @@ if printf '%s\n' "$o1" | grep -qx 'pr_branch=host:feat/o base=main' && printf '%
     && printf '%s\n' "$o3" | grep -qx 'pr_branch=host:feat/q base=feat/o' && [ "$o4" -eq 1 ] && grep -q 'a PR base must be a branch' "$PRO/o4.txt" \
     && printf '%s\n' "$oc1" | grep -qx 'pr_check=host:feat/o base=main' && printf '%s\n' "$oc1" | grep -qx 'diff_base=origin/main' \
     && printf '%s\n' "$oc1" | grep -qx 'size=1 target=400 flag=1000 size_status=ok' && printf '%s\n' "$oc3" | grep -qx 'diff_base=feat/o' \
+    && printf '%s\n' "$oc1" | grep -q '^body=missing (topics/pr-body.md)$' && printf '%s\n' "$oc1" | grep -qx 'pr_check=warn' \
     && printf '%s\n' "$oc_old" | grep -qx 'pr_check=host:feat/o base=main' && printf '%s\n' "$oc_old" | grep -qx 'diff_base=origin/main' \
     && printf '%s\n' "$o_nx" | grep -qx 'pr_branch=host:feat/o base=main url=none' && [ "$o_vrc" -eq 0 ]; then
-  ok "with an origin, pr-branch records the PR base as a branch name (default main, --base origin/main as main, a stack part's feat/o) and refuses a sha; pr-check prints diff_base=origin/main, or the local branch with no remote ref; an old base=origin/main record reads as main"
+  ok "with an origin, pr-branch records the PR base as a branch name (default main, --base origin/main as main, a stack part's feat/o) and refuses a sha; pr-check prints diff_base=origin/main, or the local branch with no remote ref; an old base=origin/main record reads as main; a nested host keeps host: and a missing default body warns, never passes"
 else bad "PR base as a branch name wrong (sha rc $o4, validate rc $o_vrc) -- $o1 / $o2 / $o3 / $(cat "$PRO/o4.txt") / $oc1 / $oc3 / $oc_old / $(printf '%s\n' "$o_nx" | grep pr_) / $(printf '%s\n' "$o_val" | tail -3)"; fi
 # (S9) the PR rule's wiring phrases in the contract and the shipped skills, and the negatives they replaced.
 python3 - "$REPO_ROOT" <<'PY' && ok "the PR rule's wiring: the contract's PR-rule sentence, review-phase's PR step, both review.md's reader and push stop, verdicts/decomposition/create-phase/executor/parallel-phase/do-whole-phases lines, and the retired no-branch/no-push lines" || bad "a PR-rule wiring phrase moved or a retired line is back"

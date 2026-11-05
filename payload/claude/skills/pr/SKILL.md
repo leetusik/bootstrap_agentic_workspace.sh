@@ -2,21 +2,22 @@
 name: pr
 description: "Write, check and open a phase's pull requests under PR rule v1: one body per recorded branch, measured by pr-check, opened as drafts only on the operator's push word."
 allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch --show-current), Bash(git branch --list:*), Bash(git rev-parse:*), Bash(git check-attr:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh api repos/*/community/profile), Bash(python3 scripts/workflow.py next), Bash(python3 scripts/workflow.py pr-check:*), Bash(python3 scripts/workflow.py pr-rules-decide), Read, Write, Edit, Glob, Grep
+disable-model-invocation: true
 ---
 
 # pr
 
-A phase that changes product files ships as **one branch per repo it changed, one draft PR each**. This skill is the one procedure for writing, checking and opening those PRs. Three callers use it:
+A phase that changes product files ships as **one branch per repo it changed, one draft PR each**. This skill is the one procedure for writing, checking and opening those PRs. It is explicit-invocation only, like every workflow command-skill: the operator types `/pr`, and the review and the orchestrator read `.claude/skills/pr/SKILL.md` by path and follow it. Three callers use it:
 
 - **the phase review's body step**, which writes and checks a body for each recorded branch, then hands back for the stop;
 - **the orchestrator at the `push` stop**, which opens the drafts on the operator's `push` (or `accept`);
-- **the operator by hand** (`/pr`), for a change made outside a phase: the same steps, with the body in a scratch file passed to `pr-check --body`.
+- **the operator by hand** (`/pr`), for a change made outside a phase: steps 2, 3, 5 and 6 below, with the body in a scratch file, checked with no phase by `python3 scripts/workflow.py pr-check --body <file> [--base <branch>] [--branch <b>]`. It measures the checked-out branch (or `--branch`) against `--base`, else the repo's default branch, and checks that body; there is no details file.
 
 Nothing here is pre-allowed to write to a remote. `git push`, `gh pr create`, `gh pr comment`, `gh pr edit` and `gh pr ready` each reach the permission prompt, or need the operator's explicit word in auto mode. Recording (`pr-branch`, `pr-record`, `pr-rules-decide --rule`) is the orchestrator's, never an executor's.
 
 ## Write and check (the review's body step)
 
-1. **Find the branches.** `python3 scripts/workflow.py next` prints one `pr_branch=<repo|host>:<b> base=<base> url=<url|none>` line per recorded branch; the phase's `phase.json` `pr` block holds the same. Write **one body per recorded branch**. A branch is recorded only in a repo the phase changed: there is no un-record command, so never record one speculatively.
+1. **Find the branches.** `python3 scripts/workflow.py next` prints one `pr_branch=<repo|host|root>:<b> base=<base> url=<url|none>` line per recorded branch; the phase's `phase.json` `pr` block holds the same. Write **one body per recorded branch**. A branch is recorded only in a repo the phase changed: there is no un-record command, so never record one speculatively.
 2. **Read the team rules live**, read-only, every time (they are never cached):
    - PR templates: `.github/pull_request_template.md`, the `.github/PULL_REQUEST_TEMPLATE/` forms, and the root and `docs/` copies;
    - `CONTRIBUTING*` lines about PRs and review; `CODEOWNERS`;
@@ -27,7 +28,7 @@ Nothing here is pre-allowed to write to a remote. `git push`, `gh pr create`, `g
 
    **Precedence:** the team wins where it speaks (headings, title format, language, trailers, merge method); ours fills the gaps (the budgets, `## Review`, size, draft-first, the series line). A conflict nobody has decided goes into the stop report's "decided as drawn" list; the operator's answer is recorded afterwards with `pr-rules-decide --rule … --choice team|ours`.
 3. **Write the body** to the phase's `topics/pr-body.md` (`works/phases/active/<P>/topics/`), or `topics/pr-body-<repo>.md` on a multi-repo host. Depth this review alone needs goes to `topics/pr-details.md` (`-<repo>` likewise), posted as one comment at push. Follow `reference/body.md`: the skeleton, the budgets, the visual rule and the prose rules. Write from the final diff, the commits, the issue and the phase's recorded decisions, never from the slice log.
-4. **Check it.** `python3 scripts/workflow.py pr-check <P> [--repo <name>] [--branch <b>]`. Rewrite and re-run until it prints `pr_check=pass`, or `pr_check=warn` with every warning justified in your hand-back. A fail is a budget, a leak or a heading line: shorten, move depth to the details file, or fix the heading. Never pad, abbreviate or game the counts.
+4. **Check it.** `python3 scripts/workflow.py pr-check <P> [--repo <name>] [--branch <b>]`. Rewrite and re-run until it prints `pr_check=pass`. Only `warn` lines the body itself causes (a `leak_warn=`, a `review_heading=`) or the size (`size_flag=`, step 5), each justified in your hand-back, may end the loop at `pr_check=warn`; `body=missing` never ends it, since a missing body is never a pass. A fail is a budget, a leak or a heading line: shorten, move depth to the details file, or fix the heading. Never pad, abbreviate or game the counts.
 5. **Size over the flag** (`size_status=flag`, over 1,000 counted lines): offer a split by `reference/split.md`, or a **named exception** (a first-of-feature drop, a fixture set, bulk tests) stated in `## Review` with its reason. Size never splits the phase itself.
 6. **Hand back** for the stop, per branch: the body path (and details path), the `pr-check` lines, the size, the series line if any, the `<!-- screenshot -->` spots the operator must fill on GitHub, and the undecided team-rule conflicts for the "decided as drawn" list.
 
