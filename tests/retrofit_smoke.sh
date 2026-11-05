@@ -4467,7 +4467,7 @@ seq 1 30 > "$PRR/gen/out.txt"; printf '{"a":1}\n' > "$PRR/package-lock.json"; pg
 seq 1 20 | sed 's/^/assert /' > "$PRR/tests/test_app.py"; printf 'd\ne\n' >> "$PRR/src/app.py"
 ( cd "$PRR" && git add gen src tests package-lock.json && git commit -qm "feat: toy" ) >/dev/null 2>&1 || bad "pr probe: product commit failed"
 c_out=$(pw pr-check P1 2>&1); c_rc=$?
-[ "$c_rc" -eq 0 ] && printf '%s\n' "$c_out" | grep -qx 'size=22 target=400 flag=1000 size_status=ok' \
+[ "$c_rc" -eq 0 ] && printf '%s\n' "$c_out" | grep -qx 'size=22 size_status=info' \
   && printf '%s\n' "$c_out" | grep -qx 'size_excluded=4 files (generated 1, lockfiles 1, deleted 1, binary 1; counted 2 files)' \
   && printf '%s\n' "$c_out" | grep -qx 'pr_check=root:feat/a base=main' && printf '%s\n' "$c_out" | grep -q '^body=missing (topics/pr-body.md)$' \
   && printf '%s\n' "$c_out" | grep -qx 'pr_check=warn' \
@@ -4506,19 +4506,30 @@ if [ "$(pcb ok)" = 0 ] && pcl ok 'template=.github/pull_request_template.md' && 
 else bad "pr-check template headings wrong -- $(cat "$PRW/check-ok.txt" "$PRW/check-order.txt" "$PRW/check-missing.txt")"; fi
 rm -f "$PRR/.github/pull_request_template.md"
 # (F2) a missing --body file fails; by hand (no phase) a clean --body passes against the default branch; no phase and no
-# --body is refused in one line naming both forms, writing nothing; an over-flag branch with a clean body warns.
+# --body is refused in one line naming both forms, writing nothing. Size has no default limit (D4 amended): a big branch with a
+# clean body is info and passes; only a team's --limit warns (over), on either route; a 0 or non-integer limit is refused.
 pw pr-check P1 --body "$PRW/no-such-body.md" > "$PRW/check-nobody.txt" 2>&1; a4=$?
 pw pr-check --body "$PRW/body-ok.md" > "$PRW/check-hand.txt" 2>&1; a6=$?
 e0=$(sha "$PRR/works/events.jsonl"); pw pr-check > "$PRW/check-none.txt" 2>&1; a7=$?; e1=$(sha "$PRR/works/events.jsonl")
 { pgit switch -qc feat/big && seq 1 1100 > "$PRR/src/big.py" && pgit add src/big.py && pgit commit -qm "feat: big" && pgit switch -q feat/a; } >/dev/null 2>&1
 pw pr-check --body "$PRW/body-ok.md" --branch feat/big > "$PRW/check-big.txt" 2>&1; a8=$?
+pw pr-check --body "$PRW/body-ok.md" --branch feat/big --limit 400 > "$PRW/check-lim.txt" 2>&1; a9=$?
+pw pr-check P1 --body "$PRW/body-ok.md" --limit 400 > "$PRW/check-limok.txt" 2>&1; a10=$?
+pw pr-check P1 --body "$PRW/body-ok.md" --limit 10 > "$PRW/check-limph.txt" 2>&1; a11=$?
+pw pr-check P1 --body "$PRW/body-ok.md" --limit 0 > "$PRW/check-lim0.txt" 2>&1; a12=$?
+pw pr-check --body "$PRW/body-ok.md" --limit 4k > "$PRW/check-limx.txt" 2>&1; a13=$?
 if [ "$a4" = 1 ] && pcl nobody "body=missing ($PRW/no-such-body.md)" && pcl nobody 'pr_check=fail' \
     && [ "$a6" = 0 ] && pcl hand 'pr_check=root:feat/a base=main' && pcl hand 'note=by hand (no phase) -- measured feat/a against the default branch main' \
-    && pcl hand 'size=22 target=400 flag=1000 size_status=ok' && pcl hand 'headings=ok' && pcl hand 'pr_check=pass' \
+    && pcl hand 'size=22 size_status=info' && pcl hand 'headings=ok' && pcl hand 'pr_check=pass' \
     && [ "$a7" -ne 0 ] && [ "$(wc -l < "$PRW/check-none.txt" | tr -d ' ')" = 1 ] && grep -q 'pr-check <P>' "$PRW/check-none.txt" && grep -q 'pr-check --body <file>' "$PRW/check-none.txt" && [ "$e0" = "$e1" ] \
-    && [ "$a8" = 0 ] && grep -q '^size=[0-9]* target=400 flag=1000 size_status=flag$' "$PRW/check-big.txt" && pcl big 'pr_check=warn'; then
-  ok "pr-check: a missing --body file fails (exit 1); by hand with no phase, a clean --body on feat/a passes against the default branch main; no phase and no --body is refused in one line naming both forms, writing nothing; an over-flag branch with a clean body is size_status=flag and pr_check=warn"
-else bad "pr-check missing --body / by-hand route wrong (rc $a4/$a6/$a7/$a8) -- $(cat "$PRW/check-nobody.txt" "$PRW/check-hand.txt" "$PRW/check-none.txt" "$PRW/check-big.txt")"; fi
+    && [ "$a8" = 0 ] && grep -q '^size=1[0-9][0-9][0-9] size_status=info$' "$PRW/check-big.txt" && pcl big 'pr_check=pass' && ! grep -qE '^size_over=|target=|flag=' "$PRW/check-big.txt" \
+    && [ "$a9" = 0 ] && grep -q '^size=1[0-9][0-9][0-9] limit=400 size_status=over$' "$PRW/check-lim.txt" && grep -q '^size_over=[0-9]* changed lines over the team' "$PRW/check-lim.txt" && pcl lim 'pr_check=warn' \
+    && [ "$a10" = 0 ] && pcl limok 'size=22 limit=400 size_status=ok' && pcl limok 'pr_check=pass' \
+    && [ "$a11" = 0 ] && pcl limph 'size=22 limit=10 size_status=over' && pcl limph 'size_over=12 changed lines over the team'"'"'s limit of 10 -- split this branch (a stack or a series: the pr skill'"'"'s reference/split.md) or name the exception in ## Review' && pcl limph 'pr_check=warn' \
+    && [ "$a12" = 1 ] && [ "$(wc -l < "$PRW/check-lim0.txt" | tr -d ' ')" = 1 ] && grep -q '^pr-check --limit 0: refused' "$PRW/check-lim0.txt" \
+    && [ "$a13" = 1 ] && [ "$(wc -l < "$PRW/check-limx.txt" | tr -d ' ')" = 1 ] && grep -q '^pr-check --limit 4k: refused' "$PRW/check-limx.txt"; then
+  ok "pr-check: a missing --body file fails (exit 1); by hand with no phase, a clean --body on feat/a passes against the default branch main; no phase and no --body is refused in one line naming both forms, writing nothing; with no team limit a 1,000-line branch is size_status=info and passes; a team --limit warns over it (by hand and in a phase, with size_over=) and is ok within it; --limit 0 and 4k are refused in one line"
+else bad "pr-check missing --body / by-hand route / size limit wrong (rc $a4/$a6/$a7/$a8/$a9/$a10/$a11/$a12/$a13) -- $(cat "$PRW/check-nobody.txt" "$PRW/check-hand.txt" "$PRW/check-none.txt" "$PRW/check-big.txt" "$PRW/check-lim.txt" "$PRW/check-limok.txt" "$PRW/check-limph.txt" "$PRW/check-lim0.txt" "$PRW/check-limx.txt")"; fi
 # (6a) the drafts open when the review passes, with no stop (F3): while the REVIEW runs with a branch unopened, next prints
 # pr_draft=due and run-phases targets the REVIEW (no parked= line); the pass guard refuses, writing nothing; a REVIEW stop
 # (pending/decision on a waived gate, or an open failure's operator-action) halts a run like any stop -- no park rule.
@@ -4708,7 +4719,7 @@ oc_old=$(nw pr-check P1 --branch feat/o 2>&1); o_nx=$(nw next 2>&1); o_val=$(nw 
 if printf '%s\n' "$o1" | grep -qx 'pr_branch=host:feat/o base=main' && printf '%s\n' "$o2" | grep -qx 'pr_branch=host:feat/p base=main' \
     && printf '%s\n' "$o3" | grep -qx 'pr_branch=host:feat/q base=feat/o' && [ "$o4" -eq 1 ] && grep -q 'a PR base must be a branch' "$PRO/o4.txt" \
     && printf '%s\n' "$oc1" | grep -qx 'pr_check=host:feat/o base=main' && printf '%s\n' "$oc1" | grep -qx 'diff_base=origin/main' \
-    && printf '%s\n' "$oc1" | grep -qx 'size=1 target=400 flag=1000 size_status=ok' && printf '%s\n' "$oc3" | grep -qx 'diff_base=feat/o' \
+    && printf '%s\n' "$oc1" | grep -qx 'size=1 size_status=info' && printf '%s\n' "$oc3" | grep -qx 'diff_base=feat/o' \
     && printf '%s\n' "$oc1" | grep -q '^body=missing (topics/pr-body.md)$' && printf '%s\n' "$oc1" | grep -qx 'pr_check=warn' \
     && printf '%s\n' "$oc_old" | grep -qx 'pr_check=host:feat/o base=main' && printf '%s\n' "$oc_old" | grep -qx 'diff_base=origin/main' \
     && printf '%s\n' "$o_nx" | grep -qx 'pr_branch=host:feat/o base=main url=none' && [ "$o_vrc" -eq 0 ]; then

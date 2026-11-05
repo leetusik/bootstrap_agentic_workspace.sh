@@ -58,7 +58,7 @@ Write one file, at the output path, in this order:
    - `workspace-leak`: a phase or slice id, a `workflow/` path, a workspace file name or the workspace's own vocabulary in the body or details;
    - `team-rule-miss`: a team-rule file's requirement the body does not meet (a template heading, a required section, a rule of the team's PR skill), quoting the rule's line;
    - `missing-visual`: a flow change, a change across components or a diff over 400 changed lines with no diagram or before/after table; or a UI change with no place for a screenshot;
-   - `size`: the `pr-check` size over the flag (1,000 changed lines) with no split and no named exception in the body;
+   - `size`: the `pr-check` output says `size_status=over` (over the team's own size limit, passed as `--limit`) and the body has no split and no named exception. With `size_status=info` there is no limit, and size is never a finding;
    - `code-level`: a concern about the code itself, not the body (a bug, a missing case, a risky change the body does not own up to), **labeled as such**. It goes to the review as a possible fix slice, never to the body as an edit.
 
 4. **Questions a teammate would still ask** (≤5), each one line. The body's author answers each where it belongs, in `## Review` or `## Why`; there is no standalone Q&A section for them.

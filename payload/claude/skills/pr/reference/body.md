@@ -36,7 +36,7 @@ Only the author's text counts: link URLs, HTML comments and Mermaid source do no
 
 ## The visual rule
 
-- **Required** when the PR changes a flow (pipeline stages, a request path, state transitions), crosses two or more components, or passes the 400-line target: one Mermaid diagram (flowchart or sequence) **or** a before/after table.
+- **Required** when the PR changes a flow (pipeline stages, a request path, state transitions), crosses two or more components, or has more than 400 changed lines (a readability trigger, not a size limit): one Mermaid diagram (flowchart or sequence) **or** a before/after table.
 - **Every Mermaid diagram gets a one-sentence prose caption** that stands without it: Mermaid does not render in email or `gh pr view`.
 - **UI changes** need before/after screenshots. `gh` cannot upload images, so leave a marked spot, `<!-- screenshot: <screen>, before / after -->`, plus the visible line `_Screenshots: added in the draft preview._`, and remind the operator in the walkthrough (or the pass report) to drop the images in on GitHub while reading the draft.
 - **Small fixes** stay plain text.

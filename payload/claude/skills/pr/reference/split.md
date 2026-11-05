@@ -1,10 +1,10 @@
-# Splitting a PR over the size flag
+# Splitting a PR over the team's size limit
 
-Size never splits a phase. When a recorded branch's `pr-check` prints `size_status=flag` (over 1,000 counted lines: generated files, lockfiles and whole-file deletions excluded, tests counted), the review's PR drafting may split **the PRs**, with the ≤400 target steering where the cuts fall. The other answer is a **named exception** in `## Review` with its reason. The drafts open with no stop, so the review picks one in its body step (a split only where the cuts are clean), the split is cut before the drafts open, and the report (the gate's walkthrough, or the pass report on a waived gate) lists the pick under "decided as drawn".
+Size never splits a phase, and there is no default size limit. When the team's rules set one and a recorded branch's `pr-check … --limit <n>` prints `size_status=over` (counted lines: generated files, lockfiles and whole-file deletions excluded, tests counted), the review's PR drafting may split **the PRs**, with the team's limit steering where the cuts fall. The other answer is a **named exception** in `## Review` with its reason. The drafts open with no stop, so the review picks one in its body step (a split only where the cuts are clean), the split is cut before the drafts open, and the report (the gate's walkthrough, or the pass report on a waived gate) lists the pick under "decided as drawn". With no team limit there is nothing to pick; a split is still cut when the operator asks for one (a stack, say).
 
 ## Within one repo: a GitHub-native stack
 
-Cut at **slice-commit boundaries** on the phase branch: each slice commit is a coherent, already-validated step, so it is a natural seam. Pick the commits that leave each part near the target and reviewable alone.
+Cut at **slice-commit boundaries** on the phase branch: each slice commit is a coherent, already-validated step, so it is a natural seam. Pick the commits that leave each part within the team's limit (or the size the operator asked for) and reviewable alone.
 
 1. For each part 1..k-1, at its last commit `<sha>` (the orchestrator runs these; they write):
    - `git branch <b>-<n> <sha>`

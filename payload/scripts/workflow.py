@@ -8837,8 +8837,8 @@ def _phase_scope_multi(args: argparse.Namespace, data: dict, out: dict, header: 
 PR_BLOCK_KEYS = ("branches", "waived")
 PR_BRANCH_KEYS = ("repo", "branch", "base", "url", "recorded_at", "opened_at")
 PR_WAIVED_KEYS = ("note", "at")
-PR_SIZE_TARGET = 400    # changed hand-written lines (added + deleted): the target a PR aims under
-PR_SIZE_FLAG = 1000     # over this, the REVIEW's PR drafting may split the branch (D4); a warning, never a fail
+# Size has no default limit (D4 as amended): pr-check prints the changed-line count as information, and
+# only a team's own limit, read live from their rules and passed as `--limit <n>`, can make it warn.
 PR_BODY_BUDGETS = (("first_screen", 1500), ("visible", 3500), ("whole", 6000))
 PR_LOCKFILES = frozenset(("package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "uv.lock", "Pipfile.lock",
                           "Cargo.lock", "Gemfile.lock", "composer.lock", "go.sum"))
@@ -9711,10 +9711,12 @@ def _pr_where(path: Path, pdir) -> str:
         return str(path)
 
 
-def _pr_check_one(pdir, data: dict, entry: dict, body_arg) -> tuple:
+def _pr_check_one(pdir, data: dict, entry: dict, body_arg, limit=None) -> tuple:
     """`(lines, status)` for one recorded branch: size, body budgets, leaks, headings. status is
     pass, warn or fail. A missing body is never a pass: a missing `--body` file fails, a missing default
-    body warns (the size read still runs). `pdir` is None on the by-hand route (no phase, `--body`)."""
+    body warns (the size read still runs). `pdir` is None on the by-hand route (no phase, `--body`).
+    The size is information (`size_status=info`) unless the team set a limit (`limit`, from `--limit`):
+    then it is `ok` within it, and `over` past it, a warning answered by a split or a named exception."""
     repo = entry.get("repo")
     lines = [f"pr_check={_pr_label(entry)} base={_pr_shown_base(entry, data)}"]
     if entry.get("note"):
@@ -9747,15 +9749,17 @@ def _pr_check_one(pdir, data: dict, entry: dict, body_arg) -> tuple:
         mark("warn")
     else:
         n = size["lines"]
-        state = "ok" if n <= PR_SIZE_TARGET else "over_target" if n <= PR_SIZE_FLAG else "flag"
-        lines.append(f"size={n} target={PR_SIZE_TARGET} flag={PR_SIZE_FLAG} size_status={state}")
+        if limit is None:
+            lines.append(f"size={n} size_status=info")
+        else:
+            lines.append(f"size={n} limit={limit} size_status={'ok' if n <= limit else 'over'}")
         excluded = size["generated"] + size["lockfiles"] + size["deleted"] + size["binary"]
         lines.append(f"size_excluded={excluded} files (generated {size['generated']}, lockfiles {size['lockfiles']}, "
                      f"deleted {size['deleted']}, binary {size['binary']}; counted {size['files']} files)")
         lines.append(f"size_binary={size['binary']}")
-        if state == "flag":
-            lines.append(f"size_flag=over {PR_SIZE_FLAG} changed lines -- the REVIEW's PR drafting may split this branch (a stack or a series), "
-                         "or name the exception in ## Review")
+        if limit is not None and n > limit:
+            lines.append(f"size_over={n - limit} changed lines over the team's limit of {limit} -- split this branch "
+                         "(a stack or a series: the pr skill's reference/split.md) or name the exception in ## Review")
             mark("warn")
     # Body
     suffix = f"-{repo}" if repo else ""
@@ -9812,9 +9816,11 @@ def _pr_check_one(pdir, data: dict, entry: dict, body_arg) -> tuple:
 
 def cmd_pr_check(args: argparse.Namespace) -> int:
     """Read-only: measure each recorded PR branch (size, body budgets, leaks, heading order) and print
-    key=value lines. Exit 1 on a fail; 0 on a pass, a warning or a size flag. A missing body is never a
-    pass. With no phase it is the by-hand route (`pr-check --body <file> [--base <b>] [--branch <b>]`):
-    the checked-out branch (or `--branch`) against `--base`, else the repo's default branch."""
+    key=value lines. Exit 1 on a fail; 0 on a pass or a warning. A missing body is never a pass. The size
+    warns only past a team's limit (`--limit <n>`, either route); with none it is information. With no
+    phase it is the by-hand route (`pr-check --body <file> [--base <b>] [--branch <b>]`): the checked-out
+    branch (or `--branch`) against `--base`, else the repo's default branch."""
+    args.limit = _pr_size_limit(args.limit)
     if not args.phase:
         return _pr_check_by_hand(args)
     if args.base:
@@ -9846,15 +9852,27 @@ def cmd_pr_check(args: argparse.Namespace) -> int:
         base = _pr_default_base(target["path"], target["default"]) or "main"
         entries = [{"repo": target["repo"], "branch": branch, "base": base,
                     "note": f"no recorded PR branch -- measured {branch} against the default base {base}"}]
-    return _pr_check_print(pdir, data, entries, args.body, bool(repos))
+    return _pr_check_print(pdir, data, entries, args.body, bool(repos), args.limit)
 
 
-def _pr_check_print(pdir, data: dict, entries: list, body_arg, multi: bool) -> int:
+def _pr_size_limit(raw):
+    """`--limit`'s value: None when absent, else a positive whole number of changed lines (the team's
+    own limit, read live from their rules); anything else is refused in one line."""
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text.isdigit() or int(text) <= 0:
+        raise SystemExit(f"pr-check --limit {text or repr(raw)}: refused -- a team's size limit is a positive whole number "
+                         "of changed lines; with no team limit, drop --limit (the size is then information)")
+    return int(text)
+
+
+def _pr_check_print(pdir, data: dict, entries: list, body_arg, multi: bool, limit=None) -> int:
     """Print each entry's pr-check lines, then `pr_rules=` and the worst `pr_check=`; the exit code."""
     worst = "pass"
     order = ("pass", "warn", "fail")
     for entry in entries:
-        lines, status = _pr_check_one(pdir, data, entry, body_arg)
+        lines, status = _pr_check_one(pdir, data, entry, body_arg, limit)
         prefix = f"repo={entry['repo']} " if multi else ""
         for ln in lines:
             print(prefix + ln)
@@ -9886,7 +9904,7 @@ def _pr_check_by_hand(args: argparse.Namespace) -> int:
         base = _pr_default_base(path, target["default"]) or _repo_default_branch(path, target["default"]) or "main"
     entry = {"repo": target["repo"], "branch": branch, "base": base,
              "note": f"by hand (no phase) -- measured {branch} against {'--base' if args.base else 'the default branch'} {base}"}
-    return _pr_check_print(None, {}, [entry], args.body, bool(nested_repos()))
+    return _pr_check_print(None, {}, [entry], args.body, bool(nested_repos()), args.limit)
 
 
 def _one_line(text) -> str:
@@ -19257,12 +19275,13 @@ def main(argv=None) -> int:
     p.add_argument("--note", default=None, help="mandatory with --waive: why this phase needs no PR")
     p.set_defaults(func=cmd_pr_record)
 
-    p = sub.add_parser("pr-check", help="Read-only: measure each recorded PR branch and its body, one key=value per line -- diff_base= (origin/<base> when that remote-tracking ref exists, else the local <base>), size= (git diff --numstat <diff_base>...<branch> minus linguist-generated paths, lockfiles and whole-file deletions; binary rows excluded and counted; target 400, flag over 1,000, a warning), body= and the budgets first_screen=/1500, visible=/3500, whole=/6000 (topics/pr-body[-<repo>].md, or --body), leak= (phase or slice IDs, workflow/ paths, workspace file names: a fail) and leak_warn= (orchestrator, executor, phase notebook, slice), headings= against the repo's PR template's H2s in order, else Summary, Review, What is changed, Why, Related issue (template=), pr_rules=<n> decided, and pr_check=pass|warn|fail: a missing body is never a pass (body=missing is a warning; a missing --body file a fail). Exit 1 on a fail, else 0. With no recorded branch, measures the checked-out branch against the default base. By hand, outside a phase: pr-check --body <file> [--base <branch>] [--branch <b>] measures the checked-out branch (or --branch) against --base, else the default branch, and checks that body. On a multi-repo host each line starts repo=<name>")
+    p = sub.add_parser("pr-check", help="Read-only: measure each recorded PR branch and its body, one key=value per line -- diff_base= (origin/<base> when that remote-tracking ref exists, else the local <base>), size= (git diff --numstat <diff_base>...<branch> minus linguist-generated paths, lockfiles and whole-file deletions; binary rows excluded and counted), size_status=info (no default limit: the count is information) or, with a team's --limit <n>, size_status=ok|over plus size_over= (a warning), body= and the budgets first_screen=/1500, visible=/3500, whole=/6000 (topics/pr-body[-<repo>].md, or --body), leak= (phase or slice IDs, workflow/ paths, workspace file names: a fail) and leak_warn= (orchestrator, executor, phase notebook, slice), headings= against the repo's PR template's H2s in order, else Summary, Review, What is changed, Why, Related issue (template=), pr_rules=<n> decided, and pr_check=pass|warn|fail: a missing body is never a pass (body=missing is a warning; a missing --body file a fail). Exit 1 on a fail, else 0. With no recorded branch, measures the checked-out branch against the default base. By hand, outside a phase: pr-check --body <file> [--base <branch>] [--branch <b>] measures the checked-out branch (or --branch) against --base, else the default branch, and checks that body. On a multi-repo host each line starts repo=<name>")
     p.add_argument("phase", nargs="?", default=None, help=PHASE_ARG_HELP + "; omit it only with --body, for the by-hand route outside a phase")
     p.add_argument("--repo", default=None, metavar="NAME", help="multi-repo host only: check only this registered repo's branch(es); without it every recorded branch is checked in turn (by hand: the repo whose branch is measured, required there)")
     p.add_argument("--branch", default=None, help="check only this recorded branch (a stack records several per repo); by hand, the branch to measure instead of the checked-out one")
     p.add_argument("--body", default=None, help="check this body file instead of the phase's topics/pr-body[-<repo>].md; a missing --body file is a fail, a missing default body is a warning (body=missing): a missing body is never a pass")
     p.add_argument("--base", default=None, help="by hand only (no phase): the branch to measure against, as its name (origin/main reads as main; a sha or a tag is refused); default: the repo's default branch, resolved as pr-branch does")
+    p.add_argument("--limit", default=None, metavar="N", help="the team's own PR size limit in changed lines, when their rules state one (read live by the pr skill); either route. Over it: size_status=over, a size_over= line and a warning, answered by a split or a named exception in ## Review. Without it there is no limit: size_status=info. A positive whole number; 0 or a non-integer is refused")
     p.set_defaults(func=cmd_pr_check)
 
     p = sub.add_parser("pr-rules-decide", help="Show (bare) or record (--rule --choice) one team PR rule conflict the operator decided -- whether the team's rule or ours applies -- in the nested marker's pr_rules key, or at root in works/pr-rules.json; a decision on the same rule (and repo) replaces the earlier one. The team's rules themselves are read live by the pr skill, never recorded. Orchestrator (update-workspace) command -- executors never run it")
