@@ -63,7 +63,10 @@
 # safe teardown, the lossless --to-multi-repo conversion), the P50 loop phases (the charter gate, the
 # budget stop, park don't halt, the bounded rollup, the tick's resume states), the v61 skill
 # directories (cores of 8 KB or less plus their reference files, on fresh, retrofit, --update and
-# nested installs, a renamed skill included), and the v31 Codex-removal negatives. Re-runnable; self-cleaning.
+# nested installs, a renamed skill included), the P51 PR rule v1 invariants (the pr block, pr-branch / pr-record /
+# pr-check and the pass guard, validate and next, the drafts opening with no stop (no park rule: a REVIEW stop halts a run), the pr skill and
+# pr-reader, the team-rule banner, the symlinked .claude/skills exclude, the root linguist-generated lines, the _is_ancestor
+# regression; zero GitHub writes: a local bare origin and a stub gh), and the v31 Codex-removal negatives. Re-runnable; self-cleaning.
 #
 # Usage:  bash tests/retrofit_smoke.sh
 # Exit 0 if every check passes; non-zero otherwise.
@@ -143,7 +146,7 @@ import sys
 
 root = Path(sys.argv[1])
 skills = {p.parent.name for p in (root / "payload/claude/skills").glob("*/SKILL.md")}
-assert len(skills) == 19, len(skills)
+assert len(skills) == 20, len(skills)
 
 # P37.S1 (v61): a skill ships as its whole directory, a core SKILL.md plus reference/*.md, and the
 # do-* shared references fan out at build. Prose pins read the BUILT directory (core first, then its
@@ -176,7 +179,7 @@ for gone in ("AGENTS.md", ".agents", ".codex"):
 # by the agent WHEN INSTRUCTED, never on its own initiative -- its confirmation gate,
 # not its invocation, is the safety). Every other skill must still carry the marker.
 # (The Claude analogue of the retired allow_implicit_invocation metadata.)
-model_invocable = {"design-cowork", "create-phase"}
+model_invocable = {"design-cowork", "create-phase"}  # the pr skill carries the marker too: callers read it by path
 for name in sorted(skills):
     body = (root / "payload/claude/skills" / name / "SKILL.md").read_text()
     marker = "disable-model-invocation: true"
@@ -1010,7 +1013,7 @@ for tier in ("slice-executor",):
 
 # P-zqhy: only slice-executor drives a real browser; the drafter, the critic and Explore render
 # headless or read, so none of them carries the Claude in Chrome tools.
-for _agent in ("design-drafter", "design-critic", "Explore"):
+for _agent in ("design-drafter", "design-critic", "pr-reader", "Explore"):
     _fm = (root / f"payload/claude/agents/{_agent}.md").read_text().split("---\n", 2)[1]
     assert "mcp__claude-in-chrome" not in _fm, _agent
 assert "Aside" not in (root / "payload/claude/agents/design-drafter.md").read_text(), "design-drafter still names Aside"
@@ -1178,7 +1181,7 @@ compact = claude.split("## Compact Instructions", 1)[1]
 assert "resume card" in compact and "never re-dispatch a running executor" in compact
 assert "re-read" not in compact, "Compact Instructions carry a re-read instruction"
 PY
-then ok "19 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with one connected canvas per round and opt-in critique, mockups on request, the Claude in Chrome instrument), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v71 wave protocol (do-whole-phase's reference/wave.md, DECOMP's disjoint-sets rule, the executor's wave section, the contract's reversal of "never fan out slices"); the v44 contract's never-stubs (acceptance gate, runtime, Claude in Chrome dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
+then ok "20 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with one connected canvas per round and opt-in critique, mockups on request, the Claude in Chrome instrument), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v71 wave protocol (do-whole-phase's reference/wave.md, DECOMP's disjoint-sets rule, the executor's wave section, the contract's reversal of "never fan out slices"); the v44 contract's never-stubs (acceptance gate, runtime, Claude in Chrome dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
@@ -1259,8 +1262,8 @@ cp_state=$(python3 -c "import json;print(json.load(open('$R/works/state.json'))[
   && ok "retrofit installs no Codex trees (.agents/, .codex/)" || bad "retrofit created a Codex tree"
 [ ! -f "$R/AGENTS.workspace.md" ] \
   && ok "retrofit writes no AGENTS.workspace.md sidecar" || bad "retrofit wrote an AGENTS.workspace.md sidecar"
-[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "19" ] \
-  && ok "retrofit installs the 18-skill Claude inventory" || bad "retrofit skill inventory incomplete"
+[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "20" ] \
+  && ok "retrofit installs the 20-skill Claude inventory" || bad "retrofit skill inventory incomplete"
 skill_tree_ok "$R/.claude/skills" exact \
   && ok "retrofit installs every skill as its whole directory: each core's reference files, none orphaned, the shared do-* copy identical" || bad "retrofit skill directories incomplete (core + reference/)"
 grep -q 'design subagent drafts, the operator decides' "$R/CLAUDE.workspace.md" && grep -q 'writes no \*\*\*product\*\*\* implementation code' "$R/CLAUDE.workspace.md" \
@@ -1366,8 +1369,8 @@ assert not missing, missing
 PY
 then ok "every changelog release section carries a Migration notes line"; else bad "a changelog release section has no Migration notes line"; fi
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
-[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "19" ] \
-  && ok "fresh install has the 19 Claude skills" || bad "fresh skill inventory incomplete"
+[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "20" ] \
+  && ok "fresh install has the 20 Claude skills" || bad "fresh skill inventory incomplete"
 skill_tree_ok "$F/.claude/skills" exact \
   && ok "fresh install ships every skill as its whole directory: each core's reference files, none orphaned, the shared do-* copy identical" || bad "fresh install skill directories incomplete (core + reference/)"
 [ ! -f "$F/AGENTS.md" ] && [ ! -d "$F/.agents" ] && [ ! -d "$F/.codex" ] \
@@ -2306,7 +2309,7 @@ diff -q "$SRC/scripts/workflow.py" "$F/scripts/workflow.py" >/dev/null \
   || bad "DRIFT: scripts/workflow.py differs from the bootstrap-embedded copy"
 skill_rels=$(cd "$SRC" && find claude/skills -type f -name SKILL.md | sed 's|^|.|' | LC_ALL=C sort)
 nskill=$(printf '%s\n' "$skill_rels" | grep -c .)
-[ "$nskill" -eq 19 ] && ok "dual-apply covers all 19 skill bodies" || bad "expected 19 SKILL.md files to diff, found $nskill"
+[ "$nskill" -eq 20 ] && ok "dual-apply covers all 20 skill bodies" || bad "expected 20 SKILL.md files to diff, found $nskill"
 for rel in $skill_rels; do
   diff -q "$SRC/${rel#.}" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
@@ -2315,6 +2318,7 @@ done
 DUAL_FIXED=".claude/agents/slice-executor.md
 .claude/agents/design-drafter.md
 .claude/agents/design-critic.md
+.claude/agents/pr-reader.md
 .claude/agents/Explore.md
 .claude/settings.json
 executors.toml
@@ -3780,7 +3784,7 @@ if printf '%s\n' "$nx" | grep -q "^host_commit_convention=confirmed (coauthor_tr
     && python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["commit_convention"]; assert c["confirmed"] is True and c["text"] == "type(scope): summary" and c["inferred"] == "type(scope): summary", c' "$NH/workflow/.agentic-nested.json"; then
   ok "nested-convention --confirm records the text and the trailer rule, and next stops flagging it"; else bad "nested-convention --confirm did not flip the convention -- $nx"; fi
 # The agent rename map: design-drafter is installed as wf-design-drafter in the host's .claude/agents.
-mkdir -p "$NH/.claude/agents" && cp "$SRC/claude/agents/slice-executor.md" "$SRC/claude/agents/design-critic.md" "$SRC/claude/agents/Explore.md" "$NH/.claude/agents/" \
+mkdir -p "$NH/.claude/agents" && cp "$SRC/claude/agents/slice-executor.md" "$SRC/claude/agents/design-critic.md" "$SRC/claude/agents/pr-reader.md" "$SRC/claude/agents/Explore.md" "$NH/.claude/agents/" \
   && sed 's/^name: design-drafter$/name: wf-design-drafter/' "$SRC/claude/agents/design-drafter.md" > "$NH/.claude/agents/wf-design-drafter.md"
 nw sync-agents >/dev/null 2>&1
 if nw sync-agents --check >/dev/null 2>&1 && grep -qx "name: wf-design-drafter" "$NH/.claude/agents/wf-design-drafter.md" \
@@ -4174,6 +4178,13 @@ sc=$(hw phase-scope P1 2>&1); sc_rc=$?; a_head=$(git -C "$MH/alpha" rev-parse --
 [ "$sc_rc" -eq 0 ] && printf '%s\n' "$sc" | grep -q "^repo=alpha path=alpha/ .*head=$a_head .*commits=1$" && printf '%s\n' "$sc" | grep -qx '    A alpha/one.txt' \
   && printf '%s\n' "$sc" | grep -q "^repo=beta path=beta/ commits=0 " \
   && ok "phase-scope prints one block per repo: alpha holds its commit and file, beta shows no commits" || bad "multi-repo phase-scope wrong (rc=$sc_rc) -- $sc"
+# (c2) pr-check on a multi-repo host never passes a repo with no body: alpha's lines say body=missing and warn; with no
+# branch recorded and no --repo nothing is measured, which warns too.
+pc_a=$(hw pr-check P1 --repo alpha 2>&1); pc_a_rc=$?; pc_n=$(hw pr-check P1 2>&1); pc_n_rc=$?
+[ "$pc_a_rc" -eq 0 ] && printf '%s\n' "$pc_a" | grep -qx 'repo=alpha pr_check=alpha:main base=main' && printf '%s\n' "$pc_a" | grep -q '^repo=alpha body=missing (topics/pr-body-alpha.md)$' \
+  && printf '%s\n' "$pc_a" | grep -qx 'pr_check=warn' && [ "$pc_n_rc" -eq 0 ] && printf '%s\n' "$pc_n" | grep -q '^pr_branches=none recorded' && printf '%s\n' "$pc_n" | grep -qx 'pr_check=warn' \
+  && ok "multi-repo pr-check: a repo with no topics/pr-body-<repo>.md prints repo=<name> body=missing and pr_check=warn; no recorded branch and no --repo warns too, never pass" \
+  || bad "multi-repo pr-check missing-body verdict wrong (rc $pc_a_rc/$pc_n_rc) -- $pc_a / $pc_n"
 # (d) a worktree set: parallel-start --repo cuts a worktree per repo; teardown refuses a dirty repo worktree and a hand-made one it did not stamp, then retires the set.
 git -C "$MH/workflow" add -A >/dev/null 2>&1 && mr git -C "$MH/workflow" commit -qm "chore: install and create the phase" >/dev/null 2>&1 || bad "multi-repo probe: could not commit the nested repo"
 ps_out=$(hw parallel-start P1 --host-branch hb --repo alpha=feat/a --repo beta=feat/b --repo-base alpha=main --repo-base beta=main 2>&1); ps_rc=$?
@@ -4411,6 +4422,363 @@ i = raw.find(line)
 assert i >= 0 and raw.find(b"\n", i) <= 16384, i
 PY
 echo "loop test runtime: $(( $(date +%s) - lp_t0 ))s"
+
+# ---------------------------------------------------------------------------
+echo "== Test 19: P51 PR rule v1 -- the pr block and its commands, pr-check's size/budgets/leaks/headings, the pass guard, validate and next, the drafts opening with no stop (a REVIEW stop halts a run), the pr skill and pr-reader, the team-rule banner, the symlinked skills exclude, the root linguist lines, the _is_ancestor regression; zero GitHub writes =="
+# Tiny and core only. Every remote is local (a bare origin) and gh is a stub on PATH: nothing reaches GitHub.
+pr_t0=$(date +%s)
+newtmp PRW; PRR="$PRW/ws"
+sh "$BOOT" "$PRR" --at-root --name "PR" --summary "pr" > "$PRW/install.txt" 2>&1 || bad "pr probe: the fresh install failed"
+pw() { ( cd "$PRR" && python3 scripts/workflow.py "$@" ); }
+pgit() { git -C "$PRR" "$@"; }
+pj() { python3 -c 'import json,sys
+d = json.load(open(sys.argv[1]))
+for k in sys.argv[2].split("."): d = d.get(k) if isinstance(d, dict) else (d[int(k)] if isinstance(d, list) and len(d) > int(k) else None)
+print(json.dumps(d, sort_keys=True))' "$PRR/works/phases/active/$1/phase.json" "$2"; }
+{ pgit init -q . && pgit symbolic-ref HEAD refs/heads/main; } >/dev/null 2>&1
+pgit config user.email smoke@example.invalid; pgit config user.name smoke
+mkdir -p "$PRR/src" "$PRR/tests" "$PRR/gen"; printf 'gen/** linguist-generated=true\n' >> "$PRR/.gitattributes"
+seq 1 50 | sed 's/^/old /' > "$PRR/src/old.py"; printf 'a\nb\nc\n' > "$PRR/src/app.py"; printf '{}\n' > "$PRR/package-lock.json"
+( cd "$PRR" && git add -A && git commit -qm baseline ) >/dev/null 2>&1 || bad "pr probe: baseline commit failed"
+# (a) a fresh at-root install marks the workspace's state linguist-generated (S11), and prints the team-rule line.
+grep -qx 'works/\*\* linguist-generated=true' "$PRR/.gitattributes" && grep -qx 'docs/index.json linguist-generated=true' "$PRR/.gitattributes" \
+  && grep -q "team PR rules: none on file -- the pr skill's default template (Summary · Review · What is changed · Why · Related issue) applies" "$PRW/install.txt" \
+  && ok "a fresh at-root install marks works/** and the workspace's docs/ paths linguist-generated and prints the bare team-rule line" \
+  || bad "fresh at-root install: no linguist-generated lines or no team-rule line -- $(grep -n 'linguist\|team PR' "$PRR/.gitattributes" "$PRW/install.txt")"
+# (1) new-phase stamps the empty pr block.
+pw new-phase --phase P1 --name "PR probe" --objective "toy" >/dev/null 2>&1 && ( cd "$PRR" && git add -A && git commit -qm p1 ) >/dev/null 2>&1
+[ "$(pj P1 pr)" = '{"branches": [], "waived": null}' ] && ok "new-phase stamps pr = {branches: [], waived: null}" || bad "new-phase pr block wrong: $(pj P1 pr)"
+# (2) pr-branch: three refusals leave phase.json byte-identical; then it cuts and records the branch.
+pgit branch feat/other main
+h0=$(sha "$PRR/works/phases/active/P1/phase.json")
+pw pr-branch P1 --name feat/other > "$PRW/r1.txt" 2>&1; r1=$?
+pw pr-branch P1 --name main > "$PRW/r2.txt" 2>&1; r2=$?
+echo dirty >> "$PRR/src/app.py"; pw pr-branch P1 --name feat/b > "$PRW/r3.txt" 2>&1; r3=$?; pgit checkout -q -- src/app.py
+h1=$(sha "$PRR/works/phases/active/P1/phase.json")
+b_out=$(pw pr-branch P1 --name feat/a 2>&1); b_rc=$?
+[ "$r1" -eq 1 ] && grep -q "already exists .* is not checked out there" "$PRW/r1.txt" && [ "$r2" -eq 1 ] && grep -q "that is the base or default branch itself" "$PRW/r2.txt" \
+  && [ "$r3" -eq 1 ] && grep -q "uncommitted tracked changes a switch would carry onto feat/b: src/app.py" "$PRW/r3.txt" && [ "$h0" = "$h1" ] \
+  && [ "$b_rc" -eq 0 ] && printf '%s\n' "$b_out" | grep -qx 'pr_branch=root:feat/a base=main' && [ "$(pgit branch --show-current)" = feat/a ] \
+  && [ "$(pj P1 pr.branches.0.branch)" = '"feat/a"' ] && [ "$(pj P1 pr.branches.0.url)" = null ] \
+  && ok "pr-branch refuses an existing unchecked-out branch, the default branch and a dirty tracked tree (phase.json byte-identical), then cuts feat/a from main and records it" \
+  || bad "pr-branch wrong (rc $r1/$r2/$r3/$b_rc, sha $h0 -> $h1) -- $(cat "$PRW/r1.txt" "$PRW/r2.txt" "$PRW/r3.txt") / $b_out"
+# (3) pr-check size: a generated file, a lockfile, a deletion and a binary are excluded; test lines count.
+seq 1 30 > "$PRR/gen/out.txt"; printf '{"a":1}\n' > "$PRR/package-lock.json"; pgit rm -q src/old.py; printf '\000\001\002bin' > "$PRR/src/logo.bin"
+seq 1 20 | sed 's/^/assert /' > "$PRR/tests/test_app.py"; printf 'd\ne\n' >> "$PRR/src/app.py"
+( cd "$PRR" && git add gen src tests package-lock.json && git commit -qm "feat: toy" ) >/dev/null 2>&1 || bad "pr probe: product commit failed"
+c_out=$(pw pr-check P1 2>&1); c_rc=$?
+[ "$c_rc" -eq 0 ] && printf '%s\n' "$c_out" | grep -qx 'size=22 size_status=info' \
+  && printf '%s\n' "$c_out" | grep -qx 'size_excluded=4 files (generated 1, lockfiles 1, deleted 1, binary 1; counted 2 files)' \
+  && printf '%s\n' "$c_out" | grep -qx 'pr_check=root:feat/a base=main' && printf '%s\n' "$c_out" | grep -q '^body=missing (topics/pr-body.md)$' \
+  && printf '%s\n' "$c_out" | grep -qx 'pr_check=warn' \
+  && ok "pr-check size excludes the generated file, the lockfile, the deletion and the binary (size_excluded=4) and counts the test lines; at root the label is root:, and a missing default body is body=missing and pr_check=warn (exit 0), never pass" || bad "pr-check size or missing-body verdict wrong (rc=$c_rc) -- $c_out"
+# (4)(5) bodies: the three budgets, the leaks, the warn, the passes, and the headings (default order, then a team template).
+python3 - "$PRW" <<'PY'
+import sys
+d = sys.argv[1]
+def body(review="Check the parser.", changed="The parser reads two more lines.", why="It needed them.", extra="", order=None):
+    secs = {"Summary": "Adds two lines to the toy app.", "Review": review, "What is changed": changed, "Why": why, "Related issue": "None."}
+    return "".join(f"## {h}\n\n{secs[h]}\n\n" for h in (order or list(secs))) + extra
+bodies = {"ok": body(), "first": body(review="word " * 320), "visible": body(changed="word " * 720),
+          "whole": body(extra="<!--\n" + "word " * 1300 + "\n-->\n"), "phase": body(why="It was planned in P51."),
+          "path": body(why="See workflow/docs/current/qa.md."), "warn": body(why="One slice was enough."),
+          "pass": body(why="The S3 bucket p95 latency dropped."),
+          "order": body(order=["Summary", "Review", "Why", "What is changed", "Related issue"]),
+          "missing": body(order=["Summary", "Review", "What is changed", "Why"])}
+for k, v in bodies.items():
+    open(f"{d}/body-{k}.md", "w").write(v)
+PY
+pcb() { pw pr-check P1 --body "$PRW/body-$1.md" > "$PRW/check-$1.txt" 2>&1; printf '%s' "$?"; }
+pcl() { grep -qx "$2" "$PRW/check-$1.txt"; }
+if [ "$(pcb ok)" = 0 ] && pcl ok 'pr_check=pass' && pcl ok 'headings=ok' && pcl ok 'leaks=none' \
+    && [ "$(pcb first)" = 1 ] && pcl first 'first_screen=[0-9]*/1500 over' && [ "$(pcb visible)" = 1 ] && pcl visible 'visible=[0-9]*/3500 over' && pcl visible 'first_screen=[0-9]*/1500 ok' \
+    && [ "$(pcb whole)" = 1 ] && pcl whole 'whole=[0-9]*/6000 over' && pcl whole 'visible=[0-9]*/3500 ok' \
+    && [ "$(pcb phase)" = 1 ] && grep -q '^leak=phase_id:P51 ' "$PRW/check-phase.txt" && [ "$(pcb path)" = 1 ] && grep -q '^leak=workflow_path:workflow/ ' "$PRW/check-path.txt" \
+    && [ "$(pcb warn)" = 0 ] && grep -q '^leak_warn=slice x1 ' "$PRW/check-warn.txt" && pcl warn 'pr_check=warn' \
+    && [ "$(pcb pass)" = 0 ] && pcl pass 'leaks=none' && pcl pass 'pr_check=pass' \
+    && [ "$(pcb order)" = 1 ] && pcl order 'headings=order:Why' && [ "$(pcb missing)" = 1 ] && pcl missing 'headings=missing:Related issue'; then
+  ok "pr-check bodies: each of the three budgets fails over and passes within; P51 and workflow/ fail; 'slice' alone warns (exit 0); 'S3 bucket' and 'p95' pass; out-of-order and missing headings fail against the default order"
+else bad "pr-check body checks wrong -- $(for k in ok first visible whole phase path warn pass order missing; do printf '[%s] %s ' "$k" "$(grep -E 'first_screen|visible=|whole=|leak|headings|pr_check=' "$PRW/check-$k.txt" | tr '\n' ' ')"; done)"; fi
+mkdir -p "$PRR/.github"; printf '## Summary\n\n## What is changed\n\n## Why\n\n## Related issue\n' > "$PRR/.github/pull_request_template.md"
+if [ "$(pcb ok)" = 0 ] && pcl ok 'template=.github/pull_request_template.md' && [ "$(pcb order)" = 1 ] && pcl order 'headings=order:Why' \
+    && [ "$(pcb missing)" = 1 ] && pcl missing 'headings=missing:Related issue' && pcl missing 'template=.github/pull_request_template.md'; then
+  ok "pr-check headings: out-of-order and missing headings fail against the team's template too, and a body keeping its order passes"
+else bad "pr-check template headings wrong -- $(cat "$PRW/check-ok.txt" "$PRW/check-order.txt" "$PRW/check-missing.txt")"; fi
+rm -f "$PRR/.github/pull_request_template.md"
+# (F2) a missing --body file fails; by hand (no phase) a clean --body passes against the default branch; no phase and no
+# --body is refused in one line naming both forms, writing nothing. Size has no default limit (D4 amended): a big branch with a
+# clean body is info and passes; only a team's --limit warns (over), on either route; a 0 or non-integer limit is refused.
+pw pr-check P1 --body "$PRW/no-such-body.md" > "$PRW/check-nobody.txt" 2>&1; a4=$?
+pw pr-check --body "$PRW/body-ok.md" > "$PRW/check-hand.txt" 2>&1; a6=$?
+e0=$(sha "$PRR/works/events.jsonl"); pw pr-check > "$PRW/check-none.txt" 2>&1; a7=$?; e1=$(sha "$PRR/works/events.jsonl")
+{ pgit switch -qc feat/big && seq 1 1100 > "$PRR/src/big.py" && pgit add src/big.py && pgit commit -qm "feat: big" && pgit switch -q feat/a; } >/dev/null 2>&1
+pw pr-check --body "$PRW/body-ok.md" --branch feat/big > "$PRW/check-big.txt" 2>&1; a8=$?
+pw pr-check --body "$PRW/body-ok.md" --branch feat/big --limit 400 > "$PRW/check-lim.txt" 2>&1; a9=$?
+pw pr-check P1 --body "$PRW/body-ok.md" --limit 400 > "$PRW/check-limok.txt" 2>&1; a10=$?
+pw pr-check P1 --body "$PRW/body-ok.md" --limit 10 > "$PRW/check-limph.txt" 2>&1; a11=$?
+pw pr-check P1 --body "$PRW/body-ok.md" --limit 0 > "$PRW/check-lim0.txt" 2>&1; a12=$?
+pw pr-check --body "$PRW/body-ok.md" --limit 4k > "$PRW/check-limx.txt" 2>&1; a13=$?
+if [ "$a4" = 1 ] && pcl nobody "body=missing ($PRW/no-such-body.md)" && pcl nobody 'pr_check=fail' \
+    && [ "$a6" = 0 ] && pcl hand 'pr_check=root:feat/a base=main' && pcl hand 'note=by hand (no phase) -- measured feat/a against the default branch main' \
+    && pcl hand 'size=22 size_status=info' && pcl hand 'headings=ok' && pcl hand 'pr_check=pass' \
+    && [ "$a7" -ne 0 ] && [ "$(wc -l < "$PRW/check-none.txt" | tr -d ' ')" = 1 ] && grep -q 'pr-check <P>' "$PRW/check-none.txt" && grep -q 'pr-check --body <file>' "$PRW/check-none.txt" && [ "$e0" = "$e1" ] \
+    && [ "$a8" = 0 ] && grep -q '^size=1[0-9][0-9][0-9] size_status=info$' "$PRW/check-big.txt" && pcl big 'pr_check=pass' && ! grep -qE '^size_over=|target=|flag=' "$PRW/check-big.txt" \
+    && [ "$a9" = 0 ] && grep -q '^size=1[0-9][0-9][0-9] limit=400 size_status=over$' "$PRW/check-lim.txt" && grep -q '^size_over=[0-9]* changed lines over the team' "$PRW/check-lim.txt" && pcl lim 'pr_check=warn' \
+    && [ "$a10" = 0 ] && pcl limok 'size=22 limit=400 size_status=ok' && pcl limok 'pr_check=pass' \
+    && [ "$a11" = 0 ] && pcl limph 'size=22 limit=10 size_status=over' && pcl limph 'size_over=12 changed lines over the team'"'"'s limit of 10 -- split this branch (a stack or a series: the pr skill'"'"'s reference/split.md) or name the exception in ## Review' && pcl limph 'pr_check=warn' \
+    && [ "$a12" = 1 ] && [ "$(wc -l < "$PRW/check-lim0.txt" | tr -d ' ')" = 1 ] && grep -q '^pr-check --limit 0: refused' "$PRW/check-lim0.txt" \
+    && [ "$a13" = 1 ] && [ "$(wc -l < "$PRW/check-limx.txt" | tr -d ' ')" = 1 ] && grep -q '^pr-check --limit 4k: refused' "$PRW/check-limx.txt"; then
+  ok "pr-check: a missing --body file fails (exit 1); by hand with no phase, a clean --body on feat/a passes against the default branch main; no phase and no --body is refused in one line naming both forms, writing nothing; with no team limit a 1,000-line branch is size_status=info and passes; a team --limit warns over it (by hand and in a phase, with size_over=) and is ok within it; --limit 0 and 4k are refused in one line"
+else bad "pr-check missing --body / by-hand route / size limit wrong (rc $a4/$a6/$a7/$a8/$a9/$a10/$a11/$a12/$a13) -- $(cat "$PRW/check-nobody.txt" "$PRW/check-hand.txt" "$PRW/check-none.txt" "$PRW/check-big.txt" "$PRW/check-lim.txt" "$PRW/check-limok.txt" "$PRW/check-limph.txt" "$PRW/check-lim0.txt" "$PRW/check-limx.txt")"; fi
+# (6a) the drafts open when the review passes, with no stop (F3): while the REVIEW runs with a branch unopened, next prints
+# pr_draft=due and run-phases targets the REVIEW (no parked= line); the pass guard refuses, writing nothing; a REVIEW stop
+# (pending/decision on a waived gate, or an open failure's operator-action) halts a run like any stop -- no park rule.
+{ pw finish-slice P1.DECOMP --outcome cut && pw accept-gate P1 --waive --note toy && pw start-slice P1.REVIEW \
+  && : > "$PRR/works/phases/active/P1/slices/P1.REVIEW/result.md"; } >/dev/null 2>&1 \
+  || bad "pr probe: could not bring P1 to its review"
+P1D="$PRR/works/phases/active/P1"; gsig() { cat "$P1D/phase.json" "$PRR/works/events.jsonl" "$P1D/slices/P1.REVIEW/slice.json" | sha_stdin; }
+run=$(pw run-phases P1 2>&1); plain=$(pw next 2>&1); g0=$(gsig)
+g_out=$(pw review-phase P1 --verdict pass 2>&1); g_rc=$?; g1=$(gsig)
+if printf '%s\n' "$run" | grep -qx 'target_phase=P1' && printf '%s\n' "$run" | grep -qx 'target_slice=P1.REVIEW' && ! printf '%s\n' "$run" | grep -q '^parked=\|^halt=' \
+    && printf '%s\n' "$plain" | grep -q '^pr_draft=due -- when the review would pass: open the draft(s) (pr skill: Open the drafts' \
+    && printf '%s\n' "$plain" | grep -qx 'pr_branch=root:feat/a base=main url=none'; then
+  ok "while a waived gate's REVIEW runs with a branch unopened, next prints pr_branch= and pr_draft=due, and run-phases targets the REVIEW with no parked= line"
+else bad "the drafts' due line or the run target wrong -- run: $run / next: $plain"; fi
+[ "$g_rc" -ne 0 ] && printf '%s\n' "$g_out" | grep -q 'root:feat/a (base main) has no draft PR' && printf '%s\n' "$g_out" | grep -qx 'nothing was written' && [ "$g0" = "$g1" ] \
+    && printf '%s\n' "$g_out" | grep -q 'the draft opens when the review passes (pr skill: Open the drafts)' && ! printf '%s\n' "$g_out" | grep -q "operator's .push" \
+  && ok "the pass guard refuses an unopened recorded branch, names the draft opening when the review passes, and writes nothing (phase.json, events.jsonl, the REVIEW's slice.json unchanged)" || bad "pass guard (a) wrong (rc=$g_rc, $g0 -> $g1) -- $g_out"
+pw set-slice-status P1.REVIEW pending --stop-kind decision --on-words "an answer resumes it" >/dev/null 2>&1; run_d=$(pw run-phases P1 2>&1)
+pw set-slice-status P1.REVIEW in_progress >/dev/null 2>&1
+pw set-slice-status P1.REVIEW pending --stop-kind operator-action --on-words "gh auth login resumes the open" >/dev/null 2>&1; run_o=$(pw run-phases P1 2>&1); nx_o=$(pw next 2>&1)
+pw set-slice-status P1.REVIEW in_progress >/dev/null 2>&1
+u_out=$(pw pr-record P1 --url https://github.com/example/toy/pull/1 2>&1); run_u=$(pw run-phases P1 2>&1); nx_u=$(pw next 2>&1)
+if printf '%s\n' "$run_d" | grep -qx 'halt=P1.REVIEW status=pending' && printf '%s\n' "$run_d" | grep -qx 'stop_kind=decision' && printf '%s\n' "$run_d" | grep -qx 'halt_reason=slice P1.REVIEW is pending -- the whole run stops here: report it, start nothing past it' \
+    && printf '%s\n' "$run_o" | grep -qx 'halt=P1.REVIEW status=pending' && printf '%s\n' "$run_o" | grep -qx 'stop_kind=operator-action' && printf '%s\n' "$nx_o" | grep -q '^pr_draft=due ' \
+    && ! printf '%s\n%s\n%s\n' "$run_d" "$run_o" "$run_u" | grep -q '^parked=' && printf '%s\n' "$run_u" | grep -qx 'target_slice=P1.REVIEW' \
+    && printf '%s\n' "$nx_u" | grep -qx 'pr_branch=root:feat/a base=main url=https://github.com/example/toy/pull/1' && ! printf '%s\n' "$nx_u" | grep -q '^pr_draft=\|^pr_push='; then
+  ok "a REVIEW stop on a waived gate (decision, or an open failure's operator-action) halts run-phases like any stop, never parked; once pr-record --url ran, next prints the url and no due line"
+else bad "REVIEW stop / url wrong -- decision: $run_d / operator-action: $run_o / url: $run_u / next: $nx_u"; fi
+{ pw set-slice-status P1.REVIEW in_progress && pw review-phase P1 --verdict pass; } > "$PRW/pass1.txt" 2>&1 \
+  && grep -q '^phase P1 review: pass' "$PRW/pass1.txt" && ok "pr-record --url clears the guard: the pass records" || bad "pass after pr-record --url refused -- $(cat "$PRW/pass1.txt")"
+( cd "$PRR" && git add -A && git commit -qm "p1 done" ) >/dev/null 2>&1
+# (6b) an empty block with committed product files refuses; pr-branch records the checked-out branch; --waive clears it.
+pw new-phase --phase P2 --name "PR probe 2" --objective "toy" >/dev/null 2>&1; ( cd "$PRR" && git add -A && git commit -qm p2 && git switch -qc feat/c \
+  && echo more >> src/app.py && git add src && git commit -qm "feat: more" ) >/dev/null 2>&1
+{ pw finish-slice P2.DECOMP --outcome cut && pw accept-gate P2 --waive --note toy && pw start-slice P2.REVIEW && : > "$PRR/works/phases/active/P2/slices/P2.REVIEW/result.md"; } >/dev/null 2>&1
+e_out=$(pw review-phase P2 --verdict pass 2>&1); e_rc=$?
+k_out=$(pw pr-branch P2 --name feat/c 2>&1); pw set-slice-status P2.REVIEW in_review >/dev/null 2>&1; nx2=$(pw next 2>&1)
+pw pr-record P2 --waive --note "toy change" >/dev/null 2>&1; nx3=$(pw next 2>&1); w_out=$(pw review-phase P2 --verdict pass 2>&1); w_rc=$?
+if [ "$e_rc" -ne 0 ] && printf '%s\n' "$e_out" | grep -q 'changed 1 product file(s) (phase-scope P2) but records no PR branch' \
+    && printf '%s\n' "$k_out" | grep -q '^pr-branch: feat/c recorded (already checked out)' && printf '%s\n' "$nx2" | grep -q '^pr_draft=due ' \
+    && printf '%s\n' "$nx3" | grep -qx 'pr_waived=toy change' && [ "$w_rc" -eq 0 ] && printf '%s\n' "$w_out" | grep -q '^pr: waived (toy change) -- pass recorded without a draft PR'; then
+  ok "an empty pr block with committed product files refuses the pass; pr-branch records a checked-out branch; next prints pr_draft=due (REVIEW in_review) then pr_waived=; --waive clears the guard"
+else bad "pass guard (b) / waive wrong (rc $e_rc/$w_rc) -- $e_out / $k_out / $nx2 / $nx3 / $w_out"; fi
+( cd "$PRR" && git add -A && git commit -qm "p2 done" ) >/dev/null 2>&1
+# (6c) an uncleared required gate still refuses with the PR waived, and still parks a run as before; (6d) a phase with
+# no pr block (an older phase) passes as before and prints no pr line.
+{ pw new-phase --phase P3 --name "PR probe 3" --objective "toy" && pw finish-slice P3.DECOMP --outcome cut && pw accept-gate P3 --require \
+  && pw start-slice P3.REVIEW && : > "$PRR/works/phases/active/P3/slices/P3.REVIEW/result.md" && pw pr-record P3 --waive --note "toy"; } >/dev/null 2>&1
+q_out=$(pw review-phase P3 --verdict pass 2>&1); q_rc=$?
+pw accept-gate P3 --open --walkthrough "probe" >/dev/null 2>&1; run3=$(pw run-phases P3 2>&1)
+[ "$q_rc" -ne 0 ] && printf '%s\n' "$q_out" | grep -q 'accept-gate' && printf '%s\n' "$run3" | grep -q '^parked=P3 since=.* -- acceptance gate open' \
+  && ok "an uncleared required acceptance gate still refuses the pass with the PR waived, and its open gate parks a run as before" || bad "required gate with a waived PR wrong (rc=$q_rc) -- $q_out / $run3"
+{ pw accept-gate P3 --clear && pw review-phase P3 --verdict pass; } >/dev/null 2>&1
+{ pw new-phase --phase P4 --name "Old phase" --objective "toy" && python3 - "$PRR/works/phases/active/P4/phase.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1])); d.pop("pr"); json.dump(d, open(sys.argv[1], "w"), indent=2)
+PY
+} >/dev/null 2>&1
+( cd "$PRR" && git add -A && git commit -qm p4 && echo again >> src/app.py && git add src && git commit -qm "feat: again" ) >/dev/null 2>&1
+{ pw finish-slice P4.DECOMP --outcome cut && pw accept-gate P4 --waive --note toy && pw start-slice P4.REVIEW && : > "$PRR/works/phases/active/P4/slices/P4.REVIEW/result.md"; } >/dev/null 2>&1
+nx4=$(pw next 2>&1); o_out=$(pw review-phase P4 --verdict pass 2>&1); o_rc=$?
+[ "$o_rc" -eq 0 ] && ! printf '%s\n' "$nx4" | grep -q '^pr_' && ! printf '%s\n' "$o_out" | grep -q '^pr' \
+  && ok "a phase with no pr block (created before P51) passes as before, and next prints no pr line for it" || bad "an older phase changed (rc=$o_rc) -- $nx4 / $o_out"
+# (7) validate flags a malformed pr block (an unknown key, a duplicate pair, a bad URL, a repo at root) and a malformed pr_rules.
+cp "$P1D/phase.json" "$PRW/p1.json"
+pr_bad() { python3 - "$P1D/phase.json" "$1" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1])); b = d["pr"]; e = b["branches"][0]
+kind = sys.argv[2]
+if kind == "key": b["extra"] = 1
+elif kind == "dup": b["branches"].append(dict(e))
+elif kind == "url": e["url"] = "ftp://example/x"
+elif kind == "repo": e["repo"] = "nosuch"
+json.dump(d, open(sys.argv[1], "w"), indent=2)
+PY
+pw validate > "$PRW/val-$1.txt" 2>&1; v=$?; cp "$PRW/p1.json" "$P1D/phase.json"; printf '%s' "$v"; }
+vk=$(pr_bad key); vd=$(pr_bad dup); vu=$(pr_bad url); vr=$(pr_bad repo)
+printf '{"decided": [{"rule": "x"}]}\n' > "$PRR/works/pr-rules.json"; pw validate > "$PRW/val-rules.txt" 2>&1; vp=$?; rm -f "$PRR/works/pr-rules.json"
+if [ "$vk" != 0 ] && [ "$vd" != 0 ] && [ "$vu" != 0 ] && [ "$vr" != 0 ] && [ "$vp" -ne 0 ] && grep -q 'pr: unknown field(s) extra' "$PRW/val-key.txt" \
+    && grep -q 'root:feat/a is recorded twice' "$PRW/val-dup.txt" && grep -q "url 'ftp://example/x' must be null or an http(s) URL" "$PRW/val-url.txt" \
+    && grep -q "repo 'nosuch': this install has no repos registry" "$PRW/val-repo.txt" && grep -q 'pr-rules.json: pr_rules.decided\[0\]: missing field' "$PRW/val-rules.txt" && pw validate >/dev/null 2>&1; then
+  ok "validate flags a malformed pr block (unknown key, duplicate pair, non-http(s) URL, a repo with no registry) and a malformed pr_rules, and passes once restored"
+else bad "validate missed a malformed pr block or pr_rules (rc $vk/$vd/$vu/$vr/$vp) -- $(cat "$PRW"/val-*.txt | grep -i 'pr' | head -8)"; fi
+# (8 stub) the pr skill's two push commands, taken from its text, run against a local bare origin and a stub gh:
+# a --draft create with --body-file; a stub draft refusal is exactly one create call and a stop for the operator's plain|waive
+# (reference/open.md; never an automatic retry), and only on plain the same create runs without --draft and with no --reviewer.
+newtmp GHS; git init -q --bare "$GHS/origin.git"; pgit remote add origin "$GHS/origin.git"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s/gh.log"\ncase "$*" in *--draft*) [ -n "${GH_STUB_REFUSE_DRAFT:-}" ] && { echo "Draft pull requests are not supported in this repository" >&2; exit 1; };; esac\necho https://github.com/example/toy/pull/9\n' "$GHS" > "$GHS/gh"; chmod +x "$GHS/gh"
+pr_cmds=$(python3 - "$SRC/claude/skills/pr/SKILL.md" <<'PY'
+import re, sys
+t = open(sys.argv[1]).read().split("## Open the drafts, when the review passes", 1)[1]
+push = re.search(r"^1\. `(git push [^`]+)`", t, re.M).group(1); create = re.search(r"^2\. `(gh pr create [^`]+)`", t, re.M).group(1)
+for c in (push, create):
+    print(c.replace("<b>", "feat/c").replace("<base>", "main").replace('"<title>"', '"Toy change"').replace("<body>", "BODY"))
+PY
+)
+pr_gitpush=$(printf '%s\n' "$pr_cmds" | sed -n 1p); pr_create=$(printf '%s\n' "$pr_cmds" | sed -n 2p | sed "s|BODY|$PRW/body-ok.md|")
+( cd "$PRR" && eval "$pr_gitpush" ) >/dev/null 2>&1; s_push=$?
+( cd "$PRR" && export PATH="$GHS:$PATH" && eval "$pr_create" ) >/dev/null 2>&1; s_create=$?
+( cd "$PRR" && export PATH="$GHS:$PATH" GH_STUB_REFUSE_DRAFT=1 && eval "$pr_create" ) >/dev/null 2>&1; s_refused=$?; n_refused=$(wc -l < "$GHS/gh.log" | tr -d ' ')
+( cd "$PRR" && export PATH="$GHS:$PATH" GH_STUB_REFUSE_DRAFT=1 && eval "$(printf '%s' "$pr_create" | sed 's/ --draft//')" ) >/dev/null 2>&1; s_plain=$?
+if [ "$s_push" -eq 0 ] && git -C "$GHS/origin.git" rev-parse --verify --quiet refs/heads/feat/c >/dev/null && [ "$s_create" -eq 0 ] && [ "$s_refused" -ne 0 ] && [ "$n_refused" = 2 ] && [ "$s_plain" -eq 0 ] \
+    && [ "$(sed -n 1p "$GHS/gh.log")" = "pr create --draft --base main --head feat/c --title Toy change --body-file $PRW/body-ok.md" ] \
+    && [ "$(wc -l < "$GHS/gh.log" | tr -d ' ')" = 3 ] && sed -n 3p "$GHS/gh.log" | grep -q -- '--body-file' && ! sed -n 3p "$GHS/gh.log" | grep -q -- '--draft' && ! grep -q -- '--reviewer' "$GHS/gh.log" \
+    && python3 - "$SRC/claude/skills/pr" <<'PY'
+import sys
+from pathlib import Path
+d = Path(sys.argv[1]); core = (d / "SKILL.md").read_text(); ref = (d / "reference/open.md").read_text(); flat = lambda s: " ".join(s.split())
+for t in (core, ref): assert "retry **once**" not in t and "retries once" not in t
+for s in ("**If GitHub refuses the draft**", "never retry it as a plain PR, which notifies people: stop for the operator's `plain` or `waive` (`reference/open.md`)."): assert s in core, s
+for s in ("Set the `REVIEW` slice `pending --stop-kind decision --on-words \"plain opens it as a plain PR (ready for review at once: it requests code-owner reviews and notifies watchers; no reviewers are requested); waive records pr-record --waive and the pass\"`",
+          "attempt no second one before the operator's word", "**`plain`:** the same `gh pr create` without `--draft`, and no `--reviewer`.",
+          "**`waive`:** `python3 scripts/workflow.py pr-record <P> --waive --note", "Drafts already opened stay open. On `plain`, the open continues bottom-up from the refused one"):
+    assert flat(s) in flat(ref), s
+PY
+then
+  ok "the pr skill's push commands push to the (local) origin and create a --draft PR with --body-file on a stub gh; a stub draft refusal is one create call and a stop for plain|waive (no automatic retry); plain creates without --draft and no --reviewer"
+else bad "pr skill push commands or refused-draft stop wrong (push $s_push, create $s_create, refused $s_refused/$n_refused, plain $s_plain) -- $pr_cmds / $(cat "$GHS/gh.log" 2>/dev/null)"; fi
+# (S7) the pr skill: its name, an allowed-tools list with no remote write and no recording command, its two references, its core size.
+python3 - "$SRC/claude/skills/pr" <<'PY' && ok "the pr skill: name: pr, no git push / gh pr create|comment|edit|ready|merge / pr-record / pr-branch / bare Bash in allowed-tools, its core names exactly reference/body.md, split.md and open.md (all shipped), core <= 8,192 B" || bad "the pr skill's frontmatter, references or core size changed"
+import re, sys
+from pathlib import Path
+d = Path(sys.argv[1]); core = (d / "SKILL.md").read_bytes(); text = core.decode()
+fm = text.split("---\n", 2)[1]
+assert re.search(r"^name: pr$", fm, re.M)
+tools = re.search(r"^allowed-tools: (.*)$", fm, re.M).group(1)
+for gone in ("git push", "gh pr create", "gh pr comment", "gh pr edit", "gh pr ready", "gh pr merge", "pr-record", "pr-branch"):
+    assert gone not in tools, gone
+assert "Bash" not in [t.strip() for t in tools.split(",")], "bare Bash"
+assert set(re.findall(r"`reference/([\w.-]+\.md)`", text)) == {"body.md", "split.md", "open.md"} == {p.name for p in (d / "reference").glob("*.md")}
+assert len(core) <= 8192, len(core)
+PY
+# (S8) pr-reader: the reader row's dispatch lines; the agent installs fresh and comes back on --update.
+r_out=$(pw executor-route --reader 2>&1)
+printf '%s\n' "$r_out" | grep -qx 'subagent_type=pr-reader' && printf '%s\n' "$r_out" | grep -qx 'model=opus' && printf '%s\n' "$r_out" | grep -qx 'effort=high' \
+  && [ -f "$PRR/.claude/agents/pr-reader.md" ] && grep -qx 'name: pr-reader' "$PRR/.claude/agents/pr-reader.md" \
+  && ok "executor-route --reader prints subagent_type=pr-reader, model=opus and effort=high, and a fresh install ships .claude/agents/pr-reader.md" || bad "pr-reader route or fresh install wrong -- $r_out"
+# (S11) at-root --update appends the linguist lines once, then counts .gitattributes unchanged; it restores pr-reader.md.
+grep -v 'linguist-generated=true' "$PRR/.gitattributes" > "$PRW/ga" && cp "$PRW/ga" "$PRR/.gitattributes" && rm -f "$PRR/.claude/agents/pr-reader.md"
+( cd "$PRR" && git add -A && git commit -qm "strip" ) >/dev/null 2>&1
+( cd "$PRR" && sh "$BOOT" . --update ) > "$PRW/u1.txt" 2>&1; ( cd "$PRR" && sh "$BOOT" . --update ) > "$PRW/u2.txt" 2>&1
+if grep -q '^  merged (additive): .*\.gitattributes' "$PRW/u1.txt" && grep -q '+ \.claude/agents/pr-reader\.md' "$PRW/u1.txt" && [ -f "$PRR/.claude/agents/pr-reader.md" ] \
+    && ! grep -q '^  merged (additive): .*\.gitattributes' "$PRW/u2.txt" && [ "$(grep -c 'linguist-generated=true' "$PRR/.gitattributes")" = 4 ] \
+    && grep -q "team PR rules: none on file" "$PRW/u1.txt"; then
+  ok "an at-root --update appends the four linguist-generated lines once (merged (additive), then unchanged), restores pr-reader.md and prints the team-rule line"
+else bad "at-root --update linguist lines or pr-reader wrong -- $(grep -n 'merged\|added\|pr-reader\|team PR' "$PRW/u1.txt" "$PRW/u2.txt") / $(grep -c 'linguist-generated=true' "$PRR/.gitattributes")"; fi
+# (S10) nested banners: a bare host's team-rule line; a team-template host (a 4-heading template, a PR agent skill, .claude/skills
+# a symlink to .agents/skills) gets the conflict line, the resolved-path exclude lines and the note, with a clean status.
+newtmp PRH; for h in bare team; do mkdir -p "$PRH/$h" && ( cd "$PRH/$h" && git init -q . && git symbolic-ref HEAD refs/heads/main \
+  && git config user.email smoke@example.invalid && git config user.name smoke && echo hi > README.md ) >/dev/null 2>&1; done
+( cd "$PRH/team" && mkdir -p .github .agents/skills/create-pull-request .claude && printf '## Summary\n\n## What is changed\n\n## Why\n\n## Related issue\n' > .github/pull_request_template.md \
+  && printf -- '---\nname: create-pull-request\ndescription: Open a pull request with the team template.\n---\nUse the template.\n' > .agents/skills/create-pull-request/SKILL.md \
+  && ln -s ../.agents/skills .claude/skills ) >/dev/null 2>&1
+for h in bare team; do ( cd "$PRH/$h" && git add -A && git commit -qm "chore: init" && sh "$BOOT" . ) > "$PRH/$h.txt" 2>&1; done
+if grep -q "team PR rules: none on file -- the pr skill's default template (Summary · Review · What is changed · Why · Related issue) applies" "$PRH/bare.txt" \
+    && grep -q "team PR rules: .*\.agents/skills/create-pull-request/SKILL.md, .github/pull_request_template.md" "$PRH/team.txt" \
+    && grep -q "PR-rules conflict: headings -- the team's template has no ## Review; ours adds ## Review after ## Summary" "$PRH/team.txt" \
+    && grep -q "note: .claude/skills is a symlink" "$PRH/team.txt" && grep -qx '/.agents/skills/pr/' "$PRH/team/.git/info/exclude" \
+    && [ -f "$PRH/team/.agents/skills/pr/SKILL.md" ] && [ -z "$(git -C "$PRH/team" status --porcelain)" ] && [ -f "$PRH/team/.claude/agents/pr-reader.md" ]; then
+  ok "nested banners: a bare host's 'none on file' line; a team-template host's team-rule and ## Review conflict lines, and its symlinked .claude/skills gets resolved-path exclude lines, the note and a clean git status"
+else bad "nested team-rule banner or symlink exclude wrong -- $(grep -n 'PR rules\|PR-rules\|note:' "$PRH/bare.txt" "$PRH/team.txt") / $(git -C "$PRH/team" status --porcelain)"; fi
+# (9) the regression S6 fixed: a nested phase whose host branch left the default branch (merge-base != anchor != HEAD) gets a
+# phase-scope and a passing review, no TypeError (a duplicate _is_ancestor shadowed P40's); no top-level def is defined twice.
+BH="$PRH/bare"; bw() { ( cd "$BH" && python3 workflow/scripts/workflow.py "$@" ); }
+( cd "$BH" && git switch -qc feat/toy && echo b > b.txt && git add b.txt && git commit -qm "feat: b" ) >/dev/null 2>&1
+bw new-phase --phase P1 --name toy --objective toy >/dev/null 2>&1; ( cd "$BH" && echo c > c.txt && git add c.txt && git commit -qm "feat: c" ) >/dev/null 2>&1
+s_out=$(bw phase-scope P1 2>&1); s_rc=$?
+{ bw finish-slice P1.DECOMP --outcome cut && bw accept-gate P1 --waive --note toy && bw start-slice P1.REVIEW && : > "$BH/workflow/works/phases/active/P1/slices/P1.REVIEW/result.md" \
+  && bw pr-branch P1 --name feat/toy && bw pr-record P1 --url https://github.com/example/toy/pull/2; } >/dev/null 2>&1
+v_out=$(bw review-phase P1 --verdict pass 2>&1); v_rc=$?
+if [ "$s_rc" -eq 0 ] && printf '%s\n' "$s_out" | grep -q '^product_files=1 ' && [ "$v_rc" -eq 0 ] && printf '%s\n' "$v_out" | grep -q '^phase P1 review: pass' \
+    && ! printf '%s\n%s\n' "$s_out" "$v_out" | grep -q TypeError \
+    && python3 - "$SRC/scripts/workflow.py" <<'PY'
+import ast, collections, sys
+names = collections.Counter(n.name for n in ast.parse(open(sys.argv[1]).read()).body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)))
+assert not [k for k, v in names.items() if v > 1], [k for k, v in names.items() if v > 1]
+PY
+then ok "a nested phase whose host branch left main gets its phase-scope and a passing review (no _is_ancestor TypeError), and no engine function is defined twice"
+else bad "the _is_ancestor regression is back (scope rc=$s_rc, review rc=$v_rc) -- $s_out / $v_out"; fi
+# (S13) on a nested host with an origin, a PR base is recorded as the branch name gh pr create --base takes, and pr-check
+# diffs origin/<base>: the default records main (not origin/main); --base origin/main records main; a stack part's base stays
+# feat/o; a sha is refused; an old record holding base=origin/main reads as main; a base with no remote ref diffs the local branch.
+newtmp PRO; git init -q --bare "$PRO/origin.git"; NH="$PRO/host"; mkdir -p "$NH"; ngit() { git -C "$NH" "$@"; }
+nw() { ( cd "$NH" && python3 workflow/scripts/workflow.py "$@" ); }
+{ ngit init -q . && ngit symbolic-ref HEAD refs/heads/main && ngit config user.email smoke@example.invalid && ngit config user.name smoke \
+  && echo a > "$NH/app.txt" && ngit add app.txt && ngit commit -qm "chore: init" && ngit remote add origin "$PRO/origin.git" \
+  && ngit push -q origin main && ngit remote set-head origin main && ( cd "$NH" && sh "$BOOT" . ) \
+  && git -C "$NH/workflow" config user.email smoke@example.invalid && git -C "$NH/workflow" config user.name smoke \
+  && nw new-phase --phase P1 --name base --objective toy; } >/dev/null 2>&1 || bad "pr base probe: the nested host with an origin failed to set up"
+o1=$(nw pr-branch P1 --name feat/o 2>&1); { echo b >> "$NH/app.txt" && ngit commit -qam "feat: b"; } >/dev/null 2>&1
+o2=$(nw pr-branch P1 --name feat/p --base origin/main 2>&1); ngit switch -q feat/o
+o3=$(nw pr-branch P1 --name feat/q --base feat/o 2>&1); ngit switch -q feat/o
+nw pr-branch P1 --name feat/s --base "$(ngit rev-parse main)" > "$PRO/o4.txt" 2>&1; o4=$?
+oc1=$(nw pr-check P1 --branch feat/o 2>&1); oc3=$(nw pr-check P1 --branch feat/q 2>&1)
+python3 - "$NH/workflow/works/phases/active/P1/phase.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1])); d["pr"]["branches"][0]["base"] = "origin/main"; json.dump(d, open(sys.argv[1], "w"), indent=2)
+PY
+oc_old=$(nw pr-check P1 --branch feat/o 2>&1); o_nx=$(nw next 2>&1); o_val=$(nw validate 2>&1); o_vrc=$?
+if printf '%s\n' "$o1" | grep -qx 'pr_branch=host:feat/o base=main' && printf '%s\n' "$o2" | grep -qx 'pr_branch=host:feat/p base=main' \
+    && printf '%s\n' "$o3" | grep -qx 'pr_branch=host:feat/q base=feat/o' && [ "$o4" -eq 1 ] && grep -q 'a PR base must be a branch' "$PRO/o4.txt" \
+    && printf '%s\n' "$oc1" | grep -qx 'pr_check=host:feat/o base=main' && printf '%s\n' "$oc1" | grep -qx 'diff_base=origin/main' \
+    && printf '%s\n' "$oc1" | grep -qx 'size=1 size_status=info' && printf '%s\n' "$oc3" | grep -qx 'diff_base=feat/o' \
+    && printf '%s\n' "$oc1" | grep -q '^body=missing (topics/pr-body.md)$' && printf '%s\n' "$oc1" | grep -qx 'pr_check=warn' \
+    && printf '%s\n' "$oc_old" | grep -qx 'pr_check=host:feat/o base=main' && printf '%s\n' "$oc_old" | grep -qx 'diff_base=origin/main' \
+    && printf '%s\n' "$o_nx" | grep -qx 'pr_branch=host:feat/o base=main url=none' && [ "$o_vrc" -eq 0 ]; then
+  ok "with an origin, pr-branch records the PR base as a branch name (default main, --base origin/main as main, a stack part's feat/o) and refuses a sha; pr-check prints diff_base=origin/main, or the local branch with no remote ref; an old base=origin/main record reads as main; a nested host keeps host: and a missing default body warns, never passes"
+else bad "PR base as a branch name wrong (sha rc $o4, validate rc $o_vrc) -- $o1 / $o2 / $o3 / $(cat "$PRO/o4.txt") / $oc1 / $oc3 / $oc_old / $(printf '%s\n' "$o_nx" | grep pr_) / $(printf '%s\n' "$o_val" | tail -3)"; fi
+# (S9) the PR rule's wiring phrases in the contract and the shipped skills, and the negatives they replaced.
+python3 - "$REPO_ROOT" <<'PY' && ok "the PR rule's wiring: the contract's PR-rule sentence, review-phase's PR step, both review.md's reader and the drafts opening when the review passes, verdicts/decomposition/create-phase/executor/parallel-phase/do-whole-phases/pr lines, and the retired no-branch/no-push and push-stop lines" || bad "a PR-rule wiring phrase moved or a retired line is back"
+import sys
+from pathlib import Path
+root = Path(sys.argv[1]); sys.path.insert(0, str(root / "installer"))
+from build import collect_live_payloads
+L = collect_live_payloads()
+sk = lambda n: "\n".join(v for k, v in sorted(L.items()) if k.startswith(f".claude/skills/{n}/"))
+flat = lambda s: " ".join(s.split())
+both = lambda ref: [L[f".claude/skills/{s}/reference/{ref}"] for s in ("do-whole-phase", "do-next-slice")]
+push_stop = ["`push` stop", "push stop", "On the operator's `push`", "on the operator's `push`", "say `push`", "pr_push=waiting", "PR_PUSH_WAITING"]
+checks = [
+    ([(root / "payload/contract.md").read_text()], ["A phase is one branch per repo it changes (`pr-branch`), one draft PR each (`pr` skill), opened when its review passes; Ready and merge are the operator's."],
+     ["Create no branch unless asked", "Never push unasked", "push only on the operator's word"] + push_stop),
+    ([sk("review-phase")], ["## The PR step — one body per recorded branch", "**Writing the body is a review lens.**", "**Return `pr_bodies`**", "**A phase with PR bodies**",
+                            "then opens the drafts with no stop and no word"], push_stop),
+    (both("review.md"), ["## The PR step: the reader, then the drafts open (PR rule v1)", "executor-route --reader`", "restart the session; the reader then runs",
+                         "**The drafts open then, with no stop and no word.**", "**On a waived gate** record the pass once the drafts are open", "never a second `gh pr create` and never a force-push",
+                         "--stop-kind operator-action --on-words \"<what fixing it resumes>\"",
+                         "**A refused draft** (a private repo on a free plan) is never retried as a plain PR, which notifies people: set the `REVIEW` slice `pending --stop-kind decision` for the operator's `plain` or `waive`"], push_stop + ["push opens the draft PR(s); the pass is recorded after"]),
+    (both("verdicts.md"), ["**The only push is the draft opening when the review passes**"], ["do not branch unless the operator asks", "Do not branch unless the operator asks"] + push_stop),
+    (both("decomposition.md"), ["**Record the phase's PR branches at the same boundary (PR rule v1).**", "**Size never splits a phase:**"], []),
+    ([sk("create-phase")], ["`Branches:` line", "Never split a phase for size"], push_stop),
+    ([(root / "payload/claude/agents/slice-executor.md").read_text()], ["- `pr_bodies`:", "`pr-branch`, `pr-record` and `pr-rules-decide --rule`"], push_stop),
+    ([flat(sk("parallel-phase"))], ["This skill carries no second PR procedure."], ["1. **Push the branch.**", "**Open the PR.**"] + push_stop),
+    ([sk("do-whole-phases")], ["so the parked gate is the acceptance gate only", "nothing about the PR parks"], ["which `run-phases` halts on"] + push_stop),
+    ([sk("update-workspace")], ["the phase's draft PR opens when the review passes (`pr` skill); merging it on GitHub is the remote variant"], ["push → PR → CI is the remote variant"] + push_stop),
+    ([sk("pr")], ["## Open the drafts, when the review passes", "opened as drafts when the review passes.\"", "`git push -u origin <b>`, never `--force`."], push_stop),
+    ([sk("commit")], ["A phase's one push is its draft PR opening when its review passes"], push_stop),
+    ([L["scripts/workflow.py"]], ["pr_draft=due -- when the review would pass", "the draft opens when the review passes (pr skill: Open the drafts)"],
+     ["pr_push_parked", "_pr_push_stop_why", "PR push stop", "the operator's push opens"] + push_stop),
+]
+for texts, required, gone in checks:
+    for t in texts:
+        for r in required:
+            assert r in t, r
+        for g in gone:
+            assert g not in t, g
+assert len((root / "payload/claude/skills/do-whole-phases/SKILL.md").read_bytes()) <= 8192
+PY
+echo "pr rule test runtime: $(( $(date +%s) - pr_t0 ))s"
 
 # ---------------------------------------------------------------------------
 echo

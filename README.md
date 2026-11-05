@@ -129,6 +129,11 @@ tracked 파일도, CI 파일도, `.gitattributes`도, `docs/`도 없고, PR diff
 `workflow/`를 안에 둡니다. 협업하는 사람이 워크스페이스를 저장소에서 받아야 한다면 `--at-root`로
 설치하세요. 병렬 worktree는 nested 설치에서도 동작합니다([phase별 worktree](#phase별-worktree-요청할-때만) 참고).
 
+**PR을 깨끗하게 지켜야 하는 저장소라면 nested를 고르세요.** PR 규칙에서는 phase마다 draft PR이
+열립니다. at-root 설치의 PR에는 워크스페이스 상태(`works/`, `docs/`의 워크스페이스 파일)가 함께
+실리고, GitHub는 이를 generated 파일로 접어서 보여 줍니다. 팀 저장소처럼 PR에 워크스페이스
+파일이 섞이면 안 되는 곳에서는 nested 설치를 쓰세요. nested의 상태는 PR에 아예 들어가지 않습니다.
+
 **설치.** 호스트 저장소의 루트(git work tree)를 지정합니다.
 
 ```sh
@@ -149,7 +154,7 @@ nested 설치의 `workflow/` 디렉터리 자체에서 옵션 없는 설치나 `
 
 - `workflow/`: 엔진, `works/`, `docs/`, `executors.toml`, 규칙 문서(`CLAUDE.workspace.md`)가
   들어가는 **중첩 git 저장소**입니다. 호스트와 따로 버전 관리됩니다.
-- 호스트의 `.claude/skills/`, `.claude/agents/`에 들어가는 스킬 19개와 에이전트 4개. 경로는
+- 호스트의 `.claude/skills/`, `.claude/agents/`에 들어가는 스킬 20개와 에이전트 5개. 경로는
   `workflow/`를 가리키도록 바뀌어 있습니다(`python3 workflow/scripts/workflow.py …`).
 - 각 스킬 디렉터리 안의 `.gitignore`(내용은 `*`). 호스트의 `.gitignore`가 `.claude/skills/`를
   다시 포함시키더라도 스킬 디렉터리가 스스로를 가립니다.
@@ -198,7 +203,7 @@ git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하�
    컨벤션대로 들어갑니다.
 4. `/review-phase`: `phase-scope`가 기록해 둔 기준점부터 **호스트** diff를 읽습니다(`workflow/`는
    보지 않습니다).
-5. 평소처럼 push하고 PR을 엽니다. PR에는 제품 커밋만 들어가고, 워크플로우 경로나 phase/slice
+5. 리뷰가 통과하면 `pr` 스킬이 phase의 draft PR을 바로 엽니다(멈춤도, 따로 할 말도 없습니다). 게이트가 필요한 phase라면 GitHub에서 draft를 읽고 `accept` 한 마디로 마칩니다. PR에는 제품 커밋만 들어가고, 워크플로우 경로나 phase/slice
    ID는 없습니다.
 6. 팀 리뷰에서 수정 요청이 오면 fix slice로 만들어(`/create-phase` 또는 같은 phase의 fix slice)
    3번부터 다시 진행합니다.
@@ -399,6 +404,7 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 | `design` | Opus@high | `design-drafter` | 디자인 하위 에이전트의 라운드 초안(`executor-route --drafter`). slice 행이 아니며 `high` 행을 따르지 않음 |
 | `critic` | Opus@high | `design-critic` | 초안 라운드를 새 눈으로 평가하는 디자인 비평가(`executor-route --critic`). `design` 행과 같은 모델이어도 됨 |
 | `judge` | Opus@high | `design-critic` | 비평가가 확신하지 못한 항목만 판정하는 판정 모드(`executor-route --judge`, 별칭만). `design` 행과 같은 모델이어도 됨. Fable로 바꾼 경우 루프백 프록시에서는 건너뜀 |
+| `reader` | Opus@high | `pr-reader` | phase의 PR을 diff와 본문, 팀 규칙만 보고 새 눈으로 읽는 리더(`executor-route --reader`). slice 행이 아님 |
 | `mid` | Opus@medium | `slice-executor` | 기본 — `risk: low`인 구현·수정(`fix`)·문서(`docs`)·QA slice. 실제 코드 작성과 여러 파일에 걸친 변경도 포함 |
 | `screen` | Opus@medium | `slice-executor` | loop phase의 첫 단계 cycle(charter의 `stages`). 기본값은 `mid`와 같고, `executors.toml`의 `[claude.screen]`으로 더 싸게 설정 가능 |
 | `explore` | Haiku@xhigh | `Explore` | 읽기 전용 조회(계획 조사, 실행자의 큰 읽기). slice 라우트는 아님 |
@@ -455,12 +461,13 @@ Claude Code에서 `/이름`으로 입력합니다.
 | `do-whole-phases` | 여러 phase를 연달아 실행 (`46, P12, 7kq2`, 없으면 끝나지 않은 phase 전부). 열린 게이트는 보류하고 계속하며, 그 밖의 멈춤은 전체를 멈춤 |
 | `run-loop` | loop phase를 서명된 charter 아래에서 cycle 단위로 계속 실행 (`/loop /run-loop <P>`). 판단이 필요한 항목은 보류 목록에 두고 계속하며, charter가 정한 멈춤에서만 멈춤 |
 | `review-phase` | phase를 리뷰하고 `pass` / `changes_requested` / `blocked` 기록 |
+| `pr` | phase의 draft PR 본문을 쓰고 검사한 뒤(`pr-reader` 에이전트가 새 눈으로 먼저 읽음), 리뷰가 통과하면 draft PR을 엶(게이트가 있으면 GitHub에서 읽고 `accept`) |
 | `parallel-phase` | 요청했을 때 phase를 자기 worktree에서 실행하고 로컬 merge로 다시 합치기 |
 | `executor-route` | 라우트 표와 dispatch 요약 확인; `/executor-route <slice_id>`로 한 slice의 dispatch 결정 확인 |
 | `retrofit` | 기존 저장소에 워크스페이스 추가 |
 | `update-workspace` | 설치된 워크스페이스의 시스템 파일만 최신으로 교체 |
 
-스킬은 모두 19개입니다. 전체 목록과 설치 옵션은 [English README](README.en.md)에 있고,
+스킬은 모두 20개입니다. 전체 목록과 설치 옵션은 [English README](README.en.md)에 있고,
 CLI 명령 전체는 `python3 scripts/workflow.py --help`로 확인할 수 있습니다.
 
 ## phase별 worktree (요청할 때만)
@@ -495,8 +502,8 @@ phase입니다(한 phase 안에서는 DECOMP가 독립이라고 선언한 slice�
 worktree에서 진행한 phase의 리뷰가 통과하면 에이전트가 통합까지 직접 진행합니다:
 `parallel-gate <P>`(조용한 시점인지 확인) → worktree에서 나와 `main`으로 → `git merge --no-ff`
 (로컬 merge) → `parallel-merge-finish` → 리뷰가 남긴 두 게이트 섹션의 문서 버전 →
-`parallel-teardown <P>`. **push와 PR은 여러분이 요청할 때만** 합니다(원격 변형: push → PR →
-CI → merge). 나머지 문서 버전 작업은 평소처럼 나중에 docs phase에서 한 번에 처리합니다.
+`parallel-teardown <P>`. phase마다 리뷰가 통과하면
+draft PR이 열리고(Ready와 merge는 여러분 몫입니다), 그 PR을 GitHub에서 merge하는 것이 원격 변형입니다(push → PR → CI → merge). 나머지 문서 버전 작업은 평소처럼 나중에 docs phase에서 한 번에 처리합니다.
 어느 checkout에서든 `parallel-status`로 모든 stream의 진행 상황을 볼 수 있고, `works/backlog.md`의
 `## Streams` 표에는 기본 stream과 진행 중인 모든 worktree phase가 각자의 branch에서 바로 읽은
 상태로 나열됩니다(nested에서는 호스트 branch 열이 함께 나옵니다). 그 phase의 `## Active Phases`
@@ -508,8 +515,8 @@ CI → merge). 나머지 문서 버전 작업은 평소처럼 나중에 docs pha
 기록해 둔 여러분 팀의 관례로 에이전트가 제안하고, 확정은 여러분이 합니다. base는 기본적으로 호스트의
 기본 branch이고(`--host-base`로 바꿀 수 있습니다), 관례가 "최신 main에서 시작"이라면 에이전트가
 먼저 `git fetch`를 합니다. 호스트 쪽 통합(티켓당 PR 하나, 또는 한 티켓의 phase들을 rebase로 한
-branch에 합치기)은 기록해 둔 관례를 따르며, 워크스페이스는 push도, PR 열기도, 호스트 기본 branch로의
-merge도 하지 않습니다. 정리(`parallel-teardown`)는 호스트 branch를 남겨 둡니다(엔진이 만든 빈
+branch에 합치기)은 기록해 둔 관례를 따르며, 엔진은 push도, 호스트 기본 branch로의
+merge도 하지 않습니다. phase의 draft PR은 리뷰가 통과할 때 `pr` 스킬이 엽니다. 정리(`parallel-teardown`)는 호스트 branch를 남겨 둡니다(엔진이 만든 빈
 branch만 지웁니다). worktree는 파일만 격리하므로 docker 컨테이너, 포트, 로컬 DB와 캐시는 stream끼리
 공유된다는 점은 직접 조율하세요.
 
@@ -522,7 +529,8 @@ worktree가 하나씩 생깁니다. `parallel-start <P> --host-branch <이름> -
 저장소 worktree를 먼저, 그다음 `workflow/`, 마지막에 호스트 worktree를 지웁니다. 스탬프를 찍지
 않은 git worktree가 호스트 worktree 안에 있으면 `--discard-ignored`를 붙여도 항상 거부하므로,
 branch를 통합한 뒤 직접 지우거나 `parallel-add-repo ... --adopt`로 세트에 편입하세요. 워크스페이스는
-어떤 저장소의 기본 branch에도 fetch, push, PR 열기, merge를 하지 않습니다.
+어떤 저장소의 기본 branch에도 fetch, push, merge를 하지 않습니다. 저장소마다의 draft PR은 리뷰가
+통과할 때 열립니다.
 
 자세한 규칙과 절차는 [`parallel-phase`](payload/claude/skills/parallel-phase/SKILL.md) 스킬(`/parallel-phase`)과
 [English README](README.en.md#phase-worktrees-on-request)에 있습니다.
@@ -548,7 +556,7 @@ branch를 통합한 뒤 직접 지우거나 `parallel-add-repo ... --adopt`로 �
 
 ## 더 알아보기
 
-- 전체 문서 (설치 옵션, CLI 명령 전체, 프로젝트 구조, 스킬 19종): [English README](README.en.md)
+- 전체 문서 (설치 옵션, CLI 명령 전체, 프로젝트 구조, 스킬 20종): [English README](README.en.md)
 - 에이전트 규칙 문서: [CLAUDE.md](payload/contract.md)
 - 기존 저장소에 추가하는 절차: [Retrofit Guide](docs/retrofit-guide.md)
 - 기여하기: 기여할 때는 클론에 비공개 워크스페이스를 설치해 같은 방식으로 작업합니다. phase를 열고 slice 단위로 기여해

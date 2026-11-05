@@ -32,7 +32,7 @@ Turn an operator request for new work into one or more phases — or a deferred 
 
    **If the request is to explain something** (`/knowledge:explain <topic>`, "explain P30", "write a book on X", "add a chapter on Y to book Z", an explain phase), every unit is a phase: a standalone **document** by default, a **book** or a **chapter** of one only when the operator asks. Follow *The explain route* below: it gathers the `## Explain` fields into **one confirmation** and, on the yes, creates and runs the phase. A request that arrives from `/knowledge:explain` with a proposal the operator accepted with a literal yes is already confirmed: *A confirmed proposal* in the route.
 
-3. **Confirm.** Present your refined understanding back to the operator — for each phase, the proposed **name** and **objective**; for deferred work, the title, reason, and trigger. Get explicit confirmation. Per the contract, do **not** run `new-phase` until the operator confirms. (An explain phase is confirmed once, by *The explain route*'s one confirmation, which also covers its fields, its worktree and its run; one the plugin's `/knowledge:explain` proposed, and the operator accepted with a literal yes, arrives confirmed: *A confirmed proposal*.)
+3. **Confirm.** Present your refined understanding back to the operator — for each phase, the proposed **name** and **objective**; for deferred work, the title, reason, and trigger. For a phase that will change product files, also propose its **branch name per repo** it will change, from the host's recorded custom (`nested-convention [--repo <name>]`; at root, the repo's own branch habits), with no phase or slice IDs, and confirm them with the name and objective. Never split a phase for size: a large one is split into PRs at its review, never into phases. Get explicit confirmation. Per the contract, do **not** run `new-phase` until the operator confirms. (An explain phase is confirmed once, by *The explain route*'s one confirmation, which also covers its fields, its worktree and its run; one the plugin's `/knowledge:explain` proposed, and the operator accepted with a literal yes, arrives confirmed: *A confirmed proposal*.)
 
 4. **Route on the operator's choice:**
 
@@ -53,6 +53,9 @@ Turn an operator request for new work into one or more phases — or a deferred 
       - paste the operator's request **word-for-word** under *Original Input (verbatim)* — do not fix grammar or wording;
       - write the confirmed, refined wording under *Confirmed Intent (refined + clarified)*: what the operator wants (objective, scope, constraints, in their terms), **never workflow mechanics** (which tools, hooks or design loop run). The skills own those and can retire them;
       - record any clarifying Q/A under *Clarifications Resolved*;
+      - for a phase that will change product files, add a `Branches:` line to the confirmed intent with each confirmed name
+        (`Branches: <name>`, or `Branches: <repo>: <name>; …` on a multi-repo host). Nothing is cut here: `DECOMP`'s end
+        records them with `pr-branch`;
       - **for a visual-design phase only**, append a `## Design Style` section naming the confirmed
         style (`build-after` / `design-only` / `paired`) and the one-line reason, then a second line
         `Mockup: requested` or `Mockup: on request` (the default when the operator did not ask for

@@ -58,7 +58,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 91
+WORKSPACE_VERSION = 92
 ROOT = TARGET.resolve()
 # Nested personal install (P28; the default layout since P29): TARGET is a HOST git repo -- one the
 # operator may not own, or a new/empty dir this run `git init`s. The engine and all workflow state go
@@ -202,9 +202,9 @@ EMPTY_OK_ALLOWLIST = {
 #@@GENERATED_PAYLOADS@@
 
 # The skill inventory is derived independently from the embedded payload manifest.
-# The build enforces the release invariant: 19 skill packages.
+# The build enforces the release invariant: 20 skill packages.
 CLAUDE_SKILLS = sorted({k.split("/")[2] for k in PAYLOADS if k.startswith(".claude/skills/") and k.endswith("/SKILL.md")})
-EXPECTED_SKILL_COUNT = 19
+EXPECTED_SKILL_COUNT = 20
 if len(CLAUDE_SKILLS) != EXPECTED_SKILL_COUNT:
     raise RuntimeError(
         f"embedded skill inventory must contain {EXPECTED_SKILL_COUNT} skill packages "
@@ -232,7 +232,7 @@ MANAGED_FILES = [
     *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md", "phase.md", "charter.md")],
     "scripts/workflow.py",
     ".claude/agents/slice-executor.md", ".claude/agents/design-drafter.md",
-    ".claude/agents/design-critic.md", ".claude/agents/Explore.md",
+    ".claude/agents/design-critic.md", ".claude/agents/pr-reader.md", ".claude/agents/Explore.md",
     ".claude/settings.json",
     "executors.toml",
 ]
@@ -300,6 +300,15 @@ GITATTRIBUTES_LOOP_NOTE = (
     "# union too (its events file is pruned only by the rollup, on the loop's own stream);\n"
     "# the rewritten ones (queue.jsonl, parked.jsonl, control.json) never take union.\n"
 )
+# The at-root workspace's machine-written state, marked generated (PR rule v1): GitHub folds it in a PR
+# diff and pr-check's size count skips it. Line-merged like the loop lines, so --update brings it too.
+GITATTRIBUTES_GENERATED_LINES = tuple(f"{path} linguist-generated=true"
+                                      for path in ("works/**", "docs/versions/**", "docs/current/**", "docs/index.json"))
+GITATTRIBUTES_GENERATED_NOTE = (
+    "\n# Added by the agentic workspace: its machine-written state is marked generated, so\n"
+    "# GitHub folds it in a pull request's diff and the PR rule's size count (pr-check)\n"
+    "# skips it. Only the workspace's own paths: a product's own docs/ files stay visible.\n"
+)
 GITATTRIBUTES_APPEND_NOTE = (
     "\n# Added by the agentic workspace: works/events.jsonl is an append-only log, so\n"
     "# both sides of a merge are always wanted (`union` is a built-in git merge driver\n"
@@ -320,7 +329,7 @@ def _gitattributes_action() -> str:
     except (OSError, UnicodeDecodeError):
         return "unchanged"  # unreadable/binary -- never touch it
     have = {ln.strip() for ln in existing.splitlines()}
-    if GITATTRIBUTES_MERGE_LINE in have and all(line in have for line in GITATTRIBUTES_LOOP_LINES):
+    if GITATTRIBUTES_MERGE_LINE in have and all(line in have for line in GITATTRIBUTES_LOOP_LINES + GITATTRIBUTES_GENERATED_LINES):
         return "unchanged"
     return "merge"
 
@@ -346,6 +355,9 @@ def _apply_gitattributes(text: str, action: str) -> None:
     missing = [line for line in GITATTRIBUTES_LOOP_LINES if line not in have]
     if missing:
         add += GITATTRIBUTES_LOOP_NOTE + "".join(line + "\n" for line in missing)
+    missing = [line for line in GITATTRIBUTES_GENERATED_LINES if line not in have]
+    if missing:
+        add += GITATTRIBUTES_GENERATED_NOTE + "".join(line + "\n" for line in missing)
     _atomic_write(p, existing + sep + add)
 
 
@@ -697,7 +709,7 @@ def write_json(path, data) -> None:
 # Before any write, nested_plan() also asks git whether every host-side target WILL be ignored
 # (a host .gitignore negation outranks info/exclude); after the writes, nested_verify_clean()
 # asserts the host's git status lists none of them.
-NESTED_AGENTS = ["slice-executor", "design-drafter", "design-critic", "Explore"]
+NESTED_AGENTS = ["slice-executor", "design-drafter", "design-critic", "pr-reader", "Explore"]
 NESTED_KINDS = ("skills", "agents")
 # The engine's subcommands, read from the embedded engine: a hyphenated skill name that is not one
 # of them only ever names the skill, so its plain backticked form is renamed too.
@@ -1030,6 +1042,85 @@ def nested_infer_convention(base: Path = None):
     return "; ".join(parts)
 
 
+# P51: the team's PR rules, read-only, by tracked files only (the installer has no `gh`). Printed in the
+# banner beside the inferred convention and never recorded: the `pr` skill reads them live at body time,
+# and only the conflicts the operator decides are recorded, by `pr-rules-decide` at /update-workspace.
+PR_TEMPLATE_NAMES = ("pull_request_template.md", "PULL_REQUEST_TEMPLATE.md")
+PR_LINE_RE = re.compile(r"(?i:\bpull[ -]?requests?\b)|\bPRs?\b")
+PR_POINTS = (   # (point, pattern): a team line that speaks to one of the points ours also decides
+    ("language", re.compile(r"(?i)\b(english|korean|japanese|chinese|language)\b")),
+    ("title format", re.compile(r"(?i)\btitles?\b")),
+    ("merge method", re.compile(r"(?i)\b(squash|rebase[- ]merge|merge commit|merge method)\b")),
+    ("trailers", re.compile(r"(?i)co-authored-by|\btrailers?\b")),
+)
+
+
+def nested_team_pr_rules(base: Path) -> list:
+    """The banner lines for a repo's team PR rules: one summary line, then one line per point where the
+    team speaks against our D3 default (the team wins there unless the operator records ours). Tracked
+    files only, so the workspace's own skill copies (untracked when nested, ours by name at root) never count, and
+    a line of the workspace's own contract (an at-root CLAUDE.md) is skipped."""
+    rc, out = _git_in(base, "ls-files", "-z")
+    tracked = sorted(f for f in out.split("\0") if f) if rc == 0 else []
+    ours = set(CLAUDE_SKILLS) | {NESTED_RENAME_PREFIX + x for x in CLAUDE_SKILLS}
+    contract = {ln.strip() for ln in globals().get("CONTRACT_BODY", "").splitlines() if ln.strip()}
+
+    def text(rel: str) -> str:
+        try:
+            return (base / rel).read_bytes()[:65536].decode("utf-8", errors="replace")
+        except OSError:
+            return ""
+
+    def clean(line: str) -> str:
+        s = re.sub(r"^[\s>*#+-]+", "", line).strip()
+        return s if len(s) <= 90 else s[:87] + "..."
+
+    found, speaks, template_heads = [], [], None
+    for rel in tracked:
+        parts = rel.split("/")
+        if parts[-1] in PR_TEMPLATE_NAMES and len(parts) <= 2 and parts[0] in (parts[-1], ".github", "docs") \
+                or (len(parts) == 3 and parts[:2] == [".github", "PULL_REQUEST_TEMPLATE"] and parts[2].endswith(".md")):
+            heads = [m.group(1).strip() for m in re.finditer(r"(?m)^#{1,6}[ \t]+(.+?)[ \t#]*$", text(rel))]
+            found.append(f"{rel} ({', '.join(heads) or 'no headings'})")
+            template_heads = heads if template_heads is None else template_heads
+        elif parts[-1] == "CODEOWNERS" and len(parts) <= 2 and parts[0] in ("CODEOWNERS", ".github", "docs"):
+            rules = [ln for ln in text(rel).splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+            found.append(f"{rel} ({len(rules)} owner rule{'s' if len(rules) != 1 else ''})")
+        elif len(parts) == 4 and parts[:2] in ([".agents", "skills"], [".claude", "skills"]) and parts[3] == "SKILL.md":
+            if parts[2] in ours and not NESTED:   # at root our skills are tracked; nested copies never are
+                continue
+            body = text(rel)
+            end = body.find("\n---", 3) if body.startswith("---") else -1
+            head = body[:end] if end > 0 else ""
+            if not PR_LINE_RE.search(" ".join(re.findall(r"(?m)^(?:name|description):(.*)$", head))):
+                continue
+            found.append(rel)
+            speaks += [(rel, clean(ln)) for ln in body[end + 4 if end > 0 else 0:].splitlines() if clean(ln)]
+        elif parts[-1] in REPO_RULE_NAMES or (len(parts) == 1 and parts[0].upper().startswith("CONTRIBUTING")) \
+                or (len(parts) == 2 and parts[0] == ".github" and parts[1].upper().startswith("CONTRIBUTING")):
+            lines = [clean(ln) for ln in text(rel).splitlines()
+                     if ln.strip() not in contract and (PR_LINE_RE.search(ln) or (parts[-1] not in REPO_RULE_NAMES and re.search(r"(?i)\breview", ln)))]
+            lines = [ln for ln in lines if ln]
+            if lines:
+                found.append(f"{rel} ({len(lines)} line{'s' if len(lines) != 1 else ''} about PRs)")
+                speaks += [(rel, ln) for ln in lines]
+    if not found:
+        return ["team PR rules: none on file -- the pr skill's default template (Summary · Review · What is changed · Why · Related issue) applies"]
+    out_lines = [f"team PR rules: {', '.join(found[:6])}{' ...' if len(found) > 6 else ''} -- the pr skill reads them live; the team wins where it speaks"]
+    decide = "decide at /update-workspace (pr-rules-decide)"
+    if template_heads is not None:
+        if not any(h.lower() == "review" for h in template_heads):
+            first = template_heads[0] if template_heads else "the top"
+            out_lines.append(f"  PR-rules conflict: headings -- the team's template has no ## Review; ours adds ## Review after ## {first}; {decide}")
+    used = set()
+    for point, pat in PR_POINTS:
+        hit = next(((rel, ln) for rel, ln in speaks if pat.search(ln) and (rel, ln) not in used), None)
+        if hit:
+            used.add(hit)
+            out_lines.append(f"  PR-rules conflict: {point} -- {hit[0]}: \"{hit[1]}\"; the team's rule applies over ours; {decide}")
+    return out_lines
+
+
 REPO_RULE_NAMES = ("AGENTS.md", "CLAUDE.md")   # == scripts/workflow.py NESTED_REPO_RULE_NAMES
 
 
@@ -1300,10 +1391,10 @@ def _multi_repo_local_block(renames: dict, repos: list, converted=()) -> list:
         *repo_lines,
         "- \"This repo\" in any rule means the repo the change lives in. Before changing a repo, read its rules files; they win over this block for that repo.",
         "- Commits per slice: one in each repo the slice changed, plus one for the workflow state:",
-        f"  - product code goes to its own repo with `git -C <repo> ...`, on the operator's branch there, in that repo's conventions for commits, branches and pull requests, which `{cmd} nested-convention --repo <name>` prints. Add Claude `Co-Authored-By` trailers only when it says `allowed`. The host folder itself never gets a commit;",
+        f"  - product code goes to its own repo with `git -C <repo> ...`, on the phase's branch there (one per repo, recorded with `{cmd} pr-branch --repo <name>`), in that repo's conventions for commits, branches and pull requests, which `{cmd} nested-convention --repo <name>` prints. Add Claude `Co-Authored-By` trailers only when it says `allowed`. The host folder itself never gets a commit;",
         f"  - workflow state goes to the nested repo (`git -C {NESTED_DIR} ...`) in the contract's Commit Convention.",
         f"- If `next` shows `host_commit_convention=UNCONFIRMED` or an UNCONFIRMED repo in `repo_conventions=`, confirm those conventions with the operator before that repo's first product commit, then record them: `{cmd} nested-convention --confirm [--repo <name>] --text \"<conventions>\" --trailers allowed|forbidden` (no `--repo`: the rules for every repo).",
-        f"- **Parallel phases, only on the operator's word:** `{cmd} parallel-start <P> --host-branch <name> [--host-base <ref>] [--repo <name>=<branch> ...] [--repo-base <name>=<ref> ...]` cuts a set: a host worktree under `.claude/worktrees/`, the nested worktree at its `{NESTED_DIR}/`, and one worktree per named repo at its `<repo>/`; add a repo mid-phase from inside the set with `parallel-add-repo <P> --repo <name>=<branch>`. Propose each branch name from that repo's recorded custom (`nested-convention --repo <name>`) and let the operator confirm it. Each repo's side follows its own custom; the engine never fetches, pushes, opens a PR or merges into any repo's default branch.",
+        f"- **Parallel phases, only on the operator's word:** `{cmd} parallel-start <P> --host-branch <name> [--host-base <ref>] [--repo <name>=<branch> ...] [--repo-base <name>=<ref> ...]` cuts a set: a host worktree under `.claude/worktrees/`, the nested worktree at its `{NESTED_DIR}/`, and one worktree per named repo at its `<repo>/`; add a repo mid-phase from inside the set with `parallel-add-repo <P> --repo <name>=<branch>`. Propose each branch name from that repo's recorded custom (`nested-convention --repo <name>`) and let the operator confirm it. Each repo's side follows its own custom; the engine never fetches, pushes or merges into any repo's default branch; the `pr` skill opens the phase's draft PR(s) when its review passes.",
         f"- A pull request's title, body and commits (and every product commit, in every repo) carry no phase or slice IDs, no `{NESTED_DIR}/` paths and no workspace files.",
         f"- Never stage `{NESTED_DIR}/`, `CLAUDE.local.md`, `.claude/settings.local.json` or the workspace's skills and agents into any repo or the host (the exclude block lists them).",
     ]
@@ -1330,10 +1421,10 @@ def _nested_local_block(renames: dict, repos=(), converted=()) -> list:
         "Nested-install rules (they win over the contract above where the two differ):",
         f"- Start Claude Code at this repo's root, never inside `{NESTED_DIR}/`. Run the engine from here: `{cmd} <command>`.",
         "- Two commits per slice, in two repos:",
-        f"  - product code goes to this repo, on the operator's ticket branch, in the host's conventions for commits, branches and pull requests, which `{cmd} nested-convention` prints. Add Claude `Co-Authored-By` trailers only when it says `allowed`;",
+        f"  - product code goes to this repo, on the phase's branch (one per repo, recorded with `{cmd} pr-branch`), in the host's conventions for commits, branches and pull requests, which `{cmd} nested-convention` prints. Add Claude `Co-Authored-By` trailers only when it says `allowed`;",
         f"  - workflow state goes to the nested repo (`git -C {NESTED_DIR} ...`) in the contract's Commit Convention.",
         f"- If `next` shows `host_commit_convention=UNCONFIRMED`, confirm the host's conventions (commits, branches and pull requests) with the operator before the first product commit, then record them: `{cmd} nested-convention --confirm --text \"<conventions>\" --trailers allowed|forbidden`.",
-        f"- **Parallel phases, only on the operator's word:** `{cmd} parallel-start <P> --host-branch <name> [--host-base <ref>]` cuts a pair: a host worktree under `.claude/worktrees/` on the host branch, with the nested worktree at its `{NESTED_DIR}/`. Propose the branch name from the host's recorded custom and let the operator confirm it. The host side follows that custom; the engine never pushes, opens a PR or merges into the host's default branch.",
+        f"- **Parallel phases, only on the operator's word:** `{cmd} parallel-start <P> --host-branch <name> [--host-base <ref>]` cuts a pair: a host worktree under `.claude/worktrees/` on the host branch, with the nested worktree at its `{NESTED_DIR}/`. Propose the branch name from the host's recorded custom and let the operator confirm it. The host side follows that custom; the engine never pushes or merges into the host's default branch; the `pr` skill opens the phase's draft PR(s) when its review passes.",
         f"- A pull request's title, body and commits (and every product commit) carry no phase or slice IDs, no `{NESTED_DIR}/` paths and no workspace files.",
         f"- Never stage `{NESTED_DIR}/`, `CLAUDE.local.md`, `.claude/settings.local.json` or the workspace's skills and agents into this repo (the exclude block lists them).",
     ]
@@ -1516,8 +1607,23 @@ def nested_plan() -> dict:
     if problems:
         _nested_refuse("the nested rewrite left unprefixed or un-renamed references; nothing was written:", *[f"  - {p}" for p in problems[:12]])
 
+    # P51.S10: a host whose `.claude/skills` is a tracked symlink to a directory inside it (e.g.
+    # `../.agents/skills`) gets the skill copies physically in that directory. Git matches paths, never a
+    # resolved symlink, so a pathspec through `.claude/skills/<name>` matches nothing: every git check and
+    # exclude line about the skills is also made at the resolved path. The team's files and the link stay
+    # untouched; each copy still hides itself with its own `*` .gitignore.
+    skills_link = None
+    link = HOST / ".claude" / "skills"
+    if link.is_symlink():
+        try:
+            skills_link = link.resolve(strict=True).relative_to(HOST.resolve()).as_posix()
+        except (OSError, RuntimeError, ValueError):
+            skills_link = ""   # dangling, looping or outside the host: git never sees the copies
+    skill_dirs = [f".claude/skills/{n}" for n in sorted(installed["skills"])]
+    resolved_skill_dirs = [f"{skills_link}/{n}" for n in sorted(installed["skills"])] if skills_link else []
+
     # Tracked-target refusal: info/exclude cannot hide a tracked file, so writing one would leak.
-    targets = sorted({f".claude/skills/{n}" for n in installed["skills"]} | {f".claude/agents/{n}.md" for n in installed["agents"]}
+    targets = sorted(set(skill_dirs) | set(resolved_skill_dirs) | {f".claude/agents/{n}.md" for n in installed["agents"]}
                      | {"CLAUDE.local.md", ".claude/settings.local.json"})
     rc, out = _host_git("--literal-pathspecs", "ls-files", "--", *targets)
     tracked = [ln for ln in out.splitlines() if ln.strip()]
@@ -1535,6 +1641,7 @@ def nested_plan() -> dict:
     # install, on --update too, before anything is written.
     exclude_entries = [f"/{NESTED_DIR}/", "/CLAUDE.local.md", "/.claude/settings.local.json", "/.claude/worktrees/"]
     exclude_entries += [f"/.claude/skills/{n}/" for n in sorted(installed["skills"])]
+    exclude_entries += [f"/{d}/" for d in resolved_skill_dirs]
     exclude_entries += [f"/.claude/agents/{n}.md" for n in sorted(installed["agents"])]
     # A multi-repo host's registered repos: one `/<path>/` line each, generated from the registry so
     # --update follows `nested-repos --add/--remove`. Only a repo that exists is preflighted and verified
@@ -1546,7 +1653,7 @@ def nested_plan() -> dict:
     self_hiding = [n for n in sorted(installed["skills"]) if _real_dir_or_absent(HOST / ".claude" / "skills" / n)]
     skill_ignores = {f".claude/skills/{n}/.gitignore": NESTED_SKILL_GITIGNORE for n in self_hiding
                      if not _is_explain_path(f".claude/skills/{n}")}
-    skill_targets = [f".claude/skills/{n}" for n in sorted(installed["skills"])]
+    skill_targets = skill_dirs + resolved_skill_dirs
     other_targets = [f".claude/agents/{n}.md" for n in sorted(installed["agents"])] + ["CLAUDE.local.md", ".claude/settings.local.json", NESTED_DIR]
     check_paths = [t for t in skill_targets if t.rsplit("/", 1)[1] not in self_hiding] + other_targets + repo_dirs
     unignored = _nested_unignored(check_paths, exclude_entries, repo_dirs)
@@ -1643,6 +1750,11 @@ def nested_plan() -> dict:
         # P40: the usable registry (empty on a single-repo host), whether this run seeded it, and the
         # AGENTS.md carriers the banner's hint names.
         "repos": usable, "repos_seeded": repos_seeded, "agents_md": agents_md,
+        # P51.S10: where a symlinked `.claude/skills` puts the copies (None: no symlink), and the team PR
+        # rules lines the banner prints (read-only, never recorded).
+        "skills_link": skills_link,
+        "pr_rules": [(r["name"], nested_team_pr_rules(HOST / r["path"])) for r in usable if _is_repo_dir(HOST / r["path"])]
+                    if usable else [(None, nested_team_pr_rules(HOST))],
     }
 
 
@@ -1733,6 +1845,16 @@ def print_nested_banner(plan: dict) -> None:
         print(f"  host commit convention: confirmed (coauthor_trailers={conv.get('coauthor_trailers')})")
     else:
         print(f"  host commit convention: UNCONFIRMED (inferred: {conv.get('inferred') or 'nothing -- the host has no history yet'})")
+    for repo_name, lines in plan.get("pr_rules") or []:
+        for line in lines:
+            print(f"  {line.replace('team PR rules:', f'team PR rules ({repo_name}):', 1) if repo_name else line}")
+    link = plan.get("skills_link")
+    if link is not None:
+        names = plan["installed"]["skills"]
+        where = f"{link}/ (the team's directory), each hidden by its own .gitignore of * and by a /{link}/<name>/ line in {plan['exclude_label']}" \
+            if link else "a directory outside this repo, where git never sees them"
+        print(f"  note: .claude/skills is a symlink, so the {len(names)} skill copies sit in {where}: "
+              f"{', '.join(names[:6])}{' ...' if len(names) > 6 else ''}; the team's own files and the link are untouched")
     if plan["agents_md"]:
         # OQ1 / S1 §13: the installer writes nothing into any repo; the operator sets this once, in the user settings.
         who = "this repo's AGENTS.md" if not repos else "the AGENTS.md of " + ", ".join(plan["agents_md"])
@@ -2830,12 +2952,13 @@ for name in ([] if NESTED else CLAUDE_SKILLS):
 # Subagents: the one full-permission slice executor that carries out one already-planned slice,
 # its route's model and effort passed per dispatch (embedded verbatim from the live repo), plus
 # the design subagent that drafts one design round (its own design row, [claude.design]), the design
-# critic that judges a drafted round (the critic row; the judge row runs it in judge mode) and the
-# read-only Explore lookup agent (the explore row).
+# critic that judges a drafted round (the critic row; the judge row runs it in judge mode), the
+# fresh-eyes PR reader (the reader row) and the read-only Explore lookup agent (the explore row).
 if not NESTED:
     write_text(".claude/agents/slice-executor.md", PAYLOADS[".claude/agents/slice-executor.md"])
     write_text(".claude/agents/design-drafter.md", PAYLOADS[".claude/agents/design-drafter.md"])
     write_text(".claude/agents/design-critic.md", PAYLOADS[".claude/agents/design-critic.md"])
+    write_text(".claude/agents/pr-reader.md", PAYLOADS[".claude/agents/pr-reader.md"])
     write_text(".claude/agents/Explore.md", PAYLOADS[".claude/agents/Explore.md"])
 
 # ---- Executor route config (seeded once — commented defaults; operator-owned) ----
@@ -3080,6 +3203,8 @@ elif UPDATE:
     if not UPDATE_DOCS:
         print("  note: no docs subsystem here; skipped docs rebuild (ran 'next' only)")
     print(f"  provenance recorded: works/.workspace-version.json (synced_commit {os.environ.get('SYNCED_COMMIT') or 'bootstrap'})")
+    for line in nested_team_pr_rules(ROOT):
+        print(f"  {line}")
     print("The installer made no git changes. Review the diff (git status); commit once the operator approves.")
     print("Next: python3 scripts/workflow.py sync-agents  # re-apply your preserved executors.toml")
     print("      python3 scripts/workflow.py executor-route  # an override= line for each row it pins against the defaults")
@@ -3096,13 +3221,15 @@ elif RETROFIT:
     print("  works subsystem: installed (no phases yet — the first phase is created by the operator)")
     if not INSTALL_DOCS:
         print("  note: docs versioning not installed; skipped docs rebuild/validate")
+    for line in nested_team_pr_rules(ROOT):
+        print(f"  {line}")
     print("The installer made no git changes. Review the diff (git status); commit the adoption once the operator approves.")
     print("If CLAUDE.md already existed, reconcile the CLAUDE.workspace.md sidecar; add __pycache__/ to .gitignore.")
     print("Next: python3 scripts/workflow.py validate, then create the first phase (/create-phase in Claude Code)")
 else:
     print(f"Bootstrapped agentic workspace at {TARGET}")
     print("Contract: CLAUDE.md")
-    print("Claude Code: 19 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
+    print("Claude Code: 20 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, fresh-eyes PR reader .claude/agents/pr-reader.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
     print("Visual design: design-cowork fires automatically; the design-drafter subagent drafts each design slice's surfaces as one working canvas under docs/reference/design/jobs/ (a frame of shared choices, its pages at once, then a join into clickable Pages, a board per component), the design-critic judges each page and the joined canvas when the job's critique is on, the orchestrator publishes each round to one Design canvas Artifact in the Claude app, and the operator decides: picks a style (build-after / design-only / paired) and signs each design in their own words, or on an in-product mockup they ask for, before separate implementation and browser fidelity")
     print("One executor, routed per dispatch by kind, then risk, then attempt (mid is the default row, real code included; high for decomposition, research, review, named triggers and retries), through one route table whose rows set each dispatch's model and effort; python3 scripts/workflow.py executor-route shows it (and executor-route <slice> the decision for one slice); override a row in executors.toml, then run sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
@@ -3111,5 +3238,7 @@ else:
     print("Versioned docs: docs/versions/<doc>/v<yyMMddHHmm>_*.md (a new version is named by its UTC minute; v0001_bootstrap.md is the first) with generated docs/current/*.md")
     print("Knowledge: /explain is the knowledge plugin's, not this workspace's (plugin 0.6.0+): /plugin marketplace add leetusik/knowledge, then /plugin install knowledge@knowledge; run /knowledge:setup once, then /knowledge:explain <topic>")
     print("  every explain is its own explain phase (a document by default; a book or a chapter when asked), created and run after one confirmation in its own worktree, merged back by itself: until the plugin's next release, ask /create-phase to explain something — see docs/current/operations.md")
+    for line in nested_team_pr_rules(ROOT):
+        print(line)
     print("No phases yet — the workspace starts empty on purpose.")
     print("Next: create the first phase with /create-phase (Claude Code) or python3 scripts/workflow.py new-phase ...")

@@ -23,6 +23,8 @@
 #                            drafted round: executor-route --critic
 #   judge     opus @ high    design-critic in judge mode, ruling on the items
 #                            the critic escalates (alias only): --judge
+#   reader    opus @ high    pr-reader, the fresh-eyes PR reader (its own
+#                            agent file): executor-route --reader
 #   mid       opus @ medium  implementation, fix, docs and qa rated low (the
 #                            default)
 #   screen    opus @ medium  a loop phase's first-pass cycles (a charter stage
@@ -32,7 +34,7 @@
 # Grammar: [claude.<row>] tables holding model = "..." and effort = "...",
 # double-quoted. effort is low, medium, high, xhigh or max, or "" to write no
 # effort line and pass no effort (for a model that rejects the parameter).
-# mid, design, critic and explore own an agent file, so they also take a full
+# mid, design, critic, reader and explore own an agent file, so they also take a full
 # model id or "inherit"; high, research, judge and screen run a file another
 # row owns, so they take an Agent-tool alias only (opus, sonnet, haiku, fable).
 # The critic and the judge may run on the drafter's model (no row must differ).
@@ -66,6 +68,9 @@
 # effort = "high"
 # [claude.judge]
 # model = "opus"    # alias only
+# effort = "high"
+# [claude.reader]
+# model = "opus"    # pr-reader, the fresh-eyes PR reader
 # effort = "high"
 # [claude.mid]
 # model = "opus"

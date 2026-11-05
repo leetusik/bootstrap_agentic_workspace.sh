@@ -1,0 +1,3 @@
+# The single-file installer is rebuilt from payload/ and installer/ by installer/build.py:
+# generated, so GitHub folds it in PR diffs and the PR size count skips it.
+bootstrap_agentic_workspace.sh linguist-generated=true
