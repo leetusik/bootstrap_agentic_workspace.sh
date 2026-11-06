@@ -3236,8 +3236,8 @@ else:
     print("CI: .github/workflows/workspace-ci.yml runs validate on every push/PR (seeded once — yours to edit); .gitattributes carries the merge rules for machine-written files")
     print("Canonical state: phase.json / slice.json / deferred.json; generated: works/backlog.md, works/deferred.md")
     print("Versioned docs: docs/versions/<doc>/v<yyMMddHHmm>_*.md (a new version is named by its UTC minute; v0001_bootstrap.md is the first) with generated docs/current/*.md")
-    print("Knowledge: /explain is the knowledge plugin's, not this workspace's (plugin 0.6.0+): /plugin marketplace add leetusik/knowledge, then /plugin install knowledge@knowledge; run /knowledge:setup once, then /knowledge:explain <topic>")
-    print("  every explain is its own explain phase (a document by default; a book or a chapter when asked), created and run after one confirmation in its own worktree, merged back by itself: until the plugin's next release, ask /create-phase to explain something — see docs/current/operations.md")
+    print("Knowledge: /explain is the knowledge plugin's, not this workspace's (plugin 0.10.0+): /plugin marketplace add leetusik/knowledge, then /plugin install knowledge@knowledge; run /knowledge:setup once, then /knowledge:explain <topic>")
+    print("  every explain is its own explain phase (a document by default; a book or a chapter when asked), written from this repo's code and its phases' records, created and run after one confirmation in its own worktree, merged back by itself — see docs/current/operations.md")
     for line in nested_team_pr_rules(ROOT):
         print(line)
     print("No phases yet — the workspace starts empty on purpose.")

@@ -231,16 +231,31 @@ assert "every explain is its own explain phase" in (root / "installer/main.py").
 for p in [*(root / "payload").rglob("*.md"), root / "installer/main.py", root / "installer/payloads/doc_bodies/operations.md"]:
     t = p.read_text(encoding="utf-8")
     assert "run /explain for this phase" not in t and "run /knowledge:explain for this phase" not in t, p
-# A book runs on the knowledge plugin's research pipeline (plugin 0.6.0+). The route keeps the heading
-# and the must-cover field the plugin's readiness check reads; a chapter dispatches the plugin's critic on opus
-# with same-model: accepted (v75); only explain executors may dispatch the plugin's research agents; the
-# workspace's own explain-critic is retired.
-assert "must-cover" in create_phase and "0.6.0" in create_phase and "**A confirmed proposal.**" in create_phase
+# An explain is written from the code and the phases' records, with no research run (plugin 0.10.0+).
+# The route keeps the heading, the literal unit and phases fields the plugin's readiness check reads, and
+# the must-cover field; it writes no run: or mode: line, and it has a research route. A chapter's critic is
+# the plugin's, on the other model family (sonnet for an Opus writer), never same-model: accepted; an
+# explain executor dispatches no agent; the workspace's own explain-critic stays retired.
+assert "must-cover" in create_phase and "0.10.0" in create_phase and "**A confirmed proposal.**" in create_phase
+assert "- **unit**:" in create_phase and "- **phases**:" in create_phase and "- phases: P30, P33-n3" in create_phase
+assert "**no `run:` line and no `mode:` line**" in create_phase
+assert "- run: full" not in create_phase and "- mode: codebase" not in create_phase
+assert "## The research route" in create_phase and "Research: <subject>" in create_phase
+assert "--kind research --risk high" in create_phase and "**If the request carries a `Research: <subject>` block**" in create_phase
 _chapter = (root / "payload/claude/skills/do-whole-phase/reference/explain-chapter.md").read_text(encoding="utf-8")
 assert "knowledge:explain-critic" in _chapter and "kind: chapter" in _chapter and "trace-<key>.md" in _chapter
-assert "same-model: accepted" in _chapter and "`model: opus`" in _chapter and "model: sonnet" not in _chapter
+assert "**`model: sonnet`** when span 1 ran on an Opus model" in _chapter and "`model: opus`" in _chapter
+assert "answers-<key>.md" in _chapter and "scratch: works/" not in _chapter
 _decomp = (root / "payload/claude/skills/do-whole-phase/reference/explain-decomposition.md").read_text(encoding="utf-8")
-assert "installed_plugins.json" in _decomp and "pages/.gitignore" in _decomp and "slice: <P>.DECOMP" in _decomp
+assert "installed_plugins.json" in _decomp and "pages/.gitignore" in _decomp and "**0.10.0 or later**" in _decomp
+assert "and dispatch no agent, `Explore` included" in (root / "payload/claude/agents/slice-executor.md").read_text(encoding="utf-8")
+# Nothing that ships keeps the retired research machinery.
+for p in [*(root / "payload").rglob("*.md"), root / "installer/payloads/doc_bodies/operations.md", root / "README.en.md"]:
+    _t = p.read_text(encoding="utf-8")
+    for gone in ("knowledge:web-researcher", "knowledge:code-researcher", "knowledge:gap-reviewer",
+                 "knowledge:verifier", "no-research", "D0b: the preflight", "STOPPED: evidence gate",
+                 "*Explain: permissions and the search cap*"):
+        assert gone not in _t, (str(p), gone)
 assert "**The explain carve-out" in (root / "payload/claude/agents/slice-executor.md").read_text(encoding="utf-8")
 assert not (root / "payload/claude/agents/explain-critic.md").exists()
 # v86 (P-mtrt.S3): every explain unit is a phase, created AND run after one confirmation. The route
@@ -252,7 +267,7 @@ for required in ("every unit is a phase", "**one confirmation**", "Explain — c
                  "The literal `unit` line", "**The required set, per unit:**", "- worktree: yes",
                  "- outline sign-off: off", "parallel-start <P>` (nested: with no `--host-branch`",
                  "in **`auto`**", "--stop-kind decision", "operator-action", "**with no `unit` line**",
-                 "Run `/do-whole-phase` to research and write it.", "§9.2 *Research for a book (an explain phase)*",
+                 "§9.2 *The evidence for a book (an explain phase)*", "§3.2 *Permissions, and the payload builder*",
                  "**The acceptance gate, per unit:**", "**An explain phase is the one exception:**"):
     assert required in create_phase, required
 for gone in ("A single chapter is not a phase", "**A book is a phase, and this route makes one.**"):
@@ -268,14 +283,15 @@ for _n in ("do-next-slice", "do-whole-phase"):
 _review = (root / "payload/claude/skills/do-whole-phase/reference/explain-review.md").read_text(encoding="utf-8")
 for _txt, _pins in (
     (_decomp, ("## A document or a chapter", "works/phases/active/P<N>/doc/", "doc/pages/.gitignore",
-               "--kind implementation --risk high --order 10", "**`STOPPED: evidence gate`**",
-               "narrow the subject: DECOMP resumes from run.md", "explain document: published private; a v2 is cheap",
-               "outline sign-off: on", "under `## The book`", "§3.9 *`quick` and `no-research`*")),
+               "--kind implementation --risk high --order 10", "## Run stops (every unit)",
+               "feedback re-runs DECOMP from the dossier", "explain document: published private; a v2 is cheap",
+               "outline sign-off: on", "under `## The book`", "§3.4 *D1: the evidence*", "`## Drawn from`")),
     (_chapter, ("## A document or a chapter: its one write slice", "mode: critique · kind: document",
-                "`critique: none (quick)`", "works/phases/active/P<N>/doc/body.md")),
+                "`doc/answers.md`", "works/phases/active/P<N>/doc/body.md")),
     (_review, ("## Plan a document's or a chapter's review", "/api/documents/by-path/<rel_path>",
                "/app/orgs/<org>/<project>/<slug>", "**Otherwise, the API read-back,**", "A chapter's order check",
-               "§8 *D9: the report*", "§9.1 *The book suggestion*", "(*An explain phase merges back by itself*)")),
+               "§8 *D9: the report*", "§9.1 *The book suggestion*", "(*An explain phase merges back by itself*)",
+               "`book/research/answers-<key>.md`", "every `## Gaps` line of `doc/evidence.md`")),
 ):
     for _p in _pins:
         assert _p in _txt, _p

@@ -78,7 +78,7 @@ the detail lives here.
    host worktree; skills, agents and settings read through from the main checkout, so never create
    `<host-wt>/.claude/`. **Permissions in a worktree:** Claude Code (v2.1.211 and later) reads and
    writes the main checkout's `.claude/settings.local.json` from a worktree session, so allow rules
-   added there (an explain's manual-mode research rules included) apply in every worktree; on Windows,
+   added there (an explain writer's manual-mode rules included) apply in every worktree; on Windows,
    or where Claude Code does not use the repository root, the file stays per directory: put such rules
    in user settings, or run in auto mode.
 7. **The merge** — after `parallel-gate <P>` is OPEN (branch phase `done` + review `pass`, default
@@ -389,7 +389,7 @@ book once the operator's `accept-gate <P> --clear` let the pass be recorded:
 2. The merge as above — at root steps 2–5 and 7; nested steps 2–4 and 6, with **no host side** for a
    detached host worktree (step 7 is skipped: there is no host branch).
 3. `parallel-teardown <P>` — **nested:** `parallel-teardown <P> --discard-ignored`, which deletes the
-   ignored `pages/` cache (every passage used is quoted in the committed findings); **at root** no flag
+   ignored `pages/` cache (it holds nothing the committed record needs); **at root** no flag
    (`git worktree remove` drops ignored files itself, and the flag is refused there). Then commit.
 4. The closing report, last, from the default checkout. The review left no `## Doc impact` note, so
    consolidation is already `done`: nothing is owed and the phase is archivable.

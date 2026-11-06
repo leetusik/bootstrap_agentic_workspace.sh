@@ -545,11 +545,13 @@ commands in Claude Code:
 > then run `/knowledge:setup` once (connect to the hosted KB, or scaffold your own) and use
 > `/knowledge:explain <topic>`. Every explain is its own **explain phase**, one per publishable unit: a
 > standalone document by default, a book or one chapter of a book only when you ask. After one
-> confirmation the phase is created **and** run (researched, written, checked by a fresh-eyes critic,
-> published private) in its own worktree under `.claude/worktrees/`, and merges back by itself; a book
-> still stops for its outline sign-off and its acceptance gate. Until the plugin's next release,
-> `/knowledge:explain` still writes single documents on its own: ask `/create-phase` to explain something
-> to use the phase path now. Plugin version 0.6.0 or later is required; an explain's research runs on your session's permissions and web-search cap (the plugin's README, *Explain: permissions and the search cap*). To update: `/plugin marketplace update knowledge`,
+> confirmation the phase is created **and** run in its own worktree under `.claude/worktrees/`, and
+> merges back by itself: one writer reads this repository's code and the records of the phases that
+> built the subject, a critic on a second model checks the draft against them, and it is published
+> private. It does no research of its own and covers only this repository's code; a subject no phase
+> recorded is offered a research phase first. A book still stops for its outline sign-off and its
+> acceptance gate. Plugin version 0.10.0 or later is required; the writer runs on your session's
+> permissions (the plugin's README, *Explain: permissions*). To update: `/plugin marketplace update knowledge`,
 > then update `knowledge@knowledge` from the `/plugin` panel's Installed tab (or, from a shell,
 > `claude plugin update knowledge@knowledge`). The review never writes an explainer; it only reports
 > `explain: not written — run /knowledge:explain P<N> for a document, or ask it for a book`.

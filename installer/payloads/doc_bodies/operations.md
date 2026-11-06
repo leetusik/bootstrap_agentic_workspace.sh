@@ -52,12 +52,15 @@ document API, so they stay in step. Install it once:
 then run `/knowledge:setup` once (connect to the hosted KB, or scaffold your own) and use
 `/knowledge:explain <topic>`. Every explain is its own **explain phase**, one per publishable
 unit: a standalone document by default, a book or one chapter of a book only when you ask. After
-one confirmation the phase is created **and** run: researched, written, checked by a fresh-eyes
-critic and published private, in its own worktree under `.claude/worktrees/`, merged back by
-itself (a nested install names no host branch for it). A book still stops for its outline
-sign-off and its acceptance gate. Until the plugin's next release, `/knowledge:explain` still
-writes single documents on its own; ask `/create-phase` to explain something to use the phase
-path now. Plugin version 0.6.0 or later is required. An explain's research runs on your session's permissions (auto mode needs nothing; manual mode needs the rules its preflight prints, in `.claude/settings.local.json`) and its web searches count against Claude Code's per-session cap: raise `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` in your user settings' `env` (the plugin's README, *Explain: permissions and the search cap*).
+one confirmation the phase is created **and** run, in its own worktree under `.claude/worktrees/`,
+and merged back by itself (a nested install names no host branch for it): one writer reads this
+repository's code and the records of the phases that built the subject, a critic on a second
+model checks the draft against them, and it is published private. An explain does no research of
+its own and covers only this repository's code; a subject no phase recorded is offered a research
+phase first. A book still stops for its outline sign-off and its acceptance gate. Plugin version
+0.10.0 or later is required. The writer runs on your session's permissions: auto mode needs
+nothing, and manual mode needs the rules the explain skill's §3.2 *Permissions, and the payload
+builder* prints, in `.claude/settings.local.json` (the plugin's README, *Explain: permissions*).
 To update: `/plugin marketplace update knowledge`, then update `knowledge@knowledge` from the
 `/plugin` panel's Installed tab (or, from a shell, `claude plugin update knowledge@knowledge`).
 The review never writes an explainer; it only reports
