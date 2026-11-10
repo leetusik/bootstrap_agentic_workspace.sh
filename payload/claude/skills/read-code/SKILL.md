@@ -1,6 +1,6 @@
 ---
 name: read-code
-description: "Blind-read a product change made outside a phase before it is pushed: dispatch the code-reader on the branch's own change (or a named range) and report its findings for the operator to decide on."
+description: "Blind-read a product change made outside a phase before it is pushed: dispatch the code-reader on the branch's unpushed work (its whole change against the default branch once that was merged in or rebased onto) or a named range, and report its findings for the operator to decide on."
 argument-hint: "[<base>..<head> | <ref>]"
 allowed-tools: Bash(python3 scripts/workflow.py executor-route:*), Bash(python3 scripts/workflow.py nested-repos), Bash(python3 scripts/workflow.py phase-scope --pathspec), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git rev-parse:*), Bash(git symbolic-ref:*), Bash(git merge-base:*), Bash(git ls-files:*), Bash(git config --get:*), Read, Agent
 disable-model-invocation: true

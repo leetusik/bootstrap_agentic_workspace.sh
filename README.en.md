@@ -521,7 +521,7 @@ commands in Claude Code:
 | `run-loop` | Drive a loop phase's bounded cycles under its signed charter (`/loop /run-loop <P>`, one tick per wake): items that need you are parked and the loop goes on; only the charter's stops halt it |
 | `review-phase` | Review a phase and record a `pass` / `changes_requested` / `blocked` verdict |
 | `pr` | Write and check a phase's draft PR bodies (read first with fresh eyes by the `pr-reader` agent), and open the drafts when the review passes (on a gated phase you read them on GitHub, then `accept`) |
-| `read-code` | Blind-read a product change made outside a phase before it is pushed: dispatch the `code-reader` on the branch's own change (or a named range) and report its findings |
+| `read-code` | Blind-read a product change made outside a phase before it is pushed: dispatch the `code-reader` on the branch's unpushed work (its whole change against the default branch once that was merged in or rebased onto) or a named range, and report its findings |
 | `parallel-phase` | Run a phase in its own branch + worktree when you ask for one, and integrate it back: quiet-point gate, local merge by default, the review's gate sections, teardown |
 | `doc-new-version` | Create a new versioned durable doc instead of patching the current one |
 | `defer-job` | Park work as a deferred job, outside active selection |
