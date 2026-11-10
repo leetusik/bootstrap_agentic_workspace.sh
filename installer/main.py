@@ -58,7 +58,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 94
+WORKSPACE_VERSION = 95
 ROOT = TARGET.resolve()
 # Nested personal install (P28; the default layout since P29): TARGET is a HOST git repo -- one the
 # operator may not own, or a new/empty dir this run `git init`s. The engine and all workflow state go
@@ -202,9 +202,9 @@ EMPTY_OK_ALLOWLIST = {
 #@@GENERATED_PAYLOADS@@
 
 # The skill inventory is derived independently from the embedded payload manifest.
-# The build enforces the release invariant: 20 skill packages.
+# The build enforces the release invariant: 21 skill packages.
 CLAUDE_SKILLS = sorted({k.split("/")[2] for k in PAYLOADS if k.startswith(".claude/skills/") and k.endswith("/SKILL.md")})
-EXPECTED_SKILL_COUNT = 20
+EXPECTED_SKILL_COUNT = 21
 if len(CLAUDE_SKILLS) != EXPECTED_SKILL_COUNT:
     raise RuntimeError(
         f"embedded skill inventory must contain {EXPECTED_SKILL_COUNT} skill packages "
@@ -232,7 +232,8 @@ MANAGED_FILES = [
     *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md", "phase.md", "charter.md")],
     "scripts/workflow.py",
     ".claude/agents/slice-executor.md", ".claude/agents/design-drafter.md",
-    ".claude/agents/design-critic.md", ".claude/agents/pr-reader.md", ".claude/agents/Explore.md",
+    ".claude/agents/design-critic.md", ".claude/agents/pr-reader.md", ".claude/agents/code-reader.md",
+    ".claude/agents/Explore.md",
     ".claude/settings.json",
     "executors.toml",
 ]
@@ -709,7 +710,7 @@ def write_json(path, data) -> None:
 # Before any write, nested_plan() also asks git whether every host-side target WILL be ignored
 # (a host .gitignore negation outranks info/exclude); after the writes, nested_verify_clean()
 # asserts the host's git status lists none of them.
-NESTED_AGENTS = ["slice-executor", "design-drafter", "design-critic", "pr-reader", "Explore"]
+NESTED_AGENTS = ["slice-executor", "design-drafter", "design-critic", "pr-reader", "code-reader", "Explore"]
 NESTED_KINDS = ("skills", "agents")
 # The engine's subcommands, read from the embedded engine: a hyphenated skill name that is not one
 # of them only ever names the skill, so its plain backticked form is renamed too.
@@ -2953,12 +2954,14 @@ for name in ([] if NESTED else CLAUDE_SKILLS):
 # its route's model and effort passed per dispatch (embedded verbatim from the live repo), plus
 # the design subagent that drafts one design round (its own design row, [claude.design]), the design
 # critic that judges a drafted round (the critic row; the judge row runs it in judge mode), the
-# fresh-eyes PR reader (the reader row) and the read-only Explore lookup agent (the explore row).
+# fresh-eyes PR reader (the reader row), the blind code reader (the code row) and the read-only
+# Explore lookup agent (the explore row).
 if not NESTED:
     write_text(".claude/agents/slice-executor.md", PAYLOADS[".claude/agents/slice-executor.md"])
     write_text(".claude/agents/design-drafter.md", PAYLOADS[".claude/agents/design-drafter.md"])
     write_text(".claude/agents/design-critic.md", PAYLOADS[".claude/agents/design-critic.md"])
     write_text(".claude/agents/pr-reader.md", PAYLOADS[".claude/agents/pr-reader.md"])
+    write_text(".claude/agents/code-reader.md", PAYLOADS[".claude/agents/code-reader.md"])
     write_text(".claude/agents/Explore.md", PAYLOADS[".claude/agents/Explore.md"])
 
 # ---- Executor route config (seeded once — commented defaults; operator-owned) ----
@@ -3229,7 +3232,7 @@ elif RETROFIT:
 else:
     print(f"Bootstrapped agentic workspace at {TARGET}")
     print("Contract: CLAUDE.md")
-    print("Claude Code: 20 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, fresh-eyes PR reader .claude/agents/pr-reader.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
+    print("Claude Code: 21 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, fresh-eyes PR reader .claude/agents/pr-reader.md, blind code reader .claude/agents/code-reader.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
     print("Visual design: design-cowork fires automatically; the design-drafter subagent drafts each design slice's surfaces as one working canvas under docs/reference/design/jobs/ (a frame of shared choices, its pages at once, then a join into clickable Pages, a board per component), the design-critic judges each page and the joined canvas when the job's critique is on, the orchestrator publishes each round to one Design canvas Artifact in the Claude app, and the operator decides: picks a style (build-after / design-only / paired) and signs each design in their own words, or on an in-product mockup they ask for, before separate implementation and browser fidelity")
     print("One executor, routed per dispatch by kind, then risk, then attempt (mid is the default row, real code included; high for decomposition, research, review, named triggers and retries), through one route table whose rows set each dispatch's model and effort; python3 scripts/workflow.py executor-route shows it (and executor-route <slice> the decision for one slice); override a row in executors.toml, then run sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")

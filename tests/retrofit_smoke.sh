@@ -148,7 +148,7 @@ import sys
 
 root = Path(sys.argv[1])
 skills = {p.parent.name for p in (root / "payload/claude/skills").glob("*/SKILL.md")}
-assert len(skills) == 20, len(skills)
+assert len(skills) == 21, len(skills)
 
 # P37.S1 (v61): a skill ships as its whole directory, a core SKILL.md plus reference/*.md, and the
 # do-* shared references fan out at build. Prose pins read the BUILT directory (core first, then its
@@ -1031,7 +1031,7 @@ for tier in ("slice-executor",):
 
 # P-zqhy: only slice-executor drives a real browser; the drafter, the critic and Explore render
 # headless or read, so none of them carries the Claude in Chrome tools.
-for _agent in ("design-drafter", "design-critic", "pr-reader", "Explore"):
+for _agent in ("design-drafter", "design-critic", "pr-reader", "code-reader", "Explore"):
     _fm = (root / f"payload/claude/agents/{_agent}.md").read_text().split("---\n", 2)[1]
     assert "mcp__claude-in-chrome" not in _fm, _agent
 assert "Aside" not in (root / "payload/claude/agents/design-drafter.md").read_text(), "design-drafter still names Aside"
@@ -1199,7 +1199,7 @@ compact = claude.split("## Compact Instructions", 1)[1]
 assert "resume card" in compact and "never re-dispatch a running executor" in compact
 assert "re-read" not in compact, "Compact Instructions carry a re-read instruction"
 PY
-then ok "20 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with one connected canvas per round and opt-in critique, mockups on request, the Claude in Chrome instrument), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v71 wave protocol (do-whole-phase's reference/wave.md, DECOMP's disjoint-sets rule, the executor's wave section, the contract's reversal of "never fan out slices"); the v44 contract's never-stubs (acceptance gate, runtime, Claude in Chrome dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
+then ok "21 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with one connected canvas per round and opt-in critique, mockups on request, the Claude in Chrome instrument), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v71 wave protocol (do-whole-phase's reference/wave.md, DECOMP's disjoint-sets rule, the executor's wave section, the contract's reversal of "never fan out slices"); the v44 contract's never-stubs (acceptance gate, runtime, Claude in Chrome dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
@@ -1280,8 +1280,8 @@ cp_state=$(python3 -c "import json;print(json.load(open('$R/works/state.json'))[
   && ok "retrofit installs no Codex trees (.agents/, .codex/)" || bad "retrofit created a Codex tree"
 [ ! -f "$R/AGENTS.workspace.md" ] \
   && ok "retrofit writes no AGENTS.workspace.md sidecar" || bad "retrofit wrote an AGENTS.workspace.md sidecar"
-[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "20" ] \
-  && ok "retrofit installs the 20-skill Claude inventory" || bad "retrofit skill inventory incomplete"
+[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "21" ] \
+  && ok "retrofit installs the 21-skill Claude inventory" || bad "retrofit skill inventory incomplete"
 skill_tree_ok "$R/.claude/skills" exact \
   && ok "retrofit installs every skill as its whole directory: each core's reference files, none orphaned, the shared do-* copy identical" || bad "retrofit skill directories incomplete (core + reference/)"
 grep -q 'design subagent drafts, the operator decides' "$R/CLAUDE.workspace.md" && grep -q 'writes no \*\*\*product\*\*\* implementation code' "$R/CLAUDE.workspace.md" \
@@ -1387,8 +1387,10 @@ assert not missing, missing
 PY
 then ok "every changelog release section carries a Migration notes line"; else bad "a changelog release section has no Migration notes line"; fi
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
-[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "20" ] \
-  && ok "fresh install has the 20 Claude skills" || bad "fresh skill inventory incomplete"
+[ -f "$F/.claude/skills/read-code/SKILL.md" ] && grep -q 'code-reader' "$F/CLAUDE.md" \
+  && ok "fresh install ships the read-code skill and its contract names the code-reader" || bad "fresh install missing the read-code skill or the contract's code-reader rule"
+[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "21" ] \
+  && ok "fresh install has the 21 Claude skills" || bad "fresh skill inventory incomplete"
 skill_tree_ok "$F/.claude/skills" exact \
   && ok "fresh install ships every skill as its whole directory: each core's reference files, none orphaned, the shared do-* copy identical" || bad "fresh install skill directories incomplete (core + reference/)"
 [ ! -f "$F/AGENTS.md" ] && [ ! -d "$F/.agents" ] && [ ! -d "$F/.codex" ] \
@@ -2327,7 +2329,7 @@ diff -q "$SRC/scripts/workflow.py" "$F/scripts/workflow.py" >/dev/null \
   || bad "DRIFT: scripts/workflow.py differs from the bootstrap-embedded copy"
 skill_rels=$(cd "$SRC" && find claude/skills -type f -name SKILL.md | sed 's|^|.|' | LC_ALL=C sort)
 nskill=$(printf '%s\n' "$skill_rels" | grep -c .)
-[ "$nskill" -eq 20 ] && ok "dual-apply covers all 20 skill bodies" || bad "expected 20 SKILL.md files to diff, found $nskill"
+[ "$nskill" -eq 21 ] && ok "dual-apply covers all 21 skill bodies" || bad "expected 21 SKILL.md files to diff, found $nskill"
 for rel in $skill_rels; do
   diff -q "$SRC/${rel#.}" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
@@ -2337,6 +2339,7 @@ DUAL_FIXED=".claude/agents/slice-executor.md
 .claude/agents/design-drafter.md
 .claude/agents/design-critic.md
 .claude/agents/pr-reader.md
+.claude/agents/code-reader.md
 .claude/agents/Explore.md
 .claude/settings.json
 executors.toml
@@ -2921,6 +2924,15 @@ assert {"status": "A", "path": "src/probe.py"} in d["files"], d
 ' "$p3_created" ) \
   && ok "phase-scope --json parses and carries the same creation commit, mode and file list" \
   || bad "phase-scope --json is not the same answer as the text form"
+# F2: it prints the pathspec it read with, paste-ready after `--` (a guessed `.` would list works/), the same in
+# --json and from the phase-less `phase-scope --pathspec` that /read-code runs.
+p3_spec=$(printf '%s\n' "$scope_out" | sed -n 's/^pathspec=//p')
+p3_diff=$( cd "$F" && eval "git diff --name-only $p3_created^ HEAD -- $p3_spec" 2>&1 )
+p3_json=$( cd "$F" && python3 scripts/workflow.py phase-scope P3 --json 2>/dev/null | python3 -c 'import json, shlex, sys; print(json.load(sys.stdin)["pathspec"] == shlex.split(sys.argv[1]))' "$p3_spec" 2>&1 )
+[ "$p3_spec" = ". ':!works' ':!docs'" ] && [ "$p3_diff" = "src/probe.py" ] && [ "$p3_json" = True ] \
+  && [ "$( cd "$F" && python3 scripts/workflow.py phase-scope --pathspec 2>&1 )" = "pathspec=$p3_spec" ] \
+  && ok "phase-scope prints pathspec=, which pasted after -- lists only the product file; --json and phase-scope --pathspec carry the same value" \
+  || bad "phase-scope pathspec= missing or wrong (spec=$p3_spec json=$p3_json) -- $p3_diff"
 nogit_scope=$( cd "$F" && PATH="/var/empty" "$nogit_py" scripts/workflow.py phase-scope P3 2>&1 ); nogit_rc=$?
 [ "$nogit_rc" -eq 0 ] && printf '%s\n' "$nogit_scope" | grep -q "^phase-scope: no git history readable here" \
   && ok "phase-scope without git is advisory: the no-history line and exit 0" \
@@ -3788,6 +3800,9 @@ scope_out=$(nw phase-scope P1 2>&1); scope_rc=$?
   && ! printf '%s\n' "$scope_out" | grep -qE "^  [AMDR] (workflow/|src/app.py)" \
   && ok "phase-scope reads the host repo from the anchor: the product commit's files (the host's docs/ included), nothing under workflow/" \
   || bad "nested phase-scope did not read the host boundary (rc=$scope_rc) -- $scope_out"
+printf '%s\n' "$scope_out" | grep -qx "pathspec=. ':(exclude)workflow'" && [ "$(nw phase-scope --pathspec 2>&1)" = "pathspec=. ':(exclude)workflow'" ] \
+  && ok "nested phase-scope and phase-scope --pathspec print the host pathspec: the nested workflow/ folder excluded, the host's docs/ kept" \
+  || bad "nested pathspec= line missing or wrong -- $scope_out"
 ps_out=$(nw parallel-start P1 2>&1); ps_rc=$?
 [ "$ps_rc" -ne 0 ] && printf '%s\n' "$ps_out" | grep -q "^parallel-start in a nested install needs --host-branch <name>" \
   && ! grep -q '"execution"' "$NH/workflow/works/phases/active/P1/phase.json" \
@@ -3802,7 +3817,7 @@ if printf '%s\n' "$nx" | grep -q "^host_commit_convention=confirmed (coauthor_tr
     && python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["commit_convention"]; assert c["confirmed"] is True and c["text"] == "type(scope): summary" and c["inferred"] == "type(scope): summary", c' "$NH/workflow/.agentic-nested.json"; then
   ok "nested-convention --confirm records the text and the trailer rule, and next stops flagging it"; else bad "nested-convention --confirm did not flip the convention -- $nx"; fi
 # The agent rename map: design-drafter is installed as wf-design-drafter in the host's .claude/agents.
-mkdir -p "$NH/.claude/agents" && cp "$SRC/claude/agents/slice-executor.md" "$SRC/claude/agents/design-critic.md" "$SRC/claude/agents/pr-reader.md" "$SRC/claude/agents/Explore.md" "$NH/.claude/agents/" \
+mkdir -p "$NH/.claude/agents" && cp "$SRC/claude/agents/slice-executor.md" "$SRC/claude/agents/design-critic.md" "$SRC/claude/agents/pr-reader.md" "$SRC/claude/agents/code-reader.md" "$SRC/claude/agents/Explore.md" "$NH/.claude/agents/" \
   && sed 's/^name: design-drafter$/name: wf-design-drafter/' "$SRC/claude/agents/design-drafter.md" > "$NH/.claude/agents/wf-design-drafter.md"
 nw sync-agents >/dev/null 2>&1
 if nw sync-agents --check >/dev/null 2>&1 && grep -qx "name: wf-design-drafter" "$NH/.claude/agents/wf-design-drafter.md" \
@@ -4196,6 +4211,10 @@ sc=$(hw phase-scope P1 2>&1); sc_rc=$?; a_head=$(git -C "$MH/alpha" rev-parse --
 [ "$sc_rc" -eq 0 ] && printf '%s\n' "$sc" | grep -q "^repo=alpha path=alpha/ .*head=$a_head .*commits=1$" && printf '%s\n' "$sc" | grep -qx '    A alpha/one.txt' \
   && printf '%s\n' "$sc" | grep -q "^repo=beta path=beta/ commits=0 " \
   && ok "phase-scope prints one block per repo: alpha holds its commit and file, beta shows no commits" || bad "multi-repo phase-scope wrong (rc=$sc_rc) -- $sc"
+printf '%s\n' "$sc" | grep -qx 'repo=alpha pathspec=.' && printf '%s\n' "$sc" | grep -qx 'repo=beta pathspec=.' \
+  && printf '%s\n' "$sc" | grep -qx "repo=. (host) pathspec=. ':(exclude)workflow' ':(exclude)alpha' ':(exclude)beta'" \
+  && ok "multi-repo phase-scope prints one pathspec per repo and the host's, which excludes workflow/ and every repo folder" \
+  || bad "multi-repo pathspec lines missing or wrong -- $sc"
 # (c2) pr-check on a multi-repo host never passes a repo with no body: alpha's lines say body=missing and warn; with no
 # branch recorded and no --repo nothing is measured, which warns too.
 pc_a=$(hw pr-check P1 --repo alpha 2>&1); pc_a_rc=$?; pc_n=$(hw pr-check P1 2>&1); pc_n_rc=$?
@@ -4688,6 +4707,11 @@ r_out=$(pw executor-route --reader 2>&1)
 printf '%s\n' "$r_out" | grep -qx 'subagent_type=pr-reader' && printf '%s\n' "$r_out" | grep -qx 'model=opus' && printf '%s\n' "$r_out" | grep -qx 'effort=high' \
   && [ -f "$PRR/.claude/agents/pr-reader.md" ] && grep -qx 'name: pr-reader' "$PRR/.claude/agents/pr-reader.md" \
   && ok "executor-route --reader prints subagent_type=pr-reader, model=opus and effort=high, and a fresh install ships .claude/agents/pr-reader.md" || bad "pr-reader route or fresh install wrong -- $r_out"
+# code-reader: the code row's dispatch lines; the agent installs fresh.
+c_out=$(pw executor-route --code 2>&1)
+printf '%s\n' "$c_out" | grep -qx 'route=code' && printf '%s\n' "$c_out" | grep -qx 'subagent_type=code-reader' && printf '%s\n' "$c_out" | grep -qx 'model=opus' && printf '%s\n' "$c_out" | grep -qx 'effort=high' \
+  && [ -f "$PRR/.claude/agents/code-reader.md" ] && grep -qx 'name: code-reader' "$PRR/.claude/agents/code-reader.md" \
+  && ok "executor-route --code prints route=code, subagent_type=code-reader, model=opus and effort=high, and a fresh install ships .claude/agents/code-reader.md" || bad "code-reader route or fresh install wrong -- $c_out"
 # (S11) at-root --update appends the linguist lines once, then counts .gitattributes unchanged; it restores pr-reader.md.
 grep -v 'linguist-generated=true' "$PRR/.gitattributes" > "$PRW/ga" && cp "$PRW/ga" "$PRR/.gitattributes" && rm -f "$PRR/.claude/agents/pr-reader.md"
 ( cd "$PRR" && git add -A && git commit -qm "strip" ) >/dev/null 2>&1
