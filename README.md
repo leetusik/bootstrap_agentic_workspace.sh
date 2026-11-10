@@ -154,7 +154,7 @@ nested 설치의 `workflow/` 디렉터리 자체에서 옵션 없는 설치나 `
 
 - `workflow/`: 엔진, `works/`, `docs/`, `executors.toml`, 규칙 문서(`CLAUDE.workspace.md`)가
   들어가는 **중첩 git 저장소**입니다. 호스트와 따로 버전 관리됩니다.
-- 호스트의 `.claude/skills/`, `.claude/agents/`에 들어가는 스킬 20개와 에이전트 5개. 경로는
+- 호스트의 `.claude/skills/`, `.claude/agents/`에 들어가는 스킬 21개와 에이전트 6개. 경로는
   `workflow/`를 가리키도록 바뀌어 있습니다(`python3 workflow/scripts/workflow.py …`).
 - 각 스킬 디렉터리 안의 `.gitignore`(내용은 `*`). 호스트의 `.gitignore`가 `.claude/skills/`를
   다시 포함시키더라도 스킬 디렉터리가 스스로를 가립니다.
@@ -202,7 +202,7 @@ git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하�
    (메시지에 phase나 slice ID 없이), 워크플로우 상태는 `workflow/`에 이 워크스페이스의
    컨벤션대로 들어갑니다.
 4. `/review-phase`: `phase-scope`가 기록해 둔 기준점부터 **호스트** diff를 읽습니다(`workflow/`는
-   보지 않습니다).
+   보지 않습니다). 리뷰는 먼저 `code-reader` 에이전트가 기록 없이 diff만 읽은 결과를 받아 각 발견을 판정합니다.
 5. 리뷰가 통과하면 `pr` 스킬이 phase의 draft PR을 바로 엽니다(멈춤도, 따로 할 말도 없습니다). 게이트가 필요한 phase라면 GitHub에서 draft를 읽고 `accept` 한 마디로 마칩니다. 그러면 PR을 Ready로 바꾸고, 혼자 쓰는 repo라면 merge까지 합니다(팀 repo의 merge는 팀이 합니다). PR에는 제품 커밋만 들어가고, 워크플로우 경로나 phase/slice
    ID는 없습니다.
 6. phase가 끝난 뒤 수정 요청이 오면(팀 리뷰든 내 요청이든) 같은 phase를 열린 PR 위에서 다시 엽니다
@@ -405,6 +405,7 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 | `critic` | Opus@high | `design-critic` | 초안 라운드를 새 눈으로 평가하는 디자인 비평가(`executor-route --critic`). `design` 행과 같은 모델이어도 됨 |
 | `judge` | Opus@high | `design-critic` | 비평가가 확신하지 못한 항목만 판정하는 판정 모드(`executor-route --judge`, 별칭만). `design` 행과 같은 모델이어도 됨. Fable로 바꾼 경우 루프백 프록시에서는 건너뜀 |
 | `reader` | Opus@high | `pr-reader` | phase의 PR을 diff와 본문, 팀 규칙만 보고 새 눈으로 읽는 리더(`executor-route --reader`). slice 행이 아님 |
+| `code` | Opus@high | `code-reader` | 코드 변경을 워크스페이스 기록 없이 diff와 head의 파일만 보고 읽고, 의심 가는 점을 재현해 보는 리더(`executor-route --code`). phase 리뷰 전과 `/read-code`에서 씀. slice 행이 아님 |
 | `mid` | Opus@medium | `slice-executor` | 기본 — `risk: low`인 구현·수정(`fix`)·문서(`docs`)·QA slice. 실제 코드 작성과 여러 파일에 걸친 변경도 포함 |
 | `screen` | Opus@medium | `slice-executor` | loop phase의 첫 단계 cycle(charter의 `stages`). 기본값은 `mid`와 같고, `executors.toml`의 `[claude.screen]`으로 더 싸게 설정 가능 |
 | `explore` | Haiku@xhigh | `Explore` | 읽기 전용 조회(계획 조사, 실행자의 큰 읽기). slice 라우트는 아님 |
@@ -462,12 +463,13 @@ Claude Code에서 `/이름`으로 입력합니다.
 | `run-loop` | loop phase를 서명된 charter 아래에서 cycle 단위로 계속 실행 (`/loop /run-loop <P>`). 판단이 필요한 항목은 보류 목록에 두고 계속하며, charter가 정한 멈춤에서만 멈춤 |
 | `review-phase` | phase를 리뷰하고 `pass` / `changes_requested` / `blocked` 기록 |
 | `pr` | phase의 draft PR 본문을 쓰고 검사한 뒤(`pr-reader` 에이전트가 새 눈으로 먼저 읽음), 리뷰가 통과하면 draft PR을 엶(게이트가 있으면 GitHub에서 읽고 `accept`) |
+| `read-code` | phase 밖에서 만든 제품 변경을 push 전에 `code-reader`로 읽고 발견을 보고(기본 범위: push 안 된 커밋과 커밋 안 된 변경) |
 | `parallel-phase` | 요청했을 때 phase를 자기 worktree에서 실행하고 로컬 merge로 다시 합치기 |
 | `executor-route` | 라우트 표와 dispatch 요약 확인; `/executor-route <slice_id>`로 한 slice의 dispatch 결정 확인 |
 | `retrofit` | 기존 저장소에 워크스페이스 추가 |
 | `update-workspace` | 설치된 워크스페이스의 시스템 파일만 최신으로 교체 |
 
-스킬은 모두 20개입니다. 전체 목록과 설치 옵션은 [English README](README.en.md)에 있고,
+스킬은 모두 21개입니다. 전체 목록과 설치 옵션은 [English README](README.en.md)에 있고,
 CLI 명령 전체는 `python3 scripts/workflow.py --help`로 확인할 수 있습니다.
 
 ## phase별 worktree (요청할 때만)
@@ -556,7 +558,7 @@ branch를 통합한 뒤 직접 지우거나 `parallel-add-repo ... --adopt`로 �
 
 ## 더 알아보기
 
-- 전체 문서 (설치 옵션, CLI 명령 전체, 프로젝트 구조, 스킬 20종): [English README](README.en.md)
+- 전체 문서 (설치 옵션, CLI 명령 전체, 프로젝트 구조, 스킬 21종): [English README](README.en.md)
 - 에이전트 규칙 문서: [CLAUDE.md](payload/contract.md)
 - 기존 저장소에 추가하는 절차: [Retrofit Guide](docs/retrofit-guide.md)
 - 기여하기: 기여할 때는 클론에 비공개 워크스페이스를 설치해 같은 방식으로 작업합니다. phase를 열고 slice 단위로 기여해
