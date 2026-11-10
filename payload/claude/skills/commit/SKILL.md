@@ -11,6 +11,8 @@ Inspect pending changes, group them by logical topic, and create one focused com
 
 Never push, force-push, use `git add -A`, or skip hooks unless explicitly asked. A phase's pushes are the `pr` skill's, never this skill's: the draft opening when its review passes, the close's solo landing, and a fix round's or a stack merge's push to an open PR's branch.
 
+**Product files committed outside a phase** (no slice is active): end the report with a line saying they have not been read, and that `/read-code` reads them before a push. This skill still never pushes and dispatches nothing.
+
 **Nested personal install** (`workflow/.agentic-nested.json` exists). The host and `workflow/` are two separate git repos, so a slice is two commits:
 - product changes go to the host, on the phase's branch (`pr-branch`, recorded at `DECOMP`'s end; before that, or outside a phase, the current branch), in the host's conventions (commits, branches and pull requests) that `python3 scripts/workflow.py nested-convention` prints. Add Claude `Co-Authored-By` trailers only when it says `allowed`, and put no phase or slice IDs, `workflow/` paths or workspace files in the message;
 - state changes go to the nested repo with `git -C workflow ...`, in this workspace's convention;

@@ -202,9 +202,9 @@ EMPTY_OK_ALLOWLIST = {
 #@@GENERATED_PAYLOADS@@
 
 # The skill inventory is derived independently from the embedded payload manifest.
-# The build enforces the release invariant: 20 skill packages.
+# The build enforces the release invariant: 21 skill packages.
 CLAUDE_SKILLS = sorted({k.split("/")[2] for k in PAYLOADS if k.startswith(".claude/skills/") and k.endswith("/SKILL.md")})
-EXPECTED_SKILL_COUNT = 20
+EXPECTED_SKILL_COUNT = 21
 if len(CLAUDE_SKILLS) != EXPECTED_SKILL_COUNT:
     raise RuntimeError(
         f"embedded skill inventory must contain {EXPECTED_SKILL_COUNT} skill packages "
@@ -3232,7 +3232,7 @@ elif RETROFIT:
 else:
     print(f"Bootstrapped agentic workspace at {TARGET}")
     print("Contract: CLAUDE.md")
-    print("Claude Code: 20 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, fresh-eyes PR reader .claude/agents/pr-reader.md, blind code reader .claude/agents/code-reader.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
+    print("Claude Code: 21 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, fresh-eyes PR reader .claude/agents/pr-reader.md, blind code reader .claude/agents/code-reader.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
     print("Visual design: design-cowork fires automatically; the design-drafter subagent drafts each design slice's surfaces as one working canvas under docs/reference/design/jobs/ (a frame of shared choices, its pages at once, then a join into clickable Pages, a board per component), the design-critic judges each page and the joined canvas when the job's critique is on, the orchestrator publishes each round to one Design canvas Artifact in the Claude app, and the operator decides: picks a style (build-after / design-only / paired) and signs each design in their own words, or on an in-product mockup they ask for, before separate implementation and browser fidelity")
     print("One executor, routed per dispatch by kind, then risk, then attempt (mid is the default row, real code included; high for decomposition, research, review, named triggers and retries), through one route table whose rows set each dispatch's model and effort; python3 scripts/workflow.py executor-route shows it (and executor-route <slice> the decision for one slice); override a row in executors.toml, then run sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
