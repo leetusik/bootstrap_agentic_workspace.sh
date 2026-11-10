@@ -2,7 +2,7 @@
 name: read-code
 description: "Blind-read a product change made outside a phase before it is pushed: dispatch the code-reader on the unpushed range (or a named one) and report its findings for the operator to decide on."
 argument-hint: "[<base>..<head> | <ref>]"
-allowed-tools: Bash(python3 scripts/workflow.py executor-route:*), Bash(python3 scripts/workflow.py nested-repos), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git rev-parse:*), Bash(git symbolic-ref:*), Bash(git merge-base:*), Bash(git ls-files:*), Read, Agent
+allowed-tools: Bash(python3 scripts/workflow.py executor-route:*), Bash(python3 scripts/workflow.py nested-repos), Bash(python3 scripts/workflow.py phase-scope --pathspec), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git rev-parse:*), Bash(git symbolic-ref:*), Bash(git merge-base:*), Bash(git ls-files:*), Read, Agent
 disable-model-invocation: true
 ---
 
@@ -21,7 +21,7 @@ A blind read of a code change before it is pushed, for work made **outside a pha
 
    A command that prints nothing where a ref is needed (no upstream and no default branch, a ref that does not resolve, a `merge-base` with no common commit): say which did not resolve and ask the operator for an explicit `<base>..<head>`; never guess, never pass an empty base. An empty read over the pathspec (no diff and no untracked file): say so and stop.
 
-2. **The pathspec: the product files only**, never the workspace's own. At root, the whole repo except the workspace's state and docs folders (`. :!works :!docs`). In a nested install, the host repo except the nested `workflow/` folder (`. :(exclude)workflow`): a host folder named works or docs is product there. On a multi-repo host, each listed repo whole (`.`), and the host itself minus `workflow/` and every listed repo's folder. The same rule `phase-scope` reads a phase's files with.
+2. **The pathspec: the product files only**, never the workspace's own (at root its state and docs folders, nested its `workflow/` folder; a host folder named works or docs is product there). Run `python3 scripts/workflow.py phase-scope --pathspec` and pass the value after `pathspec=` verbatim: one line at root and in a nested install; on a multi-repo host, the `repo=<name> pathspec=` line of the repo you read (`repo=. (host)` for the host). It is the pathspec `phase-scope` reads a phase's files with; never write one by hand.
 
 3. **The purpose.** One plain sentence saying what the change is for, taken from the operator's request in this session. If nothing says, ask the operator in one line before dispatching. Never a phase or slice id.
 

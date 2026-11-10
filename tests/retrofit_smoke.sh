@@ -2924,6 +2924,15 @@ assert {"status": "A", "path": "src/probe.py"} in d["files"], d
 ' "$p3_created" ) \
   && ok "phase-scope --json parses and carries the same creation commit, mode and file list" \
   || bad "phase-scope --json is not the same answer as the text form"
+# F2: it prints the pathspec it read with, paste-ready after `--` (a guessed `.` would list works/), the same in
+# --json and from the phase-less `phase-scope --pathspec` that /read-code runs.
+p3_spec=$(printf '%s\n' "$scope_out" | sed -n 's/^pathspec=//p')
+p3_diff=$( cd "$F" && eval "git diff --name-only $p3_created^ HEAD -- $p3_spec" 2>&1 )
+p3_json=$( cd "$F" && python3 scripts/workflow.py phase-scope P3 --json 2>/dev/null | python3 -c 'import json, shlex, sys; print(json.load(sys.stdin)["pathspec"] == shlex.split(sys.argv[1]))' "$p3_spec" 2>&1 )
+[ "$p3_spec" = ". ':!works' ':!docs'" ] && [ "$p3_diff" = "src/probe.py" ] && [ "$p3_json" = True ] \
+  && [ "$( cd "$F" && python3 scripts/workflow.py phase-scope --pathspec 2>&1 )" = "pathspec=$p3_spec" ] \
+  && ok "phase-scope prints pathspec=, which pasted after -- lists only the product file; --json and phase-scope --pathspec carry the same value" \
+  || bad "phase-scope pathspec= missing or wrong (spec=$p3_spec json=$p3_json) -- $p3_diff"
 nogit_scope=$( cd "$F" && PATH="/var/empty" "$nogit_py" scripts/workflow.py phase-scope P3 2>&1 ); nogit_rc=$?
 [ "$nogit_rc" -eq 0 ] && printf '%s\n' "$nogit_scope" | grep -q "^phase-scope: no git history readable here" \
   && ok "phase-scope without git is advisory: the no-history line and exit 0" \
@@ -3791,6 +3800,9 @@ scope_out=$(nw phase-scope P1 2>&1); scope_rc=$?
   && ! printf '%s\n' "$scope_out" | grep -qE "^  [AMDR] (workflow/|src/app.py)" \
   && ok "phase-scope reads the host repo from the anchor: the product commit's files (the host's docs/ included), nothing under workflow/" \
   || bad "nested phase-scope did not read the host boundary (rc=$scope_rc) -- $scope_out"
+printf '%s\n' "$scope_out" | grep -qx "pathspec=. ':(exclude)workflow'" && [ "$(nw phase-scope --pathspec 2>&1)" = "pathspec=. ':(exclude)workflow'" ] \
+  && ok "nested phase-scope and phase-scope --pathspec print the host pathspec: the nested workflow/ folder excluded, the host's docs/ kept" \
+  || bad "nested pathspec= line missing or wrong -- $scope_out"
 ps_out=$(nw parallel-start P1 2>&1); ps_rc=$?
 [ "$ps_rc" -ne 0 ] && printf '%s\n' "$ps_out" | grep -q "^parallel-start in a nested install needs --host-branch <name>" \
   && ! grep -q '"execution"' "$NH/workflow/works/phases/active/P1/phase.json" \
@@ -4199,6 +4211,10 @@ sc=$(hw phase-scope P1 2>&1); sc_rc=$?; a_head=$(git -C "$MH/alpha" rev-parse --
 [ "$sc_rc" -eq 0 ] && printf '%s\n' "$sc" | grep -q "^repo=alpha path=alpha/ .*head=$a_head .*commits=1$" && printf '%s\n' "$sc" | grep -qx '    A alpha/one.txt' \
   && printf '%s\n' "$sc" | grep -q "^repo=beta path=beta/ commits=0 " \
   && ok "phase-scope prints one block per repo: alpha holds its commit and file, beta shows no commits" || bad "multi-repo phase-scope wrong (rc=$sc_rc) -- $sc"
+printf '%s\n' "$sc" | grep -qx 'repo=alpha pathspec=.' && printf '%s\n' "$sc" | grep -qx 'repo=beta pathspec=.' \
+  && printf '%s\n' "$sc" | grep -qx "repo=. (host) pathspec=. ':(exclude)workflow' ':(exclude)alpha' ':(exclude)beta'" \
+  && ok "multi-repo phase-scope prints one pathspec per repo and the host's, which excludes workflow/ and every repo folder" \
+  || bad "multi-repo pathspec lines missing or wrong -- $sc"
 # (c2) pr-check on a multi-repo host never passes a repo with no body: alpha's lines say body=missing and warn; with no
 # branch recorded and no --repo nothing is measured, which warns too.
 pc_a=$(hw pr-check P1 --repo alpha 2>&1); pc_a_rc=$?; pc_n=$(hw pr-check P1 2>&1); pc_n_rc=$?

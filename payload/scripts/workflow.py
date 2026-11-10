@@ -8670,11 +8670,17 @@ def phase_scope(args: argparse.Namespace) -> None:
     Advisory everywhere: no git means one explanatory line and exit 0; an uncommitted phase lists
     the working tree instead; `--base` / `--head` override either end verbatim.
     """
+    if getattr(args, "pathspec", False):  # an in-engine caller builds its own Namespace
+        _phase_scope_pathspec_only(args)
+        return
+    if not args.phase:
+        raise SystemExit("phase-scope: name the phase (phase-scope <P>), or print the product pathspec alone with phase-scope --pathspec")
     pdir, archived = _find_phase_dir(args.phase)
     data = read_json(pdir / "phase.json")
+    spec = product_pathspec()  # at root; the nested readers take theirs from the same function
     out = {"phase": args.phase, "status": data.get("status"), "archived": archived, "mode": "default",
            "creation_commit": None, "base": None, "base_kind": None, "head": None, "head_kind": None,
-           "range": None, "commits": 0, "files": [], "uncommitted": [], "notes": [], "hint": SCOPE_HINT}
+           "range": None, "commits": 0, "pathspec": spec, "files": [], "uncommitted": [], "notes": [], "hint": SCOPE_HINT}
 
     def emit(lines):
         if args.json:
@@ -8728,9 +8734,10 @@ def phase_scope(args: argparse.Namespace) -> None:
                         out["notes"].append(f"read from branch {ref}, not this checkout")
     if base is None:
         if creation is None:
-            out["uncommitted"] = _status_product_files()
+            out["uncommitted"] = _status_product_files(pathspec=spec)
             lines = header + [f"mode={out['mode']}",
                               f"creation_commit=none (works/phases/active/{args.phase}/phase.json has no commit yet -- uncommitted phase, or a shallow clone)",
+                              *pathspec_lines(spec),
                               f"uncommitted_product_files={len(out['uncommitted'])} (working tree; works/ and docs/ excluded)"]
             lines += [f"  {f['status']} {f['path']}" for f in out["uncommitted"]]
             lines += [f"note: {n}" for n in out["notes"]] + [SCOPE_HINT]
@@ -8758,8 +8765,8 @@ def phase_scope(args: argparse.Namespace) -> None:
         raise SystemExit(f"cannot resolve {tip} to a commit")
     rng = head if base == EMPTY_TREE else f"{base}..{head}"
     count = _git(["rev-list", "--count", rng], check=False).stdout.strip() or "0"
-    files = _diff_product_files(base, head)
-    uncommitted = _status_product_files() if head == _rev_parse("HEAD") else []
+    files = _diff_product_files(base, head, pathspec=spec)
+    uncommitted = _status_product_files(pathspec=spec) if head == _rev_parse("HEAD") else []
     out.update({"base": base, "base_kind": base_kind, "head": head, "head_kind": head_kind,
                 "range": f"{base[:7]}..{head[:7]}", "commits": int(count), "files": files, "uncommitted": uncommitted})
 
@@ -8770,6 +8777,7 @@ def phase_scope(args: argparse.Namespace) -> None:
     lines.append(f"base={base} ({base_kind})")
     lines.append(f"head={head} ({head_kind})")
     lines.append(f"range={out['range']} commits={count}")
+    lines += pathspec_lines(spec)
     lines.append(f"product_files={len(files)} (added {tally['A']}, modified {tally['M']}, deleted {tally['D']}, renamed {tally['R']}; works/ and docs/ excluded)")
     for f in files:
         lines.append(f"  {f['status']} {f['from']} -> {f['path']}" if f.get("from") else f"  {f['status']} {f['path']}")
@@ -8784,6 +8792,65 @@ def _host_pathspec() -> list:
     """The host's product: everything but the nested workflow repo. Unlike at root, the host's own
     works/ or docs/ ARE product, so only the nested repo's folder is excluded."""
     return [".", f":(exclude){Path(os.path.relpath(ROOT, HOST_ROOT)).as_posix()}"]
+
+
+REPO_PATHSPEC = ["."]  # a registered repo on a multi-repo host: the whole repo is product
+
+
+def product_pathspec(repos=None) -> list:
+    """THE pathspec phase-scope reads product files with, for the folder it reads (the workspace root
+    at root, the host root nested): at root `PRODUCT_PATHSPEC`, nested `_host_pathspec()`, and on a
+    multi-repo host the host's own, with every registered repo's folder excluded too (each repo
+    itself reads `REPO_PATHSPEC`). `phase-scope` diffs with it and prints it, so the printed line is
+    the one the file list was computed with (F2)."""
+    if NESTED is None:
+        return list(PRODUCT_PATHSPEC)
+    return _host_pathspec() + [f":(exclude){r['path']}" for r in (repos or [])]
+
+
+def pathspec_text(spec: list) -> str:
+    """A pathspec as one POSIX-shell line, paste-ready after `--` (`shlex.join`: `:!` and `:(...)` quoted)."""
+    return shlex.join(spec)
+
+
+def pathspec_lines(spec, repos=None) -> list:
+    """The `pathspec=` line(s) `phase-scope` prints, the value being everything after `pathspec=`.
+    `spec` is the pathspec the root or host read used (None: the host was not read, a `--repo`
+    filter). At root and on a single-repo host (`repos` None) one line; on a multi-repo host one
+    per repo read (`repo=<name> pathspec=.`, i.e. `REPO_PATHSPEC`) and then the host's
+    (`repo=. (host) pathspec=...`), each relative to that repo's own folder."""
+    if repos is None:
+        return [f"pathspec={pathspec_text(spec)}"]
+    lines = [f"repo={r['name']} pathspec={pathspec_text(REPO_PATHSPEC)}" for r in repos]
+    if spec is not None:
+        lines.append(f"repo=. (host) pathspec={pathspec_text(spec)}")
+    return lines
+
+
+def _phase_scope_pathspec_only(args: argparse.Namespace) -> None:
+    """`phase-scope --pathspec [<P>]`: print only the product pathspec, phase or no phase (`/read-code`
+    runs outside one). The same functions `phase-scope <P>` diffs with, so the same value."""
+    if args.base or args.head:
+        raise SystemExit("phase-scope --pathspec: refused -- the pathspec has no range; drop --base/--head")
+    repos = nested_repos() if NESTED is not None else []
+    if args.repo and not repos:
+        raise SystemExit("phase-scope --repo: refused -- a multi-repo host only; drop --repo")
+    wanted = list(dict.fromkeys(args.repo or []))
+    names = [r["name"] for r in repos]
+    unknown = [n for n in wanted if n not in names]
+    if unknown:
+        raise SystemExit(f"phase-scope --repo: refused -- no registered repo is named {', '.join(unknown)} (registered: {', '.join(names)})")
+    selected = [r for r in repos if not wanted or r["name"] in wanted]
+    spec = None if wanted else product_pathspec(repos)
+    out = {"mode": "default" if NESTED is None else ("nested-multi" if repos else "nested"), "pathspec": spec}
+    if repos:
+        out["repos"] = [{"name": r["name"], "path": r["path"], "pathspec": list(REPO_PATHSPEC)} for r in selected]
+    lines = pathspec_lines(spec, selected if repos else None)
+    if args.json:
+        print(json.dumps(out, indent=2, ensure_ascii=False))
+    else:
+        for ln in lines:
+            print(ln)
 
 
 def _phase_scope_nested(args: argparse.Namespace, data: dict, out: dict, header: list, emit) -> None:
@@ -8805,7 +8872,8 @@ def _phase_scope_nested(args: argparse.Namespace, data: dict, out: dict, header:
     if args.repo:
         raise SystemExit("phase-scope --repo: refused -- single-repo install: the host is the one repo; drop --repo")
     host = HOST_ROOT
-    spec = _host_pathspec()
+    spec = product_pathspec()
+    out["pathspec"] = spec
     nested_dir = spec[1].split(")", 1)[1]
     out["mode"] = "nested"
     if not _git_available(cwd=host):
@@ -8858,6 +8926,7 @@ def _phase_scope_nested(args: argparse.Namespace, data: dict, out: dict, header:
         out["uncommitted"] = _status_product_files(cwd=host, pathspec=spec)
         lines = header + [f"mode={out['mode']}",
                           f"creation_commit=none ({missing} -- pass --base <host-sha> to measure a range)",
+                          *pathspec_lines(spec),
                           f"uncommitted_product_files={len(out['uncommitted'])} (host working tree; {nested_dir}/ excluded)"]
         lines += [f"  {f['status']} {f['path']}" for f in out["uncommitted"]]
         lines += [f"note: {n}" for n in out["notes"]] + [SCOPE_HINT]
@@ -8899,6 +8968,7 @@ def _phase_scope_nested(args: argparse.Namespace, data: dict, out: dict, header:
     lines.append(f"base={base} ({base_kind})")
     lines.append(f"head={head} ({head_kind})")
     lines.append(f"range={out['range']} commits={count}")
+    lines += pathspec_lines(spec)
     lines.append(f"product_files={len(files)} (added {tally['A']}, modified {tally['M']}, deleted {tally['D']}, renamed {tally['R']}; read from the host repo, {nested_dir}/ excluded)")
     for f in files:
         lines.append(f"  {f['status']} {f['from']} -> {f['path']}" if f.get("from") else f"  {f['status']} {f['path']}")
@@ -8955,7 +9025,7 @@ def _phase_scope_multi(args: argparse.Namespace, data: dict, out: dict, header: 
         name, rel = repo["name"], repo["path"]
         prefix = f"{rel}/"
         entry = {"name": name, "path": rel, "branch": None, "base": None, "base_kind": None, "head": None, "head_kind": None,
-                 "range": None, "commits": 0, "files": [], "uncommitted": [], "notes": []}
+                 "range": None, "commits": 0, "pathspec": list(REPO_PATHSPEC), "files": [], "uncommitted": [], "notes": []}
         out.setdefault("repos", []).append(entry)
         path, why = _phase_repo_path(repo, data)
         if path is None and why.startswith(NOT_IN_SET) and per_repo_override and (args.base or args.head):
@@ -9006,7 +9076,7 @@ def _phase_scope_multi(args: argparse.Namespace, data: dict, out: dict, header: 
                 elif not base:
                     why_none = f"{res['note']} -- pass --repo {name} --base <sha>"
         if base is None:
-            unc = _prefixed(_status_product_files(cwd=path, pathspec=["."]), prefix)
+            unc = _prefixed(_status_product_files(cwd=path, pathspec=REPO_PATHSPEC), prefix)
             entry["uncommitted"] = unc
             union_unc += unc
             touched += bool(unc)
@@ -9040,8 +9110,8 @@ def _phase_scope_multi(args: argparse.Namespace, data: dict, out: dict, header: 
             raise SystemExit(f"cannot resolve {name}'s HEAD to a commit in {path}")
         rng = head if base == EMPTY_TREE else f"{base}..{head}"
         count = int(_git(["rev-list", "--count", rng], cwd=path, check=False).stdout.strip() or "0")
-        files = _diff_product_files(base, head, cwd=path, pathspec=["."])
-        uncommitted = _status_product_files(cwd=path, pathspec=["."]) if head == repo_head else []
+        files = _diff_product_files(base, head, cwd=path, pathspec=REPO_PATHSPEC)
+        uncommitted = _status_product_files(cwd=path, pathspec=REPO_PATHSPEC) if head == repo_head else []
         pfiles, punc = _prefixed(files, prefix), _prefixed(uncommitted, prefix)
         entry.update({"base": base, "base_kind": base_kind, "head": head, "head_kind": head_kind,
                       "range": f"{base[:7]}..{head[:7]}", "commits": count, "files": pfiles, "uncommitted": punc})
@@ -9067,8 +9137,9 @@ def _phase_scope_multi(args: argparse.Namespace, data: dict, out: dict, header: 
     host_block = []
     host_anchors = data.get("host_anchors") if isinstance(data.get("host_anchors"), dict) else {}
     out["creation_commit"] = host_anchors.get("created")
+    spec = None if wanted else product_pathspec(repos)  # every registered repo's folder excluded
+    out["pathspec"] = spec
     if not wanted and host is not None and _git_available(cwd=host):
-        spec = _host_pathspec() + [f":(exclude){r['path']}" for r in repos]
         base = base_kind = None
         if args.base:
             base = _rev_parse(args.base, cwd=host)
@@ -9124,6 +9195,7 @@ def _phase_scope_multi(args: argparse.Namespace, data: dict, out: dict, header: 
     lines += host_block
     if not union:
         lines.append(f"product_files=0 across {len(selected)} repos")
+    lines += pathspec_lines(spec, selected)
     lines += [f"note: {n}" for n in out["notes"]] + [SCOPE_HINT]
     emit(lines)
 
@@ -9468,12 +9540,7 @@ def _pr_tracked_changes(path: Path, repo) -> list:
     """The tracked, uncommitted changes in `path` a branch switch would carry (untracked files belong to
     no branch). Product paths only: at root the workflow state (works/, docs/) is excluded, and a
     nested host excludes its nested workflow repo."""
-    if repo is not None:
-        spec = ["."]
-    elif NESTED is not None:
-        spec = _host_pathspec()
-    else:
-        spec = PRODUCT_PATHSPEC
+    spec = REPO_PATHSPEC if repo is not None else product_pathspec()  # a single-repo host or root here
     proc = _git(["status", "--porcelain", "--untracked-files=no", "--", *spec], cwd=path, check=False)
     return [ln[3:] for ln in proc.stdout.splitlines() if len(ln) > 3]
 
@@ -9618,7 +9685,7 @@ def _phase_scope_product_files(phase_id: str):
     file must never hold a docs phase's review."""
     import contextlib
     import io
-    ns = argparse.Namespace(phase=phase_id, base=None, head=None, json=True, repo=None)
+    ns = argparse.Namespace(phase=phase_id, base=None, head=None, json=True, repo=None, pathspec=False)
     buf = io.StringIO()
     try:
         with contextlib.redirect_stdout(buf):
@@ -12051,15 +12118,14 @@ def _rotate_uncommitted() -> list:
     with its folder) and then the host without them. A repo git cannot read adds nothing, so without
     git nothing is dirty: there is no commit that could take anything. Read only while work is parked."""
     if NESTED is None:
-        return _status_product_files() if _git_available() else []
+        return _status_product_files(pathspec=product_pathspec()) if _git_available() else []
     found = []
     repos = nested_repos()
-    spec = _host_pathspec()
+    spec = product_pathspec(repos)
     for repo in repos:
         path, _ = _phase_repo_path(repo, {})
         if path is not None:
-            found += _prefixed(_status_product_files(cwd=path, pathspec=["."]), f"{repo['path']}/")
-        spec.append(f":(exclude){repo['path']}")
+            found += _prefixed(_status_product_files(cwd=path, pathspec=REPO_PATHSPEC), f"{repo['path']}/")
     if HOST_ROOT is not None and _git_available(cwd=HOST_ROOT):
         found += _status_product_files(cwd=HOST_ROOT, pathspec=spec)
     return found
@@ -20157,8 +20223,9 @@ def main(argv=None) -> int:
     p.add_argument("--default-branch", default=None, dest="default_branch", help="with --add: the repo's integration branch (default: its origin/HEAD target, else none)")
     p.set_defaults(func=cmd_nested_repos)
 
-    p = sub.add_parser("phase-scope", help="Read-only: the phase's boundary from git -- creation commit, base..head range and the product files it changed (works/ and docs/ excluded); advisory, exit 0 without git")
-    p.add_argument("phase", help=PHASE_ARG_HELP)
+    p = sub.add_parser("phase-scope", help="Read-only: the phase's boundary from git -- creation commit, base..head range, the pathspec= line it read with (works/ and docs/ excluded at root, the nested workflow folder in a nested install; one per repo and the host's on a multi-repo host; paste-ready after -- in a git command run from the folder it was read in) and the product files it changed; advisory, exit 0 without git. --pathspec prints only the pathspec line(s), with no phase needed")
+    p.add_argument("phase", nargs="?", default=None, help=PHASE_ARG_HELP + "; omit it only with --pathspec")
+    p.add_argument("--pathspec", action="store_true", help="print only the product pathspec line(s) (the JSON with --json), the same value phase-scope <P> reads with; needs no phase (/read-code, outside a phase)")
     p.add_argument("--base", default=None, help="use this ref as the range base verbatim (skips creation-commit / merge-base detection)")
     p.add_argument("--head", default=None, help="use this ref as the range head (default: HEAD, or the commit that recorded a passing review on a done phase)")
     p.add_argument("--json", action="store_true", help="print the same answer as one JSON object")
