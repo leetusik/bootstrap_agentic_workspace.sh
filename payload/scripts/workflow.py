@@ -584,12 +584,16 @@ RETIRED_ROUTES = ("cheap",)
 # `reader` (P51) owns .claude/agents/pr-reader.md, the fresh-eyes PR reader: it reads a PR as a
 # teammate would (the product diff, the body and details files, the team-rule files, the size count)
 # and writes one findings file. Not a slice route; `executor-route --reader` dispatches it.
+# `code` owns .claude/agents/code-reader.md, the blind code reader: it reads one code change cold (the
+# diff over the product pathspec and the files at head, never the workspace's records), reproduces each
+# suspicion with a throwaway script and writes one findings file. Not a slice route; `executor-route --code`
+# dispatches it. Its own row, so the operator can repoint it without moving the reader row.
 # One executor (workspace v66): the three slice rows -- high, research and mid -- all run the
 # one `slice-executor` file, whose frontmatter carries the mid row (the default route). The two
 # executor tiers of v23-v65 (slice-executor-mid / -high, split because the Agent tool could not set
 # effort per dispatch before Claude Code 2.1.292) are retired, and so is the `tier` they carried:
 # a dispatch names its row (`route=`), and the verdict records it (`route:`).
-# Only the rows that own their file (FILE_ROWS: mid, design, critic, reader, explore) are written into
+# Only the rows that own their file (FILE_ROWS: mid, design, critic, reader, code, explore) are written into
 # frontmatter, so only they accept a full model id or "inherit"; every other row (high, research,
 # judge, screen) runs a file another row owns with its model passed per call, and the Agent tool's
 # `model` is an enum, so those rows take an alias only.
@@ -602,7 +606,7 @@ RETIRED_ROUTES = ("cheap",)
 # it (by default the `screen` stage) run on it. It defaults to the mid row's values, owns no agent file
 # (it runs slice-executor with its model and effort passed per dispatch, like high and research), so
 # [claude.screen] takes an Agent-tool alias only; set a cheaper one there to screen cheaper.
-EXECUTOR_ROUTES = ("high", "research", "design", "critic", "judge", "reader", "mid", "screen", "explore")  # print order
+EXECUTOR_ROUTES = ("high", "research", "design", "critic", "judge", "reader", "code", "mid", "screen", "explore")  # print order
 # v88 (P47-p5.S4): a per-page design round's spans carry `pass: frame | page <slug> | join` (drafter) or
 # `scope: page | cross` (critic) in their prompt; the meter labels them apart so the means estimate a round.
 # They run the design / critic rows: no executor-route row of their own.
@@ -615,6 +619,7 @@ ROUTE_DEFAULTS = {
     "critic": {"model": "opus", "effort": "high"},
     "judge": {"model": "opus", "effort": "high"},
     "reader": {"model": "opus", "effort": "high"},
+    "code": {"model": "opus", "effort": "high"},
     "mid": {"model": "opus", "effort": "medium"},
     "screen": {"model": "opus", "effort": "medium"},
     "explore": {"model": "haiku", "effort": "xhigh"},
@@ -622,23 +627,25 @@ ROUTE_DEFAULTS = {
 # The agent file each row dispatches to (canonical name; `installed_agent_name` applies a nested
 # rename). The design row owns design-drafter and follows no other row, so one [claude.design]
 # override governs it alone (before v60 it followed the high row). The critic row owns
-# design-critic; the judge row runs that same file in judge mode. The reader row owns pr-reader.
+# design-critic; the judge row runs that same file in judge mode. The reader row owns pr-reader, the
+# code row code-reader.
 SLICE_AGENT = "slice-executor"
 ROUTE_AGENT = {"high": SLICE_AGENT, "research": SLICE_AGENT, "design": "design-drafter", "critic": "design-critic",
-               "judge": "design-critic", "reader": "pr-reader", "mid": SLICE_AGENT, "screen": SLICE_AGENT,
-               "explore": "Explore"}
+               "judge": "design-critic", "reader": "pr-reader", "code": "code-reader", "mid": SLICE_AGENT,
+               "screen": SLICE_AGENT, "explore": "Explore"}
 # The rows that own their agent file: sync-agents writes each one's resolved model/effort into its
 # frontmatter, so only these accept a full model id or "inherit".
-FILE_ROWS = ("mid", "design", "critic", "reader", "explore")
+FILE_ROWS = ("mid", "design", "critic", "reader", "code", "explore")
 # The executor pair v66 retired (last shipped in v65): old transcripts still name them, so the meter
 # keeps reading them (`_meter_route`, `_meter_collect`'s canon map).
 RETIRED_AGENTS = ("slice-executor-high", "slice-executor-mid")
-# (label, canonical agent name, row) for the five agent files sync-agents manages, in print order.
+# (label, canonical agent name, row) for the six agent files sync-agents manages, in print order.
 MANAGED_AGENT_FILES = (
     ("slice-executor", ROUTE_AGENT["mid"], "mid"),
     ("design-drafter", ROUTE_AGENT["design"], "design"),
     ("design-critic", ROUTE_AGENT["critic"], "critic"),
     ("pr-reader", ROUTE_AGENT["reader"], "reader"),
+    ("code-reader", ROUTE_AGENT["code"], "code"),
     ("Explore", ROUTE_AGENT["explore"], "explore"),
 )
 AGENT_MODEL_ALIASES = ("opus", "sonnet", "haiku", "fable")  # the Agent tool's `model` enum
@@ -976,10 +983,10 @@ def installed_agent_name(name: str) -> str:
 
 
 def executor_agent_files(routes: dict) -> list:
-    """(label, path, model, effort) for the 5 managed agent files (MANAGED_AGENT_FILES): slice-executor
+    """(label, path, model, effort) for the 6 managed agent files (MANAGED_AGENT_FILES): slice-executor
     from the mid row (the default route; high and research pass their model and effort per
     dispatch), design-drafter from its own design row, design-critic from the critic row, pr-reader
-    from the reader row and Explore
+    from the reader row, code-reader from the code row and Explore
     from the explore row. high, research and judge own no file. Labels stay canonical;
     paths resolve through the nested rename map (`installed_agent_name`)."""
     return [
@@ -1003,11 +1010,11 @@ def executor_agent_drift(routes: dict) -> tuple:
 
 
 def sync_agents(args: argparse.Namespace) -> None:
-    """Write the resolved route table into the five managed agent files' model/effort frontmatter:
+    """Write the resolved route table into the six managed agent files' model/effort frontmatter:
     slice-executor from the mid row (high and research run it with their model and effort
     passed per dispatch), design-drafter from the design row, design-critic
     from the critic row (the judge row borrows that file, its model passed per call), pr-reader from
-    the reader row, Explore from
+    the reader row, code-reader from the code row, Explore from
     the explore row (--check: report drift, write nothing, exit 1 when out of sync)."""
     overrides = read_executors_toml()
     routes = resolve_routes(overrides)
@@ -1143,9 +1150,10 @@ def _dispatch_lines(row: str, routes: dict, proxy) -> tuple:
 def cmd_executor_route(args: argparse.Namespace) -> None:
     """Print the deterministic routing decision the orchestrator dispatches from, one key=value per
     line: bare, the resolved route table and the agent files' sync state; with a slice id, that
-    slice's route (--retry: its second attempt); --drafter / --critic / --judge / --reader / --explore, the
-    design subagent's (the design row), the design critic's two modes (the critic and judge rows,
-    both running design-critic), the fresh-eyes PR reader's (the reader row, running pr-reader) and
+    slice's route (--retry: its second attempt); --drafter / --critic / --judge / --reader / --code /
+    --explore, the design subagent's (the design row), the design critic's two modes (the critic and
+    judge rows, both running design-critic), the fresh-eyes PR reader's (the reader row, running
+    pr-reader), the blind code reader's (the code row, running code-reader) and
     the lookup agent's (the explore row). Every form names the
     agent file it dispatches to as `subagent_type=`; the three slice rows all run slice-executor.
 
@@ -1155,7 +1163,8 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
     dispatch, `skip=` means dispatch nothing.
     Reads executors.toml (a malformed one errors here) and writes nothing."""
     forms = [f for f, on in (("<slice_id>", args.slice is not None), ("--drafter", args.drafter), ("--critic", args.critic),
-                             ("--judge", args.judge), ("--reader", args.reader), ("--explore", args.explore)) if on]
+                             ("--judge", args.judge), ("--reader", args.reader), ("--code", args.code),
+                             ("--explore", args.explore)) if on]
     if len(forms) > 1:
         raise SystemExit(f"executor-route: {' and '.join(forms)} are mutually exclusive; give at most one")
     if args.retry and args.slice is None:
@@ -1191,9 +1200,9 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
         print(f"subagent_type={installed_agent_name(ROUTE_AGENT[row])}")
         print("\n".join(lines))
         extra = [fallback] if fallback else []
-    elif args.drafter or args.critic or args.judge or args.reader or args.explore:
+    elif args.drafter or args.critic or args.judge or args.reader or args.code or args.explore:
         row = ("design" if args.drafter else "critic" if args.critic else "judge" if args.judge
-               else "reader" if args.reader else "explore")
+               else "reader" if args.reader else "code" if args.code else "explore")
         agent = ROUTE_AGENT[row]
         skip = _judge_proxy_skip(routes, proxy) if row == "judge" else None
         lines, fallback = _dispatch_lines(row, routes, proxy)
@@ -1678,6 +1687,8 @@ def _meter_route(agent: str, prompt: str, model, kind, families=None, effort=Non
         return f"critic-{found.group(1).lower()}" if found else "critic"
     if agent == "pr-reader":
         return "reader"
+    if agent == "code-reader":
+        return "code"
     if agent == "Explore":
         return "explore"
     if agent == "slice-executor-high":
@@ -5307,7 +5318,7 @@ def validate() -> int:
     oversized = oversized_sections_line(oversized_doc_sections())
     if oversized:
         warnings.append(oversized)
-    # Agent-file drift is advisory only: warn (never error, never crash) when the five managed agent
+    # Agent-file drift is advisory only: warn (never error, never crash) when the six managed agent
     # files disagree with the route table (executors.toml/defaults), so a foreign or partial
     # workspace still validates. Skipped when a broken nested marker names no host: the agent files
     # live there, not under ROOT.
@@ -19949,17 +19960,18 @@ def main(argv=None) -> int:
     p = sub.add_parser("validate", help="Validate workflow and docs structure")
     p.set_defaults(func=lambda args: sys.exit(validate()))
 
-    p = sub.add_parser("sync-agents", help="Write the route table's rows (engine defaults overlaid by the repo-root executors.toml) into the model/effort frontmatter of the five managed agent files: slice-executor (the mid row; high and research run it with their model and effort passed per dispatch), design-drafter (its own design row), design-critic (the critic row; the judge row runs it with its model passed per call), pr-reader (the reader row) and Explore (the explore row)")
+    p = sub.add_parser("sync-agents", help="Write the route table's rows (engine defaults overlaid by the repo-root executors.toml) into the model/effort frontmatter of the six managed agent files: slice-executor (the mid row; high and research run it with their model and effort passed per dispatch), design-drafter (its own design row), design-critic (the critic row; the judge row runs it with its model passed per call), pr-reader (the reader row), code-reader (the code row) and Explore (the explore row)")
     p.add_argument("--check", action="store_true", help="Report drift without writing; exit 1 if out of sync")
     p.set_defaults(func=sync_agents)
 
-    p = sub.add_parser("executor-route", help="Print the executor routing decision, one key=value per line, writing nothing: bare, the resolved route table (high, research, design, critic, judge, reader, mid, screen, explore), the agent files' sync state and an override= line per row executors.toml sets (its value against the default); with a slice id, the route, subagent_type (slice-executor for every slice row), model, effort and attribution its dispatch uses (kind first, then risk, then attempt; a loop's cycle routes by its charter stage and prints stage=); --drafter / --critic / --judge / --reader / --explore, a non-slice agent's dispatch; plus fallback=, skip= and warning= lines for the environment. The critic and the judge may share the design row's model (v75)")
+    p = sub.add_parser("executor-route", help="Print the executor routing decision, one key=value per line, writing nothing: bare, the resolved route table (high, research, design, critic, judge, reader, code, mid, screen, explore), the agent files' sync state and an override= line per row executors.toml sets (its value against the default); with a slice id, the route, subagent_type (slice-executor for every slice row), model, effort and attribution its dispatch uses (kind first, then risk, then attempt; a loop's cycle routes by its charter stage and prints stage=); --drafter / --critic / --judge / --reader / --code / --explore, a non-slice agent's dispatch; plus fallback=, skip= and warning= lines for the environment. The critic and the judge may share the design row's model (v75)")
     p.add_argument("slice", nargs="?", help="the slice to route; omit for the table")
     p.add_argument("--retry", action="store_true", help="the slice's second attempt (an escalation, a failed or empty return, a fix of mid-row work): always the high row. A loop cycle needs none: the engine's attempt picks its row (attempt 2 is high), and --retry on a cycle's attempt 1 is refused")
     p.add_argument("--drafter", action="store_true", help="the design-drafter's dispatch (its own design row, [claude.design]; not a slice route)")
     p.add_argument("--critic", action="store_true", help="the design-critic's dispatch in critic mode (the critic row, [claude.critic]); it may share the drafter's model")
     p.add_argument("--judge", action="store_true", help="the design-critic's dispatch in judge mode (the judge row, [claude.judge], alias only); never refused for sharing the drafter's model; skip=yes only when the judge row is overridden to Fable behind a loopback proxy that serves no Fable")
     p.add_argument("--reader", action="store_true", help="the pr-reader's dispatch (the reader row, [claude.reader]): the fresh-eyes PR reader, which reads the product diff, the body and details files, the team-rule files and the pr-check output only, and writes topics/pr-read.md")
+    p.add_argument("--code", action="store_true", help="the code-reader's dispatch (the code row, [claude.code]): the blind code reader, which reads one code change cold (the diff over the product pathspec and the files at head, never the workspace's records), reproduces each suspicion and writes topics/code-read.md")
     p.add_argument("--explore", action="store_true", help="the read-only Explore lookup agent's dispatch (the explore row)")
     p.set_defaults(func=cmd_executor_route)
 

@@ -76,6 +76,7 @@ FIXED_LIVE_FILES = [
     ".claude/agents/design-drafter.md",
     ".claude/agents/design-critic.md",
     ".claude/agents/pr-reader.md",
+    ".claude/agents/code-reader.md",
     ".claude/agents/Explore.md",
     "executors.toml",
     "works/templates/deferred_brief.md",
