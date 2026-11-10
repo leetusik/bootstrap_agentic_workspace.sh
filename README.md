@@ -463,7 +463,7 @@ Claude Code에서 `/이름`으로 입력합니다.
 | `run-loop` | loop phase를 서명된 charter 아래에서 cycle 단위로 계속 실행 (`/loop /run-loop <P>`). 판단이 필요한 항목은 보류 목록에 두고 계속하며, charter가 정한 멈춤에서만 멈춤 |
 | `review-phase` | phase를 리뷰하고 `pass` / `changes_requested` / `blocked` 기록 |
 | `pr` | phase의 draft PR 본문을 쓰고 검사한 뒤(`pr-reader` 에이전트가 새 눈으로 먼저 읽음), 리뷰가 통과하면 draft PR을 엶(게이트가 있으면 GitHub에서 읽고 `accept`) |
-| `read-code` | phase 밖에서 만든 제품 변경을 push 전에 `code-reader`로 읽고 발견을 보고(기본 범위: push 안 된 커밋과 커밋 안 된 변경) |
+| `read-code` | phase 밖에서 만든 제품 변경을 push 전에 `code-reader`로 읽고 발견을 보고(기본 범위: HEAD에 더 가까운 분기점부터의 변경과 커밋 안 된 변경. 읽기 전에 base와 커밋을 보여 주고, 다른 작성자의 커밋이 있으면 물음) |
 | `parallel-phase` | 요청했을 때 phase를 자기 worktree에서 실행하고 로컬 merge로 다시 합치기 |
 | `executor-route` | 라우트 표와 dispatch 요약 확인; `/executor-route <slice_id>`로 한 slice의 dispatch 결정 확인 |
 | `retrofit` | 기존 저장소에 워크스페이스 추가 |
