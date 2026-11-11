@@ -14,6 +14,14 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v96 — 2026-11-11
+
+- **The drafter's model is chosen per phase.** `/create-phase` asks it with the design style and the mockup question (with `DECOMP`'s style question when the style is asked there), suggesting **`fable`** when the design sets a look (a new face, a redesign, brand, a landing or hero surface) and **`opus`** when it applies a signed system to more pages, with the reason and the cost (Fable lists at about twice Opus per token). The answer is a `Drafter: fable` or `Drafter: opus` line under `intent.md`'s `## Design Style`.
+- **`executor-route --drafter --phase <P>`** dispatches every drafter pass of that phase on the line's model at the design row's effort (Opus @ high stays the default, and an absent line is the design row), printing `drafter_source=`. The engine reads no markdown structure: any line of `intent.md` that starts with the label counts (list, quote, bold and table forms, `Drafter model:`, `=`), so a hand-written choice is never dropped for its form. A value other than exactly `fable` or `opus` (an unfilled `fable | opus` included) and two lines that disagree are refused, and `--phase` goes with `--drafter` only. Every pass of a round runs on one model; a change the operator asks for applies from the next round.
+- **Behind a loopback proxy (ocx/Kiro, no Fable)** a Fable drafter, from the phase's line or a `[claude.design]` override, falls back to Opus with a `fallback=` line. The judge's existing skip is unchanged.
+- **Fable 5.2:** commits attribute `fable` to Claude Fable 5.2 (was 5.1), and `dispatch-summary` prices `claude-fable-5-2` ($8 / $40 per MTok, cache read $0.20) instead of showing it unpriced.
+- **Migration notes.** None beyond `--update`. A design phase created earlier has no `Drafter:` line and keeps drafting on the design row; add `Drafter: fable` under its `## Design Style` to move its next round to Fable.
+
 ## v95 — 2026-11-10
 
 - **The `code-reader` agent.** A new managed agent file, `.claude/agents/code-reader.md`, reads one code change cold: the diff over the product pathspec and the files at head, never the workspace's records (`intent.md`, `phase.md`, plans, results). It reproduces what it suspects and writes one findings file (`topics/code-read.md`; `topics/code-read-<repo>.md` per repo on a multi-repo host), each finding `C<nn> · lens · severity · confirmed|suspected`, with a coverage list of what it probed, read and did not read. It runs on a new route row, `code` (opus @ high), dispatched from `executor-route --code` and overridable as `[claude.code]` in `executors.toml`; `sync-agents` now writes six managed agent files.
