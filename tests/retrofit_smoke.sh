@@ -1871,6 +1871,36 @@ printf '%s\n' "$er_out" | grep -qx 'agent=design-drafter' && printf '%s\n' "$er_
   && ! printf '%s\n' "$er_out" | grep -q '^tier=' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-drafter' \
   && printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \
   && ok "executor-route --drafter names design-drafter on its own design row (no tier= line, opus@high)" || bad "executor-route --drafter wrong: $er_out"
+# v96: a phase's `Drafter:` line under intent.md's ## Design Style picks the drafter's model at the design row's
+# effort; no line is the design row; behind a loopback proxy (no Fable) a Fable drafter falls back to opus.
+cp "$F/works/phases/active/P1/intent.md" "$F/intent.bak"
+er_out=$(er --drafter --phase P1)
+printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'drafter_source=design row' \
+  && ok "executor-route --drafter --phase on a phase naming no drafter is the design row (opus)" || bad "executor-route --drafter --phase default wrong: $er_out"
+printf '\n## Design Style\n\nbuild-after: one flow.\nMockup: on request\nDrafter: fable\n' >> "$F/works/phases/active/P1/intent.md"
+er_out=$(er --drafter --phase P1)
+printf '%s\n' "$er_out" | grep -qx 'model=fable' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \
+  && printf '%s\n' "$er_out" | grep -qx 'attribution=Claude Fable 5.2' && printf '%s\n' "$er_out" | grep -qx 'drafter_source=phase P1 Drafter: fable' \
+  && ok "a phase's Drafter: fable dispatches the drafter on fable at the design row's effort" || bad "executor-route --drafter --phase fable wrong: $er_out"
+er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 scripts/workflow.py executor-route --drafter --phase P1 2>&1 )
+printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -q '^fallback=design model fable -> opus ' \
+  && ok "behind a loopback proxy a Fable drafter falls back to opus" || bad "executor-route --drafter proxy fallback wrong: $er_out"
+er_c=$(er --critic --phase P1); er_crc=$?
+[ "$er_crc" -ne 0 ] && printf '%s\n' "$er_c" | grep -q 'goes with --drafter only' \
+  && ok "--phase without --drafter is refused" || bad "executor-route --critic --phase not refused (rc=$er_crc): $er_c"
+sed 's/^Drafter: fable$/**Drafter:** fable/' "$F/works/phases/active/P1/intent.md" > "$F/intent.tmp" && mv "$F/intent.tmp" "$F/works/phases/active/P1/intent.md"
+er_out=$(er --drafter --phase P1)
+printf '%s\n' "$er_out" | grep -qx 'model=fable' \
+  && ok "a bold **Drafter:** label is read, never dropped for its form" || bad "executor-route --drafter dropped a bold Drafter: line: $er_out"
+sed 's/^\*\*Drafter:\*\* fable$/Drafter: haiku/' "$F/works/phases/active/P1/intent.md" > "$F/intent.tmp" && mv "$F/intent.tmp" "$F/works/phases/active/P1/intent.md"
+er_out=$(er --drafter --phase P1); er_rc=$?
+[ "$er_rc" -ne 0 ] && printf '%s\n' "$er_out" | grep -q "names the drafter 'haiku'" \
+  && ok "a Drafter: other than fable or opus is refused" || bad "executor-route --drafter accepted Drafter: haiku (rc=$er_rc): $er_out"
+{ cat "$F/intent.bak"; printf '\n### Design style notes\n\nfrom the brief.\n\n## Design Style\n\nDrafter: fable\n'; } > "$F/works/phases/active/P1/intent.md"
+er_out=$(er --drafter --phase P1)
+printf '%s\n' "$er_out" | grep -qx 'model=fable' \
+  && ok "an earlier '### Design style' subsection never hides the real section's Drafter: line" || bad "executor-route --drafter lost the real Design Style section: $er_out"
+mv "$F/intent.bak" "$F/works/phases/active/P1/intent.md"
 # P36.S5B, P39.S1, v75: the critic and the judge both run design-critic; either may share the drafter's model.
 er_out=$(er --critic); er_j=$(er --judge)
 printf '%s\n' "$er_out" | grep -qx 'route=critic' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-critic' \

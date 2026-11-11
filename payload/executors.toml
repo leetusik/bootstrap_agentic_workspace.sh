@@ -18,7 +18,10 @@
 #                            any risk but low, every second attempt
 #   research  opus @ high    research slices, by kind
 #   design    opus @ high    design-drafter (its own agent file); not a slice
-#                            route: executor-route --drafter
+#                            route: executor-route --drafter --phase <P>. A
+#                            phase's `Drafter: fable` line (intent.md, under
+#                            ## Design Style) picks the model for that phase
+#                            alone, at this row's effort
 #   critic    opus @ high    design-critic (its own agent file), judging each
 #                            drafted round: executor-route --critic
 #   judge     opus @ high    design-critic in judge mode, ruling on the items

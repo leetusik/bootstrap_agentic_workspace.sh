@@ -2,9 +2,14 @@
 
 ## Drafting and the inner loop
 
-**Dispatch the drafter.** Resolve once with `executor-route --drafter`, and pass its `model` /
-`effort` on every Agent call (`subagent_type` = its `subagent_type=` line; `subagent_type:
-design-drafter` in a plain install). The prompt is **only a `slice: <id>` line, the round address
+**Dispatch the drafter.** Resolve once per round with `executor-route --drafter --phase <P>`, and
+pass its `model` / `effort` on every Agent call (`subagent_type` = its `subagent_type=` line;
+`subagent_type: design-drafter` in a plain install). The phase's `Drafter:` line under `## Design
+Style` (`intent.md`) picks the model, `fable` or `opus`, its effort staying the design row's; no line
+is the design row (Opus @ high by default). Every pass of a round runs on that one model; when the
+operator names another drafter in their own words, edit the line and it applies from the next round.
+Behind a loopback proxy a Fable drafter falls back to Opus (`fallback=`): say so in the round's
+report. The prompt is **only a `slice: <id>` line, the round address
 `<job>/<round>` and a `pass:` line** (`pass: frame`, `pass: page <slug>` or `pass: join`); on an
 answer pass add `critique-01.md` (the page's or the round's) and, under `critic+judge`, the ids held
 for the judge; on the judge's short follow-up pass add `judge-01.md` (*below*). The drafter reads

@@ -401,7 +401,7 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 |---|---|---|---|
 | `high` | Opus@high | `slice-executor` | 일 나누기(`DECOMP`), 최종 리뷰(`REVIEW`), 이유를 적어 `risk: high`로 매긴 slice, 그리고 두 번째 시도(에스컬레이션, `mid`가 한 번 실패한 일). |
 | `research` | Opus@high | `slice-executor` | 조사(`research`) slice |
-| `design` | Opus@high | `design-drafter` | 디자인 하위 에이전트의 라운드 초안(`executor-route --drafter`). slice 행이 아니며 `high` 행을 따르지 않음 |
+| `design` | Opus@high | `design-drafter` | 디자인 하위 에이전트의 라운드 초안(`executor-route --drafter --phase <P>`). slice 행이 아니며 `high` 행을 따르지 않음. phase의 `## Design Style`에 `Drafter: fable`이 있으면 그 phase만 Fable(effort는 이 행의 값)로 초안을 씀 |
 | `critic` | Opus@high | `design-critic` | 초안 라운드를 새 눈으로 평가하는 디자인 비평가(`executor-route --critic`). `design` 행과 같은 모델이어도 됨 |
 | `judge` | Opus@high | `design-critic` | 비평가가 확신하지 못한 항목만 판정하는 판정 모드(`executor-route --judge`, 별칭만). `design` 행과 같은 모델이어도 됨. Fable로 바꾼 경우 루프백 프록시에서는 건너뜀 |
 | `reader` | Opus@high | `pr-reader` | phase의 PR을 diff와 본문, 팀 규칙만 보고 새 눈으로 읽는 리더(`executor-route --reader`). slice 행이 아님 |

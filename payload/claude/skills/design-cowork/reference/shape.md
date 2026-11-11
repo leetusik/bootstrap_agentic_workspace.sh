@@ -3,7 +3,7 @@
 ## Shape — three styles
 
 - **The design slice:** `--kind co-work --risk high`. It runs inline; its dispatched spans run on
-  their own rows: the drafting on the design row (`executor-route --drafter`), the critique on the
+  their own rows: the drafting on the design row or the phase's `Drafter:` model (`executor-route --drafter --phase <P>`), the critique on the
   critic and judge rows (`--critic`, `--judge`), and the mockup, when requested, on the high row.
 - **A design slice writes no *product* implementation code.** It ends at SIGNOFF, and **the real
   implementation is always its own slice.** The only code inside it is a mockup: throwaway, stubbed,
@@ -56,7 +56,8 @@
 - **Asked at `/create-phase` by default.** A phase created before its visual nature was clear has
   `DECOMP` ask it, stopping **`pending`** (`--stop-kind decision`), with `design-only`'s deadline in mind.
 - The confirmed style is recorded in `intent.md` under **`## Design Style`**, with a second line,
-  `Mockup: requested` or `Mockup: on request` (the default; an absent line reads as `on request`).
+  `Mockup: requested` or `Mockup: on request` (the default; an absent line reads as `on request`),
+  and a `Drafter:` line, the drafter's model (`fable` or `opus`; an absent line reads as the design row).
 
 **Sizing the design work — DECOMP decides it:**
 

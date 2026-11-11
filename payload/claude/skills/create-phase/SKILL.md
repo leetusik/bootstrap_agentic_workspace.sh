@@ -26,6 +26,8 @@ Turn an operator request for new work into one or more phases — or a deferred 
 
    **Ask the mockup question in the same breath:** *every design job comes as a working canvas you open in the Claude app — clickable Pages with realistic data, and each component in all its states; do you also want an in-product mockup before you sign, or will you sign on the canvas?* The canvas is the default review surface. A mockup is a throwaway route in the project's own frontend, built from the signed-off design with stubbed data, **in addition to** the canvas — it costs a dispatched build and a second `pending` stop. The default is **`on request`**: each job closes on the operator's literal approval when they return to the published canvas, and they can still ask for a mockup in their own words at any time before that. Record the answer as the `Mockup:` line under `## Design Style` (step 4.2). When the style is asked at `DECOMP` instead, this question travels with it.
 
+   **Suggest the drafter in the same breath** (one more line on the same question, never a stop of its own). The design drafter runs on Opus @ high unless the phase names another model. Suggest **`fable`** (Fable @ high) when the phase's design sets a look: a new product face, a redesign, brand or palette, a landing or hero surface. Suggest **`opus`** when it applies an already-signed system to more pages or states. Give the one-line reason and the cost: Fable lists at about twice Opus per token, so a round costs roughly double. Record the answer as the `Drafter:` line under `## Design Style` (step 4.2). When the style is asked at `DECOMP`, this suggestion travels with it too.
+
    **If the request is "consolidate the docs" / "run a docs phase" — or the operator is clearing a `consolidation_owed=` line from `next` — the scope is already written down.** Run `python3 scripts/workflow.py docs-debt` and propose what it prints; see *The docs-phase route* below. It is an ordinary phase through this same procedure, confirmed at step 3 like any other.
 
    **If the request is recurring or near-endless work under bounds** (strategy mining, a research sweep, a bug hunt: "keep trying X until …", "run this every hour within $Y"), it is a **loop phase**: follow *The loop route* below.
@@ -62,7 +64,9 @@ Turn an operator request for new work into one or more phases — or a deferred 
       - **for a visual-design phase only**, append a `## Design Style` section naming the confirmed
         style (`build-after` / `design-only` / `paired`) and the one-line reason, then a second line
         `Mockup: requested` or `Mockup: on request` (the default when the operator did not ask for
-        one). `DECOMP` reads both. The section is added **only when the phase is visual** — the
+        one), then a third line `Drafter: fable` or `Drafter: opus`, the operator's answer to the
+        drafter suggestion (`executor-route --drafter --phase <P>` dispatches every drafter pass of
+        the phase on it; an absent line reads as the design row). `DECOMP` reads all three. The section is added **only when the phase is visual** — the
         scaffold does not carry the heading, and every reader treats its absence as "not a design
         phase", never as an unanswered question; an absent `Mockup:` line reads as `on request`.
         There is no `Design tool:` line: `drafter` is the only design tool.

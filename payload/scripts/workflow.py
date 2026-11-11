@@ -652,7 +652,7 @@ AGENT_MODEL_ALIASES = ("opus", "sonnet", "haiku", "fable")  # the Agent tool's `
 EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")  # the Agent tool's `effort` enum
 # Commit attribution follows the model a slice actually ran on; anything else prints verbatim.
 MODEL_ATTRIBUTION = {"opus": "Claude Opus 5.5", "sonnet": "Claude Sonnet 5.5",
-                     "haiku": "Claude Haiku 5.5", "fable": "Claude Fable 5.1"}
+                     "haiku": "Claude Haiku 5.5", "fable": "Claude Fable 5.2"}
 # A loopback ANTHROPIC_BASE_URL is a local proxy (ocx's Kiro sidecar listens on 127.0.0.1:10100)
 # that serves no Haiku 5.5: there the explore row falls back to EXPLORE_PROXY_MODEL, printed as a
 # `fallback=` line by executor-route.
@@ -664,6 +664,20 @@ EXPLORE_PROXY_MODEL = "sonnet"
 # does `executor-route --judge` print a `skip=yes` line instead: the orchestrator dispatches no judge
 # and the escalated items reach the operator marked low confidence.
 JUDGE_PROXY_SKIP_FAMILY = "fable"
+# The drafter must run, so a Fable design dispatch behind that proxy falls back to DESIGN_PROXY_MODEL
+# (a `fallback=` line), whether Fable came from [claude.design] or from the phase's `Drafter:` line.
+DESIGN_PROXY_MODEL = "opus"
+# The phase's drafter (v96): a `Drafter: <alias>` line under intent.md's `## Design Style`, recorded at
+# /create-phase (or with DECOMP's style question) from the orchestrator's suggestion and the operator's
+# answer. `executor-route --drafter --phase <P>` dispatches every drafter pass of that phase's jobs on it,
+# the effort staying the design row's; no line is the design row. `opus` or `fable` only (passed per dispatch as
+# an Agent-tool alias, and the two a design drafter is offered). The engine reads no markdown structure (headings
+# and fences take too many forms to read safely): a line anywhere in intent.md that STARTS with the label counts,
+# after list, quote, bold and table markup (`- **Drafter:** fable`, `> Drafter = fable`, `| Drafter | fable |`,
+# `Drafter model: fable`); prose that only mentions the drafter is not a label line. The value must be exactly
+# one of the two (`fable | opus` is refused), and two label lines that disagree are refused.
+DRAFTER_CHOICES = ("opus", "fable")
+DRAFTER_LINE_RE = re.compile(r"drafter(?:\s+model)?\s*[:=|]\s*(.*)$", re.IGNORECASE)
 
 
 def now_iso() -> str:
@@ -1069,8 +1083,12 @@ def _loopback_base_url():
 
 def _route_fallback(row: str, routes: dict, proxy) -> tuple:
     """(model, effort, `fallback=` line or None) to dispatch one row under the environment: behind a
-    loopback proxy (no Haiku 5.5) the explore row takes EXPLORE_PROXY_MODEL."""
+    loopback proxy (no Haiku 5.5, no Fable) the explore row takes EXPLORE_PROXY_MODEL and a Fable
+    design row DESIGN_PROXY_MODEL."""
     model, effort = routes[row]["model"], routes[row]["effort"]
+    if row == "design" and proxy is not None and model_family(model) == "fable":
+        return DESIGN_PROXY_MODEL, effort, (f"fallback=design model {model} -> {DESIGN_PROXY_MODEL} "
+                                            f"(loopback ANTHROPIC_BASE_URL {proxy}: ocx/Kiro serves no Fable)")
     if row != "explore" or proxy is None or model == EXPLORE_PROXY_MODEL:
         return model, effort, None
     return EXPLORE_PROXY_MODEL, effort, (f"fallback=explore model {model} -> {EXPLORE_PROXY_MODEL} "
@@ -1086,6 +1104,32 @@ def model_family(model: str):
         return m
     found = re.search(r"(?<![a-z])(" + "|".join(AGENT_MODEL_ALIASES) + r")(?![a-z])", m)
     return found.group(1) if found else None
+
+
+def phase_drafter(pdir: Path):
+    """The model the phase's intent.md names on its `Drafter:` line (`opus` or `fable`; written under
+    `## Design Style`), or None when no line names one. Never silently replaced by the default: a label line with
+    another value, or two that disagree, is refused (DRAFTER_LINE_RE's comment has the forms read)."""
+    intent = pdir / "intent.md"
+    if not intent.is_file():
+        return None
+    hint = "; write one line `Drafter: fable` or `Drafter: opus` under ## Design Style, or delete it for the design row"
+    found = []
+    for line in intent.read_text(encoding="utf-8").split("\n"):
+        bare = re.sub(r"^(?:>\s*)*(?:[-+*]\s+|\d+[.)]\s+)?", "", line.strip())
+        bare = bare.replace("*", "").replace("`", "").strip()
+        if bare.startswith("|"):
+            bare = bare.strip("|").strip()
+        m = DRAFTER_LINE_RE.match(bare)
+        if not m:
+            continue
+        value = m.group(1).strip().rstrip("|").strip().lower()
+        if value not in DRAFTER_CHOICES:
+            raise SystemExit(f"executor-route: {pdir.name}'s intent.md names the drafter {m.group(1).strip()!r}{hint}")
+        found.append(value)
+    if len(set(found)) > 1:
+        raise SystemExit(f"executor-route: {pdir.name}'s intent.md names two drafters ({', '.join(found)}){hint}")
+    return found[0] if found else None
 
 
 def _judge_proxy_skip(routes: dict, proxy):
@@ -1169,7 +1213,12 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
         raise SystemExit(f"executor-route: {' and '.join(forms)} are mutually exclusive; give at most one")
     if args.retry and args.slice is None:
         raise SystemExit("executor-route: --retry needs a <slice_id> (a second attempt is a slice's)")
+    if args.phase and not args.drafter:
+        raise SystemExit("executor-route: --phase reads the phase's drafter and goes with --drafter only")
     routes = resolve_routes()
+    drafter = phase_drafter(require_phase(args.phase)) if args.phase else None
+    if drafter:
+        routes = {**routes, "design": {**routes["design"], "model": drafter}}
     proxy = _loopback_base_url()
     if args.slice is not None:
         sdir = require_slice(args.slice)
@@ -1208,6 +1257,8 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
         lines, fallback = _dispatch_lines(row, routes, proxy)
         print(f"agent={agent}")
         print(f"route={row}")
+        if args.drafter:
+            print(f"drafter_source={'phase ' + args.phase + ' Drafter: ' + drafter if drafter else 'design row'}")
         print(f"subagent_type={installed_agent_name(agent)}")
         print("\n".join(lines))
         extra = [fallback] if fallback else []
@@ -1322,6 +1373,7 @@ def _dispatch_table(title: str, groups: dict, cols: list) -> list:
 # Source: https://platform.claude.com/docs/en/about-claude/pricing (fetched 2026-10-20). A model not
 # listed is never guessed: it is shown unpriced as `?`.
 PRICES = {
+    "claude-fable-5-2": (8.0, 10.0, 16.0, 0.20, 40.0),  # v96: list price from the claude-api skill (cached 2026-11-03)
     "claude-fable-5-1": (10.0, 12.5, 20.0, 0.25, 50.0),
     "claude-fable-5": (10.0, 12.5, 20.0, 1.0, 50.0),
     "claude-opus-5-5": (4.0, 5.0, 8.0, 0.20, 20.0),
@@ -20034,6 +20086,7 @@ def main(argv=None) -> int:
     p.add_argument("slice", nargs="?", help="the slice to route; omit for the table")
     p.add_argument("--retry", action="store_true", help="the slice's second attempt (an escalation, a failed or empty return, a fix of mid-row work): always the high row. A loop cycle needs none: the engine's attempt picks its row (attempt 2 is high), and --retry on a cycle's attempt 1 is refused")
     p.add_argument("--drafter", action="store_true", help="the design-drafter's dispatch (its own design row, [claude.design]; not a slice route)")
+    p.add_argument("--phase", help="with --drafter: the phase whose intent.md `## Design Style` may name the drafter's model (`Drafter: fable`); its effort stays the design row's, and an absent line is the design row. Behind a loopback proxy (no Fable) a Fable drafter falls back to opus")
     p.add_argument("--critic", action="store_true", help="the design-critic's dispatch in critic mode (the critic row, [claude.critic]); it may share the drafter's model")
     p.add_argument("--judge", action="store_true", help="the design-critic's dispatch in judge mode (the judge row, [claude.judge], alias only); never refused for sharing the drafter's model; skip=yes only when the judge row is overridden to Fable behind a loopback proxy that serves no Fable")
     p.add_argument("--reader", action="store_true", help="the pr-reader's dispatch (the reader row, [claude.reader]): the fresh-eyes PR reader, which reads the product diff, the body and details files, the team-rule files and the pr-check output only, and writes topics/pr-read.md")
