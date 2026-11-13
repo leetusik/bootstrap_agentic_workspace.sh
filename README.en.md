@@ -60,8 +60,8 @@ it prompts). Your job is judgment: review results, clear `pending` hand-offs, de
 archive. Every shell block in this README is something the agent runs on your behalf — except the
 one-time bootstrap below, the only command you might ever type yourself.
 
-> This repo runs on its own workflow. The [`works/`](works/) and [`docs/`](docs/) trees you see
-> here are it dogfooding the very system it scaffolds — this README was itself written as a phase.
+> This repo runs on its own workflow, from a private install outside the repo — it dogfoods the
+> very system it scaffolds, and this README was itself written as a phase.
 
 ## Quickstart
 
@@ -787,8 +787,8 @@ scorecard, and star counts move too fast to quote.)
 ## Contributing
 
 This repo is developed with its own workflow, so contributing means *using* it, through your
-agent. The maintainer's workspace is a private install (`workflow/`, git-excluded), so a clone has
-none: install your own private one at the clone root with the default (nested) install,
+agent. The maintainer's workspace is a private multi-repo host in the folder above the
+clone, so a clone has none: install your own private one at the clone root with the default (nested) install,
 `sh bootstrap_agentic_workspace.sh`. Then drive it as described below, with
 `python3 workflow/scripts/workflow.py …`. You edit `payload/` and `installer/` (never the
 installed copies; see the root [`CLAUDE.md`](CLAUDE.md)).
@@ -819,9 +819,10 @@ A few house rules:
   `payload/works/templates/**`, …). After editing `payload/**` or `installer/**`, run
   `python3 installer/build.py` and commit the rebuilt artifact in the same commit
   (`python3 installer/build.py --check` must pass; register the tracked hook once with
-  `git config core.hooksPath .githooks`). This repo drives its own workspace as a private nested
-  install, so its `.claude/skills`, `.claude/agents` and `workflow/` are installed copies: never
-  edit them; see the root [`CLAUDE.md`](CLAUDE.md) for the dev loop.
+  `git config core.hooksPath .githooks`). The maintainer's own workspace is a private multi-repo
+  host one folder above the repo, and its installed copies live there, so a clone has none; in
+  your own install the `.claude/skills`, `.claude/agents` and `workflow/` are installed copies
+  too: never edit them; see the root [`CLAUDE.md`](CLAUDE.md) for the dev loop.
 - **Never hand-edit `docs/current/*.md`** (they're generated) and never patch old files under
   `docs/versions/`. Create a new version with `doc-new-version` instead, in a docs phase.
 

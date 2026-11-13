@@ -4,5 +4,6 @@ __pycache__/
 
 # payload/executors.toml is only the source of the adopter seed (build.py comments
 # out its cheap-route block); it is never live here. This repo's live executor-tier
-# config is workflow/executors.toml, inside the git-excluded nested install, so a
-# sync-agents run there never touches the tracked sources under payload/.
+# config is the host's workflow/executors.toml, one folder above this repo
+# (../workflow/executors.toml), so a sync-agents run there never touches the
+# tracked sources under payload/.
