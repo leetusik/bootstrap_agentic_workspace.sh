@@ -132,9 +132,11 @@ layout of a run, and the wrapper rejects contradictory flags first:
 
 Nothing migrates an at-root install: `--to-multi-repo` converts a *per-repo nested* install, never
 an at-root one. This upstream repo was itself converted to the nested layout by hand, once, on
-2026-10-13 (no at-root-to-nested migration command ships): its sources live under
-`payload/` and its workspace in the git-excluded `workflow/`. `tests/retrofit_smoke.sh` passes
-`--at-root` wherever a test expects the at-root layout.
+2026-10-13 (no at-root-to-nested migration command ships), and on 2026-11-13 that nested install
+was converted with `--to-multi-repo` into a private multi-repo host in the folder above the repo:
+its sources live under `payload/`, and the workspace that drives it lives in that host
+(`../workflow/`), outside this repo. `tests/retrofit_smoke.sh` passes `--at-root` wherever a test
+expects the at-root layout.
 
 ## Source of truth = `payload/`
 
@@ -142,8 +144,10 @@ an at-root one. This upstream repo was itself converted to the nested layout by 
 that is needed. Each source sits under `payload/` at its **emit path** (where the installer
 writes it) with the first path component undotted (`build.py`'s `src_rel()`), and the
 contract is `payload/contract.md`. No source sits at a path Claude Code or GitHub would load
-in this repo (`.claude/`, `.github/`, `CLAUDE.md`), because this repo is driven by a nested
-install whose copies own `.claude/`; never add a dotted name or a `CLAUDE.md` under `payload/`.
+in this repo (`.claude/`, `.github/`, `CLAUDE.md`): `payload/` holds emit-path copies, and a
+dotted name or a `CLAUDE.md` there would be loaded as this repo's own skills, CI or rules (the
+workspace that drives this repo is a private host in the folder above it, with its own installed
+copies); never add a dotted name or a `CLAUDE.md` under `payload/`.
 Below, each entry is the source, then the emit path where it differs:
 
 - `payload/scripts/workflow.py`
