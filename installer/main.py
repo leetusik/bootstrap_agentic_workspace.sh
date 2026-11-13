@@ -46,8 +46,9 @@ UPDATE_SUMMARY = {"updated": [], "added": [], "merged": [], "preserved": [], "un
 # multi-repo host at <repo>'s parent folder. Every refusal comes first (convert_prepare); then the parent
 # is git init-ed (+ its empty commit), <repo>/workflow moves up a level, and the plain --update runs at
 # the parent -- this very program from here on, with TARGET the parent and UPDATE set -- seeding the
-# registry with the conversion's convention rule and `converted_from` (nested_plan); convert_finish maps
-# the anchors, cleans the old repo's side and prints the closing block. No worktree code, no nested commit.
+# registry with the conversion's convention rule and `converted_from` (nested_plan); convert_map_records maps
+# the anchors and PR records before its validate; convert_finish cleans the old repo's side and prints the
+# closing block. No worktree code, no nested commit.
 CONVERT = os.environ.get("TO_MULTI_REPO") == "1"
 CONVERT_REPO = None
 if CONVERT:
@@ -58,7 +59,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 96
+WORKSPACE_VERSION = 97
 ROOT = TARGET.resolve()
 # Nested personal install (P28; the default layout since P29): TARGET is a HOST git repo -- one the
 # operator may not own, or a new/empty dir this run `git init`s. The engine and all workflow state go
@@ -1718,6 +1719,8 @@ def nested_plan() -> dict:
         marker["repos"] = repos
     if CONVERT:
         marker["converted_from"] = converted
+        if "pr_rules" in old:   # the old repo's PR ownership and team-rule decisions name it from now on
+            marker["pr_rules"], CONVERT_PLAN["pr_rules_named"] = _convert_pr_rules(old["pr_rules"], CONVERT_REPO.name)
     # Notes for the update report: drift (a depth-1 child repo the registry lacks) and the anchors to map
     # (--to-multi-repo maps them itself, right after this --update: convert_finish).
     if UPDATE and usable:
@@ -2019,9 +2022,10 @@ def _retired_entry(key: str, renames: dict = None):
 # the full step list and exit 0. A real run then does steps 1-2 -- git init the parent (+ its empty commit),
 # move the nested repo up a level -- which _nested_undo_init reverses should the --update's own planning
 # still refuse. Step 3 is the plain --update at the parent (the rest of this program; nested_plan seeds the
-# registry with the conversion's convention rule and appends `converted_from`, step 4). convert_finish()
-# then maps the anchors with the freshly updated engine, cleans the old repo's side, lists its leftover
-# worktrees and prints the closing block. Deletes only the workspace's own unchanged files, never touches a
+# registry with the conversion's convention rule and appends `converted_from`, step 4). Inside step 3, before
+# its closing validate, convert_map_records() runs the freshly updated engine's mapping (the anchors, and
+# every null PR-record repo, which that validate refuses on a host); convert_finish() then cleans the old
+# repo's side, lists its leftover worktrees and prints the closing block. Deletes only the workspace's own unchanged files, never touches a
 # .claude/worktrees/ dir, runs no teardown and makes no nested commit.
 CONVERT_COMMIT = "chore(works): convert to a multi-repo host"
 CONVERT_PLAN = None
@@ -2333,6 +2337,49 @@ def _convert_phases(nested: Path, repo: Path) -> list:
     return out
 
 
+def _convert_pr_records(nested: Path) -> list:
+    """The dry run's step 5, PR side: (phase label, index, branch) for each pr.branches[] entry whose repo is
+    null -- each one --map-anchors names after the converted repo (a phase in flight is refused earlier)."""
+    out = []
+    for state in ("active", "archived"):
+        for pj in sorted((nested / "works" / "phases" / state).glob("*/phase.json")):
+            try:
+                data = json.loads(pj.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            pr = data.get("pr") if isinstance(data, dict) else None
+            branches = pr.get("branches") if isinstance(pr, dict) else None
+            for i, b in enumerate(branches if isinstance(branches, list) else []):
+                if isinstance(b, dict) and "repo" in b and b["repo"] is None:
+                    out.append((f"{data.get('id', pj.parent.name)}{' (archived)' if state == 'archived' else ''}", i, b.get("branch")))
+    return out
+
+
+def _convert_pr_rules(raw, name: str):
+    """The marker's PR rules record, as the conversion carries it: on a per-repo install a `pr_rules.ownership[]`
+    or `pr_rules.decided[]` entry with repo null (or, for a decision, absent) means "this repo"; on a host it
+    means "every repo it does not name". So the converted marker names `name` in each, and changes nothing
+    else. Done here, while the installer writes the marker it already rewrites for the conversion (the old
+    convention moves to the repo's entry the same way), so only records from before the conversion are named;
+    a host-wide record written on the host later keeps its meaning. (new raw, [description]); a record that is
+    not the expected shape comes back as it is (its install's validate refused it before the move)."""
+    if not isinstance(raw, dict):
+        return raw, []
+    new, said = dict(raw), []
+    for key, label in (("ownership", "mode"), ("decided", "rule")):
+        entries = raw.get(key)
+        if not isinstance(entries, list):
+            continue
+        out = []
+        for i, e in enumerate(entries):
+            if isinstance(e, dict) and e.get("repo") is None and (key == "decided" or "repo" in e):
+                e = {**e, "repo": name}
+                said.append(f"pr_rules.{key}[{i}] ({label} {str(e.get(label))[:60]}): repo {'null' if 'repo' in entries[i] else 'absent'} -> {name}")
+            out.append(e)
+        new[key] = out
+    return new, said
+
+
 def _convert_unignored(parent: Path, exclude, names: list, old: dict) -> list:
     """nested_plan's ignore preflight, asked BEFORE the git init and the move, so its refusal is one more
     pre-write refusal: a throwaway repo in the system temp dir models the parent after the init (its
@@ -2451,7 +2498,10 @@ def convert_prepare() -> None:
                         f"(git -C {q(nested)} add -A && git -C {q(nested)} commit -m \"<summary>\"), so the conversion is one commit away "
                         "from its rollback; then re-run.")
     # The --update at the parent ends in the engine's validate; a failure there would stop the conversion after
-    # the move. validate only reads, so ask the install's own engine now.
+    # the move. validate only reads, so ask the install's own engine now (the same engine: the version check
+    # above). What it checks only on a host is covered here too: the PR records' null repo is mapped before
+    # that validate (convert_map_records), and the registry rows (each repo a work tree root, hidden, tracking
+    # no workspace file) are this function's own refusals below.
     proc = subprocess.run([sys.executable, str(nested / "scripts" / "workflow.py"), "validate"], cwd=str(repo),
                           capture_output=True, stdin=subprocess.DEVNULL)
     if proc.returncode != 0:
@@ -2461,10 +2511,25 @@ def convert_prepare() -> None:
                         f"fix it first (cd {q(repo)} && {engine} validate), commit the fix in the nested repo, then re-run.")
     top = _work_tree_top(parent)
     parent_git, exclude = None, None
-    if top is not None and top != parent.resolve():
+    # A repo around the parent that tracks a file under it keeps descending into it even once the parent is a
+    # repo of its own, so its status would list the host's private files (.claude/, CLAUDE.local.md, workflow/).
+    outer = top if top is not None and top != parent.resolve() else _work_tree_top(parent.parent) if top is not None else None
+    held = []
+    if outer is not None:
+        # :(literal): a folder name holding *, ? or [ must never match a sibling folder's files.
+        rel = ":(literal)" + Path(os.path.relpath(parent.resolve(), outer)).as_posix()
+        rc, out = _git_in(outer, "ls-files", "-z", "--", rel)
+        held = [f for f in out.split("\0") if f] if rc == 0 else []
+    if held:
+        problems.append(f"the parent {parent} is inside the work tree of {outer}, which tracks {len(held)} file(s) under it "
+                        f"({', '.join(held[:3])}{', ...' if len(held) > 3 else ''}): that repo would list the host's private files "
+                        f"(.claude/, CLAUDE.local.md, workflow/) in its status, even with {parent} a repo of its own; untrack them there "
+                        f"(git -C {q(outer)} rm -r --cached -- {q(rel)}) or move the repos into a folder outside every repo, then re-run.")
+    elif top is not None and top != parent.resolve():
         problems.append(f"the parent {parent} is inside the work tree of {top}: a multi-repo host is a folder of its own, outside every "
-                        "repo; move the repos into such a folder, then re-run.")
-    elif top is not None:
+                        f"repo; make it one (git init {q(parent)}: an empty repo of its own, which the conversion keeps), or move the "
+                        "repos into such a folder, then re-run.")
+    if top is not None and top == parent.resolve():
         rc, out = _git_in(parent, "ls-files", "-z")
         if rc != 0 or out.strip("\0"):
             problems.append(f"the parent {parent} is a git repo that tracks files: a multi-repo host tracks nothing; untrack them (or move "
@@ -2478,7 +2543,7 @@ def convert_prepare() -> None:
                         NESTED_EXCLUDE_BEGIN, NESTED_EXCLUDE_END, [])
         except (OSError, ValueError) as exc:
             problems.append(f"{exclude} cannot take the managed block ({exc}): fix it, then re-run.")
-    elif os.path.lexists(parent / ".git"):
+    elif top is None and os.path.lexists(parent / ".git"):
         problems.append(f"{parent}/.git exists, but git does not read {parent} as a work tree: repair or remove it, then re-run.")
     if os.path.lexists(target):
         problems.append(f"{target} already exists: a host has room for one nested workspace, at {NESTED_DIR}/; move it away, then re-run.")
@@ -2536,7 +2601,7 @@ def convert_prepare() -> None:
                     "classified": classified, "files": _convert_plan_files(repo, renames, classified["gone"], leftovers),
                     "writing": False, "finished": False}
     if DRY_RUN:
-        _convert_print_dry_run(renames, _convert_phases(nested, repo))
+        _convert_print_dry_run(renames, _convert_phases(nested, repo), _convert_pr_records(nested), _convert_pr_rules(old.get("pr_rules"), repo.name)[1])
         sys.exit(0)
     if parent_git is None:
         _HOST_INIT_UNDO = (parent / ".git", [])
@@ -2578,7 +2643,7 @@ def _convert_cleanup_lines(past: bool) -> list:
     return lines
 
 
-def _convert_print_dry_run(renames: dict, phases: list) -> None:
+def _convert_print_dry_run(renames: dict, phases: list, prs: list, rules: list) -> None:
     plan = CONVERT_PLAN
     repo, parent, name, nested, target, conv = plan["repo"], plan["parent"], plan["name"], plan["nested"], plan["target"], plan["convention"]
     others = [n for n in plan["names"] if n != name]
@@ -2603,11 +2668,18 @@ def _convert_print_dry_run(renames: dict, phases: list) -> None:
           + (f"; {', '.join(others)} {'gets its' if len(others) == 1 else 'each get their'} own, inferred and UNCONFIRMED" if others else "")
           + "; the host-level convention (the rules for every repo) UNCONFIRMED, nothing inferred")
     print(f"  4. converted_from in {target}/{NESTED_MARKER}: {{\"repo\": \"{name}\", \"old_nested\": \"{name}/{NESTED_DIR}\", \"at\": \"<today>\"}}")
-    print(f"  5. map the anchors: python3 {NESTED_DIR}/scripts/workflow.py nested-repos --map-anchors {name} (writes phase.json files only)")
+    print(f"  5. map the anchors and PR records, inside step 3 before its validate: python3 {NESTED_DIR}/scripts/workflow.py "
+          f"nested-repos --map-anchors {name} (writes phase.json files only)")
     for label, maps in phases:
         print(f"       {label}: " + (f"host_anchors -> repo_anchors.{name}" if maps else f"skipped: its host_anchors are not commits of {name}"))
     if not phases:
         print("       no phase holds host_anchors shas: nothing to map")
+    for label, i, branch in prs:
+        print(f"       {label}: pr.branches[{i}] (branch {branch}): repo null -> {name}")
+    if not prs:
+        print("       no PR record has repo null: nothing to map")
+    for line in rules:
+        print(f"       {line} (the marker, written by step 3)")
     print(f"  6. clean {repo} (only the workspace's own, unchanged files go; nothing of yours is deleted):")
     for line in _convert_cleanup_lines(past=False):
         print(f"       {line}")
@@ -2629,15 +2701,31 @@ def _convert_rollback_lines(halted: bool = False) -> list:
     if halted:
         lines = [f"  {reset}", f"  mv {q(target)} {q(plan['nested'])}"]
     else:
+        # The installer's absolute path (the wrapper's BOOTSTRAP_SELF), so the line runs from wherever it is read.
+        # A path under a temp directory (the update-workspace skill runs the installer from a mktemp clone) may be
+        # gone by rollback time: then any copy of this version of the installer does, and the line says so.
+        self_path = os.environ.get("BOOTSTRAP_SELF") or ""
+        temps = {os.path.realpath(d) for d in (tempfile.gettempdir(), os.environ.get("TMPDIR") or "", "/tmp", "/var/tmp") if d}
+        in_temp = bool(self_path) and any(os.path.realpath(self_path).startswith(d.rstrip(os.sep) + os.sep) for d in temps)
+        if self_path and not in_temp:
+            update = f"  sh {q(self_path)} --update {q(plan['repo'])}"
+        else:
+            update = (f"  sh <path>/bootstrap_agentic_workspace.sh --update {q(plan['repo'])}   (any copy of this installer at workspace "
+                      f"v{WORKSPACE_VERSION}" + (f"; the one this ran from, {q(self_path)}, sits in a temp directory and may be gone by then)"
+                                                 if in_temp else ", by its path)"))
         lines = [f"  git -C {q(target)} revert --no-edit \"$(git -C {q(target)} log -1 --format=%H -F --grep='{CONVERT_COMMIT}')\"",
                  f"  (before that commit is made, instead: {reset})",
                  f"  mv {q(target)} {q(plan['nested'])}",
-                 f"  sh bootstrap_agentic_workspace.sh --update {q(plan['repo'])}"]
+                 update]
         if any(rel.startswith(".claude/") for rel, _ in plan["classified"]["kept"]):
             lines.append(f"  (that --update rewrites {plan['name']}'s installed skills and agents, as every --update does: copy aside the ones listed as yours first)")
+    if plan["inited"]:
+        made = f", and the .git this conversion made: rm -rf {q(parent / '.git')}"
+    else:
+        made = (f", and {q(parent / '.git')} if you made it for this conversion (git init): rm -rf {q(parent / '.git')} "
+                "(the conversion found it there and keeps it)")
     lines.append(f"  then the host's own files are yours to delete: rm -rf {q(parent / '.claude/skills')} {q(parent / '.claude/agents')} && "
-                 f"rm -f {q(parent / '.claude/settings.local.json')} {q(parent / 'CLAUDE.local.md')} && rmdir {q(parent / '.claude')}"
-                 + (f", and the .git this conversion made: rm -rf {q(parent / '.git')}" if plan["inited"] else ""))
+                 f"rm -f {q(parent / '.claude/settings.local.json')} {q(parent / 'CLAUDE.local.md')} && rmdir {q(parent / '.claude')}" + made)
     return lines
 
 
@@ -2669,6 +2757,23 @@ def convert_start_writing() -> None:
         print(f"  1. host: {plan['parent']} was already a git repo that tracks nothing: its history kept, no commit made")
     print(f"  2. moved {plan['nested']} -> {plan['target']} (the nested repo, with its history and branches)")
     print(f"  3. the plain --update at {plan['parent']}:", flush=True)   # before the engine's own output (rebuild, validate)
+
+
+def convert_map_records() -> None:
+    """Step 5, run inside step 3 between the marker write and the closing validate: the refreshed engine's
+    `nested-repos --map-anchors <repo>` moves each phase's host_anchors to repo_anchors.<repo> and names
+    <repo> in every pr.branches[].repo that was null (a per-repo install's only legal value, which the
+    multi-repo validate refuses). The engine writes phase.json; the installer only runs it. Never raises:
+    a failure is recorded for the closing block, and the validate then says what still fails."""
+    plan = CONVERT_PLAN
+    print(f"  5. (before the validate) map the anchors and PR records: python3 {NESTED_DIR}/scripts/workflow.py nested-repos "
+          f"--map-anchors {plan['name']}", flush=True)
+    proc = subprocess.run([sys.executable, str(ROOT / "scripts" / "workflow.py"), "nested-repos", "--map-anchors", plan["name"]],
+                          cwd=str(HOST), capture_output=True, stdin=subprocess.DEVNULL)
+    for line in (proc.stdout + proc.stderr).decode("utf-8", errors="replace").splitlines():
+        print(f"       {line}")
+    plan["mapped_rc"] = proc.returncode
+    sys.stdout.flush()
 
 
 def _convert_apply_cleanup() -> list:
@@ -2710,8 +2815,8 @@ def _convert_apply_cleanup() -> list:
 
 
 def convert_finish() -> None:
-    """Steps 4-8, after the plain --update at the parent: report converted_from, map the anchors with the
-    freshly updated engine, clean the old repo's side, list its leftover worktrees, print the closing block."""
+    """Steps 4-8, after the plain --update at the parent: report converted_from, report the mapping step 3
+    ran (convert_map_records), clean the old repo's side, list its leftover worktrees, print the closing block."""
     plan = CONVERT_PLAN
     repo, parent, name, target = plan["repo"], plan["parent"], plan["name"], plan["target"]
     engine = f"python3 {NESTED_DIR}/scripts/workflow.py"
@@ -2725,14 +2830,13 @@ def convert_finish() -> None:
     except (OSError, ValueError, KeyError, IndexError, TypeError) as exc:
         marker = {}
         failed.append(f"converted_from could not be read back from {ROOT / NESTED_MARKER} ({exc})")
-    print(f"  5. anchors: {engine} nested-repos --map-anchors {name}")
-    proc = subprocess.run([sys.executable, str(ROOT / "scripts" / "workflow.py"), "nested-repos", "--map-anchors", name],
-                          cwd=str(HOST), capture_output=True, stdin=subprocess.DEVNULL)
-    for line in (proc.stdout + proc.stderr).decode("utf-8", errors="replace").splitlines():
-        print(f"       {line}")
-    if proc.returncode != 0:
-        failed.append(f"the anchor mapping exited {proc.returncode} (nothing was rolled back): fix what it says, then re-run it: "
-                      f"cd {q(parent)} && {engine} nested-repos --map-anchors {name}")
+    returncode = plan.get("mapped_rc")
+    print("  5. anchors and PR records: mapped in step 3, before its validate (above)")
+    for line in plan.get("pr_rules_named") or []:
+        print(f"       {line} ({NESTED_DIR}/{NESTED_MARKER})")
+    if returncode != 0:
+        failed.append(f"the anchor and PR-record mapping {'never ran' if returncode is None else 'exited ' + str(returncode)} "
+                      f"(nothing was rolled back): fix what it says, then re-run it: cd {q(parent)} && {engine} nested-repos --map-anchors {name}")
     print(f"  6. cleaned {repo} (only the workspace's own, unchanged files went; nothing of yours was deleted):")
     for line in _convert_cleanup_lines(past=True):
         print(f"       {line}")
@@ -2749,6 +2853,9 @@ def convert_finish() -> None:
     if plan["files"]["local"][1] == "rewrite":
         print(f"  note: {name}/CLAUDE.local.md keeps your own lines; a session started at {parent} reads {parent}/CLAUDE.local.md: "
               "move what still applies there, above its managed block")
+    if plan["files"]["settings"][1] in ("rewrite", "keep"):
+        print(f"  note: {name}/.claude/settings.local.json keeps your own entries (your permission allows, say) and stays yours; a session "
+              f"started at {parent} reads {parent}/.claude/settings.local.json, which holds only the workspace's: copy what still applies there")
     print(f"Next (from {parent}: start Claude Code there from now on, never inside {NESTED_DIR}/ or a repo):")
     step = 1
     if (plan["inited"] and HOST_COMMIT_ERROR is not None) or plan["parent_git"] == "empty":
@@ -3174,6 +3281,8 @@ if DRY_RUN:
 elif UPDATE:
     # The marker first: the rebuild renders its version into backlog.md.
     write_version_marker()
+    if CONVERT:
+        convert_map_records()   # before the closing validate, which wants every pr.branches[].repo named
     if UPDATE_DOCS:
         run_workflow("rebuild")
         run_workflow("validate")

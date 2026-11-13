@@ -4296,7 +4296,10 @@ mr sh "$BOOT" "$MXR" >/dev/null 2>&1 || bad "multi-repo probe: nested install of
 rw() { ( cd "$MXR" && mr python3 workflow/scripts/workflow.py "$@" ); }
 { rw nested-convention --confirm --text "Conventional Commits, scope required" --trailers forbidden && rw new-phase --phase P1 --name "First" --objective "convert me"; } >/dev/null 2>&1 \
   || bad "multi-repo probe: R convention / new-phase failed"
-printf 'two\n' > "$MXR/two.txt" && mr git -C "$MXR" add two.txt >/dev/null 2>&1 && mr git -C "$MXR" commit -qm "feat: two" >/dev/null 2>&1 && printf 'mine\n' > "$MXR/notes.txt" \
+# P1 records a PR branch and R records solo, both with repo null (a per-repo install's only legal value), which the host must name R.
+printf 'two\n' > "$MXR/two.txt" && mr git -C "$MXR" add two.txt >/dev/null 2>&1 && mr git -C "$MXR" commit -qm "feat: two" >/dev/null 2>&1 \
+  && rw pr-branch P1 --name feat/convert >/dev/null 2>&1 && rw pr-team --record solo --evidence "operator: solo" >/dev/null 2>&1 \
+  && printf 'mine\n' > "$MXR/notes.txt" \
   && git -C "$MXR/workflow" add -A >/dev/null 2>&1 && mr git -C "$MXR/workflow" commit -qm "chore: install and create the phase" >/dev/null 2>&1 || bad "multi-repo probe: could not build R's history"
 cp "$MXR/workflow/.agentic-nested.json" "$MC/old-marker.json"; scope_before=$(rw phase-scope P1 2>&1); sig=$(mr_sig "$MC")
 out=$(mr sh "$BOOT" --to-multi-repo "$MXR" --dry-run 2>&1); rc=$?
@@ -4328,6 +4331,16 @@ if [ "$rc" -eq 0 ] && [ "$(git -C "$MX" rev-list --count HEAD)" = 1 ] && [ "$(gi
     && [ "$(git -C "$MXR" status --porcelain)" = "?? notes.txt" ] && (cd "$MX" && mr python3 workflow/scripts/workflow.py validate >/dev/null 2>&1); then
   ok "--to-multi-repo makes the parent a host: one empty host commit, the nested repo moved up, R's confirmed convention carried over and S unconfirmed, converted_from recorded, phase-scope P1 --repo R equal to the one before, R left with only its untracked file, validate passing"
 else bad "--to-multi-repo did not convert cleanly (rc=$rc, scope rc=$sc_rc) -- $mk_out $out"; fi
+pr_repo=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["pr"]["branches"][0]["repo"])' "$MX/workflow/works/phases/active/P1/phase.json" 2>&1)
+again=$(cd "$MX" && mr python3 workflow/scripts/workflow.py nested-repos --map-anchors R 2>&1)
+[ "$rc" -eq 0 ] && [ "$pr_repo" = R ] && printf '%s\n' "$again" | grep -q -- "-- nothing written$" \
+  && ok "--to-multi-repo names R in P1's PR record (repo null before) ahead of the closing validate, and a second --map-anchors R writes nothing" \
+  || bad "--to-multi-repo left P1's PR record unmapped (rc=$rc, repo=$pr_repo) -- again: $again"
+# R's solo record (repo null on the per-repo install = R) must name R on the host, where null means every repo.
+t_s=$(cd "$MX" && mr python3 workflow/scripts/workflow.py pr-team --repo S 2>&1); t_r=$(cd "$MX" && mr python3 workflow/scripts/workflow.py pr-team --repo R 2>&1)
+printf '%s\n' "$t_s" | grep -q "^pr_team=S recorded=none " && printf '%s\n' "$t_r" | grep -q "^pr_team=R recorded=solo " \
+  && ok "--to-multi-repo names R in R's own pr-team record: R still reads solo, S (never recorded) reads none" \
+  || bad "--to-multi-repo let R's solo record answer for S -- S: $t_s / R: $t_r"
 
 # ---------------------------------------------------------------------------
 echo "== Test 18: P50 loop phases -- the charter gate, the budget stop, park don't halt, the bounded rollup, the tick's resume states, the run-loop core cap =="

@@ -11355,7 +11355,14 @@ def _map_repo_anchors(name: str, repos: list) -> None:
     review passed, which reproduces the old `created..review_pass` exactly), and `host_anchors`
     becomes {}. Skipped, untouched and said why: already mapped; in flight on its own branch (its
     truth lives there); no host_anchors shas; shas that are not commits in `<repo>` (glide's P29: the
-    host's empty commit). Writes phase.json files only and never commits; a re-run maps nothing."""
+    host's empty commit). Writes phase.json files only and never commits; a re-run maps nothing.
+
+    P55 (v97): the same pass maps the PR records. A per-repo install records `pr.branches[].repo: null`
+    (its one repo); a multi-repo host's validate wants a name. So, when the marker's `converted_from`
+    names `<repo>` (the conversion's own repo, never a guess on any other host), every null `repo` in
+    every phase becomes `<repo>`, nothing else in the record changes, and a phase in flight on its own
+    branch is skipped the same way. The installer's --to-multi-repo runs this before its --update's
+    closing validate."""
     refused = "nested-repos --map-anchors: refused -- nothing was written"
     repo = next((r for r in repos if r.get("name") == name), None)
     if repo is None:
@@ -11363,10 +11370,12 @@ def _map_repo_anchors(name: str, repos: list) -> None:
     rpath, why = _phase_repo_path(repo, {})
     if rpath is None:
         raise SystemExit(f"{refused}: {why}")
+    converted = NESTED.get("converted_from") if NESTED is not None and isinstance(NESTED.get("converted_from"), list) else []
+    pr_owner = any(isinstance(c, dict) and c.get("repo") == name for c in converted)
     pdirs = [(d, False) for d in phase_dirs()]
     if ARCHIVED.is_dir():
         pdirs += [(d, True) for d in sorted(ARCHIVED.iterdir()) if d.is_dir() and (d / "phase.json").is_file()]
-    mapped, skipped = [], 0
+    mapped, skipped, pr_mapped, pr_skipped = [], 0, [], 0
     for pdir, archived in pdirs:
         try:
             data = read_json(pdir / "phase.json")
@@ -11379,35 +11388,59 @@ def _map_repo_anchors(name: str, repos: list) -> None:
         shas = {k: v for k, v in host.items() if k in HOST_ANCHOR_KEYS and isinstance(v, str) and v}
         held = data.get("repo_anchors") if isinstance(data.get("repo_anchors"), dict) else {}
         execution = data.get("execution") if isinstance(data.get("execution"), dict) else {}
+        in_flight = None
+        if execution.get("worktree") or execution.get("host_worktree"):
+            in_flight = (f"in flight on its own branch ({execution.get('branch') or execution.get('worktree')}): "
+                         "its phase.json's truth lives there -- map it after it merges")
         reason = None
         if name in held:
             reason = f"already holds repo_anchors.{name}"
-        elif execution.get("worktree") or execution.get("host_worktree"):
-            reason = (f"in flight on its own branch ({execution.get('branch') or execution.get('worktree')}): "
-                      "its phase.json's truth lives there -- map it after it merges")
+        elif in_flight:
+            reason = in_flight
         elif not shas:
             reason = "holds no host_anchors shas"
         else:
             bad = [f"{k}={v[:7]}" for k, v in shas.items() if not _rev_parse(v, cwd=rpath)]
             if bad:
                 reason = f"host_anchors {', '.join(bad)} not a commit in {name} (a host commit, or another repo's) -- left untouched"
+        changed = False
         if reason:
             print(f"{pid}: skipped: {reason}")
             skipped += 1
-            continue
-        created, passed = shas.get("created"), shas.get("review_pass")
-        entry = {"created": created, "branch": None, "review_pass": passed,
-                 "review_base": shas.get("review_base") or (created if passed else None)}
-        data["host_anchors"] = {}
-        _with_repo_anchors(data, {name: entry})
-        write_json(pdir / "phase.json", data)
-        mapped.append(data.get("id", pdir.name))
-        print(f"{pid}: mapped: repo_anchors.{name} = created {(created or 'null')[:7]}, review_pass {(passed or 'null')[:7]}, "
-              f"review_base {(entry['review_base'] or 'null')[:7]}; host_anchors = {{}}")
+        else:
+            created, passed = shas.get("created"), shas.get("review_pass")
+            entry = {"created": created, "branch": None, "review_pass": passed,
+                     "review_base": shas.get("review_base") or (created if passed else None)}
+            data["host_anchors"] = {}
+            _with_repo_anchors(data, {name: entry})
+            changed = True
+            mapped.append(data.get("id", pdir.name))
+            print(f"{pid}: mapped: repo_anchors.{name} = created {(created or 'null')[:7]}, review_pass {(passed or 'null')[:7]}, "
+                  f"review_base {(entry['review_base'] or 'null')[:7]}; host_anchors = {{}}")
+        pr = data.get("pr") if isinstance(data.get("pr"), dict) else {}
+        branches = pr.get("branches") if isinstance(pr.get("branches"), list) else []
+        nulls = [i for i, b in enumerate(branches) if isinstance(b, dict) and "repo" in b and b["repo"] is None]
+        if nulls and (in_flight or not pr_owner):
+            why = in_flight or (f"this host was not converted from {name} (converted_from names "
+                                f"{', '.join(str(c.get('repo')) for c in converted if isinstance(c, dict)) or 'no repo'}), "
+                                "so a null repo is not its to claim -- left untouched")
+            print(f"{pid}: pr: skipped {len(nulls)} record(s) with repo null: {why}")
+            pr_skipped += len(nulls)
+        elif nulls:
+            for i in nulls:
+                branches[i]["repo"] = name
+                print(f"{pid}: pr: mapped pr.branches[{i}].repo null -> {name} (branch {branches[i].get('branch')})")
+            pr_mapped.append(data.get("id", pdir.name))
+            changed = True
+        if changed:
+            write_json(pdir / "phase.json", data)
     if mapped:
         append_event("nested_repo_anchors_mapped", repo=name, phases=mapped)
-    print(f"nested-repos --map-anchors {name}: mapped {len(mapped)}, skipped {skipped} of {len(pdirs)} phase(s)"
-          + (" -- phase.json files written; commit them in the nested repo" if mapped else " -- nothing written"))
+    if pr_mapped:
+        append_event("nested_repo_pr_mapped", repo=name, phases=pr_mapped)
+    print(f"nested-repos --map-anchors {name}: mapped {len(mapped)}, skipped {skipped} of {len(pdirs)} phase(s); "
+          f"pr records: mapped in {len(pr_mapped)} phase(s), skipped {pr_skipped}"
+          + (" -- phase.json files written; commit them in the nested repo" if mapped or pr_mapped else " -- nothing written"))
 
 
 def _write_nested_repos(path: Path, data: dict, repos: list) -> None:
@@ -20270,7 +20303,7 @@ def main(argv=None) -> int:
     action.add_argument("--remove", default=None, metavar="NAME", help="drop a repo from the registry (its files are untouched); refused while an active phase holds repo_anchors.NAME")
     action.add_argument("--rules", default=None, metavar="NAME", help="set a repo's rules files by hand (needs --set)")
     action.add_argument("--detect-rules", default=None, metavar="NAME", dest="detect_rules", help="re-detect a repo's rules files: every tracked AGENTS.md / CLAUDE.md, plus .agents/skills/*/SKILL.md")
-    action.add_argument("--map-anchors", default=None, metavar="NAME", dest="map_anchors", help="converted install: move every phase's host_anchors (shas that are commits of repo NAME) to repo_anchors.NAME, active and archived phases alike; skips phases in flight on their own branch; writes phase.json files only")
+    action.add_argument("--map-anchors", default=None, metavar="NAME", dest="map_anchors", help="converted install: move every phase's host_anchors (shas that are commits of repo NAME) to repo_anchors.NAME, and every null pr.branches[].repo to NAME when the marker's converted_from names it, active and archived phases alike; skips phases in flight on their own branch; a re-run maps nothing; writes phase.json files only")
     p.add_argument("--set", default=None, metavar="A,B,C", help="with --rules: the comma-separated repo-relative paths of the repo's own rules files (empty clears them)")
     p.add_argument("--name", default=None, help="with --add: the repo's name in the registry (default: the path's last segment; [A-Za-z0-9._-]+)")
     p.add_argument("--default-branch", default=None, dest="default_branch", help="with --add: the repo's integration branch (default: its origin/HEAD target, else none)")

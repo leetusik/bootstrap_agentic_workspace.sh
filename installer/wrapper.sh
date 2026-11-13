@@ -122,6 +122,13 @@ export DRY_RUN="$dry_run"
 export NESTED="$nested"
 export AT_ROOT="$at_root"
 export TO_MULTI_REPO="$to_multi_repo_set"
+# This installer's absolute path, so a command it prints (the conversion's rollback) runs from anywhere;
+# empty when it was piped in (curl ... | sh), where $0 is no file of ours.
+bootstrap_self=
+if [ -f "$0" ] && grep -q '^INSTALLER_PY$' "$0" 2>/dev/null; then
+  bootstrap_self=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/$(basename -- "$0")
+fi
+export BOOTSTRAP_SELF="$bootstrap_self"
 
 python3 - <<'INSTALLER_PY'
 #@@PYTHON_BODY@@
