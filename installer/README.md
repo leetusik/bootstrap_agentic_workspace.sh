@@ -142,13 +142,13 @@ expects the at-root layout.
 
 `build.py` embeds these shipped sources **verbatim**, so editing them and rebuilding is all
 that is needed. Each source sits under `payload/` at its **emit path** (where the installer
-writes it) with the first path component undotted (`build.py`'s `src_rel()`), and the
-contract is `payload/contract.md`. No source sits at a path Claude Code or GitHub would load
-in this repo (`.claude/`, `.github/`, `CLAUDE.md`): `payload/` holds emit-path copies, and
-inside it Claude Code would still load a nested `CLAUDE.md` or `.claude/skills/` as this repo's
-own rules and skills, and git would apply a nested `.gitattributes` (the workspace that drives
-this repo is a private host in the folder above it, with its own installed copies); never add a
-dotted name or a `CLAUDE.md` under `payload/`.
+writes it). Living under `payload/` keeps every source off the root paths Claude Code and
+GitHub read in this repo (`.claude/`, `.github/`, `CLAUDE.md`). Inside `payload/`, the first
+path component is undotted (`build.py`'s `src_rel()`) and the contract is `payload/contract.md`,
+because there Claude Code would still load a nested `CLAUDE.md` or `.claude/skills/` as this
+repo's own rules and skills, and git would apply a nested `.gitattributes` (the workspace that
+drives this repo is a private host in the folder above it, with its own installed copies); never
+add a dotted name or a `CLAUDE.md` under `payload/`.
 Below, each entry is the source, then the emit path where it differs:
 
 - `payload/scripts/workflow.py`
