@@ -11,8 +11,9 @@ Source of truth:
   * payload/ (the shipped sources, embedded verbatim, killing the double-maintenance).
     Each sits at its EMIT path with the first component undotted, and the contract is
     payload/contract.md, so no source lives at a path Claude Code or GitHub would load
-    in this repo (a dotted name or a CLAUDE.md under payload/ would load as this repo's
-    own; the workspace that drives it is a private host in the folder above it):
+    in this repo (under payload/, Claude Code would still load a nested CLAUDE.md or
+    .claude/skills/ and git would apply a nested .gitattributes, as this repo's own; the
+    workspace that drives it is a private host in the folder above it):
       payload/scripts/workflow.py, payload/claude/skills/*/** (each skill's whole directory,
       plus the SHARED_SKILL_FILES copies), the payload/claude
       subagents, payload/claude/settings.json, payload/executors.toml,
