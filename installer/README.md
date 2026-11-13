@@ -132,18 +132,23 @@ layout of a run, and the wrapper rejects contradictory flags first:
 
 Nothing migrates an at-root install: `--to-multi-repo` converts a *per-repo nested* install, never
 an at-root one. This upstream repo was itself converted to the nested layout by hand, once, on
-2026-10-13 (no at-root-to-nested migration command ships): its sources live under
-`payload/` and its workspace in the git-excluded `workflow/`. `tests/retrofit_smoke.sh` passes
-`--at-root` wherever a test expects the at-root layout.
+2026-10-13 (no at-root-to-nested migration command ships), and on 2026-11-13 that nested install
+was converted with `--to-multi-repo` into a private multi-repo host in the folder above the repo:
+its sources live under `payload/`, and the workspace that drives it lives in that host
+(`../workflow/`), outside this repo. `tests/retrofit_smoke.sh` passes `--at-root` wherever a test
+expects the at-root layout.
 
 ## Source of truth = `payload/`
 
 `build.py` embeds these shipped sources **verbatim**, so editing them and rebuilding is all
 that is needed. Each source sits under `payload/` at its **emit path** (where the installer
-writes it) with the first path component undotted (`build.py`'s `src_rel()`), and the
-contract is `payload/contract.md`. No source sits at a path Claude Code or GitHub would load
-in this repo (`.claude/`, `.github/`, `CLAUDE.md`), because this repo is driven by a nested
-install whose copies own `.claude/`; never add a dotted name or a `CLAUDE.md` under `payload/`.
+writes it). Living under `payload/` keeps every source off the root paths Claude Code and
+GitHub read in this repo (`.claude/`, `.github/`, `CLAUDE.md`). Inside `payload/`, the first
+path component is undotted (`build.py`'s `src_rel()`) and the contract is `payload/contract.md`,
+because there Claude Code would still load a nested `CLAUDE.md` or `.claude/skills/` as this
+repo's own rules and skills, and git would apply a nested `.gitattributes` (the workspace that
+drives this repo is a private host in the folder above it, with its own installed copies); never
+add a dotted name or a `CLAUDE.md` under `payload/`.
 Below, each entry is the source, then the emit path where it differs:
 
 - `payload/scripts/workflow.py`

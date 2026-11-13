@@ -9,9 +9,12 @@ workflow — no heredoc mirroring.
 
 Source of truth:
   * payload/ (the shipped sources, embedded verbatim, killing the double-maintenance).
-    Each sits at its EMIT path with the first component undotted, and the contract is
-    payload/contract.md, so no source lives at a path Claude Code or GitHub would load
-    in this repo (it is driven by a nested install, whose copies own .claude/):
+    Living under payload/ keeps every source off the root paths Claude Code and GitHub
+    read in this repo (.claude/, .github/, CLAUDE.md). Inside payload/, each sits at its
+    EMIT path with the first component undotted, and the contract is payload/contract.md,
+    because there Claude Code would still load a nested CLAUDE.md or .claude/skills/, and
+    git would apply a nested .gitattributes, as this repo's own (the workspace that drives
+    it is a private host in the folder above it):
       payload/scripts/workflow.py, payload/claude/skills/*/** (each skill's whole directory,
       plus the SHARED_SKILL_FILES copies), the payload/claude
       subagents, payload/claude/settings.json, payload/executors.toml,
@@ -67,8 +70,9 @@ SUMMARY_RE = re.compile(r"^# (\S.*?)\s*$")
 MIGRATION_MARK = "**Migration notes.**"
 
 # Shipped files embedded verbatim, keyed by EMIT path (where the installer writes them). The
-# source lives under payload/ at src_rel(emit): the first path component undotted, so no source
-# sits at a path Claude Code or GitHub would load (.claude/, .github/, CLAUDE.md).
+# source lives under payload/ at src_rel(emit): payload/ keeps it off the root paths Claude Code
+# and GitHub read (.claude/, .github/, CLAUDE.md), and the undotted first path component keeps
+# Claude Code and git from treating it as this repo's own inside payload/.
 FIXED_LIVE_FILES = [
     "scripts/workflow.py",
     ".claude/settings.json",

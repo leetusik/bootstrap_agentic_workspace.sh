@@ -39,7 +39,7 @@ three sessions of the same agent) at one repo and you get three different conven
 **The approach.** This workspace gives agents three things they normally lack:
 
 - **Routing** — there is always a single, machine-checkable answer to "what runs next?"
-  ([`works/state.json`](works/) and the generated backlog).
+  (`works/state.json` and the generated backlog).
 - **Durable, shared memory** — a per-phase notebook plus append-only versioned docs carry what each
   step learned forward to the next, so knowledge survives compaction and hand-offs between sessions.
 - **Review gates** — work isn't "done" until a phase review (run by the executor in a fresh,
@@ -60,8 +60,8 @@ it prompts). Your job is judgment: review results, clear `pending` hand-offs, de
 archive. Every shell block in this README is something the agent runs on your behalf — except the
 one-time bootstrap below, the only command you might ever type yourself.
 
-> This repo runs on its own workflow. The [`works/`](works/) and [`docs/`](docs/) trees you see
-> here are it dogfooding the very system it scaffolds — this README was itself written as a phase.
+> This repo runs on its own workflow, from a private install outside the repo — it dogfoods the
+> very system it scaffolds, and this README was itself written as a phase.
 
 ## Quickstart
 
@@ -216,9 +216,9 @@ under `workflow/` instead and the skills and agents untracked in the host's `.cl
 - [`CLAUDE.md`](payload/contract.md) — the compact routing contract every agent session works under.
 - [`scripts/workflow.py`](payload/scripts/workflow.py) — the one manager that drives all state.
 - `.claude/` — the 21 Agent Skills (`/slash` commands), the risk-routed `slice-executor` subagent (`.claude/agents/slice-executor.md`, one file dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ high), the `design-critic` that judges each draft (the `critic` row, opus @ high; in judge mode the `judge` row, opus @ high), the `pr-reader` that reads each phase's draft PR with fresh eyes (the `reader` row, opus @ high), the `code-reader` that reads a code change blind, from the diff and the files at head alone, before each phase review and in `/read-code` (the `code` row, opus @ high), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
-- [`docs/`](docs/) — a versioned, fullstack documentation set (11 categories) with generated
+- `docs/` — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
-- [`works/`](works/) — the state machine, starting with **no phases**: a `deferred/` area,
+- `works/` — the state machine, starting with **no phases**: a `deferred/` area,
   generated dashboards, and `state.json`. You create the first phase by talking to your agent
   (`/create-phase`).
 
@@ -787,8 +787,8 @@ scorecard, and star counts move too fast to quote.)
 ## Contributing
 
 This repo is developed with its own workflow, so contributing means *using* it, through your
-agent. The maintainer's workspace is a private install (`workflow/`, git-excluded), so a clone has
-none: install your own private one at the clone root with the default (nested) install,
+agent. The maintainer's workspace is a private multi-repo host in the folder above the
+clone, so a clone has none: install your own private one at the clone root with the default (nested) install,
 `sh bootstrap_agentic_workspace.sh`. Then drive it as described below, with
 `python3 workflow/scripts/workflow.py …`. You edit `payload/` and `installer/` (never the
 installed copies; see the root [`CLAUDE.md`](CLAUDE.md)).
@@ -819,9 +819,10 @@ A few house rules:
   `payload/works/templates/**`, …). After editing `payload/**` or `installer/**`, run
   `python3 installer/build.py` and commit the rebuilt artifact in the same commit
   (`python3 installer/build.py --check` must pass; register the tracked hook once with
-  `git config core.hooksPath .githooks`). This repo drives its own workspace as a private nested
-  install, so its `.claude/skills`, `.claude/agents` and `workflow/` are installed copies: never
-  edit them; see the root [`CLAUDE.md`](CLAUDE.md) for the dev loop.
+  `git config core.hooksPath .githooks`). The maintainer's own workspace is a private multi-repo
+  host one folder above the repo, and its installed copies live there, so a clone has none; in
+  your own install the `.claude/skills`, `.claude/agents` and `workflow/` are installed copies
+  too: never edit them; see the root [`CLAUDE.md`](CLAUDE.md) for the dev loop.
 - **Never hand-edit `docs/current/*.md`** (they're generated) and never patch old files under
   `docs/versions/`. Create a new version with `doc-new-version` instead, in a docs phase.
 
