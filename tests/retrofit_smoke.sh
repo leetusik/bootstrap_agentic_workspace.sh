@@ -3192,6 +3192,22 @@ born_out=$( cd "$wt" && aid=$(python3 scripts/workflow.py agenda-add --title "bo
 [ "$born_rc" -eq 0 ] && printf '%s\n' "$born_out" | grep -q "^unlinked P9 from A" \
   && ok "a phase created inside the worktree is that stream's own: agenda-unlink applies there" \
   || bad "the worktree refused its own new phase's link (rc=$born_rc) -- $born_out"
+# P66: a phase that was there at the cut stays another stream's after the default side removes it (ownership is
+# read from the cut, never from the default side as it is now): the worktree refuses, writes nothing, names no command.
+# Its own small fixture: this test's P2 was never committed before P1's cut.
+newtmp GW
+sh "$BOOT" "$GW" --at-root --name "Gone" --summary "gone probe" >/dev/null 2>&1 || bad "P66 gone probe: fresh install failed"
+gone_out=$( cd "$GW" && git init -q -b main . && git config user.email smoke@example.invalid && git config user.name smoke \
+    && python3 scripts/workflow.py new-phase --phase P1 --name "Par" --objective "o" >/dev/null 2>&1 \
+    && python3 scripts/workflow.py new-phase --phase P2 --name "Gone" --objective "o" >/dev/null 2>&1 \
+    && git add -A >/dev/null 2>&1 && git commit -qm "baseline" && python3 scripts/workflow.py parallel-start P1 >/dev/null 2>&1 \
+    && git rm -rq works/phases/active/P2 && python3 scripts/workflow.py rebuild >/dev/null 2>&1 && git add -A && git commit -qm "drop P2" \
+    && cd .claude/worktrees/P1-par && aid=$(python3 scripts/workflow.py agenda-add --title "gone probe" | sed -n 's/^added \([^:]*\):.*/\1/p') \
+    && { python3 scripts/workflow.py agenda-link "$aid" --phase P2 2>&1; rc=$?; git diff --quiet -- works/phases/active/P2 || rc=99; exit $rc; } ); gone_rc=$?
+[ "$gone_rc" -eq 1 ] && printf '%s\n' "$gone_out" | grep -q "^agenda-link refused, nothing was written: P2 has been removed from the default checkout" \
+  && ! printf '%s\n' "$gone_out" | grep -q "workflow.py agenda-" \
+  && ok "a phase there at the cut and removed on the default side since stays another stream's: the worktree refuses its link" \
+  || bad "the worktree took a link into a phase the default side removed after the cut (rc=$gone_rc) -- $gone_out"
 ( cd "$W" && git branch -q -D probe/extra probe/agenda && python3 scripts/workflow.py set-phase-status P2 planned >/dev/null 2>&1 ) || bad "v86 probe: could not reset the probe"
 ( cd "$W" && git restore --staged src/staged.py && git add -A works >/dev/null 2>&1 && git commit -qm "workflow state" >/dev/null 2>&1 ) \
   || bad "v43 probe: could not commit the default-stream workflow state before merging"
