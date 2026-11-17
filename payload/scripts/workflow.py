@@ -7663,7 +7663,7 @@ def parallel_add_repo(args: argparse.Namespace) -> None:
     if name not in registry:
         raise SystemExit(f"{refused}: no repo named {name} is registered in this set's registry (the marker this nested worktree tracks on {stream}; "
                          f"registered: {', '.join(registry)}). Register it on the default stream ({WORKFLOW_CMD} nested-repos --add <path>, in the "
-                         f"main host checkout {MAIN_HOST}), commit it there, then merge that into this phase branch: git -C {rel} merge {base_branch}")
+                         f"main host checkout {MAIN_HOST}), commit it there, then merge that into this phase branch: git -C {rel} merge --no-ff {base_branch}")
     stamped = execution.get("repos") if isinstance(execution.get("repos"), dict) else {}
     if name in stamped:
         prev = stamped[name] if isinstance(stamped[name], dict) else {}
@@ -13059,9 +13059,15 @@ def agenda_phase_elsewhere(phase_id: str, data: dict, stream="unset"):
     worktree's view of it, `_agenda_default_view`), but only to say where, or that nothing can be run.
 
     The limit (P66 F9): row 3 reads a merge COMMIT. A rebase, a fast-forward or a squash of another branch into the
-    phase branch makes no merge commit, so a phase that came in that way reads as born here (row 4); the engine's own
-    paths (`git merge --no-ff`) always make one. A phase first committed inside a merge commit (no merged parent
-    holds it) reads as row 3 too, and its advice says so."""
+    phase branch makes no merge commit, so a phase that came in that way reads as born here (row 4); every merge of
+    another branch into a phase branch that the workspace's skills make or the engine prints is `git merge --no-ff`,
+    which always makes one (the loop worktree's catch-up and parallel-add-repo's advice since P66 F10). A phase first
+    committed inside a merge commit (no merged parent holds it) reads as row 3 too, and its advice says so.
+
+    A second limit (P66 F10): a phase born on a phase branch (row 4 there) carries no stamp, so once a landing carries
+    it to the default branch while that branch's worktree or a clone of it lives on (a loop's checkpoint, or a merged
+    branch not yet torn down), the default checkout takes it as its own too. Both sides may then write its link, and
+    two different writes conflict on its phase.json at the next landing: link or unlink it from one side only."""
     if stream == "unset":
         stream = current_stream(all_active_phases())
     execution = phase_execution(data) or {}
@@ -21843,7 +21849,7 @@ def main(argv=None) -> int:
     _one_line_usage_errors(p)
     p.set_defaults(func=agenda_reopen)
 
-    p = sub.add_parser("agenda-delete", help="Delete agenda items for good: first every link to them is cleared (the `agenda` key leaves each phase, active or archived, and each deferred job, open, promoted or dropped; those stay), except on an active phase of another stream (in a phase worktree or a clone of its branch: one there at the cut, or that arrived by a merge commit; a rebase, a fast-forward or a squash of another branch makes no merge commit, so a phase it brings reads as created on the branch), whose link is left and named in the output; then their folders are removed (the agenda_deleted event is the record); all or none, and none when this checkout cannot tell whose a linked phase is (a shallow clone whose history stops before the worktree's cut)")
+    p = sub.add_parser("agenda-delete", help="Delete agenda items for good: first every link to them is cleared (the `agenda` key leaves each phase, active or archived, and each deferred job, open, promoted or dropped; those stay), except on an active phase of another stream (in a phase worktree or a clone of its branch: one there at the cut, or that arrived by a merge commit; a rebase, a fast-forward or a squash of another branch makes no merge commit, so a phase it brings reads as created on the branch; a phase created on the branch is also the default checkout's own once a landing has carried it there while the branch's worktree lives on, as a loop's checkpoint does, so link or unlink it from one side only), whose link is left and named in the output; then their folders are removed (the agenda_deleted event is the record); all or none, and none when this checkout cannot tell whose a linked phase is (a shallow clone whose history stops before the worktree's cut)")
     p.add_argument("agenda_ids", nargs="+", metavar="ITEM", help=AGENDA_ID_HELP)
     _one_line_usage_errors(p)
     p.set_defaults(func=agenda_delete)

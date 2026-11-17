@@ -427,8 +427,9 @@ default branch at each **passing checkpoint**, not at the end. The loop's sessio
    `git merge <merge_commit>` (never the branch tip; take either side of a generated `works/` conflict
    first, then regenerate) → `parallel-merge-finish` → `parallel-consolidated <P>` when that checkpoint
    stamped consolidation debt.
-4. The loop worktree takes the default branch back at its next cycle boundary: `git merge <default>` there,
-   then `parallel-merge-finish` (it re-stamps a debt whose checkpoint has not reached the default branch).
+4. The loop worktree takes the default branch back at its next cycle boundary: `git merge --no-ff <default>`
+   there (always a merge commit, which the agenda's own-stream rule reads), then `parallel-merge-finish`
+   (it re-stamps a debt whose checkpoint has not reached the default branch).
 5. `parallel-teardown <P>` only after the loop's final REVIEW passes; never while it runs or is stopped
    awaiting its review.
 
