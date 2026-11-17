@@ -491,7 +491,8 @@ PINNED_MODE = "default"
 WORKTREES_DIR = ".claude/worktrees"
 # What the stamp commit carries besides the phase folder: the generated works/ files that
 # `rebuild_index_and_state` rewrites, plus the event log. Nothing else on the tree enters it.
-STAMP_WORKS_FILES = ("works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/events.jsonl")
+STAMP_WORKS_FILES = ("works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/agenda.md",
+                     "works/events.jsonl")
 CONSOLIDATION_STATES = {"pending", "done"}
 # How many phases must owe durable-doc consolidation before `next` / `validate` say so.
 # 1 = always, whenever anything owes -- the deliberate default, because the debt has to be
@@ -507,17 +508,27 @@ UNASSIGNED_DOC = "(unassigned)"
 # branch may not be merged into it yet (the quiet-point gate, `parallel-gate`).
 BUSY_PHASE_STATUSES = ("in_progress", "in_review", "pending", "blocked")
 # The quiet point's checked exemption (v86, §9.2): a branch whose diff since its merge-base with the
-# default side touches only its own phase folder, the STAMP_WORKS_FILES, or paths ADDED under this
-# folder (a deferred job filed on the branch: a new minted-id folder cannot conflict) cannot collide
-# with in-flight default-stream work, so `parallel-gate` drops the busy-default-stream reason for it.
-GATE_EXEMPT_ADDED_PREFIX = "works/deferred/open/"
+# default side touches only its own phase folder, the STAMP_WORKS_FILES, or paths ADDED under one of
+# these folders (a deferred job filed, or an agenda item added, on the branch: a new minted-id folder
+# cannot conflict) cannot collide with in-flight default-stream work, so `parallel-gate` drops the
+# busy-default-stream reason for it.
+# The agenda across streams (P66): item folders are real truth, merged by git; a phase worktree may add,
+# change or delete items like any checkout. Only an ADDED item is exempt here: a changed or deleted existing
+# item keeps the busy reason and the gate names its path. At the merge the same item changed on both sides
+# (or changed on one, deleted on the other) is an ordinary git conflict in its agenda.json, resolved by taking
+# one side; two Open items left with one `order` are tolerated (the listing breaks the tie by id, and the next
+# agenda-move renumbers). Links are written only into this stream's own phases (`agenda_phase_elsewhere`):
+# this checkout's copy of another stream's phase.json is frozen at the stamp, and rewriting it would collide
+# with that stream's own writes; agenda-delete leaves such a link (validate then warns of it, dangling).
+GATE_EXEMPT_ADDED_PREFIXES = ("works/deferred/open/", "works/agenda/")
 # An explain phase's publishable unit (`- unit:` in intent.md's `## Explain`); absent reads `book`,
 # the only unit before v86.
 EXPLAIN_UNITS = ("document", "book", "chapter")
 EXPLAIN_UNIT_DEFAULT = "book"
 # Regenerated from works/phases/** and docs/versions/** by `parallel-merge-finish`;
 # never merged by hand (see .gitattributes).
-GENERATED_FILES = ("works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "docs/current/*.md")
+GENERATED_FILES = ("works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/agenda.md",
+                   "docs/current/*.md")
 # The executor agent files Claude Code loads: the host's `.claude/agents` when nested (Claude Code
 # finds agents walking up from the session's cwd, the host root), the workspace's otherwise.
 # executors.toml and .env stay at ROOT either way.
@@ -2683,24 +2694,39 @@ def agenda_sorted(items) -> list:
     return open_part + deferred + ended + [d for d in by_id if d.get("status") not in AGENDA_STATUSES]
 
 
-def agenda_items() -> list:
-    """Every agenda item, `works/agenda/<AID>/agenda.json`, as dicts in the listing order (`agenda_sorted`). The
-    folder name is the item's id (`id` is set from it). A folder without agenda.json is skipped; one whose
-    agenda.json is not a JSON object is refused in one line."""
-    items = []
-    for aid in agenda_folder_ids():
+def agenda_read_all(strict: bool = False) -> tuple:
+    """`(items, problems)`: every readable agenda item, `works/agenda/<AID>/agenda.json`, as dicts in the listing
+    order (`agenda_sorted`), its `id` set from the folder name (the folder name is the item's id); and one
+    `(folder, why)` per folder holding no readable item (no agenda.json, not readable JSON, not a JSON object), in
+    folder order. Lenient by default: a rebuild runs inside almost every command, so one bad item never stops it
+    (validate reports it). `strict` (the agenda commands) refuses an unreadable agenda.json in one line instead."""
+    items, problems = [], []
+    for aid in sorted(agenda_folder_ids()):
         path = AGENDA / aid / "agenda.json"
         if not path.is_file():
+            problems.append((AGENDA / aid, "has no agenda.json"))
             continue
         try:
             data = read_json(path)
         except (OSError, ValueError) as exc:
-            raise SystemExit(f"{shown(path)} is not readable JSON ({exc.__class__.__name__}): fix or delete it")
+            if strict:
+                raise SystemExit(f"{shown(path)} is not readable JSON ({exc.__class__.__name__}): fix or delete it")
+            problems.append((AGENDA / aid, f"agenda.json is not readable JSON ({exc.__class__.__name__})"))
+            continue
         if not isinstance(data, dict):
-            raise SystemExit(f"{shown(path)} is not a JSON object: fix or delete it")
+            if strict:
+                raise SystemExit(f"{shown(path)} is not a JSON object: fix or delete it")
+            problems.append((AGENDA / aid, "agenda.json is not a JSON object"))
+            continue
         data["id"] = aid
         items.append(data)
-    return agenda_sorted(items)
+    return agenda_sorted(items), problems
+
+
+def agenda_items() -> list:
+    """Every agenda item for the agenda commands (`agenda_read_all`, strict): a folder without agenda.json is
+    skipped; one whose agenda.json is not a JSON object is refused in one line."""
+    return agenda_read_all(strict=True)[0]
 
 
 # Agenda links (P66 D4): a phase's phase.json and a deferred job's deferred.json may each hold ONE item id,
@@ -2708,36 +2734,43 @@ def agenda_items() -> list:
 # removes it), so a phase or job made without --agenda is written exactly as before. An item's phases and jobs
 # are never stored on the item: `agenda_links` derives them. Writers of a link: new-phase --agenda, defer-job
 # --agenda, promote-deferred --create-phase (the job's id), agenda-link, agenda-unlink, agenda-delete (clears).
-def _agenda_link_holders() -> list:
+def _agenda_link_holders(skipped=None) -> list:
     """Every phase and deferred job that can hold an agenda link, one dict each: `kind` ("phase" | "deferred"),
     `id`, `path` (its phase.json or deferred.json), `place` ("active" | "archived" | "open" | "promoted" |
-    "dropped"), `status` (an archived phase counts as "done") and `agenda` (`.get("agenda")`). Active phases in
-    selection order (`phase_dirs`, the backlog's), then archived ones in archive order (the folder name starts
-    with the archive stamp); then jobs in id order across open/, promoted/ and dropped/. An archived phase.json
-    or a deferred.json that does not read as a JSON object is skipped, never fatal (validate reports it)."""
+    "dropped"), `status` (an archived phase counts as "done"), `agenda` (`.get("agenda")`) and `linked` (the key
+    is present, whatever its value). Active phases in selection order (`phase_dirs`, the backlog's), then
+    archived ones in archive order (the folder name starts with the archive stamp); then jobs in id order across
+    open/, promoted/ and dropped/. An archived phase.json or a deferred.json that does not read as a JSON object
+    is skipped, never fatal; its path goes into `skipped` when the caller passes a list (validate reports it)."""
     holders = []
     for pdir in phase_dirs():
         data = read_json(pdir / "phase.json")
         holders.append({"kind": "phase", "id": pdir.name, "path": pdir / "phase.json", "place": "active",
-                        "status": data.get("status"), "agenda": data.get("agenda")})
+                        "status": data.get("status"), "agenda": data.get("agenda"), "linked": "agenda" in data})
     for adir in (sorted(d for d in ARCHIVED.iterdir() if d.is_dir()) if ARCHIVED.is_dir() else []):
         try:
             data = read_json(adir / "phase.json")
         except (OSError, ValueError):
-            continue
+            data = None
         if isinstance(data, dict):
             holders.append({"kind": "phase", "id": str(data.get("id") or adir.name), "path": adir / "phase.json",
-                            "place": "archived", "status": "done", "agenda": data.get("agenda")})
+                            "place": "archived", "status": "done", "agenda": data.get("agenda"),
+                            "linked": "agenda" in data})
+        elif skipped is not None and (adir / "phase.json").exists():
+            skipped.append(adir / "phase.json")
     jobs = []
     for place, base in (("open", DEFERRED_OPEN), ("promoted", DEFERRED_PROMOTED), ("dropped", DEFERRED_DROPPED)):
         for ddir in (d for d in (base.iterdir() if base.is_dir() else []) if d.is_dir()):
             try:
                 data = read_json(ddir / "deferred.json")
             except (OSError, ValueError):
-                continue
+                data = None
             if isinstance(data, dict):
                 jobs.append({"kind": "deferred", "id": ddir.name, "path": ddir / "deferred.json", "place": place,
-                             "status": data.get("status"), "agenda": data.get("agenda"), "created": data.get("created_at")})
+                             "status": data.get("status"), "agenda": data.get("agenda"), "linked": "agenda" in data,
+                             "created": data.get("created_at")})
+            elif skipped is not None and (ddir / "deferred.json").exists():
+                skipped.append(ddir / "deferred.json")
     jobs.sort(key=lambda job: id_sort_key(job["id"], job.pop("created")))
     return holders + jobs
 
@@ -2830,6 +2863,72 @@ def rebuild_deferred_dashboard(groups=None) -> None:
         lines.append(f"| `{clean_cell(d.get('id'))}` | `{clean_cell(d.get('status'))}` | {clean_cell(d.get('title'))} | {clean_cell(d.get('dropped_reason'))} | `{clean_cell(d.get('path'))}` |")
     lines.append("")
     write_text(WORKS / "deferred.md", "\n".join(lines))
+
+
+# The agenda's generated views (P66 D2, D8): `works/agenda.md` and works/index.json's `agenda_counts` and `agenda`,
+# both built at every rebuild from `agenda_index` -- the one answer the sync and the web read. Each is a pure
+# function of the item, phase and job files (no rebuild time in either), so a rebuild with nothing changed
+# rewrites the same bytes. An item of an unknown stored status is left out of both (validate reports it).
+def agenda_index(items: list, links: dict) -> tuple:
+    """`(counts, rows)` for works/index.json: `counts` the five shown statuses (AGENDA_SHOWN's keys) each a
+    number, and one row per item in the listing order: id, title, status as stored, shown_status (the signed
+    word), order, created_at, changed_at, outcome, reason, phases, phases_done, deferred; never the note."""
+    counts = {key: 0 for key in AGENDA_SHOWN}
+    rows = []
+    for item in items:
+        if item.get("status") not in AGENDA_STATUSES:
+            continue
+        own = agenda_item_links(item, links)
+        shown_word = agenda_shown_status(item, links)
+        counts[next(key for key, word in AGENDA_SHOWN.items() if word == shown_word)] += 1
+        rows.append({"id": item["id"], "title": item.get("title"), "status": item.get("status"),
+                     "shown_status": shown_word, "order": item.get("order"), "created_at": item.get("created_at"),
+                     "changed_at": item.get("changed_at"), "outcome": item.get("outcome"), "reason": item.get("reason"),
+                     "phases": [phase["id"] for phase in own["phases"]],
+                     "phases_done": sum(1 for phase in own["phases"] if phase["status"] == "done"),
+                     "deferred": [job["id"] for job in own["deferred"]]})
+    return counts, rows
+
+
+def _agenda_day(stamp) -> str:
+    """The day of an ISO stamp as stored (`2026-11-17`), never converted, so the dashboard stays byte-stable."""
+    text = str(stamp or "")
+    return text[:10] if re.match(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", text) else clean_cell(stamp)
+
+
+def rebuild_agenda_dashboard(counts: dict, rows: list, links: dict) -> None:
+    """works/agenda.md, written on every rebuild, with no item too (the installer relies on `rebuild` for it).
+    The signed parts and order (D2, D3): Summary (the five counts), Open (Open and In progress, in the
+    operator's order), Deferred (newest first), Solved and dropped (newest first). The note is not shown: the
+    detail is the item's folder."""
+    lines = [
+        "# Agenda", "", "> Generated dashboard. Do not put detailed agenda context here; edit each `works/agenda/<AID>/` folder instead.", "",
+        "## Summary", "",
+        *(f"- {word}: `{counts.get(key, 0)}`" for key, word in AGENDA_SHOWN.items()), "",
+        "## Open", "", "| # | ID | Status | Title | Links |", "|---|---|---|---|---|",
+    ]
+    open_rows = [row for row in rows if row["status"] == "open"]
+    if not open_rows:
+        lines.append("| - | - | - | - | - |")
+    for position, row in enumerate(open_rows, 1):
+        counts_line = agenda_counts_line(agenda_item_links(row, links))
+        lines.append(f"| {position} | `{clean_cell(row['id'])}` | {row['shown_status']} | {clean_cell(row['title'])} | {clean_cell(counts_line)} |")
+    lines.extend(["", "## Deferred", "", "| ID | Title | Changed | Links |", "|---|---|---|---|"])
+    deferred_rows = [row for row in rows if row["status"] == "deferred"]
+    if not deferred_rows:
+        lines.append("| - | - | - | - |")
+    for row in deferred_rows:
+        counts_line = agenda_counts_line(agenda_item_links(row, links))
+        lines.append(f"| `{clean_cell(row['id'])}` | {clean_cell(row['title'])} | {_agenda_day(row['changed_at'])} | {clean_cell(counts_line)} |")
+    lines.extend(["", "## Solved and dropped", "", "| ID | Status | Title | Outcome or reason | Changed |", "|---|---|---|---|---|"])
+    ended_rows = [row for row in rows if row["status"] in ("solved", "dropped")]
+    if not ended_rows:
+        lines.append("| - | - | - | - | - |")
+    for row in ended_rows:
+        why = row["outcome"] if row["status"] == "solved" else row["reason"]
+        lines.append(f"| `{clean_cell(row['id'])}` | {row['shown_status']} | {clean_cell(row['title'])} | {clean_cell(why)} | {_agenda_day(row['changed_at'])} |")
+    lines.append("")
+    write_text(WORKS / "agenda.md", "\n".join(lines))
 
 
 def phase_execution(data) -> dict:
@@ -5096,6 +5195,8 @@ def rebuild_index_and_state() -> None:
     current_phase, current_slice, next_slice = resolve_current(selectable)
     waiting_on = operator_wait_target(selectable, current_phase, current_slice)
     deferred = deferred_jobs()
+    agenda_links_now = agenda_links()  # read once per rebuild: every item's phases and jobs
+    agenda_counts, agenda_rows = agenda_index(agenda_read_all()[0], agenda_links_now)  # lenient: one bad item never stops it
     rebuilt_at = now_iso()
     index = {
         "active_phases": [
@@ -5115,6 +5216,8 @@ def rebuild_index_and_state() -> None:
         "deferred_open_count": len(deferred.get("open", [])),
         "deferred_promoted_count": len(deferred.get("promoted", [])),
         "deferred_dropped_count": len(deferred.get("dropped", [])),
+        "agenda_counts": agenda_counts,
+        "agenda": agenda_rows,
         "last_rebuilt_at": rebuilt_at,
     }
     write_json_stamped(WORKS / "index.json", index, "last_rebuilt_at", rebuilt_at)
@@ -5125,6 +5228,7 @@ def rebuild_index_and_state() -> None:
     write_json_stamped(WORKS / "state.json", state, "updated_at", rebuilt_at)
     rebuild_backlog(phases, state, index)
     rebuild_deferred_dashboard(deferred)
+    rebuild_agenda_dashboard(agenda_counts, agenda_rows, agenda_links_now)
     for p in phases:  # only the marker-delimited ## Slices block; archived phases are never touched
         refresh_phase_md_slices(ROOT / p["path"], p)
     if stream:  # a parallel stream's state just changed: the default checkout's dashboards follow it live
@@ -5323,6 +5427,7 @@ def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
     version = installed_workspace_version()
     lines += [
         f"- Open deferred jobs: `{index.get('deferred_open_count', 0)}`",
+        f"- Open agenda items: `{sum((index.get('agenda_counts') or {}).get(key, 0) for key in ('open', 'in_progress'))}`",
         f"- Workspace version: `{'unknown' if version is None else f'v{version}'}`", "",
         *streams_section(phases, state, live),
         "## Active Phases", "", "| Phase | Status | Review | Name | Current Slice | Path |", "|---|---|---|---|---|---|",
@@ -5539,6 +5644,7 @@ def validate() -> int:
                 errors.append(f"invalid deferred status {data.get('id')}: {data.get('status')}")
             if data.get("status") not in allowed:
                 errors.append(f"deferred job in wrong folder: {data.get('id')} status {data.get('status')} under {shown(base)}")
+    validate_agenda(errors, warnings)
     # Deferred doc consolidation. A WARNING, never an error: the debt is expected operator-paced
     # state (a passing review defers consolidation to a docs phase), so it must not fail CI or
     # block the loop -- it must only stop being silent.
@@ -5606,6 +5712,75 @@ def validate() -> int:
         return 1
     print("Workflow validation passed.")
     return 0
+
+
+def validate_agenda(errors: list, warnings: list) -> None:
+    """The agenda's checks (P66). ERRORS, each naming the item's folder: no readable agenda.json, an `id` other
+    than the folder name, a folder name not shaped `A<n>-<tail>`, a missing AGENDA_KEYS key, a stored status
+    outside the four, a title not 1-200 characters on one line, `order` not a number on an Open item or not null
+    on any other, an outcome off Solved, a reason off Dropped; and an `agenda` value on a phase or job that is not
+    an item id (a non-empty string). WARNINGS (validation still passes): a link naming no item (a merge can leave
+    one honestly: an item deleted on one stream while another stream's phase linked it), with what clears it,
+    and an archived phase.json or a deferred.json too unreadable for agenda-delete to clear a link in."""
+    _items, problems = agenda_read_all()
+    for folder, why in problems:
+        errors.append(f"agenda item {shown(folder)}: {why}")
+    for aid in sorted(agenda_folder_ids()):
+        folder, path = AGENDA / aid, AGENDA / aid / "agenda.json"
+        try:
+            data = read_json(path)
+        except (OSError, ValueError):
+            continue  # reported above
+        if not isinstance(data, dict):
+            continue
+        where = f"agenda item {shown(folder)}"
+        if not AGENDA_ID_RE.fullmatch(aid):
+            errors.append(f"{where}: the folder name {aid!r} is not an agenda id shaped A<n>-<tail> (A7-m3)")
+        if "id" in data and data.get("id") != aid:
+            errors.append(f"{where}: id {data.get('id')!r} is not its folder name {aid!r}")
+        missing = [key for key in AGENDA_KEYS if key not in data]
+        if missing:
+            errors.append(f"{where}: missing key{'s' if len(missing) != 1 else ''} {', '.join(missing)}")
+        status = data.get("status")
+        if status not in AGENDA_STATUSES:
+            errors.append(f"{where}: status {status!r} is not one of {', '.join(sorted(AGENDA_STATUSES))}")
+        title = data.get("title")
+        if not isinstance(title, str) or not title.strip() or len(title) > AGENDA_TITLE_MAX or len(title.splitlines()) != 1:
+            errors.append(f"{where}: title must be 1-{AGENDA_TITLE_MAX} characters on one line, got {clean_cell(json.dumps(title, ensure_ascii=False))[:80]}")
+        if status == "open" and _agenda_order(data) is None:
+            errors.append(f"{where}: an Open item's order must be a number, got {data.get('order')!r}")
+        if status != "open" and data.get("order") is not None:
+            errors.append(f"{where}: order must be null on a {AGENDA_SHOWN.get(status, status)} item, got {data.get('order')!r}")
+        if data.get("outcome") is not None and status != "solved":
+            errors.append(f"{where}: outcome is set but the item is not Solved")
+        if data.get("reason") is not None and status != "dropped":
+            errors.append(f"{where}: reason is set but the item is not Dropped")
+    skipped = []
+    holders = _agenda_link_holders(skipped)
+    for path in skipped:
+        warnings.append(f"{shown(path)} is not readable as a JSON object: an agenda link in it can be neither read nor cleared (agenda-delete skips it)")
+    stream = "unset"
+    for holder in holders:
+        if not holder["linked"]:
+            continue
+        aid, kind, hid = holder["agenda"], holder["kind"], holder["id"]
+        label = f"{'phase' if kind == 'phase' else 'deferred job'} {hid} ({shown(holder['path'])})"
+        if not isinstance(aid, str) or not aid:
+            errors.append(f"{label}: `agenda` is {json.dumps(aid)}, not an agenda item id (a string); remove the key or set an item's id")
+            continue
+        if agenda_item_exists(aid):
+            continue
+        if kind == "deferred":
+            fix = f"{WORKFLOW_CMD} agenda-unlink --deferred {hid}"
+        elif holder["place"] == "archived":
+            fix = f"an archived phase takes no agenda-unlink: remove the `agenda` key from {shown(holder['path'])} by hand"
+        else:
+            if stream == "unset":
+                stream = current_stream(all_active_phases())
+            elsewhere = agenda_phase_elsewhere(hid, read_json(holder["path"]), stream)
+            fix = (f"{WORKFLOW_CMD} agenda-unlink --phase {hid}" if elsewhere is None
+                   else f"{hid} runs on {elsewhere}: unlink it from that checkout")
+        warnings.append(f"{label} links agenda item {aid}, which does not exist (a merge can leave such a link); clear it: {fix}")
 
 
 def require_phase(phase_id: str) -> Path:
@@ -7982,7 +8157,7 @@ def _gate_exemption(phase_id: str, main_side: str, branch_ref: str, outputs=None
     Reads `git diff --name-status <merge-base> <branch_ref>` -- what merging the branch into the
     default side would bring -- and is exempt only when every path is inside the phase's own folder,
     one of the STAMP_WORKS_FILES (generated, regenerated by parallel-merge-finish; events.jsonl merges
-    as union), or ADDED under GATE_EXEMPT_ADDED_PREFIX. `detail` is the path count when exempt, else
+    as union), or ADDED under one of GATE_EXEMPT_ADDED_PREFIXES. `detail` is the path count when exempt, else
     the first offending path (or why git could not answer: then nothing is exempt)."""
     base = _git(["merge-base", main_side, branch_ref], check=False)
     if base.returncode != 0 or not base.stdout.strip():
@@ -7998,7 +8173,7 @@ def _gate_exemption(phase_id: str, main_side: str, branch_ref: str, outputs=None
         count += 1
         rel = path[len(prefix):] if prefix and path.startswith(prefix) else (path if not prefix else None)
         if rel is not None and (rel.startswith(own) or rel in STAMP_WORKS_FILES
-                                or (status == "A" and rel.startswith(GATE_EXEMPT_ADDED_PREFIX))):
+                                or (status == "A" and rel.startswith(GATE_EXEMPT_ADDED_PREFIXES))):
             continue
         if outputs and NESTED is None and _path_in_outputs(path, outputs):  # P50.S3: a loop's declared outputs
             continue
@@ -8016,8 +8191,8 @@ def parallel_gate(args: argparse.Namespace) -> None:
     * **main side** -- the default stream is quiet: every non-parallel active phase is `planned` or
       `done`. Merging into a live phase is what this gate exists to prevent. v86: a busy default
       stream is skipped when the branch's diff since its merge-base with the default side touches
-      only its own phase folder, the generated works/ files and added deferred jobs
-      (`_gate_exemption`, printed as `exemption=`): such a merge cannot collide with live work.
+      only its own phase folder, the generated works/ files, added deferred jobs and added agenda
+      items (`_gate_exemption`, printed as `exemption=`): such a merge cannot collide with live work.
 
     Read-only and CI-shaped: `GATE OPEN` + exit 0, or `GATE CLOSED` + numbered reasons + exit 1.
     In a nested install (P35) both sides are read in the nested repo, which owns the state.
@@ -8128,7 +8303,7 @@ def parallel_gate(args: argparse.Namespace) -> None:
     if busy and exempt:
         notes.append(f"{len(busy)} busy default-stream phase(s) skipped: the branch touches only its own phase folder, the generated works/ files"
                      + (", the charter's outputs" if loop_target is not None else "")
-                     + f" and added {GATE_EXEMPT_ADDED_PREFIX} paths, so its merge cannot collide with them")
+                     + f" and added {' and '.join(GATE_EXEMPT_ADDED_PREFIXES)} paths, so its merge cannot collide with them")
     else:
         reasons.extend(busy)
     for p in main_phases:
@@ -8157,7 +8332,7 @@ def parallel_merge_finish(args: argparse.Namespace) -> None:
     """Run on the default stream right after a phase branch's merge: regenerate, then report what is left.
 
     The generated files (`works/state.json`, `works/index.json`, `works/backlog.md`,
-    `works/deferred.md`, `docs/current/*.md`) are derived, never authored, so a merge conflict in
+    `works/deferred.md`, `works/agenda.md`, `docs/current/*.md`) are derived, never authored, so a merge conflict in
     them is resolved by taking either side and regenerating here -- which is why parallel mode
     needs no custom git merge driver (a driver would need per-clone `git config` and would not
     travel with the repo). Makes no commit: the regenerated files belong to the merge commit's
@@ -12477,35 +12652,76 @@ def _plural(count: int, word: str) -> str:
     return f"{count} {word}{'' if count == 1 else 's'}"
 
 
+def agenda_phase_elsewhere(phase_id: str, data: dict, stream="unset"):
+    """Where an ACTIVE phase runs when that is not this checkout's stream (its branch, or "the default stream"),
+    else None. The stream rule for agenda links (P66; see GATE_EXEMPT_ADDED_PREFIXES): a link is written only into
+    this stream's own phases, because this checkout's copy of another stream's phase.json is frozen at the stamp
+    and rewriting it would collide with that stream's own writes at the merge. On the default stream (`stream`
+    None) every phase is its own except one in flight in its own worktree (`phase_in_flight`; a merged and torn
+    down one is history, and the default checkout's again). In a phase worktree only the phase stamped with its
+    branch is its own; for any other the default checkout's copy names the branch it was stamped onto after this
+    worktree was cut (as `loop_home` reads it). Deferred jobs and archived phases are never stream-scoped."""
+    if stream == "unset":
+        stream = current_stream(all_active_phases())
+    branch = (phase_execution(data) or {}).get("branch")
+    if stream is None:
+        return branch if branch and phase_in_flight(data) else None
+    if branch == stream:
+        return None
+    if branch:
+        return branch
+    root = _default_checkout_root()
+    try:
+        authority = read_json(root / "works" / "phases" / "active" / phase_id / "phase.json") if root is not None else None
+    except (OSError, ValueError):
+        authority = None
+    later = (phase_execution(authority) or {}).get("branch") if isinstance(authority, dict) else None
+    return later if later and later != stream else "the default stream"
+
+
 def agenda_delete(args: argparse.Namespace) -> None:
     """Delete items, all or none (every id is resolved first): clear the `agenda` key of every phase (active and
     archived) and every job (open, promoted, dropped) that names one of them, THEN remove the items' folders --
     links first, folder last, so a stop between the two leaves no link to a missing item. The phases and jobs
-    stay."""
+    stay. An active phase of another stream (`agenda_phase_elsewhere`) is never written: its link is left, said
+    so in the output, and unlinked from its own checkout (until then validate warns of it, dangling)."""
     items, _every = _agenda_named(args.agenda_ids)
     ids = {item["id"] for item in items}
     holders = [holder for holder in _agenda_link_holders() if holder["agenda"] in ids]
+    stream = current_stream(all_active_phases()) if any(h["place"] == "active" for h in holders) else None
+    elsewhere = {}  # phase id -> where it runs, for the active phases of another stream
+    for holder in holders:
+        if holder["kind"] == "phase" and holder["place"] == "active":
+            where = agenda_phase_elsewhere(holder["id"], read_json(holder["path"]), stream)
+            if where is not None:
+                elsewhere[holder["id"]] = where
+    left = [holder for holder in holders if holder["kind"] == "phase" and holder["id"] in elsewhere and holder["place"] == "active"]
+    holders = [holder for holder in holders if holder not in left]
     for holder in holders:
         _agenda_set_link(holder, None)
     for item in items:
         shutil.rmtree(AGENDA / item["id"])
     cleared = {item["id"]: [holder for holder in holders if holder["agenda"] == item["id"]] for item in items}
+    kept = {item["id"]: [holder for holder in left if holder["agenda"] == item["id"]] for item in items}
     for item in items:
         own = cleared[item["id"]]
         append_event("agenda_deleted", agenda=item["id"], title=item.get("title"), links_cleared=len(own),
-                     **({"unlinked": [holder["id"] for holder in own]} if own else {}))
+                     **({"unlinked": [holder["id"] for holder in own]} if own else {}),
+                     **({"links_left": [holder["id"] for holder in kept[item["id"]]]} if kept[item["id"]] else {}))
     rebuild_index_and_state()
     for item in items:
         own = cleared[item["id"]]
         print(f"deleted {item['id']}: {_plural(len(own), 'link')} cleared"
               + (" (its phases and jobs stay)" if own else ""))
+        for holder in kept[item["id"]]:
+            print(f"1 link left on {holder['id']} (another stream): unlink it there ({elsewhere[holder['id']]})")
 
 
 def _agenda_link_target(args: argparse.Namespace, cmd: str) -> dict:
     """The one phase (`--phase`, active only) or deferred job (`--deferred`, open, promoted or dropped) that
     agenda-link or agenda-unlink writes, as an `_agenda_link_holders` dict plus `linked` (the key is present);
     refused in one line otherwise. An archived phase keeps the link it was archived with (only agenda-delete
-    rewrites it)."""
+    rewrites it), and an active phase of another stream is refused (`agenda_phase_elsewhere`)."""
     phase, did = getattr(args, "phase", None), getattr(args, "deferred_id", None)
     if (phase is None) == (did is None):
         raise SystemExit(f"{cmd} needs exactly one of --phase <phase> or --deferred <job>"
@@ -12530,6 +12746,9 @@ def _agenda_link_target(args: argparse.Namespace, cmd: str) -> dict:
         raise SystemExit(f"{shown(path)} is not readable JSON ({exc.__class__.__name__}): fix it first")
     if not isinstance(data, dict):
         raise SystemExit(f"{shown(path)} is not a JSON object: fix it first")
+    where = agenda_phase_elsewhere(hid, data) if kind == "phase" else None
+    if where is not None:  # the stream rule: only this stream's own phases take a link (agenda_phase_elsewhere)
+        raise SystemExit(f"{hid} runs on {where}: {cmd.split('-', 1)[1]} it from that checkout")
     return {"kind": kind, "id": hid, "path": path, "place": place, "status": data.get("status"),
             "agenda": data.get("agenda"), "linked": "agenda" in data}
 
@@ -20851,7 +21070,7 @@ def main(argv=None) -> int:
     p = sub.add_parser("parallel-status", help="Read-only cross-stream view: this checkout's pointer plus every parallel phase's branch-side slice state (never writes anything)")
     p.set_defaults(func=parallel_status)
 
-    p = sub.add_parser("parallel-gate", help="Quiet-point gate: is this parallel phase's branch mergeable now (branch done+pass, default stream quiet -- or, v86, exemption=phase-folder-only: its diff since the merge-base touches only its phase folder, the generated works/ files and added works/deferred/open/ paths)? Exit 0 = open")
+    p = sub.add_parser("parallel-gate", help="Quiet-point gate: is this parallel phase's branch mergeable now (branch done+pass, default stream quiet -- or, v86, exemption=phase-folder-only: its diff since the merge-base touches only its phase folder, the generated works/ files and added works/deferred/open/ and works/agenda/ paths)? Exit 0 = open")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--branch-ref", default=None, help="git ref holding the phase branch's state (default: the phase's stamped execution.branch; e.g. HEAD or origin/phase/P2-x in CI)")
     p.add_argument("--main-ref", default=None, help="git ref holding the default stream's state (default: this working tree; e.g. origin/main when running from a PR checkout)")
