@@ -12779,9 +12779,17 @@ def agenda_unlink(args: argparse.Namespace) -> None:
     print(f"unlinked {hid} from {target['agenda']}")
 
 
+ONE_LINE_USAGE_COMMANDS = set()  # filled by _one_line_usage_errors as main() registers each agenda parser
+
+
 def _one_line_usage_errors(parser: argparse.ArgumentParser) -> None:
-    """A usage error on this subcommand prints one line (`<prog>: error: <message>`, exit 2), never the usage
-    block: the agenda's refusals are each exactly one line, the web's "Change refused" text."""
+    """A usage error on this subcommand prints one line (`<prog> <command>: error: <message>`, exit 2), never
+    the usage block: the agenda's refusals are each exactly one line, the web's "Change refused" text. Two
+    paths raise one: an error inside the subparser (a missing argument, a bad value) calls this parser's
+    `error`, replaced here; an unknown option or an extra positional is left over and raised by the top-level
+    parser's `parse_args`, so the command is recorded in ONE_LINE_USAGE_COMMANDS and main() gives the
+    top-level parser the same one-line `error` for a run of that command only."""
+    ONE_LINE_USAGE_COMMANDS.add(parser.prog.rsplit(" ", 1)[-1])
     parser.error = lambda message: parser.exit(2, f"{parser.prog}: error: {message}\n")
 
 
@@ -21497,6 +21505,10 @@ def main(argv=None) -> int:
                    help="archive only: the sweep of every currently-done phase and its report, with no rotate= line and no docs-phase line (unchanged since v51)")
     p.set_defaults(func=rotate_backlog)
 
+    tokens = sys.argv[1:] if argv is None else list(argv)
+    one_line_cmd = tokens[0] if tokens and tokens[0] in ONE_LINE_USAGE_COMMANDS else None
+    if one_line_cmd:  # leftovers (an unknown option, an extra positional) are the top parser's error: one line too
+        parser.error = lambda message: parser.exit(2, f"{parser.prog} {one_line_cmd}: error: {message}\n")
     args = parser.parse_args(argv)
     if NESTED is not None and NESTED_PROBLEMS and args.cmd not in ("validate", "compact-resume"):  # the hook fails open
         # Never fall back to at-root mode on a broken marker: refuse, and let validate list it all.

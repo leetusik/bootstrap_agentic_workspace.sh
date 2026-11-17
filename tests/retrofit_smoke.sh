@@ -2916,6 +2916,10 @@ tr0=$(ag_tree); bk=$(ag agenda-defer A13 A99-zz 2>&1); bk_rc=$?; tr1=$(ag_tree)
   && [ "$bk_rc" -ne 0 ] && [ "$tr0" = "$tr1" ] && [ "$(ag_key A13-n1 status)" = open ] \
   && ok "defer, solve --outcome, reopen, drop --reason, reopen (outcome and reason cleared); reopening an Open item is refused in one line; agenda-defer A13 A99-zz changes nothing" \
   || bad "agenda transitions wrong -- $st / $rf / $bk"
+uo=$(ag agenda-add --title x --bogus 2>&1); uo_rc=$?; tr2=$(ag_tree)
+[ "$uo_rc" -eq 2 ] && [ "$(printf '%s\n' "$uo" | wc -l | tr -d ' ')" = 1 ] && [ "$tr1" = "$tr2" ] \
+  && ok "an unknown option on an agenda command (agenda-add --bogus) is one line, exit 2, nothing written" \
+  || bad "an unknown agenda option is not one line and exit 2 (rc=$uo_rc) -- $uo"
 # (d) order: the newest item first, a reopened item last, a move rewrites only the moved item's file.
 o1=$(ag_order); it0=$(ag_items); ag agenda-move A13 --last >/dev/null 2>&1; it1=$(ag_items)
 moved=$(diff <(printf '%s\n' "$it0") <(printf '%s\n' "$it1") | sed -n 's/^> \([^/]*\)\/.*/\1/p' | tr '\n' ' ')
