@@ -17,7 +17,8 @@ disable-model-invocation: true
 - `drop <item>… [--reason "..."]`: Open or Deferred to Dropped.
 - `reopen <item>…`: back to Open, last in the open order.
 - `delete <item>…`: remove the items for good.
-- `link` / `unlink`: tie an item to a phase or deferred job, or untie it; `new-phase` and `defer-job` take `--agenda <item>` to link what they create.
+- `link <item> --phase <P> | --deferred <D>`: tie an item to a phase or deferred job; a phase or job holds one item, and a phase of another stream is linked from its own checkout. `new-phase` and `defer-job` take `--agenda <item>` to link what they create.
+- `unlink --phase <P> | --deferred <D>`: untie the phase or job from its item.
 
 The statuses are Open, In progress, Deferred, Solved and Dropped. In progress is derived (an item with a linked phase not done); no command sets it.
 

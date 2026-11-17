@@ -57,7 +57,7 @@ the detail lives here.
    with the nested worktree at its `workflow/` on
    `phase/P<N>-<slug>`; the engine adds `/.claude/worktrees/` to the host's `info/exclude`.
 3. **The stamp commit** — the engine's one fixed-message commit (the stamp must exist on both branches)
-   contains exactly the phase folder plus the five regenerated `works/` files
+   contains exactly the phase folder plus the six regenerated `works/` files
    (`git add -- <paths>` + `git commit --only -- <paths>`); a phase not yet committed goes in whole.
 4. **What stays behind** — a dirty or staged default checkout does not block it: everything else stays
    there, uncommitted, and the worktree starts from that commit ("start from the latest commit").
@@ -133,7 +133,7 @@ partial state.
 
 **A dirty tree does not block it.** The commit is made with `git add -- <paths>` and
 `git commit --only -- <paths>`, so it contains exactly the phase folder plus `works/state.json`,
-`works/index.json`, `works/backlog.md`, `works/deferred.md`, `works/events.jsonl` — whatever else is
+`works/index.json`, `works/backlog.md`, `works/deferred.md`, `works/agenda.md`, `works/events.jsonl` — whatever else is
 dirty or staged stays behind in the default checkout, uncommitted, and the worktree starts from that
 commit. A phase `create-phase` just made is usually not yet committed: the stamp carries the whole new
 folder, on purpose.
@@ -216,7 +216,7 @@ so coordinate them across streams.
 Commits land on the phase branch; do not merge or rebase against `main` mid-phase unless the operator
 asks. **Nested install:** product commits go to the host branch in the host worktree, in the host's
 convention and with no workspace IDs; workflow commits run `git -C workflow …` there. Generated files (`works/state.json`, `works/index.json`, `works/backlog.md`,
-`works/deferred.md`, `docs/current/*.md`) are **regenerated, not merged** — never hand-fix them.
+`works/deferred.md`, `works/agenda.md`, `docs/current/*.md`) are **regenerated, not merged** — never hand-fix them.
 
 **`phase.md` is not one of them.** The notebook is hand-written prose with one generated region
 inside it, so "take either side and regenerate" does not apply to the file: a conflict *inside* its
@@ -286,7 +286,7 @@ closes the gate or turns a check red mid-sequence, STOP and report — never mer
    `in_progress` / `in_review` / `pending` / `blocked`). A busy main means wait, not merge — **unless
    the engine exempts the branch (v86):** it diffs the branch since its merge-base with the default
    side and always prints the result. `exemption=phase-folder-only (<n> paths)` — every path is under
-   `works/phases/active/<P>/`, one of the five `works/` files, or **added** under `works/deferred/open/`
+   `works/phases/active/<P>/`, one of the six `works/` files, or **added** under `works/deferred/open/` or `works/agenda/`
    — turns the busy reasons into a `note:` and the gate opens, since such a branch cannot conflict with
    in-flight product work. `exemption=none: <path> (<status>)` (or no readable merge-base) leaves them
    standing. The branch-side reasons (`done`, `pass`) are never exempt. Run from
@@ -379,7 +379,7 @@ when its review passes.
 ### An explain phase merges back by itself
 
 An explain branch touches only `works/phases/active/<P>/**` (notebook, slices, dossier, draft), the
-five `works/` files and the deferred jobs its review files: it writes no doc version, no `## Doc
+six `works/` files and the deferred jobs its review files: it writes no doc version, no `## Doc
 impact` note and no `## Regression Checklist` line, and no product file. So the explain run integrates
 it itself, with no stop, right after its `pass` — a document or chapter whose gate was waived, or a
 book once the operator's `accept-gate <P> --clear` let the pass be recorded:
