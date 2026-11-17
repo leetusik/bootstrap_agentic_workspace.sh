@@ -465,7 +465,7 @@ Everything is organized as **phases** made of **slices**, driven by one script.
   before working and writes a `result.md` when done.
 - **Deferred job** (`D92-x4`, minted likewise; older workspaces have `D1`, `D2`, … and `D-m3xa`) — a parked idea. It sits outside the active backlog and never
   changes what runs next until you explicitly promote it.
-- **Agenda item** (`A7-m3`, minted on its own sequence) — something you want to discuss or decide, kept in your own order: Open, Deferred, Solved or Dropped, and In progress while a phase linked to it (`new-phase --agenda`) is not done. It never changes what runs next.
+- **Agenda item** (`A7-m3`, minted on its own sequence) — something you want to discuss or decide, kept in your own order: Open, Deferred, Solved or Dropped; an Open item reads In progress while a phase linked to it (`new-phase --agenda`) is not done. It never changes what runs next.
 
 The contract boils down to one line:
 

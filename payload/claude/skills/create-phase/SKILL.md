@@ -44,7 +44,7 @@ Turn an operator request for new work into one or more phases — or a deferred 
 
    **Defer for later** → fold the confirmed intent into the arguments and run:
    ```
-   python3 scripts/workflow.py defer-job --title "..." --reason "..." --trigger "..." [--source ...] [--agenda <AID>]
+   python3 scripts/workflow.py defer-job --title "..." --reason "..." --trigger "..." --source ... [--agenda <AID>]
    ```
    Leave out `--id`: the engine mints the job's id (`D92-x4`: the next number and a random tail) and prints it on the `created deferred job` line; never pick a number. This parks the job under `works/deferred/open/<DID>/` and never affects next-slice selection until promoted (the same command the `defer-job` skill wraps). Commit it as step 5 says, report and STOP.
 

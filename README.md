@@ -374,7 +374,7 @@ checkout에서 한꺼번에 실행합니다. 선언이 없는 phase는 지금처
   쓰고, 끝나면 판정 요약으로 시작하는 결과(`result.md`)를 남깁니다.
 - **보류 작업** (deferred job, `D92-x4` — 마찬가지로 엔진이 만듭니다. 이전에는 `D1`, … 와 `D-m3xa`) — 나중에 하기로 미뤄 둔 아이디어입니다. 명시적으로
   꺼내기 전에는 작업 순서에 영향을 주지 않습니다.
-- **안건** (agenda item, `A7-m3` — 별도 번호로 엔진이 만듭니다) — 논의하거나 정할 거리를 내가 정한 순서로 모아 둔 목록입니다. 상태는 Open, Deferred, Solved, Dropped이고, 연결된 phase(`new-phase --agenda`)가 끝나지 않았으면 In progress로 보입니다. 작업 순서에는 영향을 주지 않습니다.
+- **안건** (agenda item, `A7-m3` — 별도 번호로 엔진이 만듭니다) — 논의하거나 정할 거리를 내가 정한 순서로 모아 둔 목록입니다. 상태는 Open, Deferred, Solved, Dropped이고, Open 상태인 안건만 연결된 phase(`new-phase --agenda`)가 끝나지 않았을 때 In progress로 보입니다. 작업 순서에는 영향을 주지 않습니다.
 
 규칙 전체는 한 줄로 요약됩니다.
 

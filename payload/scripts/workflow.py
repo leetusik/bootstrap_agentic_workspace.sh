@@ -21378,7 +21378,7 @@ def main(argv=None) -> int:
     _one_line_usage_errors(p)
     p.set_defaults(func=agenda_reopen)
 
-    p = sub.add_parser("agenda-delete", help="Delete agenda items for good: first every link to them is cleared (the `agenda` key leaves each phase, active or archived, and each deferred job, open, promoted or dropped; those stay), then their folders are removed (the agenda_deleted event is the record); all or none")
+    p = sub.add_parser("agenda-delete", help="Delete agenda items for good: first every link to them is cleared (the `agenda` key leaves each phase, active or archived, and each deferred job, open, promoted or dropped; those stay), except on an active phase of another stream, whose link is left and named in the output; then their folders are removed (the agenda_deleted event is the record); all or none")
     p.add_argument("agenda_ids", nargs="+", metavar="ITEM", help=AGENDA_ID_HELP)
     _one_line_usage_errors(p)
     p.set_defaults(func=agenda_delete)
