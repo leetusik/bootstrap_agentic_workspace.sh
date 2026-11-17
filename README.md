@@ -154,7 +154,7 @@ nested 설치의 `workflow/` 디렉터리 자체에서 옵션 없는 설치나 `
 
 - `workflow/`: 엔진, `works/`, `docs/`, `executors.toml`, 규칙 문서(`CLAUDE.workspace.md`)가
   들어가는 **중첩 git 저장소**입니다. 호스트와 따로 버전 관리됩니다.
-- 호스트의 `.claude/skills/`, `.claude/agents/`에 들어가는 스킬 21개와 에이전트 6개. 경로는
+- 호스트의 `.claude/skills/`, `.claude/agents/`에 들어가는 스킬 22개와 에이전트 6개. 경로는
   `workflow/`를 가리키도록 바뀌어 있습니다(`python3 workflow/scripts/workflow.py …`).
 - 각 스킬 디렉터리 안의 `.gitignore`(내용은 `*`). 호스트의 `.gitignore`가 `.claude/skills/`를
   다시 포함시키더라도 스킬 디렉터리가 스스로를 가립니다.
@@ -374,6 +374,7 @@ checkout에서 한꺼번에 실행합니다. 선언이 없는 phase는 지금처
   쓰고, 끝나면 판정 요약으로 시작하는 결과(`result.md`)를 남깁니다.
 - **보류 작업** (deferred job, `D92-x4` — 마찬가지로 엔진이 만듭니다. 이전에는 `D1`, … 와 `D-m3xa`) — 나중에 하기로 미뤄 둔 아이디어입니다. 명시적으로
   꺼내기 전에는 작업 순서에 영향을 주지 않습니다.
+- **안건** (agenda item, `A7-m3` — 별도 번호로 엔진이 만듭니다) — 논의하거나 정할 거리를 내가 정한 순서로 모아 둔 목록입니다. 상태는 Open, Deferred, Solved, Dropped이고, 연결된 phase(`new-phase --agenda`)가 끝나지 않았으면 In progress로 보입니다. 작업 순서에는 영향을 주지 않습니다.
 
 규칙 전체는 한 줄로 요약됩니다.
 
@@ -468,8 +469,9 @@ Claude Code에서 `/이름`으로 입력합니다.
 | `executor-route` | 라우트 표와 dispatch 요약 확인; `/executor-route <slice_id>`로 한 slice의 dispatch 결정 확인 |
 | `retrofit` | 기존 저장소에 워크스페이스 추가 |
 | `update-workspace` | 설치된 워크스페이스의 시스템 파일만 최신으로 교체 |
+| `agenda` | 안건 목록 보기, 또는 안건 명령 하나 실행 (`/agenda add …`, `/agenda solve A7`) |
 
-스킬은 모두 21개입니다. 전체 목록과 설치 옵션은 [English README](README.en.md)에 있고,
+스킬은 모두 22개입니다. 전체 목록과 설치 옵션은 [English README](README.en.md)에 있고,
 CLI 명령 전체는 `python3 scripts/workflow.py --help`로 확인할 수 있습니다.
 
 ## phase별 worktree (요청할 때만)
@@ -558,7 +560,7 @@ branch를 통합한 뒤 직접 지우거나 `parallel-add-repo ... --adopt`로 �
 
 ## 더 알아보기
 
-- 전체 문서 (설치 옵션, CLI 명령 전체, 프로젝트 구조, 스킬 21종): [English README](README.en.md)
+- 전체 문서 (설치 옵션, CLI 명령 전체, 프로젝트 구조, 스킬 22종): [English README](README.en.md)
 - 에이전트 규칙 문서: [CLAUDE.md](payload/contract.md)
 - 기존 저장소에 추가하는 절차: [Retrofit Guide](docs/retrofit-guide.md)
 - 기여하기: 기여할 때는 클론에 비공개 워크스페이스를 설치해 같은 방식으로 작업합니다. phase를 열고 slice 단위로 기여해

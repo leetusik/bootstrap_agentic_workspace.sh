@@ -148,7 +148,7 @@ import sys
 
 root = Path(sys.argv[1])
 skills = {p.parent.name for p in (root / "payload/claude/skills").glob("*/SKILL.md")}
-assert len(skills) == 21, len(skills)
+assert len(skills) == 22, len(skills)
 
 # P37.S1 (v61): a skill ships as its whole directory, a core SKILL.md plus reference/*.md, and the
 # do-* shared references fan out at build. Prose pins read the BUILT directory (core first, then its
@@ -2359,7 +2359,7 @@ diff -q "$SRC/scripts/workflow.py" "$F/scripts/workflow.py" >/dev/null \
   || bad "DRIFT: scripts/workflow.py differs from the bootstrap-embedded copy"
 skill_rels=$(cd "$SRC" && find claude/skills -type f -name SKILL.md | sed 's|^|.|' | LC_ALL=C sort)
 nskill=$(printf '%s\n' "$skill_rels" | grep -c .)
-[ "$nskill" -eq 21 ] && ok "dual-apply covers all 21 skill bodies" || bad "expected 21 SKILL.md files to diff, found $nskill"
+[ "$nskill" -eq 22 ] && ok "dual-apply covers all 22 skill bodies" || bad "expected 22 SKILL.md files to diff, found $nskill"
 for rel in $skill_rels; do
   diff -q "$SRC/${rel#.}" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \

@@ -215,10 +215,10 @@ under `workflow/` instead and the skills and agents untracked in the host's `.cl
 
 - [`CLAUDE.md`](payload/contract.md) — the compact routing contract every agent session works under.
 - [`scripts/workflow.py`](payload/scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` — the 21 Agent Skills (`/slash` commands), the risk-routed `slice-executor` subagent (`.claude/agents/slice-executor.md`, one file dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ high), the `design-critic` that judges each draft (the `critic` row, opus @ high; in judge mode the `judge` row, opus @ high), the `pr-reader` that reads each phase's draft PR with fresh eyes (the `reader` row, opus @ high), the `code-reader` that reads a code change blind, from the diff and the files at head alone, before each phase review and in `/read-code` (the `code` row, opus @ high), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
+- `.claude/` — the 22 Agent Skills (`/slash` commands), the risk-routed `slice-executor` subagent (`.claude/agents/slice-executor.md`, one file dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ high), the `design-critic` that judges each draft (the `critic` row, opus @ high; in judge mode the `judge` row, opus @ high), the `pr-reader` that reads each phase's draft PR with fresh eyes (the `reader` row, opus @ high), the `code-reader` that reads a code change blind, from the diff and the files at head alone, before each phase review and in `/read-code` (the `code` row, opus @ high), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
 - `docs/` — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
-- `works/` — the state machine, starting with **no phases**: a `deferred/` area,
+- `works/` — the state machine, starting with **no phases**: a `deferred/` area, an `agenda/` area,
   generated dashboards, and `state.json`. You create the first phase by talking to your agent
   (`/create-phase`).
 
@@ -270,7 +270,7 @@ It writes only untracked files, all hidden by the host's `.git/info/exclude` (ne
 
 - `workflow/`: a **nested git repo** holding the engine, `works/`, `docs/`, `executors.toml` and
   the contract (as `CLAUDE.workspace.md`). It is versioned there, separately from the host.
-- the 21 skills and 6 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
+- the 22 skills and 6 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
   path rewritten to reach `workflow/` (`python3 workflow/scripts/workflow.py …`);
 - a `.gitignore` of `*` in each of those skill directories, so a skill directory hides itself
   even where the host's `.gitignore` re-includes `.claude/skills/`;
@@ -465,6 +465,7 @@ Everything is organized as **phases** made of **slices**, driven by one script.
   before working and writes a `result.md` when done.
 - **Deferred job** (`D92-x4`, minted likewise; older workspaces have `D1`, `D2`, … and `D-m3xa`) — a parked idea. It sits outside the active backlog and never
   changes what runs next until you explicitly promote it.
+- **Agenda item** (`A7-m3`, minted on its own sequence) — something you want to discuss or decide, kept in your own order: Open, Deferred, Solved or Dropped, and In progress while a phase linked to it (`new-phase --agenda`) is not done. It never changes what runs next.
 
 The contract boils down to one line:
 
@@ -489,6 +490,7 @@ another agent, CI — drives the workspace with the exact same commands:
 | `docs-debt` | Print a docs phase's worklist: the phases that owe consolidation, their notes, the docs they touch |
 | `docs-consolidated 46` | Record that a phase's doc debt is paid |
 | `defer-job --title … --reason … --trigger …` | Park a deferred job; the engine mints its id, e.g. `D92-x4` |
+| `agenda` / `agenda-add --title …` / `agenda-solve A7 …` | List the agenda, add an item (the engine mints its id, e.g. `A7-m3`), or move items through their statuses (`agenda-edit`, `-move`, `-defer`, `-drop`, `-reopen`, `-delete`, `-link`, `-unlink`) |
 | `promote-deferred 92 --phase 46 --slice S2` | Promote a deferred job into a slice (`--create-phase` without `--phase` mints the phase) |
 | `sync-agents` | Apply the `executors.toml` per-row model/effort overrides to the six managed agent files |
 | `executor-route` / `executor-route <slice_id> [--retry]` | Show the resolved route table and the agent files' sync state, or the dispatch decision for one slice (`--drafter`, `--critic`, `--judge`, `--reader`, `--code`, `--explore` for the non-slice agents) |
@@ -509,7 +511,7 @@ The full command list is `python3 scripts/workflow.py --help` (and `<command> -h
 
 ### The same operations as Agent Skills
 
-The common workflows also ship as **21 Agent Skills** in `.claude/skills/`, invoked as `/slash`
+The common workflows also ship as **22 Agent Skills** in `.claude/skills/`, invoked as `/slash`
 commands in Claude Code:
 
 | Skill | What it does |
@@ -527,6 +529,7 @@ commands in Claude Code:
 | `defer-job` | Park work as a deferred job, outside active selection |
 | `deferred` | Rebuild and show the deferred-jobs dashboard |
 | `promote-deferred` | Promote a deferred job into an active phase or slice |
+| `agenda` | Show the agenda, or run one agenda command (`/agenda add …`, `/agenda solve A7`) |
 | `archive-phase` | Archive review-passed phases whose doc debt is paid (normally batched via `archive-all`) |
 | `rotate-backlog` | One invocation cleans up every done phase: it archives the clean ones at once, pays all the doc debt by resuming, widening or creating the docs phase and running it (the invocation is the yes; `gate` restores the approval loop), goes around parked work, and archives every paid phase; it stops only for running work or for uncommitted edits beside parked work; `archive-only` keeps the plain archive-and-report sweep |
 | `rebuild-workflow` | Rebuild generated dashboards, indexes, and doc snapshots, then validate |
@@ -707,13 +710,14 @@ parallelism it never used. The mechanism itself is unchanged.)
 │   └── index.json                 # maps each doc to its latest version
 ├── works/
 │   ├── state.json                 # current / next pointer (canonical)
-│   ├── backlog.md / deferred.md   # generated dashboards (lean: IDs & pointers only)
+│   ├── backlog.md / deferred.md / agenda.md   # generated dashboards (lean: IDs & pointers only)
 │   ├── phases/
 │   │   ├── active/<P>/            # phase.json, phase.md (bounded notebook), slices/<id>/
 │   │   └── archived/             # finished phases
-│   └── deferred/                  # one folder per parked job
+│   ├── deferred/                  # one folder per parked job
+│   └── agenda/                    # one folder per agenda item
 ├── .claude/
-│   ├── skills/                    # 21 Agent Skills (/slash commands)
+│   ├── skills/                    # 22 Agent Skills (/slash commands)
 │   ├── agents/                    # slice-executor + design-drafter + design-critic + pr-reader + code-reader + Explore (models from executors.toml)
 │   └── settings.json              # pre-approves workflow.py; denies force-push & rm -rf
 └── .github/
