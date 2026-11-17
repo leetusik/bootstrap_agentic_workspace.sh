@@ -21358,6 +21358,530 @@ def loop_debt_commit(data: dict):
     return record.get("commit") if record.get("verdict") == "pass" else None
 
 
+# ---------------------------------------------------------------------------
+# Cloud mode: hi2vi holds this workspace's truth and the disk is its copy. A checkout is linked exactly
+# when `<ROOT>/.hi2vi/link.json` exists ({schema, server, org_id, project_id, linked_at}; no key). Without
+# it `main()` calls the command exactly as before: nothing below is read, imported or run, and no socket
+# is opened. With it, the command boundary syncs: before the command, a fast-forward pull of what changed
+# in hi2vi (then the generated files are rebuilt); the command runs unchanged against the disk; after it,
+# one all-or-nothing batch of every truth-set difference against `.hi2vi/base.json` (the last-synced
+# head, and each path's rev and sha256). Diffing the tree, not wrapping writes, also catches the files
+# agents write with their own tools (plan.md, result.md, topics/), which ride the next batch as `carried`.
+# The wire is hi2vi's workspace API under /api/workspace/<project_id>/: head, manifest?since=, fetch and
+# commit, with the workspace key only as a Bearer header, read from the user's config, never from argv.
+CLOUD_DIR = ".hi2vi"
+CLOUD_SCHEMA = 1
+CLOUD_TIMEOUT = 10
+CLOUD_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
+# The append-only files (the union files of .gitattributes): synced as appended lines, never as revisions.
+CLOUD_APPEND_RE = re.compile(r"works/events\.jsonl|works/phases/.+/loop/(?:ledger|events|dead|survivors|checkpoints)\.jsonl")
+CLOUD_DERIVED = ("works/state.json", "works/index.json")  # sent with every batch as the latest projection only
+CLOUD_RACY_NS = 2_000_000_000  # a stat-cache entry this close to the clock is hashed again next time
+
+
+class CloudError(Exception):
+    """A cloud-mode stop. Its message is one line, safe to print: never the key."""
+
+
+class CloudUnreachable(CloudError):
+    pass
+
+
+def cloud_link_file() -> Path:
+    return ROOT / CLOUD_DIR / "link.json"
+
+
+def cloud_kind(rel: str) -> str:
+    return "append" if CLOUD_APPEND_RE.fullmatch(rel) else "file"
+
+
+def cloud_truth_rel(rel: str) -> bool:
+    """True for a ROOT-relative POSIX path in the truth set: under works/ or docs/, minus the generated files,
+    the templates, the version marker and temp files. (Folders whose .gitignore is `*` are cut in the walk.)"""
+    import fnmatch
+    if not isinstance(rel, str) or "\\" in rel or not rel.startswith(("works/", "docs/")):
+        return False
+    parts = rel.split("/")
+    if any(p in ("", ".", "..") for p in parts):
+        return False
+    if rel.startswith("works/templates/") or rel == "works/.workspace-version.json":
+        return False
+    if any(fnmatch.fnmatchcase(rel, pattern) for pattern in GENERATED_FILES):
+        return False
+    return not (parts[-1].startswith(".tmp_") or parts[-1] == ".DS_Store")
+
+
+def _cloud_ignored_dir(folder: Path) -> bool:
+    """A folder the engine keeps local (its .gitignore holds only `*`: the design caches and renders)."""
+    try:
+        lines = [l.strip() for l in (folder / ".gitignore").read_text(encoding="utf-8").splitlines() if l.strip()]
+    except (OSError, UnicodeDecodeError):
+        return False
+    return lines == ["*"]
+
+
+def _sha(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def cloud_scan(cache: dict) -> dict:
+    """{rel: sha256} of the truth set on disk. `cache` (rel -> [mtime_ns, size, ino, sha256]) skips hashing a
+    file whose stat is unchanged; it is refreshed in place."""
+    found = {}
+    for top in ("works", "docs"):
+        for dirpath, dirnames, filenames in os.walk(str(ROOT / top)):
+            folder = Path(dirpath)
+            if _cloud_ignored_dir(folder):
+                dirnames[:] = []
+                continue
+            for name in filenames:
+                path = folder / name
+                rel = path.relative_to(ROOT).as_posix()
+                if not cloud_truth_rel(rel):
+                    continue
+                try:
+                    st = os.lstat(str(path))
+                except OSError:
+                    continue
+                if not stat.S_ISREG(st.st_mode):
+                    continue
+                key = [st.st_mtime_ns, st.st_size, st.st_ino]
+                hit = cache.get(rel)
+                if isinstance(hit, list) and len(hit) == 4 and hit[:3] == key:
+                    found[rel] = hit[3]
+                    continue
+                try:
+                    digest = _sha(path.read_bytes())
+                except OSError:
+                    continue
+                cache[rel] = key + [digest]
+                found[rel] = digest
+    for rel in [r for r in cache if r not in found]:
+        del cache[rel]
+    return found
+
+
+def _cloud_write_bytes(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp_", suffix=path.name)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        os.replace(tmp, str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _cloud_remove(rel: str) -> None:
+    """Delete a pulled deletion's file, then every folder it leaves empty (never works/ or docs/ itself)."""
+    path = ROOT / rel
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+    folder = path.parent
+    while folder != ROOT and folder.parent != ROOT:
+        try:
+            folder.rmdir()
+        except OSError:
+            break
+        folder = folder.parent
+
+
+def _cloud_content(data: bytes) -> tuple:
+    """(encoding, content) for the wire: utf8 text, else base64."""
+    try:
+        return "utf8", data.decode("utf-8")
+    except UnicodeDecodeError:
+        import base64
+        return "base64", base64.b64encode(data).decode("ascii")
+
+
+def cloud_key_file() -> Path:
+    cfg = os.environ.get("XDG_CONFIG_HOME") or ""
+    return (Path(cfg) if os.path.isabs(cfg) else Path.home() / ".config") / "hi2vi" / "workspace-keys.json"
+
+
+class CloudLink:
+    """The link (server, project) and the client. The key lives only in this object's request headers."""
+
+    def __init__(self) -> None:
+        path = cloud_link_file()
+        try:
+            link = read_json(path)
+        except (OSError, ValueError) as exc:
+            raise CloudError(f"{shown(path)} is unreadable ({exc.__class__.__name__}): this checkout's link is broken")
+        if not isinstance(link, dict) or not isinstance(link.get("server"), str) or not link.get("project_id"):
+            raise CloudError(f"{shown(path)} lacks its server or project_id: this checkout's link is broken")
+        self.server = link["server"].rstrip("/")
+        self.project = str(link["project_id"])
+        parsed = urlparse(self.server)
+        host = (parsed.hostname or "").lower()
+        self.local = host in CLOUD_LOCAL_HOSTS or host.endswith(".localhost")
+        if not host or not (parsed.scheme == "https" or (parsed.scheme == "http" and self.local)):
+            raise CloudError(f"hi2vi server {self.server} must be https:// (plain http:// only to localhost, "
+                             "127.0.0.1, ::1 or *.localhost): nothing was changed")
+        checkout = link.get("checkout")
+        if not isinstance(checkout, str) or not checkout:
+            import platform
+            checkout = platform.node().split(".")[0] or "checkout"
+        self.checkout = re.sub(r"[^A-Za-z0-9._-]+", "-", checkout)[:64] or "checkout"
+        version = installed_workspace_version()
+        self.engine = f"v{version}" if version is not None else "unknown"
+        self._key = self._read_key(link["server"])
+
+    def _read_key(self, raw_server: str) -> str:
+        path = cloud_key_file()
+        try:
+            data = read_json(path)
+        except (OSError, ValueError):
+            raise CloudError(f"no workspace key for this checkout: {path} is missing or unreadable (run link again)")
+        servers = data if isinstance(data, dict) else {}
+        projects = servers.get(raw_server) or servers.get(self.server)
+        entry = projects.get(self.project) if isinstance(projects, dict) else None
+        key = entry.get("key") if isinstance(entry, dict) else None
+        if not isinstance(key, str) or not key.strip():
+            raise CloudError(f"no workspace key for {self.server} project {self.project} in {path} (run link again)")
+        return key.strip()
+
+    def call(self, method: str, route: str, body=None) -> tuple:
+        """(status, payload) of one request. A network failure raises CloudUnreachable; a 3xx is never
+        followed (the key stays with the host it was meant for); every request times out at 10 s."""
+        import urllib.error
+        import urllib.request
+        from urllib.parse import quote
+
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *a, **k):
+                return None
+
+        url = f"{self.server}/api/workspace/{quote(self.project, safe='')}/{route}"
+        data = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
+        headers = {"Authorization": "Bearer " + self._key, "Accept": "application/json",
+                   "X-Hi2vi-Checkout": self.checkout, "X-Hi2vi-Engine": self.engine}
+        if data is not None:
+            headers["Content-Type"] = "application/json"
+        handlers = [NoRedirect()] + ([urllib.request.ProxyHandler({})] if self.local else [])
+        opener = urllib.request.build_opener(*handlers)
+        request = urllib.request.Request(url, data=data, method=method, headers=headers)
+        try:
+            with opener.open(request, timeout=CLOUD_TIMEOUT) as resp:
+                status, raw = resp.status, resp.read()
+        except urllib.error.HTTPError as exc:
+            status = exc.code
+            try:
+                raw = exc.read() or b""
+            except OSError:
+                raw = b""
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            reason = getattr(exc, "reason", None) or exc.__class__.__name__
+            raise CloudUnreachable(str(reason).splitlines()[0][:200] if str(reason) else exc.__class__.__name__)
+        try:
+            payload = json.loads(raw.decode("utf-8")) if raw else {}
+        except (UnicodeDecodeError, ValueError):
+            payload = {}
+        return status, payload if isinstance(payload, dict) else {}
+
+
+class CloudSession:
+    """One command's boundary in a linked checkout: begin (pull, pre-command scan), then commit (one batch)."""
+
+    def __init__(self, tokens: list) -> None:
+        self.tokens = list(tokens)
+        self.dir = ROOT / CLOUD_DIR
+        self.link = CloudLink()
+        self.base = self._load("base.json") or {}
+        if not isinstance(self.base.get("files"), dict) or not isinstance(self.base.get("head"), int):
+            self.base = {"schema": CLOUD_SCHEMA, "head": 0, "files": {}}
+        self.cache = self._load("stat.json") or {}
+        self.pre = {}
+
+    def _load(self, name: str):
+        try:
+            data = read_json(self.dir / name)
+        except (OSError, ValueError):
+            return None
+        return data if isinstance(data, dict) else None
+
+    def _unreachable(self, why: str) -> CloudError:
+        return CloudError(f"hi2vi is not reachable at {self.link.server} ({why}): in cloud mode nothing runs offline, "
+                          "and nothing was changed.")
+
+    def _ask(self, method: str, route: str, body=None) -> dict:
+        """A begin-step request: anything but a 200 stops the command before it runs."""
+        try:
+            status, payload = self.link.call(method, route, body)
+        except CloudUnreachable as exc:
+            raise self._unreachable(str(exc))
+        if status != 200:
+            raise self._unreachable(f"HTTP {status} on {route.split('?')[0]}")
+        return payload
+
+    def save_base(self) -> None:
+        write_json(self.dir / "base.json", self.base)
+
+    def save_cache(self) -> None:
+        now = time.time_ns()
+        keep = {rel: entry for rel, entry in self.cache.items() if entry[0] < now - CLOUD_RACY_NS}
+        write_text(self.dir / "stat.json", json.dumps(keep, separators=(",", ":"), sort_keys=True) + "\n")
+
+    # The begin step ------------------------------------------------------------------------------
+    def begin(self) -> None:
+        info = self._ask("GET", "head")
+        if str(info.get("project_id")) != self.link.project:
+            raise CloudError(f"hi2vi answered for project {info.get('project_id')}, not {self.link.project}: "
+                             "this checkout's link is broken, and nothing was changed")
+        disk = cloud_scan(self.cache)
+        head = info.get("head")
+        if isinstance(head, int) and head != self.base["head"] and self._pull(disk):
+            disk = cloud_scan(self.cache)
+        self.pre = disk
+
+    def _pull(self, disk: dict) -> bool:
+        """Fast-forward the disk to hi2vi's head. A path changed on both sides is a mismatch: refused before
+        anything is written. Returns True when a file was written or deleted (the generated files are then
+        rebuilt)."""
+        manifest = self._ask("GET", f"manifest?since={self.base['head']}")
+        new_head, changes = manifest.get("head"), manifest.get("changes")
+        if not isinstance(new_head, int) or not isinstance(changes, list):
+            raise self._unreachable("a malformed manifest")
+        files = self.base["files"]
+        fetch, delete, same, mismatch = {}, [], {}, []
+        for change in changes:
+            rel = change.get("path") if isinstance(change, dict) else None
+            if not cloud_truth_rel(rel):
+                continue  # nothing outside the truth set is ever written from the cloud
+            b, here = files.get(rel), disk.get(rel)
+            if change.get("deleted"):
+                if here is None:
+                    same[rel] = None
+                elif b is not None and here == b.get("sha256"):
+                    delete.append(rel)
+                else:
+                    mismatch.append(rel)
+            elif here is not None and here == change.get("sha256"):
+                same[rel] = change
+            elif change.get("kind") == "append" or cloud_kind(rel) == "append":
+                fetch[rel] = change  # appends never conflict: the cloud's new lines are merged in
+            elif (b is None and here is None) or (b is not None and here == b.get("sha256")):
+                fetch[rel] = change
+            else:
+                mismatch.append(rel)
+        if mismatch:
+            raise CloudError(f"{len(mismatch)} files differ between this checkout and hi2vi: run sync to see them "
+                             "(nothing was changed)")
+        got = {}
+        if fetch:
+            for item in self._ask("POST", "fetch", {"paths": sorted(fetch)}).get("files") or []:
+                rel = item.get("path") if isinstance(item, dict) else None
+                if rel not in fetch:
+                    continue
+                raw = item.get("content") or ""
+                if item.get("encoding") == "base64":
+                    import base64
+                    data = base64.b64decode(raw)
+                else:
+                    data = raw.encode("utf-8")
+                if _sha(data) != item.get("sha256"):
+                    raise self._unreachable(f"a fetched file did not match its sha256: {rel}")
+                got[rel] = (item, data)
+            missing = sorted(set(fetch) - set(got))
+            if missing:
+                raise self._unreachable(f"{len(missing)} file(s) missing from the fetch, first {missing[0]}")
+        for rel, (item, data) in sorted(got.items()):
+            path = ROOT / rel
+            if cloud_kind(rel) == "append":
+                local = path.read_bytes() if path.is_file() else b""
+                b = files.get(rel) or {}
+                offset = b.get("offset", 0) if b.get("kind") == "append" else 0
+                offset = offset if 0 <= offset <= len(local) else len(local)
+                seen = {}
+                for line in local.splitlines(keepends=True):
+                    seen[line.rstrip(b"\n")] = seen.get(line.rstrip(b"\n"), 0) + 1
+                new = []
+                for line in data.splitlines():
+                    if seen.get(line, 0):
+                        seen[line] -= 1
+                    else:
+                        new.append(line + b"\n")
+                added = b"".join(new)
+                merged = local[:offset] + added + local[offset:]
+                if added:
+                    _cloud_write_bytes(path, merged)
+                offset += len(added)
+                files[rel] = {"rev": item.get("rev"), "sha256": _sha(merged[:offset]), "kind": "append", "offset": offset}
+            else:
+                _cloud_write_bytes(path, data)
+                files[rel] = {"rev": item.get("rev"), "sha256": item.get("sha256"), "kind": "file"}
+        for rel in delete:
+            _cloud_remove(rel)
+            files.pop(rel, None)
+        for rel, change in same.items():
+            if change is None:
+                files.pop(rel, None)
+            elif cloud_kind(rel) == "append":
+                size = (ROOT / rel).stat().st_size
+                files[rel] = {"rev": change.get("rev"), "sha256": change.get("sha256"), "kind": "append", "offset": size}
+            else:
+                files[rel] = {"rev": change.get("rev"), "sha256": change.get("sha256"), "kind": "file"}
+        self.base["head"] = new_head
+        self.save_base()
+        wrote = bool(got or delete)
+        if wrote:
+            if any(rel.startswith("docs/") for rel in list(got) + delete) and (DOCS / "index.json").is_file():
+                rebuild_docs()
+            rebuild_index_and_state()
+        return wrote
+
+    # The commit step -----------------------------------------------------------------------------
+    def _origin(self, rel: str, sha) -> str:
+        """`command` when the command itself changed the path, `carried` when it changed before (an agent)."""
+        return "carried" if self.pre.get(rel) == sha else "command"
+
+    def _diff(self, post: dict) -> list:
+        """[(wire op, base entry after a 200 or None for a delete)] of every truth-set difference."""
+        files, out, adds, dels = self.base["files"], [], {}, {}
+        for rel in sorted(set(files) | set(post)):
+            b, here = files.get(rel), post.get(rel)
+            if b is None:
+                adds[rel] = here
+                continue
+            if here is None:
+                dels[rel] = b
+                continue
+            if here == b.get("sha256"):
+                continue
+            data = (ROOT / rel).read_bytes()
+            if b.get("kind") == "append" and cloud_kind(rel) == "append":
+                offset = b.get("offset", 0)
+                if 0 <= offset <= len(data) and _sha(data[:offset]) == b.get("sha256"):
+                    op = self._append_op(rel, data, offset, b.get("rev"), here)
+                    if op:
+                        out.append(op)
+                    continue
+            out.append(self._put_op(rel, data, b.get("rev"), here))
+        # P7: a delete and an add of equal content are one move, so the record's history follows it.
+        for rel, b in sorted(dels.items()):
+            match = [a for a, sha in adds.items() if sha == b.get("sha256") and cloud_kind(a) == cloud_kind(rel)]
+            if not match:
+                out.append(({"op": "delete", "path": rel, "base_rev": b.get("rev"),
+                             "origin": "carried" if rel not in self.pre else "command"}, None, rel))
+                continue
+
+            def tail(a, parts=rel.split("/")):
+                other, n = a.split("/"), 0
+                while n < min(len(parts), len(other)) and parts[-1 - n] == other[-1 - n]:
+                    n += 1
+                return (-n, a)
+            to = min(match, key=tail)
+            del adds[to]
+            out.append(({"op": "move", "from": rel, "to": to, "base_rev": b.get("rev"),
+                         "origin": "command" if rel in self.pre else "carried"}, dict(b), to))
+        for rel, here in sorted(adds.items()):
+            data = (ROOT / rel).read_bytes()
+            if cloud_kind(rel) == "append":
+                op = self._append_op(rel, data, 0, None, here)
+                if op:
+                    out.append(op)
+            else:
+                out.append(self._put_op(rel, data, None, here))
+        return out
+
+    def _put_op(self, rel: str, data: bytes, base_rev, here: str) -> tuple:
+        encoding, content = _cloud_content(data)
+        op = {"op": "put", "path": rel, "base_rev": base_rev, "sha256": here, "encoding": encoding,
+              "content": content, "origin": self._origin(rel, here)}
+        entry = {"rev": None, "sha256": here, "kind": cloud_kind(rel)}
+        if entry["kind"] == "append":
+            op["kind"] = "append"
+            entry["offset"] = len(data)
+        return op, entry, rel
+
+    def _append_op(self, rel: str, data: bytes, offset: int, rev, here: str):
+        """P6: the complete lines past the synced offset, or None when there are none; a tail that is not
+        utf-8 goes as a revisioned put instead."""
+        cut = data.rfind(b"\n", offset) + 1
+        if cut <= offset:
+            return None
+        try:
+            lines = data[offset:cut].decode("utf-8").split("\n")[:-1]
+        except UnicodeDecodeError:
+            return self._put_op(rel, data, rev, here)
+        entry = {"rev": rev, "sha256": _sha(data[:cut]), "kind": "append", "offset": cut}
+        return {"op": "append", "path": rel, "lines": lines, "origin": self._origin(rel, here)}, entry, rel
+
+    def commit(self) -> None:
+        post = cloud_scan(self.cache)
+        planned = self._diff(post)
+        self.save_cache()
+        if not planned:
+            return
+        import uuid
+        ops = [op for op, _, _ in planned]
+        derived = []
+        for rel in CLOUD_DERIVED:
+            try:
+                derived.append({"path": rel, "content": (ROOT / rel).read_text(encoding="utf-8")})
+            except (OSError, UnicodeDecodeError):
+                pass
+        batch = {"batch_id": uuid.uuid4().hex, "command": shlex.join(self.tokens),
+                 "origin": "command" if any(op["origin"] == "command" for op in ops) else "carried",
+                 "ops": ops, "events": [], "derived": derived, "inbox": []}
+        try:
+            status, answer = self.link.call("POST", "commit", batch)
+        except CloudUnreachable as exc:
+            raise CloudError(f"this change is on disk but not in hi2vi (hi2vi unreachable: {exc}): run sync")
+        if status == 409:
+            n = len(answer.get("conflicts") or [])
+            raise CloudError(f"this change is on disk but not in hi2vi ({n} conflict(s)): run sync")
+        if status != 200 or not isinstance(answer.get("head"), int):
+            raise CloudError(f"this change is on disk but not in hi2vi (hi2vi answered HTTP {status}): run sync")
+        revs = answer.get("revs") if isinstance(answer.get("revs"), dict) else {}
+        files = self.base["files"]
+        for op, entry, rel in planned:
+            if op["op"] == "delete":
+                files.pop(rel, None)
+                continue
+            if op["op"] == "move":
+                files.pop(op["from"], None)
+            entry = dict(entry)
+            entry["rev"] = revs.get(rel, answer["head"])
+            files[rel] = entry
+        if answer["head"] == self.base["head"] + 1:
+            self.base["head"] = answer["head"]  # else another writer landed between: the next pull reads from here
+        self.save_base()
+
+
+def cloud_run(args: argparse.Namespace, tokens: list):
+    """`main()`'s command call in a linked checkout: begin, the command unchanged, then the commit (also
+    after a refusal). A failed begin refuses before the command runs; a failed commit exits 1 even when the
+    command succeeded, and a refusal's own line is kept."""
+    try:
+        session = CloudSession(tokens)
+        session.begin()
+    except CloudError as exc:
+        raise SystemExit(str(exc))
+    try:
+        result = args.func(args)
+    except SystemExit as stop:
+        try:
+            session.commit()
+        except CloudError as exc:
+            if stop.code in (None, 0):
+                raise SystemExit(str(exc))
+            print(str(exc), file=sys.stderr)
+        raise
+    try:
+        session.commit()
+    except CloudError as exc:
+        raise SystemExit(str(exc))
+    return result
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Manage the agentic workflow state.")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -21978,7 +22502,10 @@ def main(argv=None) -> int:
         raise SystemExit(f"{shown(ROOT / NESTED_MARKER)} is malformed, so this nested install cannot run {args.cmd}: "
                          f"{'; '.join(NESTED_PROBLEMS)} -- fix the file (run: {WORKFLOW_CMD} validate)")
     normalize_id_args(args)  # every typed phase / deferred-id / slice argument becomes its stored id here, once
-    result = args.func(args)
+    if not cloud_link_file().exists():  # local mode: no link, so the command runs exactly as before
+        result = args.func(args)
+    else:  # cloud mode: a pull before the command, one batch after it
+        result = cloud_run(args, tokens)
     if isinstance(result, tuple):
         return 0
     return 0 if result is None else int(result or 0)

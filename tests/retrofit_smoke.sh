@@ -5335,6 +5335,165 @@ q_w=$(grep -cvE '^(pr view https://github\.com/[^ ]+ --json [a-zA-Z,]+|api repos
 echo "pr lifecycle test runtime: $(( $(date +%s) - lc_t0 ))s"
 
 # ---------------------------------------------------------------------------
+echo "== Test 21: cloud mode at the command boundary -- inert without .hi2vi/link.json (no socket opened, no .hi2vi written); with a link, against a local fake hi2vi: one batch after a command (its own files origin command, an agent's result.md origin carried, the P9 records, both headers, the key only as a Bearer), equal content sends nothing, an archive goes as move ops and events.jsonl only as appends, a cloud-only change is pulled at the next command and the generated files rebuilt =="
+cl_t0=$(date +%s)
+newtmp CLW; CL="$CLW/host"; CLX="$CLW/xdg"; CL_OUT="$CLW/out.txt"; : > "$CL_OUT"
+cl() { ( cd "$CL" && XDG_CONFIG_HOME="$CLX" python3 workflow/scripts/workflow.py "$@" ) 2>&1 | tee -a "$CL_OUT"; }
+# One engine command under a socket guard: any connect (or urlopen) ends the process with 97.
+cl_nosock() { ( cd "$CL" && XDG_CONFIG_HOME="$CLX" python3 - "$@" <<'PY'
+import os, runpy, socket, sys, urllib.request
+def guard(*a, **k):
+    sys.stderr.write("SOCKET-OPENED\n")
+    os._exit(97)
+socket.socket.connect = guard
+socket.create_connection = guard
+urllib.request.urlopen = guard
+urllib.request.OpenerDirector.open = guard
+sys.argv = ["workflow/scripts/workflow.py"] + sys.argv[1:]
+runpy.run_path("workflow/scripts/workflow.py", run_name="__main__")
+PY
+); }
+{ env GIT_AUTHOR_NAME=smoke GIT_AUTHOR_EMAIL=smoke@example.invalid GIT_COMMITTER_NAME=smoke GIT_COMMITTER_EMAIL=smoke@example.invalid sh "$BOOT" "$CL" \
+  && git -C "$CL" config user.email smoke@example.invalid && git -C "$CL" config user.name smoke \
+  && git -C "$CL/workflow" config user.email smoke@example.invalid && git -C "$CL/workflow" config user.name smoke; } > "$CLW/setup.txt" 2>&1 \
+  || bad "cloud probe: the install failed -- $(tail -3 "$CLW/setup.txt")"
+# (a) local mode: no link file, so no command opens a socket or writes .hi2vi/ (byte-equal: the whole suite).
+cl_in=""
+for c in "next" "new-phase --phase P1 --name One --objective toy" "new-phase --phase P2 --name Two --objective toy" \
+    "defer-job --title a --reason r --trigger t --source manual" "agenda-add --title x" "rebuild" "validate" "next --card"; do
+  # shellcheck disable=SC2086
+  cl_nosock $c > "$CLW/nosock.txt" 2>&1; [ "$?" = 97 ] && cl_in="$cl_in [$c: $(tail -1 "$CLW/nosock.txt")]"
+done
+[ -z "$cl_in" ] && [ ! -e "$CL/workflow/.hi2vi" ] && [ -d "$CL/workflow/works/phases/active/P2" ] \
+  && ok "local mode: with no .hi2vi/link.json, next, new-phase, defer-job, agenda-add, rebuild, validate and next --card open no socket and write no .hi2vi/" \
+  || bad "local mode reached the network or wrote .hi2vi/ --$cl_in $(ls -a "$CL/workflow/.hi2vi" 2>/dev/null)"
+# (b) link the checkout by hand to a fake hi2vi on a free port (the link command itself is not part of this check).
+CLK="cloud-smoke-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+printf '%s\n' "$CLK" > "$CLW/key"; chmod 600 "$CLW/key"
+python3 "$REPO_ROOT/tests/fake_hi2vi.py" --dir "$CLW/fake" --port-file "$CLW/port" --key-file "$CLW/key" \
+  --project proj-1 --org org-1 --lifetime 600 > "$CLW/fake.txt" 2>&1 &
+CL_PID=$!
+for _ in $(seq 1 100); do [ -s "$CLW/port" ] && break; sleep 0.1; done
+CLS="http://127.0.0.1:$(cat "$CLW/port" 2>/dev/null)"
+mkdir -p "$CL/workflow/.hi2vi" "$CLX/hi2vi" && chmod 700 "$CLX/hi2vi"
+python3 - "$CL/workflow/.hi2vi/link.json" "$CLX/hi2vi/workspace-keys.json" "$CLS" "$CLW/key" <<'PY' || bad "cloud probe: could not write the link"
+import json, os, sys
+link, keys, server, keyfile = sys.argv[1:]
+with open(link, "w") as f:
+    json.dump({"schema": 1, "server": server, "org_id": "org-1", "project_id": "proj-1", "linked_at": "2026-11-18T00:00:00Z"}, f)
+with open(keyfile) as f:
+    key = f.read().strip()
+fd = os.open(keys, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w") as f:
+    json.dump({server: {"proj-1": {"key": key, "org_id": "org-1", "saved_at": "2026-11-18T00:00:00Z"}}}, f)
+PY
+cl_mark() { if [ -f "$CLW/fake/requests.jsonl" ]; then grep -c '' "$CLW/fake/requests.jsonl"; else echo 0; fi; }
+# cl_check <mark> <check> [args]: one named assertion over the fake's requests since <mark>, its state and base.json.
+cl_check() { python3 - "$CLW/fake/requests.jsonl" "$CLS" "$CL/workflow" "$@" <<'PY'
+import http.client, json, sys
+from pathlib import Path
+from urllib.parse import urlparse
+log, server, root, mark, check, extra = sys.argv[1], sys.argv[2], Path(sys.argv[3]), int(sys.argv[4]), sys.argv[5], sys.argv[6:]
+lines = Path(log).read_text().splitlines() if Path(log).exists() else []
+R = [json.loads(l) for l in lines[mark:]]
+C = [r for r in R if r["path"].endswith("/commit")]
+ops = [op for c in C for op in c["batch"]["ops"]]
+u = urlparse(server)
+conn = http.client.HTTPConnection(u.hostname, u.port, timeout=10)
+conn.request("GET", "/_fake/state")
+S = json.loads(conn.getresponse().read())
+base = json.loads((root / ".hi2vi/base.json").read_text()) if (root / ".hi2vi/base.json").exists() else {}
+live = {p: f for p, f in S["files"].items() if not f["deleted"]}
+def need(cond, why):
+    if not cond:
+        print(why)
+        sys.exit(1)
+need(R and all(r["checkout"] and (r["engine"] or "").startswith("v") and r["auth"] == "ok" for r in R),
+     f"a request lacked X-Hi2vi-Checkout, X-Hi2vi-Engine: v<NN> or the Bearer key: {R[:1]}")
+need(all(op["op"] != "put" or op["path"] != "works/events.jsonl" for op in ops), "works/events.jsonl went as a put")
+if check == "first":
+    need(len(C) == 1 and C[0]["status"] == 200, f"one batch expected, got {[c['status'] for c in C]}")
+    need(all(op["origin"] == "carried" for op in ops), "a first sync's files are carried")
+    need(all(op["op"] in ("put", "append") and op.get("base_rev") is None for op in ops), "a first sync only adds")
+    need(any(op["op"] == "append" and op["path"] == "works/events.jsonl" for op in ops), "events.jsonl not sent as an append")
+    need(not any(p.startswith(("works/templates/", "docs/current/")) or p in ("works/state.json", "works/index.json",
+         "works/backlog.md", "works/.workspace-version.json") for p in live), f"a non-truth file reached the cloud: {sorted(live)}")
+    need("works/phases/active/P2/phase.json" in live and "docs/index.json" in live, "a truth file is missing in the cloud")
+    need(C[0]["batch"]["derived"] == ["works/index.json", "works/state.json"], f"the P9 records: {C[0]['batch']['derived']}")
+    need(base.get("head") == S["head"] == 1 and set(base.get("files", {})) == set(live), "base.json does not match the cloud")
+elif check == "carried":
+    need(len(C) == 1 and C[0]["status"] == 200 and C[0]["batch"]["command"].startswith("defer-job "), "one defer-job batch expected")
+    by = {(op["op"], op.get("path")): op for op in ops}
+    res = by.get(("put", "works/phases/active/P1/slices/P1.DECOMP/result.md"))
+    need(res is not None and res["origin"] == "carried" and res["base_rev"] is None, f"result.md: {res}")
+    dj = [op for op in ops if op.get("path", "").endswith("/deferred.json")]
+    need(dj and all(op["op"] == "put" and op["origin"] == "command" for op in dj), f"deferred.json: {dj}")
+    ev = by.get(("append", "works/events.jsonl"))
+    need(ev is not None and ev["origin"] == "command" and ev["lines"] >= 1, f"events: {ev}")
+    need(C[0]["batch"]["derived"] == ["works/index.json", "works/state.json"], "the P9 records")
+    need(base.get("head") == S["head"] and all(base["files"][p]["rev"] == live[p]["rev"] for p in live), "base.json not updated on 200")
+elif check == "noop":
+    need(not C and len([r for r in R if r["path"].endswith("/head")]) >= 2, f"equal content sent {len(C)} batch(es)")
+elif check == "archive":
+    need(len(C) == 1 and C[0]["status"] == 200, "one archive batch expected")
+    mv = [op for op in ops if op["op"] == "move"]
+    need(mv and all(op["from"].startswith("works/phases/active/P1/") and op["to"].startswith("works/phases/archived/") for op in mv), f"moves: {mv}")
+    need(not [op for op in ops if op["op"] == "delete"], f"deletes sent: {[op for op in ops if op['op'] == 'delete']}")
+    need(any(op["from"].endswith("/P1.DECOMP/result.md") for op in mv), "the carried result.md did not move")
+    need([op["op"] for op in ops if op.get("path") == "works/events.jsonl"] == ["append"], "events.jsonl not one append")
+    need(not [p for p in live if p.startswith("works/phases/active/P1/")], "P1 still live in the cloud")
+elif check == "pulled":
+    need(any(r["path"].endswith("/manifest") for r in R), "no manifest was read")
+    need(any("works/phases/active/P2/phase.json" in (r.get("paths") or []) for r in R), "phase.json was not fetched")
+    need(base.get("head") == S["head"], f"base head {base.get('head')} != cloud head {S['head']}")
+    need(json.loads((root / "works/phases/active/P2/phase.json").read_text())["name"] == "Two, renamed in hi2vi", "disk not pulled")
+print("ok")
+PY
+}
+cl_m=$(cl_mark); cl next >/dev/null; cl_r=$(cl_check "$cl_m" first)
+[ "$cl_r" = ok ] && ok "linked: the first command sends the truth set as one carried batch (works/events.jsonl as an append, never generated files, templates or the version marker), with the two P9 records; every request carries X-Hi2vi-Checkout, X-Hi2vi-Engine: v<NN> and the Bearer key; base.json holds the cloud's head" \
+  || bad "linked first batch wrong -- $cl_r"
+# (c) an agent writes result.md with plain file I/O; the next command's batch carries it.
+printf 'an agent wrote this\n' > "$CL/workflow/works/phases/active/P1/slices/P1.DECOMP/result.md"
+cl_m=$(cl_mark); cl defer-job --title b --reason r --trigger t --source manual >/dev/null; cl_r=$(cl_check "$cl_m" carried)
+[ "$cl_r" = ok ] && ok "an agent-written result.md rides defer-job's one batch with origin carried, beside the command's deferred.json (origin command) and its events.jsonl lines (an append), and base.json takes the revisions on 200" \
+  || bad "the carried batch wrong -- $cl_r"
+# (d) equal content: the same bytes rewritten, then a rebuild and a read: no batch, base.json unchanged.
+cl_b0=$(sha "$CL/workflow/.hi2vi/base.json"); sleep 1
+printf 'an agent wrote this\n' > "$CL/workflow/works/phases/active/P1/slices/P1.DECOMP/result.md"
+cl_m=$(cl_mark); cl rebuild >/dev/null; cl next >/dev/null; cl_r=$(cl_check "$cl_m" noop)
+[ "$cl_r" = ok ] && [ "$cl_b0" = "$(sha "$CL/workflow/.hi2vi/base.json")" ] \
+  && ok "equal content is a no-op: result.md rewritten with its own bytes, then rebuild and next, send no batch and leave base.json byte-equal" \
+  || bad "equal content sent a batch or moved base.json -- $cl_r"
+# (e) an archive's folder move: move ops paired by sha, no delete, events.jsonl one append.
+cl_m=$(cl_mark); cl archive-phase P1 --force >/dev/null; cl_r=$(cl_check "$cl_m" archive)
+[ "$cl_r" = ok ] && ok "archive-phase's folder move goes as move ops paired by sha (no delete, the carried result.md moved too) and works/events.jsonl as one append, never a revisioned put" \
+  || bad "the archive batch wrong -- $cl_r"
+# (f) a change made only in the cloud (another checkout renames P2) is pulled at the next command, and the
+# generated files are rebuilt after the pull: docs is a read that renders nothing, so only the pull's rebuild can.
+python3 - "$CLS" "$CL/workflow/works/phases/active/P2/phase.json" <<'PY' || bad "cloud probe: the fake write failed"
+import http.client, json, sys
+from urllib.parse import urlparse
+data = json.load(open(sys.argv[2]))
+data["name"] = "Two, renamed in hi2vi"
+u = urlparse(sys.argv[1])
+conn = http.client.HTTPConnection(u.hostname, u.port, timeout=10)
+conn.request("POST", "/_fake/write", json.dumps({"path": "works/phases/active/P2/phase.json",
+             "content": json.dumps(data, ensure_ascii=False, indent=2) + "\n"}), {"Content-Type": "application/json"})
+assert conn.getresponse().status == 200
+PY
+cl_m=$(cl_mark); cl docs >/dev/null; cl_r=$(cl_check "$cl_m" pulled)
+[ "$cl_r" = ok ] && grep -qF 'Two, renamed in hi2vi' "$CL/workflow/works/backlog.md" \
+  && grep -qF 'Two, renamed in hi2vi' "$CL/workflow/works/index.json" \
+  && ok "a cloud-only change is pulled at the next command's begin step (manifest, fetch, base.json at the cloud's head) and backlog.md and index.json are rebuilt from it" \
+  || bad "the cloud-only change was not pulled and rebuilt -- $cl_r / $(grep -F 'Two' "$CL/workflow/works/backlog.md" | head -2)"
+# (g) the key never reaches the tree, the command output or the fake's request log.
+if grep -rqF "$CLK" "$CL" "$CL_OUT" "$CLW/fake" 2>/dev/null; then bad "the workspace key leaked into the tree, the output or the request log"
+else ok "the workspace key appears nowhere in the checkout, the commands' output or the fake's request log"; fi
+kill "$CL_PID" 2>/dev/null; wait "$CL_PID" 2>/dev/null
+echo "cloud mode test runtime: $(( $(date +%s) - cl_t0 ))s"
+
+# ---------------------------------------------------------------------------
 echo
 if [ "$FAILS" -eq 0 ]; then
   echo "ALL RETROFIT SMOKE TESTS PASSED"
