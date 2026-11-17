@@ -2952,6 +2952,15 @@ rb=$(ag rebuild 2>&1); rb_rc=$?; v2=$(ag validate 2>&1); v2_rc=$?
   && [ "$rb_rc" -eq 0 ] && [ "$v2_rc" -ne 0 ] && printf '%s\n' "$v2" | grep -q 'works/agenda/A13-n1' \
   && ok "a dangling agenda link is a validate warning (exit 0); a corrupt agenda.json leaves rebuild at 0 and fails validate naming works/agenda/A13-n1" \
   || bad "agenda validate wrong -- $v1_rc / $rb_rc / $v2_rc -- $(printf '%s\n' "$v1" "$v2" | grep -i agenda)"
+# A hand-edited field can hold any JSON value: a list-valued status leaves rebuild and next at 0 (no traceback)
+# and fails validate, naming the folder and the key.
+ls_dir=$(cd "$AG/works/agenda" && ls -d A*-* | grep -vx 'A13-n1' | head -n 1)
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["status"]=[1]; open(p,"w").write(json.dumps(d, indent=2)+"\n")' "$AG/works/agenda/$ls_dir/agenda.json"
+ls_rb=$(ag rebuild 2>&1); ls_rb_rc=$?; ls_nx=$(ag next 2>&1); ls_nx_rc=$?; ls_v=$(ag validate 2>&1); ls_v_rc=$?
+[ -n "$ls_dir" ] && [ "$ls_rb_rc" -eq 0 ] && [ "$ls_nx_rc" -eq 0 ] && [ "$ls_v_rc" -ne 0 ] \
+  && printf '%s\n' "$ls_v" | grep -q "works/agenda/$ls_dir: status \[1\]" && ! printf '%s\n' "$ls_rb" "$ls_nx" "$ls_v" | grep -q Traceback \
+  && ok "a list-valued agenda status leaves rebuild and next at exit 0 and fails validate naming works/agenda/$ls_dir" \
+  || bad "a list-valued agenda status broke a read or passed validate -- $ls_dir / $ls_rb_rc / $ls_nx_rc / $ls_v_rc -- $(printf '%s\n' "$ls_rb" "$ls_nx" "$ls_v" | grep -iE 'agenda|Traceback|Error' | tail -3)"
 # (g) two branches each add an item: the merge conflicts in generated files only, and either side + rebuild lists both.
 newtmp AGB; AB="$AGB/ws"; sh "$BOOT" "$AB" --at-root --name "Agenda" --summary "agenda branches" >/dev/null 2>&1 || bad "agenda probe: second install failed"
 ab() { ( cd "$AB" && python3 scripts/workflow.py "$@" ); }

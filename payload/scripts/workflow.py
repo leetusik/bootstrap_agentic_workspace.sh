@@ -2662,20 +2662,53 @@ def deferred_jobs() -> dict:
     return groups
 
 
+# The agenda's read side (P66 F4): agenda.json, and the `agenda` key of a phase.json or deferred.json, are hand-
+# editable, so any JSON value can sit in any field (a half-resolved merge, a sync, a person). Every reader takes a
+# field through one of the accessors below, which never raise and read a value of the wrong type as absent (None):
+# a list or an object is unhashable, an int past the float range overflows `float()`, a bool is an int. They never
+# rewrite the file; validate (validate_agenda) is what names each wrong value.
 def _agenda_order(item):
-    """An item's `order` as a finite float, or None (unset, or not a number)."""
+    """An item's `order` as a finite float, or None (unset, a bool, not a number, NaN, an infinity, or an int too
+    large for a float)."""
     value = item.get("order")
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    value = float(value)
+    try:
+        value = float(value)
+    except OverflowError:
+        return None
     return value if value == value and abs(value) != float("inf") else None
+
+
+def _agenda_status(item):
+    """An item's stored status when it is one of AGENDA_STATUSES, else None (never the raw value)."""
+    value = item.get("status")
+    return value if isinstance(value, str) and value in AGENDA_STATUSES else None
+
+
+def _agenda_str(item, key):
+    """A text field (`title`, `note`, `outcome`, `reason`, `created_at`, `changed_at`, `id`) when it is a string,
+    else None."""
+    value = item.get(key)
+    return value if isinstance(value, str) else None
+
+
+def _agenda_link_value(data):
+    """A phase's or job's agenda link: the item id when `agenda` holds a non-empty string, else None."""
+    value = data.get("agenda")
+    return value if isinstance(value, str) and value else None
+
+
+def _agenda_order_stored(item):
+    """`order` as stored, for a generated view: the stored number when `_agenda_order` reads one, else None."""
+    return item.get("order") if _agenda_order(item) is not None else None
 
 
 def _agenda_changed(item) -> float:
     """An item's `changed_at` as a POSIX time (0 when unreadable): ISO stamps of different offsets compare."""
     try:
-        return datetime.fromisoformat(str(item.get("changed_at"))).timestamp()
-    except (TypeError, ValueError, OverflowError):
+        return datetime.fromisoformat(_agenda_str(item, "changed_at")).timestamp()
+    except (TypeError, ValueError, OverflowError, OSError):
         return 0.0
 
 
@@ -2686,12 +2719,12 @@ def agenda_sorted(items) -> list:
     unknown status last, by id."""
     by_id = sorted(items, key=lambda d: id_sort_key(d.get("id")))
     inf = float("inf")
-    open_part = sorted((d for d in by_id if d.get("status") == "open"),
+    open_part = sorted((d for d in by_id if _agenda_status(d) == "open"),
                        key=lambda d: inf if _agenda_order(d) is None else _agenda_order(d))
     # reverse=True keeps a stable sort stable: items of one changed_at stay in id order
-    deferred = sorted((d for d in by_id if d.get("status") == "deferred"), key=_agenda_changed, reverse=True)
-    ended = sorted((d for d in by_id if d.get("status") in ("solved", "dropped")), key=_agenda_changed, reverse=True)
-    return open_part + deferred + ended + [d for d in by_id if d.get("status") not in AGENDA_STATUSES]
+    deferred = sorted((d for d in by_id if _agenda_status(d) == "deferred"), key=_agenda_changed, reverse=True)
+    ended = sorted((d for d in by_id if _agenda_status(d) in ("solved", "dropped")), key=_agenda_changed, reverse=True)
+    return open_part + deferred + ended + [d for d in by_id if _agenda_status(d) is None]
 
 
 def agenda_read_all(strict: bool = False) -> tuple:
@@ -2737,8 +2770,9 @@ def agenda_items() -> list:
 def _agenda_link_holders(skipped=None) -> list:
     """Every phase and deferred job that can hold an agenda link, one dict each: `kind` ("phase" | "deferred"),
     `id`, `path` (its phase.json or deferred.json), `place` ("active" | "archived" | "open" | "promoted" |
-    "dropped"), `status` (an archived phase counts as "done"), `agenda` (`.get("agenda")`) and `linked` (the key
-    is present, whatever its value). Active phases in selection order (`phase_dirs`, the backlog's), then
+    "dropped"), `status` (an archived phase counts as "done"), `agenda` (the link, `_agenda_link_value`: None
+    unless a non-empty string), `value` (the raw `.get("agenda")`, for validate only) and `linked` (the key is
+    present, whatever its value). Active phases in selection order (`phase_dirs`, the backlog's), then
     archived ones in archive order (the folder name starts with the archive stamp); then jobs in id order across
     open/, promoted/ and dropped/. An archived phase.json or a deferred.json that does not read as a JSON object
     is skipped, never fatal; its path goes into `skipped` when the caller passes a list (validate reports it)."""
@@ -2746,7 +2780,8 @@ def _agenda_link_holders(skipped=None) -> list:
     for pdir in phase_dirs():
         data = read_json(pdir / "phase.json")
         holders.append({"kind": "phase", "id": pdir.name, "path": pdir / "phase.json", "place": "active",
-                        "status": data.get("status"), "agenda": data.get("agenda"), "linked": "agenda" in data})
+                        "status": data.get("status"), "agenda": _agenda_link_value(data), "value": data.get("agenda"),
+                        "linked": "agenda" in data})
     for adir in (sorted(d for d in ARCHIVED.iterdir() if d.is_dir()) if ARCHIVED.is_dir() else []):
         try:
             data = read_json(adir / "phase.json")
@@ -2754,8 +2789,8 @@ def _agenda_link_holders(skipped=None) -> list:
             data = None
         if isinstance(data, dict):
             holders.append({"kind": "phase", "id": str(data.get("id") or adir.name), "path": adir / "phase.json",
-                            "place": "archived", "status": "done", "agenda": data.get("agenda"),
-                            "linked": "agenda" in data})
+                            "place": "archived", "status": "done", "agenda": _agenda_link_value(data),
+                            "value": data.get("agenda"), "linked": "agenda" in data})
         elif skipped is not None and (adir / "phase.json").exists():
             skipped.append(adir / "phase.json")
     jobs = []
@@ -2767,8 +2802,8 @@ def _agenda_link_holders(skipped=None) -> list:
                 data = None
             if isinstance(data, dict):
                 jobs.append({"kind": "deferred", "id": ddir.name, "path": ddir / "deferred.json", "place": place,
-                             "status": data.get("status"), "agenda": data.get("agenda"), "linked": "agenda" in data,
-                             "created": data.get("created_at")})
+                             "status": data.get("status"), "agenda": _agenda_link_value(data),
+                             "value": data.get("agenda"), "linked": "agenda" in data, "created": data.get("created_at")})
             elif skipped is not None and (ddir / "deferred.json").exists():
                 skipped.append(ddir / "deferred.json")
     jobs.sort(key=lambda job: id_sort_key(job["id"], job.pop("created")))
@@ -2799,10 +2834,12 @@ def agenda_shown_status(item, links=None) -> str:
     derived (D2; frame F37, F301): an item stored `open` with at least one linked phase that is not `done` (a
     `planned` one counts; an archived one is done). Deferred, Solved and Dropped never read In progress.
     `links` is `agenda_links()` when the caller holds it (a listing); else it is read for this one item."""
-    status = item.get("status")
+    status = _agenda_status(item)
+    if status is None:  # an unusable stored value: shown as it is, for validate and the operator to fix
+        return str(item.get("status"))
     if status == "open" and any(phase["status"] != "done" for phase in agenda_item_links(item, links)["phases"]):
         status = "in_progress"
-    return AGENDA_SHOWN.get(status, str(status))
+    return AGENDA_SHOWN[status]
 
 
 def agenda_counts_line(item_links: dict) -> str:
@@ -2876,14 +2913,15 @@ def agenda_index(items: list, links: dict) -> tuple:
     counts = {key: 0 for key in AGENDA_SHOWN}
     rows = []
     for item in items:
-        if item.get("status") not in AGENDA_STATUSES:
+        if _agenda_status(item) is None:
             continue
         own = agenda_item_links(item, links)
         shown_word = agenda_shown_status(item, links)
         counts[next(key for key, word in AGENDA_SHOWN.items() if word == shown_word)] += 1
-        rows.append({"id": item["id"], "title": item.get("title"), "status": item.get("status"),
-                     "shown_status": shown_word, "order": item.get("order"), "created_at": item.get("created_at"),
-                     "changed_at": item.get("changed_at"), "outcome": item.get("outcome"), "reason": item.get("reason"),
+        rows.append({"id": item["id"], "title": _agenda_str(item, "title"), "status": _agenda_status(item),
+                     "shown_status": shown_word, "order": _agenda_order_stored(item),
+                     "created_at": _agenda_str(item, "created_at"), "changed_at": _agenda_str(item, "changed_at"),
+                     "outcome": _agenda_str(item, "outcome"), "reason": _agenda_str(item, "reason"),
                      "phases": [phase["id"] for phase in own["phases"]],
                      "phases_done": sum(1 for phase in own["phases"] if phase["status"] == "done"),
                      "deferred": [job["id"] for job in own["deferred"]]})
@@ -5714,6 +5752,26 @@ def validate() -> int:
     return 0
 
 
+def _agenda_value_text(value, json_form: bool = False) -> str:
+    """A stored value for a validate line, at most 80 characters: its repr (its JSON with `json_form`)."""
+    try:
+        text = json.dumps(value, ensure_ascii=False) if json_form else repr(value)
+    except (TypeError, ValueError):
+        text = object.__repr__(value)
+    return text if len(text) <= 80 else text[:77] + "..."
+
+
+def _agenda_stamp_ok(value) -> bool:
+    """True when `value` is a string `datetime.fromisoformat` reads (`created_at`, `changed_at`)."""
+    if not isinstance(value, str):
+        return False
+    try:
+        datetime.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
 def validate_agenda(errors: list, warnings: list) -> None:
     """The agenda's checks (P66). ERRORS, each naming the item's folder: no readable agenda.json, an `id` other
     than the folder name, a folder name not shaped `A<n>-<tail>`, a missing AGENDA_KEYS key, a stored status
@@ -5721,7 +5779,9 @@ def validate_agenda(errors: list, warnings: list) -> None:
     on any other, an outcome off Solved, a reason off Dropped; and an `agenda` value on a phase or job that is not
     an item id (a non-empty string). WARNINGS (validation still passes): a link naming no item (a merge can leave
     one honestly: an item deleted on one stream while another stream's phase linked it), with what clears it,
-    and an archived phase.json or a deferred.json too unreadable for agenda-delete to clear a link in."""
+    and an archived phase.json or a deferred.json too unreadable for agenda-delete to clear a link in. Every key's
+    TYPE is checked too (P66 F4): `note`, `outcome` and `reason` a string or null, `created_at` and `changed_at`
+    strings `datetime.fromisoformat` reads, `order` a finite number (a bool is not one)."""
     _items, problems = agenda_read_all()
     for folder, why in problems:
         errors.append(f"agenda item {shown(folder)}: {why}")
@@ -5737,20 +5797,27 @@ def validate_agenda(errors: list, warnings: list) -> None:
         if not AGENDA_ID_RE.fullmatch(aid):
             errors.append(f"{where}: the folder name {aid!r} is not an agenda id shaped A<n>-<tail> (A7-m3)")
         if "id" in data and data.get("id") != aid:
-            errors.append(f"{where}: id {data.get('id')!r} is not its folder name {aid!r}")
+            errors.append(f"{where}: id {_agenda_value_text(data.get('id'))} is not its folder name {aid!r}")
         missing = [key for key in AGENDA_KEYS if key not in data]
         if missing:
             errors.append(f"{where}: missing key{'s' if len(missing) != 1 else ''} {', '.join(missing)}")
-        status = data.get("status")
-        if status not in AGENDA_STATUSES:
-            errors.append(f"{where}: status {status!r} is not one of {', '.join(sorted(AGENDA_STATUSES))}")
+        raw_status, status = data.get("status"), _agenda_status(data)
+        if status is None:
+            errors.append(f"{where}: status {_agenda_value_text(raw_status)} is not one of {', '.join(sorted(AGENDA_STATUSES))}")
         title = data.get("title")
         if not isinstance(title, str) or not title.strip() or len(title) > AGENDA_TITLE_MAX or len(title.splitlines()) != 1:
-            errors.append(f"{where}: title must be 1-{AGENDA_TITLE_MAX} characters on one line, got {clean_cell(json.dumps(title, ensure_ascii=False))[:80]}")
+            errors.append(f"{where}: title must be 1-{AGENDA_TITLE_MAX} characters on one line, got {clean_cell(_agenda_value_text(title, json_form=True))}")
+        for key in ("note", "outcome", "reason"):
+            if data.get(key) is not None and not isinstance(data.get(key), str):
+                errors.append(f"{where}: {key} must be a string or null, got {_agenda_value_text(data.get(key))}")
+        for key in ("created_at", "changed_at"):
+            if key in data and not _agenda_stamp_ok(data.get(key)):
+                errors.append(f"{where}: {key} must be an ISO date-time string, got {_agenda_value_text(data.get(key))}")
         if status == "open" and _agenda_order(data) is None:
-            errors.append(f"{where}: an Open item's order must be a number, got {data.get('order')!r}")
+            errors.append(f"{where}: an Open item's order must be a number, got {_agenda_value_text(data.get('order'))}")
         if status != "open" and data.get("order") is not None:
-            errors.append(f"{where}: order must be null on a {AGENDA_SHOWN.get(status, status)} item, got {data.get('order')!r}")
+            word = AGENDA_SHOWN[status] if status is not None else "non-Open"
+            errors.append(f"{where}: order must be null on a {word} item, got {_agenda_value_text(data.get('order'))}")
         if data.get("outcome") is not None and status != "solved":
             errors.append(f"{where}: outcome is set but the item is not Solved")
         if data.get("reason") is not None and status != "dropped":
@@ -5765,8 +5832,8 @@ def validate_agenda(errors: list, warnings: list) -> None:
             continue
         aid, kind, hid = holder["agenda"], holder["kind"], holder["id"]
         label = f"{'phase' if kind == 'phase' else 'deferred job'} {hid} ({shown(holder['path'])})"
-        if not isinstance(aid, str) or not aid:
-            errors.append(f"{label}: `agenda` is {json.dumps(aid)}, not an agenda item id (a string); remove the key or set an item's id")
+        if aid is None:  # linked, but not a non-empty string (`_agenda_link_value`)
+            errors.append(f"{label}: `agenda` is {_agenda_value_text(holder['value'], json_form=True)}, not an agenda item id (a string); remove the key or set an item's id")
             continue
         if agenda_item_exists(aid):
             continue
@@ -12420,9 +12487,14 @@ def _agenda_named(ids) -> tuple:
 
 
 def agenda_item_exists(aid) -> bool:
-    """True when `aid` is an agenda item's folder holding its agenda.json (a stored id, never a path)."""
-    return (isinstance(aid, str) and bool(re.fullmatch(r"[A-Za-z0-9._-]+", aid)) and aid not in (".", "..")
-            and (AGENDA / aid / "agenda.json").is_file())
+    """True when `aid` is an agenda item's folder holding its agenda.json (a stored id, never a path). Never raises:
+    a hand-edited link too long for a file name (ENAMETOOLONG) names no item."""
+    if not (isinstance(aid, str) and re.fullmatch(r"[A-Za-z0-9._-]+", aid) and aid not in (".", "..")):
+        return False
+    try:
+        return (AGENDA / aid / "agenda.json").is_file()
+    except OSError:
+        return False
 
 
 def agenda_require_item(aid) -> None:
@@ -12434,7 +12506,7 @@ def agenda_require_item(aid) -> None:
 
 def _agenda_open(items) -> list:
     """The open part, in its order (In progress is stored `open`)."""
-    return [item for item in agenda_sorted(items) if item.get("status") == "open"]
+    return [item for item in agenda_sorted(items) if _agenda_status(item) == "open"]
 
 
 def _agenda_place(others: list, item: dict, index: int) -> tuple:
@@ -12477,7 +12549,7 @@ def _agenda_renumbered_line(count: int) -> str:
 def _agenda_refusal(item: dict, to_status: str) -> str:
     """The one line refusing a status change: the item and its shown status, then why."""
     aid, word = item["id"], agenda_shown_status(item)
-    if item.get("status") == to_status and word == AGENDA_SHOWN.get(to_status):  # In progress is not "Open already"
+    if _agenda_status(item) == to_status and word == AGENDA_SHOWN.get(to_status):  # In progress is not "Open already"
         return f"{aid} is {word} already"
     if to_status == "open":
         return f"{aid} is {word}: only a Deferred, Solved or Dropped item reopens"
@@ -12504,7 +12576,7 @@ def agenda_list(args: argparse.Namespace) -> None:
     status_width = max(len(word) for word in AGENDA_SHOWN.values())
     for item in items:
         counts = agenda_counts_line(agenda_item_links(item, links))
-        print(f"{item['id']:<{width}}  {agenda_shown_status(item, links):<{status_width}}  {item.get('title') or ''}"
+        print(f"{item['id']:<{width}}  {agenda_shown_status(item, links):<{status_width}}  {_agenda_str(item, 'title') or ''}"
               + (f"  ({counts})" if counts else ""))
 
 
@@ -12557,7 +12629,7 @@ def agenda_move(args: argparse.Namespace) -> None:
     target_id = args.before_id if args.before_id is not None else args.after_id
     (item,), every = _agenda_named(args.agenda_ids)
     aid = item["id"]
-    if item.get("status") != "open":
+    if _agenda_status(item) != "open":
         raise SystemExit(f"{aid} is {agenda_shown_status(item)}: only an Open item moves; reopen it first")
     open_now = _agenda_open(every)
     others = [other for other in open_now if other["id"] != aid]
@@ -12567,7 +12639,7 @@ def agenda_move(args: argparse.Namespace) -> None:
         target = next((other for other in every if other["id"] == target_id), None)
         if target is None:
             raise SystemExit(f"{target_id} names no agenda item")
-        if target.get("status") != "open":
+        if _agenda_status(target) != "open":
             raise SystemExit(f"{target_id} is {agenda_shown_status(target)}: an item moves only beside an Open item")
         index = others.index(target) + (1 if args.after_id is not None else 0)
         where = f"{'after' if args.after_id is not None else 'before'} {target_id}"
@@ -12593,7 +12665,7 @@ def _agenda_change_status(args: argparse.Namespace, to_status: str, allowed: set
     """Defer, solve, drop or reopen every named item, or none: every transition is checked first."""
     items, every = _agenda_named(args.agenda_ids)
     for item in items:
-        if item.get("status") not in allowed:
+        if _agenda_status(item) not in allowed:
             raise SystemExit(_agenda_refusal(item, to_status))
     outcome = _agenda_text(getattr(args, "outcome", None)) if to_status == "solved" else None
     reason = _agenda_text(getattr(args, "reason", None)) if to_status == "dropped" else None
@@ -12705,7 +12777,7 @@ def agenda_delete(args: argparse.Namespace) -> None:
     kept = {item["id"]: [holder for holder in left if holder["agenda"] == item["id"]] for item in items}
     for item in items:
         own = cleared[item["id"]]
-        append_event("agenda_deleted", agenda=item["id"], title=item.get("title"), links_cleared=len(own),
+        append_event("agenda_deleted", agenda=item["id"], title=_agenda_str(item, "title"), links_cleared=len(own),
                      **({"unlinked": [holder["id"] for holder in own]} if own else {}),
                      **({"links_left": [holder["id"] for holder in kept[item["id"]]]} if kept[item["id"]] else {}))
     rebuild_index_and_state()
