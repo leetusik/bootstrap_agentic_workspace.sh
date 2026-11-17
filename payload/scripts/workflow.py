@@ -21413,7 +21413,13 @@ def loop_debt_commit(data: dict):
 # commit, with the workspace key only as a Bearer header, read from the user's config, never from argv.
 CLOUD_DIR = ".hi2vi"
 CLOUD_SCHEMA = 1
-CLOUD_TIMEOUT = 10  # seconds, wall clock, per request (the whole answer, not each socket read)
+# A request fails when it stalls, never while its bytes still move: no byte for CLOUD_TIMEOUT seconds (a read, a send,
+# or this checkout's upload draining from its socket), or fewer than CLOUD_FLOOR bytes in a CLOUD_TIMEOUT window (a
+# server dripping its answer: about 100 B/s, far below any real link). A transfer that keeps moving always finishes;
+# only the session hook keeps a wall-clock budget (CLOUD_HOOK_BUDGET).
+CLOUD_TIMEOUT = 10  # seconds a request waits for its next byte
+CLOUD_FLOOR = 1024  # bytes a request must move in each CLOUD_TIMEOUT window
+CLOUD_SEND_PIECE = 65536  # bytes per send, so the idle limit applies to each piece, never to a whole upload
 CLOUD_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 # The append-only files (the union files of .gitattributes): synced as appended lines, never as revisions.
 CLOUD_APPEND_RE = re.compile(r"works/events\.jsonl|works/phases/.+/loop/(?:ledger|events|dead|survivors|checkpoints)\.jsonl")
@@ -21448,32 +21454,141 @@ class CloudUnreachable(CloudError):
     pass
 
 
-class _CloudTimeUp(Exception):
-    """Raised by the SIGALRM handler inside CloudLink.call: the request's wall-clock limit passed."""
+class _CloudStall(Exception):
+    """A request that stopped moving (or ran past the session hook's budget); its message is the one-line why.
+    Raised only while the request waits for more bytes, so an answer already in hand is never turned into a stall."""
 
 
-def _cloud_alarm_arm(seconds: float):
-    """A wall-clock limit on one request. urllib's timeout bounds each socket operation, not the whole answer,
-    so a server that sends a byte every few seconds would never trip it. SIGALRM on the main thread (macOS and
-    Linux); elsewhere None, and only the socket timeout applies."""
-    import signal
-    import threading
-    if not hasattr(signal, "setitimer") or threading.current_thread() is not threading.main_thread():
+class _CloudWire:
+    """One request's progress. `left()` is called before every wait (the connect, each send, each read) and says how
+    long that wait may last; it raises _CloudStall when the request has stalled: no byte moved for CLOUD_TIMEOUT
+    seconds, a CLOUD_TIMEOUT window that moved fewer than CLOUD_FLOOR bytes (the request's sending, and from the
+    answer's first byte its reading, are judged apart, so a server's think time never counts against the floor), or
+    the session hook's deadline passed. There is no timer: nothing can fire after the answer is read."""
+
+    def __init__(self, deadline=None) -> None:
+        self.deadline = deadline  # time.monotonic() past which no wait starts (the session hook's budget), or None
+        self.last = self.window = time.monotonic()
+        self.count = 0
+        self.sending = True  # until the answer's first byte
+        self.by_deadline = False  # the last wait was cut short by the deadline (a socket timeout then names the budget)
+
+    def moved(self, n: int, answer: bool = False) -> None:
+        if not n or n <= 0:
+            return
+        now = time.monotonic()
+        self.last = now
+        if answer and self.sending:  # the answer starts: its own floor window, from its first byte
+            self.sending, self.window, self.count = False, now, 0
+        self.count += n
+
+    def left(self) -> float:
+        now = time.monotonic()
+        idle = CLOUD_TIMEOUT - (now - self.last)
+        hook = None if self.deadline is None else self.deadline - now
+        if hook is not None and hook < 0.1:
+            raise _CloudStall(f"the session hook's {CLOUD_HOOK_BUDGET:g} s for hi2vi ran out")
+        if idle <= 0:
+            raise _CloudStall(f"no byte moved for {CLOUD_TIMEOUT:g} s")
+        if now - self.window >= CLOUD_TIMEOUT:
+            if self.count < CLOUD_FLOOR:
+                raise _CloudStall(f"fewer than {CLOUD_FLOOR} bytes moved in {CLOUD_TIMEOUT:g} s")
+            self.window, self.count = now, 0
+        self.by_deadline = hook is not None and hook < idle
+        return min(idle, hook) if hook is not None else idle
+
+    def timed_out(self) -> str:
+        """The line for a socket timeout outside the wire's own waits (the connect, a TLS handshake)."""
+        if self.by_deadline:
+            return f"the session hook's {CLOUD_HOOK_BUDGET:g} s for hi2vi ran out"
+        return f"no byte moved for {CLOUD_TIMEOUT:g} s"
+
+
+def _cloud_unsent(sock):
+    """Bytes queued on this socket that the peer has not taken yet (Linux SIOCOUTQ, macOS SO_NWRITE), or None. While
+    an upload drains from the socket's buffer the request is still moving, though no send or read returns."""
+    import socket
+    try:
+        if sys.platform.startswith("linux"):
+            import fcntl
+            import struct
+            import termios
+            return struct.unpack("i", fcntl.ioctl(sock.fileno(), termios.TIOCOUTQ, b"\0\0\0\0"))[0]
+        if sys.platform == "darwin":
+            return sock.getsockopt(socket.SOL_SOCKET, 0x1024)  # SO_NWRITE
+    except (OSError, ValueError, AttributeError, ImportError):
         return None
-
-    def fire(signum, frame):
-        raise _CloudTimeUp()
-    previous = signal.signal(signal.SIGALRM, fire)
-    signal.setitimer(signal.ITIMER_REAL, max(float(seconds), 0.01))
-    return (previous,)
+    return None
 
 
-def _cloud_alarm_disarm(armed) -> None:
-    if armed is None:
-        return
-    import signal
-    signal.setitimer(signal.ITIMER_REAL, 0)
-    signal.signal(signal.SIGALRM, armed[0] if armed[0] is not None else signal.SIG_DFL)
+class _CloudSocket:
+    """A connection's socket (plain or TLS) seen through the request's _CloudWire: every send goes in pieces and
+    every read waits only as long as the wire allows, each counting what moved."""
+
+    def __init__(self, sock, wire: _CloudWire) -> None:
+        self._sock, self._wire = sock, wire
+
+    def __getattr__(self, name):
+        return getattr(self._sock, name)
+
+    def sendall(self, data, flags=0) -> None:
+        import socket
+        view = memoryview(data).cast("B")
+        while len(view):
+            self._sock.settimeout(self._wire.left())
+            try:
+                n = self._sock.send(view[:CLOUD_SEND_PIECE])
+            except socket.timeout:
+                continue  # the next left() names the stall
+            self._wire.moved(n)
+            view = view[n:]
+
+    def recv_into(self, buf, nbytes=0, flags=0) -> int:
+        import socket
+        while True:
+            wait = self._wire.left()
+            queued = _cloud_unsent(self._sock) if self._wire.sending else None
+            self._sock.settimeout(min(wait, 1.0) if queued else wait)
+            try:
+                n = self._sock.recv_into(buf, nbytes) if nbytes else self._sock.recv_into(buf)
+            except socket.timeout:
+                if queued:  # the upload still draining is progress
+                    now = _cloud_unsent(self._sock)
+                    if now is not None and now < queued:
+                        self._wire.moved(queued - now)
+                continue
+            self._wire.moved(n, answer=True)
+            return n
+
+    def makefile(self, mode="r", buffering=None, **_):
+        import io
+        import socket
+        self._sock._io_refs += 1  # as socket.makefile does: the socket stays open until the answer is read
+        return io.BufferedReader(socket.SocketIO(self, "rb"))
+
+
+def _cloud_handlers(wire: _CloudWire) -> list:
+    """urllib's HTTP and HTTPS handlers, their connections' sockets wrapped in _CloudSocket."""
+    import urllib.request
+
+    def counted(base):
+        class Connection(base):
+            def connect(self):
+                super().connect()
+                self.sock = _CloudSocket(self.sock, wire)
+        return Connection
+
+    out = []
+    for name in ("HTTPHandler", "HTTPSHandler"):
+        handler = getattr(urllib.request, name, None)  # HTTPSHandler is absent without ssl
+        if handler is None:
+            continue
+
+        class Counted(handler):
+            def do_open(self, http_class, req, **kw):
+                return super().do_open(counted(http_class), req, **kw)
+        out.append(Counted())
+    return out
 
 
 def cloud_stop_line(exc: BaseException, step: str) -> str:
@@ -21760,18 +21875,11 @@ class CloudLink:
     def call(self, method: str, route: str, body=None, extra=None) -> tuple:
         """(status, payload) of one request. Any failure to get a whole answer raises CloudUnreachable: a
         network error, a timeout, a cut or malformed answer (http.client's HTTPException), anything else the
-        client raises; a 3xx is never followed (the key stays with the host it was meant for); every request
-        ends within CLOUD_TIMEOUT seconds of wall clock, and within the session hook's budget when `deadline`
-        is set. An answer that is not JSON reads as {}. `extra` adds headers (P1's X-Hi2vi-Base)."""
+        client raises; a 3xx is never followed (the key stays with the host it was meant for); a request fails
+        when it stalls (_CloudWire), never while its bytes still move, and the session hook's request also when
+        its `deadline` passes. An answer that is not JSON reads as {}. `extra` adds headers (P1's X-Hi2vi-Base)."""
         import urllib.request
         from urllib.parse import quote
-
-        limit = float(CLOUD_TIMEOUT)
-        if self.deadline is not None:
-            left = self.deadline - time.monotonic()
-            if left < 0.1:
-                raise CloudUnreachable(f"the session hook's {CLOUD_HOOK_BUDGET:g} s for hi2vi ran out")
-            limit = min(limit, left)
 
         class NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, *a, **k):
@@ -21784,48 +21892,40 @@ class CloudLink:
         if data is not None:
             headers["Content-Type"] = "application/json"
         headers.update(extra or {})
-        handlers =[NoRedirect()] + ([urllib.request.ProxyHandler({})] if self.local else [])
+        wire = _CloudWire(self.deadline)
+        handlers = [NoRedirect()] + _cloud_handlers(wire) + ([urllib.request.ProxyHandler({})] if self.local else [])
         opener = urllib.request.build_opener(*handlers)
         request = urllib.request.Request(url, data=data, method=method, headers=headers)
-        armed = _cloud_alarm_arm(limit)
-        try:
-            try:
-                status, raw = self._exchange(opener, request, limit)
-            finally:
-                _cloud_alarm_disarm(armed)
-        except _CloudTimeUp:
-            _cloud_alarm_disarm(armed)
-            raise CloudUnreachable(self._timed_out(limit))
+        status, raw = self._exchange(opener, request, wire)
         try:
             payload = json.loads(raw.decode("utf-8")) if raw else {}
         except (UnicodeDecodeError, ValueError):
             payload = {}
         return status, payload if isinstance(payload, dict) else {}
 
-    def _exchange(self, opener, request, limit: float) -> tuple:
-        """(status, raw body); an HTTP error status is an answer, every other failure CloudUnreachable."""
-        import socket
+    def _exchange(self, opener, request, wire: _CloudWire) -> tuple:
+        """(status, raw body); an HTTP error status whose body is read whole is an answer, every other failure
+        CloudUnreachable. An error body cut short or stalled is no answer: a 409 never reads as one with no conflicts."""
         import urllib.error
         try:
-            with opener.open(request, timeout=limit) as resp:
+            with opener.open(request, timeout=wire.left()) as resp:
                 return resp.status, resp.read()
         except urllib.error.HTTPError as exc:
             try:
-                raw = exc.read() or b""
-            except Exception:  # noqa: BLE001 - an error page cut short is still the status's answer
-                raw = b""
-            return exc.code, raw
-        except _CloudTimeUp:
-            raise
+                return exc.code, exc.read() or b""
+            except Exception as err:  # noqa: BLE001 - the error answer was not read whole
+                raise CloudUnreachable(self._why(err, wire))
         except Exception as exc:  # noqa: BLE001 - URLError, OSError, http.client.HTTPException, ValueError, ...
-            if isinstance(exc, socket.timeout) or isinstance(getattr(exc, "reason", None), socket.timeout):
-                raise CloudUnreachable(self._timed_out(limit))
-            raise CloudUnreachable(self._reason(exc))
+            raise CloudUnreachable(self._why(exc, wire))
 
-    def _timed_out(self, limit: float) -> str:
-        if limit < CLOUD_TIMEOUT:
-            return f"the session hook's {CLOUD_HOOK_BUDGET:g} s for hi2vi ran out"
-        return f"no whole answer within {limit:g} s"
+    def _why(self, exc: BaseException, wire: _CloudWire) -> str:
+        import socket
+        reason = getattr(exc, "reason", None)
+        if isinstance(exc, _CloudStall) or isinstance(reason, _CloudStall):
+            return str(exc if isinstance(exc, _CloudStall) else reason)
+        if isinstance(exc, socket.timeout) or isinstance(reason, socket.timeout):
+            return wire.timed_out()
+        return self._reason(exc)
 
     def _reason(self, exc: BaseException) -> str:
         """One short line naming the failure, never the key (a header error can quote a header's value)."""

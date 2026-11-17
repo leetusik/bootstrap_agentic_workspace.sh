@@ -48,8 +48,13 @@ it) and POST /_fake/control {...} (the failure switches, merged into the current
   (LineTooLong); "badbase64" (fetch only) answers each file as base64 that does not decode (binascii.Error);
   "bad-gateway" answers 502 with an HTML body (a proxy in front of a stopped API); "garbage" answers 200 with a
   body that is not JSON;
+  "hold" sends the status line and headers, then nothing for 15 s before the body (an answer that stalls);
 - slow: <seconds> -> every API request waits that long before it is answered (a slow but answering server),
-  until set to 0; drip: <seconds> -> every API answer's body is sent one byte at a time, that long apart.
+  until set to 0; drip: <seconds> -> every API answer's body is sent one byte at a time, that long apart
+  (drip_route: <route> -> only that route's answers; null: every route);
+- rate: <bytes per second> -> a steady slow link, until set to 0: every API request's body is read, and every API
+  answer's body sent, at that rate (in pieces, twenty a second), so a big transfer keeps moving but takes long. The
+  listening socket's receive buffer is kept small (64 KiB), so an upload waits on the reader, not the kernel.
 
 Every request is logged as one JSON line in <dir>/requests.jsonl: the route, both headers, whether
 the key matched, for a head its X-Hi2vi-Base, for a fetch the paths asked and how many were left in
@@ -85,7 +90,8 @@ class Store:
         self.lock = threading.Lock()
         self.inbox = []     # the web's agenda changes: {id, created_at, kind, items, fields, minted_id, state, ...}
         self.control = {"offline": False, "commit": None, "race": None, "gate": None, "fetch_page": None,
-                        "inbox_race": None, "break": None, "slow": 0, "drip": 0}
+                        "inbox_race": None, "break": None, "slow": 0, "drip": 0, "drip_route": None,
+                        "rate": 0}
         self.gate = threading.Condition()
         self.gate_seen = 0
 
@@ -296,6 +302,8 @@ def make_handler(store: Store, key: str, log_path: str):
 
         broken = None  # this request's break switch ({route, how}), read when it arrived
         drip = 0
+        rate = 0
+        raw = None  # the request's body, when it was read ahead at the rate
 
         def _send(self, status: int, payload: dict) -> None:
             data = json.dumps(payload).encode("utf-8")
@@ -316,6 +324,22 @@ def make_handler(store: Store, key: str, log_path: str):
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(data) + (90 if how == "truncate" else 0)))
             self.end_headers()
+            if how == "hold":
+                try:
+                    self.wfile.flush()
+                    time.sleep(15)
+                except OSError:
+                    pass
+            if self.rate:
+                piece = max(1, int(self.rate) // 20)
+                try:
+                    for i in range(0, len(data), piece):
+                        self.wfile.write(data[i:i + piece])
+                        self.wfile.flush()
+                        time.sleep(len(data[i:i + piece]) / float(self.rate))
+                except OSError:  # the client gave up
+                    self.close_connection = True
+                return
             if how == "truncate":
                 self.wfile.write(data[:max(1, len(data) // 2)])
                 self.wfile.flush()
@@ -334,7 +358,7 @@ def make_handler(store: Store, key: str, log_path: str):
 
         def _body(self) -> dict:
             length = int(self.headers.get("Content-Length") or 0)
-            raw = self.rfile.read(length) if length else b""
+            raw = self.raw if self.raw is not None else (self.rfile.read(length) if length else b"")
             return json.loads(raw.decode("utf-8")) if raw else {}
 
         def _log(self, entry: dict) -> None:
@@ -349,12 +373,15 @@ def make_handler(store: Store, key: str, log_path: str):
         def _handle(self, method: str) -> None:
             url = urlparse(self.path)
             parts = url.path.strip("/").split("/")
-            self.broken, self.drip = None, 0
+            self.broken, self.drip, self.rate, self.raw = None, 0, 0, None
             if parts[:1] != ["_fake"]:
                 with store.lock:
                     offline = store.control.get("offline")
                     broken, slow = store.control.get("break"), store.control.get("slow")
                     self.drip = store.control.get("drip") or 0
+                    if store.control.get("drip_route") not in (None, parts[3] if len(parts) == 4 else ""):
+                        self.drip = 0
+                    self.rate = store.control.get("rate") or 0
                 if isinstance(broken, dict) and broken.get("route") == (parts[3] if len(parts) == 4 else ""):
                     self.broken = broken
                 if slow and not offline:
@@ -372,6 +399,17 @@ def make_handler(store: Store, key: str, log_path: str):
                         self._log(entry)
                     self.rfile.read(entry["bytes"])  # read, so the client sees the answer and not a reset
                     return self._send(413, {"error": "the body is over 8,388,608 bytes"})
+                length = int(self.headers.get("Content-Length") or 0)
+                if self.rate and length:  # read ahead at the rate, outside the store's lock
+                    got, piece = [], max(1, int(self.rate) // 20)
+                    while length > 0:
+                        chunk = self.rfile.read(min(piece, length))
+                        if not chunk:
+                            break
+                        got.append(chunk)
+                        length -= len(chunk)
+                        time.sleep(len(chunk) / float(self.rate))
+                    self.raw = b"".join(got)
             with store.lock:
                 if parts[:1] == ["_fake"]:
                     if parts[1:] == ["state"] and method == "GET":
@@ -496,8 +534,15 @@ def main() -> int:
         key = f.read().strip()
     os.makedirs(args.dir, exist_ok=True)
     store = Store(args.org, args.project)
-    ThreadingHTTPServer.daemon_threads = True
-    server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(store, key, os.path.join(args.dir, "requests.jsonl")))
+    class Server(ThreadingHTTPServer):
+        daemon_threads = True
+
+        def server_bind(self):
+            import socket
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)  # inherited by each connection
+            super().server_bind()
+
+    server = Server(("127.0.0.1", 0), make_handler(store, key, os.path.join(args.dir, "requests.jsonl")))
     tmp = args.port_file + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(str(server.server_address[1]))

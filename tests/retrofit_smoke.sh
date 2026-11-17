@@ -5518,7 +5518,7 @@ kill "$CL_PID" 2>/dev/null; wait "$CL_PID" 2>/dev/null
 echo "cloud mode test runtime: $(( $(date +%s) - cl_t0 ))s"
 
 # ---------------------------------------------------------------------------
-echo "== Test 22: cloud mode's safety half, against the local fake hi2vi -- offline a command is refused with the one P8 line and the tree unchanged, and compact-resume fails open; a lost commit answer is resent with the same batch_id and lands once; a batch never sent goes at the next command; a command that dies midway leaves the journal running and the next command refuses naming sync; a pull killed at any step of an append-only file's merge (the event log, a loop's ledger and checkpoints, a local order of its own) leaves each line in hi2vi once; a stale write (409) keeps the disk, writes nothing in hi2vi and exits 1, then the mismatch refuses with nothing changed; two engine processes in one checkout are serialized by .hi2vi/lock; a change over 8,000,000 B goes as several batches, and one file too big for any batch is refused; every failure inside the boundary is one line, never a traceback (a cut or malformed answer, a commit answer cut mid-body, a fetch that does not decode, a write error during a pull), and the hook's note; compact-resume stays inside the hook's 15 s on a slow or dripping server; a key holding a control character is refused unquoted =="
+echo "== Test 22: cloud mode's safety half, against the local fake hi2vi -- offline a command is refused with the one P8 line and the tree unchanged, and compact-resume fails open; a lost commit answer is resent with the same batch_id and lands once; a batch never sent goes at the next command; a command that dies midway leaves the journal running and the next command refuses naming sync; a pull killed at any step of an append-only file's merge (the event log, a loop's ledger and checkpoints, a local order of its own) leaves each line in hi2vi once; a stale write (409) keeps the disk, writes nothing in hi2vi and exits 1, then the mismatch refuses with nothing changed; two engine processes in one checkout are serialized by .hi2vi/lock; a change over 8,000,000 B goes as several batches, and one file too big for any batch is refused; every failure inside the boundary is one line, never a traceback (a cut or malformed answer, a commit answer cut mid-body, a fetch that does not decode, a write error during a pull), and the hook's note; compact-resume stays inside the hook's 15 s on a slow, dripping or slow-but-moving server; a request fails only when it stalls: a slow but moving pull, push and pushing resend each finish past 10 s, a stalled or dripping server ends an ordinary command in one line in bounded time, a 409 whose body stalls keeps its batch (never 0 conflicts), and no late timer turns a whole answer into a failure; a key holding a control character is refused unquoted =="
 sf_t0=$(date +%s)
 newtmp SFW; SF="$SFW/host"; SFX="$SFW/xdg"; SF_OUT="$SFW/out.txt"; : > "$SF_OUT"
 sf() { ( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 workflow/scripts/workflow.py "$@" ) 2>&1 | tee -a "$SF_OUT"; return "${PIPESTATUS[0]}"; }
@@ -6011,6 +6011,87 @@ for sf_sw in "slow:5:answers each request 5 s late" "drip:1:sends its answers a 
 done
 sleep 2; sf_m=$(sf_mark); sf next >/dev/null; sf_rc=$?; sf_r=$(sf_check "$sf_m" synced)
 [ "$sf_rc" = 0 ] && [ "$sf_r" = ok ] || bad "the checkout did not settle after the slow server -- rc=$sf_rc $sf_r"
+# A request fails when it stalls, never while its bytes still move. On a steady slow link (the fake reads and sends at
+# 48,000 B/s) a 624 KB file takes about 13 s to pull and as long to push: a limit on the whole request would refuse
+# each. The session hook still stops at its 9 s with the note; an ordinary command pulls and pushes it whole, and a
+# batch left `pushing` is resent at the begin step over the same link.
+sf_big() { python3 -c 'import sys; open(sys.argv[1], "w").write((sys.argv[2] + " of a slow transfer\n") * 24000)' "$1" "$2"; }
+sf_big "$SFW/slowpull.md" pulled; sf_put works/phases/active/P1/topics/slow-pull.md "$SFW/slowpull.md"
+sf_ctl '{"rate": 48000}'
+sf_s=$(date +%s); echo '{}' | sf compact-resume > "$SFW/s1.txt"; sf_rc=$?; sf_s=$(( $(date +%s) - sf_s ))
+[ "$sf_rc" = 0 ] && [ "$sf_s" -lt 15 ] && grep -q '^compaction=done' "$SFW/s1.txt" && grep -qF "note: hi2vi is not reachable at $SFS (the session hook's 9 s for hi2vi ran out)" "$SFW/s1.txt" \
+  && ok "compact-resume with a 624 KB pull waiting on a slow link ends in ${sf_s}s, inside the hook's 15 s: exit 0, the card, the budget's line as a note" \
+  || bad "compact-resume on a slow link -- rc=$sf_rc ${sf_s}s $(tail -2 "$SFW/s1.txt")"
+sf_s=$(date +%s); sf_m=$(sf_mark); sf next > "$SFW/s2.txt"; sf_rc=$?; sf_s=$(( $(date +%s) - sf_s )); sf_r=$(sf_check "$sf_m" synced)
+[ "$sf_rc" = 0 ] && [ "$sf_s" -gt 10 ] && [ "$sf_r" = ok ] && sf_no_tb "$SFW/s2.txt" \
+  && ok "a slow but moving pull finishes: a 624 KB file at 48,000 B/s takes ${sf_s}s, over 10 s, and lands whole (exit 0, base, hi2vi and the disk agree)" \
+  || bad "a slow but moving pull was refused -- rc=$sf_rc ${sf_s}s $sf_r / $(grep -m1 'hi2vi' "$SFW/s2.txt")"
+sf_big "$SF/workflow/works/phases/active/P1/topics/slow-push.md" pushed
+sf_s=$(date +%s); sf_m=$(sf_mark); sf next > "$SFW/s3.txt"; sf_rc=$?; sf_s=$(( $(date +%s) - sf_s )); sf_r=$(sf_check "$sf_m" synced)
+[ "$sf_rc" = 0 ] && [ "$sf_s" -gt 10 ] && [ "$sf_r" = ok ] && sf_no_tb "$SFW/s3.txt" \
+  && ok "a slow but moving push finishes: a 624 KB change at 48,000 B/s takes ${sf_s}s, over 10 s, and lands once" \
+  || bad "a slow but moving push was refused -- rc=$sf_rc ${sf_s}s $sf_r / $(tail -1 "$SFW/s3.txt")"
+sf_ctl '{"rate": 0, "commit": "drop-before"}'; sf_big "$SF/workflow/works/phases/active/P1/topics/slow-resend.md" resent
+sf_v=$(sf_revs revisions); sf_m=$(sf_mark); sf next > "$SFW/s4.txt"; sf_rc=$?; sf_r=$(sf_check "$sf_m" unsent "$sf_v")
+sf_bid=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["batches"][0])' "$SF/workflow/.hi2vi/journal.json" 2>/dev/null)
+sf_ctl '{"rate": 48000}'
+sf_s=$(date +%s); sf_m=$(sf_mark); sf next > "$SFW/s5.txt"; sf_rc2=$?; sf_s=$(( $(date +%s) - sf_s )); sf_r2=$(sf_check "$sf_m" resent "$sf_bid" "$sf_v" first)
+sf_ctl '{"rate": 0}'
+[ "$sf_rc" = 1 ] && [ "$sf_r" = ok ] && [ "$sf_rc2" = 0 ] && [ "$sf_s" -gt 10 ] && [ "$sf_r2" = ok ] \
+  && ok "a pushing batch resent at the begin step over a slow link (${sf_s}s, over 10 s) lands once" \
+  || bad "a slow resend of a pushing batch -- rc=$sf_rc/$sf_rc2 ${sf_s}s $sf_r / $sf_r2 / $(tail -1 "$SFW/s5.txt")"
+# A stalled server and a dripping one still end an ordinary command in one line, in bounded time: no byte for 10 s, or
+# fewer than 1024 bytes in a 10 s window (a byte a second).
+sf_bad=""
+for sf_sw in "slow:12:no byte moved for 10 s" "drip:1:fewer than 1024 bytes moved in 10 s"; do
+  sf_k=${sf_sw%%:*}; sf_n=${sf_sw#*:}; sf_why=${sf_n#*:}; sf_n=${sf_n%%:*}
+  sf_ctl "{\"$sf_k\": $sf_n}"
+  sf_t1=$(sf_tree); sf_s=$(date +%s); sf next > "$SFW/s6.txt"; sf_rc=$?; sf_s=$(( $(date +%s) - sf_s )); sf_t2=$(sf_tree)
+  sf_ctl "{\"$sf_k\": 0}"
+  { [ "$sf_rc" = 1 ] && [ "$sf_s" -le 22 ] && [ "$sf_t1" = "$sf_t2" ] && [ "$(grep -c '' "$SFW/s6.txt")" = 1 ] \
+    && grep -qF "hi2vi is not reachable at $SFS ($sf_why): in cloud mode nothing runs offline, and nothing was changed." "$SFW/s6.txt"; } \
+    || sf_bad="$sf_bad [$sf_k: rc=$sf_rc ${sf_s}s $(head -1 "$SFW/s6.txt")]"
+done
+[ -z "$sf_bad" ] && ok "a server that stalls (no byte for 10 s) or drips (a byte a second) ends an ordinary command in one line within 22 s, the tree unchanged" \
+  || bad "a stalled or dripping server --$sf_bad"
+sleep 2
+# A 409 whose body stalls is no answer: it never reads as a batch with no conflicts. The journal keeps the batch; the
+# next command resends it and meets hi2vi's whole 409 (1 conflict), then the mismatch waits for sync.
+sf_p=works/phases/active/P1/topics/slow-pull.md; printf 'changed here\n' >> "$SF/workflow/$sf_p"
+sf_ctl "{\"race\": {\"path\": \"$sf_p\", \"content\": \"changed in hi2vi by another checkout\\n\"}, \"break\": {\"route\": \"commit\", \"how\": \"hold\"}}"
+sf next > "$SFW/s7.txt"; sf_rc=$?; sf_ctl '{"break": null}'
+sf_j=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("state"))' "$SF/workflow/.hi2vi/journal.json" 2>/dev/null)
+sf next > "$SFW/s8.txt"; sf_rc2=$?
+[ "$sf_rc" = 1 ] && [ "$(tail -1 "$SFW/s7.txt")" = "this change is on disk but not in hi2vi (hi2vi unreachable: no byte moved for 10 s): run sync" ] \
+  && [ "$sf_j" = pushing ] && [ "$sf_rc2" = 1 ] && grep -qF "(1 conflict(s)): run sync" "$SFW/s8.txt" && sf_no_tb "$SFW/s8.txt" \
+  && ok "a 409 whose body stalls is one line and keeps the batch (never 0 conflicts); the resend meets hi2vi's whole 409 with its conflict" \
+  || bad "a 409 with a stalled body -- rc=$sf_rc/$sf_rc2 journal=$sf_j $(tail -1 "$SFW/s7.txt") / $(tail -1 "$SFW/s8.txt")"
+sf_put "$sf_p" "$SF/workflow/$sf_p"
+sf_m=$(sf_mark); sf next >/dev/null; sf_rc=$?; sf_r=$(sf_check "$sf_m" synced)
+[ "$sf_rc" = 0 ] && [ "$sf_r" = ok ] || bad "the checkout did not settle after the stalled 409 -- rc=$sf_rc $sf_r"
+# No timer can turn a whole answer into an unreachable one: with the limit at 1 s and 1.5 s spent after the answer is
+# read (where a wall-clock alarm would land), the request still returns hi2vi's answer.
+sf_late=$( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 - <<'PY' 2>&1
+import importlib.util, sys, time
+spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scripts/workflow.py")
+mod = importlib.util.module_from_spec(spec)
+sys.modules["workflow_engine"] = mod
+spec.loader.exec_module(mod)
+mod.CLOUD_TIMEOUT = 1
+real = mod.CloudLink._exchange
+def late(self, *a, **k):
+    answer = real(self, *a, **k)
+    time.sleep(1.5)
+    return answer
+mod.CloudLink._exchange = late
+try:
+    status, payload = mod.CloudLink().call("GET", "head")
+    print(f"answer {status} {isinstance(payload.get('head'), int)}")
+except Exception as exc:
+    print(f"{exc.__class__.__name__}: {exc}")
+PY
+)
+[ "$sf_late" = "answer 200 True" ] && ok "an answer already read is never turned into unreachable by a late timer" || bad "a late timer turned a whole answer into a failure -- $sf_late"
 # Any other failure inside the begin or the commit step (simulated: the step raises a RuntimeError) is one line too:
 # before the command, it did not run (the hook prints its card and the note); after it, the change is on disk only, the
 # journal stays running and names the failure, and the next command refuses naming sync.
