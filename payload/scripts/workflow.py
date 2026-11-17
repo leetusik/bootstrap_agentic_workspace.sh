@@ -21377,6 +21377,16 @@ CLOUD_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 CLOUD_APPEND_RE = re.compile(r"works/events\.jsonl|works/phases/.+/loop/(?:ledger|events|dead|survivors|checkpoints)\.jsonl")
 CLOUD_DERIVED = ("works/state.json", "works/index.json")  # sent with every batch as the latest projection only
 CLOUD_RACY_NS = 2_000_000_000  # a stat-cache entry this close to the clock is hashed again next time
+CLOUD_BATCH_MAX = 8_000_000  # bytes per batch as sent: hi2vi answers 413 above 8 MiB, so a bigger change splits
+CLOUD_LOCK_WAIT = 120.0  # seconds a command waits for another command of this checkout before it refuses
+CLOUD_HOOK_LOCK_WAIT = 5.0  # the session hook's wait: it never holds a session start for long
+CLOUD_FAIL_OPEN = ("compact-resume",)  # the SessionStart hook: a cloud stop is a note, the command runs on the disk
+# The safety half. One engine process per checkout: `fcntl.flock` on `.hi2vi/lock` around the whole boundary
+# (begin, command, commit). A journal, `.hi2vi/journal.json`, names every interrupted state: `running` from the
+# begin step's end until the commit step clears it (a command that died midway: the next command refuses and
+# names sync), and `pushing` with the batch ids still to send (their bodies in `.hi2vi/outbox/`), from just
+# before the push until the base is updated, so a lost answer is resent with the same batch_id, which hi2vi
+# applies once. A pull needs no journal: a file it wrote equals the cloud's sha, which reads as "same".
 
 
 class CloudError(Exception):
@@ -21385,6 +21395,67 @@ class CloudError(Exception):
 
 class CloudUnreachable(CloudError):
     pass
+
+
+class CloudLock:
+    """The checkout's lock: `fcntl.flock(LOCK_EX)` on `.hi2vi/lock`, held around a whole command's boundary, so
+    an orchestrator and its executors running engine commands at once in one checkout are serialized. A second
+    process waits up to `wait` seconds, then refuses with one line. Re-entrant within one process (a nested
+    acquire only counts), so a step that runs inside the boundary (the agenda inbox applier) can call
+    `CloudSession.begin()` and `commit()` while the lock is held; closing the one descriptor releases it."""
+
+    depth = 0
+    fd = None
+
+    def __init__(self, wait: float = CLOUD_LOCK_WAIT) -> None:
+        self.wait = wait
+
+    def acquire(self) -> None:
+        if CloudLock.depth:
+            CloudLock.depth += 1
+            return
+        try:
+            import fcntl
+        except ImportError:
+            raise CloudError("cloud mode needs fcntl.flock (macOS or Linux) to lock this checkout: nothing was changed")
+        import errno
+        path = ROOT / CLOUD_DIR / "lock"
+        try:
+            fd = os.open(str(path), os.O_RDWR | os.O_CREAT, 0o600)  # written to: LOCK_EX where flock is emulated
+        except OSError as exc:
+            raise CloudError(f"{shown(path)} cannot be opened ({exc.__class__.__name__}): nothing was changed")
+        deadline = time.monotonic() + self.wait
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError as exc:
+                busy = exc.errno in (errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK)
+                if busy and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                    continue
+                os.close(fd)
+                if busy:
+                    raise CloudError(f"another engine command has held this checkout's lock ({shown(path)}) for "
+                                     f"{self.wait:g} s: nothing was changed; run it again when that one ends")
+                raise CloudError(f"{shown(path)} cannot be locked ({exc.__class__.__name__}): nothing was changed")
+        CloudLock.fd, CloudLock.depth = fd, 1
+
+    def release(self) -> None:
+        if CloudLock.depth <= 0:
+            return
+        CloudLock.depth -= 1
+        if CloudLock.depth == 0 and CloudLock.fd is not None:
+            fd, CloudLock.fd = CloudLock.fd, None
+            os.close(fd)
+
+    def __enter__(self) -> "CloudLock":
+        self.acquire()
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        self.release()
+        return False
 
 
 def cloud_link_file() -> Path:
@@ -21629,8 +21700,56 @@ class CloudSession:
         keep = {rel: entry for rel, entry in self.cache.items() if entry[0] < now - CLOUD_RACY_NS}
         write_text(self.dir / "stat.json", json.dumps(keep, separators=(",", ":"), sort_keys=True) + "\n")
 
+    # The journal ---------------------------------------------------------------------------------
+    def journal(self):
+        return self._load("journal.json")
+
+    def set_journal(self, state: str, **fields) -> None:
+        write_json(self.dir / "journal.json", dict({"schema": CLOUD_SCHEMA, "state": state,
+                                                   "command": shlex.join(self.tokens), "at": now_iso()}, **fields))
+
+    def clear_journal(self) -> None:
+        try:
+            (self.dir / "journal.json").unlink()
+        except FileNotFoundError:
+            pass
+        shutil.rmtree(str(self.dir / "outbox"), ignore_errors=True)
+
+    def mark_crashed(self, exc: BaseException) -> None:
+        """The command raised (not a refusal): the journal stays `running` and names the crash for the next
+        command's line. Best effort: the original exception is what propagates."""
+        try:
+            entry = self.journal() or {}
+            if entry.get("state") == "running":
+                write_json(self.dir / "journal.json", dict(entry, crashed=exc.__class__.__name__))
+        except Exception:  # noqa: BLE001 - never mask the command's own crash
+            pass
+
+    def _recover(self) -> None:
+        """Journal, step 3 of the begin step: resend a batch whose answer was lost (`pushing`), or refuse after
+        a command that died midway (`running`). Nothing runs past an interrupted state."""
+        entry = self.journal()
+        if entry is None:
+            return
+        if entry.get("state") == "pushing" and isinstance(entry.get("batches"), list):
+            self._push([str(b) for b in entry["batches"]], begin=True)
+            return
+        crashed = f", {entry['crashed']}" if isinstance(entry.get("crashed"), str) else ""
+        changed = self._count_changed()
+        raise CloudError(f"the last command here ({entry.get('command') or 'unknown'}) stopped before it finished"
+                         f"{crashed}: {changed} file(s) changed by it are on disk but not in hi2vi (interrupted): "
+                         "run sync to see them (nothing was changed)")
+
+    def _count_changed(self) -> int:
+        files, disk = self.base["files"], cloud_scan(dict(self.cache))
+        return sum(1 for rel in set(files) | set(disk)
+                   if disk.get(rel) != (files.get(rel) or {}).get("sha256"))
+
     # The begin step ------------------------------------------------------------------------------
     def begin(self) -> None:
+        """Steps 3 to 6: the journal, P1 head, a fast-forward pull, the pre-command scan, journal `running`.
+        Called with the checkout's lock held (`cloud_run`, or a step inside the boundary)."""
+        self._recover()
         info = self._ask("GET", "head")
         if str(info.get("project_id")) != self.link.project:
             raise CloudError(f"hi2vi answered for project {info.get('project_id')}, not {self.link.project}: "
@@ -21640,6 +21759,7 @@ class CloudSession:
         if isinstance(head, int) and head != self.base["head"] and self._pull(disk):
             disk = cloud_scan(self.cache)
         self.pre = disk
+        self.set_journal("running", pid=os.getpid())
 
     def _pull(self, disk: dict) -> bool:
         """Fast-forward the disk to hi2vi's head. A path changed on both sides is a mismatch: refused before
@@ -21815,40 +21935,114 @@ class CloudSession:
         return {"op": "append", "path": rel, "lines": lines, "origin": self._origin(rel, here)}, entry, rel
 
     def commit(self) -> None:
+        """Steps 1 to 4: diff, the batches (each under CLOUD_BATCH_MAX as sent), journal `pushing`, P4, the base
+        updated per landed batch, the journal cleared. A 409 or a network error keeps the disk as it is."""
         post = cloud_scan(self.cache)
         planned = self._diff(post)
         self.save_cache()
         if not planned:
+            self.clear_journal()
             return
-        import uuid
-        ops = [op for op, _, _ in planned]
         derived = []
         for rel in CLOUD_DERIVED:
             try:
                 derived.append({"path": rel, "content": (ROOT / rel).read_text(encoding="utf-8")})
             except (OSError, UnicodeDecodeError):
                 pass
-        batch = {"batch_id": uuid.uuid4().hex, "command": shlex.join(self.tokens),
-                 "origin": "command" if any(op["origin"] == "command" for op in ops) else "carried",
-                 "ops": ops, "events": [], "derived": derived, "inbox": []}
         try:
-            status, answer = self.link.call("POST", "commit", batch)
-        except CloudUnreachable as exc:
-            raise CloudError(f"this change is on disk but not in hi2vi (hi2vi unreachable: {exc}): run sync")
-        if status == 409:
-            n = len(answer.get("conflicts") or [])
-            raise CloudError(f"this change is on disk but not in hi2vi ({n} conflict(s)): run sync")
-        if status != 200 or not isinstance(answer.get("head"), int):
-            raise CloudError(f"this change is on disk but not in hi2vi (hi2vi answered HTTP {status}): run sync")
+            batches = self._batches(planned, derived)
+        except CloudError:
+            self.clear_journal()  # nothing was sent: the base still names the change, so the next command retries it
+            raise
+        outbox = self.dir / "outbox"
+        for batch, updates in batches:
+            write_text(outbox / f"{batch['batch_id']}.json",
+                       json.dumps({"batch": batch, "updates": updates}, ensure_ascii=False) + "\n")
+        self.set_journal("pushing", batches=[batch["batch_id"] for batch, _ in batches])
+        self._push([batch["batch_id"] for batch, _ in batches])
+
+    def _batches(self, planned: list, derived: list) -> list:
+        """[(wire batch, base updates)]: the ops in order, cut so that each batch's JSON as sent stays under
+        CLOUD_BATCH_MAX; each batch has its own batch_id and carries the P9 records. One op too big for any
+        batch refuses before anything is sent."""
+        import uuid
+
+        def size(obj) -> int:
+            return len(json.dumps(obj, ensure_ascii=False).encode("utf-8"))
+
+        command = shlex.join(self.tokens)
+        envelope = size({"batch_id": uuid.uuid4().hex, "command": command, "origin": "carried", "ops": [],
+                         "events": [], "derived": derived, "inbox": []})
+        groups, current, used = [], [], envelope
+        for item in planned:
+            n = size(item[0]) + 1  # the op and its comma
+            if envelope + n > CLOUD_BATCH_MAX:
+                raise CloudError(f"{item[2]} is {n:,} bytes as sent, over hi2vi's {CLOUD_BATCH_MAX:,}-byte batch "
+                                 "limit: it is on disk but not in hi2vi; make it smaller, then run any command")
+            if current and used + n > CLOUD_BATCH_MAX:
+                groups.append(current)
+                current, used = [], envelope
+            current.append(item)
+            used += n
+        if current:
+            groups.append(current)
+        out = []
+        for group in groups:
+            ops = [op for op, _, _ in group]
+            batch = {"batch_id": uuid.uuid4().hex, "command": command,
+                     "origin": "command" if any(op["origin"] == "command" for op in ops) else "carried",
+                     "ops": ops, "events": [], "derived": derived, "inbox": []}
+            updates = [{"op": op["op"], "from": op.get("from"), "path": rel, "entry": entry} for op, entry, rel in group]
+            out.append((batch, updates))
+        return out
+
+    def _push(self, ids: list, begin: bool = False) -> None:
+        """Send the journal's batches in order. Each 200 updates the base and leaves the journal; a resent
+        batch_id gets hi2vi's first answer, so a batch lands once. A 409 is final (the batch wrote nothing,
+        the base still names the change, the journal is cleared); a lost answer or another status keeps the
+        journal, so the next command resends the same batch."""
+        def unsent(why: str) -> CloudError:
+            if begin and why.startswith("hi2vi unreachable"):
+                return self._unreachable(why.split(": ", 1)[-1])
+            return CloudError(f"this change is on disk but not in hi2vi ({why}): run sync")
+
+        remaining = list(ids)
+        while remaining:
+            bid = remaining[0]
+            item = self._load(f"outbox/{bid}.json") if re.fullmatch(r"[0-9a-f]{32}", bid) else None
+            if not isinstance(item, dict) or not isinstance(item.get("batch"), dict):
+                raise CloudError(f"the unsent batch {bid} is missing from {shown(self.dir / 'outbox')}: this change "
+                                 "is on disk but not in hi2vi (interrupted): run sync")
+            try:
+                status, answer = self.link.call("POST", "commit", item["batch"])
+            except CloudUnreachable as exc:
+                raise unsent(f"hi2vi unreachable: {exc}")
+            if status == 409:
+                self.clear_journal()
+                raise unsent(f"{len(answer.get('conflicts') or [])} conflict(s)")
+            if status != 200 or not isinstance(answer.get("head"), int):
+                raise unsent(f"hi2vi answered HTTP {status}")
+            self._landed(answer, item.get("updates") or [])
+            remaining.pop(0)
+            if remaining:  # the journal keeps its command: a resend at the begin step is the earlier command's
+                write_json(self.dir / "journal.json", dict(self.journal() or {}, batches=remaining))
+            try:
+                (self.dir / "outbox" / f"{bid}.json").unlink()
+            except FileNotFoundError:
+                pass
+        self.clear_journal()
+
+    def _landed(self, answer: dict, updates: list) -> None:
         revs = answer.get("revs") if isinstance(answer.get("revs"), dict) else {}
         files = self.base["files"]
-        for op, entry, rel in planned:
-            if op["op"] == "delete":
+        for u in updates:
+            rel = u.get("path")
+            if u.get("op") == "delete":
                 files.pop(rel, None)
                 continue
-            if op["op"] == "move":
-                files.pop(op["from"], None)
-            entry = dict(entry)
+            if u.get("op") == "move":
+                files.pop(u.get("from"), None)
+            entry = dict(u.get("entry") or {})
             entry["rev"] = revs.get(rel, answer["head"])
             files[rel] = entry
         if answer["head"] == self.base["head"] + 1:
@@ -21857,13 +22051,39 @@ class CloudSession:
 
 
 def cloud_run(args: argparse.Namespace, tokens: list):
-    """`main()`'s command call in a linked checkout: begin, the command unchanged, then the commit (also
-    after a refusal). A failed begin refuses before the command runs; a failed commit exits 1 even when the
-    command succeeded, and a refusal's own line is kept."""
+    """`main()`'s command call in a linked checkout, under the checkout's lock: begin, the command unchanged,
+    then the commit (also after a refusal). A failed begin refuses before the command runs; a failed commit
+    exits 1 even when the command succeeded, and a refusal's own line is kept. The session hook
+    (CLOUD_FAIL_OPEN) never fails on the cloud: any cloud stop becomes a note and it runs on the disk."""
+    fail_open = args.cmd in CLOUD_FAIL_OPEN
+    lock = CloudLock(CLOUD_HOOK_LOCK_WAIT if fail_open else CLOUD_LOCK_WAIT)
+    try:
+        lock.acquire()
+    except CloudError as exc:
+        if fail_open:
+            return cloud_fail_open(args, str(exc))
+        raise SystemExit(str(exc))
+    try:
+        return cloud_boundary(args, tokens, fail_open)
+    finally:
+        lock.release()
+
+
+def cloud_fail_open(args: argparse.Namespace, line: str):
+    """The hook's way past a cloud stop: the command runs on the disk as it is, then the stop as a note."""
+    result = args.func(args)
+    print(f"note: {line}")
+    return result
+
+
+def cloud_boundary(args: argparse.Namespace, tokens: list, fail_open: bool = False):
+    """The boundary itself, with the lock held."""
     try:
         session = CloudSession(tokens)
         session.begin()
     except CloudError as exc:
+        if fail_open:
+            return cloud_fail_open(args, str(exc))
         raise SystemExit(str(exc))
     try:
         result = args.func(args)
@@ -21871,13 +22091,22 @@ def cloud_run(args: argparse.Namespace, tokens: list):
         try:
             session.commit()
         except CloudError as exc:
-            if stop.code in (None, 0):
+            if fail_open:
+                print(f"note: {exc}")
+            elif stop.code in (None, 0):
                 raise SystemExit(str(exc))
-            print(str(exc), file=sys.stderr)
+            else:
+                print(str(exc), file=sys.stderr)
+        raise
+    except BaseException as crash:  # a crash, not a refusal: no commit, the journal stays `running` and names it
+        session.mark_crashed(crash)
         raise
     try:
         session.commit()
     except CloudError as exc:
+        if fail_open:
+            print(f"note: {exc}")
+            return result
         raise SystemExit(str(exc))
     return result
 

@@ -5494,6 +5494,300 @@ kill "$CL_PID" 2>/dev/null; wait "$CL_PID" 2>/dev/null
 echo "cloud mode test runtime: $(( $(date +%s) - cl_t0 ))s"
 
 # ---------------------------------------------------------------------------
+echo "== Test 22: cloud mode's safety half, against the local fake hi2vi -- offline a command is refused with the one P8 line and the tree unchanged, and compact-resume fails open; a lost commit answer is resent with the same batch_id and lands once; a batch never sent goes at the next command; a command that dies midway leaves the journal running and the next command refuses naming sync; a stale write (409) keeps the disk, writes nothing in hi2vi and exits 1, then the mismatch refuses with nothing changed; two engine processes in one checkout are serialized by .hi2vi/lock; a change over 8,000,000 B goes as several batches, and one file too big for any batch is refused =="
+sf_t0=$(date +%s)
+newtmp SFW; SF="$SFW/host"; SFX="$SFW/xdg"; SF_OUT="$SFW/out.txt"; : > "$SF_OUT"
+sf() { ( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 workflow/scripts/workflow.py "$@" ) 2>&1 | tee -a "$SF_OUT"; return "${PIPESTATUS[0]}"; }
+# sf_crash kill|raise|pull <args>: the command, with defer-job made to die after it wrote its files (os._exit, or a
+# raise), or (pull) the process killed when a pull has written its files but not yet base.json.
+sf_crash() { _m=$1; shift; ( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 - "$_m" "$@" <<'PY'
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scripts/workflow.py")
+mod = importlib.util.module_from_spec(spec)
+sys.modules["workflow_engine"] = mod
+spec.loader.exec_module(mod)
+mode, real = sys.argv[1], mod.defer_job
+def crash(args):
+    real(args)
+    if mode == "kill":
+        os._exit(9)
+    raise RuntimeError("a crash in the middle of the command")
+mod.defer_job = crash
+if mode == "pull":
+    mod.CloudSession.save_base = lambda self: os._exit(9)
+sys.exit(mod.main(sys.argv[2:]))
+PY
+) >> "$SF_OUT" 2>&1; }
+# The whole workflow tree's sha list (.git aside), to prove a refusal changed nothing.
+sf_tree() { python3 - "$SF/workflow" <<'PY'
+import hashlib, os, sys
+root = sys.argv[1]
+for d, dirs, files in sorted(os.walk(root)):
+    dirs[:] = sorted(x for x in dirs if not (d == root and x == ".git"))
+    for f in sorted(files):
+        p = os.path.join(d, f)
+        print(os.path.relpath(p, root), hashlib.sha256(open(p, "rb").read()).hexdigest())
+PY
+}
+{ env GIT_AUTHOR_NAME=smoke GIT_AUTHOR_EMAIL=smoke@example.invalid GIT_COMMITTER_NAME=smoke GIT_COMMITTER_EMAIL=smoke@example.invalid sh "$BOOT" "$SF" \
+  && ( cd "$SF" && python3 workflow/scripts/workflow.py new-phase --phase P1 --name One --objective toy ); } > "$SFW/setup.txt" 2>&1 \
+  || bad "cloud safety probe: the install failed -- $(tail -3 "$SFW/setup.txt")"
+SFK="cloud-smoke-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+printf '%s\n' "$SFK" > "$SFW/key"; chmod 600 "$SFW/key"
+python3 "$REPO_ROOT/tests/fake_hi2vi.py" --dir "$SFW/fake" --port-file "$SFW/port" --key-file "$SFW/key" \
+  --project proj-1 --org org-1 --lifetime 600 > "$SFW/fake.txt" 2>&1 &
+SF_PID=$!
+for _ in $(seq 1 100); do [ -s "$SFW/port" ] && break; sleep 0.1; done
+SFS="http://127.0.0.1:$(cat "$SFW/port" 2>/dev/null)"
+mkdir -p "$SF/workflow/.hi2vi" "$SFX/hi2vi" && chmod 700 "$SFX/hi2vi"
+python3 - "$SF/workflow/.hi2vi/link.json" "$SFX/hi2vi/workspace-keys.json" "$SFS" "$SFW/key" <<'PY' || bad "cloud safety probe: could not write the link"
+import json, os, sys
+link, keys, server, keyfile = sys.argv[1:]
+with open(link, "w") as f:
+    json.dump({"schema": 1, "server": server, "org_id": "org-1", "project_id": "proj-1", "linked_at": "2026-11-18T00:00:00Z"}, f)
+with open(keyfile) as f:
+    key = f.read().strip()
+fd = os.open(keys, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w") as f:
+    json.dump({server: {"proj-1": {"key": key}}}, f)
+PY
+sf_ctl() { python3 - "$SFS" "$1" <<'PY'
+import http.client, sys
+from urllib.parse import urlparse
+u = urlparse(sys.argv[1])
+conn = http.client.HTTPConnection(u.hostname, u.port, timeout=10)
+conn.request("POST", "/_fake/control", sys.argv[2], {"Content-Type": "application/json"})
+assert conn.getresponse().status == 200
+PY
+}
+# sf_put <path> <file>: another checkout writes <file>'s text to <path> in hi2vi.
+sf_put() { python3 - "$SFS" "$1" "$2" <<'PY' || bad "cloud safety probe: the fake write failed"
+import http.client, json, sys
+from urllib.parse import urlparse
+u = urlparse(sys.argv[1])
+conn = http.client.HTTPConnection(u.hostname, u.port, timeout=10)
+conn.request("POST", "/_fake/write", json.dumps({"path": sys.argv[2], "content": open(sys.argv[3]).read()}), {"Content-Type": "application/json"})
+assert conn.getresponse().status == 200
+PY
+}
+sf_mark() { if [ -f "$SFW/fake/requests.jsonl" ]; then grep -c '' "$SFW/fake/requests.jsonl"; else echo 0; fi; }
+# sf_check <mark> <check> [args]: one named assertion over the fake's requests since <mark>, its records, base.json,
+# the journal and the disk.
+sf_check() { python3 - "$SFW/fake/requests.jsonl" "$SFS" "$SF/workflow" "$@" <<'PY'
+import base64, hashlib, http.client, json, sys
+from pathlib import Path
+from urllib.parse import urlparse, quote
+log, server, root, mark, check, extra = sys.argv[1], sys.argv[2], Path(sys.argv[3]), int(sys.argv[4]), sys.argv[5], sys.argv[6:]
+R = [json.loads(l) for l in (Path(log).read_text().splitlines() if Path(log).exists() else [])[mark:]]
+C = [r for r in R if r["path"].endswith("/commit")]
+u = urlparse(server)
+def get(path):
+    conn = http.client.HTTPConnection(u.hostname, u.port, timeout=10)
+    conn.request("GET", path)
+    resp = conn.getresponse()
+    return resp.status, json.loads(resp.read())
+S = get("/_fake/state")[1]
+base = json.loads((root / ".hi2vi/base.json").read_text()) if (root / ".hi2vi/base.json").exists() else {}
+journal = json.loads((root / ".hi2vi/journal.json").read_text()) if (root / ".hi2vi/journal.json").exists() else None
+live = {p: f for p, f in S["files"].items() if not f["deleted"]}
+def sha(p):
+    return hashlib.sha256((root / p).read_bytes()).hexdigest()
+def need(cond, why):
+    if not cond:
+        print(why)
+        sys.exit(1)
+def synced():
+    """base.json, hi2vi and the disk agree: the head, every record's rev, every file's sha, the event log's bytes."""
+    outbox = root / ".hi2vi/outbox"
+    need(journal is None and (not outbox.exists() or not any(outbox.iterdir())), f"the journal or the outbox is left: {journal}")
+    need(base.get("head") == S["head"], f"base head {base.get('head')} != hi2vi head {S['head']}")
+    need(set(base["files"]) == set(live), f"base and hi2vi hold different paths: {sorted(set(base['files']) ^ set(live))[:4]}")
+    for p, f in live.items():
+        need(base["files"][p]["rev"] == f["rev"], f"{p}: base rev {base['files'][p]['rev']} != hi2vi rev {f['rev']}")
+        need((root / p).is_file() and sha(p) == f["sha256"], f"{p}: the disk differs from hi2vi")
+if check == "first":
+    need(len(C) == 1 and C[0]["status"] == 200, f"one first batch expected: {[c['status'] for c in C]}")
+    synced()
+elif check == "lost":  # extra: revisions before the command
+    need(len(C) == 1 and str(C[0]["status"]).startswith("drop-after"), f"the commit's answer was not lost: {[c['status'] for c in C]}")
+    need(journal is not None and journal.get("state") == "pushing" and journal.get("batches") == [C[0]["batch"]["batch_id"]],
+         f"the journal does not name the lost batch: {journal}")
+    need(S["revisions"] > int(extra[0]), "the batch did not land in hi2vi")
+elif check == "unsent":  # extra: revisions before the command
+    need(len(C) == 1 and C[0]["status"] == "drop-before", f"the commit was not dropped: {[c['status'] for c in C]}")
+    need(journal is not None and journal.get("state") == "pushing" and journal.get("batches") == [C[0]["batch"]["batch_id"]],
+         f"the journal does not name the unsent batch: {journal}")
+    need(S["revisions"] == int(extra[0]), "a dropped batch landed")
+elif check == "resent":  # extra: the batch id, revisions after it landed (or before, for a batch never applied), replay
+    bid, revs, replay = extra[0], int(extra[1]), extra[2] == "replay"
+    need(C and C[0]["batch"]["batch_id"] == bid and C[0]["status"] == 200 and C[0]["batch"]["replay"] == replay,
+         f"the next command did not resend batch {bid} first: {[(c['batch']['batch_id'], c['status'], c['batch']['replay']) for c in C]}")
+    need((S["revisions"] == revs) if replay else (S["revisions"] > revs), f"the batch landed twice or never: {S['revisions']} vs {revs}")
+    synced()
+elif check == "interrupted":  # extra: the crash's class or -
+    need(journal is not None and journal.get("state") == "running" and journal.get("command", "").startswith("defer-job"),
+         f"the journal is not running defer-job: {journal}")
+    need((journal.get("crashed") == extra[0]) if extra[0] != "-" else "crashed" not in journal, f"crashed: {journal.get('crashed')}")
+    need(not C, "a crashed command sent a batch")
+elif check == "stale":  # extra: the path, revisions and head before, the cloud's content
+    path, revs, head, cloud = extra[0], int(extra[1]), int(extra[2]), extra[3]
+    need(len(C) == 1 and C[0]["status"] == 409, f"one refused batch expected: {[c['status'] for c in C]}")
+    need(S["head"] == head + 1 and S["revisions"] == revs + 1, f"hi2vi wrote more than the other checkout's change: {S['head']} {S['revisions']}")
+    content = base64.b64decode(get("/_fake/file?path=" + quote(path))[1]["content"]).decode()
+    need(content == cloud, "hi2vi's copy is not the other checkout's")
+    need("changed here" in (root / path).read_text(), "the disk lost this checkout's change")
+    need(base["files"][path]["sha256"] != sha(path), "base.json no longer names the unsent change")
+    need(journal is None, f"a refused batch left the journal: {journal}")
+elif check == "serialized":
+    need(len(C) == 2 and all(c["status"] == 200 and not c["batch"]["replay"] for c in C), f"two landed batches expected: {[(c['status'], c['batch']['replay']) for c in C]}")
+    heads = [r for r in R if r["path"].endswith("/head")]
+    need(len(heads) == 2, f"each process asks head once: {len(heads)}")
+    dj = sorted(p for p in live if p.endswith("/deferred.json"))
+    need(dj == sorted(str(p.relative_to(root)) for p in (root / "works/deferred/open").glob("*/deferred.json")), "hi2vi lacks a deferred job")
+    synced()
+elif check == "split":  # extra: the number of big files
+    need(len(C) >= 2 and all(c["status"] == 200 for c in C), f"several landed batches expected: {[(c['status'], c.get('bytes')) for c in C]}")
+    need(all(0 < c["bytes"] < 8_000_000 for c in C), f"a batch over 8,000,000 B: {[c.get('bytes') for c in C]}")
+    need(len({c["batch"]["batch_id"] for c in C}) == len(C), "two batches shared a batch_id")
+    need(len([p for p in live if "/topics/big-" in p]) == int(extra[0]), "a big file is missing in hi2vi")
+    synced()
+elif check == "toobig":
+    need(not C, f"a batch was sent: {[(c['status'], c.get('bytes')) for c in C]}")
+    need(journal is None, f"the journal is left: {journal}")
+elif check == "synced":
+    synced()
+print("ok")
+PY
+}
+sf_revs() { python3 - "$SFS" "$1" <<'PY'
+import http.client, json, sys
+from urllib.parse import urlparse
+u = urlparse(sys.argv[1])
+conn = http.client.HTTPConnection(u.hostname, u.port, timeout=10)
+conn.request("GET", "/_fake/state")
+print(json.loads(conn.getresponse().read())[sys.argv[2]])
+PY
+}
+sf_m=$(sf_mark); sf next >/dev/null; sf_r=$(sf_check "$sf_m" first)
+[ "$sf_r" = ok ] || bad "cloud safety probe: the first sync failed -- $sf_r"
+# (a) offline: the begin step's P1 fails, so the command never runs: exit 1, one line, the tree unchanged.
+sf_ctl '{"offline": true}'
+sf_t1=$(sf_tree); sf defer-job --title off --reason r --trigger t --source manual > "$SFW/a.txt"; sf_rc=$?; sf_t2=$(sf_tree)
+[ "$sf_rc" = 1 ] && [ "$(grep -c '' "$SFW/a.txt")" = 1 ] && [ "$sf_t1" = "$sf_t2" ] \
+  && grep -qE '^hi2vi is not reachable at http://127\.0\.0\.1:[0-9]+ \(.+\): in cloud mode nothing runs offline, and nothing was changed\.$' "$SFW/a.txt" \
+  && ok "offline: defer-job is refused before it runs with exit 1 and P8's one line, and the workflow tree's sha list is equal before and after" \
+  || bad "offline refusal wrong -- rc=$sf_rc $(head -3 "$SFW/a.txt") $(diff <(echo "$sf_t1") <(echo "$sf_t2") | head -3)"
+echo '{}' | sf compact-resume > "$SFW/a2.txt"; sf_rc=$?
+[ "$sf_rc" = 0 ] && grep -q '^compaction=done' "$SFW/a2.txt" && grep -qE '^note: hi2vi is not reachable at ' "$SFW/a2.txt" \
+  && ok "offline: compact-resume (the session hook) fails open: exit 0, the resume card from the disk, P8's line as a note" \
+  || bad "compact-resume offline did not fail open -- rc=$sf_rc $(head -3 "$SFW/a2.txt")"
+sf_ctl '{"offline": false}'
+# (b) a crash after the push landed and before the base was updated (the answer lost): the next command resends the
+# same batch_id first, hi2vi answers it once (a replay), and base.json, hi2vi and the disk agree.
+sf_ctl '{"commit": "drop-after"}'; sf_v=$(sf_revs revisions); sf_m=$(sf_mark)
+sf defer-job --title lost --reason r --trigger t --source manual > "$SFW/b.txt"; sf_rc=$?
+sf_r=$(sf_check "$sf_m" lost "$sf_v"); sf_bid=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["batches"][0])' "$SF/workflow/.hi2vi/journal.json" 2>/dev/null)
+sf_v=$(sf_revs revisions); sf_m=$(sf_mark); sf next > "$SFW/b2.txt"; sf_rc2=$?; sf_r2=$(sf_check "$sf_m" resent "$sf_bid" "$sf_v" replay)
+[ "$sf_rc" = 1 ] && tail -1 "$SFW/b.txt" | grep -q '^this change is on disk but not in hi2vi (hi2vi unreachable: .*): run sync$' \
+  && [ "$sf_r" = ok ] && [ "$sf_rc2" = 0 ] && [ "$sf_r2" = ok ] \
+  && ok "a lost commit answer: the command exits 1 (on disk but not in hi2vi), the journal names the batch, the next command resends the same batch_id, hi2vi replays it (the revisions land once) and the base catches up" \
+  || bad "the lost-answer row wrong -- rc=$sf_rc/$sf_rc2 $sf_r / $sf_r2 / $(tail -1 "$SFW/b.txt")"
+# (c) a crash before the push landed (the batch never applied): the next command sends it, and it lands now.
+sf_ctl '{"commit": "drop-before"}'; sf_v=$(sf_revs revisions); sf_m=$(sf_mark)
+sf defer-job --title unsent --reason r --trigger t --source manual > "$SFW/c.txt"; sf_rc=$?
+sf_r=$(sf_check "$sf_m" unsent "$sf_v"); sf_bid=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["batches"][0])' "$SF/workflow/.hi2vi/journal.json" 2>/dev/null)
+sf_m=$(sf_mark); sf next > "$SFW/c2.txt"; sf_rc2=$?; sf_r2=$(sf_check "$sf_m" resent "$sf_bid" "$sf_v" first)
+[ "$sf_rc" = 1 ] && [ "$sf_r" = ok ] && [ "$sf_rc2" = 0 ] && [ "$sf_r2" = ok ] \
+  && ok "a batch that never landed: the journal keeps it, the next command sends that batch_id and it lands once" \
+  || bad "the unsent row wrong -- rc=$sf_rc/$sf_rc2 $sf_r / $sf_r2"
+# (d) a crash during the command (a hard exit, then a raise): the journal stays running, and the next command refuses
+# with one line naming sync and changes nothing. (sync is the way out; here the journal is removed by hand instead.)
+sf_m=$(sf_mark); sf_crash kill defer-job --title killed --reason r --trigger t --source manual; sf_rc=$?
+sf_r=$(sf_check "$sf_m" interrupted -)
+sf_t1=$(sf_tree); sf next > "$SFW/d.txt"; sf_rc2=$?; sf_t2=$(sf_tree)
+[ "$sf_rc" = 9 ] && [ "$sf_r" = ok ] && [ "$sf_rc2" = 1 ] && [ "$(grep -c '' "$SFW/d.txt")" = 1 ] && [ "$sf_t1" = "$sf_t2" ] \
+  && grep -qE '^the last command here \(defer-job --title killed .*\) stopped before it finished: [0-9]+ file\(s\) changed by it are on disk but not in hi2vi \(interrupted\): run sync to see them \(nothing was changed\)$' "$SFW/d.txt" \
+  && ok "a command killed midway leaves the journal running; the next command is refused with one line naming sync, and the tree is unchanged" \
+  || bad "the interrupted row (kill) wrong -- rc=$sf_rc/$sf_rc2 $sf_r / $(head -2 "$SFW/d.txt")"
+rm -f "$SF/workflow/.hi2vi/journal.json"; sf next >/dev/null
+sf_m=$(sf_mark); sf_crash raise defer-job --title raised --reason r --trigger t --source manual; sf_rc=$?
+sf_r=$(sf_check "$sf_m" interrupted RuntimeError); sf next > "$SFW/d2.txt"; sf_rc2=$?
+[ "$sf_rc" = 1 ] && [ "$sf_r" = ok ] && [ "$sf_rc2" = 1 ] && grep -qF 'stopped before it finished, RuntimeError: ' "$SFW/d2.txt" \
+  && ok "a command that raises (not a refusal) sends nothing, its journal names the crash, and the next command refuses naming it and sync" \
+  || bad "the interrupted row (raise) wrong -- rc=$sf_rc/$sf_rc2 $sf_r / $(head -2 "$SFW/d2.txt")"
+rm -f "$SF/workflow/.hi2vi/journal.json"; sf next >/dev/null
+# The crash table's last row: killed during a pull, after the file was written and before base.json was. The disk's
+# sha equals hi2vi's, which reads as the same: the next command is not refused and the base is fixed.
+printf 'renamed in hi2vi\n' > "$SFW/pulled.md"; sf_put works/phases/active/P1/intent.md "$SFW/pulled.md"
+sf_crash pull next; sf_rc=$?
+cmp -s "$SFW/pulled.md" "$SF/workflow/works/phases/active/P1/intent.md"; sf_w=$?
+sf_m=$(sf_mark); sf next > "$SFW/d3.txt"; sf_rc2=$?; sf_r=$(sf_check "$sf_m" synced)
+[ "$sf_rc" = 9 ] && [ "$sf_w" = 0 ] && [ "$sf_rc2" = 0 ] && [ "$sf_r" = ok ] \
+  && ok "a pull killed after its write and before base.json: the next command reads the file as the same (no mismatch) and the base catches up" \
+  || bad "the pull-crash row wrong -- rc=$sf_rc/$sf_rc2 written=$sf_w $sf_r / $(tail -1 "$SFW/d3.txt")"
+# (e) a stale write: another checkout changes the same file between this command's begin and its commit. hi2vi refuses
+# the whole batch (409), the disk keeps this checkout's change, exit 1 though next succeeded; then the begin step's
+# mismatch refuses with nothing changed, until the two sides agree.
+sf_p=works/phases/active/P1/intent.md; printf 'changed here\n' >> "$SF/workflow/$sf_p"
+sf_ctl "{\"race\": {\"path\": \"$sf_p\", \"content\": \"changed in hi2vi by another checkout\\n\"}}"
+sf_v=$(sf_revs revisions); sf_h=$(sf_revs head); sf_m=$(sf_mark)
+sf next > "$SFW/e.txt"; sf_rc=$?; sf_r=$(sf_check "$sf_m" stale "$sf_p" "$sf_v" "$sf_h" "changed in hi2vi by another checkout
+")
+[ "$sf_rc" = 1 ] && [ "$(tail -1 "$SFW/e.txt")" = "this change is on disk but not in hi2vi (1 conflict(s)): run sync" ] && [ "$sf_r" = ok ] \
+  && ok "a stale write is refused: 409, nothing of the batch written in hi2vi, the disk keeps the change, base.json still names it, no journal left, and exit 1 though next itself succeeded" \
+  || bad "the stale write wrong -- rc=$sf_rc $sf_r / $(tail -1 "$SFW/e.txt")"
+sf_t1=$(sf_tree); sf next > "$SFW/e2.txt"; sf_rc=$?; sf_t2=$(sf_tree)
+[ "$sf_rc" = 1 ] && [ "$(cat "$SFW/e2.txt")" = "1 files differ between this checkout and hi2vi: run sync to see them (nothing was changed)" ] && [ "$sf_t1" = "$sf_t2" ] \
+  && ok "then the begin step's mismatch: the next command is refused with one line naming sync, and the tree is unchanged" \
+  || bad "the mismatch refusal wrong -- rc=$sf_rc $(head -2 "$SFW/e2.txt")"
+sf_put "$sf_p" "$SF/workflow/$sf_p"
+sf_m=$(sf_mark); sf next >/dev/null; sf_rc=$?; sf_r=$(sf_check "$sf_m" synced)
+[ "$sf_rc" = 0 ] && [ "$sf_r" = ok ] || bad "equal content on both sides did not clear the mismatch -- rc=$sf_rc $sf_r"
+# (f) two engine processes in one checkout at once. The fake holds the first two head requests until both arrive (or
+# 3 s pass), so without the lock both would begin at the same head and base and race (a double push of the event
+# lines, a lost base). The lock serializes them: each batch lands once and base.json, hi2vi and the disk agree.
+sf_ctl '{"gate": {"route": "head", "count": 2, "timeout": 3}}'; sf_m=$(sf_mark)
+sf defer-job --title one --reason r --trigger t --source manual > "$SFW/f1.txt" & sf_p1=$!
+sf defer-job --title two --reason r --trigger t --source manual > "$SFW/f2.txt" & sf_p2=$!
+wait "$sf_p1"; sf_rc=$?; wait "$sf_p2"; sf_rc2=$?
+sf_ctl '{"gate": null}'; sf_r=$(sf_check "$sf_m" serialized)
+[ "$sf_rc" = 0 ] && [ "$sf_rc2" = 0 ] && [ "$sf_r" = ok ] \
+  && ok "two defer-job processes at once in one checkout are serialized by .hi2vi/lock: two batches, none resent, both jobs in hi2vi, and the event log, every rev and base.json's head agree" \
+  || bad "two engine processes were not serialized -- rc=$sf_rc/$sf_rc2 $sf_r / $(tail -1 "$SFW/f1.txt") / $(tail -1 "$SFW/f2.txt")"
+# compact-resume while another process holds the lock: it waits a bounded time, then fails open with the line as a note.
+python3 -c 'import fcntl, os, sys, time
+fd = os.open(sys.argv[1], os.O_RDWR | os.O_CREAT); fcntl.flock(fd, fcntl.LOCK_EX); open(sys.argv[2], "w").close(); time.sleep(20)' \
+  "$SF/workflow/.hi2vi/lock" "$SFW/held" & sf_hp=$!
+for _ in $(seq 1 100); do [ -e "$SFW/held" ] && break; sleep 0.1; done
+sf_s=$(date +%s); echo '{}' | sf compact-resume > "$SFW/f3.txt"; sf_rc=$?; sf_s=$(( $(date +%s) - sf_s ))
+kill "$sf_hp" 2>/dev/null; wait "$sf_hp" 2>/dev/null
+[ "$sf_rc" = 0 ] && [ "$sf_s" -lt 15 ] && grep -q '^compaction=done' "$SFW/f3.txt" && grep -qF "note: another engine command has held this checkout's lock" "$SFW/f3.txt" \
+  && ok "compact-resume with the lock held elsewhere waits a bounded time (${sf_s}s), then fails open: exit 0, the card, the lock line as a note" \
+  || bad "compact-resume did not fail open on a held lock -- rc=$sf_rc ${sf_s}s $(head -3 "$SFW/f3.txt")"
+# (g) a change over the server's limit goes as several batches in order, each under 8,000,000 B as sent with its own
+# batch_id; one file too big for any batch is refused before anything is sent.
+mkdir -p "$SF/workflow/works/phases/active/P1/topics"
+for i in 1 2 3; do python3 -c 'import sys; open(sys.argv[1], "w").write(("line of a big topic %s\n" % sys.argv[2]) * 140000)' \
+  "$SF/workflow/works/phases/active/P1/topics/big-$i.md" "$i"; done
+sf_m=$(sf_mark); sf next >/dev/null; sf_rc=$?; sf_r=$(sf_check "$sf_m" split 3)
+[ "$sf_rc" = 0 ] && [ "$sf_r" = ok ] \
+  && ok "a 9 MB change goes as several batches in order, each under 8,000,000 B as sent with its own batch_id, and all of it lands" \
+  || bad "the big change was not split -- rc=$sf_rc $sf_r"
+python3 -c 'import sys; open(sys.argv[1], "w").write("x" * 8100000)' "$SF/workflow/works/phases/active/P1/topics/huge.md"
+sf_m=$(sf_mark); sf next > "$SFW/g.txt"; sf_rc=$?; sf_r=$(sf_check "$sf_m" toobig)
+[ "$sf_rc" = 1 ] && [ "$sf_r" = ok ] && tail -1 "$SFW/g.txt" | grep -qE "^works/phases/active/P1/topics/huge\.md is [0-9,]+ bytes as sent, over hi2vi's 8,000,000-byte batch limit: it is on disk but not in hi2vi" \
+  && ok "one file too big for any batch is refused with one line naming it, exit 1, nothing sent" \
+  || bad "the too-big file was not refused -- rc=$sf_rc $sf_r / $(tail -1 "$SFW/g.txt")"
+rm -f "$SF/workflow/works/phases/active/P1/topics/huge.md"
+sf_m=$(sf_mark); sf next >/dev/null; sf_rc=$?; sf_r=$(sf_check "$sf_m" synced)
+[ "$sf_rc" = 0 ] && [ "$sf_r" = ok ] || bad "the checkout did not settle after the too-big file left -- rc=$sf_rc $sf_r"
+# (h) the key never reaches the tree (journal and outbox included), the output or the fake's request log.
+if grep -rqF "$SFK" "$SF" "$SF_OUT" "$SFW/fake" 2>/dev/null; then bad "the workspace key leaked into the tree, the output or the request log"
+else ok "the workspace key appears nowhere in the checkout (journal and outbox included), the output or the fake's request log"; fi
+kill "$SF_PID" 2>/dev/null; wait "$SF_PID" 2>/dev/null
+echo "cloud safety test runtime: $(( $(date +%s) - sf_t0 ))s"
+
+# ---------------------------------------------------------------------------
 echo
 if [ "$FAILS" -eq 0 ]; then
   echo "ALL RETROFIT SMOKE TESTS PASSED"
