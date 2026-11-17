@@ -21431,8 +21431,10 @@ CLOUD_FETCH_PATHS = 5000  # paths per P3 request (hi2vi takes at most 20,000 and
 # begin step's end until the commit step clears it (a command that died midway: the next command refuses and
 # names sync), and `pushing` with the batch ids still to send (their bodies in `.hi2vi/outbox/`), from just
 # before the push until the base is updated, so a lost answer is resent with the same batch_id, which hi2vi
-# applies once. A pull needs no journal: a file it wrote equals the cloud's sha, which reads as "same", and a
-# pull stopped by a write error records in base.json what it wrote before it stopped.
+# applies once. A pull needs no journal: a revisioned file it wrote equals the cloud's sha, which reads as "same";
+# an append file it merged around lines not yet sent (or in an order of its own) does not, so each merge's result
+# is saved in base.json (`pulling`) before its write and settled against the disk when base.json is next read
+# (cloud_settle_pull); and a pull stopped by a write error records in base.json what it wrote before it stopped.
 # One rule at every boundary (begin, commit, link, unlink, sync): any failure inside it ends the command in
 # CloudError's one line (the session hook: a note, exit 0), never a traceback or a false success.
 
@@ -21839,6 +21841,26 @@ class CloudLink:
         return text[:200] or name
 
 
+def cloud_settle_pull(base: dict) -> None:
+    """A pull's write-ahead record (`pulling` in base.json: each append file's merged size, sha256 and base entry,
+    saved before its write), settled against the disk after a pull that stopped midway: a file whose first `size`
+    bytes are the merge's took the write, so its entry is the merge's (hi2vi's lines are then inside the synced
+    offset, never sent back); any other file did not, so its entry stays as it was and the next pull merges again."""
+    pulling = base.pop("pulling", None)
+    if not isinstance(pulling, dict) or not isinstance(base.get("files"), dict):
+        return
+    for rel, rec in pulling.items():
+        if not (cloud_truth_rel(rel) and cloud_kind(rel) == "append" and isinstance(rec, dict)
+                and isinstance(rec.get("entry"), dict) and isinstance(rec.get("size"), int)):
+            continue
+        try:
+            data = (ROOT / rel).read_bytes()
+        except OSError:
+            continue
+        if rec["size"] <= len(data) and _sha(data[:rec["size"]]) == rec.get("sha256"):
+            base["files"][rel] = rec["entry"]
+
+
 class CloudSession:
     """One command's boundary in a linked checkout: begin (pull, pre-command scan), then commit (one batch)."""
 
@@ -21850,6 +21872,7 @@ class CloudSession:
         self.base = self._load("base.json") or {}
         if not isinstance(self.base.get("files"), dict) or not isinstance(self.base.get("head"), int):
             self.base = {"schema": CLOUD_SCHEMA, "head": 0, "files": {}}
+        cloud_settle_pull(self.base)  # in memory only: the next save_base records it, with the lock held
         self.cache = self._load("stat.json") or {}
         self.pre = {}
         self.inbox_pending = None  # P1's count, read at the begin step; None: unknown, so the inbox is asked
@@ -22029,29 +22052,46 @@ class CloudSession:
             if missing:
                 raise self._unreachable(f"{len(missing)} file(s) missing from the fetch, first {missing[0]}")
         written, at = [], None  # the paths written or deleted so far, and the path in hand
+        merges = {}  # each append file's merge: rel -> (the merged bytes, or None when nothing is added; its entry)
         try:
             for rel, (item, data) in sorted(got.items()):
+                if cloud_kind(rel) != "append":
+                    continue
                 path, at = ROOT / rel, rel
-                if cloud_kind(rel) == "append":
-                    local = path.read_bytes() if path.is_file() else b""
-                    b = files.get(rel) or {}
-                    offset = b.get("offset", 0) if b.get("kind") == "append" else 0
-                    offset = offset if 0 <= offset <= len(local) else len(local)
-                    seen = {}
-                    for line in local.splitlines(keepends=True):
-                        seen[line.rstrip(b"\n")] = seen.get(line.rstrip(b"\n"), 0) + 1
-                    new = []
-                    for line in data.splitlines():
-                        if seen.get(line, 0):
-                            seen[line] -= 1
-                        else:
-                            new.append(line + b"\n")
-                    added = b"".join(new)
-                    merged = local[:offset] + added + local[offset:]
-                    if added:
+                local = path.read_bytes() if path.is_file() else b""
+                b = files.get(rel) or {}
+                offset = b.get("offset", 0) if b.get("kind") == "append" else 0
+                offset = offset if 0 <= offset <= len(local) else len(local)
+                seen = {}
+                for line in local.splitlines(keepends=True):
+                    seen[line.rstrip(b"\n")] = seen.get(line.rstrip(b"\n"), 0) + 1
+                new = []
+                for line in data.splitlines():
+                    if seen.get(line, 0):
+                        seen[line] -= 1
+                    else:
+                        new.append(line + b"\n")
+                added = b"".join(new)
+                merged = local[:offset] + added + local[offset:]
+                offset += len(added)
+                entry = {"rev": item.get("rev"), "sha256": _sha(merged[:offset]), "kind": "append", "offset": offset}
+                merges[rel] = (merged if added else None, entry)
+            # Write-ahead: the merged file differs from hi2vi's whenever this checkout holds lines past its offset (or
+            # an order of its own), so a pull stopped after a write would leave hi2vi's lines past the old offset, to
+            # be sent back as new. Each merge's result and its entry are in base.json before its write.
+            pulling = {rel: {"size": len(merged), "sha256": _sha(merged), "entry": entry}
+                       for rel, (merged, entry) in merges.items() if merged is not None}
+            if pulling:
+                at = f"{CLOUD_DIR}/base.json"
+                self.base["pulling"] = pulling
+                self.save_base()
+            for rel, (item, data) in sorted(got.items()):
+                path, at = ROOT / rel, rel
+                if rel in merges:
+                    merged, entry = merges[rel]
+                    if merged is not None:
                         _cloud_write_bytes(path, merged)
-                    offset += len(added)
-                    files[rel] = {"rev": item.get("rev"), "sha256": _sha(merged[:offset]), "kind": "append", "offset": offset}
+                    files[rel] = entry
                 else:
                     _cloud_write_bytes(path, data)
                     files[rel] = {"rev": item.get("rev"), "sha256": item.get("sha256"), "kind": "file"}
@@ -22071,6 +22111,7 @@ class CloudSession:
                 else:
                     files[rel] = {"rev": change.get("rev"), "sha256": change.get("sha256"), "kind": "file"}
         except OSError as exc:  # record what landed (the head stays), so the next command's pull resumes from it
+            self.base.pop("pulling", None)  # each write that landed has its entry; the one that failed did not land
             try:
                 self.save_base()
                 if written:
@@ -22080,6 +22121,7 @@ class CloudSession:
             raise CloudError(f"{at} could not be written here from hi2vi ({exc.__class__.__name__}: "
                              f"{exc.strerror or exc}): {len(written)} pulled path(s) landed before it and are recorded "
                              "in .hi2vi/base.json; fix it, then run the command again (the pull resumes from there)")
+        self.base.pop("pulling", None)
         if not mismatch:
             self.base["head"] = new_head
         self.save_base()
@@ -22736,6 +22778,8 @@ def cloud_unlink_from_disk() -> int:
         base = read_json(folder / "base.json")
     except (OSError, ValueError):
         base = {}
+    if isinstance(base, dict):
+        cloud_settle_pull(base)
     files = base.get("files") if isinstance(base.get("files"), dict) else {}
     head = base.get("head") if isinstance(base.get("head"), int) else 0
     disk = cloud_scan({})

@@ -25,7 +25,8 @@ project is 404; X-Hi2vi-Checkout and X-Hi2vi-Engine are required):
 Like the server, a body over 8,388,608 B is refused with 413 before it is read.
 
 Test-only routes (no key, 127.0.0.1 only): GET /_fake/state (the records, no content),
-POST /_fake/write {path, content, kind?, deleted?} (a change made by another checkout), GET /_fake/file?path=
+POST /_fake/write {path, content, kind?, deleted?} or {path, lines} (a change made by another checkout: a revision,
+or its lines appended to an append-only record), GET /_fake/file?path=
 (one record's content), POST /_fake/inbox {kind, items, fields, minted_id} (a web change: a new pending
 entry, answered {id}), GET /_fake/inbox (every entry with its state, reason, exit, batch_id and who resolved
 it) and POST /_fake/control {...} (the failure switches, merged into the current ones):
@@ -34,7 +35,8 @@ it) and POST /_fake/control {...} (the failure switches, merged into the current
 - offline: true -> every API request is dropped unanswered (the engine sees a network error);
 - commit: "drop-before" | "drop-after" -> the next commit is dropped unanswered, before it is applied or
   after (a lost answer); one-shot;
-- race: {path, content} -> another checkout's write lands just before the next commit is applied; one-shot;
+- race: {path, content} or {path, lines} -> another checkout's write (or append) lands just before the next commit
+  is applied; one-shot;
 - fetch_page: <bytes> -> a fetch page's byte budget (default 6,000,000, the server's), so a test can make
   the engine follow `rest`;
 - gate: {route, count, timeout} -> the next `count` requests to that route are held (outside the store's
@@ -265,6 +267,10 @@ class Store:
             rec = self.records.get(path)
             if rec is not None:
                 self.records[path] = dict(rec, rev=self.head, deleted=True, content=b"")
+        elif isinstance(body.get("lines"), list):  # another checkout's P6 append: its lines after the record's
+            rec = self.live(path)
+            data = (rec["content"] if rec is not None else b"") + "".join(l + "\n" for l in body["lines"]).encode("utf-8")
+            self.records[path] = {"rev": self.head, "sha256": sha(data), "kind": "append", "content": data, "deleted": False}
         else:
             data = body.get("content", "").encode("utf-8")
             kind = body.get("kind") or (self.records.get(path) or {}).get("kind") or "file"

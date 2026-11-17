@@ -5518,7 +5518,7 @@ kill "$CL_PID" 2>/dev/null; wait "$CL_PID" 2>/dev/null
 echo "cloud mode test runtime: $(( $(date +%s) - cl_t0 ))s"
 
 # ---------------------------------------------------------------------------
-echo "== Test 22: cloud mode's safety half, against the local fake hi2vi -- offline a command is refused with the one P8 line and the tree unchanged, and compact-resume fails open; a lost commit answer is resent with the same batch_id and lands once; a batch never sent goes at the next command; a command that dies midway leaves the journal running and the next command refuses naming sync; a stale write (409) keeps the disk, writes nothing in hi2vi and exits 1, then the mismatch refuses with nothing changed; two engine processes in one checkout are serialized by .hi2vi/lock; a change over 8,000,000 B goes as several batches, and one file too big for any batch is refused; every failure inside the boundary is one line, never a traceback (a cut or malformed answer, a commit answer cut mid-body, a fetch that does not decode, a write error during a pull), and the hook's note; compact-resume stays inside the hook's 15 s on a slow or dripping server; a key holding a control character is refused unquoted =="
+echo "== Test 22: cloud mode's safety half, against the local fake hi2vi -- offline a command is refused with the one P8 line and the tree unchanged, and compact-resume fails open; a lost commit answer is resent with the same batch_id and lands once; a batch never sent goes at the next command; a command that dies midway leaves the journal running and the next command refuses naming sync; a pull killed at any step of an append-only file's merge (the event log, a loop's ledger and checkpoints, a local order of its own) leaves each line in hi2vi once; a stale write (409) keeps the disk, writes nothing in hi2vi and exits 1, then the mismatch refuses with nothing changed; two engine processes in one checkout are serialized by .hi2vi/lock; a change over 8,000,000 B goes as several batches, and one file too big for any batch is refused; every failure inside the boundary is one line, never a traceback (a cut or malformed answer, a commit answer cut mid-body, a fetch that does not decode, a write error during a pull), and the hook's note; compact-resume stays inside the hook's 15 s on a slow or dripping server; a key holding a control character is refused unquoted =="
 sf_t0=$(date +%s)
 newtmp SFW; SF="$SFW/host"; SFX="$SFW/xdg"; SF_OUT="$SFW/out.txt"; : > "$SF_OUT"
 sf() { ( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 workflow/scripts/workflow.py "$@" ) 2>&1 | tee -a "$SF_OUT"; return "${PIPESTATUS[0]}"; }
@@ -5680,6 +5680,22 @@ elif check == "toobig":
     need(journal is None, f"the journal is left: {journal}")
 elif check == "synced":
     synced()
+elif check == "once":  # extra: the append-only paths (comma-separated), their usd total or -, then marks each once in hi2vi
+    import collections
+    need(journal is None and base.get("head") == S["head"], f"not settled: journal {journal}, base head {base.get('head')} vs {S['head']}")
+    cloud_lines, usd = [], 0.0
+    for p in extra[0].split(","):
+        c = base64.b64decode(get("/_fake/file?path=" + quote(p))[1]["content"]).decode().splitlines()
+        d = (root / p).read_text().splitlines()
+        twice = sorted(l for l, n in collections.Counter(c).items() if n > 1)
+        need(not twice, f"{p}: hi2vi holds {len(twice)} line(s) twice, first {twice[:1]}")
+        need(collections.Counter(c) == collections.Counter(d), f"{p}: the disk's lines and hi2vi's differ")
+        cloud_lines += c
+        usd += sum(json.loads(l).get("usd", 0) for l in c if p.endswith(("/ledger.jsonl", "/checkpoints.jsonl")))
+    for mark in extra[2:]:
+        n = sum(mark in l for l in cloud_lines)
+        need(n == 1, f"{mark}: {n} line(s) in hi2vi, not 1")
+    need(extra[1] == "-" or abs(usd - float(extra[1])) < 1e-9, f"hi2vi's loop spend is {usd}, not {extra[1]}")
 print("ok")
 PY
 }
@@ -5749,6 +5765,110 @@ sf_m=$(sf_mark); sf next > "$SFW/d3.txt"; sf_rc2=$?; sf_r=$(sf_check "$sf_m" syn
 [ "$sf_rc" = 9 ] && [ "$sf_w" = 0 ] && [ "$sf_rc2" = 0 ] && [ "$sf_r" = ok ] \
   && ok "a pull killed after its write and before base.json: the next command reads the file as the same (no mismatch) and the base catches up" \
   || bad "the pull-crash row wrong -- rc=$sf_rc/$sf_rc2 written=$sf_w $sf_r / $(tail -1 "$SFW/d3.txt")"
+# The crash table's append rows. A pull merges another checkout's new lines into an append-only file (the event log, a
+# loop's ledger and checkpoints) around the lines this checkout has not sent yet, so the merged file differs from
+# hi2vi's and never reads as the same. Killed at any step of that pull, the next command sends only this checkout's own
+# lines: hi2vi holds each line exactly once, and a loop's spend is counted once.
+# sf_kill fetch|write|wrote|base <path> <args>: the command, killed (os._exit) once the pull has fetched <path>, just
+# before or just after the pull writes it, or once base.json is saved (before the generated files are rebuilt).
+sf_kill() { _s=$1; _f=$2; shift 2; ( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 - "$_s" "$_f" "$@" <<'PY'
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scripts/workflow.py")
+mod = importlib.util.module_from_spec(spec)
+sys.modules["workflow_engine"] = mod
+spec.loader.exec_module(mod)
+step, target = sys.argv[1], sys.argv[2]
+real_write, real_fetch = mod._cloud_write_bytes, mod.CloudSession.fetch
+def write(path, data):
+    hit = str(path).endswith("/" + target)
+    if hit and step == "write":
+        os._exit(9)
+    real_write(path, data)
+    if hit and step == "wrote":
+        os._exit(9)
+def fetch(self, paths):
+    got = real_fetch(self, paths)
+    if step == "fetch" and target in got:
+        os._exit(9)
+    return got
+mod._cloud_write_bytes, mod.CloudSession.fetch = write, fetch
+if step == "base":
+    mod.cloud_rebuild = lambda rels: os._exit(9)
+sys.exit(mod.main(sys.argv[3:]))
+PY
+) >> "$SF_OUT" 2>&1; }
+# sf_add <path> <line>...: another checkout appends these lines to <path> in hi2vi.
+sf_add() { python3 - "$SFS" "$@" <<'PY' || bad "cloud safety probe: the fake append failed"
+import http.client, json, sys
+from urllib.parse import urlparse
+u = urlparse(sys.argv[1])
+conn = http.client.HTTPConnection(u.hostname, u.port, timeout=10)
+conn.request("POST", "/_fake/write", json.dumps({"path": sys.argv[2], "lines": sys.argv[3:]}), {"Content-Type": "application/json"})
+assert conn.getresponse().status == 200
+PY
+}
+sf_ev=works/events.jsonl; sf_bad=""
+for sf_step in fetch write wrote base; do
+  printf '{"type": "smoke_local", "mark": "local-%s"}\n' "$sf_step" >> "$SF/workflow/$sf_ev"
+  sf_add "$sf_ev" "{\"type\": \"agenda_added\", \"agenda\": \"cloud-$sf_step\"}"
+  sf_kill "$sf_step" "$sf_ev" next; sf_rc=$?
+  sf_m=$(sf_mark); sf next >/dev/null; sf_rc2=$?; sf_r=$(sf_check "$sf_m" once "$sf_ev" - "\"local-$sf_step\"" "\"cloud-$sf_step\"")
+  { [ "$sf_rc" = 9 ] && [ "$sf_rc2" = 0 ] && [ "$sf_r" = ok ]; } || sf_bad="$sf_bad [$sf_step: rc=$sf_rc/$sf_rc2 $sf_r]"
+done
+[ -z "$sf_bad" ] \
+  && ok "a pull merging another checkout's event line around a local one, killed after the fetch, before the write, after the write (before base.json) or after base.json: the next command sends only the local line, and hi2vi holds each line once" \
+  || bad "an append pull killed midway re-sent hi2vi's own lines --$sf_bad"
+sf_add "$sf_ev" '{"type": "agenda_added", "agenda": "cloud-alone"}'
+sf_kill wrote "$sf_ev" next; sf_rc=$?
+sf_m=$(sf_mark); sf next >/dev/null; sf_rc2=$?; sf_r=$(sf_check "$sf_m" once "$sf_ev" - '"cloud-alone"'); sf_r2=$(sf_check "$sf_m" synced)
+[ "$sf_rc" = 9 ] && [ "$sf_rc2" = 0 ] && [ "$sf_r" = ok ] && [ "$sf_r2" = ok ] \
+  && ok "an append pull with nothing local past the offset, killed after its write: the file equals hi2vi's, reads as the same, and the base catches up" \
+  || bad "the plain append pull-crash row wrong -- rc=$sf_rc/$sf_rc2 $sf_r / $sf_r2"
+# A loop's ledger and checkpoints, pulled together (checkpoints.jsonl is written first): killed once both are written,
+# then once only the first is, the loop spend summed from hi2vi's lines stays the sum of each line once.
+sf_lp=works/phases/active/P1/loop; mkdir -p "$SF/workflow/$sf_lp"
+printf '{"cycle": "C1", "usd": 1.5}\n' > "$SF/workflow/$sf_lp/ledger.jsonl"
+printf '{"slice": "P1.K1", "usd": 0.25}\n' > "$SF/workflow/$sf_lp/checkpoints.jsonl"
+sf next >/dev/null; sf_bad=""
+for sf_row in "ledger:C2:2:C3:4:K2:0.5:8.25" "checkpoints:K3:0.125:C4:8:K4:1:17.375"; do
+  IFS=: read -r sf_t sf_l sf_lu sf_c sf_cu sf_k sf_ku sf_sum <<< "$sf_row"
+  if [ "$sf_t" = ledger ]; then printf '{"cycle": "%s", "usd": %s}\n' "$sf_l" "$sf_lu" >> "$SF/workflow/$sf_lp/ledger.jsonl"
+  else printf '{"slice": "P1.%s", "usd": %s}\n' "$sf_l" "$sf_lu" >> "$SF/workflow/$sf_lp/checkpoints.jsonl"; fi
+  sf_add "$sf_lp/ledger.jsonl" "{\"cycle\": \"$sf_c\", \"usd\": $sf_cu}"
+  sf_add "$sf_lp/checkpoints.jsonl" "{\"slice\": \"P1.$sf_k\", \"usd\": $sf_ku}"
+  sf_kill wrote "$sf_lp/$sf_t.jsonl" next; sf_rc=$?
+  sf_m=$(sf_mark); sf next >/dev/null; sf_rc2=$?
+  sf_r=$(sf_check "$sf_m" once "$sf_lp/ledger.jsonl,$sf_lp/checkpoints.jsonl" "$sf_sum" "$sf_l" "$sf_c" "P1.$sf_k")
+  { [ "$sf_rc" = 9 ] && [ "$sf_rc2" = 0 ] && [ "$sf_r" = ok ]; } || sf_bad="$sf_bad [$sf_t: rc=$sf_rc/$sf_rc2 $sf_r]"
+done
+[ -z "$sf_bad" ] \
+  && ok "a loop's ledger and checkpoints pulled with a local line past the offset, killed after both writes or after the first: hi2vi holds each line once and the loop spend is unchanged by the crash" \
+  || bad "an append pull killed midway double-counted a loop's lines --$sf_bad"
+# A local order that already differs from hi2vi's (another checkout's line landed between this checkout's pull and its
+# push): the file never equals hi2vi's again, so a pull killed after its write must still send nothing of hi2vi's.
+printf '{"type": "smoke_local", "mark": "local-race"}\n' >> "$SF/workflow/$sf_ev"
+sf_ctl "$(python3 -c 'import json, sys; print(json.dumps({"race": {"path": sys.argv[1], "lines": [json.dumps({"type": "agenda_added", "agenda": "cloud-race"})]}}))' "$sf_ev")"
+sf next >/dev/null; sf next >/dev/null
+sf_ord=$(python3 - "$SFS" "$SF/workflow" "$sf_ev" <<'PY'
+import base64, http.client, json, sys
+from pathlib import Path
+from urllib.parse import urlparse, quote
+u = urlparse(sys.argv[1])
+conn = http.client.HTTPConnection(u.hostname, u.port, timeout=10)
+conn.request("GET", "/_fake/file?path=" + quote(sys.argv[3]))
+c = base64.b64decode(json.loads(conn.getresponse().read())["content"])
+d = (Path(sys.argv[2]) / sys.argv[3]).read_bytes()
+print("differs" if c != d and sorted(c.splitlines()) == sorted(d.splitlines()) else "same")
+PY
+)
+sf_add "$sf_ev" '{"type": "agenda_added", "agenda": "cloud-order"}'
+sf_kill wrote "$sf_ev" next; sf_rc=$?
+sf_m=$(sf_mark); sf next >/dev/null; sf_rc2=$?; sf_r=$(sf_check "$sf_m" once "$sf_ev" - '"cloud-order"' '"cloud-race"' '"local-race"')
+[ "$sf_ord" = differs ] && [ "$sf_rc" = 9 ] && [ "$sf_rc2" = 0 ] && [ "$sf_r" = ok ] \
+  && ok "an event log whose order already differs from hi2vi's, its pull killed after the write: the next command sends nothing of hi2vi's, each line once" \
+  || bad "the differing-order append pull-crash row wrong -- order=$sf_ord rc=$sf_rc/$sf_rc2 $sf_r"
+sf sync --keep cloud "$sf_ev" >/dev/null; sf_m=$(sf_mark); sf next >/dev/null; sf_rc=$?; sf_r=$(sf_check "$sf_m" synced)
+[ "$sf_rc" = 0 ] && [ "$sf_r" = ok ] || bad "the event log did not settle on hi2vi's order after sync --keep cloud -- rc=$sf_rc $sf_r"
 # (e) a stale write: another checkout changes the same file between this command's begin and its commit. hi2vi refuses
 # the whole batch (409), the disk keeps this checkout's change, exit 1 though next succeeded; then the begin step's
 # mismatch refuses with nothing changed, until the two sides agree.
