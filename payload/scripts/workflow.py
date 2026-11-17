@@ -3683,6 +3683,8 @@ def normalize_id_args(args: argparse.Namespace) -> None:
     slice_arg = getattr(args, "slice", None)
     if isinstance(slice_arg, str):
         args.slice = _resolve_slice_arg(slice_arg.strip())
+    if cmd == "mark-committed" and isinstance(getattr(args, "mark_slices", None), list):
+        args.mark_slices = [_resolve_slice_arg(s.strip()) for s in args.mark_slices]
 
 
 def stale_docs(phases=None) -> dict:
@@ -4032,6 +4034,8 @@ def cmd_run_phases(args: argparse.Namespace) -> None:
     run = run_selection(phases, stream, ids or None)
     print(f"run={','.join(ids) or 'all'}")
     print(f"stream={stream or 'default'}")
+    if cloud_link_file().exists():  # a linked checkout: the waiting-commit record git gives in local mode
+        print(cloud_commits_waiting_line(phases))
     print(f"queue={','.join(p['id'] for p in run['queue']) or 'none'}")
     for pid, reason, where in run["skipped"]:
         if reason == "loop":
@@ -6296,6 +6300,8 @@ def _set_slice_status(sdir: Path, status: str, pending=None) -> str:
         data["started_at"] = now_iso()
     if status == "done":
         data["completed_at"] = now_iso()
+    else:  # a linked checkout's commit record (COMMITTED_AT) holds only while the slice stays done
+        data.pop(COMMITTED_AT, None)
     write_json(sdir / "slice.json", data)
     return old
 
@@ -6553,6 +6559,12 @@ def _drive_review_slices(pdir: Path, verdict: str) -> list:
         sdata = read_json(sdir / "slice.json")
         if sdata.get("kind") == "review" and not loop_checkpoint_slice(sdata):
             old = _set_slice_status(sdir, slice_verdict)
+            if slice_verdict == "done" and cloud_link_file().exists():
+                # a REVIEW changes no product file, so its only commit is the workflow state's, which a linked
+                # checkout never makes: its commit record is written with the verdict
+                closed = read_json(sdir / "slice.json")
+                closed[COMMITTED_AT] = now_iso()
+                write_json(sdir / "slice.json", closed)
             append_event("slice_status_changed", slice=sdata["id"], old_status=old, new_status=slice_verdict)
             driven.append((sdata["id"], old))
     return driven
@@ -12007,6 +12019,7 @@ def cmd_next(args: argparse.Namespace) -> None:
         print(line)
     if cloud_link_file().exists():  # cloud mode: hi2vi's revisions are the history, so no workflow-repo commit
         print(cloud_store_line())
+        print(cloud_commits_waiting_line())  # the waiting-commit record git gives in local mode
     # Stream context. Both lines are silent on the default stream with no parallel
     # phases, so an untouched workspace sees exactly the output it saw before.
     stream = state.get("stream")
@@ -20880,6 +20893,11 @@ def loop_rollup(pdir: Path) -> list:
     candidates += [("K", j, d) for j, d in checks if j != latest_j]
     if not candidates:
         return []
+    if cloud_link_file().exists():
+        # A linked checkout never commits workflow state, so "git holds it unchanged" never holds here, and a
+        # removed folder could only be read back from hi2vi's revisions, which no engine command reads yet: keep them.
+        return [f"rollup of {pid}: skipped in a linked checkout ({len(candidates)} closed folder(s) past keep_cycles {keep} "
+                "stay in the tree; hi2vi holds them, and no command reads a removed folder back from it yet)"]
     if not _git_available():
         return [f"warning: rollup of {pid}: git is not available here, so no closed folder leaves the tree "
                 f"({len(candidates)} past keep_cycles {keep})"]
@@ -22263,6 +22281,73 @@ def cloud_store_line() -> str:
     return f"store=cloud server={link.get('server')} project={link.get('project_id')}"
 
 
+# The waiting-commit record of a linked checkout. In local mode a `done` slice whose slice.json the workflow repo
+# has not committed is a commit that waits (the do-* skills read git); a linked checkout never commits workflow
+# state (hi2vi's revisions are the history), so there the record is explicit: `mark-committed <slice>` writes
+# `committed_at` into slice.json (a truth file: it syncs) after the slice's product commit, or right after its
+# finish when it changed no product file. A slice leaving `done` loses it; a second finish keeps it (as a second
+# finish-slice after a commit never waits in git). Slices done before the link were committed (link refuses an
+# unclean workflow repo), so only those finished at or after link.json's `linked_at` can wait. Local mode never
+# reads, writes or prints any of it.
+COMMITTED_AT = "committed_at"
+
+
+def cloud_commits_waiting(phases=None) -> list:
+    """The ids of the done slices without `committed_at`, finished at or after the link, in finish order, across
+    every active phase (a linked checkout runs no streams)."""
+    try:
+        linked_at = _meter_ts(read_json(cloud_link_file()).get("linked_at"))
+    except (OSError, ValueError, AttributeError):
+        linked_at = None  # an unreadable link: every unmarked done slice is listed, the conservative answer
+    rows = []
+    for phase in phases if phases is not None else all_active_phases():
+        for s in phase.get("slices", []):
+            if not isinstance(s, dict) or s.get("status") != "done" or s.get(COMMITTED_AT):
+                continue
+            done = _meter_ts(s.get("completed_at"))
+            if linked_at is not None and done is not None and done < linked_at:
+                continue
+            rows.append((done if done is not None else float("inf"), len(rows), str(s.get("id"))))
+    return [sid for _done, _n, sid in sorted(rows)]
+
+
+def cloud_commits_waiting_line(phases=None) -> str:
+    """`next`'s and `run-phases`' line in a linked checkout: the do-* skills read it in place of git's answer."""
+    waiting = cloud_commits_waiting(phases)
+    return f"commits_waiting={','.join(waiting) if waiting else 'none'}"
+
+
+def mark_committed(args: argparse.Namespace) -> None:
+    """A linked checkout's waiting-commit record: `committed_at` on each named done slice. All or nothing."""
+    if not cloud_link_file().exists():
+        raise SystemExit("mark-committed is for a linked checkout: in local mode the workflow repo's commit of a slice's "
+                         "slice.json is the record (nothing was written)")
+    targets, problems = [], []
+    for sid in dict.fromkeys(args.mark_slices):
+        sdir = require_slice(sid)
+        data = read_json(sdir / "slice.json")
+        if data.get("status") != "done":
+            problems.append(f"{sid} is {data.get('status')}, not done")
+        else:
+            targets.append((sid, sdir, data))
+    if problems:
+        raise SystemExit(f"mark-committed: refused -- {'; '.join(problems)}: only a done slice's commit is recorded "
+                         "(nothing was written)")
+    marked = False
+    for sid, sdir, data in targets:
+        if data.get(COMMITTED_AT):
+            print(f"{sid}: already marked (committed_at={data[COMMITTED_AT]})")
+            continue
+        data[COMMITTED_AT] = now_iso()
+        write_json(sdir / "slice.json", data)
+        append_event("slice_commit_recorded", slice=sid)
+        print(f"{sid}: committed_at={data[COMMITTED_AT]}")
+        marked = True
+    if marked:
+        rebuild_index_and_state()
+    print(cloud_commits_waiting_line())
+
+
 def cloud_rebuild(rels) -> None:
     """The generated files after the disk took files from hi2vi."""
     if any(rel.startswith("docs/") for rel in rels) and (DOCS / "index.json").is_file():
@@ -23023,11 +23108,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--transcripts", action="append", metavar="DIR", help="read this projects/<slug> directory instead of discovering the session root's (repeatable)")
     p.set_defaults(func=cmd_dispatch_summary)
 
-    p = sub.add_parser("next", help="Print the current phase/slice selection (plus explain_unit=<document|book|chapter> on an explain phase, and on the default stream merge_ready=<P>:<branch> for a parallel phase done with a passing review on its branch but not merged yet, and merge_ready=<P>:<commit7> for a loop whose passing, landed checkpoint is not merged yet); when the phase's notebook is over 40,960 B, also notebook_over_budget= with up to 3 notebook_move= commands to run before the next dispatch (required form), or none when nothing can move (advisory form); for a phase with a pr block, one pr_branch=<repo|host|root>:<branch> base=<base> url=<url|none> per recorded branch, pr_waived=<note> when waived, and pr_draft=due while the phase is at its review (its REVIEW slice in_progress, in_review or pending, the phase in_review, or its acceptance gate open) with a branch unopened: the drafts open when the review would pass. In a linked checkout it first applies the web's pending agenda changes (one inbox <entry>: line each) and prints store=cloud server=<server> project=<id> after the nested lines")
+    p = sub.add_parser("next", help="Print the current phase/slice selection (plus explain_unit=<document|book|chapter> on an explain phase, and on the default stream merge_ready=<P>:<branch> for a parallel phase done with a passing review on its branch but not merged yet, and merge_ready=<P>:<commit7> for a loop whose passing, landed checkpoint is not merged yet); when the phase's notebook is over 40,960 B, also notebook_over_budget= with up to 3 notebook_move= commands to run before the next dispatch (required form), or none when nothing can move (advisory form); for a phase with a pr block, one pr_branch=<repo|host|root>:<branch> base=<base> url=<url|none> per recorded branch, pr_waived=<note> when waived, and pr_draft=due while the phase is at its review (its REVIEW slice in_progress, in_review or pending, the phase in_review, or its acceptance gate open) with a branch unopened: the drafts open when the review would pass. In a linked checkout it first applies the web's pending agenda changes (one inbox <entry>: line each) and prints store=cloud server=<server> project=<id> after the nested lines, then commits_waiting=<ids|none>: the done slices whose commit mark-committed has not recorded, in finish order")
     p.add_argument("--card", action="store_true", help="print the resume card instead: the pointer, the next action or the typed stop, the open gates, the running spans (from the newest session's subagents/*.meta.json) and the slice's file paths, computed from state, at most 2,048 bytes -- what compact-resume prints after a compaction")
     p.set_defaults(func=cmd_next)
 
-    run_help = "Writes nothing in local mode; in a linked checkout it first applies the web's pending agenda changes. The phase list and the next target of a /do-whole-phases run, recomputed from disk on every call (re-run it at each phase boundary and after a compaction). Prints run=, stream=, queue= (this stream's non-done phases of the run, in order), skipped=<P> reason=done | done (archived) | other-stream stream=<branch or default> | loop (a loop phase drives itself: /run-loop), parked=<P> (pending, its acceptance gate open, no slice pending or blocked: the run passes it), then target_phase= / target_slice= / slice_path= / next_slice= (plus notebook_over_budget= / notebook_move= when the target phase's notebook is over 40,960 B: run the moves before the dispatch; plus gate_cleared= when a cleared gate's review awaits its recorded pass), or halt=<item> status= with stop_kind= / on_words= for a pending slice and halt_reason= (any other pending or blocked phase, or a pending or blocked current slice: the whole run stops), or run_done=yes. Phase tokens are brief ids: 46 / P46 (numbered: the one P46, else the one P46-<tail>; 46-k2 names the tail), P12, or 7kq2 / P-7kq2 (a v73 id), any case. Exits 2 with refused= lines and nothing else for a token that is not a phase id, names no phase, or is a number two tailed phases share (refused=46 -- names P46-k2, P46-x4: type the tail). The plain pointer (next, works/state.json, the resume card's stop) is unchanged and still halts at a parked phase"
+    run_help = "Writes nothing in local mode; in a linked checkout it first applies the web's pending agenda changes. The phase list and the next target of a /do-whole-phases run, recomputed from disk on every call (re-run it at each phase boundary and after a compaction). Prints run=, stream=, (in a linked checkout) commits_waiting=<ids|none> (as next), queue= (this stream's non-done phases of the run, in order), skipped=<P> reason=done | done (archived) | other-stream stream=<branch or default> | loop (a loop phase drives itself: /run-loop), parked=<P> (pending, its acceptance gate open, no slice pending or blocked: the run passes it), then target_phase= / target_slice= / slice_path= / next_slice= (plus notebook_over_budget= / notebook_move= when the target phase's notebook is over 40,960 B: run the moves before the dispatch; plus gate_cleared= when a cleared gate's review awaits its recorded pass), or halt=<item> status= with stop_kind= / on_words= for a pending slice and halt_reason= (any other pending or blocked phase, or a pending or blocked current slice: the whole run stops), or run_done=yes. Phase tokens are brief ids: 46 / P46 (numbered: the one P46, else the one P46-<tail>; 46-k2 names the tail), P12, or 7kq2 / P-7kq2 (a v73 id), any case. Exits 2 with refused= lines and nothing else for a token that is not a phase id, names no phase, or is a number two tailed phases share (refused=46 -- names P46-k2, P46-x4: type the tail). The plain pointer (next, works/state.json, the resume card's stop) is unchanged and still halts at a parked phase"
     p = sub.add_parser("run-phases", help=run_help, description=run_help)
     p.add_argument("tokens", nargs="*", metavar="PHASE", help="a phase id in any brief form: 46 or P46 (numbered; 46-k2 when two phases share the number), P12, or 7kq2 or P-7kq2 (a v73 id), any case, separated by commas and/or spaces; the given order is kept and duplicates are dropped; none = every non-done phase on this stream, by order. Ranges, mode words, `worktree` and a minted id without its dash (P7kq2) are refused")
     p.set_defaults(func=cmd_run_phases)
@@ -23071,6 +23156,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("slice")
     p.add_argument("--outcome", help="one line recorded in slice.json and rendered in the phase's generated ## Slices table")
     p.set_defaults(func=finish_slice)
+
+    p = sub.add_parser("mark-committed", help="A linked checkout only (refused in local mode, nothing written): record that each named done slice's commit is in, as committed_at in its slice.json -- run it after the slice's product commit(s), or right after its finish when it changed no product file (review-phase records a passing REVIEW itself). next and run-phases list the done slices without it in commits_waiting=, the record git's uncommitted slice.json gives in local mode. Leaving done clears it. All or nothing: a slice not done refuses the call")
+    p.add_argument("mark_slices", nargs="+", metavar="slice")
+    p.set_defaults(func=mark_committed)
 
     p = sub.add_parser("set-slice-deps", help="Declare an existing slice's dependencies (v77), under new-slice --depends-on's rules: a decomposition cannot finish while a middle slice it leaves open is undeclared")
     p.add_argument("slice")

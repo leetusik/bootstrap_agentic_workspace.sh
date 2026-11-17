@@ -1170,6 +1170,19 @@ for rel in ("commit/SKILL.md", "create-phase/SKILL.md", "run-loop/SKILL.md", "ro
             "do-next-slice/reference/verdicts.md", "do-whole-phase/reference/verdicts.md",
             "do-whole-phase/reference/wave.md"):
     assert cloud_skip in (root / "payload/claude/skills" / rel).read_text(), f"{rel}: the cloud-mode commit skip"
+# A linked checkout's waiting-commit record: every place that defines "a done slice whose slice.json is
+# uncommitted is a commit that waits" (and every commit step that closes one) names its linked form.
+cloud_waits = ("In a linked checkout, a done slice whose commit waits is one `next` lists in `commits_waiting=`;"
+               " run `mark-committed <slice>` after its product commit (with no product change, right after its finish).")
+for rel, n in (("commit/SKILL.md", 1), ("run-loop/SKILL.md", 1), ("run-loop/reference/checkpoint.md", 1),
+               ("rotate-backlog/SKILL.md", 1), ("do-next-slice/reference/verdicts.md", 2),
+               ("do-whole-phase/reference/verdicts.md", 1), ("do-whole-phase/reference/wave.md", 3)):
+    assert (root / "payload/claude/skills" / rel).read_text().count(cloud_waits) == n, f"{rel}: the linked waiting-commit sentence x{n}"
+# update-workspace never stages the truth set of a linked checkout: its clean check and its commit name the update's own paths.
+uw = (root / "payload/claude/skills/update-workspace/SKILL.md").read_text()
+for pin in ("`git -C workflow status --porcelain -- . ':(exclude)works' ':(exclude)docs'`",
+            "`git -C workflow add -A -- . ':(exclude)works' ':(exclude)docs' && git -C workflow add -A -- works/templates works/.workspace-version.json`"):
+    assert pin in uw, f"update-workspace: the linked-checkout pin {pin}"
 assert "A linked checkout (`next` prints `store=cloud`) refuses `parallel-start`" in (root / "payload/claude/skills/parallel-phase/SKILL.md").read_text()
 assert "In a linked checkout, changes made on the web arrive as inbox entries" in (root / "payload/claude/skills/agenda/SKILL.md").read_text()
 # v37 negatives: the MCP-first prescription and the Playwright framing are retired
@@ -6351,6 +6364,96 @@ ib_m=$(ib_mark); ib "$IBA" run-phases > "$IBW/f.txt"; ib_rc=$?; ib_r=$(ib_check 
 if grep -rqF "$IBK" "$IBA" "$IBW"/*.txt "$IBW/fake" 2>/dev/null; then bad "the workspace key leaked into the tree, the output or the request log"; fi
 kill "$IB_PID" 2>/dev/null; wait "$IB_PID" 2>/dev/null
 echo "inbox test runtime: $(( $(date +%s) - ib_t0 ))s"
+
+echo "== Test 25: a linked checkout's waiting-commit record and update, against the local fake hi2vi -- next and run-phases print commits_waiting= (the done slices finished since the link with no committed_at, in finish order; none for one done before the link); mark-committed records it in slice.json (synced to hi2vi), refuses a slice not done and local mode with nothing written, and leaving done clears it; review-phase records a passing REVIEW itself; local mode prints no line and writes no field; --update on a linked checkout leaves changed works/ files unchanged and uncommitted and prints the update's own paths to stage, never add -A; --to-multi-repo refuses a linked install =="
+wc_t0=$(date +%s)
+newtmp WCW; WCX="$WCW/xdg"; WCA="$WCW/a"; WCL="$WCW/local"
+wc() { _h=$1; shift; ( cd "$_h" && XDG_CONFIG_HOME="$WCX" python3 workflow/scripts/workflow.py "$@" ) 2>&1; }
+wc_install() { { env GIT_AUTHOR_NAME=smoke GIT_AUTHOR_EMAIL=smoke@example.invalid GIT_COMMITTER_NAME=smoke GIT_COMMITTER_EMAIL=smoke@example.invalid sh "$BOOT" "$1" \
+  && git -C "$1/workflow" config user.email smoke@example.invalid && git -C "$1/workflow" config user.name smoke \
+  && git -C "$1/workflow" add -A && git -C "$1/workflow" commit -qm install; } > "$1.setup.txt" 2>&1 || bad "commit-record probe: the install of $1 failed -- $(tail -3 "$1.setup.txt")"; }
+# wc_seed <host>: P1 with its DECOMP done (and committed, as every pre-link slice is) and two declared slices open.
+wc_seed() { { wc "$1" new-phase --phase P1 --name One --objective toy && wc "$1" start-slice P1.DECOMP \
+  && wc "$1" new-slice --phase P1 --slice P1.S1 --name one --depends-on none && wc "$1" new-slice --phase P1 --slice P1.S2 --name two --depends-on none \
+  && wc "$1" finish-slice P1.DECOMP --outcome cut && git -C "$1/workflow" add -A && git -C "$1/workflow" commit -qm seed; } > "$1.seed.txt" 2>&1 \
+  || bad "commit-record probe: the seed of $1 failed -- $(tail -3 "$1.seed.txt")"; }
+wc_install "$WCA"; wc_install "$WCL"; wc_seed "$WCA"; wc_seed "$WCL"
+WCK="record-smoke-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+printf '%s\n' "$WCK" > "$WCW/key"; chmod 600 "$WCW/key"
+python3 "$REPO_ROOT/tests/fake_hi2vi.py" --dir "$WCW/fake" --port-file "$WCW/port" --key-file "$WCW/key" \
+  --project proj-1 --org org-1 --lifetime 900 > "$WCW/fake.txt" 2>&1 &
+WC_PID=$!
+for _ in $(seq 1 100); do [ -s "$WCW/port" ] && break; sleep 0.1; done
+WCS="http://127.0.0.1:$(cat "$WCW/port" 2>/dev/null)"
+sleep 1  # a second boundary: the link's stamp falls after the seed's finish
+printf '%s\n' "$WCK" | ( cd "$WCA" && XDG_CONFIG_HOME="$WCX" python3 workflow/scripts/workflow.py link "$WCS/projects/proj-1" ) > "$WCW/link.txt" 2>&1 || bad "commit-record probe: the link failed -- $(tail -2 "$WCW/link.txt")"
+WCJ="$WCA/workflow/works/phases/active/P1/slices"
+wc_has() { python3 -c 'import json, sys; print("yes" if "committed_at" in json.load(open(sys.argv[1])) else "no")' "$WCJ/$1/slice.json"; }
+wc_cloud_has() { python3 - "$WCS" "$1" <<'PY'
+import base64, http.client, json, sys
+from urllib.parse import urlparse, quote
+u = urlparse(sys.argv[1]); conn = http.client.HTTPConnection(u.hostname, u.port, timeout=10)
+conn.request("GET", "/_fake/file?path=" + quote(sys.argv[2])); resp = conn.getresponse()
+print("yes" if resp.status == 200 and "committed_at" in json.loads(base64.b64decode(json.loads(resp.read())["content"])) else "no")
+PY
+}
+wc_tree() { ( cd "$1" && find . -path ./.git -prune -o -type f -print | LC_ALL=C sort | while read -r f; do printf '%s %s\n' "$f" "$(sha "$f")"; done ); }
+# (a) the done-before-link DECOMP never waits; a slice finished since waits until mark-committed records it.
+wc_n0=$(wc "$WCA" next | grep '^commits_waiting=')
+wc "$WCA" start-slice P1.S1 >/dev/null; wc "$WCA" finish-slice P1.S1 --outcome one >/dev/null
+wc_n1=$(wc "$WCA" next | grep '^commits_waiting='); wc_r1=$(wc "$WCA" run-phases | grep '^commits_waiting='); wc_h1=$(wc_has P1.S1)
+wc_t1=$(wc_tree "$WCA/workflow/works"); wc_o2=$(wc "$WCA" mark-committed P1.S1 P1.S2); wc_rc2=$?; wc_t2=$(wc_tree "$WCA/workflow/works")
+wc_o3=$(wc "$WCA" mark-committed 1.S1); wc_rc3=$?
+wc_n3=$(wc "$WCA" next | grep '^commits_waiting=')
+[ "$wc_n0" = "commits_waiting=none" ] && [ "$wc_n1" = "commits_waiting=P1.S1" ] && [ "$wc_r1" = "commits_waiting=P1.S1" ] && [ "$wc_h1" = no ] \
+  && [ "$wc_rc2" = 1 ] && printf '%s\n' "$wc_o2" | grep -q "P1.S2 is todo, not done" && [ "$wc_t1" = "$wc_t2" ] \
+  && [ "$wc_rc3" = 0 ] && printf '%s\n' "$wc_o3" | grep -q "^P1.S1: committed_at=" && [ "$wc_n3" = "commits_waiting=none" ] \
+  && [ "$(wc_has P1.S1)" = yes ] && [ "$(wc_cloud_has works/phases/active/P1/slices/P1.S1/slice.json)" = yes ] \
+  && ok "a linked checkout's waiting commit: next and run-phases list a slice finished since the link (not the DECOMP done before it) in commits_waiting=, mark-committed refuses a slice not done with nothing written, then records committed_at (synced to hi2vi) and the line reads none" \
+  || bad "the linked waiting-commit record is wrong -- [$wc_n0] [$wc_n1] [$wc_r1] has=$wc_h1 rc=$wc_rc2/$wc_rc3 [$wc_n3] $(printf '%s' "$wc_o2" | head -2)"
+# (b) leaving done clears the record (it waits again once done); a second finish keeps it; review-phase records a REVIEW.
+wc "$WCA" set-slice-status P1.S1 in_progress >/dev/null; wc_h4=$(wc_has P1.S1); wc "$WCA" finish-slice P1.S1 --outcome again >/dev/null
+wc_n4=$(wc "$WCA" next | grep '^commits_waiting='); wc "$WCA" mark-committed P1.S1 >/dev/null; wc "$WCA" finish-slice P1.S1 --outcome third >/dev/null
+wc_n5=$(wc "$WCA" next | grep '^commits_waiting=')
+{ wc "$WCA" start-slice P1.S2 && wc "$WCA" finish-slice P1.S2 --outcome two && wc "$WCA" mark-committed P1.S2 && wc "$WCA" accept-gate P1 --waive --note toy \
+  && wc "$WCA" start-slice P1.REVIEW && wc "$WCA" review-phase P1 --verdict pass; } > "$WCW/review.txt" 2>&1; wc_rc6=$?
+wc_n6=$(wc "$WCA" next | grep '^commits_waiting=')
+[ "$wc_h4" = no ] && [ "$wc_n4" = "commits_waiting=P1.S1" ] && [ "$wc_n5" = "commits_waiting=none" ] && [ "$wc_rc6" = 0 ] \
+  && [ "$wc_n6" = "commits_waiting=none" ] && [ "$(wc_has P1.REVIEW)" = yes ] \
+  && ok "leaving done clears committed_at and the slice waits again once done; a second finish-slice keeps it; review-phase --verdict pass records the REVIEW's commit itself" \
+  || bad "the record's lifecycle is wrong -- has=$wc_h4 [$wc_n4] [$wc_n5] rc=$wc_rc6 [$wc_n6] $(tail -2 "$WCW/review.txt")"
+# (c) local mode: no line, no field; mark-committed is refused with nothing written.
+wc "$WCL" start-slice P1.S1 >/dev/null; wc "$WCL" finish-slice P1.S1 --outcome one >/dev/null
+wc_ln=$(wc "$WCL" next); wc_lr=$(wc "$WCL" run-phases)
+wc_t7=$(wc_tree "$WCL/workflow"); wc_o7=$(wc "$WCL" mark-committed P1.S1); wc_rc7=$?; wc_t8=$(wc_tree "$WCL/workflow")
+! printf '%s\n%s\n' "$wc_ln" "$wc_lr" | grep -q 'commits_waiting' && ! grep -rq committed_at "$WCL/workflow/works" \
+  && [ "$wc_rc7" = 1 ] && printf '%s\n' "$wc_o7" | grep -q "^mark-committed is for a linked checkout" && [ "$wc_t7" = "$wc_t8" ] \
+  && ok "local mode: next and run-phases print no commits_waiting= line, no slice.json gains committed_at, and mark-committed is refused with nothing written" \
+  || bad "local mode leaked the linked record -- rc=$wc_rc7 $(printf '%s\n%s\n' "$wc_ln" "$wc_lr" | grep commits_waiting) $(grep -rl committed_at "$WCL/workflow/works" | head -2)"
+# (d) --update on the linked checkout: changed works/ files stay as they are, uncommitted, with nothing staged; the report names the
+# update's own paths to stage (never add -A), and those take no works/ or docs/ file but the templates and the version marker.
+printf 'plan, edited after the last command\n' > "$WCJ/P1.S2/plan.md"; printf 'a topic\n' > "$WCA/workflow/works/phases/active/P1/topics-wc.md"
+wc_s9=$(sha "$WCJ/P1.S2/plan.md"); wc_head=$(git -C "$WCA/workflow" rev-parse HEAD)
+( cd "$WCA" && XDG_CONFIG_HOME="$WCX" sh "$BOOT" --update . ) > "$WCW/update.txt" 2>&1; wc_rc9=$?
+wc_st9=$(git -C "$WCA/workflow" status --porcelain -- works/phases/active/P1)
+git -C "$WCA/workflow" diff --cached --quiet; wc_cached=$?
+wc_add=$(sed -n "s/^  linked to hi2vi: .*never add -A: //p" "$WCW/update.txt")
+( cd "$WCA" && eval "$wc_add" ) > /dev/null 2>&1; wc_rc10=$?
+wc_staged=$(git -C "$WCA/workflow" diff --cached --name-only | grep -E '^(works|docs)/' | grep -vE '^works/(templates/|\.workspace-version\.json$)')
+git -C "$WCA/workflow" reset -q
+[ "$wc_rc9" = 0 ] && [ "$(sha "$WCJ/P1.S2/plan.md")" = "$wc_s9" ] && [ "$(git -C "$WCA/workflow" rev-parse HEAD)" = "$wc_head" ] && [ "$wc_cached" = 0 ] \
+  && printf '%s\n' "$wc_st9" | grep -q 'P1.S2/plan.md' && printf '%s\n' "$wc_st9" | grep -q 'topics-wc.md' \
+  && [ -n "$wc_add" ] && [ "$wc_rc10" = 0 ] && [ -z "$wc_staged" ] && ! grep -q "add -A && git -C workflow commit" "$WCW/update.txt" \
+  && ok "--update on a linked checkout exits 0, leaves changed works/ files unchanged and uncommitted with nothing staged, and its report's staging commands (never add -A) take no works/ or docs/ file but the templates and the version marker" \
+  || bad "--update on a linked checkout went wrong -- rc=$wc_rc9/$wc_rc10 cached=$wc_cached staged=[$wc_staged] add=[$wc_add] $(tail -3 "$WCW/update.txt")"
+# (e) --to-multi-repo refuses a linked install, naming unlink, with nothing written.
+wc_t11=$(wc_tree "$WCA"); XDG_CONFIG_HOME="$WCX" sh "$BOOT" --to-multi-repo "$WCA" --dry-run > "$WCW/convert.txt" 2>&1; wc_rc11=$?; wc_t12=$(wc_tree "$WCA")
+[ "$wc_rc11" != 0 ] && grep -q "is linked to hi2vi (cloud mode)" "$WCW/convert.txt" && grep -q "unlink" "$WCW/convert.txt" && [ "$wc_t11" = "$wc_t12" ] \
+  && ok "--to-multi-repo refuses a linked install (its workflow repo is no backup), naming unlink, with nothing written" \
+  || bad "--to-multi-repo did not refuse a linked install -- rc=$wc_rc11 $(head -4 "$WCW/convert.txt")"
+if grep -rqF "$WCK" "$WCA" "$WCL" "$WCW"/*.txt "$WCW/fake" 2>/dev/null; then bad "the workspace key leaked into the tree, the output or the request log"; fi
+kill "$WC_PID" 2>/dev/null; wait "$WC_PID" 2>/dev/null
+echo "commit-record test runtime: $(( $(date +%s) - wc_t0 ))s"
 
 # ---------------------------------------------------------------------------
 echo

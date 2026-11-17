@@ -8,7 +8,7 @@ A checkpoint `<P>.K<j>` (kind `review`) reviews one window of the loop: the cycl
 2. Plan it (below). From here the tick's in-flight lines carry `kind=checkpoint`.
 3. `loop-cycle-dispatch <P>.K<j>`, then the Agent call on the **high** row (`executor-route <P>.K<j>`: a review routes high by kind).
 4. On its return, `record-dispatch`, then `loop-checkpoint <P> --verdict pass|changes_requested|blocked --summary "…"` (never `loop-cycle-close`).
-5. Commit (at root `chore(<P>): checkpoint K<j> <verdict>`; nested, the host commit first, as for a cycle).
+5. Commit (at root `chore(<P>): checkpoint K<j> <verdict>`; nested, the host commit first, as for a cycle). In a linked checkout, a done slice whose commit waits is one `next` lists in `commits_waiting=`; run `mark-committed <slice>` after its product commit (with no product change, right after its finish).
 6. After a `pass`: `loop-checkpoint <P> --landed` (it records that commit as the merge point and refuses while the phase folder holds uncommitted changes), then commit again: the record rides in that commit. The default stream now sees `merge_ready=<P>:<sha7>`.
 
 `overdue` on a checkpoint: `TaskStop` the span, then `loop-checkpoint <P> --verdict blocked --summary "overdue"`.
