@@ -2942,8 +2942,15 @@ pj="$AG/works/phases/active/$p2/phase.json"
 grep -qxF -e '- Open agenda items: `2`' "$AG/works/backlog.md" && [ "$(sha "$AG/works/agenda.md")" != "$pg0" ] \
   && ok "the backlog counts Open and In progress items, never Deferred ones (2), and works/agenda.md follows the items" \
   || bad "the backlog count or the agenda page did not follow -- $(grep -F 'agenda' "$AG/works/backlog.md")"
-# (f) validate: a dangling link is a warning (validate passes); a corrupt agenda.json leaves rebuild at 0
-# and fails validate, naming the folder.
+# (f) validate: a `Z` stamp (JavaScript's toISOString form) passes on every Python, 3.9 and 3.10 included
+# (the engine reads its own stamp form, never fromisoformat); a dangling link is a warning (validate passes);
+# a corrupt agenda.json leaves rebuild at 0 and fails validate, naming the folder.
+z_dir=$(cd "$AG/works/agenda" && ls -d A*-* | grep -vx 'A13-n1' | head -n 1)
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["changed_at"]="2026-11-17T10:00:00.123Z"; open(p,"w").write(json.dumps(d, indent=2)+"\n")' "$AG/works/agenda/$z_dir/agenda.json"
+z_val=$(ag validate 2>&1); z_rc=$?
+[ -n "$z_dir" ] && [ "$z_rc" -eq 0 ] && ! printf '%s\n' "$z_val" | grep -q "agenda/$z_dir" \
+  && ok "an agenda item whose changed_at ends in Z (2026-11-17T10:00:00.123Z) passes validate on $(python3 -V 2>&1)" \
+  || bad "a Z changed_at failed validate on $(python3 -V 2>&1) -- $z_dir / $z_rc -- $(printf '%s\n' "$z_val" | grep -i agenda)"
 python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["agenda"]="A77-zz"; open(p,"w").write(json.dumps(d, indent=2)+"\n")' "$pj"
 v1=$(ag validate 2>&1); v1_rc=$?
 printf '{' > "$AG/works/agenda/A13-n1/agenda.json"

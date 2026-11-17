@@ -708,7 +708,14 @@ DRAFTER_LINE_RE = re.compile(r"drafter(?:\s+model)?\s*[:=|]\s*(.*)$", re.IGNOREC
 
 
 def now_iso() -> str:
-    return datetime.now().astimezone().replace(microsecond=0).isoformat()
+    """The engine's one stamp: local time to the second with its offset (`2026-11-17T15:40:24+09:00`). A zone
+    whose offset is not whole minutes (a POSIX TZ such as `XXX-09:00:30`) would write `+09:00:30`, outside the
+    agenda's stamp form (AGENDA_STAMP_FORM), so the same instant is written in UTC (`+00:00`) instead."""
+    now = datetime.now().astimezone().replace(microsecond=0)
+    offset = now.utcoffset()
+    if offset is not None and offset.total_seconds() % 60:
+        now = now.astimezone(timezone.utc)
+    return now.isoformat()
 
 
 def timestamp() -> str:
@@ -2704,12 +2711,61 @@ def _agenda_order_stored(item):
     return item.get("order") if _agenda_order(item) is not None else None
 
 
-def _agenda_changed(item) -> float:
-    """An item's `changed_at` as a POSIX time (0 when unreadable): ISO stamps of different offsets compare."""
+# The agenda's one stamp rule (P66 F7): `created_at` and `changed_at` are written by the engine (now_iso) and,
+# next, by the web and the sync (JavaScript's toISOString writes `...Z`), so the forms a stamp may take are the
+# engine's rule, parsed here by the engine itself -- never `datetime.fromisoformat`, whose accepted forms widened
+# at Python 3.11 (3.9 and 3.10 refuse `Z`). The form: a real date and time, an optional fraction of 1-9 digits
+# (past microseconds dropped, never rounded up), and a REQUIRED offset, `Z` or `+HH:MM`/`-HH:MM` (at most 23:59).
+# A stamp with no offset is refused: the instant it names would depend on the reading machine's zone. ASCII digits
+# only (`\d` would take any Unicode digit). Validate (validate_agenda) and the listing order (agenda_sorted) both
+# read through `_agenda_instant`, so their answer is the same on every Python and in every zone and locale.
+AGENDA_STAMP_FORM = "YYYY-MM-DDTHH:MM:SS, an optional .fraction, then Z or +HH:MM/-HH:MM (2026-11-17T10:00:00Z)"
+AGENDA_STAMP_RE = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})"
+                             r"(?:\.([0-9]{1,9}))?(Z|[+-][0-9]{2}:[0-9]{2})?")
+_AGENDA_EPOCH = datetime(1970, 1, 1)
+
+
+def _agenda_instant(value):
+    """A stored agenda stamp as a POSIX time (float seconds), or None when it is not in AGENDA_STAMP_FORM: not a
+    string, no offset, a date or time that does not exist, an offset past 23:59. Pure arithmetic on the parsed
+    fields (no platform time call), and one division of a whole number of microseconds, so two spellings of one
+    instant give the same float."""
+    match = AGENDA_STAMP_RE.fullmatch(value) if isinstance(value, str) else None
+    if match is None or match.group(8) is None:
+        return None
+    year, month, day, hour, minute, second = (int(part) for part in match.group(1, 2, 3, 4, 5, 6))
+    micro = int((match.group(7) or "").ljust(6, "0")[:6])
+    zone = match.group(8)
+    offset = 0
+    if zone != "Z":
+        hours, minutes = int(zone[1:3]), int(zone[4:6])
+        if hours > 23 or minutes > 59:
+            return None
+        offset = (hours * 60 + minutes) * (-1 if zone[0] == "-" else 1)
     try:
-        return datetime.fromisoformat(_agenda_str(item, "changed_at")).timestamp()
-    except (TypeError, ValueError, OverflowError, OSError):
-        return 0.0
+        local = datetime(year, month, day, hour, minute, second, micro)
+    except ValueError:
+        return None  # month 13, February 30, hour 24, second 60, year 0
+    return ((local - _AGENDA_EPOCH) - timedelta(minutes=offset)).total_seconds()
+
+
+def _agenda_stamp_problem(value):
+    """Why a stored `created_at`/`changed_at` value is not an agenda stamp (the text after the key in validate's
+    line), or None when `_agenda_instant` reads it."""
+    if _agenda_instant(value) is not None:
+        return None
+    got = _agenda_value_text(value)
+    if isinstance(value, str) and _agenda_instant(value + "Z") is not None:
+        return f"has no UTC offset, so the instant it names depends on the reading machine's time zone: write {AGENDA_STAMP_FORM}, got {got}"
+    return f"must be a date-time string {AGENDA_STAMP_FORM}, got {got}"
+
+
+def _agenda_changed(item) -> tuple:
+    """An item's `changed_at` as a sort key, newest last: `(True, POSIX time)` when `_agenda_instant` reads it, so
+    stamps of different offsets compare by the instant they name, else `(False, 0.0)`, which a newest-first
+    (reverse) sort puts after every readable stamp, whatever its year."""
+    instant = _agenda_instant(_agenda_str(item, "changed_at"))
+    return (False, 0.0) if instant is None else (True, instant)
 
 
 def agenda_sorted(items) -> list:
@@ -5761,17 +5817,6 @@ def _agenda_value_text(value, json_form: bool = False) -> str:
     return text if len(text) <= 80 else text[:77] + "..."
 
 
-def _agenda_stamp_ok(value) -> bool:
-    """True when `value` is a string `datetime.fromisoformat` reads (`created_at`, `changed_at`)."""
-    if not isinstance(value, str):
-        return False
-    try:
-        datetime.fromisoformat(value)
-    except ValueError:
-        return False
-    return True
-
-
 def validate_agenda(errors: list, warnings: list) -> None:
     """The agenda's checks (P66). ERRORS, each naming the item's folder: no readable agenda.json, an `id` other
     than the folder name, a folder name not shaped `A<n>-<tail>`, a missing AGENDA_KEYS key, a stored status
@@ -5781,7 +5826,8 @@ def validate_agenda(errors: list, warnings: list) -> None:
     one honestly: an item deleted on one stream while another stream's phase linked it), with what clears it,
     and an archived phase.json or a deferred.json too unreadable for agenda-delete to clear a link in. Every key's
     TYPE is checked too (P66 F4): `note`, `outcome` and `reason` a string or null, `created_at` and `changed_at`
-    strings `datetime.fromisoformat` reads, `order` a finite number (a bool is not one)."""
+    stamps `_agenda_instant` reads (AGENDA_STAMP_FORM, an offset required; P66 F7), `order` a finite number (a
+    bool is not one)."""
     _items, problems = agenda_read_all()
     for folder, why in problems:
         errors.append(f"agenda item {shown(folder)}: {why}")
@@ -5811,8 +5857,9 @@ def validate_agenda(errors: list, warnings: list) -> None:
             if data.get(key) is not None and not isinstance(data.get(key), str):
                 errors.append(f"{where}: {key} must be a string or null, got {_agenda_value_text(data.get(key))}")
         for key in ("created_at", "changed_at"):
-            if key in data and not _agenda_stamp_ok(data.get(key)):
-                errors.append(f"{where}: {key} must be an ISO date-time string, got {_agenda_value_text(data.get(key))}")
+            problem = _agenda_stamp_problem(data.get(key)) if key in data else None
+            if problem:
+                errors.append(f"{where}: {key} {problem}")
         if status == "open" and _agenda_order(data) is None:
             errors.append(f"{where}: an Open item's order must be a number, got {_agenda_value_text(data.get('order'))}")
         if status != "open" and data.get("order") is not None:
