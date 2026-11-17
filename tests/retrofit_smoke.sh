@@ -2968,6 +2968,14 @@ ls_rb=$(ag rebuild 2>&1); ls_rb_rc=$?; ls_nx=$(ag next 2>&1); ls_nx_rc=$?; ls_v=
   && printf '%s\n' "$ls_v" | grep -q "works/agenda/$ls_dir: status \[1\]" && ! printf '%s\n' "$ls_rb" "$ls_nx" "$ls_v" | grep -q Traceback \
   && ok "a list-valued agenda status leaves rebuild and next at exit 0 and fails validate naming works/agenda/$ls_dir" \
   || bad "a list-valued agenda status broke a read or passed validate -- $ls_dir / $ls_rb_rc / $ls_nx_rc / $ls_v_rc -- $(printf '%s\n' "$ls_rb" "$ls_nx" "$ls_v" | grep -iE 'agenda|Traceback|Error' | tail -3)"
+# The same item is refused as unusable, in one line naming its file and agenda-delete, never "reopen it first" (which
+# would be refused too); nothing is written. A13-n1 goes first: every agenda command reads every item.
+rm -rf "$AG/works/agenda/A13-n1"; ls_t0=$(ag_tree); ls_df=$(ag agenda-defer "$ls_dir" 2>&1); ls_df_rc=$?
+[ -n "$ls_dir" ] && [ "$ls_df_rc" -eq 1 ] && [ "$(printf '%s\n' "$ls_df" | wc -l | tr -d ' ')" = 1 ] \
+  && printf '%s\n' "$ls_df" | grep -qF "works/agenda/$ls_dir/agenda.json" && printf '%s\n' "$ls_df" | grep -qF "agenda-delete $ls_dir" \
+  && ! printf '%s\n' "$ls_df" | grep -q reopen && [ "$(ag_tree)" = "$ls_t0" ] \
+  && ok "agenda-defer of an item with a list-valued status is refused in one line naming works/agenda/$ls_dir/agenda.json and agenda-delete, not reopen; nothing written" \
+  || bad "an unusable agenda status is refused without its file or way out -- rc=$ls_df_rc -- $(printf '%s\n' "$ls_df" | head -2 | cut -c1-240)"
 # (g) two branches each add an item: the merge conflicts in generated files only, and either side + rebuild lists both.
 newtmp AGB; AB="$AGB/ws"; sh "$BOOT" "$AB" --at-root --name "Agenda" --summary "agenda branches" >/dev/null 2>&1 || bad "agenda probe: second install failed"
 ab() { ( cd "$AB" && python3 scripts/workflow.py "$@" ); }

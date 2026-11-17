@@ -2706,6 +2706,14 @@ def _agenda_link_value(data):
     return value if isinstance(value, str) and value else None
 
 
+def _agenda_link_shown(value) -> str:
+    """A stored link for a one-line refusal (P66 F8): as stored when it is a short one-line string (every id), else
+    bounded and escaped (`_agenda_value_text`), so a hand-edited value never breaks or floods the line."""
+    if isinstance(value, str) and value and len(value) <= 80 and len(value.splitlines()) == 1:
+        return value
+    return _agenda_value_text(value)
+
+
 def _agenda_order_stored(item):
     """`order` as stored, for a generated view: the stored number when `_agenda_order` reads one, else None."""
     return item.get("order") if _agenda_order(item) is not None else None
@@ -2799,17 +2807,23 @@ def agenda_read_all(strict: bool = False) -> tuple:
             data = read_json(path)
         except (OSError, ValueError) as exc:
             if strict:
-                raise SystemExit(f"{shown(path)} is not readable JSON ({exc.__class__.__name__}): fix or delete it")
+                raise SystemExit(f"{shown(path)} is not readable JSON ({exc.__class__.__name__}): {_agenda_unreadable_fix(aid)}")
             problems.append((AGENDA / aid, f"agenda.json is not readable JSON ({exc.__class__.__name__})"))
             continue
         if not isinstance(data, dict):
             if strict:
-                raise SystemExit(f"{shown(path)} is not a JSON object: fix or delete it")
+                raise SystemExit(f"{shown(path)} is not a JSON object: {_agenda_unreadable_fix(aid)}")
             problems.append((AGENDA / aid, "agenda.json is not a JSON object"))
             continue
         data["id"] = aid
         items.append(data)
     return agenda_sorted(items), problems
+
+
+def _agenda_unreadable_fix(aid: str) -> str:
+    """The fix in the strict read's refusal (P66 F8): every agenda command reads every item first, agenda-delete
+    included, so the way out is a hand edit or removing the folder, never another agenda command."""
+    return f"fix it by hand, or remove its folder {shown(AGENDA / aid)} (every agenda command, agenda-delete too, reads it first)"
 
 
 def agenda_items() -> list:
@@ -12441,7 +12455,7 @@ def promote_deferred(args: argparse.Namespace) -> None:
         # no phase's link, and the promoted job keeps its own either way.
         agenda = data.get("agenda") or None
         if agenda is not None and not agenda_item_exists(agenda):
-            raise SystemExit(f"{did} is linked to {agenda}, which names no agenda item: {WORKFLOW_CMD} agenda-unlink --deferred {did} "
+            raise SystemExit(f"{did} is linked to {_agenda_link_shown(agenda)}, which names no agenda item: {WORKFLOW_CMD} agenda-unlink --deferred {did} "
                              "first; refused, nothing was written")
         ns = argparse.Namespace(phase=phase_id, name=args.phase_name or data["title"], objective=args.phase_objective or data["title"], order=None, agenda=agenda)
         new_phase(ns)
@@ -12596,6 +12610,22 @@ def _agenda_renumbered_line(count: int) -> str:
     return f"renumbered the open order 1-{count}: no room was left between two orders"
 
 
+def _agenda_unusable_status(item: dict):
+    """The one line refusing a command that needs an item's status when its stored `status` is not one of the
+    four (P66 F8; `_agenda_status` reads it as None), else None. Checked before any transition wording, which
+    would read the value as a state the operator chose and advise a command that refuses too (reopen, for an
+    item that is not Deferred, Solved or Dropped either). It names the file, the key, the four words and the
+    two ways out (a hand edit, or agenda-delete, which needs no status); the stored value is shown bounded and
+    escaped (`_agenda_value_text`), so the line stays one line."""
+    if _agenda_status(item) is not None:
+        return None
+    aid = item["id"]
+    got = (f"'s stored status {_agenda_value_text(item['status'])} is not" if "status" in item
+           else " has no stored status, which must be")
+    return (f"{aid}{got} one of open, deferred, solved, dropped: set \"status\" in {shown(AGENDA / aid / 'agenda.json')} "
+            f"to one of them by hand (then validate), or remove the item: {WORKFLOW_CMD} agenda-delete {aid}")
+
+
 def _agenda_refusal(item: dict, to_status: str) -> str:
     """The one line refusing a status change: the item and its shown status, then why."""
     aid, word = item["id"], agenda_shown_status(item)
@@ -12679,6 +12709,8 @@ def agenda_move(args: argparse.Namespace) -> None:
     target_id = args.before_id if args.before_id is not None else args.after_id
     (item,), every = _agenda_named(args.agenda_ids)
     aid = item["id"]
+    if _agenda_unusable_status(item):  # P66 F8: "reopen it first" would be refused too
+        raise SystemExit(_agenda_unusable_status(item))
     if _agenda_status(item) != "open":
         raise SystemExit(f"{aid} is {agenda_shown_status(item)}: only an Open item moves; reopen it first")
     open_now = _agenda_open(every)
@@ -12689,6 +12721,8 @@ def agenda_move(args: argparse.Namespace) -> None:
         target = next((other for other in every if other["id"] == target_id), None)
         if target is None:
             raise SystemExit(f"{target_id} names no agenda item")
+        if _agenda_unusable_status(target):
+            raise SystemExit(_agenda_unusable_status(target))
         if _agenda_status(target) != "open":
             raise SystemExit(f"{target_id} is {agenda_shown_status(target)}: an item moves only beside an Open item")
         index = others.index(target) + (1 if args.after_id is not None else 0)
@@ -12714,6 +12748,10 @@ def agenda_move(args: argparse.Namespace) -> None:
 def _agenda_change_status(args: argparse.Namespace, to_status: str, allowed: set, event: str, verb: str) -> None:
     """Defer, solve, drop or reopen every named item, or none: every transition is checked first."""
     items, every = _agenda_named(args.agenda_ids)
+    for item in items:  # an unusable stored status first (P66 F8): no transition wording fits it
+        unusable = _agenda_unusable_status(item)
+        if unusable:
+            raise SystemExit(unusable)
     for item in items:
         if _agenda_status(item) not in allowed:
             raise SystemExit(_agenda_refusal(item, to_status))
@@ -13131,8 +13169,12 @@ def agenda_link(args: argparse.Namespace) -> None:
     if target["agenda"] == aid:
         print(f"{hid} is linked to {aid} already; nothing changed")
         return
+    if target["agenda"] is not None and _agenda_link_value(target) is None:  # P66 F8: not an id ("" or not a string)
+        raise SystemExit(f"{hid}'s stored \"agenda\" in {shown(target['path'])} is {_agenda_value_text(target['agenda'])}, not an "
+                         f"agenda item id: {WORKFLOW_CMD} agenda-unlink --{'phase' if key == 'phase' else 'deferred'} {hid} "
+                         f"removes the key, then link again")
     if target["agenda"] is not None:
-        raise SystemExit(f"{hid} is linked to {target['agenda']}: unlink it first")
+        raise SystemExit(f"{hid} is linked to {_agenda_link_shown(target['agenda'])}: unlink it first")
     _agenda_set_link(target, aid)
     append_event("agenda_linked", agenda=aid, **{key: hid})
     rebuild_index_and_state()
@@ -13147,7 +13189,7 @@ def agenda_unlink(args: argparse.Namespace) -> None:
     _agenda_set_link(target, None)
     append_event("agenda_unlinked", agenda=target["agenda"], **{key: hid})
     rebuild_index_and_state()
-    print(f"unlinked {hid} from {target['agenda']}")
+    print(f"unlinked {hid} from {_agenda_link_shown(target['agenda'])}")
 
 
 ONE_LINE_USAGE_COMMANDS = set()  # filled by _one_line_usage_errors as main() registers each agenda parser
