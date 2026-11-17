@@ -6730,12 +6730,24 @@ _REPO_PREFIX = None
 def _repo_prefix() -> str:
     """The workspace root's path inside the git repo ('' at the repo root).
 
-    `git show <ref>:<path>` and `git ls-tree` take repo-relative paths, so every
-    cross-ref read below prefixes the workspace-relative path with this."""
+    `git show <ref>:<path>` and `git cat-file <ref>:<path>` read the path from the tree's root, so every
+    cross-ref read below prefixes the workspace-relative path with this. `git ls-tree` reads its path
+    relative to the working directory (the workspace root, where `_git` runs), so a prefixed path goes
+    only through `_ls_tree`, which reads from the repo's top. A pathspec (`git log/diff/status -- <path>`)
+    is working-directory-relative too: give it the workspace-relative path, never a prefixed one."""
     global _REPO_PREFIX
     if _REPO_PREFIX is None:
         _REPO_PREFIX = _git(["rev-parse", "--show-prefix"], check=False).stdout.strip()
     return _REPO_PREFIX
+
+
+def _ls_tree(ref: str, rel: str):
+    """`git ls-tree --name-only` of the workspace-relative folder `rel` (ending in `/`) at `ref`, read from the
+    repo's top: `--full-tree` makes git take the prefixed path from the top, not from the working directory,
+    so a workspace installed in a subfolder of its repo lists its own folder, not `<prefix><prefix><rel>`
+    (P66 F9). The printed names are full repo paths (`--full-tree` implies `--full-name`); at the repo root,
+    and in a nested install (whose `workflow/` is its own repo), they are what a plain `ls-tree` printed."""
+    return _git(["ls-tree", "--full-tree", "--name-only", ref, f"{_repo_prefix()}{rel}"], check=False)
 
 
 def _json_at_ref(ref: str, rel: str):
@@ -6759,12 +6771,13 @@ def _phases_at_ref(ref: str):
     Lets the gate read another stream's state (main, `origin/main`, a phase branch)
     without switching checkouts -- pre-merge, main's copy of a phase branch's state is stale.
     """
-    proc = _git(["ls-tree", "--name-only", ref, f"{_repo_prefix()}works/phases/active/"], check=False)
+    proc = _ls_tree(ref, "works/phases/active/")
     if proc.returncode != 0:
         return None
+    prefix = _repo_prefix()
     phases = []
     for line in proc.stdout.splitlines():
-        entry = line.strip().rstrip("/")
+        entry = line.strip().rstrip("/")  # a full repo path
         if not entry:
             continue
         raw = _git(["show", f"{ref}:{entry}/phase.json"], check=False)
@@ -6774,7 +6787,7 @@ def _phases_at_ref(ref: str):
             data = json.loads(raw.stdout)
         except ValueError:
             continue
-        data.setdefault("path", entry)
+        data.setdefault("path", entry[len(prefix):] if prefix and entry.startswith(prefix) else entry)  # workspace-relative, as all_active_phases
         phases.append(data)
     phases.sort(key=lambda d: (d.get("order", 999999), id_sort_key(d.get("id", ""), d.get("created_at"))))  # phase_dirs' order
     return phases
@@ -6786,12 +6799,12 @@ def _slices_at_ref(ref: str, phase_id: str):
     The cross-stream half of `_phases_at_ref`: a phase branch's slice progress exists only on
     that branch until the merge, so reading it needs the tree at the ref, not the checkout.
     """
-    proc = _git(["ls-tree", "--name-only", ref, f"{_repo_prefix()}works/phases/active/{phase_id}/slices/"], check=False)
+    proc = _ls_tree(ref, f"works/phases/active/{phase_id}/slices/")
     if proc.returncode != 0:
         return None
     slices = []
     for line in proc.stdout.splitlines():
-        entry = line.strip().rstrip("/")
+        entry = line.strip().rstrip("/")  # a full repo path
         if not entry:
             continue
         raw = _git(["show", f"{ref}:{entry}/slice.json"], check=False)
@@ -12952,7 +12965,7 @@ def _agenda_find_cut(stream: str) -> dict:
                 continue
         elif sha in boundary or not parents.get(sha) and _git(["rev-parse", "--is-shallow-repository"], check=False).stdout.strip() == "true":
             break  # the history stops here (a shallow clone): the stamp may lie further back
-        names = lambda folder: _git(["ls-tree", "--name-only", sha, f"{prefix}works/phases/{folder}/"], check=False).stdout.split()  # noqa: E731
+        names = lambda folder: _ls_tree(sha, f"works/phases/{folder}/").stdout.split()  # noqa: E731 - full repo paths
         base = (phase_execution(own) or {}).get("base_branch")
         return {"sha": sha, "chain": line[:i], "parents": parents, "base": base if isinstance(base, str) and base else None,
                 "active": {Path(n).name for n in names("active")}, "archived": [Path(n).name for n in names("archived")]}
@@ -12962,15 +12975,23 @@ def _agenda_find_cut(stream: str) -> dict:
     return {"unknown": f"no commit on this branch's history stamps {stream} (commit the stamp first)"}
 
 
-def _agenda_cut_owns(phase_id: str, cut: dict) -> bool:
-    """Rows 2 to 4 of `agenda_phase_elsewhere`'s table, for an active phase not stamped with this stream."""
+def _agenda_cut_row(phase_id: str, cut: dict):
+    """Rows 2 to 4 of `agenda_phase_elsewhere`'s table, for an active phase not stamped with this stream: None when
+    it is born here (row 4, own), "cut" (row 2: it was there at the cut), or, for row 3 (the oldest commit since the
+    cut that holds it is a merge commit), "merged" when one of that merge's other parents holds it (it came from the
+    branch merged in) and "inside" when none does (it was first committed inside the merge commit itself). The two
+    row-3 answers only choose the advice's words (P66 F9); both are another stream's."""
     if phase_id in cut["active"] or _agenda_archived_holds(cut["archived"], phase_id):
-        return False  # row 2: the phase was there at the cut, so it is another stream's
-    held = _git_blob_ids(cut["chain"], f"{_repo_prefix()}works/phases/active/{phase_id}/phase.json")
+        return "cut"  # row 2: the phase was there at the cut, so it is another stream's
+    rel = f"{_repo_prefix()}works/phases/active/{phase_id}/phase.json"
+    held = _git_blob_ids(cut["chain"], rel)
     if not held or held[0] is None:
-        return True  # row 4: not committed on this branch yet, so born here
+        return None  # row 4: not committed on this branch yet, so born here
     first = max(i for i, blob in enumerate(held) if blob is not None)  # the oldest commit since the cut that holds it
-    return len(cut["parents"].get(cut["chain"][first], [])) < 2  # row 3 (a merge brought it) or row 4 (born here)
+    parents = cut["parents"].get(cut["chain"][first], [])
+    if len(parents) < 2:
+        return None  # row 4: an ordinary commit of this branch added it, so born here
+    return "merged" if any(_git_blob_ids(parents[1:], rel)) else "inside"  # row 3
 
 
 def _agenda_default_view(phase_id: str, base):
@@ -13000,16 +13021,18 @@ def _agenda_default_view(phase_id: str, base):
         return None
     if _git(["cat-file", "-e", f"{sha}:{_repo_prefix()}works/phases/active/{phase_id}/phase.json"], check=False).returncode == 0:
         return "active", _phase_json_at_ref(sha, phase_id)
-    names = _git(["ls-tree", "--name-only", sha, f"{_repo_prefix()}works/phases/archived/"], check=False).stdout.split()
+    names = _ls_tree(sha, "works/phases/archived/").stdout.split()
     return ("archived" if _agenda_archived_holds(names, phase_id) else "removed"), None
 
 
 def agenda_phase_elsewhere(phase_id: str, data: dict, stream="unset"):
     """None when an ACTIVE phase is this checkout's stream's own, else a dict for the advice: `where` (its branch, or
     "the default stream") and `place` (the checkout to type the command in), plus `since` ("archived" or "removed":
-    the default side has archived or removed it since this worktree was cut, so nothing can be run) or `unseen`
-    (this checkout cannot see the other side, so the advice says what happens if it did either); or `unknown` (why
-    this checkout cannot tell). The stream rule for agenda links (P66; see GATE_EXEMPT_ADDED_PREFIXES): a link is
+    the default side has archived or removed it since this worktree was cut, so nothing can be run; said only of a
+    phase that was in the cut) or `unseen` (this checkout cannot see the other side, so the advice says what happens
+    if it did either); or `arrived` ("merged" or "inside": row 3's phase, which the default side is not seen holding
+    and whose own stamp names no branch in flight, with `place` only; P66 F9); or `unknown` (why this checkout cannot
+    tell). The stream rule for agenda links (P66; see GATE_EXEMPT_ADDED_PREFIXES): a link is
     written only into this stream's own phases, because this checkout's copy of another stream's phase.json is
     frozen at the stamp and rewriting it would collide with that stream's own writes at the merge. Deferred jobs
     and archived phases are never stream-scoped.
@@ -13026,14 +13049,19 @@ def agenda_phase_elsewhere(phase_id: str, data: dict, stream="unset"):
     | 2 | P's folder (active, or an archive folder for P) is in the tree of the cut: the commit | another stream's|
     |   | that stamped S, which the branch starts from (`_agenda_stream_cut`)                   |                 |
     | 3 | P's phase.json is committed, absent from the cut, and the oldest commit on HEAD's     | another stream's|
-    |   | first-parent line since the cut that holds it is a merge (it came from another branch)|                 |
+    |   | first-parent line since the cut that holds it is a merge commit (another branch's)    |                 |
     | 4 | P is absent from the cut and was added by an ordinary commit of this branch, or is not| own: born here  |
     |   | committed yet                                                                         |                 |
     | 5 | the cut cannot be found (no git, a shallow history that stops before it)              | cannot tell     |
 
     No row reads the default checkout's folder, the default branch's tip, a remote ref or `base_branch`, so a
     linked worktree and a plain clone give the same answer. The advice may look at the default side (a linked
-    worktree's view of it, `_agenda_default_view`), but only to say where, or that nothing can be run."""
+    worktree's view of it, `_agenda_default_view`), but only to say where, or that nothing can be run.
+
+    The limit (P66 F9): row 3 reads a merge COMMIT. A rebase, a fast-forward or a squash of another branch into the
+    phase branch makes no merge commit, so a phase that came in that way reads as born here (row 4); the engine's own
+    paths (`git merge --no-ff`) always make one. A phase first committed inside a merge commit (no merged parent
+    holds it) reads as row 3 too, and its advice says so."""
     if stream == "unset":
         stream = current_stream(all_active_phases())
     execution = phase_execution(data) or {}
@@ -13045,16 +13073,21 @@ def agenda_phase_elsewhere(phase_id: str, data: dict, stream="unset"):
     cut = _agenda_stream_cut(stream)
     if "unknown" in cut:
         return {"unknown": cut["unknown"]}  # row 5
-    if _agenda_cut_owns(phase_id, cut):
+    row = _agenda_cut_row(phase_id, cut)
+    if row is None:
         return None  # row 4
     base = cut["base"]
     view = _agenda_default_view(phase_id, base)
+    if row != "cut" and (view is None or view[0] != "active"):  # row 3, and the default side is not seen holding it
+        if branch and phase_in_flight(data):  # its own stamp names the branch whose stream it is
+            return {"where": branch, "place": _agenda_stream_place(execution), **({"unseen": True} if view is None else {})}
+        return {"arrived": row, "place": _agenda_default_place(base)}  # never "since the cut": it was not in the cut
     if view is None:  # a clone: the place from this copy, and what happens if the other side moved on
         if branch and phase_in_flight(data):
             return {"where": branch, "place": _agenda_stream_place(execution), "unseen": True}
         return {"where": "the default stream", "place": _agenda_default_place(base), "unseen": True}
     state, there = view
-    if state != "active":
+    if state != "active":  # row 2 only: it was in the cut, and the default side has archived or removed it since
         return {"where": "the default stream", "place": _agenda_default_place(base), "since": state}
     later = phase_execution(there) or {}
     if later.get("branch") and later.get("branch") != stream and phase_in_flight(there):
@@ -13063,9 +13096,10 @@ def agenda_phase_elsewhere(phase_id: str, data: dict, stream="unset"):
 
 
 def _agenda_elsewhere_fix(hid: str, elsewhere: dict, command: str) -> str:
-    """The advice for a phase this checkout may not write (P66 F5, F6), true whatever the other side has done since
+    """The advice for a phase this checkout may not write (P66 F5, F6, F9), true whatever the other side has done since
     the cut: the exact command and where to type it; or, when this worktree sees that the default side has archived
-    or removed the phase, that there is no command to run; or, from a clone, the command and what happens then."""
+    or removed a phase that was in the cut, that there is no command to run; or, from a clone, the command and what
+    happens then; or, for a phase that came in by a merge commit, that fact and where the command applies."""
     if "unknown" in elsewhere:
         return f"cannot tell whether {hid} is this stream's own phase: {elsewhere['unknown']}"
     if elsewhere.get("since") == "archived":
@@ -13074,6 +13108,15 @@ def _agenda_elsewhere_fix(hid: str, elsewhere: dict, command: str) -> str:
     if elsewhere.get("since") == "removed":
         return (f"{hid} has been removed from {elsewhere['place']} since this worktree was cut: it holds no link to clear "
                 f"and takes none, so there is no command to run")
+    gone = (" (where it has been archived or removed, that command is refused and there is nothing to run: an archived "
+            "phase keeps the link it was archived with)")
+    if elsewhere.get("arrived") == "merged":  # P66 F9: it was not in the cut, so nothing is said of the default side
+        return (f"{hid} came onto this branch in a merge commit, so it was created on another branch and is that branch's: "
+                f"run {WORKFLOW_CMD} {command} in the checkout of the branch that created it, or in {elsewhere['place']} "
+                f"once that branch has landed there" + gone)
+    if elsewhere.get("arrived") == "inside":
+        return (f"{hid} was first committed inside a merge commit on this branch, which this stream reads as another "
+                f"branch's phase: once this branch has landed, run {WORKFLOW_CMD} {command} in {elsewhere['place']}" + gone)
     fix = f"{hid} runs on {elsewhere['where']}; in {elsewhere['place']} run: {WORKFLOW_CMD} {command}"
     if elsewhere.get("unseen"):
         fix += (f" (if {hid} has since been archived or removed on the default stream, that command is refused and there "
@@ -20066,7 +20109,7 @@ def _loop_slice_ids(src: LoopSource) -> list:
     if src.base is not None:
         sdir = src.base / "slices"
         return sorted(p.name for p in sdir.iterdir() if (p / "slice.json").is_file()) if sdir.is_dir() else []
-    proc = _git(["ls-tree", "--name-only", src.ref, f"{_repo_prefix()}works/phases/active/{src.pid}/slices/"], check=False)
+    proc = _ls_tree(src.ref, f"works/phases/active/{src.pid}/slices/")
     return [line.strip().rstrip("/").rsplit("/", 1)[-1] for line in proc.stdout.splitlines() if line.strip()] if proc.returncode == 0 else []
 
 
@@ -20553,9 +20596,10 @@ def loop_status(args: argparse.Namespace) -> None:
           + (f"; every {view['bounds']['checkpoint_every']} cycles"))
     rolled = view.get("rolled") if isinstance(view.get("rolled"), dict) else None
     if rolled and loop_rolled_text(rolled):
-        base = f"{_repo_prefix() if _git_available() else ''}works/phases/active/{pid}/slices/{pid}.C<k>"
+        rel = f"works/phases/active/{pid}/slices/{pid}.C<k>"
+        base = f"{_repo_prefix() if _git_available() else ''}{rel}"  # `<rev>:<path>` reads from the repo's top
         print(f"rolled={loop_rolled_text(rolled).replace(' rolled up', '')} \u2192 git show {str(rolled.get('commit'))[:12]}:{base}/result.md "
-              f"(a folder rolled at an earlier close: git show $(git log -1 --format=%h --diff-filter=D -- {base})^:{base}/result.md)")
+              f"(a folder rolled at an earlier close: git show $(git log -1 --format=%h --diff-filter=D -- {rel})^:{base}/result.md)")  # a pathspec is cwd-relative
     nxt = view["next"]
     print("next: " + " ".join(f"{k}={_one_line(str(v))}" for k, v in nxt.items() if v is not None))
 
@@ -21799,7 +21843,7 @@ def main(argv=None) -> int:
     _one_line_usage_errors(p)
     p.set_defaults(func=agenda_reopen)
 
-    p = sub.add_parser("agenda-delete", help="Delete agenda items for good: first every link to them is cleared (the `agenda` key leaves each phase, active or archived, and each deferred job, open, promoted or dropped; those stay), except on an active phase of another stream, whose link is left and named in the output; then their folders are removed (the agenda_deleted event is the record); all or none, and none when this checkout cannot tell whose a linked phase is (a shallow clone whose history stops before the worktree's cut)")
+    p = sub.add_parser("agenda-delete", help="Delete agenda items for good: first every link to them is cleared (the `agenda` key leaves each phase, active or archived, and each deferred job, open, promoted or dropped; those stay), except on an active phase of another stream (in a phase worktree or a clone of its branch: one there at the cut, or that arrived by a merge commit; a rebase, a fast-forward or a squash of another branch makes no merge commit, so a phase it brings reads as created on the branch), whose link is left and named in the output; then their folders are removed (the agenda_deleted event is the record); all or none, and none when this checkout cannot tell whose a linked phase is (a shallow clone whose history stops before the worktree's cut)")
     p.add_argument("agenda_ids", nargs="+", metavar="ITEM", help=AGENDA_ID_HELP)
     _one_line_usage_errors(p)
     p.set_defaults(func=agenda_delete)

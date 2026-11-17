@@ -3223,6 +3223,19 @@ gone_out=$( cd "$GW" && git init -q -b main . && git config user.email smoke@exa
   && ! printf '%s\n' "$gone_out" | grep -q "workflow.py agenda-" \
   && ok "a phase there at the cut and removed on the default side since stays another stream's: the worktree refuses its link" \
   || bad "the worktree took a link into a phase the default side removed after the cut (rc=$gone_rc) -- $gone_out"
+# P66: a workspace installed --at-root in a subfolder of its repo reads the cut from the repo's top (git ls-tree takes
+# its path relative to the working directory unless --full-tree): its worktree refuses a link into a phase of the cut.
+newtmp GS
+subf_out=$( cd "$GS" && git init -q -b main . && git config user.email smoke@example.invalid && git config user.name smoke \
+    && echo product > README && git add README && git commit -qm "product" && sh "$BOOT" "$GS/sub" --at-root --name "Sub" --summary "subfolder probe" >/dev/null 2>&1 \
+    && cd sub && python3 scripts/workflow.py new-phase --phase P1 --name "Par" --objective "o" >/dev/null 2>&1 \
+    && python3 scripts/workflow.py new-phase --phase P2 --name "Stay" --objective "o" >/dev/null 2>&1 \
+    && git add -A >/dev/null 2>&1 && git commit -qm "baseline" && python3 scripts/workflow.py parallel-start P1 >/dev/null 2>&1 \
+    && cd .claude/worktrees/P1-par/sub && aid=$(python3 scripts/workflow.py agenda-add --title "subfolder probe" | sed -n 's/^added \([^:]*\):.*/\1/p') \
+    && { python3 scripts/workflow.py agenda-link "$aid" --phase P2 2>&1; rc=$?; git diff --quiet -- works/phases/active/P2 || rc=99; exit $rc; } ); subf_rc=$?
+[ "$subf_rc" -eq 1 ] && printf '%s\n' "$subf_out" | grep -q "^agenda-link refused, nothing was written: P2 runs on the default stream; in the default checkout (.*/sub, branch main) run: " \
+  && ok "a workspace in a subfolder of its repo reads the cut from the repo's top: its worktree refuses a link into a phase of the cut" \
+  || bad "a subfolder workspace's worktree took a link into a phase of the cut (rc=$subf_rc) -- $subf_out"
 ( cd "$W" && git branch -q -D probe/extra probe/agenda && python3 scripts/workflow.py set-phase-status P2 planned >/dev/null 2>&1 ) || bad "v86 probe: could not reset the probe"
 ( cd "$W" && git restore --staged src/staged.py && git add -A works >/dev/null 2>&1 && git commit -qm "workflow state" >/dev/null 2>&1 ) \
   || bad "v43 probe: could not commit the default-stream workflow state before merging"
