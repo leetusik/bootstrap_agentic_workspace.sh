@@ -6132,6 +6132,216 @@ kill "$LK_PID" 2>/dev/null; wait "$LK_PID" 2>/dev/null
 echo "link test runtime: $(( $(date +%s) - lk_t0 ))s"
 
 # ---------------------------------------------------------------------------
+echo "== Test 24: the web's agenda inbox, applied by a linked engine against the local fake hi2vi -- at next, sync and run-phases, entries oldest first, each run in-process as its agenda command: exit 0 applied, each in a batch of its own with exactly the files its command wrote; a refusal's one line sent verbatim with exit 1, a usage error's with exit 2; a brief id refused unrun with nothing written; an entry another checkout applied first is a 409, its change dropped here and hi2vi's copy pulled, never applied twice; a crash inside a command leaves the entry pending and the tree as it was; a delete clears its links in the same batch; the applier never deadlocks on .hi2vi/lock =="
+ib_t0=$(date +%s)
+newtmp IBW; IBX="$IBW/xdg"; IBA="$IBW/a"; IBL="$IBW/local"
+# ib <host> <args>: one engine command in that host's nested workspace, with the scratch XDG, killed after 60 s
+# (a deadlock on .hi2vi/lock would wait the lock's 120 s): exit 124 then.
+ib() { _h=$1; shift; ( cd "$_h" && XDG_CONFIG_HOME="$IBX" python3 - "$@" <<'PY'
+import subprocess, sys
+try:
+    sys.exit(subprocess.run([sys.executable, "workflow/scripts/workflow.py"] + sys.argv[1:], timeout=60).returncode)
+except subprocess.TimeoutExpired:
+    print("TIMEOUT after 60 s")
+    sys.exit(124)
+PY
+) 2>&1; }
+ib_install() { { env GIT_AUTHOR_NAME=smoke GIT_AUTHOR_EMAIL=smoke@example.invalid GIT_COMMITTER_NAME=smoke GIT_COMMITTER_EMAIL=smoke@example.invalid sh "$BOOT" "$1" \
+  && git -C "$1/workflow" config user.email smoke@example.invalid && git -C "$1/workflow" config user.name smoke \
+  && git -C "$1/workflow" add -A && git -C "$1/workflow" commit -qm install; } > "$1.setup.txt" 2>&1 || bad "inbox probe: the install of $1 failed -- $(tail -3 "$1.setup.txt")"; }
+ib_install "$IBA"; ib_install "$IBL"
+# A's workspace before the link: a phase and a deferred job, both linked to A1-k2; an Open A2-m3 and A4-n5.
+{ ib "$IBA" new-phase --phase P1 --name One --objective toy && ib "$IBA" agenda-add --id A1-k2 --title one \
+  && ib "$IBA" agenda-add --id A2-m3 --title two && ib "$IBA" agenda-add --id A4-n5 --title four \
+  && ib "$IBA" agenda-link A1-k2 --phase P1 && ib "$IBA" defer-job --title job --reason r --trigger t --source manual --agenda A1-k2 \
+  && git -C "$IBA/workflow" add -A && git -C "$IBA/workflow" commit -qm seed; } > "$IBW/seed.txt" 2>&1 || bad "inbox probe: the seed failed -- $(tail -3 "$IBW/seed.txt")"
+IBK="inbox-smoke-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+printf '%s\n' "$IBK" > "$IBW/key"; chmod 600 "$IBW/key"
+python3 "$REPO_ROOT/tests/fake_hi2vi.py" --dir "$IBW/fake" --port-file "$IBW/port" --key-file "$IBW/key" \
+  --project proj-1 --org org-1 --lifetime 900 > "$IBW/fake.txt" 2>&1 &
+IB_PID=$!
+for _ in $(seq 1 100); do [ -s "$IBW/port" ] && break; sleep 0.1; done
+IBS="http://127.0.0.1:$(cat "$IBW/port" 2>/dev/null)"
+printf '%s\n' "$IBK" | ( cd "$IBA" && XDG_CONFIG_HOME="$IBX" python3 workflow/scripts/workflow.py link "$IBS/projects/proj-1" ) > "$IBW/link.txt" 2>&1 || bad "inbox probe: the link failed -- $(tail -2 "$IBW/link.txt")"
+ib_mark() { if [ -f "$IBW/fake/requests.jsonl" ]; then grep -c '' "$IBW/fake/requests.jsonl"; else echo 0; fi; }
+# ib_post <route> <json>: a test-only POST to the fake; prints the answer's id (an inbox entry's) when it has one.
+ib_post() { python3 - "$IBS" "$1" "$2" <<'PY'
+import http.client, json, sys
+from urllib.parse import urlparse
+u = urlparse(sys.argv[1])
+conn = http.client.HTTPConnection(u.hostname, u.port, timeout=10)
+conn.request("POST", sys.argv[2], sys.argv[3], {"Content-Type": "application/json"})
+resp = conn.getresponse()
+assert resp.status == 200, resp.status
+print(json.loads(resp.read()).get("id") or "")
+PY
+}
+ib_web() { ib_post /_fake/inbox "$1"; }
+# The workflow tree's sha list (.git and .hi2vi aside): what a refusal or an undone crash must leave equal.
+ib_tree() { python3 - "$1" <<'PY'
+import hashlib, os, sys
+root, rows = sys.argv[1], []
+for d, dirs, files in os.walk(root):
+    dirs[:] = [x for x in dirs if not (d == root and x in (".git", ".hi2vi"))]
+    for f in files:
+        p = os.path.join(d, f)
+        rows.append(f"{os.path.relpath(p, root)} {hashlib.sha256(open(p, 'rb').read()).hexdigest()}")
+print("\n".join(sorted(rows)))
+PY
+}
+# ib_check <mark> <check> [args]: one named assertion over the fake's requests since <mark>, its records and
+# inbox, and A's base, journal and disk.
+ib_check() { python3 - "$IBW/fake/requests.jsonl" "$IBS" "$IBA/workflow" "$@" <<'PY'
+import base64, hashlib, http.client, json, sys
+from pathlib import Path
+from urllib.parse import urlparse, quote
+log, server, root, mark, check, extra = sys.argv[1], sys.argv[2], Path(sys.argv[3]), int(sys.argv[4]), sys.argv[5], sys.argv[6:]
+R = [json.loads(l) for l in Path(log).read_text().splitlines()[mark:]]
+C = [r for r in R if r["path"].endswith("/commit")]
+u = urlparse(server)
+def get(path):
+    conn = http.client.HTTPConnection(u.hostname, u.port, timeout=10)
+    conn.request("GET", path)
+    resp = conn.getresponse()
+    return resp.status, json.loads(resp.read())
+S, I = get("/_fake/state")[1], {e["id"]: e for e in get("/_fake/inbox")[1]["entries"]}
+live = {p: f for p, f in S["files"].items() if not f["deleted"]}
+hi = root / ".hi2vi"
+base = json.loads((hi / "base.json").read_text())
+journal = json.loads((hi / "journal.json").read_text()) if (hi / "journal.json").exists() else None
+def sha(p):
+    return hashlib.sha256((root / p).read_bytes()).hexdigest()
+def cloud(p):
+    return base64.b64decode(get("/_fake/file?path=" + quote(p))[1]["content"]).decode()
+def need(cond, why):
+    if not cond:
+        print(why)
+        sys.exit(1)
+def synced():
+    need(journal is None, f"the journal is left: {journal}")
+    need(base.get("head") == S["head"], f"base head {base.get('head')} != hi2vi head {S['head']}")
+    need(set(base["files"]) == set(live), f"base and hi2vi hold different paths: {sorted(set(base['files']) ^ set(live))[:4]}")
+    for p, f in live.items():
+        need(base["files"][p]["rev"] == f["rev"] and (root / p).is_file() and sha(p) == f["sha256"], f"{p}: base, disk and hi2vi disagree")
+def with_result(eid):
+    return [c for c in C if any(r["id"] == eid for r in c["batch"]["inbox"])]
+if check == "applied":  # extra: the entry ids, oldest first; each applied, alone in its own landed batch with its files
+    ids = extra
+    batches = [c for c in C if c["batch"]["inbox"]]
+    need([c["batch"]["inbox"][0]["id"] for c in batches] == ids, f"batches in the wrong order or count: {[c['batch']['inbox'] for c in batches]}")
+    for eid, c in zip(ids, batches):
+        need(c["status"] == 200 and len(c["batch"]["inbox"]) == 1, f"{eid}: not alone in a landed batch: {c['status']} {c['batch']['inbox']}")
+        need(c["batch"]["inbox"][0] == {"id": eid, "state": "applied", "exit": 0, "reason": None}, f"{eid}: result {c['batch']['inbox'][0]}")
+        need(I[eid]["state"] == "applied" and I[eid]["batch_id"] == c["batch"]["batch_id"], f"{eid}: hi2vi holds {I[eid]['state']}")
+        paths = sorted(op["path"] for op in c["batch"]["ops"])
+        need(paths and all(p.startswith("works/agenda/") or p == "works/events.jsonl" for p in paths), f"{eid}: unrelated files ride its batch: {paths}")
+        need(c["batch"]["command"].startswith("agenda-"), f"{eid}: the batch names {c['batch']['command']!r}")
+    need(json.loads((root / "works/agenda/A3-x2/agenda.json").read_text())["title"] == "from the web", "A3-x2 is not on disk")
+    need(json.loads((root / "works/agenda/A2-m3/agenda.json").read_text())["status"] == "deferred", "A2-m3 is not deferred")
+    synced()
+elif check == "refused":  # extra: <entry id> <exit> <reason>; the result alone in a batch with no file
+    eid, code, reason = extra[0], int(extra[1]), extra[2]
+    c = with_result(eid)
+    need(len(c) == 1 and c[0]["status"] == 200 and not c[0]["batch"]["ops"], f"{eid}: batches {[(x['status'], x['batch']['ops']) for x in c]}")
+    need(c[0]["batch"]["inbox"] == [{"id": eid, "state": "refused", "exit": code, "reason": reason}], f"{eid}: sent {c[0]['batch']['inbox']}")
+    need(I[eid]["state"] == "refused" and I[eid]["reason"] == reason and I[eid]["exit"] == code, f"{eid}: hi2vi holds {I[eid]}")
+    synced()
+elif check == "taken":  # extra: <entry id> <path>: one 409 batch, the disk equal to hi2vi's copy, applied once (by the other)
+    eid, path = extra
+    c = with_result(eid)
+    need(len(c) == 1 and c[0]["status"] == 409, f"{eid}: batches {[x['status'] for x in c]}")
+    need(I[eid]["state"] == "applied" and I[eid]["by"] == "checkout other", f"{eid}: hi2vi holds {I[eid]}")
+    need((root / path).read_text() == cloud(path), f"{path}: the disk is not hi2vi's copy")
+    need("agenda_edited" not in (root / "works/events.jsonl").read_text(), "the dropped edit's event is still on disk")
+    synced()
+elif check == "pending":  # extra: <entry id>: no result was sent and the entry waits
+    eid = extra[0]
+    need(not with_result(eid) and I[eid]["state"] == "pending", f"{eid}: sent {len(with_result(eid))}, hi2vi holds {I[eid]['state']}")
+    need(not any(c["batch"]["ops"] for c in C), f"a crashed entry's files were sent: {[c['batch']['ops'] for c in C]}")
+    synced()
+elif check == "delete":  # extra: <entry id>: one batch holds the delete, the cleared links and the result
+    eid = extra[0]
+    c = with_result(eid)
+    need(len(c) == 1 and c[0]["status"] == 200, f"{eid}: batches {[x['status'] for x in c]}")
+    ops = {(op["op"], op["path"]) for op in c[0]["batch"]["ops"]}
+    jobs = [p for o, p in ops if p.startswith("works/deferred/open/") and p.endswith("/deferred.json")]
+    need(("delete", "works/agenda/A1-k2/agenda.json") in ops and ("put", "works/phases/active/P1/phase.json") in ops
+         and len(jobs) == 1, f"{eid}: the batch holds {sorted(ops)}")
+    for p in ["works/phases/active/P1/phase.json"] + jobs:
+        need("agenda" not in json.loads((root / p).read_text()) and "agenda" not in json.loads(cloud(p)), f"{p} keeps its link")
+    need(not (root / "works/agenda/A1-k2").exists() and "works/agenda/A1-k2/agenda.json" not in live, "A1-k2 is still there")
+    synced()
+else:
+    need(False, f"unknown check {check}")
+print("ok")
+PY
+}
+ib_lockfree() { python3 - "$IBA/workflow/.hi2vi/lock" <<'PY'
+import fcntl, os, sys
+fd = os.open(sys.argv[1], os.O_RDWR)
+try:
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    print("free")
+except OSError:
+    print("held")
+PY
+}
+# (a) next applies two web changes, oldest first, each alone in its batch, and still prints its pointer.
+ib_e1=$(ib_web '{"kind": "add", "minted_id": "A3-x2", "items": ["A3-x2"], "fields": {"title": "from the web"}}')
+ib_e2=$(ib_web '{"kind": "defer", "items": ["A2-m3"]}')
+ib_m=$(ib_mark); ib "$IBA" next > "$IBW/a.txt"; ib_rc=$?; ib_r=$(ib_check "$ib_m" applied "$ib_e1" "$ib_e2")
+[ "$ib_rc" = 0 ] && [ "$ib_r" = ok ] && grep -qx "inbox $ib_e1: applied (agenda-add A3-x2): added A3-x2: from the web" "$IBW/a.txt" \
+  && grep -qx "inbox $ib_e2: applied (agenda-defer A2-m3): deferred A2-m3" "$IBW/a.txt" && grep -q '^store=cloud ' "$IBW/a.txt" \
+  && [ "$(ib_lockfree)" = free ] \
+  && ok "next applies the web's agenda changes oldest first, each alone in a landed batch with exactly its own files, then runs as always (no deadlock on .hi2vi/lock, the lock free after)" \
+  || bad "next did not apply the inbox -- rc=$ib_rc $ib_r $(head -3 "$IBW/a.txt")"
+# (b) a brief id is refused unrun: exit 2, its line verbatim, nothing written (A1-k2 stays Open).
+ib_e3=$(ib_web '{"kind": "solve", "items": ["A1"]}')
+ib_t1=$(ib_tree "$IBA/workflow"); ib_m=$(ib_mark); ib "$IBA" sync > "$IBW/b.txt"; ib_rc=$?; ib_t2=$(ib_tree "$IBA/workflow")
+ib_line="workflow.py agenda-solve: error: A1 is not a full agenda id (like A7-m3): the inbox applies full ids only, so nothing ran"
+ib_r=$(ib_check "$ib_m" refused "$ib_e3" 2 "$ib_line")
+[ "$ib_rc" = 0 ] && [ "$ib_r" = ok ] && [ "$ib_t1" = "$ib_t2" ] && grep -qxF "inbox $ib_e3: refused, exit 2 (agenda-solve A1): $ib_line" "$IBW/b.txt" \
+  && ok "a brief id in an inbox entry is refused unrun (exit 2, one line, nothing written, the result alone in a batch)" \
+  || bad "a brief id was not refused unrun -- rc=$ib_rc $ib_r $(head -3 "$IBW/b.txt") $(diff <(echo "$ib_t1") <(echo "$ib_t2") | head -3)"
+# (c) a refusal (exit 1) and a usage error (exit 2) reach the entry verbatim: the same line the engine prints.
+ib_e4=$(ib_web '{"kind": "reopen", "items": ["A4-n5"]}')
+ib_e5=$(ib_web '{"kind": "defer", "items": []}')
+ib_l5=$(cd "$IBL" && python3 workflow/scripts/workflow.py agenda-defer 2>&1); ib_rc5=$?
+ib_l4="A4-n5 is Open already"
+ib_m=$(ib_mark); ib "$IBA" sync > "$IBW/c.txt"; ib_rc=$?
+ib_r=$(ib_check "$ib_m" refused "$ib_e4" 1 "$ib_l4"); ib_r2=$(ib_check "$ib_m" refused "$ib_e5" 2 "$ib_l5")
+[ "$ib_rc" = 0 ] && [ "$ib_rc5" = 2 ] && [ "$ib_r" = ok ] && [ "$ib_r2" = ok ] && grep -qxF "inbox $ib_e4: refused, exit 1 (agenda-reopen A4-n5): $ib_l4" "$IBW/c.txt" \
+  && ok "a refused agenda command's one line reaches its entry verbatim with exit 1, and a usage error's (as the engine prints it) with exit 2" \
+  || bad "a refusal's line did not reach its entry -- rc=$ib_rc/$ib_rc5 $ib_r / $ib_r2 $(head -3 "$IBW/c.txt")"
+# (d) another checkout applies an entry first: A's batch is a 409, its change dropped, hi2vi's copy pulled, once.
+ib_e6=$(ib_web '{"kind": "edit", "items": ["A3-x2"], "fields": {"title": "renamed"}}')
+ib_other=$(python3 -c 'import json, sys; d = json.load(open(sys.argv[1])); d.update(title="renamed", changed_at="2026-11-18T10:00:00+00:00"); print(json.dumps(d, indent=2))' "$IBA/workflow/works/agenda/A3-x2/agenda.json")
+ib_post /_fake/control "$(python3 -c 'import json, sys; print(json.dumps({"inbox_race": sys.argv[1], "race": {"path": "works/agenda/A3-x2/agenda.json", "content": sys.argv[2] + "\n"}}))' "$ib_e6" "$ib_other")" > /dev/null
+ib_m=$(ib_mark); ib "$IBA" sync > "$IBW/d.txt"; ib_rc=$?; ib_r=$(ib_check "$ib_m" taken "$ib_e6" works/agenda/A3-x2/agenda.json)
+ib "$IBA" sync > "$IBW/d2.txt"; ib_rc2=$?
+[ "$ib_rc" = 0 ] && [ "$ib_r" = ok ] && grep -qxF "inbox $ib_e6: not applied here (agenda-edit A3-x2): hi2vi holds it applied already (another checkout); this checkout's change was dropped and hi2vi's copy pulled" "$IBW/d.txt" \
+  && [ "$ib_rc2" = 0 ] && ! grep -q "^inbox " "$IBW/d2.txt" \
+  && ok "an entry another checkout applied first is a 409: this checkout's change is dropped and hi2vi's copy pulled, never applied twice" \
+  || bad "an entry taken elsewhere was mishandled -- rc=$ib_rc/$ib_rc2 $ib_r $(head -3 "$IBW/d.txt")"
+# (e) a crash inside a command (A1-k2's folder cannot be removed) leaves the entry pending and the tree as it was.
+ib_e7=$(ib_web '{"kind": "delete", "items": ["A1-k2"]}')
+chmod 555 "$IBA/workflow/works/agenda/A1-k2"
+ib_t1=$(ib_tree "$IBA/workflow"); ib_m=$(ib_mark); ib "$IBA" next > "$IBW/e.txt"; ib_rc=$?; ib_t2=$(ib_tree "$IBA/workflow")
+chmod 755 "$IBA/workflow/works/agenda/A1-k2"; ib_r=$(ib_check "$ib_m" pending "$ib_e7")
+[ "$ib_rc" = 0 ] && [ "$ib_r" = ok ] && [ "$ib_t1" = "$ib_t2" ] \
+  && grep -qxF "inbox $ib_e7: left pending (agenda-delete A1-k2): PermissionError inside the command; its changes were undone" "$IBW/e.txt" \
+  && ok "a crash inside an agenda command leaves its entry pending (no result sent) and the tree as it was before that entry" \
+  || bad "a crashed entry was not undone -- rc=$ib_rc $ib_r $(head -3 "$IBW/e.txt") $(diff <(echo "$ib_t1") <(echo "$ib_t2") | head -4)"
+# (f) at run-phases the delete applies: its links cleared in the same batch as the item's removal and its result.
+ib_m=$(ib_mark); ib "$IBA" run-phases > "$IBW/f.txt"; ib_rc=$?; ib_r=$(ib_check "$ib_m" delete "$ib_e7")
+[ "$ib_rc" = 0 ] && [ "$ib_r" = ok ] && grep -q "^inbox $ib_e7: applied (agenda-delete A1-k2): deleted A1-k2: 2 links cleared" "$IBW/f.txt" \
+  && ok "run-phases applies a web delete: the item's removal, its cleared links (a phase and a deferred job) and the result land in one batch" \
+  || bad "a web delete did not clear its links in one batch -- rc=$ib_rc $ib_r $(head -3 "$IBW/f.txt")"
+if grep -rqF "$IBK" "$IBA" "$IBW"/*.txt "$IBW/fake" 2>/dev/null; then bad "the workspace key leaked into the tree, the output or the request log"; fi
+kill "$IB_PID" 2>/dev/null; wait "$IB_PID" 2>/dev/null
+echo "inbox test runtime: $(( $(date +%s) - ib_t0 ))s"
+
+# ---------------------------------------------------------------------------
 echo
 if [ "$FAILS" -eq 0 ]; then
   echo "ALL RETROFIT SMOKE TESTS PASSED"

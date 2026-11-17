@@ -731,7 +731,26 @@ def read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+# Cloud mode's agenda inbox applier runs each web change as its agenda command in-process; while it does, every
+# file the command is about to write (write_text, append_event) has its prior bytes noted here first, so a command
+# that crashes midway can be undone to the tree it found. None, the default, outside that one call: nothing noted.
+_CLOUD_UNDO = None
+
+
+def _cloud_undo_note(path: Path) -> None:
+    if _CLOUD_UNDO is None:
+        return
+    key = str(path)
+    if key not in _CLOUD_UNDO:
+        try:
+            _CLOUD_UNDO[key] = path.read_bytes() if path.is_file() else None
+        except OSError:
+            _CLOUD_UNDO[key] = False  # unreadable: never restored blind (the undo's rescan names what is left)
+
+
 def write_text(path: Path, text: str, executable: bool = False) -> None:
+    if _CLOUD_UNDO is not None:
+        _cloud_undo_note(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp_", suffix=path.name)
     try:
@@ -815,6 +834,8 @@ def append_event(event_type: str, _loop_slice=None, **payload: object) -> None:
     event = {"ts": now_iso(), "type": event_type, **payload}
     loop_pdir = _event_loop_pdir(event_type, payload, _loop_slice)
     path = loop_pdir / "loop" / LOOP_EVENTS_FILE if loop_pdir is not None else WORKS / "events.jsonl"
+    if _CLOUD_UNDO is not None:
+        _cloud_undo_note(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(event, ensure_ascii=False) + "\n")
@@ -21400,6 +21421,15 @@ class CloudUnreachable(CloudError):
     pass
 
 
+class CloudConflict(CloudError):
+    """A batch hi2vi refused with 409: it wrote nothing. `conflicts` is the answer's list (a file's, or an inbox
+    result's for an entry no longer pending: `{path: None, inbox, state}`)."""
+
+    def __init__(self, message: str, conflicts=None) -> None:
+        super().__init__(message)
+        self.conflicts = conflicts if isinstance(conflicts, list) else []
+
+
 class CloudLock:
     """The checkout's lock: `fcntl.flock(LOCK_EX)` on `.hi2vi/lock`, held around a whole command's boundary, so
     an orchestrator and its executors running engine commands at once in one checkout are serialized. A second
@@ -21707,6 +21737,7 @@ class CloudSession:
             self.base = {"schema": CLOUD_SCHEMA, "head": 0, "files": {}}
         self.cache = self._load("stat.json") or {}
         self.pre = {}
+        self.inbox_pending = None  # P1's count, read at the begin step; None: unknown, so the inbox is asked
 
     def _load(self, name: str):
         try:
@@ -21815,17 +21846,22 @@ class CloudSession:
                    if disk.get(rel) != (files.get(rel) or {}).get("sha256"))
 
     # The begin step ------------------------------------------------------------------------------
-    def begin(self) -> None:
+    def begin(self, inbox: bool = False) -> None:
         """Steps 3 to 6: the journal, P1 head, a fast-forward pull, the pre-command scan, journal `running`.
-        Called with the checkout's lock held (`cloud_run`, or a step inside the boundary)."""
+        Called with the checkout's lock held (`cloud_run`, or a step inside the boundary). `inbox` (next and
+        run-phases): the web's agenda inbox is applied after the pull, before the command reads the disk."""
         self._recover()
         info = self._ask("GET", "head")
         if str(info.get("project_id")) != self.link.project:
             raise CloudError(f"hi2vi answered for project {info.get('project_id')}, not {self.link.project}: "
                              "this checkout's link is broken, and nothing was changed")
+        self.inbox_pending = info.get("inbox_pending")
         disk = cloud_scan(self.cache)
         head = info.get("head")
         if isinstance(head, int) and head != self.base["head"] and self._pull(disk):
+            disk = cloud_scan(self.cache)
+        if inbox:
+            cloud_inbox_step(self)
             disk = cloud_scan(self.cache)
         self.pre = disk
         self.set_journal("running", pid=os.getpid())
@@ -22005,9 +22041,10 @@ class CloudSession:
         self.send(planned)
         return len(planned)
 
-    def send(self, planned: list, resume=None) -> None:
+    def send(self, planned: list, resume=None, inbox=(), command=None) -> None:
         """The batches of `planned` ops, journaled in the outbox, then pushed. `resume`: a journal entry to put
-        back once the push ends (sync --keep inside an interrupted state keeps its `running` journal)."""
+        back once the push ends (sync --keep inside an interrupted state keeps its `running` journal). `inbox`:
+        the agenda inbox results that travel with these ops, all in one batch (`command`: the argv it names)."""
         derived = []
         for rel in CLOUD_DERIVED:
             try:
@@ -22015,7 +22052,7 @@ class CloudSession:
             except (OSError, UnicodeDecodeError):
                 pass
         try:
-            batches = self._batches(planned, derived)
+            batches = self._batches(planned, derived, inbox, command)
         except CloudError:
             self._end_push(resume)  # nothing was sent: the base still names the change, so the next command retries it
             raise
@@ -22036,18 +22073,20 @@ class CloudSession:
         if isinstance(resume, dict):
             write_json(self.dir / "journal.json", resume)
 
-    def _batches(self, planned: list, derived: list) -> list:
+    def _batches(self, planned: list, derived: list, inbox=(), command=None) -> list:
         """[(wire batch, base updates)]: the ops in order, cut so that each batch's JSON as sent stays under
         CLOUD_BATCH_MAX; each batch has its own batch_id and carries the P9 records. One op too big for any
-        batch refuses before anything is sent."""
+        batch refuses before anything is sent. Inbox results go in one batch with all of their ops (an entry's
+        files and its result land together or not at all), so ops that would need two batches are refused."""
         import uuid
 
         def size(obj) -> int:
             return len(json.dumps(obj, ensure_ascii=False).encode("utf-8"))
 
-        command = shlex.join(self.tokens)
+        inbox = list(inbox or [])
+        command = command or shlex.join(self.tokens)
         envelope = size({"batch_id": uuid.uuid4().hex, "command": command, "origin": "carried", "ops": [],
-                         "events": [], "derived": derived, "inbox": []})
+                         "events": [], "derived": derived, "inbox": inbox})
         groups, current, used = [], [], envelope
         for item in planned:
             n = size(item[0]) + 1  # the op and its comma
@@ -22059,14 +22098,17 @@ class CloudSession:
                 current, used = [], envelope
             current.append(item)
             used += n
-        if current:
+        if current or (inbox and not groups):
             groups.append(current)
+        if inbox and len(groups) > 1:
+            raise CloudError(f"an agenda change's files are over hi2vi's {CLOUD_BATCH_MAX:,}-byte batch limit, and they "
+                             "must land in one batch with its result")
         out = []
         for group in groups:
             ops = [op for op, _, _ in group]
             batch = {"batch_id": uuid.uuid4().hex, "command": command,
-                     "origin": "command" if any(op["origin"] == "command" for op in ops) else "carried",
-                     "ops": ops, "events": [], "derived": derived, "inbox": []}
+                     "origin": "command" if inbox or any(op["origin"] == "command" for op in ops) else "carried",
+                     "ops": ops, "events": [], "derived": derived, "inbox": inbox}
             updates = [{"op": op["op"], "from": op.get("from"), "path": rel, "entry": entry} for op, entry, rel in group]
             out.append((batch, updates))
         return out
@@ -22094,7 +22136,7 @@ class CloudSession:
                 raise unsent(f"hi2vi unreachable: {exc}")
             if status == 409:
                 self._end_push()
-                raise unsent(f"{len(answer.get('conflicts') or [])} conflict(s)")
+                raise CloudConflict(str(unsent(f"{len(answer.get('conflicts') or [])} conflict(s)")), answer.get("conflicts"))
             if status != 200 or not isinstance(answer.get("head"), int):
                 raise unsent(f"hi2vi answered HTTP {status}")
             self._landed(answer, item.get("updates") or [])
@@ -22155,7 +22197,7 @@ def cloud_boundary(args: argparse.Namespace, tokens: list, fail_open: bool = Fal
     """The boundary itself, with the lock held."""
     try:
         session = CloudSession(tokens)
-        session.begin()
+        session.begin(inbox=args.cmd in CLOUD_INBOX_AT)
     except CloudError as exc:
         if fail_open:
             return cloud_fail_open(args, str(exc))
@@ -22499,10 +22541,230 @@ def cloud_rel_arg(raw: str) -> str:
     return rel
 
 
+# The web's agenda inbox. The web never writes a truth file: each change is a pending entry
+# {id, created_at, kind, items, fields, minted_id}, and a linked engine applies it at sync, next and run-phases
+# by running the very agenda command in-process (never main(), whose boundary would begin and commit again).
+# Exit 0 is `applied`; 1 (a refusal) or 2 (a usage error) is `refused`, its one line the reason, verbatim; any
+# other end (a crash, another exit) sends no result, so the entry stays pending, and the tree is put back as the
+# command found it. Each entry's result travels in a batch of its own with exactly the files its command wrote,
+# so hi2vi's 409 for an entry no longer pending (another checkout applied it) voids only that entry: its files
+# are dropped here and hi2vi's copy pulled, never applied twice.
+CLOUD_INBOX_AT = ("next", "run-phases")  # besides sync, the commands whose begin step applies the inbox
+CLOUD_INBOX_COMMANDS = {"add": "agenda-add", "edit": "agenda-edit", "move": "agenda-move", "defer": "agenda-defer",
+                        "solve": "agenda-solve", "drop": "agenda-drop", "reopen": "agenda-reopen",
+                        "delete": "agenda-delete"}
+CLOUD_INBOX_MAX = 500  # entries tried in one step (a bound: the rest wait for the next sync)
+
+
+def _cloud_inbox_id_shown(raw) -> str:
+    return raw if isinstance(raw, str) and len(raw) <= 40 and raw.isprintable() else "that value"
+
+
+def cloud_inbox_tokens(entry: dict, prog: str) -> tuple:
+    """(argv, None) for an entry's agenda command, or (None, its usage line) when it is refused unrun: an
+    unknown kind, or any id (items, add's minted id, move's --before/--after) that does not fullmatch
+    AGENDA_ID_PATTERN. Brief forms are never resolved here: numbers are reused (no tombstone), so a brief id
+    could name a re-minted item. Texts go as --flag=value, so a value starting with a dash stays a value."""
+    kind = entry.get("kind")
+    cmd = CLOUD_INBOX_COMMANDS.get(kind) if isinstance(kind, str) else None
+    if cmd is None:
+        return None, (f"{prog}: error: the inbox entry's kind {_cloud_inbox_id_shown(kind)} is not an agenda change "
+                      f"(one of {', '.join(CLOUD_INBOX_COMMANDS)}): nothing ran")
+    fields = entry.get("fields") if isinstance(entry.get("fields"), dict) else {}
+    items = entry.get("items") if isinstance(entry.get("items"), list) else []
+    ids = [entry.get("minted_id")] if kind == "add" else list(items)
+    if kind == "move":
+        ids += [fields[k] for k in ("before", "after") if fields.get(k) is not None]
+    for raw in ids:
+        if not (isinstance(raw, str) and AGENDA_ID_RE.fullmatch(raw)):
+            return None, (f"{prog} {cmd}: error: {_cloud_inbox_id_shown(raw)} is not a full agenda id (like A7-m3): "
+                          "the inbox applies full ids only, so nothing ran")
+
+    def text(flag: str, key: str) -> list:
+        value = fields.get(key)
+        return [f"--{flag}={value}"] if isinstance(value, str) else []
+
+    if kind == "add":
+        return [cmd, f"--id={entry['minted_id']}"] + text("title", "title") + text("note", "note"), None
+    if kind == "edit":
+        return [cmd] + items + text("title", "title") + text("note", "note"), None
+    if kind == "move":
+        place = [f"--{k}" for k in ("first", "last") if fields.get(k) is True]
+        place += [f"--{k}={fields[k]}" for k in ("before", "after") if isinstance(fields.get(k), str)]
+        return [cmd] + items + place, None
+    extra = text("outcome", "outcome") if kind == "solve" else text("reason", "reason") if kind == "drop" else []
+    return [cmd] + items + extra, None
+
+
+def cloud_inbox_run(parser: argparse.ArgumentParser, tokens: list) -> tuple:
+    """(exit, line) of one agenda command run in-process: parsed by `parser`, its ids normalized, its function
+    called, stdout and stderr captured. The line: a refusal's message, a usage error's one line, or an applied
+    command's first output line. An exception other than SystemExit propagates (the caller undoes it)."""
+    import contextlib
+    import io
+    out, err, cmd = io.StringIO(), io.StringIO(), tokens[0]
+    saved = parser.error
+    parser.error = lambda message: parser.exit(2, f"{parser.prog} {cmd}: error: {message}\n")
+    code, line = 0, None
+    try:
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            args = parser.parse_args(tokens)
+            normalize_id_args(args)
+            result = args.func(args)
+        code = 0 if result is None or isinstance(result, tuple) else int(result or 0)
+    except SystemExit as stop:
+        if stop.code is None:
+            code = 0
+        elif isinstance(stop.code, int):
+            code = stop.code
+        else:
+            code, line = 1, str(stop.code)
+    finally:
+        parser.error = saved
+    if line is None:
+        shown_lines = [l for l in (err.getvalue() if code else out.getvalue() or err.getvalue()).splitlines() if l.strip()]
+        line = (shown_lines[-1] if code else shown_lines[0]) if shown_lines else ""
+    return code, line.strip() or f"{cmd} exited {code} with no message"
+
+
+def _cloud_agenda_snapshot() -> dict:
+    """{path: bytes} of every file under works/agenda/ (an item folder is removed whole by agenda-delete)."""
+    snap = {}
+    if AGENDA.is_dir():
+        for path in AGENDA.rglob("*"):
+            if path.is_file():
+                try:
+                    snap[str(path)] = path.read_bytes()
+                except OSError:
+                    pass
+    return snap
+
+
+def _cloud_inbox_undo(undo: dict, snap: dict, pre: dict, cache: dict) -> int:
+    """Put the tree back as one entry's command found it: every file it wrote (noted before the write) and the
+    agenda folders, then the generated files rebuilt. Returns how many truth-set paths still differ."""
+    def remove(path: Path) -> None:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            return
+        try:
+            rel = path.relative_to(ROOT).as_posix()
+        except ValueError:
+            return
+        _cloud_remove(rel)
+    for key, data in undo.items():
+        path = Path(key)
+        if data is None:
+            remove(path)
+        elif data is not False:
+            _cloud_write_bytes(path, data)
+    for key, data in snap.items():
+        path = Path(key)
+        try:
+            same = path.is_file() and path.read_bytes() == data
+        except OSError:
+            same = False
+        if not same:
+            _cloud_write_bytes(path, data)
+    if AGENDA.is_dir():
+        for path in sorted(AGENDA.rglob("*"), reverse=True):
+            if path.is_file() and str(path) not in snap:
+                remove(path)
+    rebuild_index_and_state()
+    post = cloud_scan(cache)
+    return sum(1 for rel in set(pre) | set(post) if pre.get(rel) != post.get(rel))
+
+
+def cloud_inbox_apply(session: CloudSession, parser: argparse.ArgumentParser, entry: dict) -> tuple:
+    """Apply one entry and report it: (outcome, line). Outcomes: applied, refused, pending (no result sent:
+    the entry stays pending) and conflict (hi2vi refused the batch with 409: this checkout's change dropped,
+    hi2vi's copy pulled). A network error mid-push propagates: the batch stays journaled and is resent."""
+    global _CLOUD_UNDO
+    eid, kind = entry["id"], entry.get("kind")
+    tokens, unrun = cloud_inbox_tokens(entry, parser.prog)
+    items = entry.get("items") if isinstance(entry.get("items"), list) else []
+    named = [entry.get("minted_id")] if kind == "add" else items
+    what = " ".join([CLOUD_INBOX_COMMANDS.get(kind, "agenda") if isinstance(kind, str) else "agenda"]
+                    + [_cloud_inbox_id_shown(x) for x in named][:5] + (["..."] if len(named) > 5 else []))
+    undo, snap, pre = {}, {}, {}
+    if tokens is None:
+        code, line = 2, unrun
+    else:
+        pre, snap = cloud_scan(session.cache), _cloud_agenda_snapshot()
+        crash, _CLOUD_UNDO = None, {}
+        try:
+            code, line = cloud_inbox_run(parser, tokens)
+        except BaseException as exc:  # noqa: BLE001 - any crash leaves the entry pending, the tree as it was
+            crash = exc
+        finally:
+            undo, _CLOUD_UNDO = _CLOUD_UNDO, None
+        if crash is not None or code not in (0, 1, 2):
+            left = _cloud_inbox_undo(undo, snap, pre, session.cache)
+            if crash is not None and not isinstance(crash, Exception):
+                raise crash
+            why = f"{crash.__class__.__name__} inside the command" if crash is not None else f"the command exited {code}"
+            return "pending", (f"inbox {eid}: left pending ({what}): {why}; "
+                               + (f"{left} file(s) could not be put back: run sync" if left else "its changes were undone"))
+    planned = []
+    if code == 0:
+        post = cloud_scan(session.cache)
+        changed = {rel for rel in set(pre) | set(post) if pre.get(rel) != post.get(rel)}
+        session.pre = pre
+        planned = session._diff(post, skip=(set(session.base["files"]) | set(post)) - changed)
+        result = {"id": eid, "state": "applied", "exit": 0}
+    else:
+        if undo:  # a refusal writes nothing; anything one left is undone, so its result carries no file
+            _cloud_inbox_undo(undo, snap, pre, session.cache)
+        result = {"id": eid, "state": "refused", "reason": line, "exit": code}
+    try:
+        session.send(planned, inbox=[result], command=shlex.join(tokens) if tokens else f"inbox {eid}")
+    except CloudConflict as exc:
+        if code == 0:
+            _cloud_inbox_undo(undo, snap, pre, session.cache)
+            session._pull(cloud_scan(session.cache), strict=False)
+        gone = [c for c in exc.conflicts if isinstance(c, dict) and c.get("inbox") == eid]
+        why = (f"hi2vi holds it {gone[0].get('state') or 'resolved'} already (another checkout)" if gone
+               else f"hi2vi refused its batch ({len(exc.conflicts)} conflict(s): run sync)")
+        return "conflict", (f"inbox {eid}: not applied here ({what}): {why}; "
+                            + ("this checkout's change was dropped and hi2vi's copy pulled" if code == 0 else "nothing was sent"))
+    except CloudError as exc:
+        if session.journal() is not None:  # sent, or about to be: the journal resends it at the next command
+            raise
+        if code == 0:
+            _cloud_inbox_undo(undo, snap, pre, session.cache)
+        return "pending", f"inbox {eid}: left pending ({what}): {exc}"
+    if code == 0:
+        return "applied", f"inbox {eid}: applied ({what}): {line}"
+    return "refused", f"inbox {eid}: refused, exit {code} ({what}): {line}"
+
+
 def cloud_inbox_step(session: CloudSession) -> None:
-    """The web's agenda inbox, applied by a linked engine inside its lock (each entry as its agenda command,
-    its result riding a batch). Not built yet: it applies nothing."""
-    return None
+    """The web's agenda inbox, applied by a linked engine inside its lock: entries oldest first, each as its
+    agenda command, each result in a batch of its own with the files that command wrote; one line printed per
+    entry. Skipped while a journal is open (a push to resend, an interrupted command), and when P1 counted
+    nothing pending. After a 409 the inbox is read again, so an entry another checkout took is not tried."""
+    if session.inbox_pending == 0 or session.journal() is not None:
+        return
+    with CloudLock():
+        parser, tried = None, set()
+        while len(tried) < CLOUD_INBOX_MAX:
+            entries = session._ask("GET", "inbox").get("entries")
+            todo = [e for e in (entries if isinstance(entries, list) else [])
+                    if isinstance(e, dict) and isinstance(e.get("id"), str) and e["id"] not in tried]
+            if not todo:
+                return
+            parser = parser or build_parser()
+            again = False
+            for entry in todo[:CLOUD_INBOX_MAX - len(tried)]:
+                tried.add(entry["id"])
+                outcome, line = cloud_inbox_apply(session, parser, entry)
+                print(line)
+                if outcome == "conflict":
+                    again = True
+                    break
+            if not again:
+                return
 
 
 def cloud_differences(session: CloudSession, running: bool) -> list:
@@ -22542,8 +22804,9 @@ def cloud_differences(session: CloudSession, running: bool) -> list:
 
 
 def cloud_sync(args: argparse.Namespace) -> int:
-    """sync: pull clean hi2vi changes, push clean local ones, list what remains (exit 1 while anything
-    differs). --diff <path>, --keep local|cloud <path>..., --status. Never resolves a mismatch on its own."""
+    """sync: pull clean hi2vi changes, push clean local ones, apply the agenda inbox, list what remains (exit 1
+    while anything differs). --diff <path>, --keep local|cloud <path>..., --status. Never resolves a mismatch on
+    its own."""
     if not cloud_link_file().exists():
         raise SystemExit("this checkout is not linked (no .hi2vi/link.json): sync is for a linked checkout")
     if sum(bool(x) for x in (args.diff is not None, args.keep is not None, args.status)) > 1:
@@ -22571,6 +22834,7 @@ def _cloud_sync_head(session: CloudSession) -> dict:
     if str(info.get("project_id")) != session.link.project:
         raise CloudError(f"hi2vi answered for project {info.get('project_id')}, not {session.link.project}: "
                          "this checkout's link is broken, and nothing was changed")
+    session.inbox_pending = info.get("inbox_pending")
     return info
 
 
@@ -22682,7 +22946,10 @@ def cloud_sync_run(session: CloudSession, keep, paths: list) -> int:
                 session.commit(skip=mismatch)
             except CloudError as exc:
                 notes.append(str(exc).replace(": run sync", ""))
-        cloud_inbox_step(session)
+            cloud_inbox_step(session)  # an interrupted command's files wait for --keep, and so does the inbox
+        elif session.inbox_pending:
+            notes.append(f"the agenda inbox waits ({session.inbox_pending} change(s)): it is applied once the "
+                         "interrupted command's files are resolved")
     rows = cloud_differences(session, running is not None)
     session.save_cache()
     if running is not None and not any(r[0] == "interrupted" for r in rows):
@@ -22700,7 +22967,9 @@ def cloud_sync_run(session: CloudSession, keep, paths: list) -> int:
     return 1 if any(n.startswith("this change is on disk") for n in notes) else 0
 
 
-def main(argv=None) -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """Every command's parser. main() parses its argv with it; the agenda inbox applier (cloud mode) parses each
+    entry's command with a fresh one, in-process, without main()'s boundary."""
     parser = argparse.ArgumentParser(description="Manage the agentic workflow state.")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -23320,14 +23589,18 @@ def main(argv=None) -> int:
     p.set_defaults(func=cloud_unlink)
     _one_line_usage_errors(p)
 
-    p = sub.add_parser("sync", help="A linked checkout's mismatch tool: pull clean hi2vi changes, push clean local ones, then list what remains, one line per path (differs, here only, cloud only, deleted here, deleted in hi2vi, interrupted), exit 1 while anything differs. --diff PATH: a unified diff of hi2vi's copy against the disk. --keep local|cloud PATH...: resolve those paths only (local pushes the disk's copy over hi2vi's revision, cloud writes hi2vi's copy over the disk); never without a path. --status: one line, store=cloud server= project= head= base= here= differ= inbox=")
+    p = sub.add_parser("sync", help="A linked checkout's mismatch tool: pull clean hi2vi changes, push clean local ones, apply the web's pending agenda changes (each as its agenda command, one line each; next and run-phases apply them too), then list what remains, one line per path (differs, here only, cloud only, deleted here, deleted in hi2vi, interrupted), exit 1 while anything differs. --diff PATH: a unified diff of hi2vi's copy against the disk. --keep local|cloud PATH...: resolve those paths only (local pushes the disk's copy over hi2vi's revision, cloud writes hi2vi's copy over the disk); never without a path. --status: one line, store=cloud server= project= head= base= here= differ= inbox=")
     p.add_argument("--diff", metavar="PATH", help="show hi2vi's copy against the disk for one path")
     p.add_argument("--keep", choices=("local", "cloud"), help="resolve the named paths with this side's copy")
     p.add_argument("--status", action="store_true", help="one line: the head, the base and the counts")
     p.add_argument("paths", nargs="*", help="--keep only: the paths to resolve")
     p.set_defaults(func=cloud_sync)
     _one_line_usage_errors(p)
+    return parser
 
+
+def main(argv=None) -> int:
+    parser = build_parser()
     tokens = sys.argv[1:] if argv is None else list(argv)
     one_line_cmd = tokens[0] if tokens and tokens[0] in ONE_LINE_USAGE_COMMANDS else None
     if one_line_cmd:  # leftovers (an unknown option, an extra positional) are the top parser's error: one line too

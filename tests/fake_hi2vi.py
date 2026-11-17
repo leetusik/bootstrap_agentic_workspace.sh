@@ -12,8 +12,12 @@ project is 404; X-Hi2vi-Checkout and X-Hi2vi-Engine are required):
 - P2 GET manifest?since=<head> -> {head, changes: [{path, rev, sha256, size, deleted, kind}]}
 - P3 POST fetch {paths} -> {files: [{path, rev, sha256, encoding, content}], rest}, one page at a time
   (the asked paths past the page's byte budget come back in `rest`, to be asked again)
+- GET inbox -> {entries: [{id, created_at, kind, items, fields, minted_id}]}: the web's pending agenda
+  changes, oldest first
 - P4 POST commit {batch_id, command, origin, ops, events, derived, inbox} -> 200 {head, revs} or
   409 {conflicts: [...]}; ops are put / delete / move / append, applied in order, all or nothing;
+  an inbox result ({id, state: applied|refused, reason, exit}) for an entry that is not pending makes the
+  whole batch a 409 (its conflict {path: null, inbox, state}), like the server; a landed one resolves it;
   a batch_id seen before returns its first answer and applies nothing (P4 idempotency); a put
   whose sha256 equals the record's is a no-op, never a conflict (P5); appends never conflict (P6);
   a move keeps the record's history (P7); derived records are kept as the latest projection (P9).
@@ -22,7 +26,11 @@ Like the server, a body over 8,388,608 B is refused with 413 before it is read.
 
 Test-only routes (no key, 127.0.0.1 only): GET /_fake/state (the records, no content),
 POST /_fake/write {path, content, kind?, deleted?} (a change made by another checkout), GET /_fake/file?path=
-(one record's content) and POST /_fake/control {...} (the failure switches, merged into the current ones):
+(one record's content), POST /_fake/inbox {kind, items, fields, minted_id} (a web change: a new pending
+entry, answered {id}), GET /_fake/inbox (every entry with its state, reason, exit, batch_id and who resolved
+it) and POST /_fake/control {...} (the failure switches, merged into the current ones):
+- inbox_race: <entry id> -> another checkout resolves that entry (applied) just before the next commit is
+  applied; one-shot (pair it with race to land that checkout's file too);
 - offline: true -> every API request is dropped unanswered (the engine sees a network error);
 - commit: "drop-before" | "drop-after" -> the next commit is dropped unanswered, before it is applied or
   after (a lost answer); one-shot;
@@ -64,7 +72,9 @@ class Store:
         self.events = []    # P6 lines with their sequence number
         self.derived = {}   # P9: path -> {head, content}
         self.lock = threading.Lock()
-        self.control = {"offline": False, "commit": None, "race": None, "gate": None, "fetch_page": None}
+        self.inbox = []     # the web's agenda changes: {id, created_at, kind, items, fields, minted_id, state, ...}
+        self.control = {"offline": False, "commit": None, "race": None, "gate": None, "fetch_page": None,
+                        "inbox_race": None}
         self.gate = threading.Condition()
         self.gate_seen = 0
 
@@ -183,6 +193,15 @@ class Store:
                 changed.add(path)
             else:
                 return 400, {"error": f"unknown op {kind!r}"}
+        results = batch.get("inbox") or []
+        for result in results:
+            if not isinstance(result, dict) or result.get("state") not in ("applied", "refused"):
+                return 400, {"error": "an inbox result's state must be applied or refused"}
+            if result["state"] == "refused" and not (result.get("reason") or "").strip():
+                return 400, {"error": "a refusal carries the engine's line as its reason"}
+            entry = self.inbox_entry(result.get("id"))
+            if entry is None or entry["state"] != "pending":
+                conflicts.append({"path": None, "inbox": result.get("id"), "state": entry and entry["state"]})
         if conflicts:
             answer = (409, {"conflicts": conflicts})
             self.batches[bid] = answer
@@ -200,6 +219,9 @@ class Store:
                 self.events.append({"seq": len(self.events) + 1, "path": path, "line": line, "batch_id": bid})
         for item in batch.get("derived") or []:
             self.derived[item["path"]] = {"head": self.head, "content": item.get("content")}
+        for result in results:
+            self.inbox_entry(result["id"]).update(state=result["state"], reason=result.get("reason"),
+                                                  exit=result.get("exit"), batch_id=bid, by=who)
         for op in batch.get("ops") or []:
             path = op.get("to") or op.get("path")
             rec = self.records.get(path)
@@ -208,6 +230,23 @@ class Store:
         answer = (200, {"head": self.head, "revs": revs})
         self.batches[bid] = answer
         return answer
+
+    def inbox_entry(self, eid):
+        return next((e for e in self.inbox if e["id"] == eid), None)
+
+    def inbox_add(self, body: dict) -> dict:
+        """A web change: one pending entry, oldest first by its sequence."""
+        import uuid
+        eid = str(uuid.uuid4())
+        self.inbox.append({"id": eid, "created_at": f"2026-11-18T10:{len(self.inbox) // 60:02d}:{len(self.inbox) % 60:02d}Z",
+                           "kind": body.get("kind"), "items": body.get("items") or [], "fields": body.get("fields") or {},
+                           "minted_id": body.get("minted_id"), "state": "pending", "reason": None, "exit": None,
+                           "batch_id": None, "by": None})
+        return {"id": eid}
+
+    def pending(self) -> list:
+        return [{k: e[k] for k in ("id", "created_at", "kind", "items", "fields", "minted_id")}
+                for e in self.inbox if e["state"] == "pending"]
 
     def fake_write(self, body: dict) -> dict:
         """Another checkout's change, landed as one revision."""
@@ -292,6 +331,10 @@ def make_handler(store: Store, key: str, log_path: str):
                         if rec is None:
                             return self._send(404, {"error": "no such record"})
                         return self._send(200, {"content": base64.b64encode(rec["content"]).decode("ascii")})
+                    if parts[1:] == ["inbox"] and method == "POST":
+                        return self._send(200, store.inbox_add(self._body()))
+                    if parts[1:] == ["inbox"] and method == "GET":
+                        return self._send(200, {"entries": store.inbox})
                     if parts[1:] == ["control"] and method == "POST":
                         with store.gate:
                             store.control.update(self._body())
@@ -323,7 +366,10 @@ def make_handler(store: Store, key: str, log_path: str):
                 if route == "head" and method == "GET":
                     entry["base"] = self.headers.get("X-Hi2vi-Base")
                     status, payload = 200, {"head": store.head, "org_id": store.org_id, "project_id": store.project_id,
-                                            "inbox_pending": 0}
+                                            "inbox_pending": len(store.pending())}
+                elif route == "inbox" and method == "GET":
+                    status, payload = 200, {"entries": store.pending()}
+                    entry["entries"] = len(payload["entries"])
                 elif route == "manifest" and method == "GET":
                     since = int((parse_qs(url.query).get("since") or ["0"])[0])
                     entry["since"] = since
@@ -339,16 +385,21 @@ def make_handler(store: Store, key: str, log_path: str):
                     replay = batch.get("batch_id") in store.batches
                     fail, store.control["commit"] = store.control.get("commit"), None
                     race, store.control["race"] = store.control.get("race"), None
+                    taken, store.control["inbox_race"] = store.control.get("inbox_race"), None
                     entry["batch"] = {"batch_id": batch.get("batch_id"), "replay": replay, "ops": []}
                     if fail == "drop-before":
                         return self._drop(entry, "drop-before")
                     if race:
                         store.fake_write(race)
+                    if taken and store.inbox_entry(taken) is not None:
+                        store.inbox_entry(taken).update(state="applied", exit=0, by="checkout other")
                     status, payload = store.commit(batch, f"checkout {entry['checkout']}")
                     entry["batch"] = {
                         "batch_id": batch.get("batch_id"), "command": batch.get("command"), "origin": batch.get("origin"),
                         "replay": replay, "derived": sorted(d.get("path") for d in batch.get("derived") or []),
-                        "events": len(batch.get("events") or []), "inbox": len(batch.get("inbox") or []),
+                        "events": len(batch.get("events") or []),
+                        "inbox": [{k: r.get(k) for k in ("id", "state", "exit", "reason")} for r in batch.get("inbox") or []
+                                  if isinstance(r, dict)],
                         "ops": [dict({k: v for k, v in op.items() if k not in ("content", "lines")},
                                      **({"lines": len(op["lines"])} if "lines" in op else {}))
                                 for op in batch.get("ops") or []]}
