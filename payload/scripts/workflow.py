@@ -5846,7 +5846,7 @@ def validate_agenda(errors: list, warnings: list) -> None:
                 stream = current_stream(all_active_phases())
             elsewhere = agenda_phase_elsewhere(hid, read_json(holder["path"]), stream)
             fix = (f"{WORKFLOW_CMD} agenda-unlink --phase {hid}" if elsewhere is None
-                   else f"{hid} runs on {elsewhere}: unlink it from that checkout")
+                   else _agenda_elsewhere_fix(hid, elsewhere, f"agenda-unlink --phase {hid}"))
         warnings.append(f"{label} links agenda item {aid}, which does not exist (a merge can leave such a link); clear it: {fix}")
 
 
@@ -12724,47 +12724,144 @@ def _plural(count: int, word: str) -> str:
     return f"{count} {word}{'' if count == 1 else 's'}"
 
 
+def _agenda_stream_place(execution: dict) -> str:
+    """Where to type a command for the phase stamped with `execution` (P66 F5): the checkout of its branch, with the
+    path WORKFLOW_CMD runs from when the stamp records it (a nested pair's host worktree, else the worktree's root)."""
+    branch = execution.get("branch")
+    path = execution.get("host_worktree") if NESTED is not None else execution.get("worktree")
+    if isinstance(path, str) and path and NESTED is None and _repo_prefix():
+        path = os.path.join(path, _repo_prefix().rstrip("/"))
+    return f"the checkout of branch {branch}" + (f" ({path})" if isinstance(path, str) and path else "")
+
+
+def _agenda_default_place(base=None) -> str:
+    """Where to type a command for a default-stream phase, seen from a phase worktree or a clone of its branch: the
+    default checkout's path when this checkout is one of its linked worktrees (nested: the main host checkout, where
+    WORKFLOW_CMD runs from), else the default branch's name."""
+    root = _default_checkout_root()
+    if root is not None:
+        return f"the default checkout ({MAIN_HOST if HOST_ROOT is not None and MAIN_HOST is not None else root})"
+    return f"the default checkout (branch {base})" if base else "the default checkout"
+
+
+def _agenda_archived_holds(names, phase_id: str) -> bool:
+    """True when one of the archive folder names is `phase_id`'s (`<yyyymmdd>_<hhmmss>_<id>_<slug>`)."""
+    for name in names:
+        match = ARCHIVE_FOLDER_ID_RE.search(Path(name).name)
+        if match and match.group(1) == phase_id:
+            return True
+    return False
+
+
+def _agenda_default_side(phase_id: str, stream: str) -> tuple:
+    """Does the default side hold this phase? Asked from a phase worktree (`stream` its branch) about an active phase
+    that carries no stamp of its own here (P66 F5). `(answer, authority, base, why)`: answer "held" (the default
+    side has it, active or archived; `authority` its phase.json there when readable), "absent" (it was created on
+    this branch after the cut: this stream's own) or "unknown" (`why`: nothing here can tell). Two readings of
+    one fact, the default branch's tree: the default checkout's folder when this checkout is one of its linked
+    worktrees (`_default_checkout_root`), else git -- `execution.base_branch` of this stream's stamped phase, as a
+    local branch or a remote-tracking ref, used only when its merge-base with HEAD already holds this stream's stamp
+    (so the ref has seen the cut: an older one would call a default-side phase created before the cut absent)."""
+    root = _default_checkout_root()
+    if root is not None and (root / "works" / "phases").is_dir():
+        held = root / "works" / "phases" / "active" / phase_id / "phase.json"
+        if held.is_file():
+            try:
+                authority = read_json(held)
+            except (OSError, ValueError):
+                authority = None
+            return "held", authority if isinstance(authority, dict) else None, None, None
+        archived = root / "works" / "phases" / "archived"
+        names = [d.name for d in archived.iterdir() if d.is_dir()] if archived.is_dir() else []
+        return ("held" if _agenda_archived_holds(names, phase_id) else "absent"), None, None, None
+    own = next((p for p in all_active_phases() if (phase_execution(p) or {}).get("branch") == stream), None)
+    base = (phase_execution(own) or {}).get("base_branch") if own is not None else None
+    if not isinstance(base, str) or not base:
+        return "unknown", None, None, "no default checkout on disk here, and this stream's stamp names no default branch (execution.base_branch)"
+    if not _git_available():
+        return "unknown", None, base, "no default checkout on disk here, and git cannot be read"
+    remotes = _git(["for-each-ref", "--format=%(refname)", "refs/remotes/"], check=False).stdout.split()
+    refs = [f"refs/heads/{base}", *sorted(r for r in remotes if r.endswith(f"/{base}") and r.count("/") == 2 + base.count("/") + 1)]
+    prefix = _repo_prefix()
+    for ref in refs:
+        sha = _rev_parse(ref)
+        if not sha:
+            continue
+        cut = _git(["merge-base", "HEAD", sha], check=False).stdout.strip()
+        at_cut = _json_at_ref(cut, f"works/phases/active/{own['id']}/phase.json") if cut else None
+        if (phase_execution(at_cut) or {}).get("branch") != stream:
+            continue  # this ref predates the cut: it cannot say what the default side held then
+        if _git(["cat-file", "-e", f"{sha}:{prefix}works/phases/active/{phase_id}/phase.json"], check=False).returncode == 0:
+            return "held", _phase_json_at_ref(sha, phase_id), base, None
+        names = _git(["ls-tree", "--name-only", sha, f"{prefix}works/phases/archived/"], check=False).stdout.split()
+        return ("held" if _agenda_archived_holds(names, phase_id) else "absent"), None, base, None
+    return "unknown", None, base, (f"no default checkout on disk here, and no {base} ref here has seen this worktree's cut: "
+                                   f"fetch {base} first")
+
+
 def agenda_phase_elsewhere(phase_id: str, data: dict, stream="unset"):
-    """Where an ACTIVE phase runs when that is not this checkout's stream (its branch, or "the default stream"),
-    else None. The stream rule for agenda links (P66; see GATE_EXEMPT_ADDED_PREFIXES): a link is written only into
-    this stream's own phases, because this checkout's copy of another stream's phase.json is frozen at the stamp
-    and rewriting it would collide with that stream's own writes at the merge. On the default stream (`stream`
-    None) every phase is its own except one in flight in its own worktree (`phase_in_flight`; a merged and torn
-    down one is history, and the default checkout's again). In a phase worktree only the phase stamped with its
-    branch is its own; for any other the default checkout's copy names the branch it was stamped onto after this
-    worktree was cut (as `loop_home` reads it). Deferred jobs and archived phases are never stream-scoped."""
+    """None when an ACTIVE phase is this checkout's stream's own, else a dict: `where` (its branch, or "the default
+    stream") and `place` (the checkout to type the command in, its path when known), or `unknown` (why this
+    checkout cannot tell). The stream rule for agenda links (P66; see GATE_EXEMPT_ADDED_PREFIXES): a link is
+    written only into this stream's own phases, because this checkout's copy of another stream's phase.json is
+    frozen at the stamp and rewriting it would collide with that stream's own writes at the merge. On the default
+    stream (`stream` None) every phase is its own except one in flight in its own worktree (`phase_in_flight`; a
+    merged and torn down one is history, and the default checkout's again). In a phase worktree a phase is its own
+    when it is stamped with its branch, or when the default side does not hold it: it was created here after the
+    cut (`new-phase`, `promote-deferred --create-phase`) and reaches the default side only by the merge (P66 F5;
+    `_agenda_default_side`, the same fact in a linked worktree and in a plain clone). A phase the default side
+    holds is the default stream's, or the stream of the branch its copy there is stamped with (stamped after this
+    worktree was cut, as `loop_home` reads it). When nothing here can tell, the answer is `unknown`, never a
+    guess. Deferred jobs and archived phases are never stream-scoped."""
     if stream == "unset":
         stream = current_stream(all_active_phases())
-    branch = (phase_execution(data) or {}).get("branch")
+    execution = phase_execution(data) or {}
+    branch = execution.get("branch")
     if stream is None:
-        return branch if branch and phase_in_flight(data) else None
+        return {"where": branch, "place": _agenda_stream_place(execution)} if branch and phase_in_flight(data) else None
     if branch == stream:
         return None
     if branch:
-        return branch
-    root = _default_checkout_root()
-    try:
-        authority = read_json(root / "works" / "phases" / "active" / phase_id / "phase.json") if root is not None else None
-    except (OSError, ValueError):
-        authority = None
-    later = (phase_execution(authority) or {}).get("branch") if isinstance(authority, dict) else None
-    return later if later and later != stream else "the default stream"
+        return {"where": branch, "place": _agenda_stream_place(execution)}
+    answer, authority, base, why = _agenda_default_side(phase_id, stream)
+    if answer == "absent":
+        return None
+    if answer == "unknown":
+        return {"unknown": why}
+    later = phase_execution(authority) or {}
+    if later.get("branch") == stream:  # cannot happen (a worktree is cut after its stamp); the default side says it is ours
+        return None
+    if later.get("branch"):
+        return {"where": later["branch"], "place": _agenda_stream_place(later)}
+    return {"where": "the default stream", "place": _agenda_default_place(base)}
+
+
+def _agenda_elsewhere_fix(hid: str, elsewhere: dict, command: str) -> str:
+    """The advice for a phase this checkout may not write (P66 F5): the exact command, and where to type it."""
+    if "unknown" in elsewhere:
+        return (f"cannot tell whether {hid} is this stream's own phase ({elsewhere['unknown']}); "
+                f"in {hid}'s own checkout run: {WORKFLOW_CMD} {command}")
+    return f"{hid} runs on {elsewhere['where']}; in {elsewhere['place']} run: {WORKFLOW_CMD} {command}"
 
 
 def agenda_delete(args: argparse.Namespace) -> None:
     """Delete items, all or none (every id is resolved first): clear the `agenda` key of every phase (active and
     archived) and every job (open, promoted, dropped) that names one of them, THEN remove the items' folders --
     links first, folder last, so a stop between the two leaves no link to a missing item. The phases and jobs
-    stay. An active phase of another stream (`agenda_phase_elsewhere`) is never written: its link is left, said
-    so in the output, and unlinked from its own checkout (until then validate warns of it, dangling)."""
+    stay. An active phase of another stream (`agenda_phase_elsewhere`) is never written: its link is left, and the
+    output names the command and the checkout that clears it (until then validate warns of it, dangling). A phase
+    whose stream this checkout cannot tell refuses the whole delete, nothing written (P66 F5)."""
     items, _every = _agenda_named(args.agenda_ids)
     ids = {item["id"] for item in items}
     holders = [holder for holder in _agenda_link_holders() if holder["agenda"] in ids]
     stream = current_stream(all_active_phases()) if any(h["place"] == "active" for h in holders) else None
-    elsewhere = {}  # phase id -> where it runs, for the active phases of another stream
+    elsewhere = {}  # phase id -> agenda_phase_elsewhere's answer, for the active phases of another stream
     for holder in holders:
         if holder["kind"] == "phase" and holder["place"] == "active":
             where = agenda_phase_elsewhere(holder["id"], read_json(holder["path"]), stream)
+            if where is not None and "unknown" in where:  # never a guess: refused before anything is written
+                raise SystemExit(f"agenda-delete: cannot tell whether {holder['id']} (linked to {holder['agenda']}) is this stream's own "
+                                 f"phase ({where['unknown']}); refused, nothing was written")
             if where is not None:
                 elsewhere[holder["id"]] = where
     left = [holder for holder in holders if holder["kind"] == "phase" and holder["id"] in elsewhere and holder["place"] == "active"]
@@ -12786,7 +12883,8 @@ def agenda_delete(args: argparse.Namespace) -> None:
         print(f"deleted {item['id']}: {_plural(len(own), 'link')} cleared"
               + (" (its phases and jobs stay)" if own else ""))
         for holder in kept[item["id"]]:
-            print(f"1 link left on {holder['id']} (another stream): unlink it there ({elsewhere[holder['id']]})")
+            print(f"1 link left on {holder['id']} (another stream): "
+                  + _agenda_elsewhere_fix(holder["id"], elsewhere[holder["id"]], f"agenda-unlink --phase {holder['id']}"))
 
 
 def _agenda_link_target(args: argparse.Namespace, cmd: str) -> dict:
@@ -12820,7 +12918,8 @@ def _agenda_link_target(args: argparse.Namespace, cmd: str) -> dict:
         raise SystemExit(f"{shown(path)} is not a JSON object: fix it first")
     where = agenda_phase_elsewhere(hid, data) if kind == "phase" else None
     if where is not None:  # the stream rule: only this stream's own phases take a link (agenda_phase_elsewhere)
-        raise SystemExit(f"{hid} runs on {where}: {cmd.split('-', 1)[1]} it from that checkout")
+        command = (f"agenda-link {args.agenda_ids[0]} --phase {hid}" if cmd == "agenda-link" else f"agenda-unlink --phase {hid}")
+        raise SystemExit(f"{cmd} refused, nothing was written: " + _agenda_elsewhere_fix(hid, where, command))
     return {"kind": kind, "id": hid, "path": path, "place": place, "status": data.get("status"),
             "agenda": data.get("agenda"), "linked": "agenda" in data}
 

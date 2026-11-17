@@ -3184,6 +3184,14 @@ g_out=$( cd "$W" && python3 scripts/workflow.py parallel-gate P1 --branch-ref pr
 [ "$g_rc" -eq 0 ] && printf '%s\n' "$g_out" | grep -q "^exemption=phase-folder-only (" \
   && ok "a branch that only adds an agenda item keeps the exemption: the gate opens on a busy default stream" \
   || bad "an added agenda item lost the exemption (rc=$g_rc) -- $g_out"
+# P66: a phase created inside the worktree is that stream's own (the default side does not hold it): it unlinks there.
+# (on the phase branch itself, where the stream is; the probe's files are then dropped from the clean worktree).
+born_out=$( cd "$wt" && aid=$(python3 scripts/workflow.py agenda-add --title "born probe" | sed -n 's/^added \([^:]*\):.*/\1/p') \
+    && python3 scripts/workflow.py new-phase --phase P9 --name "Born here" --objective "made in the worktree" --agenda "$aid" >/dev/null 2>&1 \
+    && python3 scripts/workflow.py agenda-unlink --phase P9 2>&1; rc=$?; git checkout -q -- works && git clean -fdq works; exit $rc ); born_rc=$?
+[ "$born_rc" -eq 0 ] && printf '%s\n' "$born_out" | grep -q "^unlinked P9 from A" \
+  && ok "a phase created inside the worktree is that stream's own: agenda-unlink applies there" \
+  || bad "the worktree refused its own new phase's link (rc=$born_rc) -- $born_out"
 ( cd "$W" && git branch -q -D probe/extra probe/agenda && python3 scripts/workflow.py set-phase-status P2 planned >/dev/null 2>&1 ) || bad "v86 probe: could not reset the probe"
 ( cd "$W" && git restore --staged src/staged.py && git add -A works >/dev/null 2>&1 && git commit -qm "workflow state" >/dev/null 2>&1 ) \
   || bad "v43 probe: could not commit the default-stream workflow state before merging"
