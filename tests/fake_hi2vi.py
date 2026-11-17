@@ -40,6 +40,14 @@ it) and POST /_fake/control {...} (the failure switches, merged into the current
 - gate: {route, count, timeout} -> the next `count` requests to that route are held (outside the store's
   lock) until `count` have arrived or `timeout` seconds pass, then all go on together; one-shot. Two engine
   processes that both get through it began at the same head: without the checkout's lock they race.
+- break: {route, how} -> every answer to that route is broken until the switch is set to null: "truncate"
+  promises 90 bytes more than it sends, then closes (http.client.IncompleteRead); "status" sends a status
+  line with no number (BadStatusLine); "longline" sends a header line over http.client's 65,536-byte limit
+  (LineTooLong); "badbase64" (fetch only) answers each file as base64 that does not decode (binascii.Error);
+  "bad-gateway" answers 502 with an HTML body (a proxy in front of a stopped API); "garbage" answers 200 with a
+  body that is not JSON;
+- slow: <seconds> -> every API request waits that long before it is answered (a slow but answering server),
+  until set to 0; drip: <seconds> -> every API answer's body is sent one byte at a time, that long apart.
 
 Every request is logged as one JSON line in <dir>/requests.jsonl: the route, both headers, whether
 the key matched, for a head its X-Hi2vi-Base, for a fetch the paths asked and how many were left in
@@ -54,6 +62,7 @@ import hmac
 import json
 import os
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -74,7 +83,7 @@ class Store:
         self.lock = threading.Lock()
         self.inbox = []     # the web's agenda changes: {id, created_at, kind, items, fields, minted_id, state, ...}
         self.control = {"offline": False, "commit": None, "race": None, "gate": None, "fetch_page": None,
-                        "inbox_race": None}
+                        "inbox_race": None, "break": None, "slow": 0, "drip": 0}
         self.gate = threading.Condition()
         self.gate_seen = 0
 
@@ -279,13 +288,43 @@ def make_handler(store: Store, key: str, log_path: str):
         def log_message(self, *args):  # quiet: the request log below is the record
             pass
 
+        broken = None  # this request's break switch ({route, how}), read when it arrived
+        drip = 0
+
         def _send(self, status: int, payload: dict) -> None:
             data = json.dumps(payload).encode("utf-8")
+            how = (self.broken or {}).get("how")
+            if how == "status":
+                self.wfile.write(b"HTTP/1.1 OK OK\r\nContent-Length: 0\r\n\r\n")
+                self.close_connection = True
+                return
+            if how == "bad-gateway":
+                status, data = 502, b"<html><body>502 Bad Gateway</body></html>"
+            elif how == "garbage":
+                data = b"<html>not json</html>"
+            if how == "longline":
+                self.wfile.write(b"HTTP/1.1 200 OK\r\nX-Long: " + b"a" * 70_000 + b"\r\n\r\n")
+                self.close_connection = True
+                return
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Content-Length", str(len(data) + (90 if how == "truncate" else 0)))
             self.end_headers()
-            self.wfile.write(data)
+            if how == "truncate":
+                self.wfile.write(data[:max(1, len(data) // 2)])
+                self.wfile.flush()
+                self.close_connection = True
+                return
+            if not self.drip:
+                self.wfile.write(data)
+                return
+            try:
+                for i in range(len(data)):
+                    self.wfile.write(data[i:i + 1])
+                    self.wfile.flush()
+                    time.sleep(float(self.drip))
+            except OSError:  # the client gave up: nothing more to send
+                self.close_connection = True
 
         def _body(self) -> dict:
             length = int(self.headers.get("Content-Length") or 0)
@@ -304,9 +343,16 @@ def make_handler(store: Store, key: str, log_path: str):
         def _handle(self, method: str) -> None:
             url = urlparse(self.path)
             parts = url.path.strip("/").split("/")
+            self.broken, self.drip = None, 0
             if parts[:1] != ["_fake"]:
                 with store.lock:
                     offline = store.control.get("offline")
+                    broken, slow = store.control.get("break"), store.control.get("slow")
+                    self.drip = store.control.get("drip") or 0
+                if isinstance(broken, dict) and broken.get("route") == (parts[3] if len(parts) == 4 else ""):
+                    self.broken = broken
+                if slow and not offline:
+                    time.sleep(float(slow))
                 if offline:
                     with store.lock:
                         return self._drop({"method": method, "path": url.path, "checkout": self.headers.get("X-Hi2vi-Checkout"),
@@ -379,6 +425,9 @@ def make_handler(store: Store, key: str, log_path: str):
                     entry["paths"] = paths
                     status, payload = 200, store.fetch(paths)
                     entry["rest"] = len(payload["rest"])
+                    if (self.broken or {}).get("how") == "badbase64":
+                        for item in payload["files"]:
+                            item.update(encoding="base64", content="not*base64")
                 elif route == "commit" and method == "POST":
                     entry["bytes"] = int(self.headers.get("Content-Length") or 0)
                     batch = self._body()
@@ -408,14 +457,22 @@ def make_handler(store: Store, key: str, log_path: str):
                 if route == "commit" and method == "POST" and fail == "drop-after":
                     return self._drop(entry, f"drop-after {status}")
                 entry["status"] = status
+                if self.broken:
+                    entry["break"] = self.broken.get("how")
                 self._log(entry)
-                return self._send(status, payload)
+                self.reply = (status, payload)  # sent outside the store's lock: a slow or broken answer holds no one
+
+        def _serve(self, method: str) -> None:
+            self.reply = None
+            self._handle(method)
+            if self.reply is not None:
+                self._send(*self.reply)
 
         def do_GET(self):
-            self._handle("GET")
+            self._serve("GET")
 
         def do_POST(self):
-            self._handle("POST")
+            self._serve("POST")
 
     return Handler
 

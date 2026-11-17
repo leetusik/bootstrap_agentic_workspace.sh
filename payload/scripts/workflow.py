@@ -21412,7 +21412,7 @@ def loop_debt_commit(data: dict):
 # commit, with the workspace key only as a Bearer header, read from the user's config, never from argv.
 CLOUD_DIR = ".hi2vi"
 CLOUD_SCHEMA = 1
-CLOUD_TIMEOUT = 10
+CLOUD_TIMEOUT = 10  # seconds, wall clock, per request (the whole answer, not each socket read)
 CLOUD_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 # The append-only files (the union files of .gitattributes): synced as appended lines, never as revisions.
 CLOUD_APPEND_RE = re.compile(r"works/events\.jsonl|works/phases/.+/loop/(?:ledger|events|dead|survivors|checkpoints)\.jsonl")
@@ -21421,6 +21421,9 @@ CLOUD_RACY_NS = 2_000_000_000  # a stat-cache entry this close to the clock is h
 CLOUD_BATCH_MAX = 8_000_000  # bytes per batch as sent: hi2vi answers 413 above 8 MiB, so a bigger change splits
 CLOUD_LOCK_WAIT = 120.0  # seconds a command waits for another command of this checkout before it refuses
 CLOUD_HOOK_LOCK_WAIT = 5.0  # the session hook's wait: it never holds a session start for long
+# The session hook's whole cloud time: the lock wait and every request of its boundary, against the hook's 15 s
+# timeout in settings.json; the interpreter's start, the disk scan and the resume card fit in the 6 s left.
+CLOUD_HOOK_BUDGET = 9.0
 CLOUD_FAIL_OPEN = ("compact-resume",)  # the SessionStart hook: a cloud stop is a note, the command runs on the disk
 CLOUD_FETCH_PATHS = 5000  # paths per P3 request (hi2vi takes at most 20,000 and pages its answer by bytes)
 # The safety half. One engine process per checkout: `fcntl.flock` on `.hi2vi/lock` around the whole boundary
@@ -21428,7 +21431,10 @@ CLOUD_FETCH_PATHS = 5000  # paths per P3 request (hi2vi takes at most 20,000 and
 # begin step's end until the commit step clears it (a command that died midway: the next command refuses and
 # names sync), and `pushing` with the batch ids still to send (their bodies in `.hi2vi/outbox/`), from just
 # before the push until the base is updated, so a lost answer is resent with the same batch_id, which hi2vi
-# applies once. A pull needs no journal: a file it wrote equals the cloud's sha, which reads as "same".
+# applies once. A pull needs no journal: a file it wrote equals the cloud's sha, which reads as "same", and a
+# pull stopped by a write error records in base.json what it wrote before it stopped.
+# One rule at every boundary (begin, commit, link, unlink, sync): any failure inside it ends the command in
+# CloudError's one line (the session hook: a note, exit 0), never a traceback or a false success.
 
 
 class CloudError(Exception):
@@ -21437,6 +21443,48 @@ class CloudError(Exception):
 
 class CloudUnreachable(CloudError):
     pass
+
+
+class _CloudTimeUp(Exception):
+    """Raised by the SIGALRM handler inside CloudLink.call: the request's wall-clock limit passed."""
+
+
+def _cloud_alarm_arm(seconds: float):
+    """A wall-clock limit on one request. urllib's timeout bounds each socket operation, not the whole answer,
+    so a server that sends a byte every few seconds would never trip it. SIGALRM on the main thread (macOS and
+    Linux); elsewhere None, and only the socket timeout applies."""
+    import signal
+    import threading
+    if not hasattr(signal, "setitimer") or threading.current_thread() is not threading.main_thread():
+        return None
+
+    def fire(signum, frame):
+        raise _CloudTimeUp()
+    previous = signal.signal(signal.SIGALRM, fire)
+    signal.setitimer(signal.ITIMER_REAL, max(float(seconds), 0.01))
+    return (previous,)
+
+
+def _cloud_alarm_disarm(armed) -> None:
+    if armed is None:
+        return
+    import signal
+    signal.setitimer(signal.ITIMER_REAL, 0)
+    signal.signal(signal.SIGALRM, armed[0] if armed[0] is not None else signal.SIG_DFL)
+
+
+def cloud_stop_line(exc: BaseException, step: str) -> str:
+    """The one line for a failure inside a linked command's boundary: a CloudError's own line, anything else
+    named by its class (never a traceback). `step`: begin (the command did not run), commit (it ran, its change
+    is on disk only) or sync."""
+    if isinstance(exc, CloudError):
+        return str(exc)
+    what = exc.__class__.__name__ + (f": {_one_line(str(exc))[:200]}" if _one_line(str(exc)) else "")
+    if step == "commit":
+        return f"this change is on disk but not in hi2vi ({what}): run sync"
+    if step == "begin":
+        return f"the step before the command stopped ({what}), so the command did not run: run sync to see this checkout against hi2vi"
+    return f"{step} stopped ({what}): run sync to see this checkout against hi2vi"
 
 
 class CloudConflict(CloudError):
@@ -21684,6 +21732,7 @@ class CloudLink:
         version = installed_workspace_version()
         self.engine = f"v{version}" if version is not None else "unknown"
         self._key = key if key is not None else self._read_key(link["server"])
+        self.deadline = None  # time.monotonic() past which no request is made (the session hook's budget)
 
     def _read_key(self, raw_server: str) -> str:
         path = cloud_key_file()
@@ -21700,15 +21749,26 @@ class CloudLink:
         key = entry.get("key") if isinstance(entry, dict) else None
         if not isinstance(key, str) or not key.strip():
             raise CloudError(f"no workspace key for {self.server} project {self.project} in {path} (run link again)")
+        if any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in key.strip()):
+            raise CloudError(f"the workspace key for {self.server} project {self.project} in {path} holds spaces or "
+                             "control characters, so it is not a key (run link again): nothing was changed")
         return key.strip()
 
     def call(self, method: str, route: str, body=None, extra=None) -> tuple:
-        """(status, payload) of one request. A network failure raises CloudUnreachable; a 3xx is never
-        followed (the key stays with the host it was meant for); every request times out at 10 s.
-        `extra` adds headers (P1's X-Hi2vi-Base)."""
-        import urllib.error
+        """(status, payload) of one request. Any failure to get a whole answer raises CloudUnreachable: a
+        network error, a timeout, a cut or malformed answer (http.client's HTTPException), anything else the
+        client raises; a 3xx is never followed (the key stays with the host it was meant for); every request
+        ends within CLOUD_TIMEOUT seconds of wall clock, and within the session hook's budget when `deadline`
+        is set. An answer that is not JSON reads as {}. `extra` adds headers (P1's X-Hi2vi-Base)."""
         import urllib.request
         from urllib.parse import quote
+
+        limit = float(CLOUD_TIMEOUT)
+        if self.deadline is not None:
+            left = self.deadline - time.monotonic()
+            if left < 0.1:
+                raise CloudUnreachable(f"the session hook's {CLOUD_HOOK_BUDGET:g} s for hi2vi ran out")
+            limit = min(limit, left)
 
         class NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, *a, **k):
@@ -21724,32 +21784,69 @@ class CloudLink:
         handlers =[NoRedirect()] + ([urllib.request.ProxyHandler({})] if self.local else [])
         opener = urllib.request.build_opener(*handlers)
         request = urllib.request.Request(url, data=data, method=method, headers=headers)
+        armed = _cloud_alarm_arm(limit)
         try:
-            with opener.open(request, timeout=CLOUD_TIMEOUT) as resp:
-                status, raw = resp.status, resp.read()
-        except urllib.error.HTTPError as exc:
-            status = exc.code
             try:
-                raw = exc.read() or b""
-            except OSError:
-                raw = b""
-        except (urllib.error.URLError, OSError, ValueError) as exc:
-            reason = getattr(exc, "reason", None) or exc.__class__.__name__
-            raise CloudUnreachable(str(reason).splitlines()[0][:200] if str(reason) else exc.__class__.__name__)
+                status, raw = self._exchange(opener, request, limit)
+            finally:
+                _cloud_alarm_disarm(armed)
+        except _CloudTimeUp:
+            _cloud_alarm_disarm(armed)
+            raise CloudUnreachable(self._timed_out(limit))
         try:
             payload = json.loads(raw.decode("utf-8")) if raw else {}
         except (UnicodeDecodeError, ValueError):
             payload = {}
         return status, payload if isinstance(payload, dict) else {}
 
+    def _exchange(self, opener, request, limit: float) -> tuple:
+        """(status, raw body); an HTTP error status is an answer, every other failure CloudUnreachable."""
+        import socket
+        import urllib.error
+        try:
+            with opener.open(request, timeout=limit) as resp:
+                return resp.status, resp.read()
+        except urllib.error.HTTPError as exc:
+            try:
+                raw = exc.read() or b""
+            except Exception:  # noqa: BLE001 - an error page cut short is still the status's answer
+                raw = b""
+            return exc.code, raw
+        except _CloudTimeUp:
+            raise
+        except Exception as exc:  # noqa: BLE001 - URLError, OSError, http.client.HTTPException, ValueError, ...
+            if isinstance(exc, socket.timeout) or isinstance(getattr(exc, "reason", None), socket.timeout):
+                raise CloudUnreachable(self._timed_out(limit))
+            raise CloudUnreachable(self._reason(exc))
+
+    def _timed_out(self, limit: float) -> str:
+        if limit < CLOUD_TIMEOUT:
+            return f"the session hook's {CLOUD_HOOK_BUDGET:g} s for hi2vi ran out"
+        return f"no whole answer within {limit:g} s"
+
+    def _reason(self, exc: BaseException) -> str:
+        """One short line naming the failure, never the key (a header error can quote a header's value)."""
+        import http.client
+        reason = getattr(exc, "reason", None)
+        text = str(reason) if reason else str(exc)
+        name = exc.__class__.__name__
+        if isinstance(exc, http.client.HTTPException) and name not in text:
+            text = f"{name}: {text}" if text.strip() else name
+        if self._key:  # as typed, and as a str or bytes repr would quote it
+            for form in (self._key, repr(self._key)[1:-1], repr(self._key.encode("utf-8", "replace"))[2:-1]):
+                text = text.replace(form, "<key>")
+        text = (text.splitlines() or [""])[0]
+        return text[:200] or name
+
 
 class CloudSession:
     """One command's boundary in a linked checkout: begin (pull, pre-command scan), then commit (one batch)."""
 
-    def __init__(self, tokens: list) -> None:
+    def __init__(self, tokens: list, deadline=None) -> None:
         self.tokens = list(tokens)
         self.dir = ROOT / CLOUD_DIR
         self.link = CloudLink()
+        self.link.deadline = deadline
         self.base = self._load("base.json") or {}
         if not isinstance(self.base.get("files"), dict) or not isinstance(self.base.get("head"), int):
             self.base = {"schema": CLOUD_SCHEMA, "head": 0, "files": {}}
@@ -21783,22 +21880,29 @@ class CloudSession:
     def fetch(self, paths) -> dict:
         """P3 for any number of paths: {rel: (item, bytes)} of the live ones. hi2vi answers one page at a time
         (`rest` names the asked paths left for the next request) and a path with no live record is simply
-        absent; each request asks for at most CLOUD_FETCH_PATHS paths."""
+        absent; each request asks for at most CLOUD_FETCH_PATHS paths. An answer that does not decode (not a
+        list of files, content that is not text, base64 that is not base64) stops it before anything is written."""
+        import base64
         got, queue = {}, list(dict.fromkeys(paths))
         while queue:
             ask, queue = queue[:CLOUD_FETCH_PATHS], queue[CLOUD_FETCH_PATHS:]
             while ask:
                 answer = self._ask("POST", "fetch", {"paths": ask})
-                for item in answer.get("files") or []:
+                files = answer.get("files") or []
+                if not isinstance(files, list):
+                    raise self._unreachable("a malformed fetch answer")
+                for item in files:
                     rel = item.get("path") if isinstance(item, dict) else None
-                    if rel not in ask:
+                    if not isinstance(rel, str) or rel not in ask:
                         continue
                     raw = item.get("content") or ""
-                    if item.get("encoding") == "base64":
-                        import base64
-                        data = base64.b64decode(raw)
-                    else:
-                        data = raw.encode("utf-8")
+                    try:
+                        if not isinstance(raw, str):
+                            raise TypeError(type(raw).__name__)
+                        data = base64.b64decode(raw) if item.get("encoding") == "base64" else raw.encode("utf-8")
+                    except (TypeError, ValueError):  # binascii.Error and UnicodeEncodeError are ValueErrors
+                        how = "base64" if item.get("encoding") == "base64" else "utf-8 text"
+                        raise self._unreachable(f"a fetched file did not decode as {how}: {rel}")
                     if _sha(data) != item.get("sha256"):
                         raise self._unreachable(f"a fetched file did not match its sha256: {rel}")
                     got[rel] = (item, data)
@@ -21924,42 +22028,58 @@ class CloudSession:
             missing = sorted(set(fetch) - set(got))
             if missing:
                 raise self._unreachable(f"{len(missing)} file(s) missing from the fetch, first {missing[0]}")
-        for rel, (item, data) in sorted(got.items()):
-            path = ROOT / rel
-            if cloud_kind(rel) == "append":
-                local = path.read_bytes() if path.is_file() else b""
-                b = files.get(rel) or {}
-                offset = b.get("offset", 0) if b.get("kind") == "append" else 0
-                offset = offset if 0 <= offset <= len(local) else len(local)
-                seen = {}
-                for line in local.splitlines(keepends=True):
-                    seen[line.rstrip(b"\n")] = seen.get(line.rstrip(b"\n"), 0) + 1
-                new = []
-                for line in data.splitlines():
-                    if seen.get(line, 0):
-                        seen[line] -= 1
-                    else:
-                        new.append(line + b"\n")
-                added = b"".join(new)
-                merged = local[:offset] + added + local[offset:]
-                if added:
-                    _cloud_write_bytes(path, merged)
-                offset += len(added)
-                files[rel] = {"rev": item.get("rev"), "sha256": _sha(merged[:offset]), "kind": "append", "offset": offset}
-            else:
-                _cloud_write_bytes(path, data)
-                files[rel] = {"rev": item.get("rev"), "sha256": item.get("sha256"), "kind": "file"}
-        for rel in delete:
-            _cloud_remove(rel)
-            files.pop(rel, None)
-        for rel, change in same.items():
-            if change is None:
+        written, at = [], None  # the paths written or deleted so far, and the path in hand
+        try:
+            for rel, (item, data) in sorted(got.items()):
+                path, at = ROOT / rel, rel
+                if cloud_kind(rel) == "append":
+                    local = path.read_bytes() if path.is_file() else b""
+                    b = files.get(rel) or {}
+                    offset = b.get("offset", 0) if b.get("kind") == "append" else 0
+                    offset = offset if 0 <= offset <= len(local) else len(local)
+                    seen = {}
+                    for line in local.splitlines(keepends=True):
+                        seen[line.rstrip(b"\n")] = seen.get(line.rstrip(b"\n"), 0) + 1
+                    new = []
+                    for line in data.splitlines():
+                        if seen.get(line, 0):
+                            seen[line] -= 1
+                        else:
+                            new.append(line + b"\n")
+                    added = b"".join(new)
+                    merged = local[:offset] + added + local[offset:]
+                    if added:
+                        _cloud_write_bytes(path, merged)
+                    offset += len(added)
+                    files[rel] = {"rev": item.get("rev"), "sha256": _sha(merged[:offset]), "kind": "append", "offset": offset}
+                else:
+                    _cloud_write_bytes(path, data)
+                    files[rel] = {"rev": item.get("rev"), "sha256": item.get("sha256"), "kind": "file"}
+                written.append(rel)
+            for rel in delete:
+                at = rel
+                _cloud_remove(rel)
                 files.pop(rel, None)
-            elif cloud_kind(rel) == "append":
-                size = (ROOT / rel).stat().st_size
-                files[rel] = {"rev": change.get("rev"), "sha256": change.get("sha256"), "kind": "append", "offset": size}
-            else:
-                files[rel] = {"rev": change.get("rev"), "sha256": change.get("sha256"), "kind": "file"}
+                written.append(rel)
+            for rel, change in same.items():
+                at = rel
+                if change is None:
+                    files.pop(rel, None)
+                elif cloud_kind(rel) == "append":
+                    size = (ROOT / rel).stat().st_size
+                    files[rel] = {"rev": change.get("rev"), "sha256": change.get("sha256"), "kind": "append", "offset": size}
+                else:
+                    files[rel] = {"rev": change.get("rev"), "sha256": change.get("sha256"), "kind": "file"}
+        except OSError as exc:  # record what landed (the head stays), so the next command's pull resumes from it
+            try:
+                self.save_base()
+                if written:
+                    cloud_rebuild(written)
+            except Exception:  # noqa: BLE001 - the write error is the line to show
+                pass
+            raise CloudError(f"{at} could not be written here from hi2vi ({exc.__class__.__name__}: "
+                             f"{exc.strerror or exc}): {len(written)} pulled path(s) landed before it and are recorded "
+                             "in .hi2vi/base.json; fix it, then run the command again (the pull resumes from there)")
         if not mismatch:
             self.base["head"] = new_head
         self.save_base()
@@ -22189,17 +22309,19 @@ def cloud_run(args: argparse.Namespace, tokens: list):
     """`main()`'s command call in a linked checkout, under the checkout's lock: begin, the command unchanged,
     then the commit (also after a refusal). A failed begin refuses before the command runs; a failed commit
     exits 1 even when the command succeeded, and a refusal's own line is kept. The session hook
-    (CLOUD_FAIL_OPEN) never fails on the cloud: any cloud stop becomes a note and it runs on the disk."""
+    (CLOUD_FAIL_OPEN) never fails on the cloud: any cloud stop becomes a note and it runs on the disk, and its
+    whole cloud time (the lock wait and every request) stays inside CLOUD_HOOK_BUDGET."""
     fail_open = args.cmd in CLOUD_FAIL_OPEN
-    lock = CloudLock(CLOUD_HOOK_LOCK_WAIT if fail_open else CLOUD_LOCK_WAIT)
+    deadline = time.monotonic() + CLOUD_HOOK_BUDGET if fail_open else None
+    lock = CloudLock(min(CLOUD_HOOK_LOCK_WAIT, CLOUD_HOOK_BUDGET) if fail_open else CLOUD_LOCK_WAIT)
     try:
         lock.acquire()
-    except CloudError as exc:
+    except Exception as exc:  # noqa: BLE001 - one line, whatever stopped it
         if fail_open:
-            return cloud_fail_open(args, str(exc))
-        raise SystemExit(str(exc))
+            return cloud_fail_open(args, cloud_stop_line(exc, "begin"))
+        raise SystemExit(cloud_stop_line(exc, "begin"))
     try:
-        return cloud_boundary(args, tokens, fail_open)
+        return cloud_boundary(args, tokens, fail_open, deadline)
     finally:
         lock.release()
 
@@ -22211,39 +22333,51 @@ def cloud_fail_open(args: argparse.Namespace, line: str):
     return result
 
 
-def cloud_boundary(args: argparse.Namespace, tokens: list, fail_open: bool = False):
-    """The boundary itself, with the lock held."""
+def cloud_boundary(args: argparse.Namespace, tokens: list, fail_open: bool = False, deadline=None):
+    """The boundary itself, with the lock held. Every failure of the begin or the commit step is one line
+    (cloud_stop_line): a refusal before the command, or "on disk but not in hi2vi" after it."""
     try:
-        session = CloudSession(tokens)
+        session = CloudSession(tokens, deadline=deadline)
         session.begin(inbox=args.cmd in CLOUD_INBOX_AT)
-    except CloudError as exc:
+    except Exception as exc:  # noqa: BLE001 - a CloudError's line, or any other failure named in one
         if fail_open:
-            return cloud_fail_open(args, str(exc))
-        raise SystemExit(str(exc))
+            return cloud_fail_open(args, cloud_stop_line(exc, "begin"))
+        raise SystemExit(cloud_stop_line(exc, "begin"))
     try:
         result = args.func(args)
     except SystemExit as stop:
-        try:
-            session.commit()
-        except CloudError as exc:
+        line = cloud_commit_step(session)
+        if line is not None:
             if fail_open:
-                print(f"note: {exc}")
+                print(f"note: {line}")
             elif stop.code in (None, 0):
-                raise SystemExit(str(exc))
+                raise SystemExit(line)
             else:
-                print(str(exc), file=sys.stderr)
+                print(line, file=sys.stderr)
         raise
     except BaseException as crash:  # a crash, not a refusal: no commit, the journal stays `running` and names it
         session.mark_crashed(crash)
         raise
+    line = cloud_commit_step(session)
+    if line is not None:
+        if fail_open:
+            print(f"note: {line}")
+            return result
+        raise SystemExit(line)
+    return result
+
+
+def cloud_commit_step(session: CloudSession):
+    """The commit step after the command: None when it landed (or had nothing to send), else its one line. A
+    failure that is not a CloudError leaves the journal as it was (`running` names it to the next command, a
+    `pushing` one is resent)."""
     try:
         session.commit()
-    except CloudError as exc:
-        if fail_open:
-            print(f"note: {exc}")
-            return result
-        raise SystemExit(str(exc))
-    return result
+    except Exception as exc:  # noqa: BLE001 - one line, never a traceback after the command ran
+        if not isinstance(exc, CloudError):
+            session.mark_crashed(exc)
+        return cloud_stop_line(exc, "commit")
+    return None
 
 
 # The link, the way back, and sync. These three run outside the boundary (main() calls them directly): each
@@ -22555,8 +22689,8 @@ def cloud_link(args: argparse.Namespace) -> int:
                 session.base["head"] = manifest["head"]  # nothing live in hi2vi: every file goes up as new
             session.begin()
             sent = session.commit()
-    except CloudError as exc:
-        raise SystemExit(f"{exc} (the link is made: {shown(cloud_link_file())})")
+    except Exception as exc:  # noqa: BLE001 - one line, whatever stopped the first sync
+        raise SystemExit(f"{cloud_stop_line(exc, 'link')} (the link is made: {shown(cloud_link_file())})")
     if mode == "upload":
         print(f"linked: {sent} file(s) sent to hi2vi")
     else:
@@ -22580,10 +22714,11 @@ def cloud_unlink(args: argparse.Namespace) -> int:
         session = CloudSession(["unlink"])
         session.begin()
         session.commit()
-    except CloudError as exc:
+    except Exception as exc:  # noqa: BLE001 - one line, whatever stopped it
         lock.release()
-        offline = " (offline, unlink --from-disk keeps the disk as it is)" if str(exc).startswith("hi2vi is not reachable") else ""
-        raise SystemExit(f"unlink refused, the checkout is still linked{offline}: {exc}")
+        line = cloud_stop_line(exc, "unlink")
+        offline = " (offline, unlink --from-disk keeps the disk as it is)" if line.startswith("hi2vi is not reachable") else ""
+        raise SystemExit(f"unlink refused, the checkout is still linked{offline}: {line}")
     try:
         shutil.rmtree(str(ROOT / CLOUD_DIR))
     finally:
@@ -22617,13 +22752,36 @@ def cloud_unlink_from_disk() -> int:
 
 
 def cloud_rel_arg(raw: str) -> str:
-    """A path the operator typed (as sync lists it, from the workspace root, or from the cwd) as a truth-set rel."""
+    """A path the operator typed (as sync lists it, from the workspace root, or from the cwd) as a truth-set rel.
+    Only a file is a synced path: a folder, or anything on disk that is not a regular file, is refused here."""
     root = os.path.realpath(str(ROOT))
     full = os.path.realpath(raw if os.path.isabs(raw) else os.path.join(os.getcwd(), raw))
     rel = os.path.relpath(full, root).replace(os.sep, "/") if full.startswith(root + os.sep) else posixpath.normpath(raw)
     if not cloud_truth_rel(rel):
         raise SystemExit(f"{raw} is not in the synced set (works/ or docs/, bar the generated files): nothing was changed")
+    try:
+        mode = os.lstat(str(ROOT / rel)).st_mode
+    except OSError:
+        return rel  # absent here: sync --keep asks hi2vi whether it holds the file
+    if stat.S_ISDIR(mode):
+        raise SystemExit(f"{raw} is a folder: sync takes file paths, one by one as sync lists them (nothing was changed)")
+    if not stat.S_ISREG(mode):
+        raise SystemExit(f"{raw} is not a regular file, so it is never synced (nothing was changed)")
     return rel
+
+
+def cloud_keep_check(session: CloudSession, paths: list) -> None:
+    """sync --keep's refusal before anything is sent or written: every path must be a file on disk or a file
+    hi2vi holds (a path on neither side has nothing to keep)."""
+    absent = [rel for rel in paths if not (ROOT / rel).is_file()]
+    if not absent:
+        return
+    got = session.fetch(absent)
+    unknown = [rel for rel in absent if rel not in got]
+    if unknown:
+        more = f" (and {len(unknown) - 1} more)" if len(unknown) > 1 else ""
+        raise CloudError(f"sync --keep refused: {unknown[0]}{more} names no file here or in hi2vi; it takes the file "
+                         "paths sync lists (nothing was changed)")
 
 
 # The web's agenda inbox. The web never writes a truth file: each change is a pending entry
@@ -22910,8 +23068,8 @@ def cloud_sync(args: argparse.Namespace) -> int:
         with CloudLock():
             tokens = ["sync"] + (["--keep", args.keep] + paths if args.keep else [])
             return cloud_sync_run(CloudSession(tokens), args.keep, paths)
-    except CloudError as exc:
-        raise SystemExit(str(exc))
+    except Exception as exc:  # noqa: BLE001 - a CloudError's line, or any other failure named in one
+        raise SystemExit(cloud_stop_line(exc, "sync"))
 
 
 def _cloud_sync_head(session: CloudSession) -> dict:
@@ -22961,17 +23119,24 @@ def cloud_keep(session: CloudSession, side: str, paths: list, running) -> None:
     copy over the disk."""
     got, files = session.fetch(paths), session.base["files"]
     if side == "cloud":
-        for rel in paths:
-            if rel in got:
-                item, data = got[rel]
-                _cloud_write_bytes(ROOT / rel, data)
-                entry = {"rev": item.get("rev"), "sha256": item.get("sha256"), "kind": cloud_kind(rel)}
-                if entry["kind"] == "append":
-                    entry["offset"] = len(data)
-                files[rel] = entry
-            else:
-                _cloud_remove(rel)
-                files.pop(rel, None)
+        done = 0
+        try:
+            for rel in paths:
+                if rel in got:
+                    item, data = got[rel]
+                    _cloud_write_bytes(ROOT / rel, data)
+                    entry = {"rev": item.get("rev"), "sha256": item.get("sha256"), "kind": cloud_kind(rel)}
+                    if entry["kind"] == "append":
+                        entry["offset"] = len(data)
+                    files[rel] = entry
+                else:
+                    _cloud_remove(rel)
+                    files.pop(rel, None)
+                done += 1
+        except OSError as exc:  # the paths kept before it are recorded; this one and the rest are as they were
+            session.save_base()
+            raise CloudError(f"{paths[done]} could not be written here ({exc.__class__.__name__}: {exc.strerror or exc}): "
+                             f"{done} path(s) before it are kept; fix it, then run sync --keep cloud again")
         session.save_base()
         cloud_rebuild(paths)
         print(f"kept hi2vi's copy of {len(paths)} path(s): the disk holds it now")
@@ -23009,6 +23174,8 @@ def cloud_keep(session: CloudSession, side: str, paths: list, running) -> None:
 
 def cloud_sync_run(session: CloudSession, keep, paths: list) -> int:
     _cloud_sync_head(session)
+    if keep:
+        cloud_keep_check(session, paths)
     notes = []
     entry = session.journal()
     if entry and entry.get("state") == "pushing" and isinstance(entry.get("batches"), list):
