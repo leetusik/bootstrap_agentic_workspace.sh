@@ -10,7 +10,8 @@ project is 404; X-Hi2vi-Checkout and X-Hi2vi-Engine are required):
 
 - P1 GET head -> {head, org_id, project_id, inbox_pending}
 - P2 GET manifest?since=<head> -> {head, changes: [{path, rev, sha256, size, deleted, kind}]}
-- P3 POST fetch {paths} -> {files: [{path, rev, sha256, encoding, content}]}
+- P3 POST fetch {paths} -> {files: [{path, rev, sha256, encoding, content}], rest}, one page at a time
+  (the asked paths past the page's byte budget come back in `rest`, to be asked again)
 - P4 POST commit {batch_id, command, origin, ops, events, derived, inbox} -> 200 {head, revs} or
   409 {conflicts: [...]}; ops are put / delete / move / append, applied in order, all or nothing;
   a batch_id seen before returns its first answer and applies nothing (P4 idempotency); a put
@@ -26,12 +27,15 @@ POST /_fake/write {path, content, kind?, deleted?} (a change made by another che
 - commit: "drop-before" | "drop-after" -> the next commit is dropped unanswered, before it is applied or
   after (a lost answer); one-shot;
 - race: {path, content} -> another checkout's write lands just before the next commit is applied; one-shot;
+- fetch_page: <bytes> -> a fetch page's byte budget (default 6,000,000, the server's), so a test can make
+  the engine follow `rest`;
 - gate: {route, count, timeout} -> the next `count` requests to that route are held (outside the store's
   lock) until `count` have arrived or `timeout` seconds pass, then all go on together; one-shot. Two engine
   processes that both get through it began at the same head: without the checkout's lock they race.
 
 Every request is logged as one JSON line in <dir>/requests.jsonl: the route, both headers, whether
-the key matched, and for a commit its ops without their content. The key itself is never logged.
+the key matched, for a head its X-Hi2vi-Base, for a fetch the paths asked and how many were left in
+`rest`, and for a commit its ops without their content. The key itself is never logged.
 """
 from __future__ import annotations
 
@@ -60,7 +64,7 @@ class Store:
         self.events = []    # P6 lines with their sequence number
         self.derived = {}   # P9: path -> {head, content}
         self.lock = threading.Lock()
-        self.control = {"offline": False, "commit": None, "race": None, "gate": None}
+        self.control = {"offline": False, "commit": None, "race": None, "gate": None, "fetch_page": None}
         self.gate = threading.Condition()
         self.gate_seen = 0
 
@@ -90,17 +94,25 @@ class Store:
         return {"head": self.head, "changes": changes}
 
     def fetch(self, paths) -> dict:
-        files = []
-        for path in paths:
+        """One page, like the server: the live files among `paths` in their order until the page's byte budget
+        (control `fetch_page`, default the server's 6,000,000) is spent, at least one file per page; `rest` are
+        the asked paths left for the next request. A path with no live record is simply absent."""
+        budget = int(self.control.get("fetch_page") or 6_000_000)
+        files, used, rest = [], 0, []
+        for i, path in enumerate(paths):
             rec = self.live(path)
             if rec is None:
                 continue
+            if files and used + len(rec["content"]) > budget:
+                rest = list(paths[i:])
+                break
             try:
                 content, encoding = rec["content"].decode("utf-8"), "utf8"
             except UnicodeDecodeError:
                 content, encoding = base64.b64encode(rec["content"]).decode("ascii"), "base64"
             files.append({"path": path, "rev": rec["rev"], "sha256": rec["sha256"], "encoding": encoding, "content": content})
-        return {"files": files}
+            used += len(rec["content"])
+        return {"files": files, "rest": rest}
 
     def commit(self, batch: dict, who: str):
         """(status, answer): all or nothing, idempotent by batch_id."""
@@ -309,6 +321,7 @@ def make_handler(store: Store, key: str, log_path: str):
                     return self._send(400, {"error": "X-Hi2vi-Checkout and X-Hi2vi-Engine are required"})
                 route = parts[3]
                 if route == "head" and method == "GET":
+                    entry["base"] = self.headers.get("X-Hi2vi-Base")
                     status, payload = 200, {"head": store.head, "org_id": store.org_id, "project_id": store.project_id,
                                             "inbox_pending": 0}
                 elif route == "manifest" and method == "GET":
@@ -319,6 +332,7 @@ def make_handler(store: Store, key: str, log_path: str):
                     paths = self._body().get("paths") or []
                     entry["paths"] = paths
                     status, payload = 200, store.fetch(paths)
+                    entry["rest"] = len(payload["rest"])
                 elif route == "commit" and method == "POST":
                     entry["bytes"] = int(self.headers.get("Content-Length") or 0)
                     batch = self._body()

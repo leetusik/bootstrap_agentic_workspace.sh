@@ -5788,6 +5788,350 @@ kill "$SF_PID" 2>/dev/null; wait "$SF_PID" 2>/dev/null
 echo "cloud safety test runtime: $(( $(date +%s) - sf_t0 ))s"
 
 # ---------------------------------------------------------------------------
+echo "== Test 23: link, unlink and sync against the local fake hi2vi, with a scratch XDG_CONFIG_HOME -- the installer hides .hi2vi/ in the workflow repo (fresh and --update); link refuses http:// to a non-local host, an at-root install, uncommitted changes, another worktree, a phase in flight on a stream, a key file open to group or others, a wrong key and an already-linked checkout, each with nothing written; link reads the key from stdin, keeps it 0600 in a 0700 folder and uploads the truth set in batches under 8,000,000 B; next prints store=cloud and head sends X-Hi2vi-Base; parallel-start is refused in cloud mode with nothing written; a second checkout joins from an unused install (following fetch's rest) or an equal set, and a used one is refused with the list; sync pulls and pushes the clean changes, lists a stale write, shows its diff, refuses --keep with no path and resolves only on --keep local|cloud, lists an interrupted command's files and pushes none until --keep; unlink refuses on a mismatch, then leaves a local-mode tree that validates and opens no socket; unlink --from-disk runs offline; the key appears nowhere =="
+lk_t0=$(date +%s)
+newtmp LKW; LKX="$LKW/xdg"; LK_OUT="$LKW/out.txt"; : > "$LK_OUT"
+LKA="$LKW/a"; LKB="$LKW/b"; LKC="$LKW/c"; LKR="$LKW/root"
+# lk <host> <args>: one engine command in that host's nested workspace, with the scratch XDG; stdin passes through.
+lk() { _h=$1; shift; ( cd "$_h" && XDG_CONFIG_HOME="$LKX" python3 workflow/scripts/workflow.py "$@" ) 2>&1 | tee -a "$LK_OUT"; return "${PIPESTATUS[0]}"; }
+# lk_nosock <engine> <args>: the same under a socket guard (any connect or urlopen ends the process with 97).
+lk_nosock() { _e=$1; shift; ( cd "$(dirname "$(dirname "$_e")")" && XDG_CONFIG_HOME="$LKX" python3 - "$_e" "$@" <<'PY'
+import os, runpy, socket, sys, urllib.request
+def guard(*a, **k):
+    sys.stderr.write("SOCKET-OPENED\n")
+    os._exit(97)
+socket.socket.connect = guard
+socket.create_connection = guard
+urllib.request.urlopen = guard
+urllib.request.OpenerDirector.open = guard
+sys.argv = sys.argv[1:]
+runpy.run_path(sys.argv[0], run_name="__main__")
+PY
+) 2>&1 | tee -a "$LK_OUT"; return "${PIPESTATUS[0]}"; }
+lk_install() { { env GIT_AUTHOR_NAME=smoke GIT_AUTHOR_EMAIL=smoke@example.invalid GIT_COMMITTER_NAME=smoke GIT_COMMITTER_EMAIL=smoke@example.invalid sh "$BOOT" "$@" \
+  && git -C "$1/workflow" config user.email smoke@example.invalid && git -C "$1/workflow" config user.name smoke \
+  && git -C "$1/workflow" add -A && git -C "$1/workflow" commit -qm install; } > "$1.setup.txt" 2>&1 || bad "link probe: the install of $1 failed -- $(tail -3 "$1.setup.txt")"; }
+lk_commit() { git -C "$1/workflow" add -A && git -C "$1/workflow" commit -qm "$2" >/dev/null; }
+# The whole workflow tree's sha list (.git aside) plus the XDG folder's, to prove a refusal wrote nothing.
+lk_tree() { python3 - "$1" "$LKX" <<'PY'
+import hashlib, os, sys
+for root in sys.argv[1:]:
+    for d, dirs, files in sorted(os.walk(root)):
+        dirs[:] = sorted(x for x in dirs if not (d == root and x == ".git"))
+        for f in sorted(files):
+            p = os.path.join(d, f)
+            print(os.path.relpath(p, root), oct(os.stat(p).st_mode), hashlib.sha256(open(p, "rb").read()).hexdigest())
+PY
+}
+lk_install "$LKA"; lk_install "$LKB"; lk_install "$LKC"
+{ env GIT_AUTHOR_NAME=smoke GIT_AUTHOR_EMAIL=smoke@example.invalid GIT_COMMITTER_NAME=smoke GIT_COMMITTER_EMAIL=smoke@example.invalid sh "$BOOT" "$LKR" --at-root --name Root --summary root; } > "$LKW/root.setup.txt" 2>&1 \
+  || bad "link probe: the at-root install failed -- $(tail -3 "$LKW/root.setup.txt")"
+LKK="link-smoke-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"; LKO="other-secret-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+printf '%s\n' "$LKK" > "$LKW/key"; chmod 600 "$LKW/key"
+python3 "$REPO_ROOT/tests/fake_hi2vi.py" --dir "$LKW/fake" --port-file "$LKW/port" --key-file "$LKW/key" \
+  --project proj-1 --org org-1 --lifetime 900 > "$LKW/fake.txt" 2>&1 &
+LK_PID=$!
+for _ in $(seq 1 100); do [ -s "$LKW/port" ] && break; sleep 0.1; done
+LKS="http://127.0.0.1:$(cat "$LKW/port" 2>/dev/null)"; LKU="$LKS/projects/proj-1"
+lk_mark() { if [ -f "$LKW/fake/requests.jsonl" ]; then grep -c '' "$LKW/fake/requests.jsonl"; else echo 0; fi; }
+lk_ctl() { python3 - "$LKS" "$1" <<'PY'
+import http.client, sys
+from urllib.parse import urlparse
+u = urlparse(sys.argv[1])
+conn = http.client.HTTPConnection(u.hostname, u.port, timeout=10)
+conn.request("POST", "/_fake/control", sys.argv[2], {"Content-Type": "application/json"})
+assert conn.getresponse().status == 200
+PY
+}
+lk_put() { python3 - "$LKS" "$1" "$2" <<'PY' || bad "link probe: the fake write failed"
+import http.client, json, sys
+from urllib.parse import urlparse
+u = urlparse(sys.argv[1])
+conn = http.client.HTTPConnection(u.hostname, u.port, timeout=10)
+conn.request("POST", "/_fake/write", json.dumps({"path": sys.argv[2], "content": sys.argv[3]}), {"Content-Type": "application/json"})
+assert conn.getresponse().status == 200
+PY
+}
+# lk_check <workflow dir> <mark> <check> [args]: one named assertion over the fake's requests since <mark>, its
+# records, the checkout's base.json and journal, and its disk.
+lk_check() { python3 - "$LKW/fake/requests.jsonl" "$LKS" "$@" <<'PY'
+import base64, hashlib, http.client, json, sys
+from pathlib import Path
+from urllib.parse import urlparse, quote
+log, server, root, mark, check, extra = sys.argv[1], sys.argv[2], Path(sys.argv[3]), int(sys.argv[4]), sys.argv[5], sys.argv[6:]
+R = [json.loads(l) for l in (Path(log).read_text().splitlines() if Path(log).exists() else [])[mark:]]
+C = [r for r in R if r["path"].endswith("/commit")]
+u = urlparse(server)
+def get(path):
+    conn = http.client.HTTPConnection(u.hostname, u.port, timeout=10)
+    conn.request("GET", path)
+    resp = conn.getresponse()
+    return resp.status, json.loads(resp.read())
+S = get("/_fake/state")[1]
+live = {p: f for p, f in S["files"].items() if not f["deleted"]}
+hi = root / ".hi2vi"
+base = json.loads((hi / "base.json").read_text()) if (hi / "base.json").exists() else {}
+journal = json.loads((hi / "journal.json").read_text()) if (hi / "journal.json").exists() else None
+def sha(p):
+    return hashlib.sha256((root / p).read_bytes()).hexdigest()
+def cloud(p):
+    return base64.b64decode(get("/_fake/file?path=" + quote(p))[1]["content"]).decode()
+def need(cond, why):
+    if not cond:
+        print(why)
+        sys.exit(1)
+def synced():
+    need(journal is None, f"the journal is left: {journal}")
+    need(base.get("head") == S["head"], f"base head {base.get('head')} != hi2vi head {S['head']}")
+    need(set(base["files"]) == set(live), f"base and hi2vi hold different paths: {sorted(set(base['files']) ^ set(live))[:4]}")
+    for p, f in live.items():
+        need(base["files"][p]["rev"] == f["rev"] and (root / p).is_file() and sha(p) == f["sha256"], f"{p}: base, disk and hi2vi disagree")
+if check == "nothing":  # a refusal: no request reached the fake
+    need(not R, f"a refused link reached hi2vi: {[r['path'] for r in R]}")
+elif check == "upload":
+    need(len(C) >= 2 and all(c["status"] == 200 for c in C), f"several landed batches expected: {[(c['status'], c.get('bytes')) for c in C]}")
+    need(all(0 < c["bytes"] < 8_000_000 for c in C), f"a batch over 8,000,000 B: {[c.get('bytes') for c in C]}")
+    need(all(c["batch"]["command"].startswith("link ") for c in C), "the upload's batches do not name link")
+    ops = [op for c in C for op in c["batch"]["ops"]]
+    need(all(op["op"] in ("put", "append") and op.get("base_rev") is None for op in ops), "the first upload only adds")
+    need(len([p for p in live if "/topics/big-" in p]) == 3 and "works/phases/active/P1/phase.json" in live, "a file is missing in hi2vi")
+    link = json.loads((hi / "link.json").read_text())
+    need(link.get("server") == server and link.get("org_id") == "org-1" and link.get("project_id") == "proj-1" and "key" not in link,
+         f"link.json: {link}")
+    synced()
+elif check == "next":  # extra: the line next printed
+    heads = [r for r in R if r["path"].endswith("/head")]
+    need(heads and all(r.get("base") == str(base.get("head")) for r in heads), f"head did not send X-Hi2vi-Base {base.get('head')}: {[r.get('base') for r in heads]}")
+    need(extra[0] == f"store=cloud server={server} project=proj-1", f"next's store line: {extra[0]!r}")
+elif check == "join":  # extra: page (the fetch followed rest)
+    fetches = [r for r in R if r["path"].endswith("/fetch")]
+    need(not C or all(c["status"] == 200 for c in C), "a join's batch failed")
+    need(len(fetches) >= 2 and any(r.get("rest") for r in fetches), f"the join did not follow rest: {[(len(r['paths']), r.get('rest')) for r in fetches]}")
+    synced()
+elif check == "synced":
+    synced()
+elif check == "stale":  # extra: path, the cloud's content, revisions before
+    path, content = extra[0], extra[1]
+    need(all(op.get("path") != path for c in C for op in c["batch"]["ops"]), "sync sent the stale path")
+    need(cloud(path) == content, "hi2vi's copy changed")
+    need("changed here" in (root / path).read_text(), "the disk lost this checkout's change")
+elif check == "clean":  # extra: the pulled path, the pushed path
+    need((root / extra[0]).is_file() and extra[0] in live and sha(extra[0]) == live[extra[0]]["sha256"], "the clean cloud change was not pulled")
+    need(extra[1] in live and sha(extra[1]) == live[extra[1]]["sha256"], "the clean local change was not pushed")
+elif check == "kept-local":  # extra: path
+    need(len(C) == 1 and C[0]["status"] == 200 and C[0]["batch"]["command"] == f"sync --keep local {extra[0]}", f"one keep batch expected: {[(c['status'], c['batch'].get('command')) for c in C]}")
+    need(cloud(extra[0]) == (root / extra[0]).read_text(), "hi2vi does not hold the disk's copy")
+elif check == "kept-cloud":  # extra: path, content
+    need(not C, "keep cloud sent a batch")
+    need((root / extra[0]).read_text() == extra[1] == cloud(extra[0]), "the disk does not hold hi2vi's copy")
+elif check == "interrupted":  # extra: revisions before
+    need(not C and S["revisions"] == int(extra[0]), "sync pushed an interrupted command's changes")
+    need(journal is not None and journal.get("state") == "running", f"the journal is not running: {journal}")
+elif check == "kept-append":
+    ops = [op for c in C for op in c["batch"]["ops"] if op.get("path") == "works/events.jsonl"]
+    need(len(C) == 1 and C[0]["status"] == 200 and [op["op"] for op in ops] == ["append"], f"events.jsonl kept as {[op['op'] for op in ops]}")
+elif check == "revs":  # extra: revisions before (unchanged)
+    need(S["revisions"] == int(extra[0]) and not C, "a refused sync changed hi2vi")
+print("ok")
+PY
+}
+lk_revs() { python3 - "$LKS" <<'PY'
+import http.client, json, sys
+from urllib.parse import urlparse
+u = urlparse(sys.argv[1])
+conn = http.client.HTTPConnection(u.hostname, u.port, timeout=10)
+conn.request("GET", "/_fake/state")
+print(json.loads(conn.getresponse().read())["revisions"])
+PY
+}
+# (h) the installer hides .hi2vi/ in the workflow repo's own info/exclude, on a fresh install and on --update.
+lk_ex="$LKB/workflow/.git/info/exclude"; grep -qx '/.hi2vi/' "$LKA/workflow/.git/info/exclude"; lk_rc=$?
+grep -vx '/.hi2vi/' "$lk_ex" > "$LKW/ex"; cat "$LKW/ex" > "$lk_ex"; grep -qx '/.hi2vi/' "$lk_ex"; lk_rc2=$?
+sh "$BOOT" "$LKB" --update > "$LKW/update.txt" 2>&1; lk_rc3=$?; ( lk_commit "$LKB" update ) 2>/dev/null
+[ "$lk_rc" = 0 ] && [ "$lk_rc2" = 1 ] && [ "$lk_rc3" = 0 ] && grep -qx '/.hi2vi/' "$lk_ex" \
+  && ok "the installer hides .hi2vi/ in the workflow repo's own info/exclude, on a fresh install and on --update" \
+  || bad "the .hi2vi/ exclude is missing -- fresh=$lk_rc stripped=$lk_rc2 update=$lk_rc3 $(tail -2 "$LKW/update.txt")"
+# A phase with three 3 MB topics in A (committed): the first upload must split.
+( lk "$LKA" new-phase --phase P1 --name One --objective toy >/dev/null ) && mkdir -p "$LKA/workflow/works/phases/active/P1/topics"
+for i in 1 2 3; do python3 -c 'import sys; open(sys.argv[1], "w").write(("line of a big topic %s\n" % sys.argv[2]) * 140000)' \
+  "$LKA/workflow/works/phases/active/P1/topics/big-$i.md" "$i"; done
+lk_commit "$LKA" phase
+# (a) the refusals, each one line with nothing written: no request, the tree and the XDG folder unchanged.
+lk_ref() {  # lk_ref <label> <expected line ERE> <host> <engine> <args...>: run under the socket guard, key on stdin
+  _l=$1; _x=$2; _h=$3; shift 3; _t1=$(lk_tree "$_h"); _m=$(lk_mark)
+  printf '%s\n' "$LKK" | lk_nosock "$@" > "$LKW/ref.txt"; _rc=$?
+  _t2=$(lk_tree "$_h"); _r=$(lk_check "$_h" "$_m" nothing)
+  [ "$_rc" = 1 ] && [ "$(grep -v '^Paste a workspace key' "$LKW/ref.txt" | grep -c '')" = 1 ] && grep -qE "$_x" "$LKW/ref.txt" && [ "$_t1" = "$_t2" ] && [ "$_r" = ok ] \
+    && [ ! -e "$_h/.hi2vi" ] && ! grep -qF "$LKK" "$LKW/ref.txt" \
+    && ok "link refuses $_l with one line, opens no socket and writes nothing" \
+    || bad "link did not refuse $_l cleanly -- rc=$_rc $_r $(head -2 "$LKW/ref.txt") $(diff <(echo "$_t1") <(echo "$_t2") | head -3)"
+}
+lk_ref "http:// to a non-local host" '^hi2vi server http://hi2vi\.example must be https://' "$LKA/workflow" "$LKA/workflow/scripts/workflow.py" link http://hi2vi.example/projects/proj-1
+lk_ref "an at-root install" '^link refuses an at-root install' "$LKR" "$LKR/scripts/workflow.py" link "$LKU"
+printf 'not committed\n' > "$LKA/workflow/works/phases/active/P1/topics/loose.md"
+lk_ref "uncommitted changes in the workflow repo" '^link refuses a workflow repo with uncommitted changes \(1 path\(s\), first works/phases/active/P1/topics/loose\.md\)' "$LKA/workflow" "$LKA/workflow/scripts/workflow.py" link "$LKU"
+rm -f "$LKA/workflow/works/phases/active/P1/topics/loose.md"
+git -C "$LKA/workflow" worktree add -q "$LKW/wt" -b side >/dev/null 2>&1
+lk_ref "while the workflow repo has another worktree" '^link refuses while the workflow repo has another worktree' "$LKA/workflow" "$LKA/workflow/scripts/workflow.py" link "$LKU"
+git -C "$LKA/workflow" worktree remove "$LKW/wt" >/dev/null 2>&1; git -C "$LKA/workflow" branch -q -D side >/dev/null 2>&1
+( lk "$LKC" new-phase --phase P1 --name Other --objective toy >/dev/null ) && lk_commit "$LKC" phase
+python3 - "$LKC/workflow/works/phases/active/P1/phase.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1])); d["execution"] = {"mode": "parallel", "branch": "phase/P1-other", "worktree": None}
+open(sys.argv[1], "w").write(json.dumps(d, indent=2) + "\n")
+PY
+lk_commit "$LKC" stamp
+lk_ref "while a phase is in flight on its own stream" '^link refuses while a phase is in flight on its own stream \(P1\)' "$LKC/workflow" "$LKC/workflow/scripts/workflow.py" link "$LKU"
+git -C "$LKC/workflow" reset -q --hard HEAD~1
+mkdir -p "$LKX/hi2vi" && chmod 700 "$LKX/hi2vi" && printf '{"https://elsewhere.example": {"p": {"key": "%s"}}}\n' "$LKO" > "$LKX/hi2vi/workspace-keys.json" && chmod 644 "$LKX/hi2vi/workspace-keys.json"
+lk_ref "a key file open to group or others (with the chmod fix, never the key)" "workspace-keys\.json can be read by group or others \(mode 0644\), and it holds workspace keys: run chmod 600 .*workspace-keys\.json, then run this again" "$LKA/workflow" "$LKA/workflow/scripts/workflow.py" link "$LKU"
+grep -qF "$LKO" "$LKW/ref.txt" && bad "the 0644 refusal printed a key"
+chmod 600 "$LKX/hi2vi/workspace-keys.json"
+lk_t1=$(lk_tree "$LKA/workflow"); printf 'not-the-key\n' | lk "$LKA" link "$LKU" > "$LKW/a6.txt"; lk_rc=$?; lk_t2=$(lk_tree "$LKA/workflow")
+[ "$lk_rc" = 1 ] && grep -qx "hi2vi refused this key (HTTP 401): make a workspace key under Keys on the project's page: nothing was written" "$LKW/a6.txt" && [ "$lk_t1" = "$lk_t2" ] && [ ! -e "$LKA/workflow/.hi2vi" ] \
+  && ok "link refuses a key hi2vi does not take (401) with one line and writes nothing (no .hi2vi/, the key file unchanged)" \
+  || bad "a wrong key was not refused cleanly -- rc=$lk_rc $(tail -2 "$LKW/a6.txt")"
+# (b) the link: the key from stdin, kept owner-only beside the other server's; the truth set uploaded in batches.
+lk_m=$(lk_mark); printf '%s\n' "$LKK" | lk "$LKA" link "$LKU" > "$LKW/b.txt"; lk_rc=$?; lk_r=$(lk_check "$LKA/workflow" "$lk_m" upload)
+lk_modes=$(python3 -c 'import os, stat, sys; print("%o %o" % (stat.S_IMODE(os.stat(sys.argv[1]).st_mode), stat.S_IMODE(os.stat(sys.argv[2]).st_mode)))' "$LKX/hi2vi" "$LKX/hi2vi/workspace-keys.json")
+lk_keys=$(python3 -c 'import json, sys; d = json.load(open(sys.argv[1])); print(sorted(d), d[sys.argv[2]]["proj-1"]["key"] == sys.argv[3], d[sys.argv[2]]["proj-1"]["org_id"])' "$LKX/hi2vi/workspace-keys.json" "$LKS" "$LKK")
+[ "$lk_rc" = 0 ] && [ "$lk_r" = ok ] && [ "$lk_modes" = "700 600" ] && [ "$lk_keys" = "['$LKS', 'https://elsewhere.example'] True org-1" ] \
+  && grep -qxE "store=cloud server=$LKS project=proj-1 head=r[0-9]+" "$LKW/b.txt" && [ -z "$(git -C "$LKA/workflow" status --porcelain)" ] \
+  && ok "link reads the key from stdin, verifies it by head, keeps it in a 0700 folder's 0600 file beside the other server's key, writes link.json without it and uploads the truth set as several batches under 8,000,000 B; the workflow repo stays clean (.hi2vi/ excluded)" \
+  || bad "the link upload wrong -- rc=$lk_rc $lk_r modes=$lk_modes keys=$lk_keys $(tail -2 "$LKW/b.txt") $(git -C "$LKA/workflow" status --porcelain | head -3)"
+lk_m=$(lk_mark); lk "$LKA" next > "$LKW/b2.txt"; lk_rc=$?; lk_r=$(lk_check "$LKA/workflow" "$lk_m" next "$(grep '^store=' "$LKW/b2.txt")")
+[ "$lk_rc" = 0 ] && [ "$lk_r" = ok ] && ok "next prints store=cloud server=<server> project=<id> in a linked checkout, and its head request sends X-Hi2vi-Base: <synced head>" \
+  || bad "next's store line or X-Hi2vi-Base wrong -- rc=$lk_rc $lk_r"
+lk_ref "an already-linked checkout" '^this checkout is already linked \(store=cloud server=' "$LKB/workflow" "$LKA/workflow/scripts/workflow.py" link "$LKU"
+# (f) O7: in cloud mode a stream command is refused with one line, before any request, with nothing written.
+lk_t1=$(lk_tree "$LKA/workflow"); lk_m=$(lk_mark); lk_nosock "$LKA/workflow/scripts/workflow.py" parallel-start P1 --host-branch side > "$LKW/f.txt"; lk_rc=$?; lk_t2=$(lk_tree "$LKA/workflow")
+[ "$lk_rc" = 1 ] && [ "$(grep -c '' "$LKW/f.txt")" = 1 ] && grep -q '^parallel-start is refused in cloud mode: ' "$LKW/f.txt" && [ "$lk_t1" = "$lk_t2" ] && [ "$(lk_check "$LKA/workflow" "$lk_m" nothing)" = ok ] \
+  && [ -z "$(git -C "$LKA/workflow" branch --list 'phase/*')" ] \
+  && ok "parallel-start in a linked checkout is refused with one line, no request, no branch and nothing written" \
+  || bad "parallel-start was not refused in cloud mode -- rc=$lk_rc $(head -2 "$LKW/f.txt")"
+lk_bad=""; lk_t1=$(lk_tree "$LKA/workflow"); lk_m=$(lk_mark)
+for c in "parallel-gate P1" "parallel-teardown P1" "parallel-merge-finish" "parallel-consolidated P1" "reopen-phase P1 --note x" "loop-checkpoint P1 --landed"; do
+  # shellcheck disable=SC2086
+  lk_nosock "$LKA/workflow/scripts/workflow.py" $c > "$LKW/f2.txt"; lk_rc=$?
+  { [ "$lk_rc" = 1 ] && [ "$(grep -c '' "$LKW/f2.txt")" = 1 ] && grep -q "^${c%% *}\( --landed\)\? is refused in cloud mode: " "$LKW/f2.txt"; } || lk_bad="$lk_bad [$c: rc=$lk_rc $(head -1 "$LKW/f2.txt")]"
+done
+lk_t2=$(lk_tree "$LKA/workflow")
+[ -z "$lk_bad" ] && [ "$lk_t1" = "$lk_t2" ] && [ "$(lk_check "$LKA/workflow" "$lk_m" nothing)" = ok ] \
+  && ok "the other stream commands (parallel-gate, -teardown, -merge-finish, -consolidated, reopen-phase, loop-checkpoint --landed) are refused in cloud mode with one line each, nothing written" \
+  || bad "a stream command ran in cloud mode --$lk_bad"
+# (c) a second checkout: an unused install joins (the fetch paged, following rest); a used one is refused with the list.
+lk_ctl '{"fetch_page": 4000}'; lk_m=$(lk_mark); printf '%s\n' "$LKK" | lk "$LKB" link "$LKU" > "$LKW/c.txt"; lk_rc=$?; lk_r=$(lk_check "$LKB/workflow" "$lk_m" join)
+lk_ctl '{"fetch_page": null}'
+[ "$lk_rc" = 0 ] && [ "$lk_r" = ok ] && grep -q "^linked: joined hi2vi's workspace ([0-9]* file(s) taken from hi2vi, this unused install's seed files replaced)" "$LKW/c.txt" \
+  && [ -f "$LKB/workflow/works/phases/active/P1/topics/big-2.md" ] && grep -qF 'One' "$LKB/workflow/works/backlog.md" \
+  && ok "a second checkout joins from an unused install: its seed files give way, every file is taken from hi2vi (fetch pages followed through rest) and the generated files are rebuilt" \
+  || bad "the unused install did not join -- rc=$lk_rc $lk_r $(tail -3 "$LKW/c.txt")"
+lk_t1=$(lk_tree "$LKC/workflow"); lk_m=$(lk_mark); printf '%s\n' "$LKK" | lk "$LKC" link "$LKU" > "$LKW/c2.txt"; lk_rc=$?; lk_t2=$(lk_tree "$LKC/workflow")
+[ "$lk_rc" = 1 ] && grep -q "^link refuses: hi2vi already holds this project's workspace (r[0-9]*), and [0-9]* path(s) here differ from it" "$LKW/c2.txt" \
+  && grep -qx 'differs  works/phases/active/P1/phase.json' "$LKW/c2.txt" && [ "$lk_t1" = "$lk_t2" ] && [ ! -e "$LKC/workflow/.hi2vi" ] \
+  && ok "a used checkout is refused at the join with the list of differing paths, and nothing is written" \
+  || bad "a used checkout's join was not refused with the list -- rc=$lk_rc $(head -4 "$LKW/c2.txt")"
+lk_nosock "$LKB/workflow/scripts/workflow.py" unlink --from-disk > "$LKW/c3.txt"; lk_rc=$?
+[ "$lk_rc" = 0 ] && [ ! -e "$LKB/workflow/.hi2vi" ] && grep -q '^unlinked from the disk, offline: changes made in hi2vi after r[0-9]* are not on this disk' "$LKW/c3.txt" \
+  && grep -qx 'local mode: the files on disk are the truth again; commit them (git -C workflow add -A && git -C workflow commit)' "$LKW/c3.txt" \
+  && ok "unlink --from-disk runs offline (no socket), removes .hi2vi/ and says what the disk cannot hold" \
+  || bad "unlink --from-disk wrong -- rc=$lk_rc $(head -3 "$LKW/c3.txt")"
+lk_commit "$LKB" unlinked; lk_m=$(lk_mark); printf '%s\n' "$LKK" | lk "$LKB" link "$LKU" > "$LKW/c4.txt"; lk_rc=$?; lk_r=$(lk_check "$LKB/workflow" "$lk_m" synced)
+[ "$lk_rc" = 0 ] && [ "$lk_r" = ok ] && grep -q "^linked: joined hi2vi's workspace (0 file(s) taken from hi2vi)" "$LKW/c4.txt" \
+  && ok "a checkout whose files equal hi2vi's joins with nothing taken" || bad "an equal set did not join -- rc=$lk_rc $lk_r $(tail -2 "$LKW/c4.txt")"
+# (d) sync in A: a stale write (409) beside a clean change on each side.
+lk_p=works/phases/active/P1/intent.md; printf 'changed here\n' >> "$LKA/workflow/$lk_p"
+lk_ctl "{\"race\": {\"path\": \"$lk_p\", \"content\": \"changed in hi2vi by another checkout\\n\"}}"
+lk "$LKA" next > "$LKW/d0.txt"; lk_rc0=$?
+lk_put works/phases/active/P1/topics/cloud.md 'written in hi2vi
+'; printf 'written here\n' > "$LKA/workflow/works/phases/active/P1/topics/local.md"
+lk_v=$(lk_revs); lk_m=$(lk_mark); lk "$LKA" sync > "$LKW/d.txt"; lk_rc=$?
+lk_r=$(lk_check "$LKA/workflow" "$lk_m" clean works/phases/active/P1/topics/cloud.md works/phases/active/P1/topics/local.md)
+lk_r2=$(lk_check "$LKA/workflow" "$lk_m" stale "$lk_p" 'changed in hi2vi by another checkout
+' "$lk_v")
+[ "$lk_rc0" = 1 ] && [ "$lk_rc" = 1 ] && [ "$lk_r" = ok ] && [ "$lk_r2" = ok ] \
+  && grep -qE "^differs  $lk_p  here: changed since r[0-9]+ \(.+\)  hi2vi: r[0-9]+$" "$LKW/d.txt" && [ "$(grep -cE '^(differs|here only|cloud only|deleted|interrupted)' "$LKW/d.txt")" = 1 ] \
+  && ok "sync pulls the clean hi2vi change, pushes the clean local one, and lists the stale write (differs, both sides' facts), resolving nothing: exit 1" \
+  || bad "sync's list wrong -- rc=$lk_rc0/$lk_rc $lk_r / $lk_r2 / $(head -4 "$LKW/d.txt")"
+lk "$LKA" sync --diff "$lk_p" > "$LKW/d2.txt"; lk_rc=$?
+[ "$lk_rc" = 0 ] && grep -qx -- '-changed in hi2vi by another checkout' "$LKW/d2.txt" && grep -qx -- '+changed here' "$LKW/d2.txt" && grep -q "^--- hi2vi/$lk_p (r[0-9]*)" "$LKW/d2.txt" \
+  && ok "sync --diff shows hi2vi's copy against the disk as a unified diff" || bad "sync --diff wrong -- rc=$lk_rc $(head -5 "$LKW/d2.txt")"
+lk_v=$(lk_revs); lk_m=$(lk_mark); lk "$LKA" sync --keep local > "$LKW/d3.txt"; lk_rc=$?; lk_r=$(lk_check "$LKA/workflow" "$lk_m" revs "$lk_v")
+lk "$LKA" next > "$LKW/d4.txt"; lk_rc2=$?
+[ "$lk_rc" != 0 ] && [ "$(grep -c '' "$LKW/d3.txt")" = 1 ] && grep -q '^sync --keep needs at least one path' "$LKW/d3.txt" && [ "$lk_r" = ok ] \
+  && [ "$lk_rc2" = 1 ] && grep -q '^1 files differ between this checkout and hi2vi: run sync' "$LKW/d4.txt" \
+  && ok "sync --keep with no path is refused with one line and nothing sent; the stale write still stops the next command" \
+  || bad "sync --keep without a path was not refused -- rc=$lk_rc/$lk_rc2 $lk_r $(head -2 "$LKW/d3.txt") / $(head -1 "$LKW/d4.txt")"
+lk_m=$(lk_mark); lk "$LKA" sync --keep local "$lk_p" > "$LKW/d5.txt"; lk_rc=$?; lk_r=$(lk_check "$LKA/workflow" "$lk_m" kept-local "$lk_p")
+lk_m=$(lk_mark); lk "$LKA" sync > "$LKW/d6.txt"; lk_rc2=$?; lk_r2=$(lk_check "$LKA/workflow" "$lk_m" synced)
+lk "$LKA" sync --status > "$LKW/d7.txt"; lk_rc3=$?
+[ "$lk_rc" = 0 ] && [ "$lk_r" = ok ] && [ "$lk_rc2" = 0 ] && [ "$lk_r2" = ok ] && grep -q '^in sync: ' "$LKW/d6.txt" && grep -qE '^in sync: head=r([0-9]+) base=r\1$' "$LKW/d5.txt" && [ "$lk_rc3" = 0 ] \
+  && grep -qxE "store=cloud server=$LKS project=proj-1 head=r([0-9]+) base=r\1 here=0 differ=0 inbox=0" "$LKW/d7.txt" \
+  && ok "sync --keep local <path> pushes the disk's copy over hi2vi's revision (recorded as that command); then sync is clean and sync --status reads head=base, here=0 differ=0" \
+  || bad "sync --keep local wrong -- rc=$lk_rc/$lk_rc2/$lk_rc3 $lk_r / $lk_r2 / $(cat "$LKW/d7.txt")"
+printf 'changed here again\n' >> "$LKA/workflow/$lk_p"
+lk_ctl "{\"race\": {\"path\": \"$lk_p\", \"content\": \"hi2vi wins this one\\n\"}}"; lk "$LKA" next >/dev/null
+lk_m=$(lk_mark); lk "$LKA" sync --keep cloud "$lk_p" > "$LKW/d8.txt"; lk_rc=$?; lk_r=$(lk_check "$LKA/workflow" "$lk_m" kept-cloud "$lk_p" 'hi2vi wins this one
+')
+lk_m=$(lk_mark); lk "$LKA" next >/dev/null; lk_rc2=$?; lk_r2=$(lk_check "$LKA/workflow" "$lk_m" synced)
+[ "$lk_rc" = 0 ] && [ "$lk_r" = ok ] && [ "$lk_rc2" = 0 ] && [ "$lk_r2" = ok ] \
+  && ok "sync --keep cloud <path> writes hi2vi's copy over the disk, and the next command runs synced" \
+  || bad "sync --keep cloud wrong -- rc=$lk_rc/$lk_rc2 $lk_r / $lk_r2 $(tail -2 "$LKW/d8.txt")"
+# An interrupted command: sync lists its files as interrupted and pushes none of them until --keep.
+( cd "$LKA" && XDG_CONFIG_HOME="$LKX" python3 - defer-job --title killed --reason r --trigger t --source manual <<'PY'
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scripts/workflow.py")
+mod = importlib.util.module_from_spec(spec)
+sys.modules["workflow_engine"] = mod
+spec.loader.exec_module(mod)
+real = mod.defer_job
+def crash(args):
+    real(args)
+    os._exit(9)
+mod.defer_job = crash
+sys.exit(mod.main(sys.argv[1:]))
+PY
+) >> "$LK_OUT" 2>&1
+lk_v=$(lk_revs); lk_m=$(lk_mark); lk "$LKA" sync > "$LKW/e.txt"; lk_rc=$?; lk_r=$(lk_check "$LKA/workflow" "$lk_m" interrupted "$lk_v")
+lk_ip=$(grep '^interrupted  ' "$LKW/e.txt" | awk '{print $2}' | tr '\n' ' ')
+[ "$lk_rc" = 1 ] && [ "$lk_r" = ok ] && echo "$lk_ip" | grep -q 'works/deferred/open/.*/deferred.json' \
+  && ok "after a command killed midway, sync lists its files as interrupted and pushes none of them (the journal stays running)" \
+  || bad "sync did not hold the interrupted files -- rc=$lk_rc $lk_r $(head -3 "$LKW/e.txt")"
+# shellcheck disable=SC2086
+lk_m=$(lk_mark); lk "$LKA" sync --keep local $lk_ip > "$LKW/e2.txt"; lk_rc=$?; lk_r0=$(lk_check "$LKA/workflow" "$lk_m" kept-append)
+lk_m=$(lk_mark); lk "$LKA" next >/dev/null; lk_rc2=$?; lk_r=$(lk_check "$LKA/workflow" "$lk_m" synced)
+[ "$lk_rc" = 0 ] && [ "$lk_rc2" = 0 ] && [ "$lk_r0" = ok ] && [ "$lk_r" = ok ] && grep -q '^the interrupted command (defer-job --title killed' "$LKW/e2.txt" \
+  && ok "sync --keep local on the interrupted files pushes them (works/events.jsonl as its new lines, never a put), clears the journal, and the next command runs synced" \
+  || bad "resolving the interrupted state wrong -- rc=$lk_rc/$lk_rc2 $lk_r0 / $lk_r $(head -3 "$LKW/e2.txt")"
+# (e) unlink: refused on a mismatch (still linked), then the way back to local mode.
+printf 'one more\n' >> "$LKA/workflow/$lk_p"
+lk_ctl "{\"race\": {\"path\": \"$lk_p\", \"content\": \"and another\\n\"}}"; lk "$LKA" next >/dev/null
+lk "$LKA" unlink > "$LKW/g.txt"; lk_rc=$?
+[ "$lk_rc" = 1 ] && [ -f "$LKA/workflow/.hi2vi/link.json" ] && grep -q '^unlink refused, the checkout is still linked: 1 files differ between this checkout and hi2vi' "$LKW/g.txt" \
+  && ok "unlink refuses on a mismatch with one line, and the checkout stays linked" || bad "unlink did not refuse on a mismatch -- rc=$lk_rc $(head -2 "$LKW/g.txt")"
+lk "$LKA" sync --keep local "$lk_p" >/dev/null
+lk_m=$(lk_mark); lk "$LKA" unlink > "$LKW/g2.txt"; lk_rc=$?
+lk "$LKA" validate > "$LKW/g3.txt"; lk_rc2=$?
+lk_in=""; for c in "next" "new-phase --phase P2 --name Two --objective toy" "defer-job --title local --reason r --trigger t --source manual" "rebuild"; do
+  # shellcheck disable=SC2086
+  lk_nosock "$LKA/workflow/scripts/workflow.py" $c > "$LKW/g4.txt"; [ "$?" = 97 ] && lk_in="$lk_in [$c]"
+done
+[ "$lk_rc" = 0 ] && [ ! -e "$LKA/workflow/.hi2vi" ] && grep -qx 'local mode: the files on disk are the truth again; commit them (git -C workflow add -A && git -C workflow commit)' "$LKW/g2.txt" \
+  && [ "$lk_rc2" = 0 ] && [ -z "$lk_in" ] && [ -d "$LKA/workflow/works/phases/active/P2" ] && grep -qF "$LKS" "$LKX/hi2vi/workspace-keys.json" \
+  && ok "unlink pulls and pushes, removes .hi2vi/ and prints the one-commit line; the tree validates, local commands open no socket, and the key stays in user config" \
+  || bad "unlink wrong -- rc=$lk_rc/$lk_rc2 nosock:$lk_in $(head -3 "$LKW/g2.txt") / $(tail -2 "$LKW/g3.txt")"
+# The key file's mode is checked at every linked command too (B is linked): 0644 refuses before any request.
+chmod 644 "$LKX/hi2vi/workspace-keys.json"; lk_m=$(lk_mark); lk "$LKB" next > "$LKW/k.txt"; lk_rc=$?; chmod 600 "$LKX/hi2vi/workspace-keys.json"
+[ "$lk_rc" = 1 ] && grep -q 'workspace-keys.json can be read by group or others (mode 0644)' "$LKW/k.txt" && [ "$(lk_check "$LKB/workflow" "$lk_m" nothing)" = ok ] \
+  && ok "a linked command with the key file at 0644 is refused with the chmod fix, before any request" \
+  || bad "a 0644 key file was used by a linked command -- rc=$lk_rc $(head -2 "$LKW/k.txt")"
+# (g) the key never reaches a tree (.hi2vi/ included), the output, the events or the fake's request log.
+if grep -rqF "$LKK" "$LKA" "$LKB" "$LKC" "$LKR" "$LK_OUT" "$LKW/fake" "$LKW"/*.txt 2>/dev/null; then bad "the workspace key leaked into a tree, the output or the request log"
+else ok "the workspace key appears nowhere in the checkouts (.hi2vi/ and events included), the commands' output or the fake's request log"; fi
+kill "$LK_PID" 2>/dev/null; wait "$LK_PID" 2>/dev/null
+echo "link test runtime: $(( $(date +%s) - lk_t0 ))s"
+
+# ---------------------------------------------------------------------------
 echo
 if [ "$FAILS" -eq 0 ]; then
   echo "ALL RETROFIT SMOKE TESTS PASSED"

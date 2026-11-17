@@ -2996,6 +2996,27 @@ if NESTED and not UPDATE and not DRY_RUN and not (ROOT / ".git").exists():
     # names the operator's first commit there.
     subprocess.run(["git", "init", "-q"], cwd=str(ROOT), check=True)
 
+
+def exclude_cloud_dir() -> None:
+    """Nested only: hide `.hi2vi/` (a linked checkout's sync bookkeeping: link, base, journal, outbox, lock) in
+    the workflow repo's own common info/exclude, on a fresh install and on --update. Never .gitignore (tracked),
+    and never when workflow/ is not a repo of its own (git would answer for the host)."""
+    if not (ROOT / ".git").exists():
+        return
+    proc = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=str(ROOT), capture_output=True, text=True)
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return
+    exclude = (ROOT / proc.stdout.strip()).resolve() / "info" / "exclude"
+    existing = exclude.read_text(encoding="utf-8") if exclude.is_file() else ""
+    if {".hi2vi/", "/.hi2vi/", ".hi2vi", "/.hi2vi"} & {line.strip() for line in existing.splitlines()}:
+        return
+    exclude.parent.mkdir(parents=True, exist_ok=True)
+    exclude.write_text(existing + ("\n" if existing and not existing.endswith("\n") else "") + "/.hi2vi/\n", encoding="utf-8")
+
+
+if NESTED and not DRY_RUN:
+    exclude_cloud_dir()
+
 created_at = now_iso()
 
 # ---- Routing contract (CLAUDE.md) -------------------------------------------

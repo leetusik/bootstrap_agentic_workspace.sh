@@ -11984,6 +11984,8 @@ def cmd_next(args: argparse.Namespace) -> None:
     # confirmed the host's commit convention. Printed before every return below; silent at root.
     for line in nested_next_lines():
         print(line)
+    if cloud_link_file().exists():  # cloud mode: hi2vi's revisions are the history, so no workflow-repo commit
+        print(cloud_store_line())
     # Stream context. Both lines are silent on the default stream with no parallel
     # phases, so an untouched workspace sees exactly the output it saw before.
     stream = state.get("stream")
@@ -21381,6 +21383,7 @@ CLOUD_BATCH_MAX = 8_000_000  # bytes per batch as sent: hi2vi answers 413 above 
 CLOUD_LOCK_WAIT = 120.0  # seconds a command waits for another command of this checkout before it refuses
 CLOUD_HOOK_LOCK_WAIT = 5.0  # the session hook's wait: it never holds a session start for long
 CLOUD_FAIL_OPEN = ("compact-resume",)  # the SessionStart hook: a cloud stop is a note, the command runs on the disk
+CLOUD_FETCH_PATHS = 5000  # paths per P3 request (hi2vi takes at most 20,000 and pages its answer by bytes)
 # The safety half. One engine process per checkout: `fcntl.flock` on `.hi2vi/lock` around the whole boundary
 # (begin, command, commit). A journal, `.hi2vi/journal.json`, names every interrupted state: `running` from the
 # begin step's end until the commit step clears it (a command that died midway: the next command refuses and
@@ -21577,25 +21580,54 @@ def cloud_key_file() -> Path:
     return (Path(cfg) if os.path.isabs(cfg) else Path.home() / ".config") / "hi2vi" / "workspace-keys.json"
 
 
-class CloudLink:
-    """The link (server, project) and the client. The key lives only in this object's request headers."""
-
-    def __init__(self) -> None:
-        path = cloud_link_file()
+def cloud_key_problem(path: Path):
+    """One line when the key file, or its folder, is open to anyone but its owner (group or others hold any
+    permission bit, or another user owns it), else None. Missing is not a problem here. Never the key."""
+    for target, mode in ((path.parent, 0o700), (path, 0o600)):
         try:
-            link = read_json(path)
-        except (OSError, ValueError) as exc:
-            raise CloudError(f"{shown(path)} is unreadable ({exc.__class__.__name__}): this checkout's link is broken")
-        if not isinstance(link, dict) or not isinstance(link.get("server"), str) or not link.get("project_id"):
-            raise CloudError(f"{shown(path)} lacks its server or project_id: this checkout's link is broken")
-        self.server = link["server"].rstrip("/")
+            st = os.stat(str(target))
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            return f"{target} cannot be read ({exc.__class__.__name__}): nothing was changed"
+        if hasattr(os, "getuid") and st.st_uid != os.getuid():
+            return (f"{target} belongs to another user, so the workspace key there is not yours alone: "
+                    "nothing was changed")
+        if st.st_mode & 0o077:
+            return (f"{target} can be read by group or others (mode {stat.S_IMODE(st.st_mode):04o}), and it holds "
+                    f"workspace keys: run chmod {mode:o} {shlex.quote(str(target))}, then run this again "
+                    "(nothing was changed)")
+    return None
+
+
+def cloud_server_check(server: str) -> str:
+    """The server's base URL, refused unless https:// (plain http:// only to a local host)."""
+    parsed = urlparse(server)
+    host = (parsed.hostname or "").lower()
+    local = host in CLOUD_LOCAL_HOSTS or host.endswith(".localhost")
+    if not host or not (parsed.scheme == "https" or (parsed.scheme == "http" and local)):
+        raise CloudError(f"hi2vi server {server} must be https:// (plain http:// only to localhost, "
+                         "127.0.0.1, ::1 or *.localhost): nothing was changed")
+    return server.rstrip("/")
+
+
+class CloudLink:
+    """The link (server, project) and the client. The key lives only in this object's request headers.
+    `link` and `key` are given only by the link command, before the checkout's link file exists."""
+
+    def __init__(self, link=None, key=None) -> None:
+        if link is None:
+            path = cloud_link_file()
+            try:
+                link = read_json(path)
+            except (OSError, ValueError) as exc:
+                raise CloudError(f"{shown(path)} is unreadable ({exc.__class__.__name__}): this checkout's link is broken")
+            if not isinstance(link, dict) or not isinstance(link.get("server"), str) or not link.get("project_id"):
+                raise CloudError(f"{shown(path)} lacks its server or project_id: this checkout's link is broken")
+        self.server = cloud_server_check(link["server"].rstrip("/"))
         self.project = str(link["project_id"])
-        parsed = urlparse(self.server)
-        host = (parsed.hostname or "").lower()
+        host = (urlparse(self.server).hostname or "").lower()
         self.local = host in CLOUD_LOCAL_HOSTS or host.endswith(".localhost")
-        if not host or not (parsed.scheme == "https" or (parsed.scheme == "http" and self.local)):
-            raise CloudError(f"hi2vi server {self.server} must be https:// (plain http:// only to localhost, "
-                             "127.0.0.1, ::1 or *.localhost): nothing was changed")
         checkout = link.get("checkout")
         if not isinstance(checkout, str) or not checkout:
             import platform
@@ -21603,10 +21635,13 @@ class CloudLink:
         self.checkout = re.sub(r"[^A-Za-z0-9._-]+", "-", checkout)[:64] or "checkout"
         version = installed_workspace_version()
         self.engine = f"v{version}" if version is not None else "unknown"
-        self._key = self._read_key(link["server"])
+        self._key = key if key is not None else self._read_key(link["server"])
 
     def _read_key(self, raw_server: str) -> str:
         path = cloud_key_file()
+        problem = cloud_key_problem(path)
+        if problem:
+            raise CloudError(problem)
         try:
             data = read_json(path)
         except (OSError, ValueError):
@@ -21619,9 +21654,10 @@ class CloudLink:
             raise CloudError(f"no workspace key for {self.server} project {self.project} in {path} (run link again)")
         return key.strip()
 
-    def call(self, method: str, route: str, body=None) -> tuple:
+    def call(self, method: str, route: str, body=None, extra=None) -> tuple:
         """(status, payload) of one request. A network failure raises CloudUnreachable; a 3xx is never
-        followed (the key stays with the host it was meant for); every request times out at 10 s."""
+        followed (the key stays with the host it was meant for); every request times out at 10 s.
+        `extra` adds headers (P1's X-Hi2vi-Base)."""
         import urllib.error
         import urllib.request
         from urllib.parse import quote
@@ -21636,7 +21672,8 @@ class CloudLink:
                    "X-Hi2vi-Checkout": self.checkout, "X-Hi2vi-Engine": self.engine}
         if data is not None:
             headers["Content-Type"] = "application/json"
-        handlers = [NoRedirect()] + ([urllib.request.ProxyHandler({})] if self.local else [])
+        headers.update(extra or {})
+        handlers =[NoRedirect()] + ([urllib.request.ProxyHandler({})] if self.local else [])
         opener = urllib.request.build_opener(*handlers)
         request = urllib.request.Request(url, data=data, method=method, headers=headers)
         try:
@@ -21683,14 +21720,44 @@ class CloudSession:
                           "and nothing was changed.")
 
     def _ask(self, method: str, route: str, body=None) -> dict:
-        """A begin-step request: anything but a 200 stops the command before it runs."""
+        """A begin-step request: anything but a 200 stops the command before it runs. P1 head names the head
+        this checkout last synced (X-Hi2vi-Base), so a read-only day still counts as synced in hi2vi."""
+        extra = {"X-Hi2vi-Base": str(self.base["head"])} if route == "head" else None
         try:
-            status, payload = self.link.call(method, route, body)
+            status, payload = self.link.call(method, route, body, extra)
         except CloudUnreachable as exc:
             raise self._unreachable(str(exc))
         if status != 200:
             raise self._unreachable(f"HTTP {status} on {route.split('?')[0]}")
         return payload
+
+    def fetch(self, paths) -> dict:
+        """P3 for any number of paths: {rel: (item, bytes)} of the live ones. hi2vi answers one page at a time
+        (`rest` names the asked paths left for the next request) and a path with no live record is simply
+        absent; each request asks for at most CLOUD_FETCH_PATHS paths."""
+        got, queue = {}, list(dict.fromkeys(paths))
+        while queue:
+            ask, queue = queue[:CLOUD_FETCH_PATHS], queue[CLOUD_FETCH_PATHS:]
+            while ask:
+                answer = self._ask("POST", "fetch", {"paths": ask})
+                for item in answer.get("files") or []:
+                    rel = item.get("path") if isinstance(item, dict) else None
+                    if rel not in ask:
+                        continue
+                    raw = item.get("content") or ""
+                    if item.get("encoding") == "base64":
+                        import base64
+                        data = base64.b64decode(raw)
+                    else:
+                        data = raw.encode("utf-8")
+                    if _sha(data) != item.get("sha256"):
+                        raise self._unreachable(f"a fetched file did not match its sha256: {rel}")
+                    got[rel] = (item, data)
+                rest = [r for r in (answer.get("rest") or []) if isinstance(r, str) and r in ask and r not in got]
+                if len(rest) >= len(ask):
+                    raise self._unreachable("a fetch page returned nothing")
+                ask = rest
+        return got
 
     def save_base(self) -> None:
         write_json(self.dir / "base.json", self.base)
@@ -21733,7 +21800,9 @@ class CloudSession:
             return
         if entry.get("state") == "pushing" and isinstance(entry.get("batches"), list):
             self._push([str(b) for b in entry["batches"]], begin=True)
-            return
+            entry = self.journal()  # a sync --keep's push resumes the interrupted state it was made in
+            if entry is None:
+                return
         crashed = f", {entry['crashed']}" if isinstance(entry.get("crashed"), str) else ""
         changed = self._count_changed()
         raise CloudError(f"the last command here ({entry.get('command') or 'unknown'}) stopped before it finished"
@@ -21761,10 +21830,11 @@ class CloudSession:
         self.pre = disk
         self.set_journal("running", pid=os.getpid())
 
-    def _pull(self, disk: dict) -> bool:
+    def _pull(self, disk: dict, strict: bool = True):
         """Fast-forward the disk to hi2vi's head. A path changed on both sides is a mismatch: refused before
         anything is written. Returns True when a file was written or deleted (the generated files are then
-        rebuilt)."""
+        rebuilt). Not `strict` (sync): the clean paths are pulled, the mismatched ones left as they are, the
+        base's head kept (so the next manifest names them again), and the list of mismatched paths returned."""
         manifest = self._ask("GET", f"manifest?since={self.base['head']}")
         new_head, changes = manifest.get("head"), manifest.get("changes")
         if not isinstance(new_head, int) or not isinstance(changes, list):
@@ -21791,24 +21861,12 @@ class CloudSession:
                 fetch[rel] = change
             else:
                 mismatch.append(rel)
-        if mismatch:
+        if mismatch and strict:
             raise CloudError(f"{len(mismatch)} files differ between this checkout and hi2vi: run sync to see them "
                              "(nothing was changed)")
         got = {}
         if fetch:
-            for item in self._ask("POST", "fetch", {"paths": sorted(fetch)}).get("files") or []:
-                rel = item.get("path") if isinstance(item, dict) else None
-                if rel not in fetch:
-                    continue
-                raw = item.get("content") or ""
-                if item.get("encoding") == "base64":
-                    import base64
-                    data = base64.b64decode(raw)
-                else:
-                    data = raw.encode("utf-8")
-                if _sha(data) != item.get("sha256"):
-                    raise self._unreachable(f"a fetched file did not match its sha256: {rel}")
-                got[rel] = (item, data)
+            got = self.fetch(sorted(fetch))
             missing = sorted(set(fetch) - set(got))
             if missing:
                 raise self._unreachable(f"{len(missing)} file(s) missing from the fetch, first {missing[0]}")
@@ -21848,24 +21906,24 @@ class CloudSession:
                 files[rel] = {"rev": change.get("rev"), "sha256": change.get("sha256"), "kind": "append", "offset": size}
             else:
                 files[rel] = {"rev": change.get("rev"), "sha256": change.get("sha256"), "kind": "file"}
-        self.base["head"] = new_head
+        if not mismatch:
+            self.base["head"] = new_head
         self.save_base()
         wrote = bool(got or delete)
         if wrote:
-            if any(rel.startswith("docs/") for rel in list(got) + delete) and (DOCS / "index.json").is_file():
-                rebuild_docs()
-            rebuild_index_and_state()
-        return wrote
+            cloud_rebuild(list(got) + delete)
+        return wrote if strict else sorted(mismatch)
 
     # The commit step -----------------------------------------------------------------------------
     def _origin(self, rel: str, sha) -> str:
         """`command` when the command itself changed the path, `carried` when it changed before (an agent)."""
         return "carried" if self.pre.get(rel) == sha else "command"
 
-    def _diff(self, post: dict) -> list:
-        """[(wire op, base entry after a 200 or None for a delete)] of every truth-set difference."""
+    def _diff(self, post: dict, skip=()) -> list:
+        """[(wire op, base entry after a 200 or None for a delete)] of every truth-set difference, bar the
+        paths in `skip` (sync's mismatched paths, which only `sync --keep` resolves)."""
         files, out, adds, dels = self.base["files"], [], {}, {}
-        for rel in sorted(set(files) | set(post)):
+        for rel in sorted((set(files) | set(post)) - set(skip)):
             b, here = files.get(rel), post.get(rel)
             if b is None:
                 adds[rel] = here
@@ -21934,15 +21992,22 @@ class CloudSession:
         entry = {"rev": rev, "sha256": _sha(data[:cut]), "kind": "append", "offset": cut}
         return {"op": "append", "path": rel, "lines": lines, "origin": self._origin(rel, here)}, entry, rel
 
-    def commit(self) -> None:
+    def commit(self, skip=()) -> int:
         """Steps 1 to 4: diff, the batches (each under CLOUD_BATCH_MAX as sent), journal `pushing`, P4, the base
-        updated per landed batch, the journal cleared. A 409 or a network error keeps the disk as it is."""
+        updated per landed batch, the journal cleared. A 409 or a network error keeps the disk as it is.
+        Returns the number of ops sent."""
         post = cloud_scan(self.cache)
-        planned = self._diff(post)
+        planned = self._diff(post, skip)
         self.save_cache()
         if not planned:
             self.clear_journal()
-            return
+            return 0
+        self.send(planned)
+        return len(planned)
+
+    def send(self, planned: list, resume=None) -> None:
+        """The batches of `planned` ops, journaled in the outbox, then pushed. `resume`: a journal entry to put
+        back once the push ends (sync --keep inside an interrupted state keeps its `running` journal)."""
         derived = []
         for rel in CLOUD_DERIVED:
             try:
@@ -21952,14 +22017,24 @@ class CloudSession:
         try:
             batches = self._batches(planned, derived)
         except CloudError:
-            self.clear_journal()  # nothing was sent: the base still names the change, so the next command retries it
+            self._end_push(resume)  # nothing was sent: the base still names the change, so the next command retries it
             raise
         outbox = self.dir / "outbox"
         for batch, updates in batches:
             write_text(outbox / f"{batch['batch_id']}.json",
                        json.dumps({"batch": batch, "updates": updates}, ensure_ascii=False) + "\n")
-        self.set_journal("pushing", batches=[batch["batch_id"] for batch, _ in batches])
+        fields = {"resume": resume} if resume else {}
+        self.set_journal("pushing", batches=[batch["batch_id"] for batch, _ in batches], **fields)
         self._push([batch["batch_id"] for batch, _ in batches])
+
+    def _end_push(self, resume=None) -> None:
+        """A push is over (landed, or refused for good): clear the journal, or put back the entry it resumes."""
+        if resume is None:
+            entry = self.journal() or {}
+            resume = entry.get("resume") if entry.get("state") == "pushing" else None
+        self.clear_journal()
+        if isinstance(resume, dict):
+            write_json(self.dir / "journal.json", resume)
 
     def _batches(self, planned: list, derived: list) -> list:
         """[(wire batch, base updates)]: the ops in order, cut so that each batch's JSON as sent stays under
@@ -22018,7 +22093,7 @@ class CloudSession:
             except CloudUnreachable as exc:
                 raise unsent(f"hi2vi unreachable: {exc}")
             if status == 409:
-                self.clear_journal()
+                self._end_push()
                 raise unsent(f"{len(answer.get('conflicts') or [])} conflict(s)")
             if status != 200 or not isinstance(answer.get("head"), int):
                 raise unsent(f"hi2vi answered HTTP {status}")
@@ -22030,7 +22105,7 @@ class CloudSession:
                 (self.dir / "outbox" / f"{bid}.json").unlink()
             except FileNotFoundError:
                 pass
-        self.clear_journal()
+        self._end_push()
 
     def _landed(self, answer: dict, updates: list) -> None:
         revs = answer.get("revs") if isinstance(answer.get("revs"), dict) else {}
@@ -22109,6 +22184,520 @@ def cloud_boundary(args: argparse.Namespace, tokens: list, fail_open: bool = Fal
             return result
         raise SystemExit(str(exc))
     return result
+
+
+# The link, the way back, and sync. These three run outside the boundary (main() calls them directly): each
+# takes the checkout's lock itself, and none goes through the begin step's journal recovery, because sync is
+# how an interrupted state is resolved and unlink --from-disk is the one command that runs offline.
+CLOUD_OWN = ("link", "unlink", "sync")
+CLOUD_KEY_PROMPT = "Paste a workspace key for this project (make one under Keys on the project's page): "
+# Refused in cloud mode with one line each, before anything is read or written: a linked checkout runs every
+# phase here, with no worktree streams (and so no loop on a stream of its own, and no reopened pair).
+CLOUD_STREAM_REFUSED = ("parallel-start", "parallel-add-repo", "parallel-gate", "parallel-merge-finish",
+                        "parallel-consolidated", "parallel-teardown", "reopen-phase")
+# An unused install's truth set: only what a fresh install seeds. Joining hi2vi from one replaces these.
+CLOUD_SEED_RE = re.compile(r"docs/README\.md|docs/index\.json|docs/versions/[^/]+/v0001_bootstrap\.md|works/events\.jsonl")
+CLOUD_SHOWN_ROWS = 20
+
+
+def cloud_refusal(args: argparse.Namespace):
+    """The one line refusing a stream command in a linked checkout, or None."""
+    if args.cmd in CLOUD_STREAM_REFUSED:
+        what = "it cuts a worktree pair for the phase" if args.cmd == "reopen-phase" else "it runs a phase on a worktree stream"
+        return (f"{args.cmd} is refused in cloud mode: {what}, and a linked checkout runs every phase here, "
+                "with no streams (nothing was changed)")
+    if args.cmd == "loop-checkpoint" and getattr(args, "landed", False):
+        return ("loop-checkpoint --landed is refused in cloud mode: it records a loop stream's commit for a merge, "
+                "and a linked checkout runs no streams; hi2vi's revisions are the record (nothing was changed)")
+    return None
+
+
+def cloud_store_line() -> str:
+    """`next`'s line in a linked checkout: the skills skip the workflow repo's commit when they see it."""
+    try:
+        link = read_json(cloud_link_file())
+    except (OSError, ValueError):
+        return "store=cloud link=unreadable"
+    return f"store=cloud server={link.get('server')} project={link.get('project_id')}"
+
+
+def cloud_rebuild(rels) -> None:
+    """The generated files after the disk took files from hi2vi."""
+    if any(rel.startswith("docs/") for rel in rels) and (DOCS / "index.json").is_file():
+        rebuild_docs()
+    rebuild_index_and_state()
+
+
+def cloud_commit_hint() -> str:
+    rel = os.path.relpath(ROOT, HOST_ROOT) if HOST_ROOT is not None else "."
+    return f"git -C {rel} add -A && git -C {rel} commit"
+
+
+def cloud_exclude() -> None:
+    """Hide `.hi2vi/` in the workflow repo's common info/exclude (the installer does too; this covers an
+    install not yet updated). Never .gitignore, which is tracked."""
+    exclude = _git_dir(common=True) / "info" / "exclude"
+    existing = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
+    if {f"{CLOUD_DIR}/", f"/{CLOUD_DIR}/", CLOUD_DIR, f"/{CLOUD_DIR}"} & {l.strip() for l in existing.splitlines()}:
+        return
+    write_text(exclude, existing + ("\n" if existing and not existing.endswith("\n") else "") + f"/{CLOUD_DIR}/\n")
+
+
+def cloud_parse_address(address: str) -> tuple:
+    """(server, project id) from the project's page address, `<server>/projects/<project-id>`."""
+    from urllib.parse import unquote
+    parsed = urlparse(address.strip())
+    found = re.fullmatch(r"(.*?)/projects/([^/]+)/?", parsed.path or "")
+    if parsed.username is not None or parsed.password is not None:
+        raise CloudError("link takes the project's page address with no credentials in it: nothing was written")
+    if not parsed.scheme or not parsed.netloc or not found or parsed.query or parsed.fragment:
+        raise CloudError(f"link takes the project's page address, <server>/projects/<project-id> (not {address}): "
+                         "nothing was written")
+    return cloud_server_check(f"{parsed.scheme}://{parsed.netloc}{found.group(1)}"), unquote(found.group(2))
+
+
+def cloud_link_refusal():
+    """The one line refusing a link before anything is read or written, or None: at root, in a phase's
+    worktree, with a phase in flight on a stream or another worktree, with a dirty workflow repo (its last
+    commit is the known point before the link), or already linked."""
+    if cloud_link_file().exists():
+        return f"this checkout is already linked ({cloud_store_line()}): run unlink first (nothing was written)"
+    if NESTED is None:
+        return ("link refuses an at-root install: cloud mode needs the nested layout, whose phase-scope reads the "
+                "anchors in phase.json, never the workflow repo's history (nothing was written)")
+    phases = []
+    for pdir in phase_dirs():
+        try:
+            phases.append(read_json(pdir / "phase.json"))
+        except (OSError, ValueError):
+            continue
+    if _in_worktree_set() or current_stream(phases):
+        return "link refuses in a phase's worktree: link the default checkout, where every phase then runs (nothing was written)"
+    flying = [str(p.get("id")) for p in phases if phase_in_flight(p)]
+    if flying:
+        return (f"link refuses while a phase is in flight on its own stream ({', '.join(flying)}): merge it and tear "
+                "its worktree down first (nothing was written)")
+    top = _git(["rev-parse", "--show-toplevel"], check=False) if _git_available() else None
+    if top is None or top.returncode != 0 or os.path.realpath(top.stdout.strip()) != os.path.realpath(str(ROOT)):
+        return (f"link needs {shown(ROOT)} to be a git repo of its own with a commit to come back to "
+                "(nothing was written)")
+    if _git(["rev-parse", "--verify", "-q", "HEAD"], check=False).returncode != 0:
+        return f"link needs a first commit in {shown(ROOT)}: commit it, then link (nothing was written)"
+    others = [path for path, _ref in _worktree_entries()[1:]]
+    if others:
+        return (f"link refuses while the workflow repo has another worktree ({others[0]}): tear it down first "
+                "(nothing was written)")
+    dirty = [l[3:] for l in _git(["status", "--porcelain", "--untracked-files=all"]).stdout.splitlines() if l.strip()]
+    if dirty:
+        return (f"link refuses a workflow repo with uncommitted changes ({len(dirty)} path(s), first {dirty[0]}): "
+                f"commit them first, so its last commit is the point before the link (nothing was written)")
+    return None
+
+
+def cloud_read_key() -> str:
+    """The key, never echoed and never on argv: getpass at a terminal, else one line of stdin."""
+    if sys.stdin is not None and sys.stdin.isatty():
+        import getpass
+        key = getpass.getpass(CLOUD_KEY_PROMPT)
+    else:
+        sys.stderr.write(CLOUD_KEY_PROMPT + "\n")
+        sys.stderr.flush()
+        key = sys.stdin.readline() if sys.stdin is not None else ""
+    key = key.strip()
+    if not key:
+        raise CloudError("no workspace key was given: nothing was written")
+    if any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in key):
+        raise CloudError("that is not a workspace key (it holds spaces or control characters): nothing was written")
+    return key
+
+
+def cloud_save_key(server: str, project: str, org, key: str) -> None:
+    """Keep the key in the user's config, `$XDG_CONFIG_HOME/hi2vi/workspace-keys.json`: the folder 0700, the
+    file 0600 from its first byte (a temp file made owner-only, then renamed over)."""
+    path = cloud_key_file()
+    path.parent.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.mkdir(str(path.parent), 0o700)
+    except FileExistsError:
+        pass
+    problem = cloud_key_problem(path)
+    if problem:
+        raise CloudError(problem)
+    data = {}
+    if path.exists():
+        try:
+            data = read_json(path)
+        except (OSError, ValueError) as exc:
+            raise CloudError(f"{path} is unreadable ({exc.__class__.__name__}): fix or remove it, then link again")
+        data = data if isinstance(data, dict) else {}
+    projects = data.get(server) if isinstance(data.get(server), dict) else {}
+    projects[project] = {"key": key, "org_id": org, "saved_at": now_iso()}
+    data[server] = projects
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp_", suffix=path.name)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def cloud_probe(link: CloudLink, route: str) -> dict:
+    """One of link's requests before anything is written; any answer but a 200 refuses with one line."""
+    try:
+        status, payload = link.call("GET", route)
+    except CloudUnreachable as exc:
+        raise CloudError(f"hi2vi is not reachable at {link.server} ({exc}): nothing was written")
+    if status == 200:
+        return payload
+    why = {401: "hi2vi refused this key (HTTP 401): make a workspace key under Keys on the project's page",
+           403: "this key cannot reach a workspace (HTTP 403: it is not a workspace key); make one under Keys on the "
+                "project's page",
+           404: f"hi2vi has no project {link.project} for this key (HTTP 404)"}.get(status, f"hi2vi answered HTTP {status}")
+    raise CloudError(f"{why}: nothing was written")
+
+
+def cloud_link(args: argparse.Namespace) -> int:
+    """link <server>/projects/<project-id>: make hi2vi the truth for this checkout in one step."""
+    try:
+        server, project = cloud_parse_address(args.address)
+        problem = cloud_link_refusal() or cloud_key_problem(cloud_key_file())
+        if problem:
+            raise CloudError(problem)
+        key = cloud_read_key()
+        probe = CloudLink({"server": server, "project_id": project}, key=key)
+        info = cloud_probe(probe, "head")
+        if str(info.get("project_id")) != project:
+            raise CloudError(f"hi2vi answered for project {info.get('project_id')}, not {project}: nothing was written")
+        manifest = cloud_probe(probe, "manifest?since=0")
+        if not isinstance(manifest.get("head"), int) or not isinstance(manifest.get("changes"), list):
+            raise CloudError("hi2vi answered a malformed manifest: nothing was written")
+    except CloudError as exc:
+        raise SystemExit(str(exc))
+    live = {c["path"]: c for c in manifest["changes"]
+            if isinstance(c, dict) and not c.get("deleted") and cloud_truth_rel(c.get("path"))}
+    disk = cloud_scan({})
+    mode = "upload"
+    if live:
+        if disk == {rel: c.get("sha256") for rel, c in live.items()}:
+            mode = "equal"
+        elif all(CLOUD_SEED_RE.fullmatch(rel) for rel in disk):
+            mode = "unused"
+        else:
+            rows = []
+            for rel in sorted(set(disk) | set(live)):
+                if rel not in live:
+                    rows.append(f"here only  {rel}")
+                elif rel not in disk:
+                    rows.append(f"cloud only  {rel}")
+                elif disk[rel] != live[rel].get("sha256"):
+                    rows.append(f"differs  {rel}")
+            print(f"link refuses: hi2vi already holds this project's workspace (r{manifest['head']}), and {len(rows)} "
+                  "path(s) here differ from it; a second checkout joins only from an unused install or an equal set "
+                  "(nothing was written)")
+            for row in rows[:CLOUD_SHOWN_ROWS]:
+                print(row)
+            if len(rows) > CLOUD_SHOWN_ROWS:
+                print(f"... and {len(rows) - CLOUD_SHOWN_ROWS} more")
+            return 1
+    # Past every refusal: the key, the exclude, the link file, then the first sync under the lock.
+    try:
+        cloud_save_key(server, project, info.get("org_id"), key)
+    except CloudError as exc:
+        raise SystemExit(str(exc))
+    cloud_exclude()
+    shutil.rmtree(str(ROOT / CLOUD_DIR), ignore_errors=True)  # bookkeeping left with no link names nothing
+    (ROOT / CLOUD_DIR).mkdir()
+    write_json(cloud_link_file(), {"schema": CLOUD_SCHEMA, "server": server, "org_id": info.get("org_id"),
+                                   "project_id": project, "linked_at": now_iso()})
+    try:
+        with CloudLock():
+            session = CloudSession(["link", f"{server}/projects/{project}"])
+            if mode == "unused":  # an unused install's seed files give way to hi2vi's copy
+                for rel, sha in disk.items():
+                    if (live.get(rel) or {}).get("sha256") != sha:
+                        _cloud_remove(rel)
+            elif mode == "upload":
+                session.base["head"] = manifest["head"]  # nothing live in hi2vi: every file goes up as new
+            session.begin()
+            sent = session.commit()
+    except CloudError as exc:
+        raise SystemExit(f"{exc} (the link is made: {shown(cloud_link_file())})")
+    if mode == "upload":
+        print(f"linked: {sent} file(s) sent to hi2vi")
+    else:
+        pulled = sum(1 for rel, c in live.items() if disk.get(rel) != c.get("sha256"))
+        print(f"linked: joined hi2vi's workspace ({pulled} file(s) taken from hi2vi"
+              + (", this unused install's seed files replaced)" if mode == "unused" else ")"))
+    print(f"store=cloud server={server} project={project} head=r{session.base['head']}")
+    return 0
+
+
+def cloud_unlink(args: argparse.Namespace) -> int:
+    """unlink: pull to hi2vi's head (refused on a mismatch), push what is here, remove `.hi2vi/`; local mode
+    again. --from-disk: the one offline command, which keeps the disk as it is."""
+    if not cloud_link_file().exists():
+        raise SystemExit("this checkout is not linked (no .hi2vi/link.json): it is in local mode already")
+    if args.from_disk:
+        return cloud_unlink_from_disk()
+    lock = CloudLock()
+    try:
+        lock.acquire()
+        session = CloudSession(["unlink"])
+        session.begin()
+        session.commit()
+    except CloudError as exc:
+        lock.release()
+        offline = " (offline, unlink --from-disk keeps the disk as it is)" if str(exc).startswith("hi2vi is not reachable") else ""
+        raise SystemExit(f"unlink refused, the checkout is still linked{offline}: {exc}")
+    try:
+        shutil.rmtree(str(ROOT / CLOUD_DIR))
+    finally:
+        lock.release()
+    print(f"unlinked from {session.link.server} project {session.link.project} at r{session.base['head']}")
+    print(f"local mode: the files on disk are the truth again; commit them ({cloud_commit_hint()})")
+    print(f"the workspace key stays in {cloud_key_file()}: revoke it on the project's page when no checkout needs it")
+    return 0
+
+
+def cloud_unlink_from_disk() -> int:
+    """unlink --from-disk: no request at all. The disk becomes the truth as it is; say what it cannot hold."""
+    folder = ROOT / CLOUD_DIR
+    try:
+        base = read_json(folder / "base.json")
+    except (OSError, ValueError):
+        base = {}
+    files = base.get("files") if isinstance(base.get("files"), dict) else {}
+    head = base.get("head") if isinstance(base.get("head"), int) else 0
+    disk = cloud_scan({})
+    unsent = sum(1 for rel in set(files) | set(disk) if disk.get(rel) != (files.get(rel) or {}).get("sha256"))
+    try:
+        with CloudLock(CLOUD_HOOK_LOCK_WAIT):
+            shutil.rmtree(str(folder))
+    except CloudError as exc:
+        raise SystemExit(f"unlink --from-disk refused, the checkout is still linked: {exc}")
+    print(f"unlinked from the disk, offline: changes made in hi2vi after r{head} are not on this disk"
+          + (f", and {unsent} file(s) changed here were never sent to hi2vi" if unsent else ""))
+    print(f"local mode: the files on disk are the truth again; commit them ({cloud_commit_hint()})")
+    return 0
+
+
+def cloud_rel_arg(raw: str) -> str:
+    """A path the operator typed (as sync lists it, from the workspace root, or from the cwd) as a truth-set rel."""
+    root = os.path.realpath(str(ROOT))
+    full = os.path.realpath(raw if os.path.isabs(raw) else os.path.join(os.getcwd(), raw))
+    rel = os.path.relpath(full, root).replace(os.sep, "/") if full.startswith(root + os.sep) else posixpath.normpath(raw)
+    if not cloud_truth_rel(rel):
+        raise SystemExit(f"{raw} is not in the synced set (works/ or docs/, bar the generated files): nothing was changed")
+    return rel
+
+
+def cloud_inbox_step(session: CloudSession) -> None:
+    """The web's agenda inbox, applied by a linked engine inside its lock (each entry as its agenda command,
+    its result riding a batch). Not built yet: it applies nothing."""
+    return None
+
+
+def cloud_differences(session: CloudSession, running: bool) -> list:
+    """[(state, rel, here's facts, hi2vi's facts)] for every path that differs between the disk, base.json and
+    hi2vi. States: differs, here only, cloud only, deleted here, deleted in hi2vi, interrupted (a change on
+    disk left by a command that stopped midway)."""
+    manifest = session._ask("GET", f"manifest?since={session.base['head']}")
+    changes = {c["path"]: c for c in manifest.get("changes") or [] if isinstance(c, dict) and cloud_truth_rel(c.get("path"))}
+    disk, files, rows = cloud_scan(session.cache), session.base["files"], []
+    for rel in sorted(set(files) | set(disk) | set(changes)):
+        b, here, c = files.get(rel), disk.get(rel), changes.get(rel)
+        bsha = (b or {}).get("sha256")
+        csha = bsha if c is None else (None if c.get("deleted") else c.get("sha256"))
+        here_changed, cloud_changed = here != bsha, csha != bsha
+        if (not here_changed and not cloud_changed) or here == csha:
+            continue  # unchanged, or both sides agree (the next command fixes the base)
+        if here_changed and cloud_changed:
+            state = "deleted here" if here is None else ("deleted in hi2vi" if csha is None else "differs")
+        elif here_changed:
+            state = "interrupted" if running else "here only"
+        else:
+            state = "cloud only"
+        since = f"r{b.get('rev')}" if b else "the link"
+        if here is None:
+            here_fact = f"deleted since {since}" if b else "absent"
+        else:
+            mtime = datetime.fromtimestamp((ROOT / rel).stat().st_mtime).astimezone().replace(microsecond=0).isoformat()
+            here_fact = (f"changed since {since}" if b else "new") if here_changed else f"unchanged since {since}"
+            here_fact += f" ({mtime})"
+        if c is None:
+            cloud_fact = f"r{b.get('rev')} (unchanged)" if b else "no record"
+        else:
+            cloud_fact = f"r{c.get('rev')}" + (" deleted" if c.get("deleted") else "")
+        rows.append((state, rel, here_fact, cloud_fact))
+    session.cloud_head = manifest.get("head")
+    return rows
+
+
+def cloud_sync(args: argparse.Namespace) -> int:
+    """sync: pull clean hi2vi changes, push clean local ones, list what remains (exit 1 while anything
+    differs). --diff <path>, --keep local|cloud <path>..., --status. Never resolves a mismatch on its own."""
+    if not cloud_link_file().exists():
+        raise SystemExit("this checkout is not linked (no .hi2vi/link.json): sync is for a linked checkout")
+    if sum(bool(x) for x in (args.diff is not None, args.keep is not None, args.status)) > 1:
+        raise SystemExit("sync takes one of --diff, --keep and --status at a time")
+    if args.keep is not None and not args.paths:
+        raise SystemExit("sync --keep needs at least one path: it never resolves everything at once "
+                         "(sync lists them; nothing was changed)")
+    if args.keep is None and args.paths:
+        raise SystemExit("sync takes paths only with --keep local|cloud (nothing was changed)")
+    paths = list(dict.fromkeys(cloud_rel_arg(p) for p in args.paths))
+    try:
+        if args.status:
+            return cloud_sync_status(CloudSession(["sync", "--status"]))
+        if args.diff is not None:
+            return cloud_sync_diff(CloudSession(["sync", "--diff"]), cloud_rel_arg(args.diff))
+        with CloudLock():
+            tokens = ["sync"] + (["--keep", args.keep] + paths if args.keep else [])
+            return cloud_sync_run(CloudSession(tokens), args.keep, paths)
+    except CloudError as exc:
+        raise SystemExit(str(exc))
+
+
+def _cloud_sync_head(session: CloudSession) -> dict:
+    info = session._ask("GET", "head")
+    if str(info.get("project_id")) != session.link.project:
+        raise CloudError(f"hi2vi answered for project {info.get('project_id')}, not {session.link.project}: "
+                         "this checkout's link is broken, and nothing was changed")
+    return info
+
+
+def cloud_sync_status(session: CloudSession) -> int:
+    info = _cloud_sync_head(session)
+    entry = session.journal()
+    rows = cloud_differences(session, bool(entry and entry.get("state") == "running"))
+    here = sum(1 for r in rows if r[0] in ("here only", "interrupted"))
+    differ = sum(1 for r in rows if r[0] in ("differs", "deleted here", "deleted in hi2vi"))
+    print(f"store=cloud server={session.link.server} project={session.link.project} head=r{info.get('head')} "
+          f"base=r{session.base['head']} here={here} differ={differ} inbox={info.get('inbox_pending', 0)}"
+          + (f" journal={entry.get('state')}" if entry else ""))
+    return 0
+
+
+def cloud_sync_diff(session: CloudSession, rel: str) -> int:
+    _cloud_sync_head(session)
+    item, cloud = session.fetch([rel]).get(rel, (None, b""))
+    path = ROOT / rel
+    here = path.read_bytes() if path.is_file() else b""
+    if item is not None and here == cloud and path.is_file():
+        print(f"no difference: {rel} (r{item.get('rev')})")
+        return 0
+    left = f"hi2vi/{rel} " + (f"(r{item.get('rev')})" if item is not None else "(no record)")
+    right = f"here/{rel}" + ("" if path.is_file() else " (absent)")
+    try:
+        a, b = cloud.decode("utf-8").splitlines(keepends=True), here.decode("utf-8").splitlines(keepends=True)
+    except UnicodeDecodeError:
+        print(f"binary content differs: {left} {len(cloud)} bytes, {right} {len(here)} bytes")
+        return 0
+    for line in difflib.unified_diff(a, b, left, right):
+        sys.stdout.write(line if line.endswith("\n") else line + "\n")
+    return 0
+
+
+def cloud_keep(session: CloudSession, side: str, paths: list, running) -> None:
+    """sync --keep local|cloud <path>...: the operator's choice, path by path. local pushes the disk's copy
+    over hi2vi's current revision (a deliberate overwrite, recorded with this command); cloud writes hi2vi's
+    copy over the disk."""
+    got, files = session.fetch(paths), session.base["files"]
+    if side == "cloud":
+        for rel in paths:
+            if rel in got:
+                item, data = got[rel]
+                _cloud_write_bytes(ROOT / rel, data)
+                entry = {"rev": item.get("rev"), "sha256": item.get("sha256"), "kind": cloud_kind(rel)}
+                if entry["kind"] == "append":
+                    entry["offset"] = len(data)
+                files[rel] = entry
+            else:
+                _cloud_remove(rel)
+                files.pop(rel, None)
+        session.save_base()
+        cloud_rebuild(paths)
+        print(f"kept hi2vi's copy of {len(paths)} path(s): the disk holds it now")
+        return
+    planned, session.pre = [], {}
+    for rel in paths:
+        path, cloud = ROOT / rel, got.get(rel)
+        rev = cloud[0].get("rev") if cloud else None
+        if path.is_file():
+            data = path.read_bytes()
+            if cloud and cloud[0].get("sha256") == _sha(data):
+                entry = {"rev": rev, "sha256": cloud[0].get("sha256"), "kind": cloud_kind(rel)}
+                if entry["kind"] == "append":
+                    entry["offset"] = len(data)
+                files[rel] = entry
+                continue
+            b = files.get(rel) or {}
+            offset = b.get("offset", 0)
+            if (cloud_kind(rel) == "append" and b.get("kind") == "append" and 0 <= offset <= len(data)
+                    and _sha(data[:offset]) == b.get("sha256")):
+                op = session._append_op(rel, data, offset, b.get("rev"), _sha(data))  # its new lines: never a put
+                if op:                                                                # over other checkouts' lines
+                    planned.append(op)
+                continue
+            planned.append(session._put_op(rel, data, rev, _sha(data)))
+        elif cloud:
+            planned.append(({"op": "delete", "path": rel, "base_rev": rev, "origin": "command"}, None, rel))
+        else:
+            files.pop(rel, None)
+    session.save_base()
+    if planned:
+        session.send(planned, resume=running)
+    print(f"kept this checkout's copy of {len(paths)} path(s): hi2vi holds it now")
+
+
+def cloud_sync_run(session: CloudSession, keep, paths: list) -> int:
+    _cloud_sync_head(session)
+    notes = []
+    entry = session.journal()
+    if entry and entry.get("state") == "pushing" and isinstance(entry.get("batches"), list):
+        try:  # the last command's push, resent with its batch ids (hi2vi applies each once)
+            session._push([str(b) for b in entry["batches"]])
+        except CloudError as exc:
+            notes.append(str(exc))
+        entry = session.journal()
+    running = entry if entry and entry.get("state") == "running" else None
+    if keep:
+        cloud_keep(session, keep, paths, running)
+        entry = session.journal()
+        running = entry if entry and entry.get("state") == "running" else None
+        session._pull(cloud_scan(session.cache), strict=False)  # hi2vi's clean changes, so the base catches up
+    else:
+        mismatch = session._pull(cloud_scan(session.cache), strict=False)
+        if running is None:  # an interrupted command's changes wait for the operator's --keep
+            session.pre = cloud_scan(session.cache)
+            try:
+                session.commit(skip=mismatch)
+            except CloudError as exc:
+                notes.append(str(exc).replace(": run sync", ""))
+        cloud_inbox_step(session)
+    rows = cloud_differences(session, running is not None)
+    session.save_cache()
+    if running is not None and not any(r[0] == "interrupted" for r in rows):
+        session.clear_journal()
+        notes.append(f"the interrupted command ({running.get('command') or 'unknown'}) is resolved: its journal is cleared")
+    for note in notes:
+        print(note)
+    for state, rel, here_fact, cloud_fact in rows:
+        print(f"{state}  {rel}  here: {here_fact}  hi2vi: {cloud_fact}")
+    if rows:
+        print(f"{len(rows)} path(s) differ between this checkout and hi2vi: sync --diff <path> shows one, "
+              "sync --keep local|cloud <path>... resolves it")
+        return 1
+    print(f"in sync: head=r{session.cloud_head} base=r{session.base['head']}")
+    return 1 if any(n.startswith("this change is on disk") for n in notes) else 0
 
 
 def main(argv=None) -> int:
@@ -22721,6 +23310,24 @@ def main(argv=None) -> int:
                    help="archive only: the sweep of every currently-done phase and its report, with no rotate= line and no docs-phase line (unchanged since v51)")
     p.set_defaults(func=rotate_backlog)
 
+    p = sub.add_parser("link", help="Link this checkout to hi2vi (cloud mode): hi2vi becomes the truth for works/ and docs/, and every command syncs at its boundary. Takes the project's page address; the workspace key is pasted at a prompt (one stdin line when not a terminal), never on the command line, and kept in $XDG_CONFIG_HOME/hi2vi/workspace-keys.json (folder 0700, file 0600). An empty project in hi2vi gets this checkout's files; one that already holds files is joined only from an unused install or an equal set, else the differences are listed. Refused, nothing written: at root, in a phase's worktree, with a phase in flight on a stream or another worktree, with uncommitted changes in the workflow repo, when already linked, http:// to a non-local host, a key file open to group or others. Prints store=cloud server= project= head=")
+    p.add_argument("address", help="the project's page address: <server>/projects/<project-id>")
+    p.set_defaults(func=cloud_link)
+    _one_line_usage_errors(p)
+
+    p = sub.add_parser("unlink", help="Return a linked checkout to local mode: pull to hi2vi's head (refused on a mismatch: sync first), push what is here, remove .hi2vi/; then commit the workflow repo once. The key stays in user config (revoke it on the project's page). --from-disk: offline, keep the disk as it is and say what it cannot hold")
+    p.add_argument("--from-disk", action="store_true", dest="from_disk", help="the offline way back: no request; the disk becomes the truth as it is")
+    p.set_defaults(func=cloud_unlink)
+    _one_line_usage_errors(p)
+
+    p = sub.add_parser("sync", help="A linked checkout's mismatch tool: pull clean hi2vi changes, push clean local ones, then list what remains, one line per path (differs, here only, cloud only, deleted here, deleted in hi2vi, interrupted), exit 1 while anything differs. --diff PATH: a unified diff of hi2vi's copy against the disk. --keep local|cloud PATH...: resolve those paths only (local pushes the disk's copy over hi2vi's revision, cloud writes hi2vi's copy over the disk); never without a path. --status: one line, store=cloud server= project= head= base= here= differ= inbox=")
+    p.add_argument("--diff", metavar="PATH", help="show hi2vi's copy against the disk for one path")
+    p.add_argument("--keep", choices=("local", "cloud"), help="resolve the named paths with this side's copy")
+    p.add_argument("--status", action="store_true", help="one line: the head, the base and the counts")
+    p.add_argument("paths", nargs="*", help="--keep only: the paths to resolve")
+    p.set_defaults(func=cloud_sync)
+    _one_line_usage_errors(p)
+
     tokens = sys.argv[1:] if argv is None else list(argv)
     one_line_cmd = tokens[0] if tokens and tokens[0] in ONE_LINE_USAGE_COMMANDS else None
     if one_line_cmd:  # leftovers (an unknown option, an extra positional) are the top parser's error: one line too
@@ -22733,7 +23340,12 @@ def main(argv=None) -> int:
     normalize_id_args(args)  # every typed phase / deferred-id / slice argument becomes its stored id here, once
     if not cloud_link_file().exists():  # local mode: no link, so the command runs exactly as before
         result = args.func(args)
-    else:  # cloud mode: a pull before the command, one batch after it
+    elif args.cmd in CLOUD_OWN:  # link, unlink and sync: each takes the lock itself and never runs the begin step
+        result = args.func(args)
+    else:  # cloud mode: a pull before the command, one batch after it; a stream command is refused first
+        refused = cloud_refusal(args)
+        if refused:
+            raise SystemExit(refused)
         result = cloud_run(args, tokens)
     if isinstance(result, tuple):
         return 0
