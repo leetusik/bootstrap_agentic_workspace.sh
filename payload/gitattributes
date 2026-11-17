@@ -14,10 +14,11 @@ works/phases/**/loop/survivors.jsonl merge=union
 works/phases/**/loop/checkpoints.jsonl merge=union
 
 # The files below are GENERATED -- never hand-authored -- from the folders that
-# hold the real truth (works/phases/**, works/deferred/**, docs/versions/**):
+# hold the real truth (works/phases/**, works/deferred/**, works/agenda/**,
+# docs/versions/**):
 #
 #   works/state.json   works/index.json   works/backlog.md   works/deferred.md
-#   docs/current/*.md
+#   works/agenda.md    docs/current/*.md
 #
 # They deliberately get NO custom merge driver. A driver (merge=ours and friends)
 # only works where `git config merge.<driver>.driver` has been set in that clone,

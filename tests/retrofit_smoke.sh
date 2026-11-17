@@ -68,7 +68,9 @@
 # pr-reader, the team-rule banner, the symlinked .claude/skills exclude, the root linguist-generated lines, the _is_ancestor
 # regression; zero GitHub writes: a local bare origin and a stub gh), the P52 PR lifecycle invariants (pr-sync, pr-team,
 # pr_open= and the archive hold, D120, pr_stack= and the base re-record, reopen-phase nested, root and multi-repo; a stub gh that
-# only ever sees reads), and the v31 Codex-removal negatives. Re-runnable; self-cleaning.
+# only ever sees reads), the P66 agenda invariants (A<n>-<tail> ids, transitions all or none, the open order,
+# links and the derived In progress, works/agenda.md and the index keys, validate, a two-branch merge, the gate's
+# exemption for an added item), and the v31 Codex-removal negatives. Re-runnable; self-cleaning.
 #
 # Usage:  bash tests/retrofit_smoke.sh
 # Exit 0 if every check passes; non-zero otherwise.
@@ -148,7 +150,7 @@ import sys
 
 root = Path(sys.argv[1])
 skills = {p.parent.name for p in (root / "payload/claude/skills").glob("*/SKILL.md")}
-assert len(skills) == 21, len(skills)
+assert len(skills) == 22, len(skills)
 
 # P37.S1 (v61): a skill ships as its whole directory, a core SKILL.md plus reference/*.md, and the
 # do-* shared references fan out at build. Prose pins read the BUILT directory (core first, then its
@@ -1150,6 +1152,9 @@ for required in (
     "stop the run (a loop phase: only its charter's stops, `run-loop`)",
     "`## Operator Questions` (a loop's item questions: its parked list)",
     "`qa`, `co-work`, `cycle`",
+    # P66 (the agenda): its generated page, its entity and its id (its statuses live in the
+    # agenda skill and the engine's help, not here: the contract is at its cap).
+    "`works/agenda.md`", "`works/agenda/<AID>/agenda.json`", "`A7-m3`",
 ):
     assert required in claude, required
 assert "never fan out slices" not in claude, "the contract still forbids fanning out slices"
@@ -1280,8 +1285,8 @@ cp_state=$(python3 -c "import json;print(json.load(open('$R/works/state.json'))[
   && ok "retrofit installs no Codex trees (.agents/, .codex/)" || bad "retrofit created a Codex tree"
 [ ! -f "$R/AGENTS.workspace.md" ] \
   && ok "retrofit writes no AGENTS.workspace.md sidecar" || bad "retrofit wrote an AGENTS.workspace.md sidecar"
-[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "21" ] \
-  && ok "retrofit installs the 21-skill Claude inventory" || bad "retrofit skill inventory incomplete"
+[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "22" ] \
+  && ok "retrofit installs the 22-skill Claude inventory" || bad "retrofit skill inventory incomplete"
 skill_tree_ok "$R/.claude/skills" exact \
   && ok "retrofit installs every skill as its whole directory: each core's reference files, none orphaned, the shared do-* copy identical" || bad "retrofit skill directories incomplete (core + reference/)"
 grep -q 'design subagent drafts, the operator decides' "$R/CLAUDE.workspace.md" && grep -q 'writes no \*\*\*product\*\*\* implementation code' "$R/CLAUDE.workspace.md" \
@@ -1389,8 +1394,8 @@ then ok "every changelog release section carries a Migration notes line"; else b
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
 [ -f "$F/.claude/skills/read-code/SKILL.md" ] && grep -q 'code-reader' "$F/CLAUDE.md" \
   && ok "fresh install ships the read-code skill and its contract names the code-reader" || bad "fresh install missing the read-code skill or the contract's code-reader rule"
-[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "21" ] \
-  && ok "fresh install has the 21 Claude skills" || bad "fresh skill inventory incomplete"
+[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "22" ] \
+  && ok "fresh install has the 22 Claude skills" || bad "fresh skill inventory incomplete"
 skill_tree_ok "$F/.claude/skills" exact \
   && ok "fresh install ships every skill as its whole directory: each core's reference files, none orphaned, the shared do-* copy identical" || bad "fresh install skill directories incomplete (core + reference/)"
 [ ! -f "$F/AGENTS.md" ] && [ ! -d "$F/.agents" ] && [ ! -d "$F/.codex" ] \
@@ -2359,7 +2364,7 @@ diff -q "$SRC/scripts/workflow.py" "$F/scripts/workflow.py" >/dev/null \
   || bad "DRIFT: scripts/workflow.py differs from the bootstrap-embedded copy"
 skill_rels=$(cd "$SRC" && find claude/skills -type f -name SKILL.md | sed 's|^|.|' | LC_ALL=C sort)
 nskill=$(printf '%s\n' "$skill_rels" | grep -c .)
-[ "$nskill" -eq 21 ] && ok "dual-apply covers all 21 skill bodies" || bad "expected 21 SKILL.md files to diff, found $nskill"
+[ "$nskill" -eq 22 ] && ok "dual-apply covers all 22 skill bodies" || bad "expected 22 SKILL.md files to diff, found $nskill"
 for rel in $skill_rels; do
   diff -q "$SRC/${rel#.}" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
@@ -2485,15 +2490,15 @@ printf '%s\n' "$out" | grep -q '^phase.md: .* bytes (budget 40960 bytes)' && pri
   && ok "finish-slice prints the notebook size and flags it over budget" || bad "finish-slice notebook size print missing -- $out"
 printf '%s\n' "$out" | grep -q 'biggest sections: ## Doc Impact ' && printf '%s\n' "$out" | grep -q 'topics/<slug>.md' \
   && ok "finish-slice names the biggest sections and suggests topics/ when over budget" || bad "over-budget size line does not name the largest section -- $out"
-grep -q 'Rebuilt at' "$F/works/backlog.md" "$F/works/deferred.md" \
-  && bad "a markdown dashboard still carries a Rebuilt at timestamp" || ok "no Rebuilt at timestamp in either markdown dashboard"
-# The churn this removes: repeated `next` calls must not dirty the two dashboards.
+grep -q 'Rebuilt at' "$F/works/backlog.md" "$F/works/deferred.md" "$F/works/agenda.md" \
+  && bad "a markdown dashboard still carries a Rebuilt at timestamp" || ok "no Rebuilt at timestamp in any markdown dashboard (backlog, deferred, agenda)"
+# The churn this removes: repeated `next` calls must not dirty the three dashboards.
 ( cd "$F" && git init -q . >/dev/null 2>&1 && git add -A >/dev/null 2>&1 \
     && git -c user.email=smoke@example.invalid -c user.name=smoke commit -qm "smoke baseline" >/dev/null 2>&1 )
 ( cd "$F" && python3 scripts/workflow.py next >/dev/null 2>&1; python3 scripts/workflow.py next >/dev/null 2>&1 )
-tracked=$( cd "$F" && git ls-files works/backlog.md works/deferred.md | wc -l | tr -d ' ' )
-dirty=$( cd "$F" && git status --short -- works/backlog.md works/deferred.md )
-[ "$tracked" = "2" ] && [ -z "$dirty" ] \
+tracked=$( cd "$F" && git ls-files works/backlog.md works/deferred.md works/agenda.md | wc -l | tr -d ' ' )
+dirty=$( cd "$F" && git status --short -- works/backlog.md works/deferred.md works/agenda.md )
+[ "$tracked" = "3" ] && [ -z "$dirty" ] \
   && ok "two next calls leave the dashboards byte-identical (no timestamp churn)" || bad "next dirtied the dashboards (tracked=$tracked) -- $dirty"
 
 # ---------------------------------------------------------------------------
@@ -2819,7 +2824,7 @@ if [ -d "$TW/works/phases/active/$tb_p1" ] || [ -d "$TW/works/deferred/open/$tb_
 fi
 ( tg add -A && tg commit -qm two ) >/dev/null 2>&1 || bad "two-branch probe: branch two did not commit"
 tg merge -q --no-edit one >/dev/null 2>&1; conflicted=$(tg diff --name-only --diff-filter=U | tr '\n' ' ')
-outside=$(printf '%s\n' $conflicted | grep -vxE 'works/(state\.json|index\.json|backlog\.md|deferred\.md)')
+outside=$(printf '%s\n' $conflicted | grep -vxE 'works/(state\.json|index\.json|backlog\.md|deferred\.md|agenda\.md)')
 ( for f in $conflicted; do tg checkout --theirs -- "$f" || exit 1; done; tw rebuild && tg add -A && tg commit -qm merge ) >/dev/null 2>&1
 tb_val=$(tw validate 2>&1); tb_rc=$?; tb_run=$(tw run-phases 1 2>&1); tb_run_rc=$?
 [ -z "$outside" ] && [ "$(ls "$TW/works/phases/active" | grep -cE "^P1-$tail_re$")" = 2 ] && [ "$(ls "$TW/works/deferred/open" | grep -cE "^D1-$tail_re$")" = 2 ] \
@@ -2864,6 +2869,129 @@ c1=$(ci_parse "phase/P-$bn_pid-slug"); c2=$(ci_parse phase/P12-slug); c3=$(ci_pa
 [ -n "$seed_block" ] && [ "$c1" = "P-$bn_pid" ] && [ "$c2" = "P12" ] && [ -z "$c3" ] && [ "$c4" = "P46-k2" ] && [ "$c5" = "P12" ] \
   && ok "the CI seed's branch parse gives P46-k2 for phase/P46-k2-slug (its folder exists), P12 for phase/P12-slug and for phase/P12-ab-slug (no P12-ab folder: a slug word), P-token for phase/P-token-slug, and nothing for another branch" \
   || bad "the CI seed's branch parse is wrong -- [$c1] [$c2] [$c3] [$c4] [$c5]"
+
+# ---------------------------------------------------------------------------
+echo "== Test 10i: agenda -- items, ids, transitions, order, links, the generated page, validate, two branches (the gate's exemption for an added item: Test 12) =="
+# A fresh --at-root install. Items live in works/agenda/<AID>/agenda.json; works/agenda.md, index.json's
+# agenda keys and the backlog's count are generated from them; an item never moves `next`.
+newtmp AGW; AG="$AGW/ws"
+sh "$BOOT" "$AG" --at-root --name "Agenda" --summary "agenda probe" >/dev/null 2>&1 || bad "agenda probe: fresh install failed"
+ag() { ( cd "$AG" && python3 scripts/workflow.py "$@" ); }
+ag_tree() { ( cd "$AG" && find works -type f ! -name '*.md' ! -name index.json ! -name state.json | LC_ALL=C sort | while read -r f; do printf '%s %s\n' "$f" "$(sha "$f")"; done ); }
+ag_items() { ( cd "$AG/works/agenda" && for f in */agenda.json; do printf '%s %s\n' "$f" "$(sha "$f")"; done ); }
+ag_key() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(sys.argv[2], "<absent>"))' "$AG/works/agenda/$1/agenda.json" "$2"; }
+ag_order() { ag agenda --json | python3 -c 'import json,sys; print(" ".join(i["id"] for i in json.load(sys.stdin)))'; }
+tail_re='([a-hjkmnp-tv-z][0-9a-hjkmnp-tv-z]|[0-9][a-hjkmnp-tv-z])'
+# (a) the generated page and the index, before any item and after: stable bytes, the keys, the backlog line.
+pg0=$(sha "$AG/works/agenda.md" 2>/dev/null); rm -f "$AG/works/agenda.md"; sleep 1  # a stamp would move with the clock
+ag rebuild >/dev/null 2>&1; pg1=$(sha "$AG/works/agenda.md" 2>/dev/null)
+ag_idx() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(not ("agenda_counts" in d and "agenda" in d))' "$AG/works/index.json"; }
+[ -n "$pg0" ] && [ "$pg0" = "$pg1" ] && ag_idx && grep -qxF -e '- Open agenda items: `0`' "$AG/works/backlog.md" \
+  && ok "a fresh install has works/agenda.md with no item, byte-identical across rebuilds; index.json has agenda_counts and agenda; backlog.md says Open agenda items: 0" \
+  || bad "the empty agenda page or index keys missing -- [$pg0] [$pg1] $(grep -F 'agenda' "$AG/works/backlog.md")"
+# (b) ids: A1-<tail> first, its own number sequence, an explicit tailed id once, brief forms.
+a1=$(ag agenda-add --title "first" 2>&1 | sed -n 's/^added \(A[^:]*\):.*/\1/p')
+a2=$(ag agenda-add --title "second" 2>&1 | sed -n 's/^added \(A[^:]*\):.*/\1/p')
+p1=$(ag new-phase --name "Plain" --objective probe 2>&1 | sed -n 's/^created phase \(P[^:]*\):.*/\1/p')
+d1=$(ag defer-job --title plain --reason r --trigger t --source manual 2>&1 | sed -n 's/^created deferred job \(D[^:]*\):.*/\1/p')
+ex1=$(ag agenda-add --id A13-n1 --title "thirteen" 2>&1); ex2=$(ag agenda-add --id A13-n1 --title "again" 2>&1); ex2_rc=$?
+ag agenda-edit 1 --title "first, by 1" >/dev/null 2>&1; ag agenda-edit A2 --title "second, by A2" >/dev/null 2>&1
+printf '%s\n' "$a1" | grep -qxE "A1-$tail_re" && printf '%s\n' "$a2" | grep -qxE "A2-$tail_re" \
+  && printf '%s\n' "$p1" | grep -qxE "P1-$tail_re" && printf '%s\n' "$d1" | grep -qxE "D1-$tail_re" \
+  && [ "$ex1" = "added A13-n1: thirteen" ] && [ "$ex2_rc" -ne 0 ] && [ "$(printf '%s\n' "$ex2" | wc -l | tr -d ' ')" = 1 ] \
+  && [ "$(ag_key "$a1" title)" = "first, by 1" ] && [ "$(ag_key "$a2" title)" = "second, by A2" ] \
+  && ok "agenda-add mints A1-<tail> then A2-<tail> and spends no phase or deferred number (P1-, D1- next); --id A13-n1 is taken once and refused in one line after; 1 and A2 name their items" \
+  || bad "agenda ids wrong -- $a1 / $a2 / $p1 / $d1 / $ex1 / $ex2"
+# (c) transitions: defer, solve with an outcome, reopen, drop with a reason, reopen (both cleared);
+# a refused transition is one line and non-zero; a bulk call with one bad id writes nothing.
+st=""
+for step in "agenda-defer $a2" "agenda-solve $a2 --outcome shipped" "agenda-reopen $a2" "agenda-drop $a2 --reason dup" "agenda-reopen $a2"; do
+  ag $step >/dev/null 2>&1 || st="$st [refused: $step]"
+  st="$st $(ag_key "$a2" status)/$(ag_key "$a2" outcome)/$(ag_key "$a2" reason)"
+done
+rf=$(ag agenda-reopen "$a1" 2>&1); rf_rc=$?
+tr0=$(ag_tree); bk=$(ag agenda-defer A13 A99-zz 2>&1); bk_rc=$?; tr1=$(ag_tree)
+[ "$st" = " deferred/None/None solved/shipped/None open/None/None dropped/None/dup open/None/None" ] \
+  && [ "$rf_rc" -ne 0 ] && [ "$(printf '%s\n' "$rf" | wc -l | tr -d ' ')" = 1 ] \
+  && [ "$bk_rc" -ne 0 ] && [ "$tr0" = "$tr1" ] && [ "$(ag_key A13-n1 status)" = open ] \
+  && ok "defer, solve --outcome, reopen, drop --reason, reopen (outcome and reason cleared); reopening an Open item is refused in one line; agenda-defer A13 A99-zz changes nothing" \
+  || bad "agenda transitions wrong -- $st / $rf / $bk"
+uo=$(ag agenda-add --title x --bogus 2>&1); uo_rc=$?; tr2=$(ag_tree)
+[ "$uo_rc" -eq 2 ] && [ "$(printf '%s\n' "$uo" | wc -l | tr -d ' ')" = 1 ] && [ "$tr1" = "$tr2" ] \
+  && ok "an unknown option on an agenda command (agenda-add --bogus) is one line, exit 2, nothing written" \
+  || bad "an unknown agenda option is not one line and exit 2 (rc=$uo_rc) -- $uo"
+# (d) order: the newest item first, a reopened item last, a move rewrites only the moved item's file.
+o1=$(ag_order); it0=$(ag_items); ag agenda-move A13 --last >/dev/null 2>&1; it1=$(ag_items)
+moved=$(diff <(printf '%s\n' "$it0") <(printf '%s\n' "$it1") | sed -n 's/^> \([^/]*\)\/.*/\1/p' | tr '\n' ' ')
+[ "$o1" = "A13-n1 $a1 $a2" ] && [ "$moved" = "A13-n1 " ] && [ "$(ag_order)" = "$a1 $a2 A13-n1" ] \
+  && ok "a new item lists first and a reopened one last ($o1); agenda-move --last rewrites only the moved item's agenda.json" \
+  || bad "agenda order wrong -- $o1 / moved: $moved / $(ag_order)"
+# (e) links: new-phase --agenda links and the item reads In progress; a second item cannot take that phase;
+# no agenda command changes `next`; agenda-delete clears the link and the phase stays, with no agenda key.
+p2=$(ag new-phase --name "Linked" --objective probe --agenda 1 2>&1 | sed -n 's/^created phase \(P[^:]*\):.*/\1/p')
+nx1=$(ag next 2>&1); lk=$(ag agenda-link 2 --phase "$p2" 2>&1); lk_rc=$?
+shown=$(ag agenda 2>&1 | grep "^$a1 ")
+ag agenda-add --title "noise" >/dev/null 2>&1; ag agenda-defer 14 >/dev/null 2>&1; ag agenda-move A13 --first >/dev/null 2>&1; nx2=$(ag next 2>&1)
+dl=$(ag agenda-delete "$a1" 2>&1); dl_rc=$?; nx3=$(ag next 2>&1)
+pj="$AG/works/phases/active/$p2/phase.json"
+[ -n "$p2" ] && [ "$lk_rc" -ne 0 ] && printf '%s\n' "$shown" | grep -q 'In progress' \
+  && [ "$nx1" = "$nx2" ] && [ "$nx2" = "$nx3" ] \
+  && [ "$dl_rc" -eq 0 ] && [ -f "$pj" ] && ! grep -q '"agenda"' "$pj" && [ ! -d "$AG/works/agenda/$a1" ] \
+  && ok "new-phase --agenda links $p2 and $a1 reads In progress; a second item cannot take it ($lk); agenda commands leave next unchanged; agenda-delete clears the link and the phase stays with no agenda key" \
+  || bad "agenda links wrong -- $p2 / $lk / $shown / $dl / next changed: $([ "$nx1" = "$nx2" ] && [ "$nx2" = "$nx3" ] && echo no || echo yes)"
+grep -qxF -e '- Open agenda items: `2`' "$AG/works/backlog.md" && [ "$(sha "$AG/works/agenda.md")" != "$pg0" ] \
+  && ok "the backlog counts Open and In progress items, never Deferred ones (2), and works/agenda.md follows the items" \
+  || bad "the backlog count or the agenda page did not follow -- $(grep -F 'agenda' "$AG/works/backlog.md")"
+# (f) validate: a `Z` stamp (JavaScript's toISOString form) passes on every Python, 3.9 and 3.10 included
+# (the engine reads its own stamp form, never fromisoformat); a dangling link is a warning (validate passes);
+# a corrupt agenda.json leaves rebuild at 0 and fails validate, naming the folder.
+z_dir=$(cd "$AG/works/agenda" && ls -d A*-* | grep -vx 'A13-n1' | head -n 1)
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["changed_at"]="2026-11-17T10:00:00.123Z"; open(p,"w").write(json.dumps(d, indent=2)+"\n")' "$AG/works/agenda/$z_dir/agenda.json"
+z_val=$(ag validate 2>&1); z_rc=$?
+[ -n "$z_dir" ] && [ "$z_rc" -eq 0 ] && ! printf '%s\n' "$z_val" | grep -q "agenda/$z_dir" \
+  && ok "an agenda item whose changed_at ends in Z (2026-11-17T10:00:00.123Z) passes validate on $(python3 -V 2>&1)" \
+  || bad "a Z changed_at failed validate on $(python3 -V 2>&1) -- $z_dir / $z_rc -- $(printf '%s\n' "$z_val" | grep -i agenda)"
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["agenda"]="A77-zz"; open(p,"w").write(json.dumps(d, indent=2)+"\n")' "$pj"
+v1=$(ag validate 2>&1); v1_rc=$?
+printf '{' > "$AG/works/agenda/A13-n1/agenda.json"
+rb=$(ag rebuild 2>&1); rb_rc=$?; v2=$(ag validate 2>&1); v2_rc=$?
+[ "$v1_rc" -eq 0 ] && printf '%s\n' "$v1" | grep -q "^warning: .*$p2.*A77-zz" \
+  && [ "$rb_rc" -eq 0 ] && [ "$v2_rc" -ne 0 ] && printf '%s\n' "$v2" | grep -q 'works/agenda/A13-n1' \
+  && ok "a dangling agenda link is a validate warning (exit 0); a corrupt agenda.json leaves rebuild at 0 and fails validate naming works/agenda/A13-n1" \
+  || bad "agenda validate wrong -- $v1_rc / $rb_rc / $v2_rc -- $(printf '%s\n' "$v1" "$v2" | grep -i agenda)"
+# A hand-edited field can hold any JSON value: a list-valued status leaves rebuild and next at 0 (no traceback)
+# and fails validate, naming the folder and the key.
+ls_dir=$(cd "$AG/works/agenda" && ls -d A*-* | grep -vx 'A13-n1' | head -n 1)
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["status"]=[1]; open(p,"w").write(json.dumps(d, indent=2)+"\n")' "$AG/works/agenda/$ls_dir/agenda.json"
+ls_rb=$(ag rebuild 2>&1); ls_rb_rc=$?; ls_nx=$(ag next 2>&1); ls_nx_rc=$?; ls_v=$(ag validate 2>&1); ls_v_rc=$?
+[ -n "$ls_dir" ] && [ "$ls_rb_rc" -eq 0 ] && [ "$ls_nx_rc" -eq 0 ] && [ "$ls_v_rc" -ne 0 ] \
+  && printf '%s\n' "$ls_v" | grep -q "works/agenda/$ls_dir: status \[1\]" && ! printf '%s\n' "$ls_rb" "$ls_nx" "$ls_v" | grep -q Traceback \
+  && ok "a list-valued agenda status leaves rebuild and next at exit 0 and fails validate naming works/agenda/$ls_dir" \
+  || bad "a list-valued agenda status broke a read or passed validate -- $ls_dir / $ls_rb_rc / $ls_nx_rc / $ls_v_rc -- $(printf '%s\n' "$ls_rb" "$ls_nx" "$ls_v" | grep -iE 'agenda|Traceback|Error' | tail -3)"
+# The same item is refused as unusable, in one line naming its file and agenda-delete, never "reopen it first" (which
+# would be refused too); nothing is written. A13-n1 goes first: every agenda command reads every item.
+rm -rf "$AG/works/agenda/A13-n1"; ls_t0=$(ag_tree); ls_df=$(ag agenda-defer "$ls_dir" 2>&1); ls_df_rc=$?
+[ -n "$ls_dir" ] && [ "$ls_df_rc" -eq 1 ] && [ "$(printf '%s\n' "$ls_df" | wc -l | tr -d ' ')" = 1 ] \
+  && printf '%s\n' "$ls_df" | grep -qF "works/agenda/$ls_dir/agenda.json" && printf '%s\n' "$ls_df" | grep -qF "agenda-delete $ls_dir" \
+  && ! printf '%s\n' "$ls_df" | grep -q reopen && [ "$(ag_tree)" = "$ls_t0" ] \
+  && ok "agenda-defer of an item with a list-valued status is refused in one line naming works/agenda/$ls_dir/agenda.json and agenda-delete, not reopen; nothing written" \
+  || bad "an unusable agenda status is refused without its file or way out -- rc=$ls_df_rc -- $(printf '%s\n' "$ls_df" | head -2 | cut -c1-240)"
+# (g) two branches each add an item: the merge conflicts in generated files only, and either side + rebuild lists both.
+newtmp AGB; AB="$AGB/ws"; sh "$BOOT" "$AB" --at-root --name "Agenda" --summary "agenda branches" >/dev/null 2>&1 || bad "agenda probe: second install failed"
+ab() { ( cd "$AB" && python3 scripts/workflow.py "$@" ); }
+abg() { git -C "$AB" -c user.email=smoke@example.invalid -c user.name=smoke "$@"; }
+( abg init -q && abg add -A && abg commit -qm base \
+  && abg checkout -q -b one && ab agenda-add --id A1-ab --title one && abg add -A && abg commit -qm one \
+  && abg checkout -q - && abg checkout -q -b two && ab agenda-add --id A1-ac --title two && abg add -A && abg commit -qm two ) >/dev/null 2>&1 \
+  || bad "agenda two-branch probe: setup failed"
+abg merge -q --no-edit one >/dev/null 2>&1; ab_conf=$(abg diff --name-only --diff-filter=U | tr '\n' ' ')
+ab_out=$(printf '%s\n' $ab_conf | grep -vxE 'works/(state\.json|index\.json|backlog\.md|deferred\.md|agenda\.md)')
+( for f in $ab_conf; do abg checkout --theirs -- "$f" || exit 1; done; ab rebuild && abg add -A && abg commit -qm merge ) >/dev/null 2>&1
+ab_val=$(ab validate 2>&1); ab_rc=$?
+[ -n "$ab_conf" ] && [ -z "$ab_out" ] && [ "$ab_rc" -eq 0 ] && [ -z "$(abg status --porcelain)" ] \
+  && [ "$(ab agenda 2>&1 | grep -cE '^A1-a[bc] ')" = 2 ] && grep -q 'A1-ab' "$AB/works/agenda.md" && grep -q 'A1-ac' "$AB/works/agenda.md" \
+  && ok "two branches each add an item (A1-ab, A1-ac) and merge with conflicts only in generated files ($ab_conf); either side + rebuild lists both, valid and clean" \
+  || bad "agenda two-branch merge wrong -- conflicted: $ab_conf / outside: $ab_out / $ab_val"
 
 # ---------------------------------------------------------------------------
 echo "== Test 10g: P44 doc versions by minute -- v<yyMMddHHmm> in UTC beside v0001, a same-minute second version takes the next minute, docs/current follows latest, validate takes both shapes =="
@@ -2993,15 +3121,15 @@ printf '\n# smoke: dirty edit that must stay behind\n' >> "$W/executors.toml"
 mkdir -p "$W/src" && printf 'staged\n' > "$W/src/staged.py" && ( cd "$W" && git add src/staged.py )
 ps_out=$( cd "$W" && python3 scripts/workflow.py parallel-start P1 2>&1 ); ps_rc=$?
 [ "$ps_rc" -eq 0 ] && ok "parallel-start runs on a dirty tree" || bad "parallel-start refused a dirty tree (rc=$ps_rc) -- $ps_out"
-# (a) the stamp commit is exactly the phase folder + (a subset of) the five works files
+# (a) the stamp commit is exactly the phase folder + (a subset of) the six works files
 stamp_files=$( cd "$W" && git show --name-only --format= HEAD )
 if python3 - "$stamp_files" <<'PY'
 import sys
 files = set(sys.argv[1].split())
-five = {"works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/events.jsonl"}
+six = {"works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/agenda.md", "works/events.jsonl"}
 phase = {f for f in files if f.startswith("works/phases/active/P1/")}
 assert "works/phases/active/P1/phase.json" in phase and "works/index.json" in files, files
-assert files == phase | (files & five), files
+assert files == phase | (files & six), files
 PY
 then ok "the stamp commit holds only the phase folder and the regenerated works/ files"; else bad "the stamp commit swept in other paths -- $stamp_files"; fi
 ( cd "$W" && git diff --cached --name-only | grep -qx "src/staged.py" && git diff --name-only | grep -qx "executors.toml" ) \
@@ -3064,7 +3192,51 @@ g_out=$( cd "$W" && python3 scripts/workflow.py parallel-gate P1 --branch-ref pr
 [ "$g_rc" -ne 0 ] && printf '%s\n' "$g_out" | grep -q "^exemption=none: src/probe.py" && printf '%s\n' "$g_out" | grep -q "default stream is not quiet: phase P2" \
   && ok "a branch touching any other path gets no exemption: the busy default stream still closes the gate" \
   || bad "the exemption let a product-file branch past a busy default stream (rc=$g_rc) -- $g_out"
-( cd "$W" && git branch -q -D probe/extra && python3 scripts/workflow.py set-phase-status P2 planned >/dev/null 2>&1 ) || bad "v86 probe: could not reset the probe"
+# P66: a branch that only adds an agenda item (plus the regenerated works/ files) keeps the exemption.
+( cd "$wt" && git checkout -q -b probe/agenda && python3 scripts/workflow.py agenda-add --title "gate probe" && git add -A works \
+    && git commit -qm "probe: an agenda item" && git checkout -q phase/P1-worktree_probe ) >/dev/null 2>&1 || bad "P66 probe: could not cut the agenda branch"
+g_out=$( cd "$W" && python3 scripts/workflow.py parallel-gate P1 --branch-ref probe/agenda 2>&1 ); g_rc=$?
+[ "$g_rc" -eq 0 ] && printf '%s\n' "$g_out" | grep -q "^exemption=phase-folder-only (" \
+  && ok "a branch that only adds an agenda item keeps the exemption: the gate opens on a busy default stream" \
+  || bad "an added agenda item lost the exemption (rc=$g_rc) -- $g_out"
+# P66: a phase created inside the worktree is that stream's own (the default side does not hold it): it unlinks there.
+# (on the phase branch itself, where the stream is; the probe's files are then dropped from the clean worktree).
+born_out=$( cd "$wt" && aid=$(python3 scripts/workflow.py agenda-add --title "born probe" | sed -n 's/^added \([^:]*\):.*/\1/p') \
+    && python3 scripts/workflow.py new-phase --phase P9 --name "Born here" --objective "made in the worktree" --agenda "$aid" >/dev/null 2>&1 \
+    && python3 scripts/workflow.py agenda-unlink --phase P9 2>&1; rc=$?; git checkout -q -- works && git clean -fdq works; exit $rc ); born_rc=$?
+[ "$born_rc" -eq 0 ] && printf '%s\n' "$born_out" | grep -q "^unlinked P9 from A" \
+  && ok "a phase created inside the worktree is that stream's own: agenda-unlink applies there" \
+  || bad "the worktree refused its own new phase's link (rc=$born_rc) -- $born_out"
+# P66: a phase that was there at the cut stays another stream's after the default side removes it (ownership is
+# read from the cut, never from the default side as it is now): the worktree refuses, writes nothing, names no command.
+# Its own small fixture: this test's P2 was never committed before P1's cut.
+newtmp GW
+sh "$BOOT" "$GW" --at-root --name "Gone" --summary "gone probe" >/dev/null 2>&1 || bad "P66 gone probe: fresh install failed"
+gone_out=$( cd "$GW" && git init -q -b main . && git config user.email smoke@example.invalid && git config user.name smoke \
+    && python3 scripts/workflow.py new-phase --phase P1 --name "Par" --objective "o" >/dev/null 2>&1 \
+    && python3 scripts/workflow.py new-phase --phase P2 --name "Gone" --objective "o" >/dev/null 2>&1 \
+    && git add -A >/dev/null 2>&1 && git commit -qm "baseline" && python3 scripts/workflow.py parallel-start P1 >/dev/null 2>&1 \
+    && git rm -rq works/phases/active/P2 && python3 scripts/workflow.py rebuild >/dev/null 2>&1 && git add -A && git commit -qm "drop P2" \
+    && cd .claude/worktrees/P1-par && aid=$(python3 scripts/workflow.py agenda-add --title "gone probe" | sed -n 's/^added \([^:]*\):.*/\1/p') \
+    && { python3 scripts/workflow.py agenda-link "$aid" --phase P2 2>&1; rc=$?; git diff --quiet -- works/phases/active/P2 || rc=99; exit $rc; } ); gone_rc=$?
+[ "$gone_rc" -eq 1 ] && printf '%s\n' "$gone_out" | grep -q "^agenda-link refused, nothing was written: P2 has been removed from the default checkout" \
+  && ! printf '%s\n' "$gone_out" | grep -q "workflow.py agenda-" \
+  && ok "a phase there at the cut and removed on the default side since stays another stream's: the worktree refuses its link" \
+  || bad "the worktree took a link into a phase the default side removed after the cut (rc=$gone_rc) -- $gone_out"
+# P66: a workspace installed --at-root in a subfolder of its repo reads the cut from the repo's top (git ls-tree takes
+# its path relative to the working directory unless --full-tree): its worktree refuses a link into a phase of the cut.
+newtmp GS
+subf_out=$( cd "$GS" && git init -q -b main . && git config user.email smoke@example.invalid && git config user.name smoke \
+    && echo product > README && git add README && git commit -qm "product" && sh "$BOOT" "$GS/sub" --at-root --name "Sub" --summary "subfolder probe" >/dev/null 2>&1 \
+    && cd sub && python3 scripts/workflow.py new-phase --phase P1 --name "Par" --objective "o" >/dev/null 2>&1 \
+    && python3 scripts/workflow.py new-phase --phase P2 --name "Stay" --objective "o" >/dev/null 2>&1 \
+    && git add -A >/dev/null 2>&1 && git commit -qm "baseline" && python3 scripts/workflow.py parallel-start P1 >/dev/null 2>&1 \
+    && cd .claude/worktrees/P1-par/sub && aid=$(python3 scripts/workflow.py agenda-add --title "subfolder probe" | sed -n 's/^added \([^:]*\):.*/\1/p') \
+    && { python3 scripts/workflow.py agenda-link "$aid" --phase P2 2>&1; rc=$?; git diff --quiet -- works/phases/active/P2 || rc=99; exit $rc; } ); subf_rc=$?
+[ "$subf_rc" -eq 1 ] && printf '%s\n' "$subf_out" | grep -q "^agenda-link refused, nothing was written: P2 runs on the default stream; in the default checkout (.*/sub, branch main) run: " \
+  && ok "a workspace in a subfolder of its repo reads the cut from the repo's top: its worktree refuses a link into a phase of the cut" \
+  || bad "a subfolder workspace's worktree took a link into a phase of the cut (rc=$subf_rc) -- $subf_out"
+( cd "$W" && git branch -q -D probe/extra probe/agenda && python3 scripts/workflow.py set-phase-status P2 planned >/dev/null 2>&1 ) || bad "v86 probe: could not reset the probe"
 ( cd "$W" && git restore --staged src/staged.py && git add -A works >/dev/null 2>&1 && git commit -qm "workflow state" >/dev/null 2>&1 ) \
   || bad "v43 probe: could not commit the default-stream workflow state before merging"
 # Both sides regenerated the dashboards, so the merge conflicts in generated files -- resolved the

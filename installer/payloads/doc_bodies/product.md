@@ -45,3 +45,4 @@ Only what the code cannot show: the journeys that matter, the UX rules and state
 - `phase`: grouped unit of work under `works/phases/active/` or `works/phases/archived/`
 - `slice`: concrete unit of work inside a phase
 - `deferred job`: parked work under `works/deferred/` that does not affect active selection until promoted
+- `agenda item`: an operator's to-discuss item under `works/agenda/` (Open, In progress, Deferred, Solved, Dropped) that never affects active selection; phases and deferred jobs link to it

@@ -59,7 +59,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 97
+WORKSPACE_VERSION = 98
 ROOT = TARGET.resolve()
 # Nested personal install (P28; the default layout since P29): TARGET is a HOST git repo -- one the
 # operator may not own, or a new/empty dir this run `git init`s. The engine and all workflow state go
@@ -203,9 +203,9 @@ EMPTY_OK_ALLOWLIST = {
 #@@GENERATED_PAYLOADS@@
 
 # The skill inventory is derived independently from the embedded payload manifest.
-# The build enforces the release invariant: 21 skill packages.
+# The build enforces the release invariant: 22 skill packages.
 CLAUDE_SKILLS = sorted({k.split("/")[2] for k in PAYLOADS if k.startswith(".claude/skills/") and k.endswith("/SKILL.md")})
-EXPECTED_SKILL_COUNT = 21
+EXPECTED_SKILL_COUNT = 22
 if len(CLAUDE_SKILLS) != EXPECTED_SKILL_COUNT:
     raise RuntimeError(
         f"embedded skill inventory must contain {EXPECTED_SKILL_COUNT} skill packages "
@@ -220,6 +220,7 @@ MANAGED_DIRS = [
     *[f"docs/versions/{doc_id}" for doc_id in DOC_TYPES],
     "works", "works/phases", "works/phases/active", "works/phases/archived",
     "works/deferred", "works/deferred/open", "works/deferred/promoted", "works/deferred/dropped",
+    "works/agenda",
     "works/templates", "scripts",
     ".claude", ".claude/skills", ".claude/agents",
 ]
@@ -229,7 +230,7 @@ MANAGED_FILES = [
     "docs/README.md", "docs/index.json",
     *[f"docs/current/{doc_id}.md" for doc_id in DOC_TYPES],
     *[f"docs/versions/{doc_id}/v0001_bootstrap.md" for doc_id in DOC_TYPES],
-    "works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/events.jsonl",
+    "works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/agenda.md", "works/events.jsonl",
     *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md", "phase.md", "charter.md")],
     "scripts/workflow.py",
     ".claude/agents/slice-executor.md", ".claude/agents/design-drafter.md",
@@ -315,9 +316,9 @@ GITATTRIBUTES_APPEND_NOTE = (
     "\n# Added by the agentic workspace: works/events.jsonl is an append-only log, so\n"
     "# both sides of a merge are always wanted (`union` is a built-in git merge driver\n"
     "# and needs no per-clone config). The generated files (works/state.json,\n"
-    "# works/index.json, works/backlog.md, works/deferred.md, docs/current/*.md) get no\n"
-    "# merge driver on purpose -- resolve a conflict there by taking either side and\n"
-    "# re-running: python3 scripts/workflow.py parallel-merge-finish\n"
+    "# works/index.json, works/backlog.md, works/deferred.md, works/agenda.md,\n"
+    "# docs/current/*.md) get no merge driver on purpose -- resolve a conflict there\n"
+    "# by taking either side and re-running: python3 scripts/workflow.py parallel-merge-finish\n"
 )
 
 
@@ -3341,12 +3342,12 @@ elif RETROFIT:
 else:
     print(f"Bootstrapped agentic workspace at {TARGET}")
     print("Contract: CLAUDE.md")
-    print("Claude Code: 21 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, fresh-eyes PR reader .claude/agents/pr-reader.md, blind code reader .claude/agents/code-reader.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
+    print("Claude Code: 22 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, fresh-eyes PR reader .claude/agents/pr-reader.md, blind code reader .claude/agents/code-reader.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
     print("Visual design: design-cowork fires automatically; the design-drafter subagent drafts each design slice's surfaces as one working canvas under docs/reference/design/jobs/ (a frame of shared choices, its pages at once, then a join into clickable Pages, a board per component), the design-critic judges each page and the joined canvas when the job's critique is on, the orchestrator publishes each round to one Design canvas Artifact in the Claude app, and the operator decides: picks a style (build-after / design-only / paired) and signs each design in their own words, or on an in-product mockup they ask for, before separate implementation and browser fidelity")
     print("One executor, routed per dispatch by kind, then risk, then attempt (mid is the default row, real code included; high for decomposition, research, review, named triggers and retries), through one route table whose rows set each dispatch's model and effort; python3 scripts/workflow.py executor-route shows it (and executor-route <slice> the decision for one slice); override a row in executors.toml, then run sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
     print("CI: .github/workflows/workspace-ci.yml runs validate on every push/PR (seeded once — yours to edit); .gitattributes carries the merge rules for machine-written files")
-    print("Canonical state: phase.json / slice.json / deferred.json; generated: works/backlog.md, works/deferred.md")
+    print("Canonical state: phase.json / slice.json / deferred.json / agenda.json; generated: works/backlog.md, works/deferred.md, works/agenda.md")
     print("Versioned docs: docs/versions/<doc>/v<yyMMddHHmm>_*.md (a new version is named by its UTC minute; v0001_bootstrap.md is the first) with generated docs/current/*.md")
     print("Knowledge: /explain is the knowledge plugin's, not this workspace's (plugin 0.10.0+): /plugin marketplace add leetusik/knowledge, then /plugin install knowledge@knowledge; run /knowledge:setup once, then /knowledge:explain <topic>")
     print("  every explain is its own explain phase (a document by default; a book or a chapter when asked), written from this repo's code and its phases' records, created and run after one confirmation in its own worktree, merged back by itself — see docs/current/operations.md")

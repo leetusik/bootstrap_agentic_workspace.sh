@@ -16,6 +16,7 @@ __PROJECT_NAME__ is newly bootstrapped. This document should describe stable sys
 - `works/phases/active/`: active phase folders
 - `works/phases/archived/`: archived phase folders
 - `works/deferred/`: deferred job folders
+- `works/agenda/`: agenda item folders; `works/agenda.md` is the generated list
 - `scripts/workflow.py`: workflow and docs version manager
 - `.claude/`: Claude Code entry points (skills, subagents, settings)
 

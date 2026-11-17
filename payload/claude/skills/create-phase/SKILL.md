@@ -14,6 +14,8 @@ Turn an operator request for new work into one or more phases — or a deferred 
 
 1. **Refine.** Restate the operator's request in clear language. Read the `docs/current/` **sections** the request actually touches (just in time — never the whole doc set; `python3 scripts/workflow.py docs` lists what exists) and run `python3 scripts/workflow.py next` for the current pointer, if useful. Preserve the operator's exact words — you will record them verbatim later.
 
+   **From an agenda item** (`/create-phase A7-m3`, or `A7`): read the item with `python3 scripts/workflow.py agenda --json` and take its title and note as the request to refine. The operator's words still go verbatim into `intent.md`, with the item id beside them, and every `new-phase` this intake runs for the item (several phases all carry it), or the `defer-job` that parks it instead, takes `--agenda <AID>`. The stops and confirmations below do not change.
+
 2. **Clarify.** Ask the operator about anything ambiguous before acting: scope and boundaries, whether this is one phase or several, a sensible name and objective for each, and whether the work should start now (a phase) or be parked for later (a deferred job). Wait for answers. Do not run any `workflow.py` command yet.
 
    **If the work touches product visual design, one of those questions is the design style** — read the `design-cowork` skill (its `reference/shape.md`, `## Shape — three styles`) and ask which of the three the work wants. **You suggest one and give the reason; the operator confirms or overrides.** It is never your decision alone and never left implicit:
@@ -42,16 +44,16 @@ Turn an operator request for new work into one or more phases — or a deferred 
 
    **Defer for later** → fold the confirmed intent into the arguments and run:
    ```
-   python3 scripts/workflow.py defer-job --title "..." --reason "..." --trigger "..." [--source ...]
+   python3 scripts/workflow.py defer-job --title "..." --reason "..." --trigger "..." --source ... [--agenda <AID>]
    ```
    Leave out `--id`: the engine mints the job's id (`D92-x4`: the next number and a random tail) and prints it on the `created deferred job` line; never pick a number. This parks the job under `works/deferred/open/<DID>/` and never affects next-slice selection until promoted (the same command the `defer-job` skill wraps). Commit it as step 5 says, report and STOP.
 
    **Make a phase (or several)** → for each phase, in operator-confirmed order:
    1. Create it, leaving out `--phase`:
       ```
-      python3 scripts/workflow.py new-phase --name "..." --objective "..."
+      python3 scripts/workflow.py new-phase --name "..." --objective "..." [--agenda <AID>]
       ```
-      The engine mints the id (`P46-k2`: the next number and a random tail) and prints it on the `created phase` line; never pick it, and use that printed id as `P<N>` in every step below. `new-phase` creates only `P<N>.DECOMP` and `P<N>.REVIEW`, scaffolds `intent.md`, and links it near the top of `phase.md`.
+      (`--agenda` only when the intake started from an agenda item.) The engine mints the id (`P46-k2`: the next number and a random tail) and prints it on the `created phase` line; never pick it, and use that printed id as `P<N>` in every step below. `new-phase` creates only `P<N>.DECOMP` and `P<N>.REVIEW`, scaffolds `intent.md`, and links it near the top of `phase.md`.
    2. Fill `works/phases/active/P<N>/intent.md`:
       - leave **Origin** as `operator`;
       - paste the operator's request **word-for-word** under *Original Input (verbatim)* — do not fix grammar or wording;

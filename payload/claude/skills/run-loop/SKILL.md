@@ -93,7 +93,7 @@ On `action=checkpoint`: `loop-checkpoint <P> --start` → plan → `loop-cycle-d
 
 ## Coexistence (a loop in its own worktree)
 
-At each cycle boundary, when the default branch has moved (`git merge-base --is-ancestor <default> HEAD` fails), run `git merge <default>` in the loop worktree (take either side of a `works/` conflict, then regenerate), then `parallel-merge-finish`. The default stream merges the loop's passing checkpoint commit: the `parallel-phase` skill, *A loop phase lands at its checkpoints*.
+At each cycle boundary, when the default branch has moved (`git merge-base --is-ancestor <default> HEAD` fails), run `git merge --no-ff <default>` in the loop worktree (`--no-ff`: always a merge commit, which the agenda's own-stream rule reads; take either side of a `works/` conflict, then regenerate), then `parallel-merge-finish`. The default stream merges the loop's passing checkpoint commit: the `parallel-phase` skill, *A loop phase lands at its checkpoints*.
 
 ## The operator's words
 
