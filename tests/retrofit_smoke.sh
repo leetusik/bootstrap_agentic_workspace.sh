@@ -1152,9 +1152,9 @@ for required in (
     "stop the run (a loop phase: only its charter's stops, `run-loop`)",
     "`## Operator Questions` (a loop's item questions: its parked list)",
     "`qa`, `co-work`, `cycle`",
-    # P66 (the agenda): its generated page, its entity, its id and its status line.
+    # P66 (the agenda): its generated page, its entity and its id (its statuses live in the
+    # agenda skill and the engine's help, not here: the contract is at its cap).
     "`works/agenda.md`", "`works/agenda/<AID>/agenda.json`", "`A7-m3`",
-    "- Agenda: `open | deferred | solved | dropped`; In progress is derived from a linked phase not done",
 ):
     assert required in claude, required
 assert "never fan out slices" not in claude, "the contract still forbids fanning out slices"
