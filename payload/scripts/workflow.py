@@ -3620,7 +3620,8 @@ def _resolve_slice_arg(raw: str) -> str:
 
 
 def normalize_id_args(args: argparse.Namespace) -> None:
-    """The ONE choke point for an id typed on a command line, run once after argparse: every `phase` /
+    """The ONE choke point for an id typed on a command line, run once after argparse (in a linked checkout,
+    once after the begin step's pull, so an id reads the tree hi2vi holds: `cloud_boundary`): every `phase` /
     `--phase` argument is a phase id, every `deferred_id` and `defer-job --id` a deferred job's, `new-phase
     --consolidates` a comma list of phase ids, and the `slice` attribute (positional `slice` and `--slice`) a
     slice whose phase part may be brief (`46.S1`). CREATING an id (`new-phase --phase`, `defer-job --id`) reads
@@ -22369,7 +22370,9 @@ def cloud_run(args: argparse.Namespace, tokens: list):
 
 
 def cloud_fail_open(args: argparse.Namespace, line: str):
-    """The hook's way past a cloud stop: the command runs on the disk as it is, then the stop as a note."""
+    """The hook's way past a cloud stop: the command runs on the disk as it is (its ids read from it), then the
+    stop as a note."""
+    normalize_id_args(args)
     result = args.func(args)
     print(f"note: {line}")
     return result
@@ -22377,7 +22380,10 @@ def cloud_fail_open(args: argparse.Namespace, line: str):
 
 def cloud_boundary(args: argparse.Namespace, tokens: list, fail_open: bool = False, deadline=None):
     """The boundary itself, with the lock held. Every failure of the begin or the commit step is one line
-    (cloud_stop_line): a refusal before the command, or "on disk but not in hi2vi" after it."""
+    (cloud_stop_line): a refusal before the command, or "on disk but not in hi2vi" after it. The command's typed
+    ids are resolved after the begin step's pull, against the tree hi2vi holds (a brief id names what another
+    checkout made, and a number two phases now share is refused); an id refusal is a refusal like the
+    command's own, so the commit step still runs."""
     try:
         session = CloudSession(tokens, deadline=deadline)
         session.begin(inbox=args.cmd in CLOUD_INBOX_AT)
@@ -22386,6 +22392,7 @@ def cloud_boundary(args: argparse.Namespace, tokens: list, fail_open: bool = Fal
             return cloud_fail_open(args, cloud_stop_line(exc, "begin"))
         raise SystemExit(cloud_stop_line(exc, "begin"))
     try:
+        normalize_id_args(args)
         result = args.func(args)
     except SystemExit as stop:
         line = cloud_commit_step(session)
@@ -23910,16 +23917,17 @@ def main(argv=None) -> int:
         # Never fall back to at-root mode on a broken marker: refuse, and let validate list it all.
         raise SystemExit(f"{shown(ROOT / NESTED_MARKER)} is malformed, so this nested install cannot run {args.cmd}: "
                          f"{'; '.join(NESTED_PROBLEMS)} -- fix the file (run: {WORKFLOW_CMD} validate)")
-    normalize_id_args(args)  # every typed phase / deferred-id / slice argument becomes its stored id here, once
-    if not cloud_link_file().exists():  # local mode: no link, so the command runs exactly as before
-        result = args.func(args)
-    elif args.cmd in CLOUD_OWN:  # link, unlink and sync: each takes the lock itself and never runs the begin step
+    if not cloud_link_file().exists() or args.cmd in CLOUD_OWN:
+        # local mode: no link, so the command runs exactly as before; link, unlink and sync each take the lock
+        # themselves and never run the begin step. Every typed phase / deferred-id / slice argument becomes its
+        # stored id here, once.
+        normalize_id_args(args)
         result = args.func(args)
     else:  # cloud mode: a pull before the command, one batch after it; a stream command is refused first
         refused = cloud_refusal(args)
         if refused:
             raise SystemExit(refused)
-        result = cloud_run(args, tokens)
+        result = cloud_run(args, tokens)  # the ids are resolved inside, against the pulled tree
     if isinstance(result, tuple):
         return 0
     return 0 if result is None else int(result or 0)

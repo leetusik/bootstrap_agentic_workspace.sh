@@ -6058,7 +6058,7 @@ kill "$SF_PID" 2>/dev/null; wait "$SF_PID" 2>/dev/null
 echo "cloud safety test runtime: $(( $(date +%s) - sf_t0 ))s"
 
 # ---------------------------------------------------------------------------
-echo "== Test 23: link, unlink and sync against the local fake hi2vi, with a scratch XDG_CONFIG_HOME -- the installer hides .hi2vi/ in the workflow repo (fresh and --update); link refuses http:// to a non-local host, an at-root install, uncommitted changes, another worktree, a phase in flight on a stream, a key file open to group or others, a wrong key and an already-linked checkout, each with nothing written; link reads the key from stdin, keeps it 0600 in a 0700 folder and uploads the truth set in batches under 8,000,000 B; next prints store=cloud and head sends X-Hi2vi-Base; parallel-start is refused in cloud mode with nothing written; a second checkout joins from an unused install (following fetch's rest) or an equal set, and a used one is refused with the list; sync pulls and pushes the clean changes, lists a stale write, shows its diff, refuses --keep with no path, on a folder and on a path on neither side, and resolves only on --keep local|cloud, lists an interrupted command's files and pushes none until --keep; unlink refuses on a mismatch, then leaves a local-mode tree that validates and opens no socket; unlink --from-disk runs offline; the key appears nowhere =="
+echo "== Test 23: link, unlink and sync against the local fake hi2vi, with a scratch XDG_CONFIG_HOME -- the installer hides .hi2vi/ in the workflow repo (fresh and --update); link refuses http:// to a non-local host, an at-root install, uncommitted changes, another worktree, a phase in flight on a stream, a key file open to group or others, a wrong key and an already-linked checkout, each with nothing written; link reads the key from stdin, keeps it 0600 in a 0700 folder and uploads the truth set in batches under 8,000,000 B; next prints store=cloud and head sends X-Hi2vi-Base; parallel-start is refused in cloud mode with nothing written; a second checkout joins from an unused install (following fetch's rest) or an equal set, and a used one is refused with the list; a typed brief id is resolved after the pull (it names what another checkout made, on the first try, and a number shared once the pull lands is refused); sync pulls and pushes the clean changes, lists a stale write, shows its diff, refuses --keep with no path, on a folder and on a path on neither side, and resolves only on --keep local|cloud, lists an interrupted command's files and pushes none until --keep; unlink refuses on a mismatch, then leaves a local-mode tree that validates and opens no socket; unlink --from-disk runs offline; the key appears nowhere =="
 lk_t0=$(date +%s)
 newtmp LKW; LKX="$LKW/xdg"; LK_OUT="$LKW/out.txt"; : > "$LK_OUT"
 LKA="$LKW/a"; LKB="$LKW/b"; LKC="$LKW/c"; LKR="$LKW/root"
@@ -6202,6 +6202,9 @@ elif check == "kept-append":
     need(len(C) == 1 and C[0]["status"] == 200 and [op["op"] for op in ops] == ["append"], f"events.jsonl kept as {[op['op'] for op in ops]}")
 elif check == "revs":  # extra: revisions before (unchanged)
     need(S["revisions"] == int(extra[0]) and not C, "a refused sync changed hi2vi")
+elif check == "quiet":  # a refusal or a read after a pull: no batch sent, the pull recorded, no journal left
+    need(not C, f"a batch was sent: {[c['batch'].get('command') for c in C]}")
+    synced()
 print("ok")
 PY
 }
@@ -6309,6 +6312,35 @@ lk_nosock "$LKB/workflow/scripts/workflow.py" unlink --from-disk > "$LKW/c3.txt"
 lk_commit "$LKB" unlinked; lk_m=$(lk_mark); printf '%s\n' "$LKK" | lk "$LKB" link "$LKU" > "$LKW/c4.txt"; lk_rc=$?; lk_r=$(lk_check "$LKB/workflow" "$lk_m" synced)
 [ "$lk_rc" = 0 ] && [ "$lk_r" = ok ] && grep -q "^linked: joined hi2vi's workspace (0 file(s) taken from hi2vi)" "$LKW/c4.txt" \
   && ok "a checkout whose files equal hi2vi's joins with nothing taken" || bad "an equal set did not join -- rc=$lk_rc $lk_r $(tail -2 "$LKW/c4.txt")"
+# A typed id is resolved after the begin step's pull: a brief id names what another checkout made since this one
+# last pulled, on the first try (A makes each record, then B's very next command names it by its brief form).
+lk_bad=""
+lk_brief() {  # lk_brief <A's command> <B's command> <B's expected line ERE>
+  _a=$1; _b=$2; _x=$3
+  # shellcheck disable=SC2086
+  lk "$LKA" $_a > "$LKW/br-a.txt" || lk_bad="$lk_bad [A: $_a: $(tail -1 "$LKW/br-a.txt")]"
+  # shellcheck disable=SC2086
+  lk "$LKB" $_b > "$LKW/br-b.txt"; _rc=$?
+  { [ "$_rc" = 0 ] && grep -qE "$_x" "$LKW/br-b.txt"; } || lk_bad="$lk_bad [B: $_b: rc=$_rc $(head -1 "$LKW/br-b.txt")]"
+}
+lk_brief "new-phase --phase 7-ab --name Brief --objective toy" "phase-section 7" '^ +[0-9]+  Objective$'
+lk_brief "new-slice --phase P7-ab --slice P7-ab.S1 --name s" "executor-route 7.S1" '^slice=P7-ab\.S1$'
+lk_brief "defer-job --id 7-cd --title brief --reason r --trigger t --source manual" "drop-deferred 7 --reason r" '^dropped D7-cd: '
+lk_brief "agenda-add --id 7-ef --title brief" "agenda-solve 7 --outcome done" '^solved A7-ef'
+[ -z "$lk_bad" ] \
+  && ok "in a linked checkout a brief id names what another checkout made since the last pull, on the first try: a phase number (phase-section 7), a slice's brief phase part (executor-route 7.S1), a deferred job's number (drop-deferred 7) and an agenda item's (agenda-solve 7)" \
+  || bad "a brief id was resolved against the stale disk, before the pull --$lk_bad"
+# A number unique on B's stale disk but shared once the pull lands is refused with the list, one line; the
+# refusal still runs the commit step (no journal left, the pull recorded, nothing sent), and the full id runs.
+( lk "$LKA" new-phase --phase 7-zz --name Twin --objective toy >/dev/null )
+lk_m=$(lk_mark); lk "$LKB" phase-section 7 > "$LKW/br-c.txt"; lk_rc=$?; lk_r=$(lk_check "$LKB/workflow" "$lk_m" quiet)
+lk_m=$(lk_mark); lk "$LKB" phase-section 7-zz > "$LKW/br-d.txt"; lk_rc2=$?; lk_r2=$(lk_check "$LKB/workflow" "$lk_m" quiet)
+lk "$LKA" executor-route 7-ab.S1 > "$LKW/br-e.txt"; lk_rc3=$?
+[ "$lk_rc" = 1 ] && [ "$(grep -c '' "$LKW/br-c.txt")" = 1 ] && grep -qx "'7' names 2 phases numbered 7: P7-ab, P7-zz -- type the tail (e.g. P7-ab or 7-ab)" "$LKW/br-c.txt" \
+  && [ "$lk_r" = ok ] && [ "$lk_rc2" = 0 ] && grep -qE '^ +[0-9]+  Objective$' "$LKW/br-d.txt" && [ "$lk_r2" = ok ] \
+  && [ "$lk_rc3" = 0 ] && grep -qx 'slice=P7-ab.S1' "$LKW/br-e.txt" \
+  && ok "a brief id unique on the stale disk but shared after the pull is refused with the list in one line, exit 1; the commit step still runs (no journal left, the pull recorded, nothing sent); the full id then runs, and a tailed brief id of a record on the disk still resolves" \
+  || bad "a number shared after the pull was not refused cleanly -- rc=$lk_rc/$lk_rc2/$lk_rc3 $lk_r / $lk_r2 $(head -2 "$LKW/br-c.txt")"
 # (d) sync in A: a stale write (409) beside a clean change on each side.
 lk_p=works/phases/active/P1/intent.md; printf 'changed here\n' >> "$LKA/workflow/$lk_p"
 lk_ctl "{\"race\": {\"path\": \"$lk_p\", \"content\": \"changed in hi2vi by another checkout\\n\"}}"
