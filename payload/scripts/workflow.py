@@ -341,6 +341,9 @@ ARCHIVED = WORKS / "phases" / "archived"
 DEFERRED_OPEN = WORKS / "deferred" / "open"
 DEFERRED_PROMOTED = WORKS / "deferred" / "promoted"
 DEFERRED_DROPPED = WORKS / "deferred" / "dropped"
+# The agenda (P66): one folder per item, `works/agenda/<AID>/agenda.json`, rewritten in place on every
+# change and never moved -- a status is a field, not a folder (unlike deferred jobs).
+AGENDA = WORKS / "agenda"
 DOC_TYPES = {"product", "architecture", "operations", "qa", "decisions"}
 # The six docs retired by v79: for an AI reader they restated the code (and went stale), and they were
 # written more than read. An install that has them keeps them readable in docs/current, listed as
@@ -371,6 +374,15 @@ SLICE_STOP_KINDS = {
     "other": "anything else",
 }
 DEFERRED_STATUSES = {"deferred", "ready", "promoted", "done", "dropped"}
+# An agenda item's STORED status. In progress is never stored: it is derived (an Open item with a linked
+# phase not done), so a listing shows five statuses. AGENDA_SHOWN is the one table of their signed words.
+AGENDA_STATUSES = {"open", "deferred", "solved", "dropped"}
+AGENDA_SHOWN = {"open": "Open", "in_progress": "In progress", "deferred": "Deferred", "solved": "Solved",
+                "dropped": "Dropped"}
+# agenda.json's keys, in the order every write gives them (any other key is kept, after these).
+AGENDA_KEYS = ("id", "title", "note", "status", "order", "created_at", "changed_at", "outcome", "reason")
+AGENDA_TITLE_MAX = 200
+AGENDA_TITLE_REFUSAL = "Enter a title of 1–200 characters."  # the signed design's field error, word for word
 REVIEW_VERDICTS = {"pass", "changes_requested", "blocked"}
 # Ids (readable ids, after v83): an id the operator can say. New phase and deferred ids are the next
 # NUMBER plus a two-symbol random tail -- `P46-k2`, `D92-x4`, slices `P46-k2.S1` -- the number one more than the highest
@@ -394,11 +406,15 @@ ID_TAIL_PATTERN = "(?:[a-hjkmnp-tv-z][0-9a-hjkmnp-tv-z]|[0-9][a-hjkmnp-tv-z])"
 ID_MODE_WORDS = frozenset({"gate", "plan"})  # `auto` and `only` cannot be drawn: u, o and l are not in the alphabet
 PHASE_ID_PATTERN = rf"P(?:[0-9]+(?:-{ID_TAIL_PATTERN})?|-{ID_TOKEN_PATTERN})"
 DEFERRED_ID_PATTERN = rf"D(?:[0-9]+(?:-{ID_TAIL_PATTERN})?|-{ID_TOKEN_PATTERN})"
+# An agenda item's id is always a number and a tail (`A7-m3`): it was born after v83, so no untailed `A7`
+# and no v73 `A-<token>` shape exists for it. Its numbers are a sequence of their own.
+AGENDA_ID_PATTERN = rf"A[0-9]+-{ID_TAIL_PATTERN}"
 # A numbered id, tailed or not, any prefix: group 1 the number, group 2 the tail (None when untailed).
-NUMBERED_ID_RE = re.compile(rf"[PD]([0-9]+)(?:-({ID_TAIL_PATTERN}))?")
+NUMBERED_ID_RE = re.compile(rf"[PDA]([0-9]+)(?:-({ID_TAIL_PATTERN}))?")
 SLICE_SUFFIX_PATTERN = "[A-Z][A-Z0-9]*"
 PHASE_ID_RE = re.compile(PHASE_ID_PATTERN)
 DEFERRED_ID_RE = re.compile(DEFERRED_ID_PATTERN)
+AGENDA_ID_RE = re.compile(AGENDA_ID_PATTERN)
 SLICE_ID_RE = re.compile(rf"({PHASE_ID_PATTERN})\.({SLICE_SUFFIX_PATTERN})")
 # An archive folder is `<yyyymmdd>_<hhmmss>_<phase id>_<slug>` (`_archive_one`); the slug is lowercase.
 ARCHIVE_FOLDER_ID_RE = re.compile(rf"_({PHASE_ID_PATTERN})_")
@@ -2635,6 +2651,65 @@ def deferred_jobs() -> dict:
     return groups
 
 
+def _agenda_order(item):
+    """An item's `order` as a finite float, or None (unset, or not a number)."""
+    value = item.get("order")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    value = float(value)
+    return value if value == value and abs(value) != float("inf") else None
+
+
+def _agenda_changed(item) -> float:
+    """An item's `changed_at` as a POSIX time (0 when unreadable): ISO stamps of different offsets compare."""
+    try:
+        return datetime.fromisoformat(str(item.get("changed_at"))).timestamp()
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+
+
+def agenda_sorted(items) -> list:
+    """The ONE listing order of agenda items: the open part (stored `open`, so In progress too) by `order`, a tie
+    broken by id (`id_sort_key`); then Deferred; then Solved and Dropped together; each of those two newest first
+    by `changed_at`, a tie by id. An item whose order is unset sorts after the ordered open items, and one of an
+    unknown status last, by id."""
+    by_id = sorted(items, key=lambda d: id_sort_key(d.get("id")))
+    inf = float("inf")
+    open_part = sorted((d for d in by_id if d.get("status") == "open"),
+                       key=lambda d: inf if _agenda_order(d) is None else _agenda_order(d))
+    # reverse=True keeps a stable sort stable: items of one changed_at stay in id order
+    deferred = sorted((d for d in by_id if d.get("status") == "deferred"), key=_agenda_changed, reverse=True)
+    ended = sorted((d for d in by_id if d.get("status") in ("solved", "dropped")), key=_agenda_changed, reverse=True)
+    return open_part + deferred + ended + [d for d in by_id if d.get("status") not in AGENDA_STATUSES]
+
+
+def agenda_items() -> list:
+    """Every agenda item, `works/agenda/<AID>/agenda.json`, as dicts in the listing order (`agenda_sorted`). The
+    folder name is the item's id (`id` is set from it). A folder without agenda.json is skipped; one whose
+    agenda.json is not a JSON object is refused in one line."""
+    items = []
+    for aid in agenda_folder_ids():
+        path = AGENDA / aid / "agenda.json"
+        if not path.is_file():
+            continue
+        try:
+            data = read_json(path)
+        except (OSError, ValueError) as exc:
+            raise SystemExit(f"{shown(path)} is not readable JSON ({exc.__class__.__name__}): fix or delete it")
+        if not isinstance(data, dict):
+            raise SystemExit(f"{shown(path)} is not a JSON object: fix or delete it")
+        data["id"] = aid
+        items.append(data)
+    return agenda_sorted(items)
+
+
+def agenda_shown_status(item) -> str:
+    """The signed word for an item's status (AGENDA_SHOWN). The stored four map to their words; In progress
+    (an Open item with a linked phase not done) is the link code's to derive, from the same table."""
+    status = item.get("status")
+    return AGENDA_SHOWN.get(status, str(status))
+
+
 def clean_cell(value: object) -> str:
     if value is None:
         return ""
@@ -3022,10 +3097,17 @@ def visible_phase_ids() -> set:
     return ids
 
 
+def agenda_folder_ids() -> set:
+    """Every agenda item id with a folder under works/agenda/ (the folder name is the id)."""
+    return {d.name for d in AGENDA.iterdir() if d.is_dir()} if AGENDA.is_dir() else set()
+
+
 def visible_ids(prefix: str) -> set:
-    """The ids of one kind this workspace can see: phases (`P`, `visible_phase_ids`) or deferred jobs (`D`,
-    every folder in open/, promoted/ and dropped/)."""
-    return visible_phase_ids() if prefix == "P" else deferred_folder_ids()
+    """The ids of one kind this workspace can see: phases (`P`, `visible_phase_ids`), deferred jobs (`D`,
+    every folder in open/, promoted/ and dropped/) or agenda items (`A`, every folder under works/agenda/)."""
+    if prefix == "P":
+        return visible_phase_ids()
+    return agenda_folder_ids() if prefix == "A" else deferred_folder_ids()
 
 
 def visible_id_tokens() -> set:
@@ -3075,9 +3157,12 @@ def draw_id_tail() -> str:
 
 
 def mint_id(prefix: str) -> str:
-    """A new `<prefix><n>-<tail>` id (prefix `P` or `D`): `next_id_number` and a tail re-drawn while the full
-    id is visible. Nothing else allocates a phase or deferred id. Two branches that each mint draw the same
-    number; the tail keeps them apart, and a same-tail pair (1 in 924) is a git add/add conflict at merge."""
+    """A new `<prefix><n>-<tail>` id (prefix `P`, `D` or `A`): `next_id_number` and a tail re-drawn while the
+    full id is visible. Nothing else allocates a phase, deferred or agenda id. Two branches that each mint draw
+    the same number; the tail keeps them apart, and a same-tail pair (1 in 924) is a git add/add conflict at
+    merge. An agenda number is spent by nothing: a deleted item's folder is gone, so its number may be drawn
+    again, with a new tail (delete the highest item and the next mint reuses its number). No tombstone is
+    kept; the `agenda_deleted` event in works/events.jsonl is the record of the old id."""
     visible = visible_ids(prefix)
     number = next_id_number(prefix, visible)
     for _ in range(10000):
@@ -3102,10 +3187,11 @@ def mint_phase_id() -> str:
 # `d92-X4`, `m3xa`, `D-m3xa`). Two contexts, both in `normalize_id_args`, the ONE choke point after argparse:
 # CREATING an id (`new-phase --phase`, `defer-job --id`) reads the form statically (`brief_id`: `46` is `P46`);
 # REFERENCING one (every other argument) looks a number up among the stored ids (`resolve_id_ref`).
-ID_ARG_KINDS = {"P": "phase", "D": "deferred job"}
+ID_ARG_KINDS = {"P": "phase", "D": "deferred job", "A": "agenda item"}
 PHASE_ARG_HELP = ("the phase, in any brief form: 46 or P46 (numbered; type the tail, 46-k2, only when two phases share"
                   " the number), 7kq2 or P-7kq2 (a v73 id), any case")
-ID_ARG_EXAMPLES = {"P": ("P46-k2", "46", "P12", "P-7kq2", "7kq2"), "D": ("D92-x4", "92", "D12", "D-m3xa", "m3xa")}
+ID_ARG_EXAMPLES = {"P": ("P46-k2", "46", "P12", "P-7kq2", "7kq2"), "D": ("D92-x4", "92", "D12", "D-m3xa", "m3xa"),
+                   "A": ("A7-m3", "7")}  # an agenda id has no old or minted-token shape
 
 
 def brief_id(prefix: str, raw) -> "str | None":
@@ -3120,6 +3206,8 @@ def brief_id(prefix: str, raw) -> "str | None":
     tailed = re.fullmatch(rf"{prefix}?([0-9]+)-([0-9A-Za-z]{{{ID_TAIL_LENGTH}}})", text, re.I)
     if tailed and re.fullmatch(ID_TAIL_PATTERN, tailed.group(2).lower()):
         return f"{prefix}{int(tailed.group(1))}-{tailed.group(2).lower()}"
+    if prefix == "A":  # an agenda id has no v73 token shape: `7kq2` and `A-7kq2` name no agenda item
+        return None
     token = re.fullmatch(rf"(?:{prefix}-)?({ID_TOKEN_PATTERN})", text, re.I)
     if token and not token.group(1).isdigit() and token.group(1).lower() not in ID_MODE_WORDS:
         return f"{prefix}-{token.group(1).lower()}"
@@ -3127,8 +3215,13 @@ def brief_id(prefix: str, raw) -> "str | None":
 
 
 def id_arg_refusal(prefix: str, raw) -> str:
-    """Why `raw` is not a phase (`P`) or deferred job (`D`) id, with the three shapes that are."""
+    """Why `raw` is not a phase (`P`) or deferred job (`D`) id, with the three shapes that are; an agenda item
+    (`A`) has one shape, a number and a tail."""
     text = str(raw).strip()
+    if prefix == "A":
+        tailed, number = ID_ARG_EXAMPLES["A"]
+        return (f"{raw!r} is not an agenda item id: write {number} or {tailed} (the tail typed only when two"
+                f" share the number)")
     tailed, number, old, minted, bare = ID_ARG_EXAMPLES[prefix]
     msg = (f"{raw!r} is not a {ID_ARG_KINDS[prefix]} id: write {number} or {tailed} (numbered, the tail typed only when"
            f" two share the number), {old} (an old numbered id), or {bare} or {minted} (a minted v73 id)")
@@ -3160,26 +3253,30 @@ def id_number_refusal(prefix: str, raw, number: int, tailed: list) -> str:
     if tailed:
         return (f"{str(raw).strip()!r} names {len(tailed)} {kind}s numbered {number}: {', '.join(tailed)} -- type the tail"
                 f" (e.g. {tailed[0]} or {tailed[0][1:]})")
+    if prefix == "A":  # an agenda id is never untailed
+        return f"{str(raw).strip()!r} names no {kind}: none is {prefix}{number}-<tail> in the agenda"
     where = "active or archived" if prefix == "P" else "open, promoted or dropped"
     return f"{str(raw).strip()!r} names no {kind}: none is {prefix}{number} or {prefix}{number}-<tail>, {where}"
 
 
 def _stored_id_named(prefix: str, text: str) -> bool:
     """True when an id of a shape `brief_id` does not know is held exactly as typed (an old install's folder is
-    never made unreachable): an active or archived phase, or a deferred job."""
+    never made unreachable): an active or archived phase, a deferred job, or an agenda item."""
     if not re.fullmatch(r"[A-Za-z0-9._-]+", text) or text in (".", ".."):
         return False
     if prefix == "D":
         return text in deferred_folder_ids()
+    if prefix == "A":
+        return text in agenda_folder_ids()
     return (ACTIVE / text).is_dir() or text in archived_phase_ids()
 
 
 def resolve_id_arg(prefix: str, raw) -> str:
-    """A phase (`P`) or deferred job (`D`) id as typed when CREATING one -> the id as stored, read statically
-    (`46` is `P46`); SystemExit with the shapes when it is no id. An id already in a stored shape
-    (`PHASE_ID_RE` / `DEFERRED_ID_RE`) is returned untouched."""
+    """A phase (`P`), deferred job (`D`) or agenda item (`A`) id as typed when CREATING one -> the id as stored,
+    read statically (`46` is `P46`); SystemExit with the shapes when it is no id. An id already in a stored
+    shape (`PHASE_ID_RE` / `DEFERRED_ID_RE` / `AGENDA_ID_RE`) is returned untouched."""
     text = str(raw).strip()
-    if (PHASE_ID_RE if prefix == "P" else DEFERRED_ID_RE).fullmatch(text):
+    if {"P": PHASE_ID_RE, "D": DEFERRED_ID_RE, "A": AGENDA_ID_RE}[prefix].fullmatch(text):
         return text
     stored = brief_id(prefix, text)
     if stored is not None:
@@ -3254,6 +3351,18 @@ def normalize_id_args(args: argparse.Namespace) -> None:
         args.deferred_id = resolve_id_ref("D", deferred)
     if cmd == "defer-job" and isinstance(getattr(args, "id", None), str) and args.id:
         args.id = resolve_id_arg("D", args.id)
+    # The agenda (P66): `agenda_ids` (every item command's positional ids, a list) and agenda-move's
+    # `--before`/`--after` REFERENCE stored items, in the order typed, so a bulk call is refused at its first bad
+    # id; `agenda-add --id` CREATES one, read statically (`13-N1` is `A13-n1`) and checked by agenda_add.
+    agenda_ids = getattr(args, "agenda_ids", None)
+    if isinstance(agenda_ids, list):
+        args.agenda_ids = [resolve_id_ref("A", raw) for raw in agenda_ids]
+    for attr in ("before_id", "after_id"):
+        if cmd == "agenda-move" and isinstance(getattr(args, attr, None), str):
+            setattr(args, attr, resolve_id_ref("A", getattr(args, attr)))
+    if cmd == "agenda-add" and isinstance(getattr(args, "id", None), str):
+        args.id_typed = args.id
+        args.id = brief_id("A", args.id) or args.id.strip()
     consolidates = getattr(args, "consolidates", None)
     if isinstance(consolidates, str):
         parts = []
@@ -11987,6 +12096,267 @@ def drop_deferred(args: argparse.Namespace) -> None:
     print(f"dropped {did}: {shown(target)}")
 
 
+# The agenda's item commands (P66). Each either applies and prints one line per item changed, or exits non-zero
+# with exactly one line and writes nothing: every id is resolved and every transition checked before the first
+# write, so a bulk call is all or none (its refusal names the first item that fails). That line is what the web
+# shows as its "Change refused" text. After a write: one event per item, then one rebuild. Nothing here touches
+# `next`, the pointer, a phase or a deferred job; links to phases and jobs are another command's.
+AGENDA_ID_HELP = ("an agenda item, in any brief form: 7, A7 or a7 (its number), 7-m3 or A7-m3 (the tail, typed only"
+                  " when two items share the number)")
+
+
+def agenda_title(raw) -> str:
+    """A title as stored: stripped, one line, 1 to 200 characters; else the signed field error."""
+    title = raw.strip() if isinstance(raw, str) else ""
+    if not title or len(title) > AGENDA_TITLE_MAX or len(title.splitlines()) != 1:
+        raise SystemExit(AGENDA_TITLE_REFUSAL)
+    return title
+
+
+def _agenda_text(raw):
+    """An optional line (note, outcome, reason) as stored: stripped, and None when unset or empty."""
+    text = raw.strip() if isinstance(raw, str) else ""
+    return text or None
+
+
+def _agenda_record(item: dict) -> dict:
+    """agenda.json's content: AGENDA_KEYS in their order, then any other key the item holds."""
+    record = {key: item.get(key) for key in AGENDA_KEYS}
+    record.update({key: value for key, value in item.items() if key not in AGENDA_KEYS})
+    return record
+
+
+def _agenda_write(item: dict, stamp: str) -> None:
+    item["changed_at"] = stamp
+    write_json(AGENDA / item["id"] / "agenda.json", _agenda_record(item))
+
+
+def _agenda_named(ids) -> tuple:
+    """`(named, all)`: the items `ids` names, once each in the order typed, and every item (listing order).
+    Refused at the first id that names no item."""
+    every = agenda_items()
+    by_id = {item["id"]: item for item in every}
+    named = []
+    for aid in dict.fromkeys(ids):
+        if aid not in by_id:
+            raise SystemExit(f"{aid} names no agenda item")
+        named.append(by_id[aid])
+    return named, every
+
+
+def _agenda_open(items) -> list:
+    """The open part, in its order (In progress is stored `open`)."""
+    return [item for item in agenda_sorted(items) if item.get("status") == "open"]
+
+
+def _agenda_place(others: list, item: dict, index: int) -> tuple:
+    """Give `item` the `order` that puts it at `index` among the Open items `others` (in order, without it): the
+    midpoint of its two neighbours, one below the first, one above the last, 1.0 alone. When no float lies
+    strictly between the neighbours (a tie, or no room left between two orders), or the open part would hold two
+    equal orders, renumber the whole open part 1, 2, 3... in its new order instead. Returns `(the items whose
+    order changed, renumbered)`; it writes nothing."""
+    placed = others[:index] + [item] + others[index:]
+    prev = others[index - 1] if index > 0 else None
+    nxt = others[index] if index < len(others) else None
+    low = _agenda_order(prev) if prev else None
+    high = _agenda_order(nxt) if nxt else None
+    if (prev and low is None) or (nxt and high is None):
+        candidate = None
+    elif low is None and high is None:
+        candidate = 1.0
+    elif low is None:
+        candidate = high - 1.0
+    elif high is None:
+        candidate = low + 1.0
+    else:
+        candidate = (low + high) / 2
+    fits = (candidate is not None and abs(candidate) != float("inf") and (low is None or low < candidate)
+            and (high is None or candidate < high))
+    if fits:
+        orders = [candidate if other is item else _agenda_order(other) for other in placed]
+        if None not in orders and len(set(orders)) == len(orders):
+            item["order"] = candidate
+            return [item], False
+    for number, other in enumerate(placed, 1):
+        other["order"] = float(number)
+    return placed, True
+
+
+def _agenda_renumbered_line(count: int) -> str:
+    return f"renumbered the open order 1-{count}: no room was left between two orders"
+
+
+def _agenda_refusal(item: dict, to_status: str) -> str:
+    """The one line refusing a status change: the item and its shown status, then why."""
+    aid, word = item["id"], agenda_shown_status(item)
+    if item.get("status") == to_status:
+        return f"{aid} is {word} already"
+    if to_status == "open":
+        return f"{aid} is {word}: only a Deferred, Solved or Dropped item reopens"
+    return f"{aid} is {word}: reopen it first"
+
+
+def agenda_list(args: argparse.Namespace) -> None:
+    items = agenda_items()
+    if args.json:
+        print(json.dumps([{**_agenda_record(item), "shown_status": agenda_shown_status(item)} for item in items],
+                         ensure_ascii=False, indent=2))
+        return
+    if not items:
+        print("no agenda items")
+        return
+    width = max(len(item["id"]) for item in items)
+    status_width = max(len(word) for word in AGENDA_SHOWN.values())
+    for item in items:
+        print(f"{item['id']:<{width}}  {agenda_shown_status(item):<{status_width}}  {item.get('title') or ''}")
+
+
+def agenda_add(args: argparse.Namespace) -> None:
+    title = agenda_title(args.title)
+    if args.id is not None:
+        aid = args.id
+        if not AGENDA_ID_RE.fullmatch(aid):
+            raise SystemExit(f"agenda id must look like A13-n1 (a number and a two-symbol tail with a letter), got"
+                             f" {getattr(args, 'id_typed', aid)!r}: omit --id and the engine mints one")
+        if (AGENDA / aid).exists():
+            raise SystemExit(f"agenda item {aid} already exists")
+    else:
+        aid = mint_id("A")
+    stamp = now_iso()
+    item = {"id": aid, "title": title, "note": _agenda_text(args.note), "status": "open", "order": None,
+            "created_at": stamp, "changed_at": stamp, "outcome": None, "reason": None}
+    others = _agenda_open(agenda_items())
+    writes, renumbered = _agenda_place(others, item, 0)  # a new item goes first (F79)
+    for each in writes:
+        _agenda_write(each, stamp)
+    append_event("agenda_added", agenda=aid, **({"renumbered": True} if renumbered else {}))
+    rebuild_index_and_state()
+    print(f"added {aid}: {title}")
+    if renumbered:
+        print(_agenda_renumbered_line(len(writes)))
+
+
+def agenda_edit(args: argparse.Namespace) -> None:
+    if args.title is None and args.note is None:
+        raise SystemExit("agenda-edit needs --title, --note or both")
+    (item,), _every = _agenda_named(args.agenda_ids)
+    title = agenda_title(args.title) if args.title is not None else None
+    if title is not None:
+        item["title"] = title
+    if args.note is not None:
+        item["note"] = _agenda_text(args.note)  # --note "" clears it
+    _agenda_write(item, now_iso())
+    append_event("agenda_edited", agenda=item["id"])
+    rebuild_index_and_state()
+    print(f"edited {item['id']}")
+
+
+def agenda_move(args: argparse.Namespace) -> None:
+    given = [flag for flag, on in (("--first", args.first), ("--last", args.last),
+                                   ("--before", args.before_id is not None), ("--after", args.after_id is not None)) if on]
+    if len(given) != 1:
+        raise SystemExit("agenda-move needs exactly one position: --first, --last, --before <item> or --after <item>"
+                         + (f" (got {', '.join(given)})" if given else ""))
+    target_id = args.before_id if args.before_id is not None else args.after_id
+    (item,), every = _agenda_named(args.agenda_ids)
+    aid = item["id"]
+    if item.get("status") != "open":
+        raise SystemExit(f"{aid} is {agenda_shown_status(item)}: only an Open item moves; reopen it first")
+    open_now = _agenda_open(every)
+    others = [other for other in open_now if other["id"] != aid]
+    if target_id is not None:
+        if target_id == aid:
+            raise SystemExit(f"{aid} cannot move beside itself")
+        target = next((other for other in every if other["id"] == target_id), None)
+        if target is None:
+            raise SystemExit(f"{target_id} names no agenda item")
+        if target.get("status") != "open":
+            raise SystemExit(f"{target_id} is {agenda_shown_status(target)}: an item moves only beside an Open item")
+        index = others.index(target) + (1 if args.after_id is not None else 0)
+        where = f"{'after' if args.after_id is not None else 'before'} {target_id}"
+    else:
+        index = 0 if args.first else len(others)
+        where = "first" if args.first else "last"
+    if open_now.index(item) == index and len({_agenda_order(o) for o in open_now}) == len(open_now) \
+            and None not in {_agenda_order(o) for o in open_now}:
+        print(f"{aid} is {where} already; nothing changed")
+        return
+    writes, renumbered = _agenda_place(others, item, index)
+    stamp = now_iso()
+    for each in writes:
+        _agenda_write(each, stamp)
+    append_event("agenda_moved", agenda=aid, **({"renumbered": True} if renumbered else {}))
+    rebuild_index_and_state()
+    print(f"moved {aid}: {where}")
+    if renumbered:
+        print(_agenda_renumbered_line(len(writes)))
+
+
+def _agenda_change_status(args: argparse.Namespace, to_status: str, allowed: set, event: str, verb: str) -> None:
+    """Defer, solve, drop or reopen every named item, or none: every transition is checked first."""
+    items, every = _agenda_named(args.agenda_ids)
+    for item in items:
+        if item.get("status") not in allowed:
+            raise SystemExit(_agenda_refusal(item, to_status))
+    outcome = _agenda_text(getattr(args, "outcome", None)) if to_status == "solved" else None
+    reason = _agenda_text(getattr(args, "reason", None)) if to_status == "dropped" else None
+    writes, renumbered = {}, False
+    open_now = _agenda_open(every)
+    for item in items:
+        item.update(status=to_status, outcome=outcome, reason=reason)  # reopen clears both (F81)
+        if to_status == "open":  # a reopened item goes last in the open order (F303), in the order typed
+            changed, again = _agenda_place(open_now, item, len(open_now))
+            open_now = open_now + [item]
+            renumbered = renumbered or again
+            writes.update({each["id"]: each for each in changed})
+        else:
+            item["order"] = None
+        writes[item["id"]] = item
+    stamp = now_iso()
+    for each in writes.values():
+        _agenda_write(each, stamp)
+    for item in items:
+        append_event(event, agenda=item["id"])
+    rebuild_index_and_state()
+    for item in items:
+        print(f"{verb} {item['id']}" + (" (last in the open order)" if to_status == "open" else ""))
+    if renumbered:
+        print(_agenda_renumbered_line(len(open_now)))
+
+
+def agenda_defer(args: argparse.Namespace) -> None:
+    _agenda_change_status(args, "deferred", {"open"}, "agenda_deferred", "deferred")
+
+
+def agenda_solve(args: argparse.Namespace) -> None:
+    _agenda_change_status(args, "solved", {"open", "deferred"}, "agenda_solved", "solved")
+
+
+def agenda_drop(args: argparse.Namespace) -> None:
+    _agenda_change_status(args, "dropped", {"open", "deferred"}, "agenda_dropped", "dropped")
+
+
+def agenda_reopen(args: argparse.Namespace) -> None:
+    _agenda_change_status(args, "open", {"deferred", "solved", "dropped"}, "agenda_reopened", "reopened")
+
+
+def agenda_delete(args: argparse.Namespace) -> None:
+    items, _every = _agenda_named(args.agenda_ids)
+    for item in items:
+        shutil.rmtree(AGENDA / item["id"])
+    for item in items:
+        append_event("agenda_deleted", agenda=item["id"], title=item.get("title"))
+    rebuild_index_and_state()
+    for item in items:
+        print(f"deleted {item['id']}")
+
+
+def _one_line_usage_errors(parser: argparse.ArgumentParser) -> None:
+    """A usage error on this subcommand prints one line (`<prog>: error: <message>`, exit 2), never the usage
+    block: the agenda's refusals are each exactly one line, the web's "Change refused" text."""
+    parser.error = lambda message: parser.exit(2, f"{parser.prog}: error: {message}\n")
+
+
 def _phase_blocker_kinds(pdir: Path) -> list:
     """Reasons a phase is not cleanly archivable, typed: `[(kind, text)]`, kind one of "slices",
     "review", "consolidation" or "pr" (P52: a recorded PR not yet merged). Empty list means ready. `_phase_blockers` is this list's text, so
@@ -20525,6 +20895,63 @@ def main(argv=None) -> int:
     p.add_argument("deferred_id", help="the deferred job, in any brief form (92, D92 or 92-x4; D12; m3xa or D-m3xa)")
     p.add_argument("--reason", required=True)
     p.set_defaults(func=drop_deferred)
+
+    # The agenda (P66): works/agenda/<AID>/agenda.json, one folder per item, never moved. Every item command
+    # applies and prints one line per item changed, or exits non-zero with one line and writes nothing.
+    p = sub.add_parser("agenda", help="List the agenda: every item in the listing order (the open part in its order, then Deferred, then Solved and Dropped, each newest first), one line each: id, status, title. Writes nothing")
+    p.add_argument("--json", action="store_true", help="print the same list as JSON: each item's stored fields plus shown_status")
+    _one_line_usage_errors(p)
+    p.set_defaults(func=agenda_list)
+
+    p = sub.add_parser("agenda-add", help="Add an Open agenda item, first in the open order; prints its id")
+    p.add_argument("--title", help="one line of 1 to 200 characters (required)")
+    p.add_argument("--note", help="an optional note")
+    p.add_argument("--id", help="the item's id, minted elsewhere (A13-n1; 13-n1 is read as it); omit it and the engine mints one (the next A number and a random tail). Refused when malformed or when that item exists")
+    _one_line_usage_errors(p)
+    p.set_defaults(func=agenda_add)
+
+    p = sub.add_parser("agenda-edit", help="Change an agenda item's title, note or both, in any status")
+    p.add_argument("agenda_ids", nargs=1, metavar="ITEM", help=AGENDA_ID_HELP)
+    p.add_argument("--title", help="the new title: one line of 1 to 200 characters")
+    p.add_argument("--note", help="the new note; --note \"\" clears it")
+    _one_line_usage_errors(p)
+    p.set_defaults(func=agenda_edit)
+
+    p = sub.add_parser("agenda-move", help="Reorder an Open agenda item within the open part: exactly one of --first, --last, --before ITEM, --after ITEM (beside an Open item). Rewrites only the moved item, unless no room is left between two orders: then the open part is renumbered 1, 2, 3... and the output says so")
+    p.add_argument("agenda_ids", nargs=1, metavar="ITEM", help=AGENDA_ID_HELP)
+    p.add_argument("--first", action="store_true")
+    p.add_argument("--last", action="store_true")
+    p.add_argument("--before", dest="before_id", metavar="ITEM")
+    p.add_argument("--after", dest="after_id", metavar="ITEM")
+    _one_line_usage_errors(p)
+    p.set_defaults(func=agenda_move)
+
+    p = sub.add_parser("agenda-defer", help="Defer Open agenda items (Open -> Deferred); all or none")
+    p.add_argument("agenda_ids", nargs="+", metavar="ITEM", help=AGENDA_ID_HELP)
+    _one_line_usage_errors(p)
+    p.set_defaults(func=agenda_defer)
+
+    p = sub.add_parser("agenda-solve", help="Solve agenda items (Open or Deferred -> Solved), with an optional outcome; all or none")
+    p.add_argument("agenda_ids", nargs="+", metavar="ITEM", help=AGENDA_ID_HELP)
+    p.add_argument("--outcome", help="one optional line: what came of it")
+    _one_line_usage_errors(p)
+    p.set_defaults(func=agenda_solve)
+
+    p = sub.add_parser("agenda-drop", help="Drop agenda items (Open or Deferred -> Dropped), with an optional reason; all or none")
+    p.add_argument("agenda_ids", nargs="+", metavar="ITEM", help=AGENDA_ID_HELP)
+    p.add_argument("--reason", help="one optional line: why")
+    _one_line_usage_errors(p)
+    p.set_defaults(func=agenda_drop)
+
+    p = sub.add_parser("agenda-reopen", help="Reopen agenda items (Deferred, Solved or Dropped -> Open), last in the open order, their outcome and reason cleared; all or none")
+    p.add_argument("agenda_ids", nargs="+", metavar="ITEM", help=AGENDA_ID_HELP)
+    _one_line_usage_errors(p)
+    p.set_defaults(func=agenda_reopen)
+
+    p = sub.add_parser("agenda-delete", help="Delete agenda items for good: their folders are removed (the agenda_deleted event is the record); all or none")
+    p.add_argument("agenda_ids", nargs="+", metavar="ITEM", help=AGENDA_ID_HELP)
+    _one_line_usage_errors(p)
+    p.set_defaults(func=agenda_delete)
 
     p = sub.add_parser("loop-init", help="Make a phase a loop phase (P50): write its loop block, seed loop/charter/v1.md from the charter template and order its REVIEW after every cycle; refused (nothing written) unless the phase is planned, or in progress with nothing past its DECOMP started, and on a loop, docs or explain phase")
     p.add_argument("phase", help=PHASE_ARG_HELP)
