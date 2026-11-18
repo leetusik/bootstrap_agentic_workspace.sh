@@ -6092,11 +6092,12 @@ except Exception as exc:
 PY
 )
 [ "$sf_late" = "answer 200 True" ] && ok "an answer already read is never turned into unreachable by a late timer" || bad "a late timer turned a whole answer into a failure -- $sf_late"
-# Every wait of a request is judged, the connection's set-up included. Behind an HTTPS proxy that answers its CONNECT
-# 6 s late and then forwards nothing, or drips its answer a byte every 2 s, the session hook still ends inside its 9 s
-# with the note and an ordinary command in one line within about 10 s (the floor judges each step of the connect, the
-# tunnel and the TLS handshake). The checkout points at an https hi2vi only the proxy could reach (never resolved
-# here: urllib hands the name to the proxy); each command is cut at 40 s by pid, so a hang fails the row, not the suite.
+# The connection's set-up is judged too. Behind an HTTPS proxy that answers its CONNECT 6 s late and then forwards
+# nothing, or drips its CONNECT answer a byte every 2 s, the session hook still ends inside its 9 s with the note and an
+# ordinary command in one line in about 10 s (the connect is one wait the idle limit bounds; then the floor judges each
+# step of the tunnel and the TLS handshake, its window counted from the request's start). The checkout points at an
+# https hi2vi only the proxy could reach (never resolved here: urllib hands the name to the proxy); each command is
+# cut at 40 s by pid, so a hang fails the row, not the suite.
 cat > "$SFW/proxy.py" <<'PY'
 import os, socket, sys, threading, time
 port_file, mode = sys.argv[1], sys.argv[2]
