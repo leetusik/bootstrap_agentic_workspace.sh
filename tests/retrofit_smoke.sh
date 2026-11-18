@@ -5518,7 +5518,7 @@ kill "$CL_PID" 2>/dev/null; wait "$CL_PID" 2>/dev/null
 echo "cloud mode test runtime: $(( $(date +%s) - cl_t0 ))s"
 
 # ---------------------------------------------------------------------------
-echo "== Test 22: cloud mode's safety half, against the local fake hi2vi -- offline a command is refused with the one P8 line and the tree unchanged, and compact-resume fails open; a lost commit answer is resent with the same batch_id and lands once; a batch never sent goes at the next command; a command that dies midway leaves the journal running and the next command refuses naming sync; a pull killed at any step of an append-only file's merge (the event log, a loop's ledger and checkpoints, a local order of its own) leaves each line in hi2vi once; a stale write (409) keeps the disk, writes nothing in hi2vi and exits 1, then the mismatch refuses with nothing changed; two engine processes in one checkout are serialized by .hi2vi/lock; a change over 8,000,000 B goes as several batches, and one file too big for any batch is refused; every failure inside the boundary is one line, never a traceback (a cut or malformed answer, a commit answer cut mid-body, a fetch that does not decode, a write error during a pull), and the hook's note; compact-resume stays inside the hook's 15 s on a slow, dripping or slow-but-moving server; a request fails only when it stalls: a slow but moving pull, push and pushing resend each finish past 10 s, a stalled or dripping server ends an ordinary command in one line in bounded time, a 409 whose body stalls keeps its batch (never 0 conflicts), and no late timer turns a whole answer into a failure; a key holding a control character is refused unquoted =="
+echo "== Test 22: cloud mode's safety half, against the local fake hi2vi -- offline a command is refused with the one P8 line and the tree unchanged, and compact-resume fails open; a lost commit answer is resent with the same batch_id and lands once; a batch never sent goes at the next command; a command that dies midway leaves the journal running and the next command refuses naming sync; a pull killed at any step of an append-only file's merge (the event log, a loop's ledger and checkpoints, a local order of its own) leaves each line in hi2vi once; a stale write (409) keeps the disk, writes nothing in hi2vi and exits 1, then the mismatch refuses with nothing changed; two engine processes in one checkout are serialized by .hi2vi/lock; a change over 8,000,000 B goes as several batches, and one file too big for any batch is refused; every failure inside the boundary is one line, never a traceback (a cut or malformed answer, a commit answer cut mid-body, a fetch that does not decode, a write error during a pull), and the hook's note; compact-resume stays inside the hook's 15 s on a slow, dripping or slow-but-moving server; a request fails only when it stalls: a slow but moving pull, push and pushing resend each finish past 10 s, a stalled or dripping server ends an ordinary command in one line in bounded time, a 409 whose body stalls keeps its batch (never 0 conflicts), and no late timer turns a whole answer into a failure; every wait is judged, the set-up included: behind an HTTPS proxy that answers its CONNECT late or drips it, the hook keeps its 9 s and an ordinary command ends in one line; over TLS a byte counts as it crosses the socket and the handshake still verifies; a key holding a control character is refused unquoted =="
 sf_t0=$(date +%s)
 newtmp SFW; SF="$SFW/host"; SFX="$SFW/xdg"; SF_OUT="$SFW/out.txt"; : > "$SF_OUT"
 sf() { ( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 workflow/scripts/workflow.py "$@" ) 2>&1 | tee -a "$SF_OUT"; return "${PIPESTATUS[0]}"; }
@@ -6092,6 +6092,181 @@ except Exception as exc:
 PY
 )
 [ "$sf_late" = "answer 200 True" ] && ok "an answer already read is never turned into unreachable by a late timer" || bad "a late timer turned a whole answer into a failure -- $sf_late"
+# Every wait of a request is judged, the connection's set-up included. Behind an HTTPS proxy that answers its CONNECT
+# 6 s late and then forwards nothing, or drips its answer a byte every 2 s, the session hook still ends inside its 9 s
+# with the note and an ordinary command in one line within about 10 s (the floor judges each step of the connect, the
+# tunnel and the TLS handshake). The checkout points at an https hi2vi only the proxy could reach (never resolved
+# here: urllib hands the name to the proxy); each command is cut at 40 s by pid, so a hang fails the row, not the suite.
+cat > "$SFW/proxy.py" <<'PY'
+import os, socket, sys, threading, time
+port_file, mode = sys.argv[1], sys.argv[2]
+def serve(c):
+    try:
+        c.recv(4096)
+        if mode == "late":
+            time.sleep(6)
+            c.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
+            while c.recv(4096):
+                pass
+        else:
+            c.sendall(b"HTTP/1.1 200 Connection established\r\n")
+            while True:
+                for b in b"X-Wait: y\r\n":
+                    c.sendall(bytes([b]))
+                    time.sleep(2)
+    except OSError:
+        pass
+    finally:
+        c.close()
+s = socket.socket()
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", 0))
+s.listen(8)
+with open(port_file + ".tmp", "w") as f:
+    f.write(str(s.getsockname()[1]))
+os.replace(port_file + ".tmp", port_file)
+threading.Timer(300, lambda: os._exit(0)).start()
+while True:
+    c, _ = s.accept()
+    threading.Thread(target=serve, args=(c,), daemon=True).start()
+PY
+# sf_capped <out> <proxy> <args>: one engine command behind HTTPS_PROXY, cut at 40 s; prints "<rc|killed> <seconds>".
+sf_capped() { _out=$1; _px=$2; shift 2; ( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 - "$_out" "$_px" "$@" <<'PY'
+import os, subprocess, sys, time
+out, proxy, args = sys.argv[1], sys.argv[2], sys.argv[3:]
+env = dict(os.environ, HTTPS_PROXY=proxy, https_proxy=proxy)
+for k in ("NO_PROXY", "no_proxy", "ALL_PROXY", "all_proxy"):
+    env.pop(k, None)
+t = time.monotonic()
+p = subprocess.Popen([sys.executable, "workflow/scripts/workflow.py"] + args, env=env, stdin=subprocess.PIPE,
+                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+try:
+    data, _ = p.communicate(b"{}" if args[:1] == ["compact-resume"] else b"", timeout=40)
+    rc = p.returncode
+except subprocess.TimeoutExpired:
+    p.kill()
+    data, _ = p.communicate()
+    rc = "killed"
+open(out, "wb").write(data)
+print(f"{rc} {time.monotonic() - t:.0f}")
+PY
+); }
+sf_px_pids=()
+for sf_k in late drip; do
+  python3 "$SFW/proxy.py" "$SFW/px-$sf_k" "$sf_k" > /dev/null 2>&1 & sf_px_pids+=($!)
+done
+for _ in $(seq 1 50); do [ -s "$SFW/px-late" ] && [ -s "$SFW/px-drip" ] && break; sleep 0.1; done
+cp "$SF/workflow/.hi2vi/link.json" "$SFW/link.bak"; cp "$SFX/hi2vi/workspace-keys.json" "$SFW/keys2.bak"
+python3 - "$SF/workflow/.hi2vi/link.json" "$SFX/hi2vi/workspace-keys.json" <<'PY'
+import json, sys
+link, keys = sys.argv[1:]
+d = json.load(open(link)); old = d["server"]; d["server"] = "https://hi2vi.invalid"; json.dump(d, open(link, "w"))
+k = json.load(open(keys)); k["https://hi2vi.invalid"] = k[old]; json.dump(k, open(keys, "w"))
+PY
+sf_bad=""
+for sf_k in late drip; do
+  sf_px="http://127.0.0.1:$(cat "$SFW/px-$sf_k")"
+  read -r sf_rc sf_s < <(sf_capped "$SFW/p-$sf_k-hook.txt" "$sf_px" compact-resume)
+  { [ "$sf_rc" = 0 ] && [ "$sf_s" -le 11 ] && grep -q '^compaction=done' "$SFW/p-$sf_k-hook.txt" \
+    && grep -qF "note: hi2vi is not reachable at https://hi2vi.invalid (the session hook's 9 s for hi2vi ran out)" "$SFW/p-$sf_k-hook.txt"; } \
+    || sf_bad="$sf_bad [$sf_k hook: rc=$sf_rc ${sf_s}s $(tail -1 "$SFW/p-$sf_k-hook.txt")]"
+  sf_t1=$(sf_tree); read -r sf_rc sf_s < <(sf_capped "$SFW/p-$sf_k-next.txt" "$sf_px" next); sf_t2=$(sf_tree)
+  { [ "$sf_rc" = 1 ] && [ "$sf_s" -le 12 ] && [ "$sf_t1" = "$sf_t2" ] && [ "$(grep -c '' "$SFW/p-$sf_k-next.txt")" = 1 ] \
+    && grep -qF "hi2vi is not reachable at https://hi2vi.invalid (fewer than 1024 bytes moved in 10 s): in cloud mode nothing runs offline, and nothing was changed." "$SFW/p-$sf_k-next.txt"; } \
+    || sf_bad="$sf_bad [$sf_k next: rc=$sf_rc ${sf_s}s $(head -1 "$SFW/p-$sf_k-next.txt")]"
+done
+kill "${sf_px_pids[@]}" 2>/dev/null; wait "${sf_px_pids[@]}" 2>/dev/null
+cp "$SFW/link.bak" "$SF/workflow/.hi2vi/link.json"; cp "$SFW/keys2.bak" "$SFX/hi2vi/workspace-keys.json"; chmod 600 "$SFX/hi2vi/workspace-keys.json"
+[ -z "$sf_bad" ] && ok "behind an HTTPS proxy that answers CONNECT 6 s late then forwards nothing, or drips it, compact-resume ends inside its 9 s with the note and next in one line within 12 s, the tree unchanged" \
+  || bad "a late or dripping HTTPS proxy --$sf_bad"
+# Over TLS a byte counts as it crosses the socket, never a whole record at a time; the handshake keeps the context's
+# verification. In-process, with the idle limit scaled to 2 s: a local TLS server behind a 4,000 B/s link sends a
+# 17,000-byte answer, its first record 16 KiB (4 s on that link); a quick answer verifies its certificate (made here
+# by openssl) and hostname, and an untrusted one is refused.
+if command -v openssl >/dev/null 2>&1 && openssl req -x509 -newkey rsa:2048 -nodes -keyout "$SFW/tls.key" -out "$SFW/tls.crt" -days 2 \
+     -subj /CN=localhost -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" > "$SFW/openssl.txt" 2>&1; then
+  sf_tls=$( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 - "$SFW/tls.crt" "$SFW/tls.key" <<'PY' 2>&1
+import importlib.util, json, socket, ssl, sys, threading, time
+spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scripts/workflow.py")
+mod = importlib.util.module_from_spec(spec)
+sys.modules["workflow_engine"] = mod
+spec.loader.exec_module(mod)
+mod.CLOUD_TIMEOUT, mod.CLOUD_FLOOR = 2, 1024
+cert, key = sys.argv[1], sys.argv[2]
+server_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+server_ctx.load_cert_chain(cert, key)
+def listener():
+    s = socket.socket()
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+    s.bind(("127.0.0.1", 0))
+    s.listen(8)
+    return s
+def answer(c, body):
+    c.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n" % len(body) + body)
+def tls_origin(s):  # head: a quick answer; big: 17,000 bytes in one write (records of 16 KiB)
+    while True:
+        c, _ = s.accept()
+        try:
+            c = server_ctx.wrap_socket(c, server_side=True)
+            line = c.recv(65536).split(b"\r\n")[0]
+            answer(c, json.dumps({"x": "y" * 17000} if b"/big" in line else {"head": 1}).encode())
+        except (OSError, ssl.SSLError):
+            pass
+        finally:
+            c.close()
+def link(up_port, rate):  # a slow link: each direction forwarded at <rate> bytes a second
+    s = listener()
+    def pump(a, b):
+        try:
+            while True:
+                d = a.recv(max(1, rate // 20))
+                if not d:
+                    break
+                b.sendall(d)
+                time.sleep(len(d) / rate)
+        except OSError:
+            pass
+        for x in (a, b):
+            try:
+                x.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+    def run():
+        while True:
+            c, _ = s.accept()
+            u = socket.create_connection(("127.0.0.1", up_port))
+            threading.Thread(target=pump, args=(c, u), daemon=True).start()
+            threading.Thread(target=pump, args=(u, c), daemon=True).start()
+    threading.Thread(target=run, daemon=True).start()
+    return s.getsockname()[1]
+def call(port, route):
+    link_ = mod.CloudLink({"server": f"https://localhost:{port}", "project_id": "proj-1"}, "k-tls")
+    t = time.monotonic()
+    try:
+        status, payload = link_.call("GET", route)
+        return f"{status} {len(payload.get('x', ''))} {time.monotonic() - t:.1f}s"
+    except Exception as exc:  # noqa: BLE001
+        return f"{exc.__class__.__name__}: {str(exc)[:90]} {time.monotonic() - t:.1f}s"
+origin = listener()
+threading.Thread(target=tls_origin, args=(origin,), daemon=True).start()
+slow = link(origin.getsockname()[1], 4000)
+trusted = lambda: ssl.create_default_context(cafile=cert)
+ssl._create_default_https_context = ssl.create_default_context
+print("untrusted:", call(origin.getsockname()[1], "head"))
+ssl._create_default_https_context = trusted
+print("quick:", call(origin.getsockname()[1], "head"))
+print("record:", call(slow, "big"))
+PY
+)
+  printf '%s\n' "$sf_tls" | grep -q '^untrusted: CloudUnreachable: .*CERTIFICATE_VERIFY_FAILED' \
+    && printf '%s\n' "$sf_tls" | grep -qE '^quick: 200 0 ' \
+    && printf '%s\n' "$sf_tls" | grep -qE '^record: 200 17000 ([3-9]|1[0-9])\.[0-9]s$' \
+    && ok "over TLS the handshake verifies its certificate (an untrusted one refused) and a 16 KiB record crossing a slow link counts byte by byte: 17,000 B at 4,000 B/s finish with the idle limit at 2 s ($(printf '%s' "$sf_tls" | tr '\n' ' '))" \
+    || bad "TLS waits -- $(printf '%s' "$sf_tls" | tr '\n' ' ')"
+else
+  echo "note: no openssl to make a test certificate: the TLS row is skipped ($(tail -1 "$SFW/openssl.txt" 2>/dev/null))"
+fi
 # Any other failure inside the begin or the commit step (simulated: the step raises a RuntimeError) is one line too:
 # before the command, it did not run (the hook prints its card and the note); after it, the change is on disk only, the
 # journal stays running and names the failure, and the next command refuses naming sync.

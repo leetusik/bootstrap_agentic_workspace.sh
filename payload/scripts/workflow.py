@@ -21413,13 +21413,19 @@ def loop_debt_commit(data: dict):
 # commit, with the workspace key only as a Bearer header, read from the user's config, never from argv.
 CLOUD_DIR = ".hi2vi"
 CLOUD_SCHEMA = 1
-# A request fails when it stalls, never while its bytes still move: no byte for CLOUD_TIMEOUT seconds (a read, a send,
-# or this checkout's upload draining from its socket), or fewer than CLOUD_FLOOR bytes in a CLOUD_TIMEOUT window (a
-# server dripping its answer: about 100 B/s, far below any real link). A transfer that keeps moving always finishes;
-# only the session hook keeps a wall-clock budget (CLOUD_HOOK_BUDGET).
+# A request fails when it stalls, never while its bytes still move: no byte for CLOUD_TIMEOUT seconds, or fewer than
+# CLOUD_FLOOR bytes in a CLOUD_TIMEOUT window (a peer dripping its answer: about 100 B/s, far below any real link). Every
+# wait of a request is a wait on its TCP socket (_CloudSocket): the connect, a proxy's CONNECT tunnel, the TLS handshake
+# (TLS runs over memory buffers, so its bytes are counted as they cross the socket, never a record or a send at a time),
+# each send and each read. No such wait lasts over CLOUD_STEP (the connect, where nothing can move, waits once for what
+# the wire allows); after each, progress is read at the socket (the bytes in and out, and this checkout's upload
+# draining from the socket's queue). A transfer this machine sees moving always finishes; only the session hook keeps a
+# wall-clock budget (CLOUD_HOOK_BUDGET), checked before every wait. A name lookup (getaddrinfo) has no bound.
 CLOUD_TIMEOUT = 10  # seconds a request waits for its next byte
 CLOUD_FLOOR = 1024  # bytes a request must move in each CLOUD_TIMEOUT window
-CLOUD_SEND_PIECE = 65536  # bytes per send, so the idle limit applies to each piece, never to a whole upload
+CLOUD_STEP = 1.0  # the longest single wait on the socket: then progress is read and the rules judge again
+CLOUD_SEND_PIECE = 65536  # bytes offered to one send (the kernel takes what fits) or taken by one read
+CLOUD_TLS_PIECE = 16384  # plaintext encrypted at a time (one TLS record), so an upload is never held twice in memory
 CLOUD_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 # The append-only files (the union files of .gitattributes): synced as appended lines, never as revisions.
 CLOUD_APPEND_RE = re.compile(r"works/events\.jsonl|works/phases/.+/loop/(?:ledger|events|dead|survivors|checkpoints)\.jsonl")
@@ -21460,11 +21466,13 @@ class _CloudStall(Exception):
 
 
 class _CloudWire:
-    """One request's progress. `left()` is called before every wait (the connect, each send, each read) and says how
-    long that wait may last; it raises _CloudStall when the request has stalled: no byte moved for CLOUD_TIMEOUT
-    seconds, a CLOUD_TIMEOUT window that moved fewer than CLOUD_FLOOR bytes (the request's sending, and from the
-    answer's first byte its reading, are judged apart, so a server's think time never counts against the floor), or
-    the session hook's deadline passed. There is no timer: nothing can fire after the answer is read."""
+    """One request's progress. `left(judge)` is called before every wait on the socket and says how long that wait may
+    last; it raises _CloudStall when the request has stalled: the session hook's deadline passed, no byte moved for
+    CLOUD_TIMEOUT seconds, or (when `judge`) a CLOUD_TIMEOUT window that moved fewer than CLOUD_FLOOR bytes. The floor
+    is judged before every wait that follows movement, and at every step while the connection is set up (the connect, a
+    proxy's tunnel, the TLS handshake: no server thinks there); a silent wait for the answer is the server thinking, and
+    only the idle limit and the deadline judge it. The request's sending, and from the answer's first byte its reading,
+    have floor windows apart. There is no timer: nothing can fire after the answer is read."""
 
     def __init__(self, deadline=None) -> None:
         self.deadline = deadline  # time.monotonic() past which no wait starts (the session hook's budget), or None
@@ -21473,16 +21481,20 @@ class _CloudWire:
         self.sending = True  # until the answer's first byte
         self.by_deadline = False  # the last wait was cut short by the deadline (a socket timeout then names the budget)
 
+    def answer(self) -> None:
+        """The answer's first byte (over TLS its first decrypted byte): the answer's own floor window starts here."""
+        if self.sending:
+            self.sending, self.window, self.count = False, time.monotonic(), 0
+
     def moved(self, n: int, answer: bool = False) -> None:
         if not n or n <= 0:
             return
-        now = time.monotonic()
-        self.last = now
-        if answer and self.sending:  # the answer starts: its own floor window, from its first byte
-            self.sending, self.window, self.count = False, now, 0
+        if answer:
+            self.answer()
+        self.last = time.monotonic()
         self.count += n
 
-    def left(self) -> float:
+    def left(self, judge: bool = True) -> float:
         now = time.monotonic()
         idle = CLOUD_TIMEOUT - (now - self.last)
         hook = None if self.deadline is None else self.deadline - now
@@ -21490,7 +21502,7 @@ class _CloudWire:
             raise _CloudStall(f"the session hook's {CLOUD_HOOK_BUDGET:g} s for hi2vi ran out")
         if idle <= 0:
             raise _CloudStall(f"no byte moved for {CLOUD_TIMEOUT:g} s")
-        if now - self.window >= CLOUD_TIMEOUT:
+        if judge and now - self.window >= CLOUD_TIMEOUT:
             if self.count < CLOUD_FLOOR:
                 raise _CloudStall(f"fewer than {CLOUD_FLOOR} bytes moved in {CLOUD_TIMEOUT:g} s")
             self.window, self.count = now, 0
@@ -21498,7 +21510,7 @@ class _CloudWire:
         return min(idle, hook) if hook is not None else idle
 
     def timed_out(self) -> str:
-        """The line for a socket timeout outside the wire's own waits (the connect, a TLS handshake)."""
+        """The line for a connect that timed out (the one wait that is not a _CloudSocket step)."""
         if self.by_deadline:
             return f"the session hook's {CLOUD_HOOK_BUDGET:g} s for hi2vi ran out"
         return f"no byte moved for {CLOUD_TIMEOUT:g} s"
@@ -21522,43 +21534,101 @@ def _cloud_unsent(sock):
 
 
 class _CloudSocket:
-    """A connection's socket (plain or TLS) seen through the request's _CloudWire: every send goes in pieces and
-    every read waits only as long as the wire allows, each counting what moved."""
+    """A connection's TCP socket seen through the request's _CloudWire, from the moment it connects: a proxy's tunnel,
+    the TLS handshake, every send and every read wait on it in steps of at most CLOUD_STEP. Before each step the wire
+    says whether the request has stalled; after each, what moved is counted: the bytes sent or read, and the bytes of
+    this checkout's upload that left the socket's queue meanwhile. Over TLS (`start_tls`) the encryption runs over
+    memory buffers (ssl.MemoryBIO), so the TLS bytes cross this socket too and count as they move, never a whole record
+    or a whole send piece at a time."""
 
     def __init__(self, sock, wire: _CloudWire) -> None:
         self._sock, self._wire = sock, wire
+        self.setup = True  # the connection is being set up: the floor is judged at every step
+        self.answers = False  # a read is the answer's (plain HTTP once set up); a tunnel's or TLS's raw reads are not
+        self._tls = None  # (ssl.SSLObject, incoming MemoryBIO, outgoing MemoryBIO) once start_tls ran
 
     def __getattr__(self, name):
         return getattr(self._sock, name)
 
-    def sendall(self, data, flags=0) -> None:
+    def _wait(self, op, *args):
+        """op(*args) on the TCP socket, in waits of at most CLOUD_STEP each judged by the wire first."""
         import socket
+        judge = True
+        while True:
+            wait = min(self._wire.left(judge), CLOUD_STEP)
+            queued = _cloud_unsent(self._sock)
+            self._sock.settimeout(wait)
+            try:
+                return op(*args)
+            except socket.timeout:
+                now = _cloud_unsent(self._sock)
+                drained = queued is not None and now is not None and now < queued
+                if drained:  # the upload still draining from the socket is progress
+                    self._wire.moved(queued - now)
+                judge = drained or self.setup
+
+    def _send(self, data) -> None:
         view = memoryview(data).cast("B")
         while len(view):
-            self._sock.settimeout(self._wire.left())
-            try:
-                n = self._sock.send(view[:CLOUD_SEND_PIECE])
-            except socket.timeout:
-                continue  # the next left() names the stall
+            n = self._wait(self._sock.send, view[:CLOUD_SEND_PIECE])
             self._wire.moved(n)
             view = view[n:]
 
-    def recv_into(self, buf, nbytes=0, flags=0) -> int:
-        import socket
+    def _flush(self) -> None:
+        out = self._tls[2].read()
+        if out:
+            self._send(out)
+
+    def _tls_io(self, op, *args):
+        """op(*args) on the TLS object: what it writes goes out on the socket, and what it waits for is read from it."""
+        import ssl
+        incoming = self._tls[1]
         while True:
-            wait = self._wire.left()
-            queued = _cloud_unsent(self._sock) if self._wire.sending else None
-            self._sock.settimeout(min(wait, 1.0) if queued else wait)
             try:
-                n = self._sock.recv_into(buf, nbytes) if nbytes else self._sock.recv_into(buf)
-            except socket.timeout:
-                if queued:  # the upload still draining is progress
-                    now = _cloud_unsent(self._sock)
-                    if now is not None and now < queued:
-                        self._wire.moved(queued - now)
+                result = op(*args)
+            except ssl.SSLWantReadError:
+                self._flush()
+                if incoming.eof:
+                    raise ConnectionResetError("the TLS connection closed mid-record")
+                data = self._wait(self._sock.recv, CLOUD_SEND_PIECE)
+                self._wire.moved(len(data))
+                if data:
+                    incoming.write(data)
+                else:
+                    incoming.write_eof()
                 continue
-            self._wire.moved(n, answer=True)
+            self._flush()
+            return result
+
+    def start_tls(self, context, hostname: str) -> None:
+        """The TLS handshake over this socket (the context's verification and hostname check, as wrap_socket's)."""
+        import ssl
+        incoming, outgoing = ssl.MemoryBIO(), ssl.MemoryBIO()
+        self._tls = (context.wrap_bio(incoming, outgoing, server_hostname=hostname), incoming, outgoing)
+        self._tls_io(self._tls[0].do_handshake)
+
+    def sendall(self, data, flags=0) -> None:
+        if self._tls is None:
+            return self._send(data)
+        view = memoryview(data).cast("B")
+        while len(view):
+            view = view[self._tls_io(self._tls[0].write, view[:CLOUD_TLS_PIECE]):]
+
+    def recv_into(self, buf, nbytes=0, flags=0) -> int:
+        import ssl
+        if self._tls is None:
+            n = self._wait(self._sock.recv_into, buf, nbytes)
+            self._wire.moved(n, answer=self.answers)
             return n
+        try:
+            n = self._tls_io(self._tls[0].read, nbytes or len(buf), buf)
+        except (ssl.SSLError, ConnectionResetError):
+            if self._tls[1].eof:
+                return 0  # the peer closed: an answer cut short is http.client's IncompleteRead, as with wrap_socket
+            raise
+        if n:
+            self._wire.answer()
+        return n
 
     def makefile(self, mode="r", buffering=None, **_):
         import io
@@ -21567,15 +21637,44 @@ class _CloudSocket:
         return io.BufferedReader(socket.SocketIO(self, "rb"))
 
 
+def _cloud_connect(address, wire: _CloudWire, source_address=None):
+    """socket.create_connection with each attempt's wait bounded by the wire. Nothing can move while a connect waits,
+    so one wait of what the wire allows (the idle limit, the session hook's deadline) is the whole rule there."""
+    import socket
+    host, port = address
+    err = None
+    for family, kind, proto, _, addr in socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM):
+        wait = wire.left()
+        sock = socket.socket(family, kind, proto)
+        try:
+            sock.settimeout(wait)
+            if source_address:
+                sock.bind(source_address)
+            sock.connect(addr)
+            return sock
+        except OSError as exc:
+            err = exc
+            sock.close()
+    raise err if err is not None else OSError(f"no address for {host}")
+
+
 def _cloud_handlers(wire: _CloudWire) -> list:
-    """urllib's HTTP and HTTPS handlers, their connections' sockets wrapped in _CloudSocket."""
+    """urllib's HTTP and HTTPS handlers, whose connections wait only on a _CloudSocket: http.client's own connect
+    (the TCP connect, then a proxy's CONNECT tunnel) runs on a socket made through the wire, and HTTPS then runs its
+    handshake and every TLS byte through that same socket (never wrap_socket's own waits)."""
+    import http.client
     import urllib.request
 
     def counted(base):
         class Connection(base):
             def connect(self):
-                super().connect()
-                self.sock = _CloudSocket(self.sock, wire)
+                self._create_connection = lambda address, timeout=None, source_address=None: \
+                    _CloudSocket(_cloud_connect(address, wire, source_address), wire)
+                http.client.HTTPConnection.connect(self)
+                tls = isinstance(self, getattr(http.client, "HTTPSConnection", ()))
+                if tls:
+                    self.sock.start_tls(self._context, self._tunnel_host or self.host)
+                self.sock.setup, self.sock.answers = False, not tls
         return Connection
 
     out = []
@@ -21907,8 +22006,8 @@ class CloudLink:
         """(status, raw body); an HTTP error status whose body is read whole is an answer, every other failure
         CloudUnreachable. An error body cut short or stalled is no answer: a 409 never reads as one with no conflicts."""
         import urllib.error
-        try:
-            with opener.open(request, timeout=wire.left()) as resp:
+        try:  # no timeout here: every wait of the request is a _CloudSocket step, or the connect's wire-bounded wait
+            with opener.open(request) as resp:
                 return resp.status, resp.read()
         except urllib.error.HTTPError as exc:
             try:
