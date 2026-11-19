@@ -48,7 +48,7 @@ the detail lives here.
 1. **When — only when asked** — a `planned` phase moves into its own worktree on the operator's
    word and nothing else (the three forms above). `do-next-slice` / `do-whole-phase` run
    `parallel-start <P>` when they are told to and never on their own initiative; `create-phase`
-   never does (bar its explain route), and neither does `/do-whole-phases`. A phase already carrying
+   never does (bar its explain route). A phase already carrying
    the stamp is entered without asking again. **The one exception is an explain phase:** the explain
    route's confirmation is the operator's word, so it runs `parallel-start <P>` right after the intake
    commit unless the phase's `## Explain` says `worktree: no`.

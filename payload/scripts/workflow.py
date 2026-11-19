@@ -642,7 +642,7 @@ METER_ROUTES = EXECUTOR_ROUTES + METER_PASS_ROUTES + RETIRED_ROUTES  # the meter
 ROUTE_DEFAULTS = {
     "high": {"model": "opus", "effort": "high"},
     "research": {"model": "opus", "effort": "high"},
-    "design": {"model": "opus", "effort": "high"},
+    "design": {"model": "fable", "effort": "high"},
     "critic": {"model": "opus", "effort": "high"},
     "judge": {"model": "opus", "effort": "high"},
     "reader": {"model": "opus", "effort": "high"},
@@ -6493,7 +6493,14 @@ def review_phase(args: argparse.Namespace) -> None:
                          f"({open_prs}); a change request (the team's or the operator's) reopens it on the PR branch: "
                          f"{WORKFLOW_CMD} reopen-phase {args.phase} --note \"team-reported: <what>\" (or \"operator-reported: <what>\"; "
                          f"pr-sync {args.phase} first) -- nothing was written")
+    # The fix passes this review cycle has asked for: one per `changes_requested`. A pass ends the cycle and
+    # clears the count; a reopen is itself a change request, so `_reopen_apply` starts its cycle at one.
+    earlier = (data.get("review") or {}).get("fix_passes")
+    fix_passes = 0 if args.verdict == "pass" else (
+        (earlier if type(earlier) is int and earlier > 0 else 0) + (args.verdict == "changes_requested"))
     data["review"] = {"status": args.verdict, "reviewed_at": now_iso(), "reviewer": args.reviewer, "note": args.note}
+    if fix_passes:
+        data["review"]["fix_passes"] = fix_passes
     if args.verdict == "changes_requested":
         acceptance = phase_acceptance(data)
         if acceptance is not None:
@@ -6520,7 +6527,12 @@ def review_phase(args: argparse.Namespace) -> None:
     rebuild_index_and_state()
     print(f"phase {args.phase} review: {args.verdict} (status -> {new_status})")
     if args.verdict == "changes_requested":
-        print(f"create fix slices, e.g.: {WORKFLOW_CMD} new-slice --phase {args.phase} --slice {args.phase}.F1 --name \"...\" --kind fix")
+        if fix_passes <= 1:
+            print(f"create fix slices, e.g.: {WORKFLOW_CMD} new-slice --phase {args.phase} --slice {args.phase}.F1 --name \"...\" --kind fix")
+        else:
+            print(f"fix_passes={fix_passes}: the one fix pass already ran -- a further fix needs the operator's word (this verdict, when it "
+                  f"records their own report); without it cut no fix slice and stop: {WORKFLOW_CMD} set-slice-status "
+                  f"{args.phase}.REVIEW pending --stop-kind decision --on-words \"...\"")
     elif args.verdict == "pass":
         notes = phase_doc_impact_notes(pdir)
         if notes:
@@ -7425,7 +7437,8 @@ def _reopen_apply(pdir: Path, data: dict, note: str) -> dict:
     note survive). A waived gate stays waived. `completed_at`, the `pr` block, the doc-consolidation state
     and the anchors are kept. Writes the slice files and their events; the caller writes phase.json."""
     old_status = data.get("status")
-    data["review"] = {"status": "changes_requested", "reviewed_at": now_iso(), "reviewer": None, "note": note}
+    data["review"] = {"status": "changes_requested", "reviewed_at": now_iso(), "reviewer": None, "note": note,
+                      "fix_passes": 1}  # the reopen is the change request that opens this cycle's one fix pass
     acceptance = phase_acceptance(data)
     gate = "none"
     if acceptance is not None:
@@ -12313,7 +12326,7 @@ def resume_card(transcript_path=None) -> str:
         lines.append(f"stop: phase {phase_id} acceptance gate open -- relay the walkthrough (`accept-gate {phase_id}` prints it); "
                      f"the operator's words clear it with accept-gate {phase_id} --clear")
         if phase_parked(phase):  # informational only: the stop above stands for every plain session
-            lines.append(f"run: {phase_id} is parked; only a /do-whole-phases run passes it -- re-run `run-phases <the run's phases>` "
+            lines.append(f"run: {phase_id} is parked; only a multi-phase run (`run-phases`) passes it -- re-run `run-phases <the run's phases>` "
                          "for that run's next target; outside such a run this is a stop")
     elif phase.get("status") == "pending" and isinstance((phase_loop(phase) or {}).get("halt"), dict):
         halt = phase_loop(phase)["halt"]

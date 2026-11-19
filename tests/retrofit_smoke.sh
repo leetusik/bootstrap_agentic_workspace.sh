@@ -150,7 +150,7 @@ import sys
 
 root = Path(sys.argv[1])
 skills = {p.parent.name for p in (root / "payload/claude/skills").glob("*/SKILL.md")}
-assert len(skills) == 22, len(skills)
+assert len(skills) == 21, len(skills)
 
 # P37.S1 (v61): a skill ships as its whole directory, a core SKILL.md plus reference/*.md, and the
 # do-* shared references fan out at build. Prose pins read the BUILT directory (core first, then its
@@ -397,30 +397,12 @@ for name in ("do-next-slice", "do-whole-phase"):
     for gone in ("one-line/few-line", "one-line, or few-line"):
         assert gone not in body, (name, gone)
 
-# P41 (v69): /do-whole-phases is a core-only skill (no reference/ folder of its own) that runs
-# do-whole-phase's loop once per phase. `do-whole-phase` is a PREFIX of `do-whole-phases`, so every
-# check here names the exact path or the whole string, never a bare `do-whole-phase` search. Its core
-# is not in the core-cap loop above (that asserts named == shipped, and this core names no bare
-# `reference/<x>.md`); it is checked here instead: the cap, the full-path form of every reference it
-# mentions, and the strings the product cannot afford to lose. `disable-model-invocation: true` is
-# already pinned for every skill by the marker loop above.
-assert "do-whole-phases" in skills, sorted(skills)
-phases_core = (root / "payload/claude/skills/do-whole-phases/SKILL.md").read_text(encoding="utf-8")
-assert len(phases_core.encode()) <= 8192, ("do-whole-phases", len(phases_core.encode()))
-assert phases_core.startswith("---\nname: do-whole-phases\n"), "do-whole-phases frontmatter name"
-assert not any(k.startswith(".claude/skills/do-whole-phases/reference/") for k in LIVE), "do-whole-phases ships a reference/"
-_full = _re.findall(r"\.claude/skills/do-whole-phase/reference/([\w.<>-]+?)\.md", phases_core)
-assert _full and len(_full) == phases_core.count("reference/"), ("a bare reference/ mention", _full)
-for _x in _full:
-    assert _x == "<x>" or f".claude/skills/do-whole-phase/reference/{_x}.md" in LIVE, _x
-for required in (
-    "run-phases", "**Every halt stops the whole run.**", "**The two overrides, and only these:**",
-    "**Its target wins over the resume card's pointer for the whole run**",
-    "git rev-list -1 --before=<started_at> HEAD", "never runs `parallel-start`", "gate_cleared=", "`notebook_over_budget=<P>`",
-):
-    assert required in phases_core, ("do-whole-phases", required)
-# do-whole-phase (one phase) points at its sibling, by the exact path.
-assert ".claude/skills/do-whole-phases/SKILL.md" in (root / "payload/claude/skills/do-whole-phase/SKILL.md").read_text(encoding="utf-8")
+# The multi-phase skill is retired: one session per phase. /do-whole-phases ships no more, and
+# do-whole-phase says where the next phase starts.
+assert "do-whole-phases" not in skills, sorted(skills)
+assert not any(k.startswith(".claude/skills/do-whole-phases/") for k in LIVE), "do-whole-phases still ships"
+_dwp = (root / "payload/claude/skills/do-whole-phase/SKILL.md").read_text(encoding="utf-8")
+assert "**one session per phase.**" in _dwp and "do-whole-phases" not in _dwp
 
 # P42 (v71): /do-whole-phase runs a declared phase's independent slices together. The protocol lives in
 # one reference that ships with do-whole-phase only (do-next-slice still runs one slice), pinned on its
@@ -744,7 +726,7 @@ assert "the shared fixture (every entity a page shows, lists or links to, with i
 # P47-p5.F2: drafting.md states the shipped critique default and the one measured round, defers the
 # critic row's effort to executor-route, and no shipped file names a phase-internal round or an
 # xhigh critic row (D-q0ba).
-for required in ("**`critic` is the usual level for a connected group of new surfaces**",
+for required in ("**The level is `off` unless the operator asks for a critic**",
                  "**One measured round, not a norm**", "16 spans, $71.50, 3 h 43 min wall clock",
                  "cost $19.90, 28 % of the round", "cost $28.60", "`executor-route --critic` and `--judge` print"):
     assert required in design, ("drafting.md critique default / cost", required)
@@ -1138,11 +1120,9 @@ for required in (
     # v46: mid is the default tier, and a retry never returns to mid.
     "**mid the default**", "never returns to mid",
     "QA-sweep route",
-    # v69 (P41): the two narrow exceptions a /do-whole-phases run needs -- it parks an open acceptance
-    # gate and continues, every other stop halts the run. Without them the contract's `pending` rule
-    # and the gate rule would forbid the run.
-    "(bar `/do-whole-phases`' parked gate)",
-    "(`/do-whole-phases` parks it and continues; every other stop halts the run)",
+    # Every checker runs once (one review, one fix pass, a closing run), a run past its estimate asks,
+    # and a session holds one phase: the rule the review, the readers and the orchestrator all follow.
+    "**Each checker runs once**: a review, a fix pass, a closing run; over 1.5x its estimate a run stops and asks; one session per phase.",
     # v71 (P42): the reversal of "never fan out slices" -- a declared phase's independent slices run at once.
     "a phase's declared, independent slices may run at once (`do-whole-phase`'s wave), all others alone",
     # v86 (P-mtrt.S3): the explain route creates and runs its phase; its confirmation is the worktree word.
@@ -1309,8 +1289,8 @@ cp_state=$(python3 -c "import json;print(json.load(open('$R/works/state.json'))[
   && ok "retrofit installs no Codex trees (.agents/, .codex/)" || bad "retrofit created a Codex tree"
 [ ! -f "$R/AGENTS.workspace.md" ] \
   && ok "retrofit writes no AGENTS.workspace.md sidecar" || bad "retrofit wrote an AGENTS.workspace.md sidecar"
-[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "22" ] \
-  && ok "retrofit installs the 22-skill Claude inventory" || bad "retrofit skill inventory incomplete"
+[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "21" ] \
+  && ok "retrofit installs the 21-skill Claude inventory" || bad "retrofit skill inventory incomplete"
 skill_tree_ok "$R/.claude/skills" exact \
   && ok "retrofit installs every skill as its whole directory: each core's reference files, none orphaned, the shared do-* copy identical" || bad "retrofit skill directories incomplete (core + reference/)"
 grep -q 'design subagent drafts, the operator decides' "$R/CLAUDE.workspace.md" && grep -q 'writes no \*\*\*product\*\*\* implementation code' "$R/CLAUDE.workspace.md" \
@@ -1418,8 +1398,8 @@ then ok "every changelog release section carries a Migration notes line"; else b
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
 [ -f "$F/.claude/skills/read-code/SKILL.md" ] && grep -q 'code-reader' "$F/CLAUDE.md" \
   && ok "fresh install ships the read-code skill and its contract names the code-reader" || bad "fresh install missing the read-code skill or the contract's code-reader rule"
-[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "22" ] \
-  && ok "fresh install has the 22 Claude skills" || bad "fresh skill inventory incomplete"
+[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "21" ] \
+  && ok "fresh install has the 21 Claude skills" || bad "fresh skill inventory incomplete"
 skill_tree_ok "$F/.claude/skills" exact \
   && ok "fresh install ships every skill as its whole directory: each core's reference files, none orphaned, the shared do-* copy identical" || bad "fresh install skill directories incomplete (core + reference/)"
 [ ! -f "$F/AGENTS.md" ] && [ ! -d "$F/.agents" ] && [ ! -d "$F/.codex" ] \
@@ -1428,10 +1408,10 @@ skill_tree_ok "$F/.claude/skills" exact \
   && ok "fresh install ships the one slice-executor (v66), not the retired mid/high pair" || bad "fresh install: slice-executor.md missing or the retired pair present"
 grep -q '^model: opus$' "$F/.claude/agents/slice-executor.md" && grep -q '^effort: medium$' "$F/.claude/agents/slice-executor.md" \
   && grep -q '^name: slice-executor$' "$F/.claude/agents/slice-executor.md" \
-  && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: high$' "$F/.claude/agents/design-drafter.md" \
+  && grep -q '^model: fable$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: high$' "$F/.claude/agents/design-drafter.md" \
   && [ -f "$F/.claude/agents/Explore.md" ] && grep -q '^model: haiku$' "$F/.claude/agents/Explore.md" \
   && grep -q '^effort: xhigh$' "$F/.claude/agents/Explore.md" && grep -qx 'tools: Read, Grep, Glob' "$F/.claude/agents/Explore.md" \
-  && ok "fresh install follows the route defaults: slice-executor carries mid opus@medium, design-drafter opus@high, explore haiku@xhigh" || bad "fresh install agent files do not follow the route defaults"
+  && ok "fresh install follows the route defaults: slice-executor carries mid opus@medium, design-drafter fable@high, explore haiku@xhigh" || bad "fresh install agent files do not follow the route defaults"
 # P26.S2, re-pinned by P36.S8C: the design subagent loads no skill (frontend-design is retired from
 # it, its useful lines carried in its craft), so it ships without the Skill tool, and never DesignSync.
 [ -f "$F/.claude/agents/design-drafter.md" ] && grep -q '^tools: Read, Edit, Write, Glob, Grep, Bash$' "$F/.claude/agents/design-drafter.md" \
@@ -1798,15 +1778,15 @@ er() { ( cd "$F" && erenv python3 scripts/workflow.py executor-route "$@" 2>&1 )
 rm -f "$F/executors.toml"
 ( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) \
   && grep -q '^model: opus$' "$F/.claude/agents/slice-executor.md" && grep -q '^effort: medium$' "$F/.claude/agents/slice-executor.md" \
-  && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: high$' "$F/.claude/agents/design-drafter.md" \
+  && grep -q '^model: fable$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: high$' "$F/.claude/agents/design-drafter.md" \
   && grep -q '^model: haiku$' "$F/.claude/agents/Explore.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/Explore.md" \
   && grep -q '^model: opus$' "$F/.claude/agents/design-critic.md" && grep -q '^effort: high$' "$F/.claude/agents/design-critic.md" \
-  && ok "no executors.toml: sync-agents writes the route defaults (slice-executor mid opus@medium, design-drafter opus@high, design-critic opus@high, Explore haiku@xhigh)" \
+  && ok "no executors.toml: sync-agents writes the route defaults (slice-executor mid opus@medium, design-drafter fable@high, design-critic opus@high, Explore haiku@xhigh)" \
   || bad "the route defaults matrix is wrong"
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
 sa_out=$( cd "$F" && python3 scripts/workflow.py sync-agents 2>&1 ); er_out=$(er P1.DECOMP)
 printf '%s\n' "$sa_out" | grep -q 'already in sync; nothing written' && grep -q '^model: opus$' "$F/.claude/agents/slice-executor.md" \
-  && grep -q '^model: opus$' "$F/.claude/agents/design-drafter.md" \
+  && grep -q '^model: fable$' "$F/.claude/agents/design-drafter.md" \
   && printf '%s\n' "$er_out" | grep -qx 'model=fable' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' \
   && ok "a [claude.high] alias override writes no agent file (v66: high is passed per dispatch) and shows in executor-route; design-drafter keeps its own row" \
   || bad "a [claude.high] override wrote a file, reached design-drafter, or is missing from executor-route: $sa_out / $er_out"
@@ -1846,7 +1826,7 @@ rm -f "$F/executors.toml"
 er_out=$(er)
 [ "$(printf '%s\n' "$er_out" | grep -cE '^(high|research|design|critic|judge|mid|explore) ')" = "7" ] && ! printf '%s\n' "$er_out" | grep -q '^cheap ' && printf '%s\n' "$er_out" | grep -qx 'proxy=none' \
   && printf '%s\n' "$er_out" | grep -qE '^route +agent +model +effort +source$' \
-  && printf '%s\n' "$er_out" | grep -qE '^design +design-drafter +opus +high +default$' \
+  && printf '%s\n' "$er_out" | grep -qE '^design +design-drafter +fable +high +default$' \
   && printf '%s\n' "$er_out" | grep -qE '^critic +design-critic +opus +high +default$' && printf '%s\n' "$er_out" | grep -qE '^judge +design-critic +opus +high +default$' \
   && printf '%s\n' "$er_out" | grep -qE '^high +slice-executor +opus +high +default$' && printf '%s\n' "$er_out" | grep -qE '^research +slice-executor +opus +high +default$' \
   && printf '%s\n' "$er_out" | grep -qE '^mid +slice-executor +opus +medium +default$' \
@@ -1898,14 +1878,19 @@ printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && printf '%s\n' "$er_out" | g
 er_out=$(er --drafter)
 printf '%s\n' "$er_out" | grep -qx 'agent=design-drafter' && printf '%s\n' "$er_out" | grep -qx 'route=design' \
   && ! printf '%s\n' "$er_out" | grep -q '^tier=' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-drafter' \
-  && printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \
-  && ok "executor-route --drafter names design-drafter on its own design row (no tier= line, opus@high)" || bad "executor-route --drafter wrong: $er_out"
+  && printf '%s\n' "$er_out" | grep -qx 'model=fable' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \
+  && ok "executor-route --drafter names design-drafter on its own design row (no tier= line, fable@high)" || bad "executor-route --drafter wrong: $er_out"
 # v96: a phase's `Drafter:` line under intent.md's ## Design Style picks the drafter's model at the design row's
 # effort; no line is the design row; behind a loopback proxy (no Fable) a Fable drafter falls back to opus.
 cp "$F/works/phases/active/P1/intent.md" "$F/intent.bak"
 er_out=$(er --drafter --phase P1)
-printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'drafter_source=design row' \
-  && ok "executor-route --drafter --phase on a phase naming no drafter is the design row (opus)" || bad "executor-route --drafter --phase default wrong: $er_out"
+printf '%s\n' "$er_out" | grep -qx 'model=fable' && printf '%s\n' "$er_out" | grep -qx 'drafter_source=design row' \
+  && ok "executor-route --drafter --phase on a phase naming no drafter is the design row (fable)" || bad "executor-route --drafter --phase default wrong: $er_out"
+printf '\n## Design Style\n\nbuild-after: one flow.\nMockup: on request\nDrafter: opus\n' >> "$F/works/phases/active/P1/intent.md"
+er_out=$(er --drafter --phase P1)
+printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'drafter_source=phase P1 Drafter: opus' \
+  && ok "a phase's Drafter: opus keeps Opus against the Fable default" || bad "executor-route --drafter --phase opus wrong: $er_out"
+cp "$F/intent.bak" "$F/works/phases/active/P1/intent.md"
 printf '\n## Design Style\n\nbuild-after: one flow.\nMockup: on request\nDrafter: fable\n' >> "$F/works/phases/active/P1/intent.md"
 er_out=$(er --drafter --phase P1)
 printf '%s\n' "$er_out" | grep -qx 'model=fable' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \
@@ -2364,7 +2349,7 @@ rm -f "$F/.github/workflows/workspace-ci.yml" "$F/.gitattributes"
 sh "$BOOT" "$F" --update >/dev/null 2>&1   # restore both verbatim for the Test 6 diff
 [ ! -f "$F/.claude/agents/phase-reviewer.md" ] && ok "phase-reviewer retired (absent on fresh install)" || bad "phase-reviewer should be retired but is present"
 [ -d "$F/.claude/skills/do-whole-phase" ] && ok "fresh install keeps do-whole-phase" || bad "do-whole-phase skill missing"
-[ -f "$F/.claude/skills/do-whole-phases/SKILL.md" ] && ok "fresh install ships the do-whole-phases skill" || bad "fresh install missing the do-whole-phases skill"
+[ ! -e "$F/.claude/skills/do-whole-phases" ] && ok "fresh install ships no do-whole-phases skill (one session per phase)" || bad "fresh install still ships the do-whole-phases skill"
 [ -f "$F/.claude/skills/do-whole-phase/reference/wave.md" ] && ok "fresh install ships do-whole-phase's reference/wave.md (the wave protocol)" || bad "fresh install missing do-whole-phase/reference/wave.md"
 [ ! -e "$F/.claude/skills/explain" ] && grep -qF '/plugin marketplace add leetusik/knowledge' "$F/docs/current/operations.md" \
   && grep -qF '/plugin install knowledge@knowledge' "$F/docs/current/operations.md" \
@@ -2388,7 +2373,7 @@ diff -q "$SRC/scripts/workflow.py" "$F/scripts/workflow.py" >/dev/null \
   || bad "DRIFT: scripts/workflow.py differs from the bootstrap-embedded copy"
 skill_rels=$(cd "$SRC" && find claude/skills -type f -name SKILL.md | sed 's|^|.|' | LC_ALL=C sort)
 nskill=$(printf '%s\n' "$skill_rels" | grep -c .)
-[ "$nskill" -eq 22 ] && ok "dual-apply covers all 22 skill bodies" || bad "expected 22 SKILL.md files to diff, found $nskill"
+[ "$nskill" -eq 21 ] && ok "dual-apply covers all 21 skill bodies" || bad "expected 21 SKILL.md files to diff, found $nskill"
 for rel in $skill_rels; do
   diff -q "$SRC/${rel#.}" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
@@ -5070,7 +5055,6 @@ checks = [
     ([sk("create-phase")], ["`Branches:` line", "Never split a phase for size"], push_stop),
     ([(root / "payload/claude/agents/slice-executor.md").read_text()], ["- `pr_bodies`:", "`pr-branch`, `pr-record` and `pr-rules-decide --rule`"], push_stop),
     ([flat(sk("parallel-phase"))], ["This skill carries no second PR procedure."], ["1. **Push the branch.**", "**Open the PR.**"] + push_stop),
-    ([sk("do-whole-phases")], ["so the parked gate is the acceptance gate only", "nothing about the PR parks"], ["which `run-phases` halts on"] + push_stop),
     ([sk("update-workspace")], ["the phase's draft PR opens when the review passes and closes on the operator's `accept` (`pr` skill: Ready, then a solo repo's merge by its own landing custom, never a team's); merging it on GitHub is the remote variant"], ["push → PR → CI is the remote variant"] + push_stop),
     ([sk("pr")], ["## Open the drafts, when the review passes", "opened as drafts when the review passes, closed on the operator's accept.\"", "`git push -u origin <b>`, never `--force`."], push_stop),
     ([sk("commit")], ["A phase's pushes are the `pr` skill's, never this skill's: the draft opening when its review passes, the close's solo landing, and a fix round's or a stack merge's push to an open PR's branch."], push_stop + ["A phase's one push is"]),
@@ -5085,7 +5069,6 @@ for texts, required, gone in checks:
             assert r in t, r
         for g in gone:
             assert g not in t, g
-assert len((root / "payload/claude/skills/do-whole-phases/SKILL.md").read_bytes()) <= 8192
 PY
 echo "pr rule test runtime: $(( $(date +%s) - pr_t0 ))s"
 
@@ -5272,7 +5255,7 @@ q_dn=$(qw next 2>&1); q_wn=$(qwt next 2>&1); q_ws=$(qwt reopen-phase P1 --note "
 q_rprc=$?; q_sc=$(qwt phase-scope P1 2>&1)
 if [ "$q_rorc" -eq 0 ] && printf '%s\n' "$q_ro" | grep -qx "reopened=P1 branch=host:feat/one worktree=$QH/.claude/worktrees/P1-toy" && [ "$(( $(qn rev-list --count HEAD) - q_n0 ))" = 1 ] \
     && [ "$(qn log -1 --format=%s)" = "chore(works): reopen P1 in its own worktree" ] && [ "$(git -C "$QWT" branch --show-current)" = feat/one ] \
-    && [ "$(qj P1 review.status)" = '"changes_requested"' ] && [ "$(qj P1 review.note)" = '"team-reported: rename the toy flag"' ] \
+    && [ "$(qj P1 review.status)" = '"changes_requested"' ] && [ "$(qj P1 review.note)" = '"team-reported: rename the toy flag"' ] && [ "$(qj P1 review.fix_passes)" = 1 ] \
     && printf '%s\n' "$q_dn" | grep -q '^parallel_phases_elsewhere=P1:phase/P1-toy ' && printf '%s\n' "$q_wn" | grep -qx 'current_phase=P1' && printf '%s\n' "$q_wn" | grep -qx 'current_slice=P1.REVIEW' \
     && [ "$q_wsrc" -ne 0 ] && printf '%s\n' "$q_ws" | grep -q "P1 is 'in_progress', not 'done'" \
     && [ "$q_rprc" -eq 0 ] && grep -q '^phase P1 review: pass' "$QW/repass.txt" && printf '%s\n' "$q_sc" | grep -qx '  A fix.py' && printf '%s\n' "$q_sc" | grep -qx '  M app.txt' \
@@ -5357,6 +5340,24 @@ q_w=$(grep -cvE '^(pr view https://github\.com/[^ ]+ --json [a-zA-Z,]+|api repos
 [ "$q_w" = 0 ] && [ "$(grep -c '' "$QG/gh.all")" -gt 10 ] && ok "zero GitHub writes: every one of the $(grep -c '' "$QG/gh.all") calls the stub gh saw is a read (pr view --json, the collaborators GET)" \
   || bad "the stub gh saw a call that is not a read -- $(grep -vE '^(pr view |api repos/)' "$QG/gh.all" | head -3)"
 echo "pr lifecycle test runtime: $(( $(date +%s) - lc_t0 ))s"
+
+# The engine counts a review cycle's fix passes: the first changes_requested prints the fix-slice hint and no count,
+# a blocked verdict adds nothing, the second prints fix_passes=2 and the stop in place of the hint, and a pass
+# ends the cycle (the next change request counts one again). The reopen above starts its cycle at one.
+qr new-phase --phase P9 --name count --objective count >/dev/null 2>&1
+fp1=$(qr review-phase P9 --verdict changes_requested --note one 2>&1)
+fpb=$(qr review-phase P9 --verdict blocked --note wait 2>&1)
+fp2=$(qr review-phase P9 --verdict changes_requested --note two 2>&1)
+fpn() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["review"].get("fix_passes"))' "$QR/works/phases/active/P9/phase.json"; }
+fp2n=$(fpn); qr accept-gate P9 --waive --note probe >/dev/null 2>&1; fpp=$(qr review-phase P9 --verdict pass 2>&1); fppn=$(fpn)
+fp3=$(qr review-phase P9 --verdict changes_requested --note three 2>&1); fp3n=$(fpn)
+if ! printf '%s\n' "$fp1$fpb" | grep -q 'fix_passes=' && printf '%s\n' "$fp1" | grep -q '^create fix slices' \
+    && printf '%s\n' "$fp2" | grep -q "^fix_passes=2: the one fix pass already ran -- a further fix needs the operator's word" \
+    && printf '%s\n' "$fp2" | grep -q 'set-slice-status P9.REVIEW pending --stop-kind decision' \
+    && ! printf '%s\n' "$fp2" | grep -q '^create fix slices' && [ "$fp2n" = 2 ] \
+    && ! printf '%s\n' "$fp3" | grep -q 'fix_passes=' && printf '%s\n' "$fp3" | grep -q '^create fix slices' && [ "$fp3n" = 1 ]; then
+  ok "review-phase counts the cycle's fix passes: the hint and no count on the first changes_requested, fix_passes=2 with the stop in its place on the second, a blocked verdict adds none, a pass clears it"
+else bad "the fix-pass count is wrong ($fp2n/$fppn/$fp3n) -- $fp1 / $fpb / $fp2 / $fpp / $fp3"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 21: cloud mode at the command boundary -- inert without .hi2vi/link.json (no socket opened, no .hi2vi written); with a link, against a local fake hi2vi: one batch after a command (its own files origin command, an agent's result.md origin carried, the P9 records, both headers, the key only as a Bearer), equal content sends nothing, an archive goes as move ops and events.jsonl only as appends, a cloud-only change is pulled at the next command and the generated files rebuilt =="

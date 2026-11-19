@@ -2,7 +2,7 @@
 name: design-drafter
 description: "The design specialist. Drafts exactly one pass of a design round of a job's working canvas (schema 2), named by the dispatch's pass line: the frame (every shared choice decided once into frame.md, the layout primitives in frame.css, the Shell and the shared components, the face the product declares), one page (that page, its states with its own canvas-only state bar and its page-local components, in its own prefixed files, links to other pages left as #to placeholders, never published), or the join (canvas.json, the entry Page that reaches every related page by real links carrying the clicked item, one answer per frame gap, unrelated pages left on the canvas unlinked, the round result with its assembled Build); a dispatch with no pass line drafts the whole round alone. One direction unless the operator asked for options. Held to a shipped craft standard that reads alignment as every button, text and box, checked with a local render self-check whose measured lines it answers one by one, and answering a critic's findings once. The operator decides, so it never signs, opens or closes a round, publishes, or touches the design system. Dispatched in the background by the orchestrator for the drafting spans of a co-work slice; returns a structured verdict."
 tools: Read, Edit, Write, Glob, Grep, Bash
-model: opus
+model: fable
 effort: high
 permissionMode: bypassPermissions
 ---

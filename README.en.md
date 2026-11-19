@@ -215,7 +215,7 @@ under `workflow/` instead and the skills and agents untracked in the host's `.cl
 
 - [`CLAUDE.md`](payload/contract.md) — the compact routing contract every agent session works under.
 - [`scripts/workflow.py`](payload/scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` — the 22 Agent Skills (`/slash` commands), the risk-routed `slice-executor` subagent (`.claude/agents/slice-executor.md`, one file dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ high), the `design-critic` that judges each draft (the `critic` row, opus @ high; in judge mode the `judge` row, opus @ high), the `pr-reader` that reads each phase's draft PR with fresh eyes (the `reader` row, opus @ high), the `code-reader` that reads a code change blind, from the diff and the files at head alone, before each phase review and in `/read-code` (the `code` row, opus @ high), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
+- `.claude/` — the 21 Agent Skills (`/slash` commands), the risk-routed `slice-executor` subagent (`.claude/agents/slice-executor.md`, one file dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ high), the `design-critic` that judges each draft (the `critic` row, opus @ high; in judge mode the `judge` row, opus @ high), the `pr-reader` that reads each phase's draft PR with fresh eyes (the `reader` row, opus @ high), the `code-reader` that reads a code change blind, from the diff and the files at head alone, before each phase review and in `/read-code` (the `code` row, opus @ high), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
 - `docs/` — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - `works/` — the state machine, starting with **no phases**: a `deferred/` area, an `agenda/` area,
@@ -270,7 +270,7 @@ It writes only untracked files, all hidden by the host's `.git/info/exclude` (ne
 
 - `workflow/`: a **nested git repo** holding the engine, `works/`, `docs/`, `executors.toml` and
   the contract (as `CLAUDE.workspace.md`). It is versioned there, separately from the host.
-- the 22 skills and 6 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
+- the 21 skills and 6 agents in the host's `.claude/skills/` and `.claude/agents/`, with every
   path rewritten to reach `workflow/` (`python3 workflow/scripts/workflow.py …`);
 - a `.gitignore` of `*` in each of those skill directories, so a skill directory hides itself
   even where the host's `.gitignore` re-includes `.claude/skills/`;
@@ -514,7 +514,7 @@ The full command list is `python3 scripts/workflow.py --help` (and `<command> -h
 
 ### The same operations as Agent Skills
 
-The common workflows also ship as **22 Agent Skills** in `.claude/skills/`, invoked as `/slash`
+The common workflows also ship as **21 Agent Skills** in `.claude/skills/`, invoked as `/slash`
 commands in Claude Code:
 
 | Skill | What it does |
@@ -522,7 +522,6 @@ commands in Claude Code:
 | `create-phase` | Capture intent, then create a phase (seeds `DECOMP` + `REVIEW`); stops before decomposition |
 | `do-next-slice` | Complete exactly one slice, then stop |
 | `do-whole-phase` | Finish the active phase end-to-end, including its review |
-| `do-whole-phases` | Run several phases back to back (`46, P12, 7kq2`, or every phase not done): an open acceptance gate is parked and the run continues; any other stop halts it |
 | `run-loop` | Drive a loop phase's bounded cycles under its signed charter (`/loop /run-loop <P>`, one tick per wake): items that need you are parked and the loop goes on; only the charter's stops halt it |
 | `review-phase` | Review a phase and record a `pass` / `changes_requested` / `blocked` verdict |
 | `pr` | Write and check a phase's draft PR bodies (read first with fresh eyes by the `pr-reader` agent), and open the drafts when the review passes (on a gated phase you read them on GitHub, then `accept`) |
@@ -580,7 +579,7 @@ slice), and a review finding against mid-row work gets a `high` fix slice — so
 the mid row's lower effort while the high row takes what is genuinely hard or has already failed once. Model and effort come from one engine-owned **route table**, resolved per slice at dispatch time:
 `high` (opus @ high — review, decomposition, the mockup span, any risk but `low`, every second
 attempt), `research` (opus @ high), `mid` (opus @ medium — implementation, fix, docs and qa rated `low`), `screen` (a loop phase's first-stage cycles; the mid row's values unless `[claude.screen]` sets it cheaper) and
-`explore` (haiku @ xhigh, the read-only `Explore` lookup agent; no slice runs on haiku since v83). Three rows serve design, never a slice: `design` (opus @ high, `design-drafter`), `critic` (opus @ high, `design-critic`) and `judge` (opus @ high, alias only, the same critic file in judge mode); the critic and the judge may share the drafter's model. Two more serve no slice: `reader` (opus @ high, `pr-reader`) reads a phase's draft PR, and `code` (opus @ high, `code-reader`, `executor-route --code`) reads a code change blind before each phase review and in `/read-code`. The repo-root
+`explore` (haiku @ xhigh, the read-only `Explore` lookup agent; no slice runs on haiku since v83). Three rows serve design, never a slice: `design` (fable @ high, `design-drafter`), `critic` (opus @ high, `design-critic`) and `judge` (opus @ high, alias only, the same critic file in judge mode); the critic and the judge may share the drafter's model. Two more serve no slice: `reader` (opus @ high, `pr-reader`) reads a phase's draft PR, and `code` (opus @ high, `code-reader`, `executor-route --code`) reads a code change blind before each phase review and in `/read-code`. The repo-root
 `executors.toml` overrides rows one by one (`[claude.<row>]`, seed-once — updates never overwrite it),
 applied to the agent files with `python3 scripts/workflow.py sync-agents`; the presets are gone, and a
 leftover `mode = "…"` line is refused with the migration step. `python3 scripts/workflow.py
@@ -720,7 +719,7 @@ parallelism it never used. The mechanism itself is unchanged.)
 │   ├── deferred/                  # one folder per parked job
 │   └── agenda/                    # one folder per agenda item
 ├── .claude/
-│   ├── skills/                    # 22 Agent Skills (/slash commands)
+│   ├── skills/                    # 21 Agent Skills (/slash commands)
 │   ├── agents/                    # slice-executor + design-drafter + design-critic + pr-reader + code-reader + Explore (models from executors.toml)
 │   └── settings.json              # pre-approves workflow.py; denies force-push & rm -rf
 └── .github/

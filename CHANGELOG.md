@@ -14,6 +14,22 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v99 — 2026-11-19
+
+- **Why.** Review rounds did not converge. One phase ran 14 review rounds, 19 code reads and 22 fix slices, and 85% of its cost went to them: each fix added code, and the next read found new failure paths in that code. The design critic asked for a revision on almost every verdict, before the operator had seen the direction.
+- **One review, one fix pass, a closing run.** The review gives each finding one of three outcomes against `intent.md`: `fix now` (the intent fails, something that worked breaks, data is lost or exposed, or the operator would meet it on the walkthrough), `note` (real, filed at the pass) or `drop` (one line with the reason). Only a `fix now` finding makes the verdict `changes_requested`. After the fix slices run once, the review's second dispatch is a **closing run**: each fix against its acceptance matrix and its own commands, the validation suite and the pass-only work. It hunts for nothing new. A fix that does not hold (`fix did not hold: finding <k>`), or a new `fix now` finding at the closing run, stops for the operator: no second fix pass starts without their word.
+- **A `fix now` finding names the run that shows it**: the command and what it printed, or the walkthrough step where the operator meets it. A finding nobody ran is a `note` at most; a problem the base already had is one line, never a finding; no findings is a valid result.
+- **The engine counts the fix passes.** `review-phase --verdict changes_requested` keeps `review.fix_passes` in `phase.json` and, from the second one of a cycle on, prints `fix_passes=<n>` with the stop command in place of the fix-slice hint. It refuses nothing: the operator's own failure report is recorded the same way. A pass ends the cycle and clears the count; a reopen is itself a change request and starts it at one.
+- **A stop names the premise.** When a fix does not hold, the report to the operator names the premise the fix was built on and what the closing run showed about it.
+- **A run settles what a run can settle.** At `DECOMP`, a question a throwaway probe can answer is answered by running it; the operator is asked only for a product or preference call, money, or what cannot be undone.
+- **The plan's bar is the whole bar.** An executor adds no check, gate or review round above `plan.md`'s; a problem the base already had is one line in `result.md`.
+- **The code reader reads once per phase.** No re-read after a fix pass; a second read happens only on the operator's word (`/read-code`).
+- **The budget stop.** Before the review and before a fix pass the orchestrator compares `dispatch-summary --phase <P>` with `topics/breakdown.md`'s `## Estimate`. Past about one and a half times the estimate it stops and asks.
+- **The design critic is off unless the operator asks.** `DECOMP` no longer turns it on for a kind of surface.
+- **The drafter's default is Fable @ high** (the `design` row). `Drafter: opus` under `## Design Style` picks Opus for one phase. Fable lists at about twice Opus per token.
+- **One session per phase; `/do-whole-phases` is retired.** A long session carries every earlier phase in its context. The engine's `run-phases` command stays for now.
+- **Migration notes.** `--update` lists `.claude/skills/do-whole-phases/` as stale (ours, unchanged): delete the folder; an `executors.toml` that sets `[claude.design]` keeps its own model; a phase whose `intent.md` names no `Drafter:` now drafts on Fable (write `Drafter: opus` to keep Opus).
+
 ## v98 — 2026-11-18
 
 - **The agenda.** Each item is one folder, `works/agenda/<AID>/agenda.json`, that never moves. An item is stored Open, Deferred, Solved or Dropped; an Open item reads In progress while a phase linked to it is not done (derived, never stored or set), and a Deferred, Solved or Dropped one never does. Open items keep an order: a new item goes first, a reopened one last. Item ids are `A<n>-<tail>` (`A7-m3`), numbered apart from phases and deferred jobs; `7` and `A7` name it while only one item holds that number.

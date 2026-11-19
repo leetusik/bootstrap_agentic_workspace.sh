@@ -6,7 +6,7 @@
 pass its `model` / `effort` on every Agent call (`subagent_type` = its `subagent_type=` line;
 `subagent_type: design-drafter` in a plain install). The phase's `Drafter:` line under `## Design
 Style` (`intent.md`) picks the model, `fable` or `opus`, its effort staying the design row's; no line
-is the design row (Opus @ high by default). Every pass of a round runs on that one model; when the
+is the design row (Fable @ high by default). Every pass of a round runs on that one model; when the
 operator names another drafter in their own words, edit the line and it applies from the next round.
 Behind a loopback proxy a Fable drafter falls back to Opus (`fallback=`): say so in the round's
 report. The prompt is **only a `slice: <id>` line, the round address
@@ -66,10 +66,10 @@ span's input, and the operator's when they open the canvas.
 
 **The levels.** `off` runs no critic at either scope: the passes go straight to the read-back.
 `critic` runs a **page critic** for each page and the **cross-page critic** after the join.
-`critic+judge` adds the judge on escalated items. **`critic` is the usual level for a connected
-group of new surfaces**: a page critic reads inside its page, which the cross-page critic never
-does, so the two scopes catch different defects. `off` suits small follow-ups and superseding
-revision rounds, and an unset level is `off` (`shape.md`'s critique-level bullet).
+`critic+judge` adds the judge on escalated items.
+**The level is `off` unless the operator asks for a critic** (`shape.md`'s critique-level bullet),
+and an unset level is `off`. When one runs, a page critic reads inside its page, which the
+cross-page critic never does, so the two scopes catch different defects.
 
 **Inside each scope, before the operator sees anything:** one critic pass, then at most one drafter answer pass. There is no second critic pass.
 
