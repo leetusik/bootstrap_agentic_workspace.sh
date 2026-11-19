@@ -498,6 +498,9 @@ another agent, CI — drives the workspace with the exact same commands:
 | `dispatch-summary [--phase P] [--slice S] [--json]` | Meter the main thread beside every span from Claude Code's transcripts, per slice and per phase, at list price, with the recorded verdicts |
 | `new-phase --loop` / `loop-init <P>`, `loop-sign <P> --words …`, `loop-tick <P>`, `loop-status <P>`, `loop-control <P> pause\|resume\|stop\|halt` | A loop phase: its charter drafted and signed on your words, the one next action per tick, the operator's view (`--digest`), and your control words (see the `run-loop` skill; the rest of the `loop-*` commands are in `--help`) |
 | `parallel-start <P>` … `parallel-teardown <P>` | Move a phase into its own branch + worktree when you ask for one, then integrate it back with a local merge (see the `parallel-phase` skill) |
+| `link <server>/projects/<project-id>` | Link a nested install's checkout to a hi2vi project, which then holds its workspace (cloud mode); the workspace key is pasted at a prompt |
+| `unlink` / `unlink --from-disk` | Return a linked checkout to local mode, the files on disk the truth again |
+| `sync` / `sync --keep local\|cloud <path>…` | In a linked checkout, pull and push the clean changes and list what differs; `--keep` resolves the named paths |
 | `validate` | Check workspace integrity |
 
 Ids are minted by the engine, never picked: `new-phase` and `defer-job` print the next number with a

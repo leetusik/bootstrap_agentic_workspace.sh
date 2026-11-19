@@ -19,6 +19,8 @@ initiative. Asking looks like one of three things:
   worktree without asking again;
 - an explicit instruction to run two phases at once, which is the case the whole mechanism exists for.
 
+A linked checkout (`next` prints `store=cloud`) refuses `parallel-start` and the other stream commands: run its phases on the default stream.
+
 **One exception: an explain phase (v86).** `create-phase`'s explain route starts every explain phase in
 its own worktree unless its `## Explain` says `worktree: no`: the route's one confirmation is the
 operator's word for it, so nobody asks again. It buys stream isolation: the default stream's `next`

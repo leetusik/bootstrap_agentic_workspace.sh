@@ -30,7 +30,7 @@ The engine decides; this skill runs the chain. `python3 scripts/workflow.py rota
    - `archived=<ids>` when it moved any. Relay and commit it first (`chore(works): archive <ids> with rotate-backlog`). It may name a phase the docs phase has just paid, because `docs-consolidated` makes it archivable on the next run.
    - one `parked=<id> status=<status>[ stop_kind=<kind>]` per parked item (a blocked or `changes_requested` item has no `stop_kind`). Relay each; touch none.
 
-   **Every commit of the run, the docs phase's slice commits included, names its own paths** (the phases it archived, created, replaced or ran, and the regenerated files under `works/`; `git add -- <path>` of a replaced phase's folder stages its removal) and leaves the parked phases' folders out: `git add -- <paths>`, then `git commit -- <paths>`, never `git add -A`.
+   **Every commit of the run, the docs phase's slice commits included, names its own paths** (the phases it archived, created, replaced or ran, and the regenerated files under `works/`; `git add -- <path>` of a replaced phase's folder stages its removal) and leaves the parked phases' folders out: `git add -- <paths>`, then `git commit -- <paths>`, never `git add -A`. In a linked checkout (`next` prints `store=cloud`), skip this commit: hi2vi's revisions are the workflow's history. Product commits are unchanged. In a linked checkout, a done slice whose commit waits is one `next` lists in `commits_waiting=`; run `mark-committed <slice>` after its product commit (with no product change, right after its finish).
 
    Branch on the first line as a prefix:
 

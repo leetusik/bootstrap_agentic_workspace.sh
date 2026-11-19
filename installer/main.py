@@ -59,7 +59,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 99
+WORKSPACE_VERSION = 100
 ROOT = TARGET.resolve()
 # Nested personal install (P28; the default layout since P29): TARGET is a HOST git repo -- one the
 # operator may not own, or a new/empty dir this run `git init`s. The engine and all workflow state go
@@ -1807,6 +1807,9 @@ def print_nested_banner(plan: dict) -> None:
         for label in HOST_SUMMARY["added"]:
             print(f"    + {label}")
         print_update_report()
+        if linked_checkout():
+            print(f"  linked to hi2vi: works/ and docs/ are hi2vi's and stay uncommitted in {NESTED_DIR}/ (the closing rebuild syncs "
+                  f"them like any command); stage only the update's own paths, never add -A: {LINKED_UPDATE_ADD}")
         if plan["verified_clean"]:
             print("  verified: the host's git status lists none of the workspace's files")
         else:
@@ -1883,7 +1886,13 @@ def print_nested_banner(plan: dict) -> None:
     else:
         print("The installer made no git commits, and nothing tracked in the host changed.")
     print(f"Next (start Claude Code at the host root, {HOST} -- never inside {NESTED_DIR}/):")
-    if UPDATE:
+    if UPDATE and linked_checkout():
+        # hi2vi holds works/ and docs/ here: they always show changes, and the nested repo must never commit them
+        print(f"  1. Commit the refresh in the nested repo, its own paths only -- this checkout is linked to hi2vi, which holds works/ and docs/ "
+              f"(they stay uncommitted; never git -C {NESTED_DIR} add -A): {LINKED_UPDATE_ADD} && git -C {NESTED_DIR} commit -m "
+              f"\"chore: update agentic workspace to v{WORKSPACE_VERSION} (nested)\"")
+        print(f"  2. Re-apply your executors.toml route overrides: {cmd} sync-agents; {cmd} executor-route prints an override= line for each row it pins")
+    elif UPDATE:
         print(f"  1. Commit the refresh in the nested repo (/update-workspace does this itself): git -C {NESTED_DIR} status, then git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: update agentic workspace to v{WORKSPACE_VERSION} (nested)\"")
         print(f"  2. Re-apply your executors.toml route overrides: {cmd} sync-agents; {cmd} executor-route prints an override= line for each row it pins")
     else:
@@ -2447,6 +2456,10 @@ def convert_prepare() -> None:
     if not marker_path.is_file() or not (nested / "scripts" / "workflow.py").is_file():
         refuse(f"{repo} has no per-repo nested install ({NESTED_DIR}/{NESTED_MARKER} and {NESTED_DIR}/scripts/workflow.py): nothing to "
                "convert. A fresh install into a folder that holds only repos makes a multi-repo host.")
+    if (nested / ".hi2vi" / "link.json").is_file():
+        refuse(f"{nested} is linked to hi2vi (cloud mode): its workflow repo never commits the workspace's state, so it cannot be "
+               f"the conversion's backup and rollback, and the link names this folder; unlink it first (cd {q(repo)} && {engine} unlink, "
+               f"then one commit in {q(nested)}), convert, then link again from the new host.")
     try:
         old = json.loads(marker_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
@@ -2996,6 +3009,40 @@ if NESTED and not UPDATE and not DRY_RUN and not (ROOT / ".git").exists():
     # The nested repo that versions the workflow state. The installer never commits; the banner
     # names the operator's first commit there.
     subprocess.run(["git", "init", "-q"], cwd=str(ROOT), check=True)
+
+
+def linked_checkout() -> bool:
+    """Nested only: the install is linked to hi2vi (cloud mode), so hi2vi holds works/ and docs/ (the engine's truth
+    set) and they always show uncommitted changes in the workflow repo, which never commits them."""
+    return NESTED and (ROOT / ".hi2vi" / "link.json").is_file()
+
+
+# The nested repo's own paths of an update in a linked checkout: everything the installer writes there except the
+# truth set (works/ and docs/, hi2vi's), plus the two works/ paths it does own (templates and the version marker).
+# Two adds: an excluded directory wins over a path under it in one pathspec.
+LINKED_UPDATE_ADD = (f"git -C {NESTED_DIR} add -A -- . ':(exclude)works' ':(exclude)docs' && "
+                     f"git -C {NESTED_DIR} add -A -- works/templates works/.workspace-version.json")
+
+
+def exclude_cloud_dir() -> None:
+    """Nested only: hide `.hi2vi/` (a linked checkout's sync bookkeeping: link, base, journal, outbox, lock) in
+    the workflow repo's own common info/exclude, on a fresh install and on --update. Never .gitignore (tracked),
+    and never when workflow/ is not a repo of its own (git would answer for the host)."""
+    if not (ROOT / ".git").exists():
+        return
+    proc = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=str(ROOT), capture_output=True, text=True)
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return
+    exclude = (ROOT / proc.stdout.strip()).resolve() / "info" / "exclude"
+    existing = exclude.read_text(encoding="utf-8") if exclude.is_file() else ""
+    if {".hi2vi/", "/.hi2vi/", ".hi2vi", "/.hi2vi"} & {line.strip() for line in existing.splitlines()}:
+        return
+    exclude.parent.mkdir(parents=True, exist_ok=True)
+    exclude.write_text(existing + ("\n" if existing and not existing.endswith("\n") else "") + "/.hi2vi/\n", encoding="utf-8")
+
+
+if NESTED and not DRY_RUN:
+    exclude_cloud_dir()
 
 created_at = now_iso()
 

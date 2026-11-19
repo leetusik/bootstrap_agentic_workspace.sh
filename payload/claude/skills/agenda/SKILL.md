@@ -20,6 +20,8 @@ disable-model-invocation: true
 - `link <item> --phase <P> | --deferred <D>`: tie an item to a phase or deferred job; a phase or job holds one item, and a phase of another stream is linked from its own checkout. `new-phase` and `defer-job` take `--agenda <item>` to link what they create.
 - `unlink --phase <P> | --deferred <D>`: untie the phase or job from its item.
 
+In a linked checkout, changes made on the web arrive as inbox entries that `sync`, `next` and `run-phases` apply as these commands; a refused one shows the command's line on the web.
+
 An item is stored as `open | deferred | solved | dropped`, shown as Open, Deferred, Solved and Dropped. The fifth word, In progress, is never stored and no command sets it: an Open item reads In progress while a phase linked to it is not done; a Deferred, Solved or Dropped item never does.
 
 - An item never affects `next`: the agenda is the operator's list, not the backlog.
