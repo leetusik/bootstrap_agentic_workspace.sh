@@ -21419,15 +21419,18 @@ def loop_debt_commit(data: dict):
 # it `main()` calls the command exactly as before: nothing below is read, imported or run, and no socket
 # is opened. With it, the command boundary syncs: before the command, a fast-forward pull of what changed
 # in hi2vi (then the generated files are rebuilt); the command runs unchanged against the disk; after it,
-# one all-or-nothing batch of every truth-set difference against `.hi2vi/base.json` (the last-synced
-# head, and each path's rev and sha256). Diffing the tree, not wrapping writes, also catches the files
+# every truth-set difference against `.hi2vi/base.json` (the last-synced head, and each path's rev and sha256),
+# in all-or-nothing batches sent in order (over CLOUD_BATCH_MAX a change splits; a 409 on a later batch leaves the
+# earlier ones landed). Diffing the tree, not wrapping writes, also catches the files
 # agents write with their own tools (plan.md, result.md, topics/), which ride the next batch as `carried`.
 # The wire is hi2vi's workspace API under /api/workspace/<project_id>/: head, manifest?since=, fetch and
 # commit, with the workspace key only as a Bearer header, read from the user's config, never from argv.
 CLOUD_DIR = ".hi2vi"
 CLOUD_SCHEMA = 1
 # A request fails when it stalls, never while its bytes still move: no byte for CLOUD_TIMEOUT seconds, or fewer than
-# CLOUD_FLOOR bytes in a CLOUD_TIMEOUT window (a peer dripping its answer: about 100 B/s, far below any real link). Every
+# CLOUD_FLOOR bytes in a CLOUD_TIMEOUT window (a peer dripping its answer: about 100 B/s, far below any real link). While
+# the connection is set up only the peer's bytes count toward the floor: this checkout's own (a CONNECT line, a
+# ClientHello of about 200 B to over 1,500 B by the TLS library) prove nothing about the path. Every
 # wait of a request is a wait on its TCP socket (_CloudSocket): the connect, a proxy's CONNECT tunnel, the TLS handshake
 # (TLS runs over memory buffers, so its bytes are counted as they cross the socket, never a record or a send at a time),
 # each send and each read. No such wait lasts over CLOUD_STEP (the connect, where nothing can move, waits once for what
@@ -21484,8 +21487,10 @@ class _CloudWire:
     CLOUD_TIMEOUT seconds, or (when `judge`) a CLOUD_TIMEOUT window that moved fewer than CLOUD_FLOOR bytes. The floor
     is judged before every wait that follows movement, and at every step while the connection is set up (the connect, a
     proxy's tunnel, the TLS handshake: no server thinks there); a silent wait for the answer is the server thinking, and
-    only the idle limit and the deadline judge it. The request's sending, and from the answer's first byte its reading,
-    have floor windows apart. There is no timer: nothing can fire after the answer is read."""
+    only the idle limit and the deadline judge it. During the set-up only the peer's bytes count toward the floor
+    (`moved(n, floor=False)` for this checkout's own: they still reset the idle clock). The request's sending, and from
+    the answer's first byte its reading, have floor windows apart. There is no timer: nothing can fire after the answer
+    is read."""
 
     def __init__(self, deadline=None) -> None:
         self.deadline = deadline  # time.monotonic() past which no wait starts (the session hook's budget), or None
@@ -21499,13 +21504,14 @@ class _CloudWire:
         if self.sending:
             self.sending, self.window, self.count = False, time.monotonic(), 0
 
-    def moved(self, n: int, answer: bool = False) -> None:
+    def moved(self, n: int, answer: bool = False, floor: bool = True) -> None:
         if not n or n <= 0:
             return
         if answer:
             self.answer()
         self.last = time.monotonic()
-        self.count += n
+        if floor:
+            self.count += n
 
     def left(self, judge: bool = True) -> float:
         now = time.monotonic()
@@ -21552,7 +21558,8 @@ class _CloudSocket:
     says whether the request has stalled; after each, what moved is counted: the bytes sent or read, and the bytes of
     this checkout's upload that left the socket's queue meanwhile. Over TLS (`start_tls`) the encryption runs over
     memory buffers (ssl.MemoryBIO), so the TLS bytes cross this socket too and count as they move, never a whole record
-    or a whole send piece at a time."""
+    or a whole send piece at a time. While `setup`, this checkout's own bytes reset the idle clock but count nothing
+    toward the floor: only the peer's do."""
 
     def __init__(self, sock, wire: _CloudWire) -> None:
         self._sock, self._wire = sock, wire
@@ -21577,14 +21584,14 @@ class _CloudSocket:
                 now = _cloud_unsent(self._sock)
                 drained = queued is not None and now is not None and now < queued
                 if drained:  # the upload still draining from the socket is progress
-                    self._wire.moved(queued - now)
+                    self._wire.moved(queued - now, floor=not self.setup)
                 judge = drained or self.setup
 
     def _send(self, data) -> None:
         view = memoryview(data).cast("B")
         while len(view):
             n = self._wait(self._sock.send, view[:CLOUD_SEND_PIECE])
-            self._wire.moved(n)
+            self._wire.moved(n, floor=not self.setup)
             view = view[n:]
 
     def _flush(self) -> None:
@@ -22075,7 +22082,7 @@ def cloud_settle_pull(base: dict) -> None:
 
 
 class CloudSession:
-    """One command's boundary in a linked checkout: begin (pull, pre-command scan), then commit (one batch)."""
+    """One command's boundary in a linked checkout: begin (pull, pre-command scan), then commit (its batches, in order)."""
 
     def __init__(self, tokens: list, deadline=None) -> None:
         self.tokens = list(tokens)
@@ -24135,7 +24142,7 @@ def main(argv=None) -> int:
         # stored id here, once.
         normalize_id_args(args)
         result = args.func(args)
-    else:  # cloud mode: a pull before the command, one batch after it; a stream command is refused first
+    else:  # cloud mode: a pull before the command, its batches after it; a stream command is refused first
         refused = cloud_refusal(args)
         if refused:
             raise SystemExit(refused)

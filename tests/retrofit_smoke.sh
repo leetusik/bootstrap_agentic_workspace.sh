@@ -6096,7 +6096,8 @@ PY
 # The connection's set-up is judged too. Behind an HTTPS proxy that answers its CONNECT 6 s late and then forwards
 # nothing, or drips its CONNECT answer a byte every 2 s, the session hook still ends inside its 9 s with the note and an
 # ordinary command in one line in about 10 s (the connect is one wait the idle limit bounds; then the floor judges each
-# step of the tunnel and the TLS handshake, its window counted from the request's start). The checkout points at an
+# step of the tunnel and the TLS handshake, its window counted from the request's start and only the peer's bytes counted
+# in it). The checkout points at an
 # https hi2vi only the proxy could reach (never resolved here: urllib hands the name to the proxy); each command is
 # cut at 40 s by pid, so a hang fails the row, not the suite.
 cat > "$SFW/proxy.py" <<'PY'
@@ -6179,7 +6180,28 @@ for sf_k in late drip; do
 done
 kill "${sf_px_pids[@]}" 2>/dev/null; wait "${sf_px_pids[@]}" 2>/dev/null
 cp "$SFW/link.bak" "$SF/workflow/.hi2vi/link.json"; cp "$SFW/keys2.bak" "$SFX/hi2vi/workspace-keys.json"; chmod 600 "$SFX/hi2vi/workspace-keys.json"
-[ -z "$sf_bad" ] && ok "behind an HTTPS proxy that answers CONNECT 6 s late then forwards nothing, or drips it, compact-resume ends inside its 9 s with the note and next in one line within 12 s, the tree unchanged" \
+# The set-up floor counts only the peer's bytes, whatever this machine's TLS library sends (a ClientHello is about
+# 200 B on LibreSSL, over 1,500 B on OpenSSL 3.5). In-process, the limit at 2 s: a peer answers 39 B at 1.2 s and then
+# swallows a 2,000 B ClientHello; the floor ends the set-up at 2 s (counting our own bytes, the idle limit at 3.2 s).
+sf_own=$( cd "$SF" && python3 - <<'PY' 2>&1
+import importlib.util, socket, sys, threading, time
+spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scripts/workflow.py")
+mod = importlib.util.module_from_spec(spec); sys.modules["workflow_engine"] = mod; spec.loader.exec_module(mod)
+mod.CLOUD_TIMEOUT = 2
+a, b = socket.socketpair()
+def peer():
+    time.sleep(1.2); b.sendall(b"HTTP/1.1 200 Connection established\r\n"[:37] + b"\r\n")
+    while b.recv(65536): pass
+threading.Thread(target=peer, daemon=True).start()
+s, t = mod._CloudSocket(a, mod._CloudWire()), time.monotonic()
+try:
+    s.recv_into(bytearray(64)); s.sendall(b"x" * 2000); s.recv_into(bytearray(64)); print("no stall")
+except mod._CloudStall as exc:
+    print(f"{exc} {'early' if time.monotonic() - t < 2.8 else 'late'}")
+PY
+)
+[ "$sf_own" = "fewer than 1024 bytes moved in 2 s early" ] || sf_bad="$sf_bad [own set-up bytes: $sf_own]"
+[ -z "$sf_bad" ] && ok "behind an HTTPS proxy that answers CONNECT 6 s late then forwards nothing, or drips it, compact-resume ends inside its 9 s with the note and next in one line within 12 s, the tree unchanged; the set-up's floor counts only the peer's bytes" \
   || bad "a late or dripping HTTPS proxy --$sf_bad"
 # Over TLS a byte counts as it crosses the socket, never a whole record at a time; the handshake keeps the context's
 # verification. In-process, with the idle limit scaled to 2 s: a local TLS server behind a 4,000 B/s link sends a
