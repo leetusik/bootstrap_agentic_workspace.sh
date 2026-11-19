@@ -5317,6 +5317,19 @@ q_w=$(grep -cvE '^(pr view https://github\.com/[^ ]+ --json [a-zA-Z,]+|api repos
   || bad "the stub gh saw a call that is not a read -- $(grep -vE '^(pr view |api repos/)' "$QG/gh.all" | head -3)"
 echo "pr lifecycle test runtime: $(( $(date +%s) - lc_t0 ))s"
 
+# The engine counts a review cycle's fix passes: the first changes_requested prints no count, the second prints
+# fix_passes=2 and the stop, a pass keeps the count on the phase, and a blocked verdict adds nothing.
+qr new-phase --phase P9 --name count --objective count >/dev/null 2>&1
+fp1=$(qr review-phase P9 --verdict changes_requested --note one 2>&1)
+fpb=$(qr review-phase P9 --verdict blocked --note wait 2>&1)
+fp2=$(qr review-phase P9 --verdict changes_requested --note two 2>&1)
+if ! printf '%s\n' "$fp1$fpb" | grep -q 'fix_passes=' && printf '%s\n' "$fp1" | grep -q '^create fix slices' \
+    && printf '%s\n' "$fp2" | grep -q "^fix_passes=2: the one fix pass already ran -- a further fix needs the operator's word" \
+    && printf '%s\n' "$fp2" | grep -q 'set-slice-status P9.REVIEW pending --stop-kind decision' \
+    && [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["review"]["fix_passes"])' "$QR/works/phases/active/P9/phase.json")" = 2 ]; then
+  ok "review-phase counts the cycle's fix passes: silent on the first changes_requested, fix_passes=2 with the stop on the second, a blocked verdict adds none"
+else bad "the fix-pass count is wrong -- $fp1 / $fpb / $fp2"; fi
+
 # ---------------------------------------------------------------------------
 echo
 if [ "$FAILS" -eq 0 ]; then

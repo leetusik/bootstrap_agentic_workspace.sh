@@ -6465,7 +6465,13 @@ def review_phase(args: argparse.Namespace) -> None:
                          f"({open_prs}); a change request (the team's or the operator's) reopens it on the PR branch: "
                          f"{WORKFLOW_CMD} reopen-phase {args.phase} --note \"team-reported: <what>\" (or \"operator-reported: <what>\"; "
                          f"pr-sync {args.phase} first) -- nothing was written")
+    # The fix passes this review cycle has asked for: one per `changes_requested`, kept across the cycle's
+    # verdicts. A reopen writes a fresh block, so the operator's or the team's change request starts at zero.
+    earlier = (data.get("review") or {}).get("fix_passes")
+    fix_passes = (earlier if type(earlier) is int and earlier > 0 else 0) + (args.verdict == "changes_requested")
     data["review"] = {"status": args.verdict, "reviewed_at": now_iso(), "reviewer": args.reviewer, "note": args.note}
+    if fix_passes:
+        data["review"]["fix_passes"] = fix_passes
     if args.verdict == "changes_requested":
         acceptance = phase_acceptance(data)
         if acceptance is not None:
@@ -6493,6 +6499,10 @@ def review_phase(args: argparse.Namespace) -> None:
     print(f"phase {args.phase} review: {args.verdict} (status -> {new_status})")
     if args.verdict == "changes_requested":
         print(f"create fix slices, e.g.: {WORKFLOW_CMD} new-slice --phase {args.phase} --slice {args.phase}.F1 --name \"...\" --kind fix")
+        if fix_passes > 1:
+            print(f"fix_passes={fix_passes}: the one fix pass already ran -- a further fix needs the operator's word (this verdict, when it "
+                  f"records their own report); without it cut no fix slice and stop: {WORKFLOW_CMD} set-slice-status "
+                  f"{args.phase}.REVIEW pending --stop-kind decision --on-words \"...\"")
     elif args.verdict == "pass":
         notes = phase_doc_impact_notes(pdir)
         if notes:
