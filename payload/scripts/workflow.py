@@ -642,7 +642,7 @@ METER_ROUTES = EXECUTOR_ROUTES + METER_PASS_ROUTES + RETIRED_ROUTES  # the meter
 ROUTE_DEFAULTS = {
     "high": {"model": "opus", "effort": "high"},
     "research": {"model": "opus", "effort": "high"},
-    "design": {"model": "opus", "effort": "high"},
+    "design": {"model": "fable", "effort": "high"},
     "critic": {"model": "opus", "effort": "high"},
     "judge": {"model": "opus", "effort": "high"},
     "reader": {"model": "opus", "effort": "high"},
@@ -12276,7 +12276,7 @@ def resume_card(transcript_path=None) -> str:
         lines.append(f"stop: phase {phase_id} acceptance gate open -- relay the walkthrough (`accept-gate {phase_id}` prints it); "
                      f"the operator's words clear it with accept-gate {phase_id} --clear")
         if phase_parked(phase):  # informational only: the stop above stands for every plain session
-            lines.append(f"run: {phase_id} is parked; only a /do-whole-phases run passes it -- re-run `run-phases <the run's phases>` "
+            lines.append(f"run: {phase_id} is parked; only a multi-phase run (`run-phases`) passes it -- re-run `run-phases <the run's phases>` "
                          "for that run's next target; outside such a run this is a stop")
     elif phase.get("status") == "pending" and isinstance((phase_loop(phase) or {}).get("halt"), dict):
         halt = phase_loop(phase)["halt"]
