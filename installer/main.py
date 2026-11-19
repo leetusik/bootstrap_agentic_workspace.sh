@@ -59,7 +59,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 98
+WORKSPACE_VERSION = 99
 ROOT = TARGET.resolve()
 # Nested personal install (P28; the default layout since P29): TARGET is a HOST git repo -- one the
 # operator may not own, or a new/empty dir this run `git init`s. The engine and all workflow state go
@@ -203,9 +203,9 @@ EMPTY_OK_ALLOWLIST = {
 #@@GENERATED_PAYLOADS@@
 
 # The skill inventory is derived independently from the embedded payload manifest.
-# The build enforces the release invariant: 22 skill packages.
+# The build enforces the release invariant: 21 skill packages.
 CLAUDE_SKILLS = sorted({k.split("/")[2] for k in PAYLOADS if k.startswith(".claude/skills/") and k.endswith("/SKILL.md")})
-EXPECTED_SKILL_COUNT = 22
+EXPECTED_SKILL_COUNT = 21
 if len(CLAUDE_SKILLS) != EXPECTED_SKILL_COUNT:
     raise RuntimeError(
         f"embedded skill inventory must contain {EXPECTED_SKILL_COUNT} skill packages "
@@ -1961,6 +1961,7 @@ RETIRED_FILES = {
     '.claude/agents/slice-executor-low.md': (22, ('3d798df8b1170cf3aff4bbf10fbe83e6f7d8a8721a990a8d74333b7c08c731df',)),  # 097041d
     '.claude/agents/slice-executor-mid.md': (65, ('3c74ce9945cae627de3588f3ea01533cb8990a48e0b12d813af61d0ba04ded8a', 'faaa25e5cdc62e625d3720030f24e94388ec1cbeb5e80de6deafc39820f2654b')),  # d0759a4, route lines dropped
     '.claude/agents/slice-planner.md': (19, ('7c8fa4c4824f276ec5e79292826dfb58a41ed4078682175faae2e119d36c51d6',)),  # c94f6e4
+    '.claude/skills/do-whole-phases/SKILL.md': (98, ('7a84c83f9938d32af5ba9dd6729b310623303fc2ddcb68accbe08e704f2e829c', 'daa211d71e169a19268e7ae515ab0cbc489225a1f8671b0bacd60e30c39a757a')),  # 47436bc
     '.claude/skills/executor-mode/SKILL.md': (52, ('382fe9e6644c15c46d49ab0b481c8cec0b6722f20816d3fca48a60ba61826d43', 'cef5b8fbf576e83fd6048ceb652e05ddcd7cbcded6a4168efb5c834f32c16970')),  # 7c874c3
     '.codex/agents/slice-executor-high.toml': (30, ('217fcafcd0449db43fd1e25b4a0a13cc918ee2ab46d4980a8544b098ed31ec2d',)),  # 4ee5c22
     '.codex/agents/slice-executor-low.toml': (22, ('57e24a3b80eaa8a1991b82aeb29b6447735453c08ede535cc353a86a2b78bc35',)),  # 097041d
@@ -3342,7 +3343,7 @@ elif RETROFIT:
 else:
     print(f"Bootstrapped agentic workspace at {TARGET}")
     print("Contract: CLAUDE.md")
-    print("Claude Code: 22 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, fresh-eyes PR reader .claude/agents/pr-reader.md, blind code reader .claude/agents/code-reader.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
+    print("Claude Code: 21 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, fresh-eyes PR reader .claude/agents/pr-reader.md, blind code reader .claude/agents/code-reader.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
     print("Visual design: design-cowork fires automatically; the design-drafter subagent drafts each design slice's surfaces as one working canvas under docs/reference/design/jobs/ (a frame of shared choices, its pages at once, then a join into clickable Pages, a board per component), the design-critic judges each page and the joined canvas when the job's critique is on, the orchestrator publishes each round to one Design canvas Artifact in the Claude app, and the operator decides: picks a style (build-after / design-only / paired) and signs each design in their own words, or on an in-product mockup they ask for, before separate implementation and browser fidelity")
     print("One executor, routed per dispatch by kind, then risk, then attempt (mid is the default row, real code included; high for decomposition, research, review, named triggers and retries), through one route table whose rows set each dispatch's model and effort; python3 scripts/workflow.py executor-route shows it (and executor-route <slice> the decision for one slice); override a row in executors.toml, then run sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")

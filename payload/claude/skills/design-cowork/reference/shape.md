@@ -81,13 +81,13 @@
   one after another, each with its own PENDING #1 stop; inside a slice, its page passes and its page
   critics run at once. Multi-job waves are retired; a pre-change one
   finishes as drawn (`reference/legacy.md`).
-- **Each job's critique level:** `off | critic | critic+judge`, unset = `off`. On for new or central
-  surfaces, greenfield foundations, many-state flows and public pages; off for small follow-ups,
-  internal screens and established patterns. A connected group of several surfaces is a many-state
-  flow, so `critic` is its usual level. **Two critique scopes:** `critic` runs a page critic per
-  page and the cross-page critic after the join, `off` runs neither, and the judge rules only on
-  escalated items. `critic+judge` where a wrong call is costly (foundations, a public flow). The
-  operator may override it per round. A page critic tier costs about $5 a page ($19.90 at four
+- **Each job's critique level:** `off | critic | critic+judge`, unset = `off`. **It is `off` unless
+  the operator asks for a critic**, in their request, at the confirmation or for one round: never
+  `DECOMP`'s own choice, whatever the surface. The operator reads every round themselves, and a
+  critic's pass before them buys a second drafting pass on a direction they have not confirmed yet.
+  **Two critique scopes:** `critic` runs a page critic per page and the cross-page critic after the
+  join, `off` runs neither, and the judge rules only on escalated items (`critic+judge`, when the
+  operator asks for it). A page critic tier costs about $5 a page ($19.90 at four
   pages in the one measured round, `reference/drafting.md` *Cost*).
 - **How many design slices there are is decided at the opening `DECOMP`**, from the inventory: one
   co-work slice per connected group, a small unrelated surface riding along where it fits. A job's revisions are superseding rounds inside it, never cut in
