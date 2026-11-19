@@ -5231,7 +5231,7 @@ q_dn=$(qw next 2>&1); q_wn=$(qwt next 2>&1); q_ws=$(qwt reopen-phase P1 --note "
 q_rprc=$?; q_sc=$(qwt phase-scope P1 2>&1)
 if [ "$q_rorc" -eq 0 ] && printf '%s\n' "$q_ro" | grep -qx "reopened=P1 branch=host:feat/one worktree=$QH/.claude/worktrees/P1-toy" && [ "$(( $(qn rev-list --count HEAD) - q_n0 ))" = 1 ] \
     && [ "$(qn log -1 --format=%s)" = "chore(works): reopen P1 in its own worktree" ] && [ "$(git -C "$QWT" branch --show-current)" = feat/one ] \
-    && [ "$(qj P1 review.status)" = '"changes_requested"' ] && [ "$(qj P1 review.note)" = '"team-reported: rename the toy flag"' ] \
+    && [ "$(qj P1 review.status)" = '"changes_requested"' ] && [ "$(qj P1 review.note)" = '"team-reported: rename the toy flag"' ] && [ "$(qj P1 review.fix_passes)" = 1 ] \
     && printf '%s\n' "$q_dn" | grep -q '^parallel_phases_elsewhere=P1:phase/P1-toy ' && printf '%s\n' "$q_wn" | grep -qx 'current_phase=P1' && printf '%s\n' "$q_wn" | grep -qx 'current_slice=P1.REVIEW' \
     && [ "$q_wsrc" -ne 0 ] && printf '%s\n' "$q_ws" | grep -q "P1 is 'in_progress', not 'done'" \
     && [ "$q_rprc" -eq 0 ] && grep -q '^phase P1 review: pass' "$QW/repass.txt" && printf '%s\n' "$q_sc" | grep -qx '  A fix.py' && printf '%s\n' "$q_sc" | grep -qx '  M app.txt' \
@@ -5317,18 +5317,23 @@ q_w=$(grep -cvE '^(pr view https://github\.com/[^ ]+ --json [a-zA-Z,]+|api repos
   || bad "the stub gh saw a call that is not a read -- $(grep -vE '^(pr view |api repos/)' "$QG/gh.all" | head -3)"
 echo "pr lifecycle test runtime: $(( $(date +%s) - lc_t0 ))s"
 
-# The engine counts a review cycle's fix passes: the first changes_requested prints no count, the second prints
-# fix_passes=2 and the stop, a pass keeps the count on the phase, and a blocked verdict adds nothing.
+# The engine counts a review cycle's fix passes: the first changes_requested prints the fix-slice hint and no count,
+# a blocked verdict adds nothing, the second prints fix_passes=2 and the stop in place of the hint, and a pass
+# ends the cycle (the next change request counts one again). The reopen above starts its cycle at one.
 qr new-phase --phase P9 --name count --objective count >/dev/null 2>&1
 fp1=$(qr review-phase P9 --verdict changes_requested --note one 2>&1)
 fpb=$(qr review-phase P9 --verdict blocked --note wait 2>&1)
 fp2=$(qr review-phase P9 --verdict changes_requested --note two 2>&1)
+fpn() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["review"].get("fix_passes"))' "$QR/works/phases/active/P9/phase.json"; }
+fp2n=$(fpn); qr accept-gate P9 --waive --note probe >/dev/null 2>&1; fpp=$(qr review-phase P9 --verdict pass 2>&1); fppn=$(fpn)
+fp3=$(qr review-phase P9 --verdict changes_requested --note three 2>&1); fp3n=$(fpn)
 if ! printf '%s\n' "$fp1$fpb" | grep -q 'fix_passes=' && printf '%s\n' "$fp1" | grep -q '^create fix slices' \
     && printf '%s\n' "$fp2" | grep -q "^fix_passes=2: the one fix pass already ran -- a further fix needs the operator's word" \
     && printf '%s\n' "$fp2" | grep -q 'set-slice-status P9.REVIEW pending --stop-kind decision' \
-    && [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["review"]["fix_passes"])' "$QR/works/phases/active/P9/phase.json")" = 2 ]; then
-  ok "review-phase counts the cycle's fix passes: silent on the first changes_requested, fix_passes=2 with the stop on the second, a blocked verdict adds none"
-else bad "the fix-pass count is wrong -- $fp1 / $fpb / $fp2"; fi
+    && ! printf '%s\n' "$fp2" | grep -q '^create fix slices' && [ "$fp2n" = 2 ] \
+    && ! printf '%s\n' "$fp3" | grep -q 'fix_passes=' && printf '%s\n' "$fp3" | grep -q '^create fix slices' && [ "$fp3n" = 1 ]; then
+  ok "review-phase counts the cycle's fix passes: the hint and no count on the first changes_requested, fix_passes=2 with the stop in its place on the second, a blocked verdict adds none, a pass clears it"
+else bad "the fix-pass count is wrong ($fp2n/$fppn/$fp3n) -- $fp1 / $fpb / $fp2 / $fpp / $fp3"; fi
 
 # ---------------------------------------------------------------------------
 echo
