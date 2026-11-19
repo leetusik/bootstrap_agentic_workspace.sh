@@ -1862,6 +1862,11 @@ cp "$F/works/phases/active/P1/intent.md" "$F/intent.bak"
 er_out=$(er --drafter --phase P1)
 printf '%s\n' "$er_out" | grep -qx 'model=fable' && printf '%s\n' "$er_out" | grep -qx 'drafter_source=design row' \
   && ok "executor-route --drafter --phase on a phase naming no drafter is the design row (fable)" || bad "executor-route --drafter --phase default wrong: $er_out"
+printf '\n## Design Style\n\nbuild-after: one flow.\nMockup: on request\nDrafter: opus\n' >> "$F/works/phases/active/P1/intent.md"
+er_out=$(er --drafter --phase P1)
+printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'drafter_source=phase P1 Drafter: opus' \
+  && ok "a phase's Drafter: opus keeps Opus against the Fable default" || bad "executor-route --drafter --phase opus wrong: $er_out"
+cp "$F/intent.bak" "$F/works/phases/active/P1/intent.md"
 printf '\n## Design Style\n\nbuild-after: one flow.\nMockup: on request\nDrafter: fable\n' >> "$F/works/phases/active/P1/intent.md"
 er_out=$(er --drafter --phase P1)
 printf '%s\n' "$er_out" | grep -qx 'model=fable' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \

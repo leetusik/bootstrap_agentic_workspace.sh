@@ -1961,6 +1961,7 @@ RETIRED_FILES = {
     '.claude/agents/slice-executor-low.md': (22, ('3d798df8b1170cf3aff4bbf10fbe83e6f7d8a8721a990a8d74333b7c08c731df',)),  # 097041d
     '.claude/agents/slice-executor-mid.md': (65, ('3c74ce9945cae627de3588f3ea01533cb8990a48e0b12d813af61d0ba04ded8a', 'faaa25e5cdc62e625d3720030f24e94388ec1cbeb5e80de6deafc39820f2654b')),  # d0759a4, route lines dropped
     '.claude/agents/slice-planner.md': (19, ('7c8fa4c4824f276ec5e79292826dfb58a41ed4078682175faae2e119d36c51d6',)),  # c94f6e4
+    '.claude/skills/do-whole-phases/SKILL.md': (98, ('7a84c83f9938d32af5ba9dd6729b310623303fc2ddcb68accbe08e704f2e829c', 'daa211d71e169a19268e7ae515ab0cbc489225a1f8671b0bacd60e30c39a757a')),  # 47436bc
     '.claude/skills/executor-mode/SKILL.md': (52, ('382fe9e6644c15c46d49ab0b481c8cec0b6722f20816d3fca48a60ba61826d43', 'cef5b8fbf576e83fd6048ceb652e05ddcd7cbcded6a4168efb5c834f32c16970')),  # 7c874c3
     '.codex/agents/slice-executor-high.toml': (30, ('217fcafcd0449db43fd1e25b4a0a13cc918ee2ab46d4980a8544b098ed31ec2d',)),  # 4ee5c22
     '.codex/agents/slice-executor-low.toml': (22, ('57e24a3b80eaa8a1991b82aeb29b6447735453c08ede535cc353a86a2b78bc35',)),  # 097041d
