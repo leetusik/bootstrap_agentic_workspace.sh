@@ -187,7 +187,7 @@ which restores the original Claude Design loop and keeps its records under `docs
 A repo that already has a pre-v47 Claude Design layout under `docs/reference/design/` moves it there with
 `python3 scripts/workflow.py design-migrate` (a dry run; `--apply` moves it). The design slice writes no
 implementation code — separate later slices implement the approved design and verify it in a real
-browser. A later `--update` refreshes these workspace-managed skill, subagent, and contract payloads;
+browser (the agent's own `playwright-cli`, which it installs and runs itself). A later `--update` refreshes these workspace-managed skill, subagent, and contract payloads;
 retrofit still skips pre-existing operator-owned files, and update still preserves phase/docs state
 and `executors.toml`.
 

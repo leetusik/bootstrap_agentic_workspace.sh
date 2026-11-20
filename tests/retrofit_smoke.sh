@@ -10,11 +10,10 @@
 # invariants, the v32 operator-acceptance-gate invariants, the v36 research-slice
 # invariants (the kind is in the closed set and its semantics are in the
 # contract, both agent bodies and both do-* skills), the real-browser instrument
-# invariants (v36's doctrine, since P-zqhy on Claude in Chrome: the agent's dedicated
-# Chrome profile selected with list_connected_browsers -> select_browser on its recorded
-# deviceId, never a name label, before any other browser tool, a third halt, and a
-# fallback the manifest chooses that excuses no check, in the contract, the executor
-# body and the design/review skills),
+# invariants (v36's doctrine, since lighter-rules on playwright-cli: the agent's own
+# browser driven from the shell, installed, started and closed by the agent with no
+# prompt (the shipped settings allow it), Claude in Chrome named once and only on the
+# operator's request, in the contract, the executor body and the design/review skills),
 # the v39 doc-staleness invariants (the last-updated marker at write time, with and
 # without git, and the STALE flag an owed '## Doc impact' note raises), the v41 review-boundary
 # invariants (every review surface re-runs the checklist inside the phase's boundary, never whole,
@@ -460,46 +459,24 @@ for required in (
     "Mockup: requested", "Mockup: on request",
     "design-only, no mockup: the operator signed each job on its canvas",
     "Edit a board, `canvas.json`, a critique or a closed round's snapshot yourself",
-    # v36: the doctrine names an instrument and a fallback that excuses no check.
-    # P-zqhy: the instrument is Claude in Chrome -- its tools, held by slice-executor
-    # alone; the operator's one-time setup; the agent's dedicated profile selected
-    # first on every run; the third halt; and a fallback the manifest chooses.
+    # v36: the doctrine names an instrument. lighter-rules: the instrument is playwright-cli,
+    # the agent's own browser it installs, restarts and closes itself; only what it cannot have stops.
     "**With what — the instrument.**",
-    "Drive that browser with **Claude in Chrome**",
-    "Its tools are `mcp__claude-in-chrome__*`",
-    "**Nothing ships, nothing registers in settings:**",
-    "start with `claude --chrome`, or run `/chrome` and pick \"Enabled by default\"",
-    "**A separate Chrome profile for the agent**, signed into **none** of the operator's accounts",
-    "**same claude.ai account and organization** as Claude Code",
-    # P-zqhy.F1: the key is the deviceId, read with only the agent profile connected; never the
-    # name, which Claude in Chrome anonymizes to a position label that moves between connections.
-    "**Record its `deviceId`** in `## Operator Runtime` as `Agent's Chrome deviceId:`. Never a name:",
-    "labels browsers by position (\"Browser 1\",",
-    "connect **only** the agent profile",
-    "Reinstalling the extension or signing it out gives the profile a new",
+    "Drive that browser with **`playwright-cli`** (`@playwright/cli`),",
+    "**The browser is never a blocker: the agent runs it whole.**",
+    "`npm install -g @playwright/cli@0.1.25`",
+    "`playwright-cli install-browser chrome-for-testing`",
+    "`playwright-cli kill-all`",
+    "`playwright-cli state-save <file>`",
+    "Only what the agent cannot have stops a run: a credential, a sign-in, a paid account.",
+    "**How to call it.** Call it plainly",
+    "send a password's `fill` output to `/dev/null`",
     # v37: what the doctrine rejects is the pre-written suite, not the library --
     # what differs is who picks the next action.
     "in place of a pre-written assertion suite",
     "**Why the executor drives, and not a pre-written suite.**",
     "deciding every check in advance",
-    # v37 / P-zqhy: whose browser an agent may drive -- the dedicated profile, selected
-    # before any other browser tool, with its own third halt, and the one clause
-    # generalizing the principle to the fallback browser.
-    "**Whose browser — the agent's profile, selected first, on every run.**",
-    "So **before any other browser tool**:",
-    "find the entry whose `deviceId` equals the recorded `Agent's Chrome deviceId:`. Never match on `name`",
-    "`select_browser` with that `deviceId`",
-    "Never pick a browser by guess, never act before selecting.",
-    "the recorded `deviceId` **is** the operator's answer, given ahead of time in the manifest",
-    "No Chrome tools in the session, no recorded `deviceId`, or no connected browser with that `deviceId` returns **`needs_operator`**",
-    "its `deviceId` re-recorded after an extension reinstall or sign-out",
-    "Never fall back to a label, never borrow another connected browser, and never create a profile on the operator's behalf.",
-    "That is a **third** halt condition and it is not the runtime one",
-    "A manifest that still names an older instrument counts as unfilled here",
-    "**The fallback — chosen by the manifest, never by the agent mid-run; the doctrine's demands bind, the instrument does not.**",
-    "**Chrome missing from a session whose manifest names it is the halt above, never a silent fallback**",
-    "never a profile signed into the operator's accounts, whichever browser it is",
-    "**Claude in Chrome** is the instrument, on the agent's own profile selected first",
+    "**`playwright-cli`** is the instrument, the agent's own",
     # v44 (P23): two pins whose contract text left for this skill -- the reading order (P36.S6:
     # board titles numbered 01..N as a set) and the instrument/runtime axis.
     "the numbers form `01..N` as a set",
@@ -818,17 +795,11 @@ for required in ("**An explain phase merges back by itself, with no stop.**", "*
 # workflow commands a review slice must never run.
 review = (root / "payload/claude/skills/review-phase/SKILL.md").read_text()
 for required in ("## Gate stages", "`walkthrough`", "`## Operator Runtime`", "`## Regression Checklist`",
-                 # v36: the review opens the product with the prescribed instrument.
-                 "**Drive it with Claude in Chrome**", "the doctrine's demands bind, the instrument does not",
-                 "with the same instrument as stage 2",
-                 # v37: against no pre-written suite. P-zqhy: the agent's own Chrome profile,
-                 # selected first, the third halt, and the manifest's fallback, by reference.
-                 "its `mcp__claude-in-chrome__*` tools", "in place of a pre-written assertion suite",
-                 "**before any other browser tool**, `list_connected_browsers`, then `select_browser`",
-                 "on the entry whose `deviceId` is `## Operator Runtime`'s `Agent's Chrome deviceId:` (never a `name`",
-                 "no recorded id, or no match means `needs_operator` (the third halt), never borrowing the operator's browser",
-                 "The fallback is the manifest's choice, never yours mid-run",
-                 "Setup, the halt and the fallback in full: `design-cowork`'s `reference/build.md`.",
+                 # v36: the review opens the product with the prescribed instrument (lighter-rules:
+                 # playwright-cli, against no pre-written suite, its procedure by reference).
+                 "**Drive it with `playwright-cli`**", "with the same instrument as stage 2",
+                 "in place of a pre-written assertion suite",
+                 "The procedure in full: `design-cowork`'s `reference/build.md`.",
                  # v41: the review reviews the boundary of the phase, never the whole system --
                  # phase-scope is its input, and stage 4 re-runs the checklist inside it.
                  "## The boundary", "phase-scope <P>",
@@ -863,16 +834,11 @@ assert len(never) == 1 and "`accept-gate`" in never[0] and "`defer-job`" in neve
 # and the cumulative smoke list's line shape reach every fresh install.
 ops = (root / "installer/payloads/doc_bodies/operations.md").read_text()
 assert "## Operator Runtime" in ops and "UNFILLED" in ops
-# v36: one seed field records what THIS machine has. P-zqhy: Claude in Chrome is its
-# default (blank means it), and the fallback is a named real browser on a throwaway profile.
-assert "- Browser instrument for the agent: <Claude in Chrome (the default; blank means it)" in ops
-assert "the other real browser the agent drives on a throwaway profile" in ops
-# P-zqhy.F1: the second field records the agent profile's deviceId -- the key slice-executor's
-# select-first rule matches -- never its name, an anonymized position label.
-assert "- Agent's Chrome deviceId: <the `deviceId` that `list_connected_browsers` prints for the dedicated agent profile" in ops
-assert "while it is the only browser connected; never its `name`" in ops
-assert "re-record after an extension reinstall or sign-out" in ops
-assert "signed into none of the operator's accounts" in ops
+# v36: one seed field records the agent's instrument (lighter-rules: playwright-cli), and a
+# saved sign-in the agent state-loads; the Chrome deviceId field is retired.
+assert "- Browser instrument for the agent: playwright-cli (`@playwright/cli`" in ops
+assert "- Saved sign-in: <path of a `playwright-cli state-save` file the operator makes once" in ops
+assert "deviceId" not in ops and "Claude in Chrome" not in ops
 for gone in ("Aside", "aside repl", "aside mcp", "aside account"):
     assert gone not in ops, gone
 qa = (root / "installer/payloads/doc_bodies/qa.md").read_text()
@@ -936,28 +902,15 @@ for tier in ("slice-executor",):
         assert required in body, (tier, required)
     assert "`depends_on` is advisory" not in body, (tier, "advisory depends_on")
     # v36: a named real-browser instrument in the implementation bullet, the mockup span and the
-    # review's gate stage 2. P-zqhy: Claude in Chrome replaces Aside -- the executor holds its tools,
-    # selects the agent's dedicated browser before any other browser tool, halts a third way when it
-    # cannot, and takes a fallback only when the manifest names one.
+    # review's gate stage 2. lighter-rules: playwright-cli, the agent's own browser, never a blocker.
     for required in (
-        "Drive that browser with **Claude in Chrome**",
-        "its `mcp__claude-in-chrome__*` tools in your tool list",
-        "the doctrine's demands bind, the instrument does not",
-        "Name in `result.md` which instrument you used",
+        "Drive that browser with **`playwright-cli`** from Bash",
         "in place of a pre-written assertion suite",
-        "never the operator's signed-in one",
-        "**Before any other browser tool**, call `list_connected_browsers`",
-        "find the entry whose `deviceId` equals the `Agent's Chrome deviceId:` recorded in `## Operator Runtime`, and `select_browser` with it",
-        "never match on `name` (a position label",
-        "and never act before selecting",
-        "The recorded id is the operator's answer, given ahead of time",
-        "If your session has no Chrome tools, the manifest records no `deviceId`, or no connected browser carries it",
-        "or its `deviceId` re-recorded after an extension reinstall or sign-out) rather than falling back to a label",
-        "return `needs_operator` (a third halt, distinct from the runtime one)",
-        "**The fallback is the manifest's choice, never yours mid-run:**",
-        "Chrome missing from your session is the halt above, never a silent fallback.",
-        "driven with the same instrument and the same select-first rule (Claude in Chrome, or the fallback the manifest names)",
-        "driving it with the same instrument and the same select-first rule (Claude in Chrome, or the fallback the manifest names)",
+        "The browser is never a blocker: install it yourself when it is missing (`npm install -g @playwright/cli@0.1.25`",
+        "Only what you cannot have (a credential, a sign-in, a paid account) is `needs_operator`.",
+        "Name in `result.md` which instrument you used",
+        "driven with the same instrument (`playwright-cli`)",
+        "driving it with the same instrument (`playwright-cli`)",
     ):
         assert required in body, (tier, required)
     for gone in ("MCP surface first", "scripted Playwright-style automation",
@@ -1002,9 +955,8 @@ for tier in ("slice-executor",):
     for gone in ("the light tier", "essentially all code writing", "- `tier`", "slice-executor-mid", "slice-executor-high",
                  "mid tier", "high tier", "top tier", "capability tiers"):
         assert gone not in body, (tier, gone)
-    # P-zqhy: the Chrome wildcard rides last on a non-empty list (a Chrome-off session launches it
-    # with the rest; an all-MCP list would be refused).
-    assert "tools: Read, Edit, Write, Glob, Grep, Bash, WebSearch, WebFetch, Agent, mcp__claude-in-chrome__*\n" in fm, tier
+    # lighter-rules: the browser is playwright-cli over Bash, so the executor carries no Chrome tools.
+    assert "tools: Read, Edit, Write, Glob, Grep, Bash, WebSearch, WebFetch, Agent\n" in fm, tier
     # v53 (P32.S3): the Agent tool is for read-only Explore lookups only; the verdict block
     # records model and effort beside tier.
     for required in ("## Delegate reads, never writes", "subagent_type: Explore",
@@ -1013,11 +965,23 @@ for tier in ("slice-executor",):
         assert required in body, (tier, required)
     assert "never an executor tier" not in body, tier
 
-# P-zqhy: only slice-executor drives a real browser; the drafter, the critic and Explore render
-# headless or read, so none of them carries the Claude in Chrome tools.
-for _agent in ("design-drafter", "design-critic", "pr-reader", "code-reader", "Explore"):
-    _fm = (root / f"payload/claude/agents/{_agent}.md").read_text().split("---\n", 2)[1]
-    assert "mcp__claude-in-chrome" not in _fm, _agent
+# lighter-rules: no shipped agent carries the Claude in Chrome tools (the browser is playwright-cli
+# over Bash), and the shipped sources name Claude in Chrome exactly once: the line saying it is used
+# only when the operator asks an agent to use their own browser. Its retired machinery is gone.
+for _f in sorted((root / "payload/claude/agents").glob("*.md")):
+    _fm = _f.read_text().split("---\n", 2)[1]
+    assert "mcp__claude-in-chrome" not in _fm, _f.name
+_cic = []
+for _base in ("payload", "installer/payloads", "docs", "README.md", "README.en.md"):
+    _b = root / _base
+    for _f in ([_b] if _b.is_file() else sorted(_b.rglob("*"))):
+        if _f.is_file():
+            _t = _f.read_text(encoding="utf-8", errors="replace")
+            _cic += [(str(_f.relative_to(root)), ln) for ln in _t.splitlines() if re.search(r"claude.in.chrome", ln, re.I)]
+            for _gone in ("deviceId", "select_browser", "list_connected_browsers", "**third** halt", "third halt"):
+                assert _gone not in _t, (str(_f.relative_to(root)), _gone)
+assert len(_cic) == 1 and _cic[0][0] == "payload/contract.md" \
+    and "Claude in Chrome is used only when the operator asks an agent to use their own browser" in _cic[0][1], _cic
 assert "Aside" not in (root / "payload/claude/agents/design-drafter.md").read_text(), "design-drafter still names Aside"
 # P-zqhy: Aside is retired whole -- no shipped body (payload or seed doc) names it or its
 # CLI; the English word "aside" stays, CHANGELOG.md and tests/fixtures/ keep frozen history.
@@ -1031,10 +995,10 @@ for _base in ("payload", "installer/payloads"):
             # name-keyed field or a rule matching the anonymized `name` label.
             for _gone in ("Agent's Chrome browser name", "whose `name` is", "connected under that name"):
                 assert _gone not in _t, (str(_f.relative_to(root)), _gone)
-# P-zqhy.F1: the explain review's reader check selects by the same key.
+# lighter-rules: the explain review reads the book in playwright-cli, signed in from a saved state file.
 _er = (root / "payload/claude/skills/do-whole-phase/reference/explain-review.md").read_text(encoding="utf-8")
-assert "`select_browser` on the recorded `Agent's Chrome deviceId:`, never a `name` label" in _er
-assert "no recorded id or no browser with it, return `needs_operator`" in _er
+assert "**The instrument** is `playwright-cli`, the agent's own browser" in _er
+assert "`state-load`s the manifest's saved sign-in file" in _er
 
 # v53 (P32.S3): the Explore agent's final body, and no Agent tool on it (it never nests).
 explore = (root / "payload/claude/agents/Explore.md").read_text()
@@ -1058,7 +1022,7 @@ for required in ("not read / possibly stale", "Never recommend, judge, decide, e
 # executor lists). The instrument, worktree and design stubs' procedure pins are on the
 # design-cowork list (the three styles, `## Design Style`, `Mockup: requested`, the
 # numbered cards, the return that closes the round, PENDING #2, the two surfaces, the
-# Claude in Chrome setup, list -> select, the third halt, the manifest's fallback, the instrument/runtime axis),
+# playwright-cli instrument and its self-install, the instrument/runtime axis),
 # the do-* and create-phase lists, and the parallel-phase list (the worktree rules).
 claude = (root / "payload/contract.md").read_text()
 for required in (
@@ -1100,19 +1064,13 @@ for required in (
     "the **kind wins** a disagreement",
     "**`DECOMP2` has two origins**", "`P<N>.DECOMP3`",
     "`research`, `fix`, `docs`, `qa`, `co-work`",
-    # v36: a named instrument, with a binding fallback. v37: it rejects the pre-written suite, not
-    # Playwright. P-zqhy: the instrument is Claude in Chrome (its setup lives in design-cowork).
-    "**Real-browser verification runs through Claude in Chrome, not a pre-written assertion suite.**",
-    "**the doctrine's demands bind, the instrument does not.**",
-    # v37: whose browser -- a dedicated profile, and the personal-profile case as a third halt.
-    # P-zqhy: every run lists the connected browsers, then selects the manifest's, before any other
-    # browser tool, by the deviceId it records (P-zqhy.F1: never a label); no tools, no id or no
-    # match halts; the manifest picks a fallback.
-    "**Whose browser: a dedicated profile.**",
-    "An agent never drives a profile signed into the operator's accounts",
-    "each run calls `list_connected_browsers`, then `select_browser` on the `deviceId` `## Operator Runtime` records (never a label), before any other browser tool",
-    "No Chrome tools, no id, or no match is a **third** halt: `needs_operator` → `pending`, never borrowing another browser",
-    "The manifest picks any fallback, never the agent mid-run",
+    # v36: a named instrument. v37: it rejects the pre-written suite. lighter-rules: the instrument
+    # is playwright-cli, the agent's own browser, never a blocker; Claude in Chrome only on request.
+    "**Real-browser checks run on `playwright-cli`, driven from the shell, not a pre-written assertion suite**",
+    "the agent's own headless browser on a throwaway profile, never the operator's",
+    "The agent installs, starts, restarts and closes it itself, with no prompt and no operator step",
+    "only what it cannot have (a credential, a sign-in, a paid account) stops a run",
+    "Claude in Chrome is used only when the operator asks an agent to use their own browser.",
     "Name the instrument in `result.md`; never claim a run you did not make",
     # v41: the review reviews the boundary of the phase (phase-scope's synopsis left
     # with Workflow Commands in v44).
@@ -1208,7 +1166,7 @@ compact = claude.split("## Compact Instructions", 1)[1]
 assert "resume card" in compact and "never re-dispatch a running executor" in compact
 assert "re-read" not in compact, "Compact Instructions carry a re-read instruction"
 PY
-then ok "21 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with one connected canvas per round and opt-in critique, mockups on request, the Claude in Chrome instrument), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v71 wave protocol (do-whole-phase's reference/wave.md, DECOMP's disjoint-sets rule, the executor's wave section, the contract's reversal of "never fan out slices"); the v44 contract's never-stubs (acceptance gate, runtime, Claude in Chrome dedicated profile, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
+then ok "21 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with one connected canvas per round and opt-in critique, mockups on request, the playwright-cli instrument), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v71 wave protocol (do-whole-phase's reference/wave.md, DECOMP's disjoint-sets rule, the executor's wave section, the contract's reversal of "never fan out slices"); the v44 contract's never-stubs (acceptance gate, runtime, the playwright-cli instrument and Claude in Chrome named once, design, worktree, review boundary); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a contract never-stub, a seed-doc invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
@@ -1261,9 +1219,12 @@ d = json.load(open(sys.argv[1]))
 allow = d.get("permissions", {}).get("allow", [])
 assert "Bash(make:*)" in allow, "custom permission lost"
 assert "Bash(python3 scripts/workflow.py:*)" in allow, "workspace permission not added"
+for rule in ("Bash(playwright-cli:*)", "Bash(npm install -g @playwright/cli:*)", "Bash(npm i -g @playwright/cli:*)"):
+    assert rule in allow, rule
+assert allow[0] == "Bash(make:*)", allow
 assert d.get("env", {}).get("FOO") == "bar", "unrelated key lost"
 PY
-then ok "settings.json additively merged (custom perm + env survive)"; else bad "settings.json merge incorrect"; fi
+then ok "settings.json additively merged (custom perm + env survive; the playwright-cli and its npm install rules added)"; else bad "settings.json merge incorrect"; fi
 if python3 - "$R/.claude/settings.json" <<'PY'
 import json, sys
 h = json.load(open(sys.argv[1]))["hooks"]
@@ -1356,6 +1317,9 @@ PY
 then ok "a fresh at-root install ships only the resume hook (SessionStart compact -> compact-resume, timeout 15) and no PreCompact (v61: compaction is Claude Code's own)"; else bad "fresh install settings.json hooks wrong"; fi
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 500000' "$F/.claude/settings.json" \
   && ok "a fresh at-root install ships autoCompactWindow=500000 in project settings" || bad "fresh install settings.json lacks autoCompactWindow=500000"
+# lighter-rules: the agent's browser runs with no prompt -- the CLI and its self-install are allowed.
+python3 -c 'import json,sys; a=json.load(open(sys.argv[1]))["permissions"]["allow"]; assert all(r in a for r in ("Bash(playwright-cli:*)","Bash(npm install -g @playwright/cli:*)","Bash(npm i -g @playwright/cli:*)")), a' "$F/.claude/settings.json" \
+  && ok "a fresh at-root install allows Bash(playwright-cli:*) and both npm install rules" || bad "fresh install settings.json lacks the playwright-cli allow rules"
 nphf=$(find "$F/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
 [ "$nphf" = "0" ] && ok "fresh install seeds no phases (empty start)" || bad "fresh install seeded $nphf phase(s)"
 if python3 - "$REPO_ROOT" "$F/works/.workspace-version.json" <<'PY'
@@ -2344,6 +2308,12 @@ upd_out=$(sh "$BOOT" "$F" --update 2>&1)
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 500000' "$F/.claude/settings.json" \
   && printf '%s\n' "$upd_out" | grep -q '^  changed: .claude/settings.json autoCompactWindow 300000 -> 500000 (today.s default; set it back if you chose 300000)$' \
   && ok "--update moves a v65-shaped 300000 window to 500000 and lists it" || bad "--update did not move the 300000 window -- $upd_out"
+# lighter-rules: an --update of an adopter whose allow list predates the browser rules (its own entry
+# first) adds the three playwright-cli rules and keeps the adopter's entry.
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["permissions"]["allow"]=["Bash(make:*)"]+[x for x in d["permissions"]["allow"] if "playwright" not in x]; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$F/.claude/settings.json"
+sh "$BOOT" "$F" --update >/dev/null 2>&1
+python3 -c 'import json,sys; a=json.load(open(sys.argv[1]))["permissions"]["allow"]; assert a[0]=="Bash(make:*)" and all(r in a for r in ("Bash(playwright-cli:*)","Bash(npm install -g @playwright/cli:*)","Bash(npm i -g @playwright/cli:*)")), a' "$F/.claude/settings.json" \
+  && ok "--update adds the playwright-cli allow rules to an adopter's settings.json and keeps its own entry" || bad "--update did not carry the playwright-cli allow rules"
 cp "$SRC/claude/settings.json" "$F/.claude/settings.json"   # drop the probe's foreign handler before the Test 6 diff
 rm -f "$F/.github/workflows/workspace-ci.yml" "$F/.gitattributes"
 sh "$BOOT" "$F" --update >/dev/null 2>&1   # restore both verbatim for the Test 6 diff
@@ -4209,8 +4179,10 @@ d = json.load(open(sys.argv[1]))
 resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 workflow/scripts/workflow.py compact-resume || true'
 assert d["hooks"] == {"SessionStart": [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}]}, d["hooks"]
 assert d["autoCompactWindow"] == 500000, d
+a = d["permissions"]["allow"]
+assert all(r in a for r in ("Bash(playwright-cli:*)", "Bash(npm install -g @playwright/cli:*)", "Bash(npm i -g @playwright/cli:*)")), a
 PY
-then ok "nested: settings.local.json carries only the resume hook with the workflow/scripts/workflow.py command path and window 500000, and --update --nested kept exactly one"; else bad "nested settings.local.json hooks wrong"; fi
+then ok "nested: settings.local.json carries only the resume hook with the workflow/scripts/workflow.py command path and window 500000, allows playwright-cli and its npm install, and --update --nested kept exactly one"; else bad "nested settings.local.json hooks wrong"; fi
 # v61 (P37.S1): --update --nested on a v60-shaped host (no reference/ files) adds them in the renamed dir, host clean.
 rm -rf "$IH/.claude/skills/wf-design-cowork/reference" "$IH/.claude/skills/do-whole-phase/reference"
 out=$(sh "$BOOT" "$IH" --update --nested 2>&1); rc=$?

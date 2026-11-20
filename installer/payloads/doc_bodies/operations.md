@@ -25,8 +25,8 @@ the production build when the two differ.
 - Mode: <dev or production build; say where they differ — dev may enable StrictMode / Fast Refresh, production does not>
 - Origin / host the operator browses: <localhost, LAN IP, Tailscale host, deployed URL>
 - Devices / viewports / browsers: <e.g. desktop 1440px Chrome, phone 390px Safari>
-- Browser instrument for the agent: <Claude in Chrome (the default; blank means it), or, where it cannot run here (WSL, CI, an API-key or Bedrock/Vertex/Foundry session), the other real browser the agent drives on a throwaway profile, e.g. the project's Playwright>
-- Agent's Chrome deviceId: <the `deviceId` that `list_connected_browsers` prints for the dedicated agent profile (a separate Chrome profile with the Claude in Chrome extension, signed into none of the operator's accounts) while it is the only browser connected; never its `name`, a position label ("Browser 1") that moves between connections; re-record after an extension reinstall or sign-out; not needed when the instrument above is another browser>
+- Browser instrument for the agent: playwright-cli (`@playwright/cli`, driven from the shell; the agent installs, starts and closes it itself, headless on a throwaway profile, never the operator's)
+- Saved sign-in: <path of a `playwright-cli state-save` file the operator makes once (signed into a test account, never their own), which the agent `state-load`s; or none>
 - Production build command + origin (when different):
 - Also needed to see what the operator sees: <auth/test account, seeded data, feature flags>
 - Status: UNFILLED — fill before any slice claims real-browser verification

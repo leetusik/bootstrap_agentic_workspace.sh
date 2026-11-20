@@ -444,7 +444,7 @@ approval — including comments you send to Claude and edits you make in the can
 word — becomes the next round of that job, a new version of the same canvas. If you want to see it running inside your product first, ask
 for a mockup: the agent builds a throwaway, stubbed route in the project's own frontend and stops
 again. Implementation is always a separate slice that follows the signed design faithfully and checks
-the running result in a real browser; built canvases are offered for deletion at the phase review.
+the running result in a real browser (the agent's own `playwright-cli`); built canvases are offered for deletion at the phase review.
 The `drafter` is the only design tool; the earlier `claude-design` tool and its viewer are retired.
 Older records stay readable as history: a v47 card record moves under `schema1/` with
 `python3 scripts/workflow.py design-migrate --to 2`, and a pre-v47 Claude Design layout under

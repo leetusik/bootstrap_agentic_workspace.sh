@@ -84,7 +84,7 @@ the same job re-drafts it. **PENDING #2 exists only when a mockup was requested.
 - `reference/operator.md`: the operator's return (edits, comments, feedback, sign-off).
 - `reference/system.md`: syncing the Design System Artifact.
 - `reference/mockup.md`: a mockup the operator asked for.
-- `reference/build.md`: an implement or fidelity slice (RESPECT THE DESIGN, the sweep, Claude in Chrome).
+- `reference/build.md`: an implement or fidelity slice (RESPECT THE DESIGN, the sweep, `playwright-cli`).
 - `reference/legacy.md`: the legacy tool, a legacy record or multi-job slice, cleanup.
 
 ## Never

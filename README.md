@@ -329,7 +329,7 @@ checkout에서 한꺼번에 실행합니다. 선언이 없는 phase는 지금처
 적어 — 그 job의 다음 라운드가 되고, 같은 캔버스의 새 버전으로 올라옵니다. **목업은 요청할 때만 만듭니다** — `Mockup: requested`로 정하거나
 말로 요청하면, 캔버스에 더해 프로젝트의 프런트엔드로 만든 임시 목업을 띄우고 한 번 더 멈춥니다.
 (디자인 방식은 `build-after` / `design-only` / `paired` 중에서 여러분이 고릅니다.)
-구현은 언제나 별도 slice에서 승인된 디자인을 그대로 따라 진행하고 실제 브라우저로 결과를 확인하며,
+구현은 언제나 별도 slice에서 승인된 디자인을 그대로 따라 진행하고 실제 브라우저(에이전트 자신의 `playwright-cli`)로 결과를 확인하며,
 구현이 끝난 캔버스는 phase 리뷰 때 삭제할지 여쭙니다. 디자인 도구는 `drafter` 하나뿐이며, 예전의
 `claude-design` 도구와 그 뷰어는 없어졌습니다. 예전 기록은 이력으로 남습니다: v47 카드 기록은
 `python3 scripts/workflow.py design-migrate --to 2`로 `schema1/` 아래로, v47 이전 Claude Design 구조는
