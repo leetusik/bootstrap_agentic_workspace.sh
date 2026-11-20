@@ -172,7 +172,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--note", default=None, help="mandatory with waive (why); optional with clear (what the operator reported)")
     p.set_defaults(func=cmd_gate)
 
-    p = sub.add_parser("close", help="Walk an accepted phase's close in its fixed order -- gate, reread, pass, ready, ci, land, sync, merge, teardown, check, commit: one step=<name> state=done|due|skipped|stop line each, then stop=<name> do=<what> or close=done. Reads its PRs read-only (gh pr view, gh pr checks) and records what it read; runs the engine's own steps (the pass, merge-finish, teardown, check); never pushes, merges, flips a PR Ready or writes to GitHub. Re-run it after each stop. Refused, nothing written: a required gate not cleared with the operator's words, or a waived or legacy gate's phase with no pass")
+    p = sub.add_parser("close", help="Walk an accepted phase's close in its fixed order -- gate, reread, pass, ready, ci, land, sync, merge, teardown, check, commit (a worktree phase: commit-pass before merge, committing the pass on its branch): one step=<name> state=done|due|skipped|stop line each, then stop=<name> do=<what> or close=done. Reads its PRs read-only (gh pr view, gh pr checks) and records what it read; runs the engine's own steps (the pass, merge-finish, teardown, check); never pushes, merges, flips a PR Ready or writes to GitHub. Re-run it after each stop. Refused, nothing written: a required gate not cleared with the operator's words, or a waived or legacy gate's phase with no pass")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--dry-run", action="store_true", dest="dry_run", help="read and print the steps; write nothing and run no engine step")
     p.set_defaults(func=cmd_close)

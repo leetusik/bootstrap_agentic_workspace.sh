@@ -40,7 +40,8 @@ def _phase_branch(phase_id: str, name: str, slug_override=None) -> str:
 def parallel_start(args: argparse.Namespace) -> None:
     """Move a planned phase into its own worktree: stamp it, commit the stamp, cut branch + worktree.
 
-    This is the single place the engine makes a git commit, and it is deliberate. The stamp must
+    One of the engine's few git commits (the stamps here, in `phase reopen` and `worktree add-repo`, and `close`'s
+    commit-pass), each deliberate and each `--only` its own paths. The stamp must
     exist on BOTH the default branch (so this stream's pointer skips the phase) and the phase
     branch (so the worktree session claims the stream), and the branch has to be cut from a commit
     that already contains it. Since v43 running here is the default and this command is the
@@ -3587,10 +3588,38 @@ def pr_open_lines(index: dict) -> list:
 # first step that needs the agent or the operator. It never pushes, merges, flips a PR Ready or writes to GitHub.
 
 CLOSE_STEPS = ("gate", "reread", "pass", "ready", "ci", "land", "sync", "merge", "teardown", "check", "commit")
+# A worktree phase's close adds `commit-pass` before `merge`: `worktree gate` reads the branch's committed record, so the
+# pass (and what the close recorded with it) must be on the branch before the gate is asked.
+CLOSE_STEPS_WORKTREE = (*CLOSE_STEPS[:CLOSE_STEPS.index("merge")], "commit-pass", *CLOSE_STEPS[CLOSE_STEPS.index("merge"):])
 
 
 class _CloseStop(Exception):
     pass
+
+
+def _close_commit_pass(P: str, pdir: Path, branch: str, dry: bool) -> tuple:
+    """`(state, note)` for a worktree phase's `commit-pass`, run in its worktree on `branch`: one commit, like the stamp's,
+    `git add` then `git commit --only -- <the phase folder> <the generated works/ files>`, so nothing else dirty or staged
+    (the operator's files, product files) goes in or leaves the index. Nothing changed there: no commit. A git refusal
+    is `("stop", why)`."""
+    paths = [p for p in (str(pdir.relative_to(ROOT)), *STAMP_WORKS_FILES) if (ROOT / p).exists()]
+    status = _git(["status", "--porcelain", "--untracked-files=all", "--", *paths], check=False)
+    if status.returncode != 0:
+        return "stop", f"git status failed: {(status.stderr or status.stdout).strip()}"
+    if not status.stdout.strip():
+        return "done", f"nothing to commit: {branch} already holds the phase's record"
+    if dry:
+        return "due", f"would commit {shown(pdir)}/ plus the generated works/ files on {branch}"
+    subject = f"chore(works): record {P}'s pass on its branch"
+    for cmd in (["add", "--", *paths], ["commit", "--only", "-m", subject, "--", *paths]):
+        proc = _git(cmd, check=False)
+        if proc.returncode != 0:
+            q = shlex.quote
+            return "stop", (f"git {cmd[0]} failed: {(proc.stderr or proc.stdout).strip() or proc.returncode}; fix it, then commit by hand: "
+                            f"git -C {q(str(ROOT))} add -- {' '.join(map(q, paths))} && git -C {q(str(ROOT))} commit --only -m {q(subject)} -- "
+                            f"{' '.join(map(q, paths))}")
+    return "done", (f"committed {(_rev_parse('HEAD') or 'HEAD')[:7]} {subject} -- only {shown(pdir)}/ plus the generated works/ files; "
+                    f"everything else dirty or staged stayed uncommitted")
 
 
 def _pr_ci(entry: dict, data: dict) -> tuple:
@@ -3626,14 +3655,15 @@ def _captured(fn, *args) -> tuple:
 
 
 def cmd_close(args: argparse.Namespace) -> int:
-    """`close <P> [--dry-run]`: walk CLOSE_STEPS for an accepted phase; one `step=<name> state=done|due|skipped|stop`
-    line each, then `stop=<name> do=<what>` or `close=done`. Refused (exit 1, nothing written): a required gate not
-    cleared with the operator's words, or a waived or legacy gate's phase whose review has not passed. --dry-run
-    reads and prints, and writes nothing (the engine's own steps print due)."""
+    """`close <P> [--dry-run]`: walk CLOSE_STEPS (a worktree phase: CLOSE_STEPS_WORKTREE) for an accepted phase; one
+    `step=<name> state=done|due|skipped|stop` line each, then `stop=<name> do=<what>` or `close=done`. Refused (exit 1,
+    nothing written): a required gate not cleared with the operator's words, or a waived or legacy gate's phase whose
+    review has not passed. --dry-run reads and prints, and writes nothing (the engine's own steps print due)."""
     P, dry = args.phase, args.dry_run
     pdir = require_phase(P)
     path = pdir / "phase.json"
     data = read_json(path)
+    steps = CLOSE_STEPS_WORKTREE if phase_execution(data) else CLOSE_STEPS
     acceptance = phase_acceptance(data)
     passed = (data.get("review") or {}).get("status") == "pass" and data.get("status") == "done"
     words = ((acceptance or {}).get("words") or "").strip()
@@ -3744,9 +3774,21 @@ def cmd_close(args: argparse.Namespace) -> int:
             done("teardown", "skipped")
         else:
             branch = execution.get("branch")
-            if git_current_branch() == branch or not _parallel_branch_merged(execution):
-                stop("merge", f"from this phase's worktree: {WORKFLOW_CMD} worktree gate {P} (GATE CLOSED: stop, never merge past it); ExitWorktree (keep); in the main checkout "
-                              f"(nested: git -C workflow) git merge --no-ff {branch} -m \"merge({P}): {data.get('name')}\"; {rerun} there")
+            on_branch = git_current_branch() == branch
+            if on_branch:
+                state, note = _close_commit_pass(P, pdir, branch, dry)
+                if state == "stop":
+                    stop("commit-pass", f"{note}; {rerun}")
+                done("commit-pass", state, note)
+            else:
+                done("commit-pass", "skipped", "the main checkout: the close in the phase's worktree commits it")
+            merge_it = (f"worktree gate {P} (GATE CLOSED: stop, never merge past it); ExitWorktree (keep); in the main checkout "
+                        f"(nested: git -C workflow) git merge --no-ff {branch} -m \"merge({P}): {data.get('name')}\"; {rerun} there")
+            if on_branch:
+                stop("merge", f"the pass is committed on {branch}; from this worktree: {WORKFLOW_CMD} {merge_it}")
+            if not _parallel_branch_merged(execution):
+                stop("merge", f"in this phase's worktree: {rerun} there (it commits the pass on {branch}); then from the worktree: "
+                              f"{WORKFLOW_CMD} {merge_it}")
             if dry:
                 done("merge", "due")
             else:
@@ -3782,7 +3824,7 @@ def cmd_close(args: argparse.Namespace) -> int:
         last = "close=done"
     except _CloseStop as exc:
         last = str(exc)
-    for name in CLOSE_STEPS[len(states):]:
+    for name in steps[len(states):]:
         states.append((name, "due", ""))
     for name, state, note in states:
         print(f"step={name} state={state}" + (f" -- {note}" if note else ""))

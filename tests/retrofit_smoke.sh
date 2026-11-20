@@ -6825,6 +6825,61 @@ else bad "close: the merged walk wrong -- $c_mg / $c_dn"; fi
 c_w=$(grep -cvE '^(pr view https://github\.com/[^ ]+ --json [a-zA-Z,]+|pr checks https://github\.com/[^ ]+ --json name,bucket)$' "$CLG/gh.log")
 [ "$c_w" = 0 ] && [ "$(grep -c '' "$CLG/gh.log")" -ge 5 ] && ok "close: zero GitHub writes -- every one of the $(grep -c '' "$CLG/gh.log") calls the stub gh saw is a read (pr view --json, pr checks --json)" \
   || bad "close: the stub gh saw a call that is not a read -- $(grep -vE '^pr (view|checks) ' "$CLG/gh.log" | head -3)"
+# (8) a worktree phase: close in the worktree commits the pass on the branch itself (commit-pass: `--only` the phase folder
+# and the generated works/ files; the operator's tracked edit, staged file and untracked file stay as they were), so
+# worktree gate opens; merged in the main checkout, close walks merge and teardown to close=done. At root (gate required,
+# and waived with the pass recorded earlier), nested and on a multi-repo host. A phase with no worktree prints no commit-pass.
+cwt() {  # <root|nested|multi> <required|waived> <dir>: prints one line, "ok" or what went wrong
+  ( export GIT_AUTHOR_NAME=smoke GIT_AUTHOR_EMAIL=smoke@example.invalid GIT_COMMITTER_NAME=smoke GIT_COMMITTER_EMAIL=smoke@example.invalid
+    H="$3/host"; L="$3/log.txt"; E=workflow/scripts/workflow.py; WF=workflow; mkdir -p "$3"
+    g0() { mkdir -p "$1" && git -C "$1" init -q && git -C "$1" symbolic-ref HEAD refs/heads/main && echo a > "$1/a.txt" && git -C "$1" add -A && git -C "$1" commit -qm base; }
+    case $1 in
+      root) E=scripts/workflow.py; WF=.; sh "$BOOT" "$H" --at-root --name Wt --summary wt > "$L" 2>&1 && g0 "$H" ;;
+      nested) g0 "$H" && sh "$BOOT" "$H" > "$L" 2>&1 ;;
+      multi) g0 "$H/alpha" && sh "$BOOT" "$H" > "$L" 2>&1 ;;
+    esac || { echo "install failed: $(tail -2 "$L")"; exit; }
+    m() { ( cd "$H" && python3 $E "$@" 2>&1 ); }
+    m phase new --phase P1 --name Wt --objective x >> "$L" && if [ "$2" = waived ]; then m gate P1 waive --note "no gate"; else m gate P1 require; fi >> "$L" \
+      && git -C "$H/$WF" add -A && git -C "$H/$WF" commit -qm p1 || { echo "setup failed"; exit; }
+    case $1 in root) m worktree start P1 ;; nested) m worktree start P1 --host-branch feat/wt ;;
+      multi) m worktree start P1 --host-branch hb --repo alpha=feat/a --repo-base alpha=main ;; esac >> "$L" || { echo "worktree start failed"; exit; }
+    WT=$(ls -d "$H"/.claude/worktrees/P1-*); BR=$(git -C "$WT/$WF" branch --show-current); w() { ( cd "$WT" && python3 $E "$@" 2>&1 ); }
+    { w slice finish P1.DECOMP --outcome cut && w slice start P1.REVIEW && : > "$WT/$WF/works/phases/active/P1/slices/P1.REVIEW/result.md" \
+      && w pr record P1 --waive --note "no product" && echo v1 > "$WT/$WF/op.md" && git -C "$WT/$WF" add -A && git -C "$WT/$WF" commit -qm "branch work" \
+      && if [ "$2" = waived ]; then w slice finish P1.REVIEW --outcome done && w review P1 --verdict pass --reviewer smoke; \
+         else w gate P1 open --walkthrough walk && w gate P1 clear --words accept; fi; } >> "$L" || { echo "branch work failed"; exit; }
+    echo v2 > "$WT/$WF/op.md"; echo s > "$WT/$WF/op-staged.md"; git -C "$WT/$WF" add op-staged.md; echo u > "$WT/$WF/op-new.md"
+    h0=$(git -C "$WT/$WF" rev-parse HEAD); dry=$(w close P1 --dry-run)
+    [ "$(git -C "$WT/$WF" rev-parse HEAD)" = "$h0" ] && printf '%s\n' "$dry" | grep -q '^step=commit-pass state=due -- would commit ' || { echo "dry run: $dry"; exit; }
+    c1=$(w close P1); files=$(git -C "$WT/$WF" show --name-only --format= HEAD | LC_ALL=C sort | tr '\n' ' ')
+    want="works/backlog.md works/events.jsonl works/index.json works/phases/active/P1/phase.json works/phases/active/P1/phase.md works/phases/active/P1/slices/P1.REVIEW/slice.json works/state.json "
+    printf '%s\n' "$c1" | grep -q "^step=commit-pass state=done -- committed [0-9a-f]\{7\} chore(works): record P1's pass on its branch" \
+      && printf '%s\n' "$c1" | grep -q "^stop=merge do=the pass is committed on $BR; from this worktree: python3 $E worktree gate P1 " \
+      && [ "$(git -C "$WT/$WF" rev-parse HEAD^)" = "$h0" ] && [ "$files" = "$want" ] \
+      && [ "$(git -C "$WT/$WF" status --porcelain | LC_ALL=C sort | tr '\n' '|')" = " M op.md|?? op-new.md|A  op-staged.md|" ] \
+      || { echo "close in the worktree: $c1 / files: $files / status: $(git -C "$WT/$WF" status --porcelain | tr '\n' '|')"; exit; }
+    w close P1 | grep -q "^step=commit-pass state=done -- nothing to commit: $BR already holds" && [ "$(git -C "$WT/$WF" rev-parse HEAD^)" = "$h0" ] \
+      || { echo "a second close made another commit"; exit; }
+    w worktree gate P1 | grep -qx 'GATE OPEN' || { echo "gate: $(w worktree gate P1 | grep '^GATE')"; exit; }
+    git -C "$WT/$WF" add -A && git -C "$WT/$WF" commit -qm "operator: own files"   # the operator settles their own files
+    [ -z "$(git -C "$H/$WF" status --porcelain -- works)" ] || { git -C "$H/$WF" add works && git -C "$H/$WF" commit -qm "chore(works): refresh"; }
+    if ! git -C "$H/$WF" merge --no-ff -q "$BR" -m "merge(P1): Wt" >> "$L" 2>&1; then  # a generated file's conflict: take either side
+      for f in $(git -C "$H/$WF" diff --name-only --diff-filter=U); do case $f in works/backlog.md|works/index.json|works/state.json) git -C "$H/$WF" checkout --theirs -- "$f" && git -C "$H/$WF" add -- "$f" ;; *) echo "merge conflict in $f"; exit ;; esac; done
+      git -C "$H/$WF" commit -q --no-edit || { echo "merge commit failed"; exit; }
+    fi
+    c2=$(m close P1); git -C "$H/$WF" add works && git -C "$H/$WF" commit -qm "chore(works): close P1"; c3=$(m close P1)
+    printf '%s\n' "$c2" | grep -qx 'step=merge state=done' && printf '%s\n' "$c2" | grep -qx 'step=teardown state=done' && printf '%s\n' "$c2" | grep -q '^stop=commit do=' \
+      && [ "$(printf '%s\n' "$c3" | tail -1)" = close=done ] && [ ! -e "$WT" ] || { echo "main checkout: $c2 / $c3"; exit; }
+    echo ok )
+}
+newtmp CWT
+for c in "root required" "root waived" "nested required" "multi required"; do
+  set -- $c; r=$(cwt "$1" "$2" "$CWT/$1-$2")
+  [ "$r" = ok ] && ok "close, a worktree phase ($1, gate $2): the close in the worktree commits the pass on the branch (only the phase folder and the generated works/ files, the operator's edited, staged and untracked files left as they were; --dry-run commits nothing, a second close nothing more), worktree gate opens, and after the merge the main checkout's close walks merge and teardown to close=done" \
+    || bad "close, a worktree phase ($1, gate $2): $r"
+done
+! printf '%s\n' "$c_dn" | grep -q '^step=commit-pass' && [ "$(printf '%s\n' "$c_dn" | grep -c '^step=')" = 11 ] \
+  && ok "close: a phase with no worktree prints the 11 steps, no commit-pass" || bad "close: a phase with no worktree printed a commit-pass step -- $c_dn"
 
 # ---------------------------------------------------------------------------
 echo

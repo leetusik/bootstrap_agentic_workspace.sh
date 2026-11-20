@@ -23,7 +23,7 @@ The unit of worktree parallelism is the **phase**; slices inside it run one at a
 
 1. **When — only when asked**. `do-next-slice` / `do-whole-phase` run `worktree start <P>` when told to, never on their own initiative; `create-phase` never does (bar its explain route). A phase already stamped is entered without asking again.
 2. **Where.** `<repo>/.claude/worktrees/P<N>-<slug>` on branch `phase/P<N>-<slug>` (`--worktree`, `--slug` override); the engine puts `.claude/worktrees/` in `.git/info/exclude`, never `.gitignore`. **Nested:** a pair, the host worktree at that path on the operator-confirmed host branch (an explain: detached at the host base), with the nested worktree at its `workflow/` on `phase/P<N>-<slug>`.
-3. **The stamp commit.** The engine's one commit, `chore(works): opt <P> into parallel execution`, holds exactly the phase folder and the six generated `works/` files (`git commit --only -- <paths>`), stamping `execution: {mode: "parallel", branch, worktree}`; the branch is cut from it so both sides carry the stamp.
+3. **The stamp commit.** The engine's commit `chore(works): opt <P> into parallel execution`, holds exactly the phase folder and the six generated `works/` files (`git commit --only -- <paths>`), stamping `execution: {mode: "parallel", branch, worktree}`; the branch is cut from it so both sides carry the stamp.
 4. **A dirty tree does not block it.** Everything else stays uncommitted in the default checkout; the worktree starts from the stamp commit.
 5. **What refuses**, before any write: not `planned`; an `execution` block; no git; a parallel stream; a merge or rebase in progress; the branch or path taken. Nested, also: no `--host-branch` on a non-explain phase, the host branch checked out elsewhere, an unresolvable host base.
 6. **Enter.** `EnterWorktree` with the printed path (nested: the host worktree), re-run `next` (`stream=phase/…`), work there. Membership is the current branch against the stamped `execution.branch`. Skills, agents and settings read through from the main checkout (never create `<host-wt>/.claude/`), and Claude Code reads the main checkout's `.claude/settings.local.json` from a worktree session, so its allow rules apply there.
@@ -52,7 +52,7 @@ The review runs as `review-phase` says. A branch review edits no doc: the sectio
 
 ## 5. Integrate
 
-By the close alone: `close <P>`'s `merge` and `teardown` steps (`.claude/skills/pr/reference/close.md`). `worktree gate <P>` is advice that exits 0: `GATE OPEN`, or `GATE CLOSED reason=…` (the branch not `done` with a `pass`, or a busy default stream unless `exemption=phase-folder-only (<n> paths)`); a closed gate is never merged past.
+By the close alone: `close <P>`'s `merge` and `teardown` steps (`.claude/skills/pr/reference/close.md`). Run in the worktree, the close first commits the pass on the branch itself (`commit-pass`, `--only` the phase folder and the generated `works/` files), so the gate reads it. `worktree gate <P>` is advice that exits 0: `GATE OPEN`, or `GATE CLOSED reason=…` (the branch not `done` with a `pass`, or a busy default stream unless `exemption=phase-folder-only (<n> paths)`); a closed gate is never merged past.
 
 ### An explain phase merges back by itself
 
