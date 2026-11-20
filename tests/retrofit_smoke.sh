@@ -966,9 +966,20 @@ assert "on:\n  push:\n    branches: [main, master]\n  pull_request:\n" in _seed,
 import json as _json
 _allow = _json.loads((root / "payload/claude/settings.json").read_text(encoding="utf-8"))["permissions"]["allow"]
 for _r in ("Bash(docker rm -fv:*)", "Bash(docker volume rm:*)", "Bash(lsof -ti:*)", "Bash(kill:*)", "Bash(git branch -d:*)",
-           "Bash(git -C * branch -d *)", "Bash(git push origin --delete:*)", "Bash(git -C * push origin --delete *)"):
+           "Bash(git push origin --delete:*)"):
     assert _r in _allow, _r
 assert not [r for r in _allow if "prune" in r or "branch -D" in r or r in ("Bash(git push:*)", "Bash(docker:*)", "Bash(git:*)")], _allow
+# The pinned self-install runs with no prompt, and nothing wider: the only rules naming @playwright/cli are
+# the two exact install lines (a `*` after `@playwright/cli` would also match a second package on the line).
+_pw = sorted(r for r in _allow if "@playwright/cli" in r)
+assert _pw == ["Bash(npm i -g @playwright/cli@0.1.25)", "Bash(npm install -g @playwright/cli@0.1.25)"], _pw
+for _rel in ("payload/contract.md", "payload/claude/skills/do-whole-phase/playbooks/verify.md",
+             "payload/claude/skills/design-cowork/reference/build.md", "payload/claude/skills/update-workspace/SKILL.md"):
+    assert "`npm install -g @playwright/cli@0.1.25`" in (root / _rel).read_text(encoding="utf-8"), _rel
+# No allow rule has a wildcard before the rest of the command (Claude Code warns at startup on one: a `*`
+# before the subcommand approves any option there, git's -c included): a `*` only as the trailing `:*` or ` *`.
+_wild = [r for r in _allow if r.startswith("Bash(") and "*" in re.sub(r"(:\*| \*)\)$", ")", r)]
+assert not _wild, _wild
 # Nothing but the six shipped agents sits in payload/claude/agents/ (every .md there becomes an agent).
 assert sorted(p.name for p in (root / "payload/claude/agents").iterdir()) == sorted(
     k.rsplit("/", 1)[1] for k in collect_live_payloads() if k.startswith(".claude/agents/")), "a non-agent file in payload/claude/agents/"
@@ -1048,6 +1059,7 @@ for required in (
     "| Rule | Enforced by |", "`accept-gate <P> --clear`", "`## Operator Questions`",
     "Real-browser checks run on `playwright-cli`, the agent's own headless browser.",
     "Claude in Chrome is used only when the operator asks an agent to use their own browser.",
+    "install it yourself, `npm install -g @playwright/cli@0.1.25`", "it writes `.playwright-cli/` there",
     # The pointers: commands, playbooks, the code reader among the agents, the three skills named.
     "`python3 scripts/workflow.py --help`", "`.claude/skills/`", "`.claude/agents/slice-executor.md`", "`code-reader`",
     "`create-phase`", "`design-cowork`", "`type(scope): summary`",
@@ -1177,7 +1189,7 @@ d = json.load(open(sys.argv[1]))
 allow = d.get("permissions", {}).get("allow", [])
 assert "Bash(make:*)" in allow, "custom permission lost"
 assert "Bash(python3 scripts/workflow.py:*)" in allow, "workspace permission not added"
-for rule in ("Bash(playwright-cli:*)", "Bash(npm install -g @playwright/cli:*)", "Bash(npm i -g @playwright/cli:*)", "Bash(docker rm -fv:*)", "Bash(docker volume rm:*)", "Bash(lsof -ti:*)", "Bash(kill:*)", "Bash(git branch -d:*)", "Bash(git -C * branch -d *)", "Bash(git push origin --delete:*)", "Bash(git -C * push origin --delete *)"):
+for rule in ("Bash(playwright-cli:*)", "Bash(npm install -g @playwright/cli@0.1.25)", "Bash(npm i -g @playwright/cli@0.1.25)", "Bash(docker rm -fv:*)", "Bash(docker volume rm:*)", "Bash(lsof -ti:*)", "Bash(kill:*)", "Bash(git branch -d:*)", "Bash(git push origin --delete:*)"):
     assert rule in allow, rule
 assert not any(r.startswith(("Bash(git branch -D", "Bash(docker system prune", "Bash(docker volume prune")) for r in allow), allow
 assert allow[0] == "Bash(make:*)", allow
@@ -1277,8 +1289,8 @@ then ok "a fresh at-root install ships only the resume hook (SessionStart compac
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 500000' "$F/.claude/settings.json" \
   && ok "a fresh at-root install ships autoCompactWindow=500000 in project settings" || bad "fresh install settings.json lacks autoCompactWindow=500000"
 # lighter-rules: the agent's browser runs with no prompt -- the CLI and its self-install are allowed.
-python3 -c 'import json,sys; a=json.load(open(sys.argv[1]))["permissions"]["allow"]; assert all(r in a for r in ("Bash(playwright-cli:*)","Bash(npm install -g @playwright/cli:*)","Bash(npm i -g @playwright/cli:*)","Bash(docker rm -fv:*)","Bash(docker volume rm:*)","Bash(lsof -ti:*)","Bash(kill:*)","Bash(git branch -d:*)","Bash(git -C * branch -d *)","Bash(git push origin --delete:*)","Bash(git -C * push origin --delete *)")), a' "$F/.claude/settings.json" \
-  && ok "a fresh at-root install allows Bash(playwright-cli:*), both npm install rules and the close's cleanup rules (docker rm -fv, docker volume rm, lsof -ti, kill, git branch -d, git push origin --delete, plain and git -C)" || bad "fresh install settings.json lacks the playwright-cli allow rules"
+python3 -c 'import json,sys; a=json.load(open(sys.argv[1]))["permissions"]["allow"]; assert all(r in a for r in ("Bash(playwright-cli:*)","Bash(npm install -g @playwright/cli@0.1.25)","Bash(npm i -g @playwright/cli@0.1.25)","Bash(docker rm -fv:*)","Bash(docker volume rm:*)","Bash(lsof -ti:*)","Bash(kill:*)","Bash(git branch -d:*)","Bash(git push origin --delete:*)")), a' "$F/.claude/settings.json" \
+  && ok "a fresh at-root install allows Bash(playwright-cli:*), both npm install rules and the close's cleanup rules (docker rm -fv, docker volume rm, lsof -ti, kill, git branch -d, git push origin --delete)" || bad "fresh install settings.json lacks the playwright-cli allow rules"
 nphf=$(find "$F/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
 [ "$nphf" = "0" ] && ok "fresh install seeds no phases (empty start)" || bad "fresh install seeded $nphf phase(s)"
 if python3 - "$REPO_ROOT" "$F/works/.workspace-version.json" <<'PY'
@@ -2311,7 +2323,7 @@ python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWin
 # first) adds the three playwright-cli rules and keeps the adopter's entry.
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["permissions"]["allow"]=["Bash(make:*)"]+[x for x in d["permissions"]["allow"] if "playwright" not in x and not x.startswith(("Bash(docker", "Bash(lsof", "Bash(kill", "Bash(git"))]; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$F/.claude/settings.json"
 sh "$BOOT" "$F" --update >/dev/null 2>&1
-python3 -c 'import json,sys; a=json.load(open(sys.argv[1]))["permissions"]["allow"]; assert a[0]=="Bash(make:*)" and all(r in a for r in ("Bash(playwright-cli:*)","Bash(npm install -g @playwright/cli:*)","Bash(npm i -g @playwright/cli:*)","Bash(docker rm -fv:*)","Bash(docker volume rm:*)","Bash(lsof -ti:*)","Bash(kill:*)","Bash(git branch -d:*)","Bash(git -C * branch -d *)","Bash(git push origin --delete:*)","Bash(git -C * push origin --delete *)")), a' "$F/.claude/settings.json" \
+python3 -c 'import json,sys; a=json.load(open(sys.argv[1]))["permissions"]["allow"]; assert a[0]=="Bash(make:*)" and all(r in a for r in ("Bash(playwright-cli:*)","Bash(npm install -g @playwright/cli@0.1.25)","Bash(npm i -g @playwright/cli@0.1.25)","Bash(docker rm -fv:*)","Bash(docker volume rm:*)","Bash(lsof -ti:*)","Bash(kill:*)","Bash(git branch -d:*)","Bash(git push origin --delete:*)")), a' "$F/.claude/settings.json" \
   && ok "--update adds the playwright-cli and cleanup allow rules to an adopter's settings.json and keeps its own entry" || bad "--update did not carry the playwright-cli allow rules"
 cp "$SRC/claude/settings.json" "$F/.claude/settings.json"   # drop the probe's foreign handler before the Test 6 diff
 rm -f "$F/.github/workflows/workspace-ci.yml" "$F/.gitattributes"
@@ -4179,7 +4191,7 @@ resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 workflow/scripts/workflow.py compa
 assert d["hooks"] == {"SessionStart": [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}]}, d["hooks"]
 assert d["autoCompactWindow"] == 500000, d
 a = d["permissions"]["allow"]
-assert all(r in a for r in ("Bash(playwright-cli:*)", "Bash(npm install -g @playwright/cli:*)", "Bash(npm i -g @playwright/cli:*)", "Bash(docker rm -fv:*)", "Bash(docker volume rm:*)", "Bash(lsof -ti:*)", "Bash(kill:*)", "Bash(git branch -d:*)", "Bash(git -C * branch -d *)", "Bash(git push origin --delete:*)", "Bash(git -C * push origin --delete *)")), a
+assert all(r in a for r in ("Bash(playwright-cli:*)", "Bash(npm install -g @playwright/cli@0.1.25)", "Bash(npm i -g @playwright/cli@0.1.25)", "Bash(docker rm -fv:*)", "Bash(docker volume rm:*)", "Bash(lsof -ti:*)", "Bash(kill:*)", "Bash(git branch -d:*)", "Bash(git push origin --delete:*)")), a
 PY
 then ok "nested: settings.local.json carries only the resume hook with the workflow/scripts/workflow.py command path and window 500000, allows playwright-cli, its npm install and the cleanup rules, and --update --nested kept exactly one"; else bad "nested settings.local.json hooks wrong"; fi
 # v61 (P37.S1): --update --nested on a v60-shaped host (no reference/ files) adds them in the renamed dir, host clean.

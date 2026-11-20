@@ -181,7 +181,7 @@ Below, each entry is the source, then the emit path where it differs:
 - `payload/works/templates/{deferred_brief,intent,phase}.md` → `works/templates/…`
 - `payload/github/workflows/workspace-ci.yml` → `.github/workflows/workspace-ci.yml` (**seed-once** repo policy file — created when
   absent, never overwritten, on install/retrofit/update alike; one workflow
-  that runs `validate` on every push and PR, plus a `parallel-gate` job on `phase/*` pull
+  that runs `validate` on pull requests and on pushes to `main`/`master`, plus a `parallel-gate` job on `phase/*` pull
   requests; this repo's own CI is `.github/workflows/upstream-ci.yml`)
 - `payload/gitattributes` → `.gitattributes` (**line-merged** repo policy file — the
   `works/events.jsonl merge=union` rule is appended when missing and existing content

@@ -64,10 +64,11 @@ read only what you need, or `find "<text>"`), `click e5`, `fill e4 "text"`, `pre
 `Explore` drive no browser (`design-preview` is a headless render self-check, not verification).
 
 **The browser is never a blocker: the agent runs it whole.** No operator step and no permission
-prompt for any of it (the shipped settings allow `Bash(playwright-cli:*)`,
-`Bash(npm install -g @playwright/cli:*)` and `Bash(npm i -g @playwright/cli:*)`):
+prompt for any of it (the shipped settings allow `Bash(playwright-cli:*)` and exactly the pinned
+install, `Bash(npm install -g @playwright/cli@0.1.25)` and `Bash(npm i -g @playwright/cli@0.1.25)`;
+another version or a second package on the same line asks):
 
-- **Missing CLI:** `npm install -g @playwright/cli@0.1.25`.
+- **Missing CLI:** `npm install -g @playwright/cli@0.1.25`, typed exactly so.
 - **No browser found** (the error names `install-browser`): `playwright-cli install-browser
   chrome-for-testing` (about 100 MB, once per machine).
 - **Stuck or stale:** `playwright-cli kill-all`, then open again. Close what you opened when done
@@ -81,8 +82,8 @@ Only what the agent cannot have stops a run: a credential, a sign-in, a paid acc
 **`needs_operator`** (the orchestrator sets the slice `pending`), naming exactly what is missing. It
 is not the runtime halt: the runtime halt fires on an absent or `UNFILLED` manifest.
 
-**How to call it.** Call it plainly — `playwright-cli <command>`, no leading environment variable
-and no `cd … &&` chain — so the allow rule matches (Claude Code's permission rules, read 2026-11-20:
+**How to call it.** Call it plainly — `playwright-cli <command>`, no leading environment variable,
+no `cd … &&` chain and no pipe into another tool — so the allow rule matches (Claude Code's permission rules, read 2026-11-20:
 an allow rule matches no command past an unknown leading variable assignment, and every part of a
 compound command must be allowed on its own). Output files (snapshots, logs, default screenshots) go
 to `.playwright-cli/` in the current directory: keep them out of product trees (run from a scratch

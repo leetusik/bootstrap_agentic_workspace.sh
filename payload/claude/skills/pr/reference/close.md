@@ -76,7 +76,7 @@ Only what this phase started, identified by the names and ports its slices recor
 - **Containers:** `docker rm -fv <name>` (with its anonymous volumes); a named volume the phase created, `docker volume rm <name>`. Never a prune.
 - **Merged head branches:** once `pr-sync` reads the PR merged and `gh pr list --base <b> --state open` lists none, `git branch -d <b>` and `git push origin --delete <b>` (nested: `git -C <repo> …`); a checkout still on `<b>` (a remote merge; a local landing already left it) switches to the default branch first. Never `-D`. `pr-assets` stays: the bodies' images live there.
 
-The shipped settings allow exactly these commands, so no prompt stops the cleanup. Report what was stopped and removed.
+The shipped settings allow exactly these commands in their plain form, so at root no prompt stops the cleanup. A nested host's `git -C <repo> branch -d` and `git -C <repo> push origin --delete` each ask once per repo: no shipped rule matches them, since a `*` before the subcommand would approve any git option there (Claude Code warns at startup on such a rule). Report what was stopped and removed.
 
 ## One validate, one commit
 
