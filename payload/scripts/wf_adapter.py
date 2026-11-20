@@ -1693,8 +1693,8 @@ def resume_card(transcript_path=None) -> str:
     gate_open = acceptance_gate_is_open(phase)
     record = sdata.get("pending") if sdata and sdata.get("status") == "pending" else None
     if gate_open:
-        lines.append(f"stop: phase {phase_id} acceptance gate open -- relay the walkthrough (`accept-gate {phase_id}` prints it); "
-                     f"the operator's words clear it with accept-gate {phase_id} --clear")
+        lines.append(f"stop: phase {phase_id} acceptance gate open -- relay the walkthrough (`gate {phase_id}` prints it); "
+                     f"the operator's words clear it with gate {phase_id} clear --words \"<their words>\"")
     elif phase.get("status") == "pending":
         lines.append(f"stop: phase {phase_id} pending -- report what you need; the operator's words clear it with phase status {phase_id} in_progress")
     elif phase.get("status") == "blocked":
@@ -1799,7 +1799,7 @@ def add_adapter_parsers(sub) -> None:
     p.add_argument("--phase", help="with --drafter: the phase whose intent.md `## Design Style` may name the drafter's model (`Drafter: fable`); its effort stays the design row's, and an absent line is the design row. Behind a loopback proxy (no Fable) a Fable drafter falls back to opus")
     p.add_argument("--critic", action="store_true", help="the design-critic's dispatch in critic mode (the critic row, [claude.critic]); it may share the drafter's model")
     p.add_argument("--judge", action="store_true", help="the design-critic's dispatch in judge mode (the judge row, [claude.judge], alias only); never refused for sharing the drafter's model; skip=yes only when the judge row is overridden to Fable behind a loopback proxy that serves no Fable")
-    p.add_argument("--reader", action="store_true", help="the pr-reader's dispatch (the reader row, [claude.reader]): the fresh-eyes PR reader, which reads the product diff, the body and details files, the team-rule files and the pr-check output only, and writes topics/pr-read.md")
+    p.add_argument("--reader", action="store_true", help="the pr-reader's dispatch (the reader row, [claude.reader]): the fresh-eyes PR reader, which reads the product diff, the body and details files, the team-rule files and the pr check output only, and writes topics/pr-read.md")
     p.add_argument("--code", action="store_true", help="the code-reader's dispatch (the code row, [claude.code]): the blind code reader, which reads one code change cold (the diff over the product pathspec and the files at head, never the workspace's records), reproduces each suspicion and writes topics/code-read.md")
     p.add_argument("--explore", action="store_true", help="the read-only Explore lookup agent's dispatch (the explore row)")
     p.set_defaults(func=cmd_executor_route)

@@ -10,7 +10,7 @@ disable-model-invocation: true
 
 Archives the done phases and reports the rest. Archiving is whole-phase only and never `--force` on the operator's behalf.
 
-**First, sync the open PRs (both paths).** For each phase on a `pr_open=` line of `next`, `python3 scripts/workflow.py pr-sync <P>` (read-only on GitHub; it updates that phase's `pr` record). A failure writes nothing: relay its line, the phase stays held. Commit the changed `phase.json` files, naming each path.
+**First, sync the open PRs (both paths).** For each phase on a `pr_open=` line of `next`, `python3 scripts/workflow.py pr sync <P>` (read-only on GitHub; it updates that phase's `pr` record). A failure writes nothing: relay its line, the phase stays held. Commit the changed `phase.json` files, naming each path.
 
 1. **`archive-only`:** `python3 scripts/workflow.py phase rotate --archive-only`, relay its report, STOP.
 2. **Otherwise** `python3 scripts/workflow.py phase rotate`, reading stdout before the exit code. Its first line is `rotate=<branch>`:

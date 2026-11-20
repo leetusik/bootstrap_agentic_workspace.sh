@@ -110,7 +110,7 @@ The unit is one draft, `doc/body.md`, written by `S1` from the evidence `DECOMP`
 
 ## Fix slices republish
 
-A `changes_requested` verdict, or an operator-reported failure at the gate (`review-phase <P> --verdict changes_requested --note "operator-reported: …"`), becomes one fix slice per chapter (or for the one draft) that needs changes: `<P>.F<n>`, `--kind fix`. Rate it as `reference/review.md` says: `high` when the draft's `result.md` reads `route: mid` (or a pre-v83 `route: cheap`).
+A `changes_requested` verdict, or an operator-reported failure at the gate (`review <P> --verdict changes_requested --note "operator-reported: …"`), becomes one fix slice per chapter (or for the one draft) that needs changes: `<P>.F<n>`, `--kind fix`. Rate it as `reference/review.md` says: `high` when the draft's `result.md` reads `route: mid` (or a pre-v83 `route: cheap`).
 
 A fix slice:
 1. revises the draft (`book/<key>.md`, its assets and `trace-<key>.md`; or `doc/body.md`, `doc/assets/` and `doc/trace.md`), and nothing else in the dossier but appended evidence: a fix may read the code and the covering phases' records again, as a new entry in the chapter's overlay `evidence-ch<k>.md` (or appended to `doc/evidence.md`), never in the frozen files and never from outside them; a point they do not support is removed or stated as a gap, as §4.10 *D8: the critic, one revision, then publish* says. It dispatches no agent;
@@ -125,7 +125,7 @@ The re-review then re-reads the changed drafts, and the chapters that link to th
 ## After a pass
 
 Follow `reference/review.md`:
-1. **a book:** `accept-gate <P> --open --walkthrough "<walkthrough>"`, file the deferred translation jobs, then `check`, commit, report and STOP. The operator reads the book. `accept` clears the gate, and you record the pass. The book stays private until the operator makes it public;
+1. **a book:** `gate <P> open --walkthrough "<walkthrough>"`, file the deferred translation jobs, then `check`, commit, report and STOP. The operator reads the book. `accept` clears the gate, and you record the pass. The book stays private until the operator makes it public;
 2. **a document or a chapter:** the gate is waived, so record the pass with no stop, and file the deferred translation jobs;
 3. **then, for any unit run in a worktree,** it merges back by itself, with no stop: `reference/worktree.md` (*An explain phase merges back by itself*) and the `parallel-phase` skill (its §5 section of the same name) carry the gate, the merge, the teardown and the `merge_ready=` fallback. Do not restate them here;
 4. **the closing report comes last** (§8 *D9: the report*), after the merge and the teardown, from the default checkout (or from the worktree, with the unmerged note, when the merge could not run): `PUBLISHED — <title>`, the `url` and the version; the writer and the critic; the evidence (the commit, the covering phases and the counts); the declared gaps; how it was read back; the dossier's path (in a nested install, in the nested repo); and the book suggestion for a scoped-down topic, offered, never acted on: a book is a new explain, created only on the operator's word. Draw it from the review's `## Report` (a book: its walkthrough and `## Published` table). It is shown, not written: the facts are already on disk.

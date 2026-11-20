@@ -76,7 +76,7 @@ The `DECOMP` executor writes the book's brief, reads its whole subject and outli
 
 Right after `slice finish <P>.DECOMP`, in the same commit (the dossier rides in it; git ignores `pages/`):
 
-1. **Declare the gate:** `python3 scripts/workflow.py accept-gate <P> --require`. The operator accepts a book by reading it in the real reader; a book never waives.
+1. **Declare the gate:** `python3 scripts/workflow.py gate <P> require`. The operator accepts a book by reading it in the real reader; a book never waives.
 2. **Stop the first chapter slice in order** (normally `<P>.S1`; after a re-cut, whichever comes first):
 
    ```sh
@@ -154,7 +154,7 @@ P<N> (unit: document | chapter)
 
 Right after `slice finish <P>.DECOMP`, in the same commit (the dossier rides in it):
 
-1. **Declare the gate, waived:** a document `accept-gate <P> --waive --note "standalone explain document: published private; a v2 is cheap"`; a chapter `accept-gate <P> --waive --note "explain chapter: published private; a v2 is cheap"`.
+1. **Declare the gate, waived:** a document `gate <P> waive --note "standalone explain document: published private; a v2 is cheap"`; a chapter `gate <P> waive --note "explain chapter: published private; a v2 is cheap"`.
 2. **The outline sign-off is off** unless `## Explain` says `outline sign-off: on`: then S1 runs at once (`reference/explain-chapter.md`, *A document or a chapter: its one write slice*). With `on`, stop S1 before its first span:
 
    ```sh

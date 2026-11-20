@@ -295,12 +295,12 @@ CI_WORKFLOW_PATH = ".github/workflows/workspace-ci.yml"
 GITATTRIBUTES_PATH = ".gitattributes"
 GITATTRIBUTES_MERGE_LINE = "works/events.jsonl merge=union"
 # The at-root workspace's machine-written state, marked generated (PR rule v1): GitHub folds it in a PR
-# diff and pr-check's size count skips it. Line-merged like the events line, so --update brings it too.
+# diff and pr check's size count skips it. Line-merged like the events line, so --update brings it too.
 GITATTRIBUTES_GENERATED_LINES = tuple(f"{path} linguist-generated=true"
                                       for path in ("works/**", "docs/versions/**", "docs/current/**", "docs/index.json"))
 GITATTRIBUTES_GENERATED_NOTE = (
     "\n# Added by the agentic workspace: its machine-written state is marked generated, so\n"
-    "# GitHub folds it in a pull request's diff and the PR rule's size count (pr-check)\n"
+    "# GitHub folds it in a pull request's diff and the PR rule's size count (pr check)\n"
     "# skips it. Only the workspace's own paths: a product's own docs/ files stay visible.\n"
 )
 GITATTRIBUTES_APPEND_NOTE = (
@@ -1035,7 +1035,7 @@ def nested_infer_convention(base: Path = None):
 
 # P51: the team's PR rules, read-only, by tracked files only (the installer has no `gh`). Printed in the
 # banner beside the inferred convention and never recorded: the `pr` skill reads them live at body time,
-# and only the conflicts the operator decides are recorded, by `pr-rules-decide` at /update-workspace.
+# and only the conflicts the operator decides are recorded, by `pr rules` at /update-workspace.
 PR_TEMPLATE_NAMES = ("pull_request_template.md", "PULL_REQUEST_TEMPLATE.md")
 PR_LINE_RE = re.compile(r"(?i:\bpull[ -]?requests?\b)|\bPRs?\b")
 PR_POINTS = (   # (point, pattern): a team line that speaks to one of the points ours also decides
@@ -1098,7 +1098,7 @@ def nested_team_pr_rules(base: Path) -> list:
     if not found:
         return ["team PR rules: none on file -- the pr skill's default template (Summary · Review · What is changed · Why · Related issue) applies"]
     out_lines = [f"team PR rules: {', '.join(found[:6])}{' ...' if len(found) > 6 else ''} -- the pr skill reads them live; the team wins where it speaks"]
-    decide = "decide at /update-workspace (pr-rules-decide)"
+    decide = "decide at /update-workspace (pr rules)"
     if template_heads is not None:
         if not any(h.lower() == "review" for h in template_heads):
             first = template_heads[0] if template_heads else "the top"
@@ -1382,7 +1382,7 @@ def _multi_repo_local_block(renames: dict, repos: list, converted=()) -> list:
         *repo_lines,
         "- \"This repo\" in any rule means the repo the change lives in. Before changing a repo, read its rules files; they win over this block for that repo.",
         "- To verify a change in a repo, use that repo's verification skill under `<repo>/.claude/skills/` (its run script), after reading the repo's rules files.",
-        f"- Commits per slice: one in each repo the slice changed (`git -C <repo> ...`, on the phase's branch there, recorded with `{cmd} pr-branch --repo <name>`, in the conventions `{cmd} nested-convention --repo <name>` prints; Claude `Co-Authored-By` trailers only when it says `allowed`), plus one for the workflow state (`git -C {NESTED_DIR} ...`, `type(scope): summary`). The host folder itself never gets a commit.",
+        f"- Commits per slice: one in each repo the slice changed (`git -C <repo> ...`, on the phase's branch there, recorded with `{cmd} pr branch --repo <name>`, in the conventions `{cmd} nested-convention --repo <name>` prints; Claude `Co-Authored-By` trailers only when it says `allowed`), plus one for the workflow state (`git -C {NESTED_DIR} ...`, `type(scope): summary`). The host folder itself never gets a commit.",
         f"- An UNCONFIRMED convention in `next` (`host_commit_convention=` or `repo_conventions=`) is confirmed with the operator before that repo's first product commit: `{cmd} nested-convention --confirm [--repo <name>] --text \"<conventions>\" --trailers allowed|forbidden` (no `--repo`: the rules for every repo).",
         "- Worktree phases run only on the operator's word: the `parallel-phase` skill (`parallel-start ... --repo <name>=<branch>`).",
         f"- A pull request's title, body and commits (and every product commit, in every repo) carry no phase or slice IDs, no `{NESTED_DIR}/` paths and no workspace files.",
@@ -1410,7 +1410,7 @@ def _nested_local_block(renames: dict, repos=(), converted=()) -> list:
         "",
         "Nested-install rules (they win over the contract above where the two differ):",
         f"- Start Claude Code at this repo's root, never inside `{NESTED_DIR}/`. Run the engine from here: `{cmd} <command>`.",
-        f"- Two commits per slice: product code to this repo (on the phase's branch, recorded with `{cmd} pr-branch`, in the conventions `{cmd} nested-convention` prints; Claude `Co-Authored-By` trailers only when it says `allowed`), and the workflow state to the nested repo (`git -C {NESTED_DIR} ...`, `type(scope): summary`).",
+        f"- Two commits per slice: product code to this repo (on the phase's branch, recorded with `{cmd} pr branch`, in the conventions `{cmd} nested-convention` prints; Claude `Co-Authored-By` trailers only when it says `allowed`), and the workflow state to the nested repo (`git -C {NESTED_DIR} ...`, `type(scope): summary`).",
         f"- If `next` shows `host_commit_convention=UNCONFIRMED`, confirm the host's conventions with the operator before the first product commit: `{cmd} nested-convention --confirm --text \"<conventions>\" --trailers allowed|forbidden`.",
         "- Worktree phases run only on the operator's word: the `parallel-phase` skill (`parallel-start`).",
         f"- A pull request's title, body and commits (and every product commit) carry no phase or slice IDs, no `{NESTED_DIR}/` paths and no workspace files.",

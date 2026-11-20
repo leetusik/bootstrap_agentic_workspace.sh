@@ -108,11 +108,11 @@
   functional sweep found) is part of the normal shape, not a failure.
 
 **The phase gate follows the mockup, with no judgment left in it.** A phase that ships a mockup takes
-`accept-gate <P> --require`. A **`design-only` phase that ships none** ships no running product
+`gate <P> require`. A **`design-only` phase that ships none** ships no running product
 surface, so it is **waived** with the fixed note `design-only, no mockup: the operator signed each job
 on its canvas`. `build-after` and `paired` phases are gated by their build slices, `--require`. A
 mockup
-asked for after `DECOMP` declared the gate re-declares it: run `accept-gate <P> --require` in the
+asked for after `DECOMP` declared the gate re-declares it: run `gate <P> require` in the
 mockup
 commit.
 

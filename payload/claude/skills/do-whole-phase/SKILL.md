@@ -30,7 +30,7 @@ While an executor runs you may prepare the **next** slice only, read-only (an `E
 
 ## Stops
 
-- **`WAITING ON OPERATOR`** (`next`; a `pending` item shows `[~]`): STOP; start, finish or advance nothing until the operator clears it. An open acceptance gate (`acceptance_gate=open`): relay the walkthrough as is; it clears with `accept-gate <P> --clear`, never `phase status`.
+- **`WAITING ON OPERATOR`** (`next`; a `pending` item shows `[~]`): STOP; start, finish or advance nothing until the operator clears it. An open acceptance gate (`acceptance_gate=open`): relay the walkthrough as is; it clears with `gate <P> clear --words "<the operator's words>"`, never `phase status`.
 - Set every stop typed: `slice status <slice> pending --stop-kind wave|mockup|decision|operator-action|limit|other --on-words "<what their words will do>"`.
 - **The stop rules**, for every stop and report you make: at most about 5 decisions, and only those that change a contract, contradict the operator's own words, or are costly to undo; the rest in one "decided as drawn" list; about 2k characters plus links; one word ("accept", "moveon") signs everything presented. Anything else you have a recommendation for, take it and list it.
 

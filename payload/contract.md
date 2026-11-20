@@ -25,12 +25,11 @@ You work this workspace for its operator. Four invariants always hold; everythin
 
 | Rule | Enforced by |
 |---|---|
-| A phase the operator can see passes after they walk it | `review-phase --verdict pass` refuses until `accept-gate <P> --clear` |
-| Sign-offs carry literal words | `design-close`, `design-sign` refuse an empty `--words` |
+| A phase the operator can see passes after they walk it | `review --verdict pass` refuses until `gate <P> clear` |
+| Sign-offs carry literal words | `gate clear`, `design-close`, `design-sign` refuse an empty `--words`; `close` refuses a gate cleared without them |
 | A pending stop halts the run | `next` prints `WAITING ON OPERATOR`; `slice status` refuses a stop without `--stop-kind` and `--on-words` |
 | No force-push, no `rm -rf` | `settings.json` deny rules; its one allowed push deletes a merged branch |
-| A product phase passes with its draft PR open | `review-phase --verdict pass` refuses a PR branch with no draft PR (`pr-record --url` or `--waive`) |
-| A branch switch never carries the operator's edits | `pr-branch` refuses uncommitted tracked changes |
+| A branch switch never carries the operator's edits | `pr branch` refuses uncommitted tracked changes |
 | A worktree phase merges at a quiet point | `parallel-gate` prints `GATE CLOSED` and exits 1 (the CI seed runs it) |
 | A linked checkout runs no streams | stream commands are refused in cloud mode |
 | Workflow state stays valid | `check` exits 1 on an invalid record; the CI seed runs `check --no-rebuild` |

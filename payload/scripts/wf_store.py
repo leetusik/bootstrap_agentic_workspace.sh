@@ -22,7 +22,7 @@ SEAMS = {
     "wf_git": (
         '_find_phase_dir', '_freeze_host_review_base', '_freeze_repo_anchors', '_parallel_verdict_pair',
         '_phase_repo_path', '_pr_label', '_pr_next_lines', '_pr_open_entries', '_pr_registry_names',
-        '_repo_anchor_problems', '_repo_current_branch', '_require_pr_opened', '_unstamped_set_warning',
+        '_repo_anchor_problems', '_repo_current_branch', '_pr_draft_advice', '_unstamped_set_warning',
         'explain_unit_lines', 'merge_ready_line', 'nested_next_lines', 'nested_repo_checks', 'new_pr_block',
         'parallel_start_hint', 'pr_block_problems', 'pr_open_lines', 'pr_rules_validate', 'pr_stack_lines',
     ),
@@ -1385,19 +1385,10 @@ def new_acceptance() -> dict:
 def phase_acceptance(data) -> dict:
     """The phase's operator acceptance gate, or None when the phase carries none (legacy).
 
-    Shape (stamped by `new_phase` on every phase created from workspace v32 on):
-
-        "acceptance": {
-          "required": null,        # null = undeclared | true = operator-visible | false = waived
-          "walkthrough": null,     # the concrete walkthrough text, recorded when the gate opens
-          "requested_at": null,    # stamped by `accept-gate <P> --open`
-          "cleared_at": null,      # stamped by `accept-gate <P> --clear`
-          "note": null             # the operator's clearing note, or the waive reason
-        }
-
-    Absence of the whole block means legacy (an installer `--update` never touches `works/`):
-    `review-phase --verdict pass` is allowed, with one advisory line and nothing more. Read the
-    block only through this helper so every caller agrees on what "gated" means.
+    Fields: `required` (null undeclared, true operator-visible, false waived), `walkthrough` and `requested_at`
+    (`gate <P> open`), `cleared_at` and `words` (`gate <P> clear --words`: the operator's literal words; a clear
+    from before v102 has none and still reads as cleared), `note` (the clear's note or the waive reason). No block
+    is legacy: `review --verdict pass` is allowed with one advisory line. Read the block only through here.
     """
     if not isinstance(data, dict):
         return None
@@ -3019,7 +3010,7 @@ def validate() -> int:
             errors.append(f"invalid phase status {p['id']}: {p['status']}")
         review_status = p.get("review", {}).get("status")
         if p["status"] == "done" and review_status != "pass":
-            errors.append(f"phase {p['id']} is done but review status is {review_status!r}; record a passing review with review-phase")
+            errors.append(f"phase {p['id']} is done but review status is {review_status!r}; record a passing review with review")
         if p["status"] == "done":
             unfinished = [s["id"] for s in p["slices"] if s.get("status") != "done"]
             if unfinished:
@@ -3064,12 +3055,12 @@ def validate() -> int:
                 required = acceptance.get("required")
                 if not (required is None or isinstance(required, bool)):
                     errors.append(f"phase {p['id']} has invalid acceptance.required {required!r}; expected true (operator-visible), false (waived) or null (undeclared)")
-                for field in ("walkthrough", "note", "requested_at", "cleared_at"):
+                for field in ("walkthrough", "note", "requested_at", "cleared_at", "words"):
                     value = acceptance.get(field)
                     if value is not None and not isinstance(value, str):
                         errors.append(f"phase {p['id']} has invalid acceptance.{field} {value!r}; expected a string or null")
                 if p["status"] == "done" and required is True and not acceptance.get("cleared_at"):
-                    errors.append(f"phase {p['id']} is done but its operator acceptance gate was never cleared; the operator must walk the running product (accept-gate {p['id']} --open/--clear)")
+                    errors.append(f"phase {p['id']} is done but its operator acceptance gate was never cleared; the operator must walk the running product (gate {p['id']} open, then clear --words)")
         # Optional host anchors (P28): written only by a nested install's phase new / passing review.
         # Absent = an at-root or pre-nested phase = nothing to check.
         if "host_anchors" in p:
@@ -3383,7 +3374,7 @@ def new_phase(args: argparse.Namespace) -> None:
         "created_at": now_iso(), "started_at": None, "completed_at": None,
         "review": {"status": "pending", "reviewed_at": None, "reviewer": None, "note": None},
         "acceptance": new_acceptance(),
-        "pr": new_pr_block(),  # P51: the phase's PR branches (pr-branch / pr-record); the pass guard reads it
+        "pr": new_pr_block(),  # P51: the phase's PR branches (pr branch / pr record); the pass guard reads it
         "paths": {"phase_md": "phase.md", "intent_md": "intent.md", "slices_dir": "slices"},
         "archive": {"archived": False, "archived_at": None, "archive_path": None},
     }
@@ -3641,13 +3632,13 @@ def _require_acceptance_cleared(phase_id: str, data: dict) -> None:
     if required is None:
         raise SystemExit(
             f"phase {phase_id} has not declared whether the operator must accept it; a pass cannot be recorded yet:\n"
-            f"  {WORKFLOW_CMD} accept-gate {phase_id} --require                     (operator-visible: the operator walks the running product)\n"
-            f"  {WORKFLOW_CMD} accept-gate {phase_id} --waive --note \"why\"          (nothing the operator can see)")
+            f"  {WORKFLOW_CMD} gate {phase_id} require                     (operator-visible: the operator walks the running product)\n"
+            f"  {WORKFLOW_CMD} gate {phase_id} waive --note \"why\"          (nothing the operator can see)")
     if required is True and not acceptance.get("cleared_at"):
         raise SystemExit(
             f"phase {phase_id} requires operator acceptance and the gate is not cleared; show the operator the running product first:\n"
-            f"  {WORKFLOW_CMD} accept-gate {phase_id} --open --walkthrough \"...\"    (orchestrator, after the review executor's validation and judgment)\n"
-            f"  {WORKFLOW_CMD} accept-gate {phase_id} --clear --note \"...\"          (after the operator walks it; --note is optional)")
+            f"  {WORKFLOW_CMD} gate {phase_id} open --walkthrough \"...\"    (orchestrator, after the review executor's validation and judgment)\n"
+            f"  {WORKFLOW_CMD} gate {phase_id} clear --words \"<the operator's words>\"   (after the operator walks it)")
 
 
 def review_phase(args: argparse.Namespace) -> None:
@@ -3658,16 +3649,16 @@ def review_phase(args: argparse.Namespace) -> None:
     # Gate check first, before anything is written: a refused pass must leave no trace.
     if args.verdict == "pass":
         _require_acceptance_cleared(args.phase, data)
-        _require_pr_opened(args.phase, data)  # P51: beside the gate, never instead of it; each names only itself
+        _pr_draft_advice(args.phase, data)  # advice only (v102): a pass with no draft PR prints advice: pr_draft=due
     if args.verdict == "changes_requested" and data.get("status") == "done" and _pr_open_entries(data):
         # P52: a done phase with an open PR reopens through phase reopen (any change request, the team's or the
         # operator's), which also cuts a nested install's worktree on the PR branch; recorded here it would reopen
         # with no worktree. A done phase with no open PR is unchanged.
         open_prs = ", ".join(f"{_pr_label(e)} ({e.get('state') or 'unsynced'})" for e in _pr_open_entries(data))
-        raise SystemExit(f"review-phase {args.phase} --verdict changes_requested: refused -- {args.phase} is done and its PR is still open "
+        raise SystemExit(f"review {args.phase} --verdict changes_requested: refused -- {args.phase} is done and its PR is still open "
                          f"({open_prs}); a change request (the team's or the operator's) reopens it on the PR branch: "
                          f"{WORKFLOW_CMD} phase reopen {args.phase} --note \"team-reported: <what>\" (or \"operator-reported: <what>\"; "
-                         f"pr-sync {args.phase} first) -- nothing was written")
+                         f"pr sync {args.phase} first) -- nothing was written")
     # The fix passes this review cycle has asked for: one per `changes_requested`. A pass ends the cycle and
     # clears the count; a reopen is itself a change request, so `_reopen_apply` starts its cycle at one.
     earlier = (data.get("review") or {}).get("fix_passes")
@@ -3682,6 +3673,7 @@ def review_phase(args: argparse.Namespace) -> None:
             # The phase is about to change again, so the gate re-opens for the re-review.
             # `required` and the operator's note survive; the walked script does not.
             acceptance.update({"walkthrough": None, "requested_at": None, "cleared_at": None})
+            acceptance.pop("words", None)
     # Verdict drives phase status so the lifecycle stays consistent.
     status_map = {"pass": "done", "changes_requested": "in_progress", "blocked": "blocked"}
     new_status = status_map[args.verdict]
@@ -3714,7 +3706,7 @@ def review_phase(args: argparse.Namespace) -> None:
 
 
 def _drive_review_slices(pdir: Path, verdict: str) -> list:
-    """Set the phase's REVIEW slice(s) from a phase verdict (`review-phase`, and `phase reopen`'s
+    """Set the phase's REVIEW slice(s) from a phase verdict (`review`, and `phase reopen`'s
     changes_requested), so the phase and its review slice never diverge. Returns `[(slice id, old status)]`."""
     slice_verdict = {"pass": "done", "changes_requested": "changes_requested", "blocked": "blocked"}[verdict]
     driven = []
@@ -3757,13 +3749,12 @@ def _ensure_acceptance(data: dict) -> dict:
 def _print_acceptance(phase_id: str, acceptance) -> None:
     print(f"phase={phase_id}")
     if acceptance is None:
-        print("acceptance=none (legacy phase: no gate block, so review-phase --verdict pass is allowed)")
-        print(f"declare one with: {WORKFLOW_CMD} accept-gate {phase_id} --require | --waive --note \"why\"")
+        print("acceptance=none (legacy phase: no gate block, so review --verdict pass is allowed)")
+        print(f"declare one with: {WORKFLOW_CMD} gate {phase_id} require | waive --note \"why\"")
         return
-    print(f"required={json.dumps(acceptance.get('required'))}")
-    print(f"requested_at={acceptance.get('requested_at') or 'none'}")
-    print(f"cleared_at={acceptance.get('cleared_at') or 'none'}")
-    print(f"note={acceptance.get('note') or 'none'}")
+    for key in ("required", "requested_at", "cleared_at", "words", "note"):
+        value = acceptance.get(key)
+        print(f"{key}={json.dumps(value) if key == 'required' else (value or 'none')}")
     walkthrough = acceptance.get("walkthrough")
     if walkthrough:
         print("walkthrough:")
@@ -3772,71 +3763,76 @@ def _print_acceptance(phase_id: str, acceptance) -> None:
         print("walkthrough=none")
 
 
-def accept_gate(args: argparse.Namespace) -> None:
-    """Declare, open, clear or show a phase's operator acceptance gate.
-
-    Orchestrator/operator command: executors never run it. The review executor returns the
-    walkthrough text; the orchestrator opens the gate with it and STOPS until the operator
-    has walked the running product.
-    """
+def cmd_gate(args: argparse.Namespace) -> None:
+    """`gate <P> [require|waive|open|clear]`: declare, open, clear or show (bare) a phase's operator acceptance gate.
+    `clear` needs --words, the operator's literal words, recorded beside cleared_at (a sign-off is their words).
+    Orchestrator/operator command: executors never run it; an open gate STOPS the run until the operator walks it."""
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
-    if args.walkthrough is not None and not args.open_gate:
-        raise SystemExit(f"--walkthrough belongs to --open: {WORKFLOW_CMD} accept-gate {args.phase} --open --walkthrough \"...\"")
-    if not (args.require or args.waive or args.open_gate or args.clear):
+    action = args.action
+    if args.walkthrough is not None and action != "open":
+        raise SystemExit(f"--walkthrough belongs to open: {WORKFLOW_CMD} gate {args.phase} open --walkthrough \"...\"")
+    if args.words is not None and action != "clear":
+        raise SystemExit(f"--words belongs to clear: {WORKFLOW_CMD} gate {args.phase} clear --words \"<the operator's words>\"")
+    if action is None:
         _print_acceptance(args.phase, phase_acceptance(data))  # show only: writes nothing
         return
     acceptance = phase_acceptance(data)
     message = None
-    if args.require:
+    words = (args.words or "").strip()
+    if action == "require":
         acceptance = _ensure_acceptance(data)
         acceptance["required"] = True
         event = "acceptance_required"
-        message = f"phase {args.phase}: operator acceptance REQUIRED -- review-phase --verdict pass refuses until the gate is opened and cleared"
-    elif args.waive:
+        message = f"phase {args.phase}: operator acceptance REQUIRED -- review --verdict pass refuses until the gate is opened and cleared"
+    elif action == "waive":
         if not args.note:
-            raise SystemExit(f"accept-gate {args.phase} --waive requires --note \"why this phase changes nothing the operator can see\"")
+            raise SystemExit(f"gate {args.phase} waive requires --note \"why this phase changes nothing the operator can see\"")
         acceptance = _ensure_acceptance(data)
         acceptance["required"] = False
         acceptance["note"] = args.note
         event = "acceptance_waived"
         message = f"phase {args.phase}: operator acceptance WAIVED -- {args.note}"
-    elif args.open_gate:
+    elif action == "open":
         if acceptance is None or acceptance.get("required") is not True:
             raise SystemExit(
                 f"phase {args.phase} has not declared that the operator must accept it; declare it first:\n"
-                f"  {WORKFLOW_CMD} accept-gate {args.phase} --require")
+                f"  {WORKFLOW_CMD} gate {args.phase} require")
         if not (args.walkthrough or "").strip():
-            raise SystemExit(f"accept-gate {args.phase} --open requires --walkthrough \"the concrete script: URLs to open, actions to try, in the operator runtime\"")
+            raise SystemExit(f"gate {args.phase} open requires --walkthrough \"the concrete script: URLs to open, actions to try, in the operator runtime\"")
         acceptance["walkthrough"] = args.walkthrough
         acceptance["requested_at"] = now_iso()
         acceptance["cleared_at"] = None
         event = "acceptance_opened"
-    else:  # --clear
+    else:  # clear: the operator's literal words, or nothing is written
+        if not words:
+            raise SystemExit(f"gate {args.phase} clear: refused -- --words \"<the operator's literal words>\" is required: a sign-off is "
+                             f"their words, never a reading of them -- nothing was written")
         if acceptance is None or not acceptance.get("requested_at"):
             raise SystemExit(
                 f"phase {args.phase} has no open acceptance gate (requested_at is unset); nothing to clear:\n"
-                f"  {WORKFLOW_CMD} accept-gate {args.phase} --open --walkthrough \"...\"")
+                f"  {WORKFLOW_CMD} gate {args.phase} open --walkthrough \"...\"")
         acceptance["cleared_at"] = now_iso()
+        acceptance["words"] = words
         if args.note:
             acceptance["note"] = args.note
         event = "acceptance_cleared"
     write_json(pdir / "phase.json", data)
     # Opening/clearing rides the existing `pending` halt -- no second halt state.
-    if args.open_gate or args.clear:
-        status = "pending" if args.open_gate else "in_progress"
+    if action in ("open", "clear"):
+        status = "pending" if action == "open" else "in_progress"
         old = _set_phase_status(pdir, status)
         append_event("phase_status_changed", phase=args.phase, old_status=old, new_status=status)
-    append_event(event, phase=args.phase)
+    append_event(event, phase=args.phase, **({"words": words} if action == "clear" else {}))
     rebuild_index_and_state()
-    if args.open_gate:
+    if action == "open":
         print(f"phase {args.phase}: acceptance gate OPEN -- phase is pending [~]; do not start, finish, or advance past it")
         print("WALKTHROUGH (the operator runs this against the running product):")
         print(args.walkthrough)
-        print(f"Then clear it: {WORKFLOW_CMD} accept-gate {args.phase} --clear")
-        print("Add --note \"...\" to record what the operator reported.")
-    elif args.clear:
-        print(f"phase {args.phase}: acceptance gate CLEARED -- phase is in_progress again; review-phase --verdict pass is now allowed")
+        print(f"Then clear it with the operator's literal words: {WORKFLOW_CMD} gate {args.phase} clear --words \"...\" [--note \"what they reported\"]")
+    elif action == "clear":
+        print(f"phase {args.phase}: acceptance gate CLEARED with the operator's words -- phase is in_progress again; "
+              f"the close records the pass: {WORKFLOW_CMD} close {args.phase}")
     else:
         print(message)
 
@@ -4093,13 +4089,13 @@ def cmd_next(args: argparse.Namespace) -> None:
         kind = "slice" if "." in waiting else "phase"
         clear = f"slice status {waiting} in_progress" if kind == "slice" else f"phase status {waiting} in_progress"
         # An open acceptance gate is the same `pending` halt with a concrete script attached:
-        # print the walkthrough, and clear through accept-gate so cleared_at gets stamped.
+        # print the walkthrough, and clear through gate clear so cleared_at and the words get stamped.
         gate = None
         if kind == "phase" and (ACTIVE / waiting / "phase.json").exists():
             pdata = read_json(ACTIVE / waiting / "phase.json")
             if acceptance_gate_is_open(pdata):
                 gate = phase_acceptance(pdata)
-                clear = f"accept-gate {waiting} --clear"
+                clear = f"gate {waiting} clear --words \"<the operator's words>\""
         print(f"current_phase={state.get('current_phase')}")
         for line in explain_unit_lines(state.get("current_phase")):
             print(line)
@@ -4199,14 +4195,10 @@ def _phase_blocker_kinds(pdir: Path) -> list:
     review_status = phase.get("review", {}).get("status")
     if review_status != "pass":
         reasons.append(("review", f"review is {review_status!r}, not pass"))
-    # P52: a recorded, unwaived PR that GitHub has not merged (as pr-sync last read it) holds the phase:
-    # archiving would take its record out of `next`'s pr_open= lines. Only state=merged releases it.
+    # A recorded, unwaived PR GitHub has not merged (as pr sync last read it): phase rotate's sweep leaves the
+    # phase active (its pr_open= line stays in next); phase archive <P> archives it with advice.
     for entry in _pr_open_entries(phase):
-        state = entry.get("state") or "unsynced"
-        text = f"PR {_pr_label(entry)} is {state}, not merged -- once it merges: {WORKFLOW_CMD} pr-sync {phase['id']}"
-        if state == "closed":
-            text += f"; it was closed without merging: {WORKFLOW_CMD} phase archive {phase['id']} --force is the way out"
-        reasons.append(("pr", text))
+        reasons.append(("pr", f"PR {_pr_label(entry)} is {entry.get('state') or 'unsynced'}, not merged (pr sync {phase['id']} reads it)"))
     return reasons
 
 
@@ -4261,7 +4253,10 @@ def cmd_phase_archive(args: argparse.Namespace) -> None:
     if not pdirs:
         print("no active phases to archive")
         return
-    blockers = [(pdir, _phase_blockers(pdir)) for pdir in pdirs] if not args.force else []
+    held = [(pdir, _phase_blocker_kinds(pdir)) for pdir in pdirs] if not args.force else []
+    advice = [f"advice: {read_json(pdir / 'phase.json')['id']}: {text}; archived anyway, so next no longer lists it"
+              for pdir, kinds in held for kind, text in kinds if kind == "pr"]
+    blockers = [(pdir, [text for kind, text in kinds if kind != "pr"]) for pdir, kinds in held]
     blockers = [(pdir, reasons) for pdir, reasons in blockers if reasons]
     if blockers and not args.all_phases:
         raise SystemExit(f"phase {args.phase} is not archivable ({'; '.join(blockers[0][1])}). Finish/review it, or use --force for exceptional cleanup.")
@@ -4272,6 +4267,8 @@ def cmd_phase_archive(args: argparse.Namespace) -> None:
         raise SystemExit("Finish the open phases first, or use --force for exceptional cleanup.")
     archived = [(read_json(pdir / "phase.json")["id"], _archive_one(pdir, forced=args.force)) for pdir in pdirs]
     rebuild_index_and_state()
+    for line in advice:
+        print(line)
     if not args.all_phases:
         print(f"archived phase {args.phase}: {shown(archived[0][1])}")
         return

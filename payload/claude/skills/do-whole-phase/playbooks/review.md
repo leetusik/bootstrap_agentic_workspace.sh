@@ -10,6 +10,6 @@ The procedure is `.claude/skills/review-phase/SKILL.md`, read by path. What the 
 - **Cross-check** the notebook against every `result.md`: a decision a result records but `## Decisions` lost is a finding. Check that nothing the phase started still runs.
 - **A reopened phase's re-review** (its review note reads `team-reported: …` or `operator-reported: …`): the request is the claims to verify.
 
-**Carve-out.** Never edit source. You write `result.md`, the notebook, the PR step's `topics/pr-body*.md` and `topics/pr-details*.md`, and on a pass the two gate sections the skill names. Never run `review-phase`, `accept-gate` or `defer-job`, and never push.
+**Carve-out.** Never edit source. You write `result.md`, the notebook, the PR step's `topics/pr-body*.md` and `topics/pr-details*.md`, and on a pass the two gate sections the skill names. Never run `review`, `gate` or `defer-job`, and never push.
 
 **Fields.** `review_verdict`: `pass` | `changes_requested` | `blocked`; `walkthrough` (a gated phase, else `none`); `pr_bodies` (or `none`); `code_read`: the file and upheld / rejected / routed counts, `n/a (0 product files)` or `skipped (operator: "<words>")`; `explain`: `not written — run /knowledge:explain P<N> for a document, or ask it for a book`.

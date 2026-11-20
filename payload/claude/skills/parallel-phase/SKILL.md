@@ -17,7 +17,7 @@ A linked checkout (`next` prints `store=cloud`) refuses `parallel-start` and the
 
 **One exception: an explain phase (v86).** `create-phase`'s explain route starts every explain phase in its own worktree unless its `## Explain` says `worktree: no`; its one confirmation is the word. Its branch touches only its phase folder and `works/`, so it merges back by itself after its pass (below).
 
-The unit of worktree parallelism is the **phase**; slices inside it run one at a time, or together as `do-whole-phase`'s wave in the phase's own checkout. This skill covers start, adding a repo and status; **integration is the close's, stated once in `.claude/skills/pr/reference/close.md`** (*A worktree phase: integrate*).
+The unit of worktree parallelism is the **phase**; slices inside it run one at a time, or together as `do-whole-phase`'s wave in the phase's own checkout. This skill covers start, adding a repo and status; **integration is the close's, stated once in `.claude/skills/pr/reference/close.md`** (`close <P>`'s `merge` and `teardown` steps).
 
 ## 1. Worktree rules
 
@@ -36,7 +36,7 @@ The unit of worktree parallelism is the **phase**; slices inside it run one at a
 
 Run `python3 scripts/workflow.py parallel-start <P>` from the default stream, before the phase's first `slice start`, on the operator's word, then enter the printed path.
 
-**Nested:** read `nested-convention`; propose a host branch name in that custom with no phase or slice IDs (the `Branches:` line `create-phase` confirmed, when there is one); the operator confirms it; it is the phase's PR branch (`pr-branch` records it at `DECOMP`'s end). The base defaults to the host's default branch (`--host-base <ref>` to stack); `git fetch` first when the custom says fresh main (the engine never fetches). Then `parallel-start <P> --host-branch <name> [--host-base <ref>]`.
+**Nested:** read `nested-convention`; propose a host branch name in that custom with no phase or slice IDs (the `Branches:` line `create-phase` confirmed, when there is one); the operator confirms it; it is the phase's PR branch (`pr branch` records it at `DECOMP`'s end). The base defaults to the host's default branch (`--host-base <ref>` to stack); `git fetch` first when the custom says fresh main (the engine never fetches). Then `parallel-start <P> --host-branch <name> [--host-base <ref>]`.
 
 **An explain phase needs no host branch (v86).** With no `--host-branch` it cuts a detached host worktree at the host base (`host_branch=-`); it has nothing to integrate on the host.
 
@@ -60,7 +60,7 @@ Right after its pass, with no stop: `parallel-gate <P>` (a busy stream does not 
 
 ### A reopened phase — a change request on its open PR
 
-On the operator's word (also the worktree word), by `.claude/skills/pr/reference/reopen.md`: `phase reopen <P> --note "team-reported: <what>"` or `--note "operator-reported: <what>"`. **Nested:** `git -C <host> switch <default>`, `pr-sync <P>`, `phase reopen` (a pair on the existing PR branch); run the fix round and re-review there; the teardown keeps the host branch for its open PR. **At root:** in place, on the PR branch (stay, `git switch <branch>` at a slice boundary, or `git worktree add <sibling> <branch>`). Then `pr-sync <P>` there (the default branch's record is stale), then `phase reopen`: no worktree, nothing to integrate; commit the reopen with the fix round's first commit.
+On the operator's word (also the worktree word), by `.claude/skills/pr/reference/reopen.md`: `phase reopen <P> --note "team-reported: <what>"` or `--note "operator-reported: <what>"`. **Nested:** `git -C <host> switch <default>`, `pr sync <P>`, `phase reopen` (a pair on the existing PR branch); run the fix round and re-review there; the teardown keeps the host branch for its open PR. **At root:** in place, on the PR branch (stay, `git switch <branch>` at a slice boundary, or `git worktree add <sibling> <branch>`). Then `pr sync <P>` there (the default branch's record is stale), then `phase reopen`: no worktree, nothing to integrate; commit the reopen with the fix round's first commit.
 
 ## 6. A multi-repo host: a set
 
@@ -69,7 +69,7 @@ When `nested-repos` lists repos, a phase worktree is a **set**: the host worktre
 - **Start:** per repo, read `nested-convention --repo <name>`, propose a branch name (no IDs), the operator confirms; the base is the registry's `default_branch` (local; `--repo-base <name>=<ref>` to stack; fetch first if the custom says so). `parallel-start <P> --host-branch <name> --repo <name>=<branch> [--repo-base <name>=<ref>] ...`. An existing branch checked out nowhere is reused; one checked out anywhere is refused.
 - **Add a repo** later, from inside the set: `parallel-add-repo <P> --repo <name>=<branch> [--repo-base <ref>]` (never re-run `parallel-start`); `--adopt` stamps a repo worktree already at `<host worktree>/<repo>/`.
 - **Not in the set:** `phase scope` prints `not in this worktree set` and never reads that repo's main checkout; `phase scope <P> --repo <name> --base <ref>` reads it anyway.
-- **Work:** product commits go to each repo's branch (`git -C <repo> …` from the host worktree), never to the host folder; `pr-branch --repo <name>` records each, one draft PR each.
+- **Work:** product commits go to each repo's branch (`git -C <repo> …` from the host worktree), never to the host folder; `pr branch --repo <name>` records each, one draft PR each.
 - **Teardown** (the close's step) refuses uncommitted work, ignored worktree-only files (unless `--discard-ignored`) and detached commits, then removes the repo worktrees, the nested, the host. **A worktree the stamp does not name is refused, always**, `--discard-ignored` included: remove it after integrating its branch (`git -C <repo> worktree remove <path>`), or `--adopt` it.
 
 ## Guardrails

@@ -6,7 +6,7 @@
 
 **One exception: an explain phase (v86).** `create-phase`'s explain route starts its worktree unless `## Explain` says `worktree: no`: its confirmation was the word. In a nested install it runs `parallel-start <P>` with no `--host-branch` (a detached host worktree), then `EnterWorktree` and `next` (`explain_unit=`), and this skill in `auto`.
 
-**Integrate after a `pass`** by the close checklist, the one place it is written: `.claude/skills/pr/reference/close.md` (*A worktree phase: integrate*: the gate first, never past a closed one; the merge; the gate sections the branch review's `result.md` holds under `## Gate sections (written at merge)`; the teardown).
+**Integrate after a `pass`** by the close checklist, the one place it is written: `.claude/skills/pr/reference/close.md` (`close <P>`'s `merge` and `teardown` stops: the gate first, never past a closed one; the merge; the gate sections the branch review's `result.md` holds under `## Gate sections (written at merge)`; the teardown).
 
 **An explain phase merges back by itself, with no stop.** Its branch touches only its phase folder and the generated `works/` files, so right after its `pass` run the integration without asking; `parallel-gate` does not close on a busy stream when it prints `exemption=phase-folder-only (<n> paths)`. Tear down with `parallel-teardown <P> --discard-ignored` in a nested install (plain `parallel-teardown <P>` at root). A detached host worktree has nothing to integrate on the host.
 

@@ -13,7 +13,7 @@ A repo with a team template keeps the team's headings in its order; map this con
 5. **`## Why`:** the background the diff cannot show (2–4 sentences, links) and at most 5 bold-lead decisions, each with the alternative and the reason.
 6. **`## Related issue`:** `Closes #n`, `Refs …` or `None`, plus links to the details comment and any repo doc in the diff.
 
-## Budgets (`pr-check` measures them)
+## Budgets (`pr check` measures them)
 
 First screen (before the first heading after `## Review`) at most 1,500 reading chars; visible text (outside `<details>`) at most 3,500; the whole source at most 6,000. Link URLs, HTML comments and Mermaid source do not count; each whitespace run is one char. Over a budget, move depth out; never squeeze words or drop the asks.
 
