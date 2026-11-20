@@ -335,7 +335,6 @@ def shown_rel(rel: str) -> str:
 
 
 WORKS = ROOT / "works"
-DOCS = ROOT / "docs"
 ACTIVE = WORKS / "phases" / "active"
 ARCHIVED = WORKS / "phases" / "archived"
 DEFERRED_OPEN = WORKS / "deferred" / "open"
@@ -344,22 +343,6 @@ DEFERRED_DROPPED = WORKS / "deferred" / "dropped"
 # The agenda (P66): one folder per item, `works/agenda/<AID>/agenda.json`, rewritten in place on every
 # change and never moved -- a status is a field, not a folder (unlike deferred jobs).
 AGENDA = WORKS / "agenda"
-DOC_TYPES = {"product", "architecture", "operations", "qa", "decisions"}
-# The six docs retired by v79: for an AI reader they restated the code (and went stale), and they were
-# written more than read. An install that has them keeps them readable in docs/current, listed as
-# retired; doc-new-version refuses them, and a `## Doc impact` note naming one counts for its successor,
-# where what the code cannot say about it (a journey, a contract, an invariant, a trust boundary) goes.
-RETIRED_DOCS = {"experience": "product", "frontend": "architecture", "backend": "architecture",
-                "data": "architecture", "api": "architecture", "security": "architecture"}
-# An H2 section in a durable doc past this many bytes has outgrown the read-order rule
-# ("read the `docs/current/` SECTIONS the work touches"): at ~4 B/token 10 KB is ~2.5 k tokens,
-# and measured across four live adopting repos (P21.S1 §2.8) 10 % of all H2 sections are already
-# over it, the worst one 112,619 B / ~28 k tokens in a single section. 10 KB is that measurement's
-# own cut line, so the check flags the tail that actually defeats the rule and stays quiet on the
-# other 90 %. ADVISORY ONLY -- a warning naming doc, section and size, never an error: splitting is
-# per-doc judgment for the next docs phase (small docs measured WORSE when sectioned, §2.4), so
-# this only makes the drift visible. One knob, no config plumbing.
-DOC_SECTION_WARN_BYTES = 10 * 1024
 PHASE_STATUSES = {"planned", "in_progress", "in_review", "pending", "blocked", "done"}
 SLICE_STATUSES = {"todo", "ready", "in_progress", "in_review", "changes_requested", "pending", "blocked", "done"}
 # The typed pending record (v61): every operator stop says what kind it is and what the operator's words on
@@ -461,7 +444,7 @@ GIST_MAX = 160
 GIST_PLAIN_MIN = 24
 # Per-section budgets (bytes), warning-only like PHASE_MD_BUDGET, which still judges the total. A
 # section not named here gets SECTION_BUDGET_DEFAULT; None = no budget of its own (Slices is
-# generated, Doc impact is append-only, one line per note), though both still count to the total.
+# generated; Doc impact is only in notebooks from before its retirement), though both still count to the total.
 # `notebook_report` is the one reader: the index, finish-slice, validate and next all print from it.
 SECTION_BUDGETS = {"decisions": 12288, "operator questions": 8192, "notes for later slices": 6144,
                    "now": 2048, "objective": 2048, "slices": None, "doc impact": None}
@@ -477,9 +460,8 @@ PAGE_BYTES = 24 * 1024
 # worktree, stamped by `parallel-start` -- which a phase gets ONLY when the operator asks
 # for it. No block = the phase runs on the default stream, which is where every phase runs
 # unless asked otherwise; that is the v43 default and it needs no marker.
-# `mode: "default"` = a LEGACY pin written by v42's `parallel-skip` / `new-phase --on-main`,
-# when the worktree was the default and staying on main needed saying. Both commands are
-# now no-ops, so nothing new is ever stamped with it -- but `phase_execution` still returns
+# `mode: "default"` = a LEGACY pin written by v42's (since retired) skip command and `new-phase --on-main`,
+# when the worktree was the default and staying on main needed saying. Nothing new is ever stamped with it -- but `phase_execution` still returns
 # None for it, so a pinned phase IS a default-stream phase everywhere, and `parallel-start`
 # still refuses one rather than silently overriding an old deliberate pin.
 # See `phase_execution` / `phase_pinned`.
@@ -493,17 +475,6 @@ WORKTREES_DIR = ".claude/worktrees"
 # `rebuild_index_and_state` rewrites, plus the event log. Nothing else on the tree enters it.
 STAMP_WORKS_FILES = ("works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/agenda.md",
                      "works/events.jsonl")
-CONSOLIDATION_STATES = {"pending", "done"}
-# How many phases must owe durable-doc consolidation before `next` / `validate` say so.
-# 1 = always, whenever anything owes -- the deliberate default, because the debt has to be
-# visible at ANY docs-phase cadence: deferral traded review cost for operator-paced staleness,
-# and silent staleness is the one outcome the trade may not have. This single constant is the
-# only "how loud" knob for the *debt* line. v39 settled the cadence question by declining it --
-# consolidation runs when the operator wants it, and explicit doc staleness (`stale_docs`) is what
-# was taken instead -- so this stays 1; a repo that later states a cadence can still raise it.
-CONSOLIDATION_DEBT_MIN_PHASES = 1
-# What `docs-debt` calls a note that names no doc from DOC_TYPES -- listed, never guessed at.
-UNASSIGNED_DOC = "(unassigned)"
 # A default-stream phase in any of these states means main is mid-flight, so a phase
 # branch may not be merged into it yet (the quiet-point gate, `parallel-gate`).
 BUSY_PHASE_STATUSES = ("in_progress", "in_review", "pending", "blocked")
@@ -525,10 +496,9 @@ GATE_EXEMPT_ADDED_PREFIXES = ("works/deferred/open/", "works/agenda/")
 # the only unit before v86.
 EXPLAIN_UNITS = ("document", "book", "chapter")
 EXPLAIN_UNIT_DEFAULT = "book"
-# Regenerated from works/phases/** and docs/versions/** by `parallel-merge-finish`;
-# never merged by hand (see .gitattributes).
-GENERATED_FILES = ("works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/agenda.md",
-                   "docs/current/*.md")
+# Regenerated from works/phases/** by `parallel-merge-finish`; never merged by hand (see .gitattributes).
+# docs/current/*.md are plain files agents edit, so they are not among them.
+GENERATED_FILES = ("works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/agenda.md")
 # The executor agent files Claude Code loads: the host's `.claude/agents` when nested (Claude Code
 # finds agents walking up from the session's cwd, the host root), the workspace's otherwise.
 # executors.toml and .env stay at ROOT either way.
@@ -773,7 +743,7 @@ def write_json(path: Path, data: object) -> None:
 
 def write_json_stamped(path: Path, data: dict, key: str, stamp: str) -> dict:
     """Write a generated JSON file whose `key` stamps when it was built, unless nothing but that
-    stamp would change: then write nothing and keep the old stamp. So a read (`next`, `run-phases`,
+    stamp would change: then write nothing and keep the old stamp. So a read (`next`,
     a plain `rebuild`) leaves these tracked files, and the tree, unchanged; the stamp moves only
     with a real change (v74). Returns `data` holding the stamp that is on disk."""
     try:
@@ -890,14 +860,6 @@ def all_events(counts=None) -> list:
     if counts is not None:
         counts["skipped"] = skipped
     return events
-
-
-def strip_frontmatter(text: str) -> str:
-    if text.startswith("---\n"):
-        end = text.find("\n---\n", 4)
-        if end != -1:
-            return text[end + len("\n---\n"):].lstrip("\n")
-    return text
 
 
 def read_executors_toml() -> dict:
@@ -2323,52 +2285,6 @@ def _meter_slice_order(windows: "_MeterWindows"):
     return key
 
 
-def doc_index() -> dict:
-    return read_json(DOCS / "index.json")
-
-
-def write_doc_index(index: dict) -> None:
-    write_json_stamped(DOCS / "index.json", index, "last_rebuilt_at", now_iso())
-
-
-def rebuild_docs() -> None:
-    index = doc_index()
-    for doc_id, info in index.get("docs", {}).items():
-        latest = next((v for v in info.get("versions", []) if v["id"] == info.get("latest")), None)
-        if not latest:
-            raise SystemExit(f"latest version missing in docs/index.json for {doc_id}")
-        src = ROOT / latest["path"]
-        if not src.exists():
-            raise SystemExit(f"latest doc file missing: {latest['path']}")
-        write_text(ROOT / info["current_path"], src.read_text(encoding="utf-8"))
-    write_doc_index(index)
-
-
-def next_doc_version_id(doc_id: str, index: dict) -> tuple:
-    """`("v<yyMMddHHmm>", number)`: the next version of one doc, named by its UTC minute (v73).
-
-    The version NUMBER stays the digits after `v`, per doc -- unique and strictly increasing -- and a
-    name is now the minute the version was made, so two branches that each version a doc never pick
-    the same `max + 1`. When the doc's highest number is not below this minute (a second version in
-    the same minute, or a clock behind a teammate's) the new one takes the minute after it, so a name
-    stays a valid minute and always sorts above every older one, `v0001`-`v0043` included. Two
-    branches versioning one doc in one minute is an accepted risk (`validate` fails loudly on it)."""
-    nums = []
-    for v in index["docs"][doc_id].get("versions", []):
-        m = re.match(r"v(\d+)", v["id"])
-        if m:
-            nums.append(int(m.group(1)))
-    top = max(nums, default=0)
-    num = int(datetime.now(timezone.utc).strftime("%y%m%d%H%M"))
-    if num <= top:
-        try:
-            num = int((datetime.strptime(f"{top:010d}", "%y%m%d%H%M") + timedelta(minutes=1)).strftime("%y%m%d%H%M"))
-        except ValueError:  # a highest number that is not a minute (hand-written): just step past it
-            num = top + 1
-        num = max(num, top + 1)
-    return f"v{num:04d}", num
-
-
 def head_commit() -> str:
     """The current HEAD sha, or "" where git cannot answer -- the provenance half of a doc's
     last-updated marker.
@@ -2391,111 +2307,6 @@ def head_commit() -> str:
     return sha if proc.returncode == 0 and re.fullmatch(r"[0-9a-f]{7,40}", sha) else ""
 
 
-def doc_marker(version: dict) -> str:
-    """One doc version's last-updated marker: when it was written, which slice consolidated it,
-    and the commit it was written at -- the line `docs` prints under every doc.
-
-    `commit` arrived in v39, so its two absences are reported differently and honestly: a key that
-    is *missing* predates the field (pre-v39, and never backfilled -- a backfilled sha would mean
-    "the commit that last touched the file", a different fact wearing the same name), while a key
-    that is `null` means the write happened where git could not be read. Neither is an error.
-    """
-    if "commit" in version:
-        sha = version.get("commit")
-        commit = str(sha)[:12] if sha else "unknown (no git at write time)"
-    else:
-        commit = "unknown (pre-v39)"
-    return f"updated={str(version.get('created_at', ''))[:10]} source={version.get('source') or 'unknown'} commit={commit}"
-
-
-def new_doc_version(args: argparse.Namespace) -> None:
-    doc_id = args.doc
-    if doc_id in RETIRED_DOCS:
-        kept = f"; {shown_rel(f'docs/current/{doc_id}.md')} stays readable as it is" if (DOCS / "current" / f"{doc_id}.md").exists() else ""
-        raise SystemExit(f"{doc_id} is a retired doc (v79), never versioned again: write the change into a new version of "
-                         f"{RETIRED_DOCS[doc_id]} (doc-new-version --doc {RETIRED_DOCS[doc_id]}), keeping only what the code cannot say{kept}")
-    if doc_id not in DOC_TYPES:
-        raise SystemExit(f"doc must be one of: {', '.join(sorted(DOC_TYPES))}")
-    # Doc versions are named by their UTC minute (v73), so two streams no longer pick the same
-    # number -- but two branches versioning one doc each copy its whole body from the same parent, so
-    # a merge silently keeps one side's edits, and both write the one `docs/index.json`.
-    # Consolidation therefore still runs on the default stream only -- refuse here, before any
-    # allocation or write, so a refusal leaves zero partial state.
-    stream = current_stream(all_active_phases())
-    if stream:
-        raise SystemExit(f"this checkout is on parallel stream {stream}; doc consolidation runs on the default stream, never on a phase branch -- the names no longer collide, but two branches versioning one doc each copy its whole body from the same parent (a merge silently keeps one side's edits) and both write the one docs/index.json; for a parallel phase defer it to the post-merge step (parallel-merge-finish, then doc-new-version, then parallel-consolidated)")
-    index = doc_index()
-    info = index["docs"][doc_id]
-    latest_id = info["latest"]
-    latest = next(v for v in info["versions"] if v["id"] == latest_id)
-    base_body = strip_frontmatter((ROOT / latest["path"]).read_text(encoding="utf-8"))
-    version_prefix, _ = next_doc_version_id(doc_id, index)
-    version_id = f"{version_prefix}_{slugify(args.summary, 'update')}"
-    rel = f"docs/versions/{doc_id}/{version_id}.md"
-    dest = ROOT / rel
-    if dest.exists():
-        raise SystemExit(f"doc version already exists: {rel}")
-    # The last-updated marker (v39). Written into both the frontmatter -- which `rebuild_docs`
-    # copies verbatim into `docs/current`, so the marker reaches the file a reader opens -- and the
-    # index entry `docs` reads. Absent git is recorded as `unknown`/null, never raised.
-    commit = head_commit()
-    frontmatter = (
-        f"---\n"
-        f"doc_id: {doc_id}\n"
-        f"version: {version_prefix}\n"
-        f"created_at: {now_iso()}\n"
-        f"commit: {commit or 'unknown'}\n"
-        f"source: {args.source}\n"
-        f"summary: {args.summary}\n"
-        f"previous: {latest_id}\n"
-        f"---\n\n"
-    )
-    write_text(dest, frontmatter + base_body)
-    info["latest"] = version_id
-    info["versions"].append({
-        "id": version_id, "path": rel, "created_at": now_iso(), "commit": commit or None,
-        "source": args.source, "summary": args.summary, "previous": latest_id,
-    })
-    write_doc_index(index)
-    rebuild_docs()
-    append_event("doc_version_created", doc=doc_id, version=version_id, source=args.source)
-    print(f"created doc version {doc_id}/{version_id}")
-    print(f"edit_path={shown(dest)}")
-    print(f"after editing, run: {WORKFLOW_CMD} rebuild-docs")
-    # The split can only happen in a new version, and this is one -- so say it here, not only in
-    # `validate`, where the reader is nowhere near an editable file.
-    hint = oversized_sections_line(oversized_doc_sections([doc_id]))
-    if hint:
-        print(f"note: {hint}")
-        print("note: you are writing that doc now -- if you split, split it in this version file, never in docs/current")
-
-
-def cmd_docs(args: argparse.Namespace) -> None:
-    """The durable-doc listing -- where an agent picks which sections to read, and therefore where
-    each doc's last-updated marker and its staleness belong. Writes nothing."""
-    index = doc_index()
-    stale = stale_docs()
-    owing_ids = {pid for owed in stale.values() for pid in owed}
-    active = all_active_phases() if any(id_sort_key(pid)[0] == 1 for pid in owing_ids) else []  # tokens list by created_at
-    for doc_id in sorted(index["docs"]):
-        info = index["docs"][doc_id]
-        latest = next(v for v in info["versions"] if v["id"] == info["latest"])
-        print(f"{doc_id}: latest={info['latest']} current={shown_rel(info['current_path'])} latest_path={shown_rel(latest['path'])}")
-        line = f"  {doc_marker(latest)}"
-        if doc_id in RETIRED_DOCS:  # v79: kept readable, never versioned; its notes count for the successor
-            print(f"{line} -- retired (v79): frozen as it is; read the code first, and durable truth for it now goes to {RETIRED_DOCS[doc_id]}.md")
-            continue
-        owed = stale.get(doc_id)
-        if owed:
-            notes = sum(owed.values())
-            line += (f" -- STALE: {notes} unconsolidated '## Doc impact' note(s) from {', '.join(sort_phase_ids(owed, active))}"
-                     f" are newer than this version; read them (docs-debt) before trusting this doc")
-        print(line)
-    hint = stale_docs_line(stale)
-    if hint:
-        print(hint)
-
-
 def h2_sections(text: str) -> list:
     """`(heading, bytes)` for every `## ` section of a markdown document, biggest-unit-first order.
 
@@ -2515,90 +2326,6 @@ def h2_sections(text: str) -> list:
         end = starts[j + 1] if j + 1 < len(starts) else len(lines)
         out.append((lines[i].strip(), len("\n".join(lines[i:end]).encode("utf-8"))))
     return out
-
-
-def oversized_doc_sections(doc_ids=None, threshold: int = DOC_SECTION_WARN_BYTES) -> list:
-    """Every `docs/current` H2 section past `threshold` bytes, biggest first: `(doc, heading, bytes)`.
-
-    Measured on the generated current snapshots, because those are what a slice reads. Best effort
-    and never fatal: a doc with no current file is skipped rather than reported, so a partial or
-    foreign workspace still validates. `doc_ids` narrows it to the doc being written.
-    """
-    wanted = sorted(DOC_TYPES if doc_ids is None else set(doc_ids) & DOC_TYPES)
-    found = []
-    for doc_id in wanted:
-        path = DOCS / "current" / f"{doc_id}.md"
-        if not path.exists():
-            continue
-        found += [(doc_id, heading, size) for heading, size in h2_sections(path.read_text(encoding="utf-8")) if size > threshold]
-    return sorted(found, key=lambda item: -item[2])
-
-
-def oversized_sections_line(sections: list, limit: int = 3) -> str:
-    """One advisory line naming the biggest oversized sections, or "" when there are none -- shared
-    by `validate` and `doc-new-version` so the warning and the write-time hint can never word it
-    differently (the `consolidation_debt_line` pattern).
-
-    Advisory everywhere, never an error and never a sweep order: splitting is per-doc judgment at
-    the next consolidation, and a small doc whose few sections are its whole content is fine as it is.
-    """
-    if not sections:
-        return ""
-    def short(heading: str) -> str:
-        return heading if len(heading) <= 60 else heading[:57] + "..."
-    named = "; ".join(f"{doc}.md '{short(heading)}' {size:,} B" for doc, heading, size in sections[:limit])
-    if len(sections) > limit:
-        named += f"; +{len(sections) - limit} more"
-    return (f"oversized_doc_sections={len(sections)} (H2 sections over {DOC_SECTION_WARN_BYTES:,} B, so"
-            f" \"read only the sections the work touches\" is no longer a small read): {named}"
-            f" -- split them at the next consolidation (a docs phase), by per-doc judgment, never a sweep")
-
-
-def validate_docs(errors: list, warnings: list = None) -> None:
-    warnings = [] if warnings is None else warnings
-    if not (DOCS / "index.json").exists():
-        errors.append("missing docs/index.json")
-        return
-    index = doc_index()
-    for doc_id in DOC_TYPES:
-        info = index.get("docs", {}).get(doc_id)
-        if not info:
-            errors.append(f"missing doc index entry: {doc_id}")
-            continue
-        # Version numbers must be unique per doc (the digits after `v`: `v0007` in the old counter,
-        # `v2610230147` -- a UTC minute -- since v73). `next_doc_version_id` never repeats one, so two
-        # entries claiming the same number means a collision already happened (two branches versioning
-        # one doc in the same minute, or a hand-resolved merge of docs/index.json) and one version is
-        # silently absent from docs/current. Fail loudly instead, naming the ids as written.
-        seen_nums = {}
-        for version in info.get("versions", []):
-            m = re.match(r"v(\d+)", str(version.get("id", "")))
-            if not m:
-                continue
-            num = int(m.group(1))
-            if num in seen_nums:
-                errors.append(f"duplicate doc version number in docs/index.json: {doc_id} v{m.group(1)} claimed by both {seen_nums[num]} and {version.get('id')}")
-            else:
-                seen_nums[num] = version.get("id")
-        latest = next((v for v in info.get("versions", []) if v.get("id") == info.get("latest")), None)
-        if not latest:
-            errors.append(f"missing latest doc version entry: {doc_id}")
-            continue
-        # `latest` stays the stored pointer `rebuild-docs` reads; it is not recomputed. But a pointer
-        # below the highest version number means docs/current is generated from an older version than
-        # the newest one on file -- a hand-resolved merge, most likely -- so say so (advisory).
-        latest_match = re.match(r"v(\d+)", str(latest.get("id", "")))
-        if latest_match and seen_nums and int(latest_match.group(1)) < max(seen_nums):
-            highest_id = seen_nums[max(seen_nums)]
-            warnings.append(f"doc {doc_id}: latest is {latest.get('id')}, but {highest_id} has the highest version number -- docs/current is generated from latest; if the newer version is the one meant, set docs/index.json's latest to {highest_id} and run rebuild-docs")
-        latest_path = ROOT / latest["path"]
-        current_path = ROOT / info["current_path"]
-        if not latest_path.exists():
-            errors.append(f"missing latest doc file: {latest['path']}")
-        if not current_path.exists():
-            errors.append(f"missing current doc file: {info['current_path']}")
-        if latest_path.exists() and current_path.exists() and latest_path.read_text(encoding="utf-8") != current_path.read_text(encoding="utf-8"):
-            errors.append(f"current doc is stale; run rebuild-docs: {doc_id}")
 
 
 def _created_sort_stamp(created_at) -> str:
@@ -3068,9 +2795,10 @@ def phase_execution(data) -> dict:
         "execution": {
           "mode": "parallel",              # "parallel" = own stream; "default" (pinned, v42) and anything else = default stream
           "branch": "phase/P13-some-slug", # required when parallel; the stream key
-          "worktree": "/path or null",     # informational (null on a plain clone)
-          "consolidation": "pending"       # "pending" until the post-merge doc consolidation, then "done"
+          "worktree": "/path or null"      # informational (null on a plain clone)
         }
+
+    An older install's `consolidation` key in the block (the retired doc debt) is ignored.
 
     A nested install (P35) adds the host half of the worktree pair: `host_worktree`, `host_branch`,
     `host_base`, `host_base_sha`, `host_branch_created` and `base_branch`; there `worktree` is the
@@ -3228,127 +2956,13 @@ def _nested_execution_repo_problems(phase_id: str, execution: dict, errors: list
 def phase_pinned(data) -> bool:
     """True when the phase carries v42's legacy pin (`execution.mode == "default"`).
 
-    Since v43 the default stream is the default, so nothing writes this block any more --
-    `parallel-skip` and `new-phase --on-main` are no-ops. It is still honoured where it
+    Since v43 the default stream is the default, so nothing writes this block any more
+    (`new-phase --on-main` is a no-op). It is still honoured where it
     exists: `parallel-start` refuses a pinned phase rather than overriding a deliberate pin,
     and the hints skip it. Everything else treats it exactly like a phase with no block,
     because `phase_execution` returns None for it."""
     execution = data.get("execution") if isinstance(data, dict) else None
     return isinstance(execution, dict) and execution.get("mode") == PINNED_MODE
-
-
-def phase_consolidation(data) -> str:
-    """A phase's durable-doc consolidation debt: "pending", "done", or None (nothing owed).
-
-    Every phase defers consolidation: a passing review verifies the `## Doc impact` list and
-    creates no doc versions, so the debt is stamped there ("pending") and paid later by an
-    operator-created docs phase (`doc-new-version` per note, then `docs-consolidated <P>`).
-
-    Read through this helper only, so every caller agrees on what "owes docs" means:
-
-        "consolidation": "pending" | "done" | absent   # top-level in phase.json
-
-    Backward compatible in both directions. v24-v37 stamped the identical debt inside the
-    parallel `execution` block, so that field is the fallback and no phase.json needs migrating;
-    a phase.json carrying neither (every phase reviewed before this release, and every adopter
-    file) owes nothing and archives exactly as it always did.
-    """
-    if not isinstance(data, dict):
-        return None
-    state = data.get("consolidation")
-    if state in CONSOLIDATION_STATES:
-        return state
-    if state is None:
-        execution = phase_execution(data)
-        if execution and execution.get("consolidation") in CONSOLIDATION_STATES:
-            return execution["consolidation"]
-    return None  # absent, or malformed -> `validate` reports it; no debt is invented
-
-
-def set_phase_consolidation(data: dict, state: str) -> None:
-    """Write the debt to the top-level key, mirroring it into a parallel `execution` block so the
-    parallel commands and `parallel-status` keep reading the same truth from the field they know."""
-    data["consolidation"] = state
-    execution = phase_execution(data)
-    if execution is not None:
-        execution["consolidation"] = state
-
-
-def phase_doc_impact_notes(pdir: Path) -> list:
-    """The `## Doc impact` bullets in a phase's notebook -- what a docs phase consolidates from.
-
-    Real notes only: the italic seed line, blanks and an explicit `- (none ...)` placeholder are
-    not debt, and a phase with no notebook or no section owes nothing.
-    """
-    path = pdir / "phase.md"
-    if not path.exists():
-        return []
-    notes, inside = [], False
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.startswith("## "):
-            inside = line.strip().lower() == "## doc impact"
-            continue
-        if not inside:
-            continue
-        text = line.strip()
-        if not (text.startswith("- ") or text.startswith("* ")):
-            continue
-        body = text[2:].strip()
-        if not body or body.startswith("_") or re.match(r"\(?none\b", body, re.I):
-            continue
-        notes.append(body)
-    return notes
-
-
-def doc_impact_docs(note: str) -> list:
-    """The durable docs one `## Doc impact` note touches, read off the `<doc>.md: ...` convention.
-
-    A note names its doc(s) in prose, so this is a best-effort read against the known `DOC_TYPES`
-    only -- one note may name several docs (`operations.md: ...; qa.md: ...`) and a note naming
-    none is reported unassigned rather than guessed at. A retired doc (v79) counts for its successor,
-    so an older note naming `backend.md` lands in architecture's worklist. Nothing routes on it:
-    `docs-debt` groups the worklist with it, and the operator still reads the note.
-    """
-    named = [d for d in sorted(DOC_TYPES | set(RETIRED_DOCS)) if re.search(rf"\b{re.escape(d)}\.md\b", note, re.I)]
-    return sorted({RETIRED_DOCS.get(d, d) for d in named})
-
-
-def phases_owing_consolidation(phases: list) -> list:
-    """Every active phase whose doc consolidation is still `pending` -- the debt list, in one place
-    so `parallel-merge-finish`, the archiving guard and any later surfacing all read the same set."""
-    return [p for p in phases if phase_consolidation(p) == "pending"]
-
-
-def consolidation_command(phase) -> str:
-    """The command that pays one phase's debt. Parallel phases keep their post-merge twin, so
-    the archiving guard, `next` and `validate` can never name a command the engine would refuse."""
-    return "parallel-consolidated" if phase_execution(phase) else "docs-consolidated"
-
-
-def phase_consolidates(data) -> list:
-    """The phase ids a docs phase declared it pays: the optional top-level `"consolidates"` list that
-    `new-phase --consolidates` writes (v51), `[]` when the key is absent or malformed (`validate`
-    reports a malformed one). It is the ONLY marker of a docs phase -- nothing reads a phase's name
-    or intent text to guess -- and a phase that carries none is simply not one, so no phase.json
-    needs migrating."""
-    value = data.get("consolidates") if isinstance(data, dict) else None
-    if not isinstance(value, list):
-        return []
-    return [v for v in value if isinstance(v, str)]
-
-
-def consolidation_cover(phases: list) -> dict:
-    """`{debt_phase_id: [covering phase, ...]}` -- which live docs phase already pays which phase's
-    debt: every active, not-`done` phase whose `consolidates` names it. A finished docs phase covers
-    nothing (it either paid the debt or it did not), so rotate proposes again rather than trusting
-    it. Read by `docs-debt` ("paid by") and `rotate-backlog` (no duplicate docs phase)."""
-    cover = {}
-    for phase in phases:
-        if phase.get("status") == "done":
-            continue
-        for pid in phase_consolidates(phase):
-            cover.setdefault(pid, []).append(phase)
-    return cover
 
 
 def archived_phase_ids() -> set:
@@ -3499,7 +3113,7 @@ ID_ARG_EXAMPLES = {"P": ("P46-k2", "46", "P12", "P-7kq2", "7kq2"), "D": ("D92-x4
 
 def brief_id(prefix: str, raw) -> "str | None":
     """The id `raw` names read STATICALLY (prefix `P` for a phase, `D` for a deferred job), or None when it is
-    no brief form: the optional `P`/`p` and digits (`P46`; leading zeros dropped, as `run-phases` always did),
+    no brief form: the optional `P`/`p` and digits (`P46`; leading zeros dropped),
     the same plus a dash and a valid tail (`P46-k2`, the tail lowercased), or the optional `P-`/`p-` and four
     v73 token symbols with a letter and no mode word (`P-7kq2`). A number is not looked up here."""
     text = str(raw).strip()
@@ -3622,12 +3236,10 @@ def _resolve_slice_arg(raw: str) -> str:
 def normalize_id_args(args: argparse.Namespace) -> None:
     """The ONE choke point for an id typed on a command line, run once after argparse (in a linked checkout,
     once after the begin step's pull, so an id reads the tree hi2vi holds: `cloud_boundary`): every `phase` /
-    `--phase` argument is a phase id, every `deferred_id` and `defer-job --id` a deferred job's, `new-phase
-    --consolidates` a comma list of phase ids, and the `slice` attribute (positional `slice` and `--slice`) a
+    `--phase` argument is a phase id, every `deferred_id` and `defer-job --id` a deferred job's, and the `slice` attribute (positional `slice` and `--slice`) a
     slice whose phase part may be brief (`46.S1`). CREATING an id (`new-phase --phase`, `defer-job --id`) reads
     it statically; `promote-deferred --create-phase --phase` references an existing phase when the number names
-    one and otherwise creates statically; every other argument REFERENCES a stored id (`resolve_id_ref`). A
-    `--consolidates` item that names nothing is left for that flag's own refusal; `--depends-on` stays full-form.
+    one and otherwise creates statically; every other argument REFERENCES a stored id (`resolve_id_ref`). `--depends-on` stays full-form.
     A command then only ever sees the stored shape."""
     cmd = getattr(args, "cmd", None)
     phase = getattr(args, "phase", None)
@@ -3671,97 +3283,11 @@ def normalize_id_args(args: argparse.Namespace) -> None:
     # a stored shape that names no item (`A99-zz`), before anything is written.
     if cmd in ("new-phase", "defer-job") and isinstance(getattr(args, "agenda", None), str):
         args.agenda = resolve_id_ref("A", args.agenda)
-    consolidates = getattr(args, "consolidates", None)
-    if isinstance(consolidates, str):
-        parts = []
-        for part in consolidates.split(","):
-            number = re.fullmatch(r"[Pp]?([0-9]+)", part.strip())
-            found, tailed = lookup_id_number("P", int(number.group(1))) if number else (None, [])
-            if found is None and len(tailed) > 1:
-                raise SystemExit(f"--consolidates: {id_number_refusal('P', part, int(number.group(1)), tailed)}; nothing was written")
-            parts.append(found or brief_id("P", part) or part.strip())
-        args.consolidates = ",".join(parts)
     slice_arg = getattr(args, "slice", None)
     if isinstance(slice_arg, str):
         args.slice = _resolve_slice_arg(slice_arg.strip())
     if cmd == "mark-committed" and isinstance(getattr(args, "mark_slices", None), list):
         args.mark_slices = [_resolve_slice_arg(s.strip()) for s in args.mark_slices]
-
-
-def stale_docs(phases=None) -> dict:
-    """`{doc: {phase_id: note_count}}` -- every durable doc named by a `## Doc impact` note that no
-    consolidation has paid yet. The doc-side view of the same debt `consolidation_debt_line` states
-    phase-side.
-
-    Why it matters: an owed note is evidence *newer* than the doc's latest version, so on that
-    subject `docs/current` trails the code. The doc is then stale evidence to read against the
-    notes, never current truth -- which is a fact about the doc a reader is choosing, not about the
-    phase, so it is surfaced where docs are read.
-
-    Composed from the helpers that already exist (`phases_owing_consolidation`,
-    `phase_doc_impact_notes`, `doc_impact_docs`) so `docs`, `validate` and `docs-debt` can never
-    disagree about which docs are affected. Best effort, exactly like `doc_impact_docs`: a note
-    naming no known doc is counted under `UNASSIGNED_DOC` rather than guessed at, and a phase whose
-    notebook is gone contributes nothing instead of raising.
-    """
-    owing = phases_owing_consolidation(all_active_phases() if phases is None else phases)
-    per_doc = {}
-    for phase in owing:
-        pdir = ROOT / phase["path"] if phase.get("path") else ACTIVE / str(phase.get("id"))
-        for note in phase_doc_impact_notes(pdir):
-            for doc in doc_impact_docs(note) or [UNASSIGNED_DOC]:
-                per_doc.setdefault(doc, {}).setdefault(phase["id"], 0)
-                per_doc[doc][phase["id"]] += 1
-    return per_doc
-
-
-def stale_docs_line(stale: dict) -> str:
-    """One advisory `key=value` line naming the stale docs, or "" when none are -- shared by `docs`
-    and `validate` so the listing and the warning can never word it differently (the
-    `consolidation_debt_line` / `oversized_sections_line` pattern).
-
-    Distinct from `consolidation_owed=`, which names the *phases* that owe and the command that
-    pays: this names the *docs* a reader must not trust yet. Advisory everywhere, never an error --
-    operator-paced consolidation is the design (v39 took explicit staleness instead of a cadence),
-    so this must not fail CI or block the loop; it must only stop being silent.
-
-    Deliberately NOT gated on `CONSOLIDATION_DEBT_MIN_PHASES`: that knob tunes how loud the debt is,
-    and a debt can reasonably wait for a batch -- but staleness is a fact about the doc a reader is
-    holding right now, and no cadence setting may quiet it.
-    """
-    named = sorted(d for d in stale if d != UNASSIGNED_DOC)
-    if not named:
-        return ""
-    phases = sort_phase_ids({pid for doc in named for pid in stale[doc]})
-    notes = sum(sum(stale[doc].values()) for doc in named)
-    return (f"stale_docs={', '.join(named)} ({len(named)} doc(s) named by {notes} unconsolidated"
-            f" '## Doc impact' note(s) from {', '.join(phases)}; docs/current is older than those notes, so"
-            f" for those subjects it is stale evidence to check against them, never current truth"
-            f" -- read them with docs-debt)")
-
-
-def consolidation_debt_line(phases: list) -> str:
-    """One advisory `key=value` line naming every phase that owes durable-doc consolidation, or
-    "" when nothing does -- shared by `next` and `validate` so the two can never word it differently.
-
-    Advisory everywhere: this is expected operator-paced state, not a fault. `validate` prints it
-    as a warning and still exits 0, and `next` prints it without changing what it selects.
-    Accepts either phase records or `works/index.json` entries; both are read through
-    `phase_consolidation()` / `phase_execution()`, never off a raw field.
-    """
-    # A stamped phase still running (not `done`) has stamped `execution.consolidation: "pending"` since
-    # parallel-start but owes nothing until its review passes (P35.S7); a `done` one owes, as before.
-    owing = [p for p in phases_owing_consolidation(phases) if not (phase_execution(p) and p.get("status") != "done")]
-    if len(owing) < CONSOLIDATION_DEBT_MIN_PHASES:
-        return ""
-    ids = ", ".join(p["id"] for p in owing)
-    plural = "phase owes" if len(owing) == 1 else "phases owe"
-    line = (f"consolidation_owed={ids} ({len(owing)} {plural} durable-doc consolidation; docs/current trails the code"
-            f" until a docs phase runs doc-new-version over each '## Doc impact' list, then: docs-consolidated <P>)")
-    merged = [p["id"] for p in owing if consolidation_command(p) == "parallel-consolidated"]
-    if merged:
-        line += f" -- {', '.join(merged)} came from a parallel branch: pay those with parallel-consolidated, on the default stream"
-    return line
 
 
 def new_acceptance() -> dict:
@@ -3922,174 +3448,12 @@ def operator_wait_target(phases: list, current_phase, current_slice):
     return None
 
 
-# run-phases (P41): the phase list and the next target of a /do-whole-phases run. A run passes a
-# PARKED phase -- one whose only stop is an open operator acceptance gate -- instead of halting there.
-# It is stateless: its whole input is the operator's phase tokens, which a compaction keeps, and each
-# call recomputes it from disk and writes nothing. The plain pointer above (resolve_current /
-# operator_wait_target, so `next`, works/state.json, the backlog and the resume card's stop) never
-# reads any of this, so it still halts at a parked phase in every plain session.
-
-
-def phase_parked(phase: dict) -> bool:
-    """True when a run may pass this phase: `pending` with its acceptance gate open and no slice of it
-    `pending` or `blocked`. Every other `pending` (a `<P>.REVIEW` decision stop included: the drafts open when
-    the review passes, so the PR rule adds nothing to park, P51-b1.F3), and every `blocked`, halts a run."""
-    return bool(phase.get("status") == "pending" and acceptance_gate_is_open(phase)
-                and not any(s.get("status") in ("pending", "blocked") for s in phase.get("slices", [])))
-
-
-def run_phase_tokens(tokens, stored=None) -> tuple:
-    """`(phase ids, refused)`: any brief form of a phase id, separated by commas and/or spaces, in the given
-    order, duplicates dropped. A number (`46`, `p46`, `P46`) is looked up like any referencing argument
-    (`lookup_id_number`: an exact `P46` wins, else the one `P46-<tail>`; one that names none stays `P46` for the
-    caller's no-such-phase refusal); `46-k2`, `P46-k2`, `7kq2`, `P-7kq2` and `P12` read as `brief_id`, any case.
-    `refused` is `[(token, why)]`: `why` None for a token that is no phase id (a range, `worktree`, a mode word
-    such as `gate`, `P7kq2` without its dash), else the text naming the phases a shared number names."""
-    ids, refused, seen = [], [], set()
-    for raw in tokens or []:
-        for piece in re.split(r"[,\s]+", raw):
-            if not piece or piece in seen:
-                continue
-            number = re.fullmatch(r"[Pp]?([0-9]+)", piece)
-            if number:
-                if stored is None:
-                    stored = visible_phase_ids()
-                found, tailed = lookup_id_number("P", int(number.group(1)), stored)
-                if found is None and len(tailed) > 1:
-                    seen.add(piece)
-                    refused.append((piece, f"names {', '.join(tailed)}: type the tail"))
-                    continue
-                pid = found or f"P{int(number.group(1))}"
-            else:
-                pid = brief_id("P", piece)
-            if pid is None:
-                seen.add(piece)
-                refused.append((piece, None))
-            elif pid not in ids:
-                ids.append(pid)
-    return ids, refused
-
-
-def _run_halt(phase: dict):
-    """`(item, reason)` for the stop a run meets at a queued phase that is not parked, else None."""
-    pid, status, slices = phase["id"], phase.get("status"), phase.get("slices", [])
-    if status in ("pending", "blocked"):
-        stuck = next((s for s in slices if s.get("status") in ("pending", "blocked")), None)
-        if status == "pending" and stuck is not None and acceptance_gate_is_open(phase):
-            return stuck, f"phase {pid}'s acceptance gate is open, but slice {stuck['id']} is {stuck.get('status')}, so it is not parked"
-        return phase, f"phase {pid} is {status}" + (" without an open acceptance gate" if status == "pending" else "")
-    cur = next(iter(selectable_slices(phase)), None)
-    cur = wave_stop(phase) or cur  # P42: a declared phase halts at a stop anywhere by order
-    if cur is not None and cur.get("status") in ("pending", "blocked"):
-        return cur, f"slice {cur['id']} is {cur.get('status')}"
-    return None
-
-
-def run_selection(phases: list, stream, ids=None) -> dict:
-    """A run over `ids` (None: every non-`done` phase, by order), scoped to `stream` like `next`:
-    the queue, the skipped `(id, reason, stream)`, the parked phases, then either the target
-    `(phase, slice, next slice)` or the halt `(item, reason)`; both None means the run is done."""
-    by_id = {p["id"]: p for p in phases}
-    on_stream = {p["id"] for p in stream_phases(phases, stream)}
-    out = {"queue": [], "skipped": [], "parked": [], "target": None, "halt": None}
-    for pid in (ids if ids is not None else [p["id"] for p in phases if p.get("status") != "done"]):
-        phase = by_id.get(pid)
-        if phase is None or phase.get("status") == "done":
-            out["skipped"].append((pid, "done" if phase else "done (archived)", None))
-        elif pid not in on_stream:
-            out["skipped"].append((pid, "other-stream", (phase_execution(phase) or {}).get("branch") or "default"))
-        elif phase_loop(phase) is not None:  # P50.S3: a loop drives itself (/run-loop), never a /do-whole-phases target
-            out["skipped"].append((pid, "loop", None))
-        else:
-            out["queue"].append(phase)
-    for phase in out["queue"]:
-        if phase_parked(phase):
-            out["parked"].append(phase)
-        elif out["target"] is None and out["halt"] is None:
-            out["halt"] = _run_halt(phase)
-            if out["halt"] is None:
-                open_slices = selectable_slices(phase) + [None, None]
-                out["target"] = (phase, open_slices[0], open_slices[1])
-    return out
-
-
-def cmd_run_phases(args: argparse.Namespace) -> None:
-    """Read-only: resolve a /do-whole-phases run (see run_selection) and print it as key=value lines."""
-    ids, refused = run_phase_tokens(args.tokens)
-    phases = all_active_phases()
-    active = {p["id"] for p in phases}
-    archived = archived_phase_ids() if any(pid not in active for pid in ids) else set()
-    unknown = [pid for pid in ids if pid not in active and pid not in archived]
-    if refused or unknown:
-        for token, why in refused:
-            if why:
-                print(f"refused={token} -- {why}; the run starts nothing")
-                continue
-            print(f"refused={token} -- not a phase id (46, P46 or 46-k2; P12; 7kq2 or P-7kq2; any case, separated by commas and/or spaces"
-                  + (f"; a minted id keeps its dash: P-{token[1:].lower()}" if re.fullmatch(rf"[Pp]{ID_TOKEN_PATTERN}", token, re.I) else "")
-                  + "); the run starts nothing")
-        for pid in unknown:
-            print(f"refused={pid} -- no such phase, active or archived; the run starts nothing")
-        raise SystemExit(2)
-    stream = current_stream(phases)
-    run = run_selection(phases, stream, ids or None)
-    print(f"run={','.join(ids) or 'all'}")
-    print(f"stream={stream or 'default'}")
-    if cloud_link_file().exists():  # a linked checkout: the waiting-commit record git gives in local mode
-        print(cloud_commits_waiting_line(phases))
-    print(f"queue={','.join(p['id'] for p in run['queue']) or 'none'}")
-    for pid, reason, where in run["skipped"]:
-        if reason == "loop":
-            print(f"skipped={pid} reason=loop -- the loop drives itself: /run-loop {pid}")
-        elif where is None:
-            print(f"skipped={pid} reason={reason}")
-        else:
-            home = "runs from its own branch" if where != "default" else "runs on the default stream, not in this worktree"
-            print(f"skipped={pid} reason={reason} stream={where} -- {home}")
-    for phase in run["parked"]:
-        pid = phase["id"]
-        print(f"parked={pid} since={phase_acceptance(phase).get('requested_at')} -- acceptance gate open, no slice pending or blocked: "
-              f"the run passes it; accept-gate {pid} prints the walkthrough, accept-gate {pid} --clear clears it")
-    if run["halt"] is not None:
-        item, reason = run["halt"]
-        print(f"halt={item['id']} status={item.get('status')}")
-        if "." in item["id"] and item.get("status") == "pending":
-            record = item.get("pending")
-            print(f"stop_kind={record.get('kind') if isinstance(record, dict) else 'untyped'}")
-            if isinstance(record, dict):
-                print(f"on_words={_one_line(record.get('on_words') or '')}")
-        print(f"halt_reason={reason} -- the whole run stops here: report it, start nothing past it")
-        for line in wave_lines(next((p for p in run["queue"] if p["id"] == item["id"].split(".", 1)[0]), None)):
-            print(line)
-    elif run["target"] is not None:
-        phase, cur, nxt = run["target"]
-        print(f"target_phase={phase['id']}")
-        if cur is None:
-            print("target_slice=none -- no open slice in this phase: record its review verdict or archive it")
-            return
-        sdir = ACTIVE / phase["id"] / "slices" / cur["id"]
-        print(f"target_slice={cur['id']}")
-        print(f"slice_path={shown(sdir)}")
-        print(f"next_slice={nxt['id'] if nxt else 'none'}")
-        for line in wave_lines(phase):  # P42: declared phases only
-            print(line)
-        for line in notebook_step_lines(phase["id"]):  # §6: silent under budget
-            print(line)
-        acceptance = phase_acceptance(phase)
-        if (acceptance and acceptance.get("required") is True and acceptance.get("cleared_at") and cur.get("kind") == "review"
-                and (sdir / "result.md").is_file()):
-            print(f"gate_cleared={phase['id']} cleared_at={acceptance.get('cleared_at')} -- the review passed before the gate opened: "
-                  f"record the pass (review-phase {phase['id']} --verdict pass) without re-dispatching it")
-    else:
-        print("run_done=yes -- nothing left to run" + ("; report every parked gate with its walkthrough" if run["parked"] else ""))
-
-
 # The ready set (P42): several slices of one phase in flight at once. A slice created with `--depends-on <id>`
 # (repeatable) or `--depends-on none` is DECLARED: its slice.json carries `"depends_declared": true` beside
 # `depends_on`, and that list binds -- each id names a slice of the same phase ordered strictly before it, so
 # `order` stays a topological order and the plain pointer (the first open slice) always has its dependencies
 # done. Every other slice is UNDECLARED (every pre-v71 slice, an advisory pre-v71 list included) and, like the
-# barrier kinds, runs alone. Stateless like run-phases: recomputed from disk on every call, it writes nothing,
+# barrier kinds, runs alone. Stateless: recomputed from disk on every call, it writes nothing,
 # and a phase with no declared slice prints, stores and halts exactly as before (the plain pointer above).
 # A barrier is never a wave slice (P42.F1): while one is in_progress it holds the phase alone, nothing is
 # ready, and -- unless wave slices also run -- no wave line prints, so a declared phase then reads exactly as
@@ -4153,14 +3517,6 @@ def ready_set(phase: dict) -> dict:
     return out
 
 
-def wave_stop(phase: dict):
-    """A declared phase's first `pending`/`blocked` slice wherever it sits by order, else None: there a stop
-    behind a running or finished sibling halts too (undeclared phases halt at the first open slice only)."""
-    if not phase_declared(phase):
-        return None
-    return next((s for s in phase.get("slices", []) if s.get("status") in STOP_STATUSES), None)
-
-
 def wave_wait_target(phase: dict):
     """operator_wait_target's widening: the id of a declared phase's first `pending` slice, else None."""
     stop = next((s for s in phase.get("slices", []) if s.get("status") == "pending"), None) if phase_declared(phase) else None
@@ -4183,7 +3539,7 @@ def wave_held(wave: dict) -> bool:
 
 
 def wave_lines(phase) -> list:
-    """`next` / `run-phases` lines for a declared phase: `ready_slices=` and `running_slices=`. Empty for an
+    """`next` lines for a declared phase: `ready_slices=` and `running_slices=`. Empty for an
     undeclared phase (or None), so those outputs stay byte-identical there, and while a barrier holds the phase."""
     if not phase_declared(phase):
         return []
@@ -4541,7 +3897,7 @@ TOPIC_INTRO = ("_Entries moved here from phase.md by `phase-section --to-topic`,
 # Objective and any custom section).
 PHASE_SECTION_UNMOVABLE = {
     "slices": "it is generated from each slice.json by `rebuild`",
-    "doc impact": "it is append-only, and the docs phase and the review read its notes where they are (add with --append)",
+    "doc impact": "it is append-only (a retired section, kept readable in older notebooks)",
     "operator questions": "it is append-only, and the review routes its entries where they are: collapse an answered one with --resolve OQ<n> --pointer <ref>",
     "now": "it is the handoff the next dispatch reads first: rewrite it shorter with --replace",
 }
@@ -4679,7 +4035,7 @@ def notebook_section_line(section: dict, limit: int = 8) -> str:
 
 
 # The required step (design §6): when a phase that is not done has a notebook over PHASE_MD_BUDGET,
-# `next`, `run-phases`, `start-slice` and the resume card tell the main thread to move long entries to
+# `next`, `start-slice` and the resume card tell the main thread to move long entries to
 # topics before the next dispatch. `notebook_step` is the one function they print from; it is silent
 # (None) under budget, for a done phase and for a phase with no notebook, so those outputs never change.
 NOTEBOOK_STEP_MOVES = 3
@@ -5344,7 +4700,6 @@ def rebuild_index_and_state() -> None:
                 **({"rolled_slice_count": _loop_rolled_count(p)} if _loop_rolled_count(p) else {}),
                 **({"execution": phase_execution(p)} if phase_execution(p) else {}),
                 **({"pinned": True} if phase_pinned(p) else {}),
-                **({"consolidation": phase_consolidation(p)} if phase_consolidation(p) else {}),
             } for p in phases
         ],
         "deferred_open_count": len(deferred.get("open", [])),
@@ -5474,7 +4829,7 @@ def streams_section(phases: list, state: dict, live=None) -> list:
         execution = phase_execution(own)
         cur, done = _phase_progress(own, own["slices"])
         short = _parallel_verdict_pair(own["id"], own.get("status"), (own.get("review") or {}).get("status"), own["slices"],
-                                       phase_consolidation(own), None, False, True)[0]
+                                       None, False, True)[0]
         add(stream, own["id"], short, cur, done, _host_branch_cell(execution), execution.get("worktree"), "working tree")
 
     # The default row.
@@ -5528,7 +4883,7 @@ def streams_section(phases: list, state: dict, live=None) -> list:
             if not branch_gone:
                 merged = _git(["merge-base", "--is-ancestor", branch, "HEAD"], check=False).returncode == 0
         short = _parallel_verdict_pair(p["id"], data.get("status"), (data.get("review") or {}).get("status"), slices,
-                                       phase_consolidation(p), merged, branch_gone, False)[0]
+                                       merged, branch_gone, False)[0]
         cur, done = _phase_progress(data, slices)
         add(branch or "-", p["id"], short, cur, done, _host_branch_cell(execution), execution.get("worktree"), source)
 
@@ -5625,18 +4980,9 @@ def validate() -> int:
             unfinished = [s["id"] for s in p["slices"] if s.get("status") != "done"]
             if unfinished:
                 errors.append(f"phase {p['id']} is done but has unfinished slices: {', '.join(unfinished)}; a passing review closes the REVIEW slice")
-        # Optional doc-consolidation debt. Absent = nothing owed (every phase reviewed before
-        # this field existed, and every phase whose `## Doc impact` list was empty).
-        if "consolidation" in p and p.get("consolidation") not in CONSOLIDATION_STATES:
-            errors.append(f"phase {p['id']} has invalid consolidation {p.get('consolidation')!r}; expected one of {sorted(CONSOLIDATION_STATES)}")
-        # Optional docs-phase marker (v51): the active phases a docs phase pays. Absent = not a docs phase.
-        if "consolidates" in p:
-            paid = p.get("consolidates")
-            if not (isinstance(paid, list) and paid and all(isinstance(v, str) and PHASE_ID_RE.fullmatch(v) for v in paid)):
-                errors.append(f"phase {p['id']} has invalid consolidates {paid!r}; expected a non-empty list of phase ids such as [\"P26\", \"P46-k2\", \"P-7kq2\"] (written by new-phase --consolidates)")
+        # A retired doc-consolidation field (`consolidation`, `consolidates`, `execution.consolidation`) from an
+        # older install is ignored, never refused.
         # Optional parallel-execution block. Absent = default stream = nothing to check.
-        # A phase that merged `done` while its doc consolidation is still pending
-        # (`consolidation: "pending"`) is a legitimate state and passes cleanly here.
         if "execution" in p:
             execution = p.get("execution")
             if not isinstance(execution, dict):
@@ -5658,9 +5004,6 @@ def validate() -> int:
                     worktree = execution.get("worktree")
                     if worktree is not None and not isinstance(worktree, str):
                         errors.append(f"phase {p['id']} has invalid execution.worktree {worktree!r}; expected a path string or null")
-                    consolidation = execution.get("consolidation")
-                    if consolidation is not None and consolidation not in CONSOLIDATION_STATES:
-                        errors.append(f"phase {p['id']} has invalid execution.consolidation {consolidation!r}; expected one of {sorted(CONSOLIDATION_STATES)} or null")
                     errors.extend(_nested_execution_problems(p["id"], execution))
                     if "repos" in execution:  # P40.S6: a worktree set's repo half (multi-repo only)
                         _nested_execution_repo_problems(p["id"], execution, errors, warnings)
@@ -5721,10 +5064,6 @@ def validate() -> int:
         for heading, pos, rel, block in dangling_pointers(notebook.parent):  # every active phase: a lost decision
             what = f"has no block `{block}`" if block is not None else "does not exist"
             warnings.append(f"phase {p['id']}: phase.md ## {heading} entry {pos} points at {rel}, which {what}: the moved entry is lost (restore the topic from git, or rewrite the pointer)")
-        # Heading-line check, not a substring search: notebooks legitimately quote both
-        # spellings in prose (this very rule, for one).
-        if notebook.exists() and any(re.match(r"## Doc Impact\b", ln) for ln in notebook.read_text(encoding="utf-8").split("\n")):
-            warnings.append(f"phase {p['id']}: phase.md has a `## Doc Impact` heading; the canonical section is `## Doc impact` (lowercase i) -- rename it so the review finds the notes")
         for s in p["slices"]:
             if s["id"] in seen_slices:
                 errors.append(f"duplicate slice id: {s['id']}")
@@ -5779,25 +5118,6 @@ def validate() -> int:
             if data.get("status") not in allowed:
                 errors.append(f"deferred job in wrong folder: {data.get('id')} status {data.get('status')} under {shown(base)}")
     validate_agenda(errors, warnings)
-    # Deferred doc consolidation. A WARNING, never an error: the debt is expected operator-paced
-    # state (a passing review defers consolidation to a docs phase), so it must not fail CI or
-    # block the loop -- it must only stop being silent.
-    debt = consolidation_debt_line(phases)
-    if debt:
-        warnings.append(debt)
-    # ...and the doc-side half of the same debt: which docs an agent must not read as current truth
-    # while it stands. A separate line because it carries what the debt line cannot -- the doc names
-    # a reader chooses by -- and a WARNING for the same reason: staleness is expected, being silent
-    # about it is not.
-    stale = stale_docs_line(stale_docs(phases))
-    if stale:
-        warnings.append(stale)
-    # Oversized durable-doc sections. A WARNING, never an error, for the same reason: the read-order
-    # rule ("read the sections the work touches") degrades silently as sections outgrow the doc they
-    # were cut from, and the remedy -- splitting one -- belongs to the next docs phase, not to CI.
-    oversized = oversized_sections_line(oversized_doc_sections())
-    if oversized:
-        warnings.append(oversized)
     # Agent-file drift is advisory only: warn (never error, never crash) when the six managed agent
     # files disagree with the route table (executors.toml/defaults), so a foreign or partial
     # workspace still validates. Skipped when a broken nested marker names no host: the agent files
@@ -5836,7 +5156,6 @@ def validate() -> int:
         if nested_repos() and HOST_ROOT is not None and HOST_ROOT.is_dir():
             nested_repo_checks(errors, warnings)
     pr_rules_validate(errors)  # P51: the marker's pr_rules key, or at root works/pr-rules.json, where present
-    validate_docs(errors, warnings)
     for w in warnings:
         print(f"warning: {w}")
     if errors:
@@ -5986,10 +5305,6 @@ _Generated by `python3 scripts/workflow.py rebuild` from each slice's `slice.jso
 
 _Durable cross-slice decisions, one gist line each. Replace a superseded line (`--entry K --replace`); never stack versions. Long detail goes to `topics/<slug>.md` behind its gist line (`--to-topic` moves one); a breakdown lives in `topics/breakdown.md`._
 
-## Doc impact
-
-_One line per durable-truth change: `- <doc>.md: <what changed> (<slice>)`. Append only; the review verifies this list and a later docs phase consolidates it into versions — never per slice, never at the review — a branch review adds its two gate sections here tagged `(gate section — written at merge)`._
-
 ## Operator Questions
 
 _Questions only the operator can answer, one entry each: `- **OQ<n> (<slice>):** <question>`. Append only (`phase-section <P> "Operator Questions" --append`); an answered entry collapses with `phase-section <P> --resolve OQ<n> --pointer <ref>`, never deleted. Every entry is routed at the review — folded into the acceptance walkthrough, filed with `defer-job`, or resolved. An unrouted entry is a review finding._
@@ -6088,32 +5403,6 @@ def _with_repo_anchors(data: dict, entries: dict) -> dict:
     return data
 
 
-def _parse_consolidates(raw) -> list:
-    """`new-phase --consolidates P26,P46-k2` -> `["P26", "P46-k2"]`: comma-separated, spaces tolerated,
-    duplicates dropped in order. Refuses (before `new-phase` writes anything) when the flag names
-    nothing, or names an id that is not an ACTIVE phase still owing doc consolidation -- a docs phase
-    can only pay debt that stands. `None` (flag absent) is `[]`."""
-    if raw is None:
-        return []
-    ids = []
-    for part in raw.split(","):
-        part = part.strip()
-        if part and part not in ids:
-            ids.append(part)
-    if not ids:
-        raise SystemExit("--consolidates needs at least one phase id (e.g. --consolidates P26,P46-k2)")
-    active = {p["id"]: p for p in all_active_phases()}
-    bad = []
-    for pid in ids:
-        if pid not in active:
-            bad.append(f"{pid} (not an active phase)")
-        elif phase_consolidation(active[pid]) != "pending":
-            bad.append(f"{pid} (owes no doc consolidation: consolidation is {phase_consolidation(active[pid])!r})")
-    if bad:
-        raise SystemExit(f"--consolidates refused, nothing was written: {'; '.join(bad)}. It names only active phases that still owe doc consolidation (see: {WORKFLOW_CMD} docs-debt).")
-    return ids
-
-
 def explicit_phase_id(phase_id: str) -> str:
     """An explicit `new-phase --phase` id, checked before anything is written: any of the three shapes
     (`P46-k2` with a valid tail -- its number need not be the next one --, an old `P12`, or a v73 `P-` token),
@@ -6140,10 +5429,7 @@ def new_phase(args: argparse.Namespace) -> None:
     raw = getattr(args, "phase", None)
     phase_id = mint_phase_id() if raw is None else explicit_phase_id(raw)
     pdir = ACTIVE / phase_id
-    consolidates = _parse_consolidates(getattr(args, "consolidates", None))  # refuses before anything is written
     loop = getattr(args, "loop", False)
-    if loop and consolidates:
-        raise SystemExit("new-phase --loop --consolidates: a docs phase never loops; refused, nothing was written")
     if loop and not (WORKS / "templates" / CHARTER_TEMPLATE).is_file():
         raise SystemExit(f"new-phase --loop: the charter template {shown(WORKS / 'templates' / CHARTER_TEMPLATE)} is missing "
                          "(update the workspace); refused, nothing was written")
@@ -6157,9 +5443,6 @@ def new_phase(args: argparse.Namespace) -> None:
         "paths": {"phase_md": "phase.md", "intent_md": "intent.md", "slices_dir": "slices"},
         "archive": {"archived": False, "archived_at": None, "archive_path": None},
     }
-    if consolidates:
-        # v51: the one marker of a docs phase -- the owing phases it pays. Absent without the flag.
-        phase_data["consolidates"] = consolidates
     if NESTED is not None:
         # The nested repo never sees the host's commits, so phase-scope's base is the host HEAD now
         # (null while the host has no commit). At root this key is never written.
@@ -6201,8 +5484,6 @@ def new_phase(args: argparse.Namespace) -> None:
             print(line)
     for line in repo_stamp_lines:
         print(line)
-    if consolidates:
-        print(f"consolidates={', '.join(consolidates)} (docs phase: pays the doc debt of those phases; docs-debt shows it as 'paid by {phase_id}')")
     # v43: a phase runs on this stream unless the operator asks for a worktree, so creation
     # stamps nothing and says nothing -- except where a worktree would actually buy something.
     if getattr(args, "on_main", False):
@@ -6534,32 +5815,8 @@ def review_phase(args: argparse.Namespace) -> None:
                   f"records their own report); without it cut no fix slice and stop: {WORKFLOW_CMD} set-slice-status "
                   f"{args.phase}.REVIEW pending --stop-kind decision --on-words \"...\"")
     elif args.verdict == "pass":
-        notes = phase_doc_impact_notes(pdir)
-        if notes:
-            # The review verifies the list and creates no versions; the debt is paid by an
-            # operator-created docs phase. Stamp it so it is queryable and blocks archiving.
-            data = read_json(pdir / "phase.json")
-            set_phase_consolidation(data, "pending")
-            write_json(pdir / "phase.json", data)
-            append_event("phase_consolidation_owed", phase=args.phase, notes=len(notes))
-            rebuild_index_and_state()
-            done_cmd = "parallel-consolidated" if phase_execution(data) else "docs-consolidated"
-            print(f"docs: {len(notes)} '## Doc impact' note(s) recorded -- durable docs are NOT versioned here.")
-            print("  consolidation is deferred: the operator creates a docs phase for it (doc-new-version per note, then rebuild-docs).")
-            print(f"  when those versions land: {WORKFLOW_CMD} {done_cmd} {args.phase}   (until then {args.phase} is held out of archiving)")
-        else:
-            # v86 (§9.3): parallel-start stamps every worktree phase `pending` up front; a phase whose
-            # pass leaves no note changed no durable truth, so it owes nothing -- settle the debt here
-            # (both fields, through the setter) or it would sit unarchivable forever.
-            data = read_json(pdir / "phase.json")
-            if phase_execution(data) and phase_consolidation(data) == "pending":
-                set_phase_consolidation(data, "done")
-                write_json(pdir / "phase.json", data)
-                append_event("phase_consolidation_settled", phase=args.phase, notes=0)
-                rebuild_index_and_state()
-                print("docs: no '## Doc impact' note -- this worktree phase owes no doc consolidation (consolidation=done)")
         print(f"phase {args.phase} is done and stays in active/. Do NOT archive a single phase now.")
-        print("Archive done phases later, whole phases only: `rotate-backlog` (it pays the doc debt first, then archives every done phase), or `archive-all` once every active phase is done.")
+        print("Archive done phases later, whole phases only: `rotate-backlog` (archives every done phase), or `archive-all` once every active phase is done.")
 
 
 def _drive_review_slices(pdir: Path, verdict: str) -> list:
@@ -6924,7 +6181,7 @@ def parallel_start(args: argparse.Namespace) -> None:
     if data.get("status") != "planned":
         raise SystemExit(f"phase {args.phase} is {data.get('status')!r}; a phase enters its worktree before it starts (parallel-start needs status 'planned') -- a phase already in flight finishes on this stream")
     if phase_pinned(data):
-        raise SystemExit(f"phase {args.phase} carries v42's legacy pin to the default stream (execution.mode=default, written by the old parallel-skip / new-phase --on-main); it was pinned deliberately, so un-pin it by hand: delete the execution block from {shown(pdir)}/phase.json first")
+        raise SystemExit(f"phase {args.phase} carries v42's legacy pin to the default stream (execution.mode=default, written by v42's old skip command or new-phase --on-main); it was pinned deliberately, so un-pin it by hand: delete the execution block from {shown(pdir)}/phase.json first")
     if data.get("execution") is not None:
         raise SystemExit(f"phase {args.phase} already carries an execution block: {json.dumps(data['execution'], ensure_ascii=False)}")
     _require_git_repo()
@@ -6961,7 +6218,7 @@ def parallel_start(args: argparse.Namespace) -> None:
 
     # base_branch (P35.S7, additive): the branch the stamp commit lands on, so a worktree checkout's
     # Streams view can read the default stream's row from it.
-    data["execution"] = {"mode": "parallel", "branch": branch, "worktree": str(worktree), "consolidation": "pending", "base_branch": git_current_branch()}
+    data["execution"] = {"mode": "parallel", "branch": branch, "worktree": str(worktree), "base_branch": git_current_branch()}
     write_json(pdir / "phase.json", data)
     append_event("phase_parallel_started", phase=args.phase, branch=branch, worktree=str(worktree))
     rebuild_index_and_state()
@@ -7211,7 +6468,7 @@ def _set_repo_line(plan: dict, by: str = "parallel-start") -> str:
 
 
 def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, branch: str, host_branch, host_base_arg, set_repos=(),
-                           on_stamp=None, stamp_message=None, consolidation: str = "pending") -> tuple:
+                           on_stamp=None, stamp_message=None) -> tuple:
     """`parallel-start` in a nested personal install (P35): a host worktree with the nested worktree inside.
 
     The pair is `<host>/.claude/worktrees/P<N>-<slug>` on `host_branch` (the operator names it, by the
@@ -7236,7 +6493,7 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
 
     P52 (`reopen-phase`): `on_stamp(data, host_wt, nested_wt)` runs once every guard has passed and
     before the stamp is written, so a reopen's verdict lands in the same stamp commit; `stamp_message`
-    replaces the commit subject and `consolidation` the stamped debt (a reopen keeps the phase's own).
+    replaces the commit subject.
     Returns `(host_wt, nested_wt)`."""
     host = HOST_ROOT
     detached = host_branch is None
@@ -7292,7 +6549,7 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
     if on_stamp is not None:  # P52: reopen-phase's verdict, in the same stamp commit
         on_stamp(data, host_wt, nested_wt)
     data["execution"] = {
-        "mode": "parallel", "branch": branch, "worktree": str(nested_wt), "consolidation": consolidation,
+        "mode": "parallel", "branch": branch, "worktree": str(nested_wt),
         "host_worktree": str(host_wt), "host_branch": host_branch, "host_base": base_ref, "host_base_sha": base_sha,
         "host_branch_created": host_branch_created, "base_branch": base_branch,
     }
@@ -7434,8 +6691,7 @@ def _reopen_apply(pdir: Path, data: dict, note: str) -> dict:
     """The reopen's verdict, as `review-phase --verdict changes_requested` records it: `status` ->
     in_progress, `review` = changes_requested with the note, the REVIEW slice(s) driven the same way, and
     a REQUIRED gate re-opened (walkthrough, requested_at, cleared_at -> null; `required` and the operator's
-    note survive). A waived gate stays waived. `completed_at`, the `pr` block, the doc-consolidation state
-    and the anchors are kept. Writes the slice files and their events; the caller writes phase.json."""
+    note survive). A waived gate stays waived. `completed_at`, the `pr` block and the anchors are kept. Writes the slice files and their events; the caller writes phase.json."""
     old_status = data.get("status")
     data["review"] = {"status": "changes_requested", "reviewed_at": now_iso(), "reviewer": None, "note": note,
                       "fix_passes": 1}  # the reopen is the change request that opens this cycle's one fix pass
@@ -7470,7 +6726,7 @@ def _reopen_report(phase_id: str, label: str, where, outcome: dict) -> None:
             "waived": "the waived acceptance gate stays waived", "none": "no acceptance gate block"}[outcome["gate"]]
     print(f"reopened={phase_id} branch={label} worktree={where}")
     print(f"phase {phase_id}: {outcome['old_status']} -> in_progress, review changes_requested ({slices}); {gate}; "
-          f"completed_at, the pr block and the doc-consolidation state kept")
+          f"completed_at and the pr block kept")
     print(f"next: the fix round in that checkout, on {label} -- {_reopen_read_hint(outcome.get('note') or '')}, cut fix slices "
           f"({WORKFLOW_CMD} new-slice --phase {phase_id} --slice {phase_id}.F<n> --kind fix), then the re-review; at its would-pass push the fixes "
           f"(git push, never --force) and replace the body (pr-check, then gh pr edit <n> --body-file <body>), never a second PR; then the gate if "
@@ -7489,7 +6745,7 @@ def cmd_reopen_phase(args: argparse.Namespace) -> None:
 
     Nested (the main case): `_parallel_start_nested` on the recorded host branch (reused, anchored at the
     merge-base of the recorded base and the branch), the reopen's verdict applied inside its stamp commit
-    (`on_stamp`), the phase's own consolidation state kept. The nested side gets `phase/P<N>-<slug>`, or
+    (`on_stamp`). The nested side gets `phase/P<N>-<slug>`, or
     `-reopen<k>` when that name is taken (never a merged branch). An `execution` block left by an earlier,
     torn-down run is replaced (its facts go into the `phase_reopened` event); one still holding a worktree,
     or v42's pin, is refused. A multi-repo host builds the set from each repo's open PR branch.
@@ -7607,8 +6863,7 @@ def cmd_reopen_phase(args: argparse.Namespace) -> None:
                      previous_execution=old)
 
     host_wt, _nested_wt = _parallel_start_nested(args, pdir, data, branch, host_branch, host_base, set_repos, on_stamp=on_stamp,
-                                                 stamp_message=f"chore(works): reopen {phase_id} in its own worktree",
-                                                 consolidation=phase_consolidation(data) or "done")
+                                                 stamp_message=f"chore(works): reopen {phase_id} in its own worktree")
     if old is not None:
         print(f"replaced the earlier run's execution block (branch={old.get('branch')}, worktree=null); its facts are in the phase_reopened event")
     _reopen_report(phase_id, labels, host_wt, outcome)
@@ -7762,38 +7017,11 @@ def parallel_add_repo(args: argparse.Namespace) -> None:
     print(f"there: product commits for {name} go to {branch} in its worktree (git -C {plan['path']}); phase-scope now reads {name} from it")
 
 
-def parallel_skip(args: argparse.Namespace) -> None:
-    """Retired in v43: a no-op that explains itself and writes nothing.
-
-    This command existed because v42 made the worktree the default, so "run on main" needed a
-    marker (`execution: {"mode": "default"}`) that the hints and `parallel-start` could see.
-    v43 put the default back on this stream, so there is nothing left to pin -- a phase with no
-    execution block already runs here, and only `parallel-start` moves it.
-
-    It stays callable rather than removed so an adopting workspace's habits and scripts (a docs
-    phase was always pinned) do not break on upgrade; it reports the phase's real stream and
-    exits 0. Phases still carrying v42's pin keep it: `parallel-start` honours it, so an old
-    deliberate pin is never silently overridden.
-    """
-    pdir = require_phase(args.phase)
-    data = read_json(pdir / "phase.json")
-    execution = phase_execution(data)
-    print(f"note: parallel-skip is a no-op since v43 -- the default stream IS the default; nothing was stamped and nothing was written")
-    if execution:
-        print(f"phase {args.phase} is not on the default stream: it runs in its own worktree on {execution.get('branch')} (asked for with parallel-start)")
-        print(f"to bring it back here, merge and retire it: {WORKFLOW_CMD} parallel-teardown {args.phase}")
-    elif phase_pinned(data):
-        print(f"phase {args.phase} carries v42's legacy pin (execution.mode=default) and runs on the default stream -- as it would with no block at all")
-    else:
-        print(f"phase {args.phase} already runs on the default stream")
-        print(f"to run it in its own worktree instead, ask for one: {WORKFLOW_CMD} parallel-start {args.phase}{'' if explain_phase(pdir) else NESTED_HOST_BRANCH_ARG}")
-
-
 def parallel_teardown(args: argparse.Namespace) -> None:
     """Retire a merged parallel phase's worktree and branch, from the default stream.
 
-    Refuses while the branch is unmerged (merging is a separate step). Keeps `mode`/`branch`/
-    `consolidation` as history and only nulls `worktree`, which is informational anyway.
+    Refuses while the branch is unmerged (merging is a separate step). Keeps `mode`/`branch`
+    as history and only nulls `worktree`, which is informational anyway.
 
     In a nested personal install (P35) the phase has a worktree PAIR -- see `_parallel_teardown_nested`;
     `--discard-ignored` belongs to it and is refused at root.
@@ -7841,9 +7069,7 @@ def parallel_teardown(args: argparse.Namespace) -> None:
         print(f"removed {item}")
     if not removed:
         print("nothing to remove (worktree and branch were already gone)")
-    print(f"execution.worktree=null; mode/branch/consolidation kept as history (branch={branch}, consolidation={phase_consolidation(data)})")
-    if phase_consolidation(data) == "pending":
-        print(f"warning: {args.phase} doc consolidation is still 'pending' -- run the post-merge consolidation on this stream (teardown does not gate on it)")
+    print(f"execution.worktree=null; mode/branch kept as history (branch={branch})")
     print("phase.json changed -- commit it with the rest of the merge cleanup")
 
 
@@ -8332,13 +7558,11 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
                   f"the engine pushed, opened and merged nothing")
         else:
             print(f"host branch {host_branch} is already gone; nothing to keep")
-    print(f"execution.worktree=null, execution.host_worktree=null; mode/branch/consolidation and host_branch/host_base/host_base_sha/"
-          f"host_branch_created/base_branch kept as history (branch={branch}, host_branch={host_branch or '- (detached)'}, consolidation={phase_consolidation(data)})")
+    print(f"execution.worktree=null, execution.host_worktree=null; mode/branch and host_branch/host_base/host_base_sha/"
+          f"host_branch_created/base_branch kept as history (branch={branch}, host_branch={host_branch or '- (detached)'})")
     if set_repos:
         print(f"execution.repos.<name>.worktree=null for {', '.join(repo['name'] for repo in set_repos)}; branch/base/base_sha/branch_created "
               f"kept as history")
-    if phase_consolidation(data) == "pending":
-        print(f"warning: {args.phase} doc consolidation is still 'pending' -- run the post-merge consolidation on this stream (teardown does not gate on it)")
     print("phase.json changed -- commit it in the nested repo with the rest of the merge cleanup")
 
 
@@ -8497,10 +7721,6 @@ def parallel_gate(args: argparse.Namespace) -> None:
                      + f" and added {' and '.join(GATE_EXEMPT_ADDED_PREFIXES)} paths, so its merge cannot collide with them")
     else:
         reasons.extend(busy)
-    for p in main_phases:
-        other = phase_execution(p)
-        if p.get("id") != args.phase and other and phase_consolidation(p) == "pending" and p.get("status") == "done":
-            notes.append(f"phase {p.get('id')} is merged but not consolidated yet; consolidation is serialized, so finish it first (parallel-consolidated {p.get('id')})")
     for n in notes:
         print(f"note: {n}")
 
@@ -8543,11 +7763,6 @@ def parallel_merge_finish(args: argparse.Namespace) -> None:
                      and (phase_execution(p) or {}).get("branch") == stream), None)
     if stream and own_loop is None:
         print(f"warning: this checkout is on parallel stream {stream}; parallel-merge-finish belongs on the default stream, after the merge")
-    if own_loop is not None:  # P50.S3: a loop's worktree took the default branch back in at a cycle boundary
-        restamp = _loop_restamp_debt(ACTIVE / own_loop["id"])
-        if restamp:
-            print(restamp)
-    rebuild_docs()
     rebuild_index_and_state()
     print(f"regenerated from the merged folders: {', '.join(GENERATED_FILES)}")
     if own_loop is not None:
@@ -8555,183 +7770,26 @@ def parallel_merge_finish(args: argparse.Namespace) -> None:
               f"({WORKFLOW_CMD} loop-tick {own_loop['id']})")
         print("no commit made -- commit the regenerated files with the merge cleanup")
         return
-    awaiting = []
-    for p in phases_owing_consolidation(all_active_phases()):
+    for p in all_active_phases():
         execution = phase_execution(p)
-        if execution and phase_loop(p) is not None and p.get("status") != "done":  # P50.S3: a checkpoint's debt, once merged
-            commit = loop_debt_commit(loop_landing_data(p))
-            if commit and git_ok and _ref_is_ancestor(commit, "HEAD"):
-                awaiting.append((p, execution))
+        if not execution or p.get("status") != "done" or not _parallel_branch_merged(execution, git_ok):
             continue
-        if not execution or p.get("status") != "done":
-            continue
-        # a deleted branch means the phase was already merged and torn down
-        if _parallel_branch_merged(execution, git_ok):
-            awaiting.append((p, execution))
-    if not awaiting:
-        print("no merged phase awaits doc consolidation (merged parallel phases only -- next/validate name every phase that owes)")
-    else:
-        print(f"{len(awaiting)} merged phase(s) await doc consolidation -- do them ONE AT A TIME, on this stream (doc versions are allocated from a single index):")
-        for p, execution in awaiting:
-            print(f"- {p['id']}: doc impact notes in {shown_rel(p['path'])}/phase.md (section '## Doc impact')")
-            print(f"    per note: {WORKFLOW_CMD} doc-new-version --doc <doc> --summary \"...\" --source {p['id']}.REVIEW -> edit the returned edit_path -> {WORKFLOW_CMD} rebuild-docs")
-            print(f"    when that phase's notes are all consolidated: {WORKFLOW_CMD} parallel-consolidated {p['id']}")
-            if p.get("status") != "done":  # a running loop keeps its branch and worktree until its final REVIEW
-                continue
-            if execution.get("worktree") or (git_ok and execution.get("branch") and _branch_exists(execution["branch"])):
-                print(f"    then retire its branch + worktree: {WORKFLOW_CMD} parallel-teardown {p['id']}")
+        if execution.get("worktree") or (git_ok and execution.get("branch") and _branch_exists(execution["branch"])):
+            print(f"- {p['id']} is merged: retire its branch + worktree: {WORKFLOW_CMD} parallel-teardown {p['id']}")
     print("no commit made -- commit the regenerated files with the merge cleanup")
 
 
-def parallel_consolidated(args: argparse.Namespace) -> None:
-    """Record that a merged parallel phase's deferred doc consolidation is finished.
-
-    The engine cannot write the prose: an agent runs `doc-new-version` per "Doc impact" note on the
-    default stream and then calls this to flip `execution.consolidation` to "done", which is also
-    what unblocks archiving the phase. In a nested install (P35) the same flip runs on the nested
-    repo's default stream; the host repo is not read or written.
-    """
-    pdir = require_phase(args.phase)
-    data = read_json(pdir / "phase.json")
-    execution = phase_execution(data)
-    if not execution:
-        raise SystemExit(f"phase {args.phase} is not running in its own worktree (no parallel execution block); record its consolidation with: {WORKFLOW_CMD} docs-consolidated {args.phase}")
-    stream = current_stream(all_active_phases())
-    if stream:
-        raise SystemExit(f"this checkout is on parallel stream {stream}; run parallel-consolidated on the default stream, after the branch is merged")
-    running_loop = phase_loop(data) is not None and data.get("status") != "done"
-    if running_loop:  # P50.S3: a running loop's debt is settled once the checkpoint that stamped it is merged here
-        commit = loop_debt_commit(loop_landing_data(data))
-        if not commit:
-            raise SystemExit(f"phase {args.phase} is a running loop with no landed passing checkpoint in this checkout; its debt settles "
-                             f"once that checkpoint's commit is merged here (merge_ready= in next, past parallel-gate {args.phase})")
-        if not (_git_available() and _ref_is_ancestor(commit, "HEAD")):
-            raise SystemExit(f"phase {args.phase}: checkpoint commit {commit[:12]} is not merged into this stream yet; merge it first "
-                             f"(past parallel-gate {args.phase}), then consolidate")
-    elif data.get("status") != "done":
-        raise SystemExit(f"phase {args.phase} is {data.get('status')!r}, not 'done'; consolidation happens after its review passes and the branch is merged")
-    review_status = data.get("review", {}).get("status")
-    if not running_loop and review_status != "pass":
-        raise SystemExit(f"phase {args.phase} review is {review_status!r}, not 'pass'; record the passing review before consolidating")
-    consolidation = phase_consolidation(data)
-    if consolidation == "done":
-        raise SystemExit(f"phase {args.phase} is already marked consolidated (consolidation='done')")
-    if consolidation != "pending":
-        raise SystemExit(f"phase {args.phase} has consolidation {consolidation!r}; expected 'pending' (set by parallel-start, or by its passing review)")
-    set_phase_consolidation(data, "done")
-    write_json(pdir / "phase.json", data)
-    append_event("phase_consolidated", phase=args.phase, branch=execution.get("branch"),
-                 **({"through_commit": commit} if running_loop else {}))
-    rebuild_index_and_state()
-    print(f"phase {args.phase} docs consolidated (consolidation=done)")
-    print("phase.json changed -- commit it together with the new doc versions")
-    if running_loop:
-        print(f"the loop's debt is settled through checkpoint commit {commit[:12]}; a later checkpoint with new "
-              "'## Doc impact' notes stamps it again, and the loop takes this back in at its next cycle boundary")
-        return
-    branch = execution.get("branch")
-    if execution.get("worktree") or (branch and _git_available() and _branch_exists(branch)):
-        print(f"next: {WORKFLOW_CMD} parallel-teardown {args.phase}")
-    print(f"{args.phase} is now archivable (archive-phase/rotate-backlog no longer block on pending consolidation)")
-
-
-def docs_debt(args: argparse.Namespace) -> None:
-    """The docs phase's worklist: every phase owing durable-doc consolidation, its `## Doc impact`
-    notes, the docs those notes touch, and the commands that pay them. Writes nothing.
-
-    `next` and `validate` say *that* the debt exists; this says *what it is*, so the docs-phase
-    intake (`create-phase`) and the docs phase's own `DECOMP` never re-derive it by hand. The
-    default cut is one slice per doc -- `doc-new-version` is per doc, and one doc usually collects
-    notes from several phases -- which is why the per-doc rollup is printed as well as the
-    per-phase blocks.
-    """
-    phases = all_active_phases()
-    owing = phases_owing_consolidation(phases)
-    if not owing:
-        print("docs_debt=none (no active phase owes durable-doc consolidation)")
-        return
-    stream = current_stream(phases)
-    if stream:
-        print(f"warning: this checkout is on parallel stream {stream}; doc consolidation runs on the default stream")
-    # The per-doc rollup is the same mapping `docs` and `validate` call stale: one helper, so the
-    # worklist and the staleness warning can never name a different set of docs.
-    per_doc = stale_docs(owing)
-    notes_total, blocks = 0, []
-    for phase in owing:
-        notes = phase_doc_impact_notes(ROOT / phase["path"])
-        notes_total += len(notes)
-        blocks.append((phase, notes))
-    docs_hit = sorted(d for d in per_doc if d != UNASSIGNED_DOC)
-    cover = consolidation_cover(phases)
-    print(f"docs_debt={', '.join(p['id'] for p in owing)} ({len(owing)} phase(s), {notes_total} note(s), {len(docs_hit)} doc(s))")
-    for phase, notes in blocks:
-        print()
-        print(f"{phase['id']} {phase.get('name', '')} -- {shown_rel(phase['path'])}/phase.md '## Doc impact'")
-        pay = consolidation_command(phase)
-        tail = "   (merged parallel phase)" if pay == "parallel-consolidated" else ""
-        print(f"  pay: {WORKFLOW_CMD} {pay} {phase['id']}{tail}")
-        for docs_phase in cover.get(phase["id"], []):  # a live docs phase already pays this one (v51)
-            print(f"  paid by: {docs_phase['id']} ({str(docs_phase.get('status', '')).replace('_', ' ')})")
-        if not notes:
-            print("  - (no notes in the notebook; the debt was stamped from a list since compressed -- check git history)")
-        for note in notes:
-            print(f"  - {note}")
-    print()
-    print(f"docs={', '.join(docs_hit) or 'none named'} (default docs-phase cut: one slice per doc)")
-    for doc in docs_hit + ([UNASSIGNED_DOC] if UNASSIGNED_DOC in per_doc else []):
-        by_phase = per_doc[doc]
-        count = sum(by_phase.values())
-        print(f"  {doc}: {count} note(s) from {', '.join(sort_phase_ids(by_phase, phases))}")
-    if UNASSIGNED_DOC in per_doc:
-        print(f"  {UNASSIGNED_DOC} = the note names no doc from the known set; read it in the notebook and decide")
-    print()
-    print(f'per note: {WORKFLOW_CMD} doc-new-version --doc <doc> --summary "..." --source <P>.REVIEW')
-    print(f"          -> edit only the returned edit_path -> {WORKFLOW_CMD} rebuild-docs")
-    print("per phase, once all of its notes are consolidated: the pay command above (that is also what unblocks archiving)")
-    print("read-only: this command wrote nothing")
-
-
-def docs_consolidated(args: argparse.Namespace) -> None:
-    """Record that a phase's deferred durable-doc consolidation has landed.
-
-    Every phase defers: its passing review verified the `## Doc impact` list and created no
-    versions, and a docs phase the operator creates later runs `doc-new-version` per note. This
-    flips the debt to "done", which is also what unblocks archiving the phase. The engine cannot
-    tell whether the prose is right, so this is an explicit operator/orchestrator statement.
-    `parallel-consolidated` is the parallel-mode twin, kept for the post-merge sequence.
-    """
-    pdir = require_phase(args.phase)
-    data = read_json(pdir / "phase.json")
-    # Doc versions come from one shared index, so consolidation belongs on the default stream --
-    # the same refusal `doc-new-version` makes, one step earlier.
-    stream = current_stream(all_active_phases())
-    if stream:
-        raise SystemExit(f"this checkout is on parallel stream {stream}; run docs-consolidated on the default stream, after the branch is merged (parallel phases use: parallel-consolidated {args.phase})")
-    consolidation = phase_consolidation(data)
-    if consolidation == "done":
-        raise SystemExit(f"phase {args.phase} is already marked consolidated (consolidation='done')")
-    if consolidation != "pending":
-        raise SystemExit(f"phase {args.phase} owes no doc consolidation (consolidation is {consolidation!r}); a passing review records the debt when the phase's '## Doc impact' list is non-empty")
-    set_phase_consolidation(data, "done")
-    write_json(pdir / "phase.json", data)
-    append_event("phase_consolidated", phase=args.phase)
-    rebuild_index_and_state()
-    print(f"phase {args.phase} docs consolidated (consolidation=done)")
-    print("phase.json changed -- commit it together with the new doc versions")
-    print(f"{args.phase} is now archivable (archive-phase/rotate-backlog no longer block on pending consolidation)")
-
-
-def _parallel_verdict(phase_id: str, status, review, slices, consolidation, merged, branch_gone: bool, own_stream: bool) -> str:
+def _parallel_verdict(phase_id: str, status, review, slices, merged, branch_gone: bool, own_stream: bool) -> str:
     """One line saying where a parallel phase stands, and what the operator does next.
 
     `merged` is None when the answer is unknown (this checkout is the phase's own stream, so it
     trivially contains its own branch); `branch_gone` means the branch was deleted, which implies
     the phase was merged first -- `parallel-teardown` refuses an unmerged branch.
     """
-    return _parallel_verdict_pair(phase_id, status, review, slices, consolidation, merged, branch_gone, own_stream)[1]
+    return _parallel_verdict_pair(phase_id, status, review, slices, merged, branch_gone, own_stream)[1]
 
 
-def _parallel_verdict_pair(phase_id: str, status, review, slices, consolidation, merged, branch_gone: bool, own_stream: bool) -> tuple:
+def _parallel_verdict_pair(phase_id: str, status, review, slices, merged, branch_gone: bool, own_stream: bool) -> tuple:
     """`(short, long)`: the cell `## Streams` shows, and the sentence `parallel-status` prints. One
     decision tree, so the dashboard and the command can never disagree about where a phase stands."""
     if status is None:
@@ -8742,17 +7800,10 @@ def _parallel_verdict_pair(phase_id: str, status, review, slices, consolidation,
     open_slice = next((s.get("id") for s in slices if s.get("status") != "done"), None)
     integrated = merged is True or branch_gone
     if status == "done" and review == "pass":
-        if consolidation == "pending":
-            if integrated:
-                return ("merged \u2014 awaiting consolidation",
-                        f"merged, docs still awaiting consolidation -- run on the default stream: "
-                        f"parallel-merge-finish, then parallel-consolidated {phase_id}")
-            return ("ready to merge",
-                    f"ready to merge -- check the quiet point first: parallel-gate {phase_id} (from the default stream)")
         if integrated:
             if not branch_gone:
-                return ("merged + consolidated", f"merged + consolidated -- retire the branch and worktree: parallel-teardown {phase_id}")
-            return ("torn down", f"merged, consolidated and torn down -- nothing left but archiving ({phase_id} is archivable)")
+                return ("merged", f"merged -- retire the branch and worktree: parallel-teardown {phase_id}")
+            return ("torn down", f"merged and torn down -- nothing left but archiving ({phase_id} is archivable)")
         return ("ready to merge",
                 f"ready to merge -- check the quiet point first: parallel-gate {phase_id} (from the default stream)")
     if status == "done":
@@ -8859,7 +7910,6 @@ def parallel_status(args: argparse.Namespace) -> None:
                     # existing branch and --adopt of an existing worktree stamp identically, so the label names both
                     print(f"  repo {name}: branch={value.get('branch') or '-'} ({'created' if value.get('branch_created') else 'reused or adopted'}) "
                           f"base={value.get('base') or '-'} ({value.get('base_sha') or '-'}) worktree={value.get('worktree') or '- (torn down)'}")
-        print(f"  consolidation={phase_consolidation(phase) or '-'}")
         print(f"  source={source}")
         if note:
             print(f"  note: {note}")
@@ -8872,7 +7922,7 @@ def parallel_status(args: argparse.Namespace) -> None:
                 print(f"    [{status_box(s.get('status'))}] {str(s.get('id', '')):<{width}}  {str(s.get('status', '')):<17} {name}")
         else:
             print("  slices: none readable at that source")
-        print(f"  verdict: {_parallel_verdict(pid, status, review, slices, phase_consolidation(phase), merged, branch_gone, own_stream)}")
+        print(f"  verdict: {_parallel_verdict(pid, status, review, slices, merged, branch_gone, own_stream)}")
 
 
 def merge_ready_line(stream, phases: list):
@@ -8962,8 +8012,8 @@ def _find_phase_dir(phase_id: str):
     """`(dir, archived)` for an active or archived phase; SystemExit when neither holds it.
 
     `require_phase` knows only `active/` on purpose (every state transition is an active-phase
-    operation); the boundary of a done, archived phase is still a fair question -- a QA phase or
-    a docs phase looks back at it -- so this lookup covers both."""
+    operation); the boundary of a done, archived phase is still a fair question -- a QA phase
+    looks back at it -- so this lookup covers both."""
     if (ACTIVE / phase_id / "phase.json").exists():
         return ACTIVE / phase_id, False
     hits = []
@@ -10295,7 +9345,7 @@ def _phase_scope_product_files(phase_id: str):
     """The product files `phase-scope <P>` lists in the phase's committed range (its JSON `files`, the
     union over repos on a multi-repo host), or None when it cannot answer. Uncommitted files do not
     count: a phase's product lands in commits before its pass, and an operator's stray working-tree
-    file must never hold a docs phase's review."""
+    file must never hold a review."""
     import contextlib
     import io
     ns = argparse.Namespace(phase=phase_id, base=None, head=None, json=True, repo=None, pathspec=False)
@@ -12050,11 +11100,6 @@ def cmd_next(args: argparse.Namespace) -> None:
     ready = merge_ready_line(stream, index.get("active_phases", []))
     if ready:
         print(ready)
-    # Deferred doc consolidation, printed before every return below so no path hides it. Purely
-    # advisory: it names the debt and the command, selects nothing, and is silent when nothing owes.
-    debt = consolidation_debt_line(index.get("active_phases", []))
-    if debt:
-        print(debt)
     try:  # P52: every done phase's open PR, before every return below; read from the record, never the network
         for line in pr_open_lines(index):
             print(line)
@@ -12325,9 +11370,6 @@ def resume_card(transcript_path=None) -> str:
     if gate_open:
         lines.append(f"stop: phase {phase_id} acceptance gate open -- relay the walkthrough (`accept-gate {phase_id}` prints it); "
                      f"the operator's words clear it with accept-gate {phase_id} --clear")
-        if phase_parked(phase):  # informational only: the stop above stands for every plain session
-            lines.append(f"run: {phase_id} is parked; only a multi-phase run (`run-phases`) passes it -- re-run `run-phases <the run's phases>` "
-                         "for that run's next target; outside such a run this is a stop")
     elif phase.get("status") == "pending" and isinstance((phase_loop(phase) or {}).get("halt"), dict):
         halt = phase_loop(phase)["halt"]
         lines.append(f"stop: loop {phase_id} halted ({halt.get('reason')}, stop_kind={halt.get('stop_kind')}) -- the operator's words: "
@@ -13307,9 +12349,8 @@ def _one_line_usage_errors(parser: argparse.ArgumentParser) -> None:
 
 def _phase_blocker_kinds(pdir: Path) -> list:
     """Reasons a phase is not cleanly archivable, typed: `[(kind, text)]`, kind one of "slices",
-    "review", "consolidation" or "pr" (P52: a recorded PR not yet merged). Empty list means ready. `_phase_blockers` is this list's text, so
-    every refusal prints exactly what it always did; the kind lets `rotate-backlog` ask "is the
-    doc debt the ONLY thing holding this phase?" without matching strings."""
+    "review" or "pr" (P52: a recorded PR not yet merged). Empty list means ready. `_phase_blockers` is this list's text.
+    A retired `consolidation` field from an older install never holds a phase."""
     phase = read_json(pdir / "phase.json")
     slices = [read_json(s / "slice.json") for s in slice_dirs(pdir)]
     reasons = []
@@ -13319,12 +12360,6 @@ def _phase_blocker_kinds(pdir: Path) -> list:
     review_status = phase.get("review", {}).get("status")
     if review_status != "pass":
         reasons.append(("review", f"review is {review_status!r}, not pass"))
-    # The phase still owes its deferred doc consolidation. Archiving would move its
-    # `## Doc impact` list -- the sole input to that consolidation -- out of active/, so it
-    # blocks (parallel teardown only warns, because teardown is reversible).
-    if phase_consolidation(phase) == "pending":
-        cmd = consolidation_command(phase)
-        reasons.append(("consolidation", f"docs not consolidated -- run a docs phase over its '## Doc impact' notes, then: {WORKFLOW_CMD} {cmd} {phase['id']}"))
     # P52: a recorded, unwaived PR that GitHub has not merged (as pr-sync last read it) holds the phase:
     # archiving would take its record out of `next`'s pr_open= lines. Only state=merged releases it.
     for entry in _pr_open_entries(phase):
@@ -13350,18 +12385,6 @@ def _parallel_branch_merged(execution: dict, git_ok: bool = None) -> bool:
     if git_ok and branch and _branch_exists(branch):
         return _git(["merge-base", "--is-ancestor", branch, "HEAD"], check=False).returncode == 0
     return True
-
-
-def _debt_only(pdir: Path) -> bool:
-    """True when doc consolidation is the ONLY thing holding this phase from archiving: every slice
-    done, review `pass`, `consolidation: pending`. A parallel phase whose branch is not yet merged is
-    never debt-only -- its docs cannot be consolidated until the merge lands. An open PR (kind "pr")
-    is ignored here, so it never hides the phase's doc debt from rotate-backlog's docs-phase route;
-    the archive sweeps still read `_phase_blockers`, which keeps it held (P52)."""
-    if [kind for kind, _ in _phase_blocker_kinds(pdir) if kind != "pr"] != ["consolidation"]:
-        return False
-    execution = phase_execution(read_json(pdir / "phase.json"))
-    return execution is None or _parallel_branch_merged(execution)
 
 
 def _archive_one(pdir: Path, forced: bool) -> Path:
@@ -13434,226 +12457,9 @@ def archive_all(args: argparse.Namespace) -> None:
         print(f"- {phase_id}: {shown(dest)}")
 
 
-def _phase_range_label(ids: list) -> str:
-    """`P26`, the en-dash range `P26–P29` when EVERY id is numbered (tailed or not) and the numbers run
-    consecutively with none repeated, the ends written in full (`P45–P47-m9`), else `P26, P28, P29` (a v73
-    token never joins a range: `P26, P27, P-7kq2`; nor does a repeated number: `P46-k2, P46-x4`). For an
-    all-numeric list the label is byte-identical to v72's."""
-    if len(ids) == 1:
-        return ids[0]
-    parsed = [id_number(i) if str(i).startswith("P") else None for i in ids]
-    numbers = [n[0] for n in parsed if n]
-    if len(numbers) == len(ids) and all(b - a == 1 for a, b in zip(numbers, numbers[1:])):
-        return f"{ids[0]}\u2013{ids[-1]}"
-    return ", ".join(ids)
-
-
-def _shell_arg(text: str) -> str:
-    """One command argument, copy-pasteable. Double quotes keep the generated name and objective
-    readable (the objective carries `'## Doc impact'`); `shlex.quote` takes over for any text a
-    double-quoted shell word would expand or break on."""
-    if re.search(r'["$`\\!]', text):
-        return shlex.quote(text)
-    return f'"{text}"'
-
-
-# v54 (P33): `rotate-backlog` is the one resumable step of the one-shot /rotate-backlog chain. v72
-# (P43) splits what is off a boundary in two. RUNNING work is a slice or a phase working right now:
-# the docs phase never interleaves with it, so it stops the run. PARKED work waits on the operator or
-# an outside party: the docs phase runs ahead of it and never touches it, so it does not stop the
-# run -- unless the product tree holds uncommitted edits a parked item may own (`stop_uncommitted`).
-# Everything else (todo, ready, done; a planned or in_progress phase) is at a boundary.
-ROTATE_RUNNING_SLICE_STATUSES = ("in_progress", "in_review")
-ROTATE_RUNNING_PHASE_STATUSES = ("in_review",)
-ROTATE_PARKED_SLICE_STATUSES = ("pending", "blocked", "changes_requested")
-ROTATE_PARKED_PHASE_STATUSES = ("pending", "blocked")
-# The uncommitted paths `stop_uncommitted` lists before it says how many more there are.
-ROTATE_UNCOMMITTED_SHOWN = 20
-
-
-def _live_docs_phases(phases: list) -> list:
-    """The docs phases `rotate-backlog` resumes, in phase order: every not-`done` DEFAULT-stream phase
-    whose `consolidates` is non-empty. Keyed on the marker itself, not through the debt it covers, so
-    a docs phase that has already paid every phase it names but has not passed its own review yet
-    still resumes. A docs phase stamped onto a parallel stream is never live here."""
-    return [p for p in stream_phases(phases, None) if p.get("status") != "done" and phase_consolidates(p)]
-
-
-def _running_and_parked(phases: list, live: list) -> tuple:
-    """`(running, parked)` over the default stream, in phase order (a phase, then its slices).
-
-    running: `<id>:<status>` for a phase `in_review` and a slice `in_progress` or `in_review` -- bar
-    the `review`-kind slice of a phase whose acceptance gate is open: `accept-gate --open` never moves
-    that slice, so it stays `in_progress` while its phase is parked (`/do-whole-phases`' parked REVIEW).
-    parked: `(id, status, stop_kind or None)` for a phase `pending` or `blocked` and a slice `pending`,
-    `blocked` or `changes_requested`. The stop kind: `acceptance-gate` for a phase whose gate is open,
-    `untyped` for any other pending phase, a pending slice's typed record (else `untyped`), and none
-    for a blocked or changes_requested item, which is no operator stop. The live docs phases and their
-    slices are left out (resuming them IS the run, and their own stops end it); parallel streams are
-    never counted."""
-    skip = {p["id"] for p in live}
-    running, parked = [], []
-    for phase in stream_phases(phases, None):
-        if phase["id"] in skip:
-            continue
-        status = phase.get("status")
-        gate_open = acceptance_gate_is_open(phase)
-        if status in ROTATE_RUNNING_PHASE_STATUSES:
-            running.append(f"{phase['id']}:{status}")
-        elif status in ROTATE_PARKED_PHASE_STATUSES:
-            parked.append((phase["id"], status, "acceptance-gate" if gate_open else ("untyped" if status == "pending" else None)))
-        for s in phase["slices"]:
-            sstatus = s.get("status")
-            if sstatus in ROTATE_RUNNING_SLICE_STATUSES:
-                if not (gate_open and s.get("kind") == "review"):
-                    running.append(f"{s['id']}:{sstatus}")
-            elif sstatus in ROTATE_PARKED_SLICE_STATUSES:
-                record = s.get("pending") if sstatus == "pending" else None
-                kind = (record.get("kind") or "untyped") if isinstance(record, dict) else ("untyped" if sstatus == "pending" else None)
-                parked.append((s["id"], sstatus, kind))
-    return running, parked
-
-
-def _rotate_uncommitted() -> list:
-    """`[{status, path}]`: the uncommitted product changes (untracked included) in the repos
-    `phase-scope` reads, with its pathspecs -- at root this checkout without works/ and docs/; nested,
-    the host without the nested repo's folder; multi-repo, each registered repo (its paths prefixed
-    with its folder) and then the host without them. A repo git cannot read adds nothing, so without
-    git nothing is dirty: there is no commit that could take anything. Read only while work is parked."""
-    if NESTED is None:
-        return _status_product_files(pathspec=product_pathspec()) if _git_available() else []
-    found = []
-    repos = nested_repos()
-    spec = product_pathspec(repos)
-    for repo in repos:
-        path, _ = _phase_repo_path(repo, {})
-        if path is not None:
-            found += _prefixed(_status_product_files(cwd=path, pathspec=REPO_PATHSPEC), f"{repo['path']}/")
-    if HOST_ROOT is not None and _git_available(cwd=HOST_ROOT):
-        found += _status_product_files(cwd=HOST_ROOT, pathspec=spec)
-    return found
-
-
-def _open_orders(phases: list, exclude: str = None) -> list:
-    """The orders of the not-`done` default-stream phases (but `exclude`); a missing order counts as
-    999999, where `phase_dirs` sorts it."""
-    return [p.get("order", 999999) for p in stream_phases(phases, None) if p.get("status") != "done" and p["id"] != exclude]
-
-
-def _queue_jump_order(phases: list, exclude: str = None):
-    """The order that sorts a docs phase ahead of every other not-`done` default-stream phase:
-    `min(their orders) - 1`, `_clean_order`-normalised (0 and negative orders are valid and
-    round-trip; the rounding only trims float noise such as 1.3 - 1), or None when there is no such
-    phase. `next` then selects the docs phase first -- the queue jump is an order, not a new state."""
-    orders = _open_orders(phases, exclude)
-    return _clean_order(round(min(orders) - 1, 6)) if orders else None
-
-
-def _reassert_queue_jump(docs_phase: dict, phases: list):
-    """Re-assert the queue jump on a live docs phase that does not already sort strictly first among
-    the not-`done` default-stream phases (one created before the jump existed carries the default
-    `max + 1`, behind planned work). One `order` write in its phase.json, logged as
-    `phase_reordered`, then a rebuild. Returns `(old, new)` when it wrote, None when it did not."""
-    others = _open_orders(phases, exclude=docs_phase["id"])
-    old = docs_phase.get("order")
-    if not others or docs_phase.get("order", 999999) < min(others):
-        return None
-    new = _queue_jump_order(phases, exclude=docs_phase["id"])
-    pjson = ROOT / docs_phase["path"] / "phase.json"
-    data = read_json(pjson)
-    data["order"] = new
-    write_json(pjson, data)
-    append_event("phase_reordered", phase=docs_phase["id"], old_order=old, new_order=new, reason="rotate-backlog queue jump")
-    rebuild_index_and_state()
-    return old, new
-
-
-def _docs_debt_split(phases: list) -> tuple:
-    """`(covered_by, uncovered)` over the CURRENT active set, from the phases held back ONLY by doc
-    debt (`_debt_only`): `{covering docs phase id: [the debt-only ids it pays]}` -- every not-`done`
-    phase whose `consolidates` names one, whatever its stream -- and the debt-only phases no such
-    docs phase covers yet, in `_debt_sort_key` order."""
-    debt_only = [p for p in phases if _debt_only(ROOT / p["path"])]
-    cover = consolidation_cover(phases)
-    covered_by = {}
-    for p in debt_only:
-        for docs_phase in cover.get(p["id"], []):
-            covered_by.setdefault(docs_phase["id"], []).append(p["id"])
-    uncovered = sorted((p for p in debt_only if not cover.get(p["id"])), key=lambda p: _debt_sort_key(p["id"], phases))
-    return covered_by, uncovered
-
-
-def _debt_sort_key(phase_id: str, phases: list):
-    """The order a docs phase's ids are listed in (`_docs_debt_split`'s uncovered list, a proposal's
-    `consolidates`): `id_sort_key`, a token's `created_at` read from `phases` -- numbered ids by number
-    and tail (an all-numeric list in exactly v72's order), then v73 tokens by creation. The one place
-    `rotate-backlog` turns an id into a sort key."""
-    return id_sort_key(phase_id, next((p.get("created_at") for p in phases if p.get("id") == phase_id), None))
-
-
-def _print_docs_phase_covered(covered_by: dict) -> None:
-    for docs_phase_id, pays in covered_by.items():
-        print(f"docs_phase_covered={docs_phase_id} (pays {', '.join(pays)})")
-
-
-def _docs_phase_draft(ids: list, phases: list) -> tuple:
-    """`(name, objective)` the engine drafts for a docs phase paying `ids`, the docs listed from the
-    owed `## Doc impact` notes of `phases`. The one drafting code: the proposal prints it."""
-    docs = sorted(d for d in stale_docs(phases) if d != UNASSIGNED_DOC)
-    name = f"Consolidate the doc impact of {_phase_range_label(ids)}"
-    objective = (f"consolidate the '## Doc impact' notes from {', '.join(ids)} into new versions of "
-                 f"{', '.join(docs) if docs else 'the docs their notes name'}")
-    return name, objective
-
-
-def _docs_phase_unstarted(docs_phase: dict) -> bool:
-    """True when a live docs phase has written nothing yet, so rotate-backlog replaces it (v78): the
-    phase is neither parked, in review nor done, its REVIEW and every middle slice are still todo or
-    ready, and its DECOMP is todo, ready or done (a done cut wrote only a plan, which the replacement
-    cuts again over the wider debt). A docs phase with any docs slice past ready has started and
-    finishes first."""
-    if docs_phase.get("status") in STOP_STATUSES + ("in_review", "done"):
-        return False
-    for s in docs_phase.get("slices", []):
-        allowed = ("todo", "ready", "done") if s.get("kind") == "decomposition" else ("todo", "ready")
-        if s.get("status") not in allowed:
-            return False
-    return True
-
-
-def _replace_docs_phase(docs_phase: dict) -> list:
-    """Remove an unstarted docs phase's folder (v78; the workspace's git history keeps it), log
-    `docs_phase_replaced` and rebuild, so the debt it covered stands uncovered and the proposal that
-    follows covers it together with the new debt. Returns the ids it covered."""
-    pays = phase_consolidates(docs_phase)
-    shutil.rmtree(ROOT / docs_phase["path"])
-    append_event("docs_phase_replaced", phase=docs_phase["id"], consolidates=pays)
-    rebuild_index_and_state()
-    return pays
-
-
-def _print_docs_phase_proposal(uncovered: list, order) -> None:
-    """The one docs phase to create for the uncovered debt-only phases, printed as the block
-    `/rotate-backlog` runs as is: the invocation is the operator's yes (create-phase's docs-phase
-    route), so the `create:` line is the whole command, its `--order` the queue jump (omitted when no
-    other phase is open), written before `--consolidates`. Prints, never writes."""
-    ids = [p["id"] for p in uncovered]
-    listing = ", ".join(ids)
-    name, objective = _docs_phase_draft(ids, uncovered)
-    phase_id = mint_phase_id()  # a minted P<n>-<tail>, passed to new-phase as --phase (the create: line runs as is)
-    order_arg = f" --order {order}" if order is not None else ""
-    print(f"docs_phase_proposal={listing}")
-    print(f"phase={phase_id}")
-    print(f"name={name}")
-    print(f"objective={objective}")
-    print(f"create: {WORKFLOW_CMD} new-phase --phase {phase_id} --name {_shell_arg(name)} --objective {_shell_arg(objective)}{order_arg} --consolidates {','.join(ids)}")
-    print(f"scope: {WORKFLOW_CMD} docs-debt")
-    print("proposal only: nothing was created -- /rotate-backlog runs the create: line as is (the invocation is the operator's yes; create-phase's docs-phase route)")
-
-
 def _rotate_sweep() -> None:
     """The archive sweep: archive every phase that is cleanly archivable right now (every slice done,
-    review `pass`, no consolidation owed) and leave the rest active, then rebuild. Whole phases, never
+    review `pass`, no unmerged PR) and leave the rest active, then rebuild. Whole phases, never
     forced, archive-phase's manifest -- the partial sweep archive-all cannot do, since archive-all
     refuses unless EVERY active phase is done. Its output is `--archive-only`'s, verbatim."""
     pdirs = phase_dirs()
@@ -13680,131 +12486,19 @@ def _rotate_sweep() -> None:
         print(f"left {len(blocked)} phase(s) active: {', '.join(p for p, _ in blocked)}")
 
 
-def _rotate_sweep_quiet() -> list:
-    """The early sweep (v72): archive every phase that is cleanly archivable right now -- the same
-    whole phases, never forced, that `_rotate_sweep` takes, so no phase that owes docs is archived --
-    and rebuild once, only when it archived something. Returns the archived ids and prints nothing:
-    `rotate-backlog` prints them as one `archived=` line. `_rotate_sweep` stays `--archive-only`'s and
-    `rotate=archive`'s, unchanged."""
-    archived = []
-    for pdir in phase_dirs():
-        if not _phase_blockers(pdir):
-            archived.append(read_json(pdir / "phase.json")["id"])
-            _archive_one(pdir, forced=False)
-    if archived:
-        rebuild_index_and_state()
-    return archived
-
-
 def rotate_backlog(args: argparse.Namespace) -> None:
-    # v54 (P33), v72 (P43): the one resumable step of the one-shot /rotate-backlog chain. The skill
-    # branches on the first stdout line, `rotate=<branch>`, chosen in this precedence:
-    #   refused           a parallel-stream checkout: writes nothing, exits non-zero.
-    #   archive           nothing owes (no uncovered debt-only phase, no live docs phase): the verbose
-    #                     sweep, then `docs_phase=none`.
-    #   (the early sweep) every other branch first archives each cleanly archivable phase, quietly: a
-    #                     phase that owes docs is never one, so no unpaid debt moves. `archived=` names
-    #                     them, omitted when there are none.
-    #   stop_midflight    RUNNING default-stream work (a slice in_progress or in_review, a phase
-    #                     in_review; a gate-open phase's review slice is parked, not running): the
-    #                     docs phase never interleaves with it. `midflight=` lists running items only.
-    #   stop_uncommitted  PARKED work (a phase pending or blocked; a slice pending, blocked or
-    #                     changes_requested) beside uncommitted product edits, which a parked item
-    #                     may own and the run's commits would take: `uncommitted=<n>` and the paths.
-    #   replace           (v78) every live docs phase is unstarted and new debt stands uncovered: each is
-    #                     removed, and one proposal covers all the debt, its `create:` line run as is.
-    #   resume            a live docs phase has started (a docs slice past ready), or nothing new owes:
-    #                     it runs as it is, re-asserting its queue jump; new debt waits for it.
-    #   create            the docs-phase proposal, its `create:` line carrying the queue-jump --order;
-    #                     writes nothing -- the skill runs that line as is.
-    # Parked work no longer stops the run: the docs phase runs ahead of it and never touches it. After
-    # the first line come `archived=`, one `parked=<id> status=<status>[ stop_kind=<kind>]` line per
-    # parked item, then the branch's own lines. A stop creates, replaces and reorders nothing.
-    # --archive-only is the sweep alone, output unchanged since v51 (no rotate= line, no docs line).
+    """The step of /rotate-backlog: `rotate=refused` on a parallel stream (writes nothing, exits non-zero),
+    else `rotate=archive` and the sweep (`_rotate_sweep`). `--archive-only` is the sweep alone, with no
+    rotate= line."""
     if getattr(args, "archive_only", False):
         _rotate_sweep()
         return
-    phases = all_active_phases()
-    stream = current_stream(phases)
+    stream = current_stream(all_active_phases())
     if stream is not None:
         print(f"rotate=refused stream={stream}")
-        raise SystemExit("rotate-backlog wrote nothing: doc consolidation and archiving run on the default stream only -- run it from the main checkout, not this phase's worktree")
-    live = _live_docs_phases(phases)
-    covered_by, uncovered = _docs_debt_split(phases)
-    if not live and not uncovered:
-        # Nothing owes here. Debt covered with no live docs phase can only be paid by a docs phase
-        # stamped onto another stream -- not this stream's to pay, so it never holds the sweep.
-        print("rotate=archive")
-        _rotate_sweep()
-        for docs_phase_id, pays in covered_by.items():
-            print(f"docs_phase_elsewhere={docs_phase_id} (pays {', '.join(pays)}; on another stream, not resumed here)")
-        print("docs_phase=none")
-        return
-    archived = _rotate_sweep_quiet()
-    if archived:
-        # Only done phases moved, so the branch inputs are the same; re-read them from disk anyway.
-        phases = all_active_phases()
-        live = _live_docs_phases(phases)
-        covered_by, uncovered = _docs_debt_split(phases)
-    owing = ", ".join(p["id"] for p in uncovered)
-    running, parked = _running_and_parked(phases, live)
-    dirty = _rotate_uncommitted() if parked and not running else []
-
-    def report() -> None:
-        if archived:
-            print(f"archived={', '.join(archived)}")
-        for item_id, status, kind in parked:
-            print(f"parked={item_id} status={status}" + (f" stop_kind={kind}" if kind else ""))
-
-    def stopped() -> None:
-        print(f"stopped_before=resume docs_phase={live[0]['id']}" if live else f"stopped_before=create owing={owing}")
-
-    if running:
-        print(f"rotate=stop_midflight midflight={', '.join(running)}")
-        report()
-        stopped()
-        print("nothing was created, replaced or reordered (only the clean-phase archive sweep ran): the docs phase never "
-              "interleaves with running work -- re-run rotate-backlog once no listed slice is in_progress or in_review "
-              "and no listed phase is in_review")
-        return
-    if dirty:
-        print(f"rotate=stop_uncommitted uncommitted={len(dirty)}")
-        report()
-        for line in _scope_file_lines(dirty[:ROTATE_UNCOMMITTED_SHOWN]):
-            print(line)
-        if len(dirty) > ROTATE_UNCOMMITTED_SHOWN:
-            print(f"  ... and {len(dirty) - ROTATE_UNCOMMITTED_SHOWN} more")
-        stopped()
-        print("nothing was created, replaced or reordered (only the clean-phase archive sweep ran): work is parked and the "
-              "product tree holds uncommitted edits, which a parked item may own and the docs phase's commits would take -- "
-              "the operator commits or stashes them, then re-run rotate-backlog")
-        return
-    if live and uncovered and all(_docs_phase_unstarted(p) for p in live):
-        print(f"rotate=replace replaced={', '.join(p['id'] for p in live)}")
-        report()
-        for docs_phase in live:
-            pays = _replace_docs_phase(docs_phase)
-            print(f"docs_phase_replaced={docs_phase['id']} (paid {', '.join(pays)}; unstarted, so its folder is removed and git keeps it)")
-        phases = all_active_phases()
-        covered_by, uncovered = _docs_debt_split(phases)
-        _print_docs_phase_covered(covered_by)
-        _print_docs_phase_proposal(uncovered, _queue_jump_order(phases))
-        return
-    if live:
-        docs_phase = next((p for p in live if not _docs_phase_unstarted(p)), live[0])
-        print(f"rotate=resume docs_phase={docs_phase['id']}")
-        report()
-        moved = _reassert_queue_jump(docs_phase, phases)
-        if moved:
-            print(f"docs_phase_order={docs_phase['id']} {moved[0]} -> {moved[1]}")
-        _print_docs_phase_covered(covered_by)
-        if uncovered:
-            print(f"docs_debt_waiting={owing} (no docs phase pays it yet; rotate-backlog proposes one once {docs_phase['id']} is done)")
-        return
-    print("rotate=create")
-    report()
-    _print_docs_phase_covered(covered_by)
-    _print_docs_phase_proposal(uncovered, _queue_jump_order(phases))
+        raise SystemExit("rotate-backlog wrote nothing: archiving runs on the default stream only -- run it from the main checkout, not this phase's worktree")
+    print("rotate=archive")
+    _rotate_sweep()
 
 
 # ---------------------------------------------------------------------------
@@ -18645,8 +17339,6 @@ def loop_init_problems(pdir: Path, data: dict) -> list:
     pid = data.get("id", pdir.name)
     if phase_loop(data) is not None:
         problems.append("it is already a loop phase")
-    if "consolidates" in data:
-        problems.append("it is a docs phase (consolidates), which never loops")
     if explain_phase(pdir):
         problems.append("it is an explain phase (## Explain in intent.md), which never loops")
     status = data.get("status")
@@ -21241,18 +19933,6 @@ def _loop_checkpoint_verdict(pdir: Path, data: dict, loop: dict, cmd: str, verdi
     lines = [f"recorded {sid}: {verdict} -- {summary}",
              f"metered usd={meter['usd']} usd_source={meter['usd_source']} minutes={meter['minutes']} model={meter['model']}"]
     if verdict == "pass":
-        notes = len(phase_doc_impact_notes(pdir))
-        seen = loop.get("doc_impact_seen") if _is_int(loop.get("doc_impact_seen")) else 0
-        if notes > seen:
-            set_phase_consolidation(data, "pending")
-            loop["debt"] = {"j": j, "notes": notes, "at": closed_at, "commit": None}
-            append_event("phase_consolidation_owed", phase=pid, notes=notes, checkpoint=sid)
-            lines.append(f"docs: {notes - seen} new '## Doc impact' note(s) in this window -- consolidation debt stamped "
-                         f"(pending); a docs phase pays it once this checkpoint is merged")
-        elif notes == 0 and phase_consolidation(data) == "pending" and not loop.get("debt"):
-            set_phase_consolidation(data, "done")  # parallel-start's up-front stamp, with nothing owed
-            append_event("phase_consolidation_settled", phase=pid, notes=0)
-        loop["doc_impact_seen"] = notes
         lines.append(f"next: commit this checkpoint, then {WORKFLOW_CMD} loop-checkpoint {pid} --landed (records the merge point)")
     elif verdict == "changes_requested":
         loop["paused"] = {"words": None, "at": closed_at, "from": f"checkpoint {sid}", "from_status": loop.get("status")}
@@ -21296,9 +19976,6 @@ def _loop_checkpoint_landed(pdir: Path, data: dict, loop: dict, cmd: str) -> Non
     record["landed_at"] = now_iso()
     if NESTED is not None:
         record["host_commit"] = head_commit() or None
-    debt = loop.get("debt") if isinstance(loop.get("debt"), dict) else None
-    if debt and debt.get("j") == record.get("j"):
-        debt["commit"] = head
     write_loop_block(pdir, loop, data)
     append_event("loop_checkpoint_landed", phase=pid, slice=record.get("slice"), commit=head, host_commit=record.get("host_commit"))
     rebuild_index_and_state()
@@ -21364,53 +20041,6 @@ def _ref_is_ancestor(commit: str, ref: str) -> bool:
     `_is_ancestor(path, older, newer)`: sharing that name shadowed it, and broke the nested base rule
     (`resolve_repo_base`) for every phase whose host branch had left the default branch (P51.S6)."""
     return _git(["merge-base", "--is-ancestor", commit, ref], check=False).returncode == 0
-
-
-def loop_landing_data(data: dict) -> dict:
-    """The freshest copy of a loop phase's phase.json for its landing records (a checkpoint's `--landed` commit
-    rides in the commit after the checkpoint's own, so a merged copy never holds it): the loop worktree's live
-    file, else its branch tip, else `data` itself."""
-    other = _loop_worktree_pdir(data) if phase_execution(data) else None
-    if other is not None:
-        try:
-            return read_json(other / "phase.json")
-        except (OSError, ValueError):
-            pass
-    branch = (phase_execution(data) or {}).get("branch")
-    if branch and _git_available():
-        found = _phase_json_at_ref(branch, data.get("id", ""))
-        if isinstance(found, dict):
-            return found
-    return data
-
-
-def _loop_restamp_debt(pdir: Path) -> str:
-    """On the loop's own stream after it takes the default branch back in: a debt stamped by a checkpoint whose
-    commit has not reached the default branch stays owed, even when the merge brought back the default stream's
-    settlement of an earlier one. Writes phase.json and returns a line when it re-stamps, else ''."""
-    data = read_json(pdir / "phase.json")
-    debt = (phase_loop(data) or {}).get("debt")
-    if not isinstance(debt, dict) or phase_consolidation(data) == "pending":
-        return ""
-    default = _default_branch() if _git_available() else None
-    if not default or (debt.get("commit") and _ref_is_ancestor(debt["commit"], default)):
-        return ""
-    set_phase_consolidation(data, "pending")
-    write_json(pdir / "phase.json", data)
-    append_event("phase_consolidation_owed", phase=data.get("id", pdir.name), notes=debt.get("notes"), checkpoint=f"K{debt.get('j')}")
-    return (f"docs: re-stamped {data.get('id', pdir.name)}'s consolidation debt (pending): checkpoint K{debt.get('j')}'s "
-            f"'## Doc impact' notes have not reached {default} yet")
-
-
-def loop_debt_commit(data: dict):
-    """The commit whose merge settles a loop's consolidation debt: the checkpoint that stamped it (loop.debt),
-    else the last landed passing checkpoint (parallel-start's up-front stamp), else None."""
-    loop = phase_loop(data) or {}
-    debt = loop.get("debt") if isinstance(loop.get("debt"), dict) else None
-    if debt:
-        return debt.get("commit")
-    record = loop.get("checkpoint") if isinstance(loop.get("checkpoint"), dict) else {}
-    return record.get("commit") if record.get("verdict") == "pass" else None
 
 
 # ---------------------------------------------------------------------------
@@ -22213,8 +20843,8 @@ class CloudSession:
     # The begin step ------------------------------------------------------------------------------
     def begin(self, inbox: bool = False) -> None:
         """Steps 3 to 6: the journal, P1 head, a fast-forward pull, the pre-command scan, journal `running`.
-        Called with the checkout's lock held (`cloud_run`, or a step inside the boundary). `inbox` (next and
-        run-phases): the web's agenda inbox is applied after the pull, before the command reads the disk."""
+        Called with the checkout's lock held (`cloud_run`, or a step inside the boundary). `inbox` (next):
+        the web's agenda inbox is applied after the pull, before the command reads the disk."""
         self._recover()
         info = self._ask("GET", "head")
         if str(info.get("project_id")) != self.link.project:
@@ -22656,9 +21286,11 @@ CLOUD_KEY_PROMPT = "Paste a workspace key for this project (make one under Keys 
 # Refused in cloud mode with one line each, before anything is read or written: a linked checkout runs every
 # phase here, with no worktree streams (and so no loop on a stream of its own, and no reopened pair).
 CLOUD_STREAM_REFUSED = ("parallel-start", "parallel-add-repo", "parallel-gate", "parallel-merge-finish",
-                        "parallel-consolidated", "parallel-teardown", "reopen-phase")
-# An unused install's truth set: only what a fresh install seeds. Joining hi2vi from one replaces these.
-CLOUD_SEED_RE = re.compile(r"docs/README\.md|docs/index\.json|docs/versions/[^/]+/v0001_bootstrap\.md|works/events\.jsonl")
+                        "parallel-teardown", "reopen-phase")
+# An unused install's truth set: only what a fresh install seeds (the five plain docs; an older install's
+# docs/index.json and v0001 versions). Joining hi2vi from one replaces these.
+CLOUD_SEED_RE = re.compile(r"docs/README\.md|docs/current/(?:product|architecture|operations|qa|decisions)\.md|docs/index\.json"
+                           r"|docs/versions/[^/]+/v0001_bootstrap\.md|works/events\.jsonl")
 CLOUD_SHOWN_ROWS = 20
 
 
@@ -22714,7 +21346,7 @@ def cloud_commits_waiting(phases=None) -> list:
 
 
 def cloud_commits_waiting_line(phases=None) -> str:
-    """`next`'s and `run-phases`' line in a linked checkout: the do-* skills read it in place of git's answer."""
+    """`next`'s line in a linked checkout: the do-* skills read it in place of git's answer."""
     waiting = cloud_commits_waiting(phases)
     return f"commits_waiting={','.join(waiting) if waiting else 'none'}"
 
@@ -22752,8 +21384,6 @@ def mark_committed(args: argparse.Namespace) -> None:
 
 def cloud_rebuild(rels) -> None:
     """The generated files after the disk took files from hi2vi."""
-    if any(rel.startswith("docs/") for rel in rels) and (DOCS / "index.json").is_file():
-        rebuild_docs()
     rebuild_index_and_state()
 
 
@@ -23055,14 +21685,14 @@ def cloud_keep_check(session: CloudSession, paths: list) -> None:
 
 
 # The web's agenda inbox. The web never writes a truth file: each change is a pending entry
-# {id, created_at, kind, items, fields, minted_id}, and a linked engine applies it at sync, next and run-phases
+# {id, created_at, kind, items, fields, minted_id}, and a linked engine applies it at sync and next
 # by running the very agenda command in-process (never main(), whose boundary would begin and commit again).
 # Exit 0 is `applied`; 1 (a refusal) or 2 (a usage error) is `refused`, its one line the reason, verbatim; any
 # other end (a crash, another exit) sends no result, so the entry stays pending, and the tree is put back as the
 # command found it. Each entry's result travels in a batch of its own with exactly the files its command wrote,
 # so hi2vi's 409 for an entry no longer pending (another checkout applied it) voids only that entry: its files
 # are dropped here and hi2vi's copy pulled, never applied twice.
-CLOUD_INBOX_AT = ("next", "run-phases")  # besides sync, the commands whose begin step applies the inbox
+CLOUD_INBOX_AT = ("next",)  # besides sync, the commands whose begin step applies the inbox
 CLOUD_INBOX_COMMANDS = {"add": "agenda-add", "edit": "agenda-edit", "move": "agenda-move", "defer": "agenda-defer",
                         "solve": "agenda-solve", "drop": "agenda-drop", "reopen": "agenda-reopen",
                         "delete": "agenda-delete"}
@@ -23495,22 +22125,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Manage the agentic workflow state.")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p = sub.add_parser("rebuild", help="Rebuild workflow dashboards/index/state and docs snapshots")
-    p.set_defaults(func=lambda args: (rebuild_docs(), rebuild_index_and_state(), print("rebuilt workflow and docs")))
+    p = sub.add_parser("rebuild", help="Rebuild the workflow dashboards, index and state")
+    p.set_defaults(func=lambda args: (rebuild_index_and_state(), print("rebuilt workflow")))
 
-    p = sub.add_parser("rebuild-docs", help="Regenerate docs/current/*.md from docs/index.json latest versions")
-    p.set_defaults(func=lambda args: (rebuild_docs(), print("rebuilt docs/current from latest versions")))
-
-    p = sub.add_parser("docs", help="Print latest doc versions")
-    p.set_defaults(func=cmd_docs)
-
-    p = sub.add_parser("doc-new-version", help="Create a new durable doc version from the latest version")
-    p.add_argument("--doc", required=True, help=f"one of {', '.join(sorted(DOC_TYPES))} (a retired doc is refused and names its successor)")
-    p.add_argument("--summary", required=True)
-    p.add_argument("--source", required=True)
-    p.set_defaults(func=new_doc_version)
-
-    p = sub.add_parser("validate", help="Validate workflow and docs structure")
+    p = sub.add_parser("validate", help="Validate the workflow structure")
     p.set_defaults(func=lambda args: sys.exit(validate()))
 
     p = sub.add_parser("sync-agents", help="Write the route table's rows (engine defaults overlaid by the repo-root executors.toml) into the model/effort frontmatter of the six managed agent files: slice-executor (the mid row; high and research run it with their model and effort passed per dispatch), design-drafter (its own design row), design-critic (the critic row; the judge row runs it with its model passed per call), pr-reader (the reader row), code-reader (the code row) and Explore (the explore row)")
@@ -23549,11 +22167,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--card", action="store_true", help="print the resume card instead: the pointer, the next action or the typed stop, the open gates, the running spans (from the newest session's subagents/*.meta.json) and the slice's file paths, computed from state, at most 2,048 bytes -- what compact-resume prints after a compaction")
     p.set_defaults(func=cmd_next)
 
-    run_help = "Writes nothing in local mode; in a linked checkout it first applies the web's pending agenda changes. The phase list and the next target of a /do-whole-phases run, recomputed from disk on every call (re-run it at each phase boundary and after a compaction). Prints run=, stream=, (in a linked checkout) commits_waiting=<ids|none> (as next), queue= (this stream's non-done phases of the run, in order), skipped=<P> reason=done | done (archived) | other-stream stream=<branch or default> | loop (a loop phase drives itself: /run-loop), parked=<P> (pending, its acceptance gate open, no slice pending or blocked: the run passes it), then target_phase= / target_slice= / slice_path= / next_slice= (plus notebook_over_budget= / notebook_move= when the target phase's notebook is over 40,960 B: run the moves before the dispatch; plus gate_cleared= when a cleared gate's review awaits its recorded pass), or halt=<item> status= with stop_kind= / on_words= for a pending slice and halt_reason= (any other pending or blocked phase, or a pending or blocked current slice: the whole run stops), or run_done=yes. Phase tokens are brief ids: 46 / P46 (numbered: the one P46, else the one P46-<tail>; 46-k2 names the tail), P12, or 7kq2 / P-7kq2 (a v73 id), any case. Exits 2 with refused= lines and nothing else for a token that is not a phase id, names no phase, or is a number two tailed phases share (refused=46 -- names P46-k2, P46-x4: type the tail). The plain pointer (next, works/state.json, the resume card's stop) is unchanged and still halts at a parked phase"
-    p = sub.add_parser("run-phases", help=run_help, description=run_help)
-    p.add_argument("tokens", nargs="*", metavar="PHASE", help="a phase id in any brief form: 46 or P46 (numbered; 46-k2 when two phases share the number), P12, or 7kq2 or P-7kq2 (a v73 id), any case, separated by commas and/or spaces; the given order is kept and duplicates are dropped; none = every non-done phase on this stream, by order. Ranges, mode words, `worktree` and a minted id without its dash (P7kq2) are refused")
-    p.set_defaults(func=cmd_run_phases)
-
     p = sub.add_parser("compact-resume", help="The SessionStart hook (matcher compact): after a compaction, print compaction=done source=compact and the resume card (next --card; the running spans from the hook's transcript_path session), falling back to the plain pointer on any error; never fails, always exits 0")
     p.set_defaults(func=cmd_compact_resume)
 
@@ -23569,9 +22182,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--on-main", action="store_true", dest="on_main",
                    help="no-op since v43 (the default stream is the default); accepted so v42 habits and scripts keep working")
     p.add_argument("--loop", action="store_true",
-                   help="make it a loop phase at once: new-phase followed by loop-init (the loop block, loop/charter/v1.md from the charter template, REVIEW ordered after every cycle); refused with --consolidates")
-    p.add_argument("--consolidates", metavar="P26,P27",
-                   help="docs phase: the comma-separated ids (any brief form: P26, 26, 46-k2, P-7kq2, 7kq2) of active phases whose doc consolidation debt this phase pays; refused (nothing written) for an id that is not an active phase owing consolidation. Stored as `consolidates` in phase.json -- the only docs-phase marker; `docs-debt` shows it as 'paid by' and `rotate-backlog` proposes no second docs phase for what it covers")
+                   help="make it a loop phase at once: new-phase followed by loop-init (the loop block, loop/charter/v1.md from the charter template, REVIEW ordered after every cycle))")
     p.add_argument("--agenda", metavar="ITEM", help="link the new phase to this agenda item (" + AGENDA_ID_HELP + "); stored as `agenda` in phase.json; refused, nothing written, when it names no item")
     p.set_defaults(func=new_phase)
 
@@ -23594,7 +22205,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--outcome", help="one line recorded in slice.json and rendered in the phase's generated ## Slices table")
     p.set_defaults(func=finish_slice)
 
-    p = sub.add_parser("mark-committed", help="A linked checkout only (refused in local mode, nothing written): record that each named done slice's commit is in, as committed_at in its slice.json -- run it after the slice's product commit(s), or right after its finish when it changed no product file (review-phase records a passing REVIEW itself). next and run-phases list the done slices without it in commits_waiting=, the record git's uncommitted slice.json gives in local mode. Leaving done clears it. All or nothing: a slice not done refuses the call")
+    p = sub.add_parser("mark-committed", help="A linked checkout only (refused in local mode, nothing written): record that each named done slice's commit is in, as committed_at in its slice.json -- run it after the slice's product commit(s), or right after its finish when it changed no product file (review-phase records a passing REVIEW itself). next lists the done slices without it in commits_waiting=, the record git's uncommitted slice.json gives in local mode. Leaving done clears it. All or nothing: a slice not done refuses the call")
     p.add_argument("mark_slices", nargs="+", metavar="slice")
     p.set_defaults(func=mark_committed)
 
@@ -23620,7 +22231,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("status")
     p.set_defaults(func=set_phase_status)
 
-    p = sub.add_parser("review-phase", help="Record a phase review verdict (pass/changes_requested/blocked); a pass stamps doc consolidation pending when '## Doc impact' has notes, and settles a worktree phase's to done when it has none. A loop phase's pass is refused (nothing written) until the loop is stopped, nothing is in flight and no parked item is open (loop-unpark); set-phase-status <loop P> done is held to the same guard. A pass is also refused, beside the acceptance gate's refusal and naming only itself, while the phase's pr block records a branch with no draft PR URL, or records none while phase-scope lists product files, unless the PR is waived (pr-record --url / --waive); a phase with no pr block is never refused")
+    p = sub.add_parser("review-phase", help="Record a phase review verdict (pass/changes_requested/blocked). A loop phase's pass is refused (nothing written) until the loop is stopped, nothing is in flight and no parked item is open (loop-unpark); set-phase-status <loop P> done is held to the same guard. A pass is also refused, beside the acceptance gate's refusal and naming only itself, while the phase's pr block records a branch with no draft PR URL, or records none while phase-scope lists product files, unless the PR is waived (pr-record --url / --waive); a phase with no pr block is never refused")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--verdict", required=True, choices=sorted(REVIEW_VERDICTS))
     p.add_argument("--reviewer", default=None)
@@ -23638,13 +22249,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--note", default=None, help="mandatory reason with --waive; optional record of what the operator reported with --clear")
     p.set_defaults(func=accept_gate)
 
-    p = sub.add_parser("docs-debt", help="Read-only worklist for a docs phase: which phases owe durable-doc consolidation, their '## Doc impact' notes, the docs they touch and the paying commands")
-    p.set_defaults(func=docs_debt)
-
-    p = sub.add_parser("docs-consolidated", help="Record that a phase's deferred durable-doc consolidation landed (run after a docs phase creates the versions; also unblocks archiving)")
-    p.add_argument("phase", help=PHASE_ARG_HELP)
-    p.set_defaults(func=docs_consolidated)
-
     p = sub.add_parser("parallel-start", help="Ask for a worktree: move a planned phase out of the default stream into its own -- stamp it, commit the stamp (phase folder + works/ files only; a dirty tree is fine), cut phase/P<N>-<slug> and .claude/worktrees/P<N>-<slug>")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--worktree", default=None, help="worktree path (default: <repo>/.claude/worktrees/P<N>-<slug>, which EnterWorktree can enter in the same session; elsewhere means opening a second session there)")
@@ -23655,7 +22259,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--repo-base", action="append", default=None, dest="repo_base", metavar="NAME=REF", help="multi-repo host only, repeatable: the ref repo NAME's branch starts from (default: its registry default_branch as a local branch; never fetched); NAME must also be given with --repo")
     p.set_defaults(func=parallel_start)
 
-    p = sub.add_parser("reopen-phase", help="Reopen a DONE phase whose PR is still open, on the operator's word (a change request after the phase was done, the team's or the operator's): status in_progress, review changes_requested with --note, its REVIEW slice changes_requested, a required acceptance gate re-opened (a waived one stays waived); completed_at, the pr block and the doc-consolidation state kept. Nested: the phase's own worktree pair, the host worktree ON its existing PR branch (reused, never a second PR), the nested side on phase/P<N>-<slug> (or -reopen<k> when taken), the verdict in the same stamp commit; a multi-repo host's set takes each repo's open PR branch. Root: in place, in the checkout that holds the PR branch (it carries the phase's record), with no worktree and no commit. Refused, nothing written: an archived phase, a phase not done, every PR merged (pr-sync first), an empty --note, a parallel stream, a git operation in progress, a PR branch checked out elsewhere (the host's main checkout: switch it off). Prints reopened=<P> branch=<label> worktree=<path>. Never pushes, merges or calls gh. Orchestrator command -- executors never run it")
+    p = sub.add_parser("reopen-phase", help="Reopen a DONE phase whose PR is still open, on the operator's word (a change request after the phase was done, the team's or the operator's): status in_progress, review changes_requested with --note, its REVIEW slice changes_requested, a required acceptance gate re-opened (a waived one stays waived); completed_at and the pr block kept. Nested: the phase's own worktree pair, the host worktree ON its existing PR branch (reused, never a second PR), the nested side on phase/P<N>-<slug> (or -reopen<k> when taken), the verdict in the same stamp commit; a multi-repo host's set takes each repo's open PR branch. Root: in place, in the checkout that holds the PR branch (it carries the phase's record), with no worktree and no commit. Refused, nothing written: an archived phase, a phase not done, every PR merged (pr-sync first), an empty --note, a parallel stream, a git operation in progress, a PR branch checked out elsewhere (the host's main checkout: switch it off). Prints reopened=<P> branch=<label> worktree=<path>. Never pushes, merges or calls gh. Orchestrator command -- executors never run it")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--note", required=True, help="whose change request it is and what it asks: \"team-reported: <what>\" or \"operator-reported: <what>\" (recorded as the review note; must not be empty)")
     p.add_argument("--slug", default=None, help="nested only: the nested phase branch's slug (default: the phase name's; phase/<phase>-<slug>, with -reopen<k> appended when that branch exists)")
@@ -23671,10 +22275,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--adopt", action="store_true", help="stamp the existing worktree of NAME at <host worktree>/<its path> (registered in that repo, HEAD on BRANCH) instead of cutting one; its branch stays the operator's (branch_created=false), so teardown keeps it")
     p.set_defaults(func=parallel_add_repo)
 
-    p = sub.add_parser("parallel-skip", help="No-op since v43 (the default stream is the default, so there is nothing to pin): reports where the phase runs and writes nothing")
-    p.add_argument("phase", help=PHASE_ARG_HELP)
-    p.set_defaults(func=parallel_skip)
-
     p = sub.add_parser("parallel-status", help="Read-only cross-stream view: this checkout's pointer plus every parallel phase's branch-side slice state (never writes anything)")
     p.set_defaults(func=parallel_status)
 
@@ -23684,12 +22284,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--main-ref", default=None, help="git ref holding the default stream's state (default: this working tree; e.g. origin/main when running from a PR checkout)")
     p.set_defaults(func=parallel_gate)
 
-    p = sub.add_parser("parallel-merge-finish", help="Run on the default stream right after merging a phase branch: regenerate the generated files and list phases awaiting doc consolidation")
+    p = sub.add_parser("parallel-merge-finish", help="Run on the default stream right after merging a phase branch: regenerate the generated files and name each merged phase whose branch and worktree are left to tear down")
     p.set_defaults(func=parallel_merge_finish)
-
-    p = sub.add_parser("parallel-consolidated", help="Mark a merged parallel phase's deferred doc consolidation done (run on the default stream, after the doc versions land)")
-    p.add_argument("phase", help=PHASE_ARG_HELP)
-    p.set_defaults(func=parallel_consolidated)
 
     p = sub.add_parser("parallel-teardown", help="Retire a merged parallel phase's worktree and branch; run from the default stream")
     p.add_argument("phase", help=PHASE_ARG_HELP)
@@ -23784,7 +22380,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--file", help="read the new text from this file (default: stdin)")
     p.add_argument("--list", action="store_true", help="with a section name: one line per entry (position, own label, bytes, flags long/nested/pointer, its lead cut at 80 characters)")
     p.add_argument("--entry", metavar="K", help="one entry of the section: its position (1-based), OQ<n>, or a unique case-insensitive piece of its first line; alone it prints that entry, with --replace / --remove it writes only it, with --to-topic it may also be ranges and lists (1-8,10)")
-    p.add_argument("--remove", action="store_true", help="with --entry K: delete that entry and its trailing blank lines (Notes for later slices, Now, Objective, custom sections; refused in Decisions, Doc impact, Operator Questions and Slices)")
+    p.add_argument("--remove", action="store_true", help="with --entry K: delete that entry and its trailing blank lines (Notes for later slices, Now, Objective, custom sections; refused in Decisions, Operator Questions, Slices and an older notebook's Doc impact)")
     p.add_argument("--to-topic", metavar="SLUG", dest="to_topic", help="move the section's entries (or --entry K's) verbatim to topics/SLUG.md, verify them there, then leave one pointer line each carrying a verbatim gist; Decisions, Notes for later slices, Objective and custom sections; the slug breakdown is refused")
     p.add_argument("--gist", help="with --to-topic and exactly one entry: the pointer line's gist (default: derived, a verbatim excerpt of at most 160 characters)")
     p.add_argument("--dry-run", action="store_true", dest="dry_run", help="with --to-topic: print the pointer lines and the bytes saved, and write nothing")
@@ -24072,7 +22668,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--transcripts", action="append", metavar="DIR", help="read spans from this projects/<slug> directory (repeatable)")
     p.set_defaults(func=loop_status)
 
-    p = sub.add_parser("loop-checkpoint", help="A loop's checkpoint <P>.K<j> (kind review), which reviews its window of cycles. --now: the operator's ask, a checkpoint at the next cycle boundary (from another stream it queues in the live loop's loop/control.json: the loop worktree's, or the default checkout's for a loop on the default stream). --start (on the tick's action=checkpoint; driver only): create <P>.K<j> in_progress, ordered after its last cycle, and hold the lease (loop.inflight kind checkpoint: no cycle starts while it is open; loop-cycle-dispatch and the tick's in-flight rules apply); refused when none is due. --verdict pass|changes_requested|blocked --summary S: meter it like a cycle, append loop/checkpoints.jsonl, finish it and free the lease; pass writes the digest and stamps the consolidation debt when ## Doc impact gained notes since the last pass; changes_requested pauses the loop (paused_by checkpoint: fix slices run on the loop stream, then resume); blocked halts it (reason checkpoint). Refused with no checkpoint open, or no result.md (bar blocked). --landed (after committing a passing checkpoint): record the works repo's HEAD (and the host's in a nested pair) as the commit the default stream merges; refused unless the last checkpoint passed and the phase folder is fully committed")
+    p = sub.add_parser("loop-checkpoint", help="A loop's checkpoint <P>.K<j> (kind review), which reviews its window of cycles. --now: the operator's ask, a checkpoint at the next cycle boundary (from another stream it queues in the live loop's loop/control.json: the loop worktree's, or the default checkout's for a loop on the default stream). --start (on the tick's action=checkpoint; driver only): create <P>.K<j> in_progress, ordered after its last cycle, and hold the lease (loop.inflight kind checkpoint: no cycle starts while it is open; loop-cycle-dispatch and the tick's in-flight rules apply); refused when none is due. --verdict pass|changes_requested|blocked --summary S: meter it like a cycle, append loop/checkpoints.jsonl, finish it and free the lease; pass writes the digest; changes_requested pauses the loop (paused_by checkpoint: fix slices run on the loop stream, then resume); blocked halts it (reason checkpoint). Refused with no checkpoint open, or no result.md (bar blocked). --landed (after committing a passing checkpoint): record the works repo's HEAD (and the host's in a nested pair) as the commit the default stream merges; refused unless the last checkpoint passed and the phase folder is fully committed")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--now", action="store_true", help="the operator's ask: a checkpoint at the next cycle boundary")
     p.add_argument("--start", action="store_true", help="on action=checkpoint: create <P>.K<j> and hold the lease")
@@ -24100,9 +22696,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=archive_all)
 
-    p = sub.add_parser("rotate-backlog", help="The one resumable step of /rotate-backlog: checks the doc debt FIRST and prints its decision as the first line, rotate=<refused|archive|stop_midflight|stop_uncommitted|replace|resume|create>. archive: nothing owes, so archive every currently-done phase (whole phases, the partial archive-all) and rebuild. While debt stands it first archives the cleanly archivable phases (never one that owes docs; archived=<ids>), goes around parked work -- a phase pending or blocked, a slice pending, blocked or changes_requested, one parked=<id> status=<status>[ stop_kind=<kind>] line each -- and then: stop_midflight for running default-stream work (a slice in_progress or in_review, a phase in_review; a gate-open phase's review slice is parked), stop_uncommitted when work is parked and the product tree holds uncommitted edits (uncommitted=<n> and the paths), replace (v78) every live docs phase when all are unstarted and new debt stands uncovered (each folder removed, docs_phase_replaced=, then one proposal covering all the debt), resume a started live docs phase (re-asserting its queue-jump order; new debt waits for it), or print the docs phase to create, its create: line carrying the queue-jump --order. A stop creates, replaces and reorders nothing. refused (writes nothing, non-zero exit) on a parallel stream")
+    p = sub.add_parser("rotate-backlog", help="The step of /rotate-backlog: the first line is rotate=<refused|archive>. archive: archive every currently-done phase that is cleanly archivable (whole phases, the partial archive-all) and rebuild. refused (writes nothing, non-zero exit) on a parallel stream")
     p.add_argument("--archive-only", action="store_true", dest="archive_only",
-                   help="archive only: the sweep of every currently-done phase and its report, with no rotate= line and no docs-phase line (unchanged since v51)")
+                   help="archive only: the sweep of every currently-done phase and its report, with no rotate= line (unchanged since v51)")
     p.set_defaults(func=rotate_backlog)
 
     p = sub.add_parser("link", help="Link this checkout to hi2vi (cloud mode): hi2vi becomes the truth for works/ and docs/, and every command syncs at its boundary. Takes the project's page address; the workspace key is pasted at a prompt (one stdin line when not a terminal), never on the command line, and kept in $XDG_CONFIG_HOME/hi2vi/workspace-keys.json (folder 0700, file 0600). An empty project in hi2vi gets this checkout's files; one that already holds files is joined only from an unused install or an equal set, else the differences are listed. Refused, nothing written: at root, in a phase's worktree, with a phase in flight on a stream or another worktree, with uncommitted changes in the workflow repo, when already linked, http:// to a non-local host, a key file open to group or others. Prints store=cloud server= project= head=")
@@ -24115,7 +22711,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cloud_unlink)
     _one_line_usage_errors(p)
 
-    p = sub.add_parser("sync", help="A linked checkout's mismatch tool: pull clean hi2vi changes, push clean local ones, apply the web's pending agenda changes (each as its agenda command, one line each; next and run-phases apply them too), then list what remains, one line per path (differs, here only, cloud only, deleted here, deleted in hi2vi, interrupted), exit 1 while anything differs. --diff PATH: a unified diff of hi2vi's copy against the disk. --keep local|cloud PATH...: resolve those paths only (local pushes the disk's copy over hi2vi's revision, cloud writes hi2vi's copy over the disk); never without a path. --status: one line, store=cloud server= project= head= base= here= differ= inbox=")
+    p = sub.add_parser("sync", help="A linked checkout's mismatch tool: pull clean hi2vi changes, push clean local ones, apply the web's pending agenda changes (each as its agenda command, one line each; next applies them too), then list what remains, one line per path (differs, here only, cloud only, deleted here, deleted in hi2vi, interrupted), exit 1 while anything differs. --diff PATH: a unified diff of hi2vi's copy against the disk. --keep local|cloud PATH...: resolve those paths only (local pushes the disk's copy over hi2vi's revision, cloud writes hi2vi's copy over the disk); never without a path. --status: one line, store=cloud server= project= head= base= here= differ= inbox=")
     p.add_argument("--diff", metavar="PATH", help="show hi2vi's copy against the disk for one path")
     p.add_argument("--keep", choices=("local", "cloud"), help="resolve the named paths with this side's copy")
     p.add_argument("--status", action="store_true", help="one line: the head, the base and the counts")

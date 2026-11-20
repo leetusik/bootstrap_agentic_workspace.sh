@@ -7,7 +7,6 @@
 - Create bare folders with `new-slice --phase <P> --slice <P>.S<n> --name "…" --kind … --risk … --order … --depends-on …`; never pre-fill a `plan.md`. A fractional `--order` (`4.5`) inserts between neighbours. Pass `--depends-on <id>` per real dependency or `none`; never on `DECOMP2`, `REVIEW` or a `co-work` slice (`set-slice-deps` fixes one already cut). Two slices may run together only when no dependency joins them and their sets (files, regenerated files, numbered sequences, runtime resources) are disjoint.
 - Write `topics/breakdown.md` whole: `## Passes`, `## Estimate` (time from `dispatch-summary`'s `means`, never session-$), a join-rebuilt artifact with its rebuild command if any, and one `## <slice id>` block each (goal, set, risk and trigger, `spends money: no` or `yes, ~$X via <service>`, depends on). Add one `Breakdown (<pass>): …` gist line to `## Decisions`.
 - A design phase runs in the plan's style (`build-after`, `design-only`, `paired`): record the build inventory and each co-work slice's one job with its critique level (`off | critic | critic+judge`); a `co-work` slice is `--kind co-work --risk high` and never carries product code.
-- Ask for no `## Doc impact` note and no docs phase.
 
 **What done proves.** `validate` passes and `python3 scripts/workflow.py parallel-plan <P>` prints the rounds.
 

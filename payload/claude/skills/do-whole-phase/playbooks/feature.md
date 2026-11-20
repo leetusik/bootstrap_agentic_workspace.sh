@@ -9,6 +9,6 @@
 
 **What done proves.** Each claim failed, then passed; the plan's validation passes; nothing you started still runs.
 
-**Carve-out.** A `docs` slice edits only the docs its plan names; a versioned doc goes through `doc-new-version` (editing the returned `edit_path`) and `rebuild-docs`, on the default stream.
+**Carve-out.** A `docs` slice edits only the docs its plan names (the plain files under `docs/current/`).
 
 **Where it may deviate.** On the mid row the plan pins the approach: a design decision it did not make, a core invariant it did not rate (persisted state, auth, money, deletion, concurrency) or a shared interface with spread callers is an `escalate`. On the high row, decide, and record the decision in `## Decisions`.

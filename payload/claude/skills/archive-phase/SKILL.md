@@ -13,4 +13,4 @@ Archiving is manual: a pass leaves a phase `done` in `active/`, and invoking thi
 - **The done ones:** `python3 scripts/workflow.py rotate-backlog` (the `/rotate-backlog` skill; `--archive-only` for the plain sweep).
 - **One phase:** `python3 scripts/workflow.py archive-phase <P>`.
 
-All three need `done` with a passing review. A phase still carrying old doc debt (`consolidation: "pending"`) is refused until the engine stops counting it. **A phase with an open PR is held too:** until `pr-sync <P>` reads it `state=merged` (`next`'s `pr_open=` says what is due); a PR closed unmerged keeps the hold: reopen it on GitHub and sync, or archive with `--force`. `--force` (on `archive-all` / `archive-phase`) is for exceptional cleanup only, on the operator's word.
+All three need `done` with a passing review. **A phase with an open PR is held too:** until `pr-sync <P>` reads it `state=merged` (`next`'s `pr_open=` says what is due); a PR closed unmerged keeps the hold: reopen it on GitHub and sync, or archive with `--force`. `--force` (on `archive-all` / `archive-phase`) is for exceptional cleanup only, on the operator's word.

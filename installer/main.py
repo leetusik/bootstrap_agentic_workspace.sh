@@ -38,7 +38,7 @@ RETROFIT_SUMMARY = {"created": [], "skipped": [], "merged": []}
 # --dry-run previews the change-list and writes nothing.
 UPDATE = os.environ.get("UPDATE") == "1"
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
-UPDATE_DOCS = True  # recomputed in the guards for update (skip docs rebuild if no docs subsystem)
+UPDATE_DOCS = True  # recomputed in the guards for update (refresh docs/README.md only where the docs are ours)
 # stale / kept: (path, reason) pairs; notes / intents: lines (the update report, print_update_report)
 UPDATE_SUMMARY = {"updated": [], "added": [], "merged": [], "preserved": [], "unchanged": [],
                   "stale": [], "kept": [], "notes": [], "intents": []}
@@ -203,9 +203,9 @@ EMPTY_OK_ALLOWLIST = {
 #@@GENERATED_PAYLOADS@@
 
 # The skill inventory is derived independently from the embedded payload manifest.
-# The build enforces the release invariant: 21 skill packages.
+# The build enforces the release invariant: 20 skill packages.
 CLAUDE_SKILLS = sorted({k.split("/")[2] for k in PAYLOADS if k.startswith(".claude/skills/") and k.endswith("/SKILL.md")})
-EXPECTED_SKILL_COUNT = 21
+EXPECTED_SKILL_COUNT = 20
 if len(CLAUDE_SKILLS) != EXPECTED_SKILL_COUNT:
     raise RuntimeError(
         f"embedded skill inventory must contain {EXPECTED_SKILL_COUNT} skill packages "
@@ -216,8 +216,7 @@ if len(CLAUDE_SKILLS) != EXPECTED_SKILL_COUNT:
 SKILL_FILES = {name: sorted(k for k in PAYLOADS if k.startswith(f".claude/skills/{name}/")) for name in CLAUDE_SKILLS}
 
 MANAGED_DIRS = [
-    "docs", "docs/current", "docs/versions",
-    *[f"docs/versions/{doc_id}" for doc_id in DOC_TYPES],
+    "docs", "docs/current",
     "works", "works/phases", "works/phases/active", "works/phases/archived",
     "works/deferred", "works/deferred/open", "works/deferred/promoted", "works/deferred/dropped",
     "works/agenda",
@@ -227,9 +226,8 @@ MANAGED_DIRS = [
 
 MANAGED_FILES = [
     "CLAUDE.md",
-    "docs/README.md", "docs/index.json",
+    "docs/README.md",
     *[f"docs/current/{doc_id}.md" for doc_id in DOC_TYPES],
-    *[f"docs/versions/{doc_id}/v0001_bootstrap.md" for doc_id in DOC_TYPES],
     "works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/agenda.md", "works/events.jsonl",
     *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md", "phase.md", "charter.md")],
     "scripts/workflow.py",
@@ -316,8 +314,8 @@ GITATTRIBUTES_APPEND_NOTE = (
     "\n# Added by the agentic workspace: works/events.jsonl is an append-only log, so\n"
     "# both sides of a merge are always wanted (`union` is a built-in git merge driver\n"
     "# and needs no per-clone config). The generated files (works/state.json,\n"
-    "# works/index.json, works/backlog.md, works/deferred.md, works/agenda.md,\n"
-    "# docs/current/*.md) get no merge driver on purpose -- resolve a conflict there\n"
+    "# works/index.json, works/backlog.md, works/deferred.md, works/agenda.md)\n"
+    "# get no merge driver on purpose -- resolve a conflict there\n"
     "# by taking either side and re-running: python3 scripts/workflow.py parallel-merge-finish\n"
 )
 
@@ -592,7 +590,7 @@ def _retrofit_handle(path: str, text: str) -> bool:
 #   SEED-ONCE: executors.toml (operator route config — created if absent, never
 #     overwritten).
 #   PRESERVE (never touch): everything under works/ except templates, and all of
-#     docs/ (the append-only version chain plus generated snapshots).
+#     docs/ but its README (the docs themselves, and an older install's docs/index.json and versions).
 # The repo-level policy files (.github/workflows/workspace-ci.yml seed-once,
 # .gitattributes line-merged) bypass this dispatch entirely — see emit_policy_files().
 # In --dry-run nothing is written; changes are only recorded for the report.
@@ -645,7 +643,7 @@ def _update_handle(path: str, text: str, executable: bool) -> None:
         UPDATE_SUMMARY["preserved"].append(path)
         return
     if path == "docs/README.md":
-        # Machinery doc, but only refresh where the docs subsystem exists.
+        # Machinery doc, but only refresh where the docs are the workspace's own.
         if UPDATE_DOCS:
             _update_write(path, text, executable)
         else:
@@ -1438,22 +1436,11 @@ def _nested_local_block(renames: dict, repos=(), converted=()) -> list:
 def _docs_readme() -> str:
     return f"""# Docs
 
-Durable docs are versioned. Do not patch old versions.
+The durable docs are plain files: read the sections the work touches, and edit a doc in place when the work changes what it says.
 
 ## Categories
 
 {chr(10).join(f"- `docs/current/{doc_id}.md`" for doc_id in DOC_TYPES)}
-
-## Rules
-
-Doc updates happen in a **docs phase the operator creates** — never per slice. A slice that changes durable truth appends a one-line note to its phase's `## Doc impact` list instead; `python3 scripts/workflow.py docs-debt` prints what is owed, and the docs phase runs the commands below over those notes.
-
-- Read latest docs from `docs/current/*.md`.
-- The agent creates updates with `python3 scripts/workflow.py doc-new-version --doc <doc> --summary "..." --source <phase-or-slice>`.
-- Edit only the newly created version file under `docs/versions/<doc>/`.
-- The agent runs `python3 scripts/workflow.py rebuild-docs` after editing the new version.
-- `docs/current/*.md` is generated from the latest version and should not be manually edited.
-- When a phase's notes are all consolidated: `python3 scripts/workflow.py docs-consolidated <P>` (that is also what unblocks archiving it).
 
 ## Update Triggers
 
@@ -1463,7 +1450,7 @@ Doc updates happen in a **docs phase the operator creates** — never per slice.
 - `qa`: test commands, QA missions, regression checklist, acceptance style
 - `decisions`: meaningful choices, tradeoffs, rejected alternatives
 
-These docs are read by agents, which can read the code: write what the code cannot say, and point at the code for the rest. An install made before v79 may also hold `experience`, `frontend`, `backend`, `data`, `api` and `security`: they are retired, kept readable and never versioned again, and their changes go to `product` (experience) or `architecture` (the rest).
+These docs are read by agents, which can read the code: write what the code cannot say, and point at the code for the rest. An install made before v79 may also hold `experience`, `frontend`, `backend`, `data`, `api` and `security`: they are retired and kept readable, and their changes go to `product` (experience) or `architecture` (the rest).
 """
 
 
@@ -1980,6 +1967,7 @@ RETIRED_FILES = {
     '.claude/skills/do-whole-phase/reference/modes.md': (100, ('c2d8f13365d2401d82401b513306cde900a16a115cfb9c71d77f81686c030b1e', '5b7346f395d83a7888bf0cd374841f6e8759b6c5f1614a0ff038a1b553ade7e2')),  # 807bb0e
     '.claude/skills/do-whole-phase/reference/prep.md': (100, ('aabba508d031ada11f72b0de3c1b55e27939bd5bc484325c4dafa7020b73cbfc',)),  # 807bb0e
     '.claude/skills/do-whole-phases/SKILL.md': (98, ('7a84c83f9938d32af5ba9dd6729b310623303fc2ddcb68accbe08e704f2e829c', 'daa211d71e169a19268e7ae515ab0cbc489225a1f8671b0bacd60e30c39a757a')),  # 47436bc
+    '.claude/skills/doc-new-version/SKILL.md': (101, ('1f67079e4121f7d5c0c702517123c79a328c9588f9f01041c08e5370304c8a67', 'cb397ec37bb3ab8e79d8bfda8c1638830a45ff59c8cba163ee904f2683d13d95')),  # 00c60e9
     '.claude/skills/executor-mode/SKILL.md': (52, ('382fe9e6644c15c46d49ab0b481c8cec0b6722f20816d3fca48a60ba61826d43', 'cef5b8fbf576e83fd6048ceb652e05ddcd7cbcded6a4168efb5c834f32c16970')),  # 7c874c3
     '.codex/agents/slice-executor-high.toml': (30, ('217fcafcd0449db43fd1e25b4a0a13cc918ee2ab46d4980a8544b098ed31ec2d',)),  # 4ee5c22
     '.codex/agents/slice-executor-low.toml': (22, ('57e24a3b80eaa8a1991b82aeb29b6447735453c08ede535cc353a86a2b78bc35',)),  # 097041d
@@ -2949,15 +2937,10 @@ if UPDATE:
         print("A new install is just: sh bootstrap_agentic_workspace.sh <dir> (the private nested layout, the default), "
               "or --at-root / --into-existing for the committed at-root layout.", file=sys.stderr)
         sys.exit(1)
-    # Rebuild docs only when THIS repo uses the workspace's OWN docs system —
-    # index.json plus our versioned doc-type dirs. A repo adopted over its own
-    # (foreign or absent) docs/ never received ours, so running our docs rebuild
-    # there would crash or corrupt; skip it and rebuild only the works side.
-    UPDATE_DOCS = (
-        (ROOT / "docs/index.json").exists()
-        and (ROOT / "docs/versions").is_dir()
-        and any((ROOT / "docs/versions" / d).is_dir() for d in DOC_TYPES)
-    )
+    # Touch docs/ only when THIS repo uses the workspace's OWN docs: an older install's index.json, or
+    # the five doc files a fresh install seeds. A repo adopted over its own (foreign or absent) docs/
+    # never received ours, so its docs/README.md is left alone.
+    UPDATE_DOCS = (ROOT / "docs/index.json").exists() or all((ROOT / f"docs/current/{d}.md").is_file() for d in DOC_TYPES)
 elif RETROFIT:
     # PLAN pass: classify before writing anything, and abort up front on a
     # load-bearing collision so a retrofit can never half-install.
@@ -2978,8 +2961,7 @@ elif RETROFIT:
         print("foreign copy. Rename/relocate the existing file, or adopt the workspace", file=sys.stderr)
         print("manually (see docs/retrofit-guide.md), then re-run.", file=sys.stderr)
         sys.exit(1)
-    # Install the docs versioning subsystem only when the target has no docs
-    # system of its own; otherwise leave docs/ untouched and skip its rebuild.
+    # Seed the docs only when the target has no docs system of its own; otherwise leave docs/ untouched.
     docs_present = (
         (ROOT / "docs/index.json").exists()
         or ((ROOT / "docs/current").is_dir() and any((ROOT / "docs/current").glob("*.md")))
@@ -3062,29 +3044,10 @@ if NESTED:
 else:
     write_text("CLAUDE.md", f"# CLAUDE.md\n\n{CONTRACT_BODY}")
 
-# ---- Versioned docs ---------------------------------------------------------
-
-
-def doc_frontmatter(doc_id: str, version: str, source: str, summary: str, previous=None) -> str:
-    previous_line = f"previous: {previous}\n" if previous else "previous: null\n"
-    return f"---\ndoc_id: {doc_id}\nversion: {version}\ncreated_at: {created_at}\nsource: {source}\nsummary: {summary}\n{previous_line}---\n\n"
-
-
-index_docs = {}
+# ---- Docs: five plain files, edited in place ---------------------------------
 for doc_id in DOC_TYPES:
-    version_id = "v0001_bootstrap"
-    rel = f"docs/versions/{doc_id}/{version_id}.md"
-    summary = f"Initial {doc_id} doc"
     body = DOC_BODIES[doc_id].replace("__PROJECT_NAME__", PROJECT_NAME).replace("__PROJECT_SUMMARY__", PROJECT_SUMMARY)
-    content = doc_frontmatter(doc_id, "v0001", "bootstrap", summary) + body
-    write_text(rel, content)
-    write_text(f"docs/current/{doc_id}.md", content)
-    index_docs[doc_id] = {
-        "latest": version_id,
-        "current_path": f"docs/current/{doc_id}.md",
-        "versions": [{"id": version_id, "path": rel, "created_at": created_at, "source": "bootstrap", "summary": summary, "previous": None}],
-    }
-write_json("docs/index.json", {"docs": index_docs, "last_rebuilt_at": created_at})
+    write_text(f"docs/current/{doc_id}.md", body)
 # Nested: rewritten (agents at the host root read it), like the contract and the templates.
 write_text("docs/README.md", NESTED_PLAN["engine_side"]["docs/README.md"] if NESTED else _docs_readme())
 
@@ -3341,17 +3304,8 @@ elif UPDATE:
     write_version_marker()
     if CONVERT:
         convert_map_records()   # before the closing validate, which wants every pr.branches[].repo named
-    if UPDATE_DOCS:
-        run_workflow("rebuild")
-        run_workflow("validate")
-    else:
-        # No docs subsystem here (retrofitted repo) — the docs rebuild would crash.
-        run_workflow("next")
-elif RETROFIT and not INSTALL_DOCS:
-    # The target owns docs/ — rebuild only the works side; do not run our docs
-    # rebuild/validate against a foreign doc system.
-    write_version_marker()
-    run_workflow("next")
+    run_workflow("rebuild")
+    run_workflow("validate")
 else:
     write_version_marker()
     run_workflow("rebuild")
@@ -3370,8 +3324,6 @@ elif DRY_RUN:
 elif UPDATE:
     print(f"Update complete (--update) at {TARGET}")
     print_change_list()
-    if not UPDATE_DOCS:
-        print("  note: no docs subsystem here; skipped docs rebuild (ran 'next' only)")
     print(f"  provenance recorded: works/.workspace-version.json (synced_commit {os.environ.get('SYNCED_COMMIT') or 'bootstrap'})")
     for line in nested_team_pr_rules(ROOT):
         print(f"  {line}")
@@ -3387,10 +3339,8 @@ elif RETROFIT:
     if merged:
         print(f"  merged (additive): {', '.join(merged)}")
     print_update_report()
-    print(f"  docs subsystem: {'installed' if INSTALL_DOCS else 'skipped (target already has a docs/ system)'}")
+    print(f"  docs: {'seeded' if INSTALL_DOCS else 'skipped (target already has a docs/ system)'}")
     print("  works subsystem: installed (no phases yet — the first phase is created by the operator)")
-    if not INSTALL_DOCS:
-        print("  note: docs versioning not installed; skipped docs rebuild/validate")
     for line in nested_team_pr_rules(ROOT):
         print(f"  {line}")
     print("The installer made no git changes. Review the diff (git status); commit the adoption once the operator approves.")
@@ -3399,13 +3349,13 @@ elif RETROFIT:
 else:
     print(f"Bootstrapped agentic workspace at {TARGET}")
     print("Contract: CLAUDE.md")
-    print("Claude Code: 21 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, fresh-eyes PR reader .claude/agents/pr-reader.md, blind code reader .claude/agents/code-reader.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
+    print("Claude Code: 20 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, fresh-eyes PR reader .claude/agents/pr-reader.md, blind code reader .claude/agents/code-reader.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
     print("Visual design: design-cowork fires automatically; the design-drafter subagent drafts each design slice's surfaces as one working canvas under docs/reference/design/jobs/ (a frame of shared choices, its pages at once, then a join into clickable Pages, a board per component), the design-critic judges each page and the joined canvas when the job's critique is on, the orchestrator publishes each round to one Design canvas Artifact in the Claude app, and the operator decides: picks a style (build-after / design-only / paired) and signs each design in their own words, or on an in-product mockup they ask for, before separate implementation and browser fidelity")
     print("One executor, routed per dispatch by kind, then risk, then attempt (mid is the default row, real code included; high for decomposition, research, review, named triggers and retries), through one route table whose rows set each dispatch's model and effort; python3 scripts/workflow.py executor-route shows it (and executor-route <slice> the decision for one slice); override a row in executors.toml, then run sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
     print("CI: .github/workflows/workspace-ci.yml runs validate on each PR and default-branch push (seeded once — yours to edit); .gitattributes carries the merge rules for machine-written files")
     print("Canonical state: phase.json / slice.json / deferred.json / agenda.json; generated: works/backlog.md, works/deferred.md, works/agenda.md")
-    print("Versioned docs: docs/versions/<doc>/v<yyMMddHHmm>_*.md (a new version is named by its UTC minute; v0001_bootstrap.md is the first) with generated docs/current/*.md")
+    print("Docs: docs/current/*.md, plain files agents edit in place")
     print("Knowledge: /explain is the knowledge plugin's, not this workspace's (plugin 0.10.0+): /plugin marketplace add leetusik/knowledge, then /plugin install knowledge@knowledge; run /knowledge:setup once, then /knowledge:explain <topic>")
     print("  every explain is its own explain phase (a document by default; a book or a chapter when asked), written from this repo's code and its phases' records, created and run after one confirmation in its own worktree, merged back by itself — see docs/current/operations.md")
     for line in nested_team_pr_rules(ROOT):

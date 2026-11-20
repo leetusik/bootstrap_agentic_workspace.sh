@@ -65,7 +65,7 @@ Then the walkthrough lines (each URL, what to read on GitHub, the CI state) open
 3. In the main checkout (nested: `git -C workflow …`): `git pull --ff-only` only when an upstream exists. Something staged, or an uncommitted file the merge touches: commit your own workflow state (`works/`) first; anything else, STOP and ask. Never unstage or discard.
 4. `git merge --no-ff phase/P<N>-<slug> -m "merge(P<N>): <name>"`. A conflict in a generated file: take either side (step 5 regenerates); `phase.md` prose is merged by hand.
 5. `python3 scripts/workflow.py parallel-merge-finish`.
-6. The sections the branch review's `result.md` holds under `## Gate sections (written at merge)`: `doc-new-version --doc <qa|operations> --summary "…" --source <P>.REVIEW`, edit only that section in the `edit_path`, `rebuild-docs`. None: skip.
+6. The sections the branch review's `result.md` holds under `## Gate sections (written at merge)`: edit only that section of `docs/current/<qa|operations>.md`. None: skip.
 7. `python3 scripts/workflow.py parallel-teardown <P>`, with `--discard-ignored` straight away in a nested install whose worktrees hold caches (`node_modules`, `.venv`, build output, an explain's `pages/`); at root `git worktree remove` drops them itself. Each repo's product branch stays for its PR (B lands it).
 
 ## Clean up before the phase finishes

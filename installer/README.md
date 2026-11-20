@@ -60,7 +60,7 @@ register it once per clone: `git config core.hooksPath .githooks`.
   there is no phase scaffold to seed.
 - **`payloads/`** — fresh-install-only seeds that have **no `payload/`
   counterpart** (so there is nothing to mirror):
-  - `doc_bodies/<doc>.md` — the 11 initial `docs/current/*.md` bodies. Runtime
+  - `doc_bodies/<doc>.md` — the five initial `docs/current/*.md` bodies. Runtime
     tokens `__PROJECT_NAME__` / `__PROJECT_SUMMARY__` are substituted by `main.py`.
 
 ## Install modes and flags

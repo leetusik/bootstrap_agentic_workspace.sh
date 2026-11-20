@@ -23,12 +23,12 @@ The unit of worktree parallelism is the **phase**; slices inside it run one at a
 
 1. **When — only when asked**. `do-next-slice` / `do-whole-phase` run `parallel-start <P>` when told to, never on their own initiative; `create-phase` never does (bar its explain route). A phase already stamped is entered without asking again.
 2. **Where.** `<repo>/.claude/worktrees/P<N>-<slug>` on branch `phase/P<N>-<slug>` (`--worktree`, `--slug` override); the engine puts `.claude/worktrees/` in `.git/info/exclude`, never `.gitignore`. **Nested:** a pair, the host worktree at that path on the operator-confirmed host branch (an explain: detached at the host base), with the nested worktree at its `workflow/` on `phase/P<N>-<slug>`.
-3. **The stamp commit.** The engine's one commit, `chore(works): opt <P> into parallel execution`, holds exactly the phase folder and the six generated `works/` files (`git commit --only -- <paths>`), stamping `execution: {mode: "parallel", branch, worktree, consolidation: "pending"}`; the branch is cut from it so both sides carry the stamp.
+3. **The stamp commit.** The engine's one commit, `chore(works): opt <P> into parallel execution`, holds exactly the phase folder and the six generated `works/` files (`git commit --only -- <paths>`), stamping `execution: {mode: "parallel", branch, worktree}`; the branch is cut from it so both sides carry the stamp.
 4. **A dirty tree does not block it.** Everything else stays uncommitted in the default checkout; the worktree starts from the stamp commit.
 5. **What refuses**, before any write: not `planned`; an `execution` block; no git; a parallel stream; a merge or rebase in progress; the branch or path taken. Nested, also: no `--host-branch` on a non-explain phase, the host branch checked out elsewhere, an unresolvable host base.
 6. **Enter.** `EnterWorktree` with the printed path (nested: the host worktree), re-run `next` (`stream=phase/…`), work there. Membership is the current branch against the stamped `execution.branch`. Skills, agents and settings read through from the main checkout (never create `<host-wt>/.claude/`), and Claude Code reads the main checkout's `.claude/settings.local.json` from a worktree session, so its allow rules apply there.
 7. **The merge** is the close's integration (`.claude/skills/pr/reference/close.md`), after `parallel-gate <P>` opens.
-8. **Staying on `main` needs nothing.** `parallel-skip <P>` and `new-phase --on-main` are **retired no-ops** (v43) that write nothing. A phase still pinned with v42's `execution: {"mode": "default"}` keeps it, and `parallel-start` refuses it; delete the block by hand to un-pin.
+8. **Staying on `main` needs nothing.** `new-phase --on-main` is a **retired no-op** (v43) that writes nothing. A phase still pinned with v42's `execution: {"mode": "default"}` keeps it, and `parallel-start` refuses it; delete the block by hand to un-pin.
 
 **The two hints.** `new-phase` (another phase `in_progress` here) and `next` (a later phase `planned` behind the current one) may print `hint: … parallel-start <P>`. **Relay a hint to the operator; never act on it.** When `next` prints one, the do-* skills relay it and run nothing.
 
@@ -48,13 +48,11 @@ Slice work is unchanged. `parallel-status` shows every stream and writes nothing
 
 ## 4. Review on the branch
 
-The review runs as `review-phase` says. A branch review versions no doc: the sections a default-stream review writes itself (`## Regression Checklist`, `## Operator Runtime`) go in its `result.md` under `## Gate sections (written at merge)`, verbatim, and the integration writes exactly those. The acceptance gate opens and clears on the branch before the pass, so an open `parallel-gate` already means the operator accepted the work.
+The review runs as `review-phase` says. A branch review edits no doc: the sections a default-stream review writes itself (`## Regression Checklist`, `## Operator Runtime`) go in its `result.md` under `## Gate sections (written at merge)`, verbatim, and the integration writes exactly those. The acceptance gate opens and clears on the branch before the pass, so an open `parallel-gate` already means the operator accepted the work.
 
 ## 5. Integrate
 
 By the close (`.claude/skills/pr/reference/close.md`). This skill carries no second PR procedure. What the gate reads: `GATE OPEN` needs the branch's phase `done` with a `pass` and a quiet default stream (no phase there `in_progress`, `in_review`, `pending` or `blocked`). A busy main means wait, **unless the engine exempts the branch (v86):** it diffs the branch since its merge-base and prints `exemption=phase-folder-only (<n> paths)` when every path is the phase folder, the six `works/` files, or added under `works/deferred/open/` or `works/agenda/`; then the busy reasons become a `note:`. The branch-side reasons are never exempt. CI's seed re-runs the gate on `phase/*` PRs (`--branch-ref HEAD --main-ref origin/<base>`).
-
-**A phase with no debt settles itself (v86):** a pass with no `## Doc impact` note flips a worktree phase's `consolidation` to `"done"`, so it archives normally.
 
 ### An explain phase merges back by itself
 
@@ -66,7 +64,7 @@ A loop phase (`run-loop`) reaches the default branch at each **passing checkpoin
 
 1. `next` on the default stream prints `merge_ready=<P>:<sha7>` (nested: `host=<sha7>` too): the checkpoint's commit, **not the branch tip**.
 2. At a slice boundary, `parallel-gate <P>`: it prints `merge_commit=<sha>`, and its exemption also covers the charter's `outputs` (nested: the host diff must stay in them; merge the named host commit first, in the host's conventions).
-3. Commit this checkout's `works/` first, then `git merge <merge_commit>` (take a side of a generated conflict, regenerate), `parallel-merge-finish`, and `parallel-consolidated <P>` when that checkpoint stamped a debt. From here the loop words only queue in the loop's `loop/control.json`.
+3. Commit this checkout's `works/` first, then `git merge <merge_commit>` (take a side of a generated conflict, regenerate), and `parallel-merge-finish`. From here the loop words only queue in the loop's `loop/control.json`.
 4. The loop worktree takes the default branch back at its next cycle boundary: `git merge --no-ff <default>`, `parallel-merge-finish`.
 5. `parallel-teardown <P>` only after the loop's final REVIEW passes.
 
@@ -87,7 +85,7 @@ When `nested-repos` lists repos, a phase worktree is a **set**: the host worktre
 ## Guardrails
 
 - Never merge a parallel phase whose `parallel-gate` is closed, and never two phases into one quiet point at once; never merge from inside the worktree.
-- `parallel-merge-finish` and `parallel-consolidated` run on the default stream, after the merge, never from a phase worktree.
+- `parallel-merge-finish` runs on the default stream, after the merge, never from a phase worktree.
 - Never hand-edit a generated file's conflict: take a side and regenerate.
 - Never `parallel-start` a phase the operator did not ask about (an explain phase's confirmation is the asking), nor a pinned or in-flight one; never enter a path the engine did not print.
 - Pushes are the `pr` skill's alone (the draft, the close's landing, a fix round's push to an open PR); never push, open a PR or merge into any repo's default branch beyond them without the operator's word.

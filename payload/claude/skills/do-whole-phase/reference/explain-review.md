@@ -72,7 +72,6 @@ What differs is the work it reviews, which is a book, a document or a chapter ra
    - **stage 6:** the walkthrough (step 8).
 8. **Returns:**
    - the `review_verdict`, with findings numbered and a proposed fix slice for each chapter that needs one;
-   - `doc_versions: none — deferred to a docs phase`. An explain phase leaves no `## Doc impact` notes and writes no gate section, so the engine stamps no debt;
    - the fixed pointer;
    - on a `pass`, the **walkthrough**:
      - the book's URL: its book page, `<site>/<org>/<project>/books/<book>`, taken from the publish responses;
@@ -105,7 +104,7 @@ The unit is one draft, `doc/body.md`, written by `S1` from the evidence `DECOMP`
 7. **Routes the questions.** The gate is waived, so no gate stage runs and no `## Regression Checklist` line is appended; every `## Operator Questions` entry is still routed, into the closing report's decisions or a deferred-job candidate.
 8. **Returns:**
    - the `review_verdict`, with findings numbered and one proposed fix slice for the draft if it needs one;
-   - `doc_versions: none — deferred to a docs phase` (no notes, no gate section, so no debt) and the fixed pointer;
+   - the fixed pointer;
    - `walkthrough: none` (the gate is waived); instead, `result.md` carries a `## Report` section, the facts the orchestrator's closing report needs (§8 *D9: the report*): the title, `url` and version (or the prior it superseded); the writer's and the critic's models, from the critique (`writer_model`, `critic_model`); the evidence: the commit, the covering phases read (or `none: from the code alone`) and `doc/evidence.md`'s counts, with its `v2:` line for a v2; the sections signed and delivered, and each cut with its reason; the declared gaps, from `doc/evidence.md`'s `## Gaps`; the critic's verdict, the answers and your rulings; the instrument of step 6; the dossier's path; and, when `DECOMP` recorded a scoped-down topic, the book suggestion (§9.1 *The book suggestion*): the reason and the part left out;
    - a deferred-job candidate for each translation `## Explain` asks for: title "Translate <title> into <lang>", the reason, and the trigger "the original is published".
 
