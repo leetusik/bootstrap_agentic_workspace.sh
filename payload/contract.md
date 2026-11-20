@@ -25,25 +25,20 @@ You work this workspace for its operator. Four invariants always hold; everythin
 
 | Rule | Enforced by |
 |---|---|
-| A phase the operator can see passes after they walk it | `review-phase --verdict pass` refuses until `accept-gate <P> --clear` |
-| Sign-offs carry literal words | `design-close`, `design-sign`, `loop-sign`, `loop-unpark` refuse an empty `--words` |
-| A pending stop halts the run | `next` prints `WAITING ON OPERATOR`; `set-slice-status` refuses a stop without `--stop-kind` and `--on-words` |
+| A phase the operator can see passes after they walk it | `review --verdict pass` refuses until `gate <P> clear` |
+| Sign-offs carry literal words | `gate clear`, `design-close`, `design-sign` refuse an empty `--words`; `close` refuses a gate cleared without them |
+| A pending stop halts the run | `next` prints `WAITING ON OPERATOR`; `slice status` refuses a stop without `--stop-kind` and `--on-words` |
 | No force-push, no `rm -rf` | `settings.json` deny rules; its one allowed push deletes a merged branch |
-| A product phase passes with its draft PR open | `review-phase --verdict pass` refuses a PR branch with no draft PR (`pr-record --url` or `--waive`) |
-| A branch switch never carries the operator's edits | `pr-branch` refuses uncommitted tracked changes |
-| A loop spends within its signed budget | `loop-tick` halts at the charter's `total_usd` |
-| Slice kinds are a closed set | `new-slice` refuses an invalid slice kind |
-| A decomposition declares its slices' dependencies | `finish-slice` refuses an undeclared middle slice |
-| Operator questions are never dropped | `phase-section` refuses `--replace` on an append-only section |
-| A worktree phase merges at a quiet point | `parallel-gate` prints `GATE CLOSED` and exits 1 (the CI seed runs it) |
-| A linked checkout runs no streams | stream commands are refused in cloud mode |
-| Workflow state stays valid | `validate`, run by the CI seed |
+| A branch switch never carries the operator's edits | `pr branch` refuses uncommitted tracked changes |
+| A linked checkout runs no streams | `worktree` commands (bar `status`) and `phase reopen` are refused in cloud mode |
+| Workflow state stays valid | `check` exits 1 on an invalid record; the CI seed runs `check --no-rebuild` |
 | This file fits one screen | smoke: the contract is at most 4,096 B |
 | Real-browser checks run on `playwright-cli`, the agent's own headless browser. Missing: install it yourself, `npm install -g @playwright/cli@0.1.25`, then `playwright-cli install-browser chrome-for-testing` if it finds no browser. Run it plainly (no pipes or chains) outside repos: it writes `.playwright-cli/` there. Claude in Chrome is used only when the operator asks an agent to use their own browser. | `settings.json` allows `Bash(playwright-cli:*)` and that exact install; smoke pins this one line |
 
 ## Where things live
 
 - Commands, IDs and statuses: `python3 scripts/workflow.py --help`; start with `next`.
+- Claude Code's side (executor routes, `sync-agents`, the meter, the resume hook): `python3 adapters/claude_code/adapter.py --help`.
 - Playbooks: `.claude/skills/` and the executor card, `.claude/agents/slice-executor.md` (beside `code-reader`).
 - Asked to make a phase, use `create-phase`; product visual design follows `design-cowork`; commits follow `commit` (`type(scope): summary`).
 

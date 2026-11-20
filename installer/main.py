@@ -38,7 +38,7 @@ RETROFIT_SUMMARY = {"created": [], "skipped": [], "merged": []}
 # --dry-run previews the change-list and writes nothing.
 UPDATE = os.environ.get("UPDATE") == "1"
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
-UPDATE_DOCS = True  # recomputed in the guards for update (skip docs rebuild if no docs subsystem)
+UPDATE_DOCS = True  # recomputed in the guards for update (refresh docs/README.md only where the docs are ours)
 # stale / kept: (path, reason) pairs; notes / intents: lines (the update report, print_update_report)
 UPDATE_SUMMARY = {"updated": [], "added": [], "merged": [], "preserved": [], "unchanged": [],
                   "stale": [], "kept": [], "notes": [], "intents": []}
@@ -59,7 +59,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 101
+WORKSPACE_VERSION = 102
 ROOT = TARGET.resolve()
 # Nested personal install (P28; the default layout since P29): TARGET is a HOST git repo -- one the
 # operator may not own, or a new/empty dir this run `git init`s. The engine and all workflow state go
@@ -87,12 +87,12 @@ NESTED_INIT_CONVENTION = {"inferred": None, "confirmed": True,
 # install multi-repo; every branch below is gated on a non-empty registry, so a single-repo nested or
 # at-root install runs exactly the code it always did. The installer seeds the registry (a fresh install
 # into a repos-only folder, or an --update on a host that tracks nothing and has no `repos` key) and
-# renders it (the exclude lines, the CLAUDE.local.md block); the engine's `nested-repos` edits it after.
+# renders it (the exclude lines, the CLAUDE.local.md block); the engine's `repo list` edits it after.
 # The installer never contains worktree code. The conversion (--to-multi-repo, S10) shares these names:
 # _child_repo_dirs, _seed_repos, _inferred_convention, _registry_entries, _multi_repo_local_block.
 REPOS_HOST = False          # this run git init-ed a repos-only target: the host is a multi-repo host
 REPOS_HOST_NAMES = []       # ... and the depth-1 repo dirs it found there (the registry nested_plan seeds)
-HOST_FIRST_COMMIT = "chore: start the host history"   # the empty commit new-phase / parallel-start base on (OQ2)
+HOST_FIRST_COMMIT = "chore: start the host history"   # the empty commit phase new / worktree start base on (OQ2)
 HOST_COMMIT_ERROR = None    # why that commit was not made (git has no identity, usually); None when it was
 REPO_NAME_RE = re.compile(r"[A-Za-z0-9._-]+")   # == scripts/workflow.py NESTED_REPO_NAME
 
@@ -203,9 +203,9 @@ EMPTY_OK_ALLOWLIST = {
 #@@GENERATED_PAYLOADS@@
 
 # The skill inventory is derived independently from the embedded payload manifest.
-# The build enforces the release invariant: 21 skill packages.
+# The build enforces the release invariant: 18 skill packages.
 CLAUDE_SKILLS = sorted({k.split("/")[2] for k in PAYLOADS if k.startswith(".claude/skills/") and k.endswith("/SKILL.md")})
-EXPECTED_SKILL_COUNT = 21
+EXPECTED_SKILL_COUNT = 18
 if len(CLAUDE_SKILLS) != EXPECTED_SKILL_COUNT:
     raise RuntimeError(
         f"embedded skill inventory must contain {EXPECTED_SKILL_COUNT} skill packages "
@@ -214,25 +214,30 @@ if len(CLAUDE_SKILLS) != EXPECTED_SKILL_COUNT:
 # Each skill ships as a directory: its SKILL.md (the core) plus any reference files, every one of
 # them an emit path in PAYLOADS (the build fans the do-* shared references out into both skills).
 SKILL_FILES = {name: sorted(k for k in PAYLOADS if k.startswith(f".claude/skills/{name}/")) for name in CLAUDE_SKILLS}
+# The engine ships as flat modules: its entry scripts/workflow.py and every scripts/wf_*.py beside it.
+ENGINE_FILES = sorted(k for k in PAYLOADS if k.startswith("scripts/") and k.endswith(".py"))
+# The Claude Code adapter: one folder beside the engine (adapters/claude_code/adapter.py and its files), machinery
+# like the engine. It imports the engine; the engine never imports it.
+ADAPTER_FILES = sorted(k for k in PAYLOADS if k.startswith("adapters/"))
+ADAPTER_ENTRY = "adapters/claude_code/adapter.py"
 
 MANAGED_DIRS = [
-    "docs", "docs/current", "docs/versions",
-    *[f"docs/versions/{doc_id}" for doc_id in DOC_TYPES],
+    "docs", "docs/current",
     "works", "works/phases", "works/phases/active", "works/phases/archived",
     "works/deferred", "works/deferred/open", "works/deferred/promoted", "works/deferred/dropped",
     "works/agenda",
-    "works/templates", "scripts",
+    "works/templates", "scripts", *sorted({str(Path(f).parent) for f in ADAPTER_FILES} | {"adapters"}),
     ".claude", ".claude/skills", ".claude/agents",
 ]
 
 MANAGED_FILES = [
     "CLAUDE.md",
-    "docs/README.md", "docs/index.json",
+    "docs/README.md",
     *[f"docs/current/{doc_id}.md" for doc_id in DOC_TYPES],
-    *[f"docs/versions/{doc_id}/v0001_bootstrap.md" for doc_id in DOC_TYPES],
     "works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/agenda.md", "works/events.jsonl",
-    *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md", "phase.md", "charter.md")],
-    "scripts/workflow.py",
+    *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md", "phase.md")],
+    *ENGINE_FILES,
+    *ADAPTER_FILES,
     ".claude/agents/slice-executor.md", ".claude/agents/design-drafter.md",
     ".claude/agents/design-critic.md", ".claude/agents/pr-reader.md", ".claude/agents/code-reader.md",
     ".claude/agents/Explore.md",
@@ -294,31 +299,30 @@ def _atomic_write(p, text: str, executable: bool = False) -> None:
 CI_WORKFLOW_PATH = ".github/workflows/workspace-ci.yml"
 GITATTRIBUTES_PATH = ".gitattributes"
 GITATTRIBUTES_MERGE_LINE = "works/events.jsonl merge=union"
-# A loop phase's append-only files (workspace v91): line-merged the same way, so --update brings them to a
-# .gitattributes that already holds the events rule.
-GITATTRIBUTES_LOOP_LINES = tuple(f"works/phases/**/loop/{name} merge=union"
-                                 for name in ("ledger.jsonl", "events.jsonl", "dead.jsonl", "survivors.jsonl", "checkpoints.jsonl"))
-GITATTRIBUTES_LOOP_NOTE = (
-    "\n# Added by the agentic workspace: a loop phase's append-only files merge by\n"
-    "# union too (its events file is pruned only by the rollup, on the loop's own stream);\n"
-    "# the rewritten ones (queue.jsonl, parked.jsonl, control.json) never take union.\n"
-)
 # The at-root workspace's machine-written state, marked generated (PR rule v1): GitHub folds it in a PR
-# diff and pr-check's size count skips it. Line-merged like the loop lines, so --update brings it too.
+# diff and pr check's size count skips it. Line-merged like the events line, so --update brings it too.
 GITATTRIBUTES_GENERATED_LINES = tuple(f"{path} linguist-generated=true"
-                                      for path in ("works/**", "docs/versions/**", "docs/current/**", "docs/index.json"))
+                                      for path in ("works/**", "docs/versions/**", "docs/index.json"))
+# Lines we shipped there and retired, each with why. Every install mode removes one only as we wrote it and only
+# inside our generated block (the rules right under the comment carrying the phrase below, shipped or appended),
+# and reports it; the same line anywhere else is the operator's and is kept.
+GITATTRIBUTES_RETIRED_LINES = {
+    "docs/current/** linguist-generated=true":
+        "docs/current/ is hand-written now: a PR shows its edits and pr check counts them",
+}
+GITATTRIBUTES_OURS_MARK = "machine-written state is marked generated"
 GITATTRIBUTES_GENERATED_NOTE = (
     "\n# Added by the agentic workspace: its machine-written state is marked generated, so\n"
-    "# GitHub folds it in a pull request's diff and the PR rule's size count (pr-check)\n"
+    "# GitHub folds it in a pull request's diff and the PR rule's size count (pr check)\n"
     "# skips it. Only the workspace's own paths: a product's own docs/ files stay visible.\n"
 )
 GITATTRIBUTES_APPEND_NOTE = (
     "\n# Added by the agentic workspace: works/events.jsonl is an append-only log, so\n"
     "# both sides of a merge are always wanted (`union` is a built-in git merge driver\n"
     "# and needs no per-clone config). The generated files (works/state.json,\n"
-    "# works/index.json, works/backlog.md, works/deferred.md, works/agenda.md,\n"
-    "# docs/current/*.md) get no merge driver on purpose -- resolve a conflict there\n"
-    "# by taking either side and re-running: python3 scripts/workflow.py parallel-merge-finish\n"
+    "# works/index.json, works/backlog.md, works/deferred.md, works/agenda.md)\n"
+    "# get no merge driver on purpose -- resolve a conflict there\n"
+    "# by taking either side and re-running: python3 scripts/workflow.py worktree merge-finish\n"
 )
 
 
@@ -332,9 +336,27 @@ def _gitattributes_action() -> str:
     except (OSError, UnicodeDecodeError):
         return "unchanged"  # unreadable/binary -- never touch it
     have = {ln.strip() for ln in existing.splitlines()}
-    if GITATTRIBUTES_MERGE_LINE in have and all(line in have for line in GITATTRIBUTES_LOOP_LINES + GITATTRIBUTES_GENERATED_LINES):
+    if GITATTRIBUTES_MERGE_LINE in have and all(line in have for line in GITATTRIBUTES_GENERATED_LINES) \
+            and not _gitattributes_retired(existing):
         return "unchanged"
     return "merge"
+
+
+def _gitattributes_retired(existing: str) -> list:
+    """(row index, line) for each retired line of ours this .gitattributes still holds inside our generated block:
+    the comment carrying GITATTRIBUTES_OURS_MARK, the comment lines under it, then its rules up to a blank line."""
+    rows, found = existing.splitlines(), []
+    for i, row in enumerate(rows):
+        if not (row.lstrip().startswith("#") and GITATTRIBUTES_OURS_MARK in row.lower()):
+            continue
+        j = i + 1
+        while j < len(rows) and rows[j].lstrip().startswith("#"):
+            j += 1
+        while j < len(rows) and rows[j].strip() and not rows[j].lstrip().startswith("#"):
+            if rows[j].strip() in GITATTRIBUTES_RETIRED_LINES:
+                found.append((j, rows[j].strip()))
+            j += 1
+    return found
 
 
 def _nested_engine_cmd(text: str) -> str:
@@ -350,14 +372,14 @@ def _apply_gitattributes(text: str, action: str) -> None:
         _atomic_write(p, _nested_engine_cmd(text))
         return
     existing = p.read_text(encoding="utf-8")
+    retired = {at for at, _line in _gitattributes_retired(existing)}
+    if retired:
+        existing = "".join(row for at, row in enumerate(existing.splitlines(keepends=True)) if at not in retired)
     sep = "" if (not existing or existing.endswith("\n")) else "\n"
     have = {ln.strip() for ln in existing.splitlines()}
     add = ""
     if GITATTRIBUTES_MERGE_LINE not in have:
         add += _nested_engine_cmd(GITATTRIBUTES_APPEND_NOTE) + GITATTRIBUTES_MERGE_LINE + "\n"
-    missing = [line for line in GITATTRIBUTES_LOOP_LINES if line not in have]
-    if missing:
-        add += GITATTRIBUTES_LOOP_NOTE + "".join(line + "\n" for line in missing)
     missing = [line for line in GITATTRIBUTES_GENERATED_LINES if line not in have]
     if missing:
         add += GITATTRIBUTES_GENERATED_NOTE + "".join(line + "\n" for line in missing)
@@ -372,6 +394,9 @@ def emit_policy_files(ci: bool = True) -> None:
     but the CI file is the host's business and is never written there."""
     ci_exists = (ROOT / CI_WORKFLOW_PATH).exists()
     ga_action = _gitattributes_action()
+    if ga_action == "merge":
+        for _at, line in _gitattributes_retired((ROOT / GITATTRIBUTES_PATH).read_text(encoding="utf-8")):
+            SETTINGS_CHANGES["removed"].append(f"{SHOWN_PREFIX}{GITATTRIBUTES_PATH} {line} ({GITATTRIBUTES_RETIRED_LINES[line]})")
     if not DRY_RUN:
         if ci and not ci_exists:
             _atomic_write(ROOT / CI_WORKFLOW_PATH, PAYLOADS[CI_WORKFLOW_PATH])
@@ -380,6 +405,17 @@ def emit_policy_files(ci: bool = True) -> None:
     if UPDATE:
         if ci:
             UPDATE_SUMMARY["preserved" if ci_exists else "added"].append(CI_WORKFLOW_PATH)
+        if ci and ci_exists:  # seed-once, so an older seed keeps the retired names until its owner edits it
+            try:
+                seed = (ROOT / CI_WORKFLOW_PATH).read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                seed = ""
+            old = {name: fix for name, pattern, fix in (
+                ("validate", r"workflow\.py\s+validate\b", "run `check --no-rebuild` in place of validate"),
+                ("parallel-gate", r"\bparallel-gate\b", "delete the parallel-gate job (the gate is advice now)")) if re.search(pattern, seed)}
+            if old:
+                print(f"warning: your {CI_WORKFLOW_PATH} still names {' and '.join(old)}, which this engine no longer has: "
+                      f"{'; '.join(old.values())}")
         UPDATE_SUMMARY[{"create": "added", "merge": "merged", "unchanged": "unchanged"}[ga_action]].append(GITATTRIBUTES_PATH)
     elif RETROFIT:
         if ci:
@@ -413,6 +449,8 @@ RETIRED_MECHANISMS = [
 # _merge_settings_dict) removes exactly our retired hook handlers -- matched by command -- and moves a window
 # still at a value we shipped to today's; it reports both through SETTINGS_CHANGES.
 RETIRED_HOOK_COMMANDS = {m["hook"]: f"retired in v{m['retired']}" for m in RETIRED_MECHANISMS if m.get("hook")}
+# The resume hook moved into the Claude Code adapter (thin engine): the old handler goes, the adapter's is added.
+RETIRED_HOOK_COMMANDS["workflow.py compact-resume"] = f"moved to the adapter: {ADAPTER_ENTRY} compact-resume"
 SHIPPED_COMPACT_WINDOWS = {300000, 450000}  # 300000: v56 and v61-v65; 450000: v66-v81; today's value is 500000 (v57-v60, again since v82)
 SETTINGS_CHANGES = {"removed": [], "changed": []}
 
@@ -585,19 +623,19 @@ def _retrofit_handle(path: str, text: str) -> bool:
 
 # ---- Update (--update) write policy -----------------------------------------
 # Refresh machinery in place while preserving the downstream's own work and docs:
-#   OVERWRITE (machinery, upstream-owned): scripts/workflow.py, the .claude
+#   OVERWRITE (machinery, upstream-owned): the engine (scripts/*.py), the .claude
 #     subagents, every skill, works/templates/*.
 #   MERGE (additive): .claude/settings.json.
 #   CONTRACT (sidecar-aware): CLAUDE.md.
 #   SEED-ONCE: executors.toml (operator route config — created if absent, never
 #     overwritten).
 #   PRESERVE (never touch): everything under works/ except templates, and all of
-#     docs/ (the append-only version chain plus generated snapshots).
+#     docs/ but its README (the docs themselves, and an older install's docs/index.json and versions).
 # The repo-level policy files (.github/workflows/workspace-ci.yml seed-once,
 # .gitattributes line-merged) bypass this dispatch entirely — see emit_policy_files().
 # In --dry-run nothing is written; changes are only recorded for the report.
 def _is_machinery(path: str) -> bool:
-    if path == "scripts/workflow.py":
+    if path in ENGINE_FILES or path in ADAPTER_FILES:
         return True
     if NESTED and path == NESTED_CONTRACT:
         return True  # the nested install's contract (rewritten) is machinery, refreshed like the skills
@@ -645,7 +683,7 @@ def _update_handle(path: str, text: str, executable: bool) -> None:
         UPDATE_SUMMARY["preserved"].append(path)
         return
     if path == "docs/README.md":
-        # Machinery doc, but only refresh where the docs subsystem exists.
+        # Machinery doc, but only refresh where the docs are the workspace's own.
         if UPDATE_DOCS:
             _update_write(path, text, executable)
         else:
@@ -716,11 +754,12 @@ NESTED_AGENTS = ["slice-executor", "design-drafter", "design-critic", "pr-reader
 NESTED_KINDS = ("skills", "agents")
 # The engine's subcommands, read from the embedded engine: a hyphenated skill name that is not one
 # of them only ever names the skill, so its plain backticked form is renamed too.
-_ENGINE_SUBCOMMANDS = set(re.findall(r'add_parser\(\s*"([a-z][a-z0-9-]*)"', PAYLOADS["scripts/workflow.py"]))
+_ENGINE_SUBCOMMANDS = set(re.findall(r'add_parser\(\s*"([a-z][a-z0-9-]*)"', "".join(PAYLOADS[f] for f in ENGINE_FILES)))
 NESTED_SKILL_ONLY = {n for n in CLAUDE_SKILLS if "-" in n and n not in _ENGINE_SUBCOMMANDS}
 # Token-bounded: never preceded by a word character, `.`, `/` or `-`, so `workflow/works/`, a URL,
 # `<repo>/scripts/...` and words such as `networks/` are left alone (and a second pass is a no-op).
 NESTED_ENGINE_RE = re.compile(r"(?<![\w./-])scripts/workflow\.py(?![\w-])")
+NESTED_ADAPTER_RE = re.compile(r"(?<![\w./-])adapters/claude_code/")  # the adapter folder's paths
 NESTED_PATH_RE = re.compile(
     r"(?<![\w./-])(?:works/|docs/(?:current|versions|reference)(?![\w-])|docs/index\.json(?![\w-]|\.\w)"
     r"|docs/README\.md(?![\w-]|\.\w)|executors\.toml(?![\w-]|\.\w)|\.env(?![\w-]|\.\w))")
@@ -730,7 +769,7 @@ NESTED_PATH_RE = re.compile(
 NESTED_CONTRACT_REF_RE = re.compile(
     r"(?:(?<=\bread )|(?<=\bRead )|(?<=\bsee )|(?<=\bSee )|(?<=contract \()|(?<=contract — )|(?<=^- ))`CLAUDE\.md`", re.M)
 # A `workflow.py ...` command, up to its closing backtick or the end of the line: renames never touch it.
-NESTED_PROTECT_RE = re.compile(r"(workflow\.py[^`\n]*)")
+NESTED_PROTECT_RE = re.compile(r"((?:workflow|adapter)\.py[^`\n]*)")
 
 
 def nested_rewrite(text: str, renames: dict) -> str:
@@ -739,7 +778,8 @@ def nested_rewrite(text: str, renames: dict) -> str:
     change nothing anyway: every prefixed token is preceded by `/`).
 
     1. Engine paths: `scripts/workflow.py` -> `workflow/scripts/workflow.py` -- so `python3
-       scripts/workflow.py`, the skills' allowed-tools and the settings allowlist too.
+       scripts/workflow.py`, the skills' allowed-tools and the settings allowlist too; the adapter folder's
+       `adapters/claude_code/` -> `workflow/adapters/claude_code/` (its hook command and allow rule).
     2. Workspace paths -> under `workflow/`: works/, docs/current, docs/versions, docs/reference,
        docs/index.json, docs/README.md, executors.toml, .env.
     3. The contract named as `CLAUDE.md` (NESTED_CONTRACT_REF_RE) -> `workflow/CLAUDE.workspace.md`.
@@ -749,6 +789,7 @@ def nested_rewrite(text: str, renames: dict) -> str:
        (always hyphenated, never a subcommand) name appears as a token: `name:`, `subagent_type: X`,
        `.claude/agents/X.md`, prose."""
     text = NESTED_ENGINE_RE.sub(f"{NESTED_DIR}/scripts/workflow.py", text)
+    text = NESTED_ADAPTER_RE.sub(f"{NESTED_DIR}/adapters/claude_code/", text)
     text = NESTED_PATH_RE.sub(lambda m: f"{NESTED_DIR}/{m.group(0)}", text)
     text = NESTED_CONTRACT_REF_RE.sub(f"`{NESTED_DIR}/{NESTED_CONTRACT}`", text)
     skills, agents = renames.get("skills") or {}, renames.get("agents") or {}
@@ -897,7 +938,7 @@ def nested_init_host() -> None:
 
 
 def _host_first_commit() -> None:
-    """The host's one commit, empty: new-phase stamps host_anchors.created from it and parallel-start
+    """The host's one commit, empty: phase new stamps host_anchors.created from it and worktree start
     takes its base from it. A refusal later in this run removes the whole .git with it (the undo). When
     git will not make it (no identity, usually), the init is kept, HOST_COMMIT_ERROR says why and the
     banner prints the commands; the install goes on as a hand-initialised host's would."""
@@ -1001,7 +1042,7 @@ def _host_taken(kind: str, ours: set) -> dict:
 
 def nested_infer_convention(base: Path = None):
     """The host's commit convention, inferred non-interactively from its recent history and any
-    CONTRIBUTING file -- one line for the operator to confirm (`nested-convention --confirm`), or
+    CONTRIBUTING file -- one line for the operator to confirm (`repo convention --confirm`), or
     None when the host has neither. `base` (P40) infers from another repo instead: each registered
     repo of a multi-repo host, on its own history."""
     base = HOST if base is None else base
@@ -1047,7 +1088,7 @@ def nested_infer_convention(base: Path = None):
 
 # P51: the team's PR rules, read-only, by tracked files only (the installer has no `gh`). Printed in the
 # banner beside the inferred convention and never recorded: the `pr` skill reads them live at body time,
-# and only the conflicts the operator decides are recorded, by `pr-rules-decide` at /update-workspace.
+# and only the conflicts the operator decides are recorded, by `pr rules` at /update-workspace.
 PR_TEMPLATE_NAMES = ("pull_request_template.md", "PULL_REQUEST_TEMPLATE.md")
 PR_LINE_RE = re.compile(r"(?i:\bpull[ -]?requests?\b)|\bPRs?\b")
 PR_POINTS = (   # (point, pattern): a team line that speaks to one of the points ours also decides
@@ -1110,7 +1151,7 @@ def nested_team_pr_rules(base: Path) -> list:
     if not found:
         return ["team PR rules: none on file -- the pr skill's default template (Summary · Review · What is changed · Why · Related issue) applies"]
     out_lines = [f"team PR rules: {', '.join(found[:6])}{' ...' if len(found) > 6 else ''} -- the pr skill reads them live; the team wins where it speaks"]
-    decide = "decide at /update-workspace (pr-rules-decide)"
+    decide = "decide at /update-workspace (pr rules)"
     if template_heads is not None:
         if not any(h.lower() == "review" for h in template_heads):
             first = template_heads[0] if template_heads else "the top"
@@ -1135,7 +1176,7 @@ def _inferred_convention(repo_path: Path) -> dict:
 
 def _repo_origin_head(path: Path):
     """The branch a repo's `origin/HEAD` points at (`main`, `dev`, ...), or None. Same reading as the
-    engine's `_repo_origin_head`, which `nested-repos --add` seeds `default_branch` from."""
+    engine's `_repo_origin_head`, which `repo add` seeds `default_branch` from."""
     rc, out = _git_in(path, "symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD")
     target = out.strip() if rc == 0 else ""
     return target.split("/", 1)[1] if target.startswith("origin/") and len(target) > len("origin/") else None
@@ -1144,7 +1185,7 @@ def _repo_origin_head(path: Path):
 def _detect_repo_rules(path: Path) -> list:
     """A repo's own rules files, repo-relative and sorted: every tracked `AGENTS.md` / `CLAUDE.md` at
     any depth, plus `.agents/skills/*/SKILL.md`. The same detection as the engine's `_detect_repo_rules`
-    (`nested-repos --detect-rules`): tracked files only, so build output and ignored copies never count."""
+    (`repo detect-rules`): tracked files only, so build output and ignored copies never count."""
     rc, out = _git_in(path, "ls-files", "-z")
     if rc != 0:
         return []
@@ -1166,7 +1207,7 @@ def _seed_repos(names: list, convention_for) -> list:
 
 def _clean_repo_path(raw) -> bool:
     """A registry path the installer will act on (an exclude line, a block line, a git call): host-relative
-    and normalized, never the nested dir or under `.claude/`. The engine's `validate` judges the rest."""
+    and normalized, never the nested dir or under `.claude/`. The engine's `check` judges the rest."""
     if not (isinstance(raw, str) and raw.strip() and raw == raw.strip()) or os.path.isabs(raw) or "\\" in raw:
         return False
     parts = raw.split("/")
@@ -1175,7 +1216,7 @@ def _clean_repo_path(raw) -> bool:
 
 def _registry_entries(raw) -> list:
     """The entries of a marker's `repos` the installer can use: dicts with a usable name and path. Others
-    are skipped here (never rewritten, never dropped from the marker): the engine's `validate` reports them."""
+    are skipped here (never rewritten, never dropped from the marker): the engine's `check` reports them."""
     if not isinstance(raw, list):
         return []
     return [r for r in raw if isinstance(r, dict) and isinstance(r.get("name"), str) and _clean_repo_path(r.get("path"))]
@@ -1222,22 +1263,22 @@ def _is_commit(path: Path, sha: str) -> bool:
 
 def _registry_drift_notes(repos: list) -> list:
     """One line per depth-1 child repo the registry does not list. The installer never re-detects once
-    `repos` exists (S1 §3): the engine's `nested-repos --add` owns the list."""
+    `repos` exists (S1 §3): the engine's `repo add` owns the list."""
     registered = {r["path"] for r in repos}
     cmd = f"python3 {NESTED_DIR}/scripts/workflow.py"
     notes = []
     for child in _child_repo_dirs(HOST):
         if child not in registered:
             quoted = shlex.quote(child)
-            hint = f"{cmd} nested-repos --add {quoted}" if _registrable_name(child) else f"{cmd} nested-repos --add {quoted} --name <name>"
+            hint = f"{cmd} repo add {quoted}" if _registrable_name(child) else f"{cmd} repo add {quoted} --name <name>"
             notes.append(f"{child}/ is a git repo the registry does not list (--update never re-detects): {hint}")
     return notes
 
 
 def _anchor_map_notes(repos: list) -> list:
     """S2 §25: phases whose `host_anchors` shas are no commit of the host but are commits of exactly one
-    registered repo (glide: the migrated P1-P33 shas) get one note per repo naming `nested-repos
-    --map-anchors <repo>`. --update maps nothing itself: the engine owns phase.json, and its command
+    registered repo (glide: the migrated P1-P33 shas) get one note per repo naming `repo
+    map-anchors <repo>`. --update maps nothing itself: the engine owns phase.json, and its command
     skips a phase in flight on its own branch."""
     seen, counts = {}, {}
 
@@ -1263,7 +1304,7 @@ def _anchor_map_notes(repos: list) -> list:
             if len(owners) == 1:
                 counts[owners[0]] = counts.get(owners[0], 0) + 1
     cmd = f"python3 {NESTED_DIR}/scripts/workflow.py"
-    return [f"{n} phase(s) hold host_anchors shas that are no commit of the host but are commits of {name}: run {cmd} nested-repos --map-anchors {name}"
+    return [f"{n} phase(s) hold host_anchors shas that are no commit of the host but are commits of {name}: run {cmd} repo map-anchors {name}"
             for name, n in sorted(counts.items())]
 
 
@@ -1390,13 +1431,13 @@ def _multi_repo_local_block(renames: dict, repos: list, converted=()) -> list:
         "",
         "Nested-install rules for a multi-repo host (they win over the contract above where the two differ):",
         f"- Start Claude Code at this host folder, never inside `{NESTED_DIR}/` or a repo. Run the engine from here: `{cmd} <command>`.",
-        f"- The product repos (`{cmd} nested-repos` lists them, with each repo's rules files):",
+        f"- The product repos (`{cmd} repo list` lists them, with each repo's rules files):",
         *repo_lines,
         "- \"This repo\" in any rule means the repo the change lives in. Before changing a repo, read its rules files; they win over this block for that repo.",
         "- To verify a change in a repo, use that repo's verification skill under `<repo>/.claude/skills/` (its run script), after reading the repo's rules files.",
-        f"- Commits per slice: one in each repo the slice changed (`git -C <repo> ...`, on the phase's branch there, recorded with `{cmd} pr-branch --repo <name>`, in the conventions `{cmd} nested-convention --repo <name>` prints; Claude `Co-Authored-By` trailers only when it says `allowed`), plus one for the workflow state (`git -C {NESTED_DIR} ...`, `type(scope): summary`). The host folder itself never gets a commit.",
-        f"- An UNCONFIRMED convention in `next` (`host_commit_convention=` or `repo_conventions=`) is confirmed with the operator before that repo's first product commit: `{cmd} nested-convention --confirm [--repo <name>] --text \"<conventions>\" --trailers allowed|forbidden` (no `--repo`: the rules for every repo).",
-        "- Worktree phases run only on the operator's word: the `parallel-phase` skill (`parallel-start ... --repo <name>=<branch>`).",
+        f"- Commits per slice: one in each repo the slice changed (`git -C <repo> ...`, on the phase's branch there, recorded with `{cmd} pr branch --repo <name>`, in the conventions `{cmd} repo convention --repo <name>` prints; Claude `Co-Authored-By` trailers only when it says `allowed`), plus one for the workflow state (`git -C {NESTED_DIR} ...`, `type(scope): summary`). The host folder itself never gets a commit.",
+        f"- An UNCONFIRMED convention in `next` (`host_commit_convention=` or `repo_conventions=`) is confirmed with the operator before that repo's first product commit: `{cmd} repo convention --confirm [--repo <name>] --text \"<conventions>\" --trailers allowed|forbidden` (no `--repo`: the rules for every repo).",
+        "- Worktree phases run only on the operator's word: the `parallel-phase` skill (`worktree start ... --repo <name>=<branch>`).",
         f"- A pull request's title, body and commits (and every product commit, in every repo) carry no phase or slice IDs, no `{NESTED_DIR}/` paths and no workspace files.",
         f"- Never stage `{NESTED_DIR}/`, `CLAUDE.local.md`, `.claude/settings.local.json` or the workspace's skills and agents into any repo or the host (the exclude block lists them).",
     ]
@@ -1422,9 +1463,9 @@ def _nested_local_block(renames: dict, repos=(), converted=()) -> list:
         "",
         "Nested-install rules (they win over the contract above where the two differ):",
         f"- Start Claude Code at this repo's root, never inside `{NESTED_DIR}/`. Run the engine from here: `{cmd} <command>`.",
-        f"- Two commits per slice: product code to this repo (on the phase's branch, recorded with `{cmd} pr-branch`, in the conventions `{cmd} nested-convention` prints; Claude `Co-Authored-By` trailers only when it says `allowed`), and the workflow state to the nested repo (`git -C {NESTED_DIR} ...`, `type(scope): summary`).",
-        f"- If `next` shows `host_commit_convention=UNCONFIRMED`, confirm the host's conventions with the operator before the first product commit: `{cmd} nested-convention --confirm --text \"<conventions>\" --trailers allowed|forbidden`.",
-        "- Worktree phases run only on the operator's word: the `parallel-phase` skill (`parallel-start`).",
+        f"- Two commits per slice: product code to this repo (on the phase's branch, recorded with `{cmd} pr branch`, in the conventions `{cmd} repo convention` prints; Claude `Co-Authored-By` trailers only when it says `allowed`), and the workflow state to the nested repo (`git -C {NESTED_DIR} ...`, `type(scope): summary`).",
+        f"- If `next` shows `host_commit_convention=UNCONFIRMED`, confirm the host's conventions with the operator before the first product commit: `{cmd} repo convention --confirm --text \"<conventions>\" --trailers allowed|forbidden`.",
+        "- Worktree phases run only on the operator's word: the `parallel-phase` skill (`worktree start`).",
         f"- A pull request's title, body and commits (and every product commit) carry no phase or slice IDs, no `{NESTED_DIR}/` paths and no workspace files.",
         f"- Never stage `{NESTED_DIR}/`, `CLAUDE.local.md`, `.claude/settings.local.json` or the workspace's skills and agents into this repo (the exclude block lists them).",
     ]
@@ -1438,22 +1479,11 @@ def _nested_local_block(renames: dict, repos=(), converted=()) -> list:
 def _docs_readme() -> str:
     return f"""# Docs
 
-Durable docs are versioned. Do not patch old versions.
+The durable docs are plain files: read the sections the work touches, and edit a doc in place when the work changes what it says.
 
 ## Categories
 
 {chr(10).join(f"- `docs/current/{doc_id}.md`" for doc_id in DOC_TYPES)}
-
-## Rules
-
-Doc updates happen in a **docs phase the operator creates** — never per slice. A slice that changes durable truth appends a one-line note to its phase's `## Doc impact` list instead; `python3 scripts/workflow.py docs-debt` prints what is owed, and the docs phase runs the commands below over those notes.
-
-- Read latest docs from `docs/current/*.md`.
-- The agent creates updates with `python3 scripts/workflow.py doc-new-version --doc <doc> --summary "..." --source <phase-or-slice>`.
-- Edit only the newly created version file under `docs/versions/<doc>/`.
-- The agent runs `python3 scripts/workflow.py rebuild-docs` after editing the new version.
-- `docs/current/*.md` is generated from the latest version and should not be manually edited.
-- When a phase's notes are all consolidated: `python3 scripts/workflow.py docs-consolidated <P>` (that is also what unblocks archiving it).
 
 ## Update Triggers
 
@@ -1463,7 +1493,7 @@ Doc updates happen in a **docs phase the operator creates** — never per slice.
 - `qa`: test commands, QA missions, regression checklist, acceptance style
 - `decisions`: meaningful choices, tradeoffs, rejected alternatives
 
-These docs are read by agents, which can read the code: write what the code cannot say, and point at the code for the rest. An install made before v79 may also hold `experience`, `frontend`, `backend`, `data`, `api` and `security`: they are retired, kept readable and never versioned again, and their changes go to `product` (experience) or `architecture` (the rest).
+These docs are read by agents, which can read the code: write what the code cannot say, and point at the code for the rest. An install made before v79 may also hold `experience`, `frontend`, `backend`, `data`, `api` and `security`: they are retired and kept readable, and their changes go to `product` (experience) or `architecture` (the rest).
 """
 
 
@@ -1538,7 +1568,7 @@ def nested_plan() -> dict:
     for x in NESTED_AGENTS:
         files[f".claude/agents/{renames['agents'].get(x, x)}.md"] = nested_rewrite(PAYLOADS[f".claude/agents/{x}.md"], renames)
     engine_side = {NESTED_CONTRACT: nested_rewrite(f"# CLAUDE.md\n\n{CONTRACT_BODY}", renames)}
-    for name in ("deferred_brief.md", "intent.md", "phase.md", "charter.md"):
+    for name in ("deferred_brief.md", "intent.md", "phase.md"):
         engine_side[f"works/templates/{name}"] = nested_rewrite(PAYLOADS[f"works/templates/{name}"], renames)
     # Agents at the host root read both of these, and their comments and text name the engine and
     # workspace paths. Rendered whenever written: executors.toml is seed-once (an existing one is
@@ -1594,6 +1624,8 @@ def nested_plan() -> dict:
     for label, text in sorted(checked.items()):
         if "python3 scripts/workflow.py" in text or NESTED_ENGINE_RE.search(text):
             problems.append(f"{label}: an unprefixed scripts/workflow.py")
+        if NESTED_ADAPTER_RE.search(text):
+            problems.append(f"{label}: an unprefixed adapters/claude_code/")
         m = NESTED_PATH_RE.search(text)
         if m:
             problems.append(f"{label}: an unprefixed workspace path {m.group(0)!r}")
@@ -1644,7 +1676,7 @@ def nested_plan() -> dict:
     exclude_entries += [f"/{d}/" for d in resolved_skill_dirs]
     exclude_entries += [f"/.claude/agents/{n}.md" for n in sorted(installed["agents"])]
     # A multi-repo host's registered repos: one `/<path>/` line each, generated from the registry so
-    # --update follows `nested-repos --add/--remove`. Only a repo that exists is preflighted and verified
+    # --update follows `repo add` and `repo remove`. Only a repo that exists is preflighted and verified
     # (validate reports a missing one).
     exclude_entries += [f"/{r['path']}/" for r in usable]
     repo_dirs = [r["path"] for r in usable if (HOST / r["path"]).is_dir()]
@@ -1792,6 +1824,7 @@ def _nested_renames_line(plan: dict) -> str:
 
 def print_nested_banner(plan: dict) -> None:
     cmd = f"python3 {NESTED_DIR}/scripts/workflow.py"
+    adapter = f"python3 {NESTED_DIR}/{ADAPTER_ENTRY}"
     if DRY_RUN or UPDATE:
         print(f"{'DRY RUN (--update --dry-run)' if DRY_RUN else 'Update complete (--update)'} at {HOST} (nested, detected)"
               f"{' -- nothing written.' if DRY_RUN else ''}")
@@ -1838,12 +1871,12 @@ def print_nested_banner(plan: dict) -> None:
             print("  host commit convention (the rules for every repo): UNCONFIRMED (inferred: nothing -- a multi-repo host has no commits of its own to infer from)")
         print(f"  repos: {len(repos)} ({', '.join(r['name'] for r in repos)}) -- "
               + (f"{'would be seeded' if DRY_RUN else 'seeded'} into {NESTED_DIR}/{NESTED_MARKER} from the repos in this folder"
-                 if plan["repos_seeded"] else f"the registry in {NESTED_DIR}/{NESTED_MARKER} ({cmd} nested-repos lists it)")
+                 if plan["repos_seeded"] else f"the registry in {NESTED_DIR}/{NESTED_MARKER} ({cmd} repo list lists it)")
               + f"; each is hidden by a /<path>/ line in {plan['exclude_label']}")
         unconfirmed = _repo_unconfirmed(repos, conv)
         if unconfirmed:
             print(f"  repo conventions: UNCONFIRMED for {', '.join(unconfirmed)} -- confirm each before its first product commit: "
-                  f"{cmd} nested-convention --confirm --repo <name> --text \"<conventions>\" --trailers allowed|forbidden")
+                  f"{cmd} repo convention --confirm --repo <name> --text \"<conventions>\" --trailers allowed|forbidden")
     elif HOST_INITED:
         print(f"  host commit convention: confirmed for the new repo -- this workspace's own ({conv.get('text')}), coauthor_trailers={conv.get('coauthor_trailers')}")
     elif conv.get("confirmed") is True:
@@ -1871,10 +1904,10 @@ def print_nested_banner(plan: dict) -> None:
     if CONVERT:
         return   # --to-multi-repo: convert_finish prints the rest, and its own Next
     if REPOS_HOST and HOST_COMMIT_ERROR is None:
-        print(f"The installer made one git commit, the empty \"{HOST_FIRST_COMMIT}\" in the host (new-phase and parallel-start base on it); "
+        print(f"The installer made one git commit, the empty \"{HOST_FIRST_COMMIT}\" in the host (phase new and worktree start base on it); "
               "the workspace's files stay untracked and nothing in any repo changed.")
     elif REPOS_HOST:
-        print("The installer made no git commits and changed nothing in any repo. The host has no commit yet, and new-phase needs one first "
+        print("The installer made no git commits and changed nothing in any repo. The host has no commit yet, and phase new needs one first "
               f"(git said: {HOST_COMMIT_ERROR}). Give git an identity (globally, so the nested repo's first commit works too), then make it:")
         print("    git config --global user.name \"<your name>\" && git config --global user.email \"<you@example.com>\"")
         print(f"    git -C {shlex.quote(str(HOST))} commit --allow-empty -m \"{HOST_FIRST_COMMIT}\"")
@@ -1888,24 +1921,24 @@ def print_nested_banner(plan: dict) -> None:
         print(f"  1. Commit the refresh in the nested repo, its own paths only -- this checkout is linked to hi2vi, which holds works/ and docs/ "
               f"(they stay uncommitted; never git -C {NESTED_DIR} add -A): {LINKED_UPDATE_ADD} && git -C {NESTED_DIR} commit -m "
               f"\"chore: update agentic workspace to v{WORKSPACE_VERSION} (nested)\"")
-        print(f"  2. Re-apply your executors.toml route overrides: {cmd} sync-agents; {cmd} executor-route prints an override= line for each row it pins")
+        print(f"  2. Re-apply your executors.toml route overrides: {adapter} sync-agents; {adapter} route prints an override= line for each row it pins")
     elif UPDATE:
         print(f"  1. Commit the refresh in the nested repo (/update-workspace does this itself): git -C {NESTED_DIR} status, then git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: update agentic workspace to v{WORKSPACE_VERSION} (nested)\"")
-        print(f"  2. Re-apply your executors.toml route overrides: {cmd} sync-agents; {cmd} executor-route prints an override= line for each row it pins")
+        print(f"  2. Re-apply your executors.toml route overrides: {adapter} sync-agents; {adapter} route prints an override= line for each row it pins")
     else:
         print(f"  1. First commit in the nested repo: git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: install agentic workspace (nested)\"")
         print(f"  2. Start Claude Code at the host root and accept the trust dialog on the first run, then: /{plan['renames']['skills'].get('create-phase', 'create-phase')} for the first phase ({cmd} next shows the state)")
     if repos:
         if conv.get("confirmed") is not True:
-            print(f"  3. Confirm the conventions that bind every repo before the first product commit: {cmd} nested-convention (then --confirm --text \"<conventions>\" --trailers allowed|forbidden; add --repo <name> for one repo's own)")
+            print(f"  3. Confirm the conventions that bind every repo before the first product commit: {cmd} repo convention (then --confirm --text \"<conventions>\" --trailers allowed|forbidden; add --repo <name> for one repo's own)")
         else:
-            print(f"  The host-level conventions (the rules for every repo) are recorded; {cmd} nested-convention shows them, and each repo's with --repo <name>.")
+            print(f"  The host-level conventions (the rules for every repo) are recorded; {cmd} repo convention shows them, and each repo's with --repo <name>.")
     elif conv.get("confirmed") is not True:
-        print(f"  3. Confirm the host's conventions (commits, branches and pull requests) before the first product commit: {cmd} nested-convention (then --confirm --text \"<conventions>\" --trailers allowed|forbidden)")
+        print(f"  3. Confirm the host's conventions (commits, branches and pull requests) before the first product commit: {cmd} repo convention (then --confirm --text \"<conventions>\" --trailers allowed|forbidden)")
     elif HOST_INITED:
-        print(f"  The new repo's conventions are recorded; {cmd} nested-convention shows them (--confirm --text \"...\" --trailers allowed|forbidden changes it).")
+        print(f"  The new repo's conventions are recorded; {cmd} repo convention shows them (--confirm --text \"...\" --trailers allowed|forbidden changes it).")
     else:
-        print(f"  The host's conventions (commits, branches, pull requests) are recorded; {cmd} nested-convention shows them.")
+        print(f"  The host's conventions (commits, branches, pull requests) are recorded; {cmd} repo convention shows them.")
     if not HOST_INITED or REPOS_HOST:
         print(f"  Any remote for {NESTED_DIR}/ stays inside your company's org: its phase and slice files describe the company's code.")
 
@@ -1977,10 +2010,17 @@ RETIRED_FILES = {
     '.claude/skills/do-next-slice/reference/review.md': (100, ('850c377ac604046e45d99d711a11a11ce8df29b8690036c86443dc17849fbbce', 'a0954620101f81ffe796aad23c7623aa6b63faae1c18b86b52131e5378cb9c01')),  # 807bb0e
     '.claude/skills/do-next-slice/reference/verdicts.md': (100, ('ddbf954d125b9e44dcc0c524c092ed432a208f6f8584ea03cb5e3a687e5c3583', 'e00360155496a89c7c10e9a6877864f12726669ba915d70c82c70eb09abad2c7')),  # 807bb0e
     '.claude/skills/do-next-slice/reference/worktree.md': (100, ('41cfc38cd1d56716720a2de3912896d49f777f2a310584e3460a9ebd47a69ba9', '2984673a4bbdbc1de7fdba3bab8d9113a23508a2a197ca4a950e591550fdceaf')),  # 807bb0e
+    '.claude/skills/do-whole-phase/playbooks/cycle.md': (101, ('b3c02d737f13a917878d053b8fe9257971dcd9e7a98f4a9574e801fcce478aff',)),  # 6b547aa
     '.claude/skills/do-whole-phase/reference/modes.md': (100, ('c2d8f13365d2401d82401b513306cde900a16a115cfb9c71d77f81686c030b1e', '5b7346f395d83a7888bf0cd374841f6e8759b6c5f1614a0ff038a1b553ade7e2')),  # 807bb0e
     '.claude/skills/do-whole-phase/reference/prep.md': (100, ('aabba508d031ada11f72b0de3c1b55e27939bd5bc484325c4dafa7020b73cbfc',)),  # 807bb0e
     '.claude/skills/do-whole-phases/SKILL.md': (98, ('7a84c83f9938d32af5ba9dd6729b310623303fc2ddcb68accbe08e704f2e829c', 'daa211d71e169a19268e7ae515ab0cbc489225a1f8671b0bacd60e30c39a757a')),  # 47436bc
+    '.claude/skills/doc-new-version/SKILL.md': (101, ('1f67079e4121f7d5c0c702517123c79a328c9588f9f01041c08e5370304c8a67', 'cb397ec37bb3ab8e79d8bfda8c1638830a45ff59c8cba163ee904f2683d13d95')),  # 00c60e9
     '.claude/skills/executor-mode/SKILL.md': (52, ('382fe9e6644c15c46d49ab0b481c8cec0b6722f20816d3fca48a60ba61826d43', 'cef5b8fbf576e83fd6048ceb652e05ddcd7cbcded6a4168efb5c834f32c16970')),  # 7c874c3
+    '.claude/skills/rebuild-workflow/SKILL.md': (101, ('7d9b54367e04c576a681827fd1bc7cbbcf5a97bfb9cd3a49da8547baed94dd1d', '7164760026d70d5a5b049d987178b9f86294665ce045ad6e946fd2dd4e884268')),  # d2ad2cc
+    '.claude/skills/run-loop/SKILL.md': (101, ('6f7714a7c463a8f9d85be18eb45ac3233f51d0af318d9df2e19a1dce7d3adddf', '5f0b31d019e3cc401c47e1f459d67de8b73aa536285b71a9b8100b3f48f473d8')),  # 6b547aa
+    '.claude/skills/run-loop/reference/checkpoint.md': (101, ('4e67d9fda474c5389c1492982d495936e75fc076992c9937740667d6e8cf7930',)),  # 6b547aa
+    '.claude/skills/run-loop/reference/cycle-plan.md': (101, ('626c4834d750c5fe7f33150cbde2ca1d09cc203a8231b43a5288c88d70a35afc', '28ea9406b1fae7367d2f2b62ee24fff1eac7348c7f0a6099570cc1c3b0267fe5')),  # 6b547aa
+    '.claude/skills/run-loop/reference/tick.md': (101, ('f516e172d9936de3ad13de7f586568e8f8c02ad44a770af78d878c48e1a3e134', 'a4663c27f4dc2eb5c42fc4ae5366235bf489d2d4d3c316c0ff19cecaf8249ce2')),  # 6b547aa
     '.codex/agents/slice-executor-high.toml': (30, ('217fcafcd0449db43fd1e25b4a0a13cc918ee2ab46d4980a8544b098ed31ec2d',)),  # 4ee5c22
     '.codex/agents/slice-executor-low.toml': (22, ('57e24a3b80eaa8a1991b82aeb29b6447735453c08ede535cc353a86a2b78bc35',)),  # 097041d
     '.codex/agents/slice-executor-mid.toml': (30, ('1cd71cc675b96957f227c797ae7fd75b1ae8172eef3823ba890150545e7642b0',)),  # 4ee5c22
@@ -1990,6 +2030,7 @@ RETIRED_FILES = {
     'AGENTS.md': (30, ('7ef0f82ad8d51f08cdcd750735fd0849344b5cb739f341f77c704fcf6e5033e6',)),  # 4ee5c22
     'AGENTS.workspace.md': (30, ('7ef0f82ad8d51f08cdcd750735fd0849344b5cb739f341f77c704fcf6e5033e6',)),  # 4ee5c22
     'executors.toml.example': (8, ('dad1620e97404eb7d1d9f29d796a05347c3b655e567c74a9e26ac6814e923261',)),  # 8a3c8c2
+    'works/templates/charter.md': (101, ('8439e75e4a12cb86dff1d96202a6944ffda56f4b442521e8aae4e119fcdf7f9b',)),  # 6b547aa
     'works/templates/result.md': (9, ('3938ceaf78a7392d62ca5a7e88ee51e132d56f30adafb06afb002361639e1dc9',)),  # 06561c4
 }
 # The retired paths hashed with their frontmatter model:/effort: lines dropped (_drop_route_lines).
@@ -2340,7 +2381,7 @@ def _convert_leftovers(repo: Path) -> list:
 
 
 def _convert_phases(nested: Path, repo: Path) -> list:
-    """The dry run's step 5: (phase label, whether --map-anchors maps it) for each phase with host_anchors shas."""
+    """The dry run's step 5: (phase label, whether repo map-anchors maps it) for each phase with host_anchors shas."""
     out = []
     for state in ("active", "archived"):
         for pj in sorted((nested / "works" / "phases" / state).glob("*/phase.json")):
@@ -2359,7 +2400,7 @@ def _convert_phases(nested: Path, repo: Path) -> list:
 
 def _convert_pr_records(nested: Path) -> list:
     """The dry run's step 5, PR side: (phase label, index, branch) for each pr.branches[] entry whose repo is
-    null -- each one --map-anchors names after the converted repo (a phase in flight is refused earlier)."""
+    null -- each one repo map-anchors names after the converted repo (a phase in flight is refused earlier)."""
     out = []
     for state in ("active", "archived"):
         for pj in sorted((nested / "works" / "phases" / state).glob("*/phase.json")):
@@ -2473,15 +2514,15 @@ def convert_prepare() -> None:
         old = json.loads(marker_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         old = None
-        refuse(f"{NESTED_DIR}/{NESTED_MARKER} cannot be read as JSON ({exc}): fix it (cd {q(repo)} && {engine} validate), then re-run.")
+        refuse(f"{NESTED_DIR}/{NESTED_MARKER} cannot be read as JSON ({exc}): fix it (cd {q(repo)} && {engine} check --no-rebuild), then re-run.")
     if not isinstance(old, dict):
-        refuse(f"{NESTED_DIR}/{NESTED_MARKER} is not a JSON object: fix it (cd {q(repo)} && {engine} validate), then re-run.")
+        refuse(f"{NESTED_DIR}/{NESTED_MARKER} is not a JSON object: fix it (cd {q(repo)} && {engine} check --no-rebuild), then re-run.")
     if "repos" in old:
         refuse(f"{nested} already belongs to a multi-repo host (its marker holds a repos registry): nothing to convert.")
     conv = old.get("commit_convention")
     if not (isinstance(conv, dict) and sorted(conv) == sorted(CONVENTION_KEYS)):
         refuse("the marker's commit_convention is not the four-key object the old repo's convention moves as: fix it "
-               f"(cd {q(repo)} && {engine} validate names the problem), then re-run.")
+               f"(cd {q(repo)} && {engine} check --no-rebuild names the problem), then re-run.")
     try:
         version = json.loads((nested / "works" / ".workspace-version.json").read_text(encoding="utf-8")).get("workspace_version")
     except (OSError, ValueError, AttributeError):
@@ -2511,7 +2552,7 @@ def convert_prepare() -> None:
         if isinstance(ex, dict) and (ex.get("worktree") or ex.get("host_worktree")):
             pid = data.get("id", pj.parent.name)
             problems.append(f"{pid} is in flight in a worktree pair ({ex.get('host_worktree') or ex.get('worktree')}), which the move would "
-                            f"orphan: finish and tear it down first (cd {q(repo)} && {engine} parallel-teardown {pid}), then re-run.")
+                            f"orphan: finish and tear it down first (cd {q(repo)} && {engine} worktree teardown {pid}), then re-run.")
     linked = _worktree_entries(nested)[1:]
     if linked:
         problems.append(f"the nested repo has linked worktrees the move would orphan ({', '.join(e['path'] for e in linked)}): finish and "
@@ -2526,13 +2567,13 @@ def convert_prepare() -> None:
     # above). What it checks only on a host is covered here too: the PR records' null repo is mapped before
     # that validate (convert_map_records), and the registry rows (each repo a work tree root, hidden, tracking
     # no workspace file) are this function's own refusals below.
-    proc = subprocess.run([sys.executable, str(nested / "scripts" / "workflow.py"), "validate"], cwd=str(repo),
+    proc = subprocess.run([sys.executable, str(nested / "scripts" / "workflow.py"), "check", "--no-rebuild"], cwd=str(repo),
                           capture_output=True, stdin=subprocess.DEVNULL)
     if proc.returncode != 0:
         said = [ln.strip().lstrip("- ") for ln in (proc.stdout + proc.stderr).decode("utf-8", errors="replace").splitlines()
                 if ln.strip() and not ln.startswith("Workflow validation failed")]
-        problems.append(f"the install's validate fails ({'; '.join(said[:4]) + ('; ...' if len(said) > 4 else '') or 'exit ' + str(proc.returncode)}): "
-                        f"fix it first (cd {q(repo)} && {engine} validate), commit the fix in the nested repo, then re-run.")
+        problems.append(f"the install's check fails ({'; '.join(said[:4]) + ('; ...' if len(said) > 4 else '') or 'exit ' + str(proc.returncode)}): "
+                        f"fix it first (cd {q(repo)} && {engine} check --no-rebuild), commit the fix in the nested repo, then re-run.")
     top = _work_tree_top(parent)
     parent_git, exclude = None, None
     # A repo around the parent that tracks a file under it keeps descending into it even once the parent is a
@@ -2686,14 +2727,14 @@ def _convert_print_dry_run(renames: dict, phases: list, prs: list, rules: list) 
     print(f"       + {parent}/.claude/settings.local.json")
     print(f"       + {parent}/CLAUDE.local.md (the multi-repo block, with: Records from before <today> name product paths relative to `{name}/`.)")
     print(f"       ~ {parent}/.git/info/exclude (the managed block, with {' '.join('/' + n + '/' for n in plan['names'])})")
-    print(f"       ~ {target}/: the machinery every --update refreshes, then rebuild and validate")
+    print(f"       ~ {target}/: the machinery every --update refreshes, then check")
     print(f"       ~ {target}/{NESTED_MARKER}: repos {', '.join(plan['names'])}; {name} keeps the old convention verbatim "
           f"({'confirmed' if conv.get('confirmed') is True else 'UNCONFIRMED'}, coauthor_trailers={conv.get('coauthor_trailers')})"
           + (f"; {', '.join(others)} {'gets its' if len(others) == 1 else 'each get their'} own, inferred and UNCONFIRMED" if others else "")
           + "; the host-level convention (the rules for every repo) UNCONFIRMED, nothing inferred")
     print(f"  4. converted_from in {target}/{NESTED_MARKER}: {{\"repo\": \"{name}\", \"old_nested\": \"{name}/{NESTED_DIR}\", \"at\": \"<today>\"}}")
     print(f"  5. map the anchors and PR records, inside step 3 before its validate: python3 {NESTED_DIR}/scripts/workflow.py "
-          f"nested-repos --map-anchors {name} (writes phase.json files only)")
+          f"repo map-anchors {name} (writes phase.json files only)")
     for label, maps in phases:
         print(f"       {label}: " + (f"host_anchors -> repo_anchors.{name}" if maps else f"skipped: its host_anchors are not commits of {name}"))
     if not phases:
@@ -2785,14 +2826,14 @@ def convert_start_writing() -> None:
 
 def convert_map_records() -> None:
     """Step 5, run inside step 3 between the marker write and the closing validate: the refreshed engine's
-    `nested-repos --map-anchors <repo>` moves each phase's host_anchors to repo_anchors.<repo> and names
+    `repo map-anchors <repo>` moves each phase's host_anchors to repo_anchors.<repo> and names
     <repo> in every pr.branches[].repo that was null (a per-repo install's only legal value, which the
     multi-repo validate refuses). The engine writes phase.json; the installer only runs it. Never raises:
     a failure is recorded for the closing block, and the validate then says what still fails."""
     plan = CONVERT_PLAN
-    print(f"  5. (before the validate) map the anchors and PR records: python3 {NESTED_DIR}/scripts/workflow.py nested-repos "
-          f"--map-anchors {plan['name']}", flush=True)
-    proc = subprocess.run([sys.executable, str(ROOT / "scripts" / "workflow.py"), "nested-repos", "--map-anchors", plan["name"]],
+    print(f"  5. (before the validate) map the anchors and PR records: python3 {NESTED_DIR}/scripts/workflow.py repo "
+          f"map-anchors {plan['name']}", flush=True)
+    proc = subprocess.run([sys.executable, str(ROOT / "scripts" / "workflow.py"), "repo", "map-anchors", plan["name"]],
                           cwd=str(HOST), capture_output=True, stdin=subprocess.DEVNULL)
     for line in (proc.stdout + proc.stderr).decode("utf-8", errors="replace").splitlines():
         print(f"       {line}")
@@ -2860,7 +2901,7 @@ def convert_finish() -> None:
         print(f"       {line} ({NESTED_DIR}/{NESTED_MARKER})")
     if returncode != 0:
         failed.append(f"the anchor and PR-record mapping {'never ran' if returncode is None else 'exited ' + str(returncode)} "
-                      f"(nothing was rolled back): fix what it says, then re-run it: cd {q(parent)} && {engine} nested-repos --map-anchors {name}")
+                      f"(nothing was rolled back): fix what it says, then re-run it: cd {q(parent)} && {engine} repo map-anchors {name}")
     print(f"  6. cleaned {repo} (only the workspace's own, unchanged files went; nothing of yours was deleted):")
     for line in _convert_cleanup_lines(past=True):
         print(f"       {line}")
@@ -2883,7 +2924,7 @@ def convert_finish() -> None:
     print(f"Next (from {parent}: start Claude Code there from now on, never inside {NESTED_DIR}/ or a repo):")
     step = 1
     if (plan["inited"] and HOST_COMMIT_ERROR is not None) or plan["parent_git"] == "empty":
-        print(f"  {step}. Give the host its first commit, which new-phase and parallel-start base on"
+        print(f"  {step}. Give the host its first commit, which phase new and worktree start base on"
               + (" (git has no identity: set one globally first, so the nested commit below works too):" if HOST_COMMIT_ERROR else ":"))
         if HOST_COMMIT_ERROR:
             print("       git config --global user.name \"<your name>\" && git config --global user.email \"<you@example.com>\"")
@@ -2892,17 +2933,17 @@ def convert_finish() -> None:
     print(f"  {step}. Commit the conversion in the nested repo: git -C {q(target)} add -A && git -C {q(target)} commit -m \"{CONVERT_COMMIT}\"")
     step += 1
     print(f"  {step}. Confirm the conventions that bind every repo (UNCONFIRMED, nothing inferred) before the first product commit: "
-          f"{engine} nested-convention (then --confirm --text \"<conventions>\" --trailers allowed|forbidden); each repo's own:")
+          f"{engine} repo convention (then --confirm --text \"<conventions>\" --trailers allowed|forbidden); each repo's own:")
     for r in marker.get("repos") or [] if isinstance(marker.get("repos"), list) else []:
         rc = r.get("commit_convention") if isinstance(r, dict) else None
         if isinstance(rc, dict) and rc.get("confirmed") is True:
             print(f"       {r.get('name')}: confirmed, moved from the old install (coauthor_trailers={rc.get('coauthor_trailers')}); "
-                  f"{engine} nested-convention --repo {r.get('name')} shows it")
+                  f"{engine} repo convention --repo {r.get('name')} shows it")
         elif isinstance(rc, dict):
-            print(f"       {r.get('name')}: UNCONFIRMED -- {engine} nested-convention --confirm --repo {r.get('name')} --text \"<conventions>\" "
+            print(f"       {r.get('name')}: UNCONFIRMED -- {engine} repo convention --confirm --repo {r.get('name')} --text \"<conventions>\" "
                   "--trailers allowed|forbidden")
     step += 1
-    print(f"  {step}. Re-apply your executors.toml route overrides to the new agent files: {engine} sync-agents")
+    print(f"  {step}. Re-apply your executors.toml route overrides to the new agent files: python3 {NESTED_DIR}/{ADAPTER_ENTRY} sync-agents")
     print("Rollback (the nested repo's history is the backup; the installer deletes none of this):")
     for line in _convert_rollback_lines():
         print(line)
@@ -2949,15 +2990,10 @@ if UPDATE:
         print("A new install is just: sh bootstrap_agentic_workspace.sh <dir> (the private nested layout, the default), "
               "or --at-root / --into-existing for the committed at-root layout.", file=sys.stderr)
         sys.exit(1)
-    # Rebuild docs only when THIS repo uses the workspace's OWN docs system —
-    # index.json plus our versioned doc-type dirs. A repo adopted over its own
-    # (foreign or absent) docs/ never received ours, so running our docs rebuild
-    # there would crash or corrupt; skip it and rebuild only the works side.
-    UPDATE_DOCS = (
-        (ROOT / "docs/index.json").exists()
-        and (ROOT / "docs/versions").is_dir()
-        and any((ROOT / "docs/versions" / d).is_dir() for d in DOC_TYPES)
-    )
+    # Touch docs/ only when THIS repo uses the workspace's OWN docs: an older install's index.json, or
+    # the five doc files a fresh install seeds. A repo adopted over its own (foreign or absent) docs/
+    # never received ours, so its docs/README.md is left alone.
+    UPDATE_DOCS = (ROOT / "docs/index.json").exists() or all((ROOT / f"docs/current/{d}.md").is_file() for d in DOC_TYPES)
 elif RETROFIT:
     # PLAN pass: classify before writing anything, and abort up front on a
     # load-bearing collision so a retrofit can never half-install.
@@ -2971,15 +3007,16 @@ elif RETROFIT:
         print("This repo already contains an agentic workspace (works/ present) — nothing to retrofit.")
         print("Drive it directly with python3 scripts/workflow.py.")
         sys.exit(0)
-    # A foreign scripts/workflow.py would break the runtime — abort before writing.
-    if (ROOT / "scripts/workflow.py").exists():
-        print("Error: target already has scripts/workflow.py.", file=sys.stderr)
+    # A foreign scripts/workflow.py (or a file named like one of its modules) would break the runtime
+    # (retrofit keeps theirs) — abort before writing.
+    foreign = [rel for rel in ENGINE_FILES + ADAPTER_FILES if (ROOT / rel).exists()]
+    if foreign:
+        print(f"Error: target already has {foreign[-1]}.", file=sys.stderr)
         print("The workspace runtime shells out to it, so it cannot be installed over a", file=sys.stderr)
         print("foreign copy. Rename/relocate the existing file, or adopt the workspace", file=sys.stderr)
         print("manually (see docs/retrofit-guide.md), then re-run.", file=sys.stderr)
         sys.exit(1)
-    # Install the docs versioning subsystem only when the target has no docs
-    # system of its own; otherwise leave docs/ untouched and skip its rebuild.
+    # Seed the docs only when the target has no docs system of its own; otherwise leave docs/ untouched.
     docs_present = (
         (ROOT / "docs/index.json").exists()
         or ((ROOT / "docs/current").is_dir() and any((ROOT / "docs/current").glob("*.md")))
@@ -3062,52 +3099,35 @@ if NESTED:
 else:
     write_text("CLAUDE.md", f"# CLAUDE.md\n\n{CONTRACT_BODY}")
 
-# ---- Versioned docs ---------------------------------------------------------
-
-
-def doc_frontmatter(doc_id: str, version: str, source: str, summary: str, previous=None) -> str:
-    previous_line = f"previous: {previous}\n" if previous else "previous: null\n"
-    return f"---\ndoc_id: {doc_id}\nversion: {version}\ncreated_at: {created_at}\nsource: {source}\nsummary: {summary}\n{previous_line}---\n\n"
-
-
-index_docs = {}
+# ---- Docs: five plain files, edited in place ---------------------------------
 for doc_id in DOC_TYPES:
-    version_id = "v0001_bootstrap"
-    rel = f"docs/versions/{doc_id}/{version_id}.md"
-    summary = f"Initial {doc_id} doc"
     body = DOC_BODIES[doc_id].replace("__PROJECT_NAME__", PROJECT_NAME).replace("__PROJECT_SUMMARY__", PROJECT_SUMMARY)
-    content = doc_frontmatter(doc_id, "v0001", "bootstrap", summary) + body
-    write_text(rel, content)
-    write_text(f"docs/current/{doc_id}.md", content)
-    index_docs[doc_id] = {
-        "latest": version_id,
-        "current_path": f"docs/current/{doc_id}.md",
-        "versions": [{"id": version_id, "path": rel, "created_at": created_at, "source": "bootstrap", "summary": summary, "previous": None}],
-    }
-write_json("docs/index.json", {"docs": index_docs, "last_rebuilt_at": created_at})
+    write_text(f"docs/current/{doc_id}.md", body)
 # Nested: rewritten (agents at the host root read it), like the contract and the templates.
 write_text("docs/README.md", NESTED_PLAN["engine_side"]["docs/README.md"] if NESTED else _docs_readme())
 
 # ---- Templates --------------------------------------------------------------
 # No plan.md or result.md template: the orchestrator writes its free-form native plan
 # into plan.md at the slice's turn, and the executor writes a free-form result.md at
-# slice end. Scaffolded seeds: the phase notebook, the phase intent, the deferred brief, and a loop
-# phase's charter (P50: loop-init seeds loop/charter/v1.md from it).
+# slice end. Scaffolded seeds: the phase notebook, the phase intent and the deferred brief.
 # Nested: rewritten, because agents at the host root read the phase files made from them.
 _TEMPLATES = NESTED_PLAN["engine_side"] if NESTED else PAYLOADS
 write_text("works/templates/deferred_brief.md", _TEMPLATES["works/templates/deferred_brief.md"])
 write_text("works/templates/intent.md", _TEMPLATES["works/templates/intent.md"])
 write_text("works/templates/phase.md", _TEMPLATES["works/templates/phase.md"])
-write_text("works/templates/charter.md", _TEMPLATES["works/templates/charter.md"])
 
 # ---- Works state: starts with NO phases --------------------------------------
 # The workspace intentionally bootstraps empty: the operator's first real task is
-# captured via the create-phase intake flow (create-phase → new-phase), never a
+# captured via the create-phase intake flow (create-phase → phase new), never a
 # pre-seeded placeholder phase.
 write_text("works/events.jsonl", json.dumps({"ts": created_at, "type": "bootstrap", "project": PROJECT_NAME}, ensure_ascii=False) + "\n")
 
-# ---- Workflow engine (scripts/workflow.py) ----------------------------------
-write_text("scripts/workflow.py", PAYLOADS["scripts/workflow.py"], executable=True)
+# ---- Workflow engine (scripts/workflow.py and its wf_*.py modules) -------------
+for rel in ENGINE_FILES:
+    write_text(rel, PAYLOADS[rel], executable=rel == "scripts/workflow.py")
+# ---- The Claude Code adapter folder (adapters/claude_code/: routes, sync-agents, the meter, the resume hook) ----
+for rel in ADAPTER_FILES:
+    write_text(rel, PAYLOADS[rel], executable=rel == ADAPTER_ENTRY)
 
 # ---- Agent surfaces: Claude Code skills -------------------------------------
 # (Nested: none under workflow/ -- the host-side copies are written by nested_apply below.)
@@ -3241,9 +3261,10 @@ def flag_retired_files() -> None:
                                         if k.startswith(".claude/skills/") and k.split("/")[2] not in CLAUDE_SKILLS})
     for rel in dirs:
         _walk_retired_dir(ROOT, rel, _retired_entry)
+    shipped = tuple(f".claude/skills/{name}/" for name in CLAUDE_SKILLS)  # flag_skill_dir_files classifies these
     for key in sorted(RETIRED_FILES):
         p = ROOT / key
-        if not any(key.startswith(d + "/") for d in dirs) and os.path.lexists(p) and not p.is_dir():
+        if not any(key.startswith(d + "/") for d in dirs) and not key.startswith(shipped) and os.path.lexists(p) and not p.is_dir():
             _classify(p, key, _retired_entry(key), "")
 
 
@@ -3341,21 +3362,10 @@ elif UPDATE:
     write_version_marker()
     if CONVERT:
         convert_map_records()   # before the closing validate, which wants every pr.branches[].repo named
-    if UPDATE_DOCS:
-        run_workflow("rebuild")
-        run_workflow("validate")
-    else:
-        # No docs subsystem here (retrofitted repo) — the docs rebuild would crash.
-        run_workflow("next")
-elif RETROFIT and not INSTALL_DOCS:
-    # The target owns docs/ — rebuild only the works side; do not run our docs
-    # rebuild/validate against a foreign doc system.
-    write_version_marker()
-    run_workflow("next")
+    run_workflow("check")
 else:
     write_version_marker()
-    run_workflow("rebuild")
-    run_workflow("validate")
+    run_workflow("check")
 
 if NESTED:
     if not DRY_RUN:
@@ -3370,14 +3380,12 @@ elif DRY_RUN:
 elif UPDATE:
     print(f"Update complete (--update) at {TARGET}")
     print_change_list()
-    if not UPDATE_DOCS:
-        print("  note: no docs subsystem here; skipped docs rebuild (ran 'next' only)")
     print(f"  provenance recorded: works/.workspace-version.json (synced_commit {os.environ.get('SYNCED_COMMIT') or 'bootstrap'})")
     for line in nested_team_pr_rules(ROOT):
         print(f"  {line}")
     print("The installer made no git changes. Review the diff (git status); commit once the operator approves.")
-    print("Next: python3 scripts/workflow.py sync-agents  # re-apply your preserved executors.toml")
-    print("      python3 scripts/workflow.py executor-route  # an override= line for each row it pins against the defaults")
+    print(f"Next: python3 {ADAPTER_ENTRY} sync-agents  # re-apply your preserved executors.toml")
+    print(f"      python3 {ADAPTER_ENTRY} route  # an override= line for each row it pins against the defaults")
     print("Then: python3 scripts/workflow.py next")
 elif RETROFIT:
     created, skipped, merged = (RETROFIT_SUMMARY["created"], RETROFIT_SUMMARY["skipped"], RETROFIT_SUMMARY["merged"])
@@ -3387,28 +3395,26 @@ elif RETROFIT:
     if merged:
         print(f"  merged (additive): {', '.join(merged)}")
     print_update_report()
-    print(f"  docs subsystem: {'installed' if INSTALL_DOCS else 'skipped (target already has a docs/ system)'}")
+    print(f"  docs: {'seeded' if INSTALL_DOCS else 'skipped (target already has a docs/ system)'}")
     print("  works subsystem: installed (no phases yet — the first phase is created by the operator)")
-    if not INSTALL_DOCS:
-        print("  note: docs versioning not installed; skipped docs rebuild/validate")
     for line in nested_team_pr_rules(ROOT):
         print(f"  {line}")
     print("The installer made no git changes. Review the diff (git status); commit the adoption once the operator approves.")
     print("If CLAUDE.md already existed, reconcile the CLAUDE.workspace.md sidecar; add __pycache__/ to .gitignore.")
-    print("Next: python3 scripts/workflow.py validate, then create the first phase (/create-phase in Claude Code)")
+    print("Next: python3 scripts/workflow.py check, then create the first phase (/create-phase in Claude Code)")
 else:
     print(f"Bootstrapped agentic workspace at {TARGET}")
     print("Contract: CLAUDE.md")
-    print("Claude Code: 21 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, fresh-eyes PR reader .claude/agents/pr-reader.md, blind code reader .claude/agents/code-reader.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
+    print("Claude Code: 18 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, fresh-eyes PR reader .claude/agents/pr-reader.md, blind code reader .claude/agents/code-reader.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
     print("Visual design: design-cowork fires automatically; the design-drafter subagent drafts each design slice's surfaces as one working canvas under docs/reference/design/jobs/ (a frame of shared choices, its pages at once, then a join into clickable Pages, a board per component), the design-critic judges each page and the joined canvas when the job's critique is on, the orchestrator publishes each round to one Design canvas Artifact in the Claude app, and the operator decides: picks a style (build-after / design-only / paired) and signs each design in their own words, or on an in-product mockup they ask for, before separate implementation and browser fidelity")
-    print("One executor, routed per dispatch by kind, then risk, then attempt (mid is the default row, real code included; high for decomposition, research, review, named triggers and retries), through one route table whose rows set each dispatch's model and effort; python3 scripts/workflow.py executor-route shows it (and executor-route <slice> the decision for one slice); override a row in executors.toml, then run sync-agents")
+    print("One executor, routed per dispatch by kind, then risk, then attempt (mid is the default row, real code included; high for decomposition, research, review, named triggers and retries), through one route table whose rows set each dispatch's model and effort; python3 adapters/claude_code/adapter.py route shows it (and route <slice> the decision for one slice); override a row in executors.toml, then run the adapter's sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
-    print("CI: .github/workflows/workspace-ci.yml runs validate on each PR and default-branch push (seeded once — yours to edit); .gitattributes carries the merge rules for machine-written files")
+    print("CI: .github/workflows/workspace-ci.yml runs check --no-rebuild on each PR and default-branch push (seeded once — yours to edit); .gitattributes carries the merge rules for machine-written files")
     print("Canonical state: phase.json / slice.json / deferred.json / agenda.json; generated: works/backlog.md, works/deferred.md, works/agenda.md")
-    print("Versioned docs: docs/versions/<doc>/v<yyMMddHHmm>_*.md (a new version is named by its UTC minute; v0001_bootstrap.md is the first) with generated docs/current/*.md")
+    print("Docs: docs/current/*.md, plain files agents edit in place")
     print("Knowledge: /explain is the knowledge plugin's, not this workspace's (plugin 0.10.0+): /plugin marketplace add leetusik/knowledge, then /plugin install knowledge@knowledge; run /knowledge:setup once, then /knowledge:explain <topic>")
     print("  every explain is its own explain phase (a document by default; a book or a chapter when asked), written from this repo's code and its phases' records, created and run after one confirmation in its own worktree, merged back by itself — see docs/current/operations.md")
     for line in nested_team_pr_rules(ROOT):
         print(line)
     print("No phases yet — the workspace starts empty on purpose.")
-    print("Next: create the first phase with /create-phase (Claude Code) or python3 scripts/workflow.py new-phase ...")
+    print("Next: create the first phase with /create-phase (Claude Code) or python3 scripts/workflow.py phase new ...")

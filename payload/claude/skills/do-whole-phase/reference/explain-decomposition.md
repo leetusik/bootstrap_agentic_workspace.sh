@@ -27,7 +27,7 @@ The `DECOMP` executor writes the book's brief, reads its whole subject and outli
    - **first**, write `book/research/pages/.gitignore`, two lines, `*` then `!.gitignore`: `pages/` stays out of git (it holds at most the payload builder's fallback copy, §2 *Resolve the knowledge base configuration*), and the rest of the dossier is committed with the slice;
    - the run id is `<KB_NOW>-<book slug>`. The dossier is the run's state: a span stopped by a usage limit is re-dispatched from disk and goes on at the first stage whose file is missing or unfinished (§3.3 *The record, and resuming a run*), never from scratch;
    - **D0, the brief** (§3.1 *D0: the brief, and the prior version*) comes from `## Explain` (subject, phases, reader, depth, must-cover, leave-out, trusted sources and `lang`), placement `book <slug>`, the commit (`HEAD` at D0), and the chapter list signed at the confirmation, recorded under `intent.md`'s *Original Input (verbatim)*;
-   - **D1, the evidence** (§3.4 *D1: the evidence*): every covering phase's records and the code at the commit, into `book/research/evidence.md`, each entry naming the chapters it serves, with its `## Gaps` and `## Open`, closed by its counts line. A phase's records are its `intent.md`, its notebook by section (through `phase-section <P>`, with the `topics/` a gist links) and the `result.md` heads of the slices that built the subject; `python3 scripts/workflow.py phase-scope <P>` gives a phase's commit range and files. The explain phase's own folder is never a record.
+   - **D1, the evidence** (§3.4 *D1: the evidence*): every covering phase's records and the code at the commit, into `book/research/evidence.md`, each entry naming the chapters it serves, with its `## Gaps` and `## Open`, closed by its counts line. A phase's records are its `intent.md`, its notebook by section (through `section <P>`, with the `topics/` a gist links) and the `result.md` heads of the slices that built the subject; `python3 scripts/workflow.py phase scope <P>` gives a phase's commit range and files. The explain phase's own folder is never a record.
 3. **Write `book/outline.md`** in the phase folder (`works/phases/active/P<N>/book/`), by item 3 of §9.2 *The evidence for a book (an explain phase)*, drawn from `evidence.md`. The operator signs this file, each chapter's `plan.md` is drawn from it, and the critic checks every chapter against it. It states:
    - **the book:** slug, title and kind `codebase` (§1 *Resolve the topic, the mode and the placement*); the private project; `lang`; the explain skill's path and version; the dossier, its run id and the commit;
    - **the reader:** who they are, what they already know, what they are new to, and what they can do after the book (§1's *The reader*);
@@ -58,7 +58,7 @@ The `DECOMP` executor writes the book's brief, reads its whole subject and outli
 4. **Cut one bare chapter slice per chapter**, in reading order:
 
    ```sh
-   python3 scripts/workflow.py new-slice --phase P<N> --slice P<N>.S<k> --name "<key>: <title>" \
+   python3 scripts/workflow.py slice new --phase P<N> --slice P<N>.S<k> --name "<key>: <title>" \
      --kind implementation --risk high --order <10k>
    ```
 
@@ -66,7 +66,7 @@ The `DECOMP` executor writes the book's brief, reads its whole subject and outli
    - **Bare folders.** Never write a chapter's `plan.md`.
    - **Undeclared.** Cut chapters without `--depends-on`: an explain phase declares nothing, so every chapter runs alone, never in a wave (`reference/wave.md`).
    - **No translation slices.** A translation names the published original's version (the `translated_from` of §5 *Publish via the KB document API*), so translations follow the accepted book (`reference/explain-review.md`).
-5. **Update `phase.md`**, entry by entry through `phase-section` (never `Read`, `Edit` or `Write` it):
+5. **Update `phase.md`**, entry by entry through `section` (never `Read`, `Edit` or `Write` it):
    - `## Decisions`: one gist line for the book (placement, project, chapter count, the run id, the commit, and `evidence.md`'s counts), linking `book/outline.md`;
    - `## Notes for later slices`: the taught-terms list, so each chapter knows what to recap, tagged for every chapter;
    - `## Now`: the outline awaits the operator's signature.
@@ -74,13 +74,13 @@ The `DECOMP` executor writes the book's brief, reads its whole subject and outli
 
 ### The outline gate (yours, after the executor returns)
 
-Right after `finish-slice <P>.DECOMP`, in the same commit (the dossier rides in it; git ignores `pages/`):
+Right after `slice finish <P>.DECOMP`, in the same commit (the dossier rides in it; git ignores `pages/`):
 
-1. **Declare the gate:** `python3 scripts/workflow.py accept-gate <P> --require`. The operator accepts a book by reading it in the real reader; a book never waives.
+1. **Declare the gate:** `python3 scripts/workflow.py gate <P> require`. The operator accepts a book by reading it in the real reader; a book never waives.
 2. **Stop the first chapter slice in order** (normally `<P>.S1`; after a re-cut, whichever comes first):
 
    ```sh
-   python3 scripts/workflow.py set-slice-status <P>.S1 pending --stop-kind decision \
+   python3 scripts/workflow.py slice status <P>.S1 pending --stop-kind decision \
      --on-words "'accept' signs the outline and the chapters run; feedback re-runs DECOMP"
    ```
 3. **Validate, commit, report and STOP.** The report follows the contract's stop rules:
@@ -101,8 +101,8 @@ Right after `finish-slice <P>.DECOMP`, in the same commit (the dossier rides in 
   3. Dispatch it again on the high row.
   4. The executor goes on from the dossier (§3.3 *The record, and resuming a run*): it reads more where the feedback asks (new entries appended to `evidence.md`), revises `book/outline.md`, and re-cuts the slices. Nothing is frozen before the signature.
      - a chapter whose key survives keeps its slice, since its `plan.md` is drawn from the outline entry, so a new title needs nothing;
-     - a new chapter gets `new-slice` with a fractional `--order`;
-     - a chapter the revision drops is listed in the verdict, and you close it with `finish-slice <id> --outcome "dropped: not in the outline, attempt <n>"`. The engine has no delete, and a bare slice closed this way did nothing.
+     - a new chapter gets `slice new` with a fractional `--order`;
+     - a chapter the revision drops is listed in the verdict, and you close it with `slice finish <id> --outcome "dropped: not in the outline, attempt <n>"`. The engine has no delete, and a bare slice closed this way did nothing.
   5. Stop at the gate again (steps 2 and 3; the acceptance gate is already declared).
 
   Each round is one commit and one stop.
@@ -142,23 +142,23 @@ P<N> (unit: document | chapter)
 4. **Cut exactly one write slice:**
 
    ```sh
-   python3 scripts/workflow.py new-slice --phase P<N> --slice P<N>.S1 --name "<the unit's title>" \
+   python3 scripts/workflow.py slice new --phase P<N> --slice P<N>.S1 --name "<the unit's title>" \
      --kind implementation --risk high --order 10
    ```
 
    `high` for **open design**: its executor writes alone from the evidence. A bare folder, undeclared (no `--depends-on`), and no translation slice, as for a book.
-5. **Update `phase.md`**, entry by entry through `phase-section`: `## Decisions`, one gist line (the unit, its placement and project, the run id and the commit, the covering phases, `evidence.md`'s counts, any section cut to `## Not used`, a scoped-out part if any), linking `doc/outline.md`; for a chapter, `## Notes for later slices`, the terms earlier chapters teach, so it can recap them, and the keys it may link to as an extra, tagged for S1; `## Now`.
+5. **Update `phase.md`**, entry by entry through `section`: `## Decisions`, one gist line (the unit, its placement and project, the run id and the commit, the covering phases, `evidence.md`'s counts, any section cut to `## Not used`, a scoped-out part if any), linking `doc/outline.md`; for a chapter, `## Notes for later slices`, the terms earlier chapters teach, so it can recap them, and the keys it may link to as an extra, tagged for S1; `## Now`.
 6. **Return** `done` once `doc/outline.md` is final and S1 is cut.
 
 ### After the executor returns: the gate, and the outline sign-off
 
-Right after `finish-slice <P>.DECOMP`, in the same commit (the dossier rides in it):
+Right after `slice finish <P>.DECOMP`, in the same commit (the dossier rides in it):
 
-1. **Declare the gate, waived:** a document `accept-gate <P> --waive --note "standalone explain document: published private; a v2 is cheap"`; a chapter `accept-gate <P> --waive --note "explain chapter: published private; a v2 is cheap"`.
+1. **Declare the gate, waived:** a document `gate <P> waive --note "standalone explain document: published private; a v2 is cheap"`; a chapter `gate <P> waive --note "explain chapter: published private; a v2 is cheap"`.
 2. **The outline sign-off is off** unless `## Explain` says `outline sign-off: on`: then S1 runs at once (`reference/explain-chapter.md`, *A document or a chapter: its one write slice*). With `on`, stop S1 before its first span:
 
    ```sh
-   python3 scripts/workflow.py set-slice-status <P>.S1 pending --stop-kind decision \
+   python3 scripts/workflow.py slice status <P>.S1 pending --stop-kind decision \
      --on-words "'accept' signs the outline and S1 runs; feedback re-runs DECOMP from the dossier"
    ```
 

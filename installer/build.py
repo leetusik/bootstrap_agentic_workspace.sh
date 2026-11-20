@@ -15,9 +15,12 @@ Source of truth:
     because there Claude Code would still load a nested CLAUDE.md or .claude/skills/, and
     git would apply a nested .gitattributes, as this repo's own (the workspace that drives
     it is a private host in the folder above it):
-      payload/scripts/workflow.py, payload/claude/skills/*/** (each skill's whole directory,
+      payload/scripts/*.py (the engine: its entry workflow.py and its wf_*.py modules),
+      payload/adapters/** (the Claude Code adapter folder, emitted as is; its executors.toml is the
+      seed emitted at the workspace root, never inside the folder),
+      payload/claude/skills/*/** (each skill's whole directory,
       plus any SHARED_SKILL_FILES copies), the payload/claude
-      subagents, payload/claude/settings.json, payload/executors.toml,
+      subagents, payload/claude/settings.json,
       payload/works/templates/*, payload/github/workflows/workspace-ci.yml,
       payload/gitattributes, and the payload/contract.md contract body (header
       stripped, embedded once).
@@ -55,7 +58,7 @@ SRC = REPO / "payload"                          # the shipped sources (never liv
 HEREDOC_DELIM = "INSTALLER_PY"                  # distinctive: no payload/body line may equal it
 PAYLOAD_MARKER = "#@@GENERATED_PAYLOADS@@"      # in main.py — replaced by generated constants
 BODY_MARKER = "#@@PYTHON_BODY@@\n"              # in wrapper.sh — replaced by the python body
-EXPECTED_SKILL_COUNT = 21
+EXPECTED_SKILL_COUNT = 18
 
 # Release stamping (--release). The smoke suite reads the same two shapes (WORKSPACE_VERSION in
 # installer/main.py, the numbered `## v<N> ` headings in CHANGELOG.md), so they are named once here.
@@ -72,9 +75,11 @@ MIGRATION_MARK = "**Migration notes.**"
 # Shipped files embedded verbatim, keyed by EMIT path (where the installer writes them). The
 # source lives under payload/ at src_rel(emit): payload/ keeps it off the root paths Claude Code
 # and GitHub read (.claude/, .github/, CLAUDE.md), and the undotted first path component keeps
-# Claude Code and git from treating it as this repo's own inside payload/.
+# Claude Code and git from treating it as this repo's own inside payload/. The engine is every
+# payload/scripts/*.py, discovered from disk (ENGINE_FILES), so adding a module needs no code change; the
+# adapter folder is every file under payload/adapters/ (adapter_files()). SOURCE_OF names the one shipped
+# file whose source sits elsewhere: the executors.toml seed lives with the adapter that reads it.
 FIXED_LIVE_FILES = [
-    "scripts/workflow.py",
     ".claude/settings.json",
     ".claude/agents/slice-executor.md",
     ".claude/agents/design-drafter.md",
@@ -86,7 +91,6 @@ FIXED_LIVE_FILES = [
     "works/templates/deferred_brief.md",
     "works/templates/intent.md",
     "works/templates/phase.md",
-    "works/templates/charter.md",
     # Repo-level policy files. Embedded like any other shipped file; main.py emits them
     # through their own write policy (CI seed-once, .gitattributes line-merge) so an
     # adopting repo's own CI / attributes are never clobbered.
@@ -99,6 +103,7 @@ FIXED_LIVE_FILES = [
 # Empty since lighter-rules: do-next-slice reads do-whole-phase's references by path, so no
 # reference ships twice.
 SHARED_SKILL_FILES: dict = {}
+SOURCE_OF = {"executors.toml": "adapters/claude_code/executors.toml"}
 
 CLAUDE_HDR = "# CLAUDE.md\n\n"
 
@@ -110,6 +115,8 @@ def die(msg: str) -> "None":
 
 def src_rel(emit: str) -> str:
     """payload/-relative source of an emit path: .claude/x -> claude/x, .gitattributes -> gitattributes."""
+    if emit in SOURCE_OF:
+        return SOURCE_OF[emit]
     return emit[1:] if emit.startswith(".") else emit
 
 
@@ -120,10 +127,25 @@ def read(rel: str, base: Path = SRC) -> str:
     return p.read_text(encoding="utf-8")
 
 
+def engine_files() -> "list":
+    """The engine's emit paths: every payload/scripts/*.py, sorted (its entry scripts/workflow.py among them)."""
+    files = sorted("scripts/" + f.name for f in (SRC / "scripts").glob("*.py"))
+    if "scripts/workflow.py" not in files:
+        die("missing source file: payload/scripts/workflow.py (the engine's entry)")
+    return files
+
+
+def adapter_files() -> "list":
+    """The adapter folders' emit paths: every file under payload/adapters/ but the executors.toml seed (SOURCE_OF)."""
+    return sorted(f.relative_to(SRC).as_posix() for f in (SRC / "adapters").rglob("*")
+                  if f.is_file() and f.relative_to(SRC).as_posix() not in SOURCE_OF.values()
+                  and not any(part.startswith(".") or part == "__pycache__" for part in f.relative_to(SRC).parts))
+
+
 def collect_live_payloads() -> "dict":
     """emit-path -> content for every shipped file (deterministic ordering), verbatim."""
     payloads: dict = {}
-    for rel in FIXED_LIVE_FILES:
+    for rel in engine_files() + adapter_files() + FIXED_LIVE_FILES:
         payloads[rel] = read(src_rel(rel))
     # Skills are discovered from disk (sorted) so adding/removing a skill needs no code change.
     # A skill ships as its whole directory: SKILL.md (the core) plus every other file under it

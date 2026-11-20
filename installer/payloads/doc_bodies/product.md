@@ -31,7 +31,7 @@ __PROJECT_SUMMARY__
 
 ## Product Direction
 
-Keep durable product truth here. Update by creating a new version under `docs/versions/product/`, not by patching old versions.
+Keep durable product truth here, and edit this file in place when it changes.
 
 ## User Experience
 

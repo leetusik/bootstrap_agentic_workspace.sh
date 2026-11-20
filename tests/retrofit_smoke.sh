@@ -14,29 +14,26 @@
 # browser driven from the shell, installed, started and closed by the agent with no
 # prompt (the shipped settings allow it), Claude in Chrome named once and only on the
 # operator's request, in the contract, the executor body and the design/review skills),
-# the v39 doc-staleness invariants (the last-updated marker at write time, with and
-# without git, and the STALE flag an owed '## Doc impact' note raises), the v41 review-boundary
+# the v41 review-boundary
 # invariants (every review surface re-runs the checklist inside the phase's boundary, never whole,
-# and phase-scope reads that boundary from git -- advisory without git), the v35 phase-notebook
-# invariants (template seed, generated ## Slices block, finish-slice --outcome, the
-# notebook budget/case-drift warnings and the timestamp-free dashboards; v61: phase-section reads and writes
+# and phase scope reads that boundary from git -- advisory without git), the v35 phase-notebook
+# invariants (template seed, generated ## Slices block, slice finish --outcome, the
+# notebook budget/case-drift warnings and the timestamp-free dashboards; v61: section reads and writes
 # one phase.md section, a 40 KB index budget naming the biggest sections; --entry K --replace writes one entry, and
 # --to-topic moves entries verbatim to topics/ behind gist lines, its refusals writing nothing; per-section budgets
 # and long entries named with a move command, 24 KB pages that never split an entry, a dangling pointer warning, and over 40 KB the required or advisory
-# notebook_over_budget= step in next, the card and start-slice, silent under budget and for a done phase), the P41 run-phases invariants
-# (a run's tokens resolve in order and a non-phase token refuses; a run passes a parked acceptance gate and
-# halts at a pending slice while plain `next` still waits there), the P42 ready-set invariants (an undeclared phase
+# notebook_over_budget= step in next, the card and slice start, silent under budget and for a done phase), the P42 ready-set invariants (an undeclared phase
 # keeps its plain pointer and prints no wave line; a declared slice is never ready before its dependency is done;
 # a running barrier is never a wave slice, so a declared phase's open acceptance gate reads as a stop), the id
-# invariants (new-phase, defer-job, promote-deferred and rotate's proposal mint P<n>-/D<n>-<tail> with the next number
+# invariants (phase new, defer-job, promote-deferred and rotate's proposal mint P<n>-/D<n>-<tail> with the next number
 # over every visible numbered id when no id is given, archived and promoted included; v73's P-/D- tokens and old P<n>
 # stay valid; an archived id is spent; listings sort numbered ids by number then tokens, and rotate's all-numeric labels
 # stay v72's; a number resolves when one phase holds it and is refused, listed, when two do; two branches mint the same
 # number and merge clean), the v43
-# worktree-on-request invariants (nothing enters a worktree unhinted or unasked; parallel-start
+# worktree-on-request invariants (nothing enters a worktree unhinted or unasked; worktree start
 # on a dirty tree commits only the phase folder plus the regenerated works/ files and cuts a
-# nested .claude/worktrees/ checkout hidden by the repo's info/exclude; parallel-skip and
-# new-phase --on-main are no-ops that stamp nothing), the design-contract invariants on schema 2
+# nested .claude/worktrees/ checkout hidden by the repo's info/exclude; phase new --on-main
+# is a no-op that stamps nothing), the design-contract invariants on schema 2
 # (P36.S3; P36.S5C: one open round per job, --new-job / --job, a per-round critique level; P46-nb: one
 # connected job per co-work slice -- --new-job refused while another job of the slice has an open round, a
 # legacy multi-job slice still valid, the size warning at 10 Pages / 30 boards, check=unlinked-page; design-check names a missing
@@ -52,21 +49,20 @@
 # steered to it; v48: design-check skips claude-design/, design-migrate moves all-or-nothing and a pre-v47
 # root is steered to it; P36.S1: design-register is gone, an unknown command), the P36 design-tool invariants (design-cowork carries the drafter loop only, with a legacy
 # rule for a `Design tool: claude-design` intent and a Legacy record note for claude-design/), the P28 nested-engine invariants (workflow/.agentic-nested.json: host anchors, host-side
-# phase-scope, the paired worktree lifecycle, the convention gate, the agent rename map, a malformed marker is an
+# phase scope, the paired worktree lifecycle, the convention gate, the agent rename map, a malformed marker is an
 # error), the P28 nested-install invariants (--nested: a clean host status/HEAD/config, the clash rename,
 # the workflow/ prefix, the contract import, the tracked-target refusal, --update --nested, the self-hiding
 # skill dirs and the refusal when a host .gitignore re-includes a target), the P29 nested-by-default
 # invariants (a bare install nests and git-inits a new dir, --update detects the layout, --at-root
 # keeps the at-root path, a bare install over an at-root workspace refuses), the multi-repo host
-# invariants (a fresh install over a folder of repos, per-repo phase-scope, a worktree set's start and
-# safe teardown, the lossless --to-multi-repo conversion), the P50 loop phases (the charter gate, the
-# budget stop, park don't halt, the bounded rollup, the tick's resume states), the v61 skill
+# invariants (a fresh install over a folder of repos, per-repo phase scope, a worktree set's start and
+# safe teardown, the lossless --to-multi-repo conversion), the v61 skill
 # directories (cores of 8 KB or less plus their reference files, on fresh, retrofit, --update and
-# nested installs, a renamed skill included), the P51 PR rule v1 invariants (the pr block, pr-branch / pr-record /
-# pr-check and the pass guard, validate and next, the drafts opening with no stop (no park rule: a REVIEW stop halts a run), the pr skill and
+# nested installs, a renamed skill included), the P51 PR rule v1 invariants (the pr block, pr branch / pr record /
+# pr check and the pass guard, validate and next, the drafts opening with no stop (no park rule: a REVIEW stop halts a run), the pr skill and
 # pr-reader, the team-rule banner, the symlinked .claude/skills exclude, the root linguist-generated lines, the _is_ancestor
-# regression; zero GitHub writes: a local bare origin and a stub gh), the P52 PR lifecycle invariants (pr-sync, pr-team,
-# pr_open= and the archive hold, D120, pr_stack= and the base re-record, reopen-phase nested, root and multi-repo; a stub gh that
+# regression; zero GitHub writes: a local bare origin and a stub gh), the P52 PR lifecycle invariants (pr sync, pr team,
+# pr_open= and the archive hold, D120, pr_stack= and the base re-record, phase reopen nested, root and multi-repo; a stub gh that
 # only ever sees reads), the P66 agenda invariants (A<n>-<tail> ids, transitions all or none, the open order,
 # links and the derived In progress, works/agenda.md and the index keys, validate, a two-branch merge, the gate's
 # exemption for an added item), and the v31 Codex-removal negatives. Re-runnable; self-cleaning.
@@ -97,6 +93,12 @@ sha() {
   if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
   else sha256sum "$1" | awk '{print $1}'; fi
 }
+# The engine is flat modules: <dir>/scripts/workflow.py (the entry) and the wf_*.py beside it. engine_src prints
+# them all, so a check on the engine's source reads every module (Test 0's python has its own engine_src()).
+engine_src() { cat "$1"/scripts/*.py; }
+# The Claude Code adapter (adapters/claude_code/adapter.py) owns route, sync-agents, meter and compact-resume; a
+# wrapper that runs both picks the entry by the command's first word.
+wf_entry() { case "$1" in route|sync-agents|meter|compact-resume) printf 'adapters/claude_code/adapter.py' ;; *) printf 'scripts/workflow.py' ;; esac; }
 # /explain is the knowledge plugin's: no install path touches or reports a path with an `explain` component.
 # plant_old_explain writes the last shipped explain skill (1c5ea0e) when this clone has that history, else a
 # marker copy; explain_sig is every such file under a tree with its hash (.git and workflow/ skipped).
@@ -149,7 +151,7 @@ import sys
 
 root = Path(sys.argv[1])
 skills = {p.parent.name for p in (root / "payload/claude/skills").glob("*/SKILL.md")}
-assert len(skills) == 21, len(skills)
+assert len(skills) == 18, len(skills)
 
 # P37.S1 (v61): a skill ships as its whole directory, a core SKILL.md plus reference/*.md, and the
 # do-* shared references fan out at build. Prose pins read the BUILT directory (core first, then its
@@ -157,6 +159,8 @@ assert len(skills) == 21, len(skills)
 sys.path.insert(0, str(root / "installer"))
 from build import collect_live_payloads, SHARED_SKILL_FILES
 LIVE = collect_live_payloads()
+def engine_src():  # the engine's source: every module, payload/scripts/*.py (the shell's engine_src)
+    return "".join(f.read_text(encoding="utf-8") for f in sorted((root / "payload/scripts").glob("*.py")))
 def skill_dir_text(name):
     pre = f".claude/skills/{name}/"
     keys = sorted((k for k in LIVE if k.startswith(pre)), key=lambda k: (k != pre + "SKILL.md", k))
@@ -270,7 +274,7 @@ assert not (root / "payload/claude/agents/explain-critic.md").exists()
 for required in ("every unit is a phase", "one confirmation", "Explain — confirm once; then it runs to publish.",
                  "start an explain from the main checkout", "`visibility: private` is absolute",
                  "The literal `unit` line", "**The required set, per unit:**", "- worktree: yes",
-                 "- outline sign-off: off", "parallel-start <P>` (nested: with no `--host-branch`",
+                 "- outline sign-off: off", "worktree start <P>` (nested: with no `--host-branch`",
                  "in **`auto`**", "--stop-kind decision", "operator-action", "**with no `unit` line**",
                  "§9.2 *The evidence for a book (an explain phase)*", "§3.2 *Permissions, and the payload builder*",
                  "**The acceptance gate, per unit:**", "**An explain phase is the one exception:**"):
@@ -323,7 +327,7 @@ for name in ("do-whole-phase",):
     for required in (
         "WAITING ON OPERATOR", "`kind: co-work`",
         "never pass `run_in_background: false`", "never glob `~/.claude/plans/`",
-        "`plan only`", "accept-gate <P> --clear",
+        "`plan only`", "gate <P> clear --words",
         # v34: the design slice runs inline -> dispatched -> inline, in one of three
         # named styles, and stops `pending` twice with different meanings.
         "`build-after`", "`design-only`",
@@ -351,16 +355,16 @@ for name in ("do-whole-phase",):
         # the do-* skills never start one on their own initiative, and a hint is relayed,
         # not acted on. Merged back locally; the branch review records its two gate
         # sections as tagged notes.
-        "unless the operator asked for a worktree", "parallel-start <P>", "EnterWorktree",
-        "`parallel-start` on your own initiative", "## Gate sections (written at merge)",
+        "unless the operator asked for a worktree", "worktree start <P>", "EnterWorktree",
+        "`worktree start` on your own initiative", "## Gate sections (written at merge)",
         # lighter-rules: the integration (the local merge) is the close checklist's, pointed to, never restated.
         "by the close checklist, the one place it is written: `.claude/skills/pr/reference/close.md`",
         # v35: just-in-time reads and the bounded notebook.
-        "finish-slice <slice_id> --outcome", "bounded phase notebook",
+        "slice finish <slice_id> --outcome", "bounded phase notebook",
         "verdict block", "just in time",
         # v36: the research kind routes high by KIND (the DECOMP2 sequel lives in playbooks/decompose.md).
         "`research` and review always",
-        # The entry-level notebook: the orchestrator reads it through phase-section only, runs the
+        # The entry-level notebook: the orchestrator reads it through section only, runs the
         # required step's notebook_move= lines before the next dispatch, and keeps the breakdown in a topic.
         "never with `Read`, `Edit` or `Write`", "`notebook_over_budget=`",
         "run each `notebook_move=` line under it, prefixed `python3 scripts/workflow.py`",
@@ -417,11 +421,11 @@ for required in (
     "**The join-rebuilt artifact is the one exception.**", "**Rolling (the default).**", "**At the join.**",
     "wait for every running span and never re-dispatch one",
     # Entry-level notebook writes at a return, beside the over-budget step.
-    "Write its `notebook` entries one entry at a time, through `phase-section` only", "`--entry K --remove`",
+    "Write its `notebook` entries one entry at a time, through `section` only", "`--entry K --remove`",
 ):
     assert required in wave, ("wave.md", required)
 decomp = (root / "payload/claude/skills/do-whole-phase/reference/decomposition.md").read_text(encoding="utf-8")
-assert "`finish-slice <P>.DECOMP` refuses while a middle slice is undeclared" in decomp
+assert "`slice finish <P>.DECOMP` prints an `advice:` line for each middle slice left undeclared" in decomp
 _pbd = (root / "payload/claude/skills/do-whole-phase/playbooks/decompose.md").read_text(encoding="utf-8")
 for required in ("their sets (files, regenerated files, numbered sequences, runtime resources) are disjoint",
                  "never on `DECOMP2`, `REVIEW` or a `co-work` slice"):
@@ -441,7 +445,7 @@ for required in (
     # v32: fidelity has a second yardstick, and gaps are delivered, not archived.
     "## Verifying — RESPECT THE DESIGN, and does it work",
     # v41: the fidelity slice re-runs the checklist inside the phase's boundary, never whole.
-    "**Re-run the lines inside the boundary.**", "phase-scope <P>",
+    "**Re-run the lines inside the boundary.**", "phase scope <P>",
     "### When the record never drew it", "matching it is not acceptance",
     "Questions get asked, not archived.",
     # v34: the code ban narrowed to *product* code, and the operator can sign a running
@@ -591,7 +595,7 @@ assert "### Visual work: you sign each design round" in _en and "a bigger unrela
 assert "one connected canvas as one Design canvas Artifact" in _en and 'signs the round' in _en
 for gone in ("you sign each design job", "wave** of 3–4 jobs", "publishes each job to its", "once for the whole wave"):
     assert gone not in _en, gone
-_t = (root / "payload/scripts/workflow.py").read_text(encoding="utf-8")
+_t = engine_src()
 assert "or pass --new-job for another" not in _t and "merge them into one connected job with --new-job" in _t
 # v61 (P37.S5): the orchestrator never hand-writes SIGNOFF.md, never reads build-prompt.md in a new
 # round, and never pulls the canvas whole at the read-back.
@@ -642,7 +646,7 @@ assert "Claude Design + the operator" not in desc, desc
 # registry and design-deck constants are gone from the engine (P36.S4: named exactly, since
 # design-preview's AGENTIC_DESIGN_BROWSER shares their prefix).
 import re
-workflow_src = (root / "payload/scripts/workflow.py").read_text()
+workflow_src = engine_src()
 for const in ("DESIGN_ROOT_REL", "DESIGN_LEGACY_DIR"):
     value = re.search(r'^' + const + r' = "([^"]+)"$', workflow_src, re.M).group(1)
     assert value in design, (const, value)
@@ -702,11 +706,11 @@ for required in ("`new visual direction: yes` in the handoff licenses setting a 
     assert required in drafter, required
 assert "the shared fixture (every entity a page shows, lists or links to, with its figures)" in design, "drafting.md frame pass: fixture coverage"
 # P47-p5.F2: drafting.md states the shipped critique default and the one measured round, defers the
-# critic row's effort to executor-route, and no shipped file names a phase-internal round or an
+# critic row's effort to the adapter's route, and no shipped file names a phase-internal round or an
 # xhigh critic row (D-q0ba).
 for required in ("**The level is `off` unless the operator asks for a critic**",
                  "**One measured round, not a norm**", "16 spans, $71.50, 3 h 43 min wall clock",
-                 "cost $19.90, 28 % of the round", "cost $28.60", "`executor-route --critic` and `--judge` print"):
+                 "cost $19.90, 28 % of the round", "cost $28.60", "`adapter.py route --critic` and `--judge` print"):
     assert required in design, ("drafting.md critique default / cost", required)
 for _f in sorted((root / "payload").rglob("*")):
     if _f.is_file() and _f.suffix in (".md", ".py", ".toml", ".json", ".yml"):
@@ -735,7 +739,7 @@ for required in ("**You get one pass**", "**The bar, line by line**", "**The sta
                  "**fixture coverage**: every link to an entity of this round lands on that entity's own drawn item"):
     assert required in critic, required
 # P47: the advisory measured lines (check=align, M1-M14) never block; the blocking set stays the four WCAG checks.
-assert 'DESIGN_PREVIEW_BLOCKING = ("non-text-contrast", "reflow", "overprint", "keyboard")' in (root / "payload/scripts/workflow.py").read_text(encoding="utf-8")
+assert 'DESIGN_PREVIEW_BLOCKING = ("non-text-contrast", "reflow", "overprint", "keyboard")' in engine_src()
 for gone in ("passes 02 and 03", "Passes 02 and 03", "- repeated: N", "`repeated`:", "at pass 03",
              "`wave: <job>, <job>, …`", "**The cross-job look", "`wave choice`", "or `choice` (a cross-job conflict"):
     assert gone not in critic, gone
@@ -758,15 +762,15 @@ for gone in ('{"mcpServers"', "Prefer the **MCP** surface", "MCP first",
 # v44 (P23): the worktree rules left the contract for the skill that runs them, so their
 # pins live here now, whitespace-flattened like design-cowork's: rule 1 is "only when
 # asked", rule 8 retires the v42 pins, a hint is relayed and never acted on, and a closed
-# gate is never merged past. D-3: `parallel-start` itself runs only on the operator's word.
+# gate is never merged past. D-3: `worktree start` itself runs only on the operator's word.
 parallel = " ".join((root / "payload/claude/skills/parallel-phase/SKILL.md").read_text().split())
-for required in ("Worktree rules", "**When — only when asked**", "retired no-ops",
+for required in ("Worktree rules", "**When — only when asked**", "retired no-op",
                  "Relay a hint to the operator; never act on it.",
-                 "Never merge a parallel phase whose `parallel-gate` is closed",
+                 "Never merge a parallel phase whose `worktree gate` is closed",
                  "the do-* skills relay it and run nothing",
                  # v61 (P37.S9): the contract's "(v43)" tag and its three ways of asking moved here.
                  "**Since v43 this is opt-in:", "the **`worktree` mode word**",
-                 "**`parallel-start <P>` run by the operator's own hand**"):
+                 "**`worktree start <P>` run by the operator's own hand**"):
     assert required in parallel, required
 # v43 negatives copied from the contract list (the worktree-by-default framing), and the
 # v42 leftover that had the do-* skills start a worktree whenever `next` printed the hint.
@@ -775,11 +779,11 @@ for gone in ("runs in its own worktree by default", "enters its worktree at **fi
     assert gone not in parallel, gone
 # v86 (P-mtrt.S4): an explain phase is the one worktree exception (its confirmation is the asking),
 # a nested one cuts a detached host worktree, and it merges back by itself past a busy main when the
-# engine's exemption holds; a no-notes pass settles consolidation; an unmerged branch shows as merge_ready=.
+# engine's exemption holds; an unmerged branch shows as merge_ready=.
 for required in ("**One exception: an explain phase (v86).**", "### An explain phase merges back by itself",
                  "**An explain phase needs no host branch (v86).**", "`exemption=phase-folder-only (<n> paths)`",
-                 "`merge_ready=<P>:<branch>`", "`parallel-teardown <P> --discard-ignored`",
-                 "**A phase with no debt settles itself (v86):**", "the main checkout's `.claude/settings.local.json`",
+                 "`merge_ready=<P>:<branch>`", "`worktree teardown <P> --discard-ignored`",
+                 "the main checkout's `.claude/settings.local.json`",
                  "(an explain phase's confirmation is the asking)"):
     assert required in parallel, required
 _w = " ".join((root / "payload/claude/skills/do-whole-phase/reference/worktree.md").read_text(encoding="utf-8").split())
@@ -788,7 +792,7 @@ assert "**One exception: an explain phase (v86).**" in _w
 assert "merge_ready=" in _w and "merge_ready=" in _c and "(an explain: its confirmation asked)" in _c
 _ww = " ".join((root / "payload/claude/skills/do-whole-phase/reference/worktree.md").read_text(encoding="utf-8").split())
 for required in ("**An explain phase merges back by itself, with no stop.**", "**When the automatic merge cannot run**",
-                 "**The closing report** of an explain run comes last", "`parallel-teardown <P> --discard-ignored`"):
+                 "**The closing report** of an explain run comes last", "`worktree teardown <P> --discard-ignored`"):
     assert required in _ww, required
 
 # v32 review procedure: the gate stages, the returned walkthrough, and the two
@@ -801,8 +805,8 @@ for required in ("## The review, in order", "`walkthrough`", "`## Operator Runti
                  "in place of a pre-written assertion suite", "with the same instrument",
                  "The procedure in full: `design-cowork`'s `reference/build.md`.",
                  # v41: the review reviews the boundary of the phase, never the whole system --
-                 # phase-scope is its input, and stage 4 re-runs the checklist inside it.
-                 "## The boundary", "phase-scope <P>",
+                 # phase scope is its input, and stage 4 re-runs the checklist inside it.
+                 "## The boundary", "phase scope <P>",
                  # v42: a branch review records its two gate sections as tagged notes, and
                  # the mockup qualifier applies only where the operator asked for one.
                  "## Gate sections (written at merge)", "a phase in which the operator asked for one",
@@ -813,7 +817,7 @@ for required in ("## The review, in order", "`walkthrough`", "`## Operator Runti
                  # The entry-level notebook: a decision is present as a gist line plus its topic, and a
                  # dangling pointer is a lost decision.
                  "A decision counts as present when its gist line is in `## Decisions` and its detail is in the linked topic",
-                 "A dangling-pointer warning from `validate`"):
+                 "A dangling-pointer warning from `check`"):
     assert required in review, required
 # P42.S4 (v71): a second failure of the same rules stops for the operator instead of another fix round,
 # in both loops' review references (separate files, so each exact path is read).
@@ -827,7 +831,7 @@ for gone in ("MCP surface first", "scripted Playwright-style automation",
              "re-runs the whole cumulative"):
     assert gone not in review, gone
 never = [ln for ln in review.splitlines() if "you never run on a review slice" in ln]
-assert len(never) == 1 and "`accept-gate`" in never[0] and "`defer-job`" in never[0], never
+assert len(never) == 1 and "`gate`" in never[0] and "`defer-job`" in never[0], never
 
 # v32 seed doc bodies: the runtime manifest (with its greppable unfilled marker)
 # and the cumulative smoke list's line shape reach every fresh install.
@@ -844,13 +848,13 @@ qa = (root / "installer/payloads/doc_bodies/qa.md").read_text()
 assert "## Regression Checklist" in qa
 assert "- [ ] <surface>: <one observable behaviour> (P<N>)" in qa
 # v41: the seed says the list is re-run inside the phase's boundary, never whole by a review.
-assert "phase-scope <P>" in qa and "re-runs the whole list" not in qa
+assert "phase scope <P>" in qa and "re-runs the whole list" not in qa
 
 # v66: one executor, slice-executor, replaces the mid/high pair; its frontmatter carries the mid row.
 # lighter-rules: the executor is a card of at most 3,072 B (the floor, the playbook map, done means
 # proven, the notebook, the verdict); how each kind of work goes lives in one playbook per kind under
 # .claude/skills/do-whole-phase/playbooks/ (1-3 KB each), opened only for that kind. The engine reads
-# the card's frontmatter (sync-agents, executor-route), so that stays pinned.
+# the card's frontmatter (the adapter's sync-agents and route), so that stays pinned.
 assert not (root / "payload/claude/agents/slice-executor-mid.md").exists()
 assert not (root / "payload/claude/agents/slice-executor-high.md").exists()
 body = (root / "payload/claude/agents/slice-executor.md").read_text(encoding="utf-8")
@@ -860,12 +864,13 @@ assert "permissionMode: bypassPermissions\n" in fm, fm
 # The browser is playwright-cli over Bash, so the executor carries no Chrome tools; Agent stays (the review's code reader).
 assert "tools: Read, Edit, Write, Glob, Grep, Bash, WebSearch, WebFetch, Agent\n" in fm, fm
 assert len(body.encode("utf-8")) <= 3072, f"the executor card is {len(body.encode('utf-8'))} B, over its 3,072 B cap"
-for gone in ("Codex", ".agents/", ".codex/", "AGENTS.md", "## Doc impact", "docs phase", "slice-executor-mid", "- `tier`"):
+for gone in ("Codex", ".agents/", ".codex/", "AGENTS.md", "## Doc impact", "docs phase", "slice-executor-mid", "- `tier`",
+             "cycle.md", "screen row"):
     assert gone not in body, gone
 for required in ("The contract's four invariants hold", "You never commit or push",
                  "`done` | `escalate` | `needs_operator`", "`blocked`", "- `route`, `model`, `effort`:",
-                 "Only the mid and screen rows escalate", "Stop the servers, containers and browsers you started",
-                 "`playwright-cli`", "leave it when the slice needs to", "`## Wave`", "`phase-section`"):
+                 "Only the mid row escalates", "Stop the servers, containers and browsers you started",
+                 "`playwright-cli`", "leave it when the slice needs to", "`## Wave`", "`section`"):
     assert required in body, required
 # Every playbook the card's map names exists and is 1-3 KB, every kind of the engine's closed set has
 # one, and no playbook sits unnamed; the folder is inside a skill, so it ships and is managed like one.
@@ -876,23 +881,22 @@ for _n in _named:
     assert (_pb_dir / _n).is_file(), f"the card names a missing playbook: {_n}"
     assert 1024 <= len((_pb_dir / _n).read_bytes()) <= 3072, (_n, len((_pb_dir / _n).read_bytes()))
 assert sorted(p.name for p in _pb_dir.glob("*.md")) == _named, ("a playbook the card never names", _named)
-_kinds = re.search(r"^SLICE_KINDS = \{(.*)\}$", (root / "payload/scripts/workflow.py").read_text(encoding="utf-8"), re.M).group(1)
+_kinds = re.search(r"^SLICE_KINDS = \{(.*)\}$", engine_src(), re.M).group(1)
 for _k in re.findall(r'"([a-z-]+)"', _kinds):
     assert re.search(r"(?<![\w-])" + re.escape(_k) + r"(?![\w-])", _map), f"kind {_k} has no playbook in the card's map"
 assert (root / "payload/claude/skills/design-cowork/reference/mockup.md").is_file()
 _pb = {p.stem: p.read_text(encoding="utf-8") for p in _pb_dir.glob("*.md")}
 for _stem, _required in (
-    ("feature", ("you saw fail first", "`playwright-cli`", "`doc-new-version`")),
+    ("feature", ("you saw fail first", "`playwright-cli`", "the plain files under `docs/current/`")),
     ("fix", ("**problem class**", "Every case of the class")),
     ("investigation", ("**write no product code.**", "**where the next slice reads them**", "`DECOMP2`")),
-    ("review", ("`phase-scope <P>`", "`subagent_type: code-reader`", "never the plan, a result or the notebook",
+    ("review", ("`phase scope <P>`", "`subagent_type: code-reader`", "never the plan, a result or the notebook",
                 "in the same span", "**Carve-out.** Never edit source.")),
     ("verify", ("`npm install -g @playwright/cli@0.1.25`", "`playwright-cli install-browser chrome-for-testing`",
                 "Only what you cannot have (a credential, a sign-in, a paid account) is `needs_operator`.", "Stop what you start")),
-    ("decompose", ("**Finish line first:**", "no QA slice by default", "`new-slice", "parallel-plan <P>", "`spends money: no`",
+    ("decompose", ("**Finish line first:**", "no QA slice by default", "`slice new", "phase rounds <P>", "`spends money: no`",
                    "each co-work slice's one job with its critique level", "A fractional `--order`")),
     ("wave", ("**Write no `phase.md`.**", "**Run no engine command that writes**", "`deferred: whole-tree`")),
-    ("cycle", ("binds **absolutely**", "`need_scope: spend`", "`item_verdict: fail`", "never repeat a filing")),
     ("explain", ("**The explain carve-out.**", "and dispatch no agent, `Explore` included")),
 ):
     for _r in _required:
@@ -920,18 +924,18 @@ for _r in ("**The code reader is yours to dispatch**", "`subagent_type: code-rea
            "**Nothing the phase started is left running.**", "**One review per phase**", "Run the walkthrough"):
     assert _r in _rv, _r
 assert "dispatched by the review executor itself" in _ro and "`review-phase` skill" in _ro
-for _gone in ("## The code reader, before the review", "executor-route --code"):
+for _gone in ("## The code reader, before the review", "route --code"):
     assert _gone not in _ro, _gone
 # Doc consolidation is retired: no phase-flow skill asks for a Doc impact note or a docs phase.
 for _n in _caps:
     _txt = "\n".join(v for k, v in LIVE.items() if k.startswith(f".claude/skills/{_n}/") and "/explain-" not in k)
     for _gone in ("docs phase", "docs-phase", "docs-debt", "doc_impact", "doc_versions", "Doc impact list"):
-        assert _gone not in _txt.replace("Ask for no `## Doc impact` note and no docs phase.", ""), (_n, _gone)
-# lighter-rules: the PR, parallel, loop and housekeeping skills are short playbooks. Their set stays under
+        assert _gone not in _txt, (_n, _gone)
+# lighter-rules: the PR, parallel and housekeeping skills are short playbooks. Their set stays under
 # 70,000 B (explain references aside), no one of them asks for a docs phase or a Doc impact note, and the close
 # is stated once: its ordered steps live only in pr/reference/close.md, and the worktree skills point at it.
-_s6 = ("parallel-phase", "pr", "run-loop", "update-workspace", "rotate-backlog", "archive-phase", "retrofit", "agenda",
-       "doc-new-version", "promote-deferred", "defer-job", "deferred", "rebuild-workflow")
+_s6 = ("parallel-phase", "pr", "update-workspace", "rotate-backlog", "archive-phase", "retrofit", "agenda",
+       "promote-deferred", "defer-job", "deferred")
 assert sum(_size(_n) for _n in _s6) <= 70000, sum(_size(_n) for _n in _s6)
 for _n in _s6:
     _txt = "\n".join(v for k, v in LIVE.items() if k.startswith(f".claude/skills/{_n}/"))
@@ -939,20 +943,21 @@ for _n in _s6:
                   "contract's stop rules", "Commit Convention", "decomposition carve-out"):
         assert _gone not in _txt, (_n, _gone)
 _close = LIVE[".claude/skills/pr/reference/close.md"]
-for _step in ("git merge --no-ff phase/P<N>-<slug>", "gh pr ready <n>", "docker rm -fv <name>", "git branch -d <b>",
+for _step in ("python3 scripts/workflow.py close <P>", "gh pr ready <n>", "docker rm -fv <name>", "git branch -d <b>",
               "git push origin --delete <b>", "gh pr checks <n>", "orphan **`pr-assets`** branch"):
     _where = [k for k, v in LIVE.items() if k.startswith(".claude/skills/") and _step in v]
     assert _where == [".claude/skills/pr/reference/close.md"], (_step, _where)
-for _r in ("# The close: one ordered checklist", "## Open the drafts, when the review passes", "### A. Re-read, only if the PR changed",
-           "### B. Ready and land (after the pass)", "## A worktree phase: integrate (after the pass)",
-           "## Clean up before the phase finishes", "## One validate, one commit", "**Read the CI:**",
-           "before the gate opens**, never after the accept", "gh pr view <n> --json headRefOid,updatedAt,comments",
+for _r in ("# The close", "## Open the drafts, when the review passes", "## At `accept`: run `close`", "## Clean up before the commit",
+           "**Read the CI:**", "before the gate opens**, never after the accept", "it also records the draft's head",
+           "It never pushes, merges, flips a PR Ready or writes to GitHub.", "- **`reread`:**", "- **`ci`:**", "- **`land`:**",
+           "- **`merge`** (a worktree phase)", "- **`commit`:**", "`gate <P> clear --words \"<their words>\"`",
            "run no pre-push local smoke and no post-landing `gh run watch`", "Never `-D`.", "Never a prune.",
-           "`--discard-ignored` straight away", "../blob/<sha>/<folder>/<file>.png?raw=true",
+           "`worktree teardown <P> --discard-ignored`", "../blob/<sha>/<folder>/<file>.png?raw=true",
            "defers its close until that base merges"):
     assert _r in _close, _r
-assert _close.index("## Open the drafts") < _close.index("## At `accept`") < _close.index("## A worktree phase") \
-    < _close.index("## Clean up before") < _close.index("## One validate"), "the close's sections are out of order"
+for _gone in ("### A. Re-read", "### B. Ready and land", "topics/pr-draft", "## One check, one commit"):
+    assert _gone not in _close, _gone
+assert _close.index("## Open the drafts") < _close.index("## At `accept`") < _close.index("## Clean up before"), "the close's sections are out of order"
 assert "`.claude/skills/pr/reference/close.md`" in LIVE[".claude/skills/parallel-phase/SKILL.md"]
 assert "`.claude/skills/pr/reference/close.md`" in LIVE[".claude/skills/do-whole-phase/reference/worktree.md"]
 assert "run on request only" not in LIVE[".claude/skills/pr/SKILL.md"] and "The `pr-reader` runs only when the operator asks, or for a team repo with PR rules" in LIVE[".claude/skills/pr/SKILL.md"]
@@ -962,6 +967,7 @@ _up = (root / ".github/workflows/upstream-ci.yml").read_text(encoding="utf-8")
 _seed = (root / "payload/github/workflows/workspace-ci.yml").read_text(encoding="utf-8")
 assert "on:\n  push:\n    branches: [main]\n  pull_request:\n" in _up, "upstream-ci runs on branch pushes"
 assert "on:\n  push:\n    branches: [main, master]\n  pull_request:\n" in _seed, "the CI seed runs on branch pushes"
+assert "parallel-gate" not in _seed and "workflow.py worktree" not in _seed, "the CI seed runs no gate job (the gate is advice)"
 # The shipped settings allow exactly the close's cleanup commands: no -D, no prune.
 import json as _json
 _allow = _json.loads((root / "payload/claude/settings.json").read_text(encoding="utf-8"))["permissions"]["allow"]
@@ -1056,38 +1062,50 @@ for required in (
     "**Stop what you start:**", "**Take your own recommendation:**", "**Ask, don't archive:**",
     "**The correction ladder:** fix a repeated mistake in product code first, then a type or lint, then a test or check, and only last in a rule file.",
     # The rule table, its operator-facing rows and the browser line (Claude in Chrome named once).
-    "| Rule | Enforced by |", "`accept-gate <P> --clear`", "`## Operator Questions`",
+    "| Rule | Enforced by |", "`gate <P> clear`", "`gate clear`, `design-close`, `design-sign` refuse an empty `--words`", "`## Operator Questions`",
     "Real-browser checks run on `playwright-cli`, the agent's own headless browser.",
     "Claude in Chrome is used only when the operator asks an agent to use their own browser.",
     "install it yourself, `npm install -g @playwright/cli@0.1.25`", "it writes `.playwright-cli/` there",
     # The pointers: commands, playbooks, the code reader among the agents, the three skills named.
-    "`python3 scripts/workflow.py --help`", "`.claude/skills/`", "`.claude/agents/slice-executor.md`", "`code-reader`",
+    "`python3 scripts/workflow.py --help`", "`python3 adapters/claude_code/adapter.py --help`", "`.claude/skills/`", "`.claude/agents/slice-executor.md`", "`code-reader`",
     "`create-phase`", "`design-cowork`", "`type(scope): summary`",
 ):
     assert claude.count(required) == 1, required
 assert "never fan out slices" not in claude, "the contract still forbids fanning out slices"
+# The thin engine (W9): the Claude Code side is the adapter folder. No engine module imports it (or the
+# retired wf_adapter), and the adapter reaches the engine only through its own import of workflow.
+import ast as _ast
+for _f in sorted((root / "payload/scripts").glob("*.py")):
+    for _n in _ast.walk(_ast.parse(_f.read_text(encoding="utf-8"))):
+        _mods = [a.name for a in _n.names] if isinstance(_n, _ast.Import) else [_n.module or ""] if isinstance(_n, _ast.ImportFrom) else []
+        assert not [m for m in _mods if m.split(".")[0] in ("adapter", "wf_adapter", "adapters")], (_f.name, _mods)
+assert not (root / "payload/scripts/wf_adapter.py").exists() and not (root / "payload/executors.toml").exists()
+assert (root / "payload/adapters/claude_code/adapter.py").is_file() and (root / "payload/adapters/claude_code/executors.toml").is_file()
+assert "adapters/claude_code/executors.toml" not in LIVE and "adapters/claude_code/adapter.py" in LIVE and "executors.toml" in LIVE
 # Subtract before you add: the shipped CLAUDE.md is this file byte for byte, and it stays on one screen.
 assert len((root / "payload/contract.md").read_bytes()) <= 4096, "the contract is over its 4,096 B cap"
 assert len(claude.splitlines()) <= 60, "the contract is over 60 lines"
 # Doc consolidation is retired: the contract asks for no Doc impact note and no docs phase.
 for gone in ("## Doc impact", "docs phase", "Docs are versioned durable truth", "doc-new-version"):
     assert gone not in claude, gone
+# Loop phases are retired: the contract names no loop command and no loop budget.
+for gone in ("loop-sign", "loop-unpark", "loop-tick", "total_usd"):
+    assert gone not in claude, gone
 # Every rule-table row names its enforcer: a cited engine command, settings rule, CI step or smoke check.
 _rows = [ln for ln in claude.splitlines() if ln.startswith("| ") and not ln.startswith("| Rule")]
-assert len(_rows) >= 10 and all(ln.count(" | ") == 1 and ln.split(" | ")[1].strip(" |") for ln in _rows), _rows
+assert len(_rows) >= 9 and all(ln.count(" | ") == 1 and ln.split(" | ")[1].strip(" |") for ln in _rows), _rows
 # Workspace sync: every skill step that commits workflow state skips that commit in a linked checkout,
 # and the stream and agenda skills say what a linked checkout does.
 cloud_skip = ("In a linked checkout (`next` prints `store=cloud`), skip this commit: hi2vi's revisions"
               " are the workflow's history. Product commits are unchanged.")
-for rel in ("commit/SKILL.md", "create-phase/SKILL.md", "run-loop/SKILL.md", "rotate-backlog/SKILL.md",
+for rel in ("commit/SKILL.md", "create-phase/SKILL.md", "rotate-backlog/SKILL.md",
             "do-whole-phase/reference/verdicts.md", "do-whole-phase/reference/wave.md"):
     assert cloud_skip in (root / "payload/claude/skills" / rel).read_text(), f"{rel}: the cloud-mode commit skip"
 # A linked checkout's waiting-commit record: every place that defines "a done slice whose slice.json is
 # uncommitted is a commit that waits" (and every commit step that closes one) names its linked form.
 cloud_waits = ("In a linked checkout, a done slice whose commit waits is one `next` lists in `commits_waiting=`;"
                " run `mark-committed <slice>` after its product commit (with no product change, right after its finish).")
-for rel, n in (("commit/SKILL.md", 1), ("run-loop/SKILL.md", 1), ("run-loop/reference/checkpoint.md", 1),
-               ("rotate-backlog/SKILL.md", 1),
+for rel, n in (("commit/SKILL.md", 1), ("rotate-backlog/SKILL.md", 1),
                ("do-whole-phase/reference/verdicts.md", 1), ("do-whole-phase/reference/wave.md", 1)):
     assert (root / "payload/claude/skills" / rel).read_text().count(cloud_waits) == n, f"{rel}: the linked waiting-commit sentence x{n}"
 # update-workspace never stages the truth set of a linked checkout: its clean check and its commit name the update's own paths.
@@ -1095,7 +1113,7 @@ uw = (root / "payload/claude/skills/update-workspace/SKILL.md").read_text()
 for pin in ("`git -C workflow status --porcelain -- . ':(exclude)works' ':(exclude)docs'`",
             "`git -C workflow add -A -- . ':(exclude)works' ':(exclude)docs' && git -C workflow add -A -- works/templates works/.workspace-version.json`"):
     assert pin in uw, f"update-workspace: the linked-checkout pin {pin}"
-assert "A linked checkout (`next` prints `store=cloud`) refuses `parallel-start`" in (root / "payload/claude/skills/parallel-phase/SKILL.md").read_text()
+assert "A linked checkout (`next` prints `store=cloud`) refuses `worktree start`" in (root / "payload/claude/skills/parallel-phase/SKILL.md").read_text()
 assert "In a linked checkout, changes made on the web arrive as inbox entries" in (root / "payload/claude/skills/agenda/SKILL.md").read_text()
 # v37 negatives: the MCP-first prescription and the Playwright framing are retired
 # from the contract too -- the fact survives only where it explains the escape hatch.
@@ -1136,7 +1154,7 @@ compact = claude.split("## Compact Instructions", 1)[1]
 assert "resume card" in compact and "never re-dispatch a running executor" in compact
 assert "re-read" not in compact, "Compact Instructions carry a re-read instruction"
 PY
-then ok "21 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with one connected canvas per round and opt-in critique, mockups on request, the playwright-cli instrument), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v71 wave protocol (do-whole-phase's reference/wave.md, DECOMP's disjoint-sets rule, the executor's wave section, the contract's reversal of "never fan out slices"); the one-screen contract (at most 4,096 B and 60 lines: the four invariants once each, the named principles, the correction ladder, a rule table whose every row names its enforcer, the playwright-cli line with Claude in Chrome named once, no doc-consolidation duty); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a one-screen contract pin, a seed-doc invariant, or a Codex-removal negative failed"; fi
+then ok "18 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with one connected canvas per round and opt-in critique, mockups on request, the playwright-cli instrument), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v71 wave protocol (do-whole-phase's reference/wave.md, DECOMP's disjoint-sets rule, the executor's wave section, the contract's reversal of "never fan out slices"); the one-screen contract (at most 4,096 B and 60 lines: the four invariants once each, the named principles, the correction ladder, a rule table whose every row names its enforcer, the playwright-cli line with Claude in Chrome named once, no doc-consolidation duty); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a one-screen contract pin, a seed-doc invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
@@ -1199,7 +1217,7 @@ then ok "settings.json additively merged (custom perm + env survive; the playwri
 if python3 - "$R/.claude/settings.json" <<'PY'
 import json, sys
 h = json.load(open(sys.argv[1]))["hooks"]
-resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-resume || true'
+resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 adapters/claude_code/adapter.py compact-resume || true'
 assert h["PreCompact"] == [{"matcher": "auto", "hooks": [{"type": "command", "command": "echo foreign-precompact"}]}], h["PreCompact"]
 assert h["PostToolUse"] == [{"matcher": "Edit", "hooks": [{"type": "command", "command": "echo foreign-post"}]}], h["PostToolUse"]
 assert h["SessionStart"] == [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}], h["SessionStart"]
@@ -1211,7 +1229,7 @@ then ok "retrofit merges the resume hook additively: foreign PreCompact/PostTool
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["autoCompactWindow"] == 500000, d' "$R/.claude/settings.json" \
   && ok "retrofit sets autoCompactWindow=500000 when the adopter's settings.json has none" || bad "retrofit did not set autoCompactWindow"
 
-( cd "$R" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) && ok "validate passes in target" || bad "validate failed in target"
+( cd "$R" && python3 scripts/workflow.py check --no-rebuild >/dev/null 2>&1 ) && ok "validate passes in target" || bad "validate failed in target"
 nph=$(find "$R/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
 [ "$nph" = "0" ] && ok "no phases seeded (workspace starts empty)" || bad "expected 0 seeded phases, found $nph"
 cp_state=$(python3 -c "import json;print(json.load(open('$R/works/state.json'))['current_phase'])" 2>/dev/null)
@@ -1221,8 +1239,8 @@ cp_state=$(python3 -c "import json;print(json.load(open('$R/works/state.json'))[
   && ok "retrofit installs no Codex trees (.agents/, .codex/)" || bad "retrofit created a Codex tree"
 [ ! -f "$R/AGENTS.workspace.md" ] \
   && ok "retrofit writes no AGENTS.workspace.md sidecar" || bad "retrofit wrote an AGENTS.workspace.md sidecar"
-[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "21" ] \
-  && ok "retrofit installs the 21-skill Claude inventory" || bad "retrofit skill inventory incomplete"
+[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "18" ] \
+  && ok "retrofit installs the 18-skill Claude inventory" || bad "retrofit skill inventory incomplete"
 skill_tree_ok "$R/.claude/skills" exact \
   && ok "retrofit installs every skill as its whole directory: each core's reference files, none orphaned, the shared do-* copy identical" || bad "retrofit skill directories incomplete (core + reference/)"
 grep -qF "Nothing is pushed, merged or paid for without the operator's word." "$R/CLAUDE.workspace.md" && grep -qF '| Rule | Enforced by |' "$R/CLAUDE.workspace.md" \
@@ -1250,7 +1268,11 @@ nafter=$(find "$D" -type f | wc -l | tr -d ' ')
 [ "$(cat "$D/scripts/workflow.py")" = "FOREIGN" ] && ok "foreign workflow.py left intact" || bad "foreign workflow.py modified"
 
 # ---------------------------------------------------------------------------
-echo "== Test 4: a pre-existing docs/ system gates the docs subsystem =="
+echo "== Test 4: the docs are seeded as plain files, and a pre-existing docs/ system gates them =="
+[ "$(ls "$R/docs/current" | wc -l | tr -d ' ')" = "5" ] && [ ! -e "$R/docs/index.json" ] && [ ! -e "$R/docs/versions" ] \
+  && grep -q '^# Product' "$R/docs/current/product.md" && ! grep -qx -- '---' "$R/docs/current/product.md" \
+  && ok "a docs-less repo gets the five docs as plain files (no docs/index.json, no versions, no frontmatter)" \
+  || bad "the docs were not seeded as five plain files: $(ls "$R/docs" "$R/docs/current" 2>&1 | tr '\n' ' ')"
 newtmp E
 mkdir -p "$E/docs"
 printf 'README\n' > "$E/README.md"
@@ -1258,7 +1280,7 @@ printf '{"my":"docs"}\n' > "$E/docs/index.json"
 ED=$(sha "$E/docs/index.json")
 out=$(sh "$BOOT" "$E" --into-existing 2>&1); rc=$?
 [ "$rc" -eq 0 ] && ok "foreign-docs retrofit exits 0" || bad "foreign-docs exit=$rc"
-printf '%s\n' "$out" | grep -q "docs subsystem: skipped" && ok "docs subsystem skipped" || bad "docs subsystem not skipped"
+printf '%s\n' "$out" | grep -q "docs: skipped" && ok "docs seeding skipped" || bad "docs seeding not skipped"
 [ "$(sha "$E/docs/index.json")" = "$ED" ] && ok "their docs/index.json untouched" || bad "their docs/index.json changed"
 [ -z "$(find "$E/docs" -name 'v0001_bootstrap.md')" ] && ok "no workspace doc files scattered" || bad "workspace doc files scattered into their docs/"
 [ ! -d "$E/docs/current" ] && ok "no docs/current scaffolded" || bad "docs/current scaffolded"
@@ -1278,14 +1300,18 @@ echo "== Test 5: fresh-install regression (the at-root path, behind --at-root si
 newtmp F
 out=$(sh "$BOOT" "$F" --at-root --name "Fresh" --summary "fresh" 2>&1); rc=$?
 [ "$rc" -eq 0 ] && ok "fresh install exits 0" || bad "fresh install exit=$rc"
-( cd "$F" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) && ok "fresh workspace validates" || bad "fresh workspace failed validate"
+( cd "$F" && python3 scripts/workflow.py check --no-rebuild >/dev/null 2>&1 ) && ok "fresh workspace validates" || bad "fresh workspace failed validate"
 if python3 - "$F/.claude/settings.json" <<'PY'
 import json, sys
 h = json.load(open(sys.argv[1]))["hooks"]
-resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-resume || true'
+resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 adapters/claude_code/adapter.py compact-resume || true'
 assert h == {"SessionStart": [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}]}, h
 PY
-then ok "a fresh at-root install ships only the resume hook (SessionStart compact -> compact-resume, timeout 15) and no PreCompact (v61: compaction is Claude Code's own)"; else bad "fresh install settings.json hooks wrong"; fi
+then ok "a fresh at-root install ships only the resume hook (SessionStart compact -> the adapter's compact-resume, timeout 15) and no PreCompact (v61: compaction is Claude Code's own)"; else bad "fresh install settings.json hooks wrong"; fi
+python3 -c 'import json,sys; a=json.load(open(sys.argv[1]))["permissions"]["allow"]; assert "Bash(python3 adapters/claude_code/adapter.py:*)" in a and "Bash(python3 scripts/workflow.py:*)" in a, a' "$F/.claude/settings.json" \
+  && [ -x "$F/adapters/claude_code/adapter.py" ] && [ ! -e "$F/adapters/claude_code/executors.toml" ] && [ ! -e "$F/scripts/wf_adapter.py" ] \
+  && ok "a fresh at-root install ships the adapter folder (adapter.py only; the executors.toml seed sits at the root) and allows its command" \
+  || bad "a fresh at-root install's adapter folder or its allow rule is wrong"
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 500000' "$F/.claude/settings.json" \
   && ok "a fresh at-root install ships autoCompactWindow=500000 in project settings" || bad "fresh install settings.json lacks autoCompactWindow=500000"
 # lighter-rules: the agent's browser runs with no prompt -- the CLI and its self-install are allowed.
@@ -1311,7 +1337,7 @@ then ok "release version agrees across installer, top changelog heading, and fre
 # backlog.md's Pointer ends with the installed version; a missing marker reads `unknown`, never an error.
 mv_ver=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["workspace_version"])' "$F/works/.workspace-version.json" 2>/dev/null)
 newtmp VW; cp -R "$F" "$VW/ws"; rm -f "$VW/ws/works/.workspace-version.json"
-vout=$( cd "$VW/ws" && python3 scripts/workflow.py rebuild 2>&1 ); vrc=$?
+vout=$( cd "$VW/ws" && python3 scripts/workflow.py check 2>&1 ); vrc=$?
 grep -qxF -e "- Workspace version: \`v$mv_ver\`" "$F/works/backlog.md" && [ "$vrc" -eq 0 ] \
   && grep -qxF -e '- Workspace version: `unknown`' "$VW/ws/works/backlog.md" \
   && ok "backlog.md shows the marker's version (v$mv_ver), and \`unknown\` once the marker is gone" \
@@ -1333,8 +1359,8 @@ then ok "every changelog release section carries a Migration notes line"; else b
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
 [ -f "$F/.claude/skills/read-code/SKILL.md" ] && [ -f "$F/.claude/agents/code-reader.md" ] && grep -q '`code-reader`' "$F/CLAUDE.md" \
   && ok "fresh install ships the read-code skill and the code-reader agent, and its contract points at the code-reader" || bad "fresh install missing the read-code skill, the code-reader agent or the contract's pointer to it"
-[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "21" ] \
-  && ok "fresh install has the 21 Claude skills" || bad "fresh skill inventory incomplete"
+[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "18" ] \
+  && ok "fresh install has the 18 Claude skills" || bad "fresh skill inventory incomplete"
 skill_tree_ok "$F/.claude/skills" exact \
   && ok "fresh install ships every skill as its whole directory: each core's reference files, none orphaned" || bad "fresh install skill directories incomplete (core + reference/)"
 [ ! -f "$F/AGENTS.md" ] && [ ! -d "$F/.agents" ] && [ ! -d "$F/.codex" ] \
@@ -1425,30 +1451,29 @@ D="$F/.claude/agents/design-drafter.md"; C="$F/.claude/agents/design-critic.md"
 [ -f "$F/.github/workflows/workspace-ci.yml" ] && ok "fresh install seeds the CI workflow" || bad "fresh install missing .github/workflows/workspace-ci.yml"
 grep -q '^works/events\.jsonl merge=union$' "$F/.gitattributes" && ok "fresh install seeds .gitattributes with the union rule" || bad "fresh install missing the .gitattributes union rule"
 [ ! -f "$F/.env.example" ] && [ ! -f "$F/executors.toml.example" ] && ok "legacy .env.example / executors.toml.example retired (absent on fresh install)" || bad "a legacy tier-config example should be retired but is present"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && ok "sync-agents --check: seeded route config matches live agents" || bad "sync-agents --check failed on a fresh install"
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check >/dev/null 2>&1 ) && ok "sync-agents --check: seeded route config matches live agents" || bad "sync-agents --check failed on a fresh install"
 # v80: the seed executors.toml ships verbatim with every row commented out at its default (the cheap-route
 # block and its derived seed are gone), so a fresh install runs the engine table; v83 retired the cheap row.
-diff -q "$F/executors.toml" "$SRC/executors.toml" >/dev/null && ! grep -q '^\[claude\.' "$F/executors.toml" \
+diff -q "$F/executors.toml" "$SRC/adapters/claude_code/executors.toml" >/dev/null && ! grep -q '^\[claude\.' "$F/executors.toml" \
   && grep -qx '# \[claude\.explore\]' "$F/executors.toml" && grep -qx '# effort = "medium"' "$F/executors.toml" && ! grep -q 'claude\.cheap\]$' "$F/executors.toml" \
   && ok "the fresh install's executors.toml is the source verbatim, every row commented out at its default" || bad "the seeded executors.toml is not the verbatim all-commented source"
-seed_er=$(cd "$F" && python3 scripts/workflow.py executor-route 2>&1)
+seed_er=$(cd "$F" && python3 adapters/claude_code/adapter.py route 2>&1)
 printf '%s\n' "$seed_er" | grep -qE '^mid +slice-executor +opus +medium +default$' && ! printf '%s\n' "$seed_er" | grep -q '^cheap ' \
   && ! printf '%s\n' "$seed_er" | grep -q '^override=' \
   && ok "a fresh install has no cheap row (v83) and its mid row is opus@medium, with no override= line" || bad "a fresh install's route table or override lines wrong: $seed_er"
 # v32 operator acceptance gate, probed once against a real engine (throwaway workspace).
-( cd "$F" && python3 scripts/workflow.py new-phase --phase P1 --name "Gate probe" --objective "probe the gate" >/dev/null 2>&1 ) \
-  && grep -q '"acceptance"' "$F/works/phases/active/P1/phase.json" && ok "new-phase stamps the acceptance gate block" || bad "new-phase did not stamp the acceptance block"
-( cd "$F" && python3 scripts/workflow.py review-phase P1 --verdict pass 2>&1 | grep -q 'accept-gate P1 --require' ) \
-  && ok "review-phase --verdict pass refuses an undeclared acceptance gate" || bad "an undeclared acceptance gate did not refuse the pass"
-( cd "$F" && python3 scripts/workflow.py accept-gate P1 --waive >/dev/null 2>&1 ) && bad "accept-gate --waive should require --note" || ok "accept-gate --waive without --note is rejected"
-# v34 closed --kind set, probed against the same throwaway engine. Creation is a hard
-# error; validate() only WARNS, so the warning is asserted on stdout, never on the exit
-# code -- that asymmetry is what lets an adopting repo's invented kinds survive an update.
-( cd "$F" && python3 scripts/workflow.py new-slice --phase P1 --slice P1.S9 --name "typo" --kind cowork 2>&1 | grep -q "invalid slice kind: cowork" ) \
-  && [ ! -d "$F/works/phases/active/P1/slices/P1.S9" ] \
-  && ok "new-slice rejects an unknown --kind and creates nothing" || bad "new-slice accepted an unknown --kind"
-( cd "$F" && python3 scripts/workflow.py new-slice --phase P1 --slice P1.S9 --name "typo" --kind cowork 2>&1 | grep -q "co-work" ) \
-  && ok "the unknown-kind error names the closed set" || bad "the unknown-kind error does not name the closed set"
+( cd "$F" && python3 scripts/workflow.py phase new --phase P1 --name "Gate probe" --objective "probe the gate" >/dev/null 2>&1 ) \
+  && grep -q '"acceptance"' "$F/works/phases/active/P1/phase.json" && ok "phase new stamps the acceptance gate block" || bad "phase new did not stamp the acceptance block"
+( cd "$F" && python3 scripts/workflow.py review P1 --verdict pass 2>&1 | grep -q 'gate P1 require' ) \
+  && ok "review --verdict pass refuses an undeclared acceptance gate" || bad "an undeclared acceptance gate did not refuse the pass"
+( cd "$F" && python3 scripts/workflow.py gate P1 waive >/dev/null 2>&1 ) && bad "gate waive should require --note" || ok "gate waive without --note is rejected"
+# The v34 kind set, probed against the same throwaway engine. slice new makes an unknown kind with one
+# advice: line naming the set (exit 0); validate() only WARNS of it; promote-deferred still refuses one.
+uk=$( cd "$F" && python3 scripts/workflow.py slice new --phase P1 --slice P1.S9 --name "typo" --kind cowork 2>&1 ); uk_rc=$?
+[ "$uk_rc" -eq 0 ] && [ -d "$F/works/phases/active/P1/slices/P1.S9" ] \
+  && [ "$(printf '%s\n' "$uk" | grep -c '^advice: kind cowork is not one of co-work, decomposition, docs, fix, implementation, qa, research, review; it routes on the high row$')" -eq 1 ] \
+  && ok "slice new makes an unknown --kind with one advice: line naming the set, research included (exit 0)" || bad "slice new on an unknown --kind (rc $uk_rc) -- $uk"
+rm -r "$F/works/phases/active/P1/slices/P1.S9" && ( cd "$F" && python3 scripts/workflow.py check >/dev/null 2>&1 )
 # promote-deferred --create-phase creates the phase BEFORE the slice, so the kind must be
 # rejected before that happens -- otherwise a typo leaves a half-created phase behind.
 ( cd "$F" && python3 scripts/workflow.py defer-job --id D1 --title "kind probe" --reason r --trigger t --source manual >/dev/null 2>&1 ) || bad "defer-job probe failed"
@@ -1456,281 +1481,57 @@ printf '%s\n' "$seed_er" | grep -qE '^mid +slice-executor +opus +medium +default
   && [ ! -d "$F/works/phases/active/P8" ] \
   && ok "promote-deferred rejects an unknown --kind before --create-phase creates the phase" \
   || bad "promote-deferred left a half-created phase behind on an unknown --kind"
-( cd "$F" && python3 scripts/workflow.py new-slice --phase P1 --slice P1.S1 --name "design round" --kind co-work >/dev/null 2>&1 ) \
-  && ok "new-slice accepts --kind co-work (absent from history, present in the set)" || bad "new-slice rejected --kind co-work"
-# v36 research kind: in the closed set, named by the rejection message, and creatable.
-( cd "$F" && python3 scripts/workflow.py new-slice --phase P1 --slice P1.S9 --name "typo" --kind cowork 2>&1 | grep -q "'research'" ) \
-  && ok "the unknown-kind error names research in the closed set" || bad "the closed set does not contain research"
-( cd "$F" && python3 scripts/workflow.py new-slice --phase P1 --slice P1.S2 --name "learn first" --kind research --risk high >/dev/null 2>&1 ) \
+( cd "$F" && python3 scripts/workflow.py slice new --phase P1 --slice P1.S1 --name "design round" --kind co-work >/dev/null 2>&1 ) \
+  && ok "slice new accepts --kind co-work (absent from history, present in the set)" || bad "slice new rejected --kind co-work"
+# v36 research kind: in the set (the advice above names it) and creatable.
+( cd "$F" && python3 scripts/workflow.py slice new --phase P1 --slice P1.S2 --name "learn first" --kind research --risk high >/dev/null 2>&1 ) \
   && grep -q '"kind": "research"' "$F/works/phases/active/P1/slices/P1.S2/slice.json" \
-  && ok "new-slice accepts --kind research (v36, findings-only, always the high tier)" || bad "new-slice rejected --kind research"
-# v38 deferred doc consolidation, probed once against the same throwaway engine: a passing
-# review records the debt instead of paying it, and archiving is held until it is paid.
-( cd "$F" && python3 scripts/workflow.py new-phase --phase P2 --name "Docs debt probe" --objective "probe deferral" >/dev/null 2>&1 ) || bad "v38 probe: new-phase P2 failed"
-python3 - "$F/works/phases/active/P2/phase.md" <<'PY2'
-import sys
-from pathlib import Path
-p = Path(sys.argv[1])
-p.write_text(p.read_text().replace("## Operator Questions", "- workflow.md: a durable change (P2.S1)\n- architecture.md: a durable change to architecture (P2.S2)\n\n## Operator Questions", 1))
+  && ok "slice new accepts --kind research (v36, findings-only, always the high tier)" || bad "slice new rejected --kind research"
+# Doc consolidation is retired: a passing review stamps no debt, and a phase.json still carrying an older
+# install's `consolidation: "pending"` is ignored -- validate passes,
+# next names no debt, and the phase archives like any other.
+( cd "$F" && python3 scripts/workflow.py phase new --phase P2 --name "Old debt probe" --objective "probe" >/dev/null 2>&1 \
+  && python3 scripts/workflow.py gate P2 waive --note "probe" >/dev/null 2>&1 \
+  && python3 scripts/workflow.py slice status P2.DECOMP done >/dev/null 2>&1 \
+  && python3 scripts/workflow.py slice status P2.REVIEW done >/dev/null 2>&1 \
+  && python3 scripts/workflow.py review P2 --verdict pass >/dev/null 2>&1 ) || bad "old-debt probe: could not pass P2"
+! grep -q '"consolidation"' "$F/works/phases/active/P2/phase.json" \
+  && ok "a passing review stamps no doc-consolidation debt" || bad "the passing review stamped a consolidation field"
+python3 - "$F/works/phases/active/P2/phase.json" <<'PY2'
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p)); d["consolidation"] = "pending"; d["consolidates"] = ["P1"]
+json.dump(d, open(p, "w"), indent=2)
 PY2
-( cd "$F" \
-  && python3 scripts/workflow.py accept-gate P2 --waive --note "probe" >/dev/null 2>&1 \
-  && python3 scripts/workflow.py set-slice-status P2.DECOMP done >/dev/null 2>&1 \
-  && python3 scripts/workflow.py set-slice-status P2.REVIEW done >/dev/null 2>&1 \
-  && python3 scripts/workflow.py review-phase P2 --verdict pass 2>&1 | grep -q "docs-consolidated P2" ) \
-  && ok "a passing review defers doc consolidation and names docs-consolidated" || bad "the passing review did not defer doc consolidation"
-grep -q '"consolidation": "pending"' "$F/works/phases/active/P2/phase.json" \
-  && ok "the passing review stamps the phase's consolidation debt" || bad "no consolidation debt stamped"
-# ...and the debt is visible, advisory-only: one greppable line in `next`, a warning in
-# `validate` that still exits 0 (operator-paced staleness must never fail CI or block the loop).
-( cd "$F" && python3 scripts/workflow.py next 2>&1 | grep -q "consolidation_owed=P2" ) \
-  && ok "next names the phases owing doc consolidation" || bad "next did not surface the doc debt"
-debt_out=$( cd "$F" && python3 scripts/workflow.py validate 2>&1 ); debt_rc=$?
-printf '%s\n' "$debt_out" | grep -q "warning: consolidation_owed=P2" && [ "$debt_rc" -eq 0 ] \
-  && ok "validate warns about the doc debt and still exits 0" || bad "validate did not warn (or errored) on the doc debt"
-# ...and `docs-debt` is the docs phase's worklist: the owing phase, its notes, the docs those
-# notes name and the paying command -- read-only, so the tree must be byte-identical afterwards.
-debt_list=$( cd "$F" && python3 scripts/workflow.py docs-debt 2>&1 )
-printf '%s\n' "$debt_list" | grep -q "docs_debt=P2" \
-  && printf '%s\n' "$debt_list" | grep -q "a durable change (P2.S1)" \
-  && printf '%s\n' "$debt_list" | grep -q "docs-consolidated P2" \
-  && ok "docs-debt lists the owing phase, its '## Doc impact' notes and the paying command" \
-  || bad "docs-debt did not print the owing phase's worklist"
-before_debt=$( cd "$F" && find works docs -type f | sort | xargs cat | sha_stdin )
-( cd "$F" && python3 scripts/workflow.py docs-debt >/dev/null 2>&1 )
-after_debt=$( cd "$F" && find works docs -type f | sort | xargs cat | sha_stdin )
-[ -n "$before_debt" ] && [ "$before_debt" = "$after_debt" ] \
-  && ok "docs-debt writes nothing (the workspace tree is unchanged after it runs)" \
-  || bad "docs-debt modified the workspace"
-# v54 one-shot rotate-backlog (P33; v51 made it propose the docs phase): the doc debt is checked FIRST,
-# and the first stdout line is the decision, rotate=<branch>. v72 (P43): while debt stands only the
-# cleanly archivable phases are archived (archived=), parked work is gone around (parked=), running
-# work stops the run; v78: an unstarted docs phase is replaced by one proposal covering all the debt.
-# Probed on COPIES of the fixture while P2 still owes (the probe adds phases and archives, and the
-# original's later assertions -- docs_debt=none, the STALE clear, archiving -- must stay untouched).
-# rotate=refused (a parallel-stream checkout) needs a git branch stamped on a phase; P33.S1's
-# result.md walks it on a scratch copy instead.
+old_next=$( cd "$F" && python3 scripts/workflow.py next 2>&1 ); old_val=$( cd "$F" && python3 scripts/workflow.py check --no-rebuild 2>&1 ); old_rc=$?
+[ "$old_rc" -eq 0 ] && ! printf '%s\n%s\n' "$old_next" "$old_val" | grep -q "consolidation\|stale_docs\|oversized_doc_sections" \
+  && ok "an older install's consolidation fields are ignored: validate passes and neither next nor validate names a debt" \
+  || bad "the retired consolidation fields were read (rc=$old_rc): $old_val"
+# phase rotate (v54; the docs-phase branches retired with the debt): rotate=archive is its one result off a
+# parallel stream, archiving every cleanly archivable phase and leaving the open ones. Probed on a copy.
 newtmp ROT; cp -R "$F/." "$ROT/"
-rot_p1_order=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['order'])" "$ROT/works/phases/active/P1/phase.json")
-rot_out=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
-rot_pid=$(printf '%s\n' "$rot_out" | sed -n 's/^phase=//p')
-rot_create=$(printf '%s\n' "$rot_out" | sed -n 's/^create: //p')
-rot_jump=$(printf '%s' "$rot_create" | sed -n 's/.* --order \([^ ]*\) --consolidates .*/\1/p')
-[ "$(printf '%s\n' "$rot_out" | head -1)" = "rotate=create" ] \
-  && printf '%s\n' "$rot_out" | grep -q "^docs_phase_proposal=P2$" \
-  && printf '%s' "$rot_create" | grep -q -- "new-phase --phase $rot_pid .*--consolidates P2$" \
-  && [ -d "$ROT/works/phases/active/P2" ] && [ ! -d "$ROT/works/phases/active/$rot_pid" ] \
-  && ok "rotate-backlog checks the debt first: rotate=create names the create command, creates and archives nothing (P2 still active)" \
-  || bad "rotate-backlog did not open with rotate=create for the debt-only phase (or created/archived something)"
-[ -n "$rot_jump" ] && python3 -c "import sys; sys.exit(0 if float(sys.argv[1]) < float(sys.argv[2]) else 1)" "$rot_jump" "$rot_p1_order" \
-  && ok "the create: line carries the queue-jump --order ahead of the planned phase ($rot_jump < $rot_p1_order)" \
-  || bad "the create: line carries no --order ahead of the planned phase (got '$rot_jump', planned at $rot_p1_order)"
-( cd "$ROT" && eval "$rot_create" >/dev/null 2>&1 ) && grep -q '"consolidates": \[' "$ROT/works/phases/active/$rot_pid/phase.json" \
-  && ( cd "$ROT" && python3 scripts/workflow.py next 2>&1 | grep -q "^current_phase=$rot_pid$" ) \
-  && ok "the create: line runs as is and the docs phase jumps the queue (next points at $rot_pid)" \
-  || bad "the create: line failed, or the docs phase does not sort ahead of the planned phase"
-rot_again=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
-[ "$(printf '%s\n' "$rot_again" | head -1)" = "rotate=resume docs_phase=$rot_pid" ] \
-  && printf '%s\n' "$rot_again" | grep -q "^docs_phase_covered=$rot_pid (pays P2)$" \
-  && ! printf '%s\n' "$rot_again" | grep -q "^docs_phase_proposal=" \
-  && ! printf '%s\n' "$rot_again" | grep -q "^docs_phase_order=" \
-  && ok "re-run with a live docs phase: rotate=resume reports it covering P2, proposes no second docs phase, rewrites no order" \
-  || bad "rotate-backlog did not resume the live docs phase (or proposed a duplicate, or rewrote an order already first)"
-rot_before=$(ls "$ROT/works/phases/active" | wc -l | tr -d ' ')
-( cd "$ROT" && python3 scripts/workflow.py new-phase --phase P9 --name "Wrong docs phase" --objective "pays a phase that owes nothing" --consolidates P1 2>&1 | grep -q "owes no doc consolidation" ) \
-  && [ "$(ls "$ROT/works/phases/active" | wc -l | tr -d ' ')" = "$rot_before" ] && [ ! -d "$ROT/works/phases/active/P9" ] \
-  && ok "new-phase --consolidates refuses a phase that owes nothing and writes nothing" \
-  || bad "new-phase --consolidates accepted (or half-created) a phase that owes no consolidation"
-( cd "$ROT" && python3 scripts/workflow.py rotate-backlog --archive-only 2>&1 | grep -qE "docs_phase|^rotate=" ) \
-  && bad "rotate-backlog --archive-only printed a rotate= or docs-phase line" \
-  || ok "rotate-backlog --archive-only prints no rotate= line and no docs-phase line"
-# Replacement and the early sweep, on a copy while $rot_pid is live and unstarted: P5
-# owes docs (uncovered), P6 is clean and done, and P1's acceptance gate is open with its REVIEW slice
-# in_progress -- parked (accept-gate --open never moves that slice), never running.
-newtmp ROTW; cp -R "$ROT/." "$ROTW/"
-( cd "$ROTW" && for rp in P5 P6; do python3 scripts/workflow.py new-phase --phase "$rp" --name "Rotate probe $rp" --objective "probe" >/dev/null 2>&1 || exit 1; done \
-  && python3 -c 'import sys; from pathlib import Path; p = Path(sys.argv[1]); p.write_text(p.read_text().replace("## Operator Questions", "- operations.md: a durable change (P5.S1)\n\n## Operator Questions", 1))' works/phases/active/P5/phase.md \
-  && for rp in P5 P6; do python3 scripts/workflow.py accept-gate "$rp" --waive --note "probe" >/dev/null 2>&1 && python3 scripts/workflow.py set-slice-status "$rp.DECOMP" done >/dev/null 2>&1 \
-       && python3 scripts/workflow.py set-slice-status "$rp.REVIEW" done >/dev/null 2>&1 && python3 scripts/workflow.py review-phase "$rp" --verdict pass >/dev/null 2>&1 || exit 1; done \
-  && python3 scripts/workflow.py accept-gate P1 --require >/dev/null 2>&1 && python3 scripts/workflow.py set-slice-status P1.REVIEW in_progress >/dev/null 2>&1 \
-  && python3 scripts/workflow.py accept-gate P1 --open --walkthrough "walk it" >/dev/null 2>&1 ) || bad "rotate probe: could not build the replacement copy"
-rotw_out=$( cd "$ROTW" && python3 scripts/workflow.py rotate-backlog 2>&1 )
-[ "$(printf '%s\n' "$rotw_out" | head -1)" = "rotate=replace replaced=$rot_pid" ] && printf '%s\n' "$rotw_out" | grep -q "^archived=P6$" \
-  && printf '%s\n' "$rotw_out" | grep -q "^parked=P1 status=pending stop_kind=acceptance-gate$" \
-  && [ ! -d "$ROTW/works/phases/active/P6" ] && [ -d "$ROTW/works/phases/active/P2" ] && [ -d "$ROTW/works/phases/active/P5" ] \
-  && ok "the early sweep archives a clean done phase while P2's debt stands (archived=P6), and a gate-open phase with its REVIEW in_progress is parked, not running" \
-  || bad "rotate-backlog did not archive the clean phase early (or archived a debtor, or stopped for a gate-open REVIEW): $rotw_out"
-rotw_pid=$(printf '%s\n' "$rotw_out" | sed -n 's/^phase=//p'); rotw_create=$(printf '%s\n' "$rotw_out" | sed -n 's/^create: //p')
-printf '%s\n' "$rotw_out" | grep -q "^docs_phase_replaced=$rot_pid (paid P2; " && printf '%s\n' "$rotw_out" | grep -q "^docs_phase_proposal=P2, P5$" \
-  && [ ! -d "$ROTW/works/phases/active/$rot_pid" ] && grep -q '"type": "docs_phase_replaced"' "$ROTW/works/events.jsonl" \
-  && ( cd "$ROTW" && eval "$rotw_create" >/dev/null 2>&1 ) && grep -q '"consolidates": \[' "$ROTW/works/phases/active/$rotw_pid/phase.json" \
-  && ok "an unstarted docs phase is replaced: its folder removed (logged), one proposal covering P2 and the new P5 debt, its create: line run as is (v78)" \
-  || bad "rotate-backlog did not replace the unstarted docs phase with one covering P2 and P5: $rotw_out"
-rotw_before=$( cd "$ROTW" && find works docs -type f | sort | xargs cat | sha_stdin )
-rotw_again=$( cd "$ROTW" && python3 scripts/workflow.py rotate-backlog 2>&1 )
-rotw_after=$( cd "$ROTW" && find works docs -type f | sort | xargs cat | sha_stdin )
-( cd "$ROTW" && python3 scripts/workflow.py new-phase --phase P7 --name "Rotate probe P7" --objective probe >/dev/null 2>&1 \
-  && python3 -c 'import sys; from pathlib import Path; p = Path(sys.argv[1]); p.write_text(p.read_text().replace("## Operator Questions", "- qa.md: a durable change (P7.S1)\n\n## Operator Questions", 1))' works/phases/active/P7/phase.md \
-  && python3 scripts/workflow.py accept-gate P7 --waive --note probe >/dev/null 2>&1 && python3 scripts/workflow.py set-slice-status P7.DECOMP done >/dev/null 2>&1 \
-  && python3 scripts/workflow.py set-slice-status P7.REVIEW done >/dev/null 2>&1 && python3 scripts/workflow.py review-phase P7 --verdict pass >/dev/null 2>&1 \
-  && python3 scripts/workflow.py set-slice-status "$rotw_pid.DECOMP" done >/dev/null 2>&1 \
-  && python3 scripts/workflow.py new-slice --phase "$rotw_pid" --slice "$rotw_pid.S1" --name ops --kind docs --risk low >/dev/null 2>&1 \
-  && python3 scripts/workflow.py set-slice-status "$rotw_pid.S1" done >/dev/null 2>&1 ) || bad "rotate probe: could not start the docs phase"
-rotw_started=$( cd "$ROTW" && python3 scripts/workflow.py rotate-backlog 2>&1 )
-[ "$(printf '%s\n' "$rotw_again" | head -1)" = "rotate=resume docs_phase=$rotw_pid" ] && [ -n "$rotw_before" ] && [ "$rotw_before" = "$rotw_after" ] \
-  && [ "$(printf '%s\n' "$rotw_started" | head -1)" = "rotate=resume docs_phase=$rotw_pid" ] && printf '%s\n' "$rotw_started" | grep -q "^docs_debt_waiting=P7 " \
-  && [ -d "$ROTW/works/phases/active/$rotw_pid" ] \
-  && ok "with nothing new owed a re-run resumes and writes nothing, and a started docs phase is never replaced: it finishes first while new debt waits" \
-  || bad "rotate-backlog replaced a started docs phase, or a no-debt re-run wrote: $rotw_again / $rotw_started"
-( cd "$ROT" && python3 scripts/workflow.py set-phase-status P1 pending >/dev/null 2>&1 \
-  && python3 scripts/workflow.py set-slice-status P1.S1 in_progress >/dev/null 2>&1 ) || bad "rotate probe: could not put P1 mid-flight"
-rot_mid=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
-[ "$(printf '%s\n' "$rot_mid" | head -1)" = "rotate=stop_midflight midflight=P1.S1:in_progress" ] \
-  && printf '%s\n' "$rot_mid" | grep -q "^parked=P1 status=pending stop_kind=untyped$" \
-  && printf '%s\n' "$rot_mid" | grep -q "^stopped_before=resume docs_phase=$rot_pid$" \
-  && [ -d "$ROT/works/phases/active/P2" ] \
-  && ok "an in_progress slice elsewhere stops the run: rotate=stop_midflight lists only the running slice, its pending phase is a parked= line" \
-  || bad "rotate-backlog did not stop for another phase's running slice (or listed the parked phase as running): $rot_mid"
-( cd "$ROT" && python3 scripts/workflow.py set-slice-status P1.S1 pending --stop-kind decision --on-words "the vendor's reply decides" >/dev/null 2>&1 ) \
-  || bad "rotate probe: could not park P1.S1 under a typed stop"
-rot_park=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
-[ "$(printf '%s\n' "$rot_park" | head -1)" = "rotate=resume docs_phase=$rot_pid" ] \
-  && printf '%s\n' "$rot_park" | grep -q "^parked=P1 status=pending stop_kind=untyped$" \
-  && printf '%s\n' "$rot_park" | grep -q "^parked=P1.S1 status=pending stop_kind=decision$" \
-  && ok "parked work is gone around: a pending phase and a slice pending under a typed stop give rotate=resume and one parked= line each" \
-  || bad "rotate-backlog did not go around parked work: $rot_park"
-# The uncommitted-edits check reads git, so it runs on a git init-ed copy (the ROT copies have no git,
-# where nothing is dirty): a clean tree resumes, an untracked product file beside the parked slice stops.
-newtmp ROTG; cp -R "$ROT/." "$ROTG/"
-( cd "$ROTG" && git init -q . >/dev/null 2>&1 && git add -A >/dev/null 2>&1 \
-  && git -c user.email=smoke@example.invalid -c user.name=smoke commit -qm "rotate baseline" >/dev/null 2>&1 ) || bad "rotate probe: could not git init the dirt copy"
-rotg_clean=$( cd "$ROTG" && python3 scripts/workflow.py rotate-backlog 2>&1 | head -1 )
-mkdir -p "$ROTG/src" && printf 'x = 1\n' > "$ROTG/src/app.py"
-rotg_dirty=$( cd "$ROTG" && python3 scripts/workflow.py rotate-backlog 2>&1 )
-[ "$rotg_clean" = "rotate=resume docs_phase=$rot_pid" ] \
-  && [ "$(printf '%s\n' "$rotg_dirty" | head -1)" = "rotate=stop_uncommitted uncommitted=1" ] \
-  && printf '%s\n' "$rotg_dirty" | grep -qx "  A src/app.py" \
-  && printf '%s\n' "$rotg_dirty" | grep -q "^parked=P1.S1 status=pending stop_kind=decision$" \
-  && printf '%s\n' "$rotg_dirty" | grep -q "^nothing was created, replaced or reordered" \
-  && ok "parked work beside an uncommitted product file stops the run (rotate=stop_uncommitted names the path); a clean tree resumes" \
-  || bad "rotate-backlog did not stop for uncommitted product edits beside parked work (clean: $rotg_clean): $rotg_dirty"
-( cd "$ROT" && python3 scripts/workflow.py set-slice-status P1.S1 todo >/dev/null 2>&1 \
-  && python3 scripts/workflow.py set-phase-status P1 planned >/dev/null 2>&1 \
-  && python3 scripts/workflow.py set-slice-status "$rot_pid.DECOMP" in_progress >/dev/null 2>&1 ) || bad "rotate probe: could not start the docs phase's DECOMP"
-rot_own=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
-[ "$(printf '%s\n' "$rot_own" | head -1)" = "rotate=resume docs_phase=$rot_pid" ] \
-  && ok "the docs phase's own in_progress slice is not mid-flight (rotate=resume)" \
-  || bad "the docs phase's own in_progress slice stopped the run"
-( cd "$ROT" && python3 scripts/workflow.py set-slice-status "$rot_pid.DECOMP" done >/dev/null 2>&1 \
-  && python3 scripts/workflow.py docs-consolidated P2 >/dev/null 2>&1 ) || bad "rotate probe: docs-consolidated P2 failed"
-rot_paid=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
-[ "$(printf '%s\n' "$rot_paid" | head -1)" = "rotate=resume docs_phase=$rot_pid" ] && printf '%s\n' "$rot_paid" | grep -q "^archived=P2$" \
-  && [ ! -d "$ROT/works/phases/active/P2" ] && [ -d "$ROT/works/phases/active/$rot_pid" ] \
-  && ok "a docs phase that has paid its debt but not passed its review still resumes; the paid phase is archived early (archived=P2)" \
-  || bad "a paid docs phase short of its review did not resume (or the paid phase was not archived early): $rot_paid"
-( cd "$ROT" && python3 scripts/workflow.py accept-gate "$rot_pid" --waive --note "docs phase" >/dev/null 2>&1 \
-  && python3 scripts/workflow.py set-slice-status "$rot_pid.REVIEW" done >/dev/null 2>&1 \
-  && python3 scripts/workflow.py review-phase "$rot_pid" --verdict pass >/dev/null 2>&1 ) || bad "rotate probe: could not pass the docs phase's review"
-rot_arch=$( cd "$ROT" && python3 scripts/workflow.py rotate-backlog 2>&1 )
-[ "$(printf '%s\n' "$rot_arch" | head -1)" = "rotate=archive" ] && [ "$(printf '%s\n' "$rot_arch" | tail -1)" = "docs_phase=none" ] \
-  && [ ! -d "$ROT/works/phases/active/P2" ] && [ ! -d "$ROT/works/phases/active/$rot_pid" ] && [ -d "$ROT/works/phases/active/P1" ] \
-  && ok "once the debt is paid and the docs phase is done, rotate=archive archives the docs phase and leaves the open phase" \
-  || bad "rotate-backlog did not archive the done docs phase at the end"
-# A docs phase created before the queue jump (no --order: the default max + 1, behind planned work)
-# is moved ahead on resume: one order write, printed and logged, then idempotent.
-newtmp ROT2; cp -R "$F/." "$ROT2/"
-( cd "$ROT2" && python3 scripts/workflow.py new-phase --phase P7 --name "Docs phase behind planned work" --objective "pays P2" --consolidates P2 >/dev/null 2>&1 ) || bad "rotate probe: new-phase --consolidates P2 failed"
-rot2_old=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['order'])" "$ROT2/works/phases/active/P7/phase.json")
-rot2_out=$( cd "$ROT2" && python3 scripts/workflow.py rotate-backlog 2>&1 )
-[ "$(printf '%s\n' "$rot2_out" | head -1)" = "rotate=resume docs_phase=P7" ] \
-  && printf '%s\n' "$rot2_out" | grep -q "^docs_phase_order=P7 $rot2_old -> 0$" \
-  && grep -q '"order": 0,' "$ROT2/works/phases/active/P7/phase.json" \
-  && grep -q '"type": "phase_reordered", "phase": "P7"' "$ROT2/works/events.jsonl" \
-  && ( cd "$ROT2" && python3 scripts/workflow.py next 2>&1 | grep -q "^current_phase=P7$" ) \
-  && ok "resume re-asserts the queue jump on a docs phase behind planned work (order $rot2_old -> 0, logged, next points at it)" \
-  || bad "resume did not move the docs phase ahead of the planned phase"
-( cd "$ROT2" && python3 scripts/workflow.py rotate-backlog 2>&1 | grep -q "^docs_phase_order=" ) \
-  && bad "the queue-jump re-assert rewrote an order that already sorts first" \
-  || ok "the queue-jump re-assert is idempotent (no second order write)"
-# v39 doc staleness (D14): the `docs` listing carries every doc's last-updated marker, and a doc
-# named by an unconsolidated '## Doc impact' note is flagged STALE there and named in `validate`.
-# Advisory only -- operator-paced consolidation is the design, so staleness must be loud, not fatal.
-docs_out=$( cd "$F" && python3 scripts/workflow.py docs 2>&1 )
-printf '%s\n' "$docs_out" | grep -qE "^  updated=[0-9]{4}-[0-9]{2}-[0-9]{2} source=[^ ]+ commit=" \
-  && ok "docs prints a last-updated marker (date, source, commit) under each doc" \
-  || bad "docs did not print the per-doc last-updated marker"
-printf '%s\n' "$docs_out" | grep -q "STALE: 1 unconsolidated '## Doc impact' note(s) from P2" \
-  && printf '%s\n' "$docs_out" | grep -q "stale_docs=architecture" \
-  && ok "docs flags the doc an owed note names as STALE" || bad "docs did not flag the stale doc"
-( cd "$F" && python3 scripts/workflow.py validate 2>&1 | grep -q "warning: stale_docs=architecture" ) \
-  && ok "validate names the stale docs (warning, exit 0)" || bad "validate did not name the stale docs"
-( cd "$F" && python3 scripts/workflow.py archive-phase P2 2>&1 | grep -q "docs not consolidated" ) \
-  && ok "archiving is blocked while the doc debt stands" || bad "a phase owing docs archived anyway"
-( cd "$F" && python3 scripts/workflow.py docs-consolidated P2 >/dev/null 2>&1 && python3 scripts/workflow.py archive-phase P2 >/dev/null 2>&1 ) \
-  && [ ! -d "$F/works/phases/active/P2" ] \
-  && ok "docs-consolidated pays the debt and unblocks archiving" || bad "docs-consolidated did not unblock archiving"
-( cd "$F" && python3 scripts/workflow.py docs-debt 2>&1 | grep -q "docs_debt=none" ) \
-  && ok "docs-debt is silent once nothing owes consolidation" || bad "docs-debt still reports debt on a clean tree"
-( cd "$F" && python3 scripts/workflow.py docs 2>&1 | grep -q "STALE" ) \
-  && bad "docs still flags a stale doc after the debt was paid" \
-  || ok "paying the consolidation debt clears the STALE flag"
-# v38 oversized doc sections: advisory only, at both sites. A fresh install's seed docs are tiny,
-# so the clean tree must be silent; a version carrying a >10 KB H2 section must be named (doc,
-# heading, size) by `validate` WITHOUT changing its exit code, and by `doc-new-version` itself --
-# the only place a split can actually land.
-( cd "$F" && python3 scripts/workflow.py validate 2>&1 | grep -q "oversized_doc_sections=" ) \
-  && bad "validate flagged an oversized doc section on a clean fresh install" \
-  || ok "validate is silent about doc sections on a clean fresh install"
-big_path=$( cd "$F" && python3 scripts/workflow.py doc-new-version --doc architecture --summary "oversized probe" --source manual 2>&1 | sed -n 's/^edit_path=//p' )
-python3 - "$F/$big_path" <<'PY2'
-import sys
-from pathlib import Path
-p = Path(sys.argv[1])
-p.write_text(p.read_text() + "\n## Oversized probe section\n\n" + ("filler line to push this section past the threshold\n" * 240))
-PY2
-( cd "$F" && python3 scripts/workflow.py rebuild-docs >/dev/null 2>&1 ) || bad "rebuild-docs failed after the oversized probe"
-big_out=$( cd "$F" && python3 scripts/workflow.py validate 2>&1 ); big_rc=$?
-printf '%s\n' "$big_out" | grep -q "warning: oversized_doc_sections=1" \
-  && printf '%s\n' "$big_out" | grep -q "architecture.md '## Oversized probe section'" \
-  && [ "$big_rc" -eq 0 ] \
-  && ok "validate names an oversized doc section (doc, heading, size) and still exits 0" \
-  || bad "validate did not warn exit-code-neutrally about an oversized doc section (rc=$big_rc)"
-( cd "$F" && python3 scripts/workflow.py doc-new-version --doc architecture --summary "split probe" --source manual 2>&1 | grep -q "note: oversized_doc_sections=1" ) \
-  && ok "doc-new-version repeats the oversized-section note where the split can land" \
-  || bad "doc-new-version did not flag the oversized section it is about to hand over for editing"
-# v79: the doc set is five; a retired doc is refused (naming its successor) and nothing is written.
-ret_out=$( cd "$F" && python3 scripts/workflow.py doc-new-version --doc backend --summary "retired probe" --source manual 2>&1 ); ret_rc=$?
-[ "$ret_rc" -ne 0 ] && printf '%s\n' "$ret_out" | grep -q "backend is a retired doc (v79)" && printf '%s\n' "$ret_out" | grep -q -- "--doc architecture" \
-  && [ ! -e "$F/docs/versions/backend" ] && [ "$(ls "$F/docs/current" | wc -l | tr -d ' ')" = "5" ] \
-  && ok "a fresh install seeds five docs, and doc-new-version refuses a retired doc, naming its successor, writing nothing (v79)" \
-  || bad "retired doc not refused, or the fresh doc set is not five (rc=$ret_rc) -- $ret_out"
-# v39 last-updated marker at write time: the HEAD sha lands in the version frontmatter (which
-# rebuild-docs copies verbatim into docs/current) AND in the index entry. Needs a repo with a
-# commit, so the fixture becomes one here; the later dashboard test re-inits it harmlessly.
+rot_out=$( cd "$ROT" && python3 scripts/workflow.py phase rotate 2>&1 ); rot_rc=$?
+[ "$rot_rc" -eq 0 ] && [ "$(printf '%s\n' "$rot_out" | head -1)" = "rotate=archive" ] && printf '%s\n' "$rot_out" | grep -q "^rotated 1 done phase(s) to archived:" \
+  && [ ! -d "$ROT/works/phases/active/P2" ] && [ -d "$ROT/works/phases/active/P1" ] \
+  && ( cd "$ROT" && python3 scripts/workflow.py check --no-rebuild >/dev/null 2>&1 ) \
+  && ok "phase rotate prints rotate=archive and archives the done phase (its old consolidation stamp ignored), leaving the open one" \
+  || bad "phase rotate did not archive the done phase with rotate=archive (rc=$rot_rc): $rot_out"
+( cd "$ROT" && python3 scripts/workflow.py phase rotate --archive-only 2>&1 | grep -q "^rotate=" ) \
+  && bad "phase rotate --archive-only printed a rotate= line" \
+  || ok "phase rotate --archive-only prints no rotate= line"
+( cd "$F" && python3 scripts/workflow.py phase archive P2 >/dev/null 2>&1 ) && [ ! -d "$F/works/phases/active/P2" ] \
+  && ok "phase archive archives a phase carrying an older install's consolidation stamp" || bad "phase archive held a phase on a retired consolidation stamp"
+# The fixture becomes a git repo here; the later dashboard test re-inits it harmlessly.
 ( cd "$F" && git init -q . >/dev/null 2>&1 && git add -A >/dev/null 2>&1 \
-    && git -c user.email=smoke@example.invalid -c user.name=smoke commit -qm "marker baseline" >/dev/null 2>&1 ) \
-  || bad "v39 marker probe: could not make the fixture a git repo"
-head_sha=$( cd "$F" && git rev-parse HEAD 2>/dev/null )
-marker_path=$( cd "$F" && python3 scripts/workflow.py doc-new-version --doc decisions --summary "marker probe" --source manual 2>&1 | sed -n 's/^edit_path=//p' )
-[ -n "$head_sha" ] && grep -q "^commit: $head_sha\$" "$F/$marker_path" \
-  && grep -q "\"commit\": \"$head_sha\"" "$F/docs/index.json" \
-  && grep -q "^commit: $head_sha\$" "$F/docs/current/decisions.md" \
-  && ok "doc-new-version records the HEAD sha in the frontmatter, docs/current and the index entry" \
-  || bad "doc-new-version did not record the commit sha"
-# ...and where git cannot answer at all (no git on PATH), the version is still written: the sha is
-# recorded as unknown/null and nothing raises.
-nogit_py=$( command -v python3 )
-nogit_path=$( cd "$F" && PATH="/var/empty" "$nogit_py" scripts/workflow.py doc-new-version --doc decisions --summary "no git probe" --source manual 2>&1 | sed -n 's/^edit_path=//p' )
-[ -n "$nogit_path" ] && grep -q "^commit: unknown\$" "$F/$nogit_path" && grep -q "\"commit\": null" "$F/docs/index.json" \
-  && ok "doc-new-version survives a checkout without git (commit unknown/null, never fatal)" \
-  || bad "doc-new-version broke or recorded a sha where git was unavailable"
+    && git -c user.email=smoke@example.invalid -c user.name=smoke commit -qm "fixture baseline" >/dev/null 2>&1 ) \
+  || bad "could not make the fixture a git repo"
 python3 - "$F/works/phases/active/P1/slices/P1.S1/slice.json" <<'PY2'
 import json, sys
 p = sys.argv[1]
 d = json.load(open(p)); d["kind"] = "invented-by-an-adopter"
 json.dump(d, open(p, "w"), indent=2)
 PY2
-kind_out=$( cd "$F" && python3 scripts/workflow.py validate 2>&1 ); kind_rc=$?
+kind_out=$( cd "$F" && python3 scripts/workflow.py check --no-rebuild 2>&1 ); kind_rc=$?
 printf '%s\n' "$kind_out" | grep -q "unknown kind 'invented-by-an-adopter'" && [ "$kind_rc" -eq 0 ] \
   && ok "validate warns on an unknown kind and still exits 0 (adopting history survives)" \
   || bad "validate did not warn exit-code-neutrally on an unknown kind (rc=$kind_rc)"
@@ -1741,13 +1542,13 @@ d = json.load(open(p)); d["kind"] = "co-work"
 json.dump(d, open(p, "w"), indent=2)
 PY2
 # v53 route table (P32.S1): executors.toml overrides the engine's rows key by key, sync-agents
-# writes the four managed agent files from them (v66: one slice-executor, carrying the mid row), and executor-route prints the routing decision,
+# writes the four managed agent files from them (v66: one slice-executor, carrying the mid row), and route prints the routing decision,
 # writing nothing. Its probes unset the environment variables it reads, so a run inside an ocx
 # session (a loopback ANTHROPIC_BASE_URL) or on Bedrock still sees the plain table.
 erenv() { env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE -u CLAUDE_CODE_USE_BEDROCK -u CLAUDE_CODE_USE_VERTEX -u CLAUDE_CODE_USE_FOUNDRY -u ANTHROPIC_DEFAULT_HAIKU_MODEL "$@"; }
-er() { ( cd "$F" && erenv python3 scripts/workflow.py executor-route "$@" 2>&1 ); }
+er() { ( cd "$F" && erenv python3 adapters/claude_code/adapter.py route "$@" 2>&1 ); }
 rm -f "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents >/dev/null 2>&1 ) \
   && grep -q '^model: opus$' "$F/.claude/agents/slice-executor.md" && grep -q '^effort: medium$' "$F/.claude/agents/slice-executor.md" \
   && grep -q '^model: fable$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: high$' "$F/.claude/agents/design-drafter.md" \
   && grep -q '^model: haiku$' "$F/.claude/agents/Explore.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/Explore.md" \
@@ -1755,45 +1556,45 @@ rm -f "$F/executors.toml"
   && ok "no executors.toml: sync-agents writes the route defaults (slice-executor mid opus@medium, design-drafter fable@high, design-critic opus@high, Explore haiku@xhigh)" \
   || bad "the route defaults matrix is wrong"
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
-sa_out=$( cd "$F" && python3 scripts/workflow.py sync-agents 2>&1 ); er_out=$(er P1.DECOMP)
+sa_out=$( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents 2>&1 ); er_out=$(er P1.DECOMP)
 printf '%s\n' "$sa_out" | grep -q 'already in sync; nothing written' && grep -q '^model: opus$' "$F/.claude/agents/slice-executor.md" \
   && grep -q '^model: fable$' "$F/.claude/agents/design-drafter.md" \
   && printf '%s\n' "$er_out" | grep -qx 'model=fable' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' \
-  && ok "a [claude.high] alias override writes no agent file (v66: high is passed per dispatch) and shows in executor-route; design-drafter keeps its own row" \
-  || bad "a [claude.high] override wrote a file, reached design-drafter, or is missing from executor-route: $sa_out / $er_out"
+  && ok "a [claude.high] alias override writes no agent file (v66: high is passed per dispatch) and shows in route; design-drafter keeps its own row" \
+  || bad "a [claude.high] override wrote a file, reached design-drafter, or is missing from route: $sa_out / $er_out"
 printf '[claude.high]\nmodel = "claude-opus-5-5"\n' > "$F/executors.toml"
-hi_out=$( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 ); hi_rc=$?
+hi_out=$( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check 2>&1 ); hi_rc=$?
 [ "$hi_rc" -ne 0 ] && printf '%s\n' "$hi_out" | grep -q 'since v66 one executor file carries the mid row' \
   && ok "a full model id on [claude.high] is refused with the v66 migration line" || bad "[claude.high] full id not refused (rc=$hi_rc): $hi_out"
 printf '[claude.mid]\nmodel = "claude-sonnet-5-5"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: claude-sonnet-5-5$' "$F/.claude/agents/slice-executor.md" \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: claude-sonnet-5-5$' "$F/.claude/agents/slice-executor.md" \
   && ok "a full model id on [claude.mid] is accepted and written into slice-executor.md" || bad "[claude.mid] full id was refused or not written to slice-executor.md"
 printf '[claude.design]\nmodel = "fable"\neffort = "max"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: fable$' "$F/.claude/agents/design-drafter.md" \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: fable$' "$F/.claude/agents/design-drafter.md" \
   && grep -q '^effort: max$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: medium$' "$F/.claude/agents/slice-executor.md" \
   && ok "a [claude.design] override patches design-drafter alone" || bad "a [claude.design] override did not reach design-drafter, or reached slice-executor"
 printf 'mode = "flex"\n' > "$F/executors.toml"
-mode_out=$( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 ); mode_rc=$?
+mode_out=$( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check 2>&1 ); mode_rc=$?
 [ "$mode_rc" -ne 0 ] && printf '%s\n' "$mode_out" | grep -q 'retired in workspace v53' \
   && ok "a leftover mode = line is refused with the v53 migration message" || bad "mode = \"flex\" was not refused with the v53 migration (rc=$mode_rc): $mode_out"
 printf '[claude.low]\nmodel = "sonnet"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 | grep -q 'retired in workspace v23' ) && ok "retired [claude.low] section rejected with a migration message" || bad "[claude.low] should be rejected as a retired tier"
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check 2>&1 | grep -q 'retired in workspace v23' ) && ok "retired [claude.low] section rejected with a migration message" || bad "[claude.low] should be rejected as a retired tier"
 printf '[codex.high]\nmodel = "gpt-5.6-sol"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 | grep -q 'removed in workspace v31' ) && ok "leftover [codex.*] section rejected with the v31 migration message" || bad "[codex.*] should be rejected as removed support"
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check 2>&1 | grep -q 'removed in workspace v31' ) && ok "leftover [codex.*] section rejected with the v31 migration message" || bad "[codex.*] should be rejected as removed support"
 printf '[claude.cheap]\nmodel = "haiku"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 | grep -q 'the cheap row was retired in workspace v83' ) \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check 2>&1 | grep -q 'the cheap row was retired in workspace v83' ) \
   && ok "a leftover [claude.cheap] is refused with the v83 migration message" || bad "[claude.cheap] should be rejected as a retired row"
 printf '[claude.research]\nmodel = "claude-opus-5-5"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 | grep -q 'must be an Agent-tool alias' ) \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check 2>&1 | grep -q 'must be an Agent-tool alias' ) \
   && ok "a full model id on the research row is refused (it runs a file the mid row owns, so an alias only)" || bad "[claude.research] accepted a full model id"
 printf '[claude.research]\neffort = "hgih"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 | grep -q 'effort must be one of' ) \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check 2>&1 | grep -q 'effort must be one of' ) \
   && ok "an effort outside the Agent tool's levels is refused" || bad "[claude.research] accepted an unknown effort"
 printf '[claude.nope]\nmodel = "opus"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 | grep -q 'unknown route' ) \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check 2>&1 | grep -q 'unknown route' ) \
   && ok "an unknown [claude.<row>] is refused" || bad "[claude.nope] was accepted"
 rm -f "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed restoring the route defaults"
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed restoring the route defaults"
 er_out=$(er)
 [ "$(printf '%s\n' "$er_out" | grep -cE '^(high|research|design|critic|judge|mid|explore) ')" = "7" ] && ! printf '%s\n' "$er_out" | grep -q '^cheap ' && printf '%s\n' "$er_out" | grep -qx 'proxy=none' \
   && printf '%s\n' "$er_out" | grep -qE '^route +agent +model +effort +source$' \
@@ -1803,88 +1604,88 @@ er_out=$(er)
   && printf '%s\n' "$er_out" | grep -qE '^mid +slice-executor +opus +medium +default$' \
   && printf '%s\n' "$er_out" | grep -qE '^explore +Explore +haiku +xhigh +default$' \
   && ! printf '%s\n' "$er_out" | grep -q '^warning=fairness' && ! printf '%s\n' "$er_out" | grep -q 'tier' && ! printf '%s\n' "$er_out" | grep -q '^fallback=' \
-  && ok "executor-route (bare) prints the seven-row route table with its agent column, no tier and no cheap row (v80 defaults: every opus row @high, mid opus@medium, explore haiku@xhigh; v83) and proxy=none" || bad "executor-route bare table wrong: $er_out"
+  && ok "route (bare) prints the seven-row route table with its agent column, no tier and no cheap row (v80 defaults: every opus row @high, mid opus@medium, explore haiku@xhigh; v83) and proxy=none" || bad "route bare table wrong: $er_out"
 er_out=$(er P1.DECOMP)
 printf '%s\n' "$er_out" | grep -qx 'route=high' && ! printf '%s\n' "$er_out" | grep -q '^tier=' \
   && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
   && printf '%s\n' "$er_out" | grep -qx 'effort=high' && printf '%s\n' "$er_out" | grep -qx 'attribution=Claude Opus 5.5' \
-  && ok "executor-route sends a decomposition slice to the high row (slice-executor, opus@high, Claude Opus 5.5, no tier= line)" || bad "executor-route P1.DECOMP wrong: $er_out"
+  && ok "route sends a decomposition slice to the high row (slice-executor, opus@high, Claude Opus 5.5, no tier= line)" || bad "route P1.DECOMP wrong: $er_out"
 er_out=$(er P1.S2)
 printf '%s\n' "$er_out" | grep -qx 'route=research' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \
   && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' \
-  && ok "executor-route sends a research slice to the research row (slice-executor, opus@high)" || bad "executor-route research slice wrong: $er_out"
-( cd "$F" && python3 scripts/workflow.py new-slice --phase P1 --slice P1.S9 --name "docs probe" --kind docs --risk low >/dev/null 2>&1 ) \
-  || bad "route probe: new-slice P1.S9 (docs, low) failed"
+  && ok "route sends a research slice to the research row (slice-executor, opus@high)" || bad "route research slice wrong: $er_out"
+( cd "$F" && python3 scripts/workflow.py slice new --phase P1 --slice P1.S9 --name "docs probe" --kind docs --risk low >/dev/null 2>&1 ) \
+  || bad "route probe: slice new P1.S9 (docs, low) failed"
 er_out=$(er P1.S9)
 printf '%s\n' "$er_out" | grep -qx 'route=mid' && printf '%s\n' "$er_out" | grep -qx 'reason=kind docs rated low' && ! printf '%s\n' "$er_out" | grep -q '^tier=' \
   && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
   && printf '%s\n' "$er_out" | grep -qx 'effort=medium' && printf '%s\n' "$er_out" | grep -qx 'attribution=Claude Opus 5.5' && ! printf '%s\n' "$er_out" | grep -q '^fallback=' \
-  && ok "a low docs slice runs on the mid row, opus@medium (v83: no Haiku slice row)" || bad "executor-route low docs slice wrong: $er_out"
-er_out=$( cd "$F" && erenv CLAUDE_CODE_USE_BEDROCK=1 python3 scripts/workflow.py executor-route P1.S9 2>&1 )
-er_x=$( cd "$F" && erenv CLAUDE_CODE_USE_FOUNDRY=1 python3 scripts/workflow.py executor-route --explore 2>&1 )
+  && ok "a low docs slice runs on the mid row, opus@medium (v83: no Haiku slice row)" || bad "route low docs slice wrong: $er_out"
+er_out=$( cd "$F" && erenv CLAUDE_CODE_USE_BEDROCK=1 python3 adapters/claude_code/adapter.py route P1.S9 2>&1 )
+er_x=$( cd "$F" && erenv CLAUDE_CODE_USE_FOUNDRY=1 python3 adapters/claude_code/adapter.py route --explore 2>&1 )
 printf '%s\n' "$er_out" | grep -qx 'model=opus' && ! printf '%s\n' "$er_out" | grep -q '^fallback=' \
   && printf '%s\n' "$er_x" | grep -qx 'model=haiku' && ! printf '%s\n' "$er_x" | grep -q '^fallback=' \
   && ok "on Bedrock and Foundry nothing falls back: a low docs slice stays on the mid row and explore keeps haiku" || bad "platform fallback wrong: $er_out / $er_x"
 er_out=$(er P1.S9 --retry)
 printf '%s\n' "$er_out" | grep -qx 'route=high' && printf '%s\n' "$er_out" | grep -qx 'attempt=2' && printf '%s\n' "$er_out" | grep -qx 'reason=second attempt' \
   && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
-  && ok "executor-route --retry sends a second attempt to the high row (the same slice-executor, on opus)" || bad "executor-route --retry wrong: $er_out"
+  && ok "route --retry sends a second attempt to the high row (the same slice-executor, on opus)" || bad "route --retry wrong: $er_out"
 printf '[claude.mid]\nmodel = "sonnet"\neffort = "high"\n' > "$F/executors.toml"
 er_out=$(er P1.S9)
 printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && printf '%s\n' "$er_out" | grep -qx 'attribution=Claude Sonnet 5.5' \
-  && ok "a [claude.mid] override carries a low docs slice with it (sonnet, attributed to Claude Sonnet 5.5)" || bad "executor-route mid override on a docs slice wrong: $er_out"
-er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 scripts/workflow.py executor-route P1.S9 2>&1 )
+  && ok "a [claude.mid] override carries a low docs slice with it (sonnet, attributed to Claude Sonnet 5.5)" || bad "route mid override on a docs slice wrong: $er_out"
+er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 adapters/claude_code/adapter.py route P1.S9 2>&1 )
 printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && ! printf '%s\n' "$er_out" | grep -q '^fallback=' \
-  && ok "behind a loopback ANTHROPIC_BASE_URL (ocx/Kiro) a slice row never falls back" || bad "executor-route proxy moved a slice row: $er_out"
+  && ok "behind a loopback ANTHROPIC_BASE_URL (ocx/Kiro) a slice row never falls back" || bad "route proxy moved a slice row: $er_out"
 er_out=$(er)
 printf '%s\n' "$er_out" | grep -qx 'override=mid sonnet@high (default opus@medium)' && [ "$(printf '%s\n' "$er_out" | grep -c '^override=')" = "1" ] \
-  && ok "the bare table prints an override= line for the row executors.toml pins, beside its default" || bad "executor-route override= line wrong: $er_out"
+  && ok "the bare table prints an override= line for the row executors.toml pins, beside its default" || bad "route override= line wrong: $er_out"
 printf '[claude.mid]\nmodel = "opus"\neffort = "medium"\n' > "$F/executors.toml"
 er_out=$(er)
 printf '%s\n' "$er_out" | grep -q '^override=mid opus@medium same as the default ' \
-  && ok "a row set to its default prints override=... same as the default" || bad "executor-route same-as-default override wrong: $er_out"
-er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 scripts/workflow.py executor-route --explore 2>&1 )
+  && ok "a row set to its default prints override=... same as the default" || bad "route same-as-default override wrong: $er_out"
+er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 adapters/claude_code/adapter.py route --explore 2>&1 )
 printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=Explore' \
-  && ok "behind the same proxy executor-route --explore falls back to sonnet" || bad "executor-route --explore proxy fallback wrong: $er_out"
+  && ok "behind the same proxy route --explore falls back to sonnet" || bad "route --explore proxy fallback wrong: $er_out"
 er_out=$(er --drafter)
 printf '%s\n' "$er_out" | grep -qx 'agent=design-drafter' && printf '%s\n' "$er_out" | grep -qx 'route=design' \
   && ! printf '%s\n' "$er_out" | grep -q '^tier=' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-drafter' \
   && printf '%s\n' "$er_out" | grep -qx 'model=fable' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \
-  && ok "executor-route --drafter names design-drafter on its own design row (no tier= line, fable@high)" || bad "executor-route --drafter wrong: $er_out"
+  && ok "route --drafter names design-drafter on its own design row (no tier= line, fable@high)" || bad "route --drafter wrong: $er_out"
 # v96: a phase's `Drafter:` line under intent.md's ## Design Style picks the drafter's model at the design row's
 # effort; no line is the design row; behind a loopback proxy (no Fable) a Fable drafter falls back to opus.
 cp "$F/works/phases/active/P1/intent.md" "$F/intent.bak"
 er_out=$(er --drafter --phase P1)
 printf '%s\n' "$er_out" | grep -qx 'model=fable' && printf '%s\n' "$er_out" | grep -qx 'drafter_source=design row' \
-  && ok "executor-route --drafter --phase on a phase naming no drafter is the design row (fable)" || bad "executor-route --drafter --phase default wrong: $er_out"
+  && ok "route --drafter --phase on a phase naming no drafter is the design row (fable)" || bad "route --drafter --phase default wrong: $er_out"
 printf '\n## Design Style\n\nbuild-after: one flow.\nMockup: on request\nDrafter: opus\n' >> "$F/works/phases/active/P1/intent.md"
 er_out=$(er --drafter --phase P1)
 printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'drafter_source=phase P1 Drafter: opus' \
-  && ok "a phase's Drafter: opus keeps Opus against the Fable default" || bad "executor-route --drafter --phase opus wrong: $er_out"
+  && ok "a phase's Drafter: opus keeps Opus against the Fable default" || bad "route --drafter --phase opus wrong: $er_out"
 cp "$F/intent.bak" "$F/works/phases/active/P1/intent.md"
 printf '\n## Design Style\n\nbuild-after: one flow.\nMockup: on request\nDrafter: fable\n' >> "$F/works/phases/active/P1/intent.md"
 er_out=$(er --drafter --phase P1)
 printf '%s\n' "$er_out" | grep -qx 'model=fable' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \
   && printf '%s\n' "$er_out" | grep -qx 'attribution=Claude Fable 5.2' && printf '%s\n' "$er_out" | grep -qx 'drafter_source=phase P1 Drafter: fable' \
-  && ok "a phase's Drafter: fable dispatches the drafter on fable at the design row's effort" || bad "executor-route --drafter --phase fable wrong: $er_out"
-er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 scripts/workflow.py executor-route --drafter --phase P1 2>&1 )
+  && ok "a phase's Drafter: fable dispatches the drafter on fable at the design row's effort" || bad "route --drafter --phase fable wrong: $er_out"
+er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 adapters/claude_code/adapter.py route --drafter --phase P1 2>&1 )
 printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -q '^fallback=design model fable -> opus ' \
-  && ok "behind a loopback proxy a Fable drafter falls back to opus" || bad "executor-route --drafter proxy fallback wrong: $er_out"
+  && ok "behind a loopback proxy a Fable drafter falls back to opus" || bad "route --drafter proxy fallback wrong: $er_out"
 er_c=$(er --critic --phase P1); er_crc=$?
 [ "$er_crc" -ne 0 ] && printf '%s\n' "$er_c" | grep -q 'goes with --drafter only' \
-  && ok "--phase without --drafter is refused" || bad "executor-route --critic --phase not refused (rc=$er_crc): $er_c"
+  && ok "--phase without --drafter is refused" || bad "route --critic --phase not refused (rc=$er_crc): $er_c"
 sed 's/^Drafter: fable$/**Drafter:** fable/' "$F/works/phases/active/P1/intent.md" > "$F/intent.tmp" && mv "$F/intent.tmp" "$F/works/phases/active/P1/intent.md"
 er_out=$(er --drafter --phase P1)
 printf '%s\n' "$er_out" | grep -qx 'model=fable' \
-  && ok "a bold **Drafter:** label is read, never dropped for its form" || bad "executor-route --drafter dropped a bold Drafter: line: $er_out"
+  && ok "a bold **Drafter:** label is read, never dropped for its form" || bad "route --drafter dropped a bold Drafter: line: $er_out"
 sed 's/^\*\*Drafter:\*\* fable$/Drafter: haiku/' "$F/works/phases/active/P1/intent.md" > "$F/intent.tmp" && mv "$F/intent.tmp" "$F/works/phases/active/P1/intent.md"
 er_out=$(er --drafter --phase P1); er_rc=$?
 [ "$er_rc" -ne 0 ] && printf '%s\n' "$er_out" | grep -q "names the drafter 'haiku'" \
-  && ok "a Drafter: other than fable or opus is refused" || bad "executor-route --drafter accepted Drafter: haiku (rc=$er_rc): $er_out"
+  && ok "a Drafter: other than fable or opus is refused" || bad "route --drafter accepted Drafter: haiku (rc=$er_rc): $er_out"
 { cat "$F/intent.bak"; printf '\n### Design style notes\n\nfrom the brief.\n\n## Design Style\n\nDrafter: fable\n'; } > "$F/works/phases/active/P1/intent.md"
 er_out=$(er --drafter --phase P1)
 printf '%s\n' "$er_out" | grep -qx 'model=fable' \
-  && ok "an earlier '### Design style' subsection never hides the real section's Drafter: line" || bad "executor-route --drafter lost the real Design Style section: $er_out"
+  && ok "an earlier '### Design style' subsection never hides the real section's Drafter: line" || bad "route --drafter lost the real Design Style section: $er_out"
 mv "$F/intent.bak" "$F/works/phases/active/P1/intent.md"
 # P36.S5B, P39.S1, v75: the critic and the judge both run design-critic; either may share the drafter's model.
 er_out=$(er --critic); er_j=$(er --judge)
@@ -1892,61 +1693,56 @@ printf '%s\n' "$er_out" | grep -qx 'route=critic' && printf '%s\n' "$er_out" | g
   && printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \
   && printf '%s\n' "$er_j" | grep -qx 'route=judge' && printf '%s\n' "$er_j" | grep -qx 'subagent_type=design-critic' \
   && printf '%s\n' "$er_j" | grep -qx 'model=opus' && printf '%s\n' "$er_j" | grep -qx 'effort=high' && ! printf '%s\n' "$er_j" | grep -q '^tier=' \
-  && ok "executor-route --critic (opus@high) and --judge (opus@high) both dispatch design-critic" || bad "executor-route --critic/--judge wrong: $er_out / $er_j"
+  && ok "route --critic (opus@high) and --judge (opus@high) both dispatch design-critic" || bad "route --critic/--judge wrong: $er_out / $er_j"
 printf '[claude.critic]\nmodel = "opus"\neffort = "xhigh"\n' > "$F/executors.toml"
-er_out=$( cd "$F" && env -u ANTHROPIC_BASE_URL python3 scripts/workflow.py executor-route --critic 2>&1 ); er_rc=$?
+er_out=$( cd "$F" && env -u ANTHROPIC_BASE_URL python3 adapters/claude_code/adapter.py route --critic 2>&1 ); er_rc=$?
 [ "$er_rc" -eq 0 ] && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
   && ! printf '%s\n' "$(er)" | grep -q '^warning=fairness' \
   && ok "a critic on the drafter's model is accepted (exit 0, model=opus) and the bare table does not warn (v75)" || bad "the critic on the drafter's model was refused or warned (rc=$er_rc): $er_out"
 rm -f "$F/executors.toml"
 # P39.S1: the judge is exempt from the critic-vs-drafter rule -- at the defaults it is Opus over the Opus drafter.
-er_out=$( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE python3 scripts/workflow.py executor-route --judge 2>&1 ); er_rc=$?
+er_out=$( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE python3 adapters/claude_code/adapter.py route --judge 2>&1 ); er_rc=$?
 [ "$er_rc" -eq 0 ] && printf '%s\n' "$er_out" | grep -qx 'model=opus' && ! printf '%s\n' "$er_out" | grep -q 'warning=fairness' \
   && ! printf '%s\n' "$er_out" | grep -q '^skip=' \
-  && ok "the judge on the drafter's model (opus over opus) is allowed: executor-route --judge exits 0 with no fairness warning" || bad "executor-route --judge refused or warned at the defaults (rc=$er_rc): $er_out"
+  && ok "the judge on the drafter's model (opus over opus) is allowed: route --judge exits 0 with no fairness warning" || bad "route --judge refused or warned at the defaults (rc=$er_rc): $er_out"
 # The loopback-proxy skip needs a Fable judge: it never fires at the default (Opus), only on a Fable override.
-er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 scripts/workflow.py executor-route --judge 2>&1 ); er_rc=$?
+er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 adapters/claude_code/adapter.py route --judge 2>&1 ); er_rc=$?
 [ "$er_rc" -eq 0 ] && ! printf '%s\n' "$er_out" | grep -q '^skip=' \
-  && ok "behind a loopback proxy the default (opus) judge prints no skip= and exits 0" || bad "executor-route --judge proxy at the default wrong (rc=$er_rc): $er_out"
+  && ok "behind a loopback proxy the default (opus) judge prints no skip= and exits 0" || bad "route --judge proxy at the default wrong (rc=$er_rc): $er_out"
 printf '[claude.judge]\nmodel = "fable"\n' > "$F/executors.toml"
-er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 scripts/workflow.py executor-route --judge 2>&1 ); er_rc=$?
+er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 adapters/claude_code/adapter.py route --judge 2>&1 ); er_rc=$?
 [ "$er_rc" -eq 0 ] && printf '%s\n' "$er_out" | grep -q '^skip=yes reason=loopback ' \
-  && ok "behind a loopback proxy (no Fable) a Fable-overridden judge prints skip=yes and exits 0" || bad "executor-route --judge proxy skip wrong (rc=$er_rc): $er_out"
+  && ok "behind a loopback proxy (no Fable) a Fable-overridden judge prints skip=yes and exits 0" || bad "route --judge proxy skip wrong (rc=$er_rc): $er_out"
 rm -f "$F/executors.toml"
-( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE CLAUDE_CODE_EFFORT_LEVEL=high python3 scripts/workflow.py executor-route P1.DECOMP 2>&1 | grep -q '^warning=CLAUDE_CODE_EFFORT_LEVEL' ) \
-  && ok "executor-route warns that CLAUDE_CODE_EFFORT_LEVEL outranks every per-dispatch effort" || bad "executor-route did not warn on CLAUDE_CODE_EFFORT_LEVEL"
-cp "$SRC/executors.toml" "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed on the repo's own executors.toml"
+( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE CLAUDE_CODE_EFFORT_LEVEL=high python3 adapters/claude_code/adapter.py route P1.DECOMP 2>&1 | grep -q '^warning=CLAUDE_CODE_EFFORT_LEVEL' ) \
+  && ok "route warns that CLAUDE_CODE_EFFORT_LEVEL outranks every per-dispatch effort" || bad "route did not warn on CLAUDE_CODE_EFFORT_LEVEL"
+cp "$SRC/adapters/claude_code/executors.toml" "$F/executors.toml"
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed on the repo's own executors.toml"
 er_out=$(er)
 printf '%s\n' "$er_out" | grep -qE '^mid +slice-executor +opus +medium +default$' && printf '%s\n' "$er_out" | grep -qx 'agent files: in sync' \
   && ! printf '%s\n' "$er_out" | grep -q '^override=' \
-  && ok "the shipped executors.toml sets no row: the engine defaults, no override= line, agent files in sync" || bad "executor-route on the shipped executors.toml wrong: $er_out"
+  && ok "the shipped executors.toml sets no row: the engine defaults, no override= line, agent files in sync" || bad "route on the shipped executors.toml wrong: $er_out"
 ( cd "$F" && python3 scripts/workflow.py executor-mode 2>&1 | grep -q 'invalid choice' ) \
-  && ok "executor-mode is gone from the engine (v53: executor-route replaces it)" || bad "the engine still accepts executor-mode"
-# v61 dispatch record + transcript meter (P37.S2): record-dispatch keeps only the verdict (the pre-v61
-# flags parse and are named as ignored); dispatch-summary meters the main thread and the spans from
-# Claude Code's transcripts -- one request per message id with its largest output, spans attributed by
-# their `slice:` line, list-priced (an unknown model never guessed), a span ending on a usage limit is
-# `limit` -- and with no transcripts prints one line plus the recorded tables (old records stay readable).
-rd() { ( cd "$F" && CLAUDE_CONFIG_DIR="$F/.no-claude-config" python3 scripts/workflow.py "$@" 2>&1 ); }
-rd_out=$(rd record-dispatch P1.DECOMP --verdict done --tokens 5 --route high); rd_rc=$?; rd_last=$(tail -1 "$F/works/events.jsonl")
-[ "$rd_rc" -eq 0 ] && printf '%s\n' "$rd_out" | grep -qx 'recorded=executor_dispatched' \
-  && printf '%s\n' "$rd_out" | grep -qx 'ignored: --route --tokens (v61 meters spans from transcripts)' \
-  && printf '%s\n' "$rd_last" | grep -q '"verdict": "done"' && ! printf '%s\n' "$rd_last" | grep -q '"tokens"' \
-  && ok "record-dispatch --verdict done --tokens 5 records the verdict only and names the old flags ignored" || bad "record-dispatch wrong (rc=$rd_rc): $rd_out / $rd_last"
-rd record-dispatch P9.S1 --verdict done >/dev/null; rc1=$?
-[ "$rc1" -ne 0 ] && ok "record-dispatch refuses an unknown slice" || bad "record-dispatch accepted an unknown slice"
-printf '%s\n' '{"ts": "2026-01-01T00:00:00+00:00", "type": "executor_dispatched", "slice": "P1.S9", "phase": "P1", "kind": "docs", "route": "cheap", "model": "haiku", "effort": "high", "attempt": 1, "verdict": "escalate", "tokens": 900}' >> "$F/works/events.jsonl"
-printf 'not json\n' >> "$F/works/events.jsonl"
-ds_out=$(rd dispatch-summary); ds_rc=$?
-[ "$ds_rc" -eq 0 ] && printf '%s\n' "$ds_out" | grep -q '^transcripts=none found under ' && printf '%s\n' "$ds_out" | grep -qx 'records=2' \
-  && printf '%s\n' "$ds_out" | grep -qE '^cheap +1 +0 +1 ' && printf '%s\n' "$ds_out" | grep -qx 'skipped_lines=1' \
-  && ok "dispatch-summary with no transcripts: one line, the recorded tables, an old record readable, a malformed line skipped" || bad "dispatch-summary without transcripts wrong (rc=$ds_rc): $ds_out"
-rd dispatch-summary --phase P7 >/dev/null; rc1=$?
-[ "$rc1" -eq 1 ] && ok "dispatch-summary --phase: an unknown phase exits 1" || bad "dispatch-summary --phase P7 rc=$rc1"
+  && ok "executor-mode is gone from the engine (v53: route replaces it)" || bad "the engine still accepts executor-mode"
+# v61 transcript meter (P37.S2), the adapter's `meter` since the thin engine: it meters the main thread and the
+# spans from Claude Code's transcripts -- one request per message id with its largest output, spans attributed by
+# their `slice:` line, list-priced (an unknown model never guessed), a span ending on a usage limit is `limit` --
+# and reads each slice's verdict from its result.md (the status: line) or slice.json. record-dispatch is retired.
+rd() { ( cd "$F" && CLAUDE_CONFIG_DIR="$F/.no-claude-config" python3 "$(wf_entry "$1")" "$@" 2>&1 ); }
+( cd "$F" && python3 adapters/claude_code/adapter.py record-dispatch P1.DECOMP --verdict done >/dev/null 2>&1 ); rc1=$?
+( cd "$F" && python3 scripts/workflow.py record-dispatch P1.DECOMP --verdict done >/dev/null 2>&1 ); rc2=$?
+[ "$rc1" -eq 2 ] && [ "$rc2" -eq 2 ] && ok "record-dispatch is retired: the adapter and the engine both exit 2" || bad "record-dispatch still runs (adapter rc=$rc1, engine rc=$rc2)"
+printf -- '- status: escalate\n- summary: probe\n' > "$F/works/phases/active/P1/slices/P1.DECOMP/result.md"
+ds_out=$(rd meter --phase P1); ds_rc=$?; ds_one=$(rd meter --slice P1.DECOMP)
+rm -f "$F/works/phases/active/P1/slices/P1.DECOMP/result.md"
+[ "$ds_rc" -eq 0 ] && printf '%s\n' "$ds_out" | grep -q '^transcripts=none found under ' && printf '%s\n' "$ds_out" | grep -qE '^decomposition +1 +0 +1 +0 +0 +0$' \
+  && printf '%s\n' "$ds_one" | grep -qx 'slice=P1.DECOMP kind=decomposition verdict=escalate source=result.md' \
+  && ok "meter with no transcripts: one line, then each slice's verdict read from its result.md status: line" || bad "meter without transcripts wrong (rc=$ds_rc): $ds_out / $ds_one"
+rd meter --phase P7 >/dev/null; rc1=$?
+[ "$rc1" -eq 1 ] && ok "meter --phase: an unknown phase exits 1" || bad "meter --phase P7 rc=$rc1"
 newtmp MT
 cp -R "$F" "$MT/ws"
-( cd "$MT/ws" && python3 scripts/workflow.py new-slice --phase P1 --slice P1.S7 --name "meter probe" --kind implementation --risk low >/dev/null 2>&1 )
+( cd "$MT/ws" && python3 scripts/workflow.py slice new --phase P1 --slice P1.S7 --name "meter probe" --kind implementation --risk low >/dev/null 2>&1 )
 python3 - "$MT" <<'PY'
 import json, os, sys
 mt = sys.argv[1]
@@ -1983,8 +1779,9 @@ write(os.path.join(sub, "agent-bbb.jsonl"), [
      "message": {"id": "syn1", "model": "<synthetic>", "content": [{"type": "text", "text": "You've hit your session limit · resets 3:10am (Asia/Seoul)"}],
                  "usage": {"input_tokens": 0, "output_tokens": 0}}}])
 json.dump({"agentType": "design-drafter", "model": "opus", "effort": "xhigh", "finished": True}, open(os.path.join(sub, "agent-bbb.meta.json"), "w"))
+open(os.path.join(mt, "ws", "works", "phases", "active", "P1", "slices", "P1.S7", "result.md"), "w").write("# P1.S7\n\n- status: done\n- summary: probe\n")
 PY
-mt_json=$( cd "$MT/ws" && python3 scripts/workflow.py dispatch-summary --phase P1 --json --transcripts "$MT/projects/-fixture" 2>&1 )
+mt_json=$( cd "$MT/ws" && python3 adapters/claude_code/adapter.py meter --phase P1 --json --transcripts "$MT/projects/-fixture" 2>&1 )
 printf '%s\n' "$mt_json" | python3 -c '
 import json, sys
 d = json.load(sys.stdin)["metered"]["slices"]["P1.S7"]
@@ -1998,17 +1795,22 @@ assert spans["design-drafter"]["usage"]["requests"] == 1 and spans["design-draft
 u = spans["slice-executor-high"]["usage"]
 assert u["requests"] == 2 and u["no_final"] == 1 and u["output_floor"] is True and spans["design-drafter"]["usage"]["output_floor"] is False, u
 assert m["output_floor"] is False, m
-' && ok "the meter: two main-thread ids from three entries keep the largest output, spans attributed by their slice: line, a span ending on a usage limit is limit with its reset" || bad "the transcript meter miscounted: $mt_json"
-mt_out=$( cd "$MT/ws" && python3 scripts/workflow.py dispatch-summary --phase P1 --transcripts "$MT/projects/-fixture" 2>&1 )
+' && printf '%s\n' "$mt_json" | python3 -c '
+import json, sys
+v = json.load(sys.stdin)["verdicts"]
+assert v["slices"]["P1.S7"] == {"kind": "implementation", "verdict": "done", "source": "result.md"}, v["slices"]
+assert v["by_kind"]["implementation"]["done"] >= 1, v["by_kind"]
+' && ok "the meter: two main-thread ids from three entries keep the largest output, spans attributed by their slice: line, a span ending on a usage limit is limit with its reset; a finished slice's result.md reads done" || bad "the transcript meter miscounted: $mt_json"
+mt_out=$( cd "$MT/ws" && python3 adapters/claude_code/adapter.py meter --phase P1 --transcripts "$MT/projects/-fixture" 2>&1 )
 printf '%s\n' "$mt_out" | grep -qE '^main +- +2 +1\.10M +600 +1\.02 ' && printf '%s\n' "$mt_out" | grep -qE '^design-drafter +1 +1 +100 +10 +\? ' \
-  && ok "dispatch-summary prices the main thread at list price (\$1.02) and leaves an unknown model unpriced (?)" || bad "dispatch-summary pricing wrong: $mt_out"
+  && ok "meter prices the main thread at list price (\$1.02) and leaves an unknown model unpriced (?)" || bad "meter pricing wrong: $mt_out"
 printf '%s\n' "$mt_out" | grep -qE '^note=output_floor spans=1/3 \(33%\) main=0/2 ' && printf '%s\n' "$mt_out" | grep -qE '^slice-executor-high +1 +2 +[^ ]+ +≥53 +≥[0-9.]+ ' \
   && ! printf '%s\n' "$mt_out" | grep -E '^(main|design-drafter) ' | grep -q '≥' \
-  && ok "dispatch-summary flags a span request that never logged a final usage: the note= count and the ≥ floor on that group only" || bad "dispatch-summary floor note/mark wrong: $mt_out"
+  && ok "meter flags a span request that never logged a final usage: the note= count and the ≥ floor on that group only" || bad "meter floor note/mark wrong: $mt_out"
 # v66: a DECOMP estimates time, not session-$, and writes a `spends money:` line per slice; the [means] header says so.
 grep -q 'never a session-\$ figure' "$SRC/claude/skills/do-whole-phase/reference/decomposition.md" \
   && grep -q 'spends money:' "$SRC/claude/skills/do-whole-phase/playbooks/decompose.md" && ! grep -q '\$ per span' "$SRC/claude/skills/do-whole-phase/playbooks/decompose.md" \
-  && grep -q 'a DECOMP estimates time from these' "$SRC/scripts/workflow.py" \
+  && grep -q 'a DECOMP estimates time from these' "$SRC/adapters/claude_code/adapter.py" \
   && ok "a DECOMP estimates time only and writes a per-slice spends-money line (the orchestrator reference, the decompose playbook, the [means] header)" || bad "the DECOMP time-only / spends-money wording is missing or a session-\$ estimate remains"
 # v66: one slice-executor runs every slice row, so the meter reads its route from the kind and the model
 # (research by kind, haiku as cheap, the high row's family as high, else mid); an old slice-executor-high
@@ -2032,7 +1834,7 @@ for n, (agent, model, sid, effort) in enumerate((("slice-executor", "claude-opus
                                       "usage": {"input_tokens": 10, "output_tokens": 5}}))
     json.dump({"agentType": agent, "finished": True, **({"effort": effort} if effort else {})}, open(os.path.join(sub, f"agent-x{n}.meta.json"), "w"))
 PY
-mt2=$( cd "$MT/ws" && python3 scripts/workflow.py dispatch-summary --phase P1 --json --transcripts "$MT/projects/-fixture2" 2>&1 )
+mt2=$( cd "$MT/ws" && python3 adapters/claude_code/adapter.py meter --phase P1 --json --transcripts "$MT/projects/-fixture2" 2>&1 )
 printf '%s\n' "$mt2" | python3 -c '
 import json, sys
 slices = json.load(sys.stdin)["metered"]["slices"]
@@ -2041,11 +1843,11 @@ assert routes == {"x0": ("slice-executor", "high"), "x1": ("slice-executor", "mi
                   "x3": ("slice-executor", "research"), "x4": ("slice-executor-high", "high"), "x5": ("slice-executor", "mid")}, routes
 ' && ok "the meter reads slice-executor spans by kind, model and effort (opus@high high, opus@medium mid, haiku cheap, sonnet mid, a research slice research) and still reads an old slice-executor-high span" \
   || bad "the meter misread slice-executor routes: $mt2"
-# A minted, tailed slice id (P<n>-<tail>.S1) attributes by its `slice:` line, and dispatch-summary --phase takes the
+# A minted, tailed slice id (P<n>-<tail>.S1) attributes by its `slice:` line, and meter --phase takes the
 # brief name (the bare number, while one phase holds it).
-mt_tok=$( cd "$MT/ws" && python3 scripts/workflow.py new-phase --name "Meter token" --objective probe 2>&1 | sed -n 's/^created phase \(P[^:]*\):.*/\1/p' )
+mt_tok=$( cd "$MT/ws" && python3 scripts/workflow.py phase new --name "Meter token" --objective probe 2>&1 | sed -n 's/^created phase \(P[^:]*\):.*/\1/p' )
 mt_num=$(printf '%s\n' "$mt_tok" | sed -nE 's/^P([0-9]+)-[0-9a-z]{2}$/\1/p')
-( cd "$MT/ws" && python3 scripts/workflow.py new-slice --phase "$mt_num" --slice S1 --name "token meter" --kind implementation --risk low ) >/dev/null 2>&1 || bad "token meter probe: new-slice failed"
+( cd "$MT/ws" && python3 scripts/workflow.py slice new --phase "$mt_num" --slice S1 --name "token meter" --kind implementation --risk low ) >/dev/null 2>&1 || bad "token meter probe: slice new failed"
 python3 - "$MT" "$mt_tok.S1" <<'PY'
 import json, os, sys
 sub = os.path.join(sys.argv[1], "projects", "-fixture2", "sess2", "subagents")
@@ -2058,25 +1860,25 @@ with open(os.path.join(sub, "agent-t0.jsonl"), "w") as f:
                                                                                               "stop_reason": "end_turn", "usage": {"input_tokens": 10, "output_tokens": 5}}}) + "\n")
 json.dump({"agentType": "slice-executor", "finished": True}, open(os.path.join(sub, "agent-t0.meta.json"), "w"))
 PY
-mt3=$( cd "$MT/ws" && python3 scripts/workflow.py dispatch-summary --phase "$mt_num" --json --transcripts "$MT/projects/-fixture2" 2>&1 )
+mt3=$( cd "$MT/ws" && python3 adapters/claude_code/adapter.py meter --phase "$mt_num" --json --transcripts "$MT/projects/-fixture2" 2>&1 )
 printf '%s\n' "$mt3" | python3 -c '
 import json, sys
 spans = [s for d in json.load(sys.stdin)["metered"]["slices"].values() for s in d["spans"]]
 assert [(s["slice"], s["attributed_by"]) for s in spans] == [(sys.argv[1] + ".S1", "slice-line")], spans
-' "$mt_tok" && [ -n "$mt_num" ] && ok "the meter attributes a minted, tailed slice id ($mt_tok.S1) by its slice: line, and dispatch-summary --phase takes the bare number" \
+' "$mt_tok" && [ -n "$mt_num" ] && ok "the meter attributes a minted, tailed slice id ($mt_tok.S1) by its slice: line, and meter --phase takes the bare number" \
   || bad "the meter did not attribute a minted slice id: $mt3"
 # v61 pure compaction (P37.S3): compaction is Claude Code's own -- no PreCompact hook, no compact-gate. After
-# a compaction the SessionStart hook runs compact-resume, which prints the resume card (also `next --card`):
+# a compaction the SessionStart hook runs the adapter's compact-resume, which prints the engine's resume card (`next --card`) with the running spans:
 # computed from state, at most 2,048 B, naming files and never asking for a re-read. A pending stop is typed
-# (set-slice-status ... pending --stop-kind --on-words), printed by next and the card, cleared on leaving pending.
+# (slice status ... pending --stop-kind --on-words), printed by next and the card, cleared on leaving pending.
 newtmp CGT
 CG="$CGT/ws"
 sh "$BOOT" "$CG" --at-root --name "Card" --summary "card probe" >/dev/null 2>&1 \
-  && ( cd "$CG" && python3 scripts/workflow.py new-phase --phase P1 --name "Card probe" --objective "probe the resume card" >/dev/null 2>&1 ) \
+  && ( cd "$CG" && python3 scripts/workflow.py phase new --phase P1 --name "Card probe" --objective "probe the resume card" >/dev/null 2>&1 ) \
   || bad "resume card: could not build the fixture"
 cg_help=$( cd "$CG" && python3 scripts/workflow.py --help 2>&1 ); cg_help_rc=$?
 ( cd "$CG" && python3 scripts/workflow.py compact-gate </dev/null >/dev/null 2>&1 ); cg_rc=$?
-[ "$cg_help_rc" -eq 0 ] && printf '%s\n' "$cg_help" | grep -q 'dispatch-summary' && [ "$cg_rc" -ne 0 ] && ! printf '%s\n' "$cg_help" | grep -q 'compact-gate' && ! grep -qE 'cmd_compact_gate|AGENTIC_COMPACT_|COMPACT_RESUME_LINE' "$CG/scripts/workflow.py" \
+[ "$cg_help_rc" -eq 0 ] && printf '%s\n' "$cg_help" | grep -q 'next' && [ "$cg_rc" -ne 0 ] && ! printf '%s\n' "$cg_help" | grep -q 'compact-gate' && ! engine_src "$CG" | grep -qE 'cmd_compact_gate|AGENTIC_COMPACT_|COMPACT_RESUME_LINE' \
   && ok "compact-gate is gone from the engine (no subcommand, no knobs, no resume line)" || bad "compact-gate still present (rc=$cg_rc)"
 # every subcommand's --help exits 0 (a crash in an argparse help string once hid behind a green suite);
 # the list is the engine's own, read from the top-level help
@@ -2086,6 +1888,20 @@ names = re.search(r"\{([^}]+)\}", " ".join(sys.stdin.read().split())).group(1).s
 bad = [n for n in names if subprocess.run([sys.executable, "scripts/workflow.py", n, "--help"], capture_output=True).returncode != 0]
 assert len(names) > 20 and not bad, bad
 ' ) && ok "every subcommand's --help exits 0 (the list read from the engine's own top-level help)" || bad "a subcommand's --help fails"
+# W1: the engine's --help lists the eleven verbs and the three named parts' own commands, 41 in all, and no
+# command of the Claude Code adapter (route, sync-agents, meter, compact-resume, nor their old names).
+( printf '%s\n' "$cg_help" | python3 -c '
+import re, sys
+names = re.search(r"\{([^}]+)\}", " ".join(sys.stdin.read().split())).group(1).split(",")
+verbs = {"next", "phase", "slice", "section", "review", "gate", "pr", "worktree", "repo", "close", "check"}
+design = {"design-init", "design-system", "design-open", "design-check", "design-canvas", "design-publish-plan", "design-preview",
+          "design-readback", "design-sign", "design-close", "design-migrate"}
+agenda = {"deferred", "defer-job", "promote-deferred", "drop-deferred", "agenda", "agenda-add", "agenda-edit", "agenda-move",
+          "agenda-defer", "agenda-solve", "agenda-drop", "agenda-reopen", "agenda-delete", "agenda-link", "agenda-unlink"}
+cloud = {"link", "unlink", "sync", "mark-committed"}
+assert len(names) == 41 and set(names) == verbs | design | agenda | cloud, sorted(set(names) ^ (verbs | design | agenda | cloud))
+' ) && ok "the engine's --help lists 41 commands: the eleven verbs plus the design, agenda and cloud parts' own, no adapter command" \
+  || bad "the engine's command list moved -- $(printf '%s\n' "$cg_help" | sed -n 2p)"
 card_ok() { # card_ok <text>: at most 2,048 bytes, no re-read, the pointer, the next action and the file paths
   [ "$(printf '%s' "$1" | wc -c | tr -d ' ')" -le 2048 ] && ! printf '%s\n' "$1" | grep -qi 're-read' \
     && printf '%s\n' "$1" | grep -q '^pointer: phase P1 ' && printf '%s\n' "$1" | grep -q '^next action: ' \
@@ -2093,46 +1909,43 @@ card_ok() { # card_ok <text>: at most 2,048 bytes, no re-read, the pointer, the 
     && printf '%s\n' "$1" | grep -q '^phase: works/phases/active/P1/phase.md' && printf '%s\n' "$1" | grep -q '^intent: works/phases/active/P1/intent.md'
 }
 card=$( cd "$CG" && python3 scripts/workflow.py next --card 2>&1 ); cr_rc=$?
-[ "$cr_rc" -eq 0 ] && card_ok "$card" && printf '%s\n' "$card" | grep -q '^next action: start-slice P1.DECOMP, then plan it' \
-  && ok "next --card prints the resume card: <= 2,048 B, the pointer, the next action (plan it), the file paths, no re-read" || bad "next --card wrong (rc=$cr_rc): $card"
-( cd "$CG" && python3 scripts/workflow.py start-slice P1.DECOMP >/dev/null 2>&1 && printf 'the plan\n' > works/phases/active/P1/slices/P1.DECOMP/plan.md ) || bad "resume card: start-slice failed"
+[ "$cr_rc" -eq 0 ] && card_ok "$card" && printf '%s\n' "$card" | grep -q '^next action: slice start P1.DECOMP, then plan it' \
+  && ! printf '%s\n' "$card" | grep -q '^running spans' && printf '%s\n' "$card" | grep -qF "pin its route (the adapter's \`route P1.DECOMP\`)" \
+  && ok "next --card prints the resume card: <= 2,048 B, the pointer, the next action (plan it), the file paths, no re-read, no spans (the engine reads no transcript)" || bad "next --card wrong (rc=$cr_rc): $card"
+( cd "$CG" && python3 scripts/workflow.py slice start P1.DECOMP >/dev/null 2>&1 && printf 'the plan\n' > works/phases/active/P1/slices/P1.DECOMP/plan.md ) || bad "resume card: slice start failed"
 mkdir -p "$CGT/proj/s1/subagents" && printf '{}\n' > "$CGT/proj/s1.jsonl"
 printf '{"agentType":"slice-executor-high","description":"P1.DECOMP decomposition executor"}' > "$CGT/proj/s1/subagents/agent-a.meta.json"
 printf '{"agentType":"Explore","description":"an old lookup","finished":true}' > "$CGT/proj/s1/subagents/agent-b.meta.json"
-cr_out=$( cd "$CG" && printf '{"source":"compact","transcript_path":"%s","cwd":"%s"}' "$CGT/proj/s1.jsonl" "$CG" | python3 scripts/workflow.py compact-resume 2>&1 ); cr_rc=$?
+cr_out=$( cd "$CG" && printf '{"source":"compact","transcript_path":"%s","cwd":"%s"}' "$CGT/proj/s1.jsonl" "$CG" | python3 adapters/claude_code/adapter.py compact-resume 2>&1 ); cr_rc=$?
 cr_card=$(printf '%s\n' "$cr_out" | sed 1d)
 [ "$cr_rc" -eq 0 ] && [ "$(printf '%s\n' "$cr_out" | head -1)" = "compaction=done source=compact" ] && card_ok "$cr_card" \
   && printf '%s\n' "$cr_card" | grep -qx 'running spans: slice-executor-high: P1.DECOMP decomposition executor' \
   && printf '%s\n' "$cr_card" | grep -q '^next action: an executor is running (see spans): wait for its notification, never re-dispatch' \
   && ok "compact-resume (fake hook stdin) prints the card: running spans from the session's unfinished .meta.json only, wait -- never re-dispatch" || bad "compact-resume card wrong (rc=$cr_rc): $cr_out"
-cr_out=$( cd "$CG" && printf 'not json' | python3 scripts/workflow.py compact-resume 2>&1 ); cr_rc=$?
+cr_out=$( cd "$CG" && printf 'not json' | python3 adapters/claude_code/adapter.py compact-resume 2>&1 ); cr_rc=$?
 [ "$cr_rc" -eq 0 ] && printf '%s\n' "$cr_out" | head -1 | grep -qx 'compaction=done source=compact' && printf '%s\n' "$cr_out" | grep -q '^pointer: phase P1 ' \
   && ok "compact-resume on garbage stdin still prints the card and exits 0" || bad "compact-resume garbage stdin wrong (rc=$cr_rc): $cr_out"
-( cd "$CG" && python3 scripts/workflow.py set-slice-status P1.DECOMP in_progress --stop-kind decision --on-words x >/dev/null 2>&1 ); tp_rc=$?
-[ "$tp_rc" -ne 0 ] && ok "set-slice-status refuses --stop-kind/--on-words without pending" || bad "set-slice-status accepted --stop-kind without pending"
-tp_set=$( cd "$CG" && python3 scripts/workflow.py set-slice-status P1.DECOMP pending --stop-kind decision --on-words "choose the design style; DECOMP records it and cuts the slices" 2>&1 ); tp_rc=$?
+( cd "$CG" && python3 scripts/workflow.py slice status P1.DECOMP in_progress --stop-kind decision --on-words x >/dev/null 2>&1 ); tp_rc=$?
+[ "$tp_rc" -ne 0 ] && ok "slice status refuses --stop-kind/--on-words without pending" || bad "slice status accepted --stop-kind without pending"
+tp_set=$( cd "$CG" && python3 scripts/workflow.py slice status P1.DECOMP pending --stop-kind decision --on-words "choose the design style; DECOMP records it and cuts the slices" 2>&1 ); tp_rc=$?
 tp_next=$( cd "$CG" && python3 scripts/workflow.py next 2>&1 )
 tp_card=$( cd "$CG" && python3 scripts/workflow.py next --card 2>&1 )
-( cd "$CG" && python3 scripts/workflow.py validate >/dev/null 2>&1 ); tp_val=$?
+( cd "$CG" && python3 scripts/workflow.py check --no-rebuild >/dev/null 2>&1 ); tp_val=$?
 [ "$tp_rc" -eq 0 ] && [ "$tp_val" -eq 0 ] && python3 -c 'import json,sys; p=json.load(open(sys.argv[1]))["pending"]; assert set(p)=={"kind","on_words","since"} and p["kind"]=="decision", p' "$CG/works/phases/active/P1/slices/P1.DECOMP/slice.json" \
   && printf '%s\n' "$tp_next" | grep -qx 'stop_kind=decision' && printf '%s\n' "$tp_next" | grep -qx 'on_words=choose the design style; DECOMP records it and cuts the slices' \
   && printf '%s\n' "$tp_card" | grep -q '^stop: decision (since .*) -- the operator.s words will: choose the design style' && [ "$(printf '%s' "$tp_card" | wc -c | tr -d ' ')" -le 2048 ] \
   && ok "a typed pending stop is stored as pending {kind, on_words, since}; next and the card print the kind and the words; validate passes" || bad "typed pending wrong (rc=$tp_rc val=$tp_val): $tp_set / $tp_next / $tp_card"
-( cd "$CG" && python3 scripts/workflow.py set-slice-status P1.DECOMP in_progress >/dev/null 2>&1 ) \
+( cd "$CG" && python3 scripts/workflow.py slice status P1.DECOMP in_progress >/dev/null 2>&1 ) \
   && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert "pending" not in d and d["status"]=="in_progress", d' "$CG/works/phases/active/P1/slices/P1.DECOMP/slice.json" \
-  && ok "leaving pending clears the typed record" || bad "the pending record survived set-slice-status in_progress"
-tp_bare=$( cd "$CG" && python3 scripts/workflow.py set-slice-status P1.DECOMP pending 2>&1 ); tp_rc=$?
-[ "$tp_rc" -eq 0 ] && [ "$(printf '%s\n' "$tp_bare" | grep -c '^warning: untyped pending stop')" -eq 1 ] \
-  && ok "a bare pending still works, with one warning line" || bad "bare pending wrong (rc=$tp_rc): $tp_bare"
-( cd "$CG" && python3 scripts/workflow.py set-slice-status P1.DECOMP in_progress >/dev/null 2>&1 )
+  && ok "leaving pending clears the typed record" || bad "the pending record survived slice status in_progress"
 python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["pending"]={"kind":"nap","on_words":"x","since":"t"}; json.dump(d,open(p,"w"))' "$CG/works/phases/active/P1/slices/P1.DECOMP/slice.json"
-tp_val=$( cd "$CG" && python3 scripts/workflow.py validate 2>&1 ); tp_rc=$?
+tp_val=$( cd "$CG" && python3 scripts/workflow.py check --no-rebuild 2>&1 ); tp_rc=$?
 [ "$tp_rc" -ne 0 ] && printf '%s\n' "$tp_val" | grep -q 'carries a pending record' \
   && ok "validate rejects a pending record on a slice that is not pending" || bad "validate missed a stray pending record: $tp_val"
 # v66: the high row owns no file (passed per dispatch), so the fable override lives only in executors.toml
-# and executor-route; the [claude.mid] effort override is the one sync-agents writes into slice-executor.md.
+# and route; the [claude.mid] effort override is the one sync-agents writes into slice-executor.md.
 printf '[claude.high]\nmodel = "fable"\n\n[claude.mid]\neffort = "high"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^effort: high$' "$F/.claude/agents/slice-executor.md" \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents >/dev/null 2>&1 ) && grep -q '^effort: high$' "$F/.claude/agents/slice-executor.md" \
   || bad "sync-agents failed applying the fable + mid-effort overrides"
 rm -rf "$F/.claude/skills/do-whole-phase"
 # v61 (P37.S1): a v60-shaped install has no reference/ files; one in our skill dir that we do not ship is the operator's.
@@ -2233,20 +2046,20 @@ else bad "--update listed a directory -- $update_out"; fi
   && [ -f "$F/AGENTS.md" ] && [ -f "$F/AGENTS.workspace.md" ] && [ -f "$F/.claude/skills/executor-mode/SKILL.md" ] \
   && ok "--update never deletes a file it lists (stale or kept)" || bad "--update deleted a file it only lists"
 rm -rf "$F/.agents" "$F/.codex" "$F/AGENTS.md" "$F/AGENTS.workspace.md" "$F/.claude/skills/explain"
-printf '%s\n' "$update_out" | grep -q 'python3 scripts/workflow.py sync-agents' \
+printf '%s\n' "$update_out" | grep -q 'python3 adapters/claude_code/adapter.py sync-agents' \
   && ok "--update instructs the adopter to re-run sync-agents" || bad "--update omitted the sync-agents migration step"
 grep -q '^effort: medium$' "$F/.claude/agents/slice-executor.md" \
   && ok "--update resets agent files to upstream defaults (re-run sync-agents after updates)" || bad "--update did not reset the agent files"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check >/dev/null 2>&1 ) \
   && bad "preserved executor override should require re-sync after update" || ok "--update leaves a detectable executor drift until sync-agents"
-( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents >/dev/null 2>&1 ) \
   && grep -q '^effort: high$' "$F/.claude/agents/slice-executor.md" \
-  && ( cd "$F" && env -u ANTHROPIC_BASE_URL python3 scripts/workflow.py executor-route P1.DECOMP 2>&1 | grep -qx 'model=fable' ) \
-  && ok "sync-agents re-applies the preserved executor override (mid effort in slice-executor.md; the high row's fable in executor-route)" || bad "sync-agents did not restore the preserved override"
+  && ( cd "$F" && env -u ANTHROPIC_BASE_URL python3 adapters/claude_code/adapter.py route P1.DECOMP 2>&1 | grep -qx 'model=fable' ) \
+  && ok "sync-agents re-applies the preserved executor override (mid effort in slice-executor.md; the high row's fable in route)" || bad "sync-agents did not restore the preserved override"
 rm -f "$F/executors.toml"
 sh "$BOOT" "$F" --update >/dev/null 2>&1 && [ -f "$F/executors.toml" ] \
   && ok "--update seeds a missing executors.toml (pre-v9 workspace)" || bad "--update did not seed a missing executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && ok "re-seeded executors.toml restores the tracked route selection" || bad "re-seeded executors.toml drifts from the tracked route selection"
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check >/dev/null 2>&1 ) && ok "re-seeded executors.toml restores the tracked route selection" || bad "re-seeded executors.toml drifts from the tracked route selection"
 # v66: the v65 executor pair is retired by content. A v65-shaped at-root install (the two files exactly as
 # v65 shipped them, from tests/fixtures/v65 -- the suite never reads git history): --update lists both stale,
 # a copy sync-agents patched (model/effort lines only) too, and installs the one slice-executor.md.
@@ -2295,7 +2108,7 @@ import json, sys
 d = json.load(open(sys.argv[1]))
 h = d["hooks"]
 assert h["PreCompact"] == [{"matcher": "auto", "hooks": [{"type": "command", "command": "echo foreign"}]}], h["PreCompact"]
-assert [x["command"] for g in h["SessionStart"] for x in g["hooks"]] == ['cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-resume || true']
+assert [x["command"] for g in h["SessionStart"] for x in g["hooks"]] == ['cd "$CLAUDE_PROJECT_DIR" && python3 adapters/claude_code/adapter.py compact-resume || true']
 assert d["autoCompactWindow"] == 500000, d
 PY
 then printf '%s\n' "$upd_out" | grep -q '^  removed: .claude/settings.json hooks.PreCompact compact-gate (retired in v61)$' \
@@ -2309,6 +2122,11 @@ python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["autoCompactWindo
 upd_out=$(sh "$BOOT" "$F" --update 2>&1)
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 700000' "$F/.claude/settings.json" && ! printf '%s\n' "$upd_out" | grep -q '^  changed: .*autoCompactWindow' \
   && ok "--update keeps an autoCompactWindow the adopter chose (700000), reporting no change" || bad "--update moved an adopter's 700000 window -- $upd_out"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["SessionStart"][0]["hooks"][0]["command"]="cd \"$CLAUDE_PROJECT_DIR\" && python3 scripts/workflow.py compact-resume || true"; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$F/.claude/settings.json"
+upd_out=$(sh "$BOOT" "$F" --update 2>&1)
+python3 -c 'import json,sys; h=json.load(open(sys.argv[1]))["hooks"]["SessionStart"]; assert [x["command"] for g in h for x in g["hooks"]] == ["cd \"$CLAUDE_PROJECT_DIR\" && python3 adapters/claude_code/adapter.py compact-resume || true"], h' "$F/.claude/settings.json" \
+  && printf '%s\n' "$upd_out" | grep -qx '  removed: .claude/settings.json hooks.SessionStart compact-resume (moved to the adapter: adapters/claude_code/adapter.py compact-resume)' \
+  && ok "--update swaps a v101 resume hook (workflow.py compact-resume) for the adapter's, and reports the removal" || bad "--update did not swap the v101 resume hook -- $upd_out"
 set_b=$(sha "$F/.claude/settings.json")
 sh "$BOOT" "$F" --update >/dev/null 2>&1
 [ "$(sha "$F/.claude/settings.json")" = "$set_b" ] \
@@ -2349,12 +2167,15 @@ out=$(sh "$BOOT" "$H" --at-root --force-empty-ok --name "Fresh" --summary "fresh
 echo "== Test 6: dual-apply -- live files match the bootstrap-embedded copies =="
 # The fresh install in $F is generated straight from the bootstrap payload, so it
 # is the source of truth to diff the live repo against.
-diff -q "$SRC/scripts/workflow.py" "$F/scripts/workflow.py" >/dev/null \
-  && ok "scripts/workflow.py == bootstrap-embedded WORKFLOW_PY" \
-  || bad "DRIFT: scripts/workflow.py differs from the bootstrap-embedded copy"
+[ -x "$F/scripts/workflow.py" ] && [ "$(ls "$SRC/scripts" | grep -c '\.py$')" -ge 2 ] && diff -r -q "$SRC/scripts" "$F/scripts" >/dev/null \
+  && ok "scripts/*.py (the engine's entry and its $(ls "$SRC/scripts" | grep -c '\.py$') modules in all) == the bootstrap-embedded copies, none extra" \
+  || bad "DRIFT: scripts/ differs from the bootstrap-embedded engine modules"
+[ -x "$F/adapters/claude_code/adapter.py" ] && diff -q "$SRC/adapters/claude_code/adapter.py" "$F/adapters/claude_code/adapter.py" >/dev/null \
+  && [ "$(cd "$F/adapters" && find . -type f | LC_ALL=C sort)" = "./claude_code/adapter.py" ] \
+  && ok "adapters/claude_code/adapter.py == the bootstrap-embedded copy, none extra" || bad "DRIFT: adapters/ differs from the bootstrap-embedded adapter"
 skill_rels=$(cd "$SRC" && find claude/skills -type f -name SKILL.md | sed 's|^|.|' | LC_ALL=C sort)
 nskill=$(printf '%s\n' "$skill_rels" | grep -c .)
-[ "$nskill" -eq 21 ] && ok "dual-apply covers all 21 skill bodies" || bad "expected 21 SKILL.md files to diff, found $nskill"
+[ "$nskill" -eq 18 ] && ok "dual-apply covers all 18 skill bodies" || bad "expected 18 SKILL.md files to diff, found $nskill"
 for rel in $skill_rels; do
   diff -q "$SRC/${rel#.}" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
@@ -2371,18 +2192,17 @@ executors.toml
 works/templates/deferred_brief.md
 works/templates/intent.md
 works/templates/phase.md
-works/templates/charter.md
 .github/workflows/workspace-ci.yml
 .gitattributes"
 for rel in $DUAL_FIXED CLAUDE.md; do
-  src="$SRC/${rel#.}"; [ "$rel" = "CLAUDE.md" ] && src="$SRC/contract.md"
+  src="$SRC/${rel#.}"; [ "$rel" = "CLAUDE.md" ] && src="$SRC/contract.md"; [ "$rel" = "executors.toml" ] && src="$SRC/adapters/claude_code/executors.toml"
   diff -q "$src" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
     || bad "DRIFT: $rel differs from the bootstrap-embedded copy"
 done
 # The manifest above is hand-maintained; the installer's own list is the thing it
 # must cover, so cross-check it instead of trusting both to be edited together.
-if python3 - "$REPO_ROOT" scripts/workflow.py $DUAL_FIXED <<'PY'
+if python3 - "$REPO_ROOT" $DUAL_FIXED <<'PY'
 import ast, sys
 from pathlib import Path
 
@@ -2422,64 +2242,62 @@ printf '%s\n' "$out" | grep -q "unknown option --with-explain" && ok "reports th
 [ ! -d "$G/.claude/skills" ] && [ ! -d "$G/.agents/skills" ] && ok "rejected install writes nothing" || bad "install wrote skills despite the rejection"
 
 # ---------------------------------------------------------------------------
-echo "== Test 9: v35 phase notebook -- template seed, generated ## Slices block, finish-slice --outcome =="
+echo "== Test 9: v35 phase notebook -- template seed, generated ## Slices block, slice finish --outcome =="
 # Runs against the fresh workspace from Test 5 ($F), which already carries the gate-probe P1 (P2 was archived above,
 # and an archived id is spent since v73, so the notebook probe is P4).
 sig() { python3 -c "import hashlib,os,sys;p=sys.argv[1];print(hashlib.sha256(open(p,'rb').read()).hexdigest(),os.stat(p).st_mtime_ns)" "$1"; }
 PM="$F/works/phases/active/P4/phase.md"
-( cd "$F" && python3 scripts/workflow.py new-phase --phase P4 --name "Notebook" --objective "notebook probe" >/dev/null 2>&1 )
+( cd "$F" && python3 scripts/workflow.py phase new --phase P4 --name "Notebook" --objective "notebook probe" >/dev/null 2>&1 )
 grep -q '<!-- slices:begin -->' "$PM" && grep -q '<!-- slices:end -->' "$PM" && grep -q '^## Now$' "$PM" \
-  && ok "new-phase seeds phase.md from the template (both markers + ## Now)" || bad "seeded phase.md is not the v35 shape"
-grep -q '^| `P4.DECOMP` |' "$PM" && ok "new-phase renders the generated ## Slices block" || bad "## Slices block was not filled on phase creation"
-( cd "$F" && python3 scripts/workflow.py new-slice --phase P4 --slice P4.S1 --name "probe" >/dev/null 2>&1 )
-out=$( cd "$F" && python3 scripts/workflow.py finish-slice P4.S1 --outcome "did X" 2>&1 )
-grep -q '| did X |' "$PM" && ok "finish-slice --outcome lands in the slice's generated row" || bad "outcome missing from the ## Slices row -- $out"
-out=$( cd "$F" && python3 scripts/workflow.py finish-slice P4.DECOMP 2>&1 ); rc=$?
+  && ok "phase new seeds phase.md from the template (both markers + ## Now)" || bad "seeded phase.md is not the v35 shape"
+grep -q '^| `P4.DECOMP` |' "$PM" && ok "phase new renders the generated ## Slices block" || bad "## Slices block was not filled on phase creation"
+( cd "$F" && python3 scripts/workflow.py slice new --phase P4 --slice P4.S1 --name "probe" >/dev/null 2>&1 )
+out=$( cd "$F" && python3 scripts/workflow.py slice finish P4.S1 --outcome "did X" 2>&1 )
+grep -q '| did X |' "$PM" && ok "slice finish --outcome lands in the slice's generated row" || bad "outcome missing from the ## Slices row -- $out"
+out=$( cd "$F" && python3 scripts/workflow.py slice finish P4.DECOMP 2>&1 ); rc=$?
 [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^warning: no --outcome recorded for P4.DECOMP' \
-  && ok "finish-slice without --outcome warns and still succeeds" || bad "omitted --outcome must warn, never fail (exit=$rc) -- $out"
-before=$(sig "$PM"); ( cd "$F" && python3 scripts/workflow.py rebuild >/dev/null 2>&1 )
+  && ok "slice finish without --outcome warns and still succeeds" || bad "omitted --outcome must warn, never fail (exit=$rc) -- $out"
+before=$(sig "$PM"); ( cd "$F" && python3 scripts/workflow.py check >/dev/null 2>&1 )
 [ "$(sig "$PM")" = "$before" ] && ok "an unchanged phase.md is not rewritten by rebuild (no notebook churn)" || bad "rebuild rewrote an unchanged phase.md"
 python3 - "$PM" <<'STRIP'
 import pathlib, sys
 p = pathlib.Path(sys.argv[1])
 p.write_text("\n".join(l for l in p.read_text().split("\n") if "slices:begin" not in l and "slices:end" not in l))
 STRIP
-before=$(sig "$PM"); ( cd "$F" && python3 scripts/workflow.py rebuild >/dev/null 2>&1 )
+before=$(sig "$PM"); ( cd "$F" && python3 scripts/workflow.py check >/dev/null 2>&1 )
 [ "$(sig "$PM")" = "$before" ] && ok "a marker-less phase.md is left byte-identical (legacy no-op, no migration)" || bad "rebuild touched a marker-less phase.md"
 if python3 - "$REPO_ROOT" <<'FALLBACK'
 import ast, sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
-tree = ast.parse((root / "payload/scripts/workflow.py").read_text())
-fallback = next(n.value.value for n in ast.walk(tree) if isinstance(n, ast.Assign)
+trees = [ast.parse(f.read_text()) for f in sorted((root / "payload/scripts").glob("*.py"))]
+fallback = next(n.value.value for tree in trees for n in ast.walk(tree) if isinstance(n, ast.Assign)
                 and any(getattr(t, "id", "") == "PHASE_MD_TEMPLATE_FALLBACK" for t in n.targets))
 assert fallback == (root / "payload/works/templates/phase.md").read_text(), "fallback drifted from the shipped template"
 FALLBACK
 then ok "new_phase's embedded fallback is byte-identical to works/templates/phase.md"; else bad "PHASE_MD_TEMPLATE_FALLBACK drifted from works/templates/phase.md"; fi
 
 # ---------------------------------------------------------------------------
-echo "== Test 10: v35/v39 notebook guardrails -- budget warning, ## Doc Impact case drift, no dashboard timestamp churn =="
+echo "== Test 10: v35/v39 notebook guardrails -- budget warning, no dashboard timestamp churn =="
 # Continues on $F (P4's phase.md lost its markers in Test 9; irrelevant here). v39's cap is
 # bytes-only (v61: 40 KB, an index), so the filler is generated, never checked in: pad the
-# notebook past it and drift the Doc impact heading in one edit.
+# notebook past it in one edit.
 python3 - "$PM" <<'PAD'
 import pathlib, sys
 p = pathlib.Path(sys.argv[1])
-p.write_text(p.read_text() + "\n## Doc Impact\n\n" + "- filler\n" * 50_000)  # ~450 KB
+p.write_text(p.read_text() + "\n## Filler\n\n" + "- filler\n" * 50_000)  # ~450 KB
 PAD
-out=$( cd "$F" && python3 scripts/workflow.py validate 2>&1 ); rc=$?
+out=$( cd "$F" && python3 scripts/workflow.py check --no-rebuild 2>&1 ); rc=$?
 [ "$rc" -eq 0 ] && ok "validate exits 0 with notebook warnings (warn, never error)" || bad "validate exited $rc on warnings -- $out"
-printf '%s\n' "$out" | grep -q 'phase P4: phase.md is .* over the notebook budget of 40960 bytes; biggest sections: ## Doc Impact ' \
+printf '%s\n' "$out" | grep -q 'phase P4: phase.md is .* over the notebook budget of 40960 bytes; biggest sections: ## Filler ' \
   && ok "an over-budget phase.md warns (40 KB) and names its largest section" || bad "no over-budget warning naming the largest section -- $out"
-printf '%s\n' "$out" | grep -q 'has a `## Doc Impact` heading' \
-  && ok "a case-drifted ## Doc Impact heading warns" || bad "no Doc-impact case-drift warning -- $out"
-( cd "$F" && python3 scripts/workflow.py new-slice --phase P4 --slice P4.S2 --name "budget probe" >/dev/null 2>&1 )
-out=$( cd "$F" && python3 scripts/workflow.py finish-slice P4.S2 --outcome "probe" 2>&1 )
+( cd "$F" && python3 scripts/workflow.py slice new --phase P4 --slice P4.S2 --name "budget probe" >/dev/null 2>&1 )
+out=$( cd "$F" && python3 scripts/workflow.py slice finish P4.S2 --outcome "probe" 2>&1 )
 printf '%s\n' "$out" | grep -q '^phase.md: .* bytes (budget 40960 bytes)' && printf '%s\n' "$out" | grep -q 'OVER BUDGET' \
-  && ok "finish-slice prints the notebook size and flags it over budget" || bad "finish-slice notebook size print missing -- $out"
-printf '%s\n' "$out" | grep -q 'biggest sections: ## Doc Impact ' && printf '%s\n' "$out" | grep -q 'topics/<slug>.md' \
-  && ok "finish-slice names the biggest sections and suggests topics/ when over budget" || bad "over-budget size line does not name the largest section -- $out"
+  && ok "slice finish prints the notebook size and flags it over budget" || bad "slice finish notebook size print missing -- $out"
+printf '%s\n' "$out" | grep -q 'biggest sections: ## Filler ' && printf '%s\n' "$out" | grep -q 'topics/<slug>.md' \
+  && ok "slice finish names the biggest sections and suggests topics/ when over budget" || bad "over-budget size line does not name the largest section -- $out"
 grep -q 'Rebuilt at' "$F/works/backlog.md" "$F/works/deferred.md" "$F/works/agenda.md" \
   && bad "a markdown dashboard still carries a Rebuilt at timestamp" || ok "no Rebuilt at timestamp in any markdown dashboard (backlog, deferred, agenda)"
 # The churn this removes: repeated `next` calls must not dirty the three dashboards.
@@ -2492,22 +2310,23 @@ dirty=$( cd "$F" && git status --short -- works/backlog.md works/deferred.md wor
   && ok "two next calls leave the dashboards byte-identical (no timestamp churn)" || bad "next dirtied the dashboards (tracked=$tracked) -- $dirty"
 
 # ---------------------------------------------------------------------------
-echo "== Test 10b: v61 phase-section -- phase.md is an index, read and written one section at a time =="
+echo "== Test 10b: v61 section -- phase.md is an index, read and written one section at a time =="
 # Runs on a copy of $F so the probe phase never reaches the later tests' pointer.
-newtmp PSW; cp -R "$F" "$PSW/ws"; PW="$PSW/ws"; ps() { ( cd "$PW" && python3 scripts/workflow.py phase-section "$@" ); }
-( cd "$PW" && python3 scripts/workflow.py new-phase --phase P8 --name "Index probe" --objective "section probe" >/dev/null 2>&1 )
+newtmp PSW; cp -R "$F" "$PSW/ws"; PW="$PSW/ws"; ps() { ( cd "$PW" && python3 scripts/workflow.py section "$@" ); }
+( cd "$PW" && python3 scripts/workflow.py phase new --phase P8 --name "Index probe" --objective "section probe" >/dev/null 2>&1 )
 PN="$PW/works/phases/active/P8/phase.md"
 python3 - "$PN" <<'SEED'
 import pathlib, sys
 p = pathlib.Path(sys.argv[1]); t = p.read_text()
-t = t.replace("## Operator Questions\n", "## Operator Questions\n\n- **OQ1 (S1):** Should the probe keep the old shape?\n  A second line of context.\n- **OQ2 (S1):** Another one?\n", 1)
+# an older notebook (before the retirement) also carries ## Doc impact: section still reads and appends to it
+t = t.replace("## Operator Questions\n", "## Doc impact\n\n_One line per durable-truth change._\n\n## Operator Questions\n\n- **OQ1 (S1):** Should the probe keep the old shape?\n  A second line of context.\n- **OQ2 (S1):** Another one?\n", 1)
 t = t.replace("## Now\n", "## Now\n\n- old now line\n", 1)
 p.write_text(t)
 SEED
 out=$(ps P8); printf '%s\n' "$out" | grep -q 'Objective$' && printf '%s\n' "$out" | grep -q 'Operator Questions$' && printf '%s\n' "$out" | grep -q 'total' \
-  && ok "phase-section <P> lists the headings with their bytes and a total" || bad "phase-section index wrong -- $out"
+  && ok "section <P> lists the headings with their bytes and a total" || bad "section index wrong -- $out"
 out=$(ps P8 Now); printf '%s\n' "$out" | grep -qx '## Now' && printf '%s\n' "$out" | grep -q 'old now line' && ! printf '%s\n' "$out" | grep -q '## Decisions' \
-  && ok "phase-section <P> Now prints that section, heading included, and nothing else" || bad "phase-section Now wrong -- $out"
+  && ok "section <P> Now prints that section, heading included, and nothing else" || bad "section Now wrong -- $out"
 ps P8 nope >/dev/null 2>&1; rc=$?; [ "$rc" -eq 1 ] && ok "an unknown section exits 1" || bad "unknown section exit=$rc"
 cp "$PN" "$PSW/before.md"
 printf 'fresh now\n' | ps P8 Now --replace >/dev/null 2>&1
@@ -2533,13 +2352,14 @@ for x, y in zip(a, b):
         assert x == y, x[:30]
 SPLICE2
 [ $? -eq 0 ] && ok "--replace of a middle section (Decisions, from --file) leaves every other section byte-identical" || bad "--replace of Decisions touched another section"
-for target in Slices "Doc impact" "Operator Questions"; do
-  printf 'x\n' | ps P8 "$target" --replace >/dev/null 2>&1; rc=$?
-  [ "$rc" -ne 0 ] && ok "--replace refuses $target" || bad "--replace of $target was accepted"
-done
+printf 'x\n' | ps P8 Slices --replace >/dev/null 2>&1; rc=$?
+[ "$rc" -ne 0 ] && ok "--replace refuses the generated Slices section" || bad "--replace of Slices was accepted"
+cp "$PN" "$PSW/ao.md"; out=$(printf -- '- x\n' | ps P8 "Operator Questions" --replace 2>&1); rc=$?; ao=$(cmp -s "$PSW/ao.md" "$PN" && echo same); cp "$PSW/ao.md" "$PN"
+[ "$rc" -eq 0 ] && [ -z "$ao" ] && [ "$(printf '%s\n' "$out" | grep -c '^advice: Operator Questions is append-only by custom; --resolve collapses an answered entry$')" -eq 1 ] \
+  && ok "--replace of Operator Questions writes, with one advice: line (append-only by custom)" || bad "--replace of Operator Questions (rc $rc) -- $out"
 printf 'x\n' | ps P8 Slices --append >/dev/null 2>&1; [ $? -ne 0 ] && ok "--append refuses the generated Slices section" || bad "--append of Slices was accepted"
 printf '%s\n' '- widget.md: a new line (S1)' | ps P8 "Doc impact" --append >/dev/null 2>&1
-ps P8 "Doc impact" | grep -q 'widget.md: a new line' && ok "--append adds a line to Doc impact" || bad "--append to Doc impact lost the line"
+ps P8 "Doc impact" | grep -q 'widget.md: a new line' && ok "--append adds a line to an older notebook's Doc impact" || bad "--append to Doc impact lost the line"
 ps P8 "Operator Questions" --append <<'OQAPP' >/dev/null 2>&1
 - **OQ3 (S2):** Third?
 OQAPP
@@ -2551,19 +2371,19 @@ ps P8 "Operator Questions" > "$PSW/oq.txt"
   && ok "--resolve collapses a two-line entry to one resolved line and leaves its neighbours" || bad "--resolve result wrong (rc=$rc) -- $(cat "$PSW/oq.txt")"
 ps P8 --resolve OQ1 --pointer "again" >/dev/null 2>&1; [ $? -ne 0 ] && ok "a second --resolve of the same entry is refused" || bad "an already-resolved entry was resolved again"
 ps P8 --resolve OQ9 --pointer "x" >/dev/null 2>&1; [ $? -ne 0 ] && ok "--resolve of a missing entry is refused" || bad "--resolve of a missing entry succeeded"
-( cd "$PW" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) ; mkdir -p "$PW/works/phases/active/P8/topics" && printf '# topic\n' > "$PW/works/phases/active/P8/topics/contract.md"
-out=$( cd "$PW" && python3 scripts/workflow.py validate 2>&1 ); rc=$?
+( cd "$PW" && python3 scripts/workflow.py check --no-rebuild >/dev/null 2>&1 ) ; mkdir -p "$PW/works/phases/active/P8/topics" && printf '# topic\n' > "$PW/works/phases/active/P8/topics/contract.md"
+out=$( cd "$PW" && python3 scripts/workflow.py check --no-rebuild 2>&1 ); rc=$?
 [ "$rc" -eq 0 ] && ! printf '%s\n' "$out" | grep -q 'P8' && ok "validate accepts a topics/ folder beside phase.md without a word" || bad "validate flagged topics/ (rc=$rc) -- $out"
 python3 - "$PW/works/phases/active/P8/phase.md" <<'BIG'
 import pathlib, sys
 p = pathlib.Path(sys.argv[1]); p.write_text(p.read_text() + "\n".join("- long decision line %d padding padding padding" % i for i in range(1500)) + "\n")
 BIG
-out=$( cd "$PW" && python3 scripts/workflow.py validate 2>&1 )
+out=$( cd "$PW" && python3 scripts/workflow.py check --no-rebuild 2>&1 )
 printf '%s\n' "$out" | grep -q 'phase P8: phase.md is .* over the notebook budget of 40960 bytes; biggest sections: ## ' && printf '%s\n' "$out" | grep -q 'topics/<slug>.md' \
   && ok "a notebook over 40 KB warns in validate, names its biggest sections and points at topics/" || bad "no 40 KB warning with sections -- $out"
 # Entries: --entry K --replace writes one entry, --to-topic moves entries losslessly behind gist lines, and
 # every refusal writes nothing. On a fresh probe phase P9 with a small synthetic notebook.
-( cd "$PW" && python3 scripts/workflow.py new-phase --phase P9 --name "Entry probe" --objective "entry probe" >/dev/null 2>&1 )
+( cd "$PW" && python3 scripts/workflow.py phase new --phase P9 --name "Entry probe" --objective "entry probe" >/dev/null 2>&1 )
 PE="$PW/works/phases/active/P9/phase.md"
 python3 - "$PE" <<'SEED'
 import pathlib, sys
@@ -2586,13 +2406,16 @@ ENTRY
 [ $? -eq 0 ] && ok "--entry K --replace swaps only that entry (its marker kept) and leaves every other byte identical" || bad "--entry --replace touched bytes outside the entry"
 cp "$PE" "$PSW/e1.md"
 for refusal in "Decisions --to-topic decisions --entry 3" "Decisions --to-topic breakdown --entry 1" "Now --to-topic now" \
-               "Doc_impact --to-topic notes" "Operator_Questions --entry 1 --replace" "Decisions --entry 1 --remove"; do
+               "Doc_impact --to-topic notes"; do
   # shellcheck disable=SC2086
   set -- $refusal; sect=$(printf '%s' "$1" | tr '_' ' '); shift
   printf 'x\n' | ps P9 "$sect" "$@" >/dev/null 2>&1; rc=$?
   [ "$rc" -ne 0 ] && cmp -s "$PSW/e1.md" "$PE" && [ ! -e "$PW/works/phases/active/P9/topics" ] \
-    && ok "phase-section refuses $sect $* and writes nothing" || bad "phase-section $sect $* was not refused cleanly (rc=$rc)"
+    && ok "section refuses $sect $* and writes nothing" || bad "section $sect $* was not refused cleanly (rc=$rc)"
 done
+out=$(ps P9 Decisions --entry 1 --remove 2>&1); rc=$?; dr=$(cmp -s "$PSW/e1.md" "$PE" && echo same); cp "$PSW/e1.md" "$PE"
+[ "$rc" -eq 0 ] && [ -z "$dr" ] && printf '%s\n' "$out" | grep -qx 'advice: Decisions keeps every decision by custom: a superseded one is replaced in place (--entry K --replace)' \
+  && ok "section Decisions --entry 1 --remove writes, with one advice: line" || bad "Decisions --entry 1 --remove (rc=$rc) -- $out"
 ps P9 Decisions --to-topic decisions --entry 1-2 --dry-run >/dev/null 2>&1; dry_rc=$?
 dry_clean=no; cmp -s "$PSW/e1.md" "$PE" && [ ! -e "$PW/works/phases/active/P9/topics" ] && dry_clean=yes
 ps P9 Decisions --to-topic decisions --entry 1-2 >/dev/null 2>&1; mv_rc=$?
@@ -2616,7 +2439,7 @@ MOVE
   || bad "--to-topic was not lossless (dry rc=$dry_rc clean=$dry_clean, move rc=$mv_rc)"
 # Budgets and paging (design §4-§5): a probe phase P10 whose Decisions (~70 KB, one entry bigger than a
 # page) is over its 12 KB budget, read in 24 KB pages; then a dangling pointer warns in validate.
-( cd "$PW" && python3 scripts/workflow.py new-phase --phase P10 --name "Page probe" --objective "page probe" >/dev/null 2>&1 )
+( cd "$PW" && python3 scripts/workflow.py phase new --phase P10 --name "Page probe" --objective "page probe" >/dev/null 2>&1 )
 PP="$PW/works/phases/active/P10/phase.md"
 python3 - "$PP" <<'SEED'
 import pathlib, sys
@@ -2627,10 +2450,10 @@ t = t.replace("`topics/breakdown.md`._\n", "`topics/breakdown.md`._\n\n" + dec, 
 p.write_text(t)
 SEED
 out=$(ps P10)
-printf '%s\n' "$out" | grep -q '12288  over,long:41 Decisions$' && printf '%s\n' "$out" | grep -qx 'move: phase-section P10 "Decisions" --to-topic decisions --entry 1-41' \
-  && val=$( cd "$PW" && python3 scripts/workflow.py validate 2>&1 ) && printf '%s\n' "$val" | grep -q 'phase P10: phase.md ## Decisions: .* over its 12288 B budget; long entries: 1, 2, 3, 4, 5, 6, 7, 8 +33 more; move: phase-section P10 "Decisions"' \
+printf '%s\n' "$out" | grep -q '12288  over,long:41 Decisions$' && printf '%s\n' "$out" | grep -qx 'move: section P10 "Decisions" --to-topic decisions --entry 1-41' \
+  && val=$( cd "$PW" && python3 scripts/workflow.py check --no-rebuild 2>&1 ) && printf '%s\n' "$val" | grep -q 'phase P10: phase.md ## Decisions: .* over its 12288 B budget; long entries: 1, 2, 3, 4, 5, 6, 7, 8 +33 more; move: section P10 "Decisions"' \
   && ok "an over-budget section and its long entries are named, with the move command, by the index (heading last) and validate" || bad "budget report wrong -- $out"
-pg_rc=0; ps P10 Decisions > "$PSW/plain.txt" || pg_rc=1; n=$(head -1 "$PSW/plain.txt" | sed -n 's/^<!-- page 1 of \([0-9]*\) · Decisions · entries 1–[0-9]* of 41 · next: phase-section P10 "Decisions" --page 2 -->$/\1/p')
+pg_rc=0; ps P10 Decisions > "$PSW/plain.txt" || pg_rc=1; n=$(head -1 "$PSW/plain.txt" | sed -n 's/^<!-- page 1 of \([0-9]*\) · Decisions · entries 1–[0-9]* of 41 · next: section P10 "Decisions" --page 2 -->$/\1/p')
 : > "$PSW/pages.txt"; for k in $(seq 1 "${n:-0}"); do ps P10 Decisions --page "$k" > "$PSW/page$k.txt" || pg_rc=1; done
 python3 - "$PP" "$PSW" "${n:-0}" <<'PAGES'
 import re, sys
@@ -2649,27 +2472,27 @@ PAGES
 cp "$PP" "$PSW/p0.md"; r1=0; r2=0; ps P10 Decisions --page 99 >/dev/null 2>&1 || r1=1; printf 'x\n' | ps P10 Decisions --page 1 --replace >/dev/null 2>&1 || r2=1
 [ "$r1" -eq 1 ] && [ "$r2" -eq 1 ] && cmp -s "$PSW/p0.md" "$PP" && ok "--page out of range and --page with a write flag are refused, writing nothing" || bad "--page refusals wrong (range=$r1 write=$r2)"
 ps P10 Decisions --to-topic decisions --entry 1 >/dev/null 2>&1
-q=$( cd "$PW" && python3 scripts/workflow.py validate 2>&1 | grep -c 'the moved entry is lost' ); rm "$PW/works/phases/active/P10/topics/decisions.md"
-lost=$( cd "$PW" && python3 scripts/workflow.py validate 2>&1 ); lost_rc=$?
+q=$( cd "$PW" && python3 scripts/workflow.py check --no-rebuild 2>&1 | grep -c 'the moved entry is lost' ); rm "$PW/works/phases/active/P10/topics/decisions.md"
+lost=$( cd "$PW" && python3 scripts/workflow.py check --no-rebuild 2>&1 ); lost_rc=$?
 [ "$q" = 0 ] && [ "$lost_rc" -eq 0 ] && printf '%s\n' "$lost" | grep -q 'phase P10: phase.md ## Decisions entry 1 points at topics/decisions.md, which does not exist: the moved entry is lost' \
   && ok "validate stays quiet on a good pointer and warns on a dangling one (a lost decision), exit 0" || bad "dangling-pointer warning wrong (quiet=$q rc=$lost_rc) -- $lost"
-# The required step (design §6): over 40 KB, next / start-slice / the card print it; silent under budget and when done.
+# The required step (design §6): over 40 KB, next / slice start / the card print it; silent under budget and when done.
 newtmp NBW; cp -R "$F" "$NBW/ws"; NW="$NBW/ws"; rm -rf "$NW/works/phases/active/"* "$NW/works/phases/archived/"*; nb() { ( cd "$NW" && python3 scripts/workflow.py "$@" ); }
-nb new-phase --phase P11 --name "Step probe" --objective "step probe" >/dev/null 2>&1; NP="$NW/works/phases/active/P11/phase.md"
-nb start-slice P11.DECOMP >/dev/null 2>&1; base=$(nb next 2>&1); base_card=$(nb next --card 2>&1)
+nb phase new --phase P11 --name "Step probe" --objective "step probe" >/dev/null 2>&1; NP="$NW/works/phases/active/P11/phase.md"
+nb slice start P11.DECOMP >/dev/null 2>&1; base=$(nb next 2>&1); base_card=$(nb next --card 2>&1)
 python3 - "$NP" <<'SEED'
 import pathlib, sys
 p = pathlib.Path(sys.argv[1]); t = p.read_text()
 dec = "".join(f"- **D{n}:** decision {n}. " + "detail " * 400 + "\n" for n in range(1, 18))
 p.write_text(t.replace("`topics/breakdown.md`._\n", "`topics/breakdown.md`._\n\n" + dec, 1))
 SEED
-out=$(nb next 2>&1); card=$(nb next --card 2>&1); st=$(nb set-slice-status P11.DECOMP todo >/dev/null 2>&1; nb start-slice P11.DECOMP 2>&1)
-printf '%s\n' "$out" | grep -q '^notebook_over_budget=P11 ([0-9]* of 40960 B) -- required before the next dispatch: move long entries to topics first (gists stay, nothing is lost)$' \
-  && printf '%s\n' "$out" | grep -qx 'notebook_move=phase-section P11 "Decisions" --to-topic decisions --entry 1-17' \
+out=$(nb next 2>&1); card=$(nb next --card 2>&1); st=$(nb slice status P11.DECOMP todo >/dev/null 2>&1; nb slice start P11.DECOMP 2>&1)
+printf '%s\n' "$out" | grep -q '^notebook_over_budget=P11 ([0-9]* of 40960 B) -- advice: move long entries to topics before the next dispatch (gists stay, nothing is lost)$' \
+  && printf '%s\n' "$out" | grep -qx 'notebook_move=section P11 "Decisions" --to-topic decisions --entry 1-17' \
   && printf '%s\n' "$card" | grep -q '^notebook: over budget ([0-9]*/40960 B) -- run the notebook_move lines `next` prints before the next dispatch$' \
   && printf '%s\n' "$st" | grep -qx 'started P11.DECOMP' && printf '%s\n' "$st" | grep -q '^warning: notebook P11 is over budget ' \
-  && ok "over 40 KB with a long entry, next prints the required step and its move, the card one line, start-slice a warning and still starts" || bad "required step wrong -- $out / $st"
-nb phase-section P11 Decisions --to-topic decisions --entry 1-17 >/dev/null 2>&1
+  && ok "over 40 KB with a long entry, next prints the advice step and its move, the card one line, slice start a warning and still starts" || bad "advice step wrong -- $out / $st"
+nb section P11 Decisions --to-topic decisions --entry 1-17 >/dev/null 2>&1
 [ "$(nb next 2>&1)" = "$base" ] && [ "$(nb next --card 2>&1)" = "$base_card" ] \
   && ok "after the move the notebook is under budget and next and the card are byte-identical to before" || bad "under-budget next or card changed after the move"
 python3 - "$NP" <<'SEED'
@@ -2682,69 +2505,55 @@ out=$(nb next 2>&1)
 printf '%s\n' "$out" | grep -q '^notebook_over_budget=P11 ([0-9]* of 40960 B) -- advisory: nothing left to move (Slices [0-9]* B generated; Operator Questions [0-9]* B: collapse answered entries with --resolve OQ<n> --pointer <ref>)$' \
   && ! printf '%s\n' "$out" | grep -q '^notebook_move=' \
   && ok "when nothing can move, next prints the advisory step and no notebook_move line" || bad "advisory step wrong -- $out"
-nb set-phase-status P11 done >/dev/null 2>&1
-! nb next 2>&1 | grep -q 'notebook' && ! nb next --card 2>&1 | grep -q '^notebook:' && ! nb run-phases 2>&1 | grep -q '^notebook_' \
-  && ok "a done phase over budget prints no step in next, the card or run-phases" || bad "a done phase still prints the step"
-
-# ---------------------------------------------------------------------------
-echo "== Test 10c: P41 run-phases -- a run's phase list, and a parked acceptance gate only a run passes =="
-# On a copy of $F emptied of its phases, so the probe phases are the whole pointer and never reach the later tests.
-newtmp RPW; cp -R "$F" "$RPW/ws"; RW="$RPW/ws"; rm -rf "$RW/works/phases/active/"* "$RW/works/phases/archived/"*; rp() { ( cd "$RW" && python3 scripts/workflow.py "$@" ); }
-for n in 1 2 3; do rp new-phase --phase "P$n" --name "Run probe $n" --objective "run probe" >/dev/null 2>&1 || bad "run-phases probe: new-phase P$n failed"; done
-out=$(rp run-phases 3,p1 P2 1 2>&1); rc=$?; ref=$(rp run-phases P1 worktree 2>&1); ref_rc=$?
-[ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -qx 'queue=P3,P1,P2' && [ "$ref_rc" -eq 2 ] && printf '%s\n' "$ref" | grep -q '^refused=worktree ' && ! printf '%s\n' "$ref" | grep -q '^queue=' \
-  && ok "run-phases keeps the tokens' order (3,p1 P2 1 -> P3,P1,P2) and refuses a non-phase token with exit 2 and no queue" || bad "run-phases tokens wrong (rc=$rc ref_rc=$ref_rc) -- $out / $ref"
-{ rp accept-gate P1 --require && rp accept-gate P1 --open --walkthrough "probe" && rp set-slice-status P2.DECOMP pending --stop-kind decision --on-words "probe"; } >/dev/null 2>&1 \
-  || bad "run-phases probe: could not park P1 or stop P2.DECOMP"
-out=$(rp run-phases P1 P2 P3 2>&1); plain=$(rp next 2>&1)
-printf '%s\n' "$out" | grep -q '^parked=P1 ' && printf '%s\n' "$out" | grep -qx 'halt=P2.DECOMP status=pending' && printf '%s\n' "$out" | grep -qx 'stop_kind=decision' \
-  && ! printf '%s\n' "$out" | grep -q '^target_' && printf '%s\n' "$plain" | grep -qx 'waiting_on_operator=P1' \
-  && ok "run-phases passes a parked gate and halts at a pending slice, while plain next still waits on the parked phase" || bad "run-phases parking wrong -- $out / $plain"
+nb phase status P11 done >/dev/null 2>&1
+! nb next 2>&1 | grep -q 'notebook' && ! nb next --card 2>&1 | grep -q '^notebook:' \
+  && ok "a done phase over budget prints no step in next or the card" || bad "a done phase still prints the step"
 
 # ---------------------------------------------------------------------------
 echo "== Test 10d: P42 the ready set -- an undeclared phase keeps its plain pointer, a declared dependency binds =="
-# Same emptied copy of $F as 10c: P1 is undeclared (the pointer, as before); P2 is declared and read through run-phases P2.
+# On a copy of $F emptied of its phases: P1 is undeclared (the pointer, as before); P2 is declared and read through next once P1 is done.
 newtmp RSW; cp -R "$F" "$RSW/ws"; SW="$RSW/ws"; rm -rf "$SW/works/phases/active/"* "$SW/works/phases/archived/"*; rs() { ( cd "$SW" && python3 scripts/workflow.py "$@" ); }
-{ for n in 1 2; do rs new-phase --phase "P$n" --name "Ready probe $n" --objective "ready probe" && rs finish-slice "P$n.DECOMP" --outcome cut; done \
-  && rs new-slice --phase P1 --slice P1.S1 --name s1 && rs new-slice --phase P1 --slice P1.S2 --name s2 \
-  && rs new-slice --phase P2 --slice P2.S1 --name s1 --depends-on none && rs new-slice --phase P2 --slice P2.S2 --name s2 --depends-on P2.S1; } >/dev/null 2>&1 \
+{ for n in 1 2; do rs phase new --phase "P$n" --name "Ready probe $n" --objective "ready probe" && rs slice finish "P$n.DECOMP" --outcome cut; done \
+  && rs slice new --phase P1 --slice P1.S1 --name s1 && rs slice new --phase P1 --slice P1.S2 --name s2 \
+  && rs slice new --phase P2 --slice P2.S1 --name s1 --depends-on none && rs slice new --phase P2 --slice P2.S2 --name s2 --depends-on P2.S1; } >/dev/null 2>&1 \
   || bad "ready-set probe: setup failed"
-plain=$(rs next 2>&1); card=$(rs next --card 2>&1); run=$(rs run-phases P1 2>&1)
-printf '%s\n' "$plain" | grep -qx 'current_slice=P1.S1' && printf '%s\n' "$run" | grep -qx 'target_slice=P1.S1' \
-  && ! printf '%s\n%s\n%s\n' "$plain" "$card" "$run" | grep -q -e '^ready_slices=' -e '^running_slices=' -e '^wave: ' \
-  && ok "an undeclared phase's ready set is its first open slice alone: next, the card and run-phases print no ready, running or wave line" \
-  || bad "undeclared phase output changed -- $plain / $card / $run"
-r1=$(rs run-phases P2 2>&1); rs start-slice P2.S1 >/dev/null 2>&1; r2=$(rs run-phases P2 2>&1); rs finish-slice P2.S1 --outcome x >/dev/null 2>&1; r3=$(rs run-phases P2 2>&1)
-rs new-slice --phase P2 --slice P2.S0 --name s0 --order 5 --depends-on P2.S2 >/dev/null 2>&1; fwd=$?
+plain=$(rs next 2>&1); card=$(rs next --card 2>&1)
+printf '%s\n' "$plain" | grep -qx 'current_slice=P1.S1' \
+  && ! printf '%s\n%s\n' "$plain" "$card" | grep -q -e '^ready_slices=' -e '^running_slices=' -e '^wave: ' \
+  && ok "an undeclared phase's ready set is its first open slice alone: next and the card print no ready, running or wave line" \
+  || bad "undeclared phase output changed -- $plain / $card"
+rs phase status P1 done >/dev/null 2>&1 || bad "ready-set probe: could not set P1 done"
+r1=$(rs next 2>&1); rs slice start P2.S1 >/dev/null 2>&1; r2=$(rs next 2>&1); rs slice finish P2.S1 --outcome x >/dev/null 2>&1; r3=$(rs next 2>&1)
+rs slice new --phase P2 --slice P2.S0 --name s0 --order 5 --depends-on P2.S2 >/dev/null 2>&1; fwd=$?
 printf '%s\n' "$r1" | grep -qx 'ready_slices=P2.S1' && printf '%s\n' "$r2" | grep -qx 'ready_slices=none' && printf '%s\n' "$r2" | grep -qx 'running_slices=P2.S1' \
   && printf '%s\n' "$r3" | grep -qx 'ready_slices=P2.S2' && [ "$fwd" -ne 0 ] && [ ! -e "$SW/works/phases/active/P2/slices/P2.S0" ] \
-  && ok "a declared slice is never ready before its dependency is done, and new-slice refuses a dependency not ordered before it" \
+  && ok "a declared slice is never ready before its dependency is done, and slice new refuses a dependency not ordered before it" \
   || bad "declared ready set wrong (fwd rc=$fwd) -- $r1 / $r2 / $r3"
-{ rs set-phase-status P1 done && rs start-slice P2.S2 && rs finish-slice P2.S2 --outcome x && rs start-slice P2.REVIEW \
-  && : > "$SW/works/phases/active/P2/slices/P2.REVIEW/result.md" && rs accept-gate P2 --require && rs accept-gate P2 --open --walkthrough probe; } >/dev/null 2>&1 \
+{ rs slice start P2.S2 && rs slice finish P2.S2 --outcome x && rs slice start P2.REVIEW \
+  && : > "$SW/works/phases/active/P2/slices/P2.REVIEW/result.md" && rs gate P2 require && rs gate P2 open --walkthrough probe; } >/dev/null 2>&1 \
   || bad "ready-set probe: could not open P2's acceptance gate"
 gn=$(rs next 2>&1); gc=$(rs next --card 2>&1)
 printf '%s\n' "$gn" | grep -qx 'waiting_on_operator=P2' && printf '%s\n' "$gc" | grep -q '^stop: phase P2 acceptance gate open ' \
   && ! printf '%s\n%s\n' "$gn" "$gc" | grep -q -e '^running_slices=' -e '^wave: ' \
   && ok "a declared phase at its open acceptance gate reads as a stop: the running REVIEW is a barrier, never a wave's running or returned slice" \
   || bad "declared gate reads as a wave -- $gn / $gc"
-# v77: a decomposition cannot finish while a middle slice it leaves open is undeclared; set-slice-deps declares
-# one, and finish-slice then prints the engine's parallel plan. An explain phase's chapters stay exempt.
-{ rs new-phase --phase P3 --name "Forced probe" --objective "forced declaration" && rs new-slice --phase P3 --slice P3.S1 --name s1; } >/dev/null 2>&1 \
+# v77: a decomposition that leaves a middle slice undeclared finishes with one advice: line naming it (it runs
+# alone); slice deps declares one, and slice finish prints the engine's parallel plan. An explain phase is exempt.
+{ rs phase new --phase P3 --name "Forced probe" --objective "forced declaration" && rs slice new --phase P3 --slice P3.S1 --name s1; } >/dev/null 2>&1 \
   || bad "forced-declaration probe: setup failed"
-fr=$(rs finish-slice P3.DECOMP --outcome cut 2>&1); fr_rc=$?; fr_todo=$(grep -c '"status": "todo"' "$SW/works/phases/active/P3/slices/P3.DECOMP/slice.json")
-{ rs set-slice-deps P3.S1 --depends-on none && rs new-slice --phase P3 --slice P3.S2 --name s2 --depends-on none \
-  && rs new-slice --phase P3 --slice P3.S3 --name s3 --depends-on P3.S1; } >/dev/null 2>&1 || bad "forced-declaration probe: declaring failed"
-fp=$(rs finish-slice P3.DECOMP --outcome cut 2>&1); fp_rc=$?
-{ rs new-phase --phase P4 --name "Explain probe" --objective "explain exempt" && printf '\n## Explain\n\n- subject: P3\n' >> "$SW/works/phases/active/P4/intent.md" \
-  && rs new-slice --phase P4 --slice P4.S1 --name chapter; } >/dev/null 2>&1 || bad "forced-declaration probe: explain setup failed"
-rs finish-slice P4.DECOMP --outcome cut >/dev/null 2>&1; fe_rc=$?
-[ "$fr_rc" -ne 0 ] && printf '%s\n' "$fr" | grep -q 'undeclared: P3.S1' && printf '%s\n' "$fr" | grep -q 'set-slice-deps' \
-  && [ "$fr_todo" -eq 1 ] \
-  && [ "$fp_rc" -eq 0 ] && printf '%s\n' "$fp" | grep -qx 'parallel_plan=P3: S1 + S2 -> S3 -> REVIEW' \
+fr=$(rs slice finish P3.DECOMP --outcome cut 2>&1); fr_rc=$?; fr_done=$(grep -c '"status": "done"' "$SW/works/phases/active/P3/slices/P3.DECOMP/slice.json")
+{ rs slice deps P3.S1 --depends-on none && rs slice new --phase P3 --slice P3.S2 --name s2 --depends-on none \
+  && rs slice new --phase P3 --slice P3.S3 --name s3 --depends-on P3.S1; } >/dev/null 2>&1 || bad "forced-declaration probe: declaring failed"
+fp=$(rs slice finish P3.DECOMP --outcome cut 2>&1); fp_rc=$?
+{ rs phase new --phase P4 --name "Explain probe" --objective "explain exempt" && printf '\n## Explain\n\n- subject: P3\n' >> "$SW/works/phases/active/P4/intent.md" \
+  && rs slice new --phase P4 --slice P4.S1 --name chapter; } >/dev/null 2>&1 || bad "forced-declaration probe: explain setup failed"
+rs slice finish P4.DECOMP --outcome cut >/dev/null 2>&1; fe_rc=$?
+[ "$fr_rc" -eq 0 ] && [ "$fr_done" -eq 1 ] && [ "$(printf '%s\n' "$fr" | grep -c '^advice: ')" -eq 1 ] \
+  && printf '%s\n' "$fr" | grep -q '^advice: P3.S1 is a middle slice left undeclared, so it runs alone: .*slice deps P3.S1 --depends-on' \
+  && [ "$fp_rc" -eq 0 ] && ! printf '%s\n' "$fp" | grep -q '^advice:' && printf '%s\n' "$fp" | grep -qx 'parallel_plan=P3: S1 + S2 -> S3 -> REVIEW' \
   && printf '%s\n' "$fp" | grep -q '^parallel_rounds=3 rounds for 4 open slices; 2 run beside another' && [ "$fe_rc" -eq 0 ] \
-  && ok "a decomposition refuses to finish over an undeclared middle slice (nothing written), set-slice-deps declares it, finish-slice prints the engine's parallel plan, and an explain phase is exempt (v77)" \
-  || bad "forced declaration wrong (refuse rc=$fr_rc, pass rc=$fp_rc, explain rc=$fe_rc) -- $fr / $fp"
+  && ok "a decomposition finishing over an undeclared middle slice prints one advice: line naming it, slice deps declares it, slice finish prints the engine's parallel plan, and an explain phase is exempt (v77)" \
+  || bad "declaration advice wrong (advice rc=$fr_rc, pass rc=$fp_rc, explain rc=$fe_rc) -- $fr / $fp"
 
 # ---------------------------------------------------------------------------
 echo "== Test 10e: ids -- P<n>-/D<n>-<tail> minted with the next number beside P<n>/D<n> and v73's P-/D- tokens, one listing order, an archived id is spent, two branches mint the same number and merge clean =="
@@ -2752,113 +2561,91 @@ echo "== Test 10e: ids -- P<n>-/D<n>-<tail> minted with the next number beside P
 newtmp MIW; cp -R "$F" "$MIW/ws"; MW="$MIW/ws"; rm -rf "$MW/.git" "$MW/works/phases/active/"* "$MW/works/phases/archived/"* "$MW/works/deferred/"*/*
 mi() { ( cd "$MW" && python3 scripts/workflow.py "$@" ); }
 tail_re='([a-hjkmnp-tv-z][0-9a-hjkmnp-tv-z]|[0-9][a-hjkmnp-tv-z])'  # two Crockford symbols, a letter among them
-mi_note() { python3 -c 'import sys; from pathlib import Path; p = Path(sys.argv[1]); p.write_text(p.read_text().replace("## Operator Questions", "- architecture.md: a durable change (" + sys.argv[2] + ".S1)\n\n## Operator Questions", 1))' "$MW/works/phases/active/$1/phase.md" "$1"; }
-mi_owe() { mi_note "$1" && mi accept-gate "$1" --waive --note probe && mi set-slice-status "$1.DECOMP" done && mi set-slice-status "$1.REVIEW" done && mi review-phase "$1" --verdict pass; }
-m1=$(mi new-phase --name "Minted" --objective "mint probe" 2>&1); mp=$(printf '%s\n' "$m1" | sed -n 's/^created phase \(P[^:]*\):.*/\1/p')
+m1=$(mi phase new --name "Minted" --objective "mint probe" 2>&1); mp=$(printf '%s\n' "$m1" | sed -n 's/^created phase \(P[^:]*\):.*/\1/p')
 md=$(mi defer-job --title "minted" --reason r --trigger t --source manual 2>&1); mdid=$(printf '%s\n' "$md" | sed -n 's/^created deferred job \(D[^:]*\):.*/\1/p')
 printf '%s\n' "$mp" | grep -qxE "P1-$tail_re" && [ -d "$MW/works/phases/active/$mp/slices/$mp.DECOMP" ] && [ -d "$MW/works/phases/active/$mp/slices/$mp.REVIEW" ] \
   && printf '%s\n' "$mdid" | grep -qxE "D1-$tail_re" && [ -f "$MW/works/deferred/open/$mdid/deferred.json" ] \
-  && ok "new-phase without --phase mints P1-<tail> on an empty workspace (two Crockford symbols, a letter among them) with its DECOMP and REVIEW; defer-job without --id mints D1-<tail>" \
+  && ok "phase new without --phase mints P1-<tail> on an empty workspace (two Crockford symbols, a letter among them) with its DECOMP and REVIEW; defer-job without --id mints D1-<tail>" \
   || bad "minted ids wrong -- $m1 / $md"
 pm=$(mi defer-job --id D5 --title "to promote" --reason r --trigger t --source manual >/dev/null 2>&1 && mi promote-deferred D5 --create-phase --slice S1 --name "promoted" 2>&1)
 pp=$(printf '%s\n' "$pm" | sed -n 's/^promoted D5 -> \(P[^.]*\)\.S1: .*/\1/p')
 printf '%s\n' "$pp" | grep -qxE "P2-$tail_re" && [ -f "$MW/works/phases/active/$pp/slices/$pp.S1/slice.json" ] && [ -d "$MW/works/deferred/promoted/D5" ] \
   && ok "promote-deferred --create-phase without --phase mints the next number (P2-<tail> after P1-<tail>) and takes a bare --slice S1" || bad "promote-deferred did not mint (or refused the bare suffix) -- $pm"
-mi archive-phase "$pp" --force >/dev/null 2>&1; arch=$(ls "$MW/works/phases/archived")
-re_tok=$(mi new-phase --phase "$pp" --name again --objective again 2>&1); re_act=$(mi new-phase --phase "$mp" --name again --objective again 2>&1)
+mi phase archive "$pp" --force >/dev/null 2>&1; arch=$(ls "$MW/works/phases/archived")
+re_tok=$(mi phase new --phase "$pp" --name again --objective again 2>&1); re_act=$(mi phase new --phase "$mp" --name again --objective again 2>&1)
 nact=$(ls "$MW/works/phases/active" | wc -l | tr -d ' ')
-p3=$(mi new-phase --name "After archive" --objective probe 2>&1 | sed -n 's/^created phase \(P[^:]*\):.*/\1/p')
+p3=$(mi phase new --name "After archive" --objective probe 2>&1 | sed -n 's/^created phase \(P[^:]*\):.*/\1/p')
 d6=$(mi defer-job --title "after promote" --reason r --trigger t --source manual 2>&1 | sed -n 's/^created deferred job \(D[^:]*\):.*/\1/p')
 printf '%s\n' "$arch" | grep -qE "^[0-9]{8}_[0-9]{6}_${pp}_to_promote$" && printf '%s\n' "$re_tok" | grep -q "phase already exists (archived): $pp" \
   && printf '%s\n' "$re_act" | grep -q "phase already exists: $mp" && [ "$nact" = 1 ] \
   && printf '%s\n' "$p3" | grep -qxE "P3-$tail_re" && printf '%s\n' "$d6" | grep -qxE "D6-$tail_re" \
-  && ok "a tailed phase archives as <stamp>_P2-<tail>_<slug>; new-phase refuses an explicit id that exists active or archived (an archived id is spent); the next mint counts the archived P2 (P3-<tail>) and the promoted D5 (D6-<tail>)" \
+  && ok "a tailed phase archives as <stamp>_P2-<tail>_<slug>; phase new refuses an explicit id that exists active or archived (an archived id is spent); the next mint counts the archived P2 (P3-<tail>) and the promoted D5 (D6-<tail>)" \
   || bad "archived tailed id not spent, or the next number missed it -- $arch / $re_tok / $re_act / $nact / $p3 / $d6"
-( for n in 9 10; do mi new-phase --phase "P$n" --name "Numeric $n" --objective probe || exit 1; done \
-  && for d in D10 D2; do mi defer-job --id "$d" --title "$d" --reason r --trigger t --source manual || exit 1; done && mi_owe P9 && mi_owe P10 ) >/dev/null 2>&1 \
-  || bad "mixed-id probe: setup failed"
-rot_num=$(mi rotate-backlog 2>&1)
-printf '%s\n' "$rot_num" | grep -qx 'docs_phase_proposal=P9, P10' && printf '%s\n' "$rot_num" | grep -qx 'name=Consolidate the doc impact of P9–P10' \
-  && printf '%s\n' "$rot_num" | grep -qE "^phase=P11-$tail_re$" \
-  && ok "an all-numeric debt keeps v72's order and en-dash label (P9–P10), and the proposal's phase= mints the next number (P11-<tail>)" || bad "all-numeric rotate label changed -- $rot_num"
-( mi new-phase --phase P11-ab --name "Tailed 11" --objective probe && mi_owe P11-ab ) >/dev/null 2>&1 || bad "mixed-id probe: tailed P11-ab setup failed"
-rot_tail=$(mi rotate-backlog 2>&1)
-printf '%s\n' "$rot_tail" | grep -qx 'docs_phase_proposal=P9, P10, P11-ab' && printf '%s\n' "$rot_tail" | grep -qx 'name=Consolidate the doc impact of P9–P11-ab' \
-  && printf '%s\n' "$rot_tail" | grep -qE "^phase=P12-$tail_re$" \
-  && ok "a tailed id joins a consecutive range with its ends written in full (P9–P11-ab), and an explicit tailed id counts toward the next number (P12-<tail>)" || bad "tailed range label wrong -- $rot_tail"
-( mi new-phase --phase P46-k2 --name "Tailed 46" --objective probe && mi new-phase --phase P-7kq2 --name "Token" --objective probe \
-  && mi defer-job --id D-m3xa --title token --reason r --trigger t --source manual && mi_owe "$mp" && mi_owe P46-k2 && mi_owe P-7kq2 ) >/dev/null 2>&1 || bad "mixed-id probe: could not pass $mp, P46-k2 or P-7kq2"
-rot_mix=$(mi rotate-backlog 2>&1); val_mix=$(mi validate 2>&1); val_rc=$?
+( for n in 9 10; do mi phase new --phase "P$n" --name "Numeric $n" --objective probe || exit 1; done \
+  && for d in D10 D2; do mi defer-job --id "$d" --title "$d" --reason r --trigger t --source manual || exit 1; done \
+  && mi phase new --phase P11-ab --name "Tailed 11" --objective probe ) >/dev/null 2>&1 || bad "mixed-id probe: setup failed"
+p12=$(mi phase new --name "After P11-ab" --objective probe 2>&1 | sed -n 's/^created phase \(P[^:]*\):.*/\1/p')
+printf '%s\n' "$p12" | grep -qxE "P12-$tail_re" \
+  && ok "an explicit tailed id counts toward the next number (after P9, P10 and P11-ab a mint draws P12-<tail>)" || bad "the mint missed the tailed P11-ab -- $p12"
+( mi phase new --phase P46-k2 --name "Tailed 46" --objective probe && mi phase new --phase P-7kq2 --name "Token" --objective probe \
+  && mi defer-job --id D-m3xa --title token --reason r --trigger t --source manual ) >/dev/null 2>&1 || bad "mixed-id probe: could not add P46-k2, P-7kq2 or D-m3xa"
+val_mix=$(mi check --no-rebuild 2>&1); val_rc=$?
 dlist=$(sed -n '/^## Open/,/^## Promoted/p' "$MW/works/deferred.md" | sed -n 's/^| `\([^`]*\)` |.*/\1/p' | tr '\n' ' ')
-printf '%s\n' "$rot_mix" | grep -qx "docs_phase_proposal=$mp, P9, P10, P11-ab, P46-k2, P-7kq2" && printf '%s\n' "$rot_mix" | grep -qx "name=Consolidate the doc impact of $mp, P9, P10, P11-ab, P46-k2, P-7kq2" \
-  && [ "$dlist" = "$mdid D2 $d6 D10 D-m3xa " ] && [ "$val_rc" -eq 0 ] && printf '%s\n' "$val_mix" | grep -q '^Workflow validation passed' \
-  && ok "mixed ids (P1-<tail>, P9, P46-k2, P-7kq2) list numbered ids by number, then v73 tokens (rotate's proposal, the deferred dashboard: $dlist), and validate passes" \
-  || bad "mixed ids out of order or invalid -- $rot_mix / deferred: $dlist / $val_mix"
+[ "$dlist" = "$mdid D2 $d6 D10 D-m3xa " ] && [ "$val_rc" -eq 0 ] && printf '%s\n' "$val_mix" | grep -q '^Workflow validation passed' \
+  && ok "mixed ids (D1-<tail>, D2, D10, D-m3xa) list numbered ids by number, then v73 tokens (the deferred dashboard: $dlist), and validate passes" \
+  || bad "mixed ids out of order or invalid -- deferred: $dlist / $val_mix"
 # Two branches of one repo each mint a phase and a deferred job unseen by the other, so both draw number 1: the
-# merge conflicts in generated files only, and taking either side then `rebuild` (payload/gitattributes) leaves
+# merge conflicts in generated files only, and taking either side then `check` (payload/gitattributes) leaves
 # both phases and both jobs, valid, and the shared number is refused until the tail is typed.
 newtmp TBW; cp -R "$F" "$TBW/ws"; TW="$TBW/ws"; rm -rf "$TW/.git" "$TW/works/phases/active/"* "$TW/works/phases/archived/"* "$TW/works/deferred/"*/*; : > "$TW/works/events.jsonl"
 tw() { ( cd "$TW" && python3 scripts/workflow.py "$@" ); }
 tg() { git -C "$TW" -c user.email=smoke@example.invalid -c user.name=smoke "$@"; }
-( tw rebuild && tg init -q && tg add -A && tg commit -qm base \
-  && tg checkout -q -b one && tw new-phase --name "Branch one" --objective one && tw defer-job --title one --reason r --trigger t --source manual && tg add -A && tg commit -qm one \
-  && tg checkout -q - && tg checkout -q -b two && tw new-phase --name "Branch two" --objective two && tw defer-job --title two --reason r --trigger t --source manual ) >/dev/null 2>&1 \
+( tw check && tg init -q && tg add -A && tg commit -qm base \
+  && tg checkout -q -b one && tw phase new --name "Branch one" --objective one && tw defer-job --title one --reason r --trigger t --source manual && tg add -A && tg commit -qm one \
+  && tg checkout -q - && tg checkout -q -b two && tw phase new --name "Branch two" --objective two && tw defer-job --title two --reason r --trigger t --source manual ) >/dev/null 2>&1 \
   || bad "two-branch probe: setup failed"
 tb_p1=$(tg show --name-only --format= one | sed -n 's|^works/phases/active/\([^/]*\)/phase.json$|\1|p'); tb_d1=$(tg show --name-only --format= one | sed -n 's|^works/deferred/open/\([^/]*\)/deferred.json$|\1|p')
 # Deterministic: a same-tail draw (1 in 924 per kind) is the add/add conflict the engine documents, never a silent
 # mix -- so when branch two drew branch one's tail, it redoes its side with explicit, distinct tails.
 if [ -d "$TW/works/phases/active/$tb_p1" ] || [ -d "$TW/works/deferred/open/$tb_d1" ]; then
   tb_t=ab; [ "$tb_p1" = P1-ab ] && tb_t=ac; tb_u=ab; [ "$tb_d1" = D1-ab ] && tb_u=ac
-  ( tg reset -q --hard && tg clean -qfd && tw new-phase --phase "P1-$tb_t" --name "Branch two" --objective two \
+  ( tg reset -q --hard && tg clean -qfd && tw phase new --phase "P1-$tb_t" --name "Branch two" --objective two \
     && tw defer-job --id "D1-$tb_u" --title two --reason r --trigger t --source manual ) >/dev/null 2>&1 || bad "two-branch probe: the same-tail redo failed"
 fi
 ( tg add -A && tg commit -qm two ) >/dev/null 2>&1 || bad "two-branch probe: branch two did not commit"
 tg merge -q --no-edit one >/dev/null 2>&1; conflicted=$(tg diff --name-only --diff-filter=U | tr '\n' ' ')
 outside=$(printf '%s\n' $conflicted | grep -vxE 'works/(state\.json|index\.json|backlog\.md|deferred\.md|agenda\.md)')
-( for f in $conflicted; do tg checkout --theirs -- "$f" || exit 1; done; tw rebuild && tg add -A && tg commit -qm merge ) >/dev/null 2>&1
-tb_val=$(tw validate 2>&1); tb_rc=$?; tb_run=$(tw run-phases 1 2>&1); tb_run_rc=$?
+( for f in $conflicted; do tg checkout --theirs -- "$f" || exit 1; done; tw check && tg add -A && tg commit -qm merge ) >/dev/null 2>&1
+tb_val=$(tw check --no-rebuild 2>&1); tb_rc=$?; tb_run=$(tw gate 1 2>&1); tb_run_rc=$?
 [ -z "$outside" ] && [ "$(ls "$TW/works/phases/active" | grep -cE "^P1-$tail_re$")" = 2 ] && [ "$(ls "$TW/works/deferred/open" | grep -cE "^D1-$tail_re$")" = 2 ] \
   && [ "$tb_rc" -eq 0 ] && [ -z "$(tg status --porcelain)" ] && [ "$(grep -c '"type": "phase_created"' "$TW/works/events.jsonl")" = 2 ] \
-  && [ "$tb_run_rc" -eq 2 ] && printf '%s\n' "$tb_run" | grep -qE "^refused=1 -- names P1-$tail_re, P1-$tail_re: type the tail" \
-  && ok "two branches each mint a phase and a deferred job with the same number (P1-, D1-) and merge with conflicts only in generated files (${conflicted:-none}); either side + rebuild validates, and run-phases 1 then lists both" \
+  && [ "$tb_run_rc" -ne 0 ] && printf '%s\n' "$tb_run" | grep -qE "names 2 phases numbered 1: .*P1-$tail_re.*P1-$tail_re.*type the tail" \
+  && ok "two branches each mint a phase and a deferred job with the same number (P1-, D1-) and merge with conflicts only in generated files (${conflicted:-none}); either side + rebuild validates, and gate 1 then lists both" \
   || bad "two-branch mint did not merge clean -- conflicted: $conflicted / outside: $outside / $tb_val / $tb_run"
 
 # ---------------------------------------------------------------------------
-echo "== Test 10f: brief names -- 13 / P13 name the one P13-<tail>, a shared number is refused and listed, an exact P12 wins, 7kq2 / P-7kq2 still name a v73 id, and the CI seed parses all three branch shapes =="
-# Same emptied copy of $F as 10c: a v73 token phase beside P12 and P12-ab. Brief names go through one choke point after argparse.
+echo "== Test 10f: brief names -- 13 / P13 name the one P13-<tail>, a shared number is refused and listed, an exact P12 wins, 7kq2 / P-7kq2 still name a v73 id =="
+# A copy of $F emptied of its phases: a v73 token phase beside P12 and P12-ab. Brief names go through one choke point after argparse.
 newtmp BNW; cp -R "$F" "$BNW/ws"; BN="$BNW/ws"; rm -rf "$BN/.git" "$BN/works/phases/active/"* "$BN/works/phases/archived/"* "$BN/works/deferred/"*/*; bn() { ( cd "$BN" && python3 scripts/workflow.py "$@" ); }
 bn_pid=7kq2; bn_up=7KQ2
-( bn new-phase --phase "P-$bn_pid" --name "Brief" --objective probe && bn new-phase --phase 12 --name "Numbered" --objective probe \
-  && bn new-phase --phase P12-ab --name "Twelve tailed" --objective probe ) >/dev/null 2>&1 || bad "brief-name probe: setup failed"
-r1=$(bn run-phases "$bn_pid" 12 2>&1); r2=$(bn run-phases "P-$bn_up, p12" "$bn_pid" 2>&1); r3=$(bn run-phases "P$bn_pid" 2>&1); r3_rc=$?; r4=$(bn run-phases gate 2>&1); r4_rc=$?
-printf '%s\n' "$r1" | grep -qx "run=P-$bn_pid,P12" && printf '%s\n' "$r2" | grep -qx "queue=P-$bn_pid,P12" \
-  && [ "$r3_rc" -eq 2 ] && printf '%s\n' "$r3" | grep -q "^refused=P$bn_pid .*P-$bn_pid" && ! printf '%s\n' "$r3" | grep -q '^queue=' && [ "$r4_rc" -eq 2 ] && printf '%s\n' "$r4" | grep -q '^refused=gate ' \
-  && ok "run-phases takes a bare token, P-token in any case and 12/p12 (the exact P12 wins over P12-ab), keeps the order and drops duplicates, and refuses P<token> without its dash and a mode word" \
-  || bad "run-phases brief names wrong -- $r1 / $r2 / $r3 / $r4"
-bn_gate=$(bn accept-gate "$bn_pid" --waive --note probe 2>&1); bn_show=$(bn accept-gate "p-$bn_up" 2>&1); bn_old=$(bn accept-gate 12 2>&1); bn_bad=$(bn accept-gate "P$bn_pid" 2>&1); bn_bad_rc=$?
+( bn phase new --phase "P-$bn_pid" --name "Brief" --objective probe && bn phase new --phase 12 --name "Numbered" --objective probe \
+  && bn phase new --phase P12-ab --name "Twelve tailed" --objective probe ) >/dev/null 2>&1 || bad "brief-name probe: setup failed"
+bn_gate=$(bn gate "$bn_pid" waive --note probe 2>&1); bn_show=$(bn gate "p-$bn_up" 2>&1); bn_old=$(bn gate 12 2>&1); bn_bad=$(bn gate "P$bn_pid" 2>&1); bn_bad_rc=$?
 bn_did=$(bn defer-job --title brief --reason r --trigger t --source manual 2>&1 | sed -n 's/^created deferred job \(D[^:]*\):.*/\1/p'); bn_drop=$(bn drop-deferred 1 --reason x 2>&1)
 printf '%s\n' "$bn_gate" | grep -qx "phase P-$bn_pid: operator acceptance WAIVED -- probe" && printf '%s\n' "$bn_show" | grep -qx "phase=P-$bn_pid" && printf '%s\n' "$bn_old" | grep -qx 'phase=P12' \
   && [ "$bn_bad_rc" -ne 0 ] && printf '%s\n' "$bn_bad" | grep -q "not a phase id" && printf '%s\n' "$bn_did" | grep -qxE "D1-$tail_re" && printf '%s\n' "$bn_drop" | grep -q "^dropped $bn_did:" \
-  && ok "a phase or deferred-id argument takes the brief name (accept-gate 7kq2, p-7KQ2, 12; drop-deferred 1 names the one D1-<tail>) and refuses P7kq2 with the shapes" || bad "brief names on commands wrong -- $bn_gate / $bn_show / $bn_old / $bn_bad / $bn_did / $bn_drop"
-bn_t=$(bn new-phase --name "Tailed" --objective probe 2>&1 | sed -n 's/^created phase \(P[^:]*\):.*/\1/p'); bn_tu=$(printf '%s' "${bn_t#P13-}" | tr '[:lower:]' '[:upper:]')
-r5=$(bn run-phases 13 "p13-$bn_tu" 2>&1); bn_ag=$(bn accept-gate p13 2>&1)
-bn_sl=$(bn new-slice --phase 13 --slice 13.S1 --name brief --kind implementation --risk low --depends-on none 2>&1)
+  && ok "a phase or deferred-id argument takes the brief name (gate 7kq2, p-7KQ2, 12; drop-deferred 1 names the one D1-<tail>) and refuses P7kq2 with the shapes" || bad "brief names on commands wrong -- $bn_gate / $bn_show / $bn_old / $bn_bad / $bn_did / $bn_drop"
+bn_t=$(bn phase new --name "Tailed" --objective probe 2>&1 | sed -n 's/^created phase \(P[^:]*\):.*/\1/p'); bn_tu=$(printf '%s' "${bn_t#P13-}" | tr '[:lower:]' '[:upper:]')
+bn_ag=$(bn gate p13 2>&1); bn_agt=$(bn gate "p13-$bn_tu" 2>&1)
+bn_sl=$(bn slice new --phase 13 --slice 13.S1 --name brief --kind implementation --risk low --depends-on none 2>&1)
 bn_t2=ab; [ "$bn_t" = P13-ab ] && bn_t2=ac
-bn new-phase --phase "13-$bn_t2" --name "Twin" --objective probe >/dev/null 2>&1 || bad "brief-name probe: the twin P13-$bn_t2 failed"
-r6=$(bn run-phases 13 2>&1); r6_rc=$?; bn_amb=$(bn accept-gate 13 2>&1); bn_amb_rc=$?; bn_full=$(bn accept-gate "p13-$(printf '%s' "$bn_t2" | tr '[:lower:]' '[:upper:]')" 2>&1)
-printf '%s\n' "$bn_t" | grep -qxE "P13-$tail_re" && printf '%s\n' "$r5" | grep -qx "run=$bn_t" && printf '%s\n' "$bn_ag" | grep -qx "phase=$bn_t" \
+bn phase new --phase "13-$bn_t2" --name "Twin" --objective probe >/dev/null 2>&1 || bad "brief-name probe: the twin P13-$bn_t2 failed"
+bn_amb=$(bn gate 13 2>&1); bn_amb_rc=$?; bn_full=$(bn gate "p13-$(printf '%s' "$bn_t2" | tr '[:lower:]' '[:upper:]')" 2>&1)
+printf '%s\n' "$bn_t" | grep -qxE "P13-$tail_re" && printf '%s\n' "$bn_agt" | grep -qx "phase=$bn_t" && printf '%s\n' "$bn_ag" | grep -qx "phase=$bn_t" \
   && printf '%s\n' "$bn_sl" | grep -q "^created slice $bn_t.S1: " \
-  && [ "$r6_rc" -eq 2 ] && printf '%s\n' "$r6" | grep -q "^refused=13 -- names .*$bn_t" && printf '%s\n' "$r6" | grep -q "^refused=13 -- names .*P13-$bn_t2" && ! printf '%s\n' "$r6" | grep -q '^queue=' \
   && [ "$bn_amb_rc" -ne 0 ] && printf '%s\n' "$bn_amb" | grep -q "names 2 phases numbered 13: .*type the tail" && printf '%s\n' "$bn_full" | grep -qx "phase=P13-$bn_t2" \
-  && ok "a bare new-phase mints the next number over P12 and P12-ab ($bn_t); 13, p13 and p13-<TAIL> name it while it is the only P13 (run-phases, accept-gate, new-slice --slice 13.S1); a second P13 makes 13 a refusal listing both, and 13-<tail> still names one" \
-  || bad "the number lookup is wrong -- $bn_t / $r5 / $bn_ag / $bn_sl / $r6 / $bn_amb / $bn_full"
-seed_block=$(sed -n '/# branch-parse:begin/,/# branch-parse:end/p' "$SRC/github/workflows/workspace-ci.yml")
-newtmp CIW; mkdir -p "$CIW/works/phases/active/P46-k2" && : > "$CIW/works/phases/active/P46-k2/phase.json"
-ci_parse() { ( cd "$CIW" && HEAD_REF=$1 && phase= && eval "$seed_block" && printf '%s' "$phase" ); }
-c1=$(ci_parse "phase/P-$bn_pid-slug"); c2=$(ci_parse phase/P12-slug); c3=$(ci_parse phase/feature-x); c4=$(ci_parse phase/P46-k2-some-slug); c5=$(ci_parse phase/P12-ab-slug)
-[ -n "$seed_block" ] && [ "$c1" = "P-$bn_pid" ] && [ "$c2" = "P12" ] && [ -z "$c3" ] && [ "$c4" = "P46-k2" ] && [ "$c5" = "P12" ] \
-  && ok "the CI seed's branch parse gives P46-k2 for phase/P46-k2-slug (its folder exists), P12 for phase/P12-slug and for phase/P12-ab-slug (no P12-ab folder: a slug word), P-token for phase/P-token-slug, and nothing for another branch" \
-  || bad "the CI seed's branch parse is wrong -- [$c1] [$c2] [$c3] [$c4] [$c5]"
+  && ok "a bare phase new mints the next number over P12 and P12-ab ($bn_t); p13 and p13-<TAIL> name it while it is the only P13 (gate, slice new --slice 13.S1); a second P13 makes 13 a refusal listing both, and 13-<tail> still names one" \
+  || bad "the number lookup is wrong -- $bn_t / $bn_agt / $bn_ag / $bn_sl / $bn_amb / $bn_full"
 
 # ---------------------------------------------------------------------------
 echo "== Test 10i: agenda -- items, ids, transitions, order, links, the generated page, validate, two branches (the gate's exemption for an added item: Test 12) =="
@@ -2874,7 +2661,7 @@ ag_order() { ag agenda --json | python3 -c 'import json,sys; print(" ".join(i["i
 tail_re='([a-hjkmnp-tv-z][0-9a-hjkmnp-tv-z]|[0-9][a-hjkmnp-tv-z])'
 # (a) the generated page and the index, before any item and after: stable bytes, the keys, the backlog line.
 pg0=$(sha "$AG/works/agenda.md" 2>/dev/null); rm -f "$AG/works/agenda.md"; sleep 1  # a stamp would move with the clock
-ag rebuild >/dev/null 2>&1; pg1=$(sha "$AG/works/agenda.md" 2>/dev/null)
+ag check >/dev/null 2>&1; pg1=$(sha "$AG/works/agenda.md" 2>/dev/null)
 ag_idx() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(not ("agenda_counts" in d and "agenda" in d))' "$AG/works/index.json"; }
 [ -n "$pg0" ] && [ "$pg0" = "$pg1" ] && ag_idx && grep -qxF -e '- Open agenda items: `0`' "$AG/works/backlog.md" \
   && ok "a fresh install has works/agenda.md with no item, byte-identical across rebuilds; index.json has agenda_counts and agenda; backlog.md says Open agenda items: 0" \
@@ -2882,7 +2669,7 @@ ag_idx() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit
 # (b) ids: A1-<tail> first, its own number sequence, an explicit tailed id once, brief forms.
 a1=$(ag agenda-add --title "first" 2>&1 | sed -n 's/^added \(A[^:]*\):.*/\1/p')
 a2=$(ag agenda-add --title "second" 2>&1 | sed -n 's/^added \(A[^:]*\):.*/\1/p')
-p1=$(ag new-phase --name "Plain" --objective probe 2>&1 | sed -n 's/^created phase \(P[^:]*\):.*/\1/p')
+p1=$(ag phase new --name "Plain" --objective probe 2>&1 | sed -n 's/^created phase \(P[^:]*\):.*/\1/p')
 d1=$(ag defer-job --title plain --reason r --trigger t --source manual 2>&1 | sed -n 's/^created deferred job \(D[^:]*\):.*/\1/p')
 ex1=$(ag agenda-add --id A13-n1 --title "thirteen" 2>&1); ex2=$(ag agenda-add --id A13-n1 --title "again" 2>&1); ex2_rc=$?
 ag agenda-edit 1 --title "first, by 1" >/dev/null 2>&1; ag agenda-edit A2 --title "second, by A2" >/dev/null 2>&1
@@ -2916,9 +2703,9 @@ moved=$(diff <(printf '%s\n' "$it0") <(printf '%s\n' "$it1") | sed -n 's/^> \([^
 [ "$o1" = "A13-n1 $a1 $a2" ] && [ "$moved" = "A13-n1 " ] && [ "$(ag_order)" = "$a1 $a2 A13-n1" ] \
   && ok "a new item lists first and a reopened one last ($o1); agenda-move --last rewrites only the moved item's agenda.json" \
   || bad "agenda order wrong -- $o1 / moved: $moved / $(ag_order)"
-# (e) links: new-phase --agenda links and the item reads In progress; a second item cannot take that phase;
+# (e) links: phase new --agenda links and the item reads In progress; a second item cannot take that phase;
 # no agenda command changes `next`; agenda-delete clears the link and the phase stays, with no agenda key.
-p2=$(ag new-phase --name "Linked" --objective probe --agenda 1 2>&1 | sed -n 's/^created phase \(P[^:]*\):.*/\1/p')
+p2=$(ag phase new --name "Linked" --objective probe --agenda 1 2>&1 | sed -n 's/^created phase \(P[^:]*\):.*/\1/p')
 nx1=$(ag next 2>&1); lk=$(ag agenda-link 2 --phase "$p2" 2>&1); lk_rc=$?
 shown=$(ag agenda 2>&1 | grep "^$a1 ")
 ag agenda-add --title "noise" >/dev/null 2>&1; ag agenda-defer 14 >/dev/null 2>&1; ag agenda-move A13 --first >/dev/null 2>&1; nx2=$(ag next 2>&1)
@@ -2927,36 +2714,36 @@ pj="$AG/works/phases/active/$p2/phase.json"
 [ -n "$p2" ] && [ "$lk_rc" -ne 0 ] && printf '%s\n' "$shown" | grep -q 'In progress' \
   && [ "$nx1" = "$nx2" ] && [ "$nx2" = "$nx3" ] \
   && [ "$dl_rc" -eq 0 ] && [ -f "$pj" ] && ! grep -q '"agenda"' "$pj" && [ ! -d "$AG/works/agenda/$a1" ] \
-  && ok "new-phase --agenda links $p2 and $a1 reads In progress; a second item cannot take it ($lk); agenda commands leave next unchanged; agenda-delete clears the link and the phase stays with no agenda key" \
+  && ok "phase new --agenda links $p2 and $a1 reads In progress; a second item cannot take it ($lk); agenda commands leave next unchanged; agenda-delete clears the link and the phase stays with no agenda key" \
   || bad "agenda links wrong -- $p2 / $lk / $shown / $dl / next changed: $([ "$nx1" = "$nx2" ] && [ "$nx2" = "$nx3" ] && echo no || echo yes)"
 grep -qxF -e '- Open agenda items: `2`' "$AG/works/backlog.md" && [ "$(sha "$AG/works/agenda.md")" != "$pg0" ] \
   && ok "the backlog counts Open and In progress items, never Deferred ones (2), and works/agenda.md follows the items" \
   || bad "the backlog count or the agenda page did not follow -- $(grep -F 'agenda' "$AG/works/backlog.md")"
 # (f) validate: a `Z` stamp (JavaScript's toISOString form) passes on every Python, 3.9 and 3.10 included
 # (the engine reads its own stamp form, never fromisoformat); a dangling link is a warning (validate passes);
-# a corrupt agenda.json leaves rebuild at 0 and fails validate, naming the folder.
+# a corrupt agenda.json still rebuilds (check, exit 1) and fails validate, naming the folder.
 z_dir=$(cd "$AG/works/agenda" && ls -d A*-* | grep -vx 'A13-n1' | head -n 1)
 python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["changed_at"]="2026-11-17T10:00:00.123Z"; open(p,"w").write(json.dumps(d, indent=2)+"\n")' "$AG/works/agenda/$z_dir/agenda.json"
-z_val=$(ag validate 2>&1); z_rc=$?
+z_val=$(ag check --no-rebuild 2>&1); z_rc=$?
 [ -n "$z_dir" ] && [ "$z_rc" -eq 0 ] && ! printf '%s\n' "$z_val" | grep -q "agenda/$z_dir" \
   && ok "an agenda item whose changed_at ends in Z (2026-11-17T10:00:00.123Z) passes validate on $(python3 -V 2>&1)" \
   || bad "a Z changed_at failed validate on $(python3 -V 2>&1) -- $z_dir / $z_rc -- $(printf '%s\n' "$z_val" | grep -i agenda)"
 python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["agenda"]="A77-zz"; open(p,"w").write(json.dumps(d, indent=2)+"\n")' "$pj"
-v1=$(ag validate 2>&1); v1_rc=$?
+v1=$(ag check --no-rebuild 2>&1); v1_rc=$?
 printf '{' > "$AG/works/agenda/A13-n1/agenda.json"
-rb=$(ag rebuild 2>&1); rb_rc=$?; v2=$(ag validate 2>&1); v2_rc=$?
+rb=$(ag check 2>&1); rb_rc=$?; v2=$(ag check --no-rebuild 2>&1); v2_rc=$?
 [ "$v1_rc" -eq 0 ] && printf '%s\n' "$v1" | grep -q "^warning: .*$p2.*A77-zz" \
-  && [ "$rb_rc" -eq 0 ] && [ "$v2_rc" -ne 0 ] && printf '%s\n' "$v2" | grep -q 'works/agenda/A13-n1' \
-  && ok "a dangling agenda link is a validate warning (exit 0); a corrupt agenda.json leaves rebuild at 0 and fails validate naming works/agenda/A13-n1" \
+  && [ "$rb_rc" -eq 1 ] && printf '%s\n' "$rb" | grep -qx 'rebuilt workflow' && [ "$v2_rc" -ne 0 ] && printf '%s\n' "$v2" | grep -q 'works/agenda/A13-n1' \
+  && ok "a dangling agenda link is a validate warning (exit 0); a corrupt agenda.json still rebuilds and fails check naming works/agenda/A13-n1" \
   || bad "agenda validate wrong -- $v1_rc / $rb_rc / $v2_rc -- $(printf '%s\n' "$v1" "$v2" | grep -i agenda)"
 # A hand-edited field can hold any JSON value: a list-valued status leaves rebuild and next at 0 (no traceback)
 # and fails validate, naming the folder and the key.
 ls_dir=$(cd "$AG/works/agenda" && ls -d A*-* | grep -vx 'A13-n1' | head -n 1)
 python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["status"]=[1]; open(p,"w").write(json.dumps(d, indent=2)+"\n")' "$AG/works/agenda/$ls_dir/agenda.json"
-ls_rb=$(ag rebuild 2>&1); ls_rb_rc=$?; ls_nx=$(ag next 2>&1); ls_nx_rc=$?; ls_v=$(ag validate 2>&1); ls_v_rc=$?
-[ -n "$ls_dir" ] && [ "$ls_rb_rc" -eq 0 ] && [ "$ls_nx_rc" -eq 0 ] && [ "$ls_v_rc" -ne 0 ] \
+ls_rb=$(ag check 2>&1); ls_rb_rc=$?; ls_nx=$(ag next 2>&1); ls_nx_rc=$?; ls_v=$(ag check --no-rebuild 2>&1); ls_v_rc=$?
+[ -n "$ls_dir" ] && [ "$ls_rb_rc" -eq 1 ] && printf '%s\n' "$ls_rb" | grep -qx 'rebuilt workflow' && [ "$ls_nx_rc" -eq 0 ] && [ "$ls_v_rc" -ne 0 ] \
   && printf '%s\n' "$ls_v" | grep -q "works/agenda/$ls_dir: status \[1\]" && ! printf '%s\n' "$ls_rb" "$ls_nx" "$ls_v" | grep -q Traceback \
-  && ok "a list-valued agenda status leaves rebuild and next at exit 0 and fails validate naming works/agenda/$ls_dir" \
+  && ok "a list-valued agenda status still rebuilds, leaves next at exit 0 and fails check naming works/agenda/$ls_dir" \
   || bad "a list-valued agenda status broke a read or passed validate -- $ls_dir / $ls_rb_rc / $ls_nx_rc / $ls_v_rc -- $(printf '%s\n' "$ls_rb" "$ls_nx" "$ls_v" | grep -iE 'agenda|Traceback|Error' | tail -3)"
 # The same item is refused as unusable, in one line naming its file and agenda-delete, never "reopen it first" (which
 # would be refused too); nothing is written. A13-n1 goes first: every agenda command reads every item.
@@ -2976,57 +2763,15 @@ abg() { git -C "$AB" -c user.email=smoke@example.invalid -c user.name=smoke "$@"
   || bad "agenda two-branch probe: setup failed"
 abg merge -q --no-edit one >/dev/null 2>&1; ab_conf=$(abg diff --name-only --diff-filter=U | tr '\n' ' ')
 ab_out=$(printf '%s\n' $ab_conf | grep -vxE 'works/(state\.json|index\.json|backlog\.md|deferred\.md|agenda\.md)')
-( for f in $ab_conf; do abg checkout --theirs -- "$f" || exit 1; done; ab rebuild && abg add -A && abg commit -qm merge ) >/dev/null 2>&1
-ab_val=$(ab validate 2>&1); ab_rc=$?
+( for f in $ab_conf; do abg checkout --theirs -- "$f" || exit 1; done; ab check && abg add -A && abg commit -qm merge ) >/dev/null 2>&1
+ab_val=$(ab check --no-rebuild 2>&1); ab_rc=$?
 [ -n "$ab_conf" ] && [ -z "$ab_out" ] && [ "$ab_rc" -eq 0 ] && [ -z "$(abg status --porcelain)" ] \
   && [ "$(ab agenda 2>&1 | grep -cE '^A1-a[bc] ')" = 2 ] && grep -q 'A1-ab' "$AB/works/agenda.md" && grep -q 'A1-ac' "$AB/works/agenda.md" \
   && ok "two branches each add an item (A1-ab, A1-ac) and merge with conflicts only in generated files ($ab_conf); either side + rebuild lists both, valid and clean" \
   || bad "agenda two-branch merge wrong -- conflicted: $ab_conf / outside: $ab_out / $ab_val"
 
 # ---------------------------------------------------------------------------
-echo "== Test 10g: P44 doc versions by minute -- v<yyMMddHHmm> in UTC beside v0001, a same-minute second version takes the next minute, docs/current follows latest, validate takes both shapes =="
-# A fresh install (its docs are v0001_bootstrap). The number is still the digits after `v`, per doc.
-newtmp DVW; DV="$DVW/ws"; sh "$BOOT" "$DV" --at-root --name "DocVer" --summary "dv" >/dev/null 2>&1 || bad "doc-version probe: the fresh install failed"
-dv() { ( cd "$DV" && python3 scripts/workflow.py "$@" ); }
-dv_v1=$(dv doc-new-version --doc product --summary "first by minute" --source manual 2>&1 | sed -n 's|^created doc version product/\(v[0-9]*\)_.*|\1|p')
-dv_v2=$(dv doc-new-version --doc product --summary "second by minute" --source manual 2>&1 | sed -n 's|^created doc version product/\(v[0-9]*\)_.*|\1|p')
-if python3 - "$dv_v1" "$dv_v2" <<'PY'
-import re, sys
-from datetime import datetime, timedelta, timezone
-a, b = sys.argv[1:3]
-assert re.fullmatch(r"v[0-9]{10}", a) and re.fullmatch(r"v[0-9]{10}", b), (a, b)
-assert "v0001" < a < b and int(a[1:]) > 1, (a, b)
-t = datetime.strptime(a[1:], "%y%m%d%H%M").replace(tzinfo=timezone.utc)
-assert abs(datetime.now(timezone.utc) - t) <= timedelta(minutes=3), (a, "is not the current UTC minute")
-PY
-then ok "a new doc version is v + 10 digits (the current UTC minute) and sorts after v0001"; else bad "a new doc version is not v<yyMMddHHmm> after v0001 -- [$dv_v1] [$dv_v2]"; fi
-python3 - "$dv_v1" "$dv_v2" <<'PY' && ok "a second version of the same doc in the same minute takes the next minute" || bad "the same-minute second version did not take the next minute -- [$dv_v1] [$dv_v2]"
-import sys
-from datetime import datetime, timedelta
-a, b = (datetime.strptime(x[1:], "%y%m%d%H%M") for x in sys.argv[1:3])
-assert b - a == timedelta(minutes=1), (a, b)
-PY
-dv_path=$(ls "$DV"/docs/versions/product/"$dv_v2"_*.md 2>/dev/null | head -n 1)
-printf '\nBY-MINUTE-PROBE\n' >> "$dv_path"; dv rebuild-docs >/dev/null 2>&1
-dv_docs=$(dv docs 2>&1)
-[ -n "$dv_path" ] && cmp -s "$dv_path" "$DV/docs/current/product.md" && printf '%s\n' "$dv_docs" | grep -q "^product: latest=${dv_v2}_" && grep -q "BY-MINUTE-PROBE" "$DV/docs/current/product.md" \
-  && ok "docs/current is generated from the new latest (docs lists it)" || bad "docs/current did not follow the new latest ($dv_v2)"
-dv_val=$(dv validate 2>&1); dv_rc=$?
-[ "$dv_rc" -eq 0 ] && printf '%s\n' "$dv_val" | grep -q '^Workflow validation passed' && ! printf '%s\n' "$dv_val" | grep -q 'has the highest version number' \
-  && ok "validate passes on a doc holding both shapes (v0001 and two v<minute>) with no latest warning" || bad "validate failed or warned on a mix of both version shapes (rc=$dv_rc) -- $dv_val"
-python3 - "$DV/docs/index.json" <<'PY'
-import json, sys
-d = json.load(open(sys.argv[1])); info = d["docs"]["product"]
-info["latest"] = info["versions"][0]["id"]
-info["versions"].append(dict(info["versions"][-1], path=info["versions"][-1]["path"] + ".dup"))
-json.dump(d, open(sys.argv[1], "w"), indent=2)
-PY
-dv_val=$(dv validate 2>&1); dv_rc=$?
-printf '%s\n' "$dv_val" | grep -q 'warning: doc product: latest is v0001_bootstrap, but v[0-9]\{10\}_.* has the highest version number' \
-  && printf '%s\n' "$dv_val" | grep -q "duplicate doc version number in docs/index.json: product v$(printf '%s' "$dv_v2" | cut -c2-) claimed by both" && [ "$dv_rc" -ne 0 ] \
-  && ok "validate warns when latest is not the highest version and still errors on a duplicate number (named as written)" || bad "validate missed the latest-not-highest warning or the duplicate (rc=$dv_rc) -- $dv_val"
-
-echo "== Test 10h: v74 a read leaves the tree clean -- next, run-phases, rebuild, rebuild-docs and validate on a committed install change no tracked file; a real change still moves the stamps =="
+echo "== Test 10h: v74 a read leaves the tree clean -- next, rebuild and validate on a committed install change no tracked file; a real change still moves the stamps =="
 # Before v74 every rebuild rewrote state.json's updated_at and both index.json stamps, so a plain
 # `next` dirtied the tree. The sleep makes a rewritten stamp differ from the committed one.
 newtmp RCW; RC="$RCW/ws"; sh "$BOOT" "$RC" --at-root --name "ReadClean" --summary "rc" >/dev/null 2>&1 || bad "read-clean probe: the fresh install failed"
@@ -3036,81 +2781,82 @@ rc_stamp() { python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["upd
     && git -c user.email=smoke@example.invalid -c user.name=smoke commit -qm "read-clean baseline" >/dev/null 2>&1 ) \
   || bad "read-clean probe: could not make the fixture a git repo"
 sleep 1
-for rc_cmd in next run-phases rebuild rebuild-docs validate; do rcw "$rc_cmd" >/dev/null 2>&1; done
+for rc_cmd in next check "check --no-rebuild"; do rcw $rc_cmd >/dev/null 2>&1; done  # shellcheck disable=SC2086
 rc_dirty=$(git -C "$RC" status --porcelain 2>&1)
-[ -z "$rc_dirty" ] && ok "next, run-phases, rebuild, rebuild-docs and validate leave a committed install's tree clean (no stamp-only write)" \
+[ -z "$rc_dirty" ] && ok "next, check and check --no-rebuild leave a committed install's tree clean (no stamp-only write)" \
   || bad "a read dirtied the tree -- $rc_dirty"
 rc_before=$(rc_stamp); sleep 1
-rcw new-phase --name "Read clean probe" --objective "a real change" >/dev/null 2>&1
+rcw phase new --name "Read clean probe" --objective "a real change" >/dev/null 2>&1
 rc_after=$(rc_stamp); rc_dirty=$(git -C "$RC" status --porcelain 2>&1)
 [ -n "$rc_before" ] && [ "$rc_before" != "$rc_after" ] && printf '%s\n' "$rc_dirty" | grep -q '^ M works/state.json$' && printf '%s\n' "$rc_dirty" | grep -q '^ M works/index.json$' \
-  && ok "a real change (new-phase) still rewrites state.json and index.json with a new stamp" \
+  && ok "a real change (phase new) still rewrites state.json and index.json with a new stamp" \
   || bad "a real change did not move the stamps ($rc_before -> $rc_after) -- $rc_dirty"
 
 # ---------------------------------------------------------------------------
-echo "== Test 11: v41 phase-scope -- the phase's boundary is read from git, advisory everywhere =="
+echo "== Test 11: v41 phase scope -- the phase's boundary is read from git, advisory everywhere =="
 # $F is a clean git repo at the "smoke baseline" commit. A phase created and committed, then one
 # product file committed after it: the boundary is exactly that file, and neither works/ nor docs/.
-( cd "$F" && python3 scripts/workflow.py new-phase --phase P3 --name "Scope probe" --objective "probe the boundary" >/dev/null 2>&1 \
+( cd "$F" && python3 scripts/workflow.py phase new --phase P3 --name "Scope probe" --objective "probe the boundary" >/dev/null 2>&1 \
     && git add -A >/dev/null 2>&1 && git -c user.email=smoke@example.invalid -c user.name=smoke commit -qm "create P3" >/dev/null 2>&1 ) \
-  || bad "phase-scope probe: could not create and commit P3"
+  || bad "phase scope probe: could not create and commit P3"
 p3_created=$( cd "$F" && git rev-parse HEAD 2>/dev/null )
 mkdir -p "$F/src" && printf 'print("probe")\n' > "$F/src/probe.py"
 ( cd "$F" && git add -A >/dev/null 2>&1 && git -c user.email=smoke@example.invalid -c user.name=smoke commit -qm "P3 product change" >/dev/null 2>&1 ) \
-  || bad "phase-scope probe: could not commit the product change"
-scope_out=$( cd "$F" && python3 scripts/workflow.py phase-scope P3 2>&1 ); scope_rc=$?
+  || bad "phase scope probe: could not commit the product change"
+scope_out=$( cd "$F" && python3 scripts/workflow.py phase scope P3 2>&1 ); scope_rc=$?
 [ "$scope_rc" -eq 0 ] && printf '%s\n' "$scope_out" | grep -q "^creation_commit=$p3_created" \
   && printf '%s\n' "$scope_out" | grep -q "^  A src/probe.py$" \
   && ! printf '%s\n' "$scope_out" | grep -qE "^  [AMDR] (works|docs)/" \
-  && ok "phase-scope names the creation commit and the changed product file, and excludes works/ and docs/" \
-  || bad "phase-scope did not print the boundary (rc=$scope_rc) -- $scope_out"
-( cd "$F" && python3 scripts/workflow.py phase-scope P3 --json 2>/dev/null | python3 -c '
+  && ok "phase scope names the creation commit and the changed product file, and excludes works/ and docs/" \
+  || bad "phase scope did not print the boundary (rc=$scope_rc) -- $scope_out"
+( cd "$F" && python3 scripts/workflow.py phase scope P3 --json 2>/dev/null | python3 -c '
 import json, sys
 d = json.load(sys.stdin)
 assert d["mode"] == "default" and d["creation_commit"] == sys.argv[1] and d["commits"] == 2, d
 assert {"status": "A", "path": "src/probe.py"} in d["files"], d
 ' "$p3_created" ) \
-  && ok "phase-scope --json parses and carries the same creation commit, mode and file list" \
-  || bad "phase-scope --json is not the same answer as the text form"
+  && ok "phase scope --json parses and carries the same creation commit, mode and file list" \
+  || bad "phase scope --json is not the same answer as the text form"
 # F2: it prints the pathspec it read with, paste-ready after `--` (a guessed `.` would list works/), the same in
-# --json and from the phase-less `phase-scope --pathspec` that /read-code runs.
+# --json and from the phase-less `phase scope --pathspec` that /read-code runs.
 p3_spec=$(printf '%s\n' "$scope_out" | sed -n 's/^pathspec=//p')
 p3_diff=$( cd "$F" && eval "git diff --name-only $p3_created^ HEAD -- $p3_spec" 2>&1 )
-p3_json=$( cd "$F" && python3 scripts/workflow.py phase-scope P3 --json 2>/dev/null | python3 -c 'import json, shlex, sys; print(json.load(sys.stdin)["pathspec"] == shlex.split(sys.argv[1]))' "$p3_spec" 2>&1 )
+p3_json=$( cd "$F" && python3 scripts/workflow.py phase scope P3 --json 2>/dev/null | python3 -c 'import json, shlex, sys; print(json.load(sys.stdin)["pathspec"] == shlex.split(sys.argv[1]))' "$p3_spec" 2>&1 )
 [ "$p3_spec" = ". ':!works' ':!docs'" ] && [ "$p3_diff" = "src/probe.py" ] && [ "$p3_json" = True ] \
-  && [ "$( cd "$F" && python3 scripts/workflow.py phase-scope --pathspec 2>&1 )" = "pathspec=$p3_spec" ] \
-  && ok "phase-scope prints pathspec=, which pasted after -- lists only the product file; --json and phase-scope --pathspec carry the same value" \
-  || bad "phase-scope pathspec= missing or wrong (spec=$p3_spec json=$p3_json) -- $p3_diff"
-nogit_scope=$( cd "$F" && PATH="/var/empty" "$nogit_py" scripts/workflow.py phase-scope P3 2>&1 ); nogit_rc=$?
-[ "$nogit_rc" -eq 0 ] && printf '%s\n' "$nogit_scope" | grep -q "^phase-scope: no git history readable here" \
-  && ok "phase-scope without git is advisory: the no-history line and exit 0" \
-  || bad "phase-scope failed or was silent without git (rc=$nogit_rc) -- $nogit_scope"
+  && [ "$( cd "$F" && python3 scripts/workflow.py phase scope --pathspec 2>&1 )" = "pathspec=$p3_spec" ] \
+  && ok "phase scope prints pathspec=, which pasted after -- lists only the product file; --json and phase scope --pathspec carry the same value" \
+  || bad "phase scope pathspec= missing or wrong (spec=$p3_spec json=$p3_json) -- $p3_diff"
+nogit_py=$( command -v python3 )
+nogit_scope=$( cd "$F" && PATH="/var/empty" "$nogit_py" scripts/workflow.py phase scope P3 2>&1 ); nogit_rc=$?
+[ "$nogit_rc" -eq 0 ] && printf '%s\n' "$nogit_scope" | grep -q "^phase scope: no git history readable here" \
+  && ok "phase scope without git is advisory: the no-history line and exit 0" \
+  || bad "phase scope failed or was silent without git (rc=$nogit_rc) -- $nogit_scope"
 
 # ---------------------------------------------------------------------------
-echo "== Test 12: v43 worktree on request -- nothing unasked, parallel-start on a dirty tree, the nested worktree, the exclude line, the retired pins; v86 the no-notes consolidation flip and the gate's checked exemption =="
+echo "== Test 12: v43 worktree on request -- nothing unasked, worktree start on a dirty tree, the nested worktree, the exclude line, the retired pins; v86 the gate's checked exemption =="
 newtmp W
 sh "$BOOT" "$W" --at-root --name "Worktree" --summary "worktree probe" >/dev/null 2>&1 || bad "v43 probe: fresh install failed"
 ( cd "$W" && git init -q -b main . 2>/dev/null || git init -q . ; git config user.email smoke@example.invalid && git config user.name smoke \
     && git add -A >/dev/null 2>&1 && git commit -qm "worktree baseline" >/dev/null 2>&1 ) || bad "v43 probe: no baseline commit"
 # (0) creating and selecting a phase says nothing about worktrees: the default stream is the default.
-np_out=$( cd "$W" && python3 scripts/workflow.py new-phase --phase P1 --name "Worktree probe" --objective "probe the default" 2>&1 )
-printf '%s\n' "$np_out" | grep -q "worktree\|parallel-start\|parallel-skip" \
-  && bad "new-phase volunteered a worktree with nothing in flight -- $np_out" || ok "new-phase says nothing about worktrees when nothing is in flight"
+np_out=$( cd "$W" && python3 scripts/workflow.py phase new --phase P1 --name "Worktree probe" --objective "probe the default" 2>&1 )
+printf '%s\n' "$np_out" | grep -q "worktree\|worktree start" \
+  && bad "phase new volunteered a worktree with nothing in flight -- $np_out" || ok "phase new says nothing about worktrees when nothing is in flight"
 ( cd "$W" && python3 scripts/workflow.py next 2>&1 | grep -q "^hint:" ) \
   && bad "next hinted a worktree for a lone planned phase" || ok "next hints nothing for a lone planned phase"
 # The hint fires only where a worktree pays: a planned phase queued behind an in_progress one.
-( cd "$W" && python3 scripts/workflow.py set-phase-status P1 in_progress >/dev/null 2>&1 ) || bad "v43 probe: could not start P1"
-np2=$( cd "$W" && python3 scripts/workflow.py new-phase --phase P2 --name "Second probe" --objective "queued behind" 2>&1 )
+( cd "$W" && python3 scripts/workflow.py phase status P1 in_progress >/dev/null 2>&1 ) || bad "v43 probe: could not start P1"
+np2=$( cd "$W" && python3 scripts/workflow.py phase new --phase P2 --name "Second probe" --objective "queued behind" 2>&1 )
 printf '%s\n' "$np2" | grep -q "^hint: P1 is in progress -- this phase can run in parallel" \
-  && ok "new-phase suggests a worktree only while another phase is in flight" || bad "new-phase printed no queued-behind hint -- $np2"
+  && ok "phase new suggests a worktree only while another phase is in flight" || bad "phase new printed no queued-behind hint -- $np2"
 ( cd "$W" && python3 scripts/workflow.py next 2>&1 | grep -q "^hint: P2 is waiting behind P1 -- it can run in parallel" ) \
   && ok "next suggests a worktree for a planned phase queued behind a live one" || bad "next printed no waiting-behind hint"
-( cd "$W" && python3 scripts/workflow.py set-phase-status P1 planned >/dev/null 2>&1 ) || bad "v43 probe: could not reset P1 to planned"
+( cd "$W" && python3 scripts/workflow.py phase status P1 planned >/dev/null 2>&1 ) || bad "v43 probe: could not reset P1 to planned"
 # P1 is NOT committed (create-phase makes no commit). Dirty one tracked file, stage another unrelated change.
 printf '\n# smoke: dirty edit that must stay behind\n' >> "$W/executors.toml"
 mkdir -p "$W/src" && printf 'staged\n' > "$W/src/staged.py" && ( cd "$W" && git add src/staged.py )
-ps_out=$( cd "$W" && python3 scripts/workflow.py parallel-start P1 2>&1 ); ps_rc=$?
-[ "$ps_rc" -eq 0 ] && ok "parallel-start runs on a dirty tree" || bad "parallel-start refused a dirty tree (rc=$ps_rc) -- $ps_out"
+ps_out=$( cd "$W" && python3 scripts/workflow.py worktree start P1 2>&1 ); ps_rc=$?
+[ "$ps_rc" -eq 0 ] && ok "worktree start runs on a dirty tree" || bad "worktree start refused a dirty tree (rc=$ps_rc) -- $ps_out"
 # (a) the stamp commit is exactly the phase folder + (a subset of) the six works files
 stamp_files=$( cd "$W" && git show --name-only --format= HEAD )
 if python3 - "$stamp_files" <<'PY'
@@ -3123,7 +2869,7 @@ assert files == phase | (files & six), files
 PY
 then ok "the stamp commit holds only the phase folder and the regenerated works/ files"; else bad "the stamp commit swept in other paths -- $stamp_files"; fi
 ( cd "$W" && git diff --cached --name-only | grep -qx "src/staged.py" && git diff --name-only | grep -qx "executors.toml" ) \
-  && ok "the unrelated staged change stays staged and the dirty edit stays dirty on the default checkout" || bad "parallel-start disturbed the operator's changes"
+  && ok "the unrelated staged change stays staged and the dirty edit stays dirty on the default checkout" || bad "worktree start disturbed the operator's changes"
 # (b) the worktree is at .claude/worktrees/P<N>-<slug> and registered
 wt="$W/.claude/worktrees/P1-worktree_probe"
 [ -d "$wt" ] && ( cd "$W" && git worktree list --porcelain | grep -q "/\.claude/worktrees/P1-worktree_probe$" ) \
@@ -3136,63 +2882,58 @@ if ! grep -q "smoke: dirty edit" "$wt/executors.toml" && [ ! -e "$wt/src/staged.
 # (d) exclude line, once; main's status never lists the nested worktree
 [ "$(grep -cx '\.claude/worktrees/' "$W/.git/info/exclude")" = "1" ] && ok ".git/info/exclude carries .claude/worktrees/ exactly once" || bad "exclude line missing or duplicated"
 ( cd "$W" && ! git status --porcelain --untracked-files=all | grep -q "\.claude/worktrees" ) && ok "git status on main does not list the nested worktree" || bad "nested worktree shows as untracked"
-# (e) P2 was never asked into a worktree, so it just runs here -- and parallel-skip is a no-op
-ps2=$( cd "$W" && python3 scripts/workflow.py parallel-skip P2 2>&1 ); ps2_rc=$?
-if [ "$ps2_rc" -eq 0 ] && printf '%s\n' "$ps2" | grep -q "no-op since v43" \
-    && ! grep -q '"execution"' "$W/works/phases/active/P2/phase.json"; then
-  ok "parallel-skip is a no-op that stamps nothing"; else bad "parallel-skip still wrote a pin (rc=$ps2_rc) -- $ps2"; fi
+# (e) P2 was never asked into a worktree, so it just runs here
 nx=$( cd "$W" && python3 scripts/workflow.py next 2>&1 )
 if printf '%s\n' "$nx" | grep -q "^current_phase=P2" && ! printf '%s\n' "$nx" | grep -q "^hint:"; then
   ok "an unasked phase stays on the default stream and gets no worktree hint"; else bad "the default-stream phase was skipped or hinted -- $nx"; fi
 # (f) --on-main is retired the same way: accepted, explained, stamps nothing
-if ( cd "$W" && python3 scripts/workflow.py new-phase --phase P3 --name "On main" --objective "no longer pins" --on-main 2>&1 | grep -q "no-op since v43" ) \
+if ( cd "$W" && python3 scripts/workflow.py phase new --phase P3 --name "On main" --objective "no longer pins" --on-main 2>&1 | grep -q "no-op since v43" ) \
     && ! grep -q '"execution"' "$W/works/phases/active/P3/phase.json"; then
-  ok "new-phase --on-main is a no-op that stamps nothing"; else bad "new-phase --on-main still pinned"; fi
-# (g) v42's legacy pin is still honoured where it exists: validate accepts it, parallel-start refuses it
+  ok "phase new --on-main is a no-op that stamps nothing"; else bad "phase new --on-main still pinned"; fi
+# (g) v42's legacy pin is still honoured where it exists: validate accepts it, worktree start refuses it
 python3 - "$W/works/phases/active/P2/phase.json" <<'PIN' || bad "could not write the legacy pin"
 import json, sys
 data = json.load(open(sys.argv[1]))
 data["execution"] = {"mode": "default"}
 json.dump(data, open(sys.argv[1], "w"), indent=2, ensure_ascii=False)
 PIN
-( cd "$W" && python3 scripts/workflow.py validate >/dev/null 2>&1 ) && ok "validate still accepts v42's legacy execution.mode=default" || bad "validate rejects the legacy pin"
-if ( cd "$W" && python3 scripts/workflow.py parallel-start P2 2>&1 | grep -q "legacy pin" ) \
+( cd "$W" && python3 scripts/workflow.py check --no-rebuild >/dev/null 2>&1 ) && ok "validate still accepts v42's legacy execution.mode=default" || bad "validate rejects the legacy pin"
+if ( cd "$W" && python3 scripts/workflow.py worktree start P2 2>&1 | grep -q "legacy pin" ) \
     && ! ( cd "$W" && git rev-parse --verify --quiet refs/heads/phase/P2-second_probe >/dev/null 2>&1 ); then
-  ok "parallel-start refuses a legacy-pinned phase and cuts no branch"; else bad "parallel-start did not refuse the legacy pin"; fi
+  ok "worktree start refuses a legacy-pinned phase and cuts no branch"; else bad "worktree start did not refuse the legacy pin"; fi
 # (h) the gate runs from inside the worktree, and a local --no-ff merge + teardown of a clean nested worktree needs no --force
-( cd "$wt" && python3 scripts/workflow.py accept-gate P1 --waive --note "smoke" >/dev/null 2>&1 \
-    && python3 scripts/workflow.py set-slice-status P1.DECOMP done >/dev/null 2>&1 \
-    && python3 scripts/workflow.py review-phase P1 --verdict pass >/dev/null 2>&1 \
+( cd "$wt" && python3 scripts/workflow.py gate P1 waive --note "smoke" >/dev/null 2>&1 \
+    && python3 scripts/workflow.py slice status P1.DECOMP done >/dev/null 2>&1 \
+    && python3 scripts/workflow.py review P1 --verdict pass >/dev/null 2>&1 \
     && git add -A >/dev/null 2>&1 && git commit -qm "P1 done" >/dev/null 2>&1 ) || bad "v43 probe: could not finish P1 on the branch"
-( cd "$wt" && python3 scripts/workflow.py parallel-gate P1 2>&1 | grep -q "^main_state_source=main (local default branch" ) \
-  && ok "parallel-gate run from the worktree reads the default stream from the local default branch" || bad "parallel-gate from the worktree did not fall back to the local default branch"
-# (i) v86: a no-notes pass settles a worktree phase's debt; the gate's checked exemption, both ways.
-python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(not (d.get('consolidation') == d['execution'].get('consolidation') == 'done'))" \
-    "$wt/works/phases/active/P1/phase.json" \
-  && ok "a passing review with no Doc impact note flips a worktree phase's consolidation to done (both fields)" \
-  || bad "the no-notes pass left the worktree phase owing consolidation"
-( cd "$W" && python3 scripts/workflow.py set-phase-status P2 in_progress >/dev/null 2>&1 ) || bad "v86 probe: could not make the default stream busy"
-g_out=$( cd "$W" && python3 scripts/workflow.py parallel-gate P1 2>&1 ); g_rc=$?
+( cd "$wt" && python3 scripts/workflow.py worktree gate P1 2>&1 | grep -q "^main_state_source=main (local default branch" ) \
+  && ok "worktree gate run from the worktree reads the default stream from the local default branch" || bad "worktree gate from the worktree did not fall back to the local default branch"
+# (i) doc consolidation is retired: neither the stamp nor the pass writes a consolidation field; v86 the gate's checked exemption, both ways.
+! grep -q '"consolidation"' "$wt/works/phases/active/P1/phase.json" \
+  && ok "a worktree phase's stamp and its passing review write no consolidation field" \
+  || bad "a consolidation field reached the worktree phase's phase.json"
+( cd "$W" && python3 scripts/workflow.py phase status P2 in_progress >/dev/null 2>&1 ) || bad "v86 probe: could not make the default stream busy"
+g_out=$( cd "$W" && python3 scripts/workflow.py worktree gate P1 2>&1 ); g_rc=$?
 [ "$g_rc" -eq 0 ] && printf '%s\n' "$g_out" | grep -q "^exemption=phase-folder-only (" && printf '%s\n' "$g_out" | grep -q "^GATE OPEN" \
-  && ok "parallel-gate opens on a busy default stream for a branch touching only its phase folder and the works files" \
+  && ok "worktree gate opens on a busy default stream for a branch touching only its phase folder and the works files" \
   || bad "the checked exemption did not open the gate (rc=$g_rc) -- $g_out"
 ( cd "$wt" && git checkout -q -b probe/extra && mkdir -p src && printf 'x\n' > src/probe.py && git add src/probe.py \
     && git commit -qm "probe: a product file" && git checkout -q phase/P1-worktree_probe ) >/dev/null 2>&1 || bad "v86 probe: could not cut the product-file branch"
-g_out=$( cd "$W" && python3 scripts/workflow.py parallel-gate P1 --branch-ref probe/extra 2>&1 ); g_rc=$?
-[ "$g_rc" -ne 0 ] && printf '%s\n' "$g_out" | grep -q "^exemption=none: src/probe.py" && printf '%s\n' "$g_out" | grep -q "default stream is not quiet: phase P2" \
-  && ok "a branch touching any other path gets no exemption: the busy default stream still closes the gate" \
+g_out=$( cd "$W" && python3 scripts/workflow.py worktree gate P1 --branch-ref probe/extra 2>&1 ); g_rc=$?
+[ "$g_rc" -eq 0 ] && printf '%s\n' "$g_out" | grep -q "^exemption=none: src/probe.py" && printf '%s\n' "$g_out" | grep -q "^GATE CLOSED reason=.*default stream is not quiet: phase P2" \
+  && ok "a branch touching any other path gets no exemption: the busy default stream still closes the gate (advice: GATE CLOSED reason=, exit 0)" \
   || bad "the exemption let a product-file branch past a busy default stream (rc=$g_rc) -- $g_out"
 # P66: a branch that only adds an agenda item (plus the regenerated works/ files) keeps the exemption.
 ( cd "$wt" && git checkout -q -b probe/agenda && python3 scripts/workflow.py agenda-add --title "gate probe" && git add -A works \
     && git commit -qm "probe: an agenda item" && git checkout -q phase/P1-worktree_probe ) >/dev/null 2>&1 || bad "P66 probe: could not cut the agenda branch"
-g_out=$( cd "$W" && python3 scripts/workflow.py parallel-gate P1 --branch-ref probe/agenda 2>&1 ); g_rc=$?
+g_out=$( cd "$W" && python3 scripts/workflow.py worktree gate P1 --branch-ref probe/agenda 2>&1 ); g_rc=$?
 [ "$g_rc" -eq 0 ] && printf '%s\n' "$g_out" | grep -q "^exemption=phase-folder-only (" \
   && ok "a branch that only adds an agenda item keeps the exemption: the gate opens on a busy default stream" \
   || bad "an added agenda item lost the exemption (rc=$g_rc) -- $g_out"
 # P66: a phase created inside the worktree is that stream's own (the default side does not hold it): it unlinks there.
 # (on the phase branch itself, where the stream is; the probe's files are then dropped from the clean worktree).
 born_out=$( cd "$wt" && aid=$(python3 scripts/workflow.py agenda-add --title "born probe" | sed -n 's/^added \([^:]*\):.*/\1/p') \
-    && python3 scripts/workflow.py new-phase --phase P9 --name "Born here" --objective "made in the worktree" --agenda "$aid" >/dev/null 2>&1 \
+    && python3 scripts/workflow.py phase new --phase P9 --name "Born here" --objective "made in the worktree" --agenda "$aid" >/dev/null 2>&1 \
     && python3 scripts/workflow.py agenda-unlink --phase P9 2>&1; rc=$?; git checkout -q -- works && git clean -fdq works; exit $rc ); born_rc=$?
 [ "$born_rc" -eq 0 ] && printf '%s\n' "$born_out" | grep -q "^unlinked P9 from A" \
   && ok "a phase created inside the worktree is that stream's own: agenda-unlink applies there" \
@@ -3203,10 +2944,10 @@ born_out=$( cd "$wt" && aid=$(python3 scripts/workflow.py agenda-add --title "bo
 newtmp GW
 sh "$BOOT" "$GW" --at-root --name "Gone" --summary "gone probe" >/dev/null 2>&1 || bad "P66 gone probe: fresh install failed"
 gone_out=$( cd "$GW" && git init -q -b main . && git config user.email smoke@example.invalid && git config user.name smoke \
-    && python3 scripts/workflow.py new-phase --phase P1 --name "Par" --objective "o" >/dev/null 2>&1 \
-    && python3 scripts/workflow.py new-phase --phase P2 --name "Gone" --objective "o" >/dev/null 2>&1 \
-    && git add -A >/dev/null 2>&1 && git commit -qm "baseline" && python3 scripts/workflow.py parallel-start P1 >/dev/null 2>&1 \
-    && git rm -rq works/phases/active/P2 && python3 scripts/workflow.py rebuild >/dev/null 2>&1 && git add -A && git commit -qm "drop P2" \
+    && python3 scripts/workflow.py phase new --phase P1 --name "Par" --objective "o" >/dev/null 2>&1 \
+    && python3 scripts/workflow.py phase new --phase P2 --name "Gone" --objective "o" >/dev/null 2>&1 \
+    && git add -A >/dev/null 2>&1 && git commit -qm "baseline" && python3 scripts/workflow.py worktree start P1 >/dev/null 2>&1 \
+    && git rm -rq works/phases/active/P2 && python3 scripts/workflow.py check >/dev/null 2>&1 && git add -A && git commit -qm "drop P2" \
     && cd .claude/worktrees/P1-par && aid=$(python3 scripts/workflow.py agenda-add --title "gone probe" | sed -n 's/^added \([^:]*\):.*/\1/p') \
     && { python3 scripts/workflow.py agenda-link "$aid" --phase P2 2>&1; rc=$?; git diff --quiet -- works/phases/active/P2 || rc=99; exit $rc; } ); gone_rc=$?
 [ "$gone_rc" -eq 1 ] && printf '%s\n' "$gone_out" | grep -q "^agenda-link refused, nothing was written: P2 has been removed from the default checkout" \
@@ -3218,27 +2959,27 @@ gone_out=$( cd "$GW" && git init -q -b main . && git config user.email smoke@exa
 newtmp GS
 subf_out=$( cd "$GS" && git init -q -b main . && git config user.email smoke@example.invalid && git config user.name smoke \
     && echo product > README && git add README && git commit -qm "product" && sh "$BOOT" "$GS/sub" --at-root --name "Sub" --summary "subfolder probe" >/dev/null 2>&1 \
-    && cd sub && python3 scripts/workflow.py new-phase --phase P1 --name "Par" --objective "o" >/dev/null 2>&1 \
-    && python3 scripts/workflow.py new-phase --phase P2 --name "Stay" --objective "o" >/dev/null 2>&1 \
-    && git add -A >/dev/null 2>&1 && git commit -qm "baseline" && python3 scripts/workflow.py parallel-start P1 >/dev/null 2>&1 \
+    && cd sub && python3 scripts/workflow.py phase new --phase P1 --name "Par" --objective "o" >/dev/null 2>&1 \
+    && python3 scripts/workflow.py phase new --phase P2 --name "Stay" --objective "o" >/dev/null 2>&1 \
+    && git add -A >/dev/null 2>&1 && git commit -qm "baseline" && python3 scripts/workflow.py worktree start P1 >/dev/null 2>&1 \
     && cd .claude/worktrees/P1-par/sub && aid=$(python3 scripts/workflow.py agenda-add --title "subfolder probe" | sed -n 's/^added \([^:]*\):.*/\1/p') \
     && { python3 scripts/workflow.py agenda-link "$aid" --phase P2 2>&1; rc=$?; git diff --quiet -- works/phases/active/P2 || rc=99; exit $rc; } ); subf_rc=$?
 [ "$subf_rc" -eq 1 ] && printf '%s\n' "$subf_out" | grep -q "^agenda-link refused, nothing was written: P2 runs on the default stream; in the default checkout (.*/sub, branch main) run: " \
   && ok "a workspace in a subfolder of its repo reads the cut from the repo's top: its worktree refuses a link into a phase of the cut" \
   || bad "a subfolder workspace's worktree took a link into a phase of the cut (rc=$subf_rc) -- $subf_out"
-( cd "$W" && git branch -q -D probe/extra probe/agenda && python3 scripts/workflow.py set-phase-status P2 planned >/dev/null 2>&1 ) || bad "v86 probe: could not reset the probe"
+( cd "$W" && git branch -q -D probe/extra probe/agenda && python3 scripts/workflow.py phase status P2 planned >/dev/null 2>&1 ) || bad "v86 probe: could not reset the probe"
 ( cd "$W" && git restore --staged src/staged.py && git add -A works >/dev/null 2>&1 && git commit -qm "workflow state" >/dev/null 2>&1 ) \
   || bad "v43 probe: could not commit the default-stream workflow state before merging"
 # Both sides regenerated the dashboards, so the merge conflicts in generated files -- resolved the
-# documented way: take either side, conclude, and let parallel-merge-finish regenerate them.
+# documented way: take either side, conclude, and let worktree merge-finish regenerate them.
 ( cd "$W" && { git merge --no-ff -q phase/P1-worktree_probe -m "merge(P1): Worktree probe" >/dev/null 2>&1 \
       || { unmerged=$(git diff --name-only --diff-filter=U); [ -n "$unmerged" ] \
            && printf '%s\n' "$unmerged" | xargs git checkout --theirs -- >/dev/null 2>&1 \
            && git add -A works >/dev/null 2>&1 && git commit -qm "merge(P1): Worktree probe" >/dev/null 2>&1; }; } \
-    && python3 scripts/workflow.py parallel-merge-finish >/dev/null 2>&1 \
+    && python3 scripts/workflow.py worktree merge-finish >/dev/null 2>&1 \
     && git add -A works >/dev/null 2>&1 && { git diff --cached --quiet || git commit -qm "post-merge" >/dev/null 2>&1; } \
-    && python3 scripts/workflow.py parallel-teardown P1 >/dev/null 2>&1 && [ ! -d "$wt" ] ) \
-  && ok "a local --no-ff merge lands (generated-file conflicts taken either side, then regenerated) and parallel-teardown removes the clean nested worktree" \
+    && python3 scripts/workflow.py worktree teardown P1 >/dev/null 2>&1 && [ ! -d "$wt" ] ) \
+  && ok "a local --no-ff merge lands (generated-file conflicts taken either side, then regenerated) and worktree teardown removes the clean nested worktree" \
   || bad "merge, merge-finish or teardown failed"
 
 # ---------------------------------------------------------------------------
@@ -3504,7 +3245,7 @@ out=$(dw design-migrate --apply 2>&1); rc=$?
   || bad "design-migrate beside design.json moved the wrong entries (rc=$rc) -- $out"
 # A pre-v47 root (no design.json): every top-level entry moves, a dry run first, all-or-nothing.
 MG="$DZ/legacy"; MD="$MG/docs/reference/design"
-mkdir -p "$MG/scripts" "$MD/rounds/01-a" "$MD/grounding" && cp "$F/scripts/workflow.py" "$MG/scripts/"
+mkdir -p "$MG/scripts" "$MG/works" "$MD/rounds/01-a" "$MD/grounding" && cp "$F"/scripts/*.py "$MG/scripts/"
 printf '# handoff\n' > "$MD/rounds/01-a/handoff.md"; printf 'Signed: "go"\n' > "$MD/SIGNOFF.md"
 printf '<p>g</p>\n' > "$MD/grounding/g.html"; printf '# the old record\n' > "$MD/README.md"
 mw() { ( cd "$MG" && HOME="$DZ/home" python3 scripts/workflow.py "$@" ); }
@@ -3539,7 +3280,7 @@ conflict_before=$(mig_sig); out=$(mw design-migrate --apply 2>&1); rc=$?
 # 5. P36.S3: a schema-1 (v47 card) record is legacy -- design-open refuses it with the migrate hint, and
 # design-migrate --to 2 moves cards/, tokens.css and rounds/ into schema1/ byte-identical (a dry run first).
 S1="$DZ/schema1"; SD="$S1/docs/reference/design"
-mkdir -p "$S1/scripts" "$SD/cards" "$SD/rounds/01-a/cards" && cp "$F/scripts/workflow.py" "$S1/scripts/"
+mkdir -p "$S1/scripts" "$S1/works" "$SD/cards" "$SD/rounds/01-a/cards" && cp "$F"/scripts/*.py "$S1/scripts/"
 printf '{"schema": 1, "id": "old-cards", "name": "Old cards"}\n' > "$SD/design.json"
 printf '<!-- @dsCard group="Components" viewport="480x200" -->\n<p>a</p>\n' > "$SD/cards/01-a.html"
 cp "$SD/cards/01-a.html" "$SD/rounds/01-a/cards/01-a.html" && printf ':root { --ink: #111; }\n' > "$SD/tokens.css"
@@ -3565,7 +3306,7 @@ else bad "design-migrate --to 2 lost, changed or left an entry, or did not rewri
 # (a merge into one connected job); a legacy multi-job slice (a wave drawn before the rule) still passes and
 # takes --job; a critique level per round. The size warning sits at 10 Pages / 30 boards.
 WV="$DZ/wave"; WR="$WV/docs/reference/design"
-mkdir -p "$WV/scripts" && cp "$F/scripts/workflow.py" "$WV/scripts/"
+mkdir -p "$WV/scripts" "$WV/works" && cp "$F"/scripts/*.py "$WV/scripts/"
 ww() { ( cd "$WV" && HOME="$DZ/home" python3 scripts/workflow.py "$@" ); }
 # legacy_job <design root> <src job> <src round> <new job> <new round>: a second job of the same slice,
 # hand-written beside the first with its round open, the way a pre-P46-nb wave left it.
@@ -3671,7 +3412,7 @@ else bad "check=unlinked-page is wrong (rc=$un_rc/$linked_rc) -- $un $linked"; f
 # list exempts a Page from check=unlinked-page; check=token-drift and check=transition-all warn; v90 (P47-p5.F3):
 # a calc(var()) radius is token-derived (silent) and a padding px only an fs- token holds gets no suggestion.
 PG="$DZ/pages"; PR="$PG/docs/reference/design"; PJ="$PR/jobs/01-board"; PP="$PJ/canvas/project"; PRD="$PJ/rounds/01-board"
-mkdir -p "$PG/scripts" && cp "$F/scripts/workflow.py" "$PG/scripts/"
+mkdir -p "$PG/scripts" "$PG/works" && cp "$F"/scripts/*.py "$PG/scripts/"
 pw() { ( cd "$PG" && HOME="$DZ/home" python3 scripts/workflow.py "$@" ); }
 pw design-init --id pages >/dev/null 2>&1 || bad "pages probe: design-init failed"
 res_out=$(pw design-open --slug board --slice P9.S6 --pages list,frame 2>&1); res_rc=$?
@@ -3768,7 +3509,7 @@ else bad "the unrelated-page exemption or the style lints are wrong (rc=$un_rc/$
 # control-height), each printed line with its 2x zoom crop beside the render, and self_check is unchanged
 # (advisory). With no browser the block says so and asserts nothing.
 AL="$DZ/align"; AR="$AL/docs/reference/design"; AJ="$AR/jobs/01-rows"; AP="$AJ/canvas/project"; ARD="$AJ/rounds/01-rows"
-mkdir -p "$AL/scripts" && cp "$F/scripts/workflow.py" "$AL/scripts/"
+mkdir -p "$AL/scripts" "$AL/works" && cp "$F"/scripts/*.py "$AL/scripts/"
 aw() { ( cd "$AL" && python3 scripts/workflow.py "$@" ); }
 { aw design-init --id align && aw design-open --slug rows --slice P9.S7 --pages list,detail; } >/dev/null 2>&1 || bad "align probe: design-init or design-open --pages failed"
 printf '# handoff\n' > "$ARD/handoff.md"
@@ -3845,7 +3586,7 @@ else bad "the board lint, the mounted-board count or bar.md is wrong (rc=$rc/$al
 # brief a handoff names must exist. Its second job is a legacy wave's (hand-written: --new-job now refuses
 # while the slice's first round is open), so design-sign --slice signs a legacy slice's presented jobs.
 LF="$DZ/life"; LR="$LF/docs/reference/design"
-mkdir -p "$LF/scripts" && cp "$F/scripts/workflow.py" "$LF/scripts/"
+mkdir -p "$LF/scripts" "$LF/works" && cp "$F"/scripts/*.py "$LF/scripts/"
 lw() { ( cd "$LF" && HOME="$DZ/home" python3 scripts/workflow.py "$@" ); }
 lw design-init --id life >/dev/null 2>&1 && lw design-open --slug one --slice P9.S7 --critique critic >/dev/null 2>&1 \
   && legacy_job "$LR" 01-one 01-one 02-two 01-two || bad "life probe: design-open failed"
@@ -3952,7 +3693,7 @@ if printf '%s\n' "$sup_out" | grep -Fq 'critique off (a superseding round'"'"'s 
 else bad "the superseding round's critique or the generated SIGNOFF.md is wrong (close rc=$close_rc) -- $sup_out / $close_out / $(cat "$RD/SIGNOFF.md" 2>&1)"; fi
 
 # ---------------------------------------------------------------------------
-echo "== Test 14: P28 nested engine -- workflow/.agentic-nested.json: host anchors, host-side phase-scope, the paired worktree lifecycle (v86: an explain phase's detached pair), the convention gate, the agent rename map, a malformed marker fails validate =="
+echo "== Test 14: P28 nested engine -- workflow/.agentic-nested.json: host anchors, host-side phase scope, the paired worktree lifecycle (v86: an explain phase's detached pair), the convention gate, the agent rename map, a malformed marker fails validate =="
 # A host repo with one product commit, and the live engine + templates (+ a seed install's docs) in a
 # nested git repo at host/workflow/ beside the marker. Every command runs from the host root, the way
 # a nested session does. The at-root invariant is every earlier test passing unchanged.
@@ -3963,7 +3704,8 @@ mkdir -p "$NH/src" "$NH/workflow/scripts" "$NH/workflow/works" \
   && ( cd "$NH" && { git init -q -b main . 2>/dev/null || git init -q .; } && git config user.email smoke@example.invalid \
        && git config user.name smoke && printf 'print("host")\n' > src/app.py && git add -A >/dev/null 2>&1 \
        && git commit -qm "host baseline" >/dev/null 2>&1 ) \
-  && cp "$SRC/scripts/workflow.py" "$NH/workflow/scripts/" && cp -R "$SRC/works/templates" "$NH/workflow/works/" \
+  && cp "$SRC"/scripts/*.py "$NH/workflow/scripts/" && cp -R "$SRC/works/templates" "$NH/workflow/works/" \
+  && mkdir -p "$NH/workflow/adapters/claude_code" && cp "$SRC/adapters/claude_code/adapter.py" "$NH/workflow/adapters/claude_code/" \
   && cp -R "$NS/seed/docs" "$NH/workflow/" && ( cd "$NH/workflow" && git init -q . ) \
   || bad "nested probe: could not build the host + workflow/ fixture"
 cat > "$NH/workflow/.agentic-nested.json" <<'NESTED'
@@ -3971,43 +3713,43 @@ cat > "$NH/workflow/.agentic-nested.json" <<'NESTED'
  "commit_convention": {"inferred": "type(scope): summary", "confirmed": false, "text": null, "coauthor_trailers": "unknown"},
  "renames": {"skills": {}, "agents": {"design-drafter": "wf-design-drafter"}}}
 NESTED
-nw() { ( cd "$NH" && python3 workflow/scripts/workflow.py "$@" ); }
-{ nw rebuild && nw new-phase --phase P1 --name "Nested probe" --objective "probe the host"; } >/dev/null 2>&1 \
-  || bad "nested probe: rebuild / new-phase failed"
+nw() { ( cd "$NH" && python3 "workflow/$(wf_entry "$1")" "$@" ); }
+{ nw check && nw phase new --phase P1 --name "Nested probe" --objective "probe the host"; } >/dev/null 2>&1 \
+  || bad "nested probe: rebuild / phase new failed"
 host_head=$( cd "$NH" && git rev-parse HEAD )
 if python3 - "$NH/workflow/works/phases/active/P1/phase.json" "$host_head" <<'PY'
 import json, sys
 data = json.load(open(sys.argv[1]))
 assert data.get("host_anchors") == {"created": sys.argv[2]}, data.get("host_anchors")
 PY
-then ok "new-phase records host_anchors.created = the host HEAD in phase.json"; else bad "phase.json carries no host anchor equal to the host HEAD"; fi
+then ok "phase new records host_anchors.created = the host HEAD in phase.json"; else bad "phase.json carries no host anchor equal to the host HEAD"; fi
 # The host's own docs/ is product; an untracked file inside the nested repo is not.
 mkdir -p "$NH/docs" && printf 'guide\n' > "$NH/docs/guide.md" && printf 'print("feature")\n' > "$NH/src/feature.py"
 ( cd "$NH" && git add src docs >/dev/null 2>&1 && git commit -qm "product change" >/dev/null 2>&1 ) || bad "nested probe: could not commit the product change"
 printf 'scratch\n' > "$NH/workflow/scratch.txt"
-scope_out=$(nw phase-scope P1 2>&1); scope_rc=$?
+scope_out=$(nw phase scope P1 2>&1); scope_rc=$?
 [ "$scope_rc" -eq 0 ] && printf '%s\n' "$scope_out" | grep -q "^mode=nested$" \
   && printf '%s\n' "$scope_out" | grep -q "^base=$host_head (" \
   && printf '%s\n' "$scope_out" | grep -qx "  A src/feature.py" && printf '%s\n' "$scope_out" | grep -qx "  A docs/guide.md" \
   && ! printf '%s\n' "$scope_out" | grep -qE "^  [AMDR] (workflow/|src/app.py)" \
-  && ok "phase-scope reads the host repo from the anchor: the product commit's files (the host's docs/ included), nothing under workflow/" \
-  || bad "nested phase-scope did not read the host boundary (rc=$scope_rc) -- $scope_out"
-printf '%s\n' "$scope_out" | grep -qx "pathspec=. ':(exclude)workflow'" && [ "$(nw phase-scope --pathspec 2>&1)" = "pathspec=. ':(exclude)workflow'" ] \
-  && ok "nested phase-scope and phase-scope --pathspec print the host pathspec: the nested workflow/ folder excluded, the host's docs/ kept" \
+  && ok "phase scope reads the host repo from the anchor: the product commit's files (the host's docs/ included), nothing under workflow/" \
+  || bad "nested phase scope did not read the host boundary (rc=$scope_rc) -- $scope_out"
+printf '%s\n' "$scope_out" | grep -qx "pathspec=. ':(exclude)workflow'" && [ "$(nw phase scope --pathspec 2>&1)" = "pathspec=. ':(exclude)workflow'" ] \
+  && ok "nested phase scope and phase scope --pathspec print the host pathspec: the nested workflow/ folder excluded, the host's docs/ kept" \
   || bad "nested pathspec= line missing or wrong -- $scope_out"
-ps_out=$(nw parallel-start P1 2>&1); ps_rc=$?
-[ "$ps_rc" -ne 0 ] && printf '%s\n' "$ps_out" | grep -q "^parallel-start in a nested install needs --host-branch <name>" \
+ps_out=$(nw worktree start P1 2>&1); ps_rc=$?
+[ "$ps_rc" -ne 0 ] && printf '%s\n' "$ps_out" | grep -q "^worktree start in a nested install needs --host-branch <name>" \
   && ! grep -q '"execution"' "$NH/workflow/works/phases/active/P1/phase.json" \
-  && ok "nested parallel-start without --host-branch refuses and writes nothing" || bad "nested parallel-start did not refuse a missing --host-branch (rc=$ps_rc) -- $ps_out"
+  && ok "nested worktree start without --host-branch refuses and writes nothing" || bad "nested worktree start did not refuse a missing --host-branch (rc=$ps_rc) -- $ps_out"
 nx=$(nw next 2>&1)
 printf '%s\n' "$nx" | grep -q "^nested_host=/" && printf '%s\n' "$nx" | grep -q "^host_commit_convention=UNCONFIRMED (inferred: type(scope): summary)" \
   && printf '%s\n' "$nx" | grep -qx "slice_path=workflow/works/phases/active/P1/slices/P1.DECOMP" \
   && ok "next names the host, holds the unconfirmed convention, and prints host-relative paths" || bad "nested next lines missing -- $nx"
-nw nested-convention --confirm --text "type(scope): summary" --trailers forbidden >/dev/null 2>&1 || bad "nested probe: nested-convention --confirm failed"
+nw repo convention --confirm --text "type(scope): summary" --trailers forbidden >/dev/null 2>&1 || bad "nested probe: repo convention --confirm failed"
 nx=$(nw next 2>&1)
 if printf '%s\n' "$nx" | grep -q "^host_commit_convention=confirmed (coauthor_trailers=forbidden)" && ! printf '%s\n' "$nx" | grep -q "UNCONFIRMED" \
     && python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["commit_convention"]; assert c["confirmed"] is True and c["text"] == "type(scope): summary" and c["inferred"] == "type(scope): summary", c' "$NH/workflow/.agentic-nested.json"; then
-  ok "nested-convention --confirm records the text and the trailer rule, and next stops flagging it"; else bad "nested-convention --confirm did not flip the convention -- $nx"; fi
+  ok "repo convention --confirm records the text and the trailer rule, and next stops flagging it"; else bad "repo convention --confirm did not flip the convention -- $nx"; fi
 # The agent rename map: design-drafter is installed as wf-design-drafter in the host's .claude/agents.
 mkdir -p "$NH/.claude/agents" && cp "$SRC/claude/agents/slice-executor.md" "$SRC/claude/agents/design-critic.md" "$SRC/claude/agents/pr-reader.md" "$SRC/claude/agents/code-reader.md" "$SRC/claude/agents/Explore.md" "$NH/.claude/agents/" \
   && sed 's/^name: design-drafter$/name: wf-design-drafter/' "$SRC/claude/agents/design-drafter.md" > "$NH/.claude/agents/wf-design-drafter.md"
@@ -4016,21 +3758,21 @@ if nw sync-agents --check >/dev/null 2>&1 && grep -qx "name: wf-design-drafter" 
     && [ ! -e "$NH/.claude/agents/design-drafter.md" ] && [ ! -e "$NH/workflow/.claude" ]; then
   ok "sync-agents resolves agents in the host's .claude/agents through the rename map and keeps the renamed name:"
 else bad "sync-agents missed the host agent dir or the rename map, or rewrote name:"; fi
-nw validate >/dev/null 2>&1 && ok "validate passes on a well-formed nested install" || bad "validate failed on a well-formed nested install -- $(nw validate 2>&1)"
+nw check --no-rebuild >/dev/null 2>&1 && ok "validate passes on a well-formed nested install" || bad "validate failed on a well-formed nested install -- $(nw check --no-rebuild 2>&1)"
 # v61: the resume card from the host prints host-relative paths, within its 2,048 B.
 card=$(nw next --card 2>&1); cr_rc=$?
 [ "$cr_rc" -eq 0 ] && [ "$(printf '%s' "$card" | wc -c | tr -d ' ')" -le 2048 ] && printf '%s\n' "$card" | grep -qx 'phase: workflow/works/phases/active/P1/phase.md' \
   && printf '%s\n' "$card" | grep -qF 'commands run as `python3 workflow/scripts/workflow.py <command>`' \
   && ok "nested: next --card names host-relative paths and the nested engine command, within 2,048 B" || bad "nested next --card wrong (rc=$cr_rc): $card"
 printf '{"schema": 1, "host_root": ".."' > "$NH/workflow/.agentic-nested.json"
-val_out=$(nw validate 2>&1); val_rc=$?; nx_out=$(nw next 2>&1); nx_rc=$?
+val_out=$(nw check --no-rebuild 2>&1); val_rc=$?; nx_out=$(nw next 2>&1); nx_rc=$?
 [ "$val_rc" -ne 0 ] && printf '%s\n' "$val_out" | grep -Fq ".agentic-nested.json: cannot be read as JSON" \
   && [ "$nx_rc" -ne 0 ] && printf '%s\n' "$nx_out" | grep -Fq ".agentic-nested.json is malformed" \
   && ok "a malformed .agentic-nested.json fails validate and stops every other command (never read as at-root mode)" \
   || bad "a malformed .agentic-nested.json passed validate or ran next (rc=$val_rc/$nx_rc) -- $val_out $nx_out"
 cr_out=$(printf '{}' | nw compact-resume 2>&1); cr_rc=$?
 [ "$cr_rc" -eq 0 ] && [ "$(printf '%s\n' "$cr_out" | head -1)" = "compaction=done source=compact" ] \
-  && ok "a malformed marker never stops the resume hook: compact-resume still runs and exits 0" \
+  && ok "a malformed marker never stops the resume hook: the adapter's compact-resume still runs and exits 0" \
   || bad "the resume hook refused on a malformed marker (rc=$cr_rc): $cr_out"
 # The paired worktree lifecycle (P35): a nested phase runs in a host worktree with the nested worktree inside,
 # claims its own stream, shows in the main backlog's Streams view, resumes through the compaction hook's cwd, is
@@ -4046,69 +3788,79 @@ printf '/workflow/\n/.claude/agents/\n' >> "$NH/.git/info/exclude"
 printf 'temp/\n' >> "$NW/.git/info/exclude"
 ( cd "$NW" && git config user.email smoke@example.invalid && git config user.name smoke && git branch -M main >/dev/null 2>&1 \
     && git add -A >/dev/null 2>&1 && git commit -qm "nested baseline" >/dev/null 2>&1 ) || bad "paired lifecycle: could not commit the nested fixture"
-nw rebuild >/dev/null 2>&1; ( cd "$NW" && git add -A >/dev/null 2>&1 && git commit -qm "rebuild" >/dev/null 2>&1 )
-ps_out=$(nw parallel-start P1 --host-branch feat/side 2>&1); ps_rc=$?
+nw check >/dev/null 2>&1; ( cd "$NW" && git add -A >/dev/null 2>&1 && git commit -qm "rebuild" >/dev/null 2>&1 )
+ps_out=$(nw worktree start P1 --host-branch feat/side 2>&1); ps_rc=$?
 HWT=$(printf '%s\n' "$ps_out" | sed -n 's/^host_worktree=//p'); PBR=$(printf '%s\n' "$ps_out" | sed -n 's/^branch=//p')
 if [ "$ps_rc" -eq 0 ] && [ -d "$HWT/workflow" ] && git -C "$NH" worktree list | grep -qF "$HWT" && git -C "$NW" worktree list | grep -qF "$HWT/workflow" \
     && [ -z "$(git -C "$NH" status --short)" ]; then
-  ok "paired parallel-start: both repos list the new worktree, <host-wt>/workflow exists and the host's git status is empty"
-else bad "paired parallel-start (rc=$ps_rc) -- $ps_out -- host status: $(git -C "$NH" status --short)"; fi
+  ok "paired worktree start: both repos list the new worktree, <host-wt>/workflow exists and the host's git status is empty"
+else bad "paired worktree start (rc=$ps_rc) -- $ps_out -- host status: $(git -C "$NH" status --short)"; fi
 wt_next=$( cd "$HWT" && python3 workflow/scripts/workflow.py next 2>&1 ); main_next=$(nw next 2>&1)
-nw rebuild >/dev/null 2>&1
+nw check >/dev/null 2>&1
 if printf '%s\n' "$wt_next" | grep -q "^stream=phase/P1-" && ! printf '%s\n' "$main_next" | grep -q "^current_phase=P1" \
     && grep -A8 '^## Streams' "$NW/works/backlog.md" | grep -E '^\|' | grep -F 'P1' | grep -qF 'feat/side'; then
   ok "the worktree's next prints stream=phase/P1-..., the main checkout skips P1, and backlog.md's ## Streams row carries P1 with feat/side"
 else bad "stream claim or Streams row wrong -- worktree: $wt_next -- main: $main_next -- $(grep -A8 '^## Streams' "$NW/works/backlog.md")"; fi
 # v67: a state change in the worktree refreshes the main checkout's backlog, read from the worktree's files (uncommitted).
-( cd "$HWT" && python3 workflow/scripts/workflow.py set-slice-status P1.DECOMP in_progress >/dev/null 2>&1 )
+( cd "$HWT" && python3 workflow/scripts/workflow.py slice status P1.DECOMP in_progress >/dev/null 2>&1 )
 grep -F '`P1.DECOMP`' "$NW/works/backlog.md" | grep -qF '`in_progress`' && grep -qF '_Read live from its worktree `' "$NW/works/backlog.md" \
   && ok "a slice status changed in the worktree shows in the main checkout's backlog, with nothing run there" \
   || bad "the main backlog did not follow the worktree -- $(grep -F 'P1.' "$NW/works/backlog.md")"
-hook_out=$(printf '{"session_id":"t","source":"compact","cwd":"%s"}' "$HWT" | python3 "$NH/workflow/scripts/workflow.py" compact-resume 2>&1)
+hook_out=$(printf '{"session_id":"t","source":"compact","cwd":"%s"}' "$HWT" | python3 "$NH/workflow/adapters/claude_code/adapter.py" compact-resume 2>&1)
 printf '%s\n' "$hook_out" | grep -q "^stream=phase/P1-" && printf '%s\n' "$hook_out" | grep -q "^pointer: phase P1 " \
   && ok "compact-resume replayed from the main checkout with the worktree's cwd redirects to the worktree's own stream" \
   || bad "the compaction hook did not follow the worktree cwd -- $hook_out"
+# A worktree cut before the adapter existed (no adapters/ folder): its own engine answers -- its compact-resume
+# when it has one, else its `next --card` under the hook's first line -- never the main checkout's card.
+mv "$HWT/workflow/adapters" "$NH.adapters.aside"
+hook_out=$(printf '{"session_id":"t","source":"compact","cwd":"%s"}' "$HWT" | python3 "$NH/workflow/adapters/claude_code/adapter.py" compact-resume 2>&1)
+mv "$NH.adapters.aside" "$HWT/workflow/adapters"
+[ "$(printf '%s\n' "$hook_out" | head -1)" = "compaction=done source=compact" ] && [ "$(printf '%s\n' "$hook_out" | grep -c '^compaction=done')" = 1 ] \
+  && printf '%s\n' "$hook_out" | grep -q "^stream=phase/P1-" && printf '%s\n' "$hook_out" | grep -q "^pointer: phase P1 " \
+  && ok "with the worktree's adapters/ moved aside, the hook falls back to the worktree's own engine (next --card) and still shows its stream" \
+  || bad "the compaction hook did not fall back to the worktree's own engine -- $hook_out"
 printf 'product\n' > "$HWT/src/side.py" && git -C "$HWT" add src/side.py >/dev/null 2>&1 && git -C "$HWT" commit -qm "side" >/dev/null 2>&1
 mkdir -p "$HWT/workflow/temp" && printf 'note\n' > "$HWT/workflow/temp/note.txt"
 git -C "$HWT/workflow" checkout -q -- . >/dev/null 2>&1   # drop the regenerated works/ files `next` rewrote
 printf 'merged\n' > "$HWT/workflow/merged.txt" && git -C "$HWT/workflow" add -A >/dev/null 2>&1 && git -C "$HWT/workflow" commit -qm "phase work" >/dev/null 2>&1
 git -C "$NW" add -A >/dev/null 2>&1 && git -C "$NW" commit -qm "regenerated works" >/dev/null 2>&1
 git -C "$NW" merge --no-ff -q -m "merge phase" "$PBR" >/dev/null 2>&1 || bad "paired lifecycle: could not merge $PBR into the nested default branch"
-td_out=$(nw parallel-teardown P1 2>&1); td_rc=$?
-[ "$td_rc" -ne 0 ] && printf '%s\n' "$td_out" | grep -qF "parallel-teardown P1 refused -- nothing was removed:" \
+td_out=$(nw worktree teardown P1 2>&1); td_rc=$?
+[ "$td_rc" -ne 0 ] && printf '%s\n' "$td_out" | grep -qF "worktree teardown P1 refused -- nothing was removed:" \
   && printf '%s\n' "$td_out" | grep -qF "ignored, worktree-only files would be deleted" && printf '%s\n' "$td_out" | grep -qF "temp/" \
   && [ -d "$HWT/workflow" ] && git -C "$NH" worktree list | grep -qF "$HWT" \
-  && ok "paired parallel-teardown refuses first on the ignored worktree-only temp/ and removes nothing" \
+  && ok "paired worktree teardown refuses first on the ignored worktree-only temp/ and removes nothing" \
   || bad "the teardown guard did not refuse (rc=$td_rc) -- $td_out"
-td_out=$(nw parallel-teardown P1 --discard-ignored 2>&1); td_rc=$?
+td_out=$(nw worktree teardown P1 --discard-ignored 2>&1); td_rc=$?
 nested_at=$(printf '%s\n' "$td_out" | grep -n '^removed nested worktree' | head -1 | cut -d: -f1); host_at=$(printf '%s\n' "$td_out" | grep -n '^removed host worktree' | head -1 | cut -d: -f1)
 if [ "$td_rc" -eq 0 ] && [ -n "$nested_at" ] && [ -n "$host_at" ] && [ "$nested_at" -lt "$host_at" ] && printf '%s\n' "$td_out" | grep -q "^kept host branch feat/side:" \
     && [ -n "$(git -C "$NH" branch --list feat/side)" ] && [ ! -e "$HWT" ] \
     && ! git -C "$NH" worktree list | grep -qF "$HWT" && ! git -C "$NW" worktree list | grep -qF "$HWT" \
-    && ! git -C "$NH" worktree list --porcelain | grep -q '^prunable' && ! git -C "$NW" worktree list --porcelain | grep -q '^prunable'; then
-  ok "paired parallel-teardown --discard-ignored removes the nested worktree before the host worktree and keeps the host branch feat/side"
+    && ! git -C "$NH" worktree list --porcelain | grep -q '^prunable' && ! git -C "$NW" worktree list --porcelain | grep -q '^prunable' \
+    && ! grep -q '"execution"' "$NW/works/phases/active/P1/phase.json" && ! nw worktree status 2>&1 | grep -q '^== P1'; then
+  ok "paired worktree teardown --discard-ignored removes the nested worktree before the host worktree and keeps the host branch feat/side; it clears the execution block, so worktree status stops listing P1"
 else bad "paired teardown wrong (rc=$td_rc) -- $td_out"; fi
 # v86 (§9.4): an explain phase's pair goes detached without --host-branch -- no host branch is made, kept or deleted.
-{ nw new-phase --phase P2 --name "Explain: probe" --objective "detached host" \
+{ nw phase new --phase P2 --name "Explain: probe" --objective "detached host" \
     && printf '\n## Explain\n\n- unit: document\n' >> "$NW/works/phases/active/P2/intent.md"; } >/dev/null 2>&1 || bad "detached pair: could not create the explain phase"
 hb_before=$(git -C "$NH" branch --list | wc -l | tr -d ' ')
-ps_out=$(nw parallel-start P2 2>&1); ps_rc=$?
+ps_out=$(nw worktree start P2 2>&1); ps_rc=$?
 HWT2=$(printf '%s\n' "$ps_out" | sed -n 's/^host_worktree=//p'); PBR2=$(printf '%s\n' "$ps_out" | sed -n 's/^branch=//p')
 if [ "$ps_rc" -eq 0 ] && printf '%s\n' "$ps_out" | grep -q '^host_branch=- (detached host worktree' && [ -d "$HWT2/workflow" ] \
     && ! git -C "$HWT2" symbolic-ref -q HEAD >/dev/null 2>&1 && [ "$(git -C "$NH" branch --list | wc -l | tr -d ' ')" = "$hb_before" ] \
     && python3 -c 'import json,sys; e=json.load(open(sys.argv[1]))["execution"]; assert e["host_branch"] is None and e["host_branch_created"] is False, e' "$NW/works/phases/active/P2/phase.json" \
-    && nw validate >/dev/null 2>&1; then
-  ok "nested parallel-start of an explain phase with no --host-branch cuts a detached host worktree: host_branch null, no host branch made, validate passes"
-else bad "detached explain pair wrong (rc=$ps_rc) -- $ps_out -- $(nw validate 2>&1 | tail -3)"; fi
+    && nw check --no-rebuild >/dev/null 2>&1; then
+  ok "nested worktree start of an explain phase with no --host-branch cuts a detached host worktree: host_branch null, no host branch made, validate passes"
+else bad "detached explain pair wrong (rc=$ps_rc) -- $ps_out -- $(nw check --no-rebuild 2>&1 | tail -3)"; fi
 PG="$HWT2/workflow/works/phases/active/P2/doc/pages"
 mkdir -p "$PG" && printf '*\n!.gitignore\n' > "$PG/.gitignore" && printf 'cached\n' > "$PG/p1.html" \
   && git -C "$HWT2/workflow" add works/phases/active/P2/doc >/dev/null 2>&1 && git -C "$HWT2/workflow" commit -qm "dossier" >/dev/null 2>&1 \
   && git -C "$NW" add -A >/dev/null 2>&1 && { git -C "$NW" commit -qm "default state" >/dev/null 2>&1; git -C "$NW" merge --no-ff -q -m "merge P2" "$PBR2" >/dev/null 2>&1; } \
   || bad "detached pair: could not commit the dossier or merge $PBR2"
-td_out=$(nw parallel-teardown P2 --discard-ignored 2>&1); td_rc=$?
+td_out=$(nw worktree teardown P2 --discard-ignored 2>&1); td_rc=$?
 if [ "$td_rc" -eq 0 ] && printf '%s\n' "$td_out" | grep -q '^no host branch: the host worktree was detached' && printf '%s\n' "$td_out" | grep -q '^deleted 1 ignored' \
     && [ ! -e "$HWT2" ] && [ "$(git -C "$NH" branch --list | wc -l | tr -d ' ')" = "$hb_before" ] \
-    && ! git -C "$NH" worktree list | grep -qF "$HWT2" && ! git -C "$NW" worktree list | grep -qF "$HWT2" && nw validate >/dev/null 2>&1; then
+    && ! git -C "$NH" worktree list | grep -qF "$HWT2" && ! git -C "$NW" worktree list | grep -qF "$HWT2" && nw check --no-rebuild >/dev/null 2>&1; then
   ok "the detached pair's teardown --discard-ignored drops the ignored pages/ and both worktrees and leaves no host branch"
 else bad "detached pair teardown wrong (rc=$td_rc) -- $td_out"; fi
 
@@ -4158,14 +3910,14 @@ assert found
 PY
 then ok "CLAUDE.local.md imports @workflow/CLAUDE.workspace.md on its own line, outside any fence"; else bad "CLAUDE.local.md lacks the import line outside fences"; fi
 nx=$(iw next 2>&1)
-iw validate >/dev/null 2>&1 && printf '%s\n' "$nx" | grep -qF 'host_commit_convention=UNCONFIRMED (inferred: Conventional Commits "type(scope): summary" (5/5 recent subjects' \
+iw check --no-rebuild >/dev/null 2>&1 && printf '%s\n' "$nx" | grep -qF 'host_commit_convention=UNCONFIRMED (inferred: Conventional Commits "type(scope): summary" (5/5 recent subjects' \
   && ok "from the host, validate passes and next shows the UNCONFIRMED inferred Conventional-Commits convention" || bad "nested validate / next wrong -- $nx"
-iw new-phase --phase P1 --name "Nested install probe" --objective "probe" >/dev/null 2>&1; scope=$(iw phase-scope P1 2>&1)
+iw phase new --phase P1 --name "Nested install probe" --objective "probe" >/dev/null 2>&1; scope=$(iw phase scope P1 2>&1)
 printf '%s\n' "$scope" | grep -q "^product_files=0 " && ! printf '%s\n' "$scope" | grep -q "uncommitted_product_files=" && ih_clean \
-  && ok "right after install, new-phase then phase-scope lists nothing (info/exclude hides every host-side file)" || bad "phase-scope sees the install as product -- $scope"
+  && ok "right after install, phase new then phase scope lists nothing (info/exclude hides every host-side file)" || bad "phase scope sees the install as product -- $scope"
 out=$(sh "$BOOT" "$IH" --nested 2>&1); rc=$?
 [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q "already installed" && ih_clean && ok "re-running --nested is an idempotent exit 0" || bad "re-running --nested was not a clean no-op (rc=$rc) -- $out"
-iw nested-convention --confirm --text "type(scope): summary" --trailers forbidden >/dev/null 2>&1 || bad "nested install: nested-convention --confirm failed"
+iw repo convention --confirm --text "type(scope): summary" --trailers forbidden >/dev/null 2>&1 || bad "nested install: repo convention --confirm failed"
 # An earlier nested install's explain skill (listed under `installed`, its exclude line in the block, no self-hiding
 # .gitignore): --update keeps it recognised and hidden, and never writes, flags or reports it.
 plant_old_explain "$IH/.claude/skills/explain/SKILL.md"
@@ -4187,13 +3939,14 @@ else bad "--update --nested lost state or left a footprint (rc=$rc) -- $out"; fi
 if python3 - "$IH/.claude/settings.local.json" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
-resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 workflow/scripts/workflow.py compact-resume || true'
+resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 workflow/adapters/claude_code/adapter.py compact-resume || true'
 assert d["hooks"] == {"SessionStart": [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}]}, d["hooks"]
 assert d["autoCompactWindow"] == 500000, d
 a = d["permissions"]["allow"]
+assert "Bash(python3 workflow/adapters/claude_code/adapter.py:*)" in a and "Bash(python3 workflow/scripts/workflow.py:*)" in a, a
 assert all(r in a for r in ("Bash(playwright-cli:*)", "Bash(npm install -g @playwright/cli@0.1.25)", "Bash(npm i -g @playwright/cli@0.1.25)", "Bash(docker rm -fv:*)", "Bash(docker volume rm:*)", "Bash(lsof -ti:*)", "Bash(kill:*)", "Bash(git branch -d:*)", "Bash(git push origin --delete:*)")), a
 PY
-then ok "nested: settings.local.json carries only the resume hook with the workflow/scripts/workflow.py command path and window 500000, allows playwright-cli, its npm install and the cleanup rules, and --update --nested kept exactly one"; else bad "nested settings.local.json hooks wrong"; fi
+then ok "nested: settings.local.json carries only the resume hook with the workflow/adapters/claude_code/adapter.py command path (and its allow rule) and window 500000, allows playwright-cli, its npm install and the cleanup rules, and --update --nested kept exactly one"; else bad "nested settings.local.json hooks wrong"; fi
 # v61 (P37.S1): --update --nested on a v60-shaped host (no reference/ files) adds them in the renamed dir, host clean.
 rm -rf "$IH/.claude/skills/wf-design-cowork/reference" "$IH/.claude/skills/do-whole-phase/reference"
 out=$(sh "$BOOT" "$IH" --update --nested 2>&1); rc=$?
@@ -4204,6 +3957,13 @@ lset_a=$(sha "$IH/.claude/settings.local.json")
 sh "$BOOT" "$IH" --update --nested >/dev/null 2>&1
 [ "$(sha "$IH/.claude/settings.local.json")" = "$lset_a" ] && ih_clean \
   && ok "nested: a second --update --nested leaves settings.local.json byte-identical" || bad "nested --update rewrote settings.local.json"
+# The thin engine: a v101 settings.local.json (the resume hook on workflow/scripts/workflow.py) gets the adapter's hook.
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["SessionStart"][0]["hooks"][0]["command"]="cd \"$CLAUDE_PROJECT_DIR\" && python3 workflow/scripts/workflow.py compact-resume || true"; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$IH/.claude/settings.local.json"
+out=$(sh "$BOOT" "$IH" --update --nested 2>&1)
+python3 -c 'import json,sys; h=json.load(open(sys.argv[1]))["hooks"]["SessionStart"]; assert [x["command"] for g in h for x in g["hooks"]] == ["cd \"$CLAUDE_PROJECT_DIR\" && python3 workflow/adapters/claude_code/adapter.py compact-resume || true"], h' "$IH/.claude/settings.local.json" \
+  && printf '%s\n' "$out" | grep -qx '  removed: .claude/settings.local.json hooks.SessionStart compact-resume (moved to the adapter: adapters/claude_code/adapter.py compact-resume)' && ih_clean \
+  && ok "nested: --update --nested swaps a v101 resume hook for the adapter's (workflow/adapters/claude_code/adapter.py), reports it, host clean" \
+  || bad "nested --update did not swap the v101 resume hook -- $out"
 # v61: a v60-shaped settings.local.json (our compact-gate beside a foreign PreCompact handler, window 450000 (v66-v81),
 # our resume handler removed) loses exactly ours, keeps theirs, regains the resume hook, moves to 500000, lists both.
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["PreCompact"]=[{"matcher":"auto","hooks":[{"type":"command","command":"echo foreign-nested"},{"type":"command","command":"cd \"$CLAUDE_PROJECT_DIR\" && python3 workflow/scripts/workflow.py compact-gate || true","timeout":15}]}]; d["hooks"]["Stop"]=[{"hooks":[{"type":"command","command":"echo stop"}]}]; d["hooks"]["SessionStart"][0]["hooks"]=[]; d["autoCompactWindow"]=450000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$IH/.claude/settings.local.json"
@@ -4213,7 +3973,7 @@ import json, sys
 d = json.load(open(sys.argv[1]))
 h = d["hooks"]
 assert h["PreCompact"] == [{"matcher": "auto", "hooks": [{"type": "command", "command": "echo foreign-nested"}]}], h["PreCompact"]
-assert [x["command"] for g in h["SessionStart"] for x in g["hooks"]] == ['cd "$CLAUDE_PROJECT_DIR" && python3 workflow/scripts/workflow.py compact-resume || true'], h["SessionStart"]
+assert [x["command"] for g in h["SessionStart"] for x in g["hooks"]] == ['cd "$CLAUDE_PROJECT_DIR" && python3 workflow/adapters/claude_code/adapter.py compact-resume || true'], h["SessionStart"]
 assert h["Stop"] == [{"hooks": [{"type": "command", "command": "echo stop"}]}]
 assert d["autoCompactWindow"] == 500000, d
 PY
@@ -4243,7 +4003,7 @@ ix_explore=$(sha "$IX/.claude/agents/Explore.md"); out=$(sh "$BOOT" "$IX" --nest
 python3 -c 'import json,sys; r=json.load(open(sys.argv[1]))["renames"]["agents"]; assert r.get("Explore") == "wf-Explore", r' "$IX/workflow/.agentic-nested.json" >/dev/null 2>&1 \
   && [ "$rc" -eq 0 ] && grep -qx "name: wf-Explore" "$IX/.claude/agents/wf-Explore.md" && [ "$(sha "$IX/.claude/agents/Explore.md")" = "$ix_explore" ] \
   && grep -rq 'subagent_type: wf-Explore' "$IX/.claude/skills/do-whole-phase" "$IX/.claude/agents/slice-executor.md" \
-  && ( cd "$IX" && python3 workflow/scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) \
+  && ( cd "$IX" && python3 workflow/adapters/claude_code/adapter.py sync-agents --check >/dev/null 2>&1 ) \
   && ok "a host with its own Explore.md: ours installs as wf-Explore (marker rename + name:), the host's is byte-identical, the executors and skill call wf-Explore" \
   || bad "the Explore clash was not renamed cleanly (rc=$rc) -- $out"
 echo "NOTE: wf-Explore occurrences: slice-executor=$(grep -o 'wf-Explore' "$IX/.claude/agents/slice-executor.md" | wc -l | tr -d ' ')"
@@ -4368,7 +4128,7 @@ NN="$ND/plain"; mkdir -p "$NN" && printf 'notes\n' > "$NN/notes.txt"; out=$(sh "
   && ok "a bare install into a non-empty non-git dir exits 1 and writes nothing (no .git, no workflow/)" || bad "a non-empty non-git dir was not refused cleanly (rc=$rc) -- $out"
 
 # ---------------------------------------------------------------------------
-echo "== Test 17: multi-repo host -- a fresh install over a folder of repos makes the host (one empty commit, the repo registry with per-repo conventions, the repos hidden; with no git identity it prints the commands), phase-scope reads each repo on its own, a worktree set refuses to tear down what it did not stamp and then retires clean, and --to-multi-repo converts a nested install without loss =="
+echo "== Test 17: multi-repo host -- a fresh install over a folder of repos makes the host (one empty commit, the repo registry with per-repo conventions, the repos hidden; with no git identity it prints the commands), phase scope reads each repo on its own, a worktree set refuses to tear down what it did not stamp and then retires clean, and --to-multi-repo converts a nested install without loss =="
 # Identity comes from the environment of one call (mr), never from a git config.
 mr() { env GIT_AUTHOR_NAME=smoke GIT_AUTHOR_EMAIL=smoke@example.invalid GIT_COMMITTER_NAME=smoke GIT_COMMITTER_EMAIL=smoke@example.invalid "$@"; }
 mr_repo() { mkdir -p "$1" && ( cd "$1" && mr git init -q . && mr git symbolic-ref HEAD refs/heads/main && printf '%s\n' "$2" > "$2.txt" \
@@ -4387,7 +4147,7 @@ out=$(mr sh "$BOOT" "$MH" 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && [ "$(git -C "$MH" rev-list --count HEAD)" = 1 ] && [ "$(git -C "$MH" log -1 --format=%s)" = "chore: start the host history" ] \
     && [ -z "$(git -C "$MH" status --porcelain --untracked-files=all)" ] && grep -qx '/alpha/' "$MH/.git/info/exclude" && grep -qx '/beta/' "$MH/.git/info/exclude" \
     && python3 -c 'import json,sys; r = json.load(open(sys.argv[1]))["repos"]; assert [x["name"] for x in r] == ["alpha", "beta"], r; assert all(x["commit_convention"]["confirmed"] is False for x in r), r' "$MH/workflow/.agentic-nested.json" \
-    && hw validate >/dev/null 2>&1 && hw next 2>&1 | grep -q "^repo_conventions=.*UNCONFIRMED"; then
+    && hw check --no-rebuild >/dev/null 2>&1 && hw next 2>&1 | grep -q "^repo_conventions=.*UNCONFIRMED"; then
   ok "a fresh install over a folder of two repos makes the host: its own .git with exactly one empty commit, both repos registered with unconfirmed conventions and hidden by the exclude block, a clean host status, validate passing, next flagging the repo conventions"
 else bad "a fresh multi-repo install did not make the host (rc=$rc) -- $out $(git -C "$MH" log --format=%s 2>&1 | head -3)"; fi
 # lighter-rules: a bare host session finds each repo's verification skill through the block it loads at start,
@@ -4404,39 +4164,39 @@ if [ "$rc" -eq 0 ] && [ -d "$MO/.git" ] && [ "$(git -C "$MO" rev-list --count --
     && printf '%s\n' "$out" | grep -qF 'git config --global user.name' && printf '%s\n' "$out" | grep -qF 'commit --allow-empty -m "chore: start the host history"'; then
   ok "with no git identity the multi-repo install exits 0, keeps the .git it made, makes no commit and prints the identity and empty-commit commands"
 else bad "the no-identity multi-repo install did not degrade cleanly (rc=$rc) -- $out"; fi
-# (c) phase-scope reads each repo on its own, from the anchor stamped at new-phase.
-hw new-phase --phase P1 --name "Multi" --objective "probe the host" >/dev/null 2>&1 || bad "multi-repo probe: new-phase failed"
+# (c) phase scope reads each repo on its own, from the anchor stamped at phase new.
+hw phase new --phase P1 --name "Multi" --objective "probe the host" >/dev/null 2>&1 || bad "multi-repo probe: phase new failed"
 printf 'one\n' > "$MH/alpha/one.txt" && mr git -C "$MH/alpha" add one.txt >/dev/null 2>&1 && mr git -C "$MH/alpha" commit -qm "feat: one" >/dev/null 2>&1 || bad "multi-repo probe: could not commit in alpha"
-sc=$(hw phase-scope P1 2>&1); sc_rc=$?; a_head=$(git -C "$MH/alpha" rev-parse --short HEAD)
+sc=$(hw phase scope P1 2>&1); sc_rc=$?; a_head=$(git -C "$MH/alpha" rev-parse --short HEAD)
 [ "$sc_rc" -eq 0 ] && printf '%s\n' "$sc" | grep -q "^repo=alpha path=alpha/ .*head=$a_head .*commits=1$" && printf '%s\n' "$sc" | grep -qx '    A alpha/one.txt' \
   && printf '%s\n' "$sc" | grep -q "^repo=beta path=beta/ commits=0 " \
-  && ok "phase-scope prints one block per repo: alpha holds its commit and file, beta shows no commits" || bad "multi-repo phase-scope wrong (rc=$sc_rc) -- $sc"
+  && ok "phase scope prints one block per repo: alpha holds its commit and file, beta shows no commits" || bad "multi-repo phase scope wrong (rc=$sc_rc) -- $sc"
 printf '%s\n' "$sc" | grep -qx 'repo=alpha pathspec=.' && printf '%s\n' "$sc" | grep -qx 'repo=beta pathspec=.' \
   && printf '%s\n' "$sc" | grep -qx "repo=. (host) pathspec=. ':(exclude)workflow' ':(exclude)alpha' ':(exclude)beta'" \
-  && ok "multi-repo phase-scope prints one pathspec per repo and the host's, which excludes workflow/ and every repo folder" \
+  && ok "multi-repo phase scope prints one pathspec per repo and the host's, which excludes workflow/ and every repo folder" \
   || bad "multi-repo pathspec lines missing or wrong -- $sc"
-# (c2) pr-check on a multi-repo host never passes a repo with no body: alpha's lines say body=missing and warn; with no
+# (c2) pr check on a multi-repo host never passes a repo with no body: alpha's lines say body=missing and warn; with no
 # branch recorded and no --repo nothing is measured, which warns too.
-pc_a=$(hw pr-check P1 --repo alpha 2>&1); pc_a_rc=$?; pc_n=$(hw pr-check P1 2>&1); pc_n_rc=$?
+pc_a=$(hw pr check P1 --repo alpha 2>&1); pc_a_rc=$?; pc_n=$(hw pr check P1 2>&1); pc_n_rc=$?
 [ "$pc_a_rc" -eq 0 ] && printf '%s\n' "$pc_a" | grep -qx 'repo=alpha pr_check=alpha:main base=main' && printf '%s\n' "$pc_a" | grep -q '^repo=alpha body=missing (topics/pr-body-alpha.md)$' \
   && printf '%s\n' "$pc_a" | grep -qx 'pr_check=warn' && [ "$pc_n_rc" -eq 0 ] && printf '%s\n' "$pc_n" | grep -q '^pr_branches=none recorded' && printf '%s\n' "$pc_n" | grep -qx 'pr_check=warn' \
-  && ok "multi-repo pr-check: a repo with no topics/pr-body-<repo>.md prints repo=<name> body=missing and pr_check=warn; no recorded branch and no --repo warns too, never pass" \
-  || bad "multi-repo pr-check missing-body verdict wrong (rc $pc_a_rc/$pc_n_rc) -- $pc_a / $pc_n"
-# (d) a worktree set: parallel-start --repo cuts a worktree per repo; teardown refuses a dirty repo worktree and a hand-made one it did not stamp, then retires the set.
+  && ok "multi-repo pr check: a repo with no topics/pr-body-<repo>.md prints repo=<name> body=missing and pr_check=warn; no recorded branch and no --repo warns too, never pass" \
+  || bad "multi-repo pr check missing-body verdict wrong (rc $pc_a_rc/$pc_n_rc) -- $pc_a / $pc_n"
+# (d) a worktree set: worktree start --repo cuts a worktree per repo; teardown refuses a dirty repo worktree and a hand-made one it did not stamp, then retires the set.
 git -C "$MH/workflow" add -A >/dev/null 2>&1 && mr git -C "$MH/workflow" commit -qm "chore: install and create the phase" >/dev/null 2>&1 || bad "multi-repo probe: could not commit the nested repo"
-ps_out=$(hw parallel-start P1 --host-branch hb --repo alpha=feat/a --repo beta=feat/b --repo-base alpha=main --repo-base beta=main 2>&1); ps_rc=$?
+ps_out=$(hw worktree start P1 --host-branch hb --repo alpha=feat/a --repo beta=feat/b --repo-base alpha=main --repo-base beta=main 2>&1); ps_rc=$?
 PJ="$MH/workflow/works/phases/active/P1/phase.json"; WT=$(pjget "$PJ" execution.host_worktree); PB=$(pjget "$PJ" execution.branch)
 wl() { git -C "$MH/alpha" worktree list; git -C "$MH/beta" worktree list; git -C "$MH" worktree list; git -C "$MH/workflow" worktree list; }
 [ "$ps_rc" -eq 0 ] && [ -f "$WT/alpha/.git" ] && [ -f "$WT/beta/.git" ] && [ "$(pjget "$PJ" execution.repos.beta.branch)" = "feat/b" ] \
-  && ok "parallel-start --repo cuts a worktree per repo inside the host worktree and stamps each in execution.repos" || bad "parallel-start --repo did not cut the set (rc=$ps_rc) -- $ps_out"
+  && ok "worktree start --repo cuts a worktree per repo inside the host worktree and stamps each in execution.repos" || bad "worktree start --repo did not cut the set (rc=$ps_rc) -- $ps_out"
 wl_before=$(wl); printf 'dirty\n' > "$WT/alpha/dirty.txt"
-td_out=$(hw parallel-teardown P1 2>&1); td_rc=$?
+td_out=$(hw worktree teardown P1 2>&1); td_rc=$?
 [ "$td_rc" -ne 0 ] && [ "$(wl)" = "$wl_before" ] && [ -f "$WT/alpha/dirty.txt" ] \
-  && ok "parallel-teardown refuses a repo worktree with uncommitted work and removes nothing" || bad "teardown did not refuse a dirty repo worktree (rc=$td_rc) -- $td_out"
+  && ok "worktree teardown refuses a repo worktree with uncommitted work and removes nothing" || bad "teardown did not refuse a dirty repo worktree (rc=$td_rc) -- $td_out"
 rm -f "$WT/alpha/dirty.txt"
 printf '/vendor/\n' >> "$MH/.git/info/exclude"   # hidden from the host worktree's status, so only the stamp can tell it from the set's own
 mr git -C "$MH/alpha" worktree add -q --detach "$WT/vendor" >/dev/null 2>&1 && printf 'wip\n' > "$WT/vendor/wip.txt" || bad "multi-repo probe: could not make the hand-made worktree"
-wl_before=$(wl); val_out=$(hw validate 2>&1); val_rc=$?; td_out=$(hw parallel-teardown P1 --discard-ignored 2>&1); td_rc=$?
+wl_before=$(wl); val_out=$(hw check --no-rebuild 2>&1); val_rc=$?; td_out=$(hw worktree teardown P1 --discard-ignored 2>&1); td_rc=$?
 [ "$val_rc" -eq 0 ] && printf '%s\n' "$val_out" | grep -q "^warning: .*/vendor" && [ "$td_rc" -ne 0 ] && [ "$(wl)" = "$wl_before" ] && [ -f "$WT/vendor/wip.txt" ] \
   && [ "$(pjget "$PJ" execution.repos.alpha.worktree)" != None ] \
   && ok "a hand-made worktree in the host worktree: validate warns (rc 0), teardown refuses even with --discard-ignored, its uncommitted file and every worktree list untouched" \
@@ -4444,34 +4204,34 @@ wl_before=$(wl); val_out=$(hw validate 2>&1); val_rc=$?; td_out=$(hw parallel-te
 { mr git -C "$MH/alpha" worktree remove --force "$WT/vendor" && printf 'b\n' > "$WT/beta/b2.txt" && mr git -C "$WT/beta" add b2.txt \
   && mr git -C "$WT/beta" commit -qm "feat: beta work" && mr git -C "$WT/workflow" commit -q --allow-empty -m "chore(works): slice work" \
   && mr git -C "$MH/workflow" merge -q --no-ff -m "merge: the phase" "$PB"; } >/dev/null 2>&1 || bad "multi-repo probe: could not integrate the set"
-td_out=$(hw parallel-teardown P1 --discard-ignored 2>&1); td_rc=$?
+td_out=$(hw worktree teardown P1 --discard-ignored 2>&1); td_rc=$?
 if [ "$td_rc" -eq 0 ] && [ ! -e "$WT" ] && [ -z "$(git -C "$MH/alpha" branch --list feat/a)" ] && [ -n "$(git -C "$MH/beta" branch --list feat/b)" ] \
     && [ "$(git -C "$MH/alpha" worktree list | wc -l | tr -d ' ')" = 1 ] && [ "$(git -C "$MH/beta" worktree list | wc -l | tr -d ' ')" = 1 ] \
-    && [ "$(pjget "$PJ" execution.repos.alpha.worktree)" = None ] && [ "$(pjget "$PJ" execution.repos.beta.worktree)" = None ] && hw validate >/dev/null 2>&1; then
-  ok "with the hand-made worktree gone, teardown removes the repo worktrees, nulls each stamp, deletes the created branch with no commits and keeps the one with a commit; validate passes"
+    && ! pjget "$PJ" execution >/dev/null 2>&1 && hw check --no-rebuild >/dev/null 2>&1; then
+  ok "with the hand-made worktree gone, teardown removes the repo worktrees, clears the execution block, deletes the created branch with no commits and keeps the one with a commit; validate passes"
 else bad "the set did not retire cleanly (rc=$td_rc) -- $td_out"; fi
-# (d2) a repo added mid-phase, from inside the set, is stamped on the phase branch only; the default stream's parallel-status must still list it.
-{ hw new-phase --phase P2 --name "Mid" --objective "add a repo mid-phase" && git -C "$MH/workflow" add -A && mr git -C "$MH/workflow" commit -qm "chore: create the second phase" \
-  && hw parallel-start P2 --host-branch hb2 --repo alpha=feat/a2 --repo-base alpha=main; } >/dev/null 2>&1 || bad "multi-repo probe: could not cut the second set"
+# (d2) a repo added mid-phase, from inside the set, is stamped on the phase branch only; the default stream's worktree status must still list it.
+{ hw phase new --phase P2 --name "Mid" --objective "add a repo mid-phase" && git -C "$MH/workflow" add -A && mr git -C "$MH/workflow" commit -qm "chore: create the second phase" \
+  && hw worktree start P2 --host-branch hb2 --repo alpha=feat/a2 --repo-base alpha=main; } >/dev/null 2>&1 || bad "multi-repo probe: could not cut the second set"
 PJ2="$MH/workflow/works/phases/active/P2/phase.json"; WT2=$(pjget "$PJ2" execution.host_worktree)
-add_out=$( cd "$WT2" && mr python3 workflow/scripts/workflow.py parallel-add-repo P2 --repo beta=feat/b2 --repo-base main 2>&1 ); add_rc=$?
-st_out=$(hw parallel-status 2>&1); st_rc=$?
+add_out=$( cd "$WT2" && mr python3 workflow/scripts/workflow.py worktree add-repo P2 --repo beta=feat/b2 --repo-base main 2>&1 ); add_rc=$?
+st_out=$(hw worktree status 2>&1); st_rc=$?
 [ "$add_rc" -eq 0 ] && ! pjget "$PJ2" execution.repos.beta >/dev/null 2>&1 && [ "$st_rc" -eq 0 ] && printf '%s\n' "$st_out" | grep -q '^  source=branch phase/P2' \
   && printf '%s\n' "$st_out" | grep -q '^  repo beta: branch=feat/b2 (created) ' \
-  && ok "a repo added mid-phase (stamped on the phase branch only) is listed by the default stream's parallel-status, which reads the set's repos from the branch it reports" \
-  || bad "the default stream's parallel-status lost the repo added mid-phase (add rc=$add_rc, status rc=$st_rc) -- $add_out $st_out"
+  && ok "a repo added mid-phase (stamped on the phase branch only) is listed by the default stream's worktree status, which reads the set's repos from the branch it reports" \
+  || bad "the default stream's worktree status lost the repo added mid-phase (add rc=$add_rc, status rc=$st_rc) -- $add_out $st_out"
 # (e) --to-multi-repo: a per-repo nested install R beside a plain repo S becomes a multi-repo host at their parent, losslessly.
 newtmp MC; MX="$MC/C"; MXR="$MX/R"; mr_repo "$MXR" R; mr_repo "$MX/S" S
 mr sh "$BOOT" "$MXR" >/dev/null 2>&1 || bad "multi-repo probe: nested install of R failed"
 rw() { ( cd "$MXR" && mr python3 workflow/scripts/workflow.py "$@" ); }
-{ rw nested-convention --confirm --text "Conventional Commits, scope required" --trailers forbidden && rw new-phase --phase P1 --name "First" --objective "convert me"; } >/dev/null 2>&1 \
-  || bad "multi-repo probe: R convention / new-phase failed"
+{ rw repo convention --confirm --text "Conventional Commits, scope required" --trailers forbidden && rw phase new --phase P1 --name "First" --objective "convert me"; } >/dev/null 2>&1 \
+  || bad "multi-repo probe: R convention / phase new failed"
 # P1 records a PR branch and R records solo, both with repo null (a per-repo install's only legal value), which the host must name R.
 printf 'two\n' > "$MXR/two.txt" && mr git -C "$MXR" add two.txt >/dev/null 2>&1 && mr git -C "$MXR" commit -qm "feat: two" >/dev/null 2>&1 \
-  && rw pr-branch P1 --name feat/convert >/dev/null 2>&1 && rw pr-team --record solo --evidence "operator: solo" >/dev/null 2>&1 \
+  && rw pr branch P1 --name feat/convert >/dev/null 2>&1 && rw pr team --record solo --evidence "operator: solo" >/dev/null 2>&1 \
   && printf 'mine\n' > "$MXR/notes.txt" \
   && git -C "$MXR/workflow" add -A >/dev/null 2>&1 && mr git -C "$MXR/workflow" commit -qm "chore: install and create the phase" >/dev/null 2>&1 || bad "multi-repo probe: could not build R's history"
-cp "$MXR/workflow/.agentic-nested.json" "$MC/old-marker.json"; scope_before=$(rw phase-scope P1 2>&1); sig=$(mr_sig "$MC")
+cp "$MXR/workflow/.agentic-nested.json" "$MC/old-marker.json"; scope_before=$(rw phase scope P1 2>&1); sig=$(mr_sig "$MC")
 out=$(mr sh "$BOOT" --to-multi-repo "$MXR" --dry-run 2>&1); rc=$?
 [ "$rc" -eq 0 ] && [ "$(mr_sig "$MC")" = "$sig" ] && [ ! -e "$MX/.git" ] && [ ! -e "$MX/workflow" ] \
   && ok "--to-multi-repo --dry-run exits 0 and writes nothing" || bad "--to-multi-repo --dry-run wrote or failed (rc=$rc) -- $out"
@@ -4481,7 +4241,7 @@ out=$(mr sh "$BOOT" --to-multi-repo "$MXR" 2>&1); rc=$?
   && ok "--to-multi-repo on a nested repo with uncommitted work exits 1 and leaves the tree unchanged" || bad "--to-multi-repo did not refuse a dirty nested repo (rc=$rc) -- $out"
 rm -f "$MXR/workflow/scratch.md"
 out=$(mr sh "$BOOT" --to-multi-repo "$MXR" 2>&1); rc=$?
-scope_after=$(cd "$MX" && mr python3 workflow/scripts/workflow.py phase-scope P1 --repo R 2>&1); sc_rc=$?
+scope_after=$(cd "$MX" && mr python3 workflow/scripts/workflow.py phase scope P1 --repo R 2>&1); sc_rc=$?
 mk_out=$(python3 - "$MX/workflow/.agentic-nested.json" "$MC/old-marker.json" "$scope_before" "$scope_after" 2>&1 <<'PY'
 import json, re, sys
 new, old = (json.load(open(p)) for p in sys.argv[1:3])
@@ -4498,188 +4258,28 @@ PY
 ); mk_rc=$?
 if [ "$rc" -eq 0 ] && [ "$(git -C "$MX" rev-list --count HEAD)" = 1 ] && [ "$(git -C "$MX" log -1 --format=%s)" = "chore: start the host history" ] \
     && [ -f "$MX/workflow/.agentic-nested.json" ] && [ ! -e "$MXR/workflow" ] && [ "$mk_rc" -eq 0 ] && [ "$sc_rc" -eq 0 ] \
-    && [ "$(git -C "$MXR" status --porcelain)" = "?? notes.txt" ] && (cd "$MX" && mr python3 workflow/scripts/workflow.py validate >/dev/null 2>&1); then
-  ok "--to-multi-repo makes the parent a host: one empty host commit, the nested repo moved up, R's confirmed convention carried over and S unconfirmed, converted_from recorded, phase-scope P1 --repo R equal to the one before, R left with only its untracked file, validate passing"
+    && [ "$(git -C "$MXR" status --porcelain)" = "?? notes.txt" ] && (cd "$MX" && mr python3 workflow/scripts/workflow.py check --no-rebuild >/dev/null 2>&1); then
+  ok "--to-multi-repo makes the parent a host: one empty host commit, the nested repo moved up, R's confirmed convention carried over and S unconfirmed, converted_from recorded, phase scope P1 --repo R equal to the one before, R left with only its untracked file, validate passing"
 else bad "--to-multi-repo did not convert cleanly (rc=$rc, scope rc=$sc_rc) -- $mk_out $out"; fi
 pr_repo=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["pr"]["branches"][0]["repo"])' "$MX/workflow/works/phases/active/P1/phase.json" 2>&1)
-again=$(cd "$MX" && mr python3 workflow/scripts/workflow.py nested-repos --map-anchors R 2>&1)
+again=$(cd "$MX" && mr python3 workflow/scripts/workflow.py repo map-anchors R 2>&1)
 [ "$rc" -eq 0 ] && [ "$pr_repo" = R ] && printf '%s\n' "$again" | grep -q -- "-- nothing written$" \
   && ok "--to-multi-repo names R in P1's PR record (repo null before) ahead of the closing validate, and a second --map-anchors R writes nothing" \
   || bad "--to-multi-repo left P1's PR record unmapped (rc=$rc, repo=$pr_repo) -- again: $again"
 # R's solo record (repo null on the per-repo install = R) must name R on the host, where null means every repo.
-t_s=$(cd "$MX" && mr python3 workflow/scripts/workflow.py pr-team --repo S 2>&1); t_r=$(cd "$MX" && mr python3 workflow/scripts/workflow.py pr-team --repo R 2>&1)
+t_s=$(cd "$MX" && mr python3 workflow/scripts/workflow.py pr team --repo S 2>&1); t_r=$(cd "$MX" && mr python3 workflow/scripts/workflow.py pr team --repo R 2>&1)
 printf '%s\n' "$t_s" | grep -q "^pr_team=S recorded=none " && printf '%s\n' "$t_r" | grep -q "^pr_team=R recorded=solo " \
-  && ok "--to-multi-repo names R in R's own pr-team record: R still reads solo, S (never recorded) reads none" \
+  && ok "--to-multi-repo names R in R's own pr team record: R still reads solo, S (never recorded) reads none" \
   || bad "--to-multi-repo let R's solo record answer for S -- S: $t_s / R: $t_r"
 
 # ---------------------------------------------------------------------------
-echo "== Test 18: P50 loop phases -- the charter gate, the budget stop, park don't halt, the bounded rollup, the tick's resume states, the run-loop core cap =="
-# Tiny and core only (the operator's five); the rest is proven live. A fresh --at-root install in git, a
-# fake CLAUDE_CONFIG_DIR inside the test's tmp dir (never the real one), no transcripts, so every cycle
-# meters `assumed` at per_cycle_usd.
-lp_t0=$(date +%s)
-newtmp LPW; LP="$LPW/ws"; LPCC="$LPW/cc"; LPX="$LPCC/projects/fixture"; mkdir -p "$LPCC/sessions" "$LPX"
-sh "$BOOT" "$LP" --at-root --name "Loop" --summary "loop" >/dev/null 2>&1 || bad "loop probe: the fresh install failed"
-lw() { ( cd "$LP" && CLAUDE_CONFIG_DIR="$LPCC" python3 scripts/workflow.py "$@" ); }
-lgc() { ( cd "$LP" && git add -A && git commit -qm "$1" ) >/dev/null 2>&1 || bad "loop probe: commit $1 failed"; }
-# The identity lives in the repo's config, not on lgc's commits alone: the engine commits too (parallel-start's
-# stamp in (h)), and a CI runner has no global identity to fall back on.
-( cd "$LP" && git init -q . && git config user.email smoke@example.invalid && git config user.name smoke ) >/dev/null 2>&1; lgc baseline
-LPP="$LP/works/phases/active/P1"; LPC="$LPP/loop/charter"
-# lp_fill <src> <dst> <total_usd>: fill every UNFILLED section of the charter and set the bounds.
-lp_fill() { python3 - "$1" "$2" "$3" <<'PY'
-import json, sys
-src, dst, total = sys.argv[1], sys.argv[2], float(sys.argv[3])
-text = "\n".join(l for l in open(src).read().split("\n") if "UNFILLED" not in l)
-text = text.replace("## Objective\n", "## Objective\n\nScore toy items.\n").replace("## One cycle\n", "## One cycle\n\nRun the toy scorer.\n")
-bounds = {"cadence": {"min_gap_minutes": 0}, "budget": {"per_cycle_usd": 1.0, "per_day_usd": 1000.0, "total_usd": total, "max_cycles": None},
-          "stops": {"max_consecutive_failures": 2}, "spend_covered": [], "stages": {"screen": "screen"}, "checkpoint_every": 1000,
-          "digest_every_hours": 100000, "keep_cycles": 2, "cycle_timeout_minutes": 120, "outputs": []}
-i = text.index("```json"); j = text.index("```", i + 7)
-open(dst, "w").write(text[:i] + "```json\n" + json.dumps(bounds, indent=2) + "\n" + text[j:])
-PY
-}
-# lp_cycle <key> <verdict> [close args]: start -> plan -> result -> close, one cycle.
-lp_cycle() { local k=$1 v=$2 out sid; shift 2
-  out=$(lw loop-cycle-start P1 --key "$k" --title "item $k" 2>&1) || { printf 'start refused: %s\n' "$out"; return 1; }
-  sid=$(printf '%s\n' "$out" | sed -n 's/^cycle=//p')
-  printf 'plan\n' > "$LPP/slices/$sid/plan.md"; printf -- '- status: done\n- item_verdict: %s\n' "$v" > "$LPP/slices/$sid/result.md"
-  lw loop-cycle-close "$sid" --verdict "$v" --summary "toy $v" --transcripts "$LPX" "$@" 2>&1; }
-lp_tick() { lw loop-tick P1 --transcripts "$LPX" 2>&1; }
-lp_field() { python3 -c 'import json,sys
-d = json.load(open(sys.argv[1]))
-for k in sys.argv[2].split("."): d = (d or {}).get(k) if isinstance(d, dict) else None
-print(d)' "$LPP/phase.json" "$1"; }
-lw new-phase --phase P1 --name "Toy loop" --objective "score toy items" --loop >/dev/null 2>&1 || bad "loop probe: new-phase --loop failed"
-lw start-slice P1.DECOMP >/dev/null 2>&1 && lw finish-slice P1.DECOMP --outcome "cut" >/dev/null 2>&1 || bad "loop probe: DECOMP did not finish"
-# (a) the charter gate: no cycle before a signature, no signature over an UNFILLED line, no cycle once the signed file changed.
-s_out=$(lw loop-cycle-start P1 --key a --title A 2>&1); s_rc=$?
-g_out=$(lw loop-sign P1 --words "sign it" 2>&1); g_rc=$?
-lp_fill "$LPC/v1.md" "$LPC/v1.md" 2.0; cp "$LPC/v1.md" "$LPW/v1.signed"
-lw loop-sign P1 --words "sign it" >/dev/null 2>&1 || bad "loop probe: loop-sign of a filled charter failed"
-printf '\nedited after signing\n' >> "$LPC/v1.md"
-e_out=$(lw loop-cycle-start P1 --key a --title A 2>&1); e_rc=$?
-cp "$LPW/v1.signed" "$LPC/v1.md"
-[ "$s_rc" -ne 0 ] && printf '%s\n' "$s_out" | grep -q 'no signed charter' && [ "$g_rc" -ne 0 ] && printf '%s\n' "$g_out" | grep -q 'UNFILLED' \
-  && [ "$e_rc" -ne 0 ] && printf '%s\n' "$e_out" | grep -q 'has changed since it was signed' && [ ! -d "$LPP/slices/P1.C1" ] \
-  && ok "the charter gate: loop-cycle-start refuses an unsigned charter, loop-sign refuses one with UNFILLED left, and loop-cycle-start refuses again once the signed file is edited (no cycle folder made)" \
-  || bad "the charter gate leaked (start rc=$s_rc, sign rc=$g_rc, edited rc=$e_rc) -- $s_out | $g_out | $e_out"
-lgc signed; lw loop-claim P1 >/dev/null 2>&1 || bad "loop probe: loop-claim failed"
-# (b) the budget stop: total_usd 2 at 1 per assumed cycle -- the second close halts budget-total, the phase goes pending,
-# next waits on it, resume is refused, and signing v2 with a higher total lifts it.
-lp_cycle a fail >/dev/null || bad "loop probe: cycle a failed"
-c_out=$(lp_cycle b fail); w_out=$(lw next 2>&1)
-r_out=$(lw loop-control P1 resume --words "go on" 2>&1); r_rc=$?
-lp_fill "$LPC/v1.md" "$LPC/v2.md" 50.0; v_out=$(lw loop-sign P1 --version 2 --words "raise it" 2>&1); v_rc=$?
-if printf '%s\n' "$c_out" | grep -q '^halted reason=budget-total ' && printf '%s\n' "$c_out" | grep -q 'usd_source=assumed' \
-    && printf '%s\n' "$w_out" | grep -q '^WAITING ON OPERATOR: phase P1 is pending' && printf '%s\n' "$w_out" | grep -q '^on_words=sign charter v2 with a higher bound' \
-    && [ "$r_rc" -ne 0 ] && printf '%s\n' "$r_out" | grep -q 'lifted only by a new charter' \
-    && [ "$v_rc" -eq 0 ] && printf '%s\n' "$v_out" | grep -q 'lifted the budget-total halt' \
-    && [ "$(lp_field status)" = in_progress ] && [ "$(lp_field loop.status)" = running ] && lp_tick | grep -qx 'action=start'; then
-  ok "the budget stop: the close that reaches total_usd (assumed cycles) halts budget-total and the phase goes pending, next prints the WAITING block with its on_words, loop-control resume is refused, and loop-sign of v2 with a higher total lifts it (phase in_progress, tick start)"
-else bad "the budget stop went wrong (resume rc=$r_rc, sign v2 rc=$v_rc) -- $c_out | $w_out | $r_out | $v_out"; fi
-# (c) park, don't halt: a parked close leaves the loop running and the tick starts the next; two error closes in a row halt it.
-p_out=$(lp_cycle c parked --question "keep c?" --on-words "requeue c"); p_tick=$(lp_tick)
-lp_cycle d error >/dev/null; f_out=$(lp_cycle e error)
-if printf '%s\n' "$p_out" | grep -q '^parked: key=c' && ! printf '%s\n' "$p_out" | grep -q '^halted' && printf '%s\n' "$p_tick" | grep -qx 'status=running' \
-    && printf '%s\n' "$p_tick" | grep -qx 'action=start' && printf '%s\n' "$f_out" | grep -q '^halted reason=failures ' && [ "$(lp_field loop.halt.reason)" = failures ]; then
-  ok "park, don't halt: a parked close leaves the loop running and the tick says start; max_consecutive_failures (2) error closes in a row halt it with failures"
-else bad "park/failures wrong -- $p_out | $p_tick | $f_out"; fi
-lw loop-control P1 resume --words "go on" >/dev/null 2>&1 || bad "loop probe: resume after failures was refused"
-# (d) the bounded rollup: keep_cycles + 3 cycles, each committed, leave keep_cycles closed folders; the global
-# works/events.jsonl stays flat over the last 3; ## Slices shows the rollup row.
-lgc resumed
-for k in f g; do lp_cycle "$k" fail >/dev/null; lgc "$k"; done
-ev_before=$(wc -l < "$LP/works/events.jsonl" | tr -d ' ')
-for k in h i j; do lp_cycle "$k" fail >/dev/null; lgc "$k"; done
-ev_after=$(wc -l < "$LP/works/events.jsonl" | tr -d ' '); left=$(ls -d "$LPP"/slices/P1.C* 2>/dev/null | wc -l | tr -d ' ')
-if [ "$left" = 2 ] && [ "$ev_before" = "$ev_after" ] && grep -q '^| `C1–C8` | rolled up (8) → `loop/ledger.jsonl`' "$LPP/phase.md" \
-    && [ -d "$LPP/slices/P1.C9" ] && [ -d "$LPP/slices/P1.C10" ]; then
-  ok "the bounded rollup: after keep_cycles + 3 committed cycles exactly keep_cycles (2) closed cycle folders remain, the global events.jsonl line count is flat over the last 3 cycles ($ev_after), and ## Slices shows the C1–C8 rollup row"
-else bad "the rollup did not bound the state (folders=$left, events $ev_before -> $ev_after) -- $(grep -n 'rolled' "$LPP/phase.md")"; fi
-# (e) the tick's resume states with a cycle in flight: a verdict on disk -> close; a plan with no span -> dispatch;
-# a span whose session is a live process in the registry -> wait; the same once it is dead -> dispatch attempt=2.
-k_out=$(lw loop-cycle-start P1 --key k --title "item k" 2>&1); ksid=$(printf '%s\n' "$k_out" | sed -n 's/^cycle=//p')
-t_plan=$(lp_tick); printf 'plan\n' > "$LPP/slices/$ksid/plan.md"; t_disp=$(lp_tick)
-sleep 300 & lp_pid=$!
-python3 - "$LPCC" "$LPX" "$lp_pid" "$ksid" "$LP" <<'PY'
-import json, os, subprocess, sys, time
-cc, proj, pid, sid, root = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], sys.argv[5]
-start = " ".join(subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True,
-                                env={**os.environ, "LC_ALL": "C", "TZ": "UTC"}).stdout.split())
-json.dump({"pid": pid, "sessionId": "sess-live", "cwd": root, "procStart": start}, open(f"{cc}/sessions/{pid}.json", "w"))
-d = f"{proj}/sess-live/subagents"; os.makedirs(d, exist_ok=True)
-t = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
-open(f"{d}/agent-a1.jsonl", "w").write(json.dumps({"type": "user", "isSidechain": True, "timestamp": t,
-    "message": {"role": "user", "content": f"slice: {sid}\nslice folder: x\n"}}) + "\n")
-json.dump({"agentType": "slice-executor", "description": sid}, open(f"{d}/agent-a1.meta.json", "w"))
-PY
-t_wait=$(lp_tick); kill "$lp_pid" 2>/dev/null; wait "$lp_pid" 2>/dev/null; t_dead=$(lp_tick)
-printf -- '- status: done\n- item_verdict: fail\n' > "$LPP/slices/$ksid/result.md"; t_close=$(lp_tick)
-if [ -n "$ksid" ] && printf '%s\n' "$t_plan" | grep -qx 'action=plan' && printf '%s\n' "$t_disp" | grep -qx 'action=dispatch' \
-    && printf '%s\n' "$t_disp" | grep -qx 'attempt=1' && printf '%s\n' "$t_wait" | grep -qx 'action=wait' && printf '%s\n' "$t_wait" | grep -qx 'span=a1' \
-    && printf '%s\n' "$t_dead" | grep -qx 'action=dispatch' && printf '%s\n' "$t_dead" | grep -qx 'attempt=2' && printf '%s\n' "$t_close" | grep -qx 'action=close'; then
-  ok "the tick resumes from disk with a cycle in flight: no plan.md -> plan, a plan with no span -> dispatch attempt=1, a span whose session is a live process -> wait, the same once it is killed -> dispatch attempt=2, a verdict in result.md -> close"
-else bad "the tick's resume states are wrong -- plan: $t_plan | dispatch: $t_disp | wait: $t_wait | dead: $t_dead | close: $t_close"; fi
-# (f) P50-fr.F1: the engine numbers the retry and routes it -- the dead span's re-dispatch records attempt 2 on high,
-# executor-route prints high with no --retry, and the close's ledger line reads the closing attempt's row.
-rm -f "$LPP/slices/$ksid/result.md"; r_disp=$(lw loop-cycle-dispatch "$ksid" --transcripts "$LPX" 2>&1); r_route=$(lw executor-route "$ksid" 2>&1)
-printf -- '- status: done\n- item_verdict: fail\n' > "$LPP/slices/$ksid/result.md"; lw loop-cycle-close "$ksid" --verdict fail --summary "toy fail" --transcripts "$LPX" >/dev/null 2>&1
-r_line=$(tail -1 "$LPP/loop/ledger.jsonl")
-if printf '%s\n' "$r_disp" | grep -q "attempt=2 " && printf '%s\n' "$r_disp" | grep -qx 'route=high stage_route=screen' \
-    && printf '%s\n' "$r_route" | grep -qx 'route=high' && printf '%s\n' "$r_route" | grep -qx 'attempt=2' \
-    && printf '%s\n' "$r_line" | grep -q '"route": "high", "stage_route": "screen", "attempt": 2'; then
-  ok "a retry after a dead span: loop-cycle-dispatch records attempt 2 on the high row, executor-route prints high with no --retry, and the close's ledger line reads route=high stage_route=screen"
-else bad "the retry's attempt or row is wrong -- dispatch: $r_disp | route: $r_route | ledger: $r_line"; fi
-# (g) P50-fr.F2: no resume runs past a charter-level stop (here the signed charter edited under a pause: the
-# resume halts on charter instead), and the final review refuses a pass while a parked item (c) is open.
-lw loop-control P1 pause >/dev/null 2>&1; cp "$LPC/v2.md" "$LPW/v2.signed"; printf '\nedited\n' >> "$LPC/v2.md"
-g_res=$(lw loop-control P1 resume 2>&1); g_tick=$(lp_tick); cp "$LPW/v2.signed" "$LPC/v2.md"
-g_ok=$(lw loop-control P1 resume --words "go on" 2>&1); lw loop-control P1 stop --words "stop" >/dev/null 2>&1
-g_rev=$(lw review-phase P1 --verdict pass 2>&1); g_rc=$?
-if printf '%s\n' "$g_res" | grep -q '^not resumed P1: the loop was paused, but a charter-level stop holds -- halted reason=charter ' \
-    && printf '%s\n' "$g_tick" | grep -qx 'reason=charter' && printf '%s\n' "$g_ok" | grep -q '^resumed P1: halted -> running' \
-    && [ "$g_rc" -ne 0 ] && printf '%s\n' "$g_rev" | grep -q 'parked item(s) still open: c .*loop-unpark' && [ "$(lp_field status)" != done ]; then
-  ok "no resume past a charter-level stop: a paused loop whose signed charter changed halts on charter (not resumed), resumes once restored, and review-phase refuses the pass while parked key c is open"
-else bad "a resume ran past a charter-level stop or the review passed over an open parked item -- $g_res | $g_tick | $g_ok | $g_rev"; fi
-# (h) P50-fr.F4: one stream predicate. P1 runs on the default stream; from another phase's worktree the operator's
-# words queue in the default checkout's control.json and write nothing there, every other loop writer refuses,
-# and the reads name the live loop.
-lw new-phase --phase P2 --name "Side" --objective "side work" >/dev/null 2>&1; lgc "loop probe: P2"
-lw parallel-start P2 >/dev/null 2>&1 || bad "loop probe: parallel-start P2 failed"
-LPWT=$(ls -d "$LP"/.claude/worktrees/P2-* 2>/dev/null | head -1)
-hw() { ( cd "$LPWT" && CLAUDE_CONFIG_DIR="$LPCC" python3 scripts/workflow.py "$@" ) 2>&1; }
-h_next=$(hw next); h_stat=$(hw loop-status P1 | head -1)
-h_mid=$(git -C "$LPWT" status --porcelain)
-h_pause=$(hw loop-control P1 pause); h_add=$(hw loop-queue P1 add --key z --title Z); h_add_rc=$?
-h_after=$(git -C "$LPWT" status --porcelain)
-h_req=$(python3 -c 'import json,sys; print(",".join(r["action"] for r in json.load(open(sys.argv[1]))["requests"]))' "$LPP/loop/control.json" 2>&1)
-lw loop-control P1 apply >/dev/null 2>&1
-if [ -n "$LPWT" ] && printf '%s\n' "$h_pause" | grep -q "^queued pause for P1 in .*/ws/works/phases/active/P1/loop/control.json " && [ "$h_req" = pause ] \
-    && [ "$h_add_rc" -ne 0 ] && printf '%s\n' "$h_add" | grep -q "runs only on the loop's own stream (the default stream" \
-    && [ "$h_mid" = "$h_after" ] \
-    && printf '%s\n' "$h_stat" | grep -q "source=default checkout .*/ws/works/phases/active/P1$" && printf '%s\n' "$h_next" | grep -q '^loops_elsewhere=P1:stopped:'; then
-  ok "a default-stream loop from another phase's worktree: pause queues in the default checkout's control.json writing nothing there, loop-queue add refuses, loop-status reads the live loop and next lists it as loops_elsewhere"
-else bad "a default-stream loop addressed from a worktree wrote the stale copy or read it -- pause: $h_pause | add: $h_add | requests: $h_req | status: $h_stat | next: $(printf '%s\n' "$h_next" | grep loops_) | worktree: [$h_mid] -> [$h_after]"; fi
-lw validate >/dev/null 2>&1 && ok "validate passes on the loop install after every probe" || bad "validate failed on the loop install -- $(lw validate 2>&1 | tail -5)"
-# the run-loop core stays a do-* sized core: <= 16 KB, its resume line inside the first 16 KB.
-python3 - "$REPO_ROOT/payload/claude/skills/run-loop/SKILL.md" <<'PY' && ok "run-loop/SKILL.md stays <= 16 KB with its resume line inside the first 16 KB" || bad "run-loop/SKILL.md is over 16 KB or its resume line moved past the first 16 KB"
-import sys
-raw = open(sys.argv[1], "rb").read()
-assert len(raw) <= 16384, len(raw)
-line = "**Resume (after a compaction or a restart):**".encode()
-i = raw.find(line)
-assert i >= 0 and raw.find(b"\n", i) <= 16384, i
-PY
-echo "loop test runtime: $(( $(date +%s) - lp_t0 ))s"
-
-# ---------------------------------------------------------------------------
-echo "== Test 19: P51 PR rule v1 -- the pr block and its commands, pr-check's size/budgets/leaks/headings, the pass guard, validate and next, the drafts opening with no stop (a REVIEW stop halts a run), the pr skill and pr-reader, the team-rule banner, the symlinked skills exclude, the root linguist lines, the _is_ancestor regression; zero GitHub writes =="
+echo "== Test 19: P51 PR rule v1 -- the pr block and its commands, pr check's size/budgets/leaks/headings, the pass guard, validate and next, the drafts opening with no stop (a REVIEW stop halts a run), the pr skill and pr-reader, the team-rule banner, the symlinked skills exclude, the root linguist lines, the _is_ancestor regression; zero GitHub writes =="
 # Tiny and core only. Every remote is local (a bare origin) and gh is a stub on PATH: nothing reaches GitHub.
 pr_t0=$(date +%s)
 newtmp PRW; PRR="$PRW/ws"
 sh "$BOOT" "$PRR" --at-root --name "PR" --summary "pr" > "$PRW/install.txt" 2>&1 || bad "pr probe: the fresh install failed"
-pw() { ( cd "$PRR" && python3 scripts/workflow.py "$@" ); }
+PRG="$PRW/gh"; mkdir -p "$PRG"; printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s/gh.log"\necho "stub: no such PR" >&2; exit 1\n' "$PRG" > "$PRG/gh"; chmod +x "$PRG/gh"
+pw() { ( cd "$PRR" && PATH="$PRG:$PATH" python3 "$(wf_entry "$1")" "$@" ); }
 pgit() { git -C "$PRR" "$@"; }
 pj() { python3 -c 'import json,sys
 d = json.load(open(sys.argv[1]))
@@ -4690,38 +4290,40 @@ pgit config user.email smoke@example.invalid; pgit config user.name smoke
 mkdir -p "$PRR/src" "$PRR/tests" "$PRR/gen"; printf 'gen/** linguist-generated=true\n' >> "$PRR/.gitattributes"
 seq 1 50 | sed 's/^/old /' > "$PRR/src/old.py"; printf 'a\nb\nc\n' > "$PRR/src/app.py"; printf '{}\n' > "$PRR/package-lock.json"
 ( cd "$PRR" && git add -A && git commit -qm baseline ) >/dev/null 2>&1 || bad "pr probe: baseline commit failed"
-# (a) a fresh at-root install marks the workspace's state linguist-generated (S11), and prints the team-rule line.
+# (a) a fresh at-root install marks the workspace's state linguist-generated (S11), never the authored docs/current/,
+# and prints the team-rule line.
 grep -qx 'works/\*\* linguist-generated=true' "$PRR/.gitattributes" && grep -qx 'docs/index.json linguist-generated=true' "$PRR/.gitattributes" \
+  && [ "$(cd "$PRR" && git check-attr linguist-generated -- docs/current/x.md docs/versions/x.md docs/index.json | tr '\n' ' ')" = "docs/current/x.md: linguist-generated: unspecified docs/versions/x.md: linguist-generated: true docs/index.json: linguist-generated: true " ] \
   && grep -q "team PR rules: none on file -- the pr skill's default template (Summary · Review · What is changed · Why · Related issue) applies" "$PRW/install.txt" \
-  && ok "a fresh at-root install marks works/** and the workspace's docs/ paths linguist-generated and prints the bare team-rule line" \
+  && ok "a fresh at-root install marks works/**, docs/versions/** and docs/index.json linguist-generated (docs/current/ unspecified: authored) and prints the bare team-rule line" \
   || bad "fresh at-root install: no linguist-generated lines or no team-rule line -- $(grep -n 'linguist\|team PR' "$PRR/.gitattributes" "$PRW/install.txt")"
-# (1) new-phase stamps the empty pr block.
-pw new-phase --phase P1 --name "PR probe" --objective "toy" >/dev/null 2>&1 && ( cd "$PRR" && git add -A && git commit -qm p1 ) >/dev/null 2>&1
-[ "$(pj P1 pr)" = '{"branches": [], "waived": null}' ] && ok "new-phase stamps pr = {branches: [], waived: null}" || bad "new-phase pr block wrong: $(pj P1 pr)"
-# (2) pr-branch: three refusals leave phase.json byte-identical; then it cuts and records the branch.
+# (1) phase new stamps the empty pr block.
+pw phase new --phase P1 --name "PR probe" --objective "toy" >/dev/null 2>&1 && ( cd "$PRR" && git add -A && git commit -qm p1 ) >/dev/null 2>&1
+[ "$(pj P1 pr)" = '{"branches": [], "waived": null}' ] && ok "phase new stamps pr = {branches: [], waived: null}" || bad "phase new pr block wrong: $(pj P1 pr)"
+# (2) pr branch: three refusals leave phase.json byte-identical; then it cuts and records the branch.
 pgit branch feat/other main
 h0=$(sha "$PRR/works/phases/active/P1/phase.json")
-pw pr-branch P1 --name feat/other > "$PRW/r1.txt" 2>&1; r1=$?
-pw pr-branch P1 --name main > "$PRW/r2.txt" 2>&1; r2=$?
-echo dirty >> "$PRR/src/app.py"; pw pr-branch P1 --name feat/b > "$PRW/r3.txt" 2>&1; r3=$?; pgit checkout -q -- src/app.py
+pw pr branch P1 --name feat/other > "$PRW/r1.txt" 2>&1; r1=$?
+pw pr branch P1 --name main > "$PRW/r2.txt" 2>&1; r2=$?
+echo dirty >> "$PRR/src/app.py"; pw pr branch P1 --name feat/b > "$PRW/r3.txt" 2>&1; r3=$?; pgit checkout -q -- src/app.py
 h1=$(sha "$PRR/works/phases/active/P1/phase.json")
-b_out=$(pw pr-branch P1 --name feat/a 2>&1); b_rc=$?
+b_out=$(pw pr branch P1 --name feat/a 2>&1); b_rc=$?
 [ "$r1" -eq 1 ] && grep -q "already exists .* is not checked out there" "$PRW/r1.txt" && [ "$r2" -eq 1 ] && grep -q "that is the base or default branch itself" "$PRW/r2.txt" \
   && [ "$r3" -eq 1 ] && grep -q "uncommitted tracked changes a switch would carry onto feat/b: src/app.py" "$PRW/r3.txt" && [ "$h0" = "$h1" ] \
   && [ "$b_rc" -eq 0 ] && printf '%s\n' "$b_out" | grep -qx 'pr_branch=root:feat/a base=main' && [ "$(pgit branch --show-current)" = feat/a ] \
   && [ "$(pj P1 pr.branches.0.branch)" = '"feat/a"' ] && [ "$(pj P1 pr.branches.0.url)" = null ] \
-  && ok "pr-branch refuses an existing unchecked-out branch, the default branch and a dirty tracked tree (phase.json byte-identical), then cuts feat/a from main and records it" \
-  || bad "pr-branch wrong (rc $r1/$r2/$r3/$b_rc, sha $h0 -> $h1) -- $(cat "$PRW/r1.txt" "$PRW/r2.txt" "$PRW/r3.txt") / $b_out"
-# (3) pr-check size: a generated file, a lockfile, a deletion and a binary are excluded; test lines count.
+  && ok "pr branch refuses an existing unchecked-out branch, the default branch and a dirty tracked tree (phase.json byte-identical), then cuts feat/a from main and records it" \
+  || bad "pr branch wrong (rc $r1/$r2/$r3/$b_rc, sha $h0 -> $h1) -- $(cat "$PRW/r1.txt" "$PRW/r2.txt" "$PRW/r3.txt") / $b_out"
+# (3) pr check size: a generated file, a lockfile, a deletion and a binary are excluded; test lines count.
 seq 1 30 > "$PRR/gen/out.txt"; printf '{"a":1}\n' > "$PRR/package-lock.json"; pgit rm -q src/old.py; printf '\000\001\002bin' > "$PRR/src/logo.bin"
 seq 1 20 | sed 's/^/assert /' > "$PRR/tests/test_app.py"; printf 'd\ne\n' >> "$PRR/src/app.py"
 ( cd "$PRR" && git add gen src tests package-lock.json && git commit -qm "feat: toy" ) >/dev/null 2>&1 || bad "pr probe: product commit failed"
-c_out=$(pw pr-check P1 2>&1); c_rc=$?
+c_out=$(pw pr check P1 2>&1); c_rc=$?
 [ "$c_rc" -eq 0 ] && printf '%s\n' "$c_out" | grep -qx 'size=22 size_status=info' \
   && printf '%s\n' "$c_out" | grep -qx 'size_excluded=4 files (generated 1, lockfiles 1, deleted 1, binary 1; counted 2 files)' \
   && printf '%s\n' "$c_out" | grep -qx 'pr_check=root:feat/a base=main' && printf '%s\n' "$c_out" | grep -q '^body=missing (topics/pr-body.md)$' \
   && printf '%s\n' "$c_out" | grep -qx 'pr_check=warn' \
-  && ok "pr-check size excludes the generated file, the lockfile, the deletion and the binary (size_excluded=4) and counts the test lines; at root the label is root:, and a missing default body is body=missing and pr_check=warn (exit 0), never pass" || bad "pr-check size or missing-body verdict wrong (rc=$c_rc) -- $c_out"
+  && ok "pr check size excludes the generated file, the lockfile, the deletion and the binary (size_excluded=4) and counts the test lines; at root the label is root:, and a missing default body is body=missing and pr_check=warn (exit 0), never pass" || bad "pr check size or missing-body verdict wrong (rc=$c_rc) -- $c_out"
 # (4)(5) bodies: the three budgets, the leaks, the warn, the passes, and the headings (default order, then a team template).
 python3 - "$PRW" <<'PY'
 import sys
@@ -4738,7 +4340,7 @@ bodies = {"ok": body(), "first": body(review="word " * 320), "visible": body(cha
 for k, v in bodies.items():
     open(f"{d}/body-{k}.md", "w").write(v)
 PY
-pcb() { pw pr-check P1 --body "$PRW/body-$1.md" > "$PRW/check-$1.txt" 2>&1; printf '%s' "$?"; }
+pcb() { pw pr check P1 --body "$PRW/body-$1.md" > "$PRW/check-$1.txt" 2>&1; printf '%s' "$?"; }
 pcl() { grep -qx "$2" "$PRW/check-$1.txt"; }
 if [ "$(pcb ok)" = 0 ] && pcl ok 'pr_check=pass' && pcl ok 'headings=ok' && pcl ok 'leaks=none' \
     && [ "$(pcb first)" = 1 ] && pcl first 'first_screen=[0-9]*/1500 over' && [ "$(pcb visible)" = 1 ] && pcl visible 'visible=[0-9]*/3500 over' && pcl visible 'first_screen=[0-9]*/1500 ok' \
@@ -4747,101 +4349,103 @@ if [ "$(pcb ok)" = 0 ] && pcl ok 'pr_check=pass' && pcl ok 'headings=ok' && pcl 
     && [ "$(pcb warn)" = 0 ] && grep -q '^leak_warn=slice x1 ' "$PRW/check-warn.txt" && pcl warn 'pr_check=warn' \
     && [ "$(pcb pass)" = 0 ] && pcl pass 'leaks=none' && pcl pass 'pr_check=pass' \
     && [ "$(pcb order)" = 1 ] && pcl order 'headings=order:Why' && [ "$(pcb missing)" = 1 ] && pcl missing 'headings=missing:Related issue'; then
-  ok "pr-check bodies: each of the three budgets fails over and passes within; P51 and workflow/ fail; 'slice' alone warns (exit 0); 'S3 bucket' and 'p95' pass; out-of-order and missing headings fail against the default order"
-else bad "pr-check body checks wrong -- $(for k in ok first visible whole phase path warn pass order missing; do printf '[%s] %s ' "$k" "$(grep -E 'first_screen|visible=|whole=|leak|headings|pr_check=' "$PRW/check-$k.txt" | tr '\n' ' ')"; done)"; fi
+  ok "pr check bodies: each of the three budgets fails over and passes within; P51 and workflow/ fail; 'slice' alone warns (exit 0); 'S3 bucket' and 'p95' pass; out-of-order and missing headings fail against the default order"
+else bad "pr check body checks wrong -- $(for k in ok first visible whole phase path warn pass order missing; do printf '[%s] %s ' "$k" "$(grep -E 'first_screen|visible=|whole=|leak|headings|pr_check=' "$PRW/check-$k.txt" | tr '\n' ' ')"; done)"; fi
 mkdir -p "$PRR/.github"; printf '## Summary\n\n## What is changed\n\n## Why\n\n## Related issue\n' > "$PRR/.github/pull_request_template.md"
 if [ "$(pcb ok)" = 0 ] && pcl ok 'template=.github/pull_request_template.md' && [ "$(pcb order)" = 1 ] && pcl order 'headings=order:Why' \
     && [ "$(pcb missing)" = 1 ] && pcl missing 'headings=missing:Related issue' && pcl missing 'template=.github/pull_request_template.md'; then
-  ok "pr-check headings: out-of-order and missing headings fail against the team's template too, and a body keeping its order passes"
-else bad "pr-check template headings wrong -- $(cat "$PRW/check-ok.txt" "$PRW/check-order.txt" "$PRW/check-missing.txt")"; fi
+  ok "pr check headings: out-of-order and missing headings fail against the team's template too, and a body keeping its order passes"
+else bad "pr check template headings wrong -- $(cat "$PRW/check-ok.txt" "$PRW/check-order.txt" "$PRW/check-missing.txt")"; fi
 rm -f "$PRR/.github/pull_request_template.md"
 # (F2) a missing --body file fails; by hand (no phase) a clean --body passes against the default branch; no phase and no
 # --body is refused in one line naming both forms, writing nothing. Size has no default limit (D4 amended): a big branch with a
 # clean body is info and passes; only a team's --limit warns (over), on either route; a 0 or non-integer limit is refused.
-pw pr-check P1 --body "$PRW/no-such-body.md" > "$PRW/check-nobody.txt" 2>&1; a4=$?
-pw pr-check --body "$PRW/body-ok.md" > "$PRW/check-hand.txt" 2>&1; a6=$?
-e0=$(sha "$PRR/works/events.jsonl"); pw pr-check > "$PRW/check-none.txt" 2>&1; a7=$?; e1=$(sha "$PRR/works/events.jsonl")
+pw pr check P1 --body "$PRW/no-such-body.md" > "$PRW/check-nobody.txt" 2>&1; a4=$?
+pw pr check --body "$PRW/body-ok.md" > "$PRW/check-hand.txt" 2>&1; a6=$?
+e0=$(sha "$PRR/works/events.jsonl"); pw pr check > "$PRW/check-none.txt" 2>&1; a7=$?; e1=$(sha "$PRR/works/events.jsonl")
 { pgit switch -qc feat/big && seq 1 1100 > "$PRR/src/big.py" && pgit add src/big.py && pgit commit -qm "feat: big" && pgit switch -q feat/a; } >/dev/null 2>&1
-pw pr-check --body "$PRW/body-ok.md" --branch feat/big > "$PRW/check-big.txt" 2>&1; a8=$?
-pw pr-check --body "$PRW/body-ok.md" --branch feat/big --limit 400 > "$PRW/check-lim.txt" 2>&1; a9=$?
-pw pr-check P1 --body "$PRW/body-ok.md" --limit 400 > "$PRW/check-limok.txt" 2>&1; a10=$?
-pw pr-check P1 --body "$PRW/body-ok.md" --limit 10 > "$PRW/check-limph.txt" 2>&1; a11=$?
-pw pr-check P1 --body "$PRW/body-ok.md" --limit 0 > "$PRW/check-lim0.txt" 2>&1; a12=$?
-pw pr-check --body "$PRW/body-ok.md" --limit 4k > "$PRW/check-limx.txt" 2>&1; a13=$?
+pw pr check --body "$PRW/body-ok.md" --branch feat/big > "$PRW/check-big.txt" 2>&1; a8=$?
+pw pr check --body "$PRW/body-ok.md" --branch feat/big --limit 400 > "$PRW/check-lim.txt" 2>&1; a9=$?
+pw pr check P1 --body "$PRW/body-ok.md" --limit 400 > "$PRW/check-limok.txt" 2>&1; a10=$?
+pw pr check P1 --body "$PRW/body-ok.md" --limit 10 > "$PRW/check-limph.txt" 2>&1; a11=$?
+pw pr check P1 --body "$PRW/body-ok.md" --limit 0 > "$PRW/check-lim0.txt" 2>&1; a12=$?
+pw pr check --body "$PRW/body-ok.md" --limit 4k > "$PRW/check-limx.txt" 2>&1; a13=$?
 if [ "$a4" = 1 ] && pcl nobody "body=missing ($PRW/no-such-body.md)" && pcl nobody 'pr_check=fail' \
     && [ "$a6" = 0 ] && pcl hand 'pr_check=root:feat/a base=main' && pcl hand 'note=by hand (no phase) -- measured feat/a against the default branch main' \
     && pcl hand 'size=22 size_status=info' && pcl hand 'headings=ok' && pcl hand 'pr_check=pass' \
-    && [ "$a7" -ne 0 ] && [ "$(wc -l < "$PRW/check-none.txt" | tr -d ' ')" = 1 ] && grep -q 'pr-check <P>' "$PRW/check-none.txt" && grep -q 'pr-check --body <file>' "$PRW/check-none.txt" && [ "$e0" = "$e1" ] \
+    && [ "$a7" -ne 0 ] && [ "$(wc -l < "$PRW/check-none.txt" | tr -d ' ')" = 1 ] && grep -q 'pr check <P>' "$PRW/check-none.txt" && grep -q 'pr check --body <file>' "$PRW/check-none.txt" && [ "$e0" = "$e1" ] \
     && [ "$a8" = 0 ] && grep -q '^size=1[0-9][0-9][0-9] size_status=info$' "$PRW/check-big.txt" && pcl big 'pr_check=pass' && ! grep -qE '^size_over=|target=|flag=' "$PRW/check-big.txt" \
     && [ "$a9" = 0 ] && grep -q '^size=1[0-9][0-9][0-9] limit=400 size_status=over$' "$PRW/check-lim.txt" && grep -q '^size_over=[0-9]* changed lines over the team' "$PRW/check-lim.txt" && pcl lim 'pr_check=warn' \
     && [ "$a10" = 0 ] && pcl limok 'size=22 limit=400 size_status=ok' && pcl limok 'pr_check=pass' \
     && [ "$a11" = 0 ] && pcl limph 'size=22 limit=10 size_status=over' && pcl limph 'size_over=12 changed lines over the team'"'"'s limit of 10 -- split this branch (a stack or a series: the pr skill'"'"'s reference/split.md) or name the exception in ## Review' && pcl limph 'pr_check=warn' \
-    && [ "$a12" = 1 ] && [ "$(wc -l < "$PRW/check-lim0.txt" | tr -d ' ')" = 1 ] && grep -q '^pr-check --limit 0: refused' "$PRW/check-lim0.txt" \
-    && [ "$a13" = 1 ] && [ "$(wc -l < "$PRW/check-limx.txt" | tr -d ' ')" = 1 ] && grep -q '^pr-check --limit 4k: refused' "$PRW/check-limx.txt"; then
-  ok "pr-check: a missing --body file fails (exit 1); by hand with no phase, a clean --body on feat/a passes against the default branch main; no phase and no --body is refused in one line naming both forms, writing nothing; with no team limit a 1,000-line branch is size_status=info and passes; a team --limit warns over it (by hand and in a phase, with size_over=) and is ok within it; --limit 0 and 4k are refused in one line"
-else bad "pr-check missing --body / by-hand route / size limit wrong (rc $a4/$a6/$a7/$a8/$a9/$a10/$a11/$a12/$a13) -- $(cat "$PRW/check-nobody.txt" "$PRW/check-hand.txt" "$PRW/check-none.txt" "$PRW/check-big.txt" "$PRW/check-lim.txt" "$PRW/check-limok.txt" "$PRW/check-limph.txt" "$PRW/check-lim0.txt" "$PRW/check-limx.txt")"; fi
+    && [ "$a12" = 1 ] && [ "$(wc -l < "$PRW/check-lim0.txt" | tr -d ' ')" = 1 ] && grep -q '^pr check --limit 0: refused' "$PRW/check-lim0.txt" \
+    && [ "$a13" = 1 ] && [ "$(wc -l < "$PRW/check-limx.txt" | tr -d ' ')" = 1 ] && grep -q '^pr check --limit 4k: refused' "$PRW/check-limx.txt"; then
+  ok "pr check: a missing --body file fails (exit 1); by hand with no phase, a clean --body on feat/a passes against the default branch main; no phase and no --body is refused in one line naming both forms, writing nothing; with no team limit a 1,000-line branch is size_status=info and passes; a team --limit warns over it (by hand and in a phase, with size_over=) and is ok within it; --limit 0 and 4k are refused in one line"
+else bad "pr check missing --body / by-hand route / size limit wrong (rc $a4/$a6/$a7/$a8/$a9/$a10/$a11/$a12/$a13) -- $(cat "$PRW/check-nobody.txt" "$PRW/check-hand.txt" "$PRW/check-none.txt" "$PRW/check-big.txt" "$PRW/check-lim.txt" "$PRW/check-limok.txt" "$PRW/check-limph.txt" "$PRW/check-lim0.txt" "$PRW/check-limx.txt")"; fi
 # (6a) the drafts open when the review passes, with no stop (F3): while the REVIEW runs with a branch unopened, next prints
-# pr_draft=due and run-phases targets the REVIEW (no parked= line); the pass guard refuses, writing nothing; a REVIEW stop
-# (pending/decision on a waived gate, or an open failure's operator-action) halts a run like any stop -- no park rule; while
-# the REVIEW is pending, next prints no pr_draft=due (D120, P52).
-{ pw finish-slice P1.DECOMP --outcome cut && pw accept-gate P1 --waive --note toy && pw start-slice P1.REVIEW \
+# pr_draft=due; while the REVIEW is pending (a decision on a waived gate, or an open failure's operator-action), next
+# prints no pr_draft=due (D120, P52).
+{ pw slice finish P1.DECOMP --outcome cut && pw gate P1 waive --note toy && pw slice start P1.REVIEW \
   && : > "$PRR/works/phases/active/P1/slices/P1.REVIEW/result.md"; } >/dev/null 2>&1 \
   || bad "pr probe: could not bring P1 to its review"
 P1D="$PRR/works/phases/active/P1"; gsig() { cat "$P1D/phase.json" "$PRR/works/events.jsonl" "$P1D/slices/P1.REVIEW/slice.json" | sha_stdin; }
-run=$(pw run-phases P1 2>&1); plain=$(pw next 2>&1); g0=$(gsig)
-g_out=$(pw review-phase P1 --verdict pass 2>&1); g_rc=$?; g1=$(gsig)
-if printf '%s\n' "$run" | grep -qx 'target_phase=P1' && printf '%s\n' "$run" | grep -qx 'target_slice=P1.REVIEW' && ! printf '%s\n' "$run" | grep -q '^parked=\|^halt=' \
-    && printf '%s\n' "$plain" | grep -q '^pr_draft=due -- when the review would pass: open the draft(s) (pr skill: Open the drafts' \
+plain=$(pw next 2>&1)
+if printf '%s\n' "$plain" | grep -q '^pr_draft=due -- when the review would pass: open the draft(s) (pr skill: Open the drafts' \
     && printf '%s\n' "$plain" | grep -qx 'pr_branch=root:feat/a base=main url=none'; then
-  ok "while a waived gate's REVIEW runs with a branch unopened, next prints pr_branch= and pr_draft=due, and run-phases targets the REVIEW with no parked= line"
-else bad "the drafts' due line or the run target wrong -- run: $run / next: $plain"; fi
-[ "$g_rc" -ne 0 ] && printf '%s\n' "$g_out" | grep -q 'root:feat/a (base main) has no draft PR' && printf '%s\n' "$g_out" | grep -qx 'nothing was written' && [ "$g0" = "$g1" ] \
-    && printf '%s\n' "$g_out" | grep -q 'the draft opens when the review passes (pr skill: Open the drafts)' && ! printf '%s\n' "$g_out" | grep -q "operator's .push" \
-  && ok "the pass guard refuses an unopened recorded branch, names the draft opening when the review passes, and writes nothing (phase.json, events.jsonl, the REVIEW's slice.json unchanged)" || bad "pass guard (a) wrong (rc=$g_rc, $g0 -> $g1) -- $g_out"
-pw set-slice-status P1.REVIEW pending --stop-kind decision --on-words "an answer resumes it" >/dev/null 2>&1; run_d=$(pw run-phases P1 2>&1)
-pw set-slice-status P1.REVIEW in_progress >/dev/null 2>&1
-pw set-slice-status P1.REVIEW pending --stop-kind operator-action --on-words "gh auth login resumes the open" >/dev/null 2>&1; run_o=$(pw run-phases P1 2>&1); nx_o=$(pw next 2>&1)
-pw set-slice-status P1.REVIEW in_progress >/dev/null 2>&1
-u_out=$(pw pr-record P1 --url https://github.com/example/toy/pull/1 2>&1); run_u=$(pw run-phases P1 2>&1); nx_u=$(pw next 2>&1)
-if printf '%s\n' "$run_d" | grep -qx 'halt=P1.REVIEW status=pending' && printf '%s\n' "$run_d" | grep -qx 'stop_kind=decision' && printf '%s\n' "$run_d" | grep -qx 'halt_reason=slice P1.REVIEW is pending -- the whole run stops here: report it, start nothing past it' \
-    && printf '%s\n' "$run_o" | grep -qx 'halt=P1.REVIEW status=pending' && printf '%s\n' "$run_o" | grep -qx 'stop_kind=operator-action' && ! printf '%s\n' "$nx_o" | grep -q '^pr_draft=' \
-    && ! printf '%s\n%s\n%s\n' "$run_d" "$run_o" "$run_u" | grep -q '^parked=' && printf '%s\n' "$run_u" | grep -qx 'target_slice=P1.REVIEW' \
+  ok "while a waived gate's REVIEW runs with a branch unopened, next prints pr_branch= and pr_draft=due"
+else bad "the drafts' due line wrong -- next: $plain"; fi
+
+pw slice status P1.REVIEW pending --stop-kind decision --on-words "an answer resumes it" >/dev/null 2>&1; nx_d=$(pw next 2>&1)
+pw slice status P1.REVIEW in_progress >/dev/null 2>&1
+pw slice status P1.REVIEW pending --stop-kind operator-action --on-words "gh auth login resumes the open" >/dev/null 2>&1; nx_o=$(pw next 2>&1)
+pw slice status P1.REVIEW in_progress >/dev/null 2>&1
+u_out=$(pw pr record P1 --url https://github.com/example/toy/pull/1 2>&1); nx_u=$(pw next 2>&1)
+if printf '%s\n' "$nx_d" | grep -qx 'waiting_on_operator=P1.REVIEW' && ! printf '%s\n' "$nx_d" | grep -q '^pr_draft=' \
+    && printf '%s\n' "$nx_o" | grep -qx 'waiting_on_operator=P1.REVIEW' && ! printf '%s\n' "$nx_o" | grep -q '^pr_draft=' \
     && printf '%s\n' "$nx_u" | grep -qx 'pr_branch=root:feat/a base=main url=https://github.com/example/toy/pull/1' && ! printf '%s\n' "$nx_u" | grep -q '^pr_draft=\|^pr_push='; then
-  ok "a REVIEW stop on a waived gate (decision, or an open failure's operator-action) halts run-phases like any stop, never parked, and next prints no pr_draft=due while the REVIEW is pending (D120; it prints while in_progress and in_review); once pr-record --url ran, next prints the url and no due line"
-else bad "REVIEW stop / url wrong -- decision: $run_d / operator-action: $run_o / url: $run_u / next: $nx_u"; fi
-{ pw set-slice-status P1.REVIEW in_progress && pw review-phase P1 --verdict pass; } > "$PRW/pass1.txt" 2>&1 \
-  && grep -q '^phase P1 review: pass' "$PRW/pass1.txt" && ok "pr-record --url clears the guard: the pass records" || bad "pass after pr-record --url refused -- $(cat "$PRW/pass1.txt")"
+  ok "a REVIEW stop on a waived gate (decision, or an open failure's operator-action) is a stop next waits on, and next prints no pr_draft=due while the REVIEW is pending (D120; it prints while in_progress and in_review); once pr record --url ran, next prints the url and no due line"
+else bad "REVIEW stop / url wrong -- decision: $nx_d / operator-action: $nx_o / url: $nx_u"; fi
+{ pw slice status P1.REVIEW in_progress && pw review P1 --verdict pass; } > "$PRW/pass1.txt" 2>&1 \
+  && grep -q '^phase P1 review: pass' "$PRW/pass1.txt" && ! grep -q '^advice: pr_draft=due' "$PRW/pass1.txt" && printf '%s\n' "$u_out" | grep -q '^advice: the draft.s state was not read (gh pr failed: stub: no such PR)' \
+  && ok "with the draft's URL recorded the pass records with no pr_draft advice; gh answering no PR, pr record --url records the URL with an advice line" || bad "pass after pr record --url wrong -- $u_out / $(cat "$PRW/pass1.txt")"
 ( cd "$PRR" && git add -A && git commit -qm "p1 done" ) >/dev/null 2>&1
-# (6b) an empty block with committed product files refuses; pr-branch records the checked-out branch; --waive clears it.
-pw new-phase --phase P2 --name "PR probe 2" --objective "toy" >/dev/null 2>&1; ( cd "$PRR" && git add -A && git commit -qm p2 && git switch -qc feat/c \
+# (6b) the draft PR before a pass is advice (v102; v101 refused both): a recorded branch unopened, and an empty block with
+# committed product files, each pass with one advice: pr_draft=due line; pr branch records the checked-out branch.
+pw phase new --phase P2 --name "PR probe 2" --objective "toy" >/dev/null 2>&1; ( cd "$PRR" && git add -A && git commit -qm p2 && git switch -qc feat/c \
   && echo more >> src/app.py && git add src && git commit -qm "feat: more" ) >/dev/null 2>&1
-{ pw finish-slice P2.DECOMP --outcome cut && pw accept-gate P2 --waive --note toy && pw start-slice P2.REVIEW && : > "$PRR/works/phases/active/P2/slices/P2.REVIEW/result.md"; } >/dev/null 2>&1
-e_out=$(pw review-phase P2 --verdict pass 2>&1); e_rc=$?
-k_out=$(pw pr-branch P2 --name feat/c 2>&1); pw set-slice-status P2.REVIEW in_review >/dev/null 2>&1; nx2=$(pw next 2>&1)
-pw pr-record P2 --waive --note "toy change" >/dev/null 2>&1; nx3=$(pw next 2>&1); w_out=$(pw review-phase P2 --verdict pass 2>&1); w_rc=$?
-if [ "$e_rc" -ne 0 ] && printf '%s\n' "$e_out" | grep -q 'changed 1 product file(s) (phase-scope P2) but records no PR branch' \
-    && printf '%s\n' "$k_out" | grep -q '^pr-branch: feat/c recorded (already checked out)' && printf '%s\n' "$nx2" | grep -q '^pr_draft=due ' \
-    && printf '%s\n' "$nx3" | grep -qx 'pr_waived=toy change' && [ "$w_rc" -eq 0 ] && printf '%s\n' "$w_out" | grep -q '^pr: waived (toy change) -- pass recorded without a draft PR'; then
-  ok "an empty pr block with committed product files refuses the pass; pr-branch records a checked-out branch; next prints pr_draft=due (REVIEW in_review) then pr_waived=; --waive clears the guard"
-else bad "pass guard (b) / waive wrong (rc $e_rc/$w_rc) -- $e_out / $k_out / $nx2 / $nx3 / $w_out"; fi
+{ pw slice finish P2.DECOMP --outcome cut && pw gate P2 waive --note toy && pw slice start P2.REVIEW && : > "$PRR/works/phases/active/P2/slices/P2.REVIEW/result.md"; } >/dev/null 2>&1
+k_out=$(pw pr branch P2 --name feat/c 2>&1); pw slice status P2.REVIEW in_review >/dev/null 2>&1; nx2=$(pw next 2>&1)
+e_out=$(pw review P2 --verdict pass 2>&1); e_rc=$?
 ( cd "$PRR" && git add -A && git commit -qm "p2 done" ) >/dev/null 2>&1
-# (6c) an uncleared required gate still refuses with the PR waived, and still parks a run as before; (6d) a phase with
+pw phase new --phase P5 --name "PR probe 5" --objective "toy" >/dev/null 2>&1; ( cd "$PRR" && git add -A && git commit -qm p5 \
+  && echo five >> src/app.py && git add src && git commit -qm "feat: five" ) >/dev/null 2>&1
+{ pw slice finish P5.DECOMP --outcome cut && pw gate P5 waive --note toy && pw slice start P5.REVIEW && : > "$PRR/works/phases/active/P5/slices/P5.REVIEW/result.md"; } >/dev/null 2>&1
+f_out=$(pw review P5 --verdict pass 2>&1); f_rc=$?
+if printf '%s\n' "$k_out" | grep -q '^pr branch: feat/c recorded (already checked out)' && printf '%s\n' "$nx2" | grep -q '^pr_draft=due ' \
+    && [ "$e_rc" -eq 0 ] && printf '%s\n' "$e_out" | grep -q '^phase P2 review: pass' && printf '%s\n' "$e_out" | grep -q '^advice: pr_draft=due -- root:feat/c (base main) has no draft PR: the draft opens when the review passes (pr skill: Open the drafts)' \
+    && [ "$f_rc" -eq 0 ] && printf '%s\n' "$f_out" | grep -q '^phase P5 review: pass' && printf '%s\n' "$f_out" | grep -q '^advice: pr_draft=due -- phase P5 changed 1 product file(s) (phase scope P5) but records no PR branch'; then
+  ok "the draft PR before a pass is advice: pr branch records a checked-out branch and next prints pr_draft=due (REVIEW in_review); the pass with that branch unopened, and a pass with an empty block over committed product files, each record with one advice: pr_draft=due line"
+else bad "the pr_draft advice at a pass wrong (rc $e_rc/$f_rc) -- $k_out / $nx2 / $e_out / $f_out"; fi
+( cd "$PRR" && git add -A && git commit -qm "p5 done" ) >/dev/null 2>&1
+# (6c) an uncleared required gate still refuses with the PR waived; (6d) a phase with
 # no pr block (an older phase) passes as before and prints no pr line.
-{ pw new-phase --phase P3 --name "PR probe 3" --objective "toy" && pw finish-slice P3.DECOMP --outcome cut && pw accept-gate P3 --require \
-  && pw start-slice P3.REVIEW && : > "$PRR/works/phases/active/P3/slices/P3.REVIEW/result.md" && pw pr-record P3 --waive --note "toy"; } >/dev/null 2>&1
-q_out=$(pw review-phase P3 --verdict pass 2>&1); q_rc=$?
-pw accept-gate P3 --open --walkthrough "probe" >/dev/null 2>&1; run3=$(pw run-phases P3 2>&1)
-[ "$q_rc" -ne 0 ] && printf '%s\n' "$q_out" | grep -q 'accept-gate' && printf '%s\n' "$run3" | grep -q '^parked=P3 since=.* -- acceptance gate open' \
-  && ok "an uncleared required acceptance gate still refuses the pass with the PR waived, and its open gate parks a run as before" || bad "required gate with a waived PR wrong (rc=$q_rc) -- $q_out / $run3"
-{ pw accept-gate P3 --clear && pw review-phase P3 --verdict pass; } >/dev/null 2>&1
-{ pw new-phase --phase P4 --name "Old phase" --objective "toy" && python3 - "$PRR/works/phases/active/P4/phase.json" <<'PY'
+{ pw phase new --phase P3 --name "PR probe 3" --objective "toy" && pw slice finish P3.DECOMP --outcome cut && pw gate P3 require \
+  && pw slice start P3.REVIEW && : > "$PRR/works/phases/active/P3/slices/P3.REVIEW/result.md" && pw pr record P3 --waive --note "toy"; } >/dev/null 2>&1
+q_out=$(pw review P3 --verdict pass 2>&1); q_rc=$?; nx3=$(pw next 2>&1)
+pw gate P3 open --walkthrough "probe" >/dev/null 2>&1
+[ "$q_rc" -ne 0 ] && printf '%s\n' "$q_out" | grep -q 'gate P3 open --walkthrough' && printf '%s\n' "$nx3" | grep -qx 'pr_waived=toy' \
+  && ok "an uncleared required acceptance gate still refuses the pass with the PR waived (next prints pr_waived=)" || bad "required gate with a waived PR wrong (rc=$q_rc) -- $q_out / $nx3"
+w_out=$( { pw gate P3 clear --words accept && pw review P3 --verdict pass; } 2>&1 ); w_rc=$?
+[ "$w_rc" -eq 0 ] && printf '%s\n' "$w_out" | grep -q '^pr: waived (toy) -- pass recorded without a draft PR' && ! printf '%s\n' "$w_out" | grep -q '^advice: pr_draft' \
+  && ok "cleared with words, the waived PR's pass records with its pr: waived line and no pr_draft advice" || bad "the waived pass wrong (rc $w_rc) -- $w_out"
+{ pw phase new --phase P4 --name "Old phase" --objective "toy" && python3 - "$PRR/works/phases/active/P4/phase.json" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1])); d.pop("pr"); json.dump(d, open(sys.argv[1], "w"), indent=2)
 PY
 } >/dev/null 2>&1
 ( cd "$PRR" && git add -A && git commit -qm p4 && echo again >> src/app.py && git add src && git commit -qm "feat: again" ) >/dev/null 2>&1
-{ pw finish-slice P4.DECOMP --outcome cut && pw accept-gate P4 --waive --note toy && pw start-slice P4.REVIEW && : > "$PRR/works/phases/active/P4/slices/P4.REVIEW/result.md"; } >/dev/null 2>&1
-nx4=$(pw next 2>&1); o_out=$(pw review-phase P4 --verdict pass 2>&1); o_rc=$?
+{ pw slice finish P4.DECOMP --outcome cut && pw gate P4 waive --note toy && pw slice start P4.REVIEW && : > "$PRR/works/phases/active/P4/slices/P4.REVIEW/result.md"; } >/dev/null 2>&1
+nx4=$(pw next 2>&1); o_out=$(pw review P4 --verdict pass 2>&1); o_rc=$?
 [ "$o_rc" -eq 0 ] && ! printf '%s\n' "$nx4" | grep '^pr_' | grep -qv '^pr_open=P1 ' && ! printf '%s\n' "$o_out" | grep -q '^pr' \
   && ok "a phase with no pr block (created before P51) passes as before, and next prints no pr line for it (P52: only the other phase's pr_open= line)" || bad "an older phase changed (rc=$o_rc) -- $nx4 / $o_out"
 # (7) validate flags a malformed pr block (an unknown key, a duplicate pair, a bad URL, a repo at root) and a malformed pr_rules.
@@ -4856,12 +4460,12 @@ elif kind == "url": e["url"] = "ftp://example/x"
 elif kind == "repo": e["repo"] = "nosuch"
 json.dump(d, open(sys.argv[1], "w"), indent=2)
 PY
-pw validate > "$PRW/val-$1.txt" 2>&1; v=$?; cp "$PRW/p1.json" "$P1D/phase.json"; printf '%s' "$v"; }
+pw check --no-rebuild > "$PRW/val-$1.txt" 2>&1; v=$?; cp "$PRW/p1.json" "$P1D/phase.json"; printf '%s' "$v"; }
 vk=$(pr_bad key); vd=$(pr_bad dup); vu=$(pr_bad url); vr=$(pr_bad repo)
-printf '{"decided": [{"rule": "x"}]}\n' > "$PRR/works/pr-rules.json"; pw validate > "$PRW/val-rules.txt" 2>&1; vp=$?; rm -f "$PRR/works/pr-rules.json"
+printf '{"decided": [{"rule": "x"}]}\n' > "$PRR/works/pr-rules.json"; pw check --no-rebuild > "$PRW/val-rules.txt" 2>&1; vp=$?; rm -f "$PRR/works/pr-rules.json"
 if [ "$vk" != 0 ] && [ "$vd" != 0 ] && [ "$vu" != 0 ] && [ "$vr" != 0 ] && [ "$vp" -ne 0 ] && grep -q 'pr: unknown field(s) extra' "$PRW/val-key.txt" \
     && grep -q 'root:feat/a is recorded twice' "$PRW/val-dup.txt" && grep -q "url 'ftp://example/x' must be null or an http(s) URL" "$PRW/val-url.txt" \
-    && grep -q "repo 'nosuch': this install has no repos registry" "$PRW/val-repo.txt" && grep -q 'pr-rules.json: pr_rules.decided\[0\]: missing field' "$PRW/val-rules.txt" && pw validate >/dev/null 2>&1; then
+    && grep -q "repo 'nosuch': this install has no repos registry" "$PRW/val-repo.txt" && grep -q 'pr-rules.json: pr_rules.decided\[0\]: missing field' "$PRW/val-rules.txt" && pw check --no-rebuild >/dev/null 2>&1; then
   ok "validate flags a malformed pr block (unknown key, duplicate pair, non-http(s) URL, a repo with no registry) and a malformed pr_rules, and passes once restored"
 else bad "validate missed a malformed pr block or pr_rules (rc $vk/$vd/$vu/$vr/$vp) -- $(cat "$PRW"/val-*.txt | grep -i 'pr' | head -8)"; fi
 # (8 stub) the pr skill's two push commands, taken from its close checklist (reference/close.md), run against a local bare origin and a stub gh:
@@ -4891,49 +4495,59 @@ from pathlib import Path
 d = Path(sys.argv[1]); core = (d / "SKILL.md").read_text(); ref = (d / "reference/open.md").read_text(); flat = lambda s: " ".join(s.split())
 for t in (core, ref): assert "retry **once**" not in t and "retries once" not in t
 for s in ("**If GitHub refuses the draft**", "never retry it as a plain PR, which notifies people: stop for the operator's `plain` or `waive` (`reference/open.md`)."): assert s in core, s
-for s in ("Set the `REVIEW` slice `pending --stop-kind decision --on-words \"plain opens it as a plain PR (ready for review at once: it requests code-owner reviews and notifies watchers; no reviewers are requested); waive records pr-record --waive and the pass\"`",
+for s in ("Set the `REVIEW` slice `pending --stop-kind decision --on-words \"plain opens it as a plain PR (ready for review at once: it requests code-owner reviews and notifies watchers; no reviewers are requested); waive records pr record --waive and the pass\"`",
           "attempt no second one before the operator's word", "**`plain`:** the same `gh pr create` without `--draft`, and no `--reviewer`.",
-          "**`waive`:** `python3 scripts/workflow.py pr-record <P> --waive --note", "Drafts already opened stay open. On `plain`, the open continues bottom-up from the refused one"):
+          "**`waive`:** `python3 scripts/workflow.py pr record <P> --waive --note", "Drafts already opened stay open. On `plain`, the open continues bottom-up from the refused one"):
     assert flat(s) in flat(ref), s
 PY
 then
   ok "the pr skill's push commands push to the (local) origin and create a --draft PR with --body-file on a stub gh; a stub draft refusal is one create call and a stop for plain|waive (no automatic retry); plain creates without --draft and no --reviewer"
 else bad "pr skill push commands or refused-draft stop wrong (push $s_push, create $s_create, refused $s_refused/$n_refused, plain $s_plain) -- $pr_cmds / $(cat "$GHS/gh.log" 2>/dev/null)"; fi
 # (S7) the pr skill: its name, an allowed-tools list with no remote write and no recording command, its two references, its core size.
-python3 - "$SRC/claude/skills/pr" <<'PY' && ok "the pr skill: name: pr, no git push / gh pr create|comment|edit|ready|merge / pr-record / pr-branch / pr-sync / --record / bare Bash in allowed-tools (gh pr checks and the bare pr-team read allowed), its core names exactly reference/body.md, close.md, open.md, reopen.md, split.md and stack.md (all shipped), core <= 8,192 B" || bad "the pr skill's frontmatter, references or core size changed"
+python3 - "$SRC/claude/skills/pr" <<'PY' && ok "the pr skill: name: pr, no git push / gh pr create|comment|edit|ready|merge / pr record / pr branch / pr sync / --record / bare Bash in allowed-tools (gh pr checks and the bare pr team read allowed), its core names exactly reference/body.md, close.md, open.md, reopen.md, split.md and stack.md (all shipped), core <= 8,192 B" || bad "the pr skill's frontmatter, references or core size changed"
 import re, sys
 from pathlib import Path
 d = Path(sys.argv[1]); core = (d / "SKILL.md").read_bytes(); text = core.decode()
 fm = text.split("---\n", 2)[1]
 assert re.search(r"^name: pr$", fm, re.M)
 tools = re.search(r"^allowed-tools: (.*)$", fm, re.M).group(1)
-for gone in ("git push", "gh pr create", "gh pr comment", "gh pr edit", "gh pr ready", "gh pr merge", "pr-record", "pr-branch", "pr-sync", "--record"):
+for gone in ("git push", "gh pr create", "gh pr comment", "gh pr edit", "gh pr ready", "gh pr merge", "pr record", "pr branch", "pr sync", "--record"):
     assert gone not in tools, gone
 tl = [t.strip() for t in tools.split(",")]
 assert "Bash" not in tl, "bare Bash"
-assert "Bash(gh pr checks:*)" in tl and "Bash(python3 scripts/workflow.py pr-team)" in tl, tl
+assert "Bash(gh pr checks:*)" in tl and "Bash(python3 scripts/workflow.py pr team)" in tl, tl
 assert set(re.findall(r"`reference/([\w.-]+\.md)`", text)) == {"body.md", "close.md", "open.md", "reopen.md", "split.md", "stack.md"} == {p.name for p in (d / "reference").glob("*.md")}
 assert len(core) <= 8192, len(core)
 PY
 # (S8) pr-reader: the reader row's dispatch lines; the agent installs fresh and comes back on --update.
-r_out=$(pw executor-route --reader 2>&1)
+r_out=$(pw route --reader 2>&1)
 printf '%s\n' "$r_out" | grep -qx 'subagent_type=pr-reader' && printf '%s\n' "$r_out" | grep -qx 'model=opus' && printf '%s\n' "$r_out" | grep -qx 'effort=high' \
   && [ -f "$PRR/.claude/agents/pr-reader.md" ] && grep -qx 'name: pr-reader' "$PRR/.claude/agents/pr-reader.md" \
-  && ok "executor-route --reader prints subagent_type=pr-reader, model=opus and effort=high, and a fresh install ships .claude/agents/pr-reader.md" || bad "pr-reader route or fresh install wrong -- $r_out"
+  && ok "route --reader prints subagent_type=pr-reader, model=opus and effort=high, and a fresh install ships .claude/agents/pr-reader.md" || bad "pr-reader route or fresh install wrong -- $r_out"
 # code-reader: the code row's dispatch lines; the agent installs fresh.
-c_out=$(pw executor-route --code 2>&1)
+c_out=$(pw route --code 2>&1)
 printf '%s\n' "$c_out" | grep -qx 'route=code' && printf '%s\n' "$c_out" | grep -qx 'subagent_type=code-reader' && printf '%s\n' "$c_out" | grep -qx 'model=opus' && printf '%s\n' "$c_out" | grep -qx 'effort=high' \
   && [ -f "$PRR/.claude/agents/code-reader.md" ] && grep -qx 'name: code-reader' "$PRR/.claude/agents/code-reader.md" \
-  && ok "executor-route --code prints route=code, subagent_type=code-reader, model=opus and effort=high, and a fresh install ships .claude/agents/code-reader.md" || bad "code-reader route or fresh install wrong -- $c_out"
+  && ok "route --code prints route=code, subagent_type=code-reader, model=opus and effort=high, and a fresh install ships .claude/agents/code-reader.md" || bad "code-reader route or fresh install wrong -- $c_out"
 # (S11) at-root --update appends the linguist lines once, then counts .gitattributes unchanged; it restores pr-reader.md.
 grep -v 'linguist-generated=true' "$PRR/.gitattributes" > "$PRW/ga" && cp "$PRW/ga" "$PRR/.gitattributes" && rm -f "$PRR/.claude/agents/pr-reader.md"
 ( cd "$PRR" && git add -A && git commit -qm "strip" ) >/dev/null 2>&1
 ( cd "$PRR" && sh "$BOOT" . --update ) > "$PRW/u1.txt" 2>&1; ( cd "$PRR" && sh "$BOOT" . --update ) > "$PRW/u2.txt" 2>&1
 if grep -q '^  merged (additive): .*\.gitattributes' "$PRW/u1.txt" && grep -q '+ \.claude/agents/pr-reader\.md' "$PRW/u1.txt" && [ -f "$PRR/.claude/agents/pr-reader.md" ] \
-    && ! grep -q '^  merged (additive): .*\.gitattributes' "$PRW/u2.txt" && [ "$(grep -c 'linguist-generated=true' "$PRR/.gitattributes")" = 4 ] \
+    && ! grep -q '^  merged (additive): .*\.gitattributes' "$PRW/u2.txt" && [ "$(grep -c 'linguist-generated=true' "$PRR/.gitattributes")" = 3 ] \
     && grep -q "team PR rules: none on file" "$PRW/u1.txt"; then
-  ok "an at-root --update appends the four linguist-generated lines once (merged (additive), then unchanged), restores pr-reader.md and prints the team-rule line"
+  ok "an at-root --update appends the three linguist-generated lines once (merged (additive), then unchanged), restores pr-reader.md and prints the team-rule line"
 else bad "at-root --update linguist lines or pr-reader wrong -- $(grep -n 'merged\|added\|pr-reader\|team PR' "$PRW/u1.txt" "$PRW/u2.txt") / $(grep -c 'linguist-generated=true' "$PRR/.gitattributes")"; fi
+# The retired docs/current/** line (v101 shipped it in our generated block): --update removes our copy and reports it,
+# and keeps the same line the operator wrote outside our block.
+{ printf '# mine: hand-marked\ndocs/current/** linguist-generated=true\n\n'; cat "$PRR/.gitattributes"; printf 'docs/current/** linguist-generated=true\n'; } > "$PRW/ga" \
+  && cp "$PRW/ga" "$PRR/.gitattributes" && ( cd "$PRR" && git add -A && git commit -qm "v101 line" ) >/dev/null 2>&1
+( cd "$PRR" && sh "$BOOT" . --update ) > "$PRW/u3.txt" 2>&1
+grep -qx '  removed: .gitattributes docs/current/\*\* linguist-generated=true (docs/current/ is hand-written now: a PR shows its edits and pr check counts them)' "$PRW/u3.txt" \
+  && [ "$(grep -cx 'docs/current/\*\* linguist-generated=true' "$PRR/.gitattributes")" = 1 ] && [ "$(sed -n 2p "$PRR/.gitattributes")" = 'docs/current/** linguist-generated=true' ] \
+  && [ "$(tail -1 "$PRR/.gitattributes")" = 'docs/index.json linguist-generated=true' ] \
+  && ok "--update removes the retired docs/current/** linguist line from our block and reports it, keeping the operator's own copy" \
+  || bad "the retired docs/current/** line was not handled -- $(grep -n 'gitattributes' "$PRW/u3.txt") / $(grep -n 'docs/current' "$PRR/.gitattributes")"
 # (S10) nested banners: a bare host's team-rule line; a team-template host (a 4-heading template, a PR agent skill, .claude/skills
 # a symlink to .agents/skills) gets the conflict line, the resolved-path exclude lines and the note, with a clean status.
 newtmp PRH; for h in bare team; do mkdir -p "$PRH/$h" && ( cd "$PRH/$h" && git init -q . && git symbolic-ref HEAD refs/heads/main \
@@ -4950,24 +4564,24 @@ if grep -q "team PR rules: none on file -- the pr skill's default template (Summ
   ok "nested banners: a bare host's 'none on file' line; a team-template host's team-rule and ## Review conflict lines, and its symlinked .claude/skills gets resolved-path exclude lines, the note and a clean git status"
 else bad "nested team-rule banner or symlink exclude wrong -- $(grep -n 'PR rules\|PR-rules\|note:' "$PRH/bare.txt" "$PRH/team.txt") / $(git -C "$PRH/team" status --porcelain)"; fi
 # (9) the regression S6 fixed: a nested phase whose host branch left the default branch (merge-base != anchor != HEAD) gets a
-# phase-scope and a passing review, no TypeError (a duplicate _is_ancestor shadowed P40's); no top-level def is defined twice.
-BH="$PRH/bare"; bw() { ( cd "$BH" && python3 workflow/scripts/workflow.py "$@" ); }
+# phase scope and a passing review, no TypeError (a duplicate _is_ancestor shadowed P40's); no top-level def is defined twice.
+BH="$PRH/bare"; bw() { ( cd "$BH" && PATH="$PRG:$PATH" python3 workflow/scripts/workflow.py "$@" ); }
 ( cd "$BH" && git switch -qc feat/toy && echo b > b.txt && git add b.txt && git commit -qm "feat: b" ) >/dev/null 2>&1
-bw new-phase --phase P1 --name toy --objective toy >/dev/null 2>&1; ( cd "$BH" && echo c > c.txt && git add c.txt && git commit -qm "feat: c" ) >/dev/null 2>&1
-s_out=$(bw phase-scope P1 2>&1); s_rc=$?
-{ bw finish-slice P1.DECOMP --outcome cut && bw accept-gate P1 --waive --note toy && bw start-slice P1.REVIEW && : > "$BH/workflow/works/phases/active/P1/slices/P1.REVIEW/result.md" \
-  && bw pr-branch P1 --name feat/toy && bw pr-record P1 --url https://github.com/example/toy/pull/2; } >/dev/null 2>&1
-v_out=$(bw review-phase P1 --verdict pass 2>&1); v_rc=$?
+bw phase new --phase P1 --name toy --objective toy >/dev/null 2>&1; ( cd "$BH" && echo c > c.txt && git add c.txt && git commit -qm "feat: c" ) >/dev/null 2>&1
+s_out=$(bw phase scope P1 2>&1); s_rc=$?
+{ bw slice finish P1.DECOMP --outcome cut && bw gate P1 waive --note toy && bw slice start P1.REVIEW && : > "$BH/workflow/works/phases/active/P1/slices/P1.REVIEW/result.md" \
+  && bw pr branch P1 --name feat/toy && bw pr record P1 --url https://github.com/example/toy/pull/2; } >/dev/null 2>&1
+v_out=$(bw review P1 --verdict pass 2>&1); v_rc=$?
 if [ "$s_rc" -eq 0 ] && printf '%s\n' "$s_out" | grep -q '^product_files=1 ' && [ "$v_rc" -eq 0 ] && printf '%s\n' "$v_out" | grep -q '^phase P1 review: pass' \
     && ! printf '%s\n%s\n' "$s_out" "$v_out" | grep -q TypeError \
-    && python3 - "$SRC/scripts/workflow.py" <<'PY'
+    && python3 - "$SRC"/scripts/*.py <<'PY'
 import ast, collections, sys
-names = collections.Counter(n.name for n in ast.parse(open(sys.argv[1]).read()).body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)))
+names = collections.Counter(n.name for f in sys.argv[1:] for n in ast.parse(open(f).read()).body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)))
 assert not [k for k, v in names.items() if v > 1], [k for k, v in names.items() if v > 1]
 PY
-then ok "a nested phase whose host branch left main gets its phase-scope and a passing review (no _is_ancestor TypeError), and no engine function is defined twice"
+then ok "a nested phase whose host branch left main gets its phase scope and a passing review (no _is_ancestor TypeError), and no engine function is defined twice"
 else bad "the _is_ancestor regression is back (scope rc=$s_rc, review rc=$v_rc) -- $s_out / $v_out"; fi
-# (S13) on a nested host with an origin, a PR base is recorded as the branch name gh pr create --base takes, and pr-check
+# (S13) on a nested host with an origin, a PR base is recorded as the branch name gh pr create --base takes, and pr check
 # diffs origin/<base>: the default records main (not origin/main); --base origin/main records main; a stack part's base stays
 # feat/o; a sha is refused; an old record holding base=origin/main reads as main; a base with no remote ref diffs the local branch.
 newtmp PRO; git init -q --bare "$PRO/origin.git"; NH="$PRO/host"; mkdir -p "$NH"; ngit() { git -C "$NH" "$@"; }
@@ -4976,17 +4590,17 @@ nw() { ( cd "$NH" && python3 workflow/scripts/workflow.py "$@" ); }
   && echo a > "$NH/app.txt" && ngit add app.txt && ngit commit -qm "chore: init" && ngit remote add origin "$PRO/origin.git" \
   && ngit push -q origin main && ngit remote set-head origin main && ( cd "$NH" && sh "$BOOT" . ) \
   && git -C "$NH/workflow" config user.email smoke@example.invalid && git -C "$NH/workflow" config user.name smoke \
-  && nw new-phase --phase P1 --name base --objective toy; } >/dev/null 2>&1 || bad "pr base probe: the nested host with an origin failed to set up"
-o1=$(nw pr-branch P1 --name feat/o 2>&1); { echo b >> "$NH/app.txt" && ngit commit -qam "feat: b"; } >/dev/null 2>&1
-o2=$(nw pr-branch P1 --name feat/p --base origin/main 2>&1); ngit switch -q feat/o
-o3=$(nw pr-branch P1 --name feat/q --base feat/o 2>&1); ngit switch -q feat/o
-nw pr-branch P1 --name feat/s --base "$(ngit rev-parse main)" > "$PRO/o4.txt" 2>&1; o4=$?
-oc1=$(nw pr-check P1 --branch feat/o 2>&1); oc3=$(nw pr-check P1 --branch feat/q 2>&1)
+  && nw phase new --phase P1 --name base --objective toy; } >/dev/null 2>&1 || bad "pr base probe: the nested host with an origin failed to set up"
+o1=$(nw pr branch P1 --name feat/o 2>&1); { echo b >> "$NH/app.txt" && ngit commit -qam "feat: b"; } >/dev/null 2>&1
+o2=$(nw pr branch P1 --name feat/p --base origin/main 2>&1); ngit switch -q feat/o
+o3=$(nw pr branch P1 --name feat/q --base feat/o 2>&1); ngit switch -q feat/o
+nw pr branch P1 --name feat/s --base "$(ngit rev-parse main)" > "$PRO/o4.txt" 2>&1; o4=$?
+oc1=$(nw pr check P1 --branch feat/o 2>&1); oc3=$(nw pr check P1 --branch feat/q 2>&1)
 python3 - "$NH/workflow/works/phases/active/P1/phase.json" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1])); d["pr"]["branches"][0]["base"] = "origin/main"; json.dump(d, open(sys.argv[1], "w"), indent=2)
 PY
-oc_old=$(nw pr-check P1 --branch feat/o 2>&1); o_nx=$(nw next 2>&1); o_val=$(nw validate 2>&1); o_vrc=$?
+oc_old=$(nw pr check P1 --branch feat/o 2>&1); o_nx=$(nw next 2>&1); o_val=$(nw check --no-rebuild 2>&1); o_vrc=$?
 if printf '%s\n' "$o1" | grep -qx 'pr_branch=host:feat/o base=main' && printf '%s\n' "$o2" | grep -qx 'pr_branch=host:feat/p base=main' \
     && printf '%s\n' "$o3" | grep -qx 'pr_branch=host:feat/q base=feat/o' && [ "$o4" -eq 1 ] && grep -q 'a PR base must be a branch' "$PRO/o4.txt" \
     && printf '%s\n' "$oc1" | grep -qx 'pr_check=host:feat/o base=main' && printf '%s\n' "$oc1" | grep -qx 'diff_base=origin/main' \
@@ -4994,40 +4608,41 @@ if printf '%s\n' "$o1" | grep -qx 'pr_branch=host:feat/o base=main' && printf '%
     && printf '%s\n' "$oc1" | grep -q '^body=missing (topics/pr-body.md)$' && printf '%s\n' "$oc1" | grep -qx 'pr_check=warn' \
     && printf '%s\n' "$oc_old" | grep -qx 'pr_check=host:feat/o base=main' && printf '%s\n' "$oc_old" | grep -qx 'diff_base=origin/main' \
     && printf '%s\n' "$o_nx" | grep -qx 'pr_branch=host:feat/o base=main url=none' && [ "$o_vrc" -eq 0 ]; then
-  ok "with an origin, pr-branch records the PR base as a branch name (default main, --base origin/main as main, a stack part's feat/o) and refuses a sha; pr-check prints diff_base=origin/main, or the local branch with no remote ref; an old base=origin/main record reads as main; a nested host keeps host: and a missing default body warns, never passes"
+  ok "with an origin, pr branch records the PR base as a branch name (default main, --base origin/main as main, a stack part's feat/o) and refuses a sha; pr check prints diff_base=origin/main, or the local branch with no remote ref; an old base=origin/main record reads as main; a nested host keeps host: and a missing default body warns, never passes"
 else bad "PR base as a branch name wrong (sha rc $o4, validate rc $o_vrc) -- $o1 / $o2 / $o3 / $(cat "$PRO/o4.txt") / $oc1 / $oc3 / $oc_old / $(printf '%s\n' "$o_nx" | grep pr_) / $(printf '%s\n' "$o_val" | tail -3)"; fi
 # (S9) the PR rule's wiring phrases in the contract and the shipped skills, and the negatives they replaced.
-python3 - "$REPO_ROOT" <<'PY' && ok "the PR rule's wiring: the contract's push invariant and its draft-PR row, review-phase's PR step, both review.md's reader and the drafts opening when the review passes, verdicts/decomposition/create-phase/executor/parallel-phase/do-whole-phases/pr lines, and the retired no-branch/no-push and push-stop lines; the close and reopen references route a change request after the pass to reopen-phase (P52 F1)" || bad "a PR-rule wiring phrase moved or a retired line is back"
+python3 - "$REPO_ROOT" <<'PY' && ok "the PR rule's wiring: the contract's push invariant and its draft-PR row, review's PR step, both review.md's reader and the drafts opening when the review passes, verdicts/decomposition/create-phase/executor/parallel-phase/do-whole-phases/pr lines, and the retired no-branch/no-push and push-stop lines; the close and reopen references route a change request after the pass to phase reopen (P52 F1)" || bad "a PR-rule wiring phrase moved or a retired line is back"
 import sys
 from pathlib import Path
 root = Path(sys.argv[1]); sys.path.insert(0, str(root / "installer"))
 from build import collect_live_payloads
 L = collect_live_payloads()
+ENGINE = "".join(v for k, v in sorted(L.items()) if k.startswith("scripts/"))  # every module of the engine
 sk = lambda n: "\n".join(v for k, v in sorted(L.items()) if k.startswith(f".claude/skills/{n}/"))
 flat = lambda s: " ".join(s.split())
 both = lambda ref: [L[f".claude/skills/do-whole-phase/reference/{ref}"]]  # lighter-rules: do-next-slice ships no copy
 push_stop = ["`push` stop", "push stop", "On the operator's `push`", "on the operator's `push`", "say `push`", "pr_push=waiting", "PR_PUSH_WAITING"]
 checks = [
-    ([(root / "payload/contract.md").read_text()], ["**Nothing is pushed, merged or paid for without the operator's word.**", "| A product phase passes with its draft PR open | `review-phase --verdict pass` refuses a PR branch with no draft PR"],
-     ["Create no branch unless asked", "Never push unasked", "push only on the operator's word", "Ready and merge are the operator's"] + push_stop),
+    ([(root / "payload/contract.md").read_text()], ["**Nothing is pushed, merged or paid for without the operator's word.**", "| A branch switch never carries the operator's edits | `pr branch` refuses"],
+     ["| A product phase passes with its draft PR open |", "Create no branch unless asked", "Never push unasked", "push only on the operator's word", "Ready and merge are the operator's"] + push_stop),
     ([sk("review-phase")], ["## The PR step — one body per recorded branch", "**Writing the body is a review lens.**", "**Return `pr_bodies`**"], push_stop),
     (both("review.md"), ["open the drafts by the `pr` skill's *Open the drafts*", "with no stop and no word", "read each PR's CI before the gate",
-                         "`executor-route --reader`", "--stop-kind operator-action --on-words \"<what fixing it resumes>\"",
-                         "a refused draft is never retried as a plain PR", "The engine refuses the pass until every recorded branch has its URL"],
+                         "`adapter.py route --reader`", "--stop-kind operator-action --on-words \"<what fixing it resumes>\"",
+                         "a refused draft is never retried as a plain PR", "A pass with a recorded branch still unopened prints `advice: pr_draft=due`"],
      push_stop + ["push opens the draft PR(s); the pass is recorded after"]),
     (both("verdicts.md"), ["**The only pushes are the draft opening when the review passes**", "**the close's solo landing, and a fix round's or a stack merge's `git push` to an open PR's branch**"],
      ["do not branch unless the operator asks", "Do not branch unless the operator asks", "**The only push is the draft opening", "Never force-push, request reviewers, merge a team repo's PR or flip one Ready"] + push_stop),
-    (both("review.md"), ["run the close's step A", "record the pass **without re-dispatching the review**", "then its step B",
-                         "**After the phase is done**", "always `reopen-phase <P> --note \"team-reported: <what>\"`"], ["Ready and merge stay the operator's"]),
-    ([sk("review-phase")], ["**A reopened phase's re-review**", "or `operator-reported: …`, from `reopen-phase`"], []),
+    (both("review.md"), ["run `close <P>` by `.claude/skills/pr/reference/close.md`", "records the pass **without re-dispatching the review**",
+                         "**After the phase is done**", "always `phase reopen <P> --note \"team-reported: <what>\"`"], ["Ready and merge stay the operator's"]),
+    ([sk("review-phase")], ["**A reopened phase's re-review**", "or `operator-reported: …`, from `phase reopen`"], []),
     ([sk("rotate-backlog")], ["**First, sync the open PRs (both paths).**"], []),
-    ([L[".claude/skills/pr/reference/close.md"]], ["**Pass recorded or not.**", "always goes through `reopen-phase`", "never `review-phase`, which the engine refuses",
+    ([L[".claude/skills/pr/reference/close.md"]], ["**Pass recorded or not.**", "always goes through `phase reopen`", "never `review`, which the engine refuses",
                                                    "--note \"operator-reported: CI red: <checks>\"", "**A change asked for after Ready**"], []),
     ([L[".claude/skills/pr/reference/reopen.md"]], ["**One rule.**", "`git -C <host> switch <default>`", "No worktree is cut or claimed", "`git worktree add <sibling> <branch>`",
                                                     "**At root, commit the reopen with the fix round's first commit**"], ["## Team-reported changes after the phase is done"]),
-    ([L["scripts/workflow.py"]], ["a change request (the team's or the operator's) reopens it on the PR branch", "--note is empty; say whose change request it is and what it asks"], ["a team's change request reopens it in its own worktree", "say what the team asked for"]),
+    ([ENGINE], ["a change request (the team's or the operator's) reopens it on the PR branch", "--note is empty; say whose change request it is and what it asks"], ["a team's change request reopens it in its own worktree", "say what the team asked for"]),
     # P52 F4: the reopen names both reporters everywhere it ships (help, docstring, re-review, pr core, review.md, READMEs).
-    ([L["scripts/workflow.py"]], ["(a change request after the phase was done, the team's or the operator's)", 'help="whose change request it is and what it asks: \\"team-reported: <what>\\" or \\"operator-reported: <what>\\" (recorded as the review note'],
+    ([ENGINE], ["(a change request after the phase was done, the team's or the operator's)", 'help="whose change request it is and what it asks: \\"team-reported: <what>\\" or \\"operator-reported: <what>\\" (recorded as the review note'],
      ["a team asked for changes after the phase was done", "what the team asked for:", "a team's new change request becomes a new phase", "# A team asks for changes after the phase is done"]),
     ([(root / "payload/claude/skills/do-whole-phase/playbooks/review.md").read_text()], ["(its review note reads `team-reported: …` or `operator-reported: …`): the request is the claims to verify"],
      ["(its review note reads `team-reported: …`): the team's review comments"]),
@@ -5035,21 +4650,21 @@ checks = [
     (both("review.md"), [], ["or a team's review after a reopen)"]),
     ([(root / "README.en.md").read_text(encoding="utf-8")], ["(the team's review, or your own) reopens the same"], ["fix\n   slice in the same phase"]),
     ([(root / "README.md").read_text(encoding="utf-8")], ["(팀 리뷰든 내 요청이든) 같은 phase를 열린 PR 위에서 다시 엽니다"], ["같은 phase의 fix slice"]),
-    ([sk("archive-phase")], ["**A phase with an open PR is held too:**"], []),
+    ([sk("archive-phase")], ["**A phase with an open PR:** `phase rotate` leaves it active"], ["is held too"]),
     ([sk("create-phase")], ["**One question rides on that confirmation, never a stop of its own:**"], []),
-    ([flat(sk("parallel-phase"))], ["### A reopened phase — a change request on its open PR", "`--note \"operator-reported: <what>\"`", "Then `pr-sync <P>` there (the default branch's record is stale)"], ["### A reopened phase — a team's changes on its open PR"]),
+    ([flat(sk("parallel-phase"))], ["### A reopened phase — a change request on its open PR", "`--note \"operator-reported: <what>\"`", "Then `pr sync <P>` there (the default branch's record is stale)"], ["### A reopened phase — a team's changes on its open PR"]),
     (both("decomposition.md"), ["--base <that branch>"], []),
     (both("decomposition.md"), ["**Record the phase's PR branches** (PR rule v1)", "**Size never splits a phase:**"], []),
     ([sk("create-phase")], ["`Branches:` line", "Never split a phase for size"], push_stop),
-    ([(root / "payload/claude/skills/do-whole-phase/playbooks/review.md").read_text()], ["`pr_bodies`", "Never run `review-phase`, `accept-gate` or `defer-job`, and never push."], push_stop),
-    ([flat(sk("parallel-phase"))], ["This skill carries no second PR procedure."], ["1. **Push the branch.**", "**Open the PR.**"] + push_stop),
+    ([(root / "payload/claude/skills/do-whole-phase/playbooks/review.md").read_text()], ["`pr_bodies`", "Never run `review`, `gate` or `defer-job`, and never push."], push_stop),
+    ([flat(sk("parallel-phase"))], ["By the close alone: `close <P>`'s `merge` and `teardown` steps (`.claude/skills/pr/reference/close.md`)."], ["1. **Push the branch.**", "**Open the PR.**"] + push_stop),
     # lighter-rules: update-workspace acts on the CHANGELOG's Migration notes instead of restating each old version's.
     ([sk("update-workspace")], ["**Act on each Migration notes line**"], ["push → PR → CI is the remote variant"] + push_stop),
     ([sk("pr")], ["## Open the drafts, when the review passes", "opened as drafts when the review passes, closed on the operator's accept.\"", "`git push -u origin <b>`, never `--force`."], push_stop),
     ([sk("commit")], ["A phase's pushes are the `pr` skill's, never this skill's: the draft opening when its review passes, the close's solo landing, and a fix round's or a stack merge's push to an open PR's branch."], push_stop + ["A phase's one push is"]),
     ([(root / "README.en.md").read_text(encoding="utf-8")], ["and your `accept` closes it (Ready, then a solo repo's merge by its landing custom; a team repo's merge is the team's)"], ["(Ready and merge are yours)"]),
     ([(root / "README.md").read_text(encoding="utf-8")], ["여러분이 `accept`하면 close가 그 PR을 Ready로 바꿉니다"], ["(Ready와 merge는 여러분 몫입니다)"]),
-    ([L["scripts/workflow.py"]], ["pr_draft=due -- when the review would pass", "the draft opens when the review passes (pr skill: Open the drafts)"],
+    ([ENGINE], ["pr_draft=due -- when the review would pass", "the draft opens when the review passes (pr skill: Open the drafts)"],
      ["pr_push_parked", "_pr_push_stop_why", "PR push stop", "the operator's push opens"] + push_stop),
 ]
 for texts, required, gone in checks:
@@ -5062,7 +4677,7 @@ PY
 echo "pr rule test runtime: $(( $(date +%s) - pr_t0 ))s"
 
 # ---------------------------------------------------------------------------
-echo "== Test 20: P52 PR lifecycle after the draft -- pr-sync (all or nothing, ready_at once), pr-team (solo/team/unknown, --record), pr_open= on every next path and the card, the archive hold (merged releases it, --force bypasses, rotate still proposes the docs), pr_stack= (moved/merged by ancestry or record, active or archived/gone) and the base re-record, reopen-phase (nested worktree on the PR branch, its refusals, -reopen2, root in place, root phase-scope ending at pass 2), review-phase refusing a change request on a done phase with an open PR, and a multi-repo host's --repo; zero GitHub writes =="
+echo "== Test 20: P52 PR lifecycle after the draft -- pr sync (all or nothing, ready_at once), pr team (solo/team/unknown, --record), pr_open= on every next path and the card, the archive hold (merged releases it, --force bypasses, rotate still proposes the docs), pr_stack= (moved/merged by ancestry or record, active or archived/gone) and the base re-record, phase reopen (nested worktree on the PR branch, its refusals, -reopen2, root in place, root phase scope ending at pass 2), review refusing a change request on a done phase with an open PR, and a multi-repo host's --repo; zero GitHub writes =="
 # Every remote is a local bare repo and gh is a stub on PATH that answers canned files, logs every call and refuses any write.
 lc_t0=$(date +%s)
 newtmp QW; QW=$(cd "$QW" && pwd -P); QG="$QW/gh"; mkdir -p "$QG"   # the engine prints resolved paths (macOS: /private/var)
@@ -5093,89 +4708,89 @@ qsig() { { qn rev-parse HEAD; qn status --porcelain; cat "$QH/workflow/works/eve
 { qg init -q . && qg symbolic-ref HEAD refs/heads/main && qg config user.email smoke@example.invalid && qg config user.name smoke \
   && echo a > "$QH/app.txt" && qg add app.txt && qg commit -qm "chore: init" && qg remote add origin "$QW/origin.git" && qg push -q origin main \
   && qg remote set-head origin main && ( cd "$QH" && sh "$BOOT" . ) && qn config user.email smoke@example.invalid && qn config user.name smoke \
-  && qw nested-convention --confirm --text "type(scope): summary" --trailers forbidden && qn add -A && qn commit -qm "chore: install"; } > "$QW/setup.txt" 2>&1 \
+  && qw repo convention --confirm --text "type(scope): summary" --trailers forbidden && qn add -A && qn commit -qm "chore: install"; } > "$QW/setup.txt" 2>&1 \
   || bad "lifecycle probe: the nested host failed to set up -- $(tail -3 "$QW/setup.txt")"
 # a waived-gate phase cut to its review: qnew <P>; driven to done: qpass <P>
-qnew() { qw new-phase --phase "$1" --name "$1 toy" --objective toy && qw accept-gate "$1" --waive --note toy && qw set-slice-status "$1.DECOMP" done; }
-qpass() { { qw set-slice-status "$1.REVIEW" in_progress && : > "$QH/workflow/works/phases/active/$1/slices/$1.REVIEW/result.md" && qw review-phase "$1" --verdict pass \
+qnew() { qw phase new --phase "$1" --name "$1 toy" --objective toy && qw gate "$1" waive --note toy && qw slice status "$1.DECOMP" done; }
+qpass() { { qw slice status "$1.REVIEW" in_progress && : > "$QH/workflow/works/phases/active/$1/slices/$1.REVIEW/result.md" && qw review "$1" --verdict pass \
   && qn add -A && qn commit -qm "chore: $1 done"; } > "$QW/pass-$1.txt" 2>&1 || bad "lifecycle probe: $1 did not pass -- $(tail -3 "$QW/pass-$1.txt")"; }
 # P1: a required-gate phase done with its draft recorded the P51 way (a URL, no lifecycle state).
-{ qw new-phase --phase P1 --name "Toy" --objective toy && qw accept-gate P1 --require && qw set-slice-status P1.DECOMP done \
-  && qw pr-branch P1 --name feat/one && echo one >> "$QH/app.txt" && qg commit -qam "feat: one" && qg push -q -u origin feat/one \
-  && qw pr-record P1 --url https://github.com/acme/toy/pull/1 && qw set-slice-status P1.REVIEW in_progress \
-  && : > "$QH/workflow/works/phases/active/P1/slices/P1.REVIEW/result.md" && qw accept-gate P1 --open --walkthrough probe && qw accept-gate P1 --clear \
-  && qw review-phase P1 --verdict pass && qn add -A && qn commit -qm "chore: P1 done"; } > "$QW/p1.txt" 2>&1 || bad "lifecycle probe: P1 failed -- $(tail -3 "$QW/p1.txt")"
+{ qw phase new --phase P1 --name "Toy" --objective toy && qw gate P1 require && qw slice status P1.DECOMP done \
+  && qw pr branch P1 --name feat/one && echo one >> "$QH/app.txt" && qg commit -qam "feat: one" && qg push -q -u origin feat/one \
+  && qw pr record P1 --url https://github.com/acme/toy/pull/1 && qw slice status P1.REVIEW in_progress \
+  && : > "$QH/workflow/works/phases/active/P1/slices/P1.REVIEW/result.md" && qw gate P1 open --walkthrough probe && qw gate P1 clear --words accept \
+  && qw review P1 --verdict pass && qn add -A && qn commit -qm "chore: P1 done"; } > "$QW/p1.txt" 2>&1 || bad "lifecycle probe: P1 failed -- $(tail -3 "$QW/p1.txt")"
 P1J="$QH/workflow/works/phases/active/P1/phase.json"; QEV="$QH/workflow/works/events.jsonl"
 # (1) a P51-era entry validates and reads unsynced: the close is due; no active phase, so the line is on the no-phase path and the card.
-q_val=$(qw validate 2>&1); q_vrc=$?; q_nx=$(qw next 2>&1); q_card=$(qw next --card 2>&1)
-if [ "$q_vrc" -eq 0 ] && printf '%s\n' "$q_nx" | grep -qx 'pr_open=P1 host:feat/one state=unsynced url=https://github.com/acme/toy/pull/1 -- the close is due (pr skill; pr-sync P1 first)' \
+q_val=$(qw check --no-rebuild 2>&1); q_vrc=$?; q_nx=$(qw next 2>&1); q_card=$(qw next --card 2>&1)
+if [ "$q_vrc" -eq 0 ] && printf '%s\n' "$q_nx" | grep -qx 'pr_open=P1 host:feat/one state=unsynced url=https://github.com/acme/toy/pull/1 -- the close is due (close P1)' \
     && printf '%s\n' "$q_nx" | grep -q '^no active slice' && printf '%s\n' "$q_card" | grep -qx 'pr_open: P1 host:feat/one state=unsynced (close due)'; then
   ok "a P51-era pr entry (a URL, no lifecycle state) validates and reads state=unsynced: next's no-active-phase path and the resume card print pr_open= with the close due"
 else bad "P51-era entry / pr_open= on the no-phase path wrong (validate rc=$q_vrc) -- $q_val / $q_nx / $q_card"; fi
-# (2) pr-sync: gh unauthenticated and an unknown PR each exit 1 writing nothing; a draft, then ready (ready_at stamped), then a
+# (2) pr sync: gh unauthenticated and an unknown PR each exit 1 writing nothing; a draft, then ready (ready_at stamped), then a
 # second ready sync keeps ready_at.
 s0=$(cat "$P1J" "$QEV" | sha_stdin)
-echo "gh: To get started with GitHub CLI, please run:  gh auth login" > "$QG/fail"; q_a=$(qw pr-sync P1 2>&1); q_arc=$?; rm -f "$QG/fail"
-q_u=$(qw pr-sync P1 2>&1); q_urc=$?; s1=$(cat "$P1J" "$QEV" | sha_stdin)
-qpr 1 OPEN true null; q_d=$(qw pr-sync P1 2>&1); q_dst=$(qj P1 pr.branches.0.state); q_dra=$(qj P1 pr.branches.0.ready_at)
-qpr 1 OPEN false null main '"REVIEW_REQUIRED"'; q_r=$(qw pr-sync P1 2>&1); q_rst=$(qj P1 pr.branches.0.state); q_rra=$(qj P1 pr.branches.0.ready_at)
+echo "gh: To get started with GitHub CLI, please run:  gh auth login" > "$QG/fail"; q_a=$(qw pr sync P1 2>&1); q_arc=$?; rm -f "$QG/fail"
+q_u=$(qw pr sync P1 2>&1); q_urc=$?; s1=$(cat "$P1J" "$QEV" | sha_stdin)
+qpr 1 OPEN true null; q_d=$(qw pr sync P1 2>&1); q_dst=$(qj P1 pr.branches.0.state); q_dra=$(qj P1 pr.branches.0.ready_at)
+qpr 1 OPEN false null main '"REVIEW_REQUIRED"'; q_r=$(qw pr sync P1 2>&1); q_rst=$(qj P1 pr.branches.0.state); q_rra=$(qj P1 pr.branches.0.ready_at)
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["pr"]["branches"][0]["ready_at"]="2026-01-01T00:00:00Z"; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$P1J"
-qw pr-sync P1 >/dev/null 2>&1; q_rra2=$(qj P1 pr.branches.0.ready_at)
+qw pr sync P1 >/dev/null 2>&1; q_rra2=$(qj P1 pr.branches.0.ready_at)
 if [ "$q_arc" -eq 1 ] && printf '%s\n' "$q_a" | grep -q 'gh is not authenticated .*nothing was written$' && [ "$q_urc" -eq 1 ] && printf '%s\n' "$q_u" | grep -q 'Could not resolve.*nothing was written$' && [ "$s0" = "$s1" ] \
     && printf '%s\n' "$q_d" | grep -qx 'pr_sync=host:feat/one state=draft base=main head=0123456 review=none merged_at=none' && [ "$q_dst" = '"draft"' ] && [ "$q_dra" = null ] \
     && printf '%s\n' "$q_r" | grep -qx 'pr_sync=host:feat/one state=ready base=main head=0123456 review=REVIEW_REQUIRED merged_at=none' && [ "$q_rst" = '"ready"' ] && [ "$q_rra" != null ] \
     && [ "$q_rra2" = '"2026-01-01T00:00:00Z"' ]; then
-  ok "pr-sync: gh unauthenticated and an unknown PR exit 1 naming the cause and write nothing (phase.json and events.jsonl unchanged); a draft records state=draft with no ready_at, Ready stamps ready_at, and a later sync never re-stamps it"
-else bad "pr-sync lifecycle wrong (rc $q_arc/$q_urc, unchanged=$([ "$s0" = "$s1" ] && echo y)) -- $q_a / $q_u / $q_d / $q_r / ready_at $q_dra $q_rra $q_rra2"; fi
-# (3) pr-team, bare: solo (one collaborator), team (two, a bot dropped), solo again on a 403 (authors only); --record needs
+  ok "pr sync: gh unauthenticated and an unknown PR exit 1 naming the cause and write nothing (phase.json and events.jsonl unchanged); a draft records state=draft with no ready_at, Ready stamps ready_at, and a later sync never re-stamps it"
+else bad "pr sync lifecycle wrong (rc $q_arc/$q_urc, unchanged=$([ "$s0" = "$s1" ] && echo y)) -- $q_a / $q_u / $q_d / $q_r / ready_at $q_dra $q_rra $q_rra2"; fi
+# (3) pr team, bare: solo (one collaborator), team (two, a bot dropped), solo again on a 403 (authors only); --record needs
 # --evidence, records, then a re-record replaces; validate refuses a malformed ownership record.
 qg remote set-url origin https://github.com/acme/toy.git
-printf 'leetusik\n' > "$QG/collab.txt"; q_t1=$(qw pr-team 2>&1)
-printf 'leetusik\nalice\nrenovate[bot]\n' > "$QG/collab.txt"; q_t2=$(qw pr-team 2>&1)
-: > "$QG/collab-403"; q_t3=$(qw pr-team 2>&1); rm -f "$QG/collab-403"; qg remote set-url origin "$QW/origin.git"
-qw pr-team --record solo > "$QW/t-noev.txt" 2>&1; q_t4=$?
-q_t5=$(qw pr-team --record solo --evidence "one login" 2>&1); q_t6=$(qw pr-team --record team --evidence "two logins" 2>&1)
+printf 'leetusik\n' > "$QG/collab.txt"; q_t1=$(qw pr team 2>&1)
+printf 'leetusik\nalice\nrenovate[bot]\n' > "$QG/collab.txt"; q_t2=$(qw pr team 2>&1)
+: > "$QG/collab-403"; q_t3=$(qw pr team 2>&1); rm -f "$QG/collab-403"; qg remote set-url origin "$QW/origin.git"
+qw pr team --record solo > "$QW/t-noev.txt" 2>&1; q_t4=$?
+q_t5=$(qw pr team --record solo --evidence "one login" 2>&1); q_t6=$(qw pr team --record team --evidence "two logins" 2>&1)
 QMK="$QH/workflow/.agentic-nested.json"; q_own=$(python3 -c 'import json,sys; o=json.load(open(sys.argv[1]))["pr_rules"]["ownership"]; print(len(o), o[0]["mode"], o[0]["repo"])' "$QMK")
 cp "$QMK" "$QW/marker.bak"; python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["pr_rules"]["ownership"][0]["mode"]="duo"; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$QMK"
-qw validate > "$QW/val-own.txt" 2>&1; q_t7=$?; cp "$QW/marker.bak" "$QMK"
+qw check --no-rebuild > "$QW/val-own.txt" 2>&1; q_t7=$?; cp "$QW/marker.bak" "$QMK"
 if printf '%s\n' "$q_t1" | grep -qx 'pr_team=host recorded=none detected=solo evidence="collaborators: 1 (leetusik); authors: 1"' \
     && printf '%s\n' "$q_t2" | grep -qx 'pr_team=host recorded=none detected=team evidence="collaborators: 2 (alice, leetusik); authors: 1"' \
     && printf '%s\n' "$q_t3" | grep -qx 'pr_team=host recorded=none detected=solo evidence="collaborators: unavailable; authors: 1"' \
-    && [ "$q_t4" -eq 1 ] && grep -q 'needs --evidence.*nothing was written' "$QW/t-noev.txt" && printf '%s\n' "$q_t5" | grep -q '^pr-team: recorded -- host is solo' \
-    && printf '%s\n' "$q_t6" | grep -q '^pr-team: replaced -- host is team' && [ "$q_own" = "1 team None" ] && [ "$q_t7" -ne 0 ] && grep -q 'duo' "$QW/val-own.txt" && qw validate >/dev/null 2>&1; then
-  ok "pr-team: detects solo (one collaborator), team (two, a [bot] dropped) and solo from authors when collaborators answer 403; --record without --evidence writes nothing, records solo, then team replaces it (one ownership entry); validate refuses mode duo and passes restored"
-else bad "pr-team wrong (noev rc $q_t4, validate rc $q_t7, ownership '$q_own') -- $q_t1 / $q_t2 / $q_t3 / $q_t5 / $q_t6 / $(cat "$QW/val-own.txt" | tail -3)"; fi
-# (4) the archive hold: P2 holds two PRs (a split); a sync whose second read fails writes nothing; archive-phase refuses while they
-# are unsynced; once both read merged the hold is released. P3's closed PR holds archiving, and rotate-backlog still proposes P3's docs.
-{ qnew P2 && qg switch -q main && qw pr-branch P2 --name feat/two && echo two > "$QH/two.txt" && qg add two.txt && qg commit -qm "feat: two" && qg push -q -u origin feat/two \
-  && qw pr-branch P2 --name feat/three --base feat/two && echo three > "$QH/three.txt" && qg add three.txt && qg commit -qm "feat: three" && qg push -q -u origin feat/three \
-  && qw pr-record P2 --branch feat/two --url https://github.com/acme/toy/pull/2 && qw pr-record P2 --branch feat/three --url https://github.com/acme/toy/pull/3; } > "$QW/p2.txt" 2>&1 \
+    && [ "$q_t4" -eq 1 ] && grep -q 'needs --evidence.*nothing was written' "$QW/t-noev.txt" && printf '%s\n' "$q_t5" | grep -q '^pr team: recorded -- host is solo' \
+    && printf '%s\n' "$q_t6" | grep -q '^pr team: replaced -- host is team' && [ "$q_own" = "1 team None" ] && [ "$q_t7" -ne 0 ] && grep -q 'duo' "$QW/val-own.txt" && qw check --no-rebuild >/dev/null 2>&1; then
+  ok "pr team: detects solo (one collaborator), team (two, a [bot] dropped) and solo from authors when collaborators answer 403; --record without --evidence writes nothing, records solo, then team replaces it (one ownership entry); validate refuses mode duo and passes restored"
+else bad "pr team wrong (noev rc $q_t4, validate rc $q_t7, ownership '$q_own') -- $q_t1 / $q_t2 / $q_t3 / $q_t5 / $q_t6 / $(cat "$QW/val-own.txt" | tail -3)"; fi
+# (4) the archive hold is advice now: P2 holds two PRs (a split); a sync whose second read fails writes nothing; once both read
+# merged phase archive archives it with no advice. P3's closed PR keeps phase rotate's sweep off it; phase archive P3 archives it
+# with one advice: line.
+{ qnew P2 && qg switch -q main && qw pr branch P2 --name feat/two && echo two > "$QH/two.txt" && qg add two.txt && qg commit -qm "feat: two" && qg push -q -u origin feat/two \
+  && qw pr branch P2 --name feat/three --base feat/two && echo three > "$QH/three.txt" && qg add three.txt && qg commit -qm "feat: three" && qg push -q -u origin feat/three \
+  && qw pr record P2 --branch feat/two --url https://github.com/acme/toy/pull/2 && qw pr record P2 --branch feat/three --url https://github.com/acme/toy/pull/3; } > "$QW/p2.txt" 2>&1 \
   || bad "lifecycle probe: P2 failed -- $(tail -3 "$QW/p2.txt")"
 qpass P2; P2J="$QH/workflow/works/phases/active/P2/phase.json"
-qpr 2 MERGED false '"2026-11-05T08:00:00Z"'; s0=$(cat "$P2J" "$QEV" | sha_stdin); q_h1=$(qw pr-sync P2 2>&1); q_h1rc=$?; s1=$(cat "$P2J" "$QEV" | sha_stdin)
-q_h2=$(qw archive-phase P2 2>&1); q_h2rc=$?
-qpr 3 MERGED false '"2026-11-05T09:00:00Z"' feat/two; qw pr-sync P2 >/dev/null 2>&1; q_h3=$(qw archive-phase P2 2>&1); q_h3rc=$?
-{ qnew P3 && qg switch -q main && qw pr-branch P3 --name feat/four && echo four > "$QH/four.txt" && qg add four.txt && qg commit -qm "feat: four" && qg push -q -u origin feat/four \
-  && qw pr-record P3 --url https://github.com/acme/toy/pull/4 && echo "- operations: a toy note" | qw phase-section P3 "Doc impact" --append; } > "$QW/p3.txt" 2>&1 || bad "lifecycle probe: P3 failed -- $(tail -3 "$QW/p3.txt")"
-qpass P3; qpr 4 CLOSED false null; qw pr-sync P3 >/dev/null 2>&1
-q_h4=$(qw next 2>&1); q_h5=$(qw archive-phase P3 2>&1); q_h5rc=$?; q_h6=$(qw rotate-backlog 2>&1); q_h6rc=$?
-if [ "$q_h1rc" -eq 1 ] && printf '%s\n' "$q_h1" | grep -q '^pr-sync: host:feat/three .*nothing was written$' && [ "$s0" = "$s1" ] \
-    && [ "$q_h2rc" -ne 0 ] && printf '%s\n' "$q_h2" | grep -q 'PR host:feat/two is unsynced, not merged' && [ "$q_h3rc" -eq 0 ] && printf '%s\n' "$q_h3" | grep -q '^archived phase P2' \
-    && printf '%s\n' "$q_h4" | grep -qx 'pr_open=P3 host:feat/four state=closed url=https://github.com/acme/toy/pull/4 -- closed without merging: it holds archiving -- reopen it on GitHub and pr-sync P3, or archive-phase P3 --force' \
-    && [ "$q_h5rc" -ne 0 ] && printf '%s\n' "$q_h5" | grep -q 'PR host:feat/four is closed, not merged' && printf '%s\n' "$q_h5" | grep -q 'archive-phase P3 --force is the way out' \
-    && [ "$q_h6rc" -eq 0 ] && printf '%s\n' "$q_h6" | grep -qx 'docs_phase_proposal=P3' && [ -d "$QH/workflow/works/phases/active/P3" ] && [ -d "$QH/workflow/works/phases/active/P1" ]; then
-  ok "the archive hold: a split's sync whose second read fails writes nothing; archive-phase refuses unsynced PRs and archives once pr-sync reads both merged; a closed PR prints its pr_open= hint and holds archiving (naming --force); rotate-backlog still proposes the held phase's docs and archives neither held phase"
-else bad "archive hold wrong (rc $q_h1rc/$q_h2rc/$q_h3rc/$q_h5rc/$q_h6rc) -- $q_h1 / $q_h2 / $q_h3 / $(printf '%s\n' "$q_h4" | grep pr_) / $q_h5 / $q_h6"; fi
-q_f=$(qw archive-phase P3 --force 2>&1)
-printf '%s\n' "$q_f" | grep -q '^archived phase P3' && [ ! -d "$QH/workflow/works/phases/active/P3" ] && ok "archive-phase --force bypasses the PR hold (and the doc debt)" || bad "archive-phase --force did not archive the held phase -- $q_f"
+qpr 2 MERGED false '"2026-11-05T08:00:00Z"'; s0=$(cat "$P2J" "$QEV" | sha_stdin); q_h1=$(qw pr sync P2 2>&1); q_h1rc=$?; s1=$(cat "$P2J" "$QEV" | sha_stdin)
+qpr 3 MERGED false '"2026-11-05T09:00:00Z"' feat/two; qw pr sync P2 >/dev/null 2>&1; q_h3=$(qw phase archive P2 2>&1); q_h3rc=$?
+{ qnew P3 && qg switch -q main && qw pr branch P3 --name feat/four && echo four > "$QH/four.txt" && qg add four.txt && qg commit -qm "feat: four" && qg push -q -u origin feat/four \
+  && qw pr record P3 --url https://github.com/acme/toy/pull/4; } > "$QW/p3.txt" 2>&1 || bad "lifecycle probe: P3 failed -- $(tail -3 "$QW/p3.txt")"
+qpass P3; qpr 4 CLOSED false null; qw pr sync P3 >/dev/null 2>&1
+q_h4=$(qw next 2>&1); q_h6=$(qw phase rotate 2>&1); q_h6rc=$?; q_h6a=$([ -d "$QH/workflow/works/phases/active/P3" ] && [ -d "$QH/workflow/works/phases/active/P1" ] && echo y)
+q_h5=$(qw phase archive P3 2>&1); q_h5rc=$?
+if [ "$q_h1rc" -eq 1 ] && printf '%s\n' "$q_h1" | grep -q '^pr sync: host:feat/three .*nothing was written$' && [ "$s0" = "$s1" ] \
+    && [ "$q_h3rc" -eq 0 ] && printf '%s\n' "$q_h3" | grep -q '^archived phase P2' && ! printf '%s\n' "$q_h3" | grep -q '^advice:' \
+    && printf '%s\n' "$q_h4" | grep -qx 'pr_open=P3 host:feat/four state=closed url=https://github.com/acme/toy/pull/4 -- closed without merging: reopen it on GitHub and pr sync P3, or phase archive P3 (archived with advice)' \
+    && [ "$q_h6rc" -eq 0 ] && [ "$(printf '%s\n' "$q_h6" | head -1)" = "rotate=archive" ] && [ "$q_h6a" = y ] \
+    && [ "$q_h5rc" -eq 0 ] && printf '%s\n' "$q_h5" | grep -qx 'advice: P3: PR host:feat/four is closed, not merged (pr sync P3 reads it); archived anyway, so next no longer lists it' \
+    && printf '%s\n' "$q_h5" | grep -q '^archived phase P3' && [ ! -d "$QH/workflow/works/phases/active/P3" ]; then
+  ok "the archive hold is advice: a split's sync whose second read fails writes nothing; once pr sync reads both merged phase archive archives with no advice; a closed PR prints its pr_open= hint, phase rotate's sweep leaves it (and P1's open PR) active, and phase archive P3 archives it with one advice: line"
+else bad "archive hold wrong (rc $q_h1rc/$q_h3rc/$q_h5rc/$q_h6rc, rotate kept '$q_h6a') -- $q_h1 / $q_h3 / $(printf '%s\n' "$q_h4" | grep pr_) / $q_h5 / $q_h6"; fi
 # (5) pr_open= on the plain pointer and WAITING paths, then pr_stack=: P5 stacked on P4's feat/lo. A teammate's push to the lower
 # branch reads lower=moved; its steps, run as printed, clear it. A true --no-ff landing of feat/lo reads lower=merged by ancestry.
-{ qw new-phase --phase P4 --name lower --objective toy && qg switch -q main && qw pr-branch P4 --name feat/lo && echo lo > "$QH/lo.txt" && qg add lo.txt && qg commit -qm "feat: lo" && qg push -q -u origin feat/lo \
-  && qw pr-record P4 --url https://github.com/acme/toy/pull/5 && qw new-phase --phase P5 --name upper --objective toy && qw pr-branch P5 --name feat/up --base feat/lo \
-  && echo up > "$QH/up.txt" && qg add up.txt && qg commit -qm "feat: up" && qg push -q -u origin feat/up && qw pr-record P5 --url https://github.com/acme/toy/pull/6 \
+{ qw phase new --phase P4 --name lower --objective toy && qg switch -q main && qw pr branch P4 --name feat/lo && echo lo > "$QH/lo.txt" && qg add lo.txt && qg commit -qm "feat: lo" && qg push -q -u origin feat/lo \
+  && qw pr record P4 --url https://github.com/acme/toy/pull/5 && qw phase new --phase P5 --name upper --objective toy && qw pr branch P5 --name feat/up --base feat/lo \
+  && echo up > "$QH/up.txt" && qg add up.txt && qg commit -qm "feat: up" && qg push -q -u origin feat/up && qw pr record P5 --url https://github.com/acme/toy/pull/6 \
   && qn add -A && qn commit -qm "chore: the stack"; } > "$QW/p45.txt" 2>&1 || bad "lifecycle probe: P4/P5 failed -- $(tail -3 "$QW/p45.txt")"
-q_p1=$(qw next 2>&1); qw set-slice-status P4.DECOMP pending --stop-kind decision --on-words "an answer resumes it" >/dev/null 2>&1; q_p2=$(qw next 2>&1); q_p2c=$(qw next --card 2>&1)
-qw set-slice-status P4.DECOMP in_progress >/dev/null 2>&1
+q_p1=$(qw next 2>&1); qw slice status P4.DECOMP pending --stop-kind decision --on-words "an answer resumes it" >/dev/null 2>&1; q_p2=$(qw next 2>&1); q_p2c=$(qw next --card 2>&1)
+qw slice status P4.DECOMP in_progress >/dev/null 2>&1
 newtmp QCL; { git clone -q -b main "$QW/origin.git" "$QCL/c" && git -C "$QCL/c" switch -q feat/lo && echo fix >> "$QCL/c/lo.txt" \
   && git -C "$QCL/c" -c user.email=mate@example.invalid -c user.name=mate commit -qam "fix: lo" && git -C "$QCL/c" push -q && qg fetch -q origin; } >/dev/null 2>&1
 q_mv=$(qw next 2>&1 | grep '^pr_stack='); ( eval "${q_mv#* -- }" ) >/dev/null 2>&1; q_mvrc=$?; q_mv2=$(qw next 2>&1 | grep -c '^pr_stack=')
@@ -5184,64 +4799,64 @@ q_mg=$(qw next 2>&1 | grep '^pr_stack='); q_mgc=$(qw next --card 2>&1 | grep '^p
 if printf '%s\n' "$q_p1" | grep -q '^pr_open=P1 host:feat/one state=ready ' && printf '%s\n' "$q_p1" | grep -qx 'current_slice=P4.DECOMP' \
     && printf '%s\n' "$q_p2" | grep -q '^pr_open=P1 host:feat/one state=ready ' && printf '%s\n' "$q_p2" | grep -q '^WAITING ON OPERATOR' && printf '%s\n' "$q_p2c" | grep -q '^pr_open: P1 host:feat/one state=ready' \
     && [ "$q_mv" = "pr_stack=P5 host:feat/up base=feat/lo lower=moved -- git -C $QH merge --no-ff origin/feat/lo; git -C $QH push" ] && [ "$q_mvrc" -eq 0 ] && [ "$q_mv2" = 0 ] \
-    && [ "$q_mg" = "pr_stack=P5 host:feat/up base=feat/lo lower=merged -- git -C $QH fetch origin; git -C $QH switch feat/up; git -C $QH merge --no-ff origin/main; git -C $QH push; gh pr edit 6 --base main; python3 workflow/scripts/workflow.py pr-branch P5 --name feat/up --base main" ] \
+    && [ "$q_mg" = "pr_stack=P5 host:feat/up base=feat/lo lower=merged -- git -C $QH fetch origin; git -C $QH switch feat/up; git -C $QH merge --no-ff origin/main; git -C $QH push; gh pr edit 6 --base main; python3 workflow/scripts/workflow.py pr branch P5 --name feat/up --base main" ] \
     && [ "$q_mgc" = 'pr_stack: P5 host:feat/up base=feat/lo lower=merged (`next` prints the steps)' ]; then
   ok "pr_open= prints on next's plain pointer and WAITING paths and the card; pr_stack= reads a teammate's push to the lower branch as lower=moved, whose printed steps (merge, never rebase; push, never --force) clear it, and a true --no-ff landing as lower=merged with the fetch/switch/merge/push/gh pr edit/re-record steps, in next and the card"
 else bad "pr_open= paths or pr_stack= moved/merged wrong (steps rc $q_mvrc, after $q_mv2) -- $(printf '%s\n' "$q_p1" "$q_p2" | grep 'pr_\|WAITING\|current_slice') / $q_mv / $q_mg / $q_mgc"; fi
 # (6) the base re-record on a not-checked-out branch with a dirty tree: HEAD, branch and status untouched, lifecycle fields kept, no line after.
-qpr 6 OPEN true null feat/lo; qw pr-sync P5 >/dev/null 2>&1; echo dirty >> "$QH/app.txt"
+qpr 6 OPEN true null feat/lo; qw pr sync P5 >/dev/null 2>&1; echo dirty >> "$QH/app.txt"
 q_h0=$(qg rev-parse HEAD); q_s0=$(qg status --porcelain); q_b0=$(qg branch --show-current)
-q_rr=$(qw pr-branch P5 --name feat/up --base main 2>&1); q_rrc=$?
+q_rr=$(qw pr branch P5 --name feat/up --base main 2>&1); q_rrc=$?
 q_same=$([ "$q_h0" = "$(qg rev-parse HEAD)" ] && [ "$q_s0" = "$(qg status --porcelain)" ] && [ "$q_b0" = "$(qg branch --show-current)" ] && echo y)
 q_rrs=$(qj P5 pr.branches.0.state); q_rrn=$(qw next 2>&1 | grep -c '^pr_stack='); qg checkout -q -- app.txt
-[ "$q_rrc" -eq 0 ] && printf '%s\n' "$q_rr" | grep -qx 'pr_branch=host:feat/up base=main' && printf '%s\n' "$q_rr" | grep -q '^pr-branch: feat/up base re-recorded from feat/lo -- no switch; nothing moved' \
+[ "$q_rrc" -eq 0 ] && printf '%s\n' "$q_rr" | grep -qx 'pr_branch=host:feat/up base=main' && printf '%s\n' "$q_rr" | grep -q '^pr branch: feat/up base re-recorded from feat/lo -- no switch; nothing moved' \
   && [ "$q_same" = y ] && [ "$q_rrs" = '"draft"' ] && [ "$(qj P5 pr.branches.0.base)" = '"main"' ] && [ "$q_rrn" = 0 ] \
-  && ok "pr-branch --base on a recorded branch that is not checked out, over a dirty tree, re-records the base only (HEAD, branch and status untouched, state=draft kept), and no pr_stack= line follows" \
+  && ok "pr branch --base on a recorded branch that is not checked out, over a dirty tree, re-records the base only (HEAD, branch and status untouched, state=draft kept), and no pr_stack= line follows" \
   || bad "the base re-record wrong (rc $q_rrc, untouched '$q_same', state $q_rrs, lines $q_rrn) -- $q_rr"
 # (7) a squash landing has no ancestry: no line until the lower PR's record reads merged, active and then archived; a vanished
 # lower branch reads lower=gone, and an entry with no URL drops the gh step.
-{ qnew P6 && qw pr-branch P6 --name feat/l2 && echo l2 > "$QH/l2.txt" && qg add l2.txt && qg commit -qm "feat: l2" && qg push -q -u origin feat/l2 && qw pr-record P6 --url https://github.com/acme/toy/pull/7 \
-  && qw new-phase --phase P7 --name u2 --objective toy && qw pr-branch P7 --name feat/u2 --base feat/l2 && echo u2 > "$QH/u2.txt" && qg add u2.txt && qg commit -qm "feat: u2" && qg push -q -u origin feat/u2 \
-  && qw pr-record P7 --url https://github.com/acme/toy/pull/8 && qg switch -q main && qg merge -q --squash feat/l2 && qg commit -qm "feat: l2 (squash)" && qg push -q origin main \
+{ qnew P6 && qw pr branch P6 --name feat/l2 && echo l2 > "$QH/l2.txt" && qg add l2.txt && qg commit -qm "feat: l2" && qg push -q -u origin feat/l2 && qw pr record P6 --url https://github.com/acme/toy/pull/7 \
+  && qw phase new --phase P7 --name u2 --objective toy && qw pr branch P7 --name feat/u2 --base feat/l2 && echo u2 > "$QH/u2.txt" && qg add u2.txt && qg commit -qm "feat: u2" && qg push -q -u origin feat/u2 \
+  && qw pr record P7 --url https://github.com/acme/toy/pull/8 && qg switch -q main && qg merge -q --squash feat/l2 && qg commit -qm "feat: l2 (squash)" && qg push -q origin main \
   && qn add -A && qn commit -qm "chore: P6 P7"; } > "$QW/p67.txt" 2>&1 || bad "lifecycle probe: P6/P7 failed -- $(tail -3 "$QW/p67.txt")"
-q_sq0=$(qw next 2>&1 | grep -c '^pr_stack=P7'); qpass P6; qpr 7 MERGED false '"2026-11-05T10:00:00Z"'; qw pr-sync P6 >/dev/null 2>&1
-q_sq1=$(qw next 2>&1 | grep '^pr_stack=P7'); qw archive-phase P6 >/dev/null 2>&1; q_sq2=$(qw next 2>&1 | grep '^pr_stack=P7')
-{ qw new-phase --phase P8 --name u3 --objective toy && qg switch -q -c feat/l3 && qw pr-branch P8 --name feat/u3 --base feat/l3 && qg branch -q -D feat/l3; } > "$QW/p8.txt" 2>&1 || bad "lifecycle probe: P8 failed -- $(tail -3 "$QW/p8.txt")"
+q_sq0=$(qw next 2>&1 | grep -c '^pr_stack=P7'); qpass P6; qpr 7 MERGED false '"2026-11-05T10:00:00Z"'; qw pr sync P6 >/dev/null 2>&1
+q_sq1=$(qw next 2>&1 | grep '^pr_stack=P7'); qw phase archive P6 >/dev/null 2>&1; q_sq2=$(qw next 2>&1 | grep '^pr_stack=P7')
+{ qw phase new --phase P8 --name u3 --objective toy && qg switch -q -c feat/l3 && qw pr branch P8 --name feat/u3 --base feat/l3 && qg branch -q -D feat/l3; } > "$QW/p8.txt" 2>&1 || bad "lifecycle probe: P8 failed -- $(tail -3 "$QW/p8.txt")"
 q_gone=$(qw next 2>&1 | grep '^pr_stack=P8')
-q_sqx="pr_stack=P7 host:feat/u2 base=feat/l2 lower=merged -- git -C $QH fetch origin; git -C $QH switch feat/u2; git -C $QH merge --no-ff origin/main; git -C $QH push; gh pr edit 8 --base main; python3 workflow/scripts/workflow.py pr-branch P7 --name feat/u2 --base main"
+q_sqx="pr_stack=P7 host:feat/u2 base=feat/l2 lower=merged -- git -C $QH fetch origin; git -C $QH switch feat/u2; git -C $QH merge --no-ff origin/main; git -C $QH push; gh pr edit 8 --base main; python3 workflow/scripts/workflow.py pr branch P7 --name feat/u2 --base main"
 [ "$q_sq0" = 0 ] && [ "$q_sq1" = "$q_sqx" ] && [ "$q_sq2" = "$q_sqx" ] && [ ! -d "$QH/workflow/works/phases/active/P6" ] \
-  && [ "$q_gone" = "pr_stack=P8 host:feat/u3 base=feat/l3 lower=gone -- git -C $QH fetch origin; git -C $QH merge --no-ff origin/main; git -C $QH push; python3 workflow/scripts/workflow.py pr-branch P8 --name feat/u3 --base main" ] \
+  && [ "$q_gone" = "pr_stack=P8 host:feat/u3 base=feat/l3 lower=gone -- git -C $QH fetch origin; git -C $QH merge --no-ff origin/main; git -C $QH push; python3 workflow/scripts/workflow.py pr branch P8 --name feat/u3 --base main" ] \
   && ok "pr_stack=: a squash landing prints nothing until the lower PR's record reads merged, then lower=merged from the active record and, archived, from the archived one; a vanished lower branch reads lower=gone, and with no URL the gh pr edit step is dropped" \
   || bad "pr_stack= squash/record/gone wrong (no-record lines $q_sq0) -- $q_sq1 / $q_sq2 / $q_gone"
 qg switch -q main; qn add -A; qn commit -qm "chore: before the reopen" >/dev/null 2>&1
-# (8) the nested reopen's refusals, each writing nothing: review-phase changes_requested on a done phase with an open PR, an empty
+# (8) the nested reopen's refusals, each writing nothing: review changes_requested on a done phase with an open PR, an empty
 # note, a phase not done, an archived phase, the host's main checkout holding the PR branch, and every PR recorded merged.
 r0=$(qsig)
-q_c1=$(qw review-phase P1 --verdict changes_requested --note x 2>&1); q_c1rc=$?
-q_c2=$(qw reopen-phase P1 --note "  " 2>&1); q_c2rc=$?
-q_c3=$(qw reopen-phase P4 --note "team-reported: x" 2>&1); q_c3rc=$?
-q_c4=$(qw reopen-phase P3 --note "team-reported: x" 2>&1); q_c4rc=$?
-qg switch -q feat/one; q_c5=$(qw reopen-phase P1 --note "team-reported: x" 2>&1); q_c5rc=$?; qg switch -q main
+q_c1=$(qw review P1 --verdict changes_requested --note x 2>&1); q_c1rc=$?
+q_c2=$(qw phase reopen P1 --note "  " 2>&1); q_c2rc=$?
+q_c3=$(qw phase reopen P4 --note "team-reported: x" 2>&1); q_c3rc=$?
+q_c4=$(qw phase reopen P3 --note "team-reported: x" 2>&1); q_c4rc=$?
+qg switch -q feat/one; q_c5=$(qw phase reopen P1 --note "team-reported: x" 2>&1); q_c5rc=$?; qg switch -q main
 cp "$P1J" "$QW/p1.bak"; python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["pr"]["branches"][0]["state"]="merged"; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$P1J"
-q_c6=$(qw reopen-phase P1 --note "team-reported: x" 2>&1); q_c6rc=$?; cp "$QW/p1.bak" "$P1J"; r1=$(qsig)
-if [ "$q_c1rc" -ne 0 ] && printf '%s\n' "$q_c1" | grep -q 'P1 is done and its PR is still open .*reopen-phase P1' && [ "$q_c2rc" -ne 0 ] && printf '%s\n' "$q_c2" | grep -q -- '--note is empty.*operator-reported: <what>' \
+q_c6=$(qw phase reopen P1 --note "team-reported: x" 2>&1); q_c6rc=$?; cp "$QW/p1.bak" "$P1J"; r1=$(qsig)
+if [ "$q_c1rc" -ne 0 ] && printf '%s\n' "$q_c1" | grep -q 'P1 is done and its PR is still open .*phase reopen P1' && [ "$q_c2rc" -ne 0 ] && printf '%s\n' "$q_c2" | grep -q -- '--note is empty.*operator-reported: <what>' \
     && [ "$q_c3rc" -ne 0 ] && printf '%s\n' "$q_c3" | grep -q "P4 is 'planned', not 'done'" && [ "$q_c4rc" -ne 0 ] && printf '%s\n' "$q_c4" | grep -q 'P3 is archived' \
-    && [ "$q_c5rc" -ne 0 ] && printf '%s\n' "$q_c5" | grep -q "checked out in the main checkout .* switch main" && [ "$q_c6rc" -ne 0 ] && printf '%s\n' "$q_c6" | grep -q 'every recorded PR reads state=merged .*pr-sync P1' \
+    && [ "$q_c5rc" -ne 0 ] && printf '%s\n' "$q_c5" | grep -q "checked out in the main checkout .* switch main" && [ "$q_c6rc" -ne 0 ] && printf '%s\n' "$q_c6" | grep -q 'every recorded PR reads state=merged .*pr sync P1' \
     && [ "$(printf '%s\n' "$q_c1" "$q_c2" "$q_c3" "$q_c4" "$q_c5" "$q_c6" | grep -c 'nothing was written')" = 6 ] && [ "$r0" = "$r1" ] && [ "$(qj P1 status)" = '"done"' ]; then
-  ok "reopen-phase refuses an empty note, a phase not done, an archived phase, the host's main checkout holding the PR branch and every PR recorded merged, and review-phase refuses changes_requested on a done phase with an open PR pointing at reopen-phase; each writes nothing (nested HEAD, status and events unchanged)"
+  ok "phase reopen refuses an empty note, a phase not done, an archived phase, the host's main checkout holding the PR branch and every PR recorded merged, and review refuses changes_requested on a done phase with an open PR pointing at phase reopen; each writes nothing (nested HEAD, status and events unchanged)"
 else bad "the reopen refusals wrong (rc $q_c1rc/$q_c2rc/$q_c3rc/$q_c4rc/$q_c5rc/$q_c6rc, unchanged=$([ "$r0" = "$r1" ] && echo y)) -- $q_c1 / $q_c2 / $q_c3 / $q_c4 / $q_c5 / $q_c6"; fi
 # (9) the nested reopen: one stamp commit, the worktree pair on the PR branch, next in both checkouts, a refusal from the phase's
-# own stream, the fix and the pass there with phase-scope covering it, host main untouched; a still-stamped pair refuses a second
+# own stream, the fix and the pass there with phase scope covering it, host main untouched; a still-stamped pair refuses a second
 # reopen until the teardown, and a stale branch name gives -reopen2.
 q_m0=$(qg rev-parse main); q_n0=$(qn rev-list --count HEAD)
-q_ro=$(qw reopen-phase P1 --note "team-reported: rename the toy flag" 2>&1); q_rorc=$?
+q_ro=$(qw phase reopen P1 --note "team-reported: rename the toy flag" 2>&1); q_rorc=$?
 QWT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["execution"]["host_worktree"] or "")' "$P1J" 2>/dev/null)
 qwt() { ( cd "$QWT" && PATH="$QG:$PATH" python3 workflow/scripts/workflow.py "$@" ); }
 git -C "$QWT/workflow" config user.email smoke@example.invalid; git -C "$QWT/workflow" config user.name smoke
-q_dn=$(qw next 2>&1); q_wn=$(qwt next 2>&1); q_ws=$(qwt reopen-phase P1 --note "team-reported: again" 2>&1); q_wsrc=$?
-{ qwt set-slice-status P1.REVIEW in_progress && echo fix > "$QWT/fix.py" && git -C "$QWT" add fix.py && git -C "$QWT" commit -qm "fix: rename" \
-  && qwt accept-gate P1 --open --walkthrough again && qwt accept-gate P1 --clear && qwt review-phase P1 --verdict pass && git -C "$QWT/workflow" add -A && git -C "$QWT/workflow" commit -qm "chore: P1 re-pass"; } > "$QW/repass.txt" 2>&1
-q_rprc=$?; q_sc=$(qwt phase-scope P1 2>&1)
+q_dn=$(qw next 2>&1); q_wn=$(qwt next 2>&1); q_ws=$(qwt phase reopen P1 --note "team-reported: again" 2>&1); q_wsrc=$?
+{ qwt slice status P1.REVIEW in_progress && echo fix > "$QWT/fix.py" && git -C "$QWT" add fix.py && git -C "$QWT" commit -qm "fix: rename" \
+  && qwt gate P1 open --walkthrough again && qwt gate P1 clear --words accept && qwt review P1 --verdict pass && git -C "$QWT/workflow" add -A && git -C "$QWT/workflow" commit -qm "chore: P1 re-pass"; } > "$QW/repass.txt" 2>&1
+q_rprc=$?; q_sc=$(qwt phase scope P1 2>&1)
 if [ "$q_rorc" -eq 0 ] && printf '%s\n' "$q_ro" | grep -qx "reopened=P1 branch=host:feat/one worktree=$QH/.claude/worktrees/P1-toy" && [ "$(( $(qn rev-list --count HEAD) - q_n0 ))" = 1 ] \
     && [ "$(qn log -1 --format=%s)" = "chore(works): reopen P1 in its own worktree" ] && [ "$(git -C "$QWT" branch --show-current)" = feat/one ] \
     && [ "$(qj P1 review.status)" = '"changes_requested"' ] && [ "$(qj P1 review.note)" = '"team-reported: rename the toy flag"' ] && [ "$(qj P1 review.fix_passes)" = 1 ] \
@@ -5249,48 +4864,48 @@ if [ "$q_rorc" -eq 0 ] && printf '%s\n' "$q_ro" | grep -qx "reopened=P1 branch=h
     && [ "$q_wsrc" -ne 0 ] && printf '%s\n' "$q_ws" | grep -q "P1 is 'in_progress', not 'done'" \
     && [ "$q_rprc" -eq 0 ] && grep -q '^phase P1 review: pass' "$QW/repass.txt" && printf '%s\n' "$q_sc" | grep -qx '  A fix.py' && printf '%s\n' "$q_sc" | grep -qx '  M app.txt' \
     && [ "$q_m0" = "$(qg rev-parse main)" ]; then
-  ok "reopen-phase on a nested install: one stamp commit, a worktree pair on the PR branch feat/one, the review changes_requested with the team's note; the default stream lists it elsewhere, the worktree's next selects P1.REVIEW and refuses a second reopen there; the fix and the pass land in the worktree, phase-scope covers fix.py, and host main is untouched"
+  ok "phase reopen on a nested install: one stamp commit, a worktree pair on the PR branch feat/one, the review changes_requested with the team's note; the default stream lists it elsewhere, the worktree's next selects P1.REVIEW and refuses a second reopen there; the fix and the pass land in the worktree, phase scope covers fix.py, and host main is untouched"
 else bad "the nested reopen wrong (rc $q_rorc/$q_wsrc/$q_rprc) -- $q_ro / $(printf '%s\n' "$q_dn" | grep parallel_) / $(printf '%s\n' "$q_wn" | grep current_) / $q_ws / $(tail -3 "$QW/repass.txt") / $q_sc"; fi
 { qn add -A && qn commit -qm "chore: rebuild"; qn merge -q --no-ff -m "merge(P1): Toy" phase/P1-toy || { qn checkout -q --theirs works/backlog.md && qn add -A && qn commit -qm "merge(P1): Toy"; }; \
-  qw parallel-merge-finish && qn add -A && qn commit -qm "chore: integrated"; } > "$QW/merge.txt" 2>&1
-q_st=$(qw reopen-phase P1 --note "team-reported: again" 2>&1); q_strc=$?
-{ qw parallel-teardown P1 && qn add -A && qn commit -qm "chore: teardown" && qn branch phase/P1-toy; } > "$QW/teardown.txt" 2>&1
-q_r2=$(qw reopen-phase P1 --note "operator-reported: again" 2>&1); q_r2rc=$?
-if [ "$(qj P1 status)" != null ] && [ "$q_strc" -ne 0 ] && printf '%s\n' "$q_st" | grep -q 'parallel-teardown P1 first' \
+  qw worktree merge-finish && qn add -A && qn commit -qm "chore: integrated"; } > "$QW/merge.txt" 2>&1
+q_st=$(qw phase reopen P1 --note "team-reported: again" 2>&1); q_strc=$?
+{ qw worktree teardown P1 && qn add -A && qn commit -qm "chore: teardown" && qn branch phase/P1-toy; } > "$QW/teardown.txt" 2>&1
+q_r2=$(qw phase reopen P1 --note "operator-reported: again" 2>&1); q_r2rc=$?
+if [ "$(qj P1 status)" != null ] && [ "$q_strc" -ne 0 ] && printf '%s\n' "$q_st" | grep -q 'worktree teardown P1 first' \
     && [ "$q_r2rc" -eq 0 ] && printf '%s\n' "$q_r2" | grep -qx 'branch=phase/P1-toy-reopen2' && printf '%s\n' "$q_r2" | grep -q '^reopened=P1 branch=host:feat/one ' \
     && printf '%s\n' "$q_r2" | grep -q "^next: .* -- read the operator's request (the reopen note 'operator-reported: again', plus any PR comment or failing check it points at), cut fix slices" \
     && ! printf '%s\n' "$q_r2" | grep -q "team's review" && printf '%s\n' "$q_ro" | grep -q "^next: .* -- read the team's review (gh pr view <n> --json reviews,comments), cut fix slices" \
     && [ "$q_m0" = "$(qg rev-parse main)" ] && ! git -C "$QH" merge-base --is-ancestor feat/one main; then
-  ok "after the integration a still-stamped pair refuses a second reopen (parallel-teardown first); after the teardown, with the old phase branch still present, the second reopen (operator-reported) cuts phase/P1-toy-reopen2 and its next: line reads the operator's request, never the team's review (the first, team-reported, reads the team's); host main never moved and feat/one is not in it"
+  ok "after the integration a still-stamped pair refuses a second reopen (worktree teardown first); after the teardown, with the old phase branch still present, the second reopen (operator-reported) cuts phase/P1-toy-reopen2 and its next: line reads the operator's request, never the team's review (the first, team-reported, reads the team's); host main never moved and feat/one is not in it"
 else bad "the still-stamped refusal or -reopen2 wrong (rc $q_strc/$q_r2rc) -- $q_st / $q_r2 / $(tail -3 "$QW/merge.txt") / $(tail -3 "$QW/teardown.txt")"; fi
-# (10) root: pr-team reads unknown with no origin and no commits; the reopen refuses --worktree, a checkout off the PR branch and a
-# side branch, then runs in place on feat/toy; with the reopen committed beside the fix, phase-scope ends at the second pass.
+# (10) root: pr team reads unknown with no origin and no commits; the reopen refuses --worktree, a checkout off the PR branch and a
+# side branch, then runs in place on feat/toy; with the reopen committed beside the fix, phase scope ends at the second pass.
 newtmp QRW; QRW=$(cd "$QRW" && pwd -P); QR="$QRW/ws"; mkdir -p "$QR"; git init -q --bare "$QRW/origin.git"
 qr() { ( cd "$QR" && PATH="$QG:$PATH" python3 scripts/workflow.py "$@" ); }; qrg() { git -C "$QR" "$@"; }
 { qrg init -q . && qrg symbolic-ref HEAD refs/heads/main && qrg config user.email smoke@example.invalid && qrg config user.name smoke && sh "$BOOT" "$QR" --at-root --name R --summary r; } > "$QRW/install.txt" 2>&1
-q_ru=$(qr pr-team 2>&1)
+q_ru=$(qr pr team 2>&1)
 { echo a > "$QR/app.py" && qrg add -A && qrg commit -qm baseline && qrg remote add origin "$QRW/origin.git" \
-  && qr new-phase --phase P1 --name toy --objective toy && qr accept-gate P1 --require && qr set-slice-status P1.DECOMP done && qrg add -A && qrg commit -qm p1 && qrg push -q origin main \
-  && qr pr-branch P1 --name feat/toy && echo b >> "$QR/app.py" && qrg commit -qam "feat: toy" && qr pr-record P1 --url https://github.com/acme/r/pull/7 \
-  && qr set-slice-status P1.REVIEW in_progress && : > "$QR/works/phases/active/P1/slices/P1.REVIEW/result.md" && qr accept-gate P1 --open --walkthrough w && qr accept-gate P1 --clear \
-  && qr review-phase P1 --verdict pass && qrg add -A && qrg commit -qm "p1 done" && qrg push -q -u origin feat/toy; } > "$QRW/setup.txt" 2>&1 || bad "root reopen probe: setup failed -- $(tail -3 "$QRW/setup.txt")"
-q_ro1=$(qr next 2>&1 | grep '^pr_open='); q_rw=$(qr reopen-phase P1 --note "team-reported: x" --worktree "$QRW/wt" 2>&1); q_rwrc=$?
-qrg switch -q main; q_rm=$(qr reopen-phase P1 --note "team-reported: x" 2>&1); q_rmrc=$?; qrg switch -q feat/toy
-qrg switch -q -c feat/side; q_rs=$(qr reopen-phase P1 --note "team-reported: x" 2>&1); q_rsrc=$?; qrg switch -q feat/toy
-q_ri=$(qr reopen-phase P1 --note "team-reported: rename" 2>&1); q_rirc=$?; q_rin=$(qr next 2>&1)
-{ echo fix > "$QR/fix.py" && qrg add -A && qrg commit -qm "fix: rename" && qr set-slice-status P1.REVIEW in_progress && qr accept-gate P1 --open --walkthrough w \
-  && qr accept-gate P1 --clear && qr review-phase P1 --verdict pass && qrg add -A && qrg commit -qm "p1 pass 2" && echo later > "$QR/later.py" && qrg add later.py && qrg commit -qm "feat: later"; } > "$QRW/fix.txt" 2>&1
-q_rsc=$(qr phase-scope P1 2>&1); q_rp2=$(qrg rev-parse HEAD~1)
+  && qr phase new --phase P1 --name toy --objective toy && qr gate P1 require && qr slice status P1.DECOMP done && qrg add -A && qrg commit -qm p1 && qrg push -q origin main \
+  && qr pr branch P1 --name feat/toy && echo b >> "$QR/app.py" && qrg commit -qam "feat: toy" && qr pr record P1 --url https://github.com/acme/r/pull/7 \
+  && qr slice status P1.REVIEW in_progress && : > "$QR/works/phases/active/P1/slices/P1.REVIEW/result.md" && qr gate P1 open --walkthrough w && qr gate P1 clear --words accept \
+  && qr review P1 --verdict pass && qrg add -A && qrg commit -qm "p1 done" && qrg push -q -u origin feat/toy; } > "$QRW/setup.txt" 2>&1 || bad "root reopen probe: setup failed -- $(tail -3 "$QRW/setup.txt")"
+q_ro1=$(qr next 2>&1 | grep '^pr_open='); q_rw=$(qr phase reopen P1 --note "team-reported: x" --worktree "$QRW/wt" 2>&1); q_rwrc=$?
+qrg switch -q main; q_rm=$(qr phase reopen P1 --note "team-reported: x" 2>&1); q_rmrc=$?; qrg switch -q feat/toy
+qrg switch -q -c feat/side; q_rs=$(qr phase reopen P1 --note "team-reported: x" 2>&1); q_rsrc=$?; qrg switch -q feat/toy
+q_ri=$(qr phase reopen P1 --note "team-reported: rename" 2>&1); q_rirc=$?; q_rin=$(qr next 2>&1)
+{ echo fix > "$QR/fix.py" && qrg add -A && qrg commit -qm "fix: rename" && qr slice status P1.REVIEW in_progress && qr gate P1 open --walkthrough w \
+  && qr gate P1 clear --words accept && qr review P1 --verdict pass && qrg add -A && qrg commit -qm "p1 pass 2" && echo later > "$QR/later.py" && qrg add later.py && qrg commit -qm "feat: later"; } > "$QRW/fix.txt" 2>&1
+q_rsc=$(qr phase scope P1 2>&1); q_rp2=$(qrg rev-parse HEAD~1)
 if printf '%s\n' "$q_ru" | grep -qx 'pr_team=root recorded=none detected=unknown evidence="collaborators: unavailable; authors: unavailable"' \
-    && [ "$q_ro1" = 'pr_open=P1 root:feat/toy state=unsynced url=https://github.com/acme/r/pull/7 -- the close is due (pr skill; pr-sync P1 first)' ] \
+    && [ "$q_ro1" = 'pr_open=P1 root:feat/toy state=unsynced url=https://github.com/acme/r/pull/7 -- the close is due (close P1)' ] \
     && [ "$q_rwrc" -ne 0 ] && printf '%s\n' "$q_rw" | grep -q 'at root the reopen runs in place' && [ "$q_rmrc" -ne 0 ] && printf '%s\n' "$q_rm" | grep -q "P1 is 'planned', not 'done'.* at root a phase's record is only as current as this checkout's branch" \
     && [ "$q_rsrc" -ne 0 ] && printf '%s\n' "$q_rs" | grep -q 'this checkout is on feat/side. Either switch here at a slice boundary (git switch feat/toy)' \
     && [ "$q_rirc" -eq 0 ] && printf '%s\n' "$q_ri" | grep -qx "reopened=P1 branch=root:feat/toy worktree=$QR" && printf '%s\n' "$q_rin" | grep -qx 'current_slice=P1.REVIEW' \
     && printf '%s\n' "$q_rsc" | grep -q "^head=$q_rp2 " && printf '%s\n' "$q_rsc" | grep -qx '  A fix.py' && ! printf '%s\n' "$q_rsc" | grep -q 'later.py' \
     && [ "$(qrg rev-parse main)" = "$(qrg rev-parse origin/main)" ]; then
-  ok "root: pr-team reads unknown with no origin and no commits; reopen-phase refuses --worktree, the default branch (P1 planned there) and a side branch (naming git switch feat/toy), then reopens in place on feat/toy; with the reopen committed beside the fix, phase-scope ends at the second pass (fix.py in, a later commit out)"
+  ok "root: pr team reads unknown with no origin and no commits; phase reopen refuses --worktree, the default branch (P1 planned there) and a side branch (naming git switch feat/toy), then reopens in place on feat/toy; with the reopen committed beside the fix, phase scope ends at the second pass (fix.py in, a later commit out)"
 else bad "the root reopen wrong (rc $q_rwrc/$q_rmrc/$q_rsrc/$q_rirc) -- $q_ru / $q_ro1 / $q_rw / $q_rm / $q_rs / $q_ri / $(printf '%s\n' "$q_rsc" | grep 'head=\|^  ') / pass2=$q_rp2"; fi
-# (11) a multi-repo host: pr-sync --repo reads one repo's PR; pr-team needs --repo there; the pr_stack= steps carry --repo; the
+# (11) a multi-repo host: pr sync --repo reads one repo's PR; pr team needs --repo there; the pr_stack= steps carry --repo; the
 # reopen needs --host-branch and builds its set from the open PR branches.
 newtmp QMW; QMW=$(cd "$QMW" && pwd -P); QM="$QMW/host"; mkdir -p "$QM"
 for r in api web; do git init -q --bare "$QMW/$r.git"; mkdir -p "$QM/$r"; ( cd "$QM/$r" && git init -q . && git symbolic-ref HEAD refs/heads/main && git config user.email smoke@example.invalid \
@@ -5298,30 +4913,30 @@ for r in api web; do git init -q --bare "$QMW/$r.git"; mkdir -p "$QM/$r"; ( cd "
 qm() { ( cd "$QM" && PATH="$QG:$PATH" python3 workflow/scripts/workflow.py "$@" ); }
 { env GIT_AUTHOR_NAME=smoke GIT_AUTHOR_EMAIL=smoke@example.invalid GIT_COMMITTER_NAME=smoke GIT_COMMITTER_EMAIL=smoke@example.invalid sh "$BOOT" "$QM" \
   && git -C "$QM" config user.email smoke@example.invalid && git -C "$QM" config user.name smoke && git -C "$QM/workflow" config user.email smoke@example.invalid && git -C "$QM/workflow" config user.name smoke \
-  && qm new-phase --phase P1 --name multi --objective toy && qm accept-gate P1 --waive --note toy && qm set-slice-status P1.DECOMP done \
-  && qm pr-branch P1 --repo api --name feat/api && echo x >> "$QM/api/api.txt" && git -C "$QM/api" commit -qam "feat: x" && git -C "$QM/api" push -q -u origin feat/api \
-  && qm pr-branch P1 --repo web --name feat/web && echo y >> "$QM/web/web.txt" && git -C "$QM/web" commit -qam "feat: y" && git -C "$QM/web" push -q -u origin feat/web \
-  && qm pr-record P1 --repo api --url https://github.com/acme/api/pull/11 && qm pr-record P1 --repo web --url https://github.com/acme/web/pull/21 \
-  && qm set-slice-status P1.REVIEW in_progress && : > "$QM/workflow/works/phases/active/P1/slices/P1.REVIEW/result.md" && qm review-phase P1 --verdict pass \
+  && qm phase new --phase P1 --name multi --objective toy && qm gate P1 waive --note toy && qm slice status P1.DECOMP done \
+  && qm pr branch P1 --repo api --name feat/api && echo x >> "$QM/api/api.txt" && git -C "$QM/api" commit -qam "feat: x" && git -C "$QM/api" push -q -u origin feat/api \
+  && qm pr branch P1 --repo web --name feat/web && echo y >> "$QM/web/web.txt" && git -C "$QM/web" commit -qam "feat: y" && git -C "$QM/web" push -q -u origin feat/web \
+  && qm pr record P1 --repo api --url https://github.com/acme/api/pull/11 && qm pr record P1 --repo web --url https://github.com/acme/web/pull/21 \
+  && qm slice status P1.REVIEW in_progress && : > "$QM/workflow/works/phases/active/P1/slices/P1.REVIEW/result.md" && qm review P1 --verdict pass \
   && git -C "$QM/workflow" add -A && git -C "$QM/workflow" commit -qm "P1 done"; } > "$QMW/setup.txt" 2>&1 || bad "multi-repo lifecycle probe: setup failed -- $(tail -3 "$QMW/setup.txt")"
 mv "$QG/gh.log" "$QG/gh.log.nested" 2>/dev/null
-qpr 11 OPEN false null; q_ms=$(qm pr-sync P1 --repo api 2>&1); q_msrc=$?; q_mslog=$(cat "$QG/gh.log" 2>/dev/null)
-q_mt0=$(qm pr-team 2>&1); q_mt0rc=$?; q_mt=$(qm pr-team --repo api 2>&1); q_mtr=$(qm pr-team --record solo --repo api --evidence "one author" 2>&1); q_mo=$(qm next 2>&1 | grep '^pr_open=P1 api:')
-{ qm new-phase --phase P2 --name up --objective toy && qm pr-branch P2 --repo api --name feat/api2 --base feat/api && echo z >> "$QM/api/api.txt" && git -C "$QM/api" commit -qam "feat: z" \
-  && git -C "$QM/api" push -q -u origin feat/api2 && qm pr-record P2 --repo api --url https://github.com/acme/api/pull/12 && git -C "$QM/api" switch -q main \
+qpr 11 OPEN false null; q_ms=$(qm pr sync P1 --repo api 2>&1); q_msrc=$?; q_mslog=$(cat "$QG/gh.log" 2>/dev/null)
+q_mt0=$(qm pr team 2>&1); q_mt0rc=$?; q_mt=$(qm pr team --repo api 2>&1); q_mtr=$(qm pr team --record solo --repo api --evidence "one author" 2>&1); q_mo=$(qm next 2>&1 | grep '^pr_open=P1 api:')
+{ qm phase new --phase P2 --name up --objective toy && qm pr branch P2 --repo api --name feat/api2 --base feat/api && echo z >> "$QM/api/api.txt" && git -C "$QM/api" commit -qam "feat: z" \
+  && git -C "$QM/api" push -q -u origin feat/api2 && qm pr record P2 --repo api --url https://github.com/acme/api/pull/12 && git -C "$QM/api" switch -q main \
   && git -C "$QM/api" merge -q --no-ff feat/api -m "merge feat/api" && git -C "$QM/api" push -q origin main && git -C "$QM/web" switch -q main \
   && git -C "$QM/workflow" add -A && git -C "$QM/workflow" commit -qm "P2"; } > "$QMW/p2.txt" 2>&1 || bad "multi-repo lifecycle probe: P2 failed -- $(tail -3 "$QMW/p2.txt")"
 q_mst=$(qm next 2>&1 | grep '^pr_stack=')
-q_mr0=$(qm reopen-phase P1 --note "team-reported: x" 2>&1); q_mr0rc=$?
-q_mr=$(qm reopen-phase P1 --note "team-reported: x" --host-branch hostfix 2>&1); q_mrrc=$?
+q_mr0=$(qm phase reopen P1 --note "team-reported: x" 2>&1); q_mr0rc=$?
+q_mr=$(qm phase reopen P1 --note "team-reported: x" --host-branch hostfix 2>&1); q_mrrc=$?
 if [ "$q_msrc" -eq 0 ] && printf '%s\n' "$q_ms" | grep -qx 'pr_sync=api:feat/api state=ready base=main head=0123456 review=none merged_at=none' && ! printf '%s\n' "$q_ms" | grep -q 'web:' \
-    && [ "$q_mslog" = "pr view https://github.com/acme/api/pull/11 --json state,isDraft,mergedAt,baseRefName,headRefOid,reviewDecision" ] \
+    && [ "$q_mslog" = "pr view https://github.com/acme/api/pull/11 --json state,isDraft,mergedAt,baseRefName,headRefOid,reviewDecision,updatedAt,comments" ] \
     && [ "$q_mt0rc" -ne 0 ] && printf '%s\n' "$q_mt0" | grep -q 'needs --repo <name> (registered: api, web)' && printf '%s\n' "$q_mt" | grep -q '^pr_team=api recorded=none detected=solo ' \
-    && printf '%s\n' "$q_mtr" | grep -q '^pr-team: recorded -- api is solo' && printf '%s\n' "$q_mo" | grep -q "the close's merge is due" \
-    && [ "$q_mst" = "pr_stack=P2 api:feat/api2 base=feat/api lower=merged -- git -C $QM/api fetch origin; git -C $QM/api switch feat/api2; git -C $QM/api merge --no-ff origin/main; git -C $QM/api push; gh pr edit 12 --base main; python3 workflow/scripts/workflow.py pr-branch P2 --repo api --name feat/api2 --base main" ] \
+    && printf '%s\n' "$q_mtr" | grep -q '^pr team: recorded -- api is solo' && printf '%s\n' "$q_mo" | grep -q "the close's merge is due" \
+    && [ "$q_mst" = "pr_stack=P2 api:feat/api2 base=feat/api lower=merged -- git -C $QM/api fetch origin; git -C $QM/api switch feat/api2; git -C $QM/api merge --no-ff origin/main; git -C $QM/api push; gh pr edit 12 --base main; python3 workflow/scripts/workflow.py pr branch P2 --repo api --name feat/api2 --base main" ] \
     && [ "$q_mr0rc" -ne 0 ] && printf '%s\n' "$q_mr0" | grep -q -- '--host-branch <name> -- nothing was written' \
     && [ "$q_mrrc" -eq 0 ] && printf '%s\n' "$q_mr" | grep -qx "reopened=P1 branch=api:feat/api,web:feat/web worktree=$QM/.claude/worktrees/P1-multi"; then
-  ok "multi-repo: pr-sync --repo api reads only api's PR (one gh call); pr-team needs --repo, reads api: and records it solo (its pr_open= hint then says the merge is due); the pr_stack= steps run in the api checkout and re-record with --repo api; the reopen refuses with no --host-branch, then builds the set api:feat/api,web:feat/web"
+  ok "multi-repo: pr sync --repo api reads only api's PR (one gh call); pr team needs --repo, reads api: and records it solo (its pr_open= hint then says the merge is due); the pr_stack= steps run in the api checkout and re-record with --repo api; the reopen refuses with no --host-branch, then builds the set api:feat/api,web:feat/web"
 else bad "multi-repo lifecycle wrong (rc $q_msrc/$q_mt0rc/$q_mr0rc/$q_mrrc) -- $q_ms / log: $q_mslog / $q_mt0 / $q_mt / $q_mtr / $q_mo / $q_mst / $q_mr0 / $q_mr"; fi
 # (12) zero GitHub writes: every call the stub saw is a read (pr view, the collaborators GET).
 cat "$QG/gh.log.nested" "$QG/gh.log" 2>/dev/null > "$QG/gh.all"
@@ -5333,19 +4948,19 @@ echo "pr lifecycle test runtime: $(( $(date +%s) - lc_t0 ))s"
 # The engine counts a review cycle's fix passes: the first changes_requested prints the fix-slice hint and no count,
 # a blocked verdict adds nothing, the second prints fix_passes=2 and the stop in place of the hint, and a pass
 # ends the cycle (the next change request counts one again). The reopen above starts its cycle at one.
-qr new-phase --phase P9 --name count --objective count >/dev/null 2>&1
-fp1=$(qr review-phase P9 --verdict changes_requested --note one 2>&1)
-fpb=$(qr review-phase P9 --verdict blocked --note wait 2>&1)
-fp2=$(qr review-phase P9 --verdict changes_requested --note two 2>&1)
+qr phase new --phase P9 --name count --objective count >/dev/null 2>&1
+fp1=$(qr review P9 --verdict changes_requested --note one 2>&1)
+fpb=$(qr review P9 --verdict blocked --note wait 2>&1)
+fp2=$(qr review P9 --verdict changes_requested --note two 2>&1)
 fpn() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["review"].get("fix_passes"))' "$QR/works/phases/active/P9/phase.json"; }
-fp2n=$(fpn); qr accept-gate P9 --waive --note probe >/dev/null 2>&1; fpp=$(qr review-phase P9 --verdict pass 2>&1); fppn=$(fpn)
-fp3=$(qr review-phase P9 --verdict changes_requested --note three 2>&1); fp3n=$(fpn)
+fp2n=$(fpn); qr gate P9 waive --note probe >/dev/null 2>&1; fpp=$(qr review P9 --verdict pass 2>&1); fppn=$(fpn)
+fp3=$(qr review P9 --verdict changes_requested --note three 2>&1); fp3n=$(fpn)
 if ! printf '%s\n' "$fp1$fpb" | grep -q 'fix_passes=' && printf '%s\n' "$fp1" | grep -q '^create fix slices' \
     && printf '%s\n' "$fp2" | grep -q "^fix_passes=2: the one fix pass already ran -- a further fix needs the operator's word" \
-    && printf '%s\n' "$fp2" | grep -q 'set-slice-status P9.REVIEW pending --stop-kind decision' \
+    && printf '%s\n' "$fp2" | grep -q 'slice status P9.REVIEW pending --stop-kind decision' \
     && ! printf '%s\n' "$fp2" | grep -q '^create fix slices' && [ "$fp2n" = 2 ] \
     && ! printf '%s\n' "$fp3" | grep -q 'fix_passes=' && printf '%s\n' "$fp3" | grep -q '^create fix slices' && [ "$fp3n" = 1 ]; then
-  ok "review-phase counts the cycle's fix passes: the hint and no count on the first changes_requested, fix_passes=2 with the stop in its place on the second, a blocked verdict adds none, a pass clears it"
+  ok "review counts the cycle's fix passes: the hint and no count on the first changes_requested, fix_passes=2 with the stop in its place on the second, a blocked verdict adds none, a pass clears it"
 else bad "the fix-pass count is wrong ($fp2n/$fppn/$fp3n) -- $fp1 / $fpb / $fp2 / $fpp / $fp3"; fi
 
 # ---------------------------------------------------------------------------
@@ -5373,13 +4988,13 @@ PY
   || bad "cloud probe: the install failed -- $(tail -3 "$CLW/setup.txt")"
 # (a) local mode: no link file, so no command opens a socket or writes .hi2vi/ (byte-equal: the whole suite).
 cl_in=""
-for c in "next" "new-phase --phase P1 --name One --objective toy" "new-phase --phase P2 --name Two --objective toy" \
-    "defer-job --title a --reason r --trigger t --source manual" "agenda-add --title x" "rebuild" "validate" "next --card"; do
+for c in "next" "phase new --phase P1 --name One --objective toy" "phase new --phase P2 --name Two --objective toy" \
+    "defer-job --title a --reason r --trigger t --source manual" "agenda-add --title x" "check" "check --no-rebuild" "next --card"; do
   # shellcheck disable=SC2086
   cl_nosock $c > "$CLW/nosock.txt" 2>&1; [ "$?" = 97 ] && cl_in="$cl_in [$c: $(tail -1 "$CLW/nosock.txt")]"
 done
 [ -z "$cl_in" ] && [ ! -e "$CL/workflow/.hi2vi" ] && [ -d "$CL/workflow/works/phases/active/P2" ] \
-  && ok "local mode: with no .hi2vi/link.json, next, new-phase, defer-job, agenda-add, rebuild, validate and next --card open no socket and write no .hi2vi/" \
+  && ok "local mode: with no .hi2vi/link.json, next, phase new, defer-job, agenda-add, check, check --no-rebuild and next --card open no socket and write no .hi2vi/" \
   || bad "local mode reached the network or wrote .hi2vi/ --$cl_in $(ls -a "$CL/workflow/.hi2vi" 2>/dev/null)"
 # (b) link the checkout by hand to a fake hi2vi on a free port (the link command itself is not part of this check).
 CLK="cloud-smoke-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
@@ -5430,9 +5045,10 @@ if check == "first":
     need(all(op["origin"] == "carried" for op in ops), "a first sync's files are carried")
     need(all(op["op"] in ("put", "append") and op.get("base_rev") is None for op in ops), "a first sync only adds")
     need(any(op["op"] == "append" and op["path"] == "works/events.jsonl" for op in ops), "events.jsonl not sent as an append")
-    need(not any(p.startswith(("works/templates/", "docs/current/")) or p in ("works/state.json", "works/index.json",
+    need(not any(p.startswith("works/templates/") or p in ("works/state.json", "works/index.json",
          "works/backlog.md", "works/.workspace-version.json") for p in live), f"a non-truth file reached the cloud: {sorted(live)}")
-    need("works/phases/active/P2/phase.json" in live and "docs/index.json" in live, "a truth file is missing in the cloud")
+    need("works/phases/active/P2/phase.json" in live and "docs/current/product.md" in live and "docs/index.json" not in live,
+         "a truth file is missing in the cloud (the plain docs/current files are truth since the docs subsystem retired)")
     need(C[0]["batch"]["derived"] == ["works/index.json", "works/state.json"], f"the P9 records: {C[0]['batch']['derived']}")
     need(base.get("head") == S["head"] == 1 and set(base.get("files", {})) == set(live), "base.json does not match the cloud")
 elif check == "carried":
@@ -5475,16 +5091,16 @@ cl_m=$(cl_mark); cl defer-job --title b --reason r --trigger t --source manual >
 # (d) equal content: the same bytes rewritten, then a rebuild and a read: no batch, base.json unchanged.
 cl_b0=$(sha "$CL/workflow/.hi2vi/base.json"); sleep 1
 printf 'an agent wrote this\n' > "$CL/workflow/works/phases/active/P1/slices/P1.DECOMP/result.md"
-cl_m=$(cl_mark); cl rebuild >/dev/null; cl next >/dev/null; cl_r=$(cl_check "$cl_m" noop)
+cl_m=$(cl_mark); cl check >/dev/null; cl next >/dev/null; cl_r=$(cl_check "$cl_m" noop)
 [ "$cl_r" = ok ] && [ "$cl_b0" = "$(sha "$CL/workflow/.hi2vi/base.json")" ] \
   && ok "equal content is a no-op: result.md rewritten with its own bytes, then rebuild and next, send no batch and leave base.json byte-equal" \
   || bad "equal content sent a batch or moved base.json -- $cl_r"
 # (e) an archive's folder move: move ops paired by sha, no delete, events.jsonl one append.
-cl_m=$(cl_mark); cl archive-phase P1 --force >/dev/null; cl_r=$(cl_check "$cl_m" archive)
-[ "$cl_r" = ok ] && ok "archive-phase's folder move goes as move ops paired by sha (no delete, the carried result.md moved too) and works/events.jsonl as one append, never a revisioned put" \
+cl_m=$(cl_mark); cl phase archive P1 --force >/dev/null; cl_r=$(cl_check "$cl_m" archive)
+[ "$cl_r" = ok ] && ok "phase archive's folder move goes as move ops paired by sha (no delete, the carried result.md moved too) and works/events.jsonl as one append, never a revisioned put" \
   || bad "the archive batch wrong -- $cl_r"
 # (f) a change made only in the cloud (another checkout renames P2) is pulled at the next command, and the
-# generated files are rebuilt after the pull: docs is a read that renders nothing, so only the pull's rebuild can.
+# generated files are rebuilt after the pull: section is a read that renders nothing, so only the pull's rebuild can.
 python3 - "$CLS" "$CL/workflow/works/phases/active/P2/phase.json" <<'PY' || bad "cloud probe: the fake write failed"
 import http.client, json, sys
 from urllib.parse import urlparse
@@ -5496,7 +5112,7 @@ conn.request("POST", "/_fake/write", json.dumps({"path": "works/phases/active/P2
              "content": json.dumps(data, ensure_ascii=False, indent=2) + "\n"}), {"Content-Type": "application/json"})
 assert conn.getresponse().status == 200
 PY
-cl_m=$(cl_mark); cl docs >/dev/null; cl_r=$(cl_check "$cl_m" pulled)
+cl_m=$(cl_mark); cl section P2 Objective >/dev/null; cl_r=$(cl_check "$cl_m" pulled)
 [ "$cl_r" = ok ] && grep -qF 'Two, renamed in hi2vi' "$CL/workflow/works/backlog.md" \
   && grep -qF 'Two, renamed in hi2vi' "$CL/workflow/works/index.json" \
   && ok "a cloud-only change is pulled at the next command's begin step (manifest, fetch, base.json at the cloud's head) and backlog.md and index.json are rebuilt from it" \
@@ -5508,10 +5124,10 @@ kill "$CL_PID" 2>/dev/null; wait "$CL_PID" 2>/dev/null
 echo "cloud mode test runtime: $(( $(date +%s) - cl_t0 ))s"
 
 # ---------------------------------------------------------------------------
-echo "== Test 22: cloud mode's safety half, against the local fake hi2vi -- offline a command is refused with the one P8 line and the tree unchanged, and compact-resume fails open; a lost commit answer is resent with the same batch_id and lands once; a batch never sent goes at the next command; a command that dies midway leaves the journal running and the next command refuses naming sync; a pull killed at any step of an append-only file's merge (the event log, a loop's ledger and checkpoints, a local order of its own) leaves each line in hi2vi once; a stale write (409) keeps the disk, writes nothing in hi2vi and exits 1, then the mismatch refuses with nothing changed; two engine processes in one checkout are serialized by .hi2vi/lock; a change over 8,000,000 B goes as several batches, and one file too big for any batch is refused; every failure inside the boundary is one line, never a traceback (a cut or malformed answer, a commit answer cut mid-body, a fetch that does not decode, a write error during a pull), and the hook's note; compact-resume stays inside the hook's 15 s on a slow, dripping or slow-but-moving server; a request fails only when it stalls: a slow but moving pull, push and pushing resend each finish past 10 s, a stalled or dripping server ends an ordinary command in one line in bounded time, a 409 whose body stalls keeps its batch (never 0 conflicts), and no late timer turns a whole answer into a failure; every wait is judged, the set-up included: behind an HTTPS proxy that answers its CONNECT late or drips it, the hook keeps its 9 s and an ordinary command ends in one line; over TLS a byte counts as it crosses the socket and the handshake still verifies; a key holding a control character is refused unquoted =="
+echo "== Test 22: cloud mode's safety half, against the local fake hi2vi -- offline a command is refused with the one P8 line and the tree unchanged, and compact-resume fails open; a lost commit answer is resent with the same batch_id and lands once; a batch never sent goes at the next command; a command that dies midway leaves the journal running and the next command refuses naming sync; a pull killed at any step of an append-only file's merge (the event log, a local order of its own) leaves each line in hi2vi once; a stale write (409) keeps the disk, writes nothing in hi2vi and exits 1, then the mismatch refuses with nothing changed; two engine processes in one checkout are serialized by .hi2vi/lock; a change over 8,000,000 B goes as several batches, and one file too big for any batch is refused; every failure inside the boundary is one line, never a traceback (a cut or malformed answer, a commit answer cut mid-body, a fetch that does not decode, a write error during a pull), and the hook's note; compact-resume stays inside the hook's 15 s on a slow, dripping or slow-but-moving server; a request fails only when it stalls: a slow but moving pull, push and pushing resend each finish past 10 s, a stalled or dripping server ends an ordinary command in one line in bounded time, a 409 whose body stalls keeps its batch (never 0 conflicts), and no late timer turns a whole answer into a failure; every wait is judged, the set-up included: behind an HTTPS proxy that answers its CONNECT late or drips it, the hook keeps its 9 s and an ordinary command ends in one line; over TLS a byte counts as it crosses the socket and the handshake still verifies; a key holding a control character is refused unquoted =="
 sf_t0=$(date +%s)
 newtmp SFW; SF="$SFW/host"; SFX="$SFW/xdg"; SF_OUT="$SFW/out.txt"; : > "$SF_OUT"
-sf() { ( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 workflow/scripts/workflow.py "$@" ) 2>&1 | tee -a "$SF_OUT"; return "${PIPESTATUS[0]}"; }
+sf() { ( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 "workflow/$(wf_entry "$1")" "$@" ) 2>&1 | tee -a "$SF_OUT"; return "${PIPESTATUS[0]}"; }
 # sf_crash kill|raise|pull <args>: the command, with defer-job made to die after it wrote its files (os._exit, or a
 # raise), or (pull) the process killed when a pull has written its files but not yet base.json.
 sf_crash() { _m=$1; shift; ( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 - "$_m" "$@" <<'PY'
@@ -5520,15 +5136,16 @@ spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scrip
 mod = importlib.util.module_from_spec(spec)
 sys.modules["workflow_engine"] = mod
 spec.loader.exec_module(mod)
-mode, real = sys.argv[1], mod.defer_job
+agenda, cloud = sys.modules["wf_agenda"], sys.modules["wf_cloud"]  # the parts the engine imported
+mode, real = sys.argv[1], agenda.defer_job
 def crash(args):
     real(args)
     if mode == "kill":
         os._exit(9)
     raise RuntimeError("a crash in the middle of the command")
-mod.defer_job = crash
+agenda.defer_job = crash
 if mode == "pull":
-    mod.CloudSession.save_base = lambda self: os._exit(9)
+    cloud.CloudSession.save_base = lambda self: os._exit(9)
 sys.exit(mod.main(sys.argv[2:]))
 PY
 ) >> "$SF_OUT" 2>&1; }
@@ -5544,7 +5161,7 @@ for d, dirs, files in sorted(os.walk(root)):
 PY
 }
 { env GIT_AUTHOR_NAME=smoke GIT_AUTHOR_EMAIL=smoke@example.invalid GIT_COMMITTER_NAME=smoke GIT_COMMITTER_EMAIL=smoke@example.invalid sh "$BOOT" "$SF" \
-  && ( cd "$SF" && python3 workflow/scripts/workflow.py new-phase --phase P1 --name One --objective toy ); } > "$SFW/setup.txt" 2>&1 \
+  && ( cd "$SF" && python3 workflow/scripts/workflow.py phase new --phase P1 --name One --objective toy ); } > "$SFW/setup.txt" 2>&1 \
   || bad "cloud safety probe: the install failed -- $(tail -3 "$SFW/setup.txt")"
 SFK="cloud-smoke-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 printf '%s\n' "$SFK" > "$SFW/key"; chmod 600 "$SFW/key"
@@ -5670,10 +5287,10 @@ elif check == "toobig":
     need(journal is None, f"the journal is left: {journal}")
 elif check == "synced":
     synced()
-elif check == "once":  # extra: the append-only paths (comma-separated), their usd total or -, then marks each once in hi2vi
+elif check == "once":  # extra: the append-only paths (comma-separated), then marks each once in hi2vi
     import collections
     need(journal is None and base.get("head") == S["head"], f"not settled: journal {journal}, base head {base.get('head')} vs {S['head']}")
-    cloud_lines, usd = [], 0.0
+    cloud_lines = []
     for p in extra[0].split(","):
         c = base64.b64decode(get("/_fake/file?path=" + quote(p))[1]["content"]).decode().splitlines()
         d = (root / p).read_text().splitlines()
@@ -5681,11 +5298,9 @@ elif check == "once":  # extra: the append-only paths (comma-separated), their u
         need(not twice, f"{p}: hi2vi holds {len(twice)} line(s) twice, first {twice[:1]}")
         need(collections.Counter(c) == collections.Counter(d), f"{p}: the disk's lines and hi2vi's differ")
         cloud_lines += c
-        usd += sum(json.loads(l).get("usd", 0) for l in c if p.endswith(("/ledger.jsonl", "/checkpoints.jsonl")))
-    for mark in extra[2:]:
+    for mark in extra[1:]:
         n = sum(mark in l for l in cloud_lines)
         need(n == 1, f"{mark}: {n} line(s) in hi2vi, not 1")
-    need(extra[1] == "-" or abs(usd - float(extra[1])) < 1e-9, f"hi2vi's loop spend is {usd}, not {extra[1]}")
 print("ok")
 PY
 }
@@ -5755,10 +5370,10 @@ sf_m=$(sf_mark); sf next > "$SFW/d3.txt"; sf_rc2=$?; sf_r=$(sf_check "$sf_m" syn
 [ "$sf_rc" = 9 ] && [ "$sf_w" = 0 ] && [ "$sf_rc2" = 0 ] && [ "$sf_r" = ok ] \
   && ok "a pull killed after its write and before base.json: the next command reads the file as the same (no mismatch) and the base catches up" \
   || bad "the pull-crash row wrong -- rc=$sf_rc/$sf_rc2 written=$sf_w $sf_r / $(tail -1 "$SFW/d3.txt")"
-# The crash table's append rows. A pull merges another checkout's new lines into an append-only file (the event log, a
-# loop's ledger and checkpoints) around the lines this checkout has not sent yet, so the merged file differs from
+# The crash table's append rows. A pull merges another checkout's new lines into an append-only file (the event log)
+# around the lines this checkout has not sent yet, so the merged file differs from
 # hi2vi's and never reads as the same. Killed at any step of that pull, the next command sends only this checkout's own
-# lines: hi2vi holds each line exactly once, and a loop's spend is counted once.
+# lines: hi2vi holds each line exactly once.
 # sf_kill fetch|write|wrote|base <path> <args>: the command, killed (os._exit) once the pull has fetched <path>, just
 # before or just after the pull writes it, or once base.json is saved (before the generated files are rebuilt).
 sf_kill() { _s=$1; _f=$2; shift 2; ( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 - "$_s" "$_f" "$@" <<'PY'
@@ -5767,8 +5382,9 @@ spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scrip
 mod = importlib.util.module_from_spec(spec)
 sys.modules["workflow_engine"] = mod
 spec.loader.exec_module(mod)
+cloud = sys.modules["wf_cloud"]  # the cloud part the engine imported
 step, target = sys.argv[1], sys.argv[2]
-real_write, real_fetch = mod._cloud_write_bytes, mod.CloudSession.fetch
+real_write, real_fetch = cloud._cloud_write_bytes, cloud.CloudSession.fetch
 def write(path, data):
     hit = str(path).endswith("/" + target)
     if hit and step == "write":
@@ -5781,9 +5397,9 @@ def fetch(self, paths):
     if step == "fetch" and target in got:
         os._exit(9)
     return got
-mod._cloud_write_bytes, mod.CloudSession.fetch = write, fetch
+cloud._cloud_write_bytes, cloud.CloudSession.fetch = write, fetch
 if step == "base":
-    mod.cloud_rebuild = lambda rels: os._exit(9)
+    cloud.cloud_rebuild = lambda rels: os._exit(9)
 sys.exit(mod.main(sys.argv[3:]))
 PY
 ) >> "$SF_OUT" 2>&1; }
@@ -5802,7 +5418,7 @@ for sf_step in fetch write wrote base; do
   printf '{"type": "smoke_local", "mark": "local-%s"}\n' "$sf_step" >> "$SF/workflow/$sf_ev"
   sf_add "$sf_ev" "{\"type\": \"agenda_added\", \"agenda\": \"cloud-$sf_step\"}"
   sf_kill "$sf_step" "$sf_ev" next; sf_rc=$?
-  sf_m=$(sf_mark); sf next >/dev/null; sf_rc2=$?; sf_r=$(sf_check "$sf_m" once "$sf_ev" - "\"local-$sf_step\"" "\"cloud-$sf_step\"")
+  sf_m=$(sf_mark); sf next >/dev/null; sf_rc2=$?; sf_r=$(sf_check "$sf_m" once "$sf_ev" "\"local-$sf_step\"" "\"cloud-$sf_step\"")
   { [ "$sf_rc" = 9 ] && [ "$sf_rc2" = 0 ] && [ "$sf_r" = ok ]; } || sf_bad="$sf_bad [$sf_step: rc=$sf_rc/$sf_rc2 $sf_r]"
 done
 [ -z "$sf_bad" ] \
@@ -5810,30 +5426,10 @@ done
   || bad "an append pull killed midway re-sent hi2vi's own lines --$sf_bad"
 sf_add "$sf_ev" '{"type": "agenda_added", "agenda": "cloud-alone"}'
 sf_kill wrote "$sf_ev" next; sf_rc=$?
-sf_m=$(sf_mark); sf next >/dev/null; sf_rc2=$?; sf_r=$(sf_check "$sf_m" once "$sf_ev" - '"cloud-alone"'); sf_r2=$(sf_check "$sf_m" synced)
+sf_m=$(sf_mark); sf next >/dev/null; sf_rc2=$?; sf_r=$(sf_check "$sf_m" once "$sf_ev" '"cloud-alone"'); sf_r2=$(sf_check "$sf_m" synced)
 [ "$sf_rc" = 9 ] && [ "$sf_rc2" = 0 ] && [ "$sf_r" = ok ] && [ "$sf_r2" = ok ] \
   && ok "an append pull with nothing local past the offset, killed after its write: the file equals hi2vi's, reads as the same, and the base catches up" \
   || bad "the plain append pull-crash row wrong -- rc=$sf_rc/$sf_rc2 $sf_r / $sf_r2"
-# A loop's ledger and checkpoints, pulled together (checkpoints.jsonl is written first): killed once both are written,
-# then once only the first is, the loop spend summed from hi2vi's lines stays the sum of each line once.
-sf_lp=works/phases/active/P1/loop; mkdir -p "$SF/workflow/$sf_lp"
-printf '{"cycle": "C1", "usd": 1.5}\n' > "$SF/workflow/$sf_lp/ledger.jsonl"
-printf '{"slice": "P1.K1", "usd": 0.25}\n' > "$SF/workflow/$sf_lp/checkpoints.jsonl"
-sf next >/dev/null; sf_bad=""
-for sf_row in "ledger:C2:2:C3:4:K2:0.5:8.25" "checkpoints:K3:0.125:C4:8:K4:1:17.375"; do
-  IFS=: read -r sf_t sf_l sf_lu sf_c sf_cu sf_k sf_ku sf_sum <<< "$sf_row"
-  if [ "$sf_t" = ledger ]; then printf '{"cycle": "%s", "usd": %s}\n' "$sf_l" "$sf_lu" >> "$SF/workflow/$sf_lp/ledger.jsonl"
-  else printf '{"slice": "P1.%s", "usd": %s}\n' "$sf_l" "$sf_lu" >> "$SF/workflow/$sf_lp/checkpoints.jsonl"; fi
-  sf_add "$sf_lp/ledger.jsonl" "{\"cycle\": \"$sf_c\", \"usd\": $sf_cu}"
-  sf_add "$sf_lp/checkpoints.jsonl" "{\"slice\": \"P1.$sf_k\", \"usd\": $sf_ku}"
-  sf_kill wrote "$sf_lp/$sf_t.jsonl" next; sf_rc=$?
-  sf_m=$(sf_mark); sf next >/dev/null; sf_rc2=$?
-  sf_r=$(sf_check "$sf_m" once "$sf_lp/ledger.jsonl,$sf_lp/checkpoints.jsonl" "$sf_sum" "$sf_l" "$sf_c" "P1.$sf_k")
-  { [ "$sf_rc" = 9 ] && [ "$sf_rc2" = 0 ] && [ "$sf_r" = ok ]; } || sf_bad="$sf_bad [$sf_t: rc=$sf_rc/$sf_rc2 $sf_r]"
-done
-[ -z "$sf_bad" ] \
-  && ok "a loop's ledger and checkpoints pulled with a local line past the offset, killed after both writes or after the first: hi2vi holds each line once and the loop spend is unchanged by the crash" \
-  || bad "an append pull killed midway double-counted a loop's lines --$sf_bad"
 # A local order that already differs from hi2vi's (another checkout's line landed between this checkout's pull and its
 # push): the file never equals hi2vi's again, so a pull killed after its write must still send nothing of hi2vi's.
 printf '{"type": "smoke_local", "mark": "local-race"}\n' >> "$SF/workflow/$sf_ev"
@@ -5853,7 +5449,7 @@ PY
 )
 sf_add "$sf_ev" '{"type": "agenda_added", "agenda": "cloud-order"}'
 sf_kill wrote "$sf_ev" next; sf_rc=$?
-sf_m=$(sf_mark); sf next >/dev/null; sf_rc2=$?; sf_r=$(sf_check "$sf_m" once "$sf_ev" - '"cloud-order"' '"cloud-race"' '"local-race"')
+sf_m=$(sf_mark); sf next >/dev/null; sf_rc2=$?; sf_r=$(sf_check "$sf_m" once "$sf_ev" '"cloud-order"' '"cloud-race"' '"local-race"')
 [ "$sf_ord" = differs ] && [ "$sf_rc" = 9 ] && [ "$sf_rc2" = 0 ] && [ "$sf_r" = ok ] \
   && ok "an event log whose order already differs from hi2vi's, its pull killed after the write: the next command sends nothing of hi2vi's, each line once" \
   || bad "the differing-order append pull-crash row wrong -- order=$sf_ord rc=$sf_rc/$sf_rc2 $sf_r"
@@ -6067,15 +5663,16 @@ spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scrip
 mod = importlib.util.module_from_spec(spec)
 sys.modules["workflow_engine"] = mod
 spec.loader.exec_module(mod)
-mod.CLOUD_TIMEOUT = 1
-real = mod.CloudLink._exchange
+cloud = sys.modules["wf_cloud"]  # the cloud part the engine imported
+cloud.CLOUD_TIMEOUT = 1
+real = cloud.CloudLink._exchange
 def late(self, *a, **k):
     answer = real(self, *a, **k)
     time.sleep(1.5)
     return answer
-mod.CloudLink._exchange = late
+cloud.CloudLink._exchange = late
 try:
-    status, payload = mod.CloudLink().call("GET", "head")
+    status, payload = cloud.CloudLink().call("GET", "head")
     print(f"answer {status} {isinstance(payload.get('head'), int)}")
 except Exception as exc:
     print(f"{exc.__class__.__name__}: {exc}")
@@ -6130,7 +5727,8 @@ env = dict(os.environ, HTTPS_PROXY=proxy, https_proxy=proxy)
 for k in ("NO_PROXY", "no_proxy", "ALL_PROXY", "all_proxy"):
     env.pop(k, None)
 t = time.monotonic()
-p = subprocess.Popen([sys.executable, "workflow/scripts/workflow.py"] + args, env=env, stdin=subprocess.PIPE,
+entry = "workflow/adapters/claude_code/adapter.py" if args[:1] == ["compact-resume"] else "workflow/scripts/workflow.py"
+p = subprocess.Popen([sys.executable, entry] + args, env=env, stdin=subprocess.PIPE,
                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 try:
     data, _ = p.communicate(b"{}" if args[:1] == ["compact-resume"] else b"", timeout=40)
@@ -6176,6 +5774,7 @@ sf_own=$( cd "$SF" && python3 - <<'PY' 2>&1
 import importlib.util, socket, sys, threading, time
 spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scripts/workflow.py")
 mod = importlib.util.module_from_spec(spec); sys.modules["workflow_engine"] = mod; spec.loader.exec_module(mod)
+mod = sys.modules["wf_cloud"]  # the cloud part the engine imported: its names, and the limit it reads
 mod.CLOUD_TIMEOUT = 2
 a, b = socket.socketpair()
 def peer():
@@ -6204,6 +5803,7 @@ spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scrip
 mod = importlib.util.module_from_spec(spec)
 sys.modules["workflow_engine"] = mod
 spec.loader.exec_module(mod)
+mod = sys.modules["wf_cloud"]  # the cloud part the engine imported: its names, and the limits it reads
 mod.CLOUD_TIMEOUT, mod.CLOUD_FLOOR = 2, 1024
 cert, key = sys.argv[1], sys.argv[2]
 server_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -6285,13 +5885,14 @@ fi
 # journal stays running and names the failure, and the next command refuses naming sync.
 sf_boom() { _s=$1; shift; ( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 - "$_s" "$@" <<'PY'
 import importlib.util, sys
-spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scripts/workflow.py")
+entry = "workflow/adapters/claude_code/adapter.py" if sys.argv[2:3] == ["compact-resume"] else "workflow/scripts/workflow.py"
+spec = importlib.util.spec_from_file_location("workflow_entry", entry)
 mod = importlib.util.module_from_spec(spec)
-sys.modules["workflow_engine"] = mod
+sys.modules["workflow_entry"] = mod
 spec.loader.exec_module(mod)
 def boom(self, *a, **k):
     raise RuntimeError("a failure inside the step")
-setattr(mod.CloudSession, sys.argv[1], boom)
+setattr(sys.modules["wf_cloud"].CloudSession, sys.argv[1], boom)
 sys.exit(mod.main(sys.argv[2:]))
 PY
 ) 2>&1 | tee -a "$SF_OUT"; return "${PIPESTATUS[0]}"; }
@@ -6327,12 +5928,12 @@ kill "$SF_PID" 2>/dev/null; wait "$SF_PID" 2>/dev/null
 echo "cloud safety test runtime: $(( $(date +%s) - sf_t0 ))s"
 
 # ---------------------------------------------------------------------------
-echo "== Test 23: link, unlink and sync against the local fake hi2vi, with a scratch XDG_CONFIG_HOME -- the installer hides .hi2vi/ in the workflow repo (fresh and --update); link refuses http:// to a non-local host, an at-root install, uncommitted changes, another worktree, a phase in flight on a stream, a key file open to group or others, a wrong key and an already-linked checkout, each with nothing written; link reads the key from stdin, keeps it 0600 in a 0700 folder and uploads the truth set in batches under 8,000,000 B; next prints store=cloud and head sends X-Hi2vi-Base; parallel-start is refused in cloud mode with nothing written; a second checkout joins from an unused install (following fetch's rest) or an equal set, and a used one is refused with the list; a typed brief id is resolved after the pull (it names what another checkout made, on the first try, and a number shared once the pull lands is refused); sync pulls and pushes the clean changes, lists a stale write, shows its diff, refuses --keep with no path, on a folder and on a path on neither side, and resolves only on --keep local|cloud, lists an interrupted command's files and pushes none until --keep; unlink refuses on a mismatch, then leaves a local-mode tree that validates and opens no socket; unlink --from-disk runs offline; the key appears nowhere =="
+echo "== Test 23: link, unlink and sync against the local fake hi2vi, with a scratch XDG_CONFIG_HOME -- the installer hides .hi2vi/ in the workflow repo (fresh and --update); link refuses http:// to a non-local host, an at-root install, uncommitted changes, another worktree, a phase in flight on a stream, a key file open to group or others, a wrong key and an already-linked checkout, each with nothing written; link reads the key from stdin, keeps it 0600 in a 0700 folder and uploads the truth set in batches under 8,000,000 B; next prints store=cloud and head sends X-Hi2vi-Base; worktree start is refused in cloud mode with nothing written; a second checkout joins from an unused install (following fetch's rest) or an equal set, and a used one is refused with the list; a typed brief id is resolved after the pull (it names what another checkout made, on the first try, and a number shared once the pull lands is refused); sync pulls and pushes the clean changes, lists a stale write, shows its diff, refuses --keep with no path, on a folder and on a path on neither side, and resolves only on --keep local|cloud, lists an interrupted command's files and pushes none until --keep; unlink refuses on a mismatch, then leaves a local-mode tree that validates and opens no socket; unlink --from-disk runs offline; the key appears nowhere =="
 lk_t0=$(date +%s)
 newtmp LKW; LKX="$LKW/xdg"; LK_OUT="$LKW/out.txt"; : > "$LK_OUT"
 LKA="$LKW/a"; LKB="$LKW/b"; LKC="$LKW/c"; LKR="$LKW/root"
 # lk <host> <args>: one engine command in that host's nested workspace, with the scratch XDG; stdin passes through.
-lk() { _h=$1; shift; ( cd "$_h" && XDG_CONFIG_HOME="$LKX" python3 workflow/scripts/workflow.py "$@" ) 2>&1 | tee -a "$LK_OUT"; return "${PIPESTATUS[0]}"; }
+lk() { _h=$1; shift; ( cd "$_h" && XDG_CONFIG_HOME="$LKX" python3 "workflow/$(wf_entry "$1")" "$@" ) 2>&1 | tee -a "$LK_OUT"; return "${PIPESTATUS[0]}"; }
 # lk_nosock <engine> <args>: the same under a socket guard (any connect or urlopen ends the process with 97).
 lk_nosock() { _e=$1; shift; ( cd "$(dirname "$(dirname "$_e")")" && XDG_CONFIG_HOME="$LKX" python3 - "$_e" "$@" <<'PY'
 import os, runpy, socket, sys, urllib.request
@@ -6494,7 +6095,7 @@ sh "$BOOT" "$LKB" --update > "$LKW/update.txt" 2>&1; lk_rc3=$?; ( lk_commit "$LK
   && ok "the installer hides .hi2vi/ in the workflow repo's own info/exclude, on a fresh install and on --update" \
   || bad "the .hi2vi/ exclude is missing -- fresh=$lk_rc stripped=$lk_rc2 update=$lk_rc3 $(tail -2 "$LKW/update.txt")"
 # A phase with three 3 MB topics in A (committed): the first upload must split.
-( lk "$LKA" new-phase --phase P1 --name One --objective toy >/dev/null ) && mkdir -p "$LKA/workflow/works/phases/active/P1/topics"
+( lk "$LKA" phase new --phase P1 --name One --objective toy >/dev/null ) && mkdir -p "$LKA/workflow/works/phases/active/P1/topics"
 for i in 1 2 3; do python3 -c 'import sys; open(sys.argv[1], "w").write(("line of a big topic %s\n" % sys.argv[2]) * 140000)' \
   "$LKA/workflow/works/phases/active/P1/topics/big-$i.md" "$i"; done
 lk_commit "$LKA" phase
@@ -6516,7 +6117,7 @@ rm -f "$LKA/workflow/works/phases/active/P1/topics/loose.md"
 git -C "$LKA/workflow" worktree add -q "$LKW/wt" -b side >/dev/null 2>&1
 lk_ref "while the workflow repo has another worktree" '^link refuses while the workflow repo has another worktree' "$LKA/workflow" "$LKA/workflow/scripts/workflow.py" link "$LKU"
 git -C "$LKA/workflow" worktree remove "$LKW/wt" >/dev/null 2>&1; git -C "$LKA/workflow" branch -q -D side >/dev/null 2>&1
-( lk "$LKC" new-phase --phase P1 --name Other --objective toy >/dev/null ) && lk_commit "$LKC" phase
+( lk "$LKC" phase new --phase P1 --name Other --objective toy >/dev/null ) && lk_commit "$LKC" phase
 python3 - "$LKC/workflow/works/phases/active/P1/phase.json" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1])); d["execution"] = {"mode": "parallel", "branch": "phase/P1-other", "worktree": None}
@@ -6546,20 +6147,20 @@ lk_m=$(lk_mark); lk "$LKA" next > "$LKW/b2.txt"; lk_rc=$?; lk_r=$(lk_check "$LKA
   || bad "next's store line or X-Hi2vi-Base wrong -- rc=$lk_rc $lk_r"
 lk_ref "an already-linked checkout" '^this checkout is already linked \(store=cloud server=' "$LKB/workflow" "$LKA/workflow/scripts/workflow.py" link "$LKU"
 # (f) O7: in cloud mode a stream command is refused with one line, before any request, with nothing written.
-lk_t1=$(lk_tree "$LKA/workflow"); lk_m=$(lk_mark); lk_nosock "$LKA/workflow/scripts/workflow.py" parallel-start P1 --host-branch side > "$LKW/f.txt"; lk_rc=$?; lk_t2=$(lk_tree "$LKA/workflow")
-[ "$lk_rc" = 1 ] && [ "$(grep -c '' "$LKW/f.txt")" = 1 ] && grep -q '^parallel-start is refused in cloud mode: ' "$LKW/f.txt" && [ "$lk_t1" = "$lk_t2" ] && [ "$(lk_check "$LKA/workflow" "$lk_m" nothing)" = ok ] \
+lk_t1=$(lk_tree "$LKA/workflow"); lk_m=$(lk_mark); lk_nosock "$LKA/workflow/scripts/workflow.py" worktree start P1 --host-branch side > "$LKW/f.txt"; lk_rc=$?; lk_t2=$(lk_tree "$LKA/workflow")
+[ "$lk_rc" = 1 ] && [ "$(grep -c '' "$LKW/f.txt")" = 1 ] && grep -q '^worktree start is refused in cloud mode: ' "$LKW/f.txt" && [ "$lk_t1" = "$lk_t2" ] && [ "$(lk_check "$LKA/workflow" "$lk_m" nothing)" = ok ] \
   && [ -z "$(git -C "$LKA/workflow" branch --list 'phase/*')" ] \
-  && ok "parallel-start in a linked checkout is refused with one line, no request, no branch and nothing written" \
-  || bad "parallel-start was not refused in cloud mode -- rc=$lk_rc $(head -2 "$LKW/f.txt")"
+  && ok "worktree start in a linked checkout is refused with one line, no request, no branch and nothing written" \
+  || bad "worktree start was not refused in cloud mode -- rc=$lk_rc $(head -2 "$LKW/f.txt")"
 lk_bad=""; lk_t1=$(lk_tree "$LKA/workflow"); lk_m=$(lk_mark)
-for c in "parallel-gate P1" "parallel-teardown P1" "parallel-merge-finish" "parallel-consolidated P1" "reopen-phase P1 --note x" "loop-checkpoint P1 --landed"; do
+for c in "worktree gate P1" "worktree teardown P1" "worktree merge-finish" "phase reopen P1 --note x"; do
   # shellcheck disable=SC2086
   lk_nosock "$LKA/workflow/scripts/workflow.py" $c > "$LKW/f2.txt"; lk_rc=$?
-  { [ "$lk_rc" = 1 ] && [ "$(grep -c '' "$LKW/f2.txt")" = 1 ] && grep -q "^${c%% *}\( --landed\)\? is refused in cloud mode: " "$LKW/f2.txt"; } || lk_bad="$lk_bad [$c: rc=$lk_rc $(head -1 "$LKW/f2.txt")]"
+  { [ "$lk_rc" = 1 ] && [ "$(grep -c '' "$LKW/f2.txt")" = 1 ] && grep -q "^${c%% P1*} is refused in cloud mode: " "$LKW/f2.txt"; } || lk_bad="$lk_bad [$c: rc=$lk_rc $(head -1 "$LKW/f2.txt")]"
 done
 lk_t2=$(lk_tree "$LKA/workflow")
 [ -z "$lk_bad" ] && [ "$lk_t1" = "$lk_t2" ] && [ "$(lk_check "$LKA/workflow" "$lk_m" nothing)" = ok ] \
-  && ok "the other stream commands (parallel-gate, -teardown, -merge-finish, -consolidated, reopen-phase, loop-checkpoint --landed) are refused in cloud mode with one line each, nothing written" \
+  && ok "the other stream commands (worktree gate, -teardown, -merge-finish, phase reopen) are refused in cloud mode with one line each, nothing written" \
   || bad "a stream command ran in cloud mode --$lk_bad"
 # (c) a second checkout: an unused install joins (the fetch paged, following rest); a used one is refused with the list.
 lk_ctl '{"fetch_page": 4000}'; lk_m=$(lk_mark); printf '%s\n' "$LKK" | lk "$LKB" link "$LKU" > "$LKW/c.txt"; lk_rc=$?; lk_r=$(lk_check "$LKB/workflow" "$lk_m" join)
@@ -6592,19 +6193,19 @@ lk_brief() {  # lk_brief <A's command> <B's command> <B's expected line ERE>
   lk "$LKB" $_b > "$LKW/br-b.txt"; _rc=$?
   { [ "$_rc" = 0 ] && grep -qE "$_x" "$LKW/br-b.txt"; } || lk_bad="$lk_bad [B: $_b: rc=$_rc $(head -1 "$LKW/br-b.txt")]"
 }
-lk_brief "new-phase --phase 7-ab --name Brief --objective toy" "phase-section 7" '^ +[0-9]+  Objective$'
-lk_brief "new-slice --phase P7-ab --slice P7-ab.S1 --name s" "executor-route 7.S1" '^slice=P7-ab\.S1$'
+lk_brief "phase new --phase 7-ab --name Brief --objective toy" "section 7" '^ +[0-9]+  Objective$'
+lk_brief "slice new --phase P7-ab --slice P7-ab.S1 --name s" "route 7.S1" '^slice=P7-ab\.S1$'
 lk_brief "defer-job --id 7-cd --title brief --reason r --trigger t --source manual" "drop-deferred 7 --reason r" '^dropped D7-cd: '
 lk_brief "agenda-add --id 7-ef --title brief" "agenda-solve 7 --outcome done" '^solved A7-ef'
 [ -z "$lk_bad" ] \
-  && ok "in a linked checkout a brief id names what another checkout made since the last pull, on the first try: a phase number (phase-section 7), a slice's brief phase part (executor-route 7.S1), a deferred job's number (drop-deferred 7) and an agenda item's (agenda-solve 7)" \
+  && ok "in a linked checkout a brief id names what another checkout made since the last pull, on the first try: a phase number (section 7), a slice's brief phase part (route 7.S1), a deferred job's number (drop-deferred 7) and an agenda item's (agenda-solve 7)" \
   || bad "a brief id was resolved against the stale disk, before the pull --$lk_bad"
 # A number unique on B's stale disk but shared once the pull lands is refused with the list, one line; the
 # refusal still runs the commit step (no journal left, the pull recorded, nothing sent), and the full id runs.
-( lk "$LKA" new-phase --phase 7-zz --name Twin --objective toy >/dev/null )
-lk_m=$(lk_mark); lk "$LKB" phase-section 7 > "$LKW/br-c.txt"; lk_rc=$?; lk_r=$(lk_check "$LKB/workflow" "$lk_m" quiet)
-lk_m=$(lk_mark); lk "$LKB" phase-section 7-zz > "$LKW/br-d.txt"; lk_rc2=$?; lk_r2=$(lk_check "$LKB/workflow" "$lk_m" quiet)
-lk "$LKA" executor-route 7-ab.S1 > "$LKW/br-e.txt"; lk_rc3=$?
+( lk "$LKA" phase new --phase 7-zz --name Twin --objective toy >/dev/null )
+lk_m=$(lk_mark); lk "$LKB" section 7 > "$LKW/br-c.txt"; lk_rc=$?; lk_r=$(lk_check "$LKB/workflow" "$lk_m" quiet)
+lk_m=$(lk_mark); lk "$LKB" section 7-zz > "$LKW/br-d.txt"; lk_rc2=$?; lk_r2=$(lk_check "$LKB/workflow" "$lk_m" quiet)
+lk "$LKA" route 7-ab.S1 > "$LKW/br-e.txt"; lk_rc3=$?
 [ "$lk_rc" = 1 ] && [ "$(grep -c '' "$LKW/br-c.txt")" = 1 ] && grep -qx "'7' names 2 phases numbered 7: P7-ab, P7-zz -- type the tail (e.g. P7-ab or 7-ab)" "$LKW/br-c.txt" \
   && [ "$lk_r" = ok ] && [ "$lk_rc2" = 0 ] && grep -qE '^ +[0-9]+  Objective$' "$LKW/br-d.txt" && [ "$lk_r2" = ok ] \
   && [ "$lk_rc3" = 0 ] && grep -qx 'slice=P7-ab.S1' "$LKW/br-e.txt" \
@@ -6671,11 +6272,12 @@ spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scrip
 mod = importlib.util.module_from_spec(spec)
 sys.modules["workflow_engine"] = mod
 spec.loader.exec_module(mod)
-real = mod.defer_job
+agenda = sys.modules["wf_agenda"]  # the agenda part the engine imported
+real = agenda.defer_job
 def crash(args):
     real(args)
     os._exit(9)
-mod.defer_job = crash
+agenda.defer_job = crash
 sys.exit(mod.main(sys.argv[1:]))
 PY
 ) >> "$LK_OUT" 2>&1
@@ -6698,8 +6300,8 @@ lk "$LKA" unlink > "$LKW/g.txt"; lk_rc=$?
   && ok "unlink refuses on a mismatch with one line, and the checkout stays linked" || bad "unlink did not refuse on a mismatch -- rc=$lk_rc $(head -2 "$LKW/g.txt")"
 lk "$LKA" sync --keep local "$lk_p" >/dev/null
 lk_m=$(lk_mark); lk "$LKA" unlink > "$LKW/g2.txt"; lk_rc=$?
-lk "$LKA" validate > "$LKW/g3.txt"; lk_rc2=$?
-lk_in=""; for c in "next" "new-phase --phase P2 --name Two --objective toy" "defer-job --title local --reason r --trigger t --source manual" "rebuild"; do
+lk "$LKA" check --no-rebuild > "$LKW/g3.txt"; lk_rc2=$?
+lk_in=""; for c in "next" "phase new --phase P2 --name Two --objective toy" "defer-job --title local --reason r --trigger t --source manual" "check"; do
   # shellcheck disable=SC2086
   lk_nosock "$LKA/workflow/scripts/workflow.py" $c > "$LKW/g4.txt"; [ "$?" = 97 ] && lk_in="$lk_in [$c]"
 done
@@ -6719,7 +6321,7 @@ kill "$LK_PID" 2>/dev/null; wait "$LK_PID" 2>/dev/null
 echo "link test runtime: $(( $(date +%s) - lk_t0 ))s"
 
 # ---------------------------------------------------------------------------
-echo "== Test 24: the web's agenda inbox, applied by a linked engine against the local fake hi2vi -- at next, sync and run-phases, entries oldest first, each run in-process as its agenda command: exit 0 applied, each in a batch of its own with exactly the files its command wrote; a refusal's one line sent verbatim with exit 1, a usage error's with exit 2; a brief id refused unrun with nothing written; an entry another checkout applied first is a 409, its change dropped here and hi2vi's copy pulled, never applied twice; a crash inside a command leaves the entry pending and the tree as it was; a delete clears its links in the same batch; the applier never deadlocks on .hi2vi/lock =="
+echo "== Test 24: the web's agenda inbox, applied by a linked engine against the local fake hi2vi -- at next and sync, entries oldest first, each run in-process as its agenda command: exit 0 applied, each in a batch of its own with exactly the files its command wrote; a refusal's one line sent verbatim with exit 1, a usage error's with exit 2; a brief id refused unrun with nothing written; an entry another checkout applied first is a 409, its change dropped here and hi2vi's copy pulled, never applied twice; a crash inside a command leaves the entry pending and the tree as it was; a delete clears its links in the same batch; the applier never deadlocks on .hi2vi/lock =="
 ib_t0=$(date +%s)
 newtmp IBW; IBX="$IBW/xdg"; IBA="$IBW/a"; IBL="$IBW/local"
 # ib <host> <args>: one engine command in that host's nested workspace, with the scratch XDG, killed after 60 s
@@ -6738,7 +6340,7 @@ ib_install() { { env GIT_AUTHOR_NAME=smoke GIT_AUTHOR_EMAIL=smoke@example.invali
   && git -C "$1/workflow" add -A && git -C "$1/workflow" commit -qm install; } > "$1.setup.txt" 2>&1 || bad "inbox probe: the install of $1 failed -- $(tail -3 "$1.setup.txt")"; }
 ib_install "$IBA"; ib_install "$IBL"
 # A's workspace before the link: a phase and a deferred job, both linked to A1-k2; an Open A2-m3 and A4-n5.
-{ ib "$IBA" new-phase --phase P1 --name One --objective toy && ib "$IBA" agenda-add --id A1-k2 --title one \
+{ ib "$IBA" phase new --phase P1 --name One --objective toy && ib "$IBA" agenda-add --id A1-k2 --title one \
   && ib "$IBA" agenda-add --id A2-m3 --title two && ib "$IBA" agenda-add --id A4-n5 --title four \
   && ib "$IBA" agenda-link A1-k2 --phase P1 && ib "$IBA" defer-job --title job --reason r --trigger t --source manual --agenda A1-k2 \
   && git -C "$IBA/workflow" add -A && git -C "$IBA/workflow" commit -qm seed; } > "$IBW/seed.txt" 2>&1 || bad "inbox probe: the seed failed -- $(tail -3 "$IBW/seed.txt")"
@@ -6919,16 +6521,16 @@ chmod 755 "$IBA/workflow/works/agenda/A1-k2"; ib_r=$(ib_check "$ib_m" pending "$
   && grep -qxF "inbox $ib_e7: left pending (agenda-delete A1-k2): PermissionError inside the command; its changes were undone" "$IBW/e.txt" \
   && ok "a crash inside an agenda command leaves its entry pending (no result sent) and the tree as it was before that entry" \
   || bad "a crashed entry was not undone -- rc=$ib_rc $ib_r $(head -3 "$IBW/e.txt") $(diff <(echo "$ib_t1") <(echo "$ib_t2") | head -4)"
-# (f) at run-phases the delete applies: its links cleared in the same batch as the item's removal and its result.
-ib_m=$(ib_mark); ib "$IBA" run-phases > "$IBW/f.txt"; ib_rc=$?; ib_r=$(ib_check "$ib_m" delete "$ib_e7")
+# (f) at the next next the delete applies: its links cleared in the same batch as the item's removal and its result.
+ib_m=$(ib_mark); ib "$IBA" next > "$IBW/f.txt"; ib_rc=$?; ib_r=$(ib_check "$ib_m" delete "$ib_e7")
 [ "$ib_rc" = 0 ] && [ "$ib_r" = ok ] && grep -q "^inbox $ib_e7: applied (agenda-delete A1-k2): deleted A1-k2: 2 links cleared" "$IBW/f.txt" \
-  && ok "run-phases applies a web delete: the item's removal, its cleared links (a phase and a deferred job) and the result land in one batch" \
+  && ok "next applies a web delete: the item's removal, its cleared links (a phase and a deferred job) and the result land in one batch" \
   || bad "a web delete did not clear its links in one batch -- rc=$ib_rc $ib_r $(head -3 "$IBW/f.txt")"
 if grep -rqF "$IBK" "$IBA" "$IBW"/*.txt "$IBW/fake" 2>/dev/null; then bad "the workspace key leaked into the tree, the output or the request log"; fi
 kill "$IB_PID" 2>/dev/null; wait "$IB_PID" 2>/dev/null
 echo "inbox test runtime: $(( $(date +%s) - ib_t0 ))s"
 
-echo "== Test 25: a linked checkout's waiting-commit record and update, against the local fake hi2vi -- next and run-phases print commits_waiting= (the done slices finished since the link with no committed_at, in finish order; none for one done before the link); mark-committed records it in slice.json (synced to hi2vi), refuses a slice not done and local mode with nothing written, and leaving done clears it; review-phase records a passing REVIEW itself; local mode prints no line and writes no field; --update on a linked checkout leaves changed works/ files unchanged and uncommitted and prints the update's own paths to stage, never add -A; --to-multi-repo refuses a linked install =="
+echo "== Test 25: a linked checkout's waiting-commit record and update, against the local fake hi2vi -- next prints commits_waiting= (the done slices finished since the link with no committed_at, in finish order; none for one done before the link); mark-committed records it in slice.json (synced to hi2vi), refuses a slice not done and local mode with nothing written, and leaving done clears it; review records a passing REVIEW itself; local mode prints no line and writes no field; --update on a linked checkout leaves changed works/ files unchanged and uncommitted and prints the update's own paths to stage, never add -A; --to-multi-repo refuses a linked install =="
 wc_t0=$(date +%s)
 newtmp WCW; WCX="$WCW/xdg"; WCA="$WCW/a"; WCL="$WCW/local"
 wc() { _h=$1; shift; ( cd "$_h" && XDG_CONFIG_HOME="$WCX" python3 workflow/scripts/workflow.py "$@" ) 2>&1; }
@@ -6936,9 +6538,9 @@ wc_install() { { env GIT_AUTHOR_NAME=smoke GIT_AUTHOR_EMAIL=smoke@example.invali
   && git -C "$1/workflow" config user.email smoke@example.invalid && git -C "$1/workflow" config user.name smoke \
   && git -C "$1/workflow" add -A && git -C "$1/workflow" commit -qm install; } > "$1.setup.txt" 2>&1 || bad "commit-record probe: the install of $1 failed -- $(tail -3 "$1.setup.txt")"; }
 # wc_seed <host>: P1 with its DECOMP done (and committed, as every pre-link slice is) and two declared slices open.
-wc_seed() { { wc "$1" new-phase --phase P1 --name One --objective toy && wc "$1" start-slice P1.DECOMP \
-  && wc "$1" new-slice --phase P1 --slice P1.S1 --name one --depends-on none && wc "$1" new-slice --phase P1 --slice P1.S2 --name two --depends-on none \
-  && wc "$1" finish-slice P1.DECOMP --outcome cut && git -C "$1/workflow" add -A && git -C "$1/workflow" commit -qm seed; } > "$1.seed.txt" 2>&1 \
+wc_seed() { { wc "$1" phase new --phase P1 --name One --objective toy && wc "$1" slice start P1.DECOMP \
+  && wc "$1" slice new --phase P1 --slice P1.S1 --name one --depends-on none && wc "$1" slice new --phase P1 --slice P1.S2 --name two --depends-on none \
+  && wc "$1" slice finish P1.DECOMP --outcome cut && git -C "$1/workflow" add -A && git -C "$1/workflow" commit -qm seed; } > "$1.seed.txt" 2>&1 \
   || bad "commit-record probe: the seed of $1 failed -- $(tail -3 "$1.seed.txt")"; }
 wc_install "$WCA"; wc_install "$WCL"; wc_seed "$WCA"; wc_seed "$WCL"
 WCK="record-smoke-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
@@ -6963,36 +6565,36 @@ PY
 wc_tree() { ( cd "$1" && find . -path ./.git -prune -o -type f -print | LC_ALL=C sort | while read -r f; do printf '%s %s\n' "$f" "$(sha "$f")"; done ); }
 # (a) the done-before-link DECOMP never waits; a slice finished since waits until mark-committed records it.
 wc_n0=$(wc "$WCA" next | grep '^commits_waiting=')
-wc "$WCA" start-slice P1.S1 >/dev/null; wc "$WCA" finish-slice P1.S1 --outcome one >/dev/null
-wc_n1=$(wc "$WCA" next | grep '^commits_waiting='); wc_r1=$(wc "$WCA" run-phases | grep '^commits_waiting='); wc_h1=$(wc_has P1.S1)
+wc "$WCA" slice start P1.S1 >/dev/null; wc "$WCA" slice finish P1.S1 --outcome one >/dev/null
+wc_n1=$(wc "$WCA" next | grep '^commits_waiting='); wc_h1=$(wc_has P1.S1)
 wc_t1=$(wc_tree "$WCA/workflow/works"); wc_o2=$(wc "$WCA" mark-committed P1.S1 P1.S2); wc_rc2=$?; wc_t2=$(wc_tree "$WCA/workflow/works")
 wc_o3=$(wc "$WCA" mark-committed 1.S1); wc_rc3=$?
 wc_n3=$(wc "$WCA" next | grep '^commits_waiting=')
-[ "$wc_n0" = "commits_waiting=none" ] && [ "$wc_n1" = "commits_waiting=P1.S1" ] && [ "$wc_r1" = "commits_waiting=P1.S1" ] && [ "$wc_h1" = no ] \
+[ "$wc_n0" = "commits_waiting=none" ] && [ "$wc_n1" = "commits_waiting=P1.S1" ] && [ "$wc_h1" = no ] \
   && [ "$wc_rc2" = 1 ] && printf '%s\n' "$wc_o2" | grep -q "P1.S2 is todo, not done" && [ "$wc_t1" = "$wc_t2" ] \
   && [ "$wc_rc3" = 0 ] && printf '%s\n' "$wc_o3" | grep -q "^P1.S1: committed_at=" && [ "$wc_n3" = "commits_waiting=none" ] \
   && [ "$(wc_has P1.S1)" = yes ] && [ "$(wc_cloud_has works/phases/active/P1/slices/P1.S1/slice.json)" = yes ] \
-  && ok "a linked checkout's waiting commit: next and run-phases list a slice finished since the link (not the DECOMP done before it) in commits_waiting=, mark-committed refuses a slice not done with nothing written, then records committed_at (synced to hi2vi) and the line reads none" \
-  || bad "the linked waiting-commit record is wrong -- [$wc_n0] [$wc_n1] [$wc_r1] has=$wc_h1 rc=$wc_rc2/$wc_rc3 [$wc_n3] $(printf '%s' "$wc_o2" | head -2)"
-# (b) leaving done clears the record (it waits again once done); a second finish keeps it; review-phase records a REVIEW.
-wc "$WCA" set-slice-status P1.S1 in_progress >/dev/null; wc_h4=$(wc_has P1.S1); wc "$WCA" finish-slice P1.S1 --outcome again >/dev/null
-wc_n4=$(wc "$WCA" next | grep '^commits_waiting='); wc "$WCA" mark-committed P1.S1 >/dev/null; wc "$WCA" finish-slice P1.S1 --outcome third >/dev/null
+  && ok "a linked checkout's waiting commit: next lists a slice finished since the link (not the DECOMP done before it) in commits_waiting=, mark-committed refuses a slice not done with nothing written, then records committed_at (synced to hi2vi) and the line reads none" \
+  || bad "the linked waiting-commit record is wrong -- [$wc_n0] [$wc_n1] has=$wc_h1 rc=$wc_rc2/$wc_rc3 [$wc_n3] $(printf '%s' "$wc_o2" | head -2)"
+# (b) leaving done clears the record (it waits again once done); a second finish keeps it; review records a REVIEW.
+wc "$WCA" slice status P1.S1 in_progress >/dev/null; wc_h4=$(wc_has P1.S1); wc "$WCA" slice finish P1.S1 --outcome again >/dev/null
+wc_n4=$(wc "$WCA" next | grep '^commits_waiting='); wc "$WCA" mark-committed P1.S1 >/dev/null; wc "$WCA" slice finish P1.S1 --outcome third >/dev/null
 wc_n5=$(wc "$WCA" next | grep '^commits_waiting=')
-{ wc "$WCA" start-slice P1.S2 && wc "$WCA" finish-slice P1.S2 --outcome two && wc "$WCA" mark-committed P1.S2 && wc "$WCA" accept-gate P1 --waive --note toy \
-  && wc "$WCA" start-slice P1.REVIEW && wc "$WCA" review-phase P1 --verdict pass; } > "$WCW/review.txt" 2>&1; wc_rc6=$?
+{ wc "$WCA" slice start P1.S2 && wc "$WCA" slice finish P1.S2 --outcome two && wc "$WCA" mark-committed P1.S2 && wc "$WCA" gate P1 waive --note toy \
+  && wc "$WCA" slice start P1.REVIEW && wc "$WCA" review P1 --verdict pass; } > "$WCW/review.txt" 2>&1; wc_rc6=$?
 wc_n6=$(wc "$WCA" next | grep '^commits_waiting=')
 [ "$wc_h4" = no ] && [ "$wc_n4" = "commits_waiting=P1.S1" ] && [ "$wc_n5" = "commits_waiting=none" ] && [ "$wc_rc6" = 0 ] \
   && [ "$wc_n6" = "commits_waiting=none" ] && [ "$(wc_has P1.REVIEW)" = yes ] \
-  && ok "leaving done clears committed_at and the slice waits again once done; a second finish-slice keeps it; review-phase --verdict pass records the REVIEW's commit itself" \
+  && ok "leaving done clears committed_at and the slice waits again once done; a second slice finish keeps it; review --verdict pass records the REVIEW's commit itself" \
   || bad "the record's lifecycle is wrong -- has=$wc_h4 [$wc_n4] [$wc_n5] rc=$wc_rc6 [$wc_n6] $(tail -2 "$WCW/review.txt")"
 # (c) local mode: no line, no field; mark-committed is refused with nothing written.
-wc "$WCL" start-slice P1.S1 >/dev/null; wc "$WCL" finish-slice P1.S1 --outcome one >/dev/null
-wc_ln=$(wc "$WCL" next); wc_lr=$(wc "$WCL" run-phases)
+wc "$WCL" slice start P1.S1 >/dev/null; wc "$WCL" slice finish P1.S1 --outcome one >/dev/null
+wc_ln=$(wc "$WCL" next)
 wc_t7=$(wc_tree "$WCL/workflow"); wc_o7=$(wc "$WCL" mark-committed P1.S1); wc_rc7=$?; wc_t8=$(wc_tree "$WCL/workflow")
-! printf '%s\n%s\n' "$wc_ln" "$wc_lr" | grep -q 'commits_waiting' && ! grep -rq committed_at "$WCL/workflow/works" \
+! printf '%s\n' "$wc_ln" | grep -q 'commits_waiting' && ! grep -rq committed_at "$WCL/workflow/works" \
   && [ "$wc_rc7" = 1 ] && printf '%s\n' "$wc_o7" | grep -q "^mark-committed is for a linked checkout" && [ "$wc_t7" = "$wc_t8" ] \
-  && ok "local mode: next and run-phases print no commits_waiting= line, no slice.json gains committed_at, and mark-committed is refused with nothing written" \
-  || bad "local mode leaked the linked record -- rc=$wc_rc7 $(printf '%s\n%s\n' "$wc_ln" "$wc_lr" | grep commits_waiting) $(grep -rl committed_at "$WCL/workflow/works" | head -2)"
+  && ok "local mode: next prints no commits_waiting= line, no slice.json gains committed_at, and mark-committed is refused with nothing written" \
+  || bad "local mode leaked the linked record -- rc=$wc_rc7 $(printf '%s\n' "$wc_ln" | grep commits_waiting) $(grep -rl committed_at "$WCL/workflow/works" | head -2)"
 # (d) --update on the linked checkout: changed works/ files stay as they are, uncommitted, with nothing staged; the report names the
 # update's own paths to stage (never add -A), and those take no works/ or docs/ file but the templates and the version marker.
 printf 'plan, edited after the last command\n' > "$WCJ/P1.S2/plan.md"; printf 'a topic\n' > "$WCA/workflow/works/phases/active/P1/topics-wc.md"
@@ -7017,6 +6619,305 @@ wc_t11=$(wc_tree "$WCA"); XDG_CONFIG_HOME="$WCX" sh "$BOOT" --to-multi-repo "$WC
 if grep -rqF "$WCK" "$WCA" "$WCL" "$WCW"/*.txt "$WCW/fake" 2>/dev/null; then bad "the workspace key leaked into the tree, the output or the request log"; fi
 kill "$WC_PID" 2>/dev/null; wait "$WC_PID" 2>/dev/null
 echo "commit-record test runtime: $(( $(date +%s) - wc_t0 ))s"
+
+# ---------------------------------------------------------------------------
+echo "== Test 26: the core flow -- a toy phase through the verbs that stay: phase and slice lifecycle, a section read and append, a typed stop that halts next and releases, the pass refused while the gate is required and uncleared, --waive needing --note, pr branch refusing a dirty switch, validate exiting 1 on a broken slice.json, the pass and the archive =="
+# The pin a command rename must keep green: each verb is called only through its wrapper below, so a rename
+# touches one line here. A fresh at-root install in its own git repo; no other test's state is read.
+newtmp CFT; CW="$CFT/ws"
+sh "$BOOT" "$CW" --at-root --name "Core" --summary "core" > "$CFT/install.txt" 2>&1 || bad "core flow: the fresh install failed"
+cfg() { git -C "$CW" -c user.email=smoke@example.invalid -c user.name=smoke "$@"; }
+wf() { ( cd "$CW" && python3 scripts/workflow.py "$@" 2>&1 ); }
+wf_next() { wf next; }
+wf_new_phase() { wf phase new "$@"; }
+wf_new_slice() { wf slice new "$@"; }
+wf_slice_start() { wf slice start "$1"; }
+wf_slice_finish() { wf slice finish "$1" --outcome "$2"; }
+wf_slice_status() { wf slice status "$@"; }
+wf_section() { wf section "$@"; }
+wf_gate_require() { wf gate "$1" require; }
+wf_gate_waive() { wf gate "$1" waive "${@:2}"; }
+wf_gate_open() { wf gate "$1" open --walkthrough "$2"; }
+wf_gate_clear() { wf gate "$1" clear "${@:2}"; }
+wf_review_pass() { wf review "$1" --verdict pass; }
+wf_pr_branch() { wf pr branch "$1" --name "$2"; }
+wf_check() { wf check --no-rebuild; }
+wf_archive() { wf phase archive "$1"; }
+cf_status() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$CW/works/phases/active/$1"; }
+{ cfg init -q . && cfg symbolic-ref HEAD refs/heads/main && printf 'a\n' > "$CW/app.txt" && cfg add -A && cfg commit -qm base; } >/dev/null 2>&1 \
+  || bad "core flow: the base commit failed"
+# (1) the phase and slice lifecycle: a phase is made with DECOMP and REVIEW, a slice is made, started and finished with its outcome.
+c1=$(wf_new_phase --phase P1 --name "Core" --objective "the core flow"); c1_rc=$?
+c2=$(wf_slice_finish P1.DECOMP "planned"); c2_rc=$?
+c3=$(wf_new_slice --phase P1 --slice P1.S1 --name "probe" --kind implementation --risk low); c3_rc=$?
+c4=$(wf_slice_start P1.S1); c4_rc=$?; c4_st=$(cf_status P1/slices/P1.S1/slice.json)
+[ "$c1_rc$c2_rc$c3_rc$c4_rc" = 0000 ] && [ -d "$CW/works/phases/active/P1/slices/P1.DECOMP" ] && [ -d "$CW/works/phases/active/P1/slices/P1.REVIEW" ] \
+  && [ "$(cf_status P1/slices/P1.DECOMP/slice.json)" = done ] && [ "$c4_st" = in_progress ] \
+  && grep -q '| planned |' "$CW/works/phases/active/P1/phase.md" \
+  && ok "core flow: a new phase carries DECOMP and REVIEW; DECOMP finishes with its outcome in the ## Slices row; a new slice starts in_progress" \
+  || bad "core flow: phase and slice lifecycle broke (rc $c1_rc/$c2_rc/$c3_rc/$c4_rc, S1 $c4_st) -- $c1 / $c2 / $c3 / $c4"
+# (2) a section read and an append, one section at a time.
+c5=$(wf_section P1 Now); c5_rc=$?
+c6=$(printf -- '- core: a settled point\n' | wf_section P1 Decisions --append --file /dev/stdin); c6_rc=$?
+c7=$(wf_section P1 Decisions); c7_rc=$?
+[ "$c5_rc$c6_rc$c7_rc" = 000 ] && [ "$(printf '%s\n' "$c5" | head -1)" = '## Now' ] && ! printf '%s\n' "$c5" | grep -q '^## Decisions' \
+  && printf '%s\n' "$c7" | grep -qx -- '- core: a settled point' && grep -qx -- '- core: a settled point' "$CW/works/phases/active/P1/phase.md" \
+  && ok "core flow: section reads one section (## Now alone) and appends an entry that the next read and phase.md both show" \
+  || bad "core flow: the section read or append broke (rc $c5_rc/$c6_rc/$c7_rc) -- $c5 / $c6 / $c7"
+# (3) a typed stop: bare or half-typed is refused; typed, next prints WAITING ON OPERATOR and no dispatchable slice; leaving pending releases it.
+c8b=$(wf_slice_status P1.S1 pending); c8b_rc=$?; c8b_st=$(cf_status P1/slices/P1.S1/slice.json)
+c8=$(wf_slice_status P1.S1 pending --stop-kind decision); c8_rc=$?; c8_st=$(cf_status P1/slices/P1.S1/slice.json)
+c9=$(wf_slice_status P1.S1 pending --stop-kind decision --on-words "the operator picks one"); c9_rc=$?
+c10=$(wf_next); c10_rc=$?
+c11=$(wf_slice_status P1.S1 in_progress); c11_rc=$?
+c12=$(wf_next)
+[ "$c8b_rc" = 1 ] && [ "$c8b_st" = in_progress ] && [ "$c8_rc" = 1 ] && [ "$c8_st" = in_progress ] && [ "$c9_rc$c10_rc$c11_rc" = 000 ] \
+  && printf '%s\n' "$c10" | grep -q '^WAITING ON OPERATOR: slice P1.S1 is pending' && printf '%s\n' "$c10" | grep -qx 'waiting_on_operator=P1.S1' \
+  && printf '%s\n' "$c10" | grep -qx 'stop_kind=decision' && printf '%s\n' "$c10" | grep -qx 'on_words=the operator picks one' \
+  && ! printf '%s\n' "$c10" | grep -q '^current_slice=' \
+  && ! printf '%s\n' "$c12" | grep -q 'WAITING ON OPERATOR' && printf '%s\n' "$c12" | grep -qx 'current_slice=P1.S1' \
+  && ok "core flow: a bare or half-typed pending stop is refused unwritten; a typed pending stop makes next print WAITING ON OPERATOR with its kind and words and no slice, and in_progress releases it" \
+  || bad "core flow: the typed stop did not halt and release next (rc $c8b_rc/$c8_rc/$c9_rc/$c10_rc/$c11_rc) -- $c8 / $c10 / $c12"
+c13=$(wf_slice_finish P1.S1 "did the probe"); c13_rc=$?
+[ "$c13_rc" = 0 ] && [ "$(cf_status P1/slices/P1.S1/slice.json)" = done ] && grep -q '| did the probe |' "$CW/works/phases/active/P1/phase.md" \
+  && ok "core flow: slice finish marks the slice done and lands its outcome in the ## Slices row" || bad "core flow: finishing P1.S1 broke (rc $c13_rc) -- $c13"
+# (4) the pass is refused while the gate is required and not cleared; (5) gate waive without --note is refused.
+c14=$(wf_gate_require P1); c14_rc=$?
+c15=$(wf_slice_start P1.REVIEW); c16=$(wf_review_pass P1); c16_rc=$?
+c17=$(wf_gate_waive P1); c17_rc=$?
+pj_req=$(python3 -c 'import json,sys; a=json.load(open(sys.argv[1])).get("acceptance") or {}; print(a.get("required"), a.get("note"))' "$CW/works/phases/active/P1/phase.json")
+[ "$c14_rc" = 0 ] && [ "$c16_rc" = 1 ] && printf '%s\n' "$c16" | grep -q 'requires operator acceptance and the gate is not cleared' \
+  && [ "$(cf_status P1/phase.json)" != done ] \
+  && ok "core flow: review --verdict pass is refused while the gate is required and uncleared, and the phase stays open" \
+  || bad "core flow: the pass was not refused behind the required gate (rc $c14_rc/$c16_rc, phase $(cf_status P1/phase.json)) -- $c14 / $c16"
+[ "$c17_rc" = 1 ] && printf '%s\n' "$c17" | grep -q 'gate P1 waive requires --note' && [ "$pj_req" = "True None" ] \
+  && ok "core flow: gate waive without --note is refused and the gate stays required" \
+  || bad "core flow: gate waive without --note was not refused (rc $c17_rc, acceptance $pj_req) -- $c17"
+# (6) pr branch refuses a switch that would carry uncommitted tracked changes: the branch and phase.json stay as they were.
+c18_h0=$(sha "$CW/works/phases/active/P1/phase.json"); printf 'b\n' >> "$CW/app.txt"
+c18=$(wf_pr_branch P1 feat/core); c18_rc=$?
+c18_br=$(cfg branch --show-current); c18_h1=$(sha "$CW/works/phases/active/P1/phase.json"); cfg checkout -q -- app.txt
+[ "$c18_rc" = 1 ] && printf '%s\n' "$c18" | grep -q 'uncommitted tracked changes a switch would carry onto feat/core: app.txt' \
+  && [ "$c18_br" = main ] && [ "$c18_h0" = "$c18_h1" ] && ! cfg rev-parse -q --verify refs/heads/feat/core >/dev/null \
+  && ok "core flow: pr branch refuses a dirty tracked tree, cutting no branch and leaving phase.json byte-identical" \
+  || bad "core flow: pr branch did not refuse the dirty switch (rc $c18_rc, on $c18_br) -- $c18"
+# (7) validate exits 1 on a broken slice.json, and 0 again once it is restored.
+c19_sj="$CW/works/phases/active/P1/slices/P1.S1/slice.json"; cp "$c19_sj" "$CFT/slice.json.keep"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["status"]="no-such-status"; json.dump(d, open(sys.argv[1], "w"))' "$c19_sj"
+c19=$(wf_check); c19_rc=$?
+cp "$CFT/slice.json.keep" "$c19_sj"; c20=$(wf_check); c20_rc=$?
+[ "$c19_rc" = 1 ] && printf '%s\n' "$c19" | grep -q '^Workflow validation failed' && printf '%s\n' "$c19" | grep -q 'no-such-status' \
+  && [ "$c20_rc" = 0 ] && printf '%s\n' "$c20" | grep -q '^Workflow validation passed' \
+  && ok "core flow: validate exits 1 naming a slice.json with an unknown status, and passes once it is restored" \
+  || bad "core flow: validate did not catch the broken slice.json (rc $c19_rc, then $c20_rc) -- $(printf '%s\n' "$c19" | tail -3)"
+# (8) the pass after the gate is opened and cleared with the operator's words (a clear without them is refused, nothing
+# written; a waive with its note passes a second phase), then the archive.
+c21=$(wf_gate_open P1 "walk the toy"); c21_rc=$?; c22=$(wf_next)
+c23_h0=$(sha "$CW/works/phases/active/P1/phase.json"); c23n=$(wf_gate_clear P1 --note "walked it"); c23n_rc=$?; c23_h1=$(sha "$CW/works/phases/active/P1/phase.json")
+c23=$(wf_gate_clear P1 --words "accept" --note "walked it"); c23_rc=$?
+c23_w=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["acceptance"].get("words"))' "$CW/works/phases/active/P1/phase.json")
+[ "$c23n_rc" = 1 ] && printf '%s\n' "$c23n" | grep -q -- "--words \"<the operator's literal words>\" is required" && [ "$c23_h0" = "$c23_h1" ] \
+  && [ "$c23_rc" = 0 ] && [ "$c23_w" = accept ] \
+  && ok "core flow: gate clear without --words is refused with phase.json byte-identical; with --words \"accept\" it records the words" \
+  || bad "core flow: gate clear's words guard broke (rc $c23n_rc/$c23_rc, words $c23_w) -- $c23n / $c23"
+c24=$(wf_slice_finish P1.REVIEW "reviewed"); c25=$(wf_review_pass P1); c25_rc=$?; c25_st=$(cf_status P1/phase.json)
+c26=$(wf_archive P1); c26_rc=$?
+[ "$c21_rc$c23_rc$c25_rc$c26_rc" = 0000 ] && printf '%s\n' "$c22" | grep -q '^WAITING ON OPERATOR: phase P1 is pending' \
+  && [ "$c25_st" = done ] && [ ! -d "$CW/works/phases/active/P1" ] && ls -d "$CW"/works/phases/archived/*_P1_* >/dev/null 2>&1 \
+  && ok "core flow: an open gate halts next; cleared, the pass sets the phase done and phase archive moves it to archived/" \
+  || bad "core flow: the cleared pass or the archive broke (rc $c21_rc/$c23_rc/$c25_rc/$c26_rc, phase $c25_st) -- $c22 / $c25 / $c26"
+c27=$( { wf_new_phase --phase P2 --name "Waived" --objective "a waived pass" && wf_slice_finish P2.DECOMP "planned" \
+  && wf_gate_waive P2 --note "nothing the operator can see" && wf_slice_start P2.REVIEW && wf_slice_finish P2.REVIEW "reviewed" && wf_review_pass P2; } 2>&1 ); c27_rc=$?
+c28=$(wf_check); c28_rc=$?
+[ "$c27_rc" = 0 ] && [ "$(cf_status P2/phase.json)" = done ] && [ "$c28_rc" = 0 ] \
+  && ok "core flow: a gate waived with its note passes the second phase, and the workspace validates after the archive" \
+  || bad "core flow: the waived pass or the final validate broke (rc $c27_rc/$c28_rc) -- $(printf '%s\n' "$c27" | tail -3) / $c28"
+
+# ---------------------------------------------------------------------------
+echo "== Test 27: the engine finds its workspace from anywhere (the plugin path) -- copied to a folder outside any repo, it reads a nested host from the host and from a repo's subfolder, takes the workspace WORKFLOW_ROOT names, writes nothing into its own folder (no works/, no __pycache__), and with no workspace above exits 2 with one line =="
+newtmp PLW; PLE="$PLW/plugin/scripts"; PLH="$PLW/host"; PLA="$PLH/app/sub"
+{ mkdir -p "$PLE" "$PLW/plugin/adapters/claude_code" && cp "$SRC"/scripts/*.py "$PLE/" && cp "$SRC/adapters/claude_code/adapter.py" "$PLW/plugin/adapters/claude_code/" \
+  && env GIT_AUTHOR_NAME=smoke GIT_AUTHOR_EMAIL=smoke@example.invalid GIT_COMMITTER_NAME=smoke GIT_COMMITTER_EMAIL=smoke@example.invalid sh "$BOOT" "$PLH" \
+  && mkdir -p "$PLA" && git -C "$PLH/app" init -q; } > "$PLW/setup.txt" 2>&1 || bad "plugin path: the fixture failed -- $(tail -3 "$PLW/setup.txt")"
+# pl <cwd> <args>: the copied engine under a python that would write bytecode beside it (no opt-out, no prefix).
+pl() { _d=$1; shift; ( cd "$_d" && env -u PYTHONDONTWRITEBYTECODE -u WORKFLOW_ROOT -u WORKFLOW_CMD PYTHONPYCACHEPREFIX= python3 -X pycache_prefix= "$PLE/workflow.py" "$@" ) 2>&1; }
+plr() { _r=$1; _d=$2; shift 2; ( cd "$_d" && env -u PYTHONDONTWRITEBYTECODE -u WORKFLOW_CMD WORKFLOW_ROOT="$_r" PYTHONPYCACHEPREFIX= python3 -X pycache_prefix= "$PLE/workflow.py" "$@" ) 2>&1; }
+pl_sig() { ( cd "$PLW/plugin" && find . | LC_ALL=C sort ); }
+pl_s0=$(pl_sig); pl_h=$(cd "$PLH" && pwd -P); pl_w=$(cd "$PLW" && pwd -P)
+pl1=$(pl "$PLH" next); pl1_rc=$?
+pl2=$(pl "$PLA" phase new --phase P1 --name Plugin --objective "made from a repo subfolder"); pl2_rc=$?
+pl3=$(pl "$PLA" next); pl3_rc=$?
+pl4=$(plr "$PLH" "$PLW" next); pl4_rc=$?
+pl5=$(pl "$PLW" next); pl5_rc=$?
+pl6=$( cd "$PLA" && env -u PYTHONDONTWRITEBYTECODE -u WORKFLOW_ROOT -u WORKFLOW_CMD -u ANTHROPIC_BASE_URL PYTHONPYCACHEPREFIX= python3 -X pycache_prefix= "$PLW/plugin/adapters/claude_code/adapter.py" route P1.DECOMP 2>&1 ); pl6_rc=$?
+[ "$pl6_rc" = 0 ] && printf '%s\n' "$pl6" | grep -qx 'route=high' && printf '%s\n' "$pl6" | grep -qx 'subagent_type=slice-executor' \
+  && ok "plugin path: the adapter beside the copied engine routes a slice of the nested host from a repo's subfolder" \
+  || bad "plugin path: the adapter did not route from the plugin folder (rc $pl6_rc) -- $pl6"
+[ "$pl1_rc$pl2_rc$pl3_rc$pl4_rc" = 0000 ] && [ "$(printf '%s\n' "$pl1" | head -1)" = "nested_host=$pl_h" ] \
+  && [ -f "$PLH/workflow/works/phases/active/P1/phase.json" ] && printf '%s\n' "$pl3" | grep -q 'P1' && [ "$pl4" = "$pl3" ] \
+  && printf '%s\n' "$pl1" | grep -q 'read it with: python3 \.\./plugin/scripts/workflow\.py repo convention$' \
+  && ok "plugin path: the copied engine reads the nested host from the host, writes and reads it from a repo's subfolder (its hints name it from the host), and WORKFLOW_ROOT names it from outside" \
+  || bad "plugin path: the copied engine did not find the host (rc $pl1_rc/$pl2_rc/$pl3_rc/$pl4_rc) -- $(printf '%s\n' "$pl1" | head -2) / $pl2 / $(printf '%s\n' "$pl3" | head -2) / $(printf '%s\n' "$pl4" | head -2)"
+[ "$pl5_rc" = 2 ] && [ "$pl5" = "no workspace found from $pl_w; run from inside one or set WORKFLOW_ROOT" ] \
+  && ok "plugin path: with no workspace above, the copied engine exits 2 with one line" \
+  || bad "plugin path: with no workspace above (rc $pl5_rc) -- $pl5"
+[ "$(pl_sig)" = "$pl_s0" ] && ok "plugin path: nothing was written into the engine's own folder (no works/, no __pycache__)" \
+  || bad "plugin path: the engine wrote into its own folder -- $(diff <(printf '%s\n' "$pl_s0") <(pl_sig) | tail -5 | tr '\n' ' ')"
+# The design-critic's harness, run as installed: its import lines, from the session's directory, bind every
+# engine name it calls (the split moved them out of workflow.py), at root and nested.
+critic_harness() { ( cd "$1" && PYTHONDONTWRITEBYTECODE=1 python3 - "$1/.claude/agents/design-critic.md" <<'PY'
+import re, sys
+block = re.search(r"```python\n(.*?)```", open(sys.argv[1]).read(), re.S).group(1).splitlines()
+ns = {}
+exec("\n".join(l for l in block[:3] if "import" in l), ns)
+w = ns["w"]
+missing = [n for n in ("design_root", "design_preview_server", "DesignBrowser", "design_preview_browser", "design_preview_click") if not hasattr(w, n)]
+assert not missing, missing
+w.design_root()
+PY
+) 2>&1; }
+sh "$BOOT" "$PLW/root" --at-root --name Root --summary root > "$PLW/root.txt" 2>&1 || bad "critic harness: the at-root install failed"
+ch_root=$(critic_harness "$PLW/root"); ch_root_rc=$?; ch_nest=$(critic_harness "$PLH"); ch_nest_rc=$?
+[ "$ch_root_rc$ch_nest_rc" = 00 ] && ok "the design-critic's harness binds design_root, design_preview_server, DesignBrowser, design_preview_browser and design_preview_click on a fresh install, at root and nested" \
+  || bad "the design-critic's harness does not bind its names (root rc $ch_root_rc, nested rc $ch_nest_rc) -- $(printf '%s\n' "$ch_root" | tail -1) / $(printf '%s\n' "$ch_nest" | tail -1)"
+
+# ---------------------------------------------------------------------------
+echo "== Test 28: close -- the close's fixed order against a stub gh: an uncleared required gate is refused first, writing nothing; pr record --url stores the draft's head, updatedAt and comment count and pr sync says whether the PR is unchanged since; a PR changed since its draft stops at the re-read; an unchanged one records the pass and stops at Ready, then walks to the landing step; a red check stops at the CI step; merged, it stops for the one commit, then reads close=done; zero GitHub writes =="
+# An at-root toy in its own git repo; gh is a stub on PATH that answers canned files, logs every call and refuses the rest.
+newtmp CLT; CLW="$CLT/ws"; CLG="$CLT/gh"; mkdir -p "$CLG"
+sh "$BOOT" "$CLW" --at-root --name "Close" --summary "close" > "$CLT/install.txt" 2>&1 || bad "close: the fresh install failed"
+cat > "$CLG/gh" <<'STUB'
+#!/bin/sh
+D=$(cd "$(dirname "$0")" && pwd); printf '%s\n' "$*" >> "$D/gh.log"
+case "$1 $2" in
+  "pr view") cat "$D/pr-$(basename "$3").json" 2>/dev/null || { echo "GraphQL: Could not resolve to a PullRequest" >&2; exit 1; };;
+  "pr checks") cat "$D/checks.json"; exit "$(cat "$D/checks.rc" 2>/dev/null || echo 0)";;
+  *) echo "stub: refused $*" >&2; exit 9;;
+esac
+STUB
+chmod +x "$CLG/gh"
+cl() { ( cd "$CLW" && PATH="$CLG:$PATH" python3 scripts/workflow.py "$@" 2>&1 ); }
+clg() { git -C "$CLW" -c user.email=smoke@example.invalid -c user.name=smoke "$@"; }
+# cpr <state> <isDraft> <head> <updatedAt> <comments>: the one PR's canned gh pr view answer.
+cpr() { printf '{"state":"%s","isDraft":%s,"mergedAt":%s,"baseRefName":"main","headRefOid":"%s","reviewDecision":null,"updatedAt":"%s","comments":[%s]}\n' \
+  "$1" "$2" "$([ "$1" = MERGED ] && echo '"2026-11-20T10:00:00Z"' || echo null)" "$3" "$4" "$5" > "$CLG/pr-1.json"; }
+cck() { printf '[{"name":"smoke","bucket":"%s"}]\n' "$1" > "$CLG/checks.json"; }
+clj() { python3 -c 'import json,sys
+d = json.load(open(sys.argv[1]))
+for k in sys.argv[2].split("."): d = d.get(k) if isinstance(d, dict) else (d[int(k)] if isinstance(d, list) and len(d) > int(k) else None)
+print(json.dumps(d, sort_keys=True))' "$CLW/works/phases/active/P1/phase.json" "$1"; }
+clsig() { cat "$CLW/works/phases/active/P1/phase.json" "$CLW/works/events.jsonl" | sha_stdin; }
+H1=1111111111111111111111111111111111111111; H2=2222222222222222222222222222222222222222
+{ clg init -q . && clg symbolic-ref HEAD refs/heads/main && echo a > "$CLW/app.txt" && clg add -A && clg commit -qm base \
+  && cl phase new --phase P1 --name "Close" --objective toy && cl gate P1 require && cl slice finish P1.DECOMP --outcome cut \
+  && clg add -A && clg commit -qm p1 && cl pr branch P1 --name feat/close && echo b >> "$CLW/app.txt" && clg commit -qam "feat: b" \
+  && cl slice start P1.REVIEW && : > "$CLW/works/phases/active/P1/slices/P1.REVIEW/result.md"; } > "$CLT/setup.txt" 2>&1 \
+  || bad "close: the toy phase failed to set up -- $(tail -3 "$CLT/setup.txt")"
+# (1) the draft's state: pr record --url reads it; pr sync compares against it.
+cpr OPEN true $H1 2026-11-20T01:00:00Z '{"body":"details"}'
+c_rec=$(cl pr record P1 --url https://github.com/acme/close/pull/1); c_s1=$(cl pr sync P1)
+cpr OPEN true $H2 2026-11-20T01:00:00Z '{"body":"details"}'; c_s2=$(cl pr sync P1); cpr OPEN true $H1 2026-11-20T01:00:00Z '{"body":"details"}'
+if printf '%s\n' "$c_rec" | grep -qx 'pr_draft_state=root:feat/close head=1111111 updated_at=2026-11-20T01:00:00Z comments=1' \
+    && [ "$(clj pr.branches.0.head)" = "\"$H1\"" ] && [ "$(clj pr.branches.0.updated_at)" = '"2026-11-20T01:00:00Z"' ] && [ "$(clj pr.branches.0.comments)" = 1 ] \
+    && printf '%s\n' "$c_s1" | grep -qx 'unchanged_since_draft=yes pr=root:feat/close' && printf '%s\n' "$c_s2" | grep -qx 'unchanged_since_draft=no pr=root:feat/close' \
+    && [ "$(clj pr.branches.0.head)" = "\"$H1\"" ]; then
+  ok "close: pr record --url stores the draft's head, updatedAt and comment count from gh pr view; pr sync prints unchanged_since_draft=yes on the same answer and no on a moved head, keeping the draft's record"
+else bad "close: the draft's state wrong -- $c_rec / $c_s1 / $c_s2 / head $(clj pr.branches.0.head)"; fi
+# (2) an uncleared required gate is refused before anything is read or written; gate clear without --words is refused unwritten.
+cl gate P1 open --walkthrough "walk it" > /dev/null; c_g0=$(clsig); : > "$CLG/gh.log"
+c_gate=$(cl close P1); c_gate_rc=$?; c_nw=$(cl gate P1 clear); c_nw_rc=$?; c_g1=$(clsig)
+if [ "$c_gate_rc" = 1 ] && printf '%s\n' "$c_gate" | grep -q "^close P1: refused -- the acceptance gate is required and not cleared with the operator's words" \
+    && [ "$c_nw_rc" = 1 ] && printf '%s\n' "$c_nw" | grep -q -- '--words "<the operator.s literal words>" is required' && [ "$c_g0" = "$c_g1" ] && [ ! -s "$CLG/gh.log" ]; then
+  ok "close: a required gate not cleared with words is refused first (no gh call, phase.json and events unchanged), and gate clear without --words is refused unwritten"
+else bad "close: the uncleared gate was not refused first (rc $c_gate_rc/$c_nw_rc) -- $c_gate / $c_nw / gh: $(cat "$CLG/gh.log")"; fi
+# (3) cleared with words; a PR changed since its draft stops at the re-read, with no pass recorded.
+cl gate P1 clear --words "accept" > /dev/null
+cpr OPEN true $H2 2026-11-20T02:00:00Z '{"body":"details"}'; c_chg=$(cl close P1); c_chg_rc=$?
+if [ "$c_chg_rc" = 0 ] && [ "$(clj acceptance.words)" = '"accept"' ] && printf '%s\n' "$c_chg" | grep -qx 'step=gate state=done -- cleared with the words '"'accept'" \
+    && printf '%s\n' "$c_chg" | grep -qx 'step=reread state=stop' && printf '%s\n' "$c_chg" | grep -q '^stop=reread do=root:feat/close changed since its draft: read it (gh pr view https://github.com/acme/close/pull/1 --json title,body,commits,reviews,comments)' \
+    && printf '%s\n' "$c_chg" | grep -qx 'step=pass state=due' && [ "$(clj status)" != '"done"' ]; then
+  ok "close: gate clear --words records the words; a PR whose head moved since its draft stops at the re-read (the pass not recorded, the read-and-re-record steps printed)"
+else bad "close: a changed PR did not stop at the re-read (rc $c_chg_rc) -- $c_chg"; fi
+# (4) unchanged: the pass is recorded and the close stops at Ready; Ready (updatedAt moved) and green, it walks to the landing step.
+cpr OPEN true $H1 2026-11-20T01:00:00Z '{"body":"details"}'; c_rd=$(cl close P1)
+cpr OPEN false $H1 2026-11-20T03:00:00Z '{"body":"details"}'; cck pass; cl pr team --record solo --evidence "one owner" > /dev/null
+c_ld=$(cl close P1)
+if printf '%s\n' "$c_rd" | grep -qx 'step=pass state=done -- recorded' && printf '%s\n' "$c_rd" | grep -qx 'stop=ready do=gh pr ready https://github.com/acme/close/pull/1; then python3 scripts/workflow.py close P1' \
+    && [ "$(clj status)" = '"done"' ] && [ "$(clj review.status)" = '"pass"' ] \
+    && printf '%s\n' "$c_ld" | grep -qx 'step=ci state=done -- root:feat/close green' && printf '%s\n' "$c_ld" | grep -qx 'step=land state=stop' \
+    && printf '%s\n' "$c_ld" | grep -q '^stop=land do=land root:feat/close by its repo.s custom' && [ "$(clj pr.branches.0.ci)" = '"green"' ]; then
+  ok "close: a PR unchanged since its draft records the pass and stops at Ready (gh pr ready printed, never run); Ready and green, it walks to the landing step"
+else bad "close: the unchanged walk wrong -- $c_rd / $c_ld"; fi
+# (5) a red check stops at the CI step, naming the reopen.
+cck fail; c_red=$(cl close P1)
+printf '%s\n' "$c_red" | grep -qx 'step=ci state=stop' && printf '%s\n' "$c_red" | grep -q '^stop=ci do=CI is red on root:feat/close: the phase is done' \
+  && printf '%s\n' "$c_red" | grep -qx 'step=land state=due' && [ "$(clj pr.branches.0.ci)" = '"red"' ] \
+  && ok "close: a red check stops at the CI step (recorded ci=red) and names the reopen on the operator's word" || bad "close: a red check did not stop at CI -- $c_red"
+# (6) merged: the close records it, checks, and stops for the one commit; committed, it reads close=done.
+cpr MERGED false $H1 2026-11-20T04:00:00Z '{"body":"details"}'; c_mg=$(cl close P1); clg add -A >/dev/null 2>&1; clg commit -qm "chore: close" >/dev/null 2>&1; c_dn=$(cl close P1)
+if printf '%s\n' "$c_mg" | grep -qx 'step=land state=done' && printf '%s\n' "$c_mg" | grep -qx 'step=check state=done' && printf '%s\n' "$c_mg" | grep -q '^stop=commit do=' \
+    && [ "$(clj pr.branches.0.state)" = '"merged"' ] && [ "$(printf '%s\n' "$c_dn" | tail -1)" = close=done ] && printf '%s\n' "$c_dn" | grep -qx 'step=commit state=done'; then
+  ok "close: a merged PR passes the landing step, check runs, the close stops for the one workflow commit, and once committed reads close=done"
+else bad "close: the merged walk wrong -- $c_mg / $c_dn"; fi
+# (7) zero GitHub writes: every call the stub saw is a read.
+c_w=$(grep -cvE '^(pr view https://github\.com/[^ ]+ --json [a-zA-Z,]+|pr checks https://github\.com/[^ ]+ --json name,bucket)$' "$CLG/gh.log")
+[ "$c_w" = 0 ] && [ "$(grep -c '' "$CLG/gh.log")" -ge 5 ] && ok "close: zero GitHub writes -- every one of the $(grep -c '' "$CLG/gh.log") calls the stub gh saw is a read (pr view --json, pr checks --json)" \
+  || bad "close: the stub gh saw a call that is not a read -- $(grep -vE '^pr (view|checks) ' "$CLG/gh.log" | head -3)"
+# (8) a worktree phase: close in the worktree commits the pass on the branch itself (commit-pass: `--only` the phase folder
+# and the generated works/ files; the operator's tracked edit, staged file and untracked file stay as they were), so
+# worktree gate opens; merged in the main checkout, close walks merge and teardown to close=done. At root (gate required,
+# and waived with the pass recorded earlier), nested and on a multi-repo host. A phase with no worktree prints no commit-pass.
+cwt() {  # <root|nested|multi> <required|waived> <dir>: prints one line, "ok" or what went wrong
+  ( export GIT_AUTHOR_NAME=smoke GIT_AUTHOR_EMAIL=smoke@example.invalid GIT_COMMITTER_NAME=smoke GIT_COMMITTER_EMAIL=smoke@example.invalid
+    H="$3/host"; L="$3/log.txt"; E=workflow/scripts/workflow.py; WF=workflow; mkdir -p "$3"
+    g0() { mkdir -p "$1" && git -C "$1" init -q && git -C "$1" symbolic-ref HEAD refs/heads/main && echo a > "$1/a.txt" && git -C "$1" add -A && git -C "$1" commit -qm base; }
+    case $1 in
+      root) E=scripts/workflow.py; WF=.; sh "$BOOT" "$H" --at-root --name Wt --summary wt > "$L" 2>&1 && g0 "$H" ;;
+      nested) g0 "$H" && sh "$BOOT" "$H" > "$L" 2>&1 ;;
+      multi) g0 "$H/alpha" && sh "$BOOT" "$H" > "$L" 2>&1 ;;
+    esac || { echo "install failed: $(tail -2 "$L")"; exit; }
+    m() { ( cd "$H" && python3 $E "$@" 2>&1 ); }
+    m phase new --phase P1 --name Wt --objective x >> "$L" && if [ "$2" = waived ]; then m gate P1 waive --note "no gate"; else m gate P1 require; fi >> "$L" \
+      && git -C "$H/$WF" add -A && git -C "$H/$WF" commit -qm p1 || { echo "setup failed"; exit; }
+    case $1 in root) m worktree start P1 ;; nested) m worktree start P1 --host-branch feat/wt ;;
+      multi) m worktree start P1 --host-branch hb --repo alpha=feat/a --repo-base alpha=main ;; esac >> "$L" || { echo "worktree start failed"; exit; }
+    WT=$(ls -d "$H"/.claude/worktrees/P1-*); BR=$(git -C "$WT/$WF" branch --show-current); w() { ( cd "$WT" && python3 $E "$@" 2>&1 ); }
+    { w slice finish P1.DECOMP --outcome cut && w slice start P1.REVIEW && : > "$WT/$WF/works/phases/active/P1/slices/P1.REVIEW/result.md" \
+      && w pr record P1 --waive --note "no product" && echo v1 > "$WT/$WF/op.md" && git -C "$WT/$WF" add -A && git -C "$WT/$WF" commit -qm "branch work" \
+      && if [ "$2" = waived ]; then w slice finish P1.REVIEW --outcome done && w review P1 --verdict pass --reviewer smoke; \
+         else w gate P1 open --walkthrough walk && w gate P1 clear --words accept; fi; } >> "$L" || { echo "branch work failed"; exit; }
+    echo v2 > "$WT/$WF/op.md"; echo s > "$WT/$WF/op-staged.md"; git -C "$WT/$WF" add op-staged.md; echo u > "$WT/$WF/op-new.md"
+    h0=$(git -C "$WT/$WF" rev-parse HEAD); dry=$(w close P1 --dry-run)
+    [ "$(git -C "$WT/$WF" rev-parse HEAD)" = "$h0" ] && printf '%s\n' "$dry" | grep -q '^step=commit-pass state=due -- would commit ' || { echo "dry run: $dry"; exit; }
+    c1=$(w close P1); files=$(git -C "$WT/$WF" show --name-only --format= HEAD | LC_ALL=C sort | tr '\n' ' ')
+    want="works/backlog.md works/events.jsonl works/index.json works/phases/active/P1/phase.json works/phases/active/P1/phase.md works/phases/active/P1/slices/P1.REVIEW/slice.json works/state.json "
+    printf '%s\n' "$c1" | grep -q "^step=commit-pass state=done -- committed [0-9a-f]\{7\} chore(works): record P1's pass on its branch" \
+      && printf '%s\n' "$c1" | grep -q "^stop=merge do=the pass is committed on $BR; from this worktree: python3 $E worktree gate P1 " \
+      && [ "$(git -C "$WT/$WF" rev-parse HEAD^)" = "$h0" ] && [ "$files" = "$want" ] \
+      && [ "$(git -C "$WT/$WF" status --porcelain | LC_ALL=C sort | tr '\n' '|')" = " M op.md|?? op-new.md|A  op-staged.md|" ] \
+      || { echo "close in the worktree: $c1 / files: $files / status: $(git -C "$WT/$WF" status --porcelain | tr '\n' '|')"; exit; }
+    w close P1 | grep -q "^step=commit-pass state=done -- nothing to commit: $BR already holds" && [ "$(git -C "$WT/$WF" rev-parse HEAD^)" = "$h0" ] \
+      || { echo "a second close made another commit"; exit; }
+    w worktree gate P1 | grep -qx 'GATE OPEN' || { echo "gate: $(w worktree gate P1 | grep '^GATE')"; exit; }
+    git -C "$WT/$WF" add -A && git -C "$WT/$WF" commit -qm "operator: own files"   # the operator settles their own files
+    [ -z "$(git -C "$H/$WF" status --porcelain -- works)" ] || { git -C "$H/$WF" add works && git -C "$H/$WF" commit -qm "chore(works): refresh"; }
+    if ! git -C "$H/$WF" merge --no-ff -q "$BR" -m "merge(P1): Wt" >> "$L" 2>&1; then  # a generated file's conflict: take either side
+      for f in $(git -C "$H/$WF" diff --name-only --diff-filter=U); do case $f in works/backlog.md|works/index.json|works/state.json) git -C "$H/$WF" checkout --theirs -- "$f" && git -C "$H/$WF" add -- "$f" ;; *) echo "merge conflict in $f"; exit ;; esac; done
+      git -C "$H/$WF" commit -q --no-edit || { echo "merge commit failed"; exit; }
+    fi
+    c2=$(m close P1); git -C "$H/$WF" add works && git -C "$H/$WF" commit -qm "chore(works): close P1"; c3=$(m close P1)
+    printf '%s\n' "$c2" | grep -qx 'step=merge state=done' && printf '%s\n' "$c2" | grep -qx 'step=teardown state=done' && printf '%s\n' "$c2" | grep -q '^stop=commit do=' \
+      && [ "$(printf '%s\n' "$c3" | tail -1)" = close=done ] && [ ! -e "$WT" ] || { echo "main checkout: $c2 / $c3"; exit; }
+    echo ok )
+}
+newtmp CWT
+for c in "root required" "root waived" "nested required" "multi required"; do
+  set -- $c; r=$(cwt "$1" "$2" "$CWT/$1-$2")
+  [ "$r" = ok ] && ok "close, a worktree phase ($1, gate $2): the close in the worktree commits the pass on the branch (only the phase folder and the generated works/ files, the operator's edited, staged and untracked files left as they were; --dry-run commits nothing, a second close nothing more), worktree gate opens, and after the merge the main checkout's close walks merge and teardown to close=done" \
+    || bad "close, a worktree phase ($1, gate $2): $r"
+done
+! printf '%s\n' "$c_dn" | grep -q '^step=commit-pass' && [ "$(printf '%s\n' "$c_dn" | grep -c '^step=')" = 11 ] \
+  && ok "close: a phase with no worktree prints the 11 steps, no commit-pass" || bad "close: a phase with no worktree printed a commit-pass step -- $c_dn"
 
 # ---------------------------------------------------------------------------
 echo

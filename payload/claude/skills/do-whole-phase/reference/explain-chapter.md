@@ -179,13 +179,13 @@ route table and no file in this workspace. The plugin ships it, and you apply th
 
 ## Records, limits and the commit
 
-- `record-dispatch` once, after the last span, with its verdict; span 1's `done` is not a slice verdict.
+- The slice's verdict is the last span's `result.md`; span 1's `done` is not a slice verdict.
   The critic's span is metered from the transcripts, attributed by its `slice:` line, never recorded.
 - A usage limit in any span is resumed or re-dispatched per `reference/dispatch.md` (5); it is never a
   verdict. Span 1 re-dispatched from disk goes on from the record (§3.3 *The record, and resuming a run*).
 - A write slice runs on the high row, so it never escalates: a `blocked` or `needs_operator` return stops
   the run (`reference/verdicts.md`).
-- Only after the last span returns `done`: `finish-slice`, then **one commit** carrying the draft, its
+- Only after the last span returns `done`: `slice finish`, then **one commit** carrying the draft, its
   assets, the critique, the chapter's record files, `result.md` and `phase.md`. **Check the freeze
   first:** `git status --short` (nested: `git -C workflow status --short`):
   - a book's chapter may show, under `book/research/`, only files named for this chapter

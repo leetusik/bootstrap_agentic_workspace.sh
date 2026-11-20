@@ -2,7 +2,7 @@
 
 ## Drafting and the inner loop
 
-**Dispatch the drafter.** Resolve once per round with `executor-route --drafter --phase <P>`, and
+**Dispatch the drafter.** Resolve once per round with `adapter.py route --drafter --phase <P>`, and
 pass its `model` / `effort` on every Agent call (`subagent_type` = its `subagent_type=` line;
 `subagent_type: design-drafter` in a plain install). The phase's `Drafter:` line under `## Design
 Style` (`intent.md`) picks the model, `fable` or `opus`, its effort staying the design row's; no line
@@ -73,7 +73,7 @@ cross-page critic never does, so the two scopes catch different defects.
 
 **Inside each scope, before the operator sees anything:** one critic pass, then at most one drafter answer pass. There is no second critic pass.
 
-1. **The page critics** (`executor-route --critic`; its `model` / `effort` per call), one per page,
+1. **The page critics** (`adapter.py route --critic`; its `model` / `effort` per call), one per page,
    each dispatched as soon as its page drafter returns `done`, so they run at once. The prompt:
    `slice:`, `mode: critic`, `scope: page <slug>`, the round address, `pass: 01` and a scratch
    directory outside the design root. It judges that page against the handoff's page section, the bar
@@ -94,7 +94,7 @@ cross-page critic never does, so the two scopes catch different defects.
    - **under `critic`**, no judge exists, so **nothing is held**: the drafter answers a listed
      must-fix like any other finding, and the operator still sees every listed item marked
      **unsure**, with its reasons, beside the drafter's answer;
-   - **under `critic+judge`** (`executor-route --judge`; its `model` / `effort` per call), dispatch
+   - **under `critic+judge`** (`adapter.py route --judge`; its `model` / `effort` per call), dispatch
      the judge **beside the drafter's answer pass** that holds those ids, a page's or the joiner's.
      The judge's prompt: `mode: judge`, the same `scope:` line, the round, `pass: 01`, the critique
      path, the escalated ids, and the critic's `--out` path so it reuses the render. It writes
@@ -144,8 +144,8 @@ under them on dollars (about $81 predicted at 4 pages) and over on wall clock (a
 At seven pages that is about 3× a one-drafter round (about $39) and slower in wall clock: the frame
 and the join add serial stages the parallel pages do not win back. The passes buy quality per page
 and cross-page consistency, not speed or cost. Span-minutes of parallel spans sum past wall clock,
-so read `dispatch-summary`'s means with the slice's window. The critic's model and effort are the
-`[claude.critic]` row's and the judge's the `[claude.judge]` row's (`executor-route --critic` and
+so read the adapter's `meter` means with the slice's window. The critic's model and effort are the
+`[claude.critic]` row's and the judge's the `[claude.judge]` row's (`adapter.py route --critic` and
 `--judge` print what this install resolves; `max` is the step up): the operator tunes them in
 `executors.toml`, never in a prompt. (For the record, on an earlier whole-round critic: a critic
 pass took 25–36 minutes on a flow-board job, and the judge about 2 minutes per item.)
@@ -153,7 +153,7 @@ pass took 25–36 minutes on a flow-board job, and the judge about 2 minutes per
 **Every span's prompt starts with its `slice: <id>` line** — drafter, critic and judge alike: the
 meter attributes the span by it, and labels it by its `pass:` or `scope:` line (`design-frame`,
 `design-page`, `design-join`, `critic-page`, `critic-cross`). Spans are metered from the transcripts
-by `dispatch-summary`; never record one by hand.
+by the adapter's `meter`; never record one by hand.
 
 ## Never — dispatching
 

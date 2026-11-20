@@ -43,10 +43,8 @@ Claude Code:
 - Each slice owns slice.json plus plan.md (the orchestrator's free-form native plan, written at the slice's turn) and result.md (written at slice end).
 - Deferred jobs are one folder per job and never affect next-slice selection
   until promoted.
-- Phase review is recorded (review-phase) and gates archiving.
-- Docs are versioned fullstack categories: agents create
-  docs/versions/<doc>/v<yyMMddHHmm>_*.md (named by UTC minute) and regenerate
-  docs/current/*.md.
+- Phase review is recorded (review) and gates archiving.
+- Docs are five plain files under docs/current/, edited in place.
 
 Requires python3 (>= 3.8), and git for the default nested install. A fresh
 install never overwrites an installed workspace: refresh one with --update.

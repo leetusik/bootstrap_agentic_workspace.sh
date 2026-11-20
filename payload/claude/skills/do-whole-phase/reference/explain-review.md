@@ -16,7 +16,7 @@ What differs is the work it reviews, which is a book, a document or a chapter ra
    - its `disputed:` ids;
    - its `## Publish` section.
 
-   Then run `python3 scripts/workflow.py validate`. A chapter not done is a finding.
+   Then run `python3 scripts/workflow.py check`. A chapter not done is a finding.
 
    **Then check the freeze** (§9.2 *The evidence for a book (an explain phase)*, item 4): the book's `brief.md` and `evidence.md`, and the signed `book/outline.md`, are unedited since the outline's signature. The last `DECOMP` commit is `git log -1 --format=%h -- works/phases/active/P<N>/slices/<P>.DECOMP`. In `git log --format='%h %s' --name-status <that commit>..HEAD -- works/phases/active/P<N>/book/research works/phases/active/P<N>/book/outline.md`, every commit may add or change only files named for one chapter (`evidence-ch<k>.md`, `outline-ch<k>.md`, `trace-<key>.md`, `answers-<key>.md`), never `brief.md`, `evidence.md` or `book/outline.md`. (Nested: run both in the nested repo, `git -C workflow …`, with paths relative to it.) One that does is a finding: its chapters were written against evidence that moved.
 2. **Reads the whole book** in the outline's order: `book/<key>.md` against `book/outline.md`. It reads for:
@@ -67,12 +67,11 @@ What differs is the work it reviews, which is a book, a document or a chapter ra
    - **stage 1:** the manifest, as in step 6;
    - **stage 2:** steps 5 and 6;
    - **stage 3:** read as the outline's reader, for the first time: whatever is dead, confusing or annoying in the reader;
-   - **stage 4:** the phase changes no product file (`phase-scope <P>` shows none), so no `## Regression Checklist` line is inside its boundary, and it appends none. Record that;
+   - **stage 4:** the phase changes no product file (`phase scope <P>` shows none), so no `## Regression Checklist` line is inside its boundary, and it appends none. Record that;
    - **stage 5:** route every `## Operator Questions` entry;
    - **stage 6:** the walkthrough (step 8).
 8. **Returns:**
    - the `review_verdict`, with findings numbered and a proposed fix slice for each chapter that needs one;
-   - `doc_versions: none — deferred to a docs phase`. An explain phase leaves no `## Doc impact` notes and writes no gate section, so the engine stamps no debt;
    - the fixed pointer;
    - on a `pass`, the **walkthrough**:
      - the book's URL: its book page, `<site>/<org>/<project>/books/<book>`, taken from the publish responses;
@@ -86,7 +85,7 @@ What differs is the work it reviews, which is a book, a document or a chapter ra
 
 The unit is one draft, `doc/body.md`, written by `S1` from the evidence `DECOMP` read into `doc/`. Its acceptance gate is waived (published private; a v2 is cheap), so the review publishes, proves it private and reads it back without opening a gate.
 
-1. **Validates `S1`.** Read the head of its `result.md`: `status: done`; `critique: answered`; its `disputed:` ids; its `## Publish` section. Run `python3 scripts/workflow.py validate`. **Then check that the evidence held:** after the last `DECOMP` commit (as a book's step 1 finds it), `git log --format='%h %s' --name-status <that commit>..HEAD -- works/phases/active/P<N>/doc` shows only `body.md`, `trace.md`, `critique.md`, `answers.md` and `assets/` added or changed, and `evidence.md` only by appended entries (nested: in the nested repo). `git diff <that commit> HEAD -- works/phases/active/P<N>/doc/evidence.md` shows only added lines, bar the closing counts line they replace: a writer gap read at D7 or a fix's new entry at D8 (§3.3 *The record, and resuming a run*; §4.10 *D8: the critic, one revision, then publish*, step 2), which is allowed. A change to `brief.md` or `outline.md`, or to an entry `evidence.md` already had, is a finding.
+1. **Validates `S1`.** Read the head of its `result.md`: `status: done`; `critique: answered`; its `disputed:` ids; its `## Publish` section. Run `python3 scripts/workflow.py check`. **Then check that the evidence held:** after the last `DECOMP` commit (as a book's step 1 finds it), `git log --format='%h %s' --name-status <that commit>..HEAD -- works/phases/active/P<N>/doc` shows only `body.md`, `trace.md`, `critique.md`, `answers.md` and `assets/` added or changed, and `evidence.md` only by appended entries (nested: in the nested repo). `git diff <that commit> HEAD -- works/phases/active/P<N>/doc/evidence.md` shows only added lines, bar the closing counts line they replace: a writer gap read at D7 or a fix's new entry at D8 (§3.3 *The record, and resuming a run*; §4.10 *D8: the critic, one revision, then publish*, step 2), which is allowed. A change to `brief.md` or `outline.md`, or to an entry `evidence.md` already had, is a finding.
 2. **Reads the draft** against `doc/outline.md` and `doc/brief.md`: every signed section delivered, or cut with its reason to `## Not used`; every reader task served, with its deliverable; every must-cover item taught; every `## Gaps` line of `doc/evidence.md` stated or dropped as its disposition says, never filled; a Next steps part, where signed, naming only `## Open`'s items; the planned diagrams and quiz, read against the code. A chapter also against its `## The book`, its order and recaps judged by B5 *Critic (`knowledge:explain-critic`)*, *Order and prerequisites* and §4 *Write the chapter — native Markdown*, *Standalone*; step 6 checks it against the published book.
 3. **Decides every `disputed` critic finding**, as a book's step 3 does, from `doc/answers.md` beside `doc/critique.md` and the code and record lines its entries in `doc/evidence.md` cite. No dispute is left open.
 4. **Checks it**, as a book's step 4 does, with the same exit-code rules.
@@ -105,13 +104,13 @@ The unit is one draft, `doc/body.md`, written by `S1` from the evidence `DECOMP`
 7. **Routes the questions.** The gate is waived, so no gate stage runs and no `## Regression Checklist` line is appended; every `## Operator Questions` entry is still routed, into the closing report's decisions or a deferred-job candidate.
 8. **Returns:**
    - the `review_verdict`, with findings numbered and one proposed fix slice for the draft if it needs one;
-   - `doc_versions: none — deferred to a docs phase` (no notes, no gate section, so no debt) and the fixed pointer;
+   - the fixed pointer;
    - `walkthrough: none` (the gate is waived); instead, `result.md` carries a `## Report` section, the facts the orchestrator's closing report needs (§8 *D9: the report*): the title, `url` and version (or the prior it superseded); the writer's and the critic's models, from the critique (`writer_model`, `critic_model`); the evidence: the commit, the covering phases read (or `none: from the code alone`) and `doc/evidence.md`'s counts, with its `v2:` line for a v2; the sections signed and delivered, and each cut with its reason; the declared gaps, from `doc/evidence.md`'s `## Gaps`; the critic's verdict, the answers and your rulings; the instrument of step 6; the dossier's path; and, when `DECOMP` recorded a scoped-down topic, the book suggestion (§9.1 *The book suggestion*): the reason and the part left out;
    - a deferred-job candidate for each translation `## Explain` asks for: title "Translate <title> into <lang>", the reason, and the trigger "the original is published".
 
 ## Fix slices republish
 
-A `changes_requested` verdict, or an operator-reported failure at the gate (`review-phase <P> --verdict changes_requested --note "operator-reported: …"`), becomes one fix slice per chapter (or for the one draft) that needs changes: `<P>.F<n>`, `--kind fix`. Rate it as `reference/review.md` says: `high` when the draft's `result.md` reads `route: mid` (or a pre-v83 `route: cheap`).
+A `changes_requested` verdict, or an operator-reported failure at the gate (`review <P> --verdict changes_requested --note "operator-reported: …"`), becomes one fix slice per chapter (or for the one draft) that needs changes: `<P>.F<n>`, `--kind fix`. Rate it as `reference/review.md` says: `high` when the draft's `result.md` reads `route: mid` (or a pre-v83 `route: cheap`).
 
 A fix slice:
 1. revises the draft (`book/<key>.md`, its assets and `trace-<key>.md`; or `doc/body.md`, `doc/assets/` and `doc/trace.md`), and nothing else in the dossier but appended evidence: a fix may read the code and the covering phases' records again, as a new entry in the chapter's overlay `evidence-ch<k>.md` (or appended to `doc/evidence.md`), never in the frozen files and never from outside them; a point they do not support is removed or stated as a gap, as §4.10 *D8: the critic, one revision, then publish* says. It dispatches no agent;
@@ -126,7 +125,7 @@ The re-review then re-reads the changed drafts, and the chapters that link to th
 ## After a pass
 
 Follow `reference/review.md`:
-1. **a book:** `accept-gate <P> --open --walkthrough "<walkthrough>"`, file the deferred translation jobs, then `validate`, commit, report and STOP. The operator reads the book. `accept` clears the gate, and you record the pass. The book stays private until the operator makes it public;
+1. **a book:** `gate <P> open --walkthrough "<walkthrough>"`, file the deferred translation jobs, then `check`, commit, report and STOP. The operator reads the book. `accept` clears the gate, and you record the pass. The book stays private until the operator makes it public;
 2. **a document or a chapter:** the gate is waived, so record the pass with no stop, and file the deferred translation jobs;
 3. **then, for any unit run in a worktree,** it merges back by itself, with no stop: `reference/worktree.md` (*An explain phase merges back by itself*) and the `parallel-phase` skill (its §5 section of the same name) carry the gate, the merge, the teardown and the `merge_ready=` fallback. Do not restate them here;
 4. **the closing report comes last** (§8 *D9: the report*), after the merge and the teardown, from the default checkout (or from the worktree, with the unmerged note, when the merge could not run): `PUBLISHED — <title>`, the `url` and the version; the writer and the critic; the evidence (the commit, the covering phases and the counts); the declared gaps; how it was read back; the dossier's path (in a nested install, in the nested repo); and the book suggestion for a scoped-down topic, offered, never acted on: a book is a new explain, created only on the operator's word. Draw it from the review's `## Report` (a book: its walkthrough and `## Published` table). It is shown, not written: the facts are already on disk.

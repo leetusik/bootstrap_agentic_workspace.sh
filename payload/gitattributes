@@ -4,21 +4,11 @@
 # wanted: `union` is a built-in git merge driver and needs no per-clone config.
 works/events.jsonl merge=union
 
-# A loop phase's strictly append-only files take the same rule (its own events
-# file is pruned only by the rollup, on the loop's own stream). The rewritten
-# ones (queue.jsonl, parked.jsonl, control.json) never take union.
-works/phases/**/loop/ledger.jsonl merge=union
-works/phases/**/loop/events.jsonl merge=union
-works/phases/**/loop/dead.jsonl merge=union
-works/phases/**/loop/survivors.jsonl merge=union
-works/phases/**/loop/checkpoints.jsonl merge=union
-
 # The files below are GENERATED -- never hand-authored -- from the folders that
-# hold the real truth (works/phases/**, works/deferred/**, works/agenda/**,
-# docs/versions/**):
+# hold the real truth (works/phases/**, works/deferred/**, works/agenda/**):
 #
 #   works/state.json   works/index.json   works/backlog.md   works/deferred.md
-#   works/agenda.md    docs/current/*.md
+#   works/agenda.md
 #
 # They deliberately get NO custom merge driver. A driver (merge=ours and friends)
 # only works where `git config merge.<driver>.driver` has been set in that clone,
@@ -28,18 +18,18 @@ works/phases/**/loop/checkpoints.jsonl merge=union
 # Instead: regenerate, don't merge. When a phase-branch merge conflicts in any of
 # them, take EITHER side to complete the merge and then run
 #
-#   python3 scripts/workflow.py parallel-merge-finish
+#   python3 scripts/workflow.py worktree merge-finish
 #
-# (or `python3 scripts/workflow.py rebuild`), which rewrites all of them from the
-# merged folders and reports what still needs post-merge doc consolidation.
+# (or `python3 scripts/workflow.py check`), which rewrites all of them from the
+# merged folders.
 
 # The workspace's machine-written state is marked GENERATED for GitHub: it folds
 # these files in a pull request's diff and leaves them out of language stats, and
-# the PR rule's size count (`pr-check`) skips them. Only the workspace's own paths
-# are listed, so a product's own docs/ files stay visible. A nested install never
-# puts this state in a host PR at all (it lives in workflow/, its own repo), so
-# there these lines are harmless.
+# the PR rule's size count (`pr check`) skips them. Only the workspace's own paths
+# are listed, so a product's own docs/ files stay visible, and so do docs/current/
+# (hand-written docs: a reviewer reads them and pr check counts them). A nested
+# install never puts this state in a host PR at all (it lives in workflow/, its own
+# repo), so there these lines are harmless.
 works/** linguist-generated=true
 docs/versions/** linguist-generated=true
-docs/current/** linguist-generated=true
 docs/index.json linguist-generated=true

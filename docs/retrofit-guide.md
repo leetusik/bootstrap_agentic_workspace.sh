@@ -75,7 +75,7 @@ From inside your existing repo, in Claude Code:
 
 The skill runs a preflight (confirms you're in a git repo, warns on a dirty
 tree, and confirms the repo doesn't already have a workspace), runs the
-installer in retrofit mode, reconciles the contract files, runs `validate`, and
+installer in retrofit mode, reconciles the contract files, runs `check`, and
 reports what it added, skipped, and merged. It is explicit-invocation only — it
 never fires on its own.
 
@@ -101,26 +101,24 @@ first phase*).
 ## What retrofit adds, and how collisions are handled
 
 The workspace's own surface is: the routing contract (`CLAUDE.md`), the engine
-(`scripts/workflow.py`), the skills and subagents (`.claude/`), the versioned
-docs (`docs/`), and the state machine (`works/`). Retrofit classifies **every**
+(`scripts/workflow.py` and its modules), the Claude Code adapter (`adapters/claude_code/`), the skills and
+subagents (`.claude/`), the durable docs (`docs/`), and the state machine (`works/`). Retrofit classifies **every**
 path it would write into one of four tiers:
 
 ### Tier 1 — Skip if you already have it (keep yours)
 
 Pure content files are written only if absent; if present, **yours is kept
-untouched**. This covers the skills, the `slice-executor` tier subagents,
+untouched**. This covers the skills, the `slice-executor` subagent and the other agents,
 `executors.toml`, the `works/templates/*`, and `docs/README.md`.
 
 ### Tier 2 — Whole subsystem, only if entirely absent
 
-The **docs/ doc-versioning system** and the **works/ state machine** are
+The **docs/ seed** and the **works/ state machine** are
 installed as a unit, and **only if you don't already have them**:
 
-- If you already have `docs/index.json`, retrofit does **not** install its doc
-  system into your `docs/` (no `index.json` overwrite, no scattering of
-  `v0001_bootstrap.md` files). Your `docs/` is left exactly as-is. Adopt the
-  versioning later by hand (see *Adopting docs versioning into an existing
-  `docs/`*).
+- If you already have a docs system (`docs/index.json`, or `docs/current/*.md`), retrofit does **not**
+  seed its docs into your `docs/`. Your `docs/` is left exactly as-is (see *Adopting the docs into an
+  existing `docs/`*).
 - If you already have a `works/` workspace (`works/state.json` present), retrofit
   stops — there's nothing to merge between two state machines.
 - A `docs/` or `scripts/` directory that exists but doesn't contain the
@@ -167,7 +165,7 @@ nothing:
 
 If your repo already has a **`scripts/workflow.py`**, retrofit **aborts before
 writing anything**. The entire runtime shells out to `scripts/workflow.py`, so a
-foreign file there would silently break `rebuild`, `validate`, and every skill.
+foreign file there would silently break `check`, the adapter and every skill.
 Relocate or rename your file, or adopt the workspace manually, then re-run.
 
 Because classification happens in a **first pass with no writes**, a Tier-4
@@ -176,7 +174,7 @@ collision means a clean abort — never a half-installed repo.
 At the end, retrofit prints a **summary** of what it created, skipped, merged,
 and which subsystems it installed vs. left alone.
 
-The installed command surface is complete: 18 Agent Skills under `.claude/skills/`, plus the two risk-routed `slice-executor` tier subagents, the `design-drafter` design subagent and the read-only `Explore` lookup agent under `.claude/agents/`. `do-next-slice` and `do-whole-phase` execute automatically by default; `gate` and `plan only` are opt-in words you add to the invocation, and an existing `ready` slice remains executable for upgrade compatibility. Executor dispatch follows the engine's route table (`python3 scripts/workflow.py executor-route` shows it), overridden row by row in `executors.toml`; the seed ships every row at its default with the cheap route (Haiku for low-risk docs and qa slices) commented out — uncomment it to opt in on the Anthropic API.
+The installed command surface is complete: 18 Agent Skills under `.claude/skills/`, plus the one risk-routed `slice-executor` subagent, the `design-drafter` design subagent and the read-only `Explore` lookup agent under `.claude/agents/`. `do-next-slice` and `do-whole-phase` execute automatically by default; `gate` and `plan only` are opt-in words you add to the invocation, and an existing `ready` slice remains executable for upgrade compatibility. Executor dispatch follows the engine's route table (`python3 adapters/claude_code/adapter.py route` shows it), overridden row by row in `executors.toml`; the seed ships every row at its default with the cheap route (Haiku for low-risk docs and qa slices) commented out — uncomment it to opt in on the Anthropic API.
 
 Retrofit also installs the `design-cowork` visual workflow when those paths do not already exist:
 the `design-drafter` subagent drafts each round as plain files under `docs/reference/design/` and the
@@ -240,7 +238,7 @@ finish these steps (or do them by hand):
 The agent runs (the `/retrofit` skill already did):
 
 ```sh
-python3 scripts/workflow.py validate   # -> "Workflow validation passed."
+python3 scripts/workflow.py check --no-rebuild   # -> "Workflow validation passed."
 python3 scripts/workflow.py next       # -> "no active slice; create a phase or promote deferred work"
 ```
 
@@ -264,23 +262,22 @@ retrofit. Preview first with `--update --dry-run`; this matters especially if an
 operator-maintained path collides with a newly managed workspace skill. Update
 preserves all phase/docs state and the existing seed-once `executors.toml`, but
 refreshes the generated `slice-executor` agent files and all managed skill
-packages. After every update, run `python3 scripts/workflow.py sync-agents` to
-re-apply the preserved preset and per-tier overrides, then run
+packages. After every update, run `python3 adapters/claude_code/adapter.py sync-agents` to
+re-apply the preserved per-row overrides, then run
 `python3 scripts/workflow.py next`.
 
 **Coming from a pre-v32 workspace.** Workspace v32 adds the operator acceptance
 gate and the operator runtime manifest. Nothing breaks on update: every phase you
 already have carries no `acceptance` block, so it stays legacy and its review
 passes exactly as before. To put a phase that is still **live** under the gate,
-run `python3 scripts/workflow.py accept-gate <P> --require` — never on a `done`
-phase, since `validate` would then correctly report it as done with an uncleared
+run `python3 scripts/workflow.py gate <P> require` — never on a `done`
+phase, since `check` would then correctly report it as done with an uncleared
 gate. The other step is manual because `--update` preserves all of `docs/`: the
 seeded `## Operator Runtime` manifest (in the operations doc) and the rewritten
 `## Regression Checklist` cumulative smoke list (in the qa doc) reach **fresh
-installs only**. Add both to your own docs with
-`python3 scripts/workflow.py doc-new-version --doc operations|qa …`, copying the
-seed text from `installer/payloads/doc_bodies/` in an upstream clone, and fill
-the manifest in — never by hand-editing `docs/current/*.md`. Until the manifest
+installs only**. Add both to your own `docs/current/operations.md` and `qa.md` (plain files you edit),
+copying the seed text from `installer/payloads/doc_bodies/` in an upstream clone, and fill
+the manifest in. Until the manifest
 is real, the first slice that claims real-browser verification stops `pending`
 and asks you for it, which is the intended behaviour.
 
@@ -295,8 +292,7 @@ remove the listed stale files by hand, then a directory once it is empty.
 Nothing here writes those paths any more. One thing does hard-fail: a leftover `[codex.*]` table in
 `executors.toml` makes `sync-agents` abort with
 `executors.toml line <n>: Codex support was removed in workspace v31 — this
-workspace ships Claude Code only, so drop this section` (`validate` reports the
-same thing as a warning). Delete that block and re-run `sync-agents`. Likewise from a pre-v53 workspace: a leftover top-level `mode = "…"` line makes `sync-agents` abort with `executors.toml line <n>: the economy/flex presets were retired in workspace v53 — …`; delete the line (set `effort = "xhigh"` under `[claude.mid]` and `[claude.high]` if you want the old flex behaviour) and re-run `sync-agents`.
+workspace ships Claude Code only, so drop this section` (the adapter's `route` refuses the same way). Delete that block and re-run `sync-agents`. Likewise from a pre-v53 workspace: a leftover top-level `mode = "…"` line makes `sync-agents` abort with `executors.toml line <n>: the economy/flex presets were retired in workspace v53 — …`; delete the line (set `effort = "xhigh"` under `[claude.mid]` and `[claude.high]` if you want the old flex behaviour) and re-run `sync-agents`.
 
 ---
 
@@ -309,26 +305,24 @@ using a throwaway staging copy — the same idea the flag automates:
 1. Bootstrap a fresh at-root workspace into an **empty temp dir**:
    `sh bootstrap_agentic_workspace.sh /tmp/ws-stage --at-root --name "…" --summary "…"`.
 2. Copy the workspace files that you **don't already have** into your repo —
-   never overwriting: `scripts/workflow.py`, `.claude/`, `executors.toml`,
-   `docs/` (only if you have no `docs/index.json`), `works/`, and — if you already
+   never overwriting: `scripts/`, `adapters/`, `.claude/`, `executors.toml`,
+   `docs/` (only if you have no docs system), `works/`, and — if you already
    have a `CLAUDE.md` — the staged contract as `CLAUDE.workspace.md`. A safe copy
    is `rsync -a --ignore-existing /tmp/ws-stage/ .` followed by a `git status`
    review.
 3. Union the staged `.claude/settings.json` permissions and hooks into yours by hand.
-4. From your repo, run `python3 scripts/workflow.py rebuild` then `validate`.
+4. From your repo, run `python3 scripts/workflow.py check`.
 5. Delete the temp dir.
 
 If your repo already has a `scripts/workflow.py`, do **not** overwrite it —
 relocate yours first, as the flag would force you to.
 
-## Adopting docs versioning into an existing `docs/`
+## Adopting the docs into an existing `docs/`
 
-If you already have a `docs/` and retrofit skipped its versioning system, you can
-adopt it later: copy `scripts/workflow.py`'s expected layout
-(`docs/index.json`, `docs/current/`, `docs/versions/`) from a staged fresh
-workspace, or start fresh with `doc-new-version` once `docs/index.json` exists.
-Keep your existing docs as plain files alongside, and only move content into the
-versioned system when you want it to be durable, regenerated truth.
+If you already have a `docs/` and retrofit skipped its seed, you can adopt it
+later: copy the five `docs/current/*.md` files (product, architecture,
+operations, qa, decisions) from a staged fresh workspace. They are plain files
+the slices edit in place; keep your existing docs alongside them.
 
 ## Troubleshooting
 

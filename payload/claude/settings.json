@@ -3,6 +3,7 @@
   "permissions": {
     "allow": [
       "Bash(python3 scripts/workflow.py:*)",
+      "Bash(python3 adapters/claude_code/adapter.py:*)",
       "Bash(cp:*)",
       "Bash(command -v:*)",
       "Bash(knowledge config:*)",
@@ -34,7 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"$CLAUDE_PROJECT_DIR\" && python3 scripts/workflow.py compact-resume || true",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && python3 adapters/claude_code/adapter.py compact-resume || true",
             "timeout": 15
           }
         ]

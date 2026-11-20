@@ -3,7 +3,7 @@
 ## Shape — three styles
 
 - **The design slice:** `--kind co-work --risk high`. It runs inline; its dispatched spans run on
-  their own rows: the drafting on the design row or the phase's `Drafter:` model (`executor-route --drafter --phase <P>`), the critique on the
+  their own rows: the drafting on the design row or the phase's `Drafter:` model (`adapter.py route --drafter --phase <P>`), the critique on the
   critic and judge rows (`--critic`, `--judge`), and the mockup, when requested, on the high row.
 - **A design slice writes no *product* implementation code.** It ends at SIGNOFF, and **the real
   implementation is always its own slice.** The only code inside it is a mockup: throwaway, stubbed,
@@ -30,7 +30,7 @@
 
 - Both keep the **single pass**: `DECOMP` → design slice(s) → `REVIEW`; the apply phase's own `DECOMP`
   runs after the design was signed.
-- **It must be chosen at `/create-phase`**: the `DECOMP` executor may not run `new-phase`. A phase
+- **It must be chosen at `/create-phase`**: the `DECOMP` executor may not run `phase new`. A phase
   that
   turns out late to want it gets its apply phase on the main thread through `/create-phase`.
 - A requested mockup route **deliberately survives** into the apply phase, which deletes it as it
@@ -108,11 +108,11 @@
   functional sweep found) is part of the normal shape, not a failure.
 
 **The phase gate follows the mockup, with no judgment left in it.** A phase that ships a mockup takes
-`accept-gate <P> --require`. A **`design-only` phase that ships none** ships no running product
+`gate <P> require`. A **`design-only` phase that ships none** ships no running product
 surface, so it is **waived** with the fixed note `design-only, no mockup: the operator signed each job
 on its canvas`. `build-after` and `paired` phases are gated by their build slices, `--require`. A
 mockup
-asked for after `DECOMP` declared the gate re-declares it: run `accept-gate <P> --require` in the
+asked for after `DECOMP` declared the gate re-declares it: run `gate <P> require` in the
 mockup
 commit.
 
