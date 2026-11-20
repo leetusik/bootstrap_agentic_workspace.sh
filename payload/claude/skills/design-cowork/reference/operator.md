@@ -60,10 +60,10 @@ PENDING #2; never on silence, a drafter's `done`, a critic's `pass` or a read-ba
   the job marked `signed`. Re-run a half-landed close. **Never write `SIGNOFF.md` yourself**; one
   hand-written before v61 is kept, with a warning.
 - **The notebook gets one gist line per signed job** in `phase.md` `## Decisions`, appended through
-  `phase-section <P> Decisions --append` (never `Edit` or `Write` on `phase.md`): it states what was
+  `section <P> Decisions --append` (never `Edit` or `Write` on `phase.md`): it states what was
   signed, not a summary of it or a bare link, and links its round folder (`jobs/<job>/rounds/<round>/`).
   Anything longer (a contract, a summary later slices need) goes to `topics/<slug>.md` beside
   `phase.md`, behind that gist line.
 
 Commit `feat(design): <slice> signoff — <job>`. **The slice finishes when its job is signed or
-dropped** (a pre-change slice: every job in it): then `finish-slice`. **Implementation is a separate slice in every style.**
+dropped** (a pre-change slice: every job in it): then `slice finish`. **Implementation is a separate slice in every style.**

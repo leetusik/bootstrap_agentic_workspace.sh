@@ -81,7 +81,7 @@ layout of a run, and the wrapper rejects contradictory flags first:
   holds only git repos at depth 1 (a single repo counts; the harmless files a new target may hold,
   such as `.DS_Store` or a README, are ignored) is installed as a host that tracks nothing and
   carries several product repos. The installer `git init`s the folder and makes its one empty
-  commit, `chore: start the host history` (the base `new-phase` and `parallel-start` need),
+  commit, `chore: start the host history` (the base `phase new` and `parallel-start` need),
   writes a `/<repo>/` line per repo inside the managed `info/exclude` block, and seeds the
   registry, an optional `repos` list in `workflow/.agentic-nested.json` (name, path, default
   branch, rules files and convention per repo, each repo's convention inferred from its own history
@@ -112,7 +112,7 @@ layout of a run, and the wrapper rejects contradictory flags first:
   or `--summary`. `--dry-run` prints every step, or every refusal, and writes nothing. Every
   refusal comes before the first write: no per-repo nested install (an at-root workspace, or a
   marker that already holds `repos`), an install not at this installer's version, an in-flight
-  worktree pair, a dirty nested repo or a failing `validate`, a parent that is inside a work tree,
+  worktree pair, a dirty nested repo or a failing `check --no-rebuild`, a parent that is inside a work tree,
   tracks files, holds a `workflow/`, a managed `CLAUDE.local.md` block or a non-repo entry, or whose
   ignore rules would show a host file to git, and a repo that tracks a workspace file. Then it
   `git init`s the parent with the one empty commit (a parent that is already a repo tracking
@@ -181,7 +181,7 @@ Below, each entry is the source, then the emit path where it differs:
 - `payload/works/templates/{deferred_brief,intent,phase}.md` → `works/templates/…`
 - `payload/github/workflows/workspace-ci.yml` → `.github/workflows/workspace-ci.yml` (**seed-once** repo policy file — created when
   absent, never overwritten, on install/retrofit/update alike; one workflow
-  that runs `validate` on pull requests and on pushes to `main`/`master`, plus a `parallel-gate` job on `phase/*` pull
+  that runs `check --no-rebuild` on pull requests and on pushes to `main`/`master`, plus a `parallel-gate` job on `phase/*` pull
   requests; this repo's own CI is `.github/workflows/upstream-ci.yml`)
 - `payload/gitattributes` → `.gitattributes` (**line-merged** repo policy file — the
   `works/events.jsonl merge=union` rule is appended when missing and existing content

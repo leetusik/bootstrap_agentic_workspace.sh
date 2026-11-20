@@ -1,5 +1,5 @@
 """The engine's store: where the state is, paths, ids, events, phases, slices, the notebook, `next`, review, the
-acceptance gate, rebuild, validate and archive. It imports no other engine module: the names its SEAMS list are
+acceptance gate, check and archive. It imports no other engine module: the names its SEAMS list are
 bound by the entry (workflow.py) before any command runs."""
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ def find_root() -> Path:
 ROOT = find_root()
 # Nested personal install (P28). The marker `.agentic-nested.json` beside `scripts/` says the engine and all
 # workflow state live in a nested repo (`<host>/workflow`, ROOT) inside a host repo the operator does
-# not own (HOST_ROOT): product code, git history for phase-scope, and `.claude/agents` are the
+# not own (HOST_ROOT): product code, git history for phase scope, and `.claude/agents` are the
 # host's, while works/, docs/, executors.toml and the templates stay under ROOT. EVERY nested
 # branch below is gated on that marker: with no `.agentic-nested.json`, NESTED is None, HOST_ROOT is None and
 # behaviour and output are byte-for-byte the at-root engine's. A marker that exists but is malformed
@@ -120,13 +120,13 @@ NESTED_HOST_BRANCH_REQUIRED = (
 NESTED_SET_NEEDS_HOST_BRANCH = (
     "--repo and --repo-base need --host-branch <name>: a worktree set's host half is a branch the operator names; only an explain "
     "phase's plain pair may omit it (a detached host worktree, no host branch) -- nothing was written")
-# phase.json `host_anchors` (nested only): the host HEAD at new-phase and at the passing review --
-# phase-scope's range in the host repo, whose commits the nested repo never sees. `review_base`
+# phase.json `host_anchors` (nested only): the host HEAD at phase new and at the passing review --
+# phase scope's range in the host repo, whose commits the nested repo never sees. `review_base`
 # (P40, optional) is written at the passing review only when the base rule resolved something other
 # than `created` (a rebased branch); absent means `created`, so older phase.json files stay valid.
 HOST_ANCHOR_KEYS = ("created", "review_pass", "review_base")
 # phase.json `repo_anchors.<name>` (multi-repo host only, P40): each registered repo's HEAD and branch
-# at new-phase, and both ends of its range frozen at the passing review. Exactly these four keys.
+# at phase new, and both ends of its range frozen at the passing review. Exactly these four keys.
 REPO_ANCHOR_KEYS = ("created", "branch", "review_pass", "review_base")
 
 
@@ -460,34 +460,22 @@ AGENDA_ID_RE = re.compile(AGENDA_ID_PATTERN)
 SLICE_ID_RE = re.compile(rf"({PHASE_ID_PATTERN})\.({SLICE_SUFFIX_PATTERN})")
 # An archive folder is `<yyyymmdd>_<hhmmss>_<phase id>_<slug>` (`_archive_one`); the slug is lowercase.
 ARCHIVE_FOLDER_ID_RE = re.compile(rf"_({PHASE_ID_PATTERN})_")
-# Closed set of slice kinds (workspace v34). `kind` routes real behavior -- `co-work` in
-# particular means orchestrator-inline (the round's lifecycle and the operator's words
-# stay on the main thread), so a typo like `cowork` used to create a slice that read as
-# ordinary implementation and got dispatched to an executor that cannot run a design
-# round. Enforced asymmetrically on purpose: a HARD ERROR at creation
-# (`new-slice`, `promote-deferred`), only a WARNING in `validate()`, so an adopting repo
-# carrying an invented kind in its history survives an update instead of failing validate
-# on slices it cannot change. Note `--risk` next door is deliberately NOT validated:
-# unrecognized values route to the high row, which is the safe direction -- do not
-# "fix" that asymmetry for symmetry's sake.
-# Kinds route by KIND before `risk` is read (`slice_route`; `executor-route <slice>` prints the
-# decision): `decomposition`, `review` and `co-work` (its mockup span) to the `high` row, and
-# `research` (added in workspace v36) to the `research` row -- never the mid row (all three
-# slice rows run the one `slice-executor` file since v66; the row picks the model and effort). A
-# `research` slice is findings-only -- it writes no product code, and what it learned lands in
-# the phase notebook for the `DECOMP2` that usually follows -- so a weak read is expensive and it
-# must never be routable to the mid row by a `low` rating. Set `--risk high`
-# on one so the recorded rating cannot contradict the routing; if the two ever disagree, the kind
-# wins.
+# The slice kinds (workspace v34). `kind` routes real behavior -- `co-work` in particular means
+# orchestrator-inline (the round's lifecycle and the operator's words stay on the main thread), so a
+# typo like `cowork` reads as ordinary work. `slice new` makes an unknown kind with one advice: line
+# (it routes on the high row, the safe direction), `validate()` warns of it, and `promote-deferred`
+# still refuses one before it mints a phase. `--risk` is not checked either: unrecognized values route
+# high. A kind routes before `risk` is read (`slice_route`): decomposition, review and co-work to the high
+# row, research (findings-only: no product code) to the research row, never the mid row.
 SLICE_KINDS = {"implementation", "review", "decomposition", "research", "fix", "docs", "qa", "co-work"}
 # Phase-notebook budget (v35; an index since v61): phase.md is read and written ONE SECTION at a
-# time (`phase-section`), so it is an index of what the next slice needs, not a store. Long
+# time (`section`), so it is an index of what the next slice needs, not a store. Long
 # material -- a contract, a signed-design summary -- lives in `topics/<slug>.md` beside it,
 # linked by one line. 40 KB is a soft cap: still a WARNING, never an error, because a hard cap
 # invites truncating exactly the notes that matter; the warning names the biggest sections
 # so the fix is a move to `topics/` or to the slice's `result.md`, never a deletion.
 PHASE_MD_BUDGET = 40 * 1024
-# Notebook entries: a section's entries are what `phase-section --entry` reads and writes
+# Notebook entries: a section's entries are what `section --entry` reads and writes
 # and what `--to-topic` moves (`notebook_entries` is the one parser). An entry over
 # LONG_ENTRY_BYTES (or one with nested list lines) is long: the move's candidate. A moved entry
 # leaves one pointer line whose gist is a verbatim excerpt of at most GIST_MAX characters; a gist
@@ -499,7 +487,7 @@ GIST_PLAIN_MIN = 24
 # Per-section budgets (bytes), warning-only like PHASE_MD_BUDGET, which still judges the total. A
 # section not named here gets SECTION_BUDGET_DEFAULT; None = no budget of its own (Slices is
 # generated; Doc impact is only in notebooks from before its retirement), though both still count to the total.
-# `notebook_report` is the one reader: the index, finish-slice, validate and next all print from it.
+# `notebook_report` is the one reader: the index, slice finish, validate and next all print from it.
 SECTION_BUDGETS = {"decisions": 12288, "operator questions": 8192, "notes for later slices": 6144,
                    "now": 2048, "objective": 2048, "slices": None, "doc impact": None}
 SECTION_BUDGET_DEFAULT = 6144
@@ -514,7 +502,7 @@ PAGE_BYTES = 24 * 1024
 # worktree, stamped by `parallel-start` -- which a phase gets ONLY when the operator asks
 # for it. No block = the phase runs on the default stream, which is where every phase runs
 # unless asked otherwise; that is the v43 default and it needs no marker.
-# `mode: "default"` = a LEGACY pin written by v42's (since retired) skip command and `new-phase --on-main`,
+# `mode: "default"` = a LEGACY pin written by v42's (since retired) skip command and `phase new --on-main`,
 # when the worktree was the default and staying on main needed saying. Nothing new is ever stamped with it -- but `phase_execution` still returns
 # None for it, so a pinned phase IS a default-stream phase everywhere, and `parallel-start`
 # still refuses one rather than silently overriding an old deliberate pin.
@@ -1064,7 +1052,7 @@ def phase_pinned(data) -> bool:
     """True when the phase carries v42's legacy pin (`execution.mode == "default"`).
 
     Since v43 the default stream is the default, so nothing writes this block any more
-    (`new-phase --on-main` is a no-op). It is still honoured where it
+    (`phase new --on-main` is a no-op). It is still honoured where it
     exists: `parallel-start` refuses a pinned phase rather than overriding a deliberate pin,
     and the hints skip it. Everything else treats it exactly like a phase with no block,
     because `phase_execution` returns None for it."""
@@ -1197,8 +1185,8 @@ def mint_id(prefix: str) -> str:
 
 
 def mint_phase_id() -> str:
-    """`P<n>-<tail>`: `new-phase` without `--phase`, `promote-deferred --create-phase` without `--phase`, and
-    rotate-backlog's docs-phase proposal. It supersedes v73's `P-<token>`, which no one could say."""
+    """`P<n>-<tail>`: `phase new` without `--phase`, `promote-deferred --create-phase` without `--phase`, and
+    phase rotate's docs-phase proposal. It supersedes v73's `P-<token>`, which no one could say."""
     return mint_id("P")
 
 
@@ -1209,7 +1197,7 @@ def mint_phase_id() -> str:
 # `P-7kq2` (a token needs a letter, is never a mode word, and keeps its dash once the prefix is written:
 # `P7kq2` names nothing; `46k2` is the token `P-46k2`, never a tailed id). A deferred job likewise (`92`,
 # `d92-X4`, `m3xa`, `D-m3xa`). Two contexts, both in `normalize_id_args`, the ONE choke point after argparse:
-# CREATING an id (`new-phase --phase`, `defer-job --id`) reads the form statically (`brief_id`: `46` is `P46`);
+# CREATING an id (`phase new --phase`, `defer-job --id`) reads the form statically (`brief_id`: `46` is `P46`);
 # REFERENCING one (every other argument) looks a number up among the stored ids (`resolve_id_ref`).
 ID_ARG_KINDS = {"P": "phase", "D": "deferred job", "A": "agenda item"}
 PHASE_ARG_HELP = ("the phase, in any brief form: 46 or P46 (numbered; type the tail, 46-k2, only when two phases share"
@@ -1344,14 +1332,14 @@ def normalize_id_args(args: argparse.Namespace) -> None:
     """The ONE choke point for an id typed on a command line, run once after argparse (in a linked checkout,
     once after the begin step's pull, so an id reads the tree hi2vi holds: `cloud_boundary`): every `phase` /
     `--phase` argument is a phase id, every `deferred_id` and `defer-job --id` a deferred job's, and the `slice` attribute (positional `slice` and `--slice`) a
-    slice whose phase part may be brief (`46.S1`). CREATING an id (`new-phase --phase`, `defer-job --id`) reads
+    slice whose phase part may be brief (`46.S1`). CREATING an id (`phase new --phase`, `defer-job --id`) reads
     it statically; `promote-deferred --create-phase --phase` references an existing phase when the number names
     one and otherwise creates statically; every other argument REFERENCES a stored id (`resolve_id_ref`). `--depends-on` stays full-form.
     A command then only ever sees the stored shape."""
     cmd = getattr(args, "cmd", None)
     phase = getattr(args, "phase", None)
     if isinstance(phase, str):
-        if cmd == "new-phase":
+        if cmd == "phase new":
             args.phase = resolve_id_arg("P", phase)
         elif cmd == "promote-deferred" and getattr(args, "create_phase", False):
             number = re.fullmatch(r"[Pp]?([0-9]+)", phase.strip())
@@ -1378,9 +1366,9 @@ def normalize_id_args(args: argparse.Namespace) -> None:
     if cmd == "agenda-add" and isinstance(getattr(args, "id", None), str):
         args.id_typed = args.id
         args.id = brief_id("A", args.id) or args.id.strip()
-    # `new-phase --agenda` / `defer-job --agenda` REFERENCE an item (S2 links); the command then refuses an id of
+    # `phase new --agenda` / `defer-job --agenda` REFERENCE an item (S2 links); the command then refuses an id of
     # a stored shape that names no item (`A99-zz`), before anything is written.
-    if cmd in ("new-phase", "defer-job") and isinstance(getattr(args, "agenda", None), str):
+    if cmd in ("phase new", "defer-job") and isinstance(getattr(args, "agenda", None), str):
         args.agenda = resolve_id_ref("A", args.agenda)
     slice_arg = getattr(args, "slice", None)
     if isinstance(slice_arg, str):
@@ -1537,7 +1525,7 @@ def operator_wait_target(phases: list, current_phase, current_slice):
 # A barrier is never a wave slice (P42.F1): while one is in_progress it holds the phase alone, nothing is
 # ready, and -- unless wave slices also run -- no wave line prints, so a declared phase then reads exactly as
 # an undeclared one in the same state (at an open acceptance gate the running REVIEW is the gate's, not a
-# returned wave slice to finish). start-slice warns, never refuses, at a start the ready set would not make.
+# returned wave slice to finish). slice start warns, never refuses, at a start the ready set would not make.
 DEPENDS_DECLARED = "depends_declared"
 BARRIER_KINDS = ("decomposition", "review", "co-work")
 STOP_STATUSES = ("pending", "blocked")
@@ -1645,7 +1633,7 @@ def _active_phase(phase_id):
 
 
 def start_warning(slice_id: str):
-    """start-slice's one `warning:` line in a declared phase (OQ3, P42.F1), for a start the ready set would not
+    """slice start's one `warning:` line in a declared phase (OQ3, P42.F1), for a start the ready set would not
     make: a declared slice with a dependency not yet `done`, or a barrier while another slice of the phase is
     `in_progress`. None otherwise, and always None in an undeclared phase. It warns, never refuses."""
     try:
@@ -1670,7 +1658,7 @@ def start_warning(slice_id: str):
             reasons.append(f"is a barrier that runs alone, but {', '.join(beside)} {'is' if len(beside) == 1 else 'are'} in_progress")
     if not reasons:
         return None
-    return f"warning: {slice_id} {', and '.join(reasons)} -- the ready set would not start it; started anyway (start-slice warns, never refuses)"
+    return f"warning: {slice_id} {', and '.join(reasons)} -- the ready set would not start it; started anyway (slice start warns, never refuses)"
 
 
 def parse_depends_on(values):
@@ -1711,7 +1699,7 @@ def declared_dependencies(phase_id: str, slice_id: str, order, values):
 
 
 def declared_slice_lines(kind: str, deps) -> list:
-    """new-slice / promote-deferred's lines for a declared slice (none for an undeclared one)."""
+    """slice new / promote-deferred's lines for a declared slice (none for an undeclared one)."""
     if deps is None:
         return []
     lines = [f"depends_on={','.join(deps)} (declared: binding; /do-whole-phase starts it once these are done)" if deps else
@@ -1728,7 +1716,7 @@ def declaration_checks(phase: dict, s: dict, errors: list, warnings: list) -> No
         return
     if s.get(DEPENDS_DECLARED) is not True:
         errors.append(f"slice {s['id']} has invalid {DEPENDS_DECLARED} {s.get(DEPENDS_DECLARED)!r}; expected true "
-                      "(written by new-slice/promote-deferred --depends-on) or no key at all")
+                      "(written by slice new or promote-deferred --depends-on) or no key at all")
         return
     if s.get("kind") in BARRIER_KINDS:
         warnings.append(f"slice {s['id']} declares its dependencies, but kind {s.get('kind')} is a barrier that runs alone: "
@@ -1744,11 +1732,11 @@ def declaration_checks(phase: dict, s: dict, errors: list, warnings: list) -> No
                           f"of the same phase ({phase['id']})")
 
 
-# Forced declaration (v77, operator: "force engine to determine parallel run about slice when decomp"). A
-# decomposition must leave every open middle slice of its phase DECLARED, so finish-slice on a decomposition
-# refuses while one is not: the parallel decision is made at the cut, never left to the default. The engine,
-# not the decomposition's prose, then determines what may run together (parallel_plan). An explain phase
-# (`## Explain` in intent.md) is exempt: its chapters stay undeclared by design, as fix slices do. set-slice-deps
+# Declaration at the cut (v77; advice since the thin engine). A decomposition should leave every open middle
+# slice of its phase DECLARED, so slice finish on a decomposition prints one advice: line per undeclared one,
+# which runs alone. The engine, not the decomposition's prose, determines what may run together
+# (parallel_plan). An explain phase
+# (`## Explain` in intent.md) is exempt: its chapters stay undeclared by design, as fix slices do. slice deps
 # declares a slice that was cut without the flag.
 def explain_phase(pdir: Path) -> bool:
     """True when the phase's intent.md carries the `## Explain` section (the explain route's only marker)."""
@@ -1833,7 +1821,7 @@ SLICES_END = "<!-- slices:end -->"
 # WORKFLOW_CMD is the literal `python3 scripts/workflow.py` at root (so this line stays byte-identical to
 # works/templates/phase.md); a nested install's template is installed with the host-relative prefix, so
 # its regenerated line carries the same one.
-SLICES_GUIDANCE = f"_Generated by `{WORKFLOW_CMD} rebuild` from each slice's `slice.json`; never hand-edit this block._"
+SLICES_GUIDANCE = f"_Generated by `{WORKFLOW_CMD} check` from each slice's `slice.json`; never hand-edit this block._"
 
 
 def render_slices_block(pdir: Path, phase: dict) -> str:
@@ -1885,7 +1873,7 @@ def phase_md_size(pdir: Path) -> tuple:
     """(lines, bytes) of a phase notebook; (0, 0) when absent.
 
     Both numbers are reported, but only the byte count is judged against
-    PHASE_MD_BUDGET (v39). Shared by `validate` (warning) and `finish-slice` (size print)
+    PHASE_MD_BUDGET (v39). Shared by `validate` (warning) and `slice finish` (size print)
     so the two can never disagree about what "over budget" means.
     """
     path = pdir / "phase.md"
@@ -1897,7 +1885,7 @@ def phase_md_size(pdir: Path) -> tuple:
 
 def notebook_sections_hint(pdir: Path, limit: int = 3) -> str:
     """`biggest sections: ## A 12345 B, ...; move long material to topics/<slug>.md` for a notebook
-    that is over budget, or "" when it cannot be read. Shared by `validate` and `finish-slice`."""
+    that is over budget, or "" when it cannot be read. Shared by `validate` and `slice finish`."""
     path = pdir / "phase.md"
     if not path.exists():
         return ""
@@ -1935,12 +1923,12 @@ ENTRY_KEY_PART = re.compile(r"([0-9]+)(?:\s*-\s*([0-9]+))?|OQ([0-9]+)", re.I)
 TOPIC_SLUG_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 POINTER_LINE = re.compile(r"(?:[-*+]|[0-9]+[.)]) .* → \[topics/([a-z0-9][a-z0-9-]{0,63})\.md\]\(topics/\1\.md\) § (\S.*)")
 GIST_SENTENCE_END = re.compile(r"[.!?][*_`)\]\"'”’]*(?=\s|$)")
-TOPIC_INTRO = ("_Entries moved here from phase.md by `phase-section --to-topic`, byte for byte, one `## ` block each; "
+TOPIC_INTRO = ("_Entries moved here from phase.md by `section --to-topic`, byte for byte, one `## ` block each; "
                "the pointer line left in each one's place names its block._")
 # The sections a move refuses, and why (every other section moves: Decisions, Notes for later slices,
 # Objective and any custom section).
 PHASE_SECTION_UNMOVABLE = {
-    "slices": "it is generated from each slice.json by `rebuild`",
+    "slices": "it is generated from each slice.json by `check`",
     "doc impact": "it is append-only (a retired section, kept readable in older notebooks)",
     "operator questions": "it is append-only, and the review routes its entries where they are: collapse an answered one with --resolve OQ<n> --pointer <ref>",
     "now": "it is the handoff the next dispatch reads first: rewrite it shorter with --replace",
@@ -2028,13 +2016,13 @@ def section_topic_slug(heading: str) -> str:
 
 
 def notebook_report(phase: str, text: str) -> dict:
-    """The one budget report of a notebook (design §4), read by the index, finish-slice, validate and
+    """The one budget report of a notebook (design §4), read by the index, slice finish, validate and
     next. Returns data:
 
     `{"phase", "lines", "bytes", "budget": PHASE_MD_BUDGET, "over", "sections": [...], "moves": [...],
       "flagged": [...]}`; each section is `{"heading", "bytes", "budget" (None = none of its own),
     "over", "movable", "long": [the long entries' dicts from notebook_entries], "move" (the suggested
-    `phase-section <P> "<Section>" --to-topic <slug> --entry <ranges>` or None), "remedy" (the fix for
+    `section <P> "<Section>" --to-topic <slug> --entry <ranges>` or None), "remedy" (the fix for
     an over-budget section a move cannot shrink, or None)}`. Long entries are named only in movable
     sections (not PHASE_SECTION_UNMOVABLE); `moves` lists every section's move command; `flagged` the
     sections over their budget or holding long entries. Section bytes are `h2_sections`' bytes."""
@@ -2046,7 +2034,7 @@ def notebook_report(phase: str, text: str) -> dict:
         budget = SECTION_BUDGETS.get(key, SECTION_BUDGET_DEFAULT)
         movable = key not in PHASE_SECTION_UNMOVABLE
         long_entries = [x for x in notebook_entries(lines, i + 1, e) if x["long"]] if movable else []
-        move = (f'phase-section {phase} "{heading}" --to-topic {section_topic_slug(heading)} '
+        move = (f'section {phase} "{heading}" --to-topic {section_topic_slug(heading)} '
                 f'--entry {entry_ranges(x["pos"] for x in long_entries)}') if long_entries else None
         over = budget is not None and size > budget
         remedy = SECTION_REMEDIES.get(key) if over and not move else None
@@ -2079,15 +2067,15 @@ def notebook_section_line(section: dict, limit: int = 8) -> str:
 
 
 # The required step (design §6): when a phase that is not done has a notebook over PHASE_MD_BUDGET,
-# `next`, `start-slice` and the resume card tell the main thread to move long entries to
+# `next`, `slice start` and the resume card tell the main thread to move long entries to
 # topics before the next dispatch. `notebook_step` is the one function they print from; it is silent
 # (None) under budget, for a done phase and for a phase with no notebook, so those outputs never change.
 NOTEBOOK_STEP_MOVES = 3
 
 
 def notebook_step(phase_id) -> dict:
-    """The over-budget step of one phase, or None. `{"phase", "bytes", "form": "required" | "advisory",
-    "lines": [...]}`: required when a movable long entry exists (`notebook_over_budget=` and at most
+    """The over-budget step of one phase, or None. `{"phase", "bytes", "form": "moves" | "advisory",
+    "lines": [...]}`: moves when a movable long entry exists (`notebook_over_budget=` and at most
     NOTEBOOK_STEP_MOVES `notebook_move=` lines), advisory when nothing can move (`notebook_over_budget=`
     naming what remains, no move line). Read-only: it never writes and never blocks anything."""
     if not phase_id:
@@ -2108,11 +2096,11 @@ def notebook_step(phase_id) -> dict:
     head = f"notebook_over_budget={phase_id} ({report['bytes']} of {PHASE_MD_BUDGET} B) -- "
     moves = report["moves"]
     if moves:
-        more = (f" (+{len(moves) - NOTEBOOK_STEP_MOVES} more moves: `phase-section {phase_id}` lists them)"
+        more = (f" (+{len(moves) - NOTEBOOK_STEP_MOVES} more moves: `section {phase_id}` lists them)"
                 if len(moves) > NOTEBOOK_STEP_MOVES else "")
-        lines = [head + "required before the next dispatch: move long entries to topics first (gists stay, nothing is lost)" + more]
+        lines = [head + "advice: move long entries to topics before the next dispatch (gists stay, nothing is lost)" + more]
         lines.extend(f"notebook_move={m}" for m in moves[:NOTEBOOK_STEP_MOVES])
-        return {"phase": phase_id, "bytes": report["bytes"], "form": "required", "lines": lines}
+        return {"phase": phase_id, "bytes": report["bytes"], "form": "moves", "lines": lines}
     remains = []
     for s in report["sections"]:
         if s["heading"].lower() == "slices":
@@ -2215,7 +2203,7 @@ def resolve_entry_key(entries: list, key: str, section: str, phase: str, several
     comma lists of those (`1-8,10`); any other text is a case-insensitive piece of an entry's first
     line and must match exactly one entry."""
     text = (key or "").strip()
-    listing = f'phase-section {phase} "{section}" --list'
+    listing = f'section {phase} "{section}" --list'
     if not text:
         raise SystemExit(f"--entry needs a key: a position, OQ<n> or a piece of the entry's first line (see {listing})")
     parts = [part.strip() for part in text.split(",")]
@@ -2366,7 +2354,7 @@ def _clean_section_body(body: str, heading: str) -> list:
 
 
 def _phase_section_flags(args: argparse.Namespace, mode) -> None:
-    """Refuse the flag combinations `phase-section` has no meaning for, naming the right form."""
+    """Refuse the flag combinations `section` has no meaning for, naming the right form."""
     if args.topic is not None and (mode or args.list or args.entry is not None or args.gist is not None or args.dry_run):
         raise SystemExit("--topic reads a topic file: give it a block name or nothing (a topic is written by --to-topic, or directly)")
     if args.list and (mode or args.entry is not None):
@@ -2389,7 +2377,7 @@ def _phase_section_flags(args: argparse.Namespace, mode) -> None:
 
 
 def _phase_topic_read(args: argparse.Namespace, pdir: Path, name: str) -> None:
-    """`phase-section <P> [<block>] --topic <slug>`: the topic's index (its `## ` blocks with bytes, then
+    """`section <P> [<block>] --topic <slug>`: the topic's index (its `## ` blocks with bytes, then
     the total), or one block, heading included, paged like a section (`paged_print`)."""
     slug = args.topic.strip()
     if not TOPIC_SLUG_RE.fullmatch(slug):
@@ -2410,7 +2398,7 @@ def _phase_topic_read(args: argparse.Namespace, pdir: Path, name: str) -> None:
     spans = h2_spans(lines)
     for heading, i, e in spans:
         if heading.lower() == name.lower():
-            paged_print(lines, i, e, heading, f'phase-section {args.phase} "{heading}" --topic {slug}', args.page)
+            paged_print(lines, i, e, heading, f'section {args.phase} "{heading}" --topic {slug}', args.page)
             return
     blocks = ", ".join(f"`{h}`" for h, _, _ in spans) or "none"
     print(f"unknown block: {name!r} in topics/{slug}.md; its blocks are {blocks}", file=sys.stderr)
@@ -2424,11 +2412,12 @@ def _phase_section_entry_write(args: argparse.Namespace, path: Path, text: str, 
     key = heading.lower()
     flag = "--replace" if args.replace else "--remove"
     if key == "slices":
-        raise SystemExit("`Slices` is generated from each slice.json by `rebuild`; never write it")
+        raise SystemExit("`Slices` is generated from each slice.json by `check`; never write it")
+    advice = None
     if key in PHASE_SECTION_APPEND_ONLY:
-        raise SystemExit(f"`{heading}` is append-only: use {PHASE_SECTION_APPEND_ONLY[key]}, never --entry {flag}")
-    if args.remove and key == "decisions":
-        raise SystemExit("`Decisions` keeps every decision: replace a superseded one in place (--entry K --replace), never --remove")
+        advice = f"advice: {heading} is append-only by custom ({PHASE_SECTION_APPEND_ONLY[key]}), and --entry {flag} wrote it anyway"
+    elif args.remove and key == "decisions":
+        advice = "advice: Decisions keeps every decision by custom: a superseded one is replaced in place (--entry K --replace)"
     entries = notebook_entries(lines, i + 1, e)
     entry = resolve_entry_key(entries, args.entry, heading, args.phase)[0]
     old_size = len("\n".join(lines[entry["start"]:entry["end"]]).encode("utf-8"))
@@ -2461,6 +2450,8 @@ def _phase_section_entry_write(args: argparse.Namespace, path: Path, text: str, 
     if updated != text:
         write_text(path, updated)
     print(f"{verb}={heading} entry={entry['pos']} bytes={old_size}->{new_size} phase_md={len(updated.encode('utf-8'))}")
+    if advice:
+        print(advice)
 
 
 def _phase_section_move(args: argparse.Namespace, pdir: Path, archived: bool, path: Path, lines: list, heading: str, i: int, e: int) -> None:
@@ -2568,8 +2559,9 @@ def phase_section(args: argparse.Namespace) -> None:
     removes or moves one, never the whole file.
 
     No name prints the index (a line per heading with its bytes, then the total). `--replace`
-    keeps the heading and every other byte of the file; the generated `Slices` section and the
-    two append-only sections refuse it and name the right flag. `--resolve OQ<n> --pointer <ref>`
+    keeps the heading and every other byte of the file; the generated `Slices` section refuses it,
+    and the two append-only sections take it with one advice: line. `--append` / `--replace` on a
+    heading the notebook lacks creates it before `## Now`. `--resolve OQ<n> --pointer <ref>`
     collapses one Operator Questions entry to a single resolved line (entries are never deleted).
     `--list` lists a section's entries (`notebook_entries`); `--entry K` prints one, and with
     `--replace` / `--remove` writes only it. `--to-topic <slug>` moves entries verbatim into
@@ -2593,6 +2585,7 @@ def phase_section(args: argparse.Namespace) -> None:
     lines = text.split("\n")
     spans = h2_spans(lines)
     headings = ", ".join(f"`{h}`" for h, _, _ in spans)
+    advice = None
 
     def find(wanted: str):
         for heading, i, e in spans:
@@ -2638,7 +2631,7 @@ def phase_section(args: argparse.Namespace) -> None:
             entry = resolve_entry_key(notebook_entries(lines, i + 1, e), args.entry, heading, args.phase)[0]
             print("\n".join(lines[entry["start"]:entry["end"]]))
             return
-        paged_print(lines, i, e, heading, f'phase-section {args.phase} "{heading}"', args.page)
+        paged_print(lines, i, e, heading, f'section {args.phase} "{heading}"', args.page)
         return
     if args.to_topic is not None:
         if not name:
@@ -2695,15 +2688,21 @@ def phase_section(args: argparse.Namespace) -> None:
     else:
         if not name:
             raise SystemExit(f"{modes[0]} needs a section name; the headings are {headings}")
+        created = not any(h.lower() == name.lower() for h, _, _ in spans)
+        body = _clean_section_body(_phase_section_body(args), name)
+        if created:  # any heading: a new one goes at the end, before ## Now
+            now = next((s for h, s, _ in spans if h.lower() == "now"), None)
+            at = now if now is not None else len(lines) - 1 if lines and lines[-1] == "" else len(lines)
+            lines[at:at] = ([""] if at and lines[at - 1].strip() else []) + [f"## {name}", ""]
+            spans = h2_spans(lines)
         heading, i, e = find(name)
         key = heading.lower()
         if key == "slices":
-            raise SystemExit("`Slices` is generated from each slice.json by `rebuild`; never write it")
+            raise SystemExit("`Slices` is generated from each slice.json by `check`; never write it")
         if args.replace and key in PHASE_SECTION_APPEND_ONLY:
-            raise SystemExit(f"`{heading}` is append-only: use {PHASE_SECTION_APPEND_ONLY[key]}, never --replace")
-        body = _clean_section_body(_phase_section_body(args), heading)
-        old_section = lines[i:e]
-        if args.replace:
+            advice = f"advice: {heading} is append-only by custom; --resolve collapses an answered entry"
+        old_section = [] if created else lines[i:e]
+        if created or args.replace:
             new_section = [lines[i], ""] + body + [""]
         else:
             new_section = list(old_section)
@@ -2718,6 +2717,8 @@ def phase_section(args: argparse.Namespace) -> None:
         write_text(path, updated)
     verb = "replaced" if args.replace else "appended" if args.append else "resolved"
     print(f"{verb}={label} bytes={old_size}->{new_size} phase_md={len(updated.encode('utf-8'))}")
+    if advice:
+        print(advice)
 
 
 def rebuild_index_and_state() -> None:
@@ -2787,7 +2788,7 @@ def _default_checkout_root():
 
 
 def refresh_default_checkout() -> None:
-    """Rerun the default checkout's OWN engine `rebuild` from a parallel stream (workspace v67), so
+    """Rerun the default checkout's OWN engine `check` from a parallel stream (workspace v67), so
     its `works/backlog.md` follows this phase whether or not anything runs there. Its rebuild reads
     this phase from this worktree's files (`streams_section`); the files it rewrites are generated
     and stay uncommitted there. Best effort and silent: a missing engine, a failure or a timeout
@@ -2799,7 +2800,7 @@ def refresh_default_checkout() -> None:
     if engine is None or not engine.is_file():
         return
     try:
-        subprocess.run([sys.executable, str(engine), "rebuild"], cwd=str(root), capture_output=True, text=True,
+        subprocess.run([sys.executable, str(engine), "check"], cwd=str(root), capture_output=True, text=True,
                        timeout=60, env={**os.environ, DEFAULT_REFRESH_ENV: "1"})
     except Exception:  # noqa: BLE001 - never block the stream on the default checkout's dashboards
         pass
@@ -3008,12 +3009,12 @@ def validate() -> int:
             errors.append(f"duplicate phase id: {p['id']}")
         seen_phases.add(p["id"])
         # Ids: all three shapes are valid and nothing is renamed, so these two only WARN -- an adopter's
-        # history must keep validating. Creation is the hard gate (new-phase refuses either case).
+        # history must keep validating. Creation is the hard gate (phase new refuses either case).
         if not PHASE_ID_RE.fullmatch(str(p["id"])):
             warnings.append(f"phase id {p['id']!r} has an unknown shape; expected P<n>-<tail> (P46-k2), P<n> (P12) or a minted P-<token> (P-7kq2) -- nothing renames it")
         if p["id"] in archived_ids:
             warnings.append(f"active phase {p['id']} has the same id as an archived phase; an archived id is spent, so lookups by id "
-                            "(phase-scope, the meter, events.jsonl) mix the two -- new phases are minted (new-phase without --phase)")
+                            "(phase scope, the meter, events.jsonl) mix the two -- new phases are minted (phase new without --phase)")
         if p["status"] not in PHASE_STATUSES:
             errors.append(f"invalid phase status {p['id']}: {p['status']}")
         review_status = p.get("review", {}).get("status")
@@ -3069,7 +3070,7 @@ def validate() -> int:
                         errors.append(f"phase {p['id']} has invalid acceptance.{field} {value!r}; expected a string or null")
                 if p["status"] == "done" and required is True and not acceptance.get("cleared_at"):
                     errors.append(f"phase {p['id']} is done but its operator acceptance gate was never cleared; the operator must walk the running product (accept-gate {p['id']} --open/--clear)")
-        # Optional host anchors (P28): written only by a nested install's new-phase / passing review.
+        # Optional host anchors (P28): written only by a nested install's phase new / passing review.
         # Absent = an at-root or pre-nested phase = nothing to check.
         if "host_anchors" in p:
             anchors = p.get("host_anchors")
@@ -3123,9 +3124,9 @@ def validate() -> int:
             if "pending" in s:  # the typed pending record (v61): {kind, on_words, since}, only while pending
                 record = s.get("pending")
                 if s["status"] != "pending":
-                    errors.append(f"slice {s['id']} is {s['status']} but carries a pending record; set-slice-status clears it when a slice leaves pending -- remove the key")
+                    errors.append(f"slice {s['id']} is {s['status']} but carries a pending record; slice status clears it when a slice leaves pending -- remove the key")
                 elif not isinstance(record, dict) or set(record) != {"kind", "on_words", "since"}:
-                    errors.append(f"slice {s['id']} has a malformed pending record {record!r}; expected {{kind, on_words, since}} (set-slice-status {s['id']} pending --stop-kind ... --on-words ...)")
+                    errors.append(f"slice {s['id']} has a malformed pending record {record!r}; expected {{kind, on_words, since}} (slice status {s['id']} pending --stop-kind ... --on-words ...)")
                 else:
                     if record.get("kind") not in SLICE_STOP_KINDS:
                         errors.append(f"slice {s['id']} has unknown pending kind {record.get('kind')!r}; expected one of {list(SLICE_STOP_KINDS)}")
@@ -3176,7 +3177,7 @@ def validate() -> int:
     except (SystemExit, Exception) as exc:  # noqa: BLE001 - advisory check must not fail validate
         warnings.append(f"executor agent config check failed: {exc}")
     # Nested personal install (P28): a malformed marker is an ERROR, so a broken nested install is
-    # never mistaken for at-root mode; the host must be a git work tree (phase-scope and the
+    # never mistaken for at-root mode; the host must be a git work tree (phase scope and the
     # product commits read it). Silent at root -- no marker, nothing checked.
     if NESTED is not None:
         marker = shown(ROOT / NESTED_MARKER)
@@ -3194,7 +3195,7 @@ def validate() -> int:
                 warnings.append(f"git is not available, so the nested install's host {HOST_ROOT} cannot be confirmed as a git work tree")
             else:
                 if proc.returncode != 0 or proc.stdout.strip() != "true":
-                    errors.append(f"nested install: the host {HOST_ROOT} is not a git work tree (phase-scope and the host product commits need one)")
+                    errors.append(f"nested install: the host {HOST_ROOT} is not a git work tree (phase scope and the host product commits need one)")
         if nested_repos() and HOST_ROOT is not None and HOST_ROOT.is_dir():
             nested_repo_checks(errors, warnings)
     pr_rules_validate(errors)  # P51: the marker's pr_rules key, or at root works/pr-rules.json, where present
@@ -3235,7 +3236,7 @@ def render_template(text: str, **values: str) -> str:
 
 
 # Byte-identical to works/templates/phase.md, which is the live seed. The copy exists so
-# `new-phase` still works on a tree that predates the template (an adopter yet to update);
+# `phase new` still works on a tree that predates the template (an adopter yet to update);
 # tests/retrofit_smoke.sh asserts the two stay identical.
 PHASE_MD_TEMPLATE_FALLBACK = """# Phase __PHASE_ID__: __NAME__
 
@@ -3248,7 +3249,7 @@ __OBJECTIVE__
 ## Slices
 
 <!-- slices:begin -->
-_Generated by `python3 scripts/workflow.py rebuild` from each slice's `slice.json`; never hand-edit this block._
+_Generated by `python3 scripts/workflow.py check` from each slice's `slice.json`; never hand-edit this block._
 <!-- slices:end -->
 
 ## Decisions
@@ -3257,11 +3258,11 @@ _Durable cross-slice decisions, one gist line each. Replace a superseded line (`
 
 ## Operator Questions
 
-_Questions only the operator can answer, one entry each: `- **OQ<n> (<slice>):** <question>`. Append only (`phase-section <P> "Operator Questions" --append`); an answered entry collapses with `phase-section <P> --resolve OQ<n> --pointer <ref>`, never deleted. Every entry is routed at the review — folded into the acceptance walkthrough, filed with `defer-job`, or resolved. An unrouted entry is a review finding._
+_Questions only the operator can answer, one entry each: `- **OQ<n> (<slice>):** <question>`. Append only (`section <P> "Operator Questions" --append`); an answered entry collapses with `section <P> --resolve OQ<n> --pointer <ref>`, never deleted. Every entry is routed at the review — folded into the acceptance walkthrough, filed with `defer-job`, or resolved. An unrouted entry is a review finding._
 
 ## Notes for later slices
 
-_Gotchas and constraints the next slices need, each tagged `**(from <slice>, for <slice>)**`. A slice that consumes a note removes it (`--entry K --remove`); the detail stays in that slice's `result.md`. This file is an index read and written only through `phase-section <P>`, never whole; keep it under 40 KB._
+_Gotchas and constraints the next slices need, each tagged `**(from <slice>, for <slice>)**`. A slice that consumes a note removes it (`--entry K --remove`); the detail stays in that slice's `result.md`. This file is an index read and written only through `section <P>`, never whole; keep it under 40 KB._
 
 ## Now
 
@@ -3278,17 +3279,14 @@ def phase_md_template() -> str:
 
 
 def require_slice_kind(kind: str) -> str:
-    """The one place an unknown slice kind is rejected. Called from create_slice (the shared
-    chokepoint for new-slice and promote-deferred) and, additionally, at the very top of
-    promote-deferred: its --create-phase branch creates the phase BEFORE the slice, so a
-    rejected kind must be caught before that happens rather than after."""
+    """promote-deferred's refusal of an unknown slice kind, at its very top: its --create-phase branch creates
+    the phase BEFORE the slice, so a bad kind is caught before anything is written. `slice new` advises instead."""
     if kind not in SLICE_KINDS:
         raise SystemExit(f"invalid slice kind: {kind}; expected one of {sorted(SLICE_KINDS)}")
     return kind
 
 
 def create_slice(phase_id: str, slice_id: str, name: str, kind: str, order, risk: str, source: dict, depends_on=None, declared=False) -> Path:
-    require_slice_kind(kind)
     require_phase(phase_id)
     if not slice_id.startswith(f"{phase_id}."):
         raise SystemExit(f"slice id must start with {phase_id}.")
@@ -3300,7 +3298,7 @@ def create_slice(phase_id: str, slice_id: str, name: str, kind: str, order, risk
         "id": slice_id, "phase_id": phase_id, "name": name, "kind": kind, "status": "todo", "order": order,
         "depends_on": depends_on or [], **({DEPENDS_DECLARED: True} if declared else {}), "created_at": created, "started_at": None, "completed_at": None, "risk": risk, "source": source,
         "paths": {"plan": "plan.md", "result": "result.md"},
-        "outcome": None,  # one line, set by `finish-slice --outcome`; rendered in the phase's ## Slices table
+        "outcome": None,  # one line, set by `slice finish --outcome`; rendered in the phase's ## Slices table
         "validation": {"required": [], "last_run": None, "last_status": "pending"},
         "archive": {"archived": False, "archived_at": None, "archive_path": None},
     }
@@ -3354,7 +3352,7 @@ def _with_repo_anchors(data: dict, entries: dict) -> dict:
 
 
 def explicit_phase_id(phase_id: str) -> str:
-    """An explicit `new-phase --phase` id, checked before anything is written: any of the three shapes
+    """An explicit `phase new --phase` id, checked before anything is written: any of the three shapes
     (`P46-k2` with a valid tail -- its number need not be the next one --, an old `P12`, or a v73 `P-` token),
     never one that exists active or archived (an archived id is spent), and a v73 token only as v73's mint
     would have drawn it (`id_token_refusal`). SystemExit otherwise."""
@@ -3390,26 +3388,26 @@ def new_phase(args: argparse.Namespace) -> None:
         "archive": {"archived": False, "archived_at": None, "archive_path": None},
     }
     if NESTED is not None:
-        # The nested repo never sees the host's commits, so phase-scope's base is the host HEAD now
+        # The nested repo never sees the host's commits, so phase scope's base is the host HEAD now
         # (null while the host has no commit). At root this key is never written.
         phase_data = _with_host_anchors(phase_data, {"created": head_commit() or None})
     repo_stamp_lines = []
     repos = nested_repos()
     if repos:
         # P40 multi-repo: each registered repo's own range starts at its HEAD now (null while it has
-        # no commit); `branch` lets phase-scope note a repo later switched to another branch.
+        # no commit); `branch` lets phase scope note a repo later switched to another branch.
         stamped = {}
         for repo in repos:
             rpath, why = _phase_repo_path(repo, phase_data)
             if rpath is None:
-                repo_stamp_lines.append(f"repo_anchors: {repo['name']} not stamped ({why}) -- phase-scope reports it 'no anchor'")
+                repo_stamp_lines.append(f"repo_anchors: {repo['name']} not stamped ({why}) -- phase scope reports it 'no anchor'")
                 continue
             head = _rev_parse("HEAD", cwd=rpath)
             stamped[repo["name"]] = {"created": head, "branch": _repo_current_branch(rpath), "review_pass": None, "review_base": None}
         if stamped:
             phase_data = _with_repo_anchors(phase_data, stamped)
             repo_stamp_lines.insert(0, "repo_anchors=" + ", ".join(
-                f"{n}@{(e['created'] or 'none')[:7]} ({e['branch'] or 'detached'})" for n, e in stamped.items()) + " -- phase-scope's base per repo")
+                f"{n}@{(e['created'] or 'none')[:7]} ({e['branch'] or 'detached'})" for n, e in stamped.items()) + " -- phase scope's base per repo")
     if agenda is not None:
         phase_data["agenda"] = agenda  # P66 D4: present only while linked
     write_json(pdir / "phase.json", phase_data)
@@ -3460,20 +3458,22 @@ def new_slice(args: argparse.Namespace) -> None:
     append_event("slice_created", phase=args.phase, slice=args.slice)
     rebuild_index_and_state()
     print(f"created slice {args.slice}: {shown(sdir)}")
+    if args.kind not in SLICE_KINDS:
+        print(f"advice: kind {args.kind} is not one of {', '.join(sorted(SLICE_KINDS))}; it routes on the high row")
     for line in declared_slice_lines(args.kind, deps):
         print(line)
 
 
 def set_slice_deps(args: argparse.Namespace) -> None:
     """Declare an existing slice (v77): write its `depends_on` and the declared marker, under the same rules
-    as `new-slice --depends-on`. Refused for a barrier kind (it runs alone) and a `done` slice (no effect)."""
+    as `slice new --depends-on`. Refused for a barrier kind (it runs alone) and a `done` slice (no effect)."""
     sdir = require_slice(args.slice)
     data = read_json(sdir / "slice.json")
     phase_id = sdir.parents[1].name
     if data.get("kind") in BARRIER_KINDS:
-        raise SystemExit(f"set-slice-deps {args.slice}: kind {data.get('kind')} is a barrier that runs alone; refused, nothing was written")
+        raise SystemExit(f"slice deps {args.slice}: kind {data.get('kind')} is a barrier that runs alone; refused, nothing was written")
     if data.get("status") == "done":
-        raise SystemExit(f"set-slice-deps {args.slice}: the slice is done, so a declaration has no effect; refused, nothing was written")
+        raise SystemExit(f"slice deps {args.slice}: the slice is done, so a declaration has no effect; refused, nothing was written")
     deps = declared_dependencies(phase_id, args.slice, _order_of(data), args.depends_on)
     if data.get(DEPENDS_DECLARED) is True and (data.get("depends_on") or []) == deps:
         print(f"unchanged {args.slice}")
@@ -3488,9 +3488,9 @@ def set_slice_deps(args: argparse.Namespace) -> None:
 
 
 def cmd_parallel_plan(args: argparse.Namespace) -> None:
-    """Print what the engine lets run together in a phase (v77): its open slices in rounds, the undeclared
-    middle slices a decomposition must still declare, and, for an explain phase, that it stays sequential.
-    Read-only: the decomposition runs it before it returns, and finish-slice prints the same plan."""
+    """`phase rounds`: what the engine lets run together in a phase (v77): its open slices in rounds, the
+    undeclared middle slices (each runs alone), and, for an explain phase, that it stays sequential.
+    Read-only: the decomposition runs it before it returns, and slice finish prints the same plan."""
     pdir = require_phase(args.phase)
     phase = _active_phase(pdir.name) or {}
     lines = parallel_plan_lines(phase)
@@ -3504,8 +3504,8 @@ def cmd_parallel_plan(args: argparse.Namespace) -> None:
         return
     loose = undeclared_middle_slices(phase)
     if loose:
-        print(f"undeclared={', '.join(str(s.get('id')) for s in loose)} (each runs alone; a decomposition cannot finish "
-              f"until it declares them: {WORKFLOW_CMD} set-slice-deps <slice> --depends-on <id>|none)")
+        print(f"undeclared={', '.join(str(s.get('id')) for s in loose)} (advice: each runs alone until it is declared: "
+              f"{WORKFLOW_CMD} slice deps <slice> --depends-on <id>|none)")
 
 
 def _set_slice_status(sdir: Path, status: str, pending=None) -> str:
@@ -3539,22 +3539,21 @@ def set_slice_status(slice_id: str, status: str, pending=None) -> None:
 
 
 def cmd_set_slice_status(args: argparse.Namespace) -> None:
-    """set-slice-status: a `pending` stop is typed with --stop-kind and --on-words (both, and only with
-    `pending`); a bare `pending` still works, with one warning line."""
+    """slice status: a `pending` stop is typed with --stop-kind and --on-words, both, and only with `pending`;
+    a `pending` without them is refused, nothing written (the invariant: a pending stop halts the run)."""
     stop_kind, on_words = getattr(args, "stop_kind", None), getattr(args, "on_words", None)
     on_words = _one_line(on_words) if on_words is not None else None
     pending = None
     if args.status != "pending":
         if stop_kind or on_words is not None:
-            raise SystemExit(f"set-slice-status: --stop-kind/--on-words type a pending stop; refused with status {args.status!r}")
-    elif stop_kind or on_words is not None:
+            raise SystemExit(f"slice status: --stop-kind/--on-words type a pending stop; refused with status {args.status!r}")
+    else:
         if not stop_kind or not on_words:
-            raise SystemExit("set-slice-status: a typed pending stop needs both --stop-kind <kind> and --on-words \"<what the operator's words will do>\"")
+            raise SystemExit(f"slice status {args.slice} pending: refused, nothing written -- a pending stop needs both "
+                             f"--stop-kind <{'|'.join(SLICE_STOP_KINDS)}> and --on-words \"<what the operator's words will do>\"")
         pending = {"kind": stop_kind, "on_words": on_words, "since": now_iso()}
     set_slice_status(args.slice, args.status, pending)
     print(f"slice {args.slice}: {args.status}" + (f" (stop_kind={stop_kind})" if pending else ""))
-    if args.status == "pending" and pending is None:
-        print(f"warning: untyped pending stop -- add --stop-kind <{'|'.join(SLICE_STOP_KINDS)}> --on-words \"<what the operator's words will do>\"")
 
 
 def start_slice(args: argparse.Namespace) -> None:
@@ -3565,7 +3564,7 @@ def start_slice(args: argparse.Namespace) -> None:
         print(warning)
     step = notebook_step(args.slice.split(".", 1)[0])  # §6: a warning, never a refusal
     if step:
-        todo = ("required: run the notebook_move lines `next` prints before dispatching" if step["form"] == "required"
+        todo = ("advice: run the notebook_move lines `next` prints before dispatching" if step["form"] == "moves"
                 else "advisory: nothing left to move (`next` names what remains)")
         print(f"warning: notebook {step['phase']} is over budget ({step['bytes']} of {PHASE_MD_BUDGET} B) -- {todo}")
 
@@ -3574,14 +3573,9 @@ def finish_slice(args: argparse.Namespace) -> None:
     sdir = require_slice(args.slice)
     pdir = sdir.parents[1]  # .../<phase>/slices/<slice> -> <phase>
     decomposition = read_json(sdir / "slice.json").get("kind") == "decomposition"
-    if decomposition and not explain_phase(pdir):  # v77: the cut decides parallelism, never the default
+    loose = []
+    if decomposition and not explain_phase(pdir):  # v77: the cut decides parallelism; an undeclared slice runs alone
         loose = undeclared_middle_slices(_active_phase(pdir.name) or {})
-        if loose:
-            ids = ", ".join(str(s.get("id")) for s in loose)
-            raise SystemExit(f"finish-slice {args.slice}: refused, nothing was written -- a decomposition declares every middle slice "
-                             f"it leaves open, and these are undeclared: {ids}. Declare each one: {WORKFLOW_CMD} set-slice-deps <slice> "
-                             "--depends-on <an earlier slice of this phase> (repeatable) or --depends-on none, then finish again; "
-                             f"{WORKFLOW_CMD} parallel-plan {pdir.name} shows the rounds that follow")
     outcome = (getattr(args, "outcome", None) or "").strip()
     if outcome:  # stored before the status change, so the rebuild it triggers renders the row
         data = read_json(sdir / "slice.json")
@@ -3594,6 +3588,9 @@ def finish_slice(args: argparse.Namespace) -> None:
     if decomposition:  # v77: the engine's determination of what runs together, for the orchestrator to relay
         for line in parallel_plan_lines(_active_phase(pdir.name) or {}):
             print(line)
+    for s in loose:
+        print(f"advice: {s.get('id')} is a middle slice left undeclared, so it runs alone: "
+              f"{WORKFLOW_CMD} slice deps {s.get('id')} --depends-on <an earlier slice of this phase>|none")
     lines_n, bytes_n = phase_md_size(sdir.parents[1])  # .../<phase>/slices/<slice> -> <phase>
     if lines_n or bytes_n:  # the notebook is where the next slice reads its state; keep it in view
         over = " \u2014 OVER BUDGET" if bytes_n > PHASE_MD_BUDGET else ""  # bytes judge; lines are informational
@@ -3636,7 +3633,7 @@ def _require_acceptance_cleared(phase_id: str, data: dict) -> None:
     acceptance = phase_acceptance(data)
     if acceptance is None:
         if "acceptance" in data:
-            print(f"acceptance: phase {phase_id} has a malformed gate block -- treated as legacy (run: {WORKFLOW_CMD} validate)")
+            print(f"acceptance: phase {phase_id} has a malformed gate block -- treated as legacy (run: {WORKFLOW_CMD} check --no-rebuild)")
         else:
             print("acceptance: legacy phase (no gate block) -- pass recorded without an operator acceptance gate")
         return
@@ -3663,13 +3660,13 @@ def review_phase(args: argparse.Namespace) -> None:
         _require_acceptance_cleared(args.phase, data)
         _require_pr_opened(args.phase, data)  # P51: beside the gate, never instead of it; each names only itself
     if args.verdict == "changes_requested" and data.get("status") == "done" and _pr_open_entries(data):
-        # P52: a done phase with an open PR reopens through reopen-phase (any change request, the team's or the
+        # P52: a done phase with an open PR reopens through phase reopen (any change request, the team's or the
         # operator's), which also cuts a nested install's worktree on the PR branch; recorded here it would reopen
         # with no worktree. A done phase with no open PR is unchanged.
         open_prs = ", ".join(f"{_pr_label(e)} ({e.get('state') or 'unsynced'})" for e in _pr_open_entries(data))
         raise SystemExit(f"review-phase {args.phase} --verdict changes_requested: refused -- {args.phase} is done and its PR is still open "
                          f"({open_prs}); a change request (the team's or the operator's) reopens it on the PR branch: "
-                         f"{WORKFLOW_CMD} reopen-phase {args.phase} --note \"team-reported: <what>\" (or \"operator-reported: <what>\"; "
+                         f"{WORKFLOW_CMD} phase reopen {args.phase} --note \"team-reported: <what>\" (or \"operator-reported: <what>\"; "
                          f"pr-sync {args.phase} first) -- nothing was written")
     # The fix passes this review cycle has asked for: one per `changes_requested`. A pass ends the cycle and
     # clears the count; a reopen is itself a change request, so `_reopen_apply` starts its cycle at one.
@@ -3692,7 +3689,7 @@ def review_phase(args: argparse.Namespace) -> None:
         data["completed_at"] = now_iso()
     data["status"] = new_status
     if args.verdict == "pass" and NESTED is not None:
-        # The end of the phase's host range: phase-scope reads base..review_pass in the host.
+        # The end of the phase's host range: phase scope reads base..review_pass in the host.
         _with_host_anchors(data, {"review_pass": head_commit() or None})
         _freeze_host_review_base(data)
         if nested_repos():
@@ -3706,18 +3703,18 @@ def review_phase(args: argparse.Namespace) -> None:
     print(f"phase {args.phase} review: {args.verdict} (status -> {new_status})")
     if args.verdict == "changes_requested":
         if fix_passes <= 1:
-            print(f"create fix slices, e.g.: {WORKFLOW_CMD} new-slice --phase {args.phase} --slice {args.phase}.F1 --name \"...\" --kind fix")
+            print(f"create fix slices, e.g.: {WORKFLOW_CMD} slice new --phase {args.phase} --slice {args.phase}.F1 --name \"...\" --kind fix")
         else:
             print(f"fix_passes={fix_passes}: the one fix pass already ran -- a further fix needs the operator's word (this verdict, when it "
-                  f"records their own report); without it cut no fix slice and stop: {WORKFLOW_CMD} set-slice-status "
+                  f"records their own report); without it cut no fix slice and stop: {WORKFLOW_CMD} slice status "
                   f"{args.phase}.REVIEW pending --stop-kind decision --on-words \"...\"")
     elif args.verdict == "pass":
         print(f"phase {args.phase} is done and stays in active/. Do NOT archive a single phase now.")
-        print("Archive done phases later, whole phases only: `rotate-backlog` (archives every done phase), or `archive-all` once every active phase is done.")
+        print("Archive done phases later, whole phases only: `phase rotate` (archives every done phase), or `phase archive --all` once every active phase is done.")
 
 
 def _drive_review_slices(pdir: Path, verdict: str) -> list:
-    """Set the phase's REVIEW slice(s) from a phase verdict (`review-phase`, and `reopen-phase`'s
+    """Set the phase's REVIEW slice(s) from a phase verdict (`review-phase`, and `phase reopen`'s
     changes_requested), so the phase and its review slice never diverge. Returns `[(slice id, old status)]`."""
     slice_verdict = {"pass": "done", "changes_requested": "changes_requested", "blocked": "blocked"}[verdict]
     driven = []
@@ -4094,7 +4091,7 @@ def cmd_next(args: argparse.Namespace) -> None:
     waiting = state.get("waiting_on_operator")
     if waiting:
         kind = "slice" if "." in waiting else "phase"
-        clear = f"set-slice-status {waiting} in_progress" if kind == "slice" else f"set-phase-status {waiting} in_progress"
+        clear = f"slice status {waiting} in_progress" if kind == "slice" else f"phase status {waiting} in_progress"
         # An open acceptance gate is the same `pending` halt with a concrete script attached:
         # print the walkthrough, and clear through accept-gate so cleared_at gets stamped.
         gate = None
@@ -4208,7 +4205,7 @@ def _phase_blocker_kinds(pdir: Path) -> list:
         state = entry.get("state") or "unsynced"
         text = f"PR {_pr_label(entry)} is {state}, not merged -- once it merges: {WORKFLOW_CMD} pr-sync {phase['id']}"
         if state == "closed":
-            text += f"; it was closed without merging: {WORKFLOW_CMD} archive-phase {phase['id']} --force is the way out"
+            text += f"; it was closed without merging: {WORKFLOW_CMD} phase archive {phase['id']} --force is the way out"
         reasons.append(("pr", text))
     return reasons
 
@@ -4221,7 +4218,7 @@ def _phase_blockers(pdir: Path) -> list:
 def _parallel_branch_merged(execution: dict, git_ok: bool = None) -> bool:
     """True when a parallel phase's branch is merged into HEAD. No branch, a deleted branch (merged
     and torn down) and a workspace without git all count as merged; otherwise the branch must be an
-    ancestor of HEAD. The one test `parallel-merge-finish` and `rotate-backlog` share."""
+    ancestor of HEAD. The one test `parallel-merge-finish` and `phase rotate` share."""
     git_ok = _git_available() if git_ok is None else git_ok
     branch = execution.get("branch")
     if git_ok and branch and _branch_exists(branch):
@@ -4255,54 +4252,47 @@ def _archive_one(pdir: Path, forced: bool) -> Path:
     return dest
 
 
-def archive_phase(args: argparse.Namespace) -> None:
-    # First-class single-phase archive: archive one review-passed phase on request.
-    # Useful when only some phases are done. For the partial sweep of every done
-    # phase use rotate-backlog; for the end-of-batch sweep of everything use
-    # archive-all. --force is for exceptional cleanup of an unfinished phase only.
-    pdir = require_phase(args.phase)
-    if not args.force:
-        reasons = _phase_blockers(pdir)
-        if reasons:
-            raise SystemExit(f"phase {args.phase} is not archivable ({'; '.join(reasons)}). Finish/review it, or use --force for exceptional cleanup.")
-    dest = _archive_one(pdir, forced=args.force)
-    rebuild_index_and_state()
-    print(f"archived phase {args.phase}: {shown(dest)}")
-
-
-def archive_all(args: argparse.Namespace) -> None:
-    # Batch-archive every active phase at once. Gated so archiving only happens
-    # once the last review slice across all active phases is done.
-    pdirs = phase_dirs()
+def cmd_phase_archive(args: argparse.Namespace) -> None:
+    """`phase archive <P>`: one review-passed phase. `--all`: every active phase, only once every one is done
+    (`phase rotate` is the partial sweep). `--force` is for exceptional cleanup of an unfinished phase only."""
+    if bool(args.all_phases) == bool(args.phase):
+        raise SystemExit("phase archive: name one phase, or --all for every active phase")
+    pdirs = phase_dirs() if args.all_phases else [require_phase(args.phase)]
     if not pdirs:
         print("no active phases to archive")
         return
-    if not args.force:
-        blockers = []
-        for pdir in pdirs:
-            reasons = _phase_blockers(pdir)
-            if reasons:
-                blockers.append(f"{read_json(pdir / 'phase.json')['id']}: {'; '.join(reasons)}")
-        if blockers:
-            print("not archiving: every active phase must be done (the last review slice complete) before a batch archive.")
-            for b in blockers:
-                print(f"- {b}")
-            raise SystemExit("Finish the open phases first, or use --force for exceptional cleanup.")
-    archived = []
-    for pdir in pdirs:
-        phase_id = read_json(pdir / "phase.json")["id"]
-        dest = _archive_one(pdir, forced=args.force)
-        archived.append((phase_id, dest))
+    blockers = [(pdir, _phase_blockers(pdir)) for pdir in pdirs] if not args.force else []
+    blockers = [(pdir, reasons) for pdir, reasons in blockers if reasons]
+    if blockers and not args.all_phases:
+        raise SystemExit(f"phase {args.phase} is not archivable ({'; '.join(blockers[0][1])}). Finish/review it, or use --force for exceptional cleanup.")
+    if blockers:
+        print("not archiving: every active phase must be done (the last review slice complete) before a batch archive.")
+        for pdir, reasons in blockers:
+            print(f"- {read_json(pdir / 'phase.json')['id']}: {'; '.join(reasons)}")
+        raise SystemExit("Finish the open phases first, or use --force for exceptional cleanup.")
+    archived = [(read_json(pdir / "phase.json")["id"], _archive_one(pdir, forced=args.force)) for pdir in pdirs]
     rebuild_index_and_state()
+    if not args.all_phases:
+        print(f"archived phase {args.phase}: {shown(archived[0][1])}")
+        return
     print(f"archived {len(archived)} phase(s):")
     for phase_id, dest in archived:
         print(f"- {phase_id}: {shown(dest)}")
 
 
+def cmd_check(args: argparse.Namespace) -> None:
+    """`check`: rebuild the generated files, then validate (exit 1 on an invalid record); `--no-rebuild`
+    validates only. A malformed nested marker is never rebuilt on: check validates and lists it."""
+    if not args.no_rebuild and not (NESTED is not None and NESTED_PROBLEMS):
+        rebuild_index_and_state()
+        print("rebuilt workflow")
+    sys.exit(validate())
+
+
 def _rotate_sweep() -> None:
     """The archive sweep: archive every phase that is cleanly archivable right now (every slice done,
     review `pass`, no unmerged PR) and leave the rest active, then rebuild. Whole phases, never
-    forced, archive-phase's manifest -- the partial sweep archive-all cannot do, since archive-all
+    forced, phase archive's manifest -- the partial sweep phase archive --all cannot do, since phase archive --all
     refuses unless EVERY active phase is done. Its output is `--archive-only`'s, verbatim."""
     pdirs = phase_dirs()
     if not pdirs:
@@ -4338,6 +4328,6 @@ def rotate_backlog(args: argparse.Namespace) -> None:
     stream = current_stream(all_active_phases())
     if stream is not None:
         print(f"rotate=refused stream={stream}")
-        raise SystemExit("rotate-backlog wrote nothing: archiving runs on the default stream only -- run it from the main checkout, not this phase's worktree")
+        raise SystemExit("phase rotate wrote nothing: archiving runs on the default stream only -- run it from the main checkout, not this phase's worktree")
     print("rotate=archive")
     _rotate_sweep()

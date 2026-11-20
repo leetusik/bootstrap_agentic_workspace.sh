@@ -1281,7 +1281,7 @@ CLOUD_KEY_PROMPT = "Paste a workspace key for this project (make one under Keys 
 # Refused in cloud mode with one line each, before anything is read or written: a linked checkout runs every
 # phase here, with no worktree streams (and so no reopened pair).
 CLOUD_STREAM_REFUSED = ("parallel-start", "parallel-add-repo", "parallel-gate", "parallel-merge-finish",
-                        "parallel-teardown", "reopen-phase")
+                        "parallel-teardown", "phase reopen")
 # An unused install's truth set: only what a fresh install seeds (the five plain docs; an older install's
 # docs/index.json and v0001 versions). Joining hi2vi from one replaces these.
 CLOUD_SEED_RE = re.compile(r"docs/README\.md|docs/current/(?:product|architecture|operations|qa|decisions)\.md|docs/index\.json"
@@ -1292,7 +1292,7 @@ CLOUD_SHOWN_ROWS = 20
 def cloud_refusal(args: argparse.Namespace):
     """The one line refusing a stream command in a linked checkout, or None."""
     if args.cmd in CLOUD_STREAM_REFUSED:
-        what = "it cuts a worktree pair for the phase" if args.cmd == "reopen-phase" else "it runs a phase on a worktree stream"
+        what = "it cuts a worktree pair for the phase" if args.cmd == "phase reopen" else "it runs a phase on a worktree stream"
         return (f"{args.cmd} is refused in cloud mode: {what}, and a linked checkout runs every phase here, "
                 "with no streams (nothing was changed)")
     return None
@@ -1312,7 +1312,7 @@ def cloud_store_line() -> str:
 # state (hi2vi's revisions are the history), so there the record is explicit: `mark-committed <slice>` writes
 # `committed_at` into slice.json (a truth file: it syncs) after the slice's product commit, or right after its
 # finish when it changed no product file. A slice leaving `done` loses it; a second finish keeps it (as a second
-# finish-slice after a commit never waits in git). Slices done before the link were committed (link refuses an
+# slice finish after a commit never waits in git). Slices done before the link were committed (link refuses an
 # unclean workflow repo), so only those finished at or after link.json's `linked_at` can wait. Local mode never
 # reads, writes or prints any of it.
 COMMITTED_AT = "committed_at"
@@ -1414,7 +1414,7 @@ def cloud_link_refusal():
     if cloud_link_file().exists():
         return f"this checkout is already linked ({cloud_store_line()}): run unlink first (nothing was written)"
     if NESTED is None:
-        return ("link refuses an at-root install: cloud mode needs the nested layout, whose phase-scope reads the "
+        return ("link refuses an at-root install: cloud mode needs the nested layout, whose phase scope reads the "
                 "anchors in phase.json, never the workflow repo's history (nothing was written)")
     phases = []
     for pdir in phase_dirs():

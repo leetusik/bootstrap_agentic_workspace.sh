@@ -10,7 +10,7 @@ nothing.**
 
 - **A throwaway route in the project's own router**, namespaced by job, following the project's own
   conventions. **Record its path in `phase.md`**, beside the job's signed-round line
-  (`phase-section <P> Decisions --entry K --replace`).
+  (`section <P> Decisions --entry K --replace`).
 - **The project's real stack, real components, real tokens**, under **RESPECT THE DESIGN**: every
   designed element and state present, nothing dropped, simplified, restyled or "improved".
 - **Stubbed data, no backing work.** It proves **look and states, not wiring.** Non-functional
@@ -30,7 +30,7 @@ nothing.**
   too thin to build without inventing** comes back as `needs_operator`, and you raise it. **Never fill
   the gap.**
 - **Then PENDING #2, the mockup gate.** Commit `feat(design): <slice> mockup — …` and stop
-  (`set-slice-status <slice> pending --stop-kind mockup --on-words "<what their words will do>"`). The
+  (`slice status <slice> pending --stop-kind mockup --on-words "<what their words will do>"`). The
   walkthrough names the run command, the URL, the viewports, **what is real and what is stubbed**, and
   what is deliberately not wired. **PENDING #2 exists only when a mockup was requested.**
 - **Rejection splits like every other finding.** A departure from the record is fixed in the mockup. A

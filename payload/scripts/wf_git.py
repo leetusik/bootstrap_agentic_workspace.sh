@@ -1,5 +1,5 @@
-"""Git-facing commands: pull requests (pr-*), the parallel worktrees (parallel-*, reopen-phase), the nested repo
-registry and conventions (nested-*), and phase-scope. Imports only wf_store."""
+"""Git-facing commands: pull requests (pr-*), the parallel worktrees (parallel-*, phase reopen), the nested repo
+registry and conventions (nested-*), and phase scope. Imports only wf_store."""
 from __future__ import annotations
 
 import argparse
@@ -87,7 +87,7 @@ def parallel_start(args: argparse.Namespace) -> None:
     if data.get("status") != "planned":
         raise SystemExit(f"phase {args.phase} is {data.get('status')!r}; a phase enters its worktree before it starts (parallel-start needs status 'planned') -- a phase already in flight finishes on this stream")
     if phase_pinned(data):
-        raise SystemExit(f"phase {args.phase} carries v42's legacy pin to the default stream (execution.mode=default, written by v42's old skip command or new-phase --on-main); it was pinned deliberately, so un-pin it by hand: delete the execution block from {shown(pdir)}/phase.json first")
+        raise SystemExit(f"phase {args.phase} carries v42's legacy pin to the default stream (execution.mode=default, written by v42's old skip command or phase new --on-main); it was pinned deliberately, so un-pin it by hand: delete the execution block from {shown(pdir)}/phase.json first")
     if data.get("execution") is not None:
         raise SystemExit(f"phase {args.phase} already carries an execution block: {json.dumps(data['execution'], ensure_ascii=False)}")
     _require_git_repo()
@@ -377,7 +377,7 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
     no branch to name, create, reuse or integrate. The stamp carries `host_branch: null` and
     `host_branch_created: false`; `host_anchors.created` is the base; everything else is the pair's.
 
-    P52 (`reopen-phase`): `on_stamp(data, host_wt, nested_wt)` runs once every guard has passed and
+    P52 (`phase reopen`): `on_stamp(data, host_wt, nested_wt)` runs once every guard has passed and
     before the stamp is written, so a reopen's verdict lands in the same stamp commit; `stamp_message`
     replaces the commit subject.
     Returns `(host_wt, nested_wt)`."""
@@ -432,14 +432,14 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
     _ensure_worktrees_excluded(cwd=host)
     if not args.worktree:
         host_wt.parent.mkdir(parents=True, exist_ok=True)
-    if on_stamp is not None:  # P52: reopen-phase's verdict, in the same stamp commit
+    if on_stamp is not None:  # P52: phase reopen's verdict, in the same stamp commit
         on_stamp(data, host_wt, nested_wt)
     data["execution"] = {
         "mode": "parallel", "branch": branch, "worktree": str(nested_wt),
         "host_worktree": str(host_wt), "host_branch": host_branch, "host_base": base_ref, "host_base_sha": base_sha,
         "host_branch_created": host_branch_created, "base_branch": base_branch,
     }
-    # phase-scope's base must be where the host worktree starts, not the host HEAD at new-phase
+    # phase scope's base must be where the host worktree starts, not the host HEAD at phase new
     # (P35.S2 (f)); stamped before the commit so both branches carry it.
     data = _with_host_anchors(data, {"created": anchor})
     for plan in plans:  # P40.S6: execution.repos + the repo_anchors re-stamp, before the commit like the host's
@@ -501,13 +501,13 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
     else:
         print(f"host_branch={host_branch} ({'created by parallel-start' if host_branch_created else 'reused: it existed and was not checked out'})")
     print(f"host_base={base_ref} ({base_sha})")
-    print(f"host_anchors.created={anchor} ({'the base' if detached or host_branch_created else 'merge-base of the base and the reused branch'}) -- phase-scope's base")
+    print(f"host_anchors.created={anchor} ({'the base' if detached or host_branch_created else 'merge-base of the base and the reused branch'}) -- phase scope's base")
     for plan in plans:
         print(_set_repo_line(plan))
     if nested_repos():  # P40.S6: multi-repo only
         outside = [r["name"] for r in nested_repos() if r["name"] not in {p["name"] for p in plans}]
         if outside:
-            print(f"not in this set: {', '.join(outside)} -- inside the set phase-scope skips them, never reading their main checkouts")
+            print(f"not in this set: {', '.join(outside)} -- inside the set phase scope skips them, never reading their main checkouts")
     print(f"stamp committed in the nested repo: {subject} -- only {shown(pdir)}/ plus the regenerated works/ files; "
           f"everything else dirty or staged stayed behind, uncommitted")
     print(f"the nested worktree starts from that commit (HEAD); /{WORKTREES_DIR}/ is excluded via the host's .git/info/exclude")
@@ -541,7 +541,7 @@ REOPEN_REFUSED = "nothing was written"
 
 
 def _reopen_refuse(phase_id: str, why: str) -> None:
-    raise SystemExit(f"reopen-phase {phase_id}: refused -- {why} -- {REOPEN_REFUSED}")
+    raise SystemExit(f"phase reopen {phase_id}: refused -- {why} -- {REOPEN_REFUSED}")
 
 
 def _reopen_pick(phase_id: str, entries: list, branch_arg) -> list:
@@ -614,13 +614,13 @@ def _reopen_report(phase_id: str, label: str, where, outcome: dict) -> None:
     print(f"phase {phase_id}: {outcome['old_status']} -> in_progress, review changes_requested ({slices}); {gate}; "
           f"completed_at and the pr block kept")
     print(f"next: the fix round in that checkout, on {label} -- {_reopen_read_hint(outcome.get('note') or '')}, cut fix slices "
-          f"({WORKFLOW_CMD} new-slice --phase {phase_id} --slice {phase_id}.F<n> --kind fix), then the re-review; at its would-pass push the fixes "
+          f"({WORKFLOW_CMD} slice new --phase {phase_id} --slice {phase_id}.F<n> --kind fix), then the re-review; at its would-pass push the fixes "
           f"(git push, never --force) and replace the body (pr-check, then gh pr edit <n> --body-file <body>), never a second PR; then the gate if "
           f"required and the close again: the pr skill's reference/reopen.md")
 
 
 def cmd_reopen_phase(args: argparse.Namespace) -> None:
-    """`reopen-phase <P> --note "team-reported: <what>"|"operator-reported: <what>" [--slug <s>] [--worktree <path>] [--branch <b>]
+    """`phase reopen <P> --note "team-reported: <what>"|"operator-reported: <what>" [--slug <s>] [--worktree <path>] [--branch <b>]
     [--host-branch <name>]` (P52): reopen a DONE phase whose PR is still open, on the operator's word, for
     a change request after the pass, the team's or the operator's.
 
@@ -650,7 +650,7 @@ def cmd_reopen_phase(args: argparse.Namespace) -> None:
         _reopen_refuse(phase_id, f"{phase_id} is {data.get('status')!r}, not 'done'; a phase still in flight takes the change request in its "
                                  f"own fix round ({WORKFLOW_CMD} review-phase {phase_id} --verdict changes_requested)"
                        + ("" if NESTED is not None else f" -- at root a phase's record is only as current as this checkout's branch: if {phase_id} "
-                                                        f"is done on its PR branch, run reopen-phase where that branch is checked out"))
+                                                        f"is done on its PR branch, run phase reopen where that branch is checked out"))
     entries = _pr_open_entries(data)
     if not entries:
         block = phase_pr(data)
@@ -671,7 +671,7 @@ def cmd_reopen_phase(args: argparse.Namespace) -> None:
     old = data.get("execution")
     own_branch = (phase_execution(data) or {}).get("branch")
     if stream and not (NESTED is None and stream == own_branch):
-        _reopen_refuse(phase_id, f"this checkout is on parallel stream {stream}; run reopen-phase from the default stream")
+        _reopen_refuse(phase_id, f"this checkout is on parallel stream {stream}; run phase reopen from the default stream")
     busy = _git_operation_in_progress()
     if busy:
         _reopen_refuse(phase_id, f"a {busy} is in progress in this checkout; finish or abort it first")
@@ -756,7 +756,7 @@ def cmd_reopen_phase(args: argparse.Namespace) -> None:
 
 
 def _reopen_root(args: argparse.Namespace, pdir: Path, data: dict, picked: list, note: str, stream) -> None:
-    """The root shape of `reopen-phase` (P52, decided in S3): IN PLACE, in the checkout that holds the PR
+    """The root shape of `phase reopen` (P52, decided in S3): IN PLACE, in the checkout that holds the PR
     branch. At root the PR branch carries the product AND the phase's record (pr-branch switched the
     checkout to it, and the slice commits landed there), so a done record with an open PR exists only
     where that branch -- or one stacked on it -- is checked out. A worktree on the PR branch would need the
@@ -775,14 +775,14 @@ def _reopen_root(args: argparse.Namespace, pdir: Path, data: dict, picked: list,
         holder = next((p for p, ref in _worktree_entries() if ref == f"refs/heads/{branch}"), None)
         if holder:
             _reopen_refuse(phase_id, f"at root the reopen runs in place on the PR branch, and {branch} is checked out in {holder}: run it there "
-                                     f"(cd {holder} && {WORKFLOW_CMD} reopen-phase {phase_id} --note \"...\")")
+                                     f"(cd {holder} && {WORKFLOW_CMD} phase reopen {phase_id} --note \"...\")")
         q = shlex.quote
         # a sibling of the repo, never inside it: a worktree under the repo shows as untracked there unless excluded
         wt = ROOT.parent / f"{ROOT.name}-{slugify(branch.replace('/', '-'), fallback=phase_id.lower())}"
         _reopen_refuse(phase_id, f"at root the PR branch carries {phase_id}'s record, so the reopen runs in place where {branch} is checked out, "
                                  f"and this checkout is on {current or 'a detached HEAD'}. Either switch here at a slice boundary "
                                  f"(git switch {branch}), or, so a phase running here never waits, check it out beside this one and reopen there: "
-                                 f"git worktree add {q(str(wt))} {branch} && cd {q(str(wt))} && {WORKFLOW_CMD} reopen-phase {phase_id} --note \"...\"")
+                                 f"git worktree add {q(str(wt))} {branch} && cd {q(str(wt))} && {WORKFLOW_CMD} phase reopen {phase_id} --note \"...\"")
     outcome = _reopen_apply(pdir, data, note)
     write_json(pdir / "phase.json", data)
     append_event("phase_reopened", phase=phase_id, note=note, branch=_pr_label(entry), worktree=str(ROOT), nested_branch=None,
@@ -892,7 +892,7 @@ def parallel_add_repo(args: argparse.Namespace) -> None:
     print(_set_repo_line(plan, by="parallel-add-repo"))
     if args.adopt:
         log = _git(["log", "--oneline", f"{plan['base_sha']}..refs/heads/{branch}"], cwd=plan["main"], check=False).stdout.splitlines()
-        print(f"commits on {branch} beyond the base {plan['base']}: {len(log)} -- they come into {args.phase}'s scope (phase-scope reads {name} "
+        print(f"commits on {branch} beyond the base {plan['base']}: {len(log)} -- they come into {args.phase}'s scope (phase scope reads {name} "
               f"from {plan['anchor'][:7]})")
         for line in log[:5]:
             print(f"  {line}")
@@ -900,7 +900,7 @@ def parallel_add_repo(args: argparse.Namespace) -> None:
             print(f"  ... {len(log) - 5} more: git -C {q(str(plan['target']))} log --oneline {plan['base_sha'][:7]}..{branch}")
     print(f"stamp committed in the nested worktree, on {stream}: {commit} {message} -- only {shown(pdir)}/phase.json plus the regenerated "
           f"works/ files; everything else dirty or staged stayed behind, uncommitted")
-    print(f"there: product commits for {name} go to {branch} in its worktree (git -C {plan['path']}); phase-scope now reads {name} from it")
+    print(f"there: product commits for {name} go to {branch} in its worktree (git -C {plan['path']}); phase scope now reads {name} from it")
 
 
 def parallel_teardown(args: argparse.Namespace) -> None:
@@ -1825,7 +1825,7 @@ def parallel_start_hint(state: dict, index: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# phase-scope: the phase's boundary, read from git (v41)
+# phase scope: the phase's boundary, read from git (v41)
 #
 # The review (and a fidelity slice) re-runs the regression checklist only INSIDE the phase's
 # boundary -- the product files the phase changed, the surfaces they feed. This command makes
@@ -2025,7 +2025,7 @@ def _patch_ids(path: Path, *revs: str) -> list:
 def resolve_repo_base(path: Path, created, default_branch=None, label: str = "created", branch=None, hint: str = "--base <sha>") -> dict:
     """The base rule (P40 S1 §7; answers D35): where a repo's phase range starts. Returns
     `{"base", "rule", "kind", "note"}` -- `base` a commit sha, the empty tree, or None (unmeasurable);
-    `rule` 1-5 (which step fired); `kind` the text phase-scope prints in `base=... (...)`; `note` a
+    `rule` 1-5 (which step fired); `kind` the text phase scope prints in `base=... (...)`; `note` a
     caveat to print, or None. With D = `_repo_default_branch(path, default_branch)` and
     mb = merge-base(D, HEAD):
 
@@ -2039,15 +2039,15 @@ def resolve_repo_base(path: Path, created, default_branch=None, label: str = "cr
     head = _rev_parse("HEAD", cwd=path)
     if not created:
         if head:
-            return {"base": EMPTY_TREE, "rule": 1, "kind": f"the empty tree: {label} is null (no commit at new-phase)", "note": None}
-        return {"base": None, "rule": 1, "kind": None, "note": "no commit at new-phase, and still none"}
+            return {"base": EMPTY_TREE, "rule": 1, "kind": f"the empty tree: {label} is null (no commit at phase new)", "note": None}
+        return {"base": None, "rule": 1, "kind": None, "note": "no commit at phase new, and still none"}
     commit = _rev_parse(created, cwd=path)
     name = _repo_default_branch(path, default_branch)
     mb = _default_merge_base(path, name, head) if name and head else None
     if commit:
         if mb is None or mb == head:
             who = "host" if label.startswith("host_anchors") else "repo"
-            return {"base": commit, "rule": 2, "kind": f"the {who} HEAD at new-phase: {label}", "note": None}
+            return {"base": commit, "rule": 2, "kind": f"the {who} HEAD at phase new: {label}", "note": None}
         if mb == commit:  # P40.S6: a set's branch cut at (or reused from) its anchor -- rule 3's base, said plainly
             return {"base": commit, "rule": 3, "kind": f"{label}: where the branch leaves {name}", "note": None}
         if _is_ancestor(path, mb, commit):
@@ -2122,7 +2122,7 @@ def _repo_anchor_problems(p: dict, errors: list, warnings: list) -> None:
             if entry["branch"] is not None and not isinstance(entry["branch"], str):
                 errors.append(f"phase {p['id']} has invalid repo_anchors.{name}.branch {entry['branch']!r}; expected a branch name or null")
         if name not in registered:
-            warnings.append(f"phase {p['id']} holds repo_anchors.{name}, but no registered repo is named {name} -- phase-scope skips it (re-register it with: {WORKFLOW_CMD} nested-repos --add <path> --name {name})")
+            warnings.append(f"phase {p['id']} holds repo_anchors.{name}, but no registered repo is named {name} -- phase scope skips it (re-register it with: {WORKFLOW_CMD} nested-repos --add <path> --name {name})")
 
 
 def _phase_review_commit(phase_id: str, base: str, tip: str):
@@ -2130,7 +2130,7 @@ def _phase_review_commit(phase_id: str, base: str, tip: str):
     final run of commits whose phase.json says `review.status == "pass"`.
 
     A done phase's boundary ends where its review was recorded, not at today's HEAD -- otherwise
-    every later commit on the stream would leak into it. P52: a reopened phase (`reopen-phase`)
+    every later commit on the stream would leak into it. P52: a reopened phase (`phase reopen`)
     records `changes_requested` after its first pass and passes again after the fix round, so a
     non-pass record resets the run and the second pass ends the range; a phase passed once reads
     exactly as before. A commit whose phase.json cannot be read (the archive move) never resets it."""
@@ -2163,7 +2163,7 @@ def phase_scope(args: argparse.Namespace) -> None:
         _phase_scope_pathspec_only(args)
         return
     if not args.phase:
-        raise SystemExit("phase-scope: name the phase (phase-scope <P>), or print the product pathspec alone with phase-scope --pathspec")
+        raise SystemExit("phase scope: name the phase (phase scope <P>), or print the product pathspec alone with phase scope --pathspec")
     pdir, archived = _find_phase_dir(args.phase)
     data = read_json(pdir / "phase.json")
     spec = product_pathspec()  # at root; the nested readers take theirs from the same function
@@ -2180,13 +2180,13 @@ def phase_scope(args: argparse.Namespace) -> None:
 
     header = [f"phase={args.phase} status={data.get('status')} archived={str(archived).lower()}"]
     if NESTED is None and args.repo:
-        raise SystemExit("phase-scope --repo: refused -- a multi-repo host only; an at-root workspace's repo is its one product repo")
+        raise SystemExit("phase scope --repo: refused -- a multi-repo host only; an at-root workspace's repo is its one product repo")
     if NESTED is not None:
         _phase_scope_nested(args, data, out, header, emit)
         return
     if not _git_available():
         out["mode"] = "no-git"
-        out["hint"] = "phase-scope: no git history readable here -- derive the boundary from the slices' result.md files"
+        out["hint"] = "phase scope: no git history readable here -- derive the boundary from the slices' result.md files"
         emit([out["hint"]])
         return
 
@@ -2287,10 +2287,10 @@ REPO_PATHSPEC = ["."]  # a registered repo on a multi-repo host: the whole repo 
 
 
 def product_pathspec(repos=None) -> list:
-    """THE pathspec phase-scope reads product files with, for the folder it reads (the workspace root
+    """THE pathspec phase scope reads product files with, for the folder it reads (the workspace root
     at root, the host root nested): at root `PRODUCT_PATHSPEC`, nested `_host_pathspec()`, and on a
     multi-repo host the host's own, with every registered repo's folder excluded too (each repo
-    itself reads `REPO_PATHSPEC`). `phase-scope` diffs with it and prints it, so the printed line is
+    itself reads `REPO_PATHSPEC`). `phase scope` diffs with it and prints it, so the printed line is
     the one the file list was computed with (F2)."""
     if NESTED is None:
         return list(PRODUCT_PATHSPEC)
@@ -2303,7 +2303,7 @@ def pathspec_text(spec: list) -> str:
 
 
 def pathspec_lines(spec, repos=None) -> list:
-    """The `pathspec=` line(s) `phase-scope` prints, the value being everything after `pathspec=`.
+    """The `pathspec=` line(s) `phase scope` prints, the value being everything after `pathspec=`.
     `spec` is the pathspec the root or host read used (None: the host was not read, a `--repo`
     filter). At root and on a single-repo host (`repos` None) one line; on a multi-repo host one
     per repo read (`repo=<name> pathspec=.`, i.e. `REPO_PATHSPEC`) and then the host's
@@ -2317,18 +2317,18 @@ def pathspec_lines(spec, repos=None) -> list:
 
 
 def _phase_scope_pathspec_only(args: argparse.Namespace) -> None:
-    """`phase-scope --pathspec [<P>]`: print only the product pathspec, phase or no phase (`/read-code`
-    runs outside one). The same functions `phase-scope <P>` diffs with, so the same value."""
+    """`phase scope --pathspec [<P>]`: print only the product pathspec, phase or no phase (`/read-code`
+    runs outside one). The same functions `phase scope <P>` diffs with, so the same value."""
     if args.base or args.head:
-        raise SystemExit("phase-scope --pathspec: refused -- the pathspec has no range; drop --base/--head")
+        raise SystemExit("phase scope --pathspec: refused -- the pathspec has no range; drop --base/--head")
     repos = nested_repos() if NESTED is not None else []
     if args.repo and not repos:
-        raise SystemExit("phase-scope --repo: refused -- a multi-repo host only; drop --repo")
+        raise SystemExit("phase scope --repo: refused -- a multi-repo host only; drop --repo")
     wanted = list(dict.fromkeys(args.repo or []))
     names = [r["name"] for r in repos]
     unknown = [n for n in wanted if n not in names]
     if unknown:
-        raise SystemExit(f"phase-scope --repo: refused -- no registered repo is named {', '.join(unknown)} (registered: {', '.join(names)})")
+        raise SystemExit(f"phase scope --repo: refused -- no registered repo is named {', '.join(unknown)} (registered: {', '.join(names)})")
     selected = [r for r in repos if not wanted or r["name"] in wanted]
     spec = None if wanted else product_pathspec(repos)
     out = {"mode": "default" if NESTED is None else ("nested-multi" if repos else "nested"), "pathspec": spec}
@@ -2343,10 +2343,10 @@ def _phase_scope_pathspec_only(args: argparse.Namespace) -> None:
 
 
 def _phase_scope_nested(args: argparse.Namespace, data: dict, out: dict, header: list, emit) -> None:
-    """phase-scope in a nested install: the same answer in the same format, read from the HOST repo.
+    """phase scope in a nested install: the same answer in the same format, read from the HOST repo.
 
     The nested repo holding works/ never sees the host's commits, so the range comes from the host
-    anchors `new-phase` and the passing review stamped into phase.json: base = `--base`, else
+    anchors `phase new` and the passing review stamped into phase.json: base = `--base`, else
     `host_anchors.created` (the host HEAD at creation, so base..head with no `^`); head = `--head`,
     else `host_anchors.review_pass` once the review passed, else the host HEAD. A phase with no
     usable anchor lists the host working tree only, mirroring the uncommitted-phase path at root.
@@ -2359,7 +2359,7 @@ def _phase_scope_nested(args: argparse.Namespace, data: dict, out: dict, header:
         _phase_scope_multi(args, data, out, header, emit, repos)
         return
     if args.repo:
-        raise SystemExit("phase-scope --repo: refused -- single-repo install: the host is the one repo; drop --repo")
+        raise SystemExit("phase scope --repo: refused -- single-repo install: the host is the one repo; drop --repo")
     host = HOST_ROOT
     spec = product_pathspec()
     out["pathspec"] = spec
@@ -2367,7 +2367,7 @@ def _phase_scope_nested(args: argparse.Namespace, data: dict, out: dict, header:
     out["mode"] = "nested"
     if not _git_available(cwd=host):
         out["mode"] = "no-git"
-        out["hint"] = f"phase-scope: no git history readable in the host {host} -- derive the boundary from the slices' result.md files"
+        out["hint"] = f"phase scope: no git history readable in the host {host} -- derive the boundary from the slices' result.md files"
         emit([out["hint"]])
         return
     anchors = data.get("host_anchors") if isinstance(data.get("host_anchors"), dict) else {}
@@ -2449,9 +2449,9 @@ def _phase_scope_nested(args: argparse.Namespace, data: dict, out: dict, header:
     tally = {k: sum(1 for f in files if f["status"] == k) for k in ("A", "M", "D", "R")}
     lines = header + [f"mode={out['mode']}"]
     if created:
-        lines.append(f"creation_commit={created}  (the host HEAD at new-phase, or the host worktree's base after parallel-start)")
+        lines.append(f"creation_commit={created}  (the host HEAD at phase new, or the host worktree's base after parallel-start)")
     elif "created" in anchors and not args.base:
-        lines.append("creation_commit=none (the host had no commit at new-phase)")
+        lines.append("creation_commit=none (the host had no commit at phase new)")
     else:
         lines.append("creation_commit=none (measured from --base)")
     lines.append(f"base={base} ({base_kind})")
@@ -2485,7 +2485,7 @@ def _prefixed(files: list, prefix: str) -> list:
 
 
 def _phase_scope_multi(args: argparse.Namespace, data: dict, out: dict, header: list, emit, repos: list) -> None:
-    """phase-scope on a multi-repo host (P40 S1 §8): the phase's boundary is its commits in EACH
+    """phase scope on a multi-repo host (P40 S1 §8): the phase's boundary is its commits in EACH
     registered repo, so one block per repo, read through `_phase_repo_path`.
 
     Per repo: base = per-repo `--base` (with exactly one `--repo`), else `repo_anchors.<name>.review_base`
@@ -2499,9 +2499,9 @@ def _phase_scope_multi(args: argparse.Namespace, data: dict, out: dict, header: 
     wanted = list(dict.fromkeys(args.repo or []))
     unknown = [n for n in wanted if n not in names]
     if unknown:
-        raise SystemExit(f"phase-scope --repo: refused -- no registered repo is named {', '.join(unknown)} (registered: {', '.join(names)})")
+        raise SystemExit(f"phase scope --repo: refused -- no registered repo is named {', '.join(unknown)} (registered: {', '.join(names)})")
     if wanted and (args.base or args.head) and len(wanted) != 1:
-        raise SystemExit("phase-scope: refused -- with --repo, --base/--head set ONE repo's range, so they need exactly one --repo "
+        raise SystemExit("phase scope: refused -- with --repo, --base/--head set ONE repo's range, so they need exactly one --repo "
                          f"(got {len(wanted)}: {', '.join(wanted)}); without --repo they set the host's range")
     per_repo_override = bool(wanted)
     selected = [r for r in repos if not wanted or r["name"] in wanted]
@@ -2703,7 +2703,7 @@ def _phase_scope_multi(args: argparse.Namespace, data: dict, out: dict, header: 
 #            "waived": null | {"note": "<why>", "at": "<iso>"}}
 #
 # `repo` is null on a single-repo host and at root; on a multi-repo host it names a `repos` entry.
-# `new-phase` stamps an empty block on every phase; a phase created before P51 carries none, so
+# `phase new` stamps an empty block on every phase; a phase created before P51 carries none, so
 # nothing here reads or refuses it (the way a pre-v32 phase has no acceptance gate), until
 # `pr-branch` records a branch and adds the block. `pr-branch` cuts or records a branch,
 # `pr-record` stores the draft's URL (or waives the PR), `pr-check` measures a branch (size, body
@@ -2870,7 +2870,7 @@ def _ensure_pr(data: dict) -> dict:
     if "pr" in data:
         problems = pr_block_problems(data["pr"], _pr_registry_names())
         raise SystemExit(f"phase {data.get('id')} has a malformed pr block ({'; '.join(problems) or 'unreadable'}); "
-                         f"fix phase.json first (run: {WORKFLOW_CMD} validate) -- nothing was written")
+                         f"fix phase.json first (run: {WORKFLOW_CMD} check --no-rebuild) -- nothing was written")
     block = new_pr_block()
     ordered = {}
     for key, value in data.items():
@@ -3168,7 +3168,7 @@ def cmd_pr_record(args: argparse.Namespace) -> None:
 
 
 def _phase_scope_product_files(phase_id: str):
-    """The product files `phase-scope <P>` lists in the phase's committed range (its JSON `files`, the
+    """The product files `phase scope <P>` lists in the phase's committed range (its JSON `files`, the
     union over repos on a multi-repo host), or None when it cannot answer. Uncommitted files do not
     count: a phase's product lands in commits before its pass, and an operator's stray working-tree
     file must never hold a review."""
@@ -3188,7 +3188,7 @@ def _phase_scope_product_files(phase_id: str):
 
 def _require_pr_opened(phase_id: str, data: dict) -> None:
     """Refuse a passing review while the phase's PR is not opened: (a) a recorded branch has no URL, or
-    (b) the block records no branch while `phase-scope` lists product files -- unless `pr.waived` is set.
+    (b) the block records no branch while `phase scope` lists product files -- unless `pr.waived` is set.
 
     Called beside `_require_acceptance_cleared`, before `review_phase` writes anything; each refusal
     names only itself, and both must clear. A phase with no `pr` block (created before P51) is never
@@ -3197,7 +3197,7 @@ def _require_pr_opened(phase_id: str, data: dict) -> None:
         return
     block = phase_pr(data)
     if block is None:
-        print(f"pr: phase {phase_id} has a malformed pr block -- treated as absent (run: {WORKFLOW_CMD} validate)")
+        print(f"pr: phase {phase_id} has a malformed pr block -- treated as absent (run: {WORKFLOW_CMD} check --no-rebuild)")
         return
     waived = block.get("waived")
     if isinstance(waived, dict):
@@ -3217,10 +3217,10 @@ def _require_pr_opened(phase_id: str, data: dict) -> None:
     if not block["branches"]:
         files = _phase_scope_product_files(phase_id)
         if files is None:
-            print(f"pr: phase-scope {phase_id} could not be read -- the no-branch check was skipped")
+            print(f"pr: phase scope {phase_id} could not be read -- the no-branch check was skipped")
         elif files:
             raise SystemExit(
-                f"phase {phase_id} changed {len(files)} product file(s) (phase-scope {phase_id}) but records no PR branch; a pass cannot be recorded:\n"
+                f"phase {phase_id} changed {len(files)} product file(s) (phase scope {phase_id}) but records no PR branch; a pass cannot be recorded:\n"
                 f"  record the branch its product commits are on: {WORKFLOW_CMD} pr-branch {phase_id}{repo_flag} --name <branch>\n"
                 f"  then, once the draft opened when the review passed (pr skill: Open the drafts): {WORKFLOW_CMD} pr-record {phase_id}{repo_flag} --branch <branch> --url <url>\n"
                 f"  or, for a phase with no product change worth a PR: {WORKFLOW_CMD} pr-record {phase_id} --waive --note \"why\"\n"
@@ -3488,7 +3488,7 @@ def cmd_pr_team(args: argparse.Namespace) -> None:
         raise SystemExit("pr-team --record needs --evidence \"<what showed it: the detection line, the operator's word>\" -- nothing was written")
     raw, where = _pr_rules_source()
     if raw == "unreadable" or (raw is not None and pr_rules_problems(raw)):
-        raise SystemExit(f"pr-team --record: {where} is malformed; fix it first (run: {WORKFLOW_CMD} validate) -- nothing was written")
+        raise SystemExit(f"pr-team --record: {where} is malformed; fix it first (run: {WORKFLOW_CMD} check --no-rebuild) -- nothing was written")
     record = dict(raw) if raw is not None else {"decided": []}
     repo = args.repo or None
     old = [o for o in (record.get("ownership") or []) if o.get("repo") == repo]
@@ -3521,7 +3521,7 @@ def _pr_open_hint(phase_id: str, phase: dict, entry: dict, short: bool = False) 
     sync = f"pr-sync {phase_id}"
     if state == "closed":
         return ("closed unmerged; holds archiving" if short else
-                f"closed without merging: it holds archiving -- reopen it on GitHub and {sync}, or archive-phase {phase_id} --force")
+                f"closed without merging: it holds archiving -- reopen it on GitHub and {sync}, or phase archive {phase_id} --force")
     if state == "ready":
         if mode == "solo":
             return "solo: merge due" if short else f"solo repo: the close's merge is due (pr skill; {sync} first)"
@@ -3854,7 +3854,7 @@ def cmd_pr_rules_decide(args: argparse.Namespace) -> None:
         raise SystemExit("pr-rules-decide needs --rule \"<what the team rule says>\" and --choice team|ours")
     raw, where = _pr_rules_source()
     if raw == "unreadable" or (raw is not None and pr_rules_problems(raw)):
-        raise SystemExit(f"pr-rules-decide: {where} is malformed; fix it first (run: {WORKFLOW_CMD} validate) -- nothing was written")
+        raise SystemExit(f"pr-rules-decide: {where} is malformed; fix it first (run: {WORKFLOW_CMD} check --no-rebuild) -- nothing was written")
     record = dict(raw) if raw is not None else {"decided": []}  # keeps `ownership` (P52) as it stands
     record["decided"] = list(record["decided"])
     entry = {"rule": args.rule.strip(), "choice": args.choice, "note": (args.note or "").strip() or None, "at": now_iso()}
@@ -4632,7 +4632,7 @@ def _print_nested_repos(repos: list) -> None:
 
 
 def _repo_anchor_holders(name: str) -> list:
-    """Active phases whose phase.json holds `repo_anchors.<name>` (their phase-scope reads that repo).
+    """Active phases whose phase.json holds `repo_anchors.<name>` (their phase scope reads that repo).
     Read defensively: the key is written from P40.S5 on, and absent means no hold."""
     holders = []
     for d in phase_dirs():
@@ -4716,7 +4716,7 @@ def cmd_nested_repos(args: argparse.Namespace) -> None:
         ignored = _repo_git(host, "check-ignore", "-q", f"{rel}/")
         visible = ignored is not None and ignored.returncode == 1
         print(f"next: run the installer's --update on this host: it writes the /{rel}/ exclude line and the multi-repo CLAUDE.local.md block"
-              + (f"; until then validate reports {name} as visible to the host's git" if visible else ""))
+              + (f"; until then check reports {name} as visible to the host's git" if visible else ""))
     elif args.remove is not None:
         name = args.remove
         entry = next((r for r in repos if r.get("name") == name), None)
@@ -4725,7 +4725,7 @@ def cmd_nested_repos(args: argparse.Namespace) -> None:
                              f"(registered: {', '.join(r.get('name', '?') for r in repos) or 'none'}) -- nothing was written")
         holders = _repo_anchor_holders(name)
         if holders:
-            raise SystemExit(f"nested-repos --remove: refused -- active phase(s) {', '.join(holders)} hold repo_anchors.{name} (their phase-scope reads {entry['path']}/); "
+            raise SystemExit(f"nested-repos --remove: refused -- active phase(s) {', '.join(holders)} hold repo_anchors.{name} (their phase scope reads {entry['path']}/); "
                              "finish and archive them first, then re-run -- nothing was written")
         repos = [r for r in repos if r.get("name") != name]
         _write_nested_repos(path, data, repos)

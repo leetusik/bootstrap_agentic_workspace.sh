@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # agenda
 
-`/agenda` runs `python3 scripts/workflow.py agenda` (`--json` for stored fields; `works/agenda.md` is the same list, generated). `/agenda <command> …` runs `agenda-<command> …`: `add --title "…" [--note "…"]`, `edit <item> [--title …] [--note …]`, `move <item> --first|--last|--before <item>|--after <item>`, `defer`, `solve [--outcome "…"]`, `drop [--reason "…"]`, `reopen`, `delete` (each on one or more items), `link <item> --phase <P>|--deferred <D>`, `unlink --phase <P>|--deferred <D>`; `new-phase` and `defer-job` take `--agenda <item>`.
+`/agenda` runs `python3 scripts/workflow.py agenda` (`--json` for stored fields; `works/agenda.md` is the same list, generated). `/agenda <command> …` runs `agenda-<command> …`: `add --title "…" [--note "…"]`, `edit <item> [--title …] [--note …]`, `move <item> --first|--last|--before <item>|--after <item>`, `defer`, `solve [--outcome "…"]`, `drop [--reason "…"]`, `reopen`, `delete` (each on one or more items), `link <item> --phase <P>|--deferred <D>`, `unlink --phase <P>|--deferred <D>`; `phase new` and `defer-job` take `--agenda <item>`.
 
 In a linked checkout, changes made on the web arrive as inbox entries that `sync` and `next` apply as these commands; a refused one shows the command's line on the web.
 

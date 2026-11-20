@@ -1,6 +1,6 @@
 # Agentic workspace CI.
 #
-# It checks the workflow state (`validate`) on each pull request and each push to
+# It checks the workflow state (`check --no-rebuild`) on each pull request and each push to
 # the default branch (a pushed branch runs once, through its pull request; name
 # yours below if it is neither main nor master), and gates a phase/<phase id>-<slug>
 # pull request (phase/P46-k2-<slug>, phase/P12-<slug> or phase/P-<token>-<slug>) on
@@ -16,14 +16,14 @@ on:
   pull_request:
 
 jobs:
-  validate:
-    name: validate
+  check:
+    name: check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: workflow state integrity
-        run: python3 scripts/workflow.py validate
+        run: python3 scripts/workflow.py check --no-rebuild
 
   # Quiet-point gate for parallel phase execution: a pull request from a
   # phase/<phase id>-<slug> branch (P46-k2, P12 or a minted P-<token>) is mergeable only when

@@ -20,7 +20,7 @@ works/events.jsonl merge=union
 #
 #   python3 scripts/workflow.py parallel-merge-finish
 #
-# (or `python3 scripts/workflow.py rebuild`), which rewrites all of them from the
+# (or `python3 scripts/workflow.py check`), which rewrites all of them from the
 # merged folders.
 
 # The workspace's machine-written state is marked GENERATED for GitHub: it folds

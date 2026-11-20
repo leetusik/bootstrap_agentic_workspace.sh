@@ -99,7 +99,7 @@ Name the instrument you used in `result.md`, and never report a browser run you 
 
 **Re-run the lines inside the boundary.** A fidelity slice re-runs the `## Regression Checklist`
 lines inside its phase's boundary: this phase's surfaces plus every earlier line whose surface a file
-the phase changed feeds (`python3 scripts/workflow.py phase-scope <P>` prints the files; shared chrome
+the phase changed feeds (`python3 scripts/workflow.py phase scope <P>` prints the files; shared chrome
 widens the boundary; a line you cannot place is inside). It records the lines outside by count, with
 the diff as proof. Never the whole list: the product-wide sweep is an operator-created QA phase. The
 review appends this phase's headline lines (`- [ ] <surface>: <one observable behaviour> (P<N>)`).

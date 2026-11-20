@@ -20,7 +20,7 @@ adds.
   (`reference/publish.md`); the operator's return: edits, comments, feedback, signing
   (`reference/operator.md`); a requested mockup (`reference/mockup.md`).
 - **The stops.** STOP the loop at **PENDING #1**, once per round:
-  `python3 scripts/workflow.py set-slice-status <slice_id> pending --stop-kind wave --on-words "<what their words will do>"`.
+  `python3 scripts/workflow.py slice status <slice_id> pending --stop-kind wave --on-words "<what their words will do>"`.
   With a mockup requested, STOP again at **PENDING #2**, the mockup gate (`--stop-kind mockup`).
   **PENDING #2 exists only when a mockup was requested** (`Mockup: requested` in `intent.md`, or the
   operator asked in their own words before the round closed).
@@ -30,5 +30,5 @@ adds.
 - **Commits and stops.** The drafted round is one commit and one stop; the signoff is one commit; each
   superseding round is **one more commit and one more stop**; a mockup adds its commit and PENDING #2.
   **A round signed at the first return is two commits and one stop; with a mockup, three commits and
-  two loop stops.** When the job is signed, or dropped by the operator, `finish-slice`, commit, and
+  two loop stops.** When the job is signed, or dropped by the operator, `slice finish`, commit, and
   continue the loop.

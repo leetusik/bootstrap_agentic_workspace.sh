@@ -942,7 +942,7 @@ class _MeterWindows:
         if not self.current:
             return None
         live = [sid for start, sid in self.current if start <= t]
-        return live[-1] if live else self.current[0][1]  # before its start-slice: planning it
+        return live[-1] if live else self.current[0][1]  # before its slice start: planning it
 
 
 def _meter_round_slice(job: str, rnd: str) -> "str | None":
@@ -1493,9 +1493,9 @@ def wave_card_lines(phase: dict, sid) -> list:
             lines.append(f"stop: slice {hid} blocked -- report the blocker (its result.md) to the operator")
         elif isinstance(record, dict):
             lines.append(f"stop: slice {hid} {record.get('kind')} (since {record.get('since')}) -- the operator's words will: "
-                         f"{_card_cut(record.get('on_words'))}; they clear it with set-slice-status {hid} in_progress")
+                         f"{_card_cut(record.get('on_words'))}; they clear it with slice status {hid} in_progress")
         else:
-            lines.append(f"stop: slice {hid} untyped pending -- say what you need; the operator's words clear it with set-slice-status {hid} in_progress")
+            lines.append(f"stop: slice {hid} untyped pending -- say what you need; the operator's words clear it with slice status {hid} in_progress")
     if wave_held(wave):
         return lines
     returned = [s for s in wave["running"] if (ACTIVE / phase["id"] / "slices" / s["id"] / "result.md").is_file()]
@@ -1635,11 +1635,11 @@ def _card_running_spans(session_dir):
 def _card_next_action(sid: str, sdata: dict, sdir: Path, spans) -> str:
     """The slice's next action, derived from its status and which of plan.md / result.md exist."""
     status, kind = sdata.get("status"), sdata.get("kind")
-    start = f"start-slice {sid}, then " if status in ("todo", "ready") else ""
+    start = f"slice start {sid}, then " if status in ("todo", "ready") else ""
     if status == "blocked":
         return "blocked: report the blocker (result.md) to the operator; nothing advances until it clears"
     if (sdir / "result.md").is_file():
-        return f"read result.md's verdict head, then finish-slice {sid} --outcome \"<its summary>\", validate, commit"
+        return f"read result.md's verdict head, then slice finish {sid} --outcome \"<its summary>\", validate, commit"
     if not (sdir / "plan.md").is_file():
         return f"{start}plan it: write plan.md" + ("" if kind == "co-work" else f" and pin `executor-route {sid}` as its ## Dispatch")
     if kind == "co-work":
@@ -1696,7 +1696,7 @@ def resume_card(transcript_path=None) -> str:
         lines.append(f"stop: phase {phase_id} acceptance gate open -- relay the walkthrough (`accept-gate {phase_id}` prints it); "
                      f"the operator's words clear it with accept-gate {phase_id} --clear")
     elif phase.get("status") == "pending":
-        lines.append(f"stop: phase {phase_id} pending -- report what you need; the operator's words clear it with set-phase-status {phase_id} in_progress")
+        lines.append(f"stop: phase {phase_id} pending -- report what you need; the operator's words clear it with phase status {phase_id} in_progress")
     elif phase.get("status") == "blocked":
         lines.append(f"stop: phase {phase_id} blocked -- report the blocker to the operator")
     elif sdata and sdata.get("status") == "pending":
@@ -1704,7 +1704,7 @@ def resume_card(transcript_path=None) -> str:
             lines.append(f"stop: {record.get('kind')} (since {record.get('since')}) -- the operator's words will: {_card_cut(record.get('on_words'))}")
         else:
             lines.append("stop: untyped pending -- say what you need and what the operator's words will do")
-        lines.append(f"next action: wait for the operator; their words clear it with set-slice-status {sid} in_progress")
+        lines.append(f"next action: wait for the operator; their words clear it with slice status {sid} in_progress")
     elif sdata:
         lines.append(f"next action: {_card_next_action(sid, sdata, sdir, spans)}")
     else:
@@ -1731,7 +1731,7 @@ def resume_card(transcript_path=None) -> str:
     step = notebook_step(phase_id) if phase.get("status") != "done" else None  # §6: silent under budget
     if step:
         lines.append(f"notebook: over budget ({step['bytes']}/{PHASE_MD_BUDGET} B) -- "
-                     + ("run the notebook_move lines `next` prints before the next dispatch" if step["form"] == "required"
+                     + ("run the notebook_move lines `next` prints before the next dispatch" if step["form"] == "moves"
                         else "advisory: nothing left to move (`next` names what remains)"))
         notebook_at = len(lines) - 1
     else:

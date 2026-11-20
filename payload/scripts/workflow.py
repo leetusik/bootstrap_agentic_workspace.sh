@@ -3,8 +3,8 @@
 
 The engine is flat modules beside this file, each importing only the ones listed above it:
 - wf_store.py: where the state is (the finder), paths, ids, events, phases, slices, the notebook, next, review,
-  the acceptance gate, rebuild, validate and archive;
-- wf_git.py: pull requests, the parallel worktrees, the repo registry and phase-scope;
+  the acceptance gate, check and archive;
+- wf_git.py: pull requests, the parallel worktrees, the repo registry and phase scope;
 - wf_design.py, wf_agenda.py (agenda and deferred jobs), wf_cloud.py: the named parts, each its own file;
 - wf_adapter.py: the Claude Code side (executor routes, sync-agents, the dispatch meter, the compaction hook).
 wf_store imports none of the others: it calls them through its SEAMS, bound at the end of this file."""
@@ -28,11 +28,11 @@ import wf_agenda  # noqa: E402
 import wf_adapter  # noqa: E402
 import wf_cloud  # noqa: E402
 from wf_store import (  # noqa: E402
-    accept_gate, archive_all, archive_phase, cmd_next, cmd_parallel_plan, cmd_set_slice_status, DEPENDS_ON_HELP,
+    accept_gate, cmd_check, cmd_next, cmd_parallel_plan, cmd_phase_archive, cmd_set_slice_status, DEPENDS_ON_HELP,
     finish_slice, NESTED, NESTED_MARKER, NESTED_PROBLEMS, new_phase, new_slice, normalize_id_args,
-    ONE_LINE_USAGE_COMMANDS, PAGE_BYTES, PHASE_ARG_HELP, phase_section, rebuild_index_and_state, review_phase,
+    ONE_LINE_USAGE_COMMANDS, PAGE_BYTES, PHASE_ARG_HELP, phase_section, review_phase,
     REVIEW_VERDICTS, ROOT, rotate_backlog, set_phase_status, set_slice_deps, shown, SLICE_STOP_KINDS, start_slice,
-    validate, WORKFLOW_CMD,
+    WORKFLOW_CMD,
 )
 from wf_git import (  # noqa: E402
     cmd_nested_convention, cmd_nested_repos, cmd_pr_branch, cmd_pr_check, cmd_pr_record, cmd_pr_rules_decide,
@@ -59,11 +59,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Manage the agentic workflow state.")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p = sub.add_parser("rebuild", help="Rebuild the workflow dashboards, index and state")
-    p.set_defaults(func=lambda args: (rebuild_index_and_state(), print("rebuilt workflow")))
+    def verbs(name: str, help: str):  # a verb's sub-verbs: main() names the command `<verb> <sub-verb>`
+        return sub.add_parser(name, help=help).add_subparsers(dest="verb", required=True).add_parser
 
-    p = sub.add_parser("validate", help="Validate the workflow structure")
-    p.set_defaults(func=lambda args: sys.exit(validate()))
+    p = sub.add_parser("check", help="Rebuild the generated files (works/backlog.md, state.json, index.json, the dashboards, each phase.md's ## Slices block), then validate the workflow state; exit 1 on an invalid record. --no-rebuild validates only (CI, read-only callers)")
+    p.add_argument("--no-rebuild", action="store_true", dest="no_rebuild", help="validate only: write nothing")
+    p.set_defaults(func=cmd_check)
 
     add_adapter_parsers(sub)  # sync-agents, executor-route, record-dispatch, dispatch-summary
 
@@ -77,7 +78,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("deferred", help="Rebuild and print deferred jobs dashboard summary")
     p.set_defaults(func=cmd_deferred)
 
-    p = sub.add_parser("new-phase", help="Create a new phase with DECOMP and REVIEW slices")
+    phase = verbs("phase", "Make, move, archive or read a phase: new, status, archive, rotate, reopen, scope, rounds")
+    p = phase("new", help="Create a new phase with DECOMP and REVIEW slices")
     p.add_argument("--phase", help="the phase id; omit it and the engine mints one (P46-k2: the next number and a random tail), printed on the created line. "
                    "Given, any shape (P46-k2, P12 or P-7kq2; 46-k2, 12 and 7kq2 are read as those); refused when it exists active or archived")
     p.add_argument("--name", required=True)
@@ -88,39 +90,65 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--agenda", metavar="ITEM", help="link the new phase to this agenda item (" + AGENDA_ID_HELP + "); stored as `agenda` in phase.json; refused, nothing written, when it names no item")
     p.set_defaults(func=new_phase)
 
-    p = sub.add_parser("new-slice", help="Create a new slice folder with slice.json + markdown files")
+    p = phase("status", help="Set any valid phase status")
+    p.add_argument("phase", help=PHASE_ARG_HELP)
+    p.add_argument("status")
+    p.set_defaults(func=set_phase_status)
+
+    p = phase("archive", help="Archive one review-passed phase (<P>), or with --all every active phase, only when every one is done (the last review slice complete); --force is for exceptional cleanup of an unfinished phase")
+    p.add_argument("phase", nargs="?", default=None, help=PHASE_ARG_HELP + "; omit it with --all")
+    p.add_argument("--all", action="store_true", dest="all_phases", help="archive every active phase at once")
+    p.add_argument("--force", action="store_true")
+    p.set_defaults(func=cmd_phase_archive)
+
+    p = phase("rotate", help="The step of /rotate-backlog: the first line is rotate=<refused|archive>. archive: archive every currently-done phase that is cleanly archivable (whole phases, the partial phase archive --all) and rebuild. refused (writes nothing, non-zero exit) on a parallel stream")
+    p.add_argument("--archive-only", action="store_true", dest="archive_only",
+                   help="archive only: the sweep of every currently-done phase and its report, with no rotate= line (unchanged since v51)")
+    p.set_defaults(func=rotate_backlog)
+
+    p = phase("reopen", help="Reopen a DONE phase whose PR is still open, on the operator's word (a change request after the phase was done, the team's or the operator's): status in_progress, review changes_requested with --note, its REVIEW slice changes_requested, a required acceptance gate re-opened (a waived one stays waived); completed_at and the pr block kept. Nested: the phase's own worktree pair, the host worktree ON its existing PR branch (reused, never a second PR), the nested side on phase/P<N>-<slug> (or -reopen<k> when taken), the verdict in the same stamp commit; a multi-repo host's set takes each repo's open PR branch. Root: in place, in the checkout that holds the PR branch (it carries the phase's record), with no worktree and no commit. Refused, nothing written: an archived phase, a phase not done, every PR merged (pr-sync first), an empty --note, a parallel stream, a git operation in progress, a PR branch checked out elsewhere (the host's main checkout: switch it off). Prints reopened=<P> branch=<label> worktree=<path>. Never pushes, merges or calls gh. Orchestrator command -- executors never run it")
+    p.add_argument("phase", help=PHASE_ARG_HELP)
+    p.add_argument("--note", required=True, help="whose change request it is and what it asks: \"team-reported: <what>\" or \"operator-reported: <what>\" (recorded as the review note; must not be empty)")
+    p.add_argument("--slug", default=None, help="nested only: the nested phase branch's slug (default: the phase name's; phase/<phase>-<slug>, with -reopen<k> appended when that branch exists)")
+    p.add_argument("--worktree", default=None, help="nested only: the host worktree's path (default: <host>/.claude/worktrees/P<N>-<slug>)")
+    p.add_argument("--branch", default=None, help="the open PR branch that takes the fixes, when the phase has several open PRs in one repo (a split) and no single top of the stack")
+    p.add_argument("--host-branch", default=None, help="multi-repo host only: the host worktree's branch (it carries no product), when no earlier worktree run of this phase recorded one")
+    p.set_defaults(func=cmd_reopen_phase)
+
+    p = phase("scope", help="Read-only: the phase's boundary from git -- creation commit, base..head range, the pathspec= line it read with (works/ and docs/ excluded at root, the nested workflow folder in a nested install; one per repo and the host's on a multi-repo host; paste-ready after -- in a git command run from the folder it was read in) and the product files it changed; advisory, exit 0 without git. --pathspec prints only the pathspec line(s), with no phase needed")
+    p.add_argument("phase", nargs="?", default=None, help=PHASE_ARG_HELP + "; omit it only with --pathspec")
+    p.add_argument("--pathspec", action="store_true", help="print only the product pathspec line(s) (the JSON with --json), the same value phase scope <P> reads with; needs no phase (/read-code, outside a phase)")
+    p.add_argument("--base", default=None, help="use this ref as the range base verbatim (skips creation-commit / merge-base detection)")
+    p.add_argument("--head", default=None, help="use this ref as the range head (default: HEAD, or the commit that recorded a passing review on a done phase)")
+    p.add_argument("--json", action="store_true", help="print the same answer as one JSON object")
+    p.add_argument("--repo", action="append", default=None, metavar="NAME", help="multi-repo host only: measure only this registered repo (repeatable); with exactly one --repo, --base/--head set that repo's range instead of the host's")
+    p.set_defaults(func=phase_scope)
+
+    p = phase("rounds", help="Print the rounds a phase's open slices run in, as the engine determines them from the declarations (v77), and any middle slice still undeclared, as advice; read-only")
+    p.add_argument("phase", help=PHASE_ARG_HELP)
+    p.set_defaults(func=cmd_parallel_plan)
+
+    slice_ = verbs("slice", "Make or move a slice: new, start, finish, status (a pending stop is typed), deps")
+    p = slice_("new", help="Create a new slice folder with slice.json")
     p.add_argument("--phase", required=True, help=PHASE_ARG_HELP)
     p.add_argument("--slice", required=True, help="the slice id (P46-k2.S1, or 46.S1 while one phase is numbered 46), or its bare suffix (S1)")
     p.add_argument("--name", required=True)
-    p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work (closed set; unknown kinds are rejected). research is findings-only: no product code, findings land in phase.md, and it always routes to the research row")
+    p.add_argument("--kind", default="implementation", help="one of implementation, review, decomposition, research, fix, docs, qa, co-work; another kind is made with one advice: line and routes on the high row. research is findings-only: no product code, findings land in phase.md, and it always routes to the research row")
     p.add_argument("--risk", default="high", help="low (the mid row for implementation, fix, docs and qa -- the default since v46, real code included) or high (the high row: only for a named trigger -- open design, a core invariant, an unlocated root cause, a wide blast radius -- or a fix to mid-row work); unset or unrecognized values route to high; kind decomposition, review, co-work and research route by kind whatever this says; `executor-route <slice>` prints the decision")
     p.add_argument("--order", type=float, help="sort position within the phase; a fractional value (e.g. 4.5) inserts between two neighbors without renumbering (default: 10 past the last non-review slice)")
     p.add_argument("--depends-on", action="append", metavar="ID|none", help=DEPENDS_ON_HELP)
     p.set_defaults(func=new_slice)
 
-    p = sub.add_parser("start-slice", help="Mark a slice in_progress")
+    p = slice_("start", help="Mark a slice in_progress")
     p.add_argument("slice")
     p.set_defaults(func=start_slice)
 
-    p = sub.add_parser("finish-slice", help="Mark a slice done")
+    p = slice_("finish", help="Mark a slice done; a decomposition that leaves an undeclared middle slice prints advice: lines naming it")
     p.add_argument("slice")
     p.add_argument("--outcome", help="one line recorded in slice.json and rendered in the phase's generated ## Slices table")
     p.set_defaults(func=finish_slice)
 
-    p = sub.add_parser("mark-committed", help="A linked checkout only (refused in local mode, nothing written): record that each named done slice's commit is in, as committed_at in its slice.json -- run it after the slice's product commit(s), or right after its finish when it changed no product file (review-phase records a passing REVIEW itself). next lists the done slices without it in commits_waiting=, the record git's uncommitted slice.json gives in local mode. Leaving done clears it. All or nothing: a slice not done refuses the call")
-    p.add_argument("mark_slices", nargs="+", metavar="slice")
-    p.set_defaults(func=mark_committed)
-
-    p = sub.add_parser("set-slice-deps", help="Declare an existing slice's dependencies (v77), under new-slice --depends-on's rules: a decomposition cannot finish while a middle slice it leaves open is undeclared")
-    p.add_argument("slice")
-    p.add_argument("--depends-on", action="append", required=True, metavar="ID|none", help=DEPENDS_ON_HELP)
-    p.set_defaults(func=set_slice_deps)
-
-    p = sub.add_parser("parallel-plan", help="Print the rounds a phase's open slices run in, as the engine determines them from the declarations (v77), and any middle slice still undeclared; read-only")
-    p.add_argument("phase", help=PHASE_ARG_HELP)
-    p.set_defaults(func=cmd_parallel_plan)
-
-    p = sub.add_parser("set-slice-status", help="Set any valid slice status; a pending stop is typed with --stop-kind and --on-words (stored in slice.json as pending: {kind, on_words, since}, printed by next and the resume card, cleared when the slice leaves pending)")
+    p = slice_("status", help="Set any valid slice status; a pending stop needs --stop-kind and --on-words (stored in slice.json as pending: {kind, on_words, since}, printed by next and the resume card, cleared when the slice leaves pending) and is refused without them")
     p.add_argument("slice")
     p.add_argument("status")
     p.add_argument("--stop-kind", dest="stop_kind", choices=SLICE_STOP_KINDS,
@@ -128,12 +156,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--on-words", dest="on_words", help="pending only: what the operator's words on return will do (one line)")
     p.set_defaults(func=cmd_set_slice_status)
 
-    p = sub.add_parser("set-phase-status", help="Set any valid phase status")
-    p.add_argument("phase", help=PHASE_ARG_HELP)
-    p.add_argument("status")
-    p.set_defaults(func=set_phase_status)
+    p = slice_("deps", help="Declare an existing slice's dependencies (v77), under slice new --depends-on's rules; a decomposition that leaves a middle slice undeclared is told so at its finish")
+    p.add_argument("slice")
+    p.add_argument("--depends-on", action="append", required=True, metavar="ID|none", help=DEPENDS_ON_HELP)
+    p.set_defaults(func=set_slice_deps)
 
-    p = sub.add_parser("review-phase", help="Record a phase review verdict (pass/changes_requested/blocked). A pass is refused, beside the acceptance gate's refusal and naming only itself, while the phase's pr block records a branch with no draft PR URL, or records none while phase-scope lists product files, unless the PR is waived (pr-record --url / --waive); a phase with no pr block is never refused")
+    p = sub.add_parser("mark-committed", help="A linked checkout only (refused in local mode, nothing written): record that each named done slice's commit is in, as committed_at in its slice.json -- run it after the slice's product commit(s), or right after its finish when it changed no product file (review-phase records a passing REVIEW itself). next lists the done slices without it in commits_waiting=, the record git's uncommitted slice.json gives in local mode. Leaving done clears it. All or nothing: a slice not done refuses the call")
+    p.add_argument("mark_slices", nargs="+", metavar="slice")
+    p.set_defaults(func=mark_committed)
+
+    p = sub.add_parser("review-phase", help="Record a phase review verdict (pass/changes_requested/blocked). A pass is refused, beside the acceptance gate's refusal and naming only itself, while the phase's pr block records a branch with no draft PR URL, or records none while phase scope lists product files, unless the PR is waived (pr-record --url / --waive); a phase with no pr block is never refused")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--verdict", required=True, choices=sorted(REVIEW_VERDICTS))
     p.add_argument("--reviewer", default=None)
@@ -157,18 +189,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--slug", default=None, help="branch slug override (default: slugified phase name); branch is phase/<phase>-<slug>")
     p.add_argument("--host-branch", default=None, help="nested install only, and required there except for an explain phase (## Explain in intent.md), whose host worktree is then cut detached at the host base with no host branch (v86: an explain makes no host commit; --repo still needs it): the host repo's branch for this phase's product commits, named by the host's convention (no workspace IDs); reused when it exists and no host worktree has it checked out. In nested the pair is <host>/.claude/worktrees/P<N>-<slug> on this branch, with the nested worktree inside it (--worktree overrides the host worktree's path)")
     p.add_argument("--host-base", default=None, help="nested install only: the host ref the host branch starts from (default: origin/HEAD, else init.defaultBranch if it exists locally, else main, then master; never fetched)")
-    p.add_argument("--repo", action="append", default=None, metavar="NAME=BRANCH", help="multi-repo host only, repeatable: also cut a worktree for registered repo NAME at <host worktree>/<its path> on BRANCH (required, named by that repo's convention: nested-convention --repo NAME); reused when it exists and is checked out nowhere. A registered repo not named here is not in this set: inside it, phase-scope skips it")
+    p.add_argument("--repo", action="append", default=None, metavar="NAME=BRANCH", help="multi-repo host only, repeatable: also cut a worktree for registered repo NAME at <host worktree>/<its path> on BRANCH (required, named by that repo's convention: nested-convention --repo NAME); reused when it exists and is checked out nowhere. A registered repo not named here is not in this set: inside it, phase scope skips it")
     p.add_argument("--repo-base", action="append", default=None, dest="repo_base", metavar="NAME=REF", help="multi-repo host only, repeatable: the ref repo NAME's branch starts from (default: its registry default_branch as a local branch; never fetched); NAME must also be given with --repo")
     p.set_defaults(func=parallel_start)
-
-    p = sub.add_parser("reopen-phase", help="Reopen a DONE phase whose PR is still open, on the operator's word (a change request after the phase was done, the team's or the operator's): status in_progress, review changes_requested with --note, its REVIEW slice changes_requested, a required acceptance gate re-opened (a waived one stays waived); completed_at and the pr block kept. Nested: the phase's own worktree pair, the host worktree ON its existing PR branch (reused, never a second PR), the nested side on phase/P<N>-<slug> (or -reopen<k> when taken), the verdict in the same stamp commit; a multi-repo host's set takes each repo's open PR branch. Root: in place, in the checkout that holds the PR branch (it carries the phase's record), with no worktree and no commit. Refused, nothing written: an archived phase, a phase not done, every PR merged (pr-sync first), an empty --note, a parallel stream, a git operation in progress, a PR branch checked out elsewhere (the host's main checkout: switch it off). Prints reopened=<P> branch=<label> worktree=<path>. Never pushes, merges or calls gh. Orchestrator command -- executors never run it")
-    p.add_argument("phase", help=PHASE_ARG_HELP)
-    p.add_argument("--note", required=True, help="whose change request it is and what it asks: \"team-reported: <what>\" or \"operator-reported: <what>\" (recorded as the review note; must not be empty)")
-    p.add_argument("--slug", default=None, help="nested only: the nested phase branch's slug (default: the phase name's; phase/<phase>-<slug>, with -reopen<k> appended when that branch exists)")
-    p.add_argument("--worktree", default=None, help="nested only: the host worktree's path (default: <host>/.claude/worktrees/P<N>-<slug>)")
-    p.add_argument("--branch", default=None, help="the open PR branch that takes the fixes, when the phase has several open PRs in one repo (a split) and no single top of the stack")
-    p.add_argument("--host-branch", default=None, help="multi-repo host only: the host worktree's branch (it carries no product), when no earlier worktree run of this phase recorded one")
-    p.set_defaults(func=cmd_reopen_phase)
 
     p = sub.add_parser("parallel-add-repo", help="Multi-repo host only, run INSIDE a phase's worktree set: add one registered repo mid-phase -- cut its worktree at <host worktree>/<its path> on BRANCH, or with --adopt stamp the worktree of it already there -- and commit the stamp on the phase branch")
     p.add_argument("phase", help=PHASE_ARG_HELP)
@@ -214,15 +237,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--default-branch", default=None, dest="default_branch", help="with --add: the repo's integration branch (default: its origin/HEAD target, else none)")
     p.set_defaults(func=cmd_nested_repos)
 
-    p = sub.add_parser("phase-scope", help="Read-only: the phase's boundary from git -- creation commit, base..head range, the pathspec= line it read with (works/ and docs/ excluded at root, the nested workflow folder in a nested install; one per repo and the host's on a multi-repo host; paste-ready after -- in a git command run from the folder it was read in) and the product files it changed; advisory, exit 0 without git. --pathspec prints only the pathspec line(s), with no phase needed")
-    p.add_argument("phase", nargs="?", default=None, help=PHASE_ARG_HELP + "; omit it only with --pathspec")
-    p.add_argument("--pathspec", action="store_true", help="print only the product pathspec line(s) (the JSON with --json), the same value phase-scope <P> reads with; needs no phase (/read-code, outside a phase)")
-    p.add_argument("--base", default=None, help="use this ref as the range base verbatim (skips creation-commit / merge-base detection)")
-    p.add_argument("--head", default=None, help="use this ref as the range head (default: HEAD, or the commit that recorded a passing review on a done phase)")
-    p.add_argument("--json", action="store_true", help="print the same answer as one JSON object")
-    p.add_argument("--repo", action="append", default=None, metavar="NAME", help="multi-repo host only: measure only this registered repo (repeatable); with exactly one --repo, --base/--head set that repo's range instead of the host's")
-    p.set_defaults(func=phase_scope)
-
     p = sub.add_parser("pr-branch", help="Cut or record the phase's PR branch in one repo's checkout (the host for a single-repo host or a root install; the registered repo's for a multi-repo host) and record it in phase.json's pr block (added to a phase from before P51): the branch already checked out there is only recorded; --base on an already-recorded branch re-records its base with no switch, checked out or not (a stacked PR retargeted after its lower PR merged); an unrecorded existing branch that is not checked out is refused (git switch to it, then re-run); otherwise git switch --no-track -c <branch> <base>, refused while tracked changes would ride along. Prints pr_branch=<repo|host|root>:<branch> base=<base>. Never pushes. Orchestrator command -- executors never run it")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--repo", default=None, metavar="NAME", help="multi-repo host only, and required there: the registered repo whose checkout holds the branch")
@@ -267,22 +281,22 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--repo", default=None, metavar="NAME", help="multi-repo host only: the decision concerns this registered repo's rule (default: every repo)")
     p.set_defaults(func=cmd_pr_rules_decide)
 
-    p = sub.add_parser("phase-section", help="Read or write ONE `## ` section of a phase's phase.md, or one entry of it: no name = the index (a line per heading with its bytes; with its budget and over/long flags, then the move commands, when a section is over its budget or holds long entries), a name prints that section (paged: --page N), --list its entries, --entry K one entry; --replace / --append write one section (stdin or --file), --entry K --replace / --remove write one entry, --resolve OQ<n> --pointer <ref> collapses an Operator Questions entry, --to-topic <slug> moves entries verbatim to topics/<slug>.md behind one gist line each, --topic <slug> reads that file; every other byte of the notebook stays identical",
-                       description="phase.md is an index: read one section or one entry, write one section or one entry, never the whole file. Put the section name BEFORE the flags: phase-section P1 Now --replace --file now.md. Names match case-insensitively (Now, Decisions, 'Doc impact', 'Operator Questions', 'Notes for later slices', Objective, Slices). Slices is generated and refused; Doc impact and Operator Questions are append-only (--append, or --resolve to collapse an answered entry). "
-                                   "Entries are a section's column-0 list items (- , * , + , 1. , 1) ) with their continuation and nested lines: --list numbers them (position, own label, bytes, flags long/nested/pointer, lead), and --entry K names one by position, OQ<n> or a unique case-insensitive piece of its first line. --entry K --replace swaps that entry alone (text without a marker keeps the old one); --entry K --remove deletes a consumed one (Notes for later slices, Now, Objective, custom sections; a superseded decision is replaced, never removed). "
+    p = sub.add_parser("section", help="Read or write ONE `## ` section of a phase's phase.md, or one entry of it: no name = the index (a line per heading with its bytes; with its budget and over/long flags, then the move commands, when a section is over its budget or holds long entries), a name prints that section (paged: --page N), --list its entries, --entry K one entry; --replace / --append write one section (stdin or --file; a heading the notebook lacks is created before ## Now), --entry K --replace / --remove write one entry, --resolve OQ<n> --pointer <ref> collapses an Operator Questions entry, --to-topic <slug> moves entries verbatim to topics/<slug>.md behind one gist line each, --topic <slug> reads that file; every other byte of the notebook stays identical",
+                       description="phase.md is an index: read one section or one entry, write one section or one entry, never the whole file. Put the section name BEFORE the flags: section P1 Now --replace --file now.md. Names match case-insensitively (Now, Decisions, 'Operator Questions', 'Notes for later slices', Objective, Slices, or any heading); a write to a heading the notebook lacks creates it at the end, before ## Now. Slices is generated and refused. Operator Questions and an older notebook's Doc impact are append-only by custom, and Decisions keeps every decision: a --replace or --remove there is written with one advice: line (--resolve collapses an answered question). "
+                                   "Entries are a section's column-0 list items (- , * , + , 1. , 1) ) with their continuation and nested lines: --list numbers them (position, own label, bytes, flags long/nested/pointer, lead), and --entry K names one by position, OQ<n> or a unique case-insensitive piece of its first line. --entry K --replace swaps that entry alone (text without a marker keeps the old one); --entry K --remove deletes a consumed one. "
                                    "--to-topic <slug> [--entry K] [--gist TEXT] [--dry-run] moves the section's entries (or K's, where ranges and lists like 1-8,10 work) to topics/<slug>.md: each is appended there as a `## <Section> <label>` block byte for byte and verified, then replaced in phase.md by one pointer line, `<marker><gist> → [topics/<slug>.md](topics/<slug>.md) § <block>`, its gist a verbatim excerpt of at most 160 characters; Decisions, Notes for later slices, Objective and custom sections only, never the slug breakdown, and a gist under 24 characters of plain text (a bare link) is refused. --topic <slug> [<block>] reads a topic: its index of blocks with bytes, or one block. "
-                                   "Budgets: the index prints each section's bytes; when one is over its budget (Decisions 12 KB, Operator Questions 8 KB, Notes for later slices 6 KB, Now 2 KB, Objective 2 KB, any other 6 KB; none for Slices and Doc impact, which still count to the 40 KB total) or holds long entries (over 512 B or nested, named in movable sections only), every line shows bytes, budget, flags (over, long:N) and the heading last, then the total, then one `move: phase-section <P> \"<Section>\" --to-topic <slug> --entry <ranges>` per section. "
+                                   "Budgets: the index prints each section's bytes; when one is over its budget (Decisions 12 KB, Operator Questions 8 KB, Notes for later slices 6 KB, Now 2 KB, Objective 2 KB, any other 6 KB; none for Slices and Doc impact, which still count to the 40 KB total) or holds long entries (over 512 B or nested, named in movable sections only), every line shows bytes, budget, flags (over, long:N) and the heading last, then the total, then one `move: section <P> \"<Section>\" --to-topic <slug> --entry <ranges>` per section. "
                                    "Paging: a section or topic block over 24 KB prints page 1 of it; --page N prints page N. Pages break only between entries (an entry bigger than a page gets its own page) and open with `<!-- page i of n · <Section> · entries a–b of m · next: ... --page i+1 -->` (`last page` on the last); drop those header lines, concatenate the pages, and you have the section byte for byte.")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("name", nargs="*", help="section heading (quote it when it has spaces); omit for the index")
-    p.add_argument("--replace", action="store_true", help="replace the section's body (the heading and the rest of the file are kept byte-identical)")
-    p.add_argument("--append", action="store_true", help="add text at the end of the section")
-    p.add_argument("--resolve", metavar="OQ<n>", help="collapse that Operator Questions entry to one line (entries are never deleted)")
+    p.add_argument("--replace", action="store_true", help="replace the section's body (the heading and the rest of the file are kept byte-identical); a heading the notebook lacks is created")
+    p.add_argument("--append", action="store_true", help="add text at the end of the section; a heading the notebook lacks is created")
+    p.add_argument("--resolve", metavar="OQ<n>", help="collapse that Operator Questions entry to one line")
     p.add_argument("--pointer", help="with --resolve: where the answer landed (a Decisions line, a deferred job, a slice)")
     p.add_argument("--file", help="read the new text from this file (default: stdin)")
     p.add_argument("--list", action="store_true", help="with a section name: one line per entry (position, own label, bytes, flags long/nested/pointer, its lead cut at 80 characters)")
     p.add_argument("--entry", metavar="K", help="one entry of the section: its position (1-based), OQ<n>, or a unique case-insensitive piece of its first line; alone it prints that entry, with --replace / --remove it writes only it, with --to-topic it may also be ranges and lists (1-8,10)")
-    p.add_argument("--remove", action="store_true", help="with --entry K: delete that entry and its trailing blank lines (Notes for later slices, Now, Objective, custom sections; refused in Decisions, Operator Questions, Slices and an older notebook's Doc impact)")
+    p.add_argument("--remove", action="store_true", help="with --entry K: delete that entry and its trailing blank lines (in Decisions, Operator Questions and an older notebook's Doc impact with one advice: line; never in Slices)")
     p.add_argument("--to-topic", metavar="SLUG", dest="to_topic", help="move the section's entries (or --entry K's) verbatim to topics/SLUG.md, verify them there, then leave one pointer line each carrying a verbatim gist; Decisions, Notes for later slices, Objective and custom sections; the slug breakdown is refused")
     p.add_argument("--gist", help="with --to-topic and exactly one entry: the pointer line's gist (default: derived, a verbatim excerpt of at most 160 characters)")
     p.add_argument("--dry-run", action="store_true", dest="dry_run", help="with --to-topic: print the pointer lines and the bytes saved, and write nothing")
@@ -293,20 +307,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_design_parsers(sub)  # design-init ... design-migrate
 
     add_agenda_parsers(sub)  # defer-job, promote-deferred, drop-deferred, agenda, agenda-*
-
-    p = sub.add_parser("archive-phase", help="Archive a single review-passed phase (first-class; use when only some phases are done)")
-    p.add_argument("phase", help=PHASE_ARG_HELP)
-    p.add_argument("--force", action="store_true")
-    p.set_defaults(func=archive_phase)
-
-    p = sub.add_parser("archive-all", help="Batch-archive ALL active phases at once; only when every phase is done (last review slice complete)")
-    p.add_argument("--force", action="store_true")
-    p.set_defaults(func=archive_all)
-
-    p = sub.add_parser("rotate-backlog", help="The step of /rotate-backlog: the first line is rotate=<refused|archive>. archive: archive every currently-done phase that is cleanly archivable (whole phases, the partial archive-all) and rebuild. refused (writes nothing, non-zero exit) on a parallel stream")
-    p.add_argument("--archive-only", action="store_true", dest="archive_only",
-                   help="archive only: the sweep of every currently-done phase and its report, with no rotate= line (unchanged since v51)")
-    p.set_defaults(func=rotate_backlog)
 
     add_cloud_parsers(sub)  # link, unlink, sync
     return parser
@@ -319,10 +319,12 @@ def main(argv=None) -> int:
     if one_line_cmd:  # leftovers (an unknown option, an extra positional) are the top parser's error: one line too
         parser.error = lambda message: parser.exit(2, f"{parser.prog} {one_line_cmd}: error: {message}\n")
     args = parser.parse_args(argv)
-    if NESTED is not None and NESTED_PROBLEMS and args.cmd not in ("validate", "compact-resume"):  # the hook fails open
-        # Never fall back to at-root mode on a broken marker: refuse, and let validate list it all.
+    if getattr(args, "verb", None):  # `phase new`, `slice status`: the name every check below reads
+        args.cmd = f"{args.cmd} {args.verb}"
+    if NESTED is not None and NESTED_PROBLEMS and args.cmd not in ("check", "compact-resume"):  # the hook fails open
+        # Never fall back to at-root mode on a broken marker: refuse, and let check list it all.
         raise SystemExit(f"{shown(ROOT / NESTED_MARKER)} is malformed, so this nested install cannot run {args.cmd}: "
-                         f"{'; '.join(NESTED_PROBLEMS)} -- fix the file (run: {WORKFLOW_CMD} validate)")
+                         f"{'; '.join(NESTED_PROBLEMS)} -- fix the file (run: {WORKFLOW_CMD} check --no-rebuild)")
     if not cloud_link_file().exists() or args.cmd in CLOUD_OWN:
         # local mode: no link, so the command runs exactly as before; link, unlink and sync each take the lock
         # themselves and never run the begin step. Every typed phase / deferred-id / slice argument becomes its

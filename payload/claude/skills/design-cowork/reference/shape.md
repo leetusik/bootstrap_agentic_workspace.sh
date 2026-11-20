@@ -30,7 +30,7 @@
 
 - Both keep the **single pass**: `DECOMP` → design slice(s) → `REVIEW`; the apply phase's own `DECOMP`
   runs after the design was signed.
-- **It must be chosen at `/create-phase`**: the `DECOMP` executor may not run `new-phase`. A phase
+- **It must be chosen at `/create-phase`**: the `DECOMP` executor may not run `phase new`. A phase
   that
   turns out late to want it gets its apply phase on the main thread through `/create-phase`.
 - A requested mockup route **deliberately survives** into the apply phase, which deletes it as it

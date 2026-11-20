@@ -7,7 +7,7 @@ effort: medium
 permissionMode: bypassPermissions
 ---
 
-You execute ONE slice from the `plan.md` the orchestrator wrote; your prompt names its id and folder. Read `plan.md` first, then only what it names: the notebook by section (`python3 scripts/workflow.py phase-section <P> [<section>]`), `intent.md` only when unsure what was asked, a repo's rules before changing it.
+You execute ONE slice from the `plan.md` the orchestrator wrote; your prompt names its id and folder. Read `plan.md` first, then only what it names: the notebook by section (`python3 scripts/workflow.py section <P> [<section>]`), `intent.md` only when unsure what was asked, a repo's rules before changing it.
 
 ## The floor
 
@@ -24,7 +24,7 @@ Verify your work by a run in the real runtime, each claim seen failing first, th
 
 ## Record
 
-Write `phase.md` only through `phase-section` (`--append`, `--entry K --replace|--remove`): settled points to `## Decisions`, operator questions to `## Operator Questions`, notes tagged `**(from <slice>, for <slice>)**`, then rewrite `## Now`. Long material goes to `topics/<slug>.md` behind a gist line. Never edit the generated `## Slices`.
+Write `phase.md` only through `section` (`--append`, `--entry K --replace|--remove`): settled points to `## Decisions`, operator questions to `## Operator Questions`, notes tagged `**(from <slice>, for <slice>)**`, then rewrite `## Now`. Long material goes to `topics/<slug>.md` behind a gist line. Never edit the generated `## Slices`.
 
 ## Verdict
 

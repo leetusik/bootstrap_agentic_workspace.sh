@@ -6,7 +6,7 @@ Closing a phase is written here and nowhere else. The orchestrator runs it, neve
 2. **At `accept`** (or the operator's `close` for a waived gate's draft, or a `pr_open=` hint saying the close is due; a close cut off resumes at its first unfinished step): A, re-read only if the PR changed, before the pass is recorded; B, Ready and the landing, after it.
 3. **A worktree phase:** integrate.
 4. **Clean up** what the phase started, and its merged head branches.
-5. **One `validate` and one workflow commit.**
+5. **One `check` and one workflow commit.**
 
 Accepting a phase stacked on an unmerged base defers its close until that base merges (`stack.md`).
 
@@ -36,7 +36,7 @@ Then the walkthrough lines (each URL, what to read on GitHub, the CI state) open
 **Pass recorded or not.** A waived gate's pass was recorded when its drafts opened, a legacy phase's at once, and a pre-v93 phase closes from its `pr_open=` hint: those reach the close `done`. On a required gate, A runs after `accept-gate <P> --clear` and before `review-phase <P> --verdict pass`; B runs after the pass.
 
 - **Not `done`:** a change request is `review-phase <P> --verdict changes_requested --note "operator-reported: <what>"`; the gate resets and the fix round runs on the same branch.
-- **`done`:** a change request, the operator's or the team's, always goes through `reopen-phase` (`reopen.md`); never `review-phase`, which the engine refuses.
+- **`done`:** a change request, the operator's or the team's, always goes through `phase reopen` (`reopen.md`); never `review-phase`, which the engine refuses.
 
 ### A. Re-read, only if the PR changed
 
@@ -52,11 +52,11 @@ Then the walkthrough lines (each URL, what to read on GitHub, the CI state) open
 1. `gh pr ready <n>`.
 2. **Solo or team:** `python3 scripts/workflow.py pr-team [--repo <name>]`. Recorded: use it. Unrecorded: the walkthrough's "decided as drawn" detection line is what the accept signed; record it, `pr-team --record solo|team [--repo <name>] --evidence "…"`. Nothing signed, or `detected=unknown`: ask (`--stop-kind decision`).
 3. **Team:** leave it for the team's merge; print, never run, `gh pr edit <n> --add-reviewer <login>` per `## Review` name.
-4. **Solo, CI green:** every check `pass` or `skipping`, or none reported. `fail` or `cancel`: stop; the phase is `done`, so on the operator's word `reopen-phase <P> --note "operator-reported: CI red: <checks>"` (`reopen.md`).
+4. **Solo, CI green:** every check `pass` or `skipping`, or none reported. `fail` or `cancel`: stop; the phase is `done`, so on the operator's word `phase reopen <P> --note "operator-reported: CI red: <checks>"` (`reopen.md`).
 5. **Land by the repo's custom.** A stated custom (its `CLAUDE.md`, `AGENTS.md` or `CONTRIBUTING`) wins: a repo that lands locally merges with its release step and pushes the default branch, never GitHub's merge button. No stated custom: `gh pr merge <n>` with the repo's only allowed method (`gh repo view --json mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed`), else `--merge`. Never `--delete-branch`, `--admin` or a force-push. **When the head's CI was green, run no pre-push local smoke and no post-landing `gh run watch`:** the landing adds only the release stamp, which the repo's build check covers.
 6. `pr-sync <P>`; report each URL and its state.
 
-**A change asked for after Ready**: on the operator's word, `reopen-phase <P> --note "operator-reported: <what>"` (or `"team-reported: <what>"`) by `reopen.md`; never `review-phase`, never a second PR. A stack closes bottom-up.
+**A change asked for after Ready**: on the operator's word, `phase reopen <P> --note "operator-reported: <what>"` (or `"team-reported: <what>"`) by `reopen.md`; never `review-phase`, never a second PR. A stack closes bottom-up.
 
 ## A worktree phase: integrate (after the pass)
 
@@ -78,6 +78,6 @@ Only what this phase started, identified by the names and ports its slices recor
 
 The shipped settings allow exactly these commands in their plain form, so at root no prompt stops the cleanup. A nested host's `git -C <repo> branch -d` and `git -C <repo> push origin --delete` each ask once per repo: no shipped rule matches them, since a `*` before the subcommand would approve any git option there (Claude Code warns at startup on such a rule). Report what was stopped and removed.
 
-## One validate, one commit
+## One check, one commit
 
-At the end, one `python3 scripts/workflow.py validate` and one workflow commit holding the close's records (the `commit` skill; a linked checkout skips it). Chain bookkeeping that needs no reading in between into one call (`pr-sync <P> && python3 scripts/workflow.py validate`): each call costs a turn of a large context.
+At the end, one `python3 scripts/workflow.py check` and one workflow commit holding the close's records (the `commit` skill; a linked checkout skips it). Chain bookkeeping that needs no reading in between into one call (`pr-sync <P> && python3 scripts/workflow.py check`): each call costs a turn of a large context.

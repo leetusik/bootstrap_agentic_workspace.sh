@@ -53,7 +53,7 @@
 # it; deleting it is also fine (the defaults live in the engine). It holds no
 # secrets, so committing it is fine when the whole team should share it. After
 # /update-workspace, re-run sync-agents (updates reset the agent files to
-# upstream defaults; `validate` warns while they drift).
+# upstream defaults; `check` warns while they drift).
 
 # Every row at its default: uncomment and edit to override. A row you set stops
 # following later defaults; executor-route prints an override= line for each.

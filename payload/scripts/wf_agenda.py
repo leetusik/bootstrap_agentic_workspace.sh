@@ -191,7 +191,7 @@ def agenda_items() -> list:
 # Agenda links (P66 D4): a phase's phase.json and a deferred job's deferred.json may each hold ONE item id,
 # `"agenda": "<AID>"`. The key is present only while linked (an unlinked phase or job has none, and unlinking
 # removes it), so a phase or job made without --agenda is written exactly as before. An item's phases and jobs
-# are never stored on the item: `agenda_links` derives them. Writers of a link: new-phase --agenda, defer-job
+# are never stored on the item: `agenda_links` derives them. Writers of a link: phase new --agenda, defer-job
 # --agenda, promote-deferred --create-phase (the job's id), agenda-link, agenda-unlink, agenda-delete (clears).
 def _agenda_link_holders(skipped=None) -> list:
     """Every phase and deferred job that can hold an agenda link, one dict each: `kind` ("phase" | "deferred"),
@@ -655,7 +655,7 @@ def agenda_item_exists(aid) -> bool:
 
 
 def agenda_require_item(aid) -> None:
-    """Refuse a link to an item that does not exist (`new-phase --agenda`, `defer-job --agenda`), in the item
+    """Refuse a link to an item that does not exist (`phase new --agenda`, `defer-job --agenda`), in the item
     commands' words, before anything is written."""
     if not agenda_item_exists(aid):
         raise SystemExit(f"{aid} names no agenda item")
@@ -716,7 +716,7 @@ def _agenda_unusable_status(item: dict):
     got = (f"'s stored status {_agenda_value_text(item['status'])} is not" if "status" in item
            else " has no stored status, which must be")
     return (f"{aid}{got} one of open, deferred, solved, dropped: set \"status\" in {shown(AGENDA / aid / 'agenda.json')} "
-            f"to one of them by hand (then validate), or remove the item: {WORKFLOW_CMD} agenda-delete {aid}")
+            f"to one of them by hand (then check), or remove the item: {WORKFLOW_CMD} agenda-delete {aid}")
 
 
 def _agenda_refusal(item: dict, to_status: str) -> str:
@@ -986,11 +986,11 @@ _AGENDA_CUTS = {}  # stream -> _agenda_stream_cut's answer, found once per comma
 
 def _agenda_stream_cut(stream: str) -> dict:
     """The cut of the phase stream `stream` (P66 F6), from this branch's own history only: the commit that stamped
-    it, which the branch starts from (`parallel-start` / `reopen-phase` commit the stamp on the default branch and
+    it, which the branch starts from (`parallel-start` / `phase reopen` commit the stamp on the default branch and
     cut the branch from that commit). It is the newest commit on HEAD's first-parent line whose copy of the
     stream's phase carries `execution.branch == stream` while its first parent's copy does not (absent, unstamped,
     or another branch), or carries it torn down (`worktree` null: `parallel-teardown` keeps the branch name, and a
-    nested `reopen-phase` may stamp the same name again, so the latest stamp is the cut). Found once per command.
+    nested `phase reopen` may stamp the same name again, so the latest stamp is the cut). Found once per command.
     `{"sha", "chain", "parents", "active", "archived"}` -- `chain` is HEAD's first-parent line from HEAD down to
     the commit after the cut -- or `{"unknown": why}` when the cut cannot be found (no git, no commit, a shallow
     history that stops before it, no committed stamp)."""

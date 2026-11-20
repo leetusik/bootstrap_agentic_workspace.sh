@@ -57,14 +57,14 @@ handles a publish refused over the operator's edit):
    `force`.**
 
 **Land the notebook's half.** Spec **pointers** into `phase.md`, entry by entry through
-`phase-section` (never `Edit` or `Write` on the file): the job's address, canvas link and entry Page,
+`section` (never `Edit` or `Write` on the file): the job's address, canvas link and entry Page,
 the mockup route once one exists, and the decisions later slices must not re-litigate. The boards and
 the full spec stay in the record, linked by path.
 
 ## PENDING #1 — one stop per round
 
 When the round is published or held: commit,
-`set-slice-status <slice> pending --stop-kind wave --on-words "<what their words will do>"`, and
+`slice status <slice> pending --stop-kind wave --on-words "<what their words will do>"`, and
 STOP (the stop kind keeps its name: the slice's canvas is published and the operator reviews it).
 The commit is `feat(design): <slice> drafted — <job>/<round>` (a superseding round:
 `… — supersedes <job>/<round>`), carrying the slice's brief, the handoff, the canvas tree, the round

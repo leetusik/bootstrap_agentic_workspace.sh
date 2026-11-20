@@ -11,6 +11,6 @@ One slice of the `do-whole-phase` loop, then stop. Read `.claude/skills/do-whole
 
 What differs from the whole-phase loop:
 
-- **One slice.** `next` names it; `start-slice` it when it is `todo` or `ready` (not in `plan only`, which readies one plan and stops). Plan, dispatch, read the verdict, `finish-slice <slice_id> --outcome "<summary>"`, `validate`, commit; then report and stop. Do not advance to the next slice in the same turn.
+- **One slice.** `next` names it; `slice start` it when it is `todo` or `ready` (not in `plan only`, which readies one plan and stops). Plan, dispatch, read the verdict, `slice finish <slice_id> --outcome "<summary>"`, `check`, commit; then report and stop. Do not advance to the next slice in the same turn.
 - **No preparing ahead** and **no wave.** In a declared phase (`next` prints `ready_slices=`), first run the wave's *Resume* (`.claude/skills/do-whole-phase/reference/wave.md`): finish and commit any slice whose commit still waits. If another slice is `in_progress`, or a stop is on disk, STOP and say so: a phase with slices in flight is finished by `/do-whole-phase`.
 - **The review slice** is one slice like any other: its verdict, gate and fix slices follow `.claude/skills/do-whole-phase/reference/review.md`, one step per invocation.
