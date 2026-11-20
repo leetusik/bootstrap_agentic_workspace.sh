@@ -93,6 +93,9 @@ sha() {
   if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
   else sha256sum "$1" | awk '{print $1}'; fi
 }
+# The engine is flat modules: <dir>/scripts/workflow.py (the entry) and the wf_*.py beside it. engine_src prints
+# them all, so a check on the engine's source reads every module (Test 0's python has its own engine_src()).
+engine_src() { cat "$1"/scripts/*.py; }
 # /explain is the knowledge plugin's: no install path touches or reports a path with an `explain` component.
 # plant_old_explain writes the last shipped explain skill (1c5ea0e) when this clone has that history, else a
 # marker copy; explain_sig is every such file under a tree with its hash (.git and workflow/ skipped).
@@ -153,6 +156,8 @@ assert len(skills) == 19, len(skills)
 sys.path.insert(0, str(root / "installer"))
 from build import collect_live_payloads, SHARED_SKILL_FILES
 LIVE = collect_live_payloads()
+def engine_src():  # the engine's source: every module, payload/scripts/*.py (the shell's engine_src)
+    return "".join(f.read_text(encoding="utf-8") for f in sorted((root / "payload/scripts").glob("*.py")))
 def skill_dir_text(name):
     pre = f".claude/skills/{name}/"
     keys = sorted((k for k in LIVE if k.startswith(pre)), key=lambda k: (k != pre + "SKILL.md", k))
@@ -587,7 +592,7 @@ assert "### Visual work: you sign each design round" in _en and "a bigger unrela
 assert "one connected canvas as one Design canvas Artifact" in _en and 'signs the round' in _en
 for gone in ("you sign each design job", "wave** of 3–4 jobs", "publishes each job to its", "once for the whole wave"):
     assert gone not in _en, gone
-_t = (root / "payload/scripts/workflow.py").read_text(encoding="utf-8")
+_t = engine_src()
 assert "or pass --new-job for another" not in _t and "merge them into one connected job with --new-job" in _t
 # v61 (P37.S5): the orchestrator never hand-writes SIGNOFF.md, never reads build-prompt.md in a new
 # round, and never pulls the canvas whole at the read-back.
@@ -638,7 +643,7 @@ assert "Claude Design + the operator" not in desc, desc
 # registry and design-deck constants are gone from the engine (P36.S4: named exactly, since
 # design-preview's AGENTIC_DESIGN_BROWSER shares their prefix).
 import re
-workflow_src = (root / "payload/scripts/workflow.py").read_text()
+workflow_src = engine_src()
 for const in ("DESIGN_ROOT_REL", "DESIGN_LEGACY_DIR"):
     value = re.search(r'^' + const + r' = "([^"]+)"$', workflow_src, re.M).group(1)
     assert value in design, (const, value)
@@ -731,7 +736,7 @@ for required in ("**You get one pass**", "**The bar, line by line**", "**The sta
                  "**fixture coverage**: every link to an entity of this round lands on that entity's own drawn item"):
     assert required in critic, required
 # P47: the advisory measured lines (check=align, M1-M14) never block; the blocking set stays the four WCAG checks.
-assert 'DESIGN_PREVIEW_BLOCKING = ("non-text-contrast", "reflow", "overprint", "keyboard")' in (root / "payload/scripts/workflow.py").read_text(encoding="utf-8")
+assert 'DESIGN_PREVIEW_BLOCKING = ("non-text-contrast", "reflow", "overprint", "keyboard")' in engine_src()
 for gone in ("passes 02 and 03", "Passes 02 and 03", "- repeated: N", "`repeated`:", "at pass 03",
              "`wave: <job>, <job>, …`", "**The cross-job look", "`wave choice`", "or `choice` (a cross-job conflict"):
     assert gone not in critic, gone
@@ -873,7 +878,7 @@ for _n in _named:
     assert (_pb_dir / _n).is_file(), f"the card names a missing playbook: {_n}"
     assert 1024 <= len((_pb_dir / _n).read_bytes()) <= 3072, (_n, len((_pb_dir / _n).read_bytes()))
 assert sorted(p.name for p in _pb_dir.glob("*.md")) == _named, ("a playbook the card never names", _named)
-_kinds = re.search(r"^SLICE_KINDS = \{(.*)\}$", (root / "payload/scripts/workflow.py").read_text(encoding="utf-8"), re.M).group(1)
+_kinds = re.search(r"^SLICE_KINDS = \{(.*)\}$", engine_src(), re.M).group(1)
 for _k in re.findall(r'"([a-z-]+)"', _kinds):
     assert re.search(r"(?<![\w-])" + re.escape(_k) + r"(?![\w-])", _map), f"kind {_k} has no playbook in the card's map"
 assert (root / "payload/claude/skills/design-cowork/reference/mockup.md").is_file()
@@ -1788,7 +1793,7 @@ printf '%s\n' "$mt_out" | grep -qE '^note=output_floor spans=1/3 \(33%\) main=0/
 # v66: a DECOMP estimates time, not session-$, and writes a `spends money:` line per slice; the [means] header says so.
 grep -q 'never a session-\$ figure' "$SRC/claude/skills/do-whole-phase/reference/decomposition.md" \
   && grep -q 'spends money:' "$SRC/claude/skills/do-whole-phase/playbooks/decompose.md" && ! grep -q '\$ per span' "$SRC/claude/skills/do-whole-phase/playbooks/decompose.md" \
-  && grep -q 'a DECOMP estimates time from these' "$SRC/scripts/workflow.py" \
+  && engine_src "$SRC" | grep -q 'a DECOMP estimates time from these' \
   && ok "a DECOMP estimates time only and writes a per-slice spends-money line (the orchestrator reference, the decompose playbook, the [means] header)" || bad "the DECOMP time-only / spends-money wording is missing or a session-\$ estimate remains"
 # v66: one slice-executor runs every slice row, so the meter reads its route from the kind and the model
 # (research by kind, haiku as cheap, the high row's family as high, else mid); an old slice-executor-high
@@ -1856,7 +1861,7 @@ sh "$BOOT" "$CG" --at-root --name "Card" --summary "card probe" >/dev/null 2>&1 
   || bad "resume card: could not build the fixture"
 cg_help=$( cd "$CG" && python3 scripts/workflow.py --help 2>&1 ); cg_help_rc=$?
 ( cd "$CG" && python3 scripts/workflow.py compact-gate </dev/null >/dev/null 2>&1 ); cg_rc=$?
-[ "$cg_help_rc" -eq 0 ] && printf '%s\n' "$cg_help" | grep -q 'dispatch-summary' && [ "$cg_rc" -ne 0 ] && ! printf '%s\n' "$cg_help" | grep -q 'compact-gate' && ! grep -qE 'cmd_compact_gate|AGENTIC_COMPACT_|COMPACT_RESUME_LINE' "$CG/scripts/workflow.py" \
+[ "$cg_help_rc" -eq 0 ] && printf '%s\n' "$cg_help" | grep -q 'dispatch-summary' && [ "$cg_rc" -ne 0 ] && ! printf '%s\n' "$cg_help" | grep -q 'compact-gate' && ! engine_src "$CG" | grep -qE 'cmd_compact_gate|AGENTIC_COMPACT_|COMPACT_RESUME_LINE' \
   && ok "compact-gate is gone from the engine (no subcommand, no knobs, no resume line)" || bad "compact-gate still present (rc=$cg_rc)"
 # every subcommand's --help exits 0 (a crash in an argparse help string once hid behind a green suite);
 # the list is the engine's own, read from the top-level help
@@ -2129,9 +2134,9 @@ out=$(sh "$BOOT" "$H" --at-root --force-empty-ok --name "Fresh" --summary "fresh
 echo "== Test 6: dual-apply -- live files match the bootstrap-embedded copies =="
 # The fresh install in $F is generated straight from the bootstrap payload, so it
 # is the source of truth to diff the live repo against.
-diff -q "$SRC/scripts/workflow.py" "$F/scripts/workflow.py" >/dev/null \
-  && ok "scripts/workflow.py == bootstrap-embedded WORKFLOW_PY" \
-  || bad "DRIFT: scripts/workflow.py differs from the bootstrap-embedded copy"
+[ -x "$F/scripts/workflow.py" ] && [ "$(ls "$SRC/scripts" | grep -c '\.py$')" -ge 2 ] && diff -r -q "$SRC/scripts" "$F/scripts" >/dev/null \
+  && ok "scripts/*.py (the engine's entry and its $(ls "$SRC/scripts" | grep -c '\.py$') modules in all) == the bootstrap-embedded copies, none extra" \
+  || bad "DRIFT: scripts/ differs from the bootstrap-embedded engine modules"
 skill_rels=$(cd "$SRC" && find claude/skills -type f -name SKILL.md | sed 's|^|.|' | LC_ALL=C sort)
 nskill=$(printf '%s\n' "$skill_rels" | grep -c .)
 [ "$nskill" -eq 19 ] && ok "dual-apply covers all 19 skill bodies" || bad "expected 19 SKILL.md files to diff, found $nskill"
@@ -2161,7 +2166,7 @@ for rel in $DUAL_FIXED CLAUDE.md; do
 done
 # The manifest above is hand-maintained; the installer's own list is the thing it
 # must cover, so cross-check it instead of trusting both to be edited together.
-if python3 - "$REPO_ROOT" scripts/workflow.py $DUAL_FIXED <<'PY'
+if python3 - "$REPO_ROOT" $DUAL_FIXED <<'PY'
 import ast, sys
 from pathlib import Path
 
@@ -2230,8 +2235,8 @@ import ast, sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
-tree = ast.parse((root / "payload/scripts/workflow.py").read_text())
-fallback = next(n.value.value for n in ast.walk(tree) if isinstance(n, ast.Assign)
+trees = [ast.parse(f.read_text()) for f in sorted((root / "payload/scripts").glob("*.py"))]
+fallback = next(n.value.value for tree in trees for n in ast.walk(tree) if isinstance(n, ast.Assign)
                 and any(getattr(t, "id", "") == "PHASE_MD_TEMPLATE_FALLBACK" for t in n.targets))
 assert fallback == (root / "payload/works/templates/phase.md").read_text(), "fallback drifted from the shipped template"
 FALLBACK
@@ -3207,7 +3212,7 @@ out=$(dw design-migrate --apply 2>&1); rc=$?
   || bad "design-migrate beside design.json moved the wrong entries (rc=$rc) -- $out"
 # A pre-v47 root (no design.json): every top-level entry moves, a dry run first, all-or-nothing.
 MG="$DZ/legacy"; MD="$MG/docs/reference/design"
-mkdir -p "$MG/scripts" "$MD/rounds/01-a" "$MD/grounding" && cp "$F/scripts/workflow.py" "$MG/scripts/"
+mkdir -p "$MG/scripts" "$MG/works" "$MD/rounds/01-a" "$MD/grounding" && cp "$F"/scripts/*.py "$MG/scripts/"
 printf '# handoff\n' > "$MD/rounds/01-a/handoff.md"; printf 'Signed: "go"\n' > "$MD/SIGNOFF.md"
 printf '<p>g</p>\n' > "$MD/grounding/g.html"; printf '# the old record\n' > "$MD/README.md"
 mw() { ( cd "$MG" && HOME="$DZ/home" python3 scripts/workflow.py "$@" ); }
@@ -3242,7 +3247,7 @@ conflict_before=$(mig_sig); out=$(mw design-migrate --apply 2>&1); rc=$?
 # 5. P36.S3: a schema-1 (v47 card) record is legacy -- design-open refuses it with the migrate hint, and
 # design-migrate --to 2 moves cards/, tokens.css and rounds/ into schema1/ byte-identical (a dry run first).
 S1="$DZ/schema1"; SD="$S1/docs/reference/design"
-mkdir -p "$S1/scripts" "$SD/cards" "$SD/rounds/01-a/cards" && cp "$F/scripts/workflow.py" "$S1/scripts/"
+mkdir -p "$S1/scripts" "$S1/works" "$SD/cards" "$SD/rounds/01-a/cards" && cp "$F"/scripts/*.py "$S1/scripts/"
 printf '{"schema": 1, "id": "old-cards", "name": "Old cards"}\n' > "$SD/design.json"
 printf '<!-- @dsCard group="Components" viewport="480x200" -->\n<p>a</p>\n' > "$SD/cards/01-a.html"
 cp "$SD/cards/01-a.html" "$SD/rounds/01-a/cards/01-a.html" && printf ':root { --ink: #111; }\n' > "$SD/tokens.css"
@@ -3268,7 +3273,7 @@ else bad "design-migrate --to 2 lost, changed or left an entry, or did not rewri
 # (a merge into one connected job); a legacy multi-job slice (a wave drawn before the rule) still passes and
 # takes --job; a critique level per round. The size warning sits at 10 Pages / 30 boards.
 WV="$DZ/wave"; WR="$WV/docs/reference/design"
-mkdir -p "$WV/scripts" && cp "$F/scripts/workflow.py" "$WV/scripts/"
+mkdir -p "$WV/scripts" "$WV/works" && cp "$F"/scripts/*.py "$WV/scripts/"
 ww() { ( cd "$WV" && HOME="$DZ/home" python3 scripts/workflow.py "$@" ); }
 # legacy_job <design root> <src job> <src round> <new job> <new round>: a second job of the same slice,
 # hand-written beside the first with its round open, the way a pre-P46-nb wave left it.
@@ -3374,7 +3379,7 @@ else bad "check=unlinked-page is wrong (rc=$un_rc/$linked_rc) -- $un $linked"; f
 # list exempts a Page from check=unlinked-page; check=token-drift and check=transition-all warn; v90 (P47-p5.F3):
 # a calc(var()) radius is token-derived (silent) and a padding px only an fs- token holds gets no suggestion.
 PG="$DZ/pages"; PR="$PG/docs/reference/design"; PJ="$PR/jobs/01-board"; PP="$PJ/canvas/project"; PRD="$PJ/rounds/01-board"
-mkdir -p "$PG/scripts" && cp "$F/scripts/workflow.py" "$PG/scripts/"
+mkdir -p "$PG/scripts" "$PG/works" && cp "$F"/scripts/*.py "$PG/scripts/"
 pw() { ( cd "$PG" && HOME="$DZ/home" python3 scripts/workflow.py "$@" ); }
 pw design-init --id pages >/dev/null 2>&1 || bad "pages probe: design-init failed"
 res_out=$(pw design-open --slug board --slice P9.S6 --pages list,frame 2>&1); res_rc=$?
@@ -3471,7 +3476,7 @@ else bad "the unrelated-page exemption or the style lints are wrong (rc=$un_rc/$
 # control-height), each printed line with its 2x zoom crop beside the render, and self_check is unchanged
 # (advisory). With no browser the block says so and asserts nothing.
 AL="$DZ/align"; AR="$AL/docs/reference/design"; AJ="$AR/jobs/01-rows"; AP="$AJ/canvas/project"; ARD="$AJ/rounds/01-rows"
-mkdir -p "$AL/scripts" && cp "$F/scripts/workflow.py" "$AL/scripts/"
+mkdir -p "$AL/scripts" "$AL/works" && cp "$F"/scripts/*.py "$AL/scripts/"
 aw() { ( cd "$AL" && python3 scripts/workflow.py "$@" ); }
 { aw design-init --id align && aw design-open --slug rows --slice P9.S7 --pages list,detail; } >/dev/null 2>&1 || bad "align probe: design-init or design-open --pages failed"
 printf '# handoff\n' > "$ARD/handoff.md"
@@ -3548,7 +3553,7 @@ else bad "the board lint, the mounted-board count or bar.md is wrong (rc=$rc/$al
 # brief a handoff names must exist. Its second job is a legacy wave's (hand-written: --new-job now refuses
 # while the slice's first round is open), so design-sign --slice signs a legacy slice's presented jobs.
 LF="$DZ/life"; LR="$LF/docs/reference/design"
-mkdir -p "$LF/scripts" && cp "$F/scripts/workflow.py" "$LF/scripts/"
+mkdir -p "$LF/scripts" "$LF/works" && cp "$F"/scripts/*.py "$LF/scripts/"
 lw() { ( cd "$LF" && HOME="$DZ/home" python3 scripts/workflow.py "$@" ); }
 lw design-init --id life >/dev/null 2>&1 && lw design-open --slug one --slice P9.S7 --critique critic >/dev/null 2>&1 \
   && legacy_job "$LR" 01-one 01-one 02-two 01-two || bad "life probe: design-open failed"
@@ -3666,7 +3671,7 @@ mkdir -p "$NH/src" "$NH/workflow/scripts" "$NH/workflow/works" \
   && ( cd "$NH" && { git init -q -b main . 2>/dev/null || git init -q .; } && git config user.email smoke@example.invalid \
        && git config user.name smoke && printf 'print("host")\n' > src/app.py && git add -A >/dev/null 2>&1 \
        && git commit -qm "host baseline" >/dev/null 2>&1 ) \
-  && cp "$SRC/scripts/workflow.py" "$NH/workflow/scripts/" && cp -R "$SRC/works/templates" "$NH/workflow/works/" \
+  && cp "$SRC"/scripts/*.py "$NH/workflow/scripts/" && cp -R "$SRC/works/templates" "$NH/workflow/works/" \
   && cp -R "$NS/seed/docs" "$NH/workflow/" && ( cd "$NH/workflow" && git init -q . ) \
   || bad "nested probe: could not build the host + workflow/ fixture"
 cat > "$NH/workflow/.agentic-nested.json" <<'NESTED'
@@ -4499,9 +4504,9 @@ s_out=$(bw phase-scope P1 2>&1); s_rc=$?
 v_out=$(bw review-phase P1 --verdict pass 2>&1); v_rc=$?
 if [ "$s_rc" -eq 0 ] && printf '%s\n' "$s_out" | grep -q '^product_files=1 ' && [ "$v_rc" -eq 0 ] && printf '%s\n' "$v_out" | grep -q '^phase P1 review: pass' \
     && ! printf '%s\n%s\n' "$s_out" "$v_out" | grep -q TypeError \
-    && python3 - "$SRC/scripts/workflow.py" <<'PY'
+    && python3 - "$SRC"/scripts/*.py <<'PY'
 import ast, collections, sys
-names = collections.Counter(n.name for n in ast.parse(open(sys.argv[1]).read()).body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)))
+names = collections.Counter(n.name for f in sys.argv[1:] for n in ast.parse(open(f).read()).body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)))
 assert not [k for k, v in names.items() if v > 1], [k for k, v in names.items() if v > 1]
 PY
 then ok "a nested phase whose host branch left main gets its phase-scope and a passing review (no _is_ancestor TypeError), and no engine function is defined twice"
@@ -4542,6 +4547,7 @@ from pathlib import Path
 root = Path(sys.argv[1]); sys.path.insert(0, str(root / "installer"))
 from build import collect_live_payloads
 L = collect_live_payloads()
+ENGINE = "".join(v for k, v in sorted(L.items()) if k.startswith("scripts/"))  # every module of the engine
 sk = lambda n: "\n".join(v for k, v in sorted(L.items()) if k.startswith(f".claude/skills/{n}/"))
 flat = lambda s: " ".join(s.split())
 both = lambda ref: [L[f".claude/skills/do-whole-phase/reference/{ref}"]]  # lighter-rules: do-next-slice ships no copy
@@ -4564,9 +4570,9 @@ checks = [
                                                    "--note \"operator-reported: CI red: <checks>\"", "**A change asked for after Ready**"], []),
     ([L[".claude/skills/pr/reference/reopen.md"]], ["**One rule.**", "`git -C <host> switch <default>`", "No worktree is cut or claimed", "`git worktree add <sibling> <branch>`",
                                                     "**At root, commit the reopen with the fix round's first commit**"], ["## Team-reported changes after the phase is done"]),
-    ([L["scripts/workflow.py"]], ["a change request (the team's or the operator's) reopens it on the PR branch", "--note is empty; say whose change request it is and what it asks"], ["a team's change request reopens it in its own worktree", "say what the team asked for"]),
+    ([ENGINE], ["a change request (the team's or the operator's) reopens it on the PR branch", "--note is empty; say whose change request it is and what it asks"], ["a team's change request reopens it in its own worktree", "say what the team asked for"]),
     # P52 F4: the reopen names both reporters everywhere it ships (help, docstring, re-review, pr core, review.md, READMEs).
-    ([L["scripts/workflow.py"]], ["(a change request after the phase was done, the team's or the operator's)", 'help="whose change request it is and what it asks: \\"team-reported: <what>\\" or \\"operator-reported: <what>\\" (recorded as the review note'],
+    ([ENGINE], ["(a change request after the phase was done, the team's or the operator's)", 'help="whose change request it is and what it asks: \\"team-reported: <what>\\" or \\"operator-reported: <what>\\" (recorded as the review note'],
      ["a team asked for changes after the phase was done", "what the team asked for:", "a team's new change request becomes a new phase", "# A team asks for changes after the phase is done"]),
     ([(root / "payload/claude/skills/do-whole-phase/playbooks/review.md").read_text()], ["(its review note reads `team-reported: …` or `operator-reported: …`): the request is the claims to verify"],
      ["(its review note reads `team-reported: …`): the team's review comments"]),
@@ -4588,7 +4594,7 @@ checks = [
     ([sk("commit")], ["A phase's pushes are the `pr` skill's, never this skill's: the draft opening when its review passes, the close's solo landing, and a fix round's or a stack merge's push to an open PR's branch."], push_stop + ["A phase's one push is"]),
     ([(root / "README.en.md").read_text(encoding="utf-8")], ["and your `accept` closes it (Ready, then a solo repo's merge by its landing custom; a team repo's merge is the team's)"], ["(Ready and merge are yours)"]),
     ([(root / "README.md").read_text(encoding="utf-8")], ["여러분이 `accept`하면 close가 그 PR을 Ready로 바꿉니다"], ["(Ready와 merge는 여러분 몫입니다)"]),
-    ([L["scripts/workflow.py"]], ["pr_draft=due -- when the review would pass", "the draft opens when the review passes (pr skill: Open the drafts)"],
+    ([ENGINE], ["pr_draft=due -- when the review would pass", "the draft opens when the review passes (pr skill: Open the drafts)"],
      ["pr_push_parked", "_pr_push_stop_why", "PR push stop", "the operator's push opens"] + push_stop),
 ]
 for texts, required, gone in checks:
@@ -5060,15 +5066,16 @@ spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scrip
 mod = importlib.util.module_from_spec(spec)
 sys.modules["workflow_engine"] = mod
 spec.loader.exec_module(mod)
-mode, real = sys.argv[1], mod.defer_job
+agenda, cloud = sys.modules["wf_agenda"], sys.modules["wf_cloud"]  # the parts the engine imported
+mode, real = sys.argv[1], agenda.defer_job
 def crash(args):
     real(args)
     if mode == "kill":
         os._exit(9)
     raise RuntimeError("a crash in the middle of the command")
-mod.defer_job = crash
+agenda.defer_job = crash
 if mode == "pull":
-    mod.CloudSession.save_base = lambda self: os._exit(9)
+    cloud.CloudSession.save_base = lambda self: os._exit(9)
 sys.exit(mod.main(sys.argv[2:]))
 PY
 ) >> "$SF_OUT" 2>&1; }
@@ -5305,8 +5312,9 @@ spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scrip
 mod = importlib.util.module_from_spec(spec)
 sys.modules["workflow_engine"] = mod
 spec.loader.exec_module(mod)
+cloud = sys.modules["wf_cloud"]  # the cloud part the engine imported
 step, target = sys.argv[1], sys.argv[2]
-real_write, real_fetch = mod._cloud_write_bytes, mod.CloudSession.fetch
+real_write, real_fetch = cloud._cloud_write_bytes, cloud.CloudSession.fetch
 def write(path, data):
     hit = str(path).endswith("/" + target)
     if hit and step == "write":
@@ -5319,9 +5327,9 @@ def fetch(self, paths):
     if step == "fetch" and target in got:
         os._exit(9)
     return got
-mod._cloud_write_bytes, mod.CloudSession.fetch = write, fetch
+cloud._cloud_write_bytes, cloud.CloudSession.fetch = write, fetch
 if step == "base":
-    mod.cloud_rebuild = lambda rels: os._exit(9)
+    cloud.cloud_rebuild = lambda rels: os._exit(9)
 sys.exit(mod.main(sys.argv[3:]))
 PY
 ) >> "$SF_OUT" 2>&1; }
@@ -5585,15 +5593,16 @@ spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scrip
 mod = importlib.util.module_from_spec(spec)
 sys.modules["workflow_engine"] = mod
 spec.loader.exec_module(mod)
-mod.CLOUD_TIMEOUT = 1
-real = mod.CloudLink._exchange
+cloud = sys.modules["wf_cloud"]  # the cloud part the engine imported
+cloud.CLOUD_TIMEOUT = 1
+real = cloud.CloudLink._exchange
 def late(self, *a, **k):
     answer = real(self, *a, **k)
     time.sleep(1.5)
     return answer
-mod.CloudLink._exchange = late
+cloud.CloudLink._exchange = late
 try:
-    status, payload = mod.CloudLink().call("GET", "head")
+    status, payload = cloud.CloudLink().call("GET", "head")
     print(f"answer {status} {isinstance(payload.get('head'), int)}")
 except Exception as exc:
     print(f"{exc.__class__.__name__}: {exc}")
@@ -5694,6 +5703,7 @@ sf_own=$( cd "$SF" && python3 - <<'PY' 2>&1
 import importlib.util, socket, sys, threading, time
 spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scripts/workflow.py")
 mod = importlib.util.module_from_spec(spec); sys.modules["workflow_engine"] = mod; spec.loader.exec_module(mod)
+mod = sys.modules["wf_cloud"]  # the cloud part the engine imported: its names, and the limit it reads
 mod.CLOUD_TIMEOUT = 2
 a, b = socket.socketpair()
 def peer():
@@ -5722,6 +5732,7 @@ spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scrip
 mod = importlib.util.module_from_spec(spec)
 sys.modules["workflow_engine"] = mod
 spec.loader.exec_module(mod)
+mod = sys.modules["wf_cloud"]  # the cloud part the engine imported: its names, and the limits it reads
 mod.CLOUD_TIMEOUT, mod.CLOUD_FLOOR = 2, 1024
 cert, key = sys.argv[1], sys.argv[2]
 server_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -5809,7 +5820,7 @@ sys.modules["workflow_engine"] = mod
 spec.loader.exec_module(mod)
 def boom(self, *a, **k):
     raise RuntimeError("a failure inside the step")
-setattr(mod.CloudSession, sys.argv[1], boom)
+setattr(sys.modules["wf_cloud"].CloudSession, sys.argv[1], boom)
 sys.exit(mod.main(sys.argv[2:]))
 PY
 ) 2>&1 | tee -a "$SF_OUT"; return "${PIPESTATUS[0]}"; }
@@ -6189,11 +6200,12 @@ spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scrip
 mod = importlib.util.module_from_spec(spec)
 sys.modules["workflow_engine"] = mod
 spec.loader.exec_module(mod)
-real = mod.defer_job
+agenda = sys.modules["wf_agenda"]  # the agenda part the engine imported
+real = agenda.defer_job
 def crash(args):
     real(args)
     os._exit(9)
-mod.defer_job = crash
+agenda.defer_job = crash
 sys.exit(mod.main(sys.argv[1:]))
 PY
 ) >> "$LK_OUT" 2>&1
@@ -6640,6 +6652,33 @@ c28=$(wf_check); c28_rc=$?
 [ "$c27_rc" = 0 ] && [ "$(cf_status P2/phase.json)" = done ] && [ "$c28_rc" = 0 ] \
   && ok "core flow: a gate waived with its note passes the second phase, and the workspace validates after the archive" \
   || bad "core flow: the waived pass or the final validate broke (rc $c27_rc/$c28_rc) -- $(printf '%s\n' "$c27" | tail -3) / $c28"
+
+# ---------------------------------------------------------------------------
+echo "== Test 27: the engine finds its workspace from anywhere (the plugin path) -- copied to a folder outside any repo, it reads a nested host from the host and from a repo's subfolder, takes the workspace WORKFLOW_ROOT names, writes nothing into its own folder (no works/, no __pycache__), and with no workspace above exits 2 with one line =="
+newtmp PLW; PLE="$PLW/plugin/scripts"; PLH="$PLW/host"; PLA="$PLH/app/sub"
+{ mkdir -p "$PLE" && cp "$SRC"/scripts/*.py "$PLE/" \
+  && env GIT_AUTHOR_NAME=smoke GIT_AUTHOR_EMAIL=smoke@example.invalid GIT_COMMITTER_NAME=smoke GIT_COMMITTER_EMAIL=smoke@example.invalid sh "$BOOT" "$PLH" \
+  && mkdir -p "$PLA" && git -C "$PLH/app" init -q; } > "$PLW/setup.txt" 2>&1 || bad "plugin path: the fixture failed -- $(tail -3 "$PLW/setup.txt")"
+# pl <cwd> <args>: the copied engine under a python that would write bytecode beside it (no opt-out, no prefix).
+pl() { _d=$1; shift; ( cd "$_d" && env -u PYTHONDONTWRITEBYTECODE -u WORKFLOW_ROOT -u WORKFLOW_CMD PYTHONPYCACHEPREFIX= python3 -X pycache_prefix= "$PLE/workflow.py" "$@" ) 2>&1; }
+plr() { _r=$1; _d=$2; shift 2; ( cd "$_d" && env -u PYTHONDONTWRITEBYTECODE -u WORKFLOW_CMD WORKFLOW_ROOT="$_r" PYTHONPYCACHEPREFIX= python3 -X pycache_prefix= "$PLE/workflow.py" "$@" ) 2>&1; }
+pl_sig() { ( cd "$PLW/plugin" && find . | LC_ALL=C sort ); }
+pl_s0=$(pl_sig); pl_h=$(cd "$PLH" && pwd -P); pl_w=$(cd "$PLW" && pwd -P)
+pl1=$(pl "$PLH" next); pl1_rc=$?
+pl2=$(pl "$PLA" new-phase --phase P1 --name Plugin --objective "made from a repo subfolder"); pl2_rc=$?
+pl3=$(pl "$PLA" next); pl3_rc=$?
+pl4=$(plr "$PLH" "$PLW" next); pl4_rc=$?
+pl5=$(pl "$PLW" next); pl5_rc=$?
+[ "$pl1_rc$pl2_rc$pl3_rc$pl4_rc" = 0000 ] && [ "$(printf '%s\n' "$pl1" | head -1)" = "nested_host=$pl_h" ] \
+  && [ -f "$PLH/workflow/works/phases/active/P1/phase.json" ] && printf '%s\n' "$pl3" | grep -q 'P1' && [ "$pl4" = "$pl3" ] \
+  && printf '%s\n' "$pl1" | grep -q 'read it with: python3 \.\./plugin/scripts/workflow\.py nested-convention$' \
+  && ok "plugin path: the copied engine reads the nested host from the host, writes and reads it from a repo's subfolder (its hints name it from the host), and WORKFLOW_ROOT names it from outside" \
+  || bad "plugin path: the copied engine did not find the host (rc $pl1_rc/$pl2_rc/$pl3_rc/$pl4_rc) -- $(printf '%s\n' "$pl1" | head -2) / $pl2 / $(printf '%s\n' "$pl3" | head -2) / $(printf '%s\n' "$pl4" | head -2)"
+[ "$pl5_rc" = 2 ] && [ "$pl5" = "no workspace found from $pl_w; run from inside one or set WORKFLOW_ROOT" ] \
+  && ok "plugin path: with no workspace above, the copied engine exits 2 with one line" \
+  || bad "plugin path: with no workspace above (rc $pl5_rc) -- $pl5"
+[ "$(pl_sig)" = "$pl_s0" ] && ok "plugin path: nothing was written into the engine's own folder (no works/, no __pycache__)" \
+  || bad "plugin path: the engine wrote into its own folder -- $(diff <(printf '%s\n' "$pl_s0") <(pl_sig) | tail -5 | tr '\n' ' ')"
 
 # ---------------------------------------------------------------------------
 echo

@@ -15,7 +15,8 @@ Source of truth:
     because there Claude Code would still load a nested CLAUDE.md or .claude/skills/, and
     git would apply a nested .gitattributes, as this repo's own (the workspace that drives
     it is a private host in the folder above it):
-      payload/scripts/workflow.py, payload/claude/skills/*/** (each skill's whole directory,
+      payload/scripts/*.py (the engine: its entry workflow.py and its wf_*.py modules),
+      payload/claude/skills/*/** (each skill's whole directory,
       plus any SHARED_SKILL_FILES copies), the payload/claude
       subagents, payload/claude/settings.json, payload/executors.toml,
       payload/works/templates/*, payload/github/workflows/workspace-ci.yml,
@@ -72,9 +73,9 @@ MIGRATION_MARK = "**Migration notes.**"
 # Shipped files embedded verbatim, keyed by EMIT path (where the installer writes them). The
 # source lives under payload/ at src_rel(emit): payload/ keeps it off the root paths Claude Code
 # and GitHub read (.claude/, .github/, CLAUDE.md), and the undotted first path component keeps
-# Claude Code and git from treating it as this repo's own inside payload/.
+# Claude Code and git from treating it as this repo's own inside payload/. The engine is every
+# payload/scripts/*.py, discovered from disk (ENGINE_FILES), so adding a module needs no code change.
 FIXED_LIVE_FILES = [
-    "scripts/workflow.py",
     ".claude/settings.json",
     ".claude/agents/slice-executor.md",
     ".claude/agents/design-drafter.md",
@@ -119,10 +120,18 @@ def read(rel: str, base: Path = SRC) -> str:
     return p.read_text(encoding="utf-8")
 
 
+def engine_files() -> "list":
+    """The engine's emit paths: every payload/scripts/*.py, sorted (its entry scripts/workflow.py among them)."""
+    files = sorted("scripts/" + f.name for f in (SRC / "scripts").glob("*.py"))
+    if "scripts/workflow.py" not in files:
+        die("missing source file: payload/scripts/workflow.py (the engine's entry)")
+    return files
+
+
 def collect_live_payloads() -> "dict":
     """emit-path -> content for every shipped file (deterministic ordering), verbatim."""
     payloads: dict = {}
-    for rel in FIXED_LIVE_FILES:
+    for rel in engine_files() + FIXED_LIVE_FILES:
         payloads[rel] = read(src_rel(rel))
     # Skills are discovered from disk (sorted) so adding/removing a skill needs no code change.
     # A skill ships as its whole directory: SKILL.md (the core) plus every other file under it

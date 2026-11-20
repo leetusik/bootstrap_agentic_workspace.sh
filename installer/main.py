@@ -214,6 +214,8 @@ if len(CLAUDE_SKILLS) != EXPECTED_SKILL_COUNT:
 # Each skill ships as a directory: its SKILL.md (the core) plus any reference files, every one of
 # them an emit path in PAYLOADS (the build fans the do-* shared references out into both skills).
 SKILL_FILES = {name: sorted(k for k in PAYLOADS if k.startswith(f".claude/skills/{name}/")) for name in CLAUDE_SKILLS}
+# The engine ships as flat modules: its entry scripts/workflow.py and every scripts/wf_*.py beside it.
+ENGINE_FILES = sorted(k for k in PAYLOADS if k.startswith("scripts/") and k.endswith(".py"))
 
 MANAGED_DIRS = [
     "docs", "docs/current",
@@ -230,7 +232,7 @@ MANAGED_FILES = [
     *[f"docs/current/{doc_id}.md" for doc_id in DOC_TYPES],
     "works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/agenda.md", "works/events.jsonl",
     *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md", "phase.md")],
-    "scripts/workflow.py",
+    *ENGINE_FILES,
     ".claude/agents/slice-executor.md", ".claude/agents/design-drafter.md",
     ".claude/agents/design-critic.md", ".claude/agents/pr-reader.md", ".claude/agents/code-reader.md",
     ".claude/agents/Explore.md",
@@ -571,7 +573,7 @@ def _retrofit_handle(path: str, text: str) -> bool:
 
 # ---- Update (--update) write policy -----------------------------------------
 # Refresh machinery in place while preserving the downstream's own work and docs:
-#   OVERWRITE (machinery, upstream-owned): scripts/workflow.py, the .claude
+#   OVERWRITE (machinery, upstream-owned): the engine (scripts/*.py), the .claude
 #     subagents, every skill, works/templates/*.
 #   MERGE (additive): .claude/settings.json.
 #   CONTRACT (sidecar-aware): CLAUDE.md.
@@ -583,7 +585,7 @@ def _retrofit_handle(path: str, text: str) -> bool:
 # .gitattributes line-merged) bypass this dispatch entirely — see emit_policy_files().
 # In --dry-run nothing is written; changes are only recorded for the report.
 def _is_machinery(path: str) -> bool:
-    if path == "scripts/workflow.py":
+    if path in ENGINE_FILES:
         return True
     if NESTED and path == NESTED_CONTRACT:
         return True  # the nested install's contract (rewritten) is machinery, refreshed like the skills
@@ -702,7 +704,7 @@ NESTED_AGENTS = ["slice-executor", "design-drafter", "design-critic", "pr-reader
 NESTED_KINDS = ("skills", "agents")
 # The engine's subcommands, read from the embedded engine: a hyphenated skill name that is not one
 # of them only ever names the skill, so its plain backticked form is renamed too.
-_ENGINE_SUBCOMMANDS = set(re.findall(r'add_parser\(\s*"([a-z][a-z0-9-]*)"', PAYLOADS["scripts/workflow.py"]))
+_ENGINE_SUBCOMMANDS = set(re.findall(r'add_parser\(\s*"([a-z][a-z0-9-]*)"', "".join(PAYLOADS[f] for f in ENGINE_FILES)))
 NESTED_SKILL_ONLY = {n for n in CLAUDE_SKILLS if "-" in n and n not in _ENGINE_SUBCOMMANDS}
 # Token-bounded: never preceded by a word character, `.`, `/` or `-`, so `workflow/works/`, a URL,
 # `<repo>/scripts/...` and words such as `networks/` are left alone (and a second pass is a no-op).
@@ -2948,9 +2950,11 @@ elif RETROFIT:
         print("This repo already contains an agentic workspace (works/ present) — nothing to retrofit.")
         print("Drive it directly with python3 scripts/workflow.py.")
         sys.exit(0)
-    # A foreign scripts/workflow.py would break the runtime — abort before writing.
-    if (ROOT / "scripts/workflow.py").exists():
-        print("Error: target already has scripts/workflow.py.", file=sys.stderr)
+    # A foreign scripts/workflow.py (or a file named like one of its modules) would break the runtime
+    # (retrofit keeps theirs) — abort before writing.
+    foreign = [rel for rel in ENGINE_FILES if (ROOT / rel).exists()]
+    if foreign:
+        print(f"Error: target already has {foreign[-1]}.", file=sys.stderr)
         print("The workspace runtime shells out to it, so it cannot be installed over a", file=sys.stderr)
         print("foreign copy. Rename/relocate the existing file, or adopt the workspace", file=sys.stderr)
         print("manually (see docs/retrofit-guide.md), then re-run.", file=sys.stderr)
@@ -3061,8 +3065,9 @@ write_text("works/templates/phase.md", _TEMPLATES["works/templates/phase.md"])
 # pre-seeded placeholder phase.
 write_text("works/events.jsonl", json.dumps({"ts": created_at, "type": "bootstrap", "project": PROJECT_NAME}, ensure_ascii=False) + "\n")
 
-# ---- Workflow engine (scripts/workflow.py) ----------------------------------
-write_text("scripts/workflow.py", PAYLOADS["scripts/workflow.py"], executable=True)
+# ---- Workflow engine (scripts/workflow.py and its wf_*.py modules) -------------
+for rel in ENGINE_FILES:
+    write_text(rel, PAYLOADS[rel], executable=rel == "scripts/workflow.py")
 
 # ---- Agent surfaces: Claude Code skills -------------------------------------
 # (Nested: none under workflow/ -- the host-side copies are written by nested_apply below.)
