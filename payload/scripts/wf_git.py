@@ -1579,10 +1579,11 @@ def parallel_merge_finish(args: argparse.Namespace) -> None:
     """Run on the default stream right after a phase branch's merge: regenerate, then report what is left.
 
     The generated files (`works/state.json`, `works/index.json`, `works/backlog.md`,
-    `works/deferred.md`, `works/agenda.md`, `docs/current/*.md`) are derived, never authored, so a merge conflict in
+    `works/deferred.md`, `works/agenda.md`) are derived, never authored, so a merge conflict in
     them is resolved by taking either side and regenerating here -- which is why parallel mode
     needs no custom git merge driver (a driver would need per-clone `git config` and would not
-    travel with the repo). Makes no commit: the regenerated files belong to the merge commit's
+    travel with the repo). `docs/current/*.md` are authored: a conflict there is resolved by hand,
+    keeping both sides' edits, never by taking a side. Makes no commit: the regenerated files belong to the merge commit's
     cleanup, which the orchestrator owns. In a nested install (P35) it runs in the nested repo,
     where `phase/...` was merged (`git -C workflow merge`), and never touches the host repo: the
     host branch is integrated by the host's own custom, never by the engine.

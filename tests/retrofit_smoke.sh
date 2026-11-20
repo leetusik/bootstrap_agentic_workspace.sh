@@ -3810,6 +3810,15 @@ hook_out=$(printf '{"session_id":"t","source":"compact","cwd":"%s"}' "$HWT" | py
 printf '%s\n' "$hook_out" | grep -q "^stream=phase/P1-" && printf '%s\n' "$hook_out" | grep -q "^pointer: phase P1 " \
   && ok "compact-resume replayed from the main checkout with the worktree's cwd redirects to the worktree's own stream" \
   || bad "the compaction hook did not follow the worktree cwd -- $hook_out"
+# A worktree cut before the adapter existed (no adapters/ folder): its own engine answers -- its compact-resume
+# when it has one, else its `next --card` under the hook's first line -- never the main checkout's card.
+mv "$HWT/workflow/adapters" "$NH.adapters.aside"
+hook_out=$(printf '{"session_id":"t","source":"compact","cwd":"%s"}' "$HWT" | python3 "$NH/workflow/adapters/claude_code/adapter.py" compact-resume 2>&1)
+mv "$NH.adapters.aside" "$HWT/workflow/adapters"
+[ "$(printf '%s\n' "$hook_out" | head -1)" = "compaction=done source=compact" ] && [ "$(printf '%s\n' "$hook_out" | grep -c '^compaction=done')" = 1 ] \
+  && printf '%s\n' "$hook_out" | grep -q "^stream=phase/P1-" && printf '%s\n' "$hook_out" | grep -q "^pointer: phase P1 " \
+  && ok "with the worktree's adapters/ moved aside, the hook falls back to the worktree's own engine (next --card) and still shows its stream" \
+  || bad "the compaction hook did not fall back to the worktree's own engine -- $hook_out"
 printf 'product\n' > "$HWT/src/side.py" && git -C "$HWT" add src/side.py >/dev/null 2>&1 && git -C "$HWT" commit -qm "side" >/dev/null 2>&1
 mkdir -p "$HWT/workflow/temp" && printf 'note\n' > "$HWT/workflow/temp/note.txt"
 git -C "$HWT/workflow" checkout -q -- . >/dev/null 2>&1   # drop the regenerated works/ files `next` rewrote
@@ -4281,10 +4290,12 @@ pgit config user.email smoke@example.invalid; pgit config user.name smoke
 mkdir -p "$PRR/src" "$PRR/tests" "$PRR/gen"; printf 'gen/** linguist-generated=true\n' >> "$PRR/.gitattributes"
 seq 1 50 | sed 's/^/old /' > "$PRR/src/old.py"; printf 'a\nb\nc\n' > "$PRR/src/app.py"; printf '{}\n' > "$PRR/package-lock.json"
 ( cd "$PRR" && git add -A && git commit -qm baseline ) >/dev/null 2>&1 || bad "pr probe: baseline commit failed"
-# (a) a fresh at-root install marks the workspace's state linguist-generated (S11), and prints the team-rule line.
+# (a) a fresh at-root install marks the workspace's state linguist-generated (S11), never the authored docs/current/,
+# and prints the team-rule line.
 grep -qx 'works/\*\* linguist-generated=true' "$PRR/.gitattributes" && grep -qx 'docs/index.json linguist-generated=true' "$PRR/.gitattributes" \
+  && [ "$(cd "$PRR" && git check-attr linguist-generated -- docs/current/x.md docs/versions/x.md docs/index.json | tr '\n' ' ')" = "docs/current/x.md: linguist-generated: unspecified docs/versions/x.md: linguist-generated: true docs/index.json: linguist-generated: true " ] \
   && grep -q "team PR rules: none on file -- the pr skill's default template (Summary · Review · What is changed · Why · Related issue) applies" "$PRW/install.txt" \
-  && ok "a fresh at-root install marks works/** and the workspace's docs/ paths linguist-generated and prints the bare team-rule line" \
+  && ok "a fresh at-root install marks works/**, docs/versions/** and docs/index.json linguist-generated (docs/current/ unspecified: authored) and prints the bare team-rule line" \
   || bad "fresh at-root install: no linguist-generated lines or no team-rule line -- $(grep -n 'linguist\|team PR' "$PRR/.gitattributes" "$PRW/install.txt")"
 # (1) phase new stamps the empty pr block.
 pw phase new --phase P1 --name "PR probe" --objective "toy" >/dev/null 2>&1 && ( cd "$PRR" && git add -A && git commit -qm p1 ) >/dev/null 2>&1
@@ -4523,10 +4534,20 @@ grep -v 'linguist-generated=true' "$PRR/.gitattributes" > "$PRW/ga" && cp "$PRW/
 ( cd "$PRR" && git add -A && git commit -qm "strip" ) >/dev/null 2>&1
 ( cd "$PRR" && sh "$BOOT" . --update ) > "$PRW/u1.txt" 2>&1; ( cd "$PRR" && sh "$BOOT" . --update ) > "$PRW/u2.txt" 2>&1
 if grep -q '^  merged (additive): .*\.gitattributes' "$PRW/u1.txt" && grep -q '+ \.claude/agents/pr-reader\.md' "$PRW/u1.txt" && [ -f "$PRR/.claude/agents/pr-reader.md" ] \
-    && ! grep -q '^  merged (additive): .*\.gitattributes' "$PRW/u2.txt" && [ "$(grep -c 'linguist-generated=true' "$PRR/.gitattributes")" = 4 ] \
+    && ! grep -q '^  merged (additive): .*\.gitattributes' "$PRW/u2.txt" && [ "$(grep -c 'linguist-generated=true' "$PRR/.gitattributes")" = 3 ] \
     && grep -q "team PR rules: none on file" "$PRW/u1.txt"; then
-  ok "an at-root --update appends the four linguist-generated lines once (merged (additive), then unchanged), restores pr-reader.md and prints the team-rule line"
+  ok "an at-root --update appends the three linguist-generated lines once (merged (additive), then unchanged), restores pr-reader.md and prints the team-rule line"
 else bad "at-root --update linguist lines or pr-reader wrong -- $(grep -n 'merged\|added\|pr-reader\|team PR' "$PRW/u1.txt" "$PRW/u2.txt") / $(grep -c 'linguist-generated=true' "$PRR/.gitattributes")"; fi
+# The retired docs/current/** line (v101 shipped it in our generated block): --update removes our copy and reports it,
+# and keeps the same line the operator wrote outside our block.
+{ printf '# mine: hand-marked\ndocs/current/** linguist-generated=true\n\n'; cat "$PRR/.gitattributes"; printf 'docs/current/** linguist-generated=true\n'; } > "$PRW/ga" \
+  && cp "$PRW/ga" "$PRR/.gitattributes" && ( cd "$PRR" && git add -A && git commit -qm "v101 line" ) >/dev/null 2>&1
+( cd "$PRR" && sh "$BOOT" . --update ) > "$PRW/u3.txt" 2>&1
+grep -qx '  removed: .gitattributes docs/current/\*\* linguist-generated=true (docs/current/ is hand-written now: a PR shows its edits and pr check counts them)' "$PRW/u3.txt" \
+  && [ "$(grep -cx 'docs/current/\*\* linguist-generated=true' "$PRR/.gitattributes")" = 1 ] && [ "$(sed -n 2p "$PRR/.gitattributes")" = 'docs/current/** linguist-generated=true' ] \
+  && [ "$(tail -1 "$PRR/.gitattributes")" = 'docs/index.json linguist-generated=true' ] \
+  && ok "--update removes the retired docs/current/** linguist line from our block and reports it, keeping the operator's own copy" \
+  || bad "the retired docs/current/** line was not handled -- $(grep -n 'gitattributes' "$PRW/u3.txt") / $(grep -n 'docs/current' "$PRR/.gitattributes")"
 # (S10) nested banners: a bare host's team-rule line; a team-template host (a 4-heading template, a PR agent skill, .claude/skills
 # a symlink to .agents/skills) gets the conflict line, the resolved-path exclude lines and the note, with a clean status.
 newtmp PRH; for h in bare team; do mkdir -p "$PRH/$h" && ( cd "$PRH/$h" && git init -q . && git symbolic-ref HEAD refs/heads/main \
@@ -6742,6 +6763,23 @@ pl6=$( cd "$PLA" && env -u PYTHONDONTWRITEBYTECODE -u WORKFLOW_ROOT -u WORKFLOW_
   || bad "plugin path: with no workspace above (rc $pl5_rc) -- $pl5"
 [ "$(pl_sig)" = "$pl_s0" ] && ok "plugin path: nothing was written into the engine's own folder (no works/, no __pycache__)" \
   || bad "plugin path: the engine wrote into its own folder -- $(diff <(printf '%s\n' "$pl_s0") <(pl_sig) | tail -5 | tr '\n' ' ')"
+# The design-critic's harness, run as installed: its import lines, from the session's directory, bind every
+# engine name it calls (the split moved them out of workflow.py), at root and nested.
+critic_harness() { ( cd "$1" && PYTHONDONTWRITEBYTECODE=1 python3 - "$1/.claude/agents/design-critic.md" <<'PY'
+import re, sys
+block = re.search(r"```python\n(.*?)```", open(sys.argv[1]).read(), re.S).group(1).splitlines()
+ns = {}
+exec("\n".join(l for l in block[:3] if "import" in l), ns)
+w = ns["w"]
+missing = [n for n in ("design_root", "design_preview_server", "DesignBrowser", "design_preview_browser", "design_preview_click") if not hasattr(w, n)]
+assert not missing, missing
+w.design_root()
+PY
+) 2>&1; }
+sh "$BOOT" "$PLW/root" --at-root --name Root --summary root > "$PLW/root.txt" 2>&1 || bad "critic harness: the at-root install failed"
+ch_root=$(critic_harness "$PLW/root"); ch_root_rc=$?; ch_nest=$(critic_harness "$PLH"); ch_nest_rc=$?
+[ "$ch_root_rc$ch_nest_rc" = 00 ] && ok "the design-critic's harness binds design_root, design_preview_server, DesignBrowser, design_preview_browser and design_preview_click on a fresh install, at root and nested" \
+  || bad "the design-critic's harness does not bind its names (root rc $ch_root_rc, nested rc $ch_nest_rc) -- $(printf '%s\n' "$ch_root" | tail -1) / $(printf '%s\n' "$ch_nest" | tail -1)"
 
 # ---------------------------------------------------------------------------
 echo "== Test 28: close -- the close's fixed order against a stub gh: an uncleared required gate is refused first, writing nothing; pr record --url stores the draft's head, updatedAt and comment count and pr sync says whether the PR is unchanged since; a PR changed since its draft stops at the re-read; an unchanged one records the pass and stops at Ready, then walks to the landing step; a red check stops at the CI step; merged, it stops for the one commit, then reads close=done; zero GitHub writes =="

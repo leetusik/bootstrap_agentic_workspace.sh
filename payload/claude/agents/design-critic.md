@@ -102,7 +102,7 @@ The harness, run from the directory the session starts in (the engine is import-
 
 ```python
 import base64, os, sys, tempfile
-sys.path.insert(0, "workflow/scripts" if os.path.isfile("workflow/scripts/workflow.py") else "scripts"); import workflow as w
+sys.path.insert(0, "workflow/scripts" if os.path.isfile("workflow/scripts/workflow.py") else "scripts"); import workflow, wf_design as w  # the engine first: it binds the modules' seams
 project = w.design_root() / "jobs" / "<job>" / "canvas" / "project"
 server = w.design_preview_server(project, open("<runtime path>", "rb").read(), [])
 page = w.DesignBrowser(w.design_preview_browser(None), tempfile.mkdtemp())

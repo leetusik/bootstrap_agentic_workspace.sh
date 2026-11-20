@@ -21,6 +21,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -1458,16 +1459,23 @@ def _meter_slice_order(windows: "_MeterWindows"):
 # The hook follows the session (P35): `$CLAUDE_PROJECT_DIR` stays at the main checkout after EnterWorktree, but
 # the hook's stdin `cwd` follows the session into the worktree. So the hook first walks up from that `cwd` to the
 # workspace that owns it, by the engine's state finder (`_walk_to_state`), and, when that is not this adapter's
-# workspace, re-runs that workspace's own adapter (or this one pointed at it, when this one's engine is not pinned
-# to its own workspace) with the same stdin and relays its output. The env var is the recursion guard; every
-# failure falls back to answering here.
+# workspace, re-runs the program that answers there with the same stdin and relays its output: that workspace's
+# own adapter; else its own engine (an older install, or a worktree cut before the update: no adapter folder), its
+# `compact-resume` when it has one, else its `next --card`; else this adapter pointed at it, when this one's
+# engine is not pinned to its own workspace. The env var is the recursion guard; every failure, and a cwd in no
+# workspace, falls back to answering here.
 HOOK_REDIRECT_ENV = "AGENTIC_HOOK_REDIRECTED"
-HOOK_REDIRECT_TIMEOUT = 12  # the hook's own timeout is 15 s
+HOOK_REDIRECT_TIMEOUT = 12  # the hook's own timeout is 15 s; the tries of one redirect share it
+ENGINE_REL = "scripts/workflow.py"  # a workspace's own engine, under its state folder
+HOOK_ENGINE_FALLBACK = ("next", "--card")  # an engine with no compact-resume: one whose hook is its adapter
 
 
-def _hook_owning_adapter(cwd: str):
-    """(adapter, run_dir, state) for the workspace that owns `cwd` (itself included), found by the state finder's
-    walk: its own installed adapter, else this one when its engine is not pinned to its own workspace -- or None."""
+def _hook_owning_program(cwd: str):
+    """(program, tries, run_dir, state) for the workspace that owns `cwd` (itself included), found by the state
+    finder's walk -- or None. `program` is that workspace's own adapter (tries: the subcommand); else its own
+    engine (tries: the subcommand, then `next --card`); else this adapter, when its engine is not pinned to its own
+    workspace (an installed engine reads only its own workspace: it cannot answer there). A try of None is the
+    hook's own subcommand."""
     start = Path(cwd).resolve()
     if not start.is_dir():
         return None
@@ -1475,19 +1483,21 @@ def _hook_owning_adapter(cwd: str):
     if found is None:
         return None
     state, run_dir = found
-    adapter = state / ADAPTER_REL
-    if not adapter.is_file():
-        if ENGINE.parent.parent == ROOT:  # an installed engine reads only its own workspace: it cannot answer there
-            return None
-        adapter = ADAPTER
-    return adapter, run_dir, state
+    if (state / ADAPTER_REL).is_file():
+        return state / ADAPTER_REL, (None,), run_dir, state
+    if (state / ENGINE_REL).is_file():
+        return state / ENGINE_REL, (None, HOOK_ENGINE_FALLBACK), run_dir, state
+    if ENGINE.parent.parent == ROOT:
+        return None
+    return ADAPTER, (None,), run_dir, state
 
 
 def _hook_stdin_or_redirect(subcommand: str):
-    """Read the hook's stdin once. Return its text for this adapter to handle, or None when the adapter of the
-    workspace that owns the hook's `cwd` is another copy and already answered (its stdout/stderr relayed
-    unchanged). Never raises: a missing or bad `cwd`, no adapter, this workspace, the guard set, a timeout, an
-    error or a non-zero exit all return the text, and the caller carries on as before."""
+    """Read the hook's stdin once. Return its text for this adapter to handle, or None when the program that
+    answers for the workspace owning the hook's `cwd` is another copy and already answered (its stdout/stderr
+    relayed unchanged; a fallback `next --card` under this hook's own first line). Never raises: a missing or bad
+    `cwd`, no workspace, this workspace, the guard set, a timeout, an error or a non-zero exit of every try all
+    return the text, and the caller carries on as before."""
     try:
         raw = sys.stdin.read()
     except Exception:  # noqa: BLE001 - the hook never fails
@@ -1499,15 +1509,22 @@ def _hook_stdin_or_redirect(subcommand: str):
         cwd = hook.get("cwd") if isinstance(hook, dict) else None
         if not isinstance(cwd, str) or not cwd.strip():
             return raw
-        found = _hook_owning_adapter(cwd)
-        if found is None or found[2].resolve() == ROOT.resolve():
+        found = _hook_owning_program(cwd)
+        if found is None or found[3].resolve() == ROOT.resolve():
             return raw
-        adapter, run_dir, state = found
-        proc = subprocess.run([sys.executable, str(adapter), subcommand], input=raw, capture_output=True, text=True,
-                              cwd=str(run_dir), env={**os.environ, HOOK_REDIRECT_ENV: "1", "WORKFLOW_ROOT": str(state)},
-                              timeout=HOOK_REDIRECT_TIMEOUT)
-        if proc.returncode != 0:
+        program, tries, run_dir, state = found
+        deadline = time.monotonic() + HOOK_REDIRECT_TIMEOUT
+        for args in tries:
+            proc = subprocess.run([sys.executable, str(program), *(args or (subcommand,))], input=raw,
+                                  capture_output=True, text=True, cwd=str(run_dir),
+                                  env={**os.environ, HOOK_REDIRECT_ENV: "1", "WORKFLOW_ROOT": str(state)},
+                                  timeout=max(deadline - time.monotonic(), 0.1))
+            if proc.returncode == 0:
+                break
+        else:
             return raw
+        if args:  # the fallback card: the first line compact-resume would have printed
+            sys.stdout.write("compaction=done source=compact\n")
         sys.stdout.write(proc.stdout)
         sys.stderr.write(proc.stderr)
         sys.stdout.flush()

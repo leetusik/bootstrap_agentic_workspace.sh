@@ -302,7 +302,15 @@ GITATTRIBUTES_MERGE_LINE = "works/events.jsonl merge=union"
 # The at-root workspace's machine-written state, marked generated (PR rule v1): GitHub folds it in a PR
 # diff and pr check's size count skips it. Line-merged like the events line, so --update brings it too.
 GITATTRIBUTES_GENERATED_LINES = tuple(f"{path} linguist-generated=true"
-                                      for path in ("works/**", "docs/versions/**", "docs/current/**", "docs/index.json"))
+                                      for path in ("works/**", "docs/versions/**", "docs/index.json"))
+# Lines we shipped there and retired, each with why. Every install mode removes one only as we wrote it and only
+# inside our generated block (the rules right under the comment carrying the phrase below, shipped or appended),
+# and reports it; the same line anywhere else is the operator's and is kept.
+GITATTRIBUTES_RETIRED_LINES = {
+    "docs/current/** linguist-generated=true":
+        "docs/current/ is hand-written now: a PR shows its edits and pr check counts them",
+}
+GITATTRIBUTES_OURS_MARK = "machine-written state is marked generated"
 GITATTRIBUTES_GENERATED_NOTE = (
     "\n# Added by the agentic workspace: its machine-written state is marked generated, so\n"
     "# GitHub folds it in a pull request's diff and the PR rule's size count (pr check)\n"
@@ -328,9 +336,27 @@ def _gitattributes_action() -> str:
     except (OSError, UnicodeDecodeError):
         return "unchanged"  # unreadable/binary -- never touch it
     have = {ln.strip() for ln in existing.splitlines()}
-    if GITATTRIBUTES_MERGE_LINE in have and all(line in have for line in GITATTRIBUTES_GENERATED_LINES):
+    if GITATTRIBUTES_MERGE_LINE in have and all(line in have for line in GITATTRIBUTES_GENERATED_LINES) \
+            and not _gitattributes_retired(existing):
         return "unchanged"
     return "merge"
+
+
+def _gitattributes_retired(existing: str) -> list:
+    """(row index, line) for each retired line of ours this .gitattributes still holds inside our generated block:
+    the comment carrying GITATTRIBUTES_OURS_MARK, the comment lines under it, then its rules up to a blank line."""
+    rows, found = existing.splitlines(), []
+    for i, row in enumerate(rows):
+        if not (row.lstrip().startswith("#") and GITATTRIBUTES_OURS_MARK in row.lower()):
+            continue
+        j = i + 1
+        while j < len(rows) and rows[j].lstrip().startswith("#"):
+            j += 1
+        while j < len(rows) and rows[j].strip() and not rows[j].lstrip().startswith("#"):
+            if rows[j].strip() in GITATTRIBUTES_RETIRED_LINES:
+                found.append((j, rows[j].strip()))
+            j += 1
+    return found
 
 
 def _nested_engine_cmd(text: str) -> str:
@@ -346,6 +372,9 @@ def _apply_gitattributes(text: str, action: str) -> None:
         _atomic_write(p, _nested_engine_cmd(text))
         return
     existing = p.read_text(encoding="utf-8")
+    retired = {at for at, _line in _gitattributes_retired(existing)}
+    if retired:
+        existing = "".join(row for at, row in enumerate(existing.splitlines(keepends=True)) if at not in retired)
     sep = "" if (not existing or existing.endswith("\n")) else "\n"
     have = {ln.strip() for ln in existing.splitlines()}
     add = ""
@@ -365,6 +394,9 @@ def emit_policy_files(ci: bool = True) -> None:
     but the CI file is the host's business and is never written there."""
     ci_exists = (ROOT / CI_WORKFLOW_PATH).exists()
     ga_action = _gitattributes_action()
+    if ga_action == "merge":
+        for _at, line in _gitattributes_retired((ROOT / GITATTRIBUTES_PATH).read_text(encoding="utf-8")):
+            SETTINGS_CHANGES["removed"].append(f"{SHOWN_PREFIX}{GITATTRIBUTES_PATH} {line} ({GITATTRIBUTES_RETIRED_LINES[line]})")
     if not DRY_RUN:
         if ci and not ci_exists:
             _atomic_write(ROOT / CI_WORKFLOW_PATH, PAYLOADS[CI_WORKFLOW_PATH])

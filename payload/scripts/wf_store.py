@@ -4022,7 +4022,7 @@ def _one_line(text) -> str:
 
 def cmd_next(args: argparse.Namespace) -> None:
     """Print this checkout's pointer. When the current phase is not done and its notebook is over
-    PHASE_MD_BUDGET, `notebook_over_budget=` (and up to 3 `notebook_move=` commands, the required form;
+    PHASE_MD_BUDGET, `notebook_over_budget=` (and up to 3 `notebook_move=` commands, the moves form;
     none, the advisory form) follows the pointer and wave lines, and in the WAITING block precedes its
     `After the operator approves` line: run the moves before the next dispatch. Silent under budget."""
     rebuild_index_and_state()
