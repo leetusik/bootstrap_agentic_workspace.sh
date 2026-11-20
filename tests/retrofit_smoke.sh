@@ -215,7 +215,7 @@ assert "## The explain route" in create_phase and "## Explain" in create_phase
 for ref in ("explain-decomposition.md", "explain-chapter.md", "explain-review.md"):
     assert f".claude/skills/do-next-slice/reference/{ref}" in SHARED_SKILL_FILES, ref
 POINTER = "not written — run /knowledge:explain P<N> for a document, or ask it for a book"
-for rel in ("claude/agents/slice-executor.md",
+for rel in ("claude/skills/do-whole-phase/playbooks/review.md",
             "claude/skills/review-phase/SKILL.md", "claude/skills/do-whole-phase/reference/review.md",
             "claude/skills/do-next-slice/reference/review.md"):
     assert POINTER in (root / "payload" / rel).read_text(encoding="utf-8"), rel
@@ -249,7 +249,7 @@ assert "**`model: sonnet`** when span 1 ran on an Opus model" in _chapter and "`
 assert "answers-<key>.md" in _chapter and "scratch: works/" not in _chapter
 _decomp = (root / "payload/claude/skills/do-whole-phase/reference/explain-decomposition.md").read_text(encoding="utf-8")
 assert "installed_plugins.json" in _decomp and "pages/.gitignore" in _decomp and "**0.10.0 or later**" in _decomp
-assert "and dispatch no agent, `Explore` included" in (root / "payload/claude/agents/slice-executor.md").read_text(encoding="utf-8")
+assert "and dispatch no agent, `Explore` included" in (root / "payload/claude/skills/do-whole-phase/playbooks/explain.md").read_text(encoding="utf-8")
 # Nothing that ships keeps the retired research machinery.
 for p in [*(root / "payload").rglob("*.md"), root / "installer/payloads/doc_bodies/operations.md", root / "README.en.md"]:
     _t = p.read_text(encoding="utf-8")
@@ -257,7 +257,7 @@ for p in [*(root / "payload").rglob("*.md"), root / "installer/payloads/doc_bodi
                  "knowledge:verifier", "no-research", "D0b: the preflight", "STOPPED: evidence gate",
                  "*Explain: permissions and the search cap*"):
         assert gone not in _t, (str(p), gone)
-assert "**The explain carve-out" in (root / "payload/claude/agents/slice-executor.md").read_text(encoding="utf-8")
+assert "**The explain carve-out" in (root / "payload/claude/skills/do-whole-phase/playbooks/explain.md").read_text(encoding="utf-8")
 assert not (root / "payload/claude/agents/explain-critic.md").exists()
 # v86 (P-mtrt.S3): every explain unit is a phase, created AND run after one confirmation. The route
 # refuses from a phase worktree and for a book or chapter in a public project, keeps a literal `unit`
@@ -573,7 +573,7 @@ for rel in ("claude/skills/do-whole-phase/reference/decomposition.md", "claude/s
     assert _cut in _t and "each slice's one job with its critique level" in _t, rel
     for gone in ("one job per surface", "a wave of about 3–4 jobs", "each slice's jobs with their critique level"):
         assert gone not in _t, (rel, gone)
-_t = (root / "payload/claude/agents/slice-executor.md").read_text(encoding="utf-8")
+_t = (root / "payload/claude/skills/do-whole-phase/playbooks/decompose.md").read_text(encoding="utf-8")
 assert "each co-work slice's one job with its critique level" in _t and "co-work slice's jobs with their critique levels" not in _t
 for rel in ("claude/skills/do-whole-phase/SKILL.md", "claude/skills/do-next-slice/SKILL.md"):
     _t = (root / "payload" / rel).read_text(encoding="utf-8")
@@ -848,122 +848,70 @@ assert "- [ ] <surface>: <one observable behaviour> (P<N>)" in qa
 assert "phase-scope <P>" in qa and "re-runs the whole list" not in qa
 
 # v66: one executor, slice-executor, replaces the mid/high pair; its frontmatter carries the mid row.
+# lighter-rules: the executor is a card of at most 3,072 B (the floor, the playbook map, done means
+# proven, the notebook, the verdict); how each kind of work goes lives in one playbook per kind under
+# .claude/skills/do-whole-phase/playbooks/ (1-3 KB each), opened only for that kind. The engine reads
+# the card's frontmatter (sync-agents, executor-route), so that stays pinned.
 assert not (root / "payload/claude/agents/slice-executor-mid.md").exists()
 assert not (root / "payload/claude/agents/slice-executor-high.md").exists()
-for tier in ("slice-executor",):
-    body = (root / "payload/claude/agents/slice-executor.md").read_text()
-    fm = body.split("---\n", 2)[1]
-    assert "name: slice-executor\n" in fm and "model: opus\n" in fm and "effort: medium\n" in fm, fm
-    assert "commit or push (no `git commit`, `git add`, `git push`)" in body, tier
-    for gone in ("Codex", ".agents/", ".codex/", "AGENTS.md"):
-        assert gone not in body, (tier, gone)
-    # v32: the design gate (D2), the acceptance-gate stages, and the walkthrough
-    # return field are word-for-word in BOTH tiers, not high only.
-    # v47 (P26.S4): who drafts, and what the mockup span reads.
-    # P36.S6: the drafter drafts a job's canvas, the critic judges it, and the mockup span has no
-    # Artifact access (the orchestrator alone publishes).
-    for required in ("the design subagent (`design-drafter`) drafts a job's canvas, the critic (`design-critic`) judges it, and the operator decides",
-                     "the one span of that slice dispatched to a slice executor",
-                     "its record on disk", "no `Artifact` access", "in addition to its working canvas"):
-        assert required in body, (tier, required)
-    # P36.S1: the retired claude-design tool and DesignSync are gone from both executor bodies.
-    for gone in ("DesignSync", "claude-design", "never dispatched, because you have no", "landed record",
-                 "a round's cards", "the cards show"):
-        assert gone not in body, (tier, gone)
-    assert "return `needs_operator`" in body, tier
-    # v34: the mockup span is dispatchable and its rules ship in BOTH tiers.
-    for required in (
-        "The mockup span of a `co-work` (design) slice",
-        "Stubbed data, no backing work",
-        "exempt from the full functional sweep",
-        "*product* implementation work",
-        "`build-after`", "`design-only`", "`paired`",
-        # v42: the mockup span exists only on request, and a branch review records
-        # its two gate sections as tagged notes.
-        "exists only when the operator asked for a mockup", "(gate section — written at merge)",
-    ):
-        assert required in body, (tier, required)
-    # v36: the research kind is findings-only, lands its findings in the notebook,
-    # and reaches this tier by kind -- so BOTH bodies carry it word for word.
-    for required in (
-        "**Research slice (`kind: research`):** findings-only — **write no product code.**",
-        "in `phase.md`, where the next slice will actually read them",
-        "write **product** code on a `research` slice",
-        "`decomposition`, `research` and `review` slice",
-        "that is `DECOMP2`'s second origin",
-        # v44: two rules moved here from the contract -- the docs slice's
-        # doc-new-version carve-out (OQ1, operator-approved) and the fractional
-        # `--order` / `depends_on` facts a DECOMP executor needs (v71: the dependency binds).
-        "**The `docs` slice's carve-out:**",
-        "a fractional `--order` (e.g. `4.5`) inserts a slice between two neighbors",
-        # P42 (v71): a wave executor's rules, and `--depends-on` declares and binds.
-        "## In a wave (your `plan.md` carries a `## Wave` section)", "**declares and binds**",
-    ):
-        assert required in body, (tier, required)
-    assert "`depends_on` is advisory" not in body, (tier, "advisory depends_on")
-    # v36: a named real-browser instrument in the implementation bullet, the mockup span and the
-    # review's gate stage 2. lighter-rules: playwright-cli, the agent's own browser, never a blocker.
-    for required in (
-        "Drive that browser with **`playwright-cli`** from Bash",
-        "in place of a pre-written assertion suite",
-        "The browser is never a blocker: install it yourself when it is missing (`npm install -g @playwright/cli@0.1.25`",
-        "Only what you cannot have (a credential, a sign-in, a paid account) is `needs_operator`.",
-        "Name in `result.md` which instrument you used",
-        "driven with the same instrument (`playwright-cli`)",
-        "driving it with the same instrument (`playwright-cli`)",
-    ):
-        assert required in body, (tier, required)
-    for gone in ("MCP surface first", "scripted Playwright-style automation",
-                 # P-zqhy: no Aside procedure survives in the executor.
-                 "Aside", "aside repl", "aside mcp", "aside account", "--account <id>", "attachBrowserTab"):
-        assert gone not in body, (tier, gone)
-    assert "On a gated phase (`acceptance.required` is `true` — and only then) also run the gate stages" in body, tier
-    assert "- `walkthrough`:" in body, tier
-    # v35: reads are just-in-time, result.md leads with the verdict block, and the
-    # phase notebook is EDITED under budget -- except the engine-generated block.
-    for required in (
-        "just in time, never the whole tree",
-        "**only when you are unsure what was asked**",
-        "never the whole doc set, and never `docs/index.json`",
-        "**structured verdict block first**",
-        # The entry-level notebook: phase.md is written one entry at a time through phase-section only, never
-        # by Read/Edit/Write; a decomposition's breakdown lives in topics/breakdown.md behind a gist line.
-        "**Write** the phase's `phase.md` one entry at a time, through `phase-section` only: **never `Read`, `Edit` or `Write` `phase.md`**.",
-        "A decomposition slice writes its breakdown to `topics/breakdown.md`, never into `phase.md`",
-        "Executors never act on `notebook_over_budget=`",
-        "the soft budget is **40 KB**", "phase-section <P> <name> --replace|--append", "`topics/<slug>.md`",
-        "never edit inside the `<!-- slices:begin -->`",
-        "edit inside `phase.md`'s generated `## Slices` block",
-        "Cross-check the notebook against the logs",
-        # v41: the boundary rule and its phase-scope input are in BOTH bodies word for word.
-        "The review reviews the boundary of the phase, not the whole system",
-        "phase-scope <P>", "inside the phase's boundary",
-    ):
-        assert required in body, (tier, required)
-    for gone in ("not just this phase's lines", "re-run the **whole**", "goes here too",
-                 "read the section first so you send it back whole"):
-        assert gone not in body, (tier, gone)
-    never = [ln for ln in body.splitlines() if "run workflow state-transition commands" in ln]
-    assert len(never) == 1 and "`accept-gate`" in never[0] and "`defer-job`" in never[0], tier
-    # v46: mid is the default row, escalates on named reasons (never for real code
-    # or several files); v66: every verdict names its route (the `tier` field retired).
-    for required in ("the default row, where most slices land", "**two strikes**",
-                     "- `route`: `high` | `research` | `mid` | `screen` —", "work the mid row got wrong never goes back to it",
-                     "## Escalate early instead of thrashing (mid and screen rows only)",
-                     "The `high` and `research` rows never return `escalate`."):
-        assert required in body, (tier, required)
-    for gone in ("the light tier", "essentially all code writing", "- `tier`", "slice-executor-mid", "slice-executor-high",
-                 "mid tier", "high tier", "top tier", "capability tiers"):
-        assert gone not in body, (tier, gone)
-    # lighter-rules: the browser is playwright-cli over Bash, so the executor carries no Chrome tools.
-    assert "tools: Read, Edit, Write, Glob, Grep, Bash, WebSearch, WebFetch, Agent\n" in fm, tier
-    # v53 (P32.S3): the Agent tool is for read-only Explore lookups only; the verdict block
-    # records model and effort beside tier.
-    for required in ("## Delegate reads, never writes", "subagent_type: Explore",
-                     "- `model`:", "- `effort`:", "delegate nothing",
-                     "never to spawn another executor"):
-        assert required in body, (tier, required)
-    assert "never an executor tier" not in body, tier
+body = (root / "payload/claude/agents/slice-executor.md").read_text(encoding="utf-8")
+fm = body.split("---\n", 2)[1]
+assert "name: slice-executor\n" in fm and "model: opus\n" in fm and "effort: medium\n" in fm, fm
+assert "permissionMode: bypassPermissions\n" in fm, fm
+# The browser is playwright-cli over Bash, so the executor carries no Chrome tools; Agent stays (the review's code reader).
+assert "tools: Read, Edit, Write, Glob, Grep, Bash, WebSearch, WebFetch, Agent\n" in fm, fm
+assert len(body.encode("utf-8")) <= 3072, f"the executor card is {len(body.encode('utf-8'))} B, over its 3,072 B cap"
+for gone in ("Codex", ".agents/", ".codex/", "AGENTS.md", "## Doc impact", "docs phase", "slice-executor-mid", "- `tier`"):
+    assert gone not in body, gone
+for required in ("The contract's four invariants hold", "You never commit or push",
+                 "`done` | `escalate` | `needs_operator`", "`blocked`", "- `route`, `model`, `effort`:",
+                 "Only the mid and screen rows escalate", "Stop the servers, containers and browsers you started",
+                 "`playwright-cli`", "leave it when the slice needs to", "`## Wave`", "`phase-section`"):
+    assert required in body, required
+# Every playbook the card's map names exists and is 1-3 KB, every kind of the engine's closed set has
+# one, and no playbook sits unnamed; the folder is inside a skill, so it ships and is managed like one.
+_pb_dir = root / "payload/claude/skills/do-whole-phase/playbooks"
+_map = body.split("## Your playbook", 1)[1].split("\n## ", 1)[0]
+_named = sorted(set(re.findall(r"`([a-z][a-z-]*\.md)`", _map)) - {"plan.md", "intent.md"})
+for _n in _named:
+    assert (_pb_dir / _n).is_file(), f"the card names a missing playbook: {_n}"
+    assert 1024 <= len((_pb_dir / _n).read_bytes()) <= 3072, (_n, len((_pb_dir / _n).read_bytes()))
+assert sorted(p.name for p in _pb_dir.glob("*.md")) == _named, ("a playbook the card never names", _named)
+_kinds = re.search(r"^SLICE_KINDS = \{(.*)\}$", (root / "payload/scripts/workflow.py").read_text(encoding="utf-8"), re.M).group(1)
+for _k in re.findall(r'"([a-z-]+)"', _kinds):
+    assert re.search(r"(?<![\w-])" + re.escape(_k) + r"(?![\w-])", _map), f"kind {_k} has no playbook in the card's map"
+assert (root / "payload/claude/skills/design-cowork/reference/mockup.md").is_file()
+_pb = {p.stem: p.read_text(encoding="utf-8") for p in _pb_dir.glob("*.md")}
+for _stem, _required in (
+    ("feature", ("you saw fail first", "`playwright-cli`", "`doc-new-version`")),
+    ("fix", ("**problem class**", "Every case of the class")),
+    ("investigation", ("**write no product code.**", "**where the next slice reads them**", "`DECOMP2`")),
+    ("review", ("`phase-scope <P>`", "`subagent_type: code-reader`", "never the plan, a result or the notebook",
+                "in the same span", "**Carve-out.** Never edit source.")),
+    ("verify", ("`npm install -g @playwright/cli@0.1.25`", "`playwright-cli install-browser chrome-for-testing`",
+                "Only what you cannot have (a credential, a sign-in, a paid account) is `needs_operator`.", "Stop what you start")),
+    ("decompose", ("**Finish line first:**", "no QA slice by default", "`new-slice", "parallel-plan <P>", "`spends money: no`",
+                   "each co-work slice's one job with its critique level", "A fractional `--order`")),
+    ("wave", ("**Write no `phase.md`.**", "**Run no engine command that writes**", "`deferred: whole-tree`")),
+    ("cycle", ("binds **absolutely**", "`need_scope: spend`", "`item_verdict: fail`", "never repeat a filing")),
+    ("explain", ("**The explain carve-out.**", "and dispatch no agent, `Explore` included")),
+):
+    for _r in _required:
+        assert _r in _pb[_stem], (_stem, _r)
+# Nothing but the six shipped agents sits in payload/claude/agents/ (every .md there becomes an agent).
+assert sorted(p.name for p in (root / "payload/claude/agents").iterdir()) == sorted(
+    k.rsplit("/", 1)[1] for k in collect_live_payloads() if k.startswith(".claude/agents/")), "a non-agent file in payload/claude/agents/"
+# The readers are cards: the code reader stays blind, reproduces first, states problems never fixes, and
+# is dispatched by the review's executor; the pr-reader runs on request only.
+_cr = (root / "payload/claude/agents/code-reader.md").read_text(encoding="utf-8")
+assert len(_cr.encode("utf-8")) <= 3072, len(_cr.encode("utf-8"))
+for _r in ("**Blind by design.**", "**Reproduce before you report.**", "**State a problem and its effect, never a fix.**",
+           "**One findings file**", "Dispatched once per phase by the review's executor"):
+    assert _r in _cr, _r
+_prr = (root / "payload/claude/agents/pr-reader.md").read_text(encoding="utf-8")
+assert len(_prr.encode("utf-8")) <= 2048, len(_prr.encode("utf-8"))
+assert "run on request only: when the operator asks, or for a team repo with PR rules" in _prr
+assert "You run on request only" in _prr and "never a fix" in _prr
 
 # lighter-rules: no shipped agent carries the Claude in Chrome tools (the browser is playwright-cli
 # over Bash), and the shipped sources name Claude in Chrome exactly once: the line saying it is used
@@ -1310,6 +1258,12 @@ skill_tree_ok "$F/.claude/skills" exact \
   && ok "fresh install is Codex-free (no AGENTS.md, no .agents/, no .codex/)" || bad "fresh install still ships Codex machinery"
 [ -f "$F/.claude/agents/slice-executor.md" ] && [ ! -e "$F/.claude/agents/slice-executor-mid.md" ] && [ ! -e "$F/.claude/agents/slice-executor-high.md" ] \
   && ok "fresh install ships the one slice-executor (v66), not the retired mid/high pair" || bad "fresh install: slice-executor.md missing or the retired pair present"
+# lighter-rules: the executor's kind playbooks ship inside the do-whole-phase skill (never under .claude/agents/,
+# where every .md becomes an agent), and .claude/agents/ holds exactly the six shipped agents.
+[ -f "$F/.claude/skills/do-whole-phase/playbooks/feature.md" ] && [ -f "$F/.claude/skills/do-whole-phase/playbooks/review.md" ] \
+  && [ "$(cd "$F/.claude/agents" && LC_ALL=C ls | tr '\n' ' ')" = "Explore.md code-reader.md design-critic.md design-drafter.md pr-reader.md slice-executor.md " ] \
+  && ok "fresh install ships the kind playbooks under .claude/skills/do-whole-phase/playbooks/ and only the six agents in .claude/agents/" \
+  || bad "fresh install: playbooks missing, or a file other than the six agents in .claude/agents/ ($(ls "$F/.claude/agents" | tr '\n' ' '))"
 grep -q '^model: opus$' "$F/.claude/agents/slice-executor.md" && grep -q '^effort: medium$' "$F/.claude/agents/slice-executor.md" \
   && grep -q '^name: slice-executor$' "$F/.claude/agents/slice-executor.md" \
   && grep -q '^model: fable$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: high$' "$F/.claude/agents/design-drafter.md" \
@@ -1940,7 +1894,7 @@ printf '%s\n' "$mt_out" | grep -qE '^note=output_floor spans=1/3 \(33%\) main=0/
   && ok "dispatch-summary flags a span request that never logged a final usage: the note= count and the ≥ floor on that group only" || bad "dispatch-summary floor note/mark wrong: $mt_out"
 # v66: a DECOMP estimates time, not session-$, and writes a `spends money:` line per slice; the [means] header says so.
 grep -q 'spends money:' "$SRC/claude/skills/do-whole-phase/reference/decomposition.md" && grep -q 'spends money:' "$SRC/claude/skills/do-next-slice/reference/decomposition.md" \
-  && grep -q 'spends money:' "$SRC/claude/agents/slice-executor.md" && ! grep -q '\$ per span' "$SRC/claude/agents/slice-executor.md" \
+  && grep -q 'spends money:' "$SRC/claude/skills/do-whole-phase/playbooks/decompose.md" && ! grep -q '\$ per span' "$SRC/claude/skills/do-whole-phase/playbooks/decompose.md" \
   && grep -q 'a DECOMP estimates time from these' "$SRC/scripts/workflow.py" \
   && ok "a DECOMP estimates time only and writes a per-slice spends-money line (both references, the executor, the [means] header)" || bad "the DECOMP time-only / spends-money wording is missing or a session-\$ estimate remains"
 # v66: one slice-executor runs every slice row, so the meter reads its route from the kind and the model
@@ -4958,7 +4912,7 @@ checks = [
     # P52 F4: the reopen names both reporters everywhere it ships (help, docstring, re-review, pr core, review.md, READMEs).
     ([L["scripts/workflow.py"]], ["(a change request after the phase was done, the team's or the operator's)", 'help="whose change request it is and what it asks: \\"team-reported: <what>\\" or \\"operator-reported: <what>\\" (recorded as the review note'],
      ["a team asked for changes after the phase was done", "what the team asked for:", "a team's new change request becomes a new phase", "# A team asks for changes after the phase is done"]),
-    ([(root / "payload/claude/agents/slice-executor.md").read_text()], ["(its review note reads `team-reported: …` or `operator-reported: …`): the request is the claims to verify"],
+    ([(root / "payload/claude/skills/do-whole-phase/playbooks/review.md").read_text()], ["(its review note reads `team-reported: …` or `operator-reported: …`): the request is the claims to verify"],
      ["(its review note reads `team-reported: …`): the team's review comments"]),
     ([sk("pr")], ["**Changes after the phase is done**: `reference/reopen.md`"], ["**Team changes after the phase is done**"]),
     (both("review.md"), ["or a change request after a reopen, the team's or the operator's)"], ["or a team's review after a reopen)"]),
@@ -4967,11 +4921,10 @@ checks = [
     ([sk("archive-phase")], ["**A phase with an open PR is held too:**"], []),
     ([sk("create-phase")], ["**One question rides on that confirmation, never a stop of its own:**"], []),
     ([flat(sk("parallel-phase"))], ["### A reopened phase — a change request on its open PR", "`--note \"operator-reported: <what>\"`", "Then `pr-sync <P>` there (the default branch's record is stale)"], ["### A reopened phase — a team's changes on its open PR"]),
-    ([(root / "payload/claude/agents/slice-executor.md").read_text()], ["plus `pr-sync`, `pr-team --record` and `reopen-phase`"], []),
     (both("decomposition.md"), ["--base <that branch>"], []),
     (both("decomposition.md"), ["**Record the phase's PR branches at the same boundary (PR rule v1).**", "**Size never splits a phase:**"], []),
     ([sk("create-phase")], ["`Branches:` line", "Never split a phase for size"], push_stop),
-    ([(root / "payload/claude/agents/slice-executor.md").read_text()], ["- `pr_bodies`:", "`pr-branch`, `pr-record` and `pr-rules-decide --rule`"], push_stop),
+    ([(root / "payload/claude/skills/do-whole-phase/playbooks/review.md").read_text()], ["`pr_bodies`", "Never run `review-phase`, `accept-gate` or `defer-job`, and never push."], push_stop),
     ([flat(sk("parallel-phase"))], ["This skill carries no second PR procedure."], ["1. **Push the branch.**", "**Open the PR.**"] + push_stop),
     ([sk("update-workspace")], ["the phase's draft PR opens when the review passes and closes on the operator's `accept` (`pr` skill: Ready, then a solo repo's merge by its own landing custom, never a team's); merging it on GitHub is the remote variant"], ["push → PR → CI is the remote variant"] + push_stop),
     ([sk("pr")], ["## Open the drafts, when the review passes", "opened as drafts when the review passes, closed on the operator's accept.\"", "`git push -u origin <b>`, never `--force`."], push_stop),
