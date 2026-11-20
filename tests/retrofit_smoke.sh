@@ -7019,6 +7019,111 @@ kill "$WC_PID" 2>/dev/null; wait "$WC_PID" 2>/dev/null
 echo "commit-record test runtime: $(( $(date +%s) - wc_t0 ))s"
 
 # ---------------------------------------------------------------------------
+echo "== Test 26: the core flow -- a toy phase through the verbs that stay: phase and slice lifecycle, a section read and append, a typed stop that halts next and releases, the pass refused while the gate is required and uncleared, --waive needing --note, pr-branch refusing a dirty switch, validate exiting 1 on a broken slice.json, the pass and the archive =="
+# The pin a command rename must keep green: each verb is called only through its wrapper below, so a rename
+# touches one line here. A fresh at-root install in its own git repo; no other test's state is read.
+newtmp CFT; CW="$CFT/ws"
+sh "$BOOT" "$CW" --at-root --name "Core" --summary "core" > "$CFT/install.txt" 2>&1 || bad "core flow: the fresh install failed"
+cfg() { git -C "$CW" -c user.email=smoke@example.invalid -c user.name=smoke "$@"; }
+wf() { ( cd "$CW" && python3 scripts/workflow.py "$@" 2>&1 ); }
+wf_next() { wf next; }
+wf_new_phase() { wf new-phase "$@"; }
+wf_new_slice() { wf new-slice "$@"; }
+wf_slice_start() { wf start-slice "$1"; }
+wf_slice_finish() { wf finish-slice "$1" --outcome "$2"; }
+wf_slice_status() { wf set-slice-status "$@"; }
+wf_section() { wf phase-section "$@"; }
+wf_gate_require() { wf accept-gate "$1" --require; }
+wf_gate_waive() { wf accept-gate "$1" --waive "${@:2}"; }
+wf_gate_open() { wf accept-gate "$1" --open --walkthrough "$2"; }
+wf_gate_clear() { wf accept-gate "$1" --clear --note "$2"; }
+wf_review_pass() { wf review-phase "$1" --verdict pass; }
+wf_pr_branch() { wf pr-branch "$1" --name "$2"; }
+wf_check() { wf validate; }
+wf_archive() { wf archive-phase "$1"; }
+cf_status() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$CW/works/phases/active/$1"; }
+{ cfg init -q . && cfg symbolic-ref HEAD refs/heads/main && printf 'a\n' > "$CW/app.txt" && cfg add -A && cfg commit -qm base; } >/dev/null 2>&1 \
+  || bad "core flow: the base commit failed"
+# (1) the phase and slice lifecycle: a phase is made with DECOMP and REVIEW, a slice is made, started and finished with its outcome.
+c1=$(wf_new_phase --phase P1 --name "Core" --objective "the core flow"); c1_rc=$?
+c2=$(wf_slice_finish P1.DECOMP "planned"); c2_rc=$?
+c3=$(wf_new_slice --phase P1 --slice P1.S1 --name "probe" --kind implementation --risk low); c3_rc=$?
+c4=$(wf_slice_start P1.S1); c4_rc=$?; c4_st=$(cf_status P1/slices/P1.S1/slice.json)
+[ "$c1_rc$c2_rc$c3_rc$c4_rc" = 0000 ] && [ -d "$CW/works/phases/active/P1/slices/P1.DECOMP" ] && [ -d "$CW/works/phases/active/P1/slices/P1.REVIEW" ] \
+  && [ "$(cf_status P1/slices/P1.DECOMP/slice.json)" = done ] && [ "$c4_st" = in_progress ] \
+  && grep -q '| planned |' "$CW/works/phases/active/P1/phase.md" \
+  && ok "core flow: a new phase carries DECOMP and REVIEW; DECOMP finishes with its outcome in the ## Slices row; a new slice starts in_progress" \
+  || bad "core flow: phase and slice lifecycle broke (rc $c1_rc/$c2_rc/$c3_rc/$c4_rc, S1 $c4_st) -- $c1 / $c2 / $c3 / $c4"
+# (2) a section read and an append, one section at a time.
+c5=$(wf_section P1 Now); c5_rc=$?
+c6=$(printf -- '- core: a settled point\n' | wf_section P1 Decisions --append --file /dev/stdin); c6_rc=$?
+c7=$(wf_section P1 Decisions); c7_rc=$?
+[ "$c5_rc$c6_rc$c7_rc" = 000 ] && [ "$(printf '%s\n' "$c5" | head -1)" = '## Now' ] && ! printf '%s\n' "$c5" | grep -q '^## Decisions' \
+  && printf '%s\n' "$c7" | grep -qx -- '- core: a settled point' && grep -qx -- '- core: a settled point' "$CW/works/phases/active/P1/phase.md" \
+  && ok "core flow: phase-section reads one section (## Now alone) and appends an entry that the next read and phase.md both show" \
+  || bad "core flow: the section read or append broke (rc $c5_rc/$c6_rc/$c7_rc) -- $c5 / $c6 / $c7"
+# (3) a typed stop: half-typed is refused; typed, next prints WAITING ON OPERATOR and no dispatchable slice; leaving pending releases it.
+c8=$(wf_slice_status P1.S1 pending --stop-kind decision); c8_rc=$?; c8_st=$(cf_status P1/slices/P1.S1/slice.json)
+c9=$(wf_slice_status P1.S1 pending --stop-kind decision --on-words "the operator picks one"); c9_rc=$?
+c10=$(wf_next); c10_rc=$?
+c11=$(wf_slice_status P1.S1 in_progress); c11_rc=$?
+c12=$(wf_next)
+[ "$c8_rc" = 1 ] && [ "$c8_st" = in_progress ] && [ "$c9_rc$c10_rc$c11_rc" = 000 ] \
+  && printf '%s\n' "$c10" | grep -q '^WAITING ON OPERATOR: slice P1.S1 is pending' && printf '%s\n' "$c10" | grep -qx 'waiting_on_operator=P1.S1' \
+  && printf '%s\n' "$c10" | grep -qx 'stop_kind=decision' && printf '%s\n' "$c10" | grep -qx 'on_words=the operator picks one' \
+  && ! printf '%s\n' "$c10" | grep -q '^current_slice=' \
+  && ! printf '%s\n' "$c12" | grep -q 'WAITING ON OPERATOR' && printf '%s\n' "$c12" | grep -qx 'current_slice=P1.S1' \
+  && ok "core flow: a half-typed stop is refused unwritten; a typed pending stop makes next print WAITING ON OPERATOR with its kind and words and no slice, and in_progress releases it" \
+  || bad "core flow: the typed stop did not halt and release next (rc $c8_rc/$c9_rc/$c10_rc/$c11_rc) -- $c8 / $c10 / $c12"
+c13=$(wf_slice_finish P1.S1 "did the probe"); c13_rc=$?
+[ "$c13_rc" = 0 ] && [ "$(cf_status P1/slices/P1.S1/slice.json)" = done ] && grep -q '| did the probe |' "$CW/works/phases/active/P1/phase.md" \
+  && ok "core flow: finish-slice marks the slice done and lands its outcome in the ## Slices row" || bad "core flow: finishing P1.S1 broke (rc $c13_rc) -- $c13"
+# (4) the pass is refused while the gate is required and not cleared; (5) --waive without --note is refused.
+c14=$(wf_gate_require P1); c14_rc=$?
+c15=$(wf_slice_start P1.REVIEW); c16=$(wf_review_pass P1); c16_rc=$?
+c17=$(wf_gate_waive P1); c17_rc=$?
+pj_req=$(python3 -c 'import json,sys; a=json.load(open(sys.argv[1])).get("acceptance") or {}; print(a.get("required"), a.get("note"))' "$CW/works/phases/active/P1/phase.json")
+[ "$c14_rc" = 0 ] && [ "$c16_rc" = 1 ] && printf '%s\n' "$c16" | grep -q 'requires operator acceptance and the gate is not cleared' \
+  && [ "$(cf_status P1/phase.json)" != done ] \
+  && ok "core flow: review-phase --verdict pass is refused while the gate is required and uncleared, and the phase stays open" \
+  || bad "core flow: the pass was not refused behind the required gate (rc $c14_rc/$c16_rc, phase $(cf_status P1/phase.json)) -- $c14 / $c16"
+[ "$c17_rc" = 1 ] && printf '%s\n' "$c17" | grep -q -- '--waive requires --note' && [ "$pj_req" = "True None" ] \
+  && ok "core flow: accept-gate --waive without --note is refused and the gate stays required" \
+  || bad "core flow: --waive without --note was not refused (rc $c17_rc, acceptance $pj_req) -- $c17"
+# (6) pr-branch refuses a switch that would carry uncommitted tracked changes: the branch and phase.json stay as they were.
+c18_h0=$(sha "$CW/works/phases/active/P1/phase.json"); printf 'b\n' >> "$CW/app.txt"
+c18=$(wf_pr_branch P1 feat/core); c18_rc=$?
+c18_br=$(cfg branch --show-current); c18_h1=$(sha "$CW/works/phases/active/P1/phase.json"); cfg checkout -q -- app.txt
+[ "$c18_rc" = 1 ] && printf '%s\n' "$c18" | grep -q 'uncommitted tracked changes a switch would carry onto feat/core: app.txt' \
+  && [ "$c18_br" = main ] && [ "$c18_h0" = "$c18_h1" ] && ! cfg rev-parse -q --verify refs/heads/feat/core >/dev/null \
+  && ok "core flow: pr-branch refuses a dirty tracked tree, cutting no branch and leaving phase.json byte-identical" \
+  || bad "core flow: pr-branch did not refuse the dirty switch (rc $c18_rc, on $c18_br) -- $c18"
+# (7) validate exits 1 on a broken slice.json, and 0 again once it is restored.
+c19_sj="$CW/works/phases/active/P1/slices/P1.S1/slice.json"; cp "$c19_sj" "$CFT/slice.json.keep"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["status"]="no-such-status"; json.dump(d, open(sys.argv[1], "w"))' "$c19_sj"
+c19=$(wf_check); c19_rc=$?
+cp "$CFT/slice.json.keep" "$c19_sj"; c20=$(wf_check); c20_rc=$?
+[ "$c19_rc" = 1 ] && printf '%s\n' "$c19" | grep -q '^Workflow validation failed' && printf '%s\n' "$c19" | grep -q 'no-such-status' \
+  && [ "$c20_rc" = 0 ] && printf '%s\n' "$c20" | grep -q '^Workflow validation passed' \
+  && ok "core flow: validate exits 1 naming a slice.json with an unknown status, and passes once it is restored" \
+  || bad "core flow: validate did not catch the broken slice.json (rc $c19_rc, then $c20_rc) -- $(printf '%s\n' "$c19" | tail -3)"
+# (8) the pass after the gate is opened and cleared (a waive with its note passes a second phase), then the archive.
+c21=$(wf_gate_open P1 "walk the toy"); c21_rc=$?; c22=$(wf_next)
+c23=$(wf_gate_clear P1 "walked it"); c23_rc=$?
+c24=$(wf_slice_finish P1.REVIEW "reviewed"); c25=$(wf_review_pass P1); c25_rc=$?; c25_st=$(cf_status P1/phase.json)
+c26=$(wf_archive P1); c26_rc=$?
+[ "$c21_rc$c23_rc$c25_rc$c26_rc" = 0000 ] && printf '%s\n' "$c22" | grep -q '^WAITING ON OPERATOR: phase P1 is pending' \
+  && [ "$c25_st" = done ] && [ ! -d "$CW/works/phases/active/P1" ] && ls -d "$CW"/works/phases/archived/*_P1_* >/dev/null 2>&1 \
+  && ok "core flow: an open gate halts next; cleared, the pass sets the phase done and archive-phase moves it to archived/" \
+  || bad "core flow: the cleared pass or the archive broke (rc $c21_rc/$c23_rc/$c25_rc/$c26_rc, phase $c25_st) -- $c22 / $c25 / $c26"
+c27=$( { wf_new_phase --phase P2 --name "Waived" --objective "a waived pass" && wf_slice_finish P2.DECOMP "planned" \
+  && wf_gate_waive P2 --note "nothing the operator can see" && wf_slice_start P2.REVIEW && wf_slice_finish P2.REVIEW "reviewed" && wf_review_pass P2; } 2>&1 ); c27_rc=$?
+c28=$(wf_check); c28_rc=$?
+[ "$c27_rc" = 0 ] && [ "$(cf_status P2/phase.json)" = done ] && [ "$c28_rc" = 0 ] \
+  && ok "core flow: a gate waived with its note passes the second phase, and the workspace validates after the archive" \
+  || bad "core flow: the waived pass or the final validate broke (rc $c27_rc/$c28_rc) -- $(printf '%s\n' "$c27" | tail -3) / $c28"
+
+# ---------------------------------------------------------------------------
 echo
 if [ "$FAILS" -eq 0 ]; then
   echo "ALL RETROFIT SMOKE TESTS PASSED"
