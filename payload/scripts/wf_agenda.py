@@ -986,10 +986,10 @@ _AGENDA_CUTS = {}  # stream -> _agenda_stream_cut's answer, found once per comma
 
 def _agenda_stream_cut(stream: str) -> dict:
     """The cut of the phase stream `stream` (P66 F6), from this branch's own history only: the commit that stamped
-    it, which the branch starts from (`parallel-start` / `phase reopen` commit the stamp on the default branch and
+    it, which the branch starts from (`worktree start` / `phase reopen` commit the stamp on the default branch and
     cut the branch from that commit). It is the newest commit on HEAD's first-parent line whose copy of the
     stream's phase carries `execution.branch == stream` while its first parent's copy does not (absent, unstamped,
-    or another branch), or carries it torn down (`worktree` null: `parallel-teardown` keeps the branch name, and a
+    or another branch), or carries it torn down (`worktree` null: v101's teardown kept the block, today's clears it; and a
     nested `phase reopen` may stamp the same name again, so the latest stamp is the cut). Found once per command.
     `{"sha", "chain", "parents", "active", "archived"}` -- `chain` is HEAD's first-parent line from HEAD down to
     the commit after the cut -- or `{"unknown": why}` when the cut cannot be found (no git, no commit, a shallow
@@ -1141,7 +1141,7 @@ def agenda_phase_elsewhere(phase_id: str, data: dict, stream="unset"):
     The limit (P66 F9): row 3 reads a merge COMMIT. A rebase, a fast-forward or a squash of another branch into the
     phase branch makes no merge commit, so a phase that came in that way reads as born here (row 4); every merge of
     another branch into a phase branch that the workspace's skills make or the engine prints is `git merge --no-ff`,
-    which always makes one (the loop worktree's catch-up and parallel-add-repo's advice since P66 F10). A phase first
+    which always makes one (the loop worktree's catch-up and worktree add-repo's advice since P66 F10). A phase first
     committed inside a merge commit (no merged parent holds it) reads as row 3 too, and its advice says so.
 
     A second limit (P66 F10): a phase born on a phase branch (row 4 there) carries no stamp, so once a landing carries

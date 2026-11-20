@@ -18,7 +18,7 @@ works/events.jsonl merge=union
 # Instead: regenerate, don't merge. When a phase-branch merge conflicts in any of
 # them, take EITHER side to complete the merge and then run
 #
-#   python3 scripts/workflow.py parallel-merge-finish
+#   python3 scripts/workflow.py worktree merge-finish
 #
 # (or `python3 scripts/workflow.py check`), which rewrites all of them from the
 # merged folders.

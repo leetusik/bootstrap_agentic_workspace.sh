@@ -30,8 +30,7 @@ You work this workspace for its operator. Four invariants always hold; everythin
 | A pending stop halts the run | `next` prints `WAITING ON OPERATOR`; `slice status` refuses a stop without `--stop-kind` and `--on-words` |
 | No force-push, no `rm -rf` | `settings.json` deny rules; its one allowed push deletes a merged branch |
 | A branch switch never carries the operator's edits | `pr branch` refuses uncommitted tracked changes |
-| A worktree phase merges at a quiet point | `parallel-gate` prints `GATE CLOSED` and exits 1 (the CI seed runs it) |
-| A linked checkout runs no streams | stream commands are refused in cloud mode |
+| A linked checkout runs no streams | `worktree` commands (bar `status`) and `phase reopen` are refused in cloud mode |
 | Workflow state stays valid | `check` exits 1 on an invalid record; the CI seed runs `check --no-rebuild` |
 | This file fits one screen | smoke: the contract is at most 4,096 B |
 | Real-browser checks run on `playwright-cli`, the agent's own headless browser. Missing: install it yourself, `npm install -g @playwright/cli@0.1.25`, then `playwright-cli install-browser chrome-for-testing` if it finds no browser. Run it plainly (no pipes or chains) outside repos: it writes `.playwright-cli/` there. Claude in Chrome is used only when the operator asks an agent to use their own browser. | `settings.json` allows `Bash(playwright-cli:*)` and that exact install; smoke pins this one line |

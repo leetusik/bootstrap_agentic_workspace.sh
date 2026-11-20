@@ -2,7 +2,7 @@
 name: read-code
 description: "Blind-read a product change made outside a phase before it is pushed: dispatch the code-reader on the range its step 1 resolves, or a named one, and report its findings for the operator to decide on."
 argument-hint: "[<base>..<head> | <ref>]"
-allowed-tools: Bash(python3 scripts/workflow.py executor-route:*), Bash(python3 scripts/workflow.py nested-repos), Bash(python3 scripts/workflow.py phase scope --pathspec), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git rev-parse:*), Bash(git symbolic-ref:*), Bash(git merge-base:*), Bash(git ls-files:*), Bash(git config --get:*), Read, Agent
+allowed-tools: Bash(python3 scripts/workflow.py executor-route:*), Bash(python3 scripts/workflow.py repo list), Bash(python3 scripts/workflow.py phase scope --pathspec), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git rev-parse:*), Bash(git symbolic-ref:*), Bash(git merge-base:*), Bash(git ls-files:*), Bash(git config --get:*), Read, Agent
 disable-model-invocation: true
 ---
 
@@ -10,7 +10,7 @@ disable-model-invocation: true
 
 A blind read of a change made **outside a phase** (a hotfix, a quick follow-up) before it is pushed. A phase's read comes from its review executor, never from here.
 
-1. **The range: one base commit.** In each repo with changes (`python3 scripts/workflow.py nested-repos` lists them on a multi-repo host), find the upstream (`git rev-parse -q --verify '@{u}'`) and the default branch (`git symbolic-ref -q --short refs/remotes/origin/HEAD`, else the first of `origin/main`, `main`, `origin/master`, `master` that resolves). Then:
+1. **The range: one base commit.** In each repo with changes (`python3 scripts/workflow.py repo list` lists them on a multi-repo host), find the upstream (`git rev-parse -q --verify '@{u}'`) and the default branch (`git symbolic-ref -q --short refs/remotes/origin/HEAD`, else the first of `origin/main`, `main`, `origin/master`, `master` that resolves). Then:
    - **no argument:** `bu = git merge-base <upstream> HEAD`, `bd = git merge-base <default> HEAD`; `base` is `bu` when `git merge-base --is-ancestor <bd> <bu>` exits 0, else `bd` (with one, that one). `head` is `working-tree`: the diff from `base` plus untracked, unignored files;
    - **`<base>..<head>`:** `base = git merge-base <base> <head>`, `head` its commit sha;
    - **one `<ref>`:** the default branch as base, `<ref>` as head.

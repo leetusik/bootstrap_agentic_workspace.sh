@@ -79,14 +79,14 @@ def parallel_start(args: argparse.Namespace) -> None:
         repos = nested_repos()
         if not repos:
             raise SystemExit("--repo and --repo-base are for a multi-repo host only; this nested install registers no repos (the host is the one repo, "
-                             f"and the pair is all there is; register repos with {WORKFLOW_CMD} nested-repos --add <path>) -- nothing was written")
+                             f"and the pair is all there is; register repos with {WORKFLOW_CMD} repo add <path>) -- nothing was written")
         set_repos = _parse_set_repo_args(repo_args, repo_base_args, repos)
     pdir = require_phase(args.phase)
     if NESTED is not None and host_branch is None and not explain_phase(pdir):
         raise SystemExit(NESTED_HOST_BRANCH_REQUIRED)  # v86: below require_phase, so an explain phase may go detached
     data = read_json(pdir / "phase.json")
     if data.get("status") != "planned":
-        raise SystemExit(f"phase {args.phase} is {data.get('status')!r}; a phase enters its worktree before it starts (parallel-start needs status 'planned') -- a phase already in flight finishes on this stream")
+        raise SystemExit(f"phase {args.phase} is {data.get('status')!r}; a phase enters its worktree before it starts (worktree start needs status 'planned') -- a phase already in flight finishes on this stream")
     if phase_pinned(data):
         raise SystemExit(f"phase {args.phase} carries v42's legacy pin to the default stream (execution.mode=default, written by v42's old skip command or phase new --on-main); it was pinned deliberately, so un-pin it by hand: delete the execution block from {shown(pdir)}/phase.json first")
     if data.get("execution") is not None:
@@ -95,7 +95,7 @@ def parallel_start(args: argparse.Namespace) -> None:
     phases = all_active_phases()
     stream = current_stream(phases)
     if stream:
-        raise SystemExit(f"this checkout is on parallel stream {stream}; run parallel-start from the default stream")
+        raise SystemExit(f"this checkout is on parallel stream {stream}; run worktree start from the default stream")
     busy = _git_operation_in_progress()
     if busy:
         raise SystemExit(f"a {busy} is in progress in this checkout; finish or abort it first -- the stamp commit must be an ordinary commit on the default branch")
@@ -146,7 +146,7 @@ def parallel_start(args: argparse.Namespace) -> None:
           f"(a phase not yet committed goes in whole); everything else dirty or staged stayed behind in this checkout, uncommitted")
     print(f"the worktree starts from that commit (HEAD); {WORKTREES_DIR}/ is excluded via the repo's .git/info/exclude")
     print(f"next: enter the worktree in this session (Claude Code: EnterWorktree with path={worktree}) or open a session there, run next, and drive the phase from that checkout")
-    print(f"this stream's pointer now skips {args.phase}; after the branch is merged back, run: {WORKFLOW_CMD} parallel-teardown {args.phase}")
+    print(f"this stream's pointer now skips {args.phase}; after the branch is merged back, run: {WORKFLOW_CMD} worktree teardown {args.phase}")
 
 
 def _resolve_host_base(host: Path, explicit):
@@ -183,11 +183,11 @@ def _resolve_host_base(host: Path, explicit):
 
 
 def _parse_set_repo_args(repo_args: list, base_args: list, repos: list) -> list:
-    """`parallel-start --repo <name>=<branch> ... --repo-base <name>=<ref> ...` (P40.S6, S2 §15) ->
+    """`worktree start --repo <name>=<branch> ... --repo-base <name>=<ref> ...` (P40.S6, S2 §15) ->
     `[(registry entry, branch, base ref or None)]` in `--repo` order. Refuses, nothing written: a
     malformed value (the branch is required: the engine never invents a name), a name the registry
     does not list, a duplicate `--repo` or `--repo-base`, a `--repo-base` naming no `--repo`."""
-    refused = "parallel-start: refused -- nothing was written"
+    refused = "worktree start: refused -- nothing was written"
     registry = {r["name"]: r for r in repos}
     wanted = {}
     for raw in repo_args:
@@ -195,7 +195,7 @@ def _parse_set_repo_args(repo_args: list, base_args: list, repos: list) -> list:
         name, value = name.strip(), value.strip()
         if not sep or not name or not value:
             raise SystemExit(f"{refused}: --repo {raw!r} needs the form <name>=<branch>; the branch is required -- name it by that repo's "
-                             f"convention ({WORKFLOW_CMD} nested-convention --repo <name>) and let the operator confirm it")
+                             f"convention ({WORKFLOW_CMD} repo convention --repo <name>) and let the operator confirm it")
         if name not in registry:
             raise SystemExit(f"{refused}: no registered repo is named {name} (registered: {', '.join(registry)})")
         if name in wanted:
@@ -225,7 +225,7 @@ def _set_repo_plan(repo: dict, branch: str, base_arg, host: Path, host_wt: Path,
     (else the worktree shows as untracked in the host worktree and blocks its removal). Reuse is the
     host branch's (P35 Decision 22): an existing branch checked out nowhere is reused, anchored at
     merge-base(base, branch). `plan` is what `_stamp_set_repo` stamps and the worktree step runs.
-    Shared with `parallel-add-repo` (S7), which passes the live host worktree as both `host` and
+    Shared with `worktree add-repo` (S7), which passes the live host worktree as both `host` and
     `host_wt` and `single_base` (its `--repo-base REF` names no repo). With `adopt` (S7, OQ3) the
     target must instead be an EXISTING worktree of this repo, its own work tree root, on `branch`
     (not detached); the branch may be held by no OTHER worktree; `branch_created` is False (the
@@ -239,7 +239,7 @@ def _set_repo_plan(repo: dict, branch: str, base_arg, host: Path, host_wt: Path,
         return f"--repo-base {ref}" if single_base else f"--repo-base {name}={ref}"
     if not _git_work_tree_root(main):
         return None, [f"{label}: its main checkout {main} is not a git work tree root (missing, or a plain directory); fix the registry "
-                      f"({WORKFLOW_CMD} nested-repos) first"]
+                      f"({WORKFLOW_CMD} repo list) first"]
     problems = []
     if branch.startswith("-") or _git(["check-ref-format", "--branch", branch], cwd=main, check=False).returncode != 0:
         problems.append(f"{label}: --repo {name}={branch}: {branch!r} is not a valid branch name in {name}")
@@ -295,7 +295,7 @@ def _set_repo_plan(repo: dict, branch: str, base_arg, host: Path, host_wt: Path,
 
 
 def _adopt_target_problems(label: str, name: str, main: Path, target: Path, branch: str, entries: list) -> list:
-    """`parallel-add-repo --adopt`'s target rows (P40.S7, S2 §15 and §25): `<host-wt>/<path>` must
+    """`worktree add-repo --adopt`'s target rows (P40.S7, S2 §15 and §25): `<host-wt>/<path>` must
     exist, be its own work tree root (`git -C` on a plain dir answers for the host worktree), be one
     of the repo's registered worktrees (`git -C <main> worktree list --porcelain`), and have its HEAD
     on `branch`. One row for the first that fails: each later check presumes the earlier ones."""
@@ -320,7 +320,7 @@ def _stamp_set_repo(data: dict, plan: dict) -> dict:
     branch, base, base_sha, branch_created}, and the re-stamped `repo_anchors.<name>`: `created` = the
     plan's anchor (the base for a created branch, merge-base(base, branch) for a reused one), `branch`
     = the branch, the review keys kept. `data["execution"]` must already exist. THE one stamp writer,
-    shared by `parallel-start --repo` and `parallel-add-repo` (S7)."""
+    shared by `worktree start --repo` and `worktree add-repo` (S7)."""
     execution = data["execution"]
     repos = execution.get("repos") if isinstance(execution.get("repos"), dict) else {}
     repos[plan["name"]] = {"worktree": str(plan["target"]), "branch": plan["branch"], "base": plan["base"],
@@ -340,8 +340,8 @@ def _set_repo_add_cmd(plan: dict) -> list:
     return ["git", "-C", str(plan["main"]), *add]
 
 
-def _set_repo_line(plan: dict, by: str = "parallel-start") -> str:
-    """parallel-start's (and parallel-add-repo's, `by`) one output line for a repo of the set."""
+def _set_repo_line(plan: dict, by: str = "worktree start") -> str:
+    """worktree start's (and worktree add-repo's, `by`) one output line for a repo of the set."""
     if plan.get("adopted"):  # P40.S7: --adopt
         how = "adopted: the operator's own worktree and branch, branch_created=false, so teardown keeps the branch"
         anchor = "merge-base of the base and the adopted branch"
@@ -356,7 +356,7 @@ def _set_repo_line(plan: dict, by: str = "parallel-start") -> str:
 
 def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, branch: str, host_branch, host_base_arg, set_repos=(),
                            on_stamp=None, stamp_message=None) -> tuple:
-    """`parallel-start` in a nested personal install (P35): a host worktree with the nested worktree inside.
+    """`worktree start` in a nested personal install (P35): a host worktree with the nested worktree inside.
 
     The pair is `<host>/.claude/worktrees/P<N>-<slug>` on `host_branch` (the operator names it, by the
     host's custom), with `<host-wt>/workflow` on `phase/P<N>-<slug>` in the nested repo, which owns the
@@ -385,7 +385,7 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
     host = HOST_ROOT
     detached = host_branch is None
     if host is None or not _git_available(cwd=host):
-        raise SystemExit(f"the nested install's host {host} is not a git work tree; parallel-start cuts a host worktree, so it needs one -- nothing was written")
+        raise SystemExit(f"the nested install's host {host} is not a git work tree; worktree start cuts a host worktree, so it needs one -- nothing was written")
     busy = _git_operation_in_progress(cwd=host)
     if busy:
         raise SystemExit(f"a {busy} is in progress in the host checkout {host}; finish or abort it first -- nothing was written")
@@ -427,7 +427,7 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
         if plan:
             plans.append(plan)
     if problems:
-        raise SystemExit(f"parallel-start {args.phase} refused -- nothing was written:\n" + "\n".join(f"{i}. {p}" for i, p in enumerate(problems, 1)))
+        raise SystemExit(f"worktree start {args.phase} refused -- nothing was written:\n" + "\n".join(f"{i}. {p}" for i, p in enumerate(problems, 1)))
 
     # Every guard is above this line. The exclude line is not repo content and is idempotent.
     _ensure_worktrees_excluded(cwd=host)
@@ -500,7 +500,7 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
     if detached:
         print(f"host_branch=- (detached host worktree at the base: an explain phase makes no host commit, so it has no host branch)")
     else:
-        print(f"host_branch={host_branch} ({'created by parallel-start' if host_branch_created else 'reused: it existed and was not checked out'})")
+        print(f"host_branch={host_branch} ({'created by worktree start' if host_branch_created else 'reused: it existed and was not checked out'})")
     print(f"host_base={base_ref} ({base_sha})")
     print(f"host_anchors.created={anchor} ({'the base' if detached or host_branch_created else 'merge-base of the base and the reused branch'}) -- phase scope's base")
     for plan in plans:
@@ -525,7 +525,7 @@ def _parallel_start_nested(args: argparse.Namespace, pdir: Path, data: dict, bra
               f"(the nested worktree, on {branch}); {host_branch} carries only the host's own files")
     else:
         print(f"there: product commits go to {host_branch} in the host worktree; workflow commits go to git -C {rel.as_posix()} (the nested worktree, on {branch})")
-    print(f"this stream's pointer now skips {args.phase}; the host branch is integrated by the host's own custom (nested-convention), never merged by the engine")
+    print(f"this stream's pointer now skips {args.phase}; the host branch is integrated by the host's own custom (repo convention), never merged by the engine")
     return host_wt, nested_wt
 
 
@@ -690,7 +690,7 @@ def cmd_reopen_phase(args: argparse.Namespace) -> None:
         _reopen_refuse(phase_id, f"{phase_id} carries an execution block that is not a parallel stamp: {json.dumps(old, ensure_ascii=False)}")
     if old is not None and (old.get("worktree") is not None or old.get("host_worktree") is not None):
         _reopen_refuse(phase_id, f"{phase_id}'s earlier worktree pair is still stamped (worktree={old.get('host_worktree') or old.get('worktree')}); "
-                                 f"finish its integration and {WORKFLOW_CMD} parallel-teardown {phase_id} first, then re-run")
+                                 f"finish its integration and {WORKFLOW_CMD} worktree teardown {phase_id} first, then re-run")
     host = HOST_ROOT
     if host is None or not _git_available(cwd=host):
         _reopen_refuse(phase_id, f"the nested install's host {host} is not a git work tree")
@@ -797,10 +797,10 @@ def _reopen_root(args: argparse.Namespace, pdir: Path, data: dict, picked: list,
 
 
 def parallel_add_repo(args: argparse.Namespace) -> None:
-    """`parallel-add-repo <P> --repo <name>=<branch> [--repo-base <ref>] [--adopt]` (P40.S7, S2 §15,
+    """`worktree add-repo <P> --repo <name>=<branch> [--repo-base <ref>] [--adopt]` (P40.S7, S2 §15,
     §18, §25): add one registered repo to a phase's worktree set MID-PHASE, run from INSIDE that set.
 
-    Not a re-run of `parallel-start`: mid-phase the phase's `phase.json` advances on its phase branch,
+    Not a re-run of `worktree start`: mid-phase the phase's `phase.json` advances on its phase branch,
     so the stamp is written and committed HERE, in the set's nested worktree, never on the default
     stream (a default-stream stamp would diverge from the branch copy and conflict at merge). Create
     mode cuts `<host-wt>/<path>` (S6's guards, `_set_repo_plan`); `--adopt` (OQ3) stamps a worktree of
@@ -814,17 +814,17 @@ def parallel_add_repo(args: argparse.Namespace) -> None:
     outside a set, for another phase, for a name the SET's registry lacks, for a repo already stamped."""
     q = shlex.quote
     if NESTED is None:
-        raise SystemExit("parallel-add-repo is for a multi-repo host only (a nested install whose registry lists repos), run inside a phase's worktree set; "
+        raise SystemExit("worktree add-repo is for a multi-repo host only (a nested install whose registry lists repos), run inside a phase's worktree set; "
                          "at root the phase branch is the only branch -- nothing was written")
     repos = nested_repos()
     if not repos:
-        raise SystemExit("parallel-add-repo is for a multi-repo host only; this nested install registers no repos (the host is the one repo, "
-                         f"and the pair is all there is; register repos with {WORKFLOW_CMD} nested-repos --add <path>) -- nothing was written")
+        raise SystemExit("worktree add-repo is for a multi-repo host only; this nested install registers no repos (the host is the one repo, "
+                         f"and the pair is all there is; register repos with {WORKFLOW_CMD} repo add <path>) -- nothing was written")
     if not _in_worktree_set():
-        raise SystemExit(f"parallel-add-repo runs inside the phase's worktree set (its host worktree, under {HOST_ROOT}/{WORKTREES_DIR}/), never on the "
+        raise SystemExit(f"worktree add-repo runs inside the phase's worktree set (its host worktree, under {HOST_ROOT}/{WORKTREES_DIR}/), never on the "
                          f"default stream: mid-phase the phase's phase.json advances on its phase branch, so a stamp written here would diverge from the "
                          f"branch copy and conflict at merge. Open a session in the set and run it there; a phase with no set yet takes its repos at the "
-                         f"start: {WORKFLOW_CMD} parallel-start {args.phase} --host-branch <name> --repo <name>=<branch> -- nothing was written")
+                         f"start: {WORKFLOW_CMD} worktree start {args.phase} --host-branch <name> --repo <name>=<branch> -- nothing was written")
     _require_git_repo()
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
@@ -839,20 +839,20 @@ def parallel_add_repo(args: argparse.Namespace) -> None:
             and same(execution.get("host_worktree"), HOST_ROOT)):
         mine = next((p.get("id") for p in phases if stream and (phase_execution(p) or {}).get("branch") == stream), None)
         where = f"this set runs {mine}, on {stream}" if mine else "this checkout is on no phase's stream"
-        raise SystemExit(f"phase {args.phase} is not this worktree set's phase ({where}); run parallel-add-repo inside {args.phase}'s own set "
+        raise SystemExit(f"phase {args.phase} is not this worktree set's phase ({where}); run worktree add-repo inside {args.phase}'s own set "
                          f"-- nothing was written")
     name, sep, branch = (args.repo or "").partition("=")
     name, branch = name.strip(), branch.strip()
-    refused = f"parallel-add-repo {args.phase} refused -- nothing was written"
+    refused = f"worktree add-repo {args.phase} refused -- nothing was written"
     if not sep or not name or not branch:
         raise SystemExit(f"{refused}: --repo {args.repo!r} needs the form <name>=<branch>; the branch is required -- name it by that repo's "
-                         f"convention ({WORKFLOW_CMD} nested-convention --repo <name>) and let the operator confirm it")
+                         f"convention ({WORKFLOW_CMD} repo convention --repo <name>) and let the operator confirm it")
     registry = {r["name"]: r for r in repos}
     rel = Path(os.path.relpath(ROOT, HOST_ROOT)).as_posix()
     base_branch = execution.get("base_branch") or "<the default branch>"
     if name not in registry:
         raise SystemExit(f"{refused}: no repo named {name} is registered in this set's registry (the marker this nested worktree tracks on {stream}; "
-                         f"registered: {', '.join(registry)}). Register it on the default stream ({WORKFLOW_CMD} nested-repos --add <path>, in the "
+                         f"registered: {', '.join(registry)}). Register it on the default stream ({WORKFLOW_CMD} repo add <path>, in the "
                          f"main host checkout {MAIN_HOST}), commit it there, then merge that into this phase branch: git -C {rel} merge --no-ff {base_branch}")
     stamped = execution.get("repos") if isinstance(execution.get("repos"), dict) else {}
     if name in stamped:
@@ -891,7 +891,7 @@ def parallel_add_repo(args: argparse.Namespace) -> None:
                 f"  {' '.join(q(part) for part in cmd)}\n"
                 f"or drop {name} from the set: git -C {q(rel)} revert --no-edit {commit}")
     print(f"repo {name} {'adopted into' if args.adopt else 'added to'} {args.phase}'s worktree set")
-    print(_set_repo_line(plan, by="parallel-add-repo"))
+    print(_set_repo_line(plan, by="worktree add-repo"))
     if args.adopt:
         log = _git(["log", "--oneline", f"{plan['base_sha']}..refs/heads/{branch}"], cwd=plan["main"], check=False).stdout.splitlines()
         print(f"commits on {branch} beyond the base {plan['base']}: {len(log)} -- they come into {args.phase}'s scope (phase scope reads {name} "
@@ -908,8 +908,9 @@ def parallel_add_repo(args: argparse.Namespace) -> None:
 def parallel_teardown(args: argparse.Namespace) -> None:
     """Retire a merged parallel phase's worktree and branch, from the default stream.
 
-    Refuses while the branch is unmerged (merging is a separate step). Keeps `mode`/`branch`
-    as history and only nulls `worktree`, which is informational anyway.
+    Refuses while the branch is unmerged (merging is a separate step). Clears the whole `execution`
+    block (P71's L4), so `worktree status` stops listing the phase; the `phase_parallel_torndown`
+    event keeps the block as history.
 
     In a nested personal install (P35) the phase has a worktree PAIR -- see `_parallel_teardown_nested`;
     `--discard-ignored` belongs to it and is refused at root.
@@ -928,10 +929,10 @@ def parallel_teardown(args: argparse.Namespace) -> None:
         raise SystemExit(f"phase {args.phase} has a parallel execution block with no branch; fix phase.json first")
     _require_git_repo()
     if git_current_branch() == branch:
-        raise SystemExit(f"this checkout is on {branch}; run parallel-teardown from the default stream (a worktree cannot remove itself)")
+        raise SystemExit(f"this checkout is on {branch}; run worktree teardown from the default stream (a worktree cannot remove itself)")
     branch_exists = _branch_exists(branch)
     if branch_exists and _git(["merge-base", "--is-ancestor", branch, "HEAD"], check=False).returncode != 0:
-        raise SystemExit(f"branch {branch} is not merged into HEAD; merge it first, then run: {WORKFLOW_CMD} parallel-teardown {args.phase}")
+        raise SystemExit(f"branch {branch} is not merged into HEAD; merge it first, then run: {WORKFLOW_CMD} worktree teardown {args.phase}")
     if NESTED is not None:
         _parallel_teardown_nested(args, pdir, data, execution, branch, branch_exists, discard_ignored)
         return
@@ -948,16 +949,16 @@ def parallel_teardown(args: argparse.Namespace) -> None:
     if branch_exists:
         _git(["branch", "-d", branch])  # -d refuses an unmerged branch: a free second check
         removed.append(f"branch {branch}")
-    data["execution"]["worktree"] = None
+    old = data.pop("execution")
     write_json(pdir / "phase.json", data)
-    append_event("phase_parallel_torndown", phase=args.phase, branch=branch)
+    append_event("phase_parallel_torndown", phase=args.phase, branch=branch, execution=old)
     rebuild_index_and_state()
     print(f"phase {args.phase} parallel checkout retired")
     for item in removed:
         print(f"removed {item}")
     if not removed:
         print("nothing to remove (worktree and branch were already gone)")
-    print(f"execution.worktree=null; mode/branch kept as history (branch={branch})")
+    print(f"execution=cleared (the phase_parallel_torndown event keeps it: branch={branch})")
     print("phase.json changed -- commit it with the rest of the merge cleanup")
 
 
@@ -992,7 +993,7 @@ def _unstamped_worktrees(host_wt, execution: dict) -> list:
     stamp does not name, as `[{"path", "main", "name", "branch", "standalone"}]` sorted by path; [] when
     there is none, or when git cannot run (it never raises: `validate` calls it too). Removing the host
     worktree would delete such a tree with everything in it, uncommitted work included, so
-    `parallel-teardown` refuses each one always (`--discard-ignored` never covers it) and `validate`
+    `worktree teardown` refuses each one always (`--discard-ignored` never covers it) and `validate`
     warns. Shared by both, and it runs in single-repo nested installs too. The union of two sources:
 
     * the host worktree's ignored entries (`ls-files --others --ignored --directory`), minus the nested
@@ -1072,15 +1073,15 @@ def _unstamped_worktrees(host_wt, execution: dict) -> list:
 
 
 def _unstamped_refusal(phase_id: str, host_wt, found: list, execution: dict, branch: str, branch_exists: bool) -> str:
-    """`parallel-teardown`'s refusal item for `_unstamped_worktrees` (P40.S8, S2 §19): each tree named,
+    """`worktree teardown`'s refusal item for `_unstamped_worktrees` (P40.S8, S2 §19): each tree named,
     with its ways out -- removed by hand against its own repo after its branch is integrated, or, in a
-    multi-repo host, adopted into the set (`parallel-add-repo --adopt`, from inside the set) when it
+    multi-repo host, adopted into the set (`worktree add-repo --adopt`, from inside the set) when it
     sits at a registered repo's path and that repo is not stamped yet."""
     q = shlex.quote
     stamped = execution.get("repos") if isinstance(execution.get("repos"), dict) else {}
     registry = {repo.get("name"): repo for repo in nested_repos() if isinstance(repo, dict)}
     lines = [f"the host worktree {host_wt} holds {len(found)} git work tree(s) {phase_id}'s stamp does not name; removing the host worktree "
-             f"would delete each with everything in it, uncommitted work included, so parallel-teardown refuses them always "
+             f"would delete each with everything in it, uncommitted work included, so worktree teardown refuses them always "
              f"(--discard-ignored does not cover them):"]
     for tree in found:
         path = tree["path"]
@@ -1095,10 +1096,10 @@ def _unstamped_refusal(phase_id: str, host_wt, found: list, execution: dict, bra
         repo = registry.get(tree["name"]) if tree["name"] else None
         if (repo is not None and tree["name"] not in stamped and isinstance(repo.get("path"), str)
                 and os.path.realpath(path) == os.path.realpath(os.path.join(str(host_wt), repo["path"]))):
-            lines.append(f"        or adopt it into the set, from inside the set: cd {q(str(host_wt))} && {WORKFLOW_CMD} parallel-add-repo {phase_id} "
+            lines.append(f"        or adopt it into the set, from inside the set: cd {q(str(host_wt))} && {WORKFLOW_CMD} worktree add-repo {phase_id} "
                          f"--repo {tree['name']}={tree['branch'] or '<branch>'} --adopt (then merge the phase branch again and re-run this teardown)")
     if not branch_exists:
-        lines.append(f"    note: the phase branch {branch} is gone, so a repo stamped on it after its last merge (parallel-add-repo) is missing from "
+        lines.append(f"    note: the phase branch {branch} is gone, so a repo stamped on it after its last merge (worktree add-repo) is missing from "
                      f"this copy of phase.json and is refused here as unstamped -- the safe outcome")
     return "\n".join(lines)
 
@@ -1107,7 +1108,7 @@ def _unstamped_set_warning(phase_id: str, execution: dict):
     """`validate`'s row for `_unstamped_worktrees` (P40.S8, S2 §18): the warning text, or None. Only for
     a LIVE host worktree (`host_worktree` set and on disk), nested only. A warning, never an error:
     `--update` runs `validate` with check=True after its writes, and glide's P29 trips it. The phase
-    branch's stamp counts too: a mid-phase `parallel-add-repo` commits its stamp there only, so the
+    branch's stamp counts too: a mid-phase `worktree add-repo` commits its stamp there only, so the
     default stream's copy lacks it until the merge (teardown runs after the merge and reads its own)."""
     host_wt = execution.get("host_worktree")
     if NESTED is None or not isinstance(host_wt, str) or not Path(host_wt).is_dir():
@@ -1126,14 +1127,14 @@ def _unstamped_set_warning(phase_id: str, execution: dict):
         return None
     listed = ", ".join(tree["path"] for tree in found)
     if nested_repos():
-        return (f"{phase_id}'s host worktree holds git worktrees it did not stamp: {listed} -- parallel-teardown will refuse them; adopt them from "
-                f"inside the set (parallel-add-repo {phase_id} --repo <name>=<branch> --adopt) or remove them by hand after integrating their branches")
-    return (f"{phase_id}'s host worktree holds git worktrees it did not stamp: {listed} -- parallel-teardown will refuse them; remove them by hand "
+        return (f"{phase_id}'s host worktree holds git worktrees it did not stamp: {listed} -- worktree teardown will refuse them; adopt them from "
+                f"inside the set (worktree add-repo {phase_id} --repo <name>=<branch> --adopt) or remove them by hand after integrating their branches")
+    return (f"{phase_id}'s host worktree holds git worktrees it did not stamp: {listed} -- worktree teardown will refuse them; remove them by hand "
             f"after integrating their branches (git -C <repo> worktree remove <path>)")
 
 
 def _teardown_set_repos(execution: dict) -> list:
-    """P40.S8: a worktree set's stamped repos as `parallel-teardown` handles them, one dict per
+    """P40.S8: a worktree set's stamped repos as `worktree teardown` handles them, one dict per
     `execution.repos.<name>` in stamp order: `name`; `wt`, the stamped worktree (None once torn down);
     `live` (on disk); `main`, its repo's MAIN checkout -- the registry path under the main host checkout,
     else (a name the registry dropped) the checkout a live worktree's common git dir names, else None;
@@ -1180,7 +1181,7 @@ def _set_repo_teardown_problems(repo: dict, ignored: list) -> list:
                 f"worktree, or delete it by hand, then re-run"]
     if main is None:
         return [f"{label}: its main checkout cannot be found (no registered repo is named {name}, and {wt} names no other checkout), so its "
-                f"worktree cannot be removed against it -- re-register it ({WORKFLOW_CMD} nested-repos --add <path> --name {name}), then re-run"]
+                f"worktree cannot be removed against it -- re-register it ({WORKFLOW_CMD} repo add <path> --name {name}), then re-run"]
     if not any(os.path.realpath(path) == os.path.realpath(wt) for path, _ref in repo["entries"]):
         return [f"{label}: {wt} is a git work tree, but not a worktree of {name} (git -C {main} worktree list does not list it), so it cannot be "
                 f"removed against {name}, and removing the host worktree would delete it -- move it out of the host worktree first, then re-run"]
@@ -1200,7 +1201,7 @@ def _set_repo_teardown_problems(repo: dict, ignored: list) -> list:
 
 def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, execution: dict,
                               branch: str, branch_exists: bool, discard_ignored: bool) -> None:
-    """`parallel-teardown` in a nested personal install (P35): retire the host + nested worktree pair.
+    """`worktree teardown` in a nested personal install (P35): retire the host + nested worktree pair.
 
     Run from the default stream of the nested repo, after `phase/...` is merged there (the caller
     checked it). Order (P35.S2 (d), (e); Decisions 11, 19):
@@ -1218,9 +1219,9 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
        by the host's own custom (Decision 18), and the engine never pushes, opens or merges it;
     5. the nested `phase/...` branch, as at root; a registration left in either repo is pruned.
 
-    `worktree` and `host_worktree` become null; the other host keys and `base_branch` stay as
-    history. A failure after the first removal prints the exact remaining commands; a re-run of
-    this command resumes too, since every step skips what is already gone.
+    The whole `execution` block is cleared at the end (L4), into the `phase_parallel_torndown` event.
+    A failure after the first removal prints the exact remaining commands; a re-run of this command
+    resumes too, since every step skips what is already gone and the block is cleared last.
 
     A worktree SET (P40.S8, S2 §19) adds its repo half, gated on the stamp's `execution.repos`, so a
     single-repo pair runs exactly the steps above: each stamped repo worktree is guarded like the host
@@ -1230,11 +1231,11 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
     disk but still registered is pruned there before any branch step (a stale registration holds its
     branch). A repo branch is deleted (`-D`, against its `base_sha`) only when the set created it, it
     has 0 commits beyond `base_sha` and no other worktree holds it; reused and adopted branches are the
-    operator's and stay. Each `execution.repos.<n>.worktree` becomes null with the host keys. In EVERY
+    operator's and stay. In EVERY
     nested teardown, single-repo too, a git work tree inside the host worktree that the stamp does not
     name (`_unstamped_worktrees`) is refused, `--discard-ignored` or not: removing the host worktree
     would delete it with its uncommitted work. The stamp read is this copy of phase.json, merged from
-    the phase branch, so a repo `parallel-add-repo` stamped after the last merge is refused as unstamped."""
+    the phase branch, so a repo `worktree add-repo` stamped after the last merge is refused as unstamped."""
     q = shlex.quote
     host = HOST_ROOT
     nested_wt = execution.get("worktree")
@@ -1285,9 +1286,9 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
     if ignored and not discard_ignored:
         problems.append("ignored, worktree-only files would be deleted with the worktrees (git worktree remove does not ask):\n"
                         + "\n".join(f"      {os.path.join(where, entry)}" for where, entry in ignored)
-                        + f"\n    move them out first, or re-run with --discard-ignored to delete them: {WORKFLOW_CMD} parallel-teardown {args.phase} --discard-ignored")
+                        + f"\n    move them out first, or re-run with --discard-ignored to delete them: {WORKFLOW_CMD} worktree teardown {args.phase} --discard-ignored")
     if problems:
-        lines = [f"parallel-teardown {args.phase} refused -- nothing was removed:"]
+        lines = [f"worktree teardown {args.phase} refused -- nothing was removed:"]
         lines += [f"{i}. {problem}" for i, problem in enumerate(problems, 1)]
         raise SystemExit("\n".join(lines))
 
@@ -1314,7 +1315,7 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
         if holders:
             reason = f"it is checked out in {holders[0]}"
         elif not repo["created"]:
-            reason = "branch_created is false: it existed before the set took it (reused, or adopted with parallel-add-repo --adopt), so it is the operator's"
+            reason = "branch_created is false: it existed before the set took it (reused, or adopted with worktree add-repo --adopt), so it is the operator's"
         elif ahead is None:
             reason = f"its commits beyond the base {repo['base_sha']} could not be counted"
         elif ahead:
@@ -1337,7 +1338,7 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
         if holders:
             keep_reason = f"it is checked out in {holders[0]}"
         elif not created:
-            keep_reason = "it existed before parallel-start, which reused it"
+            keep_reason = "it existed before worktree start, which reused it"
         elif ahead is None:
             keep_reason = f"its commits beyond the base {base_sha} could not be counted"
         elif ahead:
@@ -1372,7 +1373,7 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
             steps.append((f"repo {repo['name']} branch {repo['branch']} (created for the set, no commits beyond its base)",
                           ["branch", "-D", repo["branch"]], repo["main"]))
     if delete_host_branch:
-        steps.append((f"host branch {host_branch} (created by parallel-start, no commits beyond its base)",
+        steps.append((f"host branch {host_branch} (created by worktree start, no commits beyond its base)",
                       ["branch", "-D", host_branch], host))
     if branch_exists:
         steps.append((f"branch {branch}", ["branch", "-d", branch], ROOT))  # -d refuses an unmerged branch: a free second check
@@ -1380,10 +1381,6 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
     def command(git_args, cwd):
         return f"git -C {q(str(cwd))} " + " ".join(q(part) for part in git_args)
 
-    null_fields = "execution.worktree and execution.host_worktree"
-    repo_fields = [f"execution.repos.{repo['name']}.worktree" for repo in set_repos if repo["wt"]]
-    if repo_fields:  # P40.S8: a set's repo worktrees are nulled with the host keys
-        null_fields = ", ".join(["execution.worktree", "execution.host_worktree", *repo_fields[:-1]]) + f" and {repo_fields[-1]}"
     removed = []
     for i, (label, git_args, cwd) in enumerate(steps):
         proc = _git(git_args, cwd=cwd, check=False)
@@ -1393,8 +1390,8 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
             rest = "\n".join(f"  {command(a, c)}" for _l, a, c in steps[i:])
             raise SystemExit(
                 f"{command(git_args, cwd)} failed: {detail}{done}\n"
-                f"fix the cause, then re-run {WORKFLOW_CMD} parallel-teardown {args.phase} (it resumes), or finish by hand, in this order:\n{rest}\n"
-                f"  then set {null_fields} to null in {shown(pdir)}/phase.json")
+                f"fix the cause, then re-run {WORKFLOW_CMD} worktree teardown {args.phase} (it resumes), or finish by hand, in this order:\n{rest}\n"
+                f"  then delete the execution block from {shown(pdir)}/phase.json")
         removed.append(label)
 
     pruned = []  # a registration a successful `worktree remove` still left behind
@@ -1406,15 +1403,10 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
             _git(["worktree", "prune"], cwd=repo, check=False)
             pruned.append(str(repo))
 
-    data["execution"]["worktree"] = None
-    data["execution"]["host_worktree"] = None
-    stamped_repos = data["execution"].get("repos")
-    for value in (stamped_repos.values() if isinstance(stamped_repos, dict) else ()):
-        if isinstance(value, dict):
-            value["worktree"] = None
+    old = data.pop("execution")
     write_json(pdir / "phase.json", data)
     event = {"repos": [repo["name"] for repo in set_repos]} if set_repos else {}
-    append_event("phase_parallel_torndown", phase=args.phase, branch=branch, host_branch=host_branch, **event)
+    append_event("phase_parallel_torndown", phase=args.phase, branch=branch, host_branch=host_branch, **event, execution=old)
     rebuild_index_and_state()
     print(f"phase {args.phase} parallel checkout pair retired (nested install)")
     for item in removed:
@@ -1435,22 +1427,18 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
         else:
             print(f"repo {repo['name']}'s branch {repo['branch']} is already gone; nothing to keep")
     if kept_repo_branch:
-        print(f"each repo branch follows its repo's own custom (nested-convention --repo <name>): integrate it there; "
+        print(f"each repo branch follows its repo's own custom (repo convention --repo <name>): integrate it there; "
               f"the engine pushed, opened and merged nothing")
     if not host_branch:
         print("no host branch: the host worktree was detached (an explain phase), so there is no branch to keep or delete")
     if host_branch and not delete_host_branch:
         if host_branch_exists:
             print(f"kept host branch {host_branch}: {keep_reason}")
-            print(f"the host side follows the host's own custom (nested-convention): the branch is yours for the PR; "
+            print(f"the host side follows the host's own custom (repo convention): the branch is yours for the PR; "
                   f"the engine pushed, opened and merged nothing")
         else:
             print(f"host branch {host_branch} is already gone; nothing to keep")
-    print(f"execution.worktree=null, execution.host_worktree=null; mode/branch and host_branch/host_base/host_base_sha/"
-          f"host_branch_created/base_branch kept as history (branch={branch}, host_branch={host_branch or '- (detached)'})")
-    if set_repos:
-        print(f"execution.repos.<name>.worktree=null for {', '.join(repo['name'] for repo in set_repos)}; branch/base/base_sha/branch_created "
-              f"kept as history")
+    print(f"execution=cleared (the phase_parallel_torndown event keeps it: branch={branch}, host_branch={host_branch or '- (detached)'})")
     print("phase.json changed -- commit it in the nested repo with the rest of the merge cleanup")
 
 
@@ -1459,7 +1447,7 @@ def _gate_exemption(phase_id: str, main_side: str, branch_ref: str) -> tuple:
 
     Reads `git diff --name-status <merge-base> <branch_ref>` -- what merging the branch into the
     default side would bring -- and is exempt only when every path is inside the phase's own folder,
-    one of the STAMP_WORKS_FILES (generated, regenerated by parallel-merge-finish; events.jsonl merges
+    one of the STAMP_WORKS_FILES (generated, regenerated by worktree merge-finish; events.jsonl merges
     as union), or ADDED under one of GATE_EXEMPT_ADDED_PREFIXES. `detail` is the path count when exempt, else
     the first offending path (or why git could not answer: then nothing is exempt)."""
     base = _git(["merge-base", main_side, branch_ref], check=False)
@@ -1495,7 +1483,7 @@ def parallel_gate(args: argparse.Namespace) -> None:
       only its own phase folder, the generated works/ files, added deferred jobs and added agenda
       items (`_gate_exemption`, printed as `exemption=`): such a merge cannot collide with live work.
 
-    Read-only and CI-shaped: `GATE OPEN` + exit 0, or `GATE CLOSED` + numbered reasons + exit 1.
+    Read-only advice (decision 2): `GATE OPEN`, or `GATE CLOSED reason=<reasons>`; exit 0 either way.
     In a nested install (P35) both sides are read in the nested repo, which owns the state.
     """
     pdir = require_phase(args.phase)
@@ -1580,12 +1568,10 @@ def parallel_gate(args: argparse.Namespace) -> None:
         print(f"note: {n}")
 
     if reasons:
-        print("GATE CLOSED")
-        for i, reason in enumerate(reasons, 1):
-            print(f"{i}. {reason}")
-        raise SystemExit(1)
+        print("GATE CLOSED reason=" + "; ".join(f"({i}) {reason}" for i, reason in enumerate(reasons, 1)))
+        return
     print("GATE OPEN")
-    print(f"next: merge {branch_ref} into the default stream, then run: {WORKFLOW_CMD} parallel-merge-finish")
+    print(f"next: merge {branch_ref} into the default stream, then run: {WORKFLOW_CMD} worktree merge-finish")
 
 
 def parallel_merge_finish(args: argparse.Namespace) -> None:
@@ -1605,11 +1591,11 @@ def parallel_merge_finish(args: argparse.Namespace) -> None:
         raise SystemExit(
             "this checkout is mid-merge (MERGE_HEAD exists) -- finish the merge first, then re-run.\n"
             f"generated files ({', '.join(GENERATED_FILES)}) are regenerated by this command, so resolve any conflict in them by taking EITHER side.\n"
-            f"then: {WORKFLOW_CMD} parallel-merge-finish")
+            f"then: {WORKFLOW_CMD} worktree merge-finish")
     phases = all_active_phases()
     stream = current_stream(phases)
     if stream:
-        print(f"warning: this checkout is on parallel stream {stream}; parallel-merge-finish belongs on the default stream, after the merge")
+        print(f"warning: this checkout is on parallel stream {stream}; worktree merge-finish belongs on the default stream, after the merge")
     rebuild_index_and_state()
     print(f"regenerated from the merged folders: {', '.join(GENERATED_FILES)}")
     for p in all_active_phases():
@@ -1617,7 +1603,7 @@ def parallel_merge_finish(args: argparse.Namespace) -> None:
         if not execution or p.get("status") != "done" or not _parallel_branch_merged(execution, git_ok):
             continue
         if execution.get("worktree") or (git_ok and execution.get("branch") and _branch_exists(execution["branch"])):
-            print(f"- {p['id']} is merged: retire its branch + worktree: {WORKFLOW_CMD} parallel-teardown {p['id']}")
+            print(f"- {p['id']} is merged: retire its branch + worktree: {WORKFLOW_CMD} worktree teardown {p['id']}")
     print("no commit made -- commit the regenerated files with the merge cleanup")
 
 
@@ -1626,13 +1612,13 @@ def _parallel_verdict(phase_id: str, status, review, slices, merged, branch_gone
 
     `merged` is None when the answer is unknown (this checkout is the phase's own stream, so it
     trivially contains its own branch); `branch_gone` means the branch was deleted, which implies
-    the phase was merged first -- `parallel-teardown` refuses an unmerged branch.
+    the phase was merged first -- `worktree teardown` refuses an unmerged branch.
     """
     return _parallel_verdict_pair(phase_id, status, review, slices, merged, branch_gone, own_stream)[1]
 
 
 def _parallel_verdict_pair(phase_id: str, status, review, slices, merged, branch_gone: bool, own_stream: bool) -> tuple:
-    """`(short, long)`: the cell `## Streams` shows, and the sentence `parallel-status` prints. One
+    """`(short, long)`: the cell `## Streams` shows, and the sentence `worktree status` prints. One
     decision tree, so the dashboard and the command can never disagree about where a phase stands."""
     if status is None:
         return ("unknown", "unknown -- neither the phase branch nor a local copy could be read")
@@ -1644,10 +1630,10 @@ def _parallel_verdict_pair(phase_id: str, status, review, slices, merged, branch
     if status == "done" and review == "pass":
         if integrated:
             if not branch_gone:
-                return ("merged", f"merged -- retire the branch and worktree: parallel-teardown {phase_id}")
+                return ("merged", f"merged -- retire the branch and worktree: worktree teardown {phase_id}")
             return ("torn down", f"merged and torn down -- nothing left but archiving ({phase_id} is archivable)")
         return ("ready to merge",
-                f"ready to merge -- check the quiet point first: parallel-gate {phase_id} (from the default stream)")
+                f"ready to merge -- check the quiet point first: worktree gate {phase_id} (from the default stream)")
     if status == "done":
         return ("review not passed", f"slices done but review is {review!r} -- record a passing review on its branch (review {phase_id} --verdict pass)")
     if status == "pending":
@@ -1686,11 +1672,11 @@ def parallel_status(args: argparse.Namespace) -> None:
     parallel = [(p, phase_execution(p)) for p in phases if phase_execution(p)]
     if not parallel:
         print("no phase is in its own worktree right now -- every active phase runs on the default stream, which is where a phase runs unless asked otherwise")
-        print(f"to run one in its own worktree instead, ask for it: {WORKFLOW_CMD} parallel-start <P>{NESTED_HOST_BRANCH_ARG}")
+        print(f"to run one in its own worktree instead, ask for it: {WORKFLOW_CMD} worktree start <P>{NESTED_HOST_BRANCH_ARG}")
         return
     if not _git_available():
         raise SystemExit(
-            "parallel-status reads each phase branch with git, but this workspace is not inside a git work tree "
+            "worktree status reads each phase branch with git, but this workspace is not inside a git work tree "
             f"({len(parallel)} phase(s) are stamped for parallel execution)")
     print(f"parallel_phases={len(parallel)}")
 
@@ -1729,18 +1715,18 @@ def parallel_status(args: argparse.Namespace) -> None:
         print(f"== {pid}: {phase.get('name', '')} ==")
         print(f"  branch={branch or '- (stamped parallel with no branch; fix phase.json)'}")
         print(f"  worktree={worktree or '- (plain clone, or already torn down)'}")
-        if NESTED is not None:  # P35: the host half of the pair, as stamped at parallel-start
+        if NESTED is not None:  # P35: the host half of the pair, as stamped at worktree start
             detached = "host_branch" in execution and execution.get("host_branch") is None and "host_worktree" in execution
             if execution.get("host_branch") or detached:
                 if detached:  # v86 (§9.4): an explain phase's pair
                     print("  host_branch=- (detached host worktree)")
                 else:
-                    print(f"  host_branch={execution['host_branch']}" + (" (created by parallel-start)" if execution.get("host_branch_created") else " (reused)"))
+                    print(f"  host_branch={execution['host_branch']}" + (" (created by worktree start)" if execution.get("host_branch_created") else " (reused)"))
                 print(f"  host_base={execution.get('host_base') or '-'} ({execution.get('host_base_sha') or '-'})")
                 print(f"  host_worktree={execution.get('host_worktree') or '- (already torn down)'}")
             else:
                 print("  host_branch=- (no host half stamped: an execution block written at root, before the nested pair)")
-            # P40.F1: the set's repos come from the copy `data` came from -- a mid-phase `parallel-add-repo` commits its stamp
+            # P40.F1: the set's repos come from the copy `data` came from -- a mid-phase `worktree add-repo` commits its stamp
             # on the phase branch only, so the default stream's own copy lacks it until the merge. The local block is the
             # fallback only when no other copy was read (or the copy carries no execution block).
             copy_execution = data.get("execution") if isinstance(data, dict) else None
@@ -1748,7 +1734,7 @@ def parallel_status(args: argparse.Namespace) -> None:
             if isinstance(set_repos, dict):  # P40.S6: the worktree set's repos, one line each
                 for name, value in set_repos.items():
                     value = value if isinstance(value, dict) else {}
-                    # branch_created=false is all the stamp records of a branch that pre-existed: parallel-add-repo's reuse of an
+                    # branch_created=false is all the stamp records of a branch that pre-existed: worktree add-repo's reuse of an
                     # existing branch and --adopt of an existing worktree stamp identically, so the label names both
                     print(f"  repo {name}: branch={value.get('branch') or '-'} ({'created' if value.get('branch_created') else 'reused or adopted'}) "
                           f"base={value.get('base') or '-'} ({value.get('base_sha') or '-'}) worktree={value.get('worktree') or '- (torn down)'}")
@@ -1786,7 +1772,7 @@ def merge_ready_line(stream, phases: list):
     lines = []
     if ready:
         lines.append(f"merge_ready={', '.join(ready)} (done with a passing review on its branch, not merged here: "
-                     f"whoever drives this stream merges it at a slice boundary, past {WORKFLOW_CMD} parallel-gate <P>)")
+                     f"whoever drives this stream merges it at a slice boundary, past {WORKFLOW_CMD} worktree gate <P>)")
     return "\n".join(lines) or None
 
 
@@ -1823,7 +1809,7 @@ def parallel_start_hint(state: dict, index: dict) -> str:
     if not waiting:
         return None
     return (f"hint: {waiting['id']} is waiting behind {current} -- it can run in parallel on its own branch: "
-            f"{WORKFLOW_CMD} parallel-start {waiting['id']}{NESTED_HOST_BRANCH_ARG}")
+            f"{WORKFLOW_CMD} worktree start {waiting['id']}{NESTED_HOST_BRANCH_ARG}")
 
 
 # ---------------------------------------------------------------------------
@@ -2124,7 +2110,7 @@ def _repo_anchor_problems(p: dict, errors: list, warnings: list) -> None:
             if entry["branch"] is not None and not isinstance(entry["branch"], str):
                 errors.append(f"phase {p['id']} has invalid repo_anchors.{name}.branch {entry['branch']!r}; expected a branch name or null")
         if name not in registered:
-            warnings.append(f"phase {p['id']} holds repo_anchors.{name}, but no registered repo is named {name} -- phase scope skips it (re-register it with: {WORKFLOW_CMD} nested-repos --add <path> --name {name})")
+            warnings.append(f"phase {p['id']} holds repo_anchors.{name}, but no registered repo is named {name} -- phase scope skips it (re-register it with: {WORKFLOW_CMD} repo add <path> --name {name})")
 
 
 def _phase_review_commit(phase_id: str, base: str, tip: str):
@@ -2403,7 +2389,7 @@ def _phase_scope_nested(args: argparse.Namespace, data: dict, out: dict, header:
                 if rule["note"]:
                     out["notes"].append(rule["note"])
             elif base:
-                base_kind = "the host HEAD when the phase was created (or the host worktree's base after parallel-start): phase.json host_anchors.created"
+                base_kind = "the host HEAD when the phase was created (or the host worktree's base after worktree start): phase.json host_anchors.created"
             else:
                 missing = f"host_anchors.created {created} is not a commit in the host repo (rewritten history, or a shallow clone)"
     elif "created" in anchors:  # recorded as null: the host had no commit yet when the phase was created
@@ -2451,7 +2437,7 @@ def _phase_scope_nested(args: argparse.Namespace, data: dict, out: dict, header:
     tally = {k: sum(1 for f in files if f["status"] == k) for k in ("A", "M", "D", "R")}
     lines = header + [f"mode={out['mode']}"]
     if created:
-        lines.append(f"creation_commit={created}  (the host HEAD at phase new, or the host worktree's base after parallel-start)")
+        lines.append(f"creation_commit={created}  (the host HEAD at phase new, or the host worktree's base after worktree start)")
     elif "created" in anchors and not args.base:
         lines.append("creation_commit=none (the host had no commit at phase new)")
     else:
@@ -3759,7 +3745,7 @@ def cmd_close(args: argparse.Namespace) -> int:
         else:
             branch = execution.get("branch")
             if git_current_branch() == branch or not _parallel_branch_merged(execution):
-                stop("merge", f"from this phase's worktree: {WORKFLOW_CMD} parallel-gate {P}; ExitWorktree (keep); in the main checkout "
+                stop("merge", f"from this phase's worktree: {WORKFLOW_CMD} worktree gate {P} (GATE CLOSED: stop, never merge past it); ExitWorktree (keep); in the main checkout "
                               f"(nested: git -C workflow) git merge --no-ff {branch} -m \"merge({P}): {data.get('name')}\"; {rerun} there")
             if dry:
                 done("merge", "due")
@@ -3775,7 +3761,7 @@ def cmd_close(args: argparse.Namespace) -> int:
             else:
                 code, out = _captured(parallel_teardown, argparse.Namespace(phase=P, discard_ignored=False))
                 if code:
-                    stop("teardown", f"{' '.join(out)[:600]} -- when what it lists is caches: {WORKFLOW_CMD} parallel-teardown {P} "
+                    stop("teardown", f"{' '.join(out)[:600]} -- when what it lists is caches: {WORKFLOW_CMD} worktree teardown {P} "
                                      f"--discard-ignored; {rerun}")
                 done("teardown")
         if dry:
@@ -4557,11 +4543,11 @@ def nested_next_lines() -> list:
     lines = [f"nested_host={HOST_ROOT}"]
     if conv.get("confirmed") is True:
         lines.append(f"host_commit_convention=confirmed (coauthor_trailers={conv.get('coauthor_trailers')}) "
-                     f"-- follow it for host commits, branches and pull requests; read it with: {WORKFLOW_CMD} nested-convention")
+                     f"-- follow it for host commits, branches and pull requests; read it with: {WORKFLOW_CMD} repo convention")
     else:
         inferred = _one_line(conv.get("inferred")) if conv.get("inferred") else "nothing"
         lines.append(f"host_commit_convention=UNCONFIRMED (inferred: {inferred}) -- confirm the host's conventions (commits, branches and pull requests) with the operator before the first product commit, "
-                     f"then: {WORKFLOW_CMD} nested-convention --confirm --text \"<conventions>\" --trailers allowed|forbidden")
+                     f"then: {WORKFLOW_CMD} repo convention --confirm --text \"<conventions>\" --trailers allowed|forbidden")
     repos = nested_repos()
     if repos:  # P40 multi-repo: one summary line; a single-repo install prints exactly the two above
         lines.append(_repo_conventions_line(repos))
@@ -4576,10 +4562,10 @@ def effective_repo_convention(repo: dict, host_conv=None) -> dict:
     - confirmed: X's own `confirmed`, or the host-level one when X's convention is null;
     - trailers: `forbidden` if either forbids, else X's own when it records allowed/forbidden, else the host's.
 
-    `state` is what `nested-repos`, `nested-convention` and `next`'s `repo_conventions=` all print:
+    `state` is what `repo list`, `repo convention` and `next`'s `repo_conventions=` all print:
     `UNCONFIRMED` whenever the effective `confirmed` is false (an inherited convention under an
     unconfirmed host included), else `inherited` for a null convention, else `confirmed`.
-    `host_conv` defaults to the loaded marker's; `nested-convention --confirm` passes the one it just wrote."""
+    `host_conv` defaults to the loaded marker's; `repo convention --confirm` passes the one it just wrote."""
     if host_conv is None:
         host_conv = NESTED.get("commit_convention") if NESTED is not None else None
     host = host_conv if isinstance(host_conv, dict) else {}
@@ -4604,7 +4590,7 @@ def effective_repo_convention(repo: dict, host_conv=None) -> dict:
 
 
 def _repo_convention_lines(repo: dict, host_conv=None) -> list:
-    """One registry entry's block in `nested-convention` (bare multi-repo, and `--repo`): its effective values."""
+    """One registry entry's block in `repo convention` (bare multi-repo, and `--repo`): its effective values."""
     eff = effective_repo_convention(repo, host_conv)
     lines = [f"repo={repo['name']} path={repo['path']}/ commit_convention={eff['state']} coauthor_trailers={eff['coauthor_trailers']}",
              "inferred:",
@@ -4613,11 +4599,11 @@ def _repo_convention_lines(repo: dict, host_conv=None) -> list:
              eff["text"] or "(none -- not confirmed yet)"]
     if eff["state"] == "UNCONFIRMED" and eff["inherits"]:
         lines.append(f"{repo['name']} inherits the unconfirmed host-level conventions: confirm those (the rules for every repo) with the operator before its first product commit, "
-                     f"then: {WORKFLOW_CMD} nested-convention --confirm --text \"<conventions>\" --trailers allowed|forbidden "
+                     f"then: {WORKFLOW_CMD} repo convention --confirm --text \"<conventions>\" --trailers allowed|forbidden "
                      f"(or record {repo['name']}'s own: --confirm --repo {repo['name']} ...)")
     elif eff["state"] == "UNCONFIRMED":
         lines.append(f"confirm {repo['name']}'s conventions (commits, branches and pull requests) with the operator before its first product commit, "
-                     f"then: {WORKFLOW_CMD} nested-convention --confirm --repo {repo['name']} --text \"<conventions>\" --trailers allowed|forbidden")
+                     f"then: {WORKFLOW_CMD} repo convention --confirm --repo {repo['name']} --text \"<conventions>\" --trailers allowed|forbidden")
     return lines
 
 
@@ -4627,22 +4613,22 @@ def _repo_conventions_line(repos: list) -> str:
     states = [(repo["name"], effective_repo_convention(repo)["state"]) for repo in repos]
     unconfirmed = [name for name, state in states if state == "UNCONFIRMED"]
     if not unconfirmed:
-        return f"repo_conventions={len(repos)} (all confirmed or inherited) -- per repo: {WORKFLOW_CMD} nested-convention --repo <name>"
+        return f"repo_conventions={len(repos)} (all confirmed or inherited) -- per repo: {WORKFLOW_CMD} repo convention --repo <name>"
     confirmed = sum(1 for _, state in states if state == "confirmed")
     inherited = sum(1 for _, state in states if state == "inherited")
     return (f"repo_conventions={len(repos)} (confirmed {confirmed}, inherited {inherited}, UNCONFIRMED {len(unconfirmed)}: {', '.join(unconfirmed)}) "
             f"-- confirm each UNCONFIRMED repo's conventions before its first product commit: "
-            f"{WORKFLOW_CMD} nested-convention --confirm --repo <name> --text \"<conventions>\" --trailers allowed|forbidden")
+            f"{WORKFLOW_CMD} repo convention --confirm --repo <name> --text \"<conventions>\" --trailers allowed|forbidden")
 
 
 def _nested_convention_repo(args: argparse.Namespace, path: Path) -> None:
-    """`nested-convention --repo <name>` on a multi-repo host (P40): show that repo's effective block,
+    """`repo convention --repo <name>` on a multi-repo host (P40): show that repo's effective block,
     `--confirm` its own convention, or `--inherit` (set it back to null). Validate-then-write, one event."""
     repos = nested_repos()
     names = [repo["name"] for repo in repos]
     if args.repo not in names:
-        raise SystemExit(f"nested-convention: refused -- no registered repo named {args.repo!r} (registered: {', '.join(names)}; "
-                         f"list them with: {WORKFLOW_CMD} nested-repos)")
+        raise SystemExit(f"repo convention: refused -- no registered repo named {args.repo!r} (registered: {', '.join(names)}; "
+                         f"list them with: {WORKFLOW_CMD} repo list)")
     if not (args.confirm or args.inherit):
         print("\n".join(_repo_convention_lines(repos[names.index(args.repo)])))
         return
@@ -4650,11 +4636,11 @@ def _nested_convention_repo(args: argparse.Namespace, path: Path) -> None:
     entries = data.get("repos") if isinstance(data.get("repos"), list) else []
     entry = next((e for e in entries if isinstance(e, dict) and e.get("name") == args.repo), None)
     if entry is None:  # the marker changed under us; never write a guess
-        raise SystemExit(f"nested-convention: refused -- {shown(path)} no longer registers {args.repo!r}")
+        raise SystemExit(f"repo convention: refused -- {shown(path)} no longer registers {args.repo!r}")
     previous = entry.get("commit_convention")
     if args.inherit:
         if previous is None:
-            print(f"nested-convention: {args.repo} already inherits the host-level convention -- nothing written")
+            print(f"repo convention: {args.repo} already inherits the host-level convention -- nothing written")
             print("\n".join(_repo_convention_lines(entry, data.get("commit_convention"))))
             return
         entry["commit_convention"] = None
@@ -4663,15 +4649,15 @@ def _nested_convention_repo(args: argparse.Namespace, path: Path) -> None:
         entry["commit_convention"] = dict(base, text=args.text, confirmed=True, coauthor_trailers=args.trailers)
     problems = nested_marker_problems(data)
     if problems:  # never write a marker validate would reject
-        raise SystemExit(f"nested-convention: refused -- the result would be malformed: {'; '.join(problems)}")
+        raise SystemExit(f"repo convention: refused -- the result would be malformed: {'; '.join(problems)}")
     write_json(path, data)
     was_confirmed = isinstance(previous, dict) and previous.get("confirmed") is True
     if args.inherit:
         append_event("nested_convention_inherited", repo=args.repo, previously_confirmed=was_confirmed)
-        print(f"nested-convention: {args.repo} now inherits the host-level convention (its own was {'confirmed' if was_confirmed else 'UNCONFIRMED'}) -- written to {shown(path)}")
+        print(f"repo convention: {args.repo} now inherits the host-level convention (its own was {'confirmed' if was_confirmed else 'UNCONFIRMED'}) -- written to {shown(path)}")
     else:
         append_event("nested_convention_confirmed", repo=args.repo, coauthor_trailers=args.trailers, previously_confirmed=was_confirmed)
-        print(f"nested-convention: {args.repo} confirmed{' (replacing the earlier confirmation)' if was_confirmed else ''} -- written to {shown(path)}")
+        print(f"repo convention: {args.repo} confirmed{' (replacing the earlier confirmation)' if was_confirmed else ''} -- written to {shown(path)}")
     print("\n".join(_repo_convention_lines(entry, data.get("commit_convention"))))
 
 
@@ -4687,25 +4673,25 @@ def cmd_nested_convention(args: argparse.Namespace) -> None:
     registered repo may carry its own (`--repo <name>`; `--inherit` sets it back to null); a repo's
     effective convention composes the two (`effective_repo_convention`)."""
     if NESTED is None:
-        raise SystemExit(f"nested-convention: refused -- this is not a nested personal install (no {NESTED_MARKER} beside scripts/); "
+        raise SystemExit(f"repo convention: refused -- this is not a nested personal install (no {NESTED_MARKER} beside scripts/); "
                          "commits here follow the workspace's own Commit Convention")
     if args.inherit and args.confirm:
-        raise SystemExit(f"nested-convention: --inherit and --confirm exclude each other: --inherit sets a repo's own convention back to null "
-                         f"({WORKFLOW_CMD} nested-convention --repo <name> --inherit)")
+        raise SystemExit(f"repo convention: --inherit and --confirm exclude each other: --inherit sets a repo's own convention back to null "
+                         f"({WORKFLOW_CMD} repo convention --repo <name> --inherit)")
     if args.inherit and args.repo is None:
-        raise SystemExit(f"nested-convention: --inherit needs --repo <name> (the host-level convention has nothing to inherit from): "
-                         f"{WORKFLOW_CMD} nested-convention --repo <name> --inherit")
+        raise SystemExit(f"repo convention: --inherit needs --repo <name> (the host-level convention has nothing to inherit from): "
+                         f"{WORKFLOW_CMD} repo convention --repo <name> --inherit")
     if (args.text is not None or args.trailers is not None) and not args.confirm:
-        raise SystemExit(f"--text and --trailers belong to --confirm: {WORKFLOW_CMD} nested-convention --confirm --text \"...\" --trailers allowed|forbidden")
+        raise SystemExit(f"--text and --trailers belong to --confirm: {WORKFLOW_CMD} repo convention --confirm --text \"...\" --trailers allowed|forbidden")
     if args.repo is not None and not nested_repos():
-        raise SystemExit("nested-convention: refused -- single-repo install: the host is the one repo; drop --repo")
+        raise SystemExit("repo convention: refused -- single-repo install: the host is the one repo; drop --repo")
     path = ROOT / NESTED_MARKER
     if args.confirm:
         whose = f"{args.repo}'s" if args.repo is not None else "the host's"
         if not (args.text or "").strip():
-            raise SystemExit(f"nested-convention --confirm needs --text \"<{whose} conventions for commits, branches and pull requests, as the operator confirmed them>\"")
+            raise SystemExit(f"repo convention --confirm needs --text \"<{whose} conventions for commits, branches and pull requests, as the operator confirmed them>\"")
         if args.trailers is None:
-            raise SystemExit(f"nested-convention --confirm needs --trailers allowed|forbidden (may Claude Co-Authored-By trailers appear in {args.repo + ' commits' if args.repo is not None else 'host commits'}?)")
+            raise SystemExit(f"repo convention --confirm needs --trailers allowed|forbidden (may Claude Co-Authored-By trailers appear in {args.repo + ' commits' if args.repo is not None else 'host commits'}?)")
     if args.repo is not None:
         _nested_convention_repo(args, path)
         return
@@ -4715,10 +4701,10 @@ def cmd_nested_convention(args: argparse.Namespace) -> None:
         data["commit_convention"] = dict(previous, text=args.text, confirmed=True, coauthor_trailers=args.trailers)
         problems = nested_marker_problems(data)
         if problems:  # cannot happen from a valid marker, but never write a marker validate would reject
-            raise SystemExit(f"nested-convention: refused -- the result would be malformed: {'; '.join(problems)}")
+            raise SystemExit(f"repo convention: refused -- the result would be malformed: {'; '.join(problems)}")
         write_json(path, data)
         append_event("nested_convention_confirmed", coauthor_trailers=args.trailers, previously_confirmed=previous.get("confirmed") is True)
-        print(f"nested-convention: confirmed{' (replacing the earlier confirmation)' if previous.get('confirmed') is True else ''} -- written to {shown(path)}")
+        print(f"repo convention: confirmed{' (replacing the earlier confirmation)' if previous.get('confirmed') is True else ''} -- written to {shown(path)}")
         conv = data["commit_convention"]
     else:
         conv = NESTED["commit_convention"]
@@ -4733,13 +4719,13 @@ def cmd_nested_convention(args: argparse.Namespace) -> None:
     print("text:")
     print(conv.get("text") or "(none -- not confirmed yet)")
     if conv.get("confirmed") is not True:
-        print(f"confirm the host's conventions (commits, branches and pull requests) with the operator before the first product commit, then: {WORKFLOW_CMD} nested-convention --confirm --text \"<conventions>\" --trailers allowed|forbidden")
+        print(f"confirm the host's conventions (commits, branches and pull requests) with the operator before the first product commit, then: {WORKFLOW_CMD} repo convention --confirm --text \"<conventions>\" --trailers allowed|forbidden")
     for repo in repos:
         print()
         print("\n".join(_repo_convention_lines(repo, conv)))
 
 
-# P40: the multi-repo registry's helpers, its `validate` rows and the `nested-repos` command. Every
+# P40: the multi-repo registry's helpers, its `validate` rows and the `repo list` command. Every
 # path below resolves against the MAIN host checkout (`nested_repo_path`), and every per-repo git
 # call is preceded by `_git_work_tree_root`, because `git -C` on a plain directory answers for the host.
 NESTED_REPO_RULE_NAMES = ("AGENTS.md", "CLAUDE.md")
@@ -4826,10 +4812,10 @@ def nested_repo_checks(errors: list, warnings: list) -> None:
         name, rel = repo["name"], repo["path"]
         path = nested_repo_path(repo)
         if not path.exists():
-            errors.append(f"nested install: repo {name} ({rel}/) is missing from the host {host} -- restore it or run: {WORKFLOW_CMD} nested-repos --remove {name}")
+            errors.append(f"nested install: repo {name} ({rel}/) is missing from the host {host} -- restore it or run: {WORKFLOW_CMD} repo remove {name}")
             continue
         if not _git_work_tree_root(path):
-            errors.append(f"nested install: repo {name} ({rel}/) is not a git work tree root -- restore it or run: {WORKFLOW_CMD} nested-repos --remove {name}")
+            errors.append(f"nested install: repo {name} ({rel}/) is not a git work tree root -- restore it or run: {WORKFLOW_CMD} repo remove {name}")
             continue
         ignored = _repo_git(host, "check-ignore", "-q", f"{rel}/")
         if ignored is not None and ignored.returncode == 1:
@@ -4844,7 +4830,7 @@ def nested_repo_checks(errors: list, warnings: list) -> None:
             if not os.path.lexists(path / rule):
                 warnings.append(f"nested install: repo {name} rules file {rule} is missing")
     for child in _unregistered_child_repos(host, repos):
-        warnings.append(f"nested install: {child}/ is a git repo the registry does not list ({WORKFLOW_CMD} nested-repos --add {child}, or ignore it)")
+        warnings.append(f"nested install: {child}/ is a git repo the registry does not list ({WORKFLOW_CMD} repo add {child}, or ignore it)")
     count = _host_tracked_count(host)
     if count:
         warnings.append(f"nested install: the multi-repo host tracks {count} file(s); product belongs in the repos")
@@ -4863,7 +4849,7 @@ def _print_nested_repos(repos: list) -> None:
     host = MAIN_HOST or HOST_ROOT
     if not repos:
         print(f"repos=none -- a single-repo nested install: the host {HOST_ROOT} is the one product repo "
-              f"(a host that tracks no files registers its repos with: {WORKFLOW_CMD} nested-repos --add <path>)")
+              f"(a host that tracks no files registers its repos with: {WORKFLOW_CMD} repo add <path>)")
         return
     print(f"nested_host={HOST_ROOT}")
     if host != HOST_ROOT:
@@ -4896,18 +4882,12 @@ def cmd_nested_repos(args: argparse.Namespace) -> None:
     The registry is the marker's optional `repos` list; a non-empty one makes the install multi-repo.
     `--add` on a single-repo install is allowed only when the host tracks no files: a host that is
     itself a product repo is not a multi-repo host. `--remove` is refused while an active phase holds
-    the repo's anchors. Writes only `.agentic-nested.json` (validated first, as `nested-convention`
+    the repo's anchors. Writes only `.agentic-nested.json` (validated first, as `repo convention`
     does) plus one event per change; the exclude line and the CLAUDE.local.md block are the
     installer's `--update`."""
     if NESTED is None:
-        raise SystemExit(f"nested-repos: refused -- this is not a nested personal install (no {NESTED_MARKER} beside scripts/); "
+        raise SystemExit(f"repo: refused -- this is not a nested personal install (no {NESTED_MARKER} beside scripts/); "
                          "an at-root workspace's repo is its one product repo")
-    if args.set is not None and args.rules is None:
-        raise SystemExit(f"--set belongs to --rules: {WORKFLOW_CMD} nested-repos --rules <name> --set a,b,c")
-    if args.rules is not None and args.set is None:
-        raise SystemExit(f"nested-repos --rules needs --set <comma-separated repo-relative paths> (or re-detect them: {WORKFLOW_CMD} nested-repos --detect-rules {args.rules})")
-    if (args.name is not None or args.default_branch is not None) and args.add is None:
-        raise SystemExit(f"--name and --default-branch belong to --add: {WORKFLOW_CMD} nested-repos --add <path> [--name N] [--default-branch B]")
     path = ROOT / NESTED_MARKER
     host = MAIN_HOST or HOST_ROOT
     current = nested_repos()
@@ -4923,7 +4903,7 @@ def cmd_nested_repos(args: argparse.Namespace) -> None:
         raw = args.add
         rel = os.path.relpath(Path(raw).resolve(), host) if os.path.isabs(raw) else posixpath.normpath(raw.replace(os.sep, "/"))
         rel = Path(rel).as_posix()
-        refused = "nested-repos --add: refused -- nothing was written"
+        refused = "repo add: refused -- nothing was written"
         if not repos:
             count = _host_tracked_count(host)
             if count is None or count > 0:
@@ -4956,7 +4936,7 @@ def cmd_nested_repos(args: argparse.Namespace) -> None:
         repos.append(entry)
         _write_nested_repos(path, data, repos)
         append_event("nested_repo_added", name=name, path=rel, default_branch=branch, rules=entry["rules"], made_multi_repo=not current)
-        print(f"nested-repos: added {name} ({rel}/){' -- this install is now multi-repo' if not current else ''} -- written to {shown(path)}")
+        print(f"repo: added {name} ({rel}/){' -- this install is now multi-repo' if not current else ''} -- written to {shown(path)}")
         ignored = _repo_git(host, "check-ignore", "-q", f"{rel}/")
         visible = ignored is not None and ignored.returncode == 1
         print(f"next: run the installer's --update on this host: it writes the /{rel}/ exclude line and the multi-repo CLAUDE.local.md block"
@@ -4965,23 +4945,23 @@ def cmd_nested_repos(args: argparse.Namespace) -> None:
         name = args.remove
         entry = next((r for r in repos if r.get("name") == name), None)
         if entry is None:
-            raise SystemExit(f"nested-repos --remove: refused -- no registered repo is named {name} "
+            raise SystemExit(f"repo remove: refused -- no registered repo is named {name} "
                              f"(registered: {', '.join(r.get('name', '?') for r in repos) or 'none'}) -- nothing was written")
         holders = _repo_anchor_holders(name)
         if holders:
-            raise SystemExit(f"nested-repos --remove: refused -- active phase(s) {', '.join(holders)} hold repo_anchors.{name} (their phase scope reads {entry['path']}/); "
+            raise SystemExit(f"repo remove: refused -- active phase(s) {', '.join(holders)} hold repo_anchors.{name} (their phase scope reads {entry['path']}/); "
                              "finish and archive them first, then re-run -- nothing was written")
         repos = [r for r in repos if r.get("name") != name]
         _write_nested_repos(path, data, repos)
         append_event("nested_repo_removed", name=name, path=entry["path"], made_single_repo=not repos)
-        print(f"nested-repos: removed {name} ({entry['path']}/) from the registry -- written to {shown(path)}; the repo and its files are untouched"
+        print(f"repo: removed {name} ({entry['path']}/) from the registry -- written to {shown(path)}; the repo and its files are untouched"
               + ("; the registry is empty, so this is a single-repo nested install again" if not repos else ""))
     else:
         name = args.rules if args.rules is not None else args.detect_rules
         entry = next((r for r in repos if r.get("name") == name), None)
-        verb = "--rules" if args.rules is not None else "--detect-rules"
+        verb = "rules" if args.rules is not None else "detect-rules"
         if entry is None:
-            raise SystemExit(f"nested-repos {verb}: refused -- no registered repo is named {name} "
+            raise SystemExit(f"repo {verb}: refused -- no registered repo is named {name} "
                              f"(registered: {', '.join(r.get('name', '?') for r in repos) or 'none'}) -- nothing was written")
         if args.rules is not None:
             rules = []
@@ -4992,19 +4972,19 @@ def cmd_nested_repos(args: argparse.Namespace) -> None:
         else:
             target = host / entry["path"]
             if not _git_work_tree_root(target):
-                raise SystemExit(f"nested-repos --detect-rules: refused -- {target} is not the root of a git work tree -- nothing was written")
+                raise SystemExit(f"repo detect-rules: refused -- {target} is not the root of a git work tree -- nothing was written")
             rules = _detect_repo_rules(target)
         entry["rules"] = rules
         _write_nested_repos(path, data, repos)
         append_event("nested_repo_rules_set", name=name, rules=rules, detected=args.detect_rules is not None)
-        print(f"nested-repos: {name} rules {'re-detected' if args.detect_rules is not None else 'set'} ({len(rules)}) -- written to {shown(path)}")
+        print(f"repo: {name} rules {'re-detected' if args.detect_rules is not None else 'set'} ({len(rules)}) -- written to {shown(path)}")
         for rule in rules:
             print(f"  {rule}")
     _print_nested_repos(repos)
 
 
 def _map_repo_anchors(name: str, repos: list) -> None:
-    """`nested-repos --map-anchors <repo>` (P40 S2 §22 step 7, §25): a converted install's phases
+    """`repo map-anchors <repo>` (P40 S2 §22 step 7, §25): a converted install's phases
     carry `host_anchors` that are really commits of the old single repo, now registered as `<repo>`.
     Per phase, active and archived: `repo_anchors.<repo>` = {created, branch: null, review_pass,
     review_base} (review_base = the frozen `host_anchors.review_base` if any, else `created` once the
@@ -5019,7 +4999,7 @@ def _map_repo_anchors(name: str, repos: list) -> None:
     every phase becomes `<repo>`, nothing else in the record changes, and a phase in flight on its own
     branch is skipped the same way. The installer's --to-multi-repo runs this before its --update's
     closing validate."""
-    refused = "nested-repos --map-anchors: refused -- nothing was written"
+    refused = "repo map-anchors: refused -- nothing was written"
     repo = next((r for r in repos if r.get("name") == name), None)
     if repo is None:
         raise SystemExit(f"{refused}: no registered repo is named {name} (registered: {', '.join(r.get('name', '?') for r in repos) or 'none'})")
@@ -5094,13 +5074,13 @@ def _map_repo_anchors(name: str, repos: list) -> None:
         append_event("nested_repo_anchors_mapped", repo=name, phases=mapped)
     if pr_mapped:
         append_event("nested_repo_pr_mapped", repo=name, phases=pr_mapped)
-    print(f"nested-repos --map-anchors {name}: mapped {len(mapped)}, skipped {skipped} of {len(pdirs)} phase(s); "
+    print(f"repo map-anchors {name}: mapped {len(mapped)}, skipped {skipped} of {len(pdirs)} phase(s); "
           f"pr records: mapped in {len(pr_mapped)} phase(s), skipped {pr_skipped}"
           + (" -- phase.json files written; commit them in the nested repo" if mapped or pr_mapped else " -- nothing written"))
 
 
 def _write_nested_repos(path: Path, data: dict, repos: list) -> None:
-    """Write the registry back through the same validate-then-write path `nested-convention` uses;
+    """Write the registry back through the same validate-then-write path `repo convention` uses;
     an emptied registry drops the key, so the marker reads as the single-repo one it now is."""
     if repos:
         data["repos"] = repos
@@ -5108,5 +5088,5 @@ def _write_nested_repos(path: Path, data: dict, repos: list) -> None:
         data.pop("repos", None)
     problems = nested_marker_problems(data)
     if problems:  # never write a marker validate would reject
-        raise SystemExit(f"nested-repos: refused -- the result would be malformed: {'; '.join(problems)}")
+        raise SystemExit(f"repo: refused -- the result would be malformed: {'; '.join(problems)}")
     write_json(path, data)

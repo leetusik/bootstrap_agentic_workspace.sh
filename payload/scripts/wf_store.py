@@ -112,8 +112,8 @@ NESTED_NOTE_KEYS = ("converted_from",)
 NESTED_CONVERTED_KEYS = ("repo", "old_nested", "at")
 # P35: a nested phase worktree is a pair, and its host half needs a branch the operator names.
 NESTED_HOST_BRANCH_REQUIRED = (
-    "parallel-start in a nested install needs --host-branch <name>: the host repo's branch for this phase's product commits, "
-    "named by the host's own convention for branches (see nested-convention), with no workspace phase/slice IDs in it; "
+    "worktree start in a nested install needs --host-branch <name>: the host repo's branch for this phase's product commits, "
+    "named by the host's own convention for branches (see repo convention), with no workspace phase/slice IDs in it; "
     "an existing branch is reused when no host worktree has it checked out (an explain phase may omit it: v86 cuts its host worktree "
     "detached, since an explain makes no host commit) -- nothing was written")
 # v86 (§9.4): a worktree SET's repos ride beside a host BRANCH; only an explain phase's lone pair may be detached.
@@ -370,7 +370,7 @@ elif NESTED is not None:
     WORKFLOW_CMD = f"python3 {ROOT / 'scripts' / 'workflow.py'}"
 else:
     WORKFLOW_CMD = "python3 scripts/workflow.py"
-# Appended to every printed `parallel-start <P>` hint: a nested install's start needs the host branch
+# Appended to every printed `worktree start <P>` hint: a nested install's start needs the host branch
 # (P35), which the operator names; at root it is empty, so the hints print exactly as before.
 NESTED_HOST_BRANCH_ARG = " --host-branch <name>" if NESTED is not None else ""
 
@@ -499,12 +499,12 @@ SECTION_REMEDIES = {"operator questions": "collapse answered entries with --reso
 PAGE_BYTES = 24 * 1024
 # Execution streams (workspace v24; opt-in again since v43). A phase.json MAY carry an
 # optional `execution` block. `mode: "parallel"` = the phase runs on its own branch +
-# worktree, stamped by `parallel-start` -- which a phase gets ONLY when the operator asks
+# worktree, stamped by `worktree start` -- which a phase gets ONLY when the operator asks
 # for it. No block = the phase runs on the default stream, which is where every phase runs
 # unless asked otherwise; that is the v43 default and it needs no marker.
 # `mode: "default"` = a LEGACY pin written by v42's (since retired) skip command and `phase new --on-main`,
 # when the worktree was the default and staying on main needed saying. Nothing new is ever stamped with it -- but `phase_execution` still returns
-# None for it, so a pinned phase IS a default-stream phase everywhere, and `parallel-start`
+# None for it, so a pinned phase IS a default-stream phase everywhere, and `worktree start`
 # still refuses one rather than silently overriding an old deliberate pin.
 # See `phase_execution` / `phase_pinned`.
 EXECUTION_MODES = {"parallel"}
@@ -518,12 +518,12 @@ WORKTREES_DIR = ".claude/worktrees"
 STAMP_WORKS_FILES = ("works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/agenda.md",
                      "works/events.jsonl")
 # A default-stream phase in any of these states means main is mid-flight, so a phase
-# branch may not be merged into it yet (the quiet-point gate, `parallel-gate`).
+# branch may not be merged into it yet (the quiet-point gate, `worktree gate`).
 BUSY_PHASE_STATUSES = ("in_progress", "in_review", "pending", "blocked")
 # The quiet point's checked exemption (v86, §9.2): a branch whose diff since its merge-base with the
 # default side touches only its own phase folder, the STAMP_WORKS_FILES, or paths ADDED under one of
 # these folders (a deferred job filed, or an agenda item added, on the branch: a new minted-id folder
-# cannot conflict) cannot collide with in-flight default-stream work, so `parallel-gate` drops the
+# cannot conflict) cannot collide with in-flight default-stream work, so `worktree gate` drops the
 # busy-default-stream reason for it.
 # The agenda across streams (P66): item folders are real truth, merged by git; a phase worktree may add,
 # change or delete items like any checkout. Only an ADDED item is exempt here: a changed or deleted existing
@@ -538,7 +538,7 @@ GATE_EXEMPT_ADDED_PREFIXES = ("works/deferred/open/", "works/agenda/")
 # the only unit before v86.
 EXPLAIN_UNITS = ("document", "book", "chapter")
 EXPLAIN_UNIT_DEFAULT = "book"
-# Regenerated from works/phases/** by `parallel-merge-finish`; never merged by hand (see .gitattributes).
+# Regenerated from works/phases/** by `worktree merge-finish`; never merged by hand (see .gitattributes).
 # docs/current/*.md are plain files agents edit, so they are not among them.
 GENERATED_FILES = ("works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/agenda.md")
 # The executor agent files Claude Code loads: the host's `.claude/agents` when nested (Claude Code
@@ -941,7 +941,7 @@ def _host_branch_cell(execution: dict):
 def _nested_execution_problems(phase_id: str, execution: dict) -> list:
     """`validate`'s checks on the host half of a parallel execution block (P35), [] when sound.
 
-    A nested `parallel-start` stamps five host keys -- `host_worktree` (the host worktree; null once
+    A nested `worktree start` stamps five host keys -- `host_worktree` (the host worktree; null once
     torn down), `host_branch`, `host_base` (the ref as resolved), `host_base_sha`, `host_branch_created`
     -- plus `base_branch` (the nested repo's branch at start). The five appear together, and only in a
     nested install; `base_branch` comes with them there, and is otherwise only type-checked (a root
@@ -958,11 +958,11 @@ def _nested_execution_problems(phase_id: str, execution: dict) -> list:
     if not present:
         return problems
     if NESTED is None:
-        problems.append(f"phase {phase_id} has nested-only execution keys ({', '.join(present)}) in an at-root install; they are written only by a nested parallel-start")
+        problems.append(f"phase {phase_id} has nested-only execution keys ({', '.join(present)}) in an at-root install; they are written only by a nested worktree start")
         return problems
     missing = [k for k in (*NESTED_EXECUTION_HOST_KEYS, "base_branch") if k not in execution]
     if missing:
-        problems.append(f"phase {phase_id} has a partial nested execution block: missing {', '.join(missing)} (parallel-start writes all six together)")
+        problems.append(f"phase {phase_id} has a partial nested execution block: missing {', '.join(missing)} (worktree start writes all six together)")
     for key in ("host_branch", "host_base"):
         value = execution.get(key)
         if key == "host_branch" and value is None:
@@ -976,7 +976,7 @@ def _nested_execution_problems(phase_id: str, execution: dict) -> list:
                             f"{execution.get('host_branch_created')!r}; a detached host worktree creates no branch, so it must be false")
         if "repos" in execution:
             problems.append(f"phase {phase_id} has execution.host_branch null (a detached host worktree) with execution.repos; "
-                            f"a worktree set needs a host branch (parallel-start --host-branch)")
+                            f"a worktree set needs a host branch (worktree start --host-branch)")
     sha = execution.get("host_base_sha")
     if "host_base_sha" in execution and not (isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{7,64}", sha)):
         problems.append(f"phase {phase_id} has invalid execution.host_base_sha {sha!r}; expected a host commit sha")
@@ -999,16 +999,16 @@ SET_REPO_KEYS = ("worktree", "branch", "base", "base_sha", "branch_created")
 
 def _nested_execution_repo_problems(phase_id: str, execution: dict, errors: list, warnings: list) -> None:
     """`validate`'s checks on a worktree set's repo half (P40.S6, S2 §18): `execution.repos.<name> =
-    {worktree, branch, base, base_sha, branch_created}`, written by `parallel-start --repo` on a
+    {worktree, branch, base, base_sha, branch_created}`, written by `worktree start --repo` on a
     multi-repo host only. Called only when the key is present, so every single-repo and at-root block
     reads exactly as before. A stamped name the registry no longer lists is a warning (history stays
     readable); everything else is an error. Registry paths come from the marker, never the disk."""
     repos = execution.get("repos")
     if NESTED is None:
-        errors.append(f"phase {phase_id} has execution.repos in an at-root install; it is written only by parallel-start --repo on a multi-repo host")
+        errors.append(f"phase {phase_id} has execution.repos in an at-root install; it is written only by worktree start --repo on a multi-repo host")
         return
     if not NESTED_PROBLEMS and not nested_repos():
-        errors.append(f"phase {phase_id} has execution.repos in a single-repo nested install; it is written only by parallel-start --repo on a multi-repo host")
+        errors.append(f"phase {phase_id} has execution.repos in a single-repo nested install; it is written only by worktree start --repo on a multi-repo host")
         return
     if not isinstance(repos, dict):
         errors.append(f"phase {phase_id} has a non-object execution.repos {repos!r}; expected {{<repo name>: {{{', '.join(SET_REPO_KEYS)}}}}}")
@@ -1022,7 +1022,7 @@ def _nested_execution_repo_problems(phase_id: str, execution: dict, errors: list
             continue
         missing = [k for k in SET_REPO_KEYS if k not in value]
         if missing:
-            errors.append(f"{label} is missing {', '.join(missing)} (parallel-start writes all five together)")
+            errors.append(f"{label} is missing {', '.join(missing)} (worktree start writes all five together)")
         for key in ("branch", "base"):
             v = value.get(key)
             if key in value and not (isinstance(v, str) and v.strip()):
@@ -1040,7 +1040,7 @@ def _nested_execution_repo_problems(phase_id: str, execution: dict, errors: list
             errors.append(f"{label}.worktree is {wt!r} while execution.host_worktree is null; a repo worktree lives inside the host worktree (null it once torn down)")
         if name not in registry:
             if registry:
-                warnings.append(f"{label}: no registered repo is named {name} -- kept as history (re-register it with: {WORKFLOW_CMD} nested-repos --add <path> --name {name})")
+                warnings.append(f"{label}: no registered repo is named {name} -- kept as history (re-register it with: {WORKFLOW_CMD} repo add <path> --name {name})")
             continue
         if isinstance(wt, str) and isinstance(host_wt, str):
             expected = os.path.normpath(os.path.join(host_wt, registry[name]["path"]))
@@ -1053,7 +1053,7 @@ def phase_pinned(data) -> bool:
 
     Since v43 the default stream is the default, so nothing writes this block any more
     (`phase new --on-main` is a no-op). It is still honoured where it
-    exists: `parallel-start` refuses a pinned phase rather than overriding a deliberate pin,
+    exists: `worktree start` refuses a pinned phase rather than overriding a deliberate pin,
     and the hints skip it. Everything else treats it exactly like a phase with no block,
     because `phase_execution` returns None for it."""
     execution = data.get("execution") if isinstance(data, dict) else None
@@ -3424,7 +3424,7 @@ def new_phase(args: argparse.Namespace) -> None:
     # In a nested install (P35) the command also names the host branch the operator must choose.
     busy = next((p for p in all_active_phases() if p["id"] != phase_id and p.get("status") == "in_progress" and phase_execution(p) is None), None)
     if busy:
-        print(f"hint: {busy['id']} is in progress -- this phase can run in parallel on its own branch: {WORKFLOW_CMD} parallel-start {phase_id}{NESTED_HOST_BRANCH_ARG}")
+        print(f"hint: {busy['id']} is in progress -- this phase can run in parallel on its own branch: {WORKFLOW_CMD} worktree start {phase_id}{NESTED_HOST_BRANCH_ARG}")
 
 
 def _clean_order(value):
@@ -3913,7 +3913,7 @@ def _ensure_worktrees_excluded(cwd=None) -> None:
         return
     sep = "" if not existing or existing.endswith("\n") else "\n"
     exclude.parent.mkdir(parents=True, exist_ok=True)
-    exclude.write_text(f"{existing}{sep}# agentic workspace: per-phase git worktrees cut by parallel-start\n{line}\n", encoding="utf-8")
+    exclude.write_text(f"{existing}{sep}# agentic workspace: per-phase git worktrees cut by worktree start\n{line}\n", encoding="utf-8")
 
 
 _REPO_PREFIX = None
@@ -4210,7 +4210,7 @@ def _phase_blockers(pdir: Path) -> list:
 def _parallel_branch_merged(execution: dict, git_ok: bool = None) -> bool:
     """True when a parallel phase's branch is merged into HEAD. No branch, a deleted branch (merged
     and torn down) and a workspace without git all count as merged; otherwise the branch must be an
-    ancestor of HEAD. The one test `parallel-merge-finish` and `phase rotate` share."""
+    ancestor of HEAD. The one test `worktree merge-finish` and `phase rotate` share."""
     git_ok = _git_available() if git_ok is None else git_ok
     branch = execution.get("branch")
     if git_ok and branch and _branch_exists(branch):

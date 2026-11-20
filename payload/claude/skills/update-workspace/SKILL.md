@@ -23,9 +23,9 @@ Bring this repo's workspace machinery to the latest upstream version, keeping yo
 
 Updated as above from the host folder; `--update` never writes inside a repo. Show the operator, and act only on their word:
 
-- the first `--update` of a hand-made host seeds its registry; an inferred convention stays UNCONFIRMED until `nested-convention --confirm --repo <name> --text "<conventions>" --trailers allowed|forbidden`;
-- a repo the registry lacks prints `nested-repos --add <path>`; `nested-repos --map-anchors <repo>` runs only if it names the right repo;
+- the first `--update` of a hand-made host seeds its registry; an inferred convention stays UNCONFIRMED until `repo convention --confirm --repo <name> --text "<conventions>" --trailers allowed|forbidden`;
+- a repo the registry lacks prints `repo add <path>`; `repo map-anchors <repo>` runs only if it names the right repo;
 - a repo tracking `AGENTS.md` needs **Project instructions** `claude-md-and-agents-md` in the operator's user settings (pass it on);
-- an unstamped-worktree warning clears with `parallel-add-repo <P> --repo <name>=<branch> --adopt` from inside the set; never run `parallel-teardown` with an engine lacking `parallel-add-repo`.
+- an unstamped-worktree warning clears with `worktree add-repo <P> --repo <name>=<branch> --adopt` from inside the set; never run `worktree teardown` with an engine lacking `worktree add-repo`.
 
 **`--to-multi-repo <repo>`** turns a per-repo nested install into a multi-repo host at the repo's parent, only on the operator's word: update and commit the install first; preview with `sh "$tmp/bootstrap_agentic_workspace.sh" --to-multi-repo <repo> --dry-run` (every step, or every refusal, writing nothing) and STOP for approval; run it without `--dry-run`; then follow its closing block (the nested commit, the conventions to confirm, `sync-agents`, the rollback with real paths) and start Claude Code at the parent. If it halts after the move, follow its shorter rollback, fix, and re-run `--to-multi-repo`, never a plain `--update` at the parent.

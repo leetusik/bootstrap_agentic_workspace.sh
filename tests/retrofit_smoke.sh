@@ -30,7 +30,7 @@
 # stay valid; an archived id is spent; listings sort numbered ids by number then tokens, and rotate's all-numeric labels
 # stay v72's; a number resolves when one phase holds it and is refused, listed, when two do; two branches mint the same
 # number and merge clean), the v43
-# worktree-on-request invariants (nothing enters a worktree unhinted or unasked; parallel-start
+# worktree-on-request invariants (nothing enters a worktree unhinted or unasked; worktree start
 # on a dirty tree commits only the phase folder plus the regenerated works/ files and cuts a
 # nested .claude/worktrees/ checkout hidden by the repo's info/exclude; phase new --on-main
 # is a no-op that stamps nothing), the design-contract invariants on schema 2
@@ -271,7 +271,7 @@ assert not (root / "payload/claude/agents/explain-critic.md").exists()
 for required in ("every unit is a phase", "one confirmation", "Explain — confirm once; then it runs to publish.",
                  "start an explain from the main checkout", "`visibility: private` is absolute",
                  "The literal `unit` line", "**The required set, per unit:**", "- worktree: yes",
-                 "- outline sign-off: off", "parallel-start <P>` (nested: with no `--host-branch`",
+                 "- outline sign-off: off", "worktree start <P>` (nested: with no `--host-branch`",
                  "in **`auto`**", "--stop-kind decision", "operator-action", "**with no `unit` line**",
                  "§9.2 *The evidence for a book (an explain phase)*", "§3.2 *Permissions, and the payload builder*",
                  "**The acceptance gate, per unit:**", "**An explain phase is the one exception:**"):
@@ -352,8 +352,8 @@ for name in ("do-whole-phase",):
         # the do-* skills never start one on their own initiative, and a hint is relayed,
         # not acted on. Merged back locally; the branch review records its two gate
         # sections as tagged notes.
-        "unless the operator asked for a worktree", "parallel-start <P>", "EnterWorktree",
-        "`parallel-start` on your own initiative", "## Gate sections (written at merge)",
+        "unless the operator asked for a worktree", "worktree start <P>", "EnterWorktree",
+        "`worktree start` on your own initiative", "## Gate sections (written at merge)",
         # lighter-rules: the integration (the local merge) is the close checklist's, pointed to, never restated.
         "by the close checklist, the one place it is written: `.claude/skills/pr/reference/close.md`",
         # v35: just-in-time reads and the bounded notebook.
@@ -759,15 +759,15 @@ for gone in ('{"mcpServers"', "Prefer the **MCP** surface", "MCP first",
 # v44 (P23): the worktree rules left the contract for the skill that runs them, so their
 # pins live here now, whitespace-flattened like design-cowork's: rule 1 is "only when
 # asked", rule 8 retires the v42 pins, a hint is relayed and never acted on, and a closed
-# gate is never merged past. D-3: `parallel-start` itself runs only on the operator's word.
+# gate is never merged past. D-3: `worktree start` itself runs only on the operator's word.
 parallel = " ".join((root / "payload/claude/skills/parallel-phase/SKILL.md").read_text().split())
 for required in ("Worktree rules", "**When — only when asked**", "retired no-op",
                  "Relay a hint to the operator; never act on it.",
-                 "Never merge a parallel phase whose `parallel-gate` is closed",
+                 "Never merge a parallel phase whose `worktree gate` is closed",
                  "the do-* skills relay it and run nothing",
                  # v61 (P37.S9): the contract's "(v43)" tag and its three ways of asking moved here.
                  "**Since v43 this is opt-in:", "the **`worktree` mode word**",
-                 "**`parallel-start <P>` run by the operator's own hand**"):
+                 "**`worktree start <P>` run by the operator's own hand**"):
     assert required in parallel, required
 # v43 negatives copied from the contract list (the worktree-by-default framing), and the
 # v42 leftover that had the do-* skills start a worktree whenever `next` printed the hint.
@@ -779,7 +779,7 @@ for gone in ("runs in its own worktree by default", "enters its worktree at **fi
 # engine's exemption holds; an unmerged branch shows as merge_ready=.
 for required in ("**One exception: an explain phase (v86).**", "### An explain phase merges back by itself",
                  "**An explain phase needs no host branch (v86).**", "`exemption=phase-folder-only (<n> paths)`",
-                 "`merge_ready=<P>:<branch>`", "`parallel-teardown <P> --discard-ignored`",
+                 "`merge_ready=<P>:<branch>`", "`worktree teardown <P> --discard-ignored`",
                  "the main checkout's `.claude/settings.local.json`",
                  "(an explain phase's confirmation is the asking)"):
     assert required in parallel, required
@@ -789,7 +789,7 @@ assert "**One exception: an explain phase (v86).**" in _w
 assert "merge_ready=" in _w and "merge_ready=" in _c and "(an explain: its confirmation asked)" in _c
 _ww = " ".join((root / "payload/claude/skills/do-whole-phase/reference/worktree.md").read_text(encoding="utf-8").split())
 for required in ("**An explain phase merges back by itself, with no stop.**", "**When the automatic merge cannot run**",
-                 "**The closing report** of an explain run comes last", "`parallel-teardown <P> --discard-ignored`"):
+                 "**The closing report** of an explain run comes last", "`worktree teardown <P> --discard-ignored`"):
     assert required in _ww, required
 
 # v32 review procedure: the gate stages, the returned walkthrough, and the two
@@ -949,7 +949,7 @@ for _r in ("# The close", "## Open the drafts, when the review passes", "## At `
            "It never pushes, merges, flips a PR Ready or writes to GitHub.", "- **`reread`:**", "- **`ci`:**", "- **`land`:**",
            "- **`merge`** (a worktree phase)", "- **`commit`:**", "`gate <P> clear --words \"<their words>\"`",
            "run no pre-push local smoke and no post-landing `gh run watch`", "Never `-D`.", "Never a prune.",
-           "`parallel-teardown <P> --discard-ignored`", "../blob/<sha>/<folder>/<file>.png?raw=true",
+           "`worktree teardown <P> --discard-ignored`", "../blob/<sha>/<folder>/<file>.png?raw=true",
            "defers its close until that base merges"):
     assert _r in _close, _r
 for _gone in ("### A. Re-read", "### B. Ready and land", "topics/pr-draft", "## One check, one commit"):
@@ -964,6 +964,7 @@ _up = (root / ".github/workflows/upstream-ci.yml").read_text(encoding="utf-8")
 _seed = (root / "payload/github/workflows/workspace-ci.yml").read_text(encoding="utf-8")
 assert "on:\n  push:\n    branches: [main]\n  pull_request:\n" in _up, "upstream-ci runs on branch pushes"
 assert "on:\n  push:\n    branches: [main, master]\n  pull_request:\n" in _seed, "the CI seed runs on branch pushes"
+assert "parallel-gate" not in _seed and "workflow.py worktree" not in _seed, "the CI seed runs no gate job (the gate is advice)"
 # The shipped settings allow exactly the close's cleanup commands: no -D, no prune.
 import json as _json
 _allow = _json.loads((root / "payload/claude/settings.json").read_text(encoding="utf-8"))["permissions"]["allow"]
@@ -1079,7 +1080,7 @@ for gone in ("loop-sign", "loop-unpark", "loop-tick", "total_usd"):
     assert gone not in claude, gone
 # Every rule-table row names its enforcer: a cited engine command, settings rule, CI step or smoke check.
 _rows = [ln for ln in claude.splitlines() if ln.startswith("| ") and not ln.startswith("| Rule")]
-assert len(_rows) >= 10 and all(ln.count(" | ") == 1 and ln.split(" | ")[1].strip(" |") for ln in _rows), _rows
+assert len(_rows) >= 9 and all(ln.count(" | ") == 1 and ln.split(" | ")[1].strip(" |") for ln in _rows), _rows
 # Workspace sync: every skill step that commits workflow state skips that commit in a linked checkout,
 # and the stream and agenda skills say what a linked checkout does.
 cloud_skip = ("In a linked checkout (`next` prints `store=cloud`), skip this commit: hi2vi's revisions"
@@ -1099,7 +1100,7 @@ uw = (root / "payload/claude/skills/update-workspace/SKILL.md").read_text()
 for pin in ("`git -C workflow status --porcelain -- . ':(exclude)works' ':(exclude)docs'`",
             "`git -C workflow add -A -- . ':(exclude)works' ':(exclude)docs' && git -C workflow add -A -- works/templates works/.workspace-version.json`"):
     assert pin in uw, f"update-workspace: the linked-checkout pin {pin}"
-assert "A linked checkout (`next` prints `store=cloud`) refuses `parallel-start`" in (root / "payload/claude/skills/parallel-phase/SKILL.md").read_text()
+assert "A linked checkout (`next` prints `store=cloud`) refuses `worktree start`" in (root / "payload/claude/skills/parallel-phase/SKILL.md").read_text()
 assert "In a linked checkout, changes made on the web arrive as inbox entries" in (root / "payload/claude/skills/agenda/SKILL.md").read_text()
 # v37 negatives: the MCP-first prescription and the Playwright framing are retired
 # from the contract too -- the fact survives only where it explains the escape hatch.
@@ -2582,7 +2583,7 @@ tb_val=$(tw check --no-rebuild 2>&1); tb_rc=$?; tb_run=$(tw gate 1 2>&1); tb_run
   || bad "two-branch mint did not merge clean -- conflicted: $conflicted / outside: $outside / $tb_val / $tb_run"
 
 # ---------------------------------------------------------------------------
-echo "== Test 10f: brief names -- 13 / P13 name the one P13-<tail>, a shared number is refused and listed, an exact P12 wins, 7kq2 / P-7kq2 still name a v73 id, and the CI seed parses all three branch shapes =="
+echo "== Test 10f: brief names -- 13 / P13 name the one P13-<tail>, a shared number is refused and listed, an exact P12 wins, 7kq2 / P-7kq2 still name a v73 id =="
 # A copy of $F emptied of its phases: a v73 token phase beside P12 and P12-ab. Brief names go through one choke point after argparse.
 newtmp BNW; cp -R "$F" "$BNW/ws"; BN="$BNW/ws"; rm -rf "$BN/.git" "$BN/works/phases/active/"* "$BN/works/phases/archived/"* "$BN/works/deferred/"*/*; bn() { ( cd "$BN" && python3 scripts/workflow.py "$@" ); }
 bn_pid=7kq2; bn_up=7KQ2
@@ -2604,13 +2605,6 @@ printf '%s\n' "$bn_t" | grep -qxE "P13-$tail_re" && printf '%s\n' "$bn_agt" | gr
   && [ "$bn_amb_rc" -ne 0 ] && printf '%s\n' "$bn_amb" | grep -q "names 2 phases numbered 13: .*type the tail" && printf '%s\n' "$bn_full" | grep -qx "phase=P13-$bn_t2" \
   && ok "a bare phase new mints the next number over P12 and P12-ab ($bn_t); p13 and p13-<TAIL> name it while it is the only P13 (gate, slice new --slice 13.S1); a second P13 makes 13 a refusal listing both, and 13-<tail> still names one" \
   || bad "the number lookup is wrong -- $bn_t / $bn_agt / $bn_ag / $bn_sl / $bn_amb / $bn_full"
-seed_block=$(sed -n '/# branch-parse:begin/,/# branch-parse:end/p' "$SRC/github/workflows/workspace-ci.yml")
-newtmp CIW; mkdir -p "$CIW/works/phases/active/P46-k2" && : > "$CIW/works/phases/active/P46-k2/phase.json"
-ci_parse() { ( cd "$CIW" && HEAD_REF=$1 && phase= && eval "$seed_block" && printf '%s' "$phase" ); }
-c1=$(ci_parse "phase/P-$bn_pid-slug"); c2=$(ci_parse phase/P12-slug); c3=$(ci_parse phase/feature-x); c4=$(ci_parse phase/P46-k2-some-slug); c5=$(ci_parse phase/P12-ab-slug)
-[ -n "$seed_block" ] && [ "$c1" = "P-$bn_pid" ] && [ "$c2" = "P12" ] && [ -z "$c3" ] && [ "$c4" = "P46-k2" ] && [ "$c5" = "P12" ] \
-  && ok "the CI seed's branch parse gives P46-k2 for phase/P46-k2-slug (its folder exists), P12 for phase/P12-slug and for phase/P12-ab-slug (no P12-ab folder: a slug word), P-token for phase/P-token-slug, and nothing for another branch" \
-  || bad "the CI seed's branch parse is wrong -- [$c1] [$c2] [$c3] [$c4] [$c5]"
 
 # ---------------------------------------------------------------------------
 echo "== Test 10i: agenda -- items, ids, transitions, order, links, the generated page, validate, two branches (the gate's exemption for an added item: Test 12) =="
@@ -2798,14 +2792,14 @@ nogit_scope=$( cd "$F" && PATH="/var/empty" "$nogit_py" scripts/workflow.py phas
   || bad "phase scope failed or was silent without git (rc=$nogit_rc) -- $nogit_scope"
 
 # ---------------------------------------------------------------------------
-echo "== Test 12: v43 worktree on request -- nothing unasked, parallel-start on a dirty tree, the nested worktree, the exclude line, the retired pins; v86 the gate's checked exemption =="
+echo "== Test 12: v43 worktree on request -- nothing unasked, worktree start on a dirty tree, the nested worktree, the exclude line, the retired pins; v86 the gate's checked exemption =="
 newtmp W
 sh "$BOOT" "$W" --at-root --name "Worktree" --summary "worktree probe" >/dev/null 2>&1 || bad "v43 probe: fresh install failed"
 ( cd "$W" && git init -q -b main . 2>/dev/null || git init -q . ; git config user.email smoke@example.invalid && git config user.name smoke \
     && git add -A >/dev/null 2>&1 && git commit -qm "worktree baseline" >/dev/null 2>&1 ) || bad "v43 probe: no baseline commit"
 # (0) creating and selecting a phase says nothing about worktrees: the default stream is the default.
 np_out=$( cd "$W" && python3 scripts/workflow.py phase new --phase P1 --name "Worktree probe" --objective "probe the default" 2>&1 )
-printf '%s\n' "$np_out" | grep -q "worktree\|parallel-start" \
+printf '%s\n' "$np_out" | grep -q "worktree\|worktree start" \
   && bad "phase new volunteered a worktree with nothing in flight -- $np_out" || ok "phase new says nothing about worktrees when nothing is in flight"
 ( cd "$W" && python3 scripts/workflow.py next 2>&1 | grep -q "^hint:" ) \
   && bad "next hinted a worktree for a lone planned phase" || ok "next hints nothing for a lone planned phase"
@@ -2820,8 +2814,8 @@ printf '%s\n' "$np2" | grep -q "^hint: P1 is in progress -- this phase can run i
 # P1 is NOT committed (create-phase makes no commit). Dirty one tracked file, stage another unrelated change.
 printf '\n# smoke: dirty edit that must stay behind\n' >> "$W/executors.toml"
 mkdir -p "$W/src" && printf 'staged\n' > "$W/src/staged.py" && ( cd "$W" && git add src/staged.py )
-ps_out=$( cd "$W" && python3 scripts/workflow.py parallel-start P1 2>&1 ); ps_rc=$?
-[ "$ps_rc" -eq 0 ] && ok "parallel-start runs on a dirty tree" || bad "parallel-start refused a dirty tree (rc=$ps_rc) -- $ps_out"
+ps_out=$( cd "$W" && python3 scripts/workflow.py worktree start P1 2>&1 ); ps_rc=$?
+[ "$ps_rc" -eq 0 ] && ok "worktree start runs on a dirty tree" || bad "worktree start refused a dirty tree (rc=$ps_rc) -- $ps_out"
 # (a) the stamp commit is exactly the phase folder + (a subset of) the six works files
 stamp_files=$( cd "$W" && git show --name-only --format= HEAD )
 if python3 - "$stamp_files" <<'PY'
@@ -2834,7 +2828,7 @@ assert files == phase | (files & six), files
 PY
 then ok "the stamp commit holds only the phase folder and the regenerated works/ files"; else bad "the stamp commit swept in other paths -- $stamp_files"; fi
 ( cd "$W" && git diff --cached --name-only | grep -qx "src/staged.py" && git diff --name-only | grep -qx "executors.toml" ) \
-  && ok "the unrelated staged change stays staged and the dirty edit stays dirty on the default checkout" || bad "parallel-start disturbed the operator's changes"
+  && ok "the unrelated staged change stays staged and the dirty edit stays dirty on the default checkout" || bad "worktree start disturbed the operator's changes"
 # (b) the worktree is at .claude/worktrees/P<N>-<slug> and registered
 wt="$W/.claude/worktrees/P1-worktree_probe"
 [ -d "$wt" ] && ( cd "$W" && git worktree list --porcelain | grep -q "/\.claude/worktrees/P1-worktree_probe$" ) \
@@ -2855,7 +2849,7 @@ if printf '%s\n' "$nx" | grep -q "^current_phase=P2" && ! printf '%s\n' "$nx" | 
 if ( cd "$W" && python3 scripts/workflow.py phase new --phase P3 --name "On main" --objective "no longer pins" --on-main 2>&1 | grep -q "no-op since v43" ) \
     && ! grep -q '"execution"' "$W/works/phases/active/P3/phase.json"; then
   ok "phase new --on-main is a no-op that stamps nothing"; else bad "phase new --on-main still pinned"; fi
-# (g) v42's legacy pin is still honoured where it exists: validate accepts it, parallel-start refuses it
+# (g) v42's legacy pin is still honoured where it exists: validate accepts it, worktree start refuses it
 python3 - "$W/works/phases/active/P2/phase.json" <<'PIN' || bad "could not write the legacy pin"
 import json, sys
 data = json.load(open(sys.argv[1]))
@@ -2863,35 +2857,35 @@ data["execution"] = {"mode": "default"}
 json.dump(data, open(sys.argv[1], "w"), indent=2, ensure_ascii=False)
 PIN
 ( cd "$W" && python3 scripts/workflow.py check --no-rebuild >/dev/null 2>&1 ) && ok "validate still accepts v42's legacy execution.mode=default" || bad "validate rejects the legacy pin"
-if ( cd "$W" && python3 scripts/workflow.py parallel-start P2 2>&1 | grep -q "legacy pin" ) \
+if ( cd "$W" && python3 scripts/workflow.py worktree start P2 2>&1 | grep -q "legacy pin" ) \
     && ! ( cd "$W" && git rev-parse --verify --quiet refs/heads/phase/P2-second_probe >/dev/null 2>&1 ); then
-  ok "parallel-start refuses a legacy-pinned phase and cuts no branch"; else bad "parallel-start did not refuse the legacy pin"; fi
+  ok "worktree start refuses a legacy-pinned phase and cuts no branch"; else bad "worktree start did not refuse the legacy pin"; fi
 # (h) the gate runs from inside the worktree, and a local --no-ff merge + teardown of a clean nested worktree needs no --force
 ( cd "$wt" && python3 scripts/workflow.py gate P1 waive --note "smoke" >/dev/null 2>&1 \
     && python3 scripts/workflow.py slice status P1.DECOMP done >/dev/null 2>&1 \
     && python3 scripts/workflow.py review P1 --verdict pass >/dev/null 2>&1 \
     && git add -A >/dev/null 2>&1 && git commit -qm "P1 done" >/dev/null 2>&1 ) || bad "v43 probe: could not finish P1 on the branch"
-( cd "$wt" && python3 scripts/workflow.py parallel-gate P1 2>&1 | grep -q "^main_state_source=main (local default branch" ) \
-  && ok "parallel-gate run from the worktree reads the default stream from the local default branch" || bad "parallel-gate from the worktree did not fall back to the local default branch"
+( cd "$wt" && python3 scripts/workflow.py worktree gate P1 2>&1 | grep -q "^main_state_source=main (local default branch" ) \
+  && ok "worktree gate run from the worktree reads the default stream from the local default branch" || bad "worktree gate from the worktree did not fall back to the local default branch"
 # (i) doc consolidation is retired: neither the stamp nor the pass writes a consolidation field; v86 the gate's checked exemption, both ways.
 ! grep -q '"consolidation"' "$wt/works/phases/active/P1/phase.json" \
   && ok "a worktree phase's stamp and its passing review write no consolidation field" \
   || bad "a consolidation field reached the worktree phase's phase.json"
 ( cd "$W" && python3 scripts/workflow.py phase status P2 in_progress >/dev/null 2>&1 ) || bad "v86 probe: could not make the default stream busy"
-g_out=$( cd "$W" && python3 scripts/workflow.py parallel-gate P1 2>&1 ); g_rc=$?
+g_out=$( cd "$W" && python3 scripts/workflow.py worktree gate P1 2>&1 ); g_rc=$?
 [ "$g_rc" -eq 0 ] && printf '%s\n' "$g_out" | grep -q "^exemption=phase-folder-only (" && printf '%s\n' "$g_out" | grep -q "^GATE OPEN" \
-  && ok "parallel-gate opens on a busy default stream for a branch touching only its phase folder and the works files" \
+  && ok "worktree gate opens on a busy default stream for a branch touching only its phase folder and the works files" \
   || bad "the checked exemption did not open the gate (rc=$g_rc) -- $g_out"
 ( cd "$wt" && git checkout -q -b probe/extra && mkdir -p src && printf 'x\n' > src/probe.py && git add src/probe.py \
     && git commit -qm "probe: a product file" && git checkout -q phase/P1-worktree_probe ) >/dev/null 2>&1 || bad "v86 probe: could not cut the product-file branch"
-g_out=$( cd "$W" && python3 scripts/workflow.py parallel-gate P1 --branch-ref probe/extra 2>&1 ); g_rc=$?
-[ "$g_rc" -ne 0 ] && printf '%s\n' "$g_out" | grep -q "^exemption=none: src/probe.py" && printf '%s\n' "$g_out" | grep -q "default stream is not quiet: phase P2" \
-  && ok "a branch touching any other path gets no exemption: the busy default stream still closes the gate" \
+g_out=$( cd "$W" && python3 scripts/workflow.py worktree gate P1 --branch-ref probe/extra 2>&1 ); g_rc=$?
+[ "$g_rc" -eq 0 ] && printf '%s\n' "$g_out" | grep -q "^exemption=none: src/probe.py" && printf '%s\n' "$g_out" | grep -q "^GATE CLOSED reason=.*default stream is not quiet: phase P2" \
+  && ok "a branch touching any other path gets no exemption: the busy default stream still closes the gate (advice: GATE CLOSED reason=, exit 0)" \
   || bad "the exemption let a product-file branch past a busy default stream (rc=$g_rc) -- $g_out"
 # P66: a branch that only adds an agenda item (plus the regenerated works/ files) keeps the exemption.
 ( cd "$wt" && git checkout -q -b probe/agenda && python3 scripts/workflow.py agenda-add --title "gate probe" && git add -A works \
     && git commit -qm "probe: an agenda item" && git checkout -q phase/P1-worktree_probe ) >/dev/null 2>&1 || bad "P66 probe: could not cut the agenda branch"
-g_out=$( cd "$W" && python3 scripts/workflow.py parallel-gate P1 --branch-ref probe/agenda 2>&1 ); g_rc=$?
+g_out=$( cd "$W" && python3 scripts/workflow.py worktree gate P1 --branch-ref probe/agenda 2>&1 ); g_rc=$?
 [ "$g_rc" -eq 0 ] && printf '%s\n' "$g_out" | grep -q "^exemption=phase-folder-only (" \
   && ok "a branch that only adds an agenda item keeps the exemption: the gate opens on a busy default stream" \
   || bad "an added agenda item lost the exemption (rc=$g_rc) -- $g_out"
@@ -2911,7 +2905,7 @@ sh "$BOOT" "$GW" --at-root --name "Gone" --summary "gone probe" >/dev/null 2>&1 
 gone_out=$( cd "$GW" && git init -q -b main . && git config user.email smoke@example.invalid && git config user.name smoke \
     && python3 scripts/workflow.py phase new --phase P1 --name "Par" --objective "o" >/dev/null 2>&1 \
     && python3 scripts/workflow.py phase new --phase P2 --name "Gone" --objective "o" >/dev/null 2>&1 \
-    && git add -A >/dev/null 2>&1 && git commit -qm "baseline" && python3 scripts/workflow.py parallel-start P1 >/dev/null 2>&1 \
+    && git add -A >/dev/null 2>&1 && git commit -qm "baseline" && python3 scripts/workflow.py worktree start P1 >/dev/null 2>&1 \
     && git rm -rq works/phases/active/P2 && python3 scripts/workflow.py check >/dev/null 2>&1 && git add -A && git commit -qm "drop P2" \
     && cd .claude/worktrees/P1-par && aid=$(python3 scripts/workflow.py agenda-add --title "gone probe" | sed -n 's/^added \([^:]*\):.*/\1/p') \
     && { python3 scripts/workflow.py agenda-link "$aid" --phase P2 2>&1; rc=$?; git diff --quiet -- works/phases/active/P2 || rc=99; exit $rc; } ); gone_rc=$?
@@ -2926,7 +2920,7 @@ subf_out=$( cd "$GS" && git init -q -b main . && git config user.email smoke@exa
     && echo product > README && git add README && git commit -qm "product" && sh "$BOOT" "$GS/sub" --at-root --name "Sub" --summary "subfolder probe" >/dev/null 2>&1 \
     && cd sub && python3 scripts/workflow.py phase new --phase P1 --name "Par" --objective "o" >/dev/null 2>&1 \
     && python3 scripts/workflow.py phase new --phase P2 --name "Stay" --objective "o" >/dev/null 2>&1 \
-    && git add -A >/dev/null 2>&1 && git commit -qm "baseline" && python3 scripts/workflow.py parallel-start P1 >/dev/null 2>&1 \
+    && git add -A >/dev/null 2>&1 && git commit -qm "baseline" && python3 scripts/workflow.py worktree start P1 >/dev/null 2>&1 \
     && cd .claude/worktrees/P1-par/sub && aid=$(python3 scripts/workflow.py agenda-add --title "subfolder probe" | sed -n 's/^added \([^:]*\):.*/\1/p') \
     && { python3 scripts/workflow.py agenda-link "$aid" --phase P2 2>&1; rc=$?; git diff --quiet -- works/phases/active/P2 || rc=99; exit $rc; } ); subf_rc=$?
 [ "$subf_rc" -eq 1 ] && printf '%s\n' "$subf_out" | grep -q "^agenda-link refused, nothing was written: P2 runs on the default stream; in the default checkout (.*/sub, branch main) run: " \
@@ -2936,15 +2930,15 @@ subf_out=$( cd "$GS" && git init -q -b main . && git config user.email smoke@exa
 ( cd "$W" && git restore --staged src/staged.py && git add -A works >/dev/null 2>&1 && git commit -qm "workflow state" >/dev/null 2>&1 ) \
   || bad "v43 probe: could not commit the default-stream workflow state before merging"
 # Both sides regenerated the dashboards, so the merge conflicts in generated files -- resolved the
-# documented way: take either side, conclude, and let parallel-merge-finish regenerate them.
+# documented way: take either side, conclude, and let worktree merge-finish regenerate them.
 ( cd "$W" && { git merge --no-ff -q phase/P1-worktree_probe -m "merge(P1): Worktree probe" >/dev/null 2>&1 \
       || { unmerged=$(git diff --name-only --diff-filter=U); [ -n "$unmerged" ] \
            && printf '%s\n' "$unmerged" | xargs git checkout --theirs -- >/dev/null 2>&1 \
            && git add -A works >/dev/null 2>&1 && git commit -qm "merge(P1): Worktree probe" >/dev/null 2>&1; }; } \
-    && python3 scripts/workflow.py parallel-merge-finish >/dev/null 2>&1 \
+    && python3 scripts/workflow.py worktree merge-finish >/dev/null 2>&1 \
     && git add -A works >/dev/null 2>&1 && { git diff --cached --quiet || git commit -qm "post-merge" >/dev/null 2>&1; } \
-    && python3 scripts/workflow.py parallel-teardown P1 >/dev/null 2>&1 && [ ! -d "$wt" ] ) \
-  && ok "a local --no-ff merge lands (generated-file conflicts taken either side, then regenerated) and parallel-teardown removes the clean nested worktree" \
+    && python3 scripts/workflow.py worktree teardown P1 >/dev/null 2>&1 && [ ! -d "$wt" ] ) \
+  && ok "a local --no-ff merge lands (generated-file conflicts taken either side, then regenerated) and worktree teardown removes the clean nested worktree" \
   || bad "merge, merge-finish or teardown failed"
 
 # ---------------------------------------------------------------------------
@@ -3701,19 +3695,19 @@ scope_out=$(nw phase scope P1 2>&1); scope_rc=$?
 printf '%s\n' "$scope_out" | grep -qx "pathspec=. ':(exclude)workflow'" && [ "$(nw phase scope --pathspec 2>&1)" = "pathspec=. ':(exclude)workflow'" ] \
   && ok "nested phase scope and phase scope --pathspec print the host pathspec: the nested workflow/ folder excluded, the host's docs/ kept" \
   || bad "nested pathspec= line missing or wrong -- $scope_out"
-ps_out=$(nw parallel-start P1 2>&1); ps_rc=$?
-[ "$ps_rc" -ne 0 ] && printf '%s\n' "$ps_out" | grep -q "^parallel-start in a nested install needs --host-branch <name>" \
+ps_out=$(nw worktree start P1 2>&1); ps_rc=$?
+[ "$ps_rc" -ne 0 ] && printf '%s\n' "$ps_out" | grep -q "^worktree start in a nested install needs --host-branch <name>" \
   && ! grep -q '"execution"' "$NH/workflow/works/phases/active/P1/phase.json" \
-  && ok "nested parallel-start without --host-branch refuses and writes nothing" || bad "nested parallel-start did not refuse a missing --host-branch (rc=$ps_rc) -- $ps_out"
+  && ok "nested worktree start without --host-branch refuses and writes nothing" || bad "nested worktree start did not refuse a missing --host-branch (rc=$ps_rc) -- $ps_out"
 nx=$(nw next 2>&1)
 printf '%s\n' "$nx" | grep -q "^nested_host=/" && printf '%s\n' "$nx" | grep -q "^host_commit_convention=UNCONFIRMED (inferred: type(scope): summary)" \
   && printf '%s\n' "$nx" | grep -qx "slice_path=workflow/works/phases/active/P1/slices/P1.DECOMP" \
   && ok "next names the host, holds the unconfirmed convention, and prints host-relative paths" || bad "nested next lines missing -- $nx"
-nw nested-convention --confirm --text "type(scope): summary" --trailers forbidden >/dev/null 2>&1 || bad "nested probe: nested-convention --confirm failed"
+nw repo convention --confirm --text "type(scope): summary" --trailers forbidden >/dev/null 2>&1 || bad "nested probe: repo convention --confirm failed"
 nx=$(nw next 2>&1)
 if printf '%s\n' "$nx" | grep -q "^host_commit_convention=confirmed (coauthor_trailers=forbidden)" && ! printf '%s\n' "$nx" | grep -q "UNCONFIRMED" \
     && python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["commit_convention"]; assert c["confirmed"] is True and c["text"] == "type(scope): summary" and c["inferred"] == "type(scope): summary", c' "$NH/workflow/.agentic-nested.json"; then
-  ok "nested-convention --confirm records the text and the trailer rule, and next stops flagging it"; else bad "nested-convention --confirm did not flip the convention -- $nx"; fi
+  ok "repo convention --confirm records the text and the trailer rule, and next stops flagging it"; else bad "repo convention --confirm did not flip the convention -- $nx"; fi
 # The agent rename map: design-drafter is installed as wf-design-drafter in the host's .claude/agents.
 mkdir -p "$NH/.claude/agents" && cp "$SRC/claude/agents/slice-executor.md" "$SRC/claude/agents/design-critic.md" "$SRC/claude/agents/pr-reader.md" "$SRC/claude/agents/code-reader.md" "$SRC/claude/agents/Explore.md" "$NH/.claude/agents/" \
   && sed 's/^name: design-drafter$/name: wf-design-drafter/' "$SRC/claude/agents/design-drafter.md" > "$NH/.claude/agents/wf-design-drafter.md"
@@ -3753,12 +3747,12 @@ printf 'temp/\n' >> "$NW/.git/info/exclude"
 ( cd "$NW" && git config user.email smoke@example.invalid && git config user.name smoke && git branch -M main >/dev/null 2>&1 \
     && git add -A >/dev/null 2>&1 && git commit -qm "nested baseline" >/dev/null 2>&1 ) || bad "paired lifecycle: could not commit the nested fixture"
 nw check >/dev/null 2>&1; ( cd "$NW" && git add -A >/dev/null 2>&1 && git commit -qm "rebuild" >/dev/null 2>&1 )
-ps_out=$(nw parallel-start P1 --host-branch feat/side 2>&1); ps_rc=$?
+ps_out=$(nw worktree start P1 --host-branch feat/side 2>&1); ps_rc=$?
 HWT=$(printf '%s\n' "$ps_out" | sed -n 's/^host_worktree=//p'); PBR=$(printf '%s\n' "$ps_out" | sed -n 's/^branch=//p')
 if [ "$ps_rc" -eq 0 ] && [ -d "$HWT/workflow" ] && git -C "$NH" worktree list | grep -qF "$HWT" && git -C "$NW" worktree list | grep -qF "$HWT/workflow" \
     && [ -z "$(git -C "$NH" status --short)" ]; then
-  ok "paired parallel-start: both repos list the new worktree, <host-wt>/workflow exists and the host's git status is empty"
-else bad "paired parallel-start (rc=$ps_rc) -- $ps_out -- host status: $(git -C "$NH" status --short)"; fi
+  ok "paired worktree start: both repos list the new worktree, <host-wt>/workflow exists and the host's git status is empty"
+else bad "paired worktree start (rc=$ps_rc) -- $ps_out -- host status: $(git -C "$NH" status --short)"; fi
 wt_next=$( cd "$HWT" && python3 workflow/scripts/workflow.py next 2>&1 ); main_next=$(nw next 2>&1)
 nw check >/dev/null 2>&1
 if printf '%s\n' "$wt_next" | grep -q "^stream=phase/P1-" && ! printf '%s\n' "$main_next" | grep -q "^current_phase=P1" \
@@ -3780,38 +3774,39 @@ git -C "$HWT/workflow" checkout -q -- . >/dev/null 2>&1   # drop the regenerated
 printf 'merged\n' > "$HWT/workflow/merged.txt" && git -C "$HWT/workflow" add -A >/dev/null 2>&1 && git -C "$HWT/workflow" commit -qm "phase work" >/dev/null 2>&1
 git -C "$NW" add -A >/dev/null 2>&1 && git -C "$NW" commit -qm "regenerated works" >/dev/null 2>&1
 git -C "$NW" merge --no-ff -q -m "merge phase" "$PBR" >/dev/null 2>&1 || bad "paired lifecycle: could not merge $PBR into the nested default branch"
-td_out=$(nw parallel-teardown P1 2>&1); td_rc=$?
-[ "$td_rc" -ne 0 ] && printf '%s\n' "$td_out" | grep -qF "parallel-teardown P1 refused -- nothing was removed:" \
+td_out=$(nw worktree teardown P1 2>&1); td_rc=$?
+[ "$td_rc" -ne 0 ] && printf '%s\n' "$td_out" | grep -qF "worktree teardown P1 refused -- nothing was removed:" \
   && printf '%s\n' "$td_out" | grep -qF "ignored, worktree-only files would be deleted" && printf '%s\n' "$td_out" | grep -qF "temp/" \
   && [ -d "$HWT/workflow" ] && git -C "$NH" worktree list | grep -qF "$HWT" \
-  && ok "paired parallel-teardown refuses first on the ignored worktree-only temp/ and removes nothing" \
+  && ok "paired worktree teardown refuses first on the ignored worktree-only temp/ and removes nothing" \
   || bad "the teardown guard did not refuse (rc=$td_rc) -- $td_out"
-td_out=$(nw parallel-teardown P1 --discard-ignored 2>&1); td_rc=$?
+td_out=$(nw worktree teardown P1 --discard-ignored 2>&1); td_rc=$?
 nested_at=$(printf '%s\n' "$td_out" | grep -n '^removed nested worktree' | head -1 | cut -d: -f1); host_at=$(printf '%s\n' "$td_out" | grep -n '^removed host worktree' | head -1 | cut -d: -f1)
 if [ "$td_rc" -eq 0 ] && [ -n "$nested_at" ] && [ -n "$host_at" ] && [ "$nested_at" -lt "$host_at" ] && printf '%s\n' "$td_out" | grep -q "^kept host branch feat/side:" \
     && [ -n "$(git -C "$NH" branch --list feat/side)" ] && [ ! -e "$HWT" ] \
     && ! git -C "$NH" worktree list | grep -qF "$HWT" && ! git -C "$NW" worktree list | grep -qF "$HWT" \
-    && ! git -C "$NH" worktree list --porcelain | grep -q '^prunable' && ! git -C "$NW" worktree list --porcelain | grep -q '^prunable'; then
-  ok "paired parallel-teardown --discard-ignored removes the nested worktree before the host worktree and keeps the host branch feat/side"
+    && ! git -C "$NH" worktree list --porcelain | grep -q '^prunable' && ! git -C "$NW" worktree list --porcelain | grep -q '^prunable' \
+    && ! grep -q '"execution"' "$NW/works/phases/active/P1/phase.json" && ! nw worktree status 2>&1 | grep -q '^== P1'; then
+  ok "paired worktree teardown --discard-ignored removes the nested worktree before the host worktree and keeps the host branch feat/side; it clears the execution block, so worktree status stops listing P1"
 else bad "paired teardown wrong (rc=$td_rc) -- $td_out"; fi
 # v86 (§9.4): an explain phase's pair goes detached without --host-branch -- no host branch is made, kept or deleted.
 { nw phase new --phase P2 --name "Explain: probe" --objective "detached host" \
     && printf '\n## Explain\n\n- unit: document\n' >> "$NW/works/phases/active/P2/intent.md"; } >/dev/null 2>&1 || bad "detached pair: could not create the explain phase"
 hb_before=$(git -C "$NH" branch --list | wc -l | tr -d ' ')
-ps_out=$(nw parallel-start P2 2>&1); ps_rc=$?
+ps_out=$(nw worktree start P2 2>&1); ps_rc=$?
 HWT2=$(printf '%s\n' "$ps_out" | sed -n 's/^host_worktree=//p'); PBR2=$(printf '%s\n' "$ps_out" | sed -n 's/^branch=//p')
 if [ "$ps_rc" -eq 0 ] && printf '%s\n' "$ps_out" | grep -q '^host_branch=- (detached host worktree' && [ -d "$HWT2/workflow" ] \
     && ! git -C "$HWT2" symbolic-ref -q HEAD >/dev/null 2>&1 && [ "$(git -C "$NH" branch --list | wc -l | tr -d ' ')" = "$hb_before" ] \
     && python3 -c 'import json,sys; e=json.load(open(sys.argv[1]))["execution"]; assert e["host_branch"] is None and e["host_branch_created"] is False, e' "$NW/works/phases/active/P2/phase.json" \
     && nw check --no-rebuild >/dev/null 2>&1; then
-  ok "nested parallel-start of an explain phase with no --host-branch cuts a detached host worktree: host_branch null, no host branch made, validate passes"
+  ok "nested worktree start of an explain phase with no --host-branch cuts a detached host worktree: host_branch null, no host branch made, validate passes"
 else bad "detached explain pair wrong (rc=$ps_rc) -- $ps_out -- $(nw check --no-rebuild 2>&1 | tail -3)"; fi
 PG="$HWT2/workflow/works/phases/active/P2/doc/pages"
 mkdir -p "$PG" && printf '*\n!.gitignore\n' > "$PG/.gitignore" && printf 'cached\n' > "$PG/p1.html" \
   && git -C "$HWT2/workflow" add works/phases/active/P2/doc >/dev/null 2>&1 && git -C "$HWT2/workflow" commit -qm "dossier" >/dev/null 2>&1 \
   && git -C "$NW" add -A >/dev/null 2>&1 && { git -C "$NW" commit -qm "default state" >/dev/null 2>&1; git -C "$NW" merge --no-ff -q -m "merge P2" "$PBR2" >/dev/null 2>&1; } \
   || bad "detached pair: could not commit the dossier or merge $PBR2"
-td_out=$(nw parallel-teardown P2 --discard-ignored 2>&1); td_rc=$?
+td_out=$(nw worktree teardown P2 --discard-ignored 2>&1); td_rc=$?
 if [ "$td_rc" -eq 0 ] && printf '%s\n' "$td_out" | grep -q '^no host branch: the host worktree was detached' && printf '%s\n' "$td_out" | grep -q '^deleted 1 ignored' \
     && [ ! -e "$HWT2" ] && [ "$(git -C "$NH" branch --list | wc -l | tr -d ' ')" = "$hb_before" ] \
     && ! git -C "$NH" worktree list | grep -qF "$HWT2" && ! git -C "$NW" worktree list | grep -qF "$HWT2" && nw check --no-rebuild >/dev/null 2>&1; then
@@ -3871,7 +3866,7 @@ printf '%s\n' "$scope" | grep -q "^product_files=0 " && ! printf '%s\n' "$scope"
   && ok "right after install, phase new then phase scope lists nothing (info/exclude hides every host-side file)" || bad "phase scope sees the install as product -- $scope"
 out=$(sh "$BOOT" "$IH" --nested 2>&1); rc=$?
 [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q "already installed" && ih_clean && ok "re-running --nested is an idempotent exit 0" || bad "re-running --nested was not a clean no-op (rc=$rc) -- $out"
-iw nested-convention --confirm --text "type(scope): summary" --trailers forbidden >/dev/null 2>&1 || bad "nested install: nested-convention --confirm failed"
+iw repo convention --confirm --text "type(scope): summary" --trailers forbidden >/dev/null 2>&1 || bad "nested install: repo convention --confirm failed"
 # An earlier nested install's explain skill (listed under `installed`, its exclude line in the block, no self-hiding
 # .gitignore): --update keeps it recognised and hidden, and never writes, flags or reports it.
 plant_old_explain "$IH/.claude/skills/explain/SKILL.md"
@@ -4128,21 +4123,21 @@ pc_a=$(hw pr check P1 --repo alpha 2>&1); pc_a_rc=$?; pc_n=$(hw pr check P1 2>&1
   && printf '%s\n' "$pc_a" | grep -qx 'pr_check=warn' && [ "$pc_n_rc" -eq 0 ] && printf '%s\n' "$pc_n" | grep -q '^pr_branches=none recorded' && printf '%s\n' "$pc_n" | grep -qx 'pr_check=warn' \
   && ok "multi-repo pr check: a repo with no topics/pr-body-<repo>.md prints repo=<name> body=missing and pr_check=warn; no recorded branch and no --repo warns too, never pass" \
   || bad "multi-repo pr check missing-body verdict wrong (rc $pc_a_rc/$pc_n_rc) -- $pc_a / $pc_n"
-# (d) a worktree set: parallel-start --repo cuts a worktree per repo; teardown refuses a dirty repo worktree and a hand-made one it did not stamp, then retires the set.
+# (d) a worktree set: worktree start --repo cuts a worktree per repo; teardown refuses a dirty repo worktree and a hand-made one it did not stamp, then retires the set.
 git -C "$MH/workflow" add -A >/dev/null 2>&1 && mr git -C "$MH/workflow" commit -qm "chore: install and create the phase" >/dev/null 2>&1 || bad "multi-repo probe: could not commit the nested repo"
-ps_out=$(hw parallel-start P1 --host-branch hb --repo alpha=feat/a --repo beta=feat/b --repo-base alpha=main --repo-base beta=main 2>&1); ps_rc=$?
+ps_out=$(hw worktree start P1 --host-branch hb --repo alpha=feat/a --repo beta=feat/b --repo-base alpha=main --repo-base beta=main 2>&1); ps_rc=$?
 PJ="$MH/workflow/works/phases/active/P1/phase.json"; WT=$(pjget "$PJ" execution.host_worktree); PB=$(pjget "$PJ" execution.branch)
 wl() { git -C "$MH/alpha" worktree list; git -C "$MH/beta" worktree list; git -C "$MH" worktree list; git -C "$MH/workflow" worktree list; }
 [ "$ps_rc" -eq 0 ] && [ -f "$WT/alpha/.git" ] && [ -f "$WT/beta/.git" ] && [ "$(pjget "$PJ" execution.repos.beta.branch)" = "feat/b" ] \
-  && ok "parallel-start --repo cuts a worktree per repo inside the host worktree and stamps each in execution.repos" || bad "parallel-start --repo did not cut the set (rc=$ps_rc) -- $ps_out"
+  && ok "worktree start --repo cuts a worktree per repo inside the host worktree and stamps each in execution.repos" || bad "worktree start --repo did not cut the set (rc=$ps_rc) -- $ps_out"
 wl_before=$(wl); printf 'dirty\n' > "$WT/alpha/dirty.txt"
-td_out=$(hw parallel-teardown P1 2>&1); td_rc=$?
+td_out=$(hw worktree teardown P1 2>&1); td_rc=$?
 [ "$td_rc" -ne 0 ] && [ "$(wl)" = "$wl_before" ] && [ -f "$WT/alpha/dirty.txt" ] \
-  && ok "parallel-teardown refuses a repo worktree with uncommitted work and removes nothing" || bad "teardown did not refuse a dirty repo worktree (rc=$td_rc) -- $td_out"
+  && ok "worktree teardown refuses a repo worktree with uncommitted work and removes nothing" || bad "teardown did not refuse a dirty repo worktree (rc=$td_rc) -- $td_out"
 rm -f "$WT/alpha/dirty.txt"
 printf '/vendor/\n' >> "$MH/.git/info/exclude"   # hidden from the host worktree's status, so only the stamp can tell it from the set's own
 mr git -C "$MH/alpha" worktree add -q --detach "$WT/vendor" >/dev/null 2>&1 && printf 'wip\n' > "$WT/vendor/wip.txt" || bad "multi-repo probe: could not make the hand-made worktree"
-wl_before=$(wl); val_out=$(hw check --no-rebuild 2>&1); val_rc=$?; td_out=$(hw parallel-teardown P1 --discard-ignored 2>&1); td_rc=$?
+wl_before=$(wl); val_out=$(hw check --no-rebuild 2>&1); val_rc=$?; td_out=$(hw worktree teardown P1 --discard-ignored 2>&1); td_rc=$?
 [ "$val_rc" -eq 0 ] && printf '%s\n' "$val_out" | grep -q "^warning: .*/vendor" && [ "$td_rc" -ne 0 ] && [ "$(wl)" = "$wl_before" ] && [ -f "$WT/vendor/wip.txt" ] \
   && [ "$(pjget "$PJ" execution.repos.alpha.worktree)" != None ] \
   && ok "a hand-made worktree in the host worktree: validate warns (rc 0), teardown refuses even with --discard-ignored, its uncommitted file and every worktree list untouched" \
@@ -4150,27 +4145,27 @@ wl_before=$(wl); val_out=$(hw check --no-rebuild 2>&1); val_rc=$?; td_out=$(hw p
 { mr git -C "$MH/alpha" worktree remove --force "$WT/vendor" && printf 'b\n' > "$WT/beta/b2.txt" && mr git -C "$WT/beta" add b2.txt \
   && mr git -C "$WT/beta" commit -qm "feat: beta work" && mr git -C "$WT/workflow" commit -q --allow-empty -m "chore(works): slice work" \
   && mr git -C "$MH/workflow" merge -q --no-ff -m "merge: the phase" "$PB"; } >/dev/null 2>&1 || bad "multi-repo probe: could not integrate the set"
-td_out=$(hw parallel-teardown P1 --discard-ignored 2>&1); td_rc=$?
+td_out=$(hw worktree teardown P1 --discard-ignored 2>&1); td_rc=$?
 if [ "$td_rc" -eq 0 ] && [ ! -e "$WT" ] && [ -z "$(git -C "$MH/alpha" branch --list feat/a)" ] && [ -n "$(git -C "$MH/beta" branch --list feat/b)" ] \
     && [ "$(git -C "$MH/alpha" worktree list | wc -l | tr -d ' ')" = 1 ] && [ "$(git -C "$MH/beta" worktree list | wc -l | tr -d ' ')" = 1 ] \
-    && [ "$(pjget "$PJ" execution.repos.alpha.worktree)" = None ] && [ "$(pjget "$PJ" execution.repos.beta.worktree)" = None ] && hw check --no-rebuild >/dev/null 2>&1; then
-  ok "with the hand-made worktree gone, teardown removes the repo worktrees, nulls each stamp, deletes the created branch with no commits and keeps the one with a commit; validate passes"
+    && ! pjget "$PJ" execution >/dev/null 2>&1 && hw check --no-rebuild >/dev/null 2>&1; then
+  ok "with the hand-made worktree gone, teardown removes the repo worktrees, clears the execution block, deletes the created branch with no commits and keeps the one with a commit; validate passes"
 else bad "the set did not retire cleanly (rc=$td_rc) -- $td_out"; fi
-# (d2) a repo added mid-phase, from inside the set, is stamped on the phase branch only; the default stream's parallel-status must still list it.
+# (d2) a repo added mid-phase, from inside the set, is stamped on the phase branch only; the default stream's worktree status must still list it.
 { hw phase new --phase P2 --name "Mid" --objective "add a repo mid-phase" && git -C "$MH/workflow" add -A && mr git -C "$MH/workflow" commit -qm "chore: create the second phase" \
-  && hw parallel-start P2 --host-branch hb2 --repo alpha=feat/a2 --repo-base alpha=main; } >/dev/null 2>&1 || bad "multi-repo probe: could not cut the second set"
+  && hw worktree start P2 --host-branch hb2 --repo alpha=feat/a2 --repo-base alpha=main; } >/dev/null 2>&1 || bad "multi-repo probe: could not cut the second set"
 PJ2="$MH/workflow/works/phases/active/P2/phase.json"; WT2=$(pjget "$PJ2" execution.host_worktree)
-add_out=$( cd "$WT2" && mr python3 workflow/scripts/workflow.py parallel-add-repo P2 --repo beta=feat/b2 --repo-base main 2>&1 ); add_rc=$?
-st_out=$(hw parallel-status 2>&1); st_rc=$?
+add_out=$( cd "$WT2" && mr python3 workflow/scripts/workflow.py worktree add-repo P2 --repo beta=feat/b2 --repo-base main 2>&1 ); add_rc=$?
+st_out=$(hw worktree status 2>&1); st_rc=$?
 [ "$add_rc" -eq 0 ] && ! pjget "$PJ2" execution.repos.beta >/dev/null 2>&1 && [ "$st_rc" -eq 0 ] && printf '%s\n' "$st_out" | grep -q '^  source=branch phase/P2' \
   && printf '%s\n' "$st_out" | grep -q '^  repo beta: branch=feat/b2 (created) ' \
-  && ok "a repo added mid-phase (stamped on the phase branch only) is listed by the default stream's parallel-status, which reads the set's repos from the branch it reports" \
-  || bad "the default stream's parallel-status lost the repo added mid-phase (add rc=$add_rc, status rc=$st_rc) -- $add_out $st_out"
+  && ok "a repo added mid-phase (stamped on the phase branch only) is listed by the default stream's worktree status, which reads the set's repos from the branch it reports" \
+  || bad "the default stream's worktree status lost the repo added mid-phase (add rc=$add_rc, status rc=$st_rc) -- $add_out $st_out"
 # (e) --to-multi-repo: a per-repo nested install R beside a plain repo S becomes a multi-repo host at their parent, losslessly.
 newtmp MC; MX="$MC/C"; MXR="$MX/R"; mr_repo "$MXR" R; mr_repo "$MX/S" S
 mr sh "$BOOT" "$MXR" >/dev/null 2>&1 || bad "multi-repo probe: nested install of R failed"
 rw() { ( cd "$MXR" && mr python3 workflow/scripts/workflow.py "$@" ); }
-{ rw nested-convention --confirm --text "Conventional Commits, scope required" --trailers forbidden && rw phase new --phase P1 --name "First" --objective "convert me"; } >/dev/null 2>&1 \
+{ rw repo convention --confirm --text "Conventional Commits, scope required" --trailers forbidden && rw phase new --phase P1 --name "First" --objective "convert me"; } >/dev/null 2>&1 \
   || bad "multi-repo probe: R convention / phase new failed"
 # P1 records a PR branch and R records solo, both with repo null (a per-repo install's only legal value), which the host must name R.
 printf 'two\n' > "$MXR/two.txt" && mr git -C "$MXR" add two.txt >/dev/null 2>&1 && mr git -C "$MXR" commit -qm "feat: two" >/dev/null 2>&1 \
@@ -4208,7 +4203,7 @@ if [ "$rc" -eq 0 ] && [ "$(git -C "$MX" rev-list --count HEAD)" = 1 ] && [ "$(gi
   ok "--to-multi-repo makes the parent a host: one empty host commit, the nested repo moved up, R's confirmed convention carried over and S unconfirmed, converted_from recorded, phase scope P1 --repo R equal to the one before, R left with only its untracked file, validate passing"
 else bad "--to-multi-repo did not convert cleanly (rc=$rc, scope rc=$sc_rc) -- $mk_out $out"; fi
 pr_repo=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["pr"]["branches"][0]["repo"])' "$MX/workflow/works/phases/active/P1/phase.json" 2>&1)
-again=$(cd "$MX" && mr python3 workflow/scripts/workflow.py nested-repos --map-anchors R 2>&1)
+again=$(cd "$MX" && mr python3 workflow/scripts/workflow.py repo map-anchors R 2>&1)
 [ "$rc" -eq 0 ] && [ "$pr_repo" = R ] && printf '%s\n' "$again" | grep -q -- "-- nothing written$" \
   && ok "--to-multi-repo names R in P1's PR record (repo null before) ahead of the closing validate, and a second --map-anchors R writes nothing" \
   || bad "--to-multi-repo left P1's PR record unmapped (rc=$rc, repo=$pr_repo) -- again: $again"
@@ -4642,7 +4637,7 @@ qsig() { { qn rev-parse HEAD; qn status --porcelain; cat "$QH/workflow/works/eve
 { qg init -q . && qg symbolic-ref HEAD refs/heads/main && qg config user.email smoke@example.invalid && qg config user.name smoke \
   && echo a > "$QH/app.txt" && qg add app.txt && qg commit -qm "chore: init" && qg remote add origin "$QW/origin.git" && qg push -q origin main \
   && qg remote set-head origin main && ( cd "$QH" && sh "$BOOT" . ) && qn config user.email smoke@example.invalid && qn config user.name smoke \
-  && qw nested-convention --confirm --text "type(scope): summary" --trailers forbidden && qn add -A && qn commit -qm "chore: install"; } > "$QW/setup.txt" 2>&1 \
+  && qw repo convention --confirm --text "type(scope): summary" --trailers forbidden && qn add -A && qn commit -qm "chore: install"; } > "$QW/setup.txt" 2>&1 \
   || bad "lifecycle probe: the nested host failed to set up -- $(tail -3 "$QW/setup.txt")"
 # a waived-gate phase cut to its review: qnew <P>; driven to done: qpass <P>
 qnew() { qw phase new --phase "$1" --name "$1 toy" --objective toy && qw gate "$1" waive --note toy && qw slice status "$1.DECOMP" done; }
@@ -4801,16 +4796,16 @@ if [ "$q_rorc" -eq 0 ] && printf '%s\n' "$q_ro" | grep -qx "reopened=P1 branch=h
   ok "phase reopen on a nested install: one stamp commit, a worktree pair on the PR branch feat/one, the review changes_requested with the team's note; the default stream lists it elsewhere, the worktree's next selects P1.REVIEW and refuses a second reopen there; the fix and the pass land in the worktree, phase scope covers fix.py, and host main is untouched"
 else bad "the nested reopen wrong (rc $q_rorc/$q_wsrc/$q_rprc) -- $q_ro / $(printf '%s\n' "$q_dn" | grep parallel_) / $(printf '%s\n' "$q_wn" | grep current_) / $q_ws / $(tail -3 "$QW/repass.txt") / $q_sc"; fi
 { qn add -A && qn commit -qm "chore: rebuild"; qn merge -q --no-ff -m "merge(P1): Toy" phase/P1-toy || { qn checkout -q --theirs works/backlog.md && qn add -A && qn commit -qm "merge(P1): Toy"; }; \
-  qw parallel-merge-finish && qn add -A && qn commit -qm "chore: integrated"; } > "$QW/merge.txt" 2>&1
+  qw worktree merge-finish && qn add -A && qn commit -qm "chore: integrated"; } > "$QW/merge.txt" 2>&1
 q_st=$(qw phase reopen P1 --note "team-reported: again" 2>&1); q_strc=$?
-{ qw parallel-teardown P1 && qn add -A && qn commit -qm "chore: teardown" && qn branch phase/P1-toy; } > "$QW/teardown.txt" 2>&1
+{ qw worktree teardown P1 && qn add -A && qn commit -qm "chore: teardown" && qn branch phase/P1-toy; } > "$QW/teardown.txt" 2>&1
 q_r2=$(qw phase reopen P1 --note "operator-reported: again" 2>&1); q_r2rc=$?
-if [ "$(qj P1 status)" != null ] && [ "$q_strc" -ne 0 ] && printf '%s\n' "$q_st" | grep -q 'parallel-teardown P1 first' \
+if [ "$(qj P1 status)" != null ] && [ "$q_strc" -ne 0 ] && printf '%s\n' "$q_st" | grep -q 'worktree teardown P1 first' \
     && [ "$q_r2rc" -eq 0 ] && printf '%s\n' "$q_r2" | grep -qx 'branch=phase/P1-toy-reopen2' && printf '%s\n' "$q_r2" | grep -q '^reopened=P1 branch=host:feat/one ' \
     && printf '%s\n' "$q_r2" | grep -q "^next: .* -- read the operator's request (the reopen note 'operator-reported: again', plus any PR comment or failing check it points at), cut fix slices" \
     && ! printf '%s\n' "$q_r2" | grep -q "team's review" && printf '%s\n' "$q_ro" | grep -q "^next: .* -- read the team's review (gh pr view <n> --json reviews,comments), cut fix slices" \
     && [ "$q_m0" = "$(qg rev-parse main)" ] && ! git -C "$QH" merge-base --is-ancestor feat/one main; then
-  ok "after the integration a still-stamped pair refuses a second reopen (parallel-teardown first); after the teardown, with the old phase branch still present, the second reopen (operator-reported) cuts phase/P1-toy-reopen2 and its next: line reads the operator's request, never the team's review (the first, team-reported, reads the team's); host main never moved and feat/one is not in it"
+  ok "after the integration a still-stamped pair refuses a second reopen (worktree teardown first); after the teardown, with the old phase branch still present, the second reopen (operator-reported) cuts phase/P1-toy-reopen2 and its next: line reads the operator's request, never the team's review (the first, team-reported, reads the team's); host main never moved and feat/one is not in it"
 else bad "the still-stamped refusal or -reopen2 wrong (rc $q_strc/$q_r2rc) -- $q_st / $q_r2 / $(tail -3 "$QW/merge.txt") / $(tail -3 "$QW/teardown.txt")"; fi
 # (10) root: pr team reads unknown with no origin and no commits; the reopen refuses --worktree, a checkout off the PR branch and a
 # side branch, then runs in place on feat/toy; with the reopen committed beside the fix, phase scope ends at the second pass.
@@ -5860,7 +5855,7 @@ kill "$SF_PID" 2>/dev/null; wait "$SF_PID" 2>/dev/null
 echo "cloud safety test runtime: $(( $(date +%s) - sf_t0 ))s"
 
 # ---------------------------------------------------------------------------
-echo "== Test 23: link, unlink and sync against the local fake hi2vi, with a scratch XDG_CONFIG_HOME -- the installer hides .hi2vi/ in the workflow repo (fresh and --update); link refuses http:// to a non-local host, an at-root install, uncommitted changes, another worktree, a phase in flight on a stream, a key file open to group or others, a wrong key and an already-linked checkout, each with nothing written; link reads the key from stdin, keeps it 0600 in a 0700 folder and uploads the truth set in batches under 8,000,000 B; next prints store=cloud and head sends X-Hi2vi-Base; parallel-start is refused in cloud mode with nothing written; a second checkout joins from an unused install (following fetch's rest) or an equal set, and a used one is refused with the list; a typed brief id is resolved after the pull (it names what another checkout made, on the first try, and a number shared once the pull lands is refused); sync pulls and pushes the clean changes, lists a stale write, shows its diff, refuses --keep with no path, on a folder and on a path on neither side, and resolves only on --keep local|cloud, lists an interrupted command's files and pushes none until --keep; unlink refuses on a mismatch, then leaves a local-mode tree that validates and opens no socket; unlink --from-disk runs offline; the key appears nowhere =="
+echo "== Test 23: link, unlink and sync against the local fake hi2vi, with a scratch XDG_CONFIG_HOME -- the installer hides .hi2vi/ in the workflow repo (fresh and --update); link refuses http:// to a non-local host, an at-root install, uncommitted changes, another worktree, a phase in flight on a stream, a key file open to group or others, a wrong key and an already-linked checkout, each with nothing written; link reads the key from stdin, keeps it 0600 in a 0700 folder and uploads the truth set in batches under 8,000,000 B; next prints store=cloud and head sends X-Hi2vi-Base; worktree start is refused in cloud mode with nothing written; a second checkout joins from an unused install (following fetch's rest) or an equal set, and a used one is refused with the list; a typed brief id is resolved after the pull (it names what another checkout made, on the first try, and a number shared once the pull lands is refused); sync pulls and pushes the clean changes, lists a stale write, shows its diff, refuses --keep with no path, on a folder and on a path on neither side, and resolves only on --keep local|cloud, lists an interrupted command's files and pushes none until --keep; unlink refuses on a mismatch, then leaves a local-mode tree that validates and opens no socket; unlink --from-disk runs offline; the key appears nowhere =="
 lk_t0=$(date +%s)
 newtmp LKW; LKX="$LKW/xdg"; LK_OUT="$LKW/out.txt"; : > "$LK_OUT"
 LKA="$LKW/a"; LKB="$LKW/b"; LKC="$LKW/c"; LKR="$LKW/root"
@@ -6079,20 +6074,20 @@ lk_m=$(lk_mark); lk "$LKA" next > "$LKW/b2.txt"; lk_rc=$?; lk_r=$(lk_check "$LKA
   || bad "next's store line or X-Hi2vi-Base wrong -- rc=$lk_rc $lk_r"
 lk_ref "an already-linked checkout" '^this checkout is already linked \(store=cloud server=' "$LKB/workflow" "$LKA/workflow/scripts/workflow.py" link "$LKU"
 # (f) O7: in cloud mode a stream command is refused with one line, before any request, with nothing written.
-lk_t1=$(lk_tree "$LKA/workflow"); lk_m=$(lk_mark); lk_nosock "$LKA/workflow/scripts/workflow.py" parallel-start P1 --host-branch side > "$LKW/f.txt"; lk_rc=$?; lk_t2=$(lk_tree "$LKA/workflow")
-[ "$lk_rc" = 1 ] && [ "$(grep -c '' "$LKW/f.txt")" = 1 ] && grep -q '^parallel-start is refused in cloud mode: ' "$LKW/f.txt" && [ "$lk_t1" = "$lk_t2" ] && [ "$(lk_check "$LKA/workflow" "$lk_m" nothing)" = ok ] \
+lk_t1=$(lk_tree "$LKA/workflow"); lk_m=$(lk_mark); lk_nosock "$LKA/workflow/scripts/workflow.py" worktree start P1 --host-branch side > "$LKW/f.txt"; lk_rc=$?; lk_t2=$(lk_tree "$LKA/workflow")
+[ "$lk_rc" = 1 ] && [ "$(grep -c '' "$LKW/f.txt")" = 1 ] && grep -q '^worktree start is refused in cloud mode: ' "$LKW/f.txt" && [ "$lk_t1" = "$lk_t2" ] && [ "$(lk_check "$LKA/workflow" "$lk_m" nothing)" = ok ] \
   && [ -z "$(git -C "$LKA/workflow" branch --list 'phase/*')" ] \
-  && ok "parallel-start in a linked checkout is refused with one line, no request, no branch and nothing written" \
-  || bad "parallel-start was not refused in cloud mode -- rc=$lk_rc $(head -2 "$LKW/f.txt")"
+  && ok "worktree start in a linked checkout is refused with one line, no request, no branch and nothing written" \
+  || bad "worktree start was not refused in cloud mode -- rc=$lk_rc $(head -2 "$LKW/f.txt")"
 lk_bad=""; lk_t1=$(lk_tree "$LKA/workflow"); lk_m=$(lk_mark)
-for c in "parallel-gate P1" "parallel-teardown P1" "parallel-merge-finish" "phase reopen P1 --note x"; do
+for c in "worktree gate P1" "worktree teardown P1" "worktree merge-finish" "phase reopen P1 --note x"; do
   # shellcheck disable=SC2086
   lk_nosock "$LKA/workflow/scripts/workflow.py" $c > "$LKW/f2.txt"; lk_rc=$?
   { [ "$lk_rc" = 1 ] && [ "$(grep -c '' "$LKW/f2.txt")" = 1 ] && grep -q "^${c%% P1*} is refused in cloud mode: " "$LKW/f2.txt"; } || lk_bad="$lk_bad [$c: rc=$lk_rc $(head -1 "$LKW/f2.txt")]"
 done
 lk_t2=$(lk_tree "$LKA/workflow")
 [ -z "$lk_bad" ] && [ "$lk_t1" = "$lk_t2" ] && [ "$(lk_check "$LKA/workflow" "$lk_m" nothing)" = ok ] \
-  && ok "the other stream commands (parallel-gate, -teardown, -merge-finish, phase reopen) are refused in cloud mode with one line each, nothing written" \
+  && ok "the other stream commands (worktree gate, -teardown, -merge-finish, phase reopen) are refused in cloud mode with one line each, nothing written" \
   || bad "a stream command ran in cloud mode --$lk_bad"
 # (c) a second checkout: an unused install joins (the fetch paged, following rest); a used one is refused with the list.
 lk_ctl '{"fetch_page": 4000}'; lk_m=$(lk_mark); printf '%s\n' "$LKK" | lk "$LKB" link "$LKU" > "$LKW/c.txt"; lk_rc=$?; lk_r=$(lk_check "$LKB/workflow" "$lk_m" join)
@@ -6683,7 +6678,7 @@ pl4=$(plr "$PLH" "$PLW" next); pl4_rc=$?
 pl5=$(pl "$PLW" next); pl5_rc=$?
 [ "$pl1_rc$pl2_rc$pl3_rc$pl4_rc" = 0000 ] && [ "$(printf '%s\n' "$pl1" | head -1)" = "nested_host=$pl_h" ] \
   && [ -f "$PLH/workflow/works/phases/active/P1/phase.json" ] && printf '%s\n' "$pl3" | grep -q 'P1' && [ "$pl4" = "$pl3" ] \
-  && printf '%s\n' "$pl1" | grep -q 'read it with: python3 \.\./plugin/scripts/workflow\.py nested-convention$' \
+  && printf '%s\n' "$pl1" | grep -q 'read it with: python3 \.\./plugin/scripts/workflow\.py repo convention$' \
   && ok "plugin path: the copied engine reads the nested host from the host, writes and reads it from a repo's subfolder (its hints name it from the host), and WORKFLOW_ROOT names it from outside" \
   || bad "plugin path: the copied engine did not find the host (rc $pl1_rc/$pl2_rc/$pl3_rc/$pl4_rc) -- $(printf '%s\n' "$pl1" | head -2) / $pl2 / $(printf '%s\n' "$pl3" | head -2) / $(printf '%s\n' "$pl4" | head -2)"
 [ "$pl5_rc" = 2 ] && [ "$pl5" = "no workspace found from $pl_w; run from inside one or set WORKFLOW_ROOT" ] \

@@ -1280,8 +1280,8 @@ CLOUD_OWN = ("link", "unlink", "sync")
 CLOUD_KEY_PROMPT = "Paste a workspace key for this project (make one under Keys on the project's page): "
 # Refused in cloud mode with one line each, before anything is read or written: a linked checkout runs every
 # phase here, with no worktree streams (and so no reopened pair).
-CLOUD_STREAM_REFUSED = ("parallel-start", "parallel-add-repo", "parallel-gate", "parallel-merge-finish",
-                        "parallel-teardown", "phase reopen")
+CLOUD_STREAM_REFUSED = ("worktree start", "worktree add-repo", "worktree gate", "worktree merge-finish",
+                        "worktree teardown", "phase reopen")
 # An unused install's truth set: only what a fresh install seeds (the five plain docs; an older install's
 # docs/index.json and v0001 versions). Joining hi2vi from one replaces these.
 CLOUD_SEED_RE = re.compile(r"docs/README\.md|docs/current/(?:product|architecture|operations|qa|decisions)\.md|docs/index\.json"

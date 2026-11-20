@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 A playbook: how a phase usually runs. Leave a step when the work needs it and say why in your report; the contract's four invariants never move.
 
-**Read just in time.** `python3 scripts/workflow.py next` for the pointer (never `works/state.json` or `works/backlog.md`: `next` prints the pointer), `CLAUDE.md`, then the phase's `phase.md`, the **bounded phase notebook**, only through `section` (`section <P>` lists it, `<P> Now` first), never with `Read`, `Edit` or `Write`; `intent.md` when unsure what was asked; `docs/current/` sections only as the work needs them. `next` sees this stream only (`parallel-status` shows every stream).
+**Read just in time.** `python3 scripts/workflow.py next` for the pointer (never `works/state.json` or `works/backlog.md`: `next` prints the pointer), `CLAUDE.md`, then the phase's `phase.md`, the **bounded phase notebook**, only through `section` (`section <P>` lists it, `<P> Now` first), never with `Read`, `Edit` or `Write`; `intent.md` when unsure what was asked; `docs/current/` sections only as the work needs them. `next` sees this stream only (`worktree status` shows every stream).
 
 **You are the orchestrator.** You plan, dispatch, finish, commit, move state and talk to the operator; every slice runs on `slice-executor`. **One exception, `kind: co-work`:** a design slice runs inline: the round's lifecycle and the operator's words stay inline, the drafting is dispatched to `design-drafter`, the critique to `design-critic` when the job asks, and the mockup build is the one span dispatched to a slice executor, only when the operator asked for one (`reference/co-work.md`, with the `design-cowork` skill). A co-work slice stops `pending` once per round.
 

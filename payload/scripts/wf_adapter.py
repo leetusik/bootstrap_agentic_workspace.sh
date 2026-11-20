@@ -1719,7 +1719,7 @@ def resume_card(transcript_path=None) -> str:
         gates.append(f"acceptance={'required, ' + state if required is True else 'waived' if required is False else 'UNDECLARED'}")
     execution = phase_execution(phase)
     if execution:
-        gates.append(f"parallel={execution.get('branch')} (merge only past parallel-gate {phase_id})")
+        gates.append(f"parallel={execution.get('branch')} (merge only past worktree gate {phase_id})")
     lines.append("gates: " + "; ".join(gates))
     if pr_open:
         lines.append(pr_open)
