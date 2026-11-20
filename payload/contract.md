@@ -28,7 +28,7 @@ You work this workspace for its operator. Four invariants always hold; everythin
 | A phase the operator can see passes after they walk it | `review-phase --verdict pass` refuses until `accept-gate <P> --clear`; `validate` errors on a done phase whose gate never cleared |
 | Sign-offs carry literal words | `design-close`, `design-sign`, `loop-sign`, `loop-unpark` refuse an empty `--words` |
 | A pending stop halts the run | `next` prints `WAITING ON OPERATOR`; `set-slice-status` refuses a stop without `--stop-kind` and `--on-words` |
-| No force-push, no `rm -rf` | `settings.json` deny rules; `git push` is not on its allow list |
+| No force-push, no `rm -rf` | `settings.json` deny rules; its one allowed `git push` is `origin --delete` of a merged branch |
 | A product phase passes with its draft PR open | `review-phase --verdict pass` refuses a PR branch with no draft PR (`pr-record --url` or `--waive`) |
 | A branch switch never carries the operator's edits | `pr-branch` refuses uncommitted tracked changes |
 | A loop spends within its signed budget | `loop-tick` halts at the charter's `total_usd` (`budget-total`) |
@@ -37,7 +37,7 @@ You work this workspace for its operator. Four invariants always hold; everythin
 | Operator questions are never dropped | `phase-section` refuses `--replace` on an append-only section |
 | A worktree phase merges at a quiet point | `parallel-gate` prints `GATE CLOSED` and exits 1 (the CI seed runs it) |
 | A linked checkout runs no streams | stream commands are refused in cloud mode |
-| Workflow state stays valid | `validate` (the CI seed runs it on every push) |
+| Workflow state stays valid | `validate` (the CI seed runs it on each PR and default-branch push) |
 | This file fits one screen | smoke: the contract is at most 4,096 B |
 | Real-browser checks run on `playwright-cli`, the agent's own headless browser. Claude in Chrome is used only when the operator asks an agent to use their own browser. | `settings.json` allows `Bash(playwright-cli:*)`; smoke pins this one line |
 

@@ -352,7 +352,9 @@ for name in ("do-whole-phase",):
         # not acted on. Merged back locally; the branch review records its two gate
         # sections as tagged notes.
         "unless the operator asked for a worktree", "parallel-start <P>", "EnterWorktree",
-        "`parallel-start` on your own initiative", "## Gate sections (written at merge)", "git merge --no-ff",
+        "`parallel-start` on your own initiative", "## Gate sections (written at merge)",
+        # lighter-rules: the integration (the local merge) is the close checklist's, pointed to, never restated.
+        "by the close checklist, the one place it is written: `.claude/skills/pr/reference/close.md`",
         # v35: just-in-time reads and the bounded notebook.
         "finish-slice <slice_id> --outcome", "bounded phase notebook",
         "verdict block", "just in time",
@@ -925,6 +927,48 @@ for _n in _caps:
     _txt = "\n".join(v for k, v in LIVE.items() if k.startswith(f".claude/skills/{_n}/") and "/explain-" not in k)
     for _gone in ("docs phase", "docs-phase", "docs-debt", "doc_impact", "doc_versions", "Doc impact list"):
         assert _gone not in _txt.replace("Ask for no `## Doc impact` note and no docs phase.", ""), (_n, _gone)
+# lighter-rules: the PR, parallel, loop and housekeeping skills are short playbooks. Their set stays under
+# 70,000 B (explain references aside), no one of them asks for a docs phase or a Doc impact note, and the close
+# is stated once: its ordered steps live only in pr/reference/close.md, and the worktree skills point at it.
+_s6 = ("parallel-phase", "pr", "run-loop", "update-workspace", "rotate-backlog", "archive-phase", "retrofit", "agenda",
+       "doc-new-version", "promote-deferred", "defer-job", "deferred", "rebuild-workflow")
+assert sum(_size(_n) for _n in _s6) <= 70000, sum(_size(_n) for _n in _s6)
+for _n in _s6:
+    _txt = "\n".join(v for k, v in LIVE.items() if k.startswith(f".claude/skills/{_n}/"))
+    for _gone in ("docs phase", "docs-phase", "docs-debt", "doc_impact", "doc_versions", "docs-consolidated",
+                  "contract's stop rules", "Commit Convention", "decomposition carve-out"):
+        assert _gone not in _txt, (_n, _gone)
+_close = LIVE[".claude/skills/pr/reference/close.md"]
+for _step in ("git merge --no-ff phase/P<N>-<slug>", "gh pr ready <n>", "docker rm -fv <name>", "git branch -d <b>",
+              "git push origin --delete <b>", "gh pr checks <n>", "orphan **`pr-assets`** branch"):
+    _where = [k for k, v in LIVE.items() if k.startswith(".claude/skills/") and _step in v]
+    assert _where == [".claude/skills/pr/reference/close.md"], (_step, _where)
+for _r in ("# The close: one ordered checklist", "## Open the drafts, when the review passes", "### A. Re-read, only if the PR changed",
+           "### B. Ready and land (after the pass)", "## A worktree phase: integrate (after the pass)",
+           "## Clean up before the phase finishes", "## One validate, one commit", "**Read the CI:**",
+           "before the gate opens**, never after the accept", "gh pr view <n> --json headRefOid,updatedAt,comments",
+           "run no pre-push local smoke and no post-landing `gh run watch`", "Never `-D`.", "Never a prune.",
+           "`--discard-ignored` straight away", "../blob/<sha>/<folder>/<file>.png?raw=true",
+           "defers its close until that base merges"):
+    assert _r in _close, _r
+assert _close.index("## Open the drafts") < _close.index("## At `accept`") < _close.index("## A worktree phase") \
+    < _close.index("## Clean up before") < _close.index("## One validate"), "the close's sections are out of order"
+assert "`.claude/skills/pr/reference/close.md`" in LIVE[".claude/skills/parallel-phase/SKILL.md"]
+assert "`.claude/skills/pr/reference/close.md`" in LIVE[".claude/skills/do-whole-phase/reference/worktree.md"]
+assert "run on request only" not in LIVE[".claude/skills/pr/SKILL.md"] and "The `pr-reader` runs only when the operator asks, or for a team repo with PR rules" in LIVE[".claude/skills/pr/SKILL.md"]
+assert "**The operator's run of the phase is the word for the draft's push**" in LIVE[".claude/skills/pr/SKILL.md"]
+# CI runs once per PR push: on push only to the default branch, plus pull_request (upstream and the adopter seed).
+_up = (root / ".github/workflows/upstream-ci.yml").read_text(encoding="utf-8")
+_seed = (root / "payload/github/workflows/workspace-ci.yml").read_text(encoding="utf-8")
+assert "on:\n  push:\n    branches: [main]\n  pull_request:\n" in _up, "upstream-ci runs on branch pushes"
+assert "on:\n  push:\n    branches: [main, master]\n  pull_request:\n" in _seed, "the CI seed runs on branch pushes"
+# The shipped settings allow exactly the close's cleanup commands: no -D, no prune.
+import json as _json
+_allow = _json.loads((root / "payload/claude/settings.json").read_text(encoding="utf-8"))["permissions"]["allow"]
+for _r in ("Bash(docker rm -fv:*)", "Bash(docker volume rm:*)", "Bash(lsof -ti:*)", "Bash(kill:*)", "Bash(git branch -d:*)",
+           "Bash(git -C * branch -d *)", "Bash(git push origin --delete:*)", "Bash(git -C * push origin --delete *)"):
+    assert _r in _allow, _r
+assert not [r for r in _allow if "prune" in r or "branch -D" in r or r in ("Bash(git push:*)", "Bash(docker:*)", "Bash(git:*)")], _allow
 # Nothing but the six shipped agents sits in payload/claude/agents/ (every .md there becomes an agent).
 assert sorted(p.name for p in (root / "payload/claude/agents").iterdir()) == sorted(
     k.rsplit("/", 1)[1] for k in collect_live_payloads() if k.startswith(".claude/agents/")), "a non-agent file in payload/claude/agents/"
@@ -1133,12 +1177,13 @@ d = json.load(open(sys.argv[1]))
 allow = d.get("permissions", {}).get("allow", [])
 assert "Bash(make:*)" in allow, "custom permission lost"
 assert "Bash(python3 scripts/workflow.py:*)" in allow, "workspace permission not added"
-for rule in ("Bash(playwright-cli:*)", "Bash(npm install -g @playwright/cli:*)", "Bash(npm i -g @playwright/cli:*)"):
+for rule in ("Bash(playwright-cli:*)", "Bash(npm install -g @playwright/cli:*)", "Bash(npm i -g @playwright/cli:*)", "Bash(docker rm -fv:*)", "Bash(docker volume rm:*)", "Bash(lsof -ti:*)", "Bash(kill:*)", "Bash(git branch -d:*)", "Bash(git -C * branch -d *)", "Bash(git push origin --delete:*)", "Bash(git -C * push origin --delete *)"):
     assert rule in allow, rule
+assert not any(r.startswith(("Bash(git branch -D", "Bash(docker system prune", "Bash(docker volume prune")) for r in allow), allow
 assert allow[0] == "Bash(make:*)", allow
 assert d.get("env", {}).get("FOO") == "bar", "unrelated key lost"
 PY
-then ok "settings.json additively merged (custom perm + env survive; the playwright-cli and its npm install rules added)"; else bad "settings.json merge incorrect"; fi
+then ok "settings.json additively merged (custom perm + env survive; the playwright-cli, its npm install and the close's cleanup rules added, no -D and no prune)"; else bad "settings.json merge incorrect"; fi
 if python3 - "$R/.claude/settings.json" <<'PY'
 import json, sys
 h = json.load(open(sys.argv[1]))["hooks"]
@@ -1232,8 +1277,8 @@ then ok "a fresh at-root install ships only the resume hook (SessionStart compac
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 500000' "$F/.claude/settings.json" \
   && ok "a fresh at-root install ships autoCompactWindow=500000 in project settings" || bad "fresh install settings.json lacks autoCompactWindow=500000"
 # lighter-rules: the agent's browser runs with no prompt -- the CLI and its self-install are allowed.
-python3 -c 'import json,sys; a=json.load(open(sys.argv[1]))["permissions"]["allow"]; assert all(r in a for r in ("Bash(playwright-cli:*)","Bash(npm install -g @playwright/cli:*)","Bash(npm i -g @playwright/cli:*)")), a' "$F/.claude/settings.json" \
-  && ok "a fresh at-root install allows Bash(playwright-cli:*) and both npm install rules" || bad "fresh install settings.json lacks the playwright-cli allow rules"
+python3 -c 'import json,sys; a=json.load(open(sys.argv[1]))["permissions"]["allow"]; assert all(r in a for r in ("Bash(playwright-cli:*)","Bash(npm install -g @playwright/cli:*)","Bash(npm i -g @playwright/cli:*)","Bash(docker rm -fv:*)","Bash(docker volume rm:*)","Bash(lsof -ti:*)","Bash(kill:*)","Bash(git branch -d:*)","Bash(git -C * branch -d *)","Bash(git push origin --delete:*)","Bash(git -C * push origin --delete *)")), a' "$F/.claude/settings.json" \
+  && ok "a fresh at-root install allows Bash(playwright-cli:*), both npm install rules and the close's cleanup rules (docker rm -fv, docker volume rm, lsof -ti, kill, git branch -d, git push origin --delete, plain and git -C)" || bad "fresh install settings.json lacks the playwright-cli allow rules"
 nphf=$(find "$F/works/phases/active" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
 [ "$nphf" = "0" ] && ok "fresh install seeds no phases (empty start)" || bad "fresh install seeded $nphf phase(s)"
 if python3 - "$REPO_ROOT" "$F/works/.workspace-version.json" <<'PY'
@@ -1307,6 +1352,19 @@ for p in sorted(base.rglob("*")):
         seen[b] = str(p)
 PY
 then ok "fresh install: the phase-flow skills total at most 85,000 B and no skill file ships twice"; else bad "fresh install: the phase-flow skills are over 85,000 B or a skill file ships twice"; fi
+# lighter-rules (W6): on a fresh install, every shipped skill and agent -- design-cowork, design-drafter, design-critic
+# and the explain references aside -- totals at most 160,000 B.
+if python3 - "$F/.claude" <<'PY'
+import sys
+from pathlib import Path
+base = Path(sys.argv[1])
+skills = sum(len(p.read_bytes()) for p in (base / "skills").rglob("*") if p.is_file() and not p.name.startswith(("explain-", "."))
+             and p.relative_to(base / "skills").parts[0] != "design-cowork")
+agents = sum(len(p.read_bytes()) for p in (base / "agents").glob("*.md") if p.name not in ("design-drafter.md", "design-critic.md"))
+print(f"w6 skills={skills} agents={agents} total={skills + agents}")
+assert skills + agents <= 160000, skills + agents
+PY
+then ok "fresh install: the shipped skills and agents (design files and explain references aside) total at most 160,000 B (W6)"; else bad "fresh install: the shipped skills and agents are over 160,000 B (W6)"; fi
 grep -q '^model: opus$' "$F/.claude/agents/slice-executor.md" && grep -q '^effort: medium$' "$F/.claude/agents/slice-executor.md" \
   && grep -q '^name: slice-executor$' "$F/.claude/agents/slice-executor.md" \
   && grep -q '^model: fable$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: high$' "$F/.claude/agents/design-drafter.md" \
@@ -2251,10 +2309,10 @@ python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWin
   && ok "--update moves a v65-shaped 300000 window to 500000 and lists it" || bad "--update did not move the 300000 window -- $upd_out"
 # lighter-rules: an --update of an adopter whose allow list predates the browser rules (its own entry
 # first) adds the three playwright-cli rules and keeps the adopter's entry.
-python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["permissions"]["allow"]=["Bash(make:*)"]+[x for x in d["permissions"]["allow"] if "playwright" not in x]; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$F/.claude/settings.json"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["permissions"]["allow"]=["Bash(make:*)"]+[x for x in d["permissions"]["allow"] if "playwright" not in x and not x.startswith(("Bash(docker", "Bash(lsof", "Bash(kill", "Bash(git"))]; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$F/.claude/settings.json"
 sh "$BOOT" "$F" --update >/dev/null 2>&1
-python3 -c 'import json,sys; a=json.load(open(sys.argv[1]))["permissions"]["allow"]; assert a[0]=="Bash(make:*)" and all(r in a for r in ("Bash(playwright-cli:*)","Bash(npm install -g @playwright/cli:*)","Bash(npm i -g @playwright/cli:*)")), a' "$F/.claude/settings.json" \
-  && ok "--update adds the playwright-cli allow rules to an adopter's settings.json and keeps its own entry" || bad "--update did not carry the playwright-cli allow rules"
+python3 -c 'import json,sys; a=json.load(open(sys.argv[1]))["permissions"]["allow"]; assert a[0]=="Bash(make:*)" and all(r in a for r in ("Bash(playwright-cli:*)","Bash(npm install -g @playwright/cli:*)","Bash(npm i -g @playwright/cli:*)","Bash(docker rm -fv:*)","Bash(docker volume rm:*)","Bash(lsof -ti:*)","Bash(kill:*)","Bash(git branch -d:*)","Bash(git -C * branch -d *)","Bash(git push origin --delete:*)","Bash(git -C * push origin --delete *)")), a' "$F/.claude/settings.json" \
+  && ok "--update adds the playwright-cli and cleanup allow rules to an adopter's settings.json and keeps its own entry" || bad "--update did not carry the playwright-cli allow rules"
 cp "$SRC/claude/settings.json" "$F/.claude/settings.json"   # drop the probe's foreign handler before the Test 6 diff
 rm -f "$F/.github/workflows/workspace-ci.yml" "$F/.gitattributes"
 sh "$BOOT" "$F" --update >/dev/null 2>&1   # restore both verbatim for the Test 6 diff
@@ -4121,9 +4179,9 @@ resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 workflow/scripts/workflow.py compa
 assert d["hooks"] == {"SessionStart": [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}]}, d["hooks"]
 assert d["autoCompactWindow"] == 500000, d
 a = d["permissions"]["allow"]
-assert all(r in a for r in ("Bash(playwright-cli:*)", "Bash(npm install -g @playwright/cli:*)", "Bash(npm i -g @playwright/cli:*)")), a
+assert all(r in a for r in ("Bash(playwright-cli:*)", "Bash(npm install -g @playwright/cli:*)", "Bash(npm i -g @playwright/cli:*)", "Bash(docker rm -fv:*)", "Bash(docker volume rm:*)", "Bash(lsof -ti:*)", "Bash(kill:*)", "Bash(git branch -d:*)", "Bash(git -C * branch -d *)", "Bash(git push origin --delete:*)", "Bash(git -C * push origin --delete *)")), a
 PY
-then ok "nested: settings.local.json carries only the resume hook with the workflow/scripts/workflow.py command path and window 500000, allows playwright-cli and its npm install, and --update --nested kept exactly one"; else bad "nested settings.local.json hooks wrong"; fi
+then ok "nested: settings.local.json carries only the resume hook with the workflow/scripts/workflow.py command path and window 500000, allows playwright-cli, its npm install and the cleanup rules, and --update --nested kept exactly one"; else bad "nested settings.local.json hooks wrong"; fi
 # v61 (P37.S1): --update --nested on a v60-shaped host (no reference/ files) adds them in the renamed dir, host clean.
 rm -rf "$IH/.claude/skills/wf-design-cowork/reference" "$IH/.claude/skills/do-whole-phase/reference"
 out=$(sh "$BOOT" "$IH" --update --nested 2>&1); rc=$?
@@ -4794,12 +4852,12 @@ if [ "$vk" != 0 ] && [ "$vd" != 0 ] && [ "$vu" != 0 ] && [ "$vr" != 0 ] && [ "$v
     && grep -q "repo 'nosuch': this install has no repos registry" "$PRW/val-repo.txt" && grep -q 'pr-rules.json: pr_rules.decided\[0\]: missing field' "$PRW/val-rules.txt" && pw validate >/dev/null 2>&1; then
   ok "validate flags a malformed pr block (unknown key, duplicate pair, non-http(s) URL, a repo with no registry) and a malformed pr_rules, and passes once restored"
 else bad "validate missed a malformed pr block or pr_rules (rc $vk/$vd/$vu/$vr/$vp) -- $(cat "$PRW"/val-*.txt | grep -i 'pr' | head -8)"; fi
-# (8 stub) the pr skill's two push commands, taken from its text, run against a local bare origin and a stub gh:
+# (8 stub) the pr skill's two push commands, taken from its close checklist (reference/close.md), run against a local bare origin and a stub gh:
 # a --draft create with --body-file; a stub draft refusal is exactly one create call and a stop for the operator's plain|waive
 # (reference/open.md; never an automatic retry), and only on plain the same create runs without --draft and with no --reviewer.
 newtmp GHS; git init -q --bare "$GHS/origin.git"; pgit remote add origin "$GHS/origin.git"
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s/gh.log"\ncase "$*" in *--draft*) [ -n "${GH_STUB_REFUSE_DRAFT:-}" ] && { echo "Draft pull requests are not supported in this repository" >&2; exit 1; };; esac\necho https://github.com/example/toy/pull/9\n' "$GHS" > "$GHS/gh"; chmod +x "$GHS/gh"
-pr_cmds=$(python3 - "$SRC/claude/skills/pr/SKILL.md" <<'PY'
+pr_cmds=$(python3 - "$SRC/claude/skills/pr/reference/close.md" <<'PY'
 import re, sys
 t = open(sys.argv[1]).read().split("## Open the drafts, when the review passes", 1)[1]
 push = re.search(r"^1\. `(git push [^`]+)`", t, re.M).group(1); create = re.search(r"^2\. `(gh pr create [^`]+)`", t, re.M).group(1)
@@ -4973,7 +5031,8 @@ checks = [
     ([sk("create-phase")], ["`Branches:` line", "Never split a phase for size"], push_stop),
     ([(root / "payload/claude/skills/do-whole-phase/playbooks/review.md").read_text()], ["`pr_bodies`", "Never run `review-phase`, `accept-gate` or `defer-job`, and never push."], push_stop),
     ([flat(sk("parallel-phase"))], ["This skill carries no second PR procedure."], ["1. **Push the branch.**", "**Open the PR.**"] + push_stop),
-    ([sk("update-workspace")], ["the phase's draft PR opens when the review passes and closes on the operator's `accept` (`pr` skill: Ready, then a solo repo's merge by its own landing custom, never a team's); merging it on GitHub is the remote variant"], ["push → PR → CI is the remote variant"] + push_stop),
+    # lighter-rules: update-workspace acts on the CHANGELOG's Migration notes instead of restating each old version's.
+    ([sk("update-workspace")], ["**Act on each Migration notes line**"], ["push → PR → CI is the remote variant"] + push_stop),
     ([sk("pr")], ["## Open the drafts, when the review passes", "opened as drafts when the review passes, closed on the operator's accept.\"", "`git push -u origin <b>`, never `--force`."], push_stop),
     ([sk("commit")], ["A phase's pushes are the `pr` skill's, never this skill's: the draft opening when its review passes, the close's solo landing, and a fix round's or a stack merge's push to an open PR's branch."], push_stop + ["A phase's one push is"]),
     ([(root / "README.en.md").read_text(encoding="utf-8")], ["and your `accept` closes it (Ready, then a solo repo's merge by its landing custom; a team repo's merge is the team's)"], ["(Ready and merge are yours)"]),

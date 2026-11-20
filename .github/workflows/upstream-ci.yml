@@ -4,8 +4,10 @@
 # payload/github/workflows/workspace-ci.yml and never runs here.
 name: upstream-ci
 
+# A pushed branch runs once, through its pull request; main runs on its own push.
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
