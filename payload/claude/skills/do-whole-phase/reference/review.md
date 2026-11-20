@@ -17,4 +17,3 @@ The review's procedure is the `review-phase` skill, the executor's; this file is
 
 **Nothing is left running:** the review stops what the phase started and says so in `result.md`; check its line before you open the gate.
 
-**A loop phase's final review** runs after `loop-control <P> stop`, when `loop-tick` prints `review`: its boundary is the whole loop (`loop-status <P>`, the survivors, the parked items: `review-phase` refuses the pass while one is open; each is unparked on the operator's words, `loop-unpark … --to queue|survivor|dead`, or deferred, `defer-job` then `loop-unpark … --to deferred --pointer <DID>`). Checkpoints (`<P>.K<j>`) are `run-loop`'s.

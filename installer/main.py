@@ -203,9 +203,9 @@ EMPTY_OK_ALLOWLIST = {
 #@@GENERATED_PAYLOADS@@
 
 # The skill inventory is derived independently from the embedded payload manifest.
-# The build enforces the release invariant: 20 skill packages.
+# The build enforces the release invariant: 19 skill packages.
 CLAUDE_SKILLS = sorted({k.split("/")[2] for k in PAYLOADS if k.startswith(".claude/skills/") and k.endswith("/SKILL.md")})
-EXPECTED_SKILL_COUNT = 20
+EXPECTED_SKILL_COUNT = 19
 if len(CLAUDE_SKILLS) != EXPECTED_SKILL_COUNT:
     raise RuntimeError(
         f"embedded skill inventory must contain {EXPECTED_SKILL_COUNT} skill packages "
@@ -229,7 +229,7 @@ MANAGED_FILES = [
     "docs/README.md",
     *[f"docs/current/{doc_id}.md" for doc_id in DOC_TYPES],
     "works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/agenda.md", "works/events.jsonl",
-    *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md", "phase.md", "charter.md")],
+    *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md", "phase.md")],
     "scripts/workflow.py",
     ".claude/agents/slice-executor.md", ".claude/agents/design-drafter.md",
     ".claude/agents/design-critic.md", ".claude/agents/pr-reader.md", ".claude/agents/code-reader.md",
@@ -292,17 +292,8 @@ def _atomic_write(p, text: str, executable: bool = False) -> None:
 CI_WORKFLOW_PATH = ".github/workflows/workspace-ci.yml"
 GITATTRIBUTES_PATH = ".gitattributes"
 GITATTRIBUTES_MERGE_LINE = "works/events.jsonl merge=union"
-# A loop phase's append-only files (workspace v91): line-merged the same way, so --update brings them to a
-# .gitattributes that already holds the events rule.
-GITATTRIBUTES_LOOP_LINES = tuple(f"works/phases/**/loop/{name} merge=union"
-                                 for name in ("ledger.jsonl", "events.jsonl", "dead.jsonl", "survivors.jsonl", "checkpoints.jsonl"))
-GITATTRIBUTES_LOOP_NOTE = (
-    "\n# Added by the agentic workspace: a loop phase's append-only files merge by\n"
-    "# union too (its events file is pruned only by the rollup, on the loop's own stream);\n"
-    "# the rewritten ones (queue.jsonl, parked.jsonl, control.json) never take union.\n"
-)
 # The at-root workspace's machine-written state, marked generated (PR rule v1): GitHub folds it in a PR
-# diff and pr-check's size count skips it. Line-merged like the loop lines, so --update brings it too.
+# diff and pr-check's size count skips it. Line-merged like the events line, so --update brings it too.
 GITATTRIBUTES_GENERATED_LINES = tuple(f"{path} linguist-generated=true"
                                       for path in ("works/**", "docs/versions/**", "docs/current/**", "docs/index.json"))
 GITATTRIBUTES_GENERATED_NOTE = (
@@ -330,7 +321,7 @@ def _gitattributes_action() -> str:
     except (OSError, UnicodeDecodeError):
         return "unchanged"  # unreadable/binary -- never touch it
     have = {ln.strip() for ln in existing.splitlines()}
-    if GITATTRIBUTES_MERGE_LINE in have and all(line in have for line in GITATTRIBUTES_LOOP_LINES + GITATTRIBUTES_GENERATED_LINES):
+    if GITATTRIBUTES_MERGE_LINE in have and all(line in have for line in GITATTRIBUTES_GENERATED_LINES):
         return "unchanged"
     return "merge"
 
@@ -353,9 +344,6 @@ def _apply_gitattributes(text: str, action: str) -> None:
     add = ""
     if GITATTRIBUTES_MERGE_LINE not in have:
         add += _nested_engine_cmd(GITATTRIBUTES_APPEND_NOTE) + GITATTRIBUTES_MERGE_LINE + "\n"
-    missing = [line for line in GITATTRIBUTES_LOOP_LINES if line not in have]
-    if missing:
-        add += GITATTRIBUTES_LOOP_NOTE + "".join(line + "\n" for line in missing)
     missing = [line for line in GITATTRIBUTES_GENERATED_LINES if line not in have]
     if missing:
         add += GITATTRIBUTES_GENERATED_NOTE + "".join(line + "\n" for line in missing)
@@ -1525,7 +1513,7 @@ def nested_plan() -> dict:
     for x in NESTED_AGENTS:
         files[f".claude/agents/{renames['agents'].get(x, x)}.md"] = nested_rewrite(PAYLOADS[f".claude/agents/{x}.md"], renames)
     engine_side = {NESTED_CONTRACT: nested_rewrite(f"# CLAUDE.md\n\n{CONTRACT_BODY}", renames)}
-    for name in ("deferred_brief.md", "intent.md", "phase.md", "charter.md"):
+    for name in ("deferred_brief.md", "intent.md", "phase.md"):
         engine_side[f"works/templates/{name}"] = nested_rewrite(PAYLOADS[f"works/templates/{name}"], renames)
     # Agents at the host root read both of these, and their comments and text name the engine and
     # workspace paths. Rendered whenever written: executors.toml is seed-once (an existing one is
@@ -1964,11 +1952,16 @@ RETIRED_FILES = {
     '.claude/skills/do-next-slice/reference/review.md': (100, ('850c377ac604046e45d99d711a11a11ce8df29b8690036c86443dc17849fbbce', 'a0954620101f81ffe796aad23c7623aa6b63faae1c18b86b52131e5378cb9c01')),  # 807bb0e
     '.claude/skills/do-next-slice/reference/verdicts.md': (100, ('ddbf954d125b9e44dcc0c524c092ed432a208f6f8584ea03cb5e3a687e5c3583', 'e00360155496a89c7c10e9a6877864f12726669ba915d70c82c70eb09abad2c7')),  # 807bb0e
     '.claude/skills/do-next-slice/reference/worktree.md': (100, ('41cfc38cd1d56716720a2de3912896d49f777f2a310584e3460a9ebd47a69ba9', '2984673a4bbdbc1de7fdba3bab8d9113a23508a2a197ca4a950e591550fdceaf')),  # 807bb0e
+    '.claude/skills/do-whole-phase/playbooks/cycle.md': (101, ('b3c02d737f13a917878d053b8fe9257971dcd9e7a98f4a9574e801fcce478aff',)),  # 6b547aa
     '.claude/skills/do-whole-phase/reference/modes.md': (100, ('c2d8f13365d2401d82401b513306cde900a16a115cfb9c71d77f81686c030b1e', '5b7346f395d83a7888bf0cd374841f6e8759b6c5f1614a0ff038a1b553ade7e2')),  # 807bb0e
     '.claude/skills/do-whole-phase/reference/prep.md': (100, ('aabba508d031ada11f72b0de3c1b55e27939bd5bc484325c4dafa7020b73cbfc',)),  # 807bb0e
     '.claude/skills/do-whole-phases/SKILL.md': (98, ('7a84c83f9938d32af5ba9dd6729b310623303fc2ddcb68accbe08e704f2e829c', 'daa211d71e169a19268e7ae515ab0cbc489225a1f8671b0bacd60e30c39a757a')),  # 47436bc
     '.claude/skills/doc-new-version/SKILL.md': (101, ('1f67079e4121f7d5c0c702517123c79a328c9588f9f01041c08e5370304c8a67', 'cb397ec37bb3ab8e79d8bfda8c1638830a45ff59c8cba163ee904f2683d13d95')),  # 00c60e9
     '.claude/skills/executor-mode/SKILL.md': (52, ('382fe9e6644c15c46d49ab0b481c8cec0b6722f20816d3fca48a60ba61826d43', 'cef5b8fbf576e83fd6048ceb652e05ddcd7cbcded6a4168efb5c834f32c16970')),  # 7c874c3
+    '.claude/skills/run-loop/SKILL.md': (101, ('6f7714a7c463a8f9d85be18eb45ac3233f51d0af318d9df2e19a1dce7d3adddf', '5f0b31d019e3cc401c47e1f459d67de8b73aa536285b71a9b8100b3f48f473d8')),  # 6b547aa
+    '.claude/skills/run-loop/reference/checkpoint.md': (101, ('4e67d9fda474c5389c1492982d495936e75fc076992c9937740667d6e8cf7930',)),  # 6b547aa
+    '.claude/skills/run-loop/reference/cycle-plan.md': (101, ('626c4834d750c5fe7f33150cbde2ca1d09cc203a8231b43a5288c88d70a35afc', '28ea9406b1fae7367d2f2b62ee24fff1eac7348c7f0a6099570cc1c3b0267fe5')),  # 6b547aa
+    '.claude/skills/run-loop/reference/tick.md': (101, ('f516e172d9936de3ad13de7f586568e8f8c02ad44a770af78d878c48e1a3e134', 'a4663c27f4dc2eb5c42fc4ae5366235bf489d2d4d3c316c0ff19cecaf8249ce2')),  # 6b547aa
     '.codex/agents/slice-executor-high.toml': (30, ('217fcafcd0449db43fd1e25b4a0a13cc918ee2ab46d4980a8544b098ed31ec2d',)),  # 4ee5c22
     '.codex/agents/slice-executor-low.toml': (22, ('57e24a3b80eaa8a1991b82aeb29b6447735453c08ede535cc353a86a2b78bc35',)),  # 097041d
     '.codex/agents/slice-executor-mid.toml': (30, ('1cd71cc675b96957f227c797ae7fd75b1ae8172eef3823ba890150545e7642b0',)),  # 4ee5c22
@@ -1978,6 +1971,7 @@ RETIRED_FILES = {
     'AGENTS.md': (30, ('7ef0f82ad8d51f08cdcd750735fd0849344b5cb739f341f77c704fcf6e5033e6',)),  # 4ee5c22
     'AGENTS.workspace.md': (30, ('7ef0f82ad8d51f08cdcd750735fd0849344b5cb739f341f77c704fcf6e5033e6',)),  # 4ee5c22
     'executors.toml.example': (8, ('dad1620e97404eb7d1d9f29d796a05347c3b655e567c74a9e26ac6814e923261',)),  # 8a3c8c2
+    'works/templates/charter.md': (101, ('8439e75e4a12cb86dff1d96202a6944ffda56f4b442521e8aae4e119fcdf7f9b',)),  # 6b547aa
     'works/templates/result.md': (9, ('3938ceaf78a7392d62ca5a7e88ee51e132d56f30adafb06afb002361639e1dc9',)),  # 06561c4
 }
 # The retired paths hashed with their frontmatter model:/effort: lines dropped (_drop_route_lines).
@@ -3054,14 +3048,12 @@ write_text("docs/README.md", NESTED_PLAN["engine_side"]["docs/README.md"] if NES
 # ---- Templates --------------------------------------------------------------
 # No plan.md or result.md template: the orchestrator writes its free-form native plan
 # into plan.md at the slice's turn, and the executor writes a free-form result.md at
-# slice end. Scaffolded seeds: the phase notebook, the phase intent, the deferred brief, and a loop
-# phase's charter (P50: loop-init seeds loop/charter/v1.md from it).
+# slice end. Scaffolded seeds: the phase notebook, the phase intent and the deferred brief.
 # Nested: rewritten, because agents at the host root read the phase files made from them.
 _TEMPLATES = NESTED_PLAN["engine_side"] if NESTED else PAYLOADS
 write_text("works/templates/deferred_brief.md", _TEMPLATES["works/templates/deferred_brief.md"])
 write_text("works/templates/intent.md", _TEMPLATES["works/templates/intent.md"])
 write_text("works/templates/phase.md", _TEMPLATES["works/templates/phase.md"])
-write_text("works/templates/charter.md", _TEMPLATES["works/templates/charter.md"])
 
 # ---- Works state: starts with NO phases --------------------------------------
 # The workspace intentionally bootstraps empty: the operator's first real task is
@@ -3204,9 +3196,10 @@ def flag_retired_files() -> None:
                                         if k.startswith(".claude/skills/") and k.split("/")[2] not in CLAUDE_SKILLS})
     for rel in dirs:
         _walk_retired_dir(ROOT, rel, _retired_entry)
+    shipped = tuple(f".claude/skills/{name}/" for name in CLAUDE_SKILLS)  # flag_skill_dir_files classifies these
     for key in sorted(RETIRED_FILES):
         p = ROOT / key
-        if not any(key.startswith(d + "/") for d in dirs) and os.path.lexists(p) and not p.is_dir():
+        if not any(key.startswith(d + "/") for d in dirs) and not key.startswith(shipped) and os.path.lexists(p) and not p.is_dir():
             _classify(p, key, _retired_entry(key), "")
 
 
@@ -3349,7 +3342,7 @@ elif RETROFIT:
 else:
     print(f"Bootstrapped agentic workspace at {TARGET}")
     print("Contract: CLAUDE.md")
-    print("Claude Code: 20 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, fresh-eyes PR reader .claude/agents/pr-reader.md, blind code reader .claude/agents/code-reader.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
+    print("Claude Code: 19 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, fresh-eyes PR reader .claude/agents/pr-reader.md, blind code reader .claude/agents/code-reader.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
     print("Visual design: design-cowork fires automatically; the design-drafter subagent drafts each design slice's surfaces as one working canvas under docs/reference/design/jobs/ (a frame of shared choices, its pages at once, then a join into clickable Pages, a board per component), the design-critic judges each page and the joined canvas when the job's critique is on, the orchestrator publishes each round to one Design canvas Artifact in the Claude app, and the operator decides: picks a style (build-after / design-only / paired) and signs each design in their own words, or on an in-product mockup they ask for, before separate implementation and browser fidelity")
     print("One executor, routed per dispatch by kind, then risk, then attempt (mid is the default row, real code included; high for decomposition, research, review, named triggers and retries), through one route table whose rows set each dispatch's model and effort; python3 scripts/workflow.py executor-route shows it (and executor-route <slice> the decision for one slice); override a row in executors.toml, then run sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")

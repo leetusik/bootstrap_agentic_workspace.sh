@@ -1,6 +1,6 @@
 # Verdicts, escalation and the commit
 
-**Trust the verdict.** Read the returned block and the head of `result.md` (its durable copy; read further only on a verdict other than `done`), then `python3 scripts/workflow.py validate` (state only; never re-run the slice's tests). The fields you read: `status`, `route`, `model`, `effort`, `summary`, `files_changed`, `validation`, `claims`, `deviations`, plus the playbook's own (`parallel`, `notebook`, `review_verdict`, `walkthrough`, `pr_bodies`, `code_read`, `explain`, a cycle's `item_verdict`).
+**Trust the verdict.** Read the returned block and the head of `result.md` (its durable copy; read further only on a verdict other than `done`), then `python3 scripts/workflow.py validate` (state only; never re-run the slice's tests). The fields you read: `status`, `route`, `model`, `effort`, `summary`, `files_changed`, `validation`, `claims`, `deviations`, plus the playbook's own (`parallel`, `notebook`, `review_verdict`, `walkthrough`, `pr_bodies`, `code_read`, `explain`).
 
 - `done` → `finish-slice <slice_id> --outcome "<summary>"`, `validate`, commit.
 - `needs_operator` → `set-slice-status <slice_id> pending --stop-kind decision|operator-action --on-words "<its operator_need>"`, report, STOP.

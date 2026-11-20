@@ -5,7 +5,6 @@ import argparse
 import bisect
 import difflib
 import hashlib
-import heapq
 import json
 import os
 import posixpath
@@ -420,12 +419,7 @@ ARCHIVE_FOLDER_ID_RE = re.compile(rf"_({PHASE_ID_PATTERN})_")
 # must never be routable to the mid row by a `low` rating. Set `--risk high`
 # on one so the recorded rating cannot contradict the routing; if the two ever disagree, the kind
 # wins.
-# `cycle` (workspace v91, P50) is one cycle of a loop phase (`P<N>.C<k>`): created ONLY by
-# `loop-cycle-start` (new-slice and promote-deferred refuse it), closed only by `loop-cycle-close`, and
-# routed by its STAGE before risk is read -- the signed charter's `stages` map names each stage's row
-# (by default screen -> the `screen` row, confirm -> high). The wave helpers and the forced declaration
-# ignore cycles, as they run one at a time under the loop's lease (`loop.inflight`).
-SLICE_KINDS = {"implementation", "review", "decomposition", "research", "fix", "docs", "qa", "co-work", "cycle"}
+SLICE_KINDS = {"implementation", "review", "decomposition", "research", "fix", "docs", "qa", "co-work"}
 # Phase-notebook budget (v35; an index since v61): phase.md is read and written ONE SECTION at a
 # time (`phase-section`), so it is an index of what the next slice needs, not a store. Long
 # material -- a contract, a signed-design summary -- lives in `topics/<slug>.md` beside it,
@@ -592,18 +586,14 @@ RETIRED_ROUTES = ("cheap",)
 # a dispatch names its row (`route=`), and the verdict records it (`route:`).
 # Only the rows that own their file (FILE_ROWS: mid, design, critic, reader, code, explore) are written into
 # frontmatter, so only they accept a full model id or "inherit"; every other row (high, research,
-# judge, screen) runs a file another row owns with its model passed per call, and the Agent tool's
+# judge) runs a file another row owns with its model passed per call, and the Agent tool's
 # `model` is an enum, so those rows take an alias only.
 # effort = "" is the escape hatch for a model that rejects the parameter: no effort line in the
 # agent file and no per-dispatch effort. The named modes of v29-v52 (a top-level
 # `mode` key) are retired; read_executors_toml refuses one.
 # The defaults are the operator's own routes (workspace v80, v83): every opus row at high, mid on opus at
 # medium, haiku at xhigh for explore only.
-# `screen` (workspace v91, P50) is a loop phase's first-pass row: the cycles at a charter stage mapped to
-# it (by default the `screen` stage) run on it. It defaults to the mid row's values, owns no agent file
-# (it runs slice-executor with its model and effort passed per dispatch, like high and research), so
-# [claude.screen] takes an Agent-tool alias only; set a cheaper one there to screen cheaper.
-EXECUTOR_ROUTES = ("high", "research", "design", "critic", "judge", "reader", "code", "mid", "screen", "explore")  # print order
+EXECUTOR_ROUTES = ("high", "research", "design", "critic", "judge", "reader", "code", "mid", "explore")  # print order
 # v88 (P47-p5.S4): a per-page design round's spans carry `pass: frame | page <slug> | join` (drafter) or
 # `scope: page | cross` (critic) in their prompt; the meter labels them apart so the means estimate a round.
 # They run the design / critic rows: no executor-route row of their own.
@@ -618,7 +608,6 @@ ROUTE_DEFAULTS = {
     "reader": {"model": "opus", "effort": "high"},
     "code": {"model": "opus", "effort": "high"},
     "mid": {"model": "opus", "effort": "medium"},
-    "screen": {"model": "opus", "effort": "medium"},
     "explore": {"model": "haiku", "effort": "xhigh"},
 }
 # The agent file each row dispatches to (canonical name; `installed_agent_name` applies a nested
@@ -629,7 +618,7 @@ ROUTE_DEFAULTS = {
 SLICE_AGENT = "slice-executor"
 ROUTE_AGENT = {"high": SLICE_AGENT, "research": SLICE_AGENT, "design": "design-drafter", "critic": "design-critic",
                "judge": "design-critic", "reader": "pr-reader", "code": "code-reader", "mid": SLICE_AGENT,
-               "screen": SLICE_AGENT, "explore": "Explore"}
+               "explore": "Explore"}
 # The rows that own their agent file: sync-agents writes each one's resolved model/effort into its
 # frontmatter, so only these accept a full model id or "inherit".
 FILE_ROWS = ("mid", "design", "critic", "reader", "code", "explore")
@@ -758,52 +747,10 @@ def write_json_stamped(path: Path, data: dict, key: str, stamp: str) -> dict:
     return data
 
 
-# The event log (P50.S3): `append_event` is its one writer. A loop phase's per-cycle events go to the loop's
-# own `<phase>/loop/events.jsonl`, pruned with its rolled-up cycles, so the global works/events.jsonl grows by
-# milestones, never by cycles: an event lands there when its `slice` is a cycle `<P>.C<k>` or a checkpoint
-# `<P>.K<j>` of a loop phase, or its type is one of LOOP_OWN_EVENTS (or the caller names the cycle, as a
-# cycle start's phase_status_changed does). The milestones always stay global, and so does every event a
-# checkpoint writes about a loop running on another stream (its folder there is that stream's to write).
-# `all_events()` is the one reader: the global file plus every loop's file, active and archived, merged by ts.
-LOOP_SLICE_ID_RE = re.compile(r"(.+)\.([CK])([1-9][0-9]*)")
-LOOP_OWN_EVENTS = frozenset({"loop_cycle_started", "loop_cycle_dispatched", "loop_cycle_closed", "loop_claimed",
-                             "loop_digest_written", "loop_control_queued", "loop_control_applied", "loop_item_queued",
-                             "loop_item_unparked", "loop_checkpoint_started", "loop_rolled_up"})
-LOOP_MILESTONE_EVENTS = frozenset({"loop_initialized", "loop_charter_signed", "loop_halted", "loop_paused", "loop_resumed",
-                                   "loop_stopped", "loop_checkpoint_recorded", "loop_checkpoint_landed"})
-LOOP_EVENTS_FILE = "events.jsonl"
-
-
-def _event_loop_pdir(event_type: str, payload: dict, loop_slice=None):
-    """The loop phase folder whose own events file takes this event, else None (the global file)."""
-    if event_type in LOOP_MILESTONE_EVENTS:
-        return None
-    pid = None
-    for sid in (payload.get("slice"), loop_slice):
-        found = LOOP_SLICE_ID_RE.fullmatch(sid) if isinstance(sid, str) else None
-        if found:
-            pid = found.group(1)
-            break
-    if pid is None and event_type in LOOP_OWN_EVENTS and isinstance(payload.get("phase"), str):
-        pid = payload["phase"]
-    if not pid:
-        return None
-    pdir = ACTIVE / pid
-    try:
-        data = read_json(pdir / "phase.json")
-    except (OSError, ValueError):
-        return None
-    if phase_loop(data) is None:
-        return None
-    if not loop_home(pdir, data).own:  # the loop runs on another stream (P50-fr.F4): its folder is not ours to write
-        return None
-    return pdir
-
-
-def append_event(event_type: str, _loop_slice=None, **payload: object) -> None:
+# The event log: `append_event` is its one writer, `all_events()` its one reader (works/events.jsonl).
+def append_event(event_type: str, **payload: object) -> None:
     event = {"ts": now_iso(), "type": event_type, **payload}
-    loop_pdir = _event_loop_pdir(event_type, payload, _loop_slice)
-    path = loop_pdir / "loop" / LOOP_EVENTS_FILE if loop_pdir is not None else WORKS / "events.jsonl"
+    path = WORKS / "events.jsonl"
     if _CLOUD_UNDO is not None:
         _cloud_undo_note(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -830,33 +777,10 @@ def _read_events(path: Path) -> tuple:
     return events, skipped
 
 
-def loop_event_files() -> list:
-    """Every loop phase's own events file, active and archived phase folders alike."""
-    files = []
-    for root in (ACTIVE, ARCHIVED):
-        if root.is_dir():
-            files.extend(sorted(root.glob(f"*/loop/{LOOP_EVENTS_FILE}")))
-    return files
-
-
-def _event_ts(event: dict) -> float:
-    t = _meter_ts(event.get("ts"))
-    return t if t is not None else 0.0
-
-
 def all_events(counts=None) -> list:
-    """The whole event log: works/events.jsonl plus every loop's own file, merged in ts order (each file keeps
-    its own order). With no loop file it is exactly the global file, in file order. `counts["skipped"]` gets
-    the number of unreadable lines."""
+    """The whole event log, works/events.jsonl in file order. `counts["skipped"]` gets the number of
+    unreadable lines."""
     events, skipped = _read_events(WORKS / "events.jsonl")
-    files = loop_event_files()
-    if files:
-        streams = [events]
-        for path in files:
-            more, bad = _read_events(path)
-            streams.append(more)
-            skipped += bad
-        events = list(heapq.merge(*streams, key=_event_ts))
     if counts is not None:
         counts["skipped"] = skipped
     return events
@@ -1171,19 +1095,14 @@ def _route_env_warnings() -> list:
     return lines
 
 
-def slice_route(kind, risk, retry: bool, cycle_stage=None) -> tuple:
+def slice_route(kind, risk, retry: bool) -> tuple:
     """(row, reason) for one dispatch: kind first, then risk, then attempt -- bump up, never down.
     A second attempt is always the high row; review, decomposition and co-work (the mockup span)
     route high by kind and research to the research row, whatever `risk` says; otherwise only a
     risk of exactly `low` reaches the mid row (implementation, fix, docs and qa; v83 retired the
-    Haiku cheap row that docs and qa rated low ran on). A loop's `cycle` routes by its stage:
-    `cycle_stage` is its `(stage, row)` pair from the signed charter's `stages` map
-    (`loop_cycle_stage`); a cycle with none routes high, the safe direction."""
+    Haiku cheap row that docs and qa rated low ran on)."""
     if retry:
         return "high", "second attempt"
-    if kind == "cycle":  # executor-route passes the engine's attempt instead (loop_attempt_row, P50-fr.F1)
-        stage, row = cycle_stage if cycle_stage else (None, None)
-        return loop_attempt_row(stage, row, 1)
     if kind in ("review", "decomposition", "co-work"):
         return "high", f"kind {kind}"
     if kind == "research":
@@ -1241,17 +1160,8 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
         sdir = require_slice(args.slice)
         sdata = read_json(sdir / "slice.json")
         kind, risk = sdata.get("kind"), sdata.get("risk")
-        cycle_stage = loop_cycle_stage(sdir.parents[1], sdata) if kind == "cycle" else None
-        if kind == "cycle":  # P50-fr.F1: the engine numbers a cycle's attempts, so the row never rests on --retry
-            attempt = loop_cycle_attempt(sdir.parents[1], sdata)
-            if args.retry and attempt < 2:
-                raise SystemExit(f"executor-route: {args.slice} is a loop cycle at attempt {attempt}: the engine numbers a cycle's "
-                                 "attempts (loop-tick's dispatch attempt=, loop-cycle-dispatch) and routes attempt 2 to high by "
-                                 "itself; drop --retry")
-            row, reason = loop_attempt_row(cycle_stage[0], cycle_stage[1], attempt)
-        else:
-            attempt = 2 if args.retry else 1
-            row, reason = slice_route(kind, risk, args.retry, cycle_stage=cycle_stage)
+        attempt = 2 if args.retry else 1
+        row, reason = slice_route(kind, risk, args.retry)
         lines, fallback = _dispatch_lines(row, routes, proxy)
         print(f"slice={args.slice}")
         print(f"phase={args.slice.split('.', 1)[0]}")
@@ -1260,9 +1170,6 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
         print(f"attempt={attempt}")
         print(f"route={row}")
         print(f"reason={reason}")
-        if kind == "cycle":
-            print(f"stage={cycle_stage[0] or 'unknown'}")
-            print(f"stage_route={cycle_stage[1] or 'none'}")
         print(f"subagent_type={installed_agent_name(ROUTE_AGENT[row])}")
         print("\n".join(lines))
         extra = [fallback] if fallback else []
@@ -1736,7 +1643,7 @@ def _meter_slice_families() -> tuple:
             routes["high"]["effort"], routes["mid"]["effort"])
 
 
-def _meter_route(agent: str, prompt: str, model, kind, families=None, effort=None, row=None) -> str:
+def _meter_route(agent: str, prompt: str, model, kind, families=None, effort=None) -> str:
     """The route row a span most likely ran on, for the means: the agent type, the judge mode, the
     slice kind (research) and the model. Approximate by nature, and more so for the one
     `slice-executor` (v66), which every slice row runs: a research kind reads as research, review,
@@ -1765,8 +1672,6 @@ def _meter_route(agent: str, prompt: str, model, kind, families=None, effort=Non
     if agent == "slice-executor-mid":
         return "cheap" if isinstance(model, str) and "haiku" in model else "mid"
     if agent == SLICE_AGENT:
-        if kind == "cycle" and row:  # P50: a loop cycle reads as its charter stage's row (screen, high, ...)
-            return row
         if kind == "research":
             return "research"
         if kind in ("review", "decomposition", "co-work"):
@@ -1793,22 +1698,16 @@ def _meter_verdict(agent: str, final) -> str:
     return found.get("status") or found.get("verdict") or "?"
 
 
-def _meter_collect(dirs: list, known: dict, windows: "_MeterWindows", selected, lo, hi,
-                   only_sessions=None, span_filter=None) -> dict:
+def _meter_collect(dirs: list, known: dict, windows: "_MeterWindows", selected, lo, hi) -> dict:
     """Read the sessions overlapping [lo, hi] (None = unbounded) and meter them. `selected(slice)` says
-    whether a slice is in the report; everything else is `before`, `after` or `other`. A loop's close
-    (P50) narrows the read: `only_sessions` (session ids) skips every other session file unread, and
-    `span_filter(path)` skips a span file before its full read."""
+    whether a slice is in the report; everything else is `before`, `after` or `other`."""
     canon = {installed_agent_name(a): a for a in (*ROUTE_AGENT.values(), *RETIRED_AGENTS)}
     canon.update({f"wf-{a}": a for a in RETIRED_AGENTS})  # a nested rename the marker no longer records
     families = _meter_slice_families()
-    cycle_rows: dict = {}
     res = {"sessions": [], "main": {}, "spans": [], "outside": {}, "found": 0, "windows": windows, "kinds": known}
     for d in dirs:
         for path in sorted(d.glob("*.jsonl")):
             res["found"] += 1
-            if only_sessions is not None and path.stem not in only_sessions:
-                continue
             first, last = _meter_session_range(path)
             if first is None or (lo is not None and last is not None and last < lo) or (hi is not None and first > hi):
                 continue
@@ -1827,8 +1726,6 @@ def _meter_collect(dirs: list, known: dict, windows: "_MeterWindows", selected, 
                 _meter_add(sess["main"], one)
                 _meter_main_bucket(res, windows.at(ts), ts, selected, lo, hi, one)
             for jl in sorted((path.parent / path.stem / "subagents").glob("agent-*.jsonl")):
-                if span_filter is not None and not span_filter(jl):
-                    continue
                 meta = {}
                 mp = jl.with_name(jl.name[:-len(".jsonl")] + ".meta.json")
                 if mp.exists():
@@ -1852,12 +1749,9 @@ def _meter_collect(dirs: list, known: dict, windows: "_MeterWindows", selected, 
                 else:
                     outcome = _meter_verdict(agent, sp["final"])
                 minutes = round((sp["last"] - sp["first"]) / 60, 1) if sp["first"] is not None and sp["last"] is not None else None
-                if known.get(sid) == "cycle" and sid not in cycle_rows:
-                    cycle_rows[sid] = _meter_cycle_row(sid)
                 span = {"id": jl.stem[len("agent-"):], "session": path.stem, "agent": agent, "model": model,
                         "effort": meta.get("effort"), "route": _meter_route(agent, sp["prompt"], model, known.get(sid), families,
-                                                                            meta.get("effort"),
-                                                                            _meter_cycle_span_row(cycle_rows.get(sid), sp["first"])),
+                                                                            meta.get("effort")),
                         "slice": sid, "attributed_by": how, "start": sp["first"], "minutes": minutes,
                         "resumes": sp["resumes"], "outcome": outcome, "reset": sp["last_limit"] or None,
                         "usage": agg}
@@ -1866,53 +1760,6 @@ def _meter_collect(dirs: list, known: dict, windows: "_MeterWindows", selected, 
                     res["spans"].append(span)
             res["sessions"].append(sess)
     return res
-
-
-def _meter_cycle_row(sid: str):
-    """The rows a loop cycle's spans ran on, for the means: `{"default": row, "dispatches": [(epoch, row), ...]}`.
-    The dispatches are the ones loop-cycle-dispatch recorded (the in-flight cycle's `inflight.history`, else its ledger
-    line's `dispatches`, which outlives a rolled folder), each with its attempt's row (a retry: high); `default` is the
-    stage's charter row from slice.json, else the ledger's `stage_route`, else (a pre-F1 line) its `route`. None when
-    nothing is known."""
-    pid = sid.split(".", 1)[0]
-    pdir = ACTIVE / pid
-    default, dispatches = None, []
-    try:
-        sdata = read_json(pdir / "slices" / sid / "slice.json")
-        default = loop_cycle_stage(pdir, sdata)[1]
-    except (OSError, ValueError, SystemExit):
-        pass
-    try:
-        inflight = (loop_block(pdir) or {}).get("inflight")
-        if isinstance(inflight, dict) and inflight.get("cycle") == sid:
-            dispatches = list(inflight.get("history") or [])
-        else:
-            for line in loop_read(pdir, "ledger.jsonl"):
-                if line.get("cycle") == sid:
-                    dispatches = list(line.get("dispatches") or [])
-                    if default is None:
-                        row = line.get("stage_route") if "stage_route" in line else line.get("route")
-                        default = row if isinstance(row, str) else None
-    except (OSError, ValueError, SystemExit):
-        pass
-    marks = sorted((_meter_ts(d.get("at")), d.get("route")) for d in dispatches
-                   if isinstance(d, dict) and _meter_ts(d.get("at")) is not None and isinstance(d.get("route"), str))
-    if default is None and not marks:
-        return None
-    return {"default": default, "dispatches": marks}
-
-
-def _meter_cycle_span_row(info, first):
-    """The row of one span of a cycle: the last recorded dispatch at or before its first entry (loop-cycle-dispatch
-    runs right before the Agent call; its `at` carries milliseconds), else the default (`_meter_cycle_row`)."""
-    if not isinstance(info, dict):
-        return None
-    row = info.get("default")
-    if first is not None:
-        for at, route in info.get("dispatches") or []:
-            if at <= first:
-                row = route
-    return row
 
 
 def _meter_main_bucket(res: dict, sid, ts, selected, lo, hi, one: dict) -> None:
@@ -2147,7 +1994,7 @@ def cmd_dispatch_summary(args: argparse.Namespace) -> None:
     transcripts (deduplicated, attributed to slices, priced at list price), then the recorded
     executor_dispatched verdicts. Read-only; no transcripts found is one line, never a failure."""
     counts: dict = {}
-    events = _meter_events(counts)  # P50.S3: the global log, every loop's own file, and a rolled cycle's window
+    events = all_events(counts)
     records = [obj for obj in events if obj.get("type") == "executor_dispatched"]
     skipped = counts.get("skipped", 0)
     if args.phase is not None:
@@ -3253,15 +3100,7 @@ def normalize_id_args(args: argparse.Namespace) -> None:
                 raise SystemExit(id_number_refusal("P", phase, int(number.group(1)), tailed))
             args.phase = found or resolve_id_arg("P", phase)
         else:
-            try:
-                args.phase = resolve_id_ref("P", phase)
-            except SystemExit:
-                # P50-fr.F4: a phase worktree cut before a loop phase existed has no folder for it; a loop command
-                # names it through the default checkout's copy (its own-stream rule then queues or refuses)
-                other = _loop_default_phase_id(phase) if cmd in LOOP_PHASE_COMMANDS else None
-                if other is None:
-                    raise
-                args.phase = other
+            args.phase = resolve_id_ref("P", phase)
     deferred = getattr(args, "deferred_id", None)
     if isinstance(deferred, str):
         args.deferred_id = resolve_id_ref("D", deferred)
@@ -3392,30 +3231,10 @@ def stream_phases(phases: list, stream) -> list:
     return scoped
 
 
-def phase_loop(phase):
-    """A phase's `loop` block (a phase.json dict or an all_active_phases entry) when it is a loop phase, else None."""
-    loop = phase.get("loop") if isinstance(phase, dict) else None
-    return loop if isinstance(loop, dict) else None
-
-
-def loop_review_hidden(phase: dict, s: dict) -> bool:
-    """True for a loop phase's own `<P>.REVIEW` while its loop is not `stopped`: it runs only after the stop."""
-    loop = phase_loop(phase)
-    return bool(loop is not None and loop.get("status") != "stopped" and isinstance(s, dict)
-                and s.get("id") == f"{phase.get('id')}.REVIEW")
-
-
-def loop_wave_hidden(phase: dict, s: dict) -> bool:
-    """True for a slice the wave helpers never see: a loop's cycle or checkpoint (both run under the loop's
-    lease), or its hidden REVIEW."""
-    return isinstance(s, dict) and (s.get("kind") == "cycle" or loop_checkpoint_slice(s) or loop_review_hidden(phase, s))
-
-
 def selectable_slices(phase: dict, slices=None) -> list:
-    """The open slices the pointer may select, by order: every not-`done` slice, except a loop phase's REVIEW
-    while its loop runs (`loop_review_hidden`). For every phase without a loop block, exactly its open slices."""
+    """The open slices the pointer may select, by order: every not-`done` slice."""
     slices = phase.get("slices", []) if slices is None else slices
-    return [s for s in slices if s.get("status") != "done" and not loop_review_hidden(phase, s)]
+    return [s for s in slices if s.get("status") != "done"]
 
 
 def resolve_current(phases: list) -> tuple:
@@ -3425,7 +3244,7 @@ def resolve_current(phases: list) -> tuple:
         current_phase = phase["id"]
         if phase.get("status") in ("blocked", "pending"):
             return current_phase, None, None
-        open_slices = selectable_slices(phase)  # a loop phase hides its REVIEW until the loop stops
+        open_slices = selectable_slices(phase)
         if open_slices:
             return current_phase, open_slices[0]["id"], open_slices[1]["id"] if len(open_slices) > 1 else None
         return current_phase, None, None
@@ -3495,9 +3314,8 @@ def ready_set(phase: dict) -> dict:
     barrier in progress, or the phase itself `pending`/`blocked`, leaves `ready` empty. Else a walk over the
     open slices admits a barrier only as the first open slice with nothing running, ends at the first barrier
     either way, and admits a declared slice that is todo/ready with every dependency `done`. So an undeclared
-    phase's ready set is its first open slice when that can start: the pointer. A loop phase's cycles (and its
-    REVIEW while the loop runs) are never part of it: they run one at a time under the loop's lease."""
-    slices = [s for s in phase.get("slices", []) if not loop_wave_hidden(phase, s)]
+    phase's ready set is its first open slice when that can start: the pointer."""
+    slices = phase.get("slices", [])
     done = {s.get("id") for s in slices if s.get("status") == "done"}
     open_slices = [s for s in slices if s.get("status") != "done"]
     in_progress = [s for s in open_slices if s.get("status") == "in_progress"]
@@ -3608,7 +3426,7 @@ def start_warning(slice_id: str):
         return None
     by_id = {s.get("id"): s for s in phase["slices"]}
     me = by_id.get(slice_id)
-    if me is None or me.get("kind") == "cycle":  # a loop's cycle is started by loop-cycle-start, under its lease
+    if me is None:
         return None
     reasons = []
     if slice_declared(me):
@@ -3617,8 +3435,7 @@ def start_warning(slice_id: str):
         if deps:
             reasons.append(f"depends on {', '.join(deps)}, not done yet")
     if slice_barrier(me):
-        beside = [s["id"] for s in phase["slices"] if s.get("status") == "in_progress" and s.get("id") != slice_id
-                  and s.get("kind") != "cycle"]
+        beside = [s["id"] for s in phase["slices"] if s.get("status") == "in_progress" and s.get("id") != slice_id]
         if beside:
             reasons.append(f"is a barrier that runs alone, but {', '.join(beside)} {'is' if len(beside) == 1 else 'are'} in_progress")
     if not reasons:
@@ -3734,9 +3551,8 @@ def explain_unit(pdir: Path):
 
 def undeclared_middle_slices(phase: dict) -> list:
     """The open (not `done`) slices of a phase that are neither a barrier kind, a fix nor declared, by order: a
-    fix slice is cut after a review, outside any decomposition's reach, and stays undeclared unless its set is known;
-    a loop's `cycle` is created by loop-cycle-start, never cut, so it is exempt too."""
-    return [s for s in phase.get("slices", []) if s.get("status") != "done" and s.get("kind") not in BARRIER_KINDS + ("fix", "cycle")
+    fix slice is cut after a review, outside any decomposition's reach, and stays undeclared unless its set is known."""
+    return [s for s in phase.get("slices", []) if s.get("status") != "done" and s.get("kind") not in BARRIER_KINDS + ("fix",)
             and not slice_declared(s)]
 
 
@@ -3746,7 +3562,7 @@ def parallel_plan(phase: dict) -> list:
     all done (or in an earlier round) share a round; an undeclared slice runs alone, like a barrier. Pure:
     it reads the slice records and writes nothing."""
     done = {s.get("id") for s in phase.get("slices", []) if s.get("status") == "done"}
-    pending = [s for s in phase.get("slices", []) if s.get("status") != "done" and not loop_wave_hidden(phase, s)]
+    pending = [s for s in phase.get("slices", []) if s.get("status") != "done"]
     rounds = []
     while pending:
         batch = []
@@ -3809,8 +3625,6 @@ def render_slices_block(pdir: Path, phase: dict) -> str:
             f"`{clean_cell(s.get('kind', ''))} / {clean_cell(s.get('risk', ''))}` | "
             f"`{clean_cell(s.get('status', ''))}` | {outcome} | {result} |"
         )
-    # P50.S3: a loop's rolled-up folders collapse into one row, before its live cycles
-    rows = _with_rollup_row(phase, rows, [s.get("order") for s in phase.get("slices", [])], 6)
     return "\n".join(lines + rows)
 
 
@@ -4697,7 +4511,6 @@ def rebuild_index_and_state() -> None:
                 "current_slice": next((s["id"] for s in selectable_slices(p)), None),
                 "slice_count": len(p["slices"]),
                 "done_slice_count": sum(1 for s in p["slices"] if s.get("status") == "done"),
-                **({"rolled_slice_count": _loop_rolled_count(p)} if _loop_rolled_count(p) else {}),
                 **({"execution": phase_execution(p)} if phase_execution(p) else {}),
                 **({"pinned": True} if phase_pinned(p) else {}),
             } for p in phases
@@ -4947,7 +4760,7 @@ def rebuild_backlog(phases: list, state: dict, index: dict) -> None:
             name = clean_cell(s.get("name", ""))
             path = s.get("path") or f"{p['path']}/slices/{s['id']}"  # slice.json read at a ref carries no path
             rows.append(f"| [{checkbox}] `{s['id']}` | `{s['status']}` | {name} | `{clean_cell(s.get('kind', ''))}` | `{path}` |")
-        lines.extend(_with_rollup_row({**data, "path": p["path"]}, rows, [s.get("order") for s in slices], 5))
+        lines.extend(rows)
     lines.append("")
     write_text(WORKS / "backlog.md", "\n".join(lines))
 
@@ -5043,7 +4856,6 @@ def validate() -> int:
         # P51: the PR block. Absent = a phase from before P51 = nothing to check, and no warning.
         if "pr" in p:
             errors.extend(f"phase {p['id']} {problem}" for problem in pr_block_problems(p["pr"], _pr_registry_names()))
-        loop_validate(p, errors, warnings)  # P50: the loop block and loop/ files; silent for an ordinary phase
         if not (ACTIVE / p["id"] / "intent.md").exists():
             warnings.append(f"phase {p['id']} has no intent.md (expected {p['id']}/intent.md); capture operator intent via the create-phase skill")
         unit = explain_unit(ACTIVE / p["id"])
@@ -5429,10 +5241,6 @@ def new_phase(args: argparse.Namespace) -> None:
     raw = getattr(args, "phase", None)
     phase_id = mint_phase_id() if raw is None else explicit_phase_id(raw)
     pdir = ACTIVE / phase_id
-    loop = getattr(args, "loop", False)
-    if loop and not (WORKS / "templates" / CHARTER_TEMPLATE).is_file():
-        raise SystemExit(f"new-phase --loop: the charter template {shown(WORKS / 'templates' / CHARTER_TEMPLATE)} is missing "
-                         "(update the workspace); refused, nothing was written")
     order = _clean_order(args.order) if args.order is not None else max([read_json(p / "phase.json").get("order", 0) for p in phase_dirs()], default=0) + 1
     phase_data = {
         "id": phase_id, "name": args.name, "objective": args.objective, "status": "planned", "order": order,
@@ -5474,14 +5282,10 @@ def new_phase(args: argparse.Namespace) -> None:
     create_slice(phase_id, f"{phase_id}.DECOMP", "decompose phase", "decomposition", 0, "high", source={"type": "new_phase", "id": phase_id})
     create_slice(phase_id, f"{phase_id}.REVIEW", "phase review", "review", 9999, "high", source={"type": "new_phase", "id": phase_id})
     append_event("phase_created", phase=phase_id, **({"agenda": agenda} if agenda is not None else {}))
-    charter = _loop_init(pdir) if loop else None  # new-phase --loop: the same init as loop-init
     rebuild_index_and_state()
     print(f"created phase {phase_id}: {shown(pdir)}")
     if agenda is not None:
         print(f"linked {phase_id} to {agenda}")
-    if charter is not None:
-        for line in _loop_init_lines(pdir, charter):
-            print(line)
     for line in repo_stamp_lines:
         print(line)
     # v43: a phase runs on this stream unless the operator asks for a worktree, so creation
@@ -5510,8 +5314,6 @@ def _auto_order(pdir: Path, explicit):
 
 
 def new_slice(args: argparse.Namespace) -> None:
-    if args.kind == "cycle":
-        raise SystemExit(f"new-slice --kind cycle: a loop's cycles are created only by {WORKFLOW_CMD} loop-cycle-start <P>; refused, nothing was written")
     pdir = require_phase(args.phase)
     args.slice = full_slice_id(args.phase, args.slice)  # v73: a bare suffix (S1) names a slice of --phase
     order = _auto_order(pdir, args.order)
@@ -5633,12 +5435,6 @@ def start_slice(args: argparse.Namespace) -> None:
 def finish_slice(args: argparse.Namespace) -> None:
     sdir = require_slice(args.slice)
     pdir = sdir.parents[1]  # .../<phase>/slices/<slice> -> <phase>
-    if read_json(sdir / "slice.json").get("kind") == "cycle":  # the ledger line and the lease close with it
-        raise SystemExit(f"finish-slice {args.slice}: a loop's cycle closes with {WORKFLOW_CMD} loop-cycle-close {args.slice} "
-                         "--verdict pass|fail|survivor|parked|error; refused, nothing was written")
-    if loop_checkpoint_slice(read_json(sdir / "slice.json")):  # P50.S3: metered, recorded and the lease freed with it
-        raise SystemExit(f"finish-slice {args.slice}: a loop's checkpoint closes with {WORKFLOW_CMD} loop-checkpoint {pdir.name} "
-                         "--verdict pass|changes_requested|blocked --summary \"...\"; refused, nothing was written")
     decomposition = read_json(sdir / "slice.json").get("kind") == "decomposition"
     if decomposition and not explain_phase(pdir):  # v77: the cut decides parallelism, never the default
         loose = undeclared_middle_slices(_active_phase(pdir.name) or {})
@@ -5687,13 +5483,6 @@ def set_phase_status(args: argparse.Namespace) -> None:
     if args.status not in PHASE_STATUSES:
         raise SystemExit(f"invalid phase status: {args.status}")
     pdir = require_phase(args.phase)
-    if args.status == "done":  # P50-fr.F2: a loop phase reaches done only past its final review's guard
-        data = read_json(pdir / "phase.json")
-        if phase_loop(data) is not None:  # P50-fr.F4: and only on the loop's own stream (this copy is stale elsewhere)
-            _loop_own_stream_refuse(pdir, f"set-phase-status {args.phase} done", data)
-        why = loop_done_refusal(pdir, data)
-        if why:
-            raise SystemExit(f"set-phase-status {args.phase} done: {why}; refused, nothing was written")
     old = _set_phase_status(pdir, args.status)
     append_event("phase_status_changed", phase=args.phase, old_status=old, new_status=args.status)
     rebuild_index_and_state()
@@ -5726,43 +5515,13 @@ def _require_acceptance_cleared(phase_id: str, data: dict) -> None:
             f"  {WORKFLOW_CMD} accept-gate {phase_id} --clear --note \"...\"          (after the operator walks it; --note is optional)")
 
 
-def loop_done_refusal(pdir: Path, data: dict):
-    """Why a loop phase may not reach `done` yet, else None (an ordinary phase: always None, nothing read). The
-    final review passes only once the loop is stopped, nothing is in flight, and no parked item is open: the
-    parked list is the loop's question list, and a done phase would archive its open questions (P50-fr.F2)."""
-    loop = phase_loop(data)
-    if loop is None:
-        return None
-    pid = data.get("id", pdir.name)
-    src = loop_source(pdir)
-    live = phase_loop(src.phase()) or loop
-    why = []
-    if live.get("status") != "stopped":
-        why.append(f"the loop is {live.get('status')}: its final review runs only after the stop "
-                   f"({WORKFLOW_CMD} loop-control {pid} stop --words \"...\")")
-    inflight = live.get("inflight") if isinstance(live.get("inflight"), dict) else None
-    if inflight and inflight.get("cycle"):
-        why.append(f"{inflight['cycle']} is still in flight (close it first)")
-    still = [str(e.get("key")) for e in src.jsonl("parked.jsonl") if e.get("resolved") is None]
-    if still:
-        why.append(f"{len(still)} parked item(s) still open: {', '.join(still)} -- resolve each on the operator's words "
-                   f"({WORKFLOW_CMD} loop-unpark {pid} <key> --to queue|survivor|dead --words \"...\") or route it to a "
-                   f"filed deferred job ({WORKFLOW_CMD} loop-unpark {pid} <key> --to deferred --pointer <DID>)")
-    return "; ".join(why) or None
-
-
 def review_phase(args: argparse.Namespace) -> None:
     if args.verdict not in REVIEW_VERDICTS:
         raise SystemExit(f"verdict must be one of: {', '.join(sorted(REVIEW_VERDICTS))}")
     pdir = require_phase(args.phase)
     data = read_json(pdir / "phase.json")
-    if phase_loop(data) is not None:  # P50-fr.F4: a loop's final review is recorded on the loop's own stream only
-        _loop_own_stream_refuse(pdir, f"review-phase {args.phase} --verdict {args.verdict}", data)
     # Gate check first, before anything is written: a refused pass must leave no trace.
     if args.verdict == "pass":
-        why = loop_done_refusal(pdir, data)
-        if why:
-            raise SystemExit(f"review-phase {args.phase} --verdict pass: {why}; refused, nothing was written")
         _require_acceptance_cleared(args.phase, data)
         _require_pr_opened(args.phase, data)  # P51: beside the gate, never instead of it; each names only itself
     if args.verdict == "changes_requested" and data.get("status") == "done" and _pr_open_entries(data):
@@ -5821,13 +5580,12 @@ def review_phase(args: argparse.Namespace) -> None:
 
 def _drive_review_slices(pdir: Path, verdict: str) -> list:
     """Set the phase's REVIEW slice(s) from a phase verdict (`review-phase`, and `reopen-phase`'s
-    changes_requested), so the phase and its review slice never diverge; a loop's checkpoints keep
-    their own verdicts. Returns `[(slice id, old status)]`."""
+    changes_requested), so the phase and its review slice never diverge. Returns `[(slice id, old status)]`."""
     slice_verdict = {"pass": "done", "changes_requested": "changes_requested", "blocked": "blocked"}[verdict]
     driven = []
     for sdir in slice_dirs(pdir):
         sdata = read_json(sdir / "slice.json")
-        if sdata.get("kind") == "review" and not loop_checkpoint_slice(sdata):
+        if sdata.get("kind") == "review":
             old = _set_slice_status(sdir, slice_verdict)
             if slice_verdict == "done" and cloud_link_file().exists():
                 # a REVIEW changes no product file, so its only commit is the workflow state's, which a linked
@@ -7566,7 +7324,7 @@ def _parallel_teardown_nested(args: argparse.Namespace, pdir: Path, data: dict, 
     print("phase.json changed -- commit it in the nested repo with the rest of the merge cleanup")
 
 
-def _gate_exemption(phase_id: str, main_side: str, branch_ref: str, outputs=None) -> tuple:
+def _gate_exemption(phase_id: str, main_side: str, branch_ref: str) -> tuple:
     """(exempt, detail) for the quiet point's checked exemption (v86, §9.2).
 
     Reads `git diff --name-status <merge-base> <branch_ref>` -- what merging the branch into the
@@ -7589,8 +7347,6 @@ def _gate_exemption(phase_id: str, main_side: str, branch_ref: str, outputs=None
         rel = path[len(prefix):] if prefix and path.startswith(prefix) else (path if not prefix else None)
         if rel is not None and (rel.startswith(own) or rel in STAMP_WORKS_FILES
                                 or (status == "A" and rel.startswith(GATE_EXEMPT_ADDED_PREFIXES))):
-            continue
-        if outputs and NESTED is None and _path_in_outputs(path, outputs):  # P50.S3: a loop's declared outputs
             continue
         return False, f"{path} ({status})"
     return True, f"{count} path{'' if count == 1 else 's'}"
@@ -7627,24 +7383,10 @@ def parallel_gate(args: argparse.Namespace) -> None:
     print(f"branch_ref={branch_ref}")
 
     branch_data = _phase_json_at_ref(branch_ref, args.phase)
-    loop_target = None  # P50.S3: a running loop merges at its passing checkpoint's commit, never the branch tip
-    loop_final = isinstance(branch_data, dict) and branch_data.get("status") == "done"
     if branch_data is None:
         reasons.append(
             f"cannot read works/phases/active/{args.phase}/phase.json at {branch_ref} "
             f"(unknown ref, or the phase folder does not exist there)")
-    elif phase_loop(branch_data) is not None and not loop_final:
-        record = loop_branch_checkpoint(branch_data) or {}
-        print(f"branch_loop_status={(phase_loop(branch_data) or {}).get('status')}")
-        print(f"branch_checkpoint={record.get('slice') or 'none'} verdict={record.get('verdict') or 'none'} commit={record.get('commit') or 'none'}")
-        if record.get("verdict") != "pass":
-            reasons.append(f"loop {args.phase} has no passing checkpoint on {branch_ref} (last: {record.get('slice') or 'none'} "
-                           f"{record.get('verdict') or ''}); a loop merges only at a passing checkpoint")
-        elif not record.get("commit"):
-            reasons.append(f"checkpoint {record.get('slice')} passed but is not landed on {branch_ref}: run loop-checkpoint "
-                           f"{args.phase} --landed on the loop's stream and commit it")
-        else:
-            loop_target = record
     else:
         branch_status = branch_data.get("status")
         branch_review = (branch_data.get("review") or {}).get("status")
@@ -7697,27 +7439,10 @@ def parallel_gate(args: argparse.Namespace) -> None:
     # v86 (§9.2): the checked exemption. Only the busy-default-stream reasons can be dropped, and only
     # when git shows the branch touches nothing the default stream could be holding; the branch-side
     # reasons (done, pass) never are. Decided by the diff, never by what kind of phase it is.
-    if loop_target is not None:
-        commit = loop_target["commit"]
-        print(f"merge_commit={commit}")
-        if loop_target.get("host_commit"):
-            print(f"host_commit={loop_target['host_commit']}")
-        if _ref_is_ancestor(commit, main_side):
-            reasons.append(f"checkpoint {loop_target.get('slice')} ({commit[:12]}) is already merged into {main_side}; nothing to merge "
-                           "until the next passing checkpoint lands")
-        outputs = _loop_outputs_at(commit, args.phase)
-        exempt, detail = _gate_exemption(args.phase, main_side, commit, outputs)
-        if exempt and NESTED is not None:
-            exempt, host_detail = _loop_host_exemption(execution or {}, loop_target.get("host_commit"), outputs)
-            detail = f"{detail}; {host_detail}"
-        print(f"outputs={','.join(outputs or []) or 'none'}")
-        print(f"exemption=phase-folder-works-outputs ({detail})" if exempt else f"exemption=none: {detail}")
-    else:
-        exempt, detail = _gate_exemption(args.phase, main_side, branch_ref)
-        print(f"exemption=phase-folder-only ({detail})" if exempt else f"exemption=none: {detail}")
+    exempt, detail = _gate_exemption(args.phase, main_side, branch_ref)
+    print(f"exemption=phase-folder-only ({detail})" if exempt else f"exemption=none: {detail}")
     if busy and exempt:
         notes.append(f"{len(busy)} busy default-stream phase(s) skipped: the branch touches only its own phase folder, the generated works/ files"
-                     + (", the charter's outputs" if loop_target is not None else "")
                      + f" and added {' and '.join(GATE_EXEMPT_ADDED_PREFIXES)} paths, so its merge cannot collide with them")
     else:
         reasons.extend(busy)
@@ -7730,12 +7455,6 @@ def parallel_gate(args: argparse.Namespace) -> None:
             print(f"{i}. {reason}")
         raise SystemExit(1)
     print("GATE OPEN")
-    if loop_target is not None:
-        print(f"next: merge {loop_target['commit']} (checkpoint {loop_target.get('slice')}; never the moving branch tip) into the default "
-              f"stream, then run: {WORKFLOW_CMD} parallel-merge-finish"
-              + (f"; the host side ({str(loop_target.get('host_commit'))[:12]}) integrates by the host's own custom"
-                 if loop_target.get("host_commit") else ""))
-        return
     print(f"next: merge {branch_ref} into the default stream, then run: {WORKFLOW_CMD} parallel-merge-finish")
 
 
@@ -7759,17 +7478,10 @@ def parallel_merge_finish(args: argparse.Namespace) -> None:
             f"then: {WORKFLOW_CMD} parallel-merge-finish")
     phases = all_active_phases()
     stream = current_stream(phases)
-    own_loop = next((p for p in phases if stream and phase_loop(p) is not None
-                     and (phase_execution(p) or {}).get("branch") == stream), None)
-    if stream and own_loop is None:
+    if stream:
         print(f"warning: this checkout is on parallel stream {stream}; parallel-merge-finish belongs on the default stream, after the merge")
     rebuild_index_and_state()
     print(f"regenerated from the merged folders: {', '.join(GENERATED_FILES)}")
-    if own_loop is not None:
-        print(f"loop stream {stream}: {own_loop['id']} took the default branch back in; the loop continues at its next tick "
-              f"({WORKFLOW_CMD} loop-tick {own_loop['id']})")
-        print("no commit made -- commit the regenerated files with the merge cleanup")
-        return
     for p in all_active_phases():
         execution = phase_execution(p)
         if not execution or p.get("status") != "done" or not _parallel_branch_merged(execution, git_ok):
@@ -7932,7 +7644,7 @@ def merge_ready_line(stream, phases: list):
     the branch ref, never trusted from the stale local copy. None on a phase stream or without git."""
     if stream or not _git_available():
         return None
-    ready, loops = [], []
+    ready = []
     for p in phases:
         execution = phase_execution(p)
         branch = (execution or {}).get("branch")
@@ -7941,19 +7653,10 @@ def merge_ready_line(stream, phases: list):
         branch_data = _phase_json_at_ref(branch, p["id"])
         if isinstance(branch_data, dict) and branch_data.get("status") == "done" and (branch_data.get("review") or {}).get("status") == "pass":
             ready.append(f"{p['id']}:{branch}")
-            continue
-        record = loop_branch_checkpoint(branch_data)  # P50.S3: a loop is merge-ready at each passing, landed checkpoint
-        commit = record.get("commit") if record and record.get("verdict") == "pass" else None
-        if commit and not _ref_is_ancestor(commit, "HEAD"):
-            host = record.get("host_commit")
-            loops.append(f"{p['id']}:{commit[:7]}" + (f" host={str(host)[:7]}" if host else ""))
     lines = []
     if ready:
         lines.append(f"merge_ready={', '.join(ready)} (done with a passing review on its branch, not merged here: "
                      f"whoever drives this stream merges it at a slice boundary, past {WORKFLOW_CMD} parallel-gate <P>)")
-    if loops:
-        lines.append(f"merge_ready={', '.join(loops)} (a passing loop checkpoint not merged here: merge that commit, never the "
-                     f"moving branch tip, at a slice boundary, past {WORKFLOW_CMD} parallel-gate <P>)")
     return "\n".join(lines) or None
 
 
@@ -11110,11 +10813,6 @@ def cmd_next(args: argparse.Namespace) -> None:
             print(line)
     except Exception as exc:  # noqa: BLE001 - the pointer must print whatever a phase's pr block holds
         print(f"pr_stack=unreadable error={_one_line(str(exc)) or type(exc).__name__}")
-    try:  # P50: a loop phase's one line on its own stream; loops_elsewhere= on the default stream
-        for line in loop_next_lines(stream, index):
-            print(line)
-    except Exception as exc:  # noqa: BLE001 - the pointer must print whatever a loop's files hold
-        print(f"loop=unreadable error={_one_line(str(exc)) or type(exc).__name__}")
     waiting = state.get("waiting_on_operator")
     if waiting:
         kind = "slice" if "." in waiting else "phase"
@@ -11122,17 +10820,11 @@ def cmd_next(args: argparse.Namespace) -> None:
         # An open acceptance gate is the same `pending` halt with a concrete script attached:
         # print the walkthrough, and clear through accept-gate so cleared_at gets stamped.
         gate = None
-        loop_halt_record = None
         if kind == "phase" and (ACTIVE / waiting / "phase.json").exists():
             pdata = read_json(ACTIVE / waiting / "phase.json")
             if acceptance_gate_is_open(pdata):
                 gate = phase_acceptance(pdata)
                 clear = f"accept-gate {waiting} --clear"
-            halt = (phase_loop(pdata) or {}).get("halt")
-            if isinstance(halt, dict):  # P50: a halted loop's typed stop; its words lift it, never set-phase-status
-                loop_halt_record = halt
-                clear = (f"loop-control {waiting} resume --words \"<the operator's words>\"" if halt.get("reason") not in LOOP_HALT_NEEDS_CHARTER
-                         else f"loop-sign {waiting} --version <N+1> --words \"<the operator's words>\" (a new charter version with a higher bound)")
         print(f"current_phase={state.get('current_phase')}")
         for line in explain_unit_lines(state.get("current_phase")):
             print(line)
@@ -11150,10 +10842,6 @@ def cmd_next(args: argparse.Namespace) -> None:
                 print(f"on_words={_one_line(record.get('on_words') or '')}")
             else:
                 print("stop_kind=untyped (set it with --stop-kind/--on-words)")
-        if loop_halt_record:
-            print(f"loop_halt={loop_halt_record.get('reason')} detail={_one_line(loop_halt_record.get('detail') or '')}")
-            print(f"stop_kind={loop_halt_record.get('stop_kind')}")
-            print(f"on_words={_one_line(loop_halt_record.get('on_words') or '')}")
         print("Do not start, finish, or advance past it. Report what you need, then wait for the operator.")
         for line in wave_lines(_active_phase(state.get("current_phase"))):  # P42: declared phases only
             print(line)
@@ -11309,10 +10997,6 @@ def _card_next_action(sid: str, sdata: dict, sdir: Path, spans) -> str:
     start = f"start-slice {sid}, then " if status in ("todo", "ready") else ""
     if status == "blocked":
         return "blocked: report the blocker (result.md) to the operator; nothing advances until it clears"
-    if kind == "cycle":
-        return f"a loop cycle: run `loop-tick {sid.split('.', 1)[0]}` and follow its action= (never finish-slice; close with loop-cycle-close)"
-    if loop_checkpoint_slice(sdata):
-        return f"a loop checkpoint: run `loop-tick {sid.split('.', 1)[0]}` and follow its action= (never finish-slice; close with loop-checkpoint --verdict)"
     if (sdir / "result.md").is_file():
         return f"read result.md's verdict head, then finish-slice {sid} --outcome \"<its summary>\", validate, commit"
     if not (sdir / "plan.md").is_file():
@@ -11370,10 +11054,6 @@ def resume_card(transcript_path=None) -> str:
     if gate_open:
         lines.append(f"stop: phase {phase_id} acceptance gate open -- relay the walkthrough (`accept-gate {phase_id}` prints it); "
                      f"the operator's words clear it with accept-gate {phase_id} --clear")
-    elif phase.get("status") == "pending" and isinstance((phase_loop(phase) or {}).get("halt"), dict):
-        halt = phase_loop(phase)["halt"]
-        lines.append(f"stop: loop {phase_id} halted ({halt.get('reason')}, stop_kind={halt.get('stop_kind')}) -- the operator's words: "
-                     f"{_card_cut(halt.get('on_words'))}")
     elif phase.get("status") == "pending":
         lines.append(f"stop: phase {phase_id} pending -- report what you need; the operator's words clear it with set-phase-status {phase_id} in_progress")
     elif phase.get("status") == "blocked":
@@ -11386,16 +11066,8 @@ def resume_card(transcript_path=None) -> str:
         lines.append(f"next action: wait for the operator; their words clear it with set-slice-status {sid} in_progress")
     elif sdata:
         lines.append(f"next action: {_card_next_action(sid, sdata, sdir, spans)}")
-    elif phase_loop(phase) is not None:
-        lines.append(f"next action: the loop line's next (run `loop-tick {phase_id}` and follow its action=)")
     else:
         lines.append("next action: no open slice -- review or archive the phase")
-    try:
-        loop_line = loop_card_line(phase)  # P50: the loop, its last cycle, the cycle in flight, the next action
-    except Exception:  # noqa: BLE001 - the card always prints
-        loop_line = None
-    if loop_line:
-        lines.append(loop_line)
     lines.extend(wave_card_lines(phase, sid))  # P42: declared phases only
     gates = []
     if acceptance is None:
@@ -11538,8 +11210,6 @@ def promote_deferred(args: argparse.Namespace) -> None:
         raise SystemExit(f"open deferred job not found: {did}")
     data = read_json(ddir / "deferred.json")
     require_slice_kind(args.kind)  # before --create-phase, so a bad kind leaves no half-created phase
-    if args.kind == "cycle":
-        raise SystemExit(f"promote-deferred --kind cycle: a loop's cycles are created only by {WORKFLOW_CMD} loop-cycle-start <P>; refused, nothing was written")
     if args.phase is None and not args.create_phase:
         raise SystemExit("promote-deferred needs --phase <id>, or --create-phase to create a phase (without --phase the engine "
                          "mints its id; name the slice by its bare suffix, e.g. --slice S1); refused, nothing was written")
@@ -16951,3098 +16621,6 @@ def design_migrate_pre_v47(args: argparse.Namespace) -> None:
           + ("" if (root / "design.json").exists() else "; run design-init only if this repo will use the drafter"))
 
 
-# ---- Loop phases (workspace v91, P50) ---------------------------------------------------------------
-# A loop phase is an ordinary phase with a `loop` block in phase.json (`new-phase --loop`, or `loop-init <P>`
-# on a phase not yet past its DECOMP). Absent block = an ordinary phase: every path below is skipped. The
-# block is the loop's state; its memory lives in `<phase>/loop/`, created on demand:
-#   charter/v<N>.md   the charter: prose (objective, one cycle, forbidden list) plus one fenced `json` bounds
-#                     block; `loop-sign` pins a version's sha256 on the operator's literal words
-#   queue.jsonl       items waiting (rewritten whole when an item is taken; it stays small)
-#   ledger.jsonl      one line per closed cycle: the TRUTH. The block's `counters` are a cache of it, always
-#                     written in the same call as the ledger line
-#   dead.jsonl, survivors.jsonl, parked.jsonl   the item lists (parked is the loop's question list)
-# Cycles are slices `<P>.C<k>` of kind `cycle`, ordered LOOP_CYCLE_ORDER_BASE + 2k (a checkpoint takes the odd
-# order after its cycle); the phase's own REVIEW moves to LOOP_REVIEW_ORDER and the pointer hides it until the
-# loop stops. The lease is `loop.inflight`: one cycle at a time, never double-dispatched.
-LOOP_STATUSES = ("drafting", "signed", "running", "paused", "halted", "stopped")  # the last three: loop-control and the halts (P50.S2)
-LOOP_VERDICTS = ("pass", "fail", "survivor", "parked", "error")
-LOOP_STAGE_ROWS = ("screen", "mid", "high", "research")  # the rows a charter stage may name
-LOOP_ITEM_SOURCES = ("operator", "orchestrator", "engine")
-LOOP_COUNTERS = ("cycles", "attempts", "trials", "consecutive_failures", "survivors", "parked", "dead")
-LOOP_FILES = ("queue.jsonl", "ledger.jsonl", "dead.jsonl", "survivors.jsonl", "parked.jsonl", "checkpoints.jsonl")
-LOOP_CYCLE_ORDER_BASE = 10000
-LOOP_REVIEW_ORDER = 1_000_000_000
-LOOP_UNFILLED = "UNFILLED"  # the charter template's placeholder token; loop-sign refuses while one is left
-LOOP_ERROR_LIMIT = 2  # an item's second `error` sends it to dead (`errors x2`)
-CHARTER_TEMPLATE = "charter.md"
-CHARTER_VERSION_RE = re.compile(r"v([1-9][0-9]*)\.md")
-LOOP_STAGE_NAME_RE = re.compile(r"[a-z][a-z0-9_-]*")
-# The bounds block's shape and defaults: an absent optional key takes its default; `budget`'s three caps are
-# required. `stages` is an ordered map (stage -> row); its first key is the first pass.
-CHARTER_BOUNDS_DEFAULTS = {
-    "cadence": {"min_gap_minutes": 0},
-    "budget": {"per_cycle_usd": 5.0, "per_day_usd": 50.0, "total_usd": 500.0, "max_cycles": None},
-    "stops": {"max_consecutive_failures": 3},
-    "spend_covered": [],
-    "stages": {"screen": "screen", "confirm": "high"},
-    "checkpoint_every": 25,
-    "digest_every_hours": 24,
-    "keep_cycles": 10,
-    "cycle_timeout_minutes": 120,
-    "outputs": [],
-}
-
-
-def new_loop_block() -> dict:
-    return {"status": "drafting", "charter": None, "charters": [], "next_cycle": 1, "inflight": None,
-            "counters": {k: 0 for k in LOOP_COUNTERS}, "last_cycle": None}
-
-
-def loop_block(pdir: Path):
-    """The phase's `loop` block from its phase.json, or None for an ordinary phase."""
-    return phase_loop(read_json(pdir / "phase.json"))
-
-
-def loop_phase(pdir: Path) -> bool:
-    """True when the phase folder's phase.json carries a `loop` block (the predicate, as `explain_phase` is)."""
-    try:
-        return loop_block(pdir) is not None
-    except (OSError, ValueError):
-        return False
-
-
-def require_loop(pdir: Path, cmd: str) -> dict:
-    loop = loop_block(pdir)
-    if loop is None:
-        raise SystemExit(f"{cmd}: {pdir.name} is not a loop phase (make one with: {WORKFLOW_CMD} loop-init {pdir.name}); "
-                         "refused, nothing was written")
-    return loop
-
-
-def write_loop_block(pdir: Path, loop: dict, data=None) -> dict:
-    """The one writer of the `loop` block: `data` (the phase.json dict, re-read when None) with `loop` set, written."""
-    data = read_json(pdir / "phase.json") if data is None else data
-    data["loop"] = loop
-    write_json(pdir / "phase.json", data)
-    return data
-
-
-def loop_path(pdir: Path, name: str) -> Path:
-    return pdir / "loop" / name
-
-
-def loop_read(pdir: Path, name: str) -> list:
-    """The records of one loop/ JSONL file (none when it does not exist yet); a line that is not a JSON object
-    refuses, naming it -- a loop must never act on a list it cannot read."""
-    path = loop_path(pdir, name)
-    if not path.exists():
-        return []
-    out = []
-    for n, raw in enumerate(path.read_text(encoding="utf-8").split("\n"), start=1):
-        if not raw.strip():
-            continue
-        try:
-            record = json.loads(raw)
-        except ValueError:
-            record = None
-        if not isinstance(record, dict):
-            raise SystemExit(f"{shown(path)} line {n} is not a JSON object; fix or remove the line (git holds its history)")
-        out.append(record)
-    return out
-
-
-def loop_append(pdir: Path, name: str, record: dict) -> None:
-    """The one JSONL appender: one record, one line."""
-    path = loop_path(pdir, name)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-
-def loop_rewrite(pdir: Path, name: str, records: list) -> None:
-    """Rewrite one JSONL file whole (the queue when an item is taken, parked when one is resolved)."""
-    write_text(loop_path(pdir, name), "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records))
-
-
-def charter_rel(version: int) -> str:
-    return f"loop/charter/v{version}.md"
-
-
-def charter_versions(pdir: Path) -> list:
-    """The charter versions on disk, ascending."""
-    cdir = pdir / "loop" / "charter"
-    if not cdir.is_dir():
-        return []
-    return sorted(int(m.group(1)) for m in (CHARTER_VERSION_RE.fullmatch(p.name) for p in cdir.iterdir() if p.is_file()) if m)
-
-
-def _is_int(value) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool)
-
-
-def _is_number(value) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
-
-
-def _charter_bounds_problems(text: str) -> tuple:
-    """(bounds with defaults filled, [problems]) from a charter's text: the first ```json fence under `## Bounds`."""
-    lines = text.split("\n")
-    start = next((i for i, line in enumerate(lines) if line.strip() == "## Bounds"), None)
-    if start is None:
-        return None, ["no `## Bounds` section"]
-    fence = None
-    for i in range(start + 1, len(lines)):
-        stripped = lines[i].strip()
-        if stripped.startswith("## "):
-            break
-        if re.fullmatch(r"```\s*json\s*", stripped):
-            fence = i
-            break
-    if fence is None:
-        return None, ["`## Bounds` holds no ```json fence"]
-    end = next((j for j in range(fence + 1, len(lines)) if lines[j].strip() == "```"), None)
-    if end is None:
-        return None, ["the `## Bounds` ```json fence is never closed"]
-    try:
-        raw = json.loads("\n".join(lines[fence + 1:end]))
-    except ValueError as exc:
-        return None, [f"the bounds block is not valid JSON ({exc})"]
-    if not isinstance(raw, dict):
-        return None, ["the bounds block is not a JSON object"]
-    bounds = json.loads(json.dumps(CHARTER_BOUNDS_DEFAULTS))
-    problems = []
-    for key in raw:
-        if key not in CHARTER_BOUNDS_DEFAULTS:
-            problems.append(f"unknown key {key!r} (known: {', '.join(CHARTER_BOUNDS_DEFAULTS)})")
-
-    def sub(name: str, required=()):
-        value = raw.get(name)
-        if name not in raw:
-            if required:
-                problems.append(f"{name} is required ({', '.join(required)})")
-            return {}
-        if not isinstance(value, dict):
-            problems.append(f"{name} must be an object")
-            return {}
-        for k in value:
-            if k not in CHARTER_BOUNDS_DEFAULTS[name]:
-                problems.append(f"unknown key {name}.{k} (known: {', '.join(CHARTER_BOUNDS_DEFAULTS[name])})")
-        for k in required:
-            if k not in value:
-                problems.append(f"{name}.{k} is required")
-        return value
-
-    cadence = sub("cadence")
-    if "min_gap_minutes" in cadence:
-        if _is_int(cadence["min_gap_minutes"]) and cadence["min_gap_minutes"] >= 0:
-            bounds["cadence"]["min_gap_minutes"] = cadence["min_gap_minutes"]
-        else:
-            problems.append(f"cadence.min_gap_minutes must be an integer >= 0 (got {cadence['min_gap_minutes']!r})")
-    budget = sub("budget", required=("per_cycle_usd", "per_day_usd", "total_usd"))
-    for k in ("per_cycle_usd", "per_day_usd", "total_usd"):
-        if k in budget:
-            if _is_number(budget[k]) and budget[k] > 0:
-                bounds["budget"][k] = budget[k]
-            else:
-                problems.append(f"budget.{k} must be a positive number (got {budget[k]!r})")
-    if "max_cycles" in budget:
-        if budget["max_cycles"] is None or (_is_int(budget["max_cycles"]) and budget["max_cycles"] >= 1):
-            bounds["budget"]["max_cycles"] = budget["max_cycles"]
-        else:
-            problems.append(f"budget.max_cycles must be null or an integer >= 1 (got {budget['max_cycles']!r})")
-    stops = sub("stops")
-    if "max_consecutive_failures" in stops:
-        if _is_int(stops["max_consecutive_failures"]) and stops["max_consecutive_failures"] >= 1:
-            bounds["stops"]["max_consecutive_failures"] = stops["max_consecutive_failures"]
-        else:
-            problems.append(f"stops.max_consecutive_failures must be an integer >= 1 (got {stops['max_consecutive_failures']!r})")
-    if "stages" in raw:
-        stages = raw["stages"]
-        if not isinstance(stages, dict) or not stages:
-            problems.append("stages must be a non-empty object mapping each stage to its row, in pass order")
-        else:
-            for name, row in stages.items():
-                if not LOOP_STAGE_NAME_RE.fullmatch(name):
-                    problems.append(f"stage name {name!r} must be lower-case letters, digits, - or _ (starting with a letter)")
-                if row not in LOOP_STAGE_ROWS:
-                    problems.append(f"stages.{name} names row {row!r}; expected one of {', '.join(LOOP_STAGE_ROWS)}")
-            bounds["stages"] = dict(stages)
-    for k in ("checkpoint_every", "keep_cycles", "digest_every_hours", "cycle_timeout_minutes"):
-        if k in raw:
-            if _is_int(raw[k]) and raw[k] >= 1:
-                bounds[k] = raw[k]
-            else:
-                problems.append(f"{k} must be an integer >= 1 (got {raw[k]!r})")
-    for k in ("spend_covered", "outputs"):
-        if k not in raw:
-            continue
-        value = raw[k]
-        if not isinstance(value, list) or not all(isinstance(v, str) and v.strip() for v in value):
-            problems.append(f"{k} must be a list of non-empty strings")
-            continue
-        if k == "outputs":
-            for v in value:
-                if v.startswith("/") or ".." in v.replace("\\", "/").split("/"):
-                    problems.append(f"outputs path {v!r} must be relative to the product root, with no leading / and no ..")
-        bounds[k] = list(value)
-    return bounds, problems
-
-
-def charter_bounds(path: Path) -> dict:
-    """The charter's bounds, validated, with every absent optional key at its default; one SystemExit naming every
-    problem at once on a bad charter."""
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        raise SystemExit(f"charter {shown(path)} does not exist")
-    bounds, problems = _charter_bounds_problems(text)
-    if problems:
-        raise SystemExit(f"charter {shown(path)}: invalid bounds -- {'; '.join(problems)}")
-    return bounds
-
-
-def charter_unfilled(text: str) -> list:
-    """The sections (by heading) of a charter that still hold an UNFILLED placeholder, in order."""
-    found, heading = [], "(title)"
-    for line in text.split("\n"):
-        if line.startswith("#"):
-            heading = line.lstrip("#").strip() or heading
-        if LOOP_UNFILLED in line and heading not in found:
-            found.append(heading)
-    return found
-
-
-def loop_stages(pdir: Path, version=None) -> dict:
-    """The ordered stage -> row map of one charter version (the signed one when None; before signing, the newest
-    draft), or the default map when that file is missing or its bounds are invalid."""
-    loop = loop_block(pdir) or {}
-    if version is None:
-        version = (loop.get("charter") or {}).get("version")
-    if version is None:
-        drafts = charter_versions(pdir)
-        version = drafts[-1] if drafts else None
-    if isinstance(version, int):
-        try:
-            bounds, problems = _charter_bounds_problems((pdir / charter_rel(version)).read_text(encoding="utf-8"))
-        except OSError:
-            bounds, problems = None, ["missing"]
-        if not problems:
-            return bounds["stages"]
-    return dict(CHARTER_BOUNDS_DEFAULTS["stages"])
-
-
-def loop_charter_ok(pdir: Path) -> tuple:
-    """(ok, reason): a signed charter whose file still hashes to its pin. loop-cycle-start refuses on a failure;
-    the tick (P50.S2) halts on one."""
-    loop = loop_block(pdir)
-    if loop is None:
-        return False, f"{pdir.name} is not a loop phase"
-    charter = loop.get("charter")
-    if not isinstance(charter, dict):
-        return False, f"no signed charter: fill it, then sign it on the operator's literal words ({WORKFLOW_CMD} loop-sign {pdir.name} --words \"...\")"
-    version = charter.get("version")
-    path = pdir / str(charter.get("path") or charter_rel(version))
-    if not path.is_file():
-        return False, f"the signed charter v{version} ({shown(path)}) is missing"
-    sha = hashlib.sha256(path.read_bytes()).hexdigest()
-    if sha != charter.get("sha256"):
-        nxt = max(charter_versions(pdir) + [version if _is_int(version) else 0]) + 1
-        return False, (f"the signed charter v{version} ({shown(path)}) has changed since it was signed (sha256 {sha[:12]}, "
-                       f"pinned {str(charter.get('sha256'))[:12]}): a change of charter is a new version -- restore v{version} "
-                       f"from git, or write {charter_rel(nxt)} and sign it")
-    return True, f"charter v{version} signed, pin holds"
-
-
-def loop_cycle_stage(pdir: Path, sdata: dict) -> tuple:
-    """(stage, row) of one cycle slice: its `loop.stage`, mapped by the charter version it started under."""
-    info = sdata.get("loop") if isinstance(sdata.get("loop"), dict) else {}
-    stage = info.get("stage")
-    return stage, loop_stages(pdir, info.get("charter")).get(stage)
-
-
-def loop_take_order(queue: list, stages: dict) -> list:
-    """The queue in take order: later stages first, then priority descending, then first in, first out."""
-    names = list(stages)
-
-    def prio(item):
-        value = item.get("priority", 0)
-        return value if _is_number(value) else 0
-    ranked = sorted(enumerate(queue), key=lambda e: (-(names.index(e[1].get("stage")) if e[1].get("stage") in names else -1),
-                                                    -prio(e[1]), e[0]))
-    return [item for _i, item in ranked]
-
-
-def loop_key_refusal(key: str, stage: str, stages: dict, queue: list, ledger: list, dead: list,
-                     check_queued: bool = True, check_tried: bool = True):
-    """Why `key` may not run (or be queued) at `stage`, else None: a dead key, a stage the charter does not name,
-    a key already tried at that stage (a ledger line whose verdict is not `error`), or one already queued there."""
-    gone = next((d for d in dead if d.get("key") == key), None)
-    if gone is not None:
-        return f"key {key!r} is dead (cycle {gone.get('cycle')}, stage {gone.get('stage')}: {gone.get('reason')}); a dead key is never retried"
-    if stage not in stages:
-        return f"stage {stage!r} is not one the charter names ({', '.join(stages)})"
-    if check_tried:
-        tried = next((l for l in ledger if l.get("key") == key and l.get("stage") == stage and l.get("verdict") != "error"), None)
-        if tried is not None:
-            return f"key {key!r} was already tried at stage {stage} (cycle {tried.get('cycle')}: {tried.get('verdict')})"
-    if check_queued and any(q.get("key") == key and q.get("stage") == stage for q in queue):
-        return f"key {key!r} is already queued at stage {stage}"
-    return None
-
-
-def loop_queue_item(key: str, title: str, stage: str, payload, priority, source: str, errors: int = 0, footprint=None) -> dict:
-    item = {"key": key, "title": title, "stage": stage, "payload": payload, "priority": priority,
-            "added_at": now_iso(), "source": source, "errors": errors}
-    if footprint:
-        item["footprint"] = footprint  # an error close's uncommitted outputs: the item's next cycle reconciles them
-    return item
-
-
-def loop_recount(pdir: Path, loop: dict) -> None:
-    """Keep the survivors, dead and parked counters equal to their files (parked: its open entries)."""
-    counters = loop.setdefault("counters", {k: 0 for k in LOOP_COUNTERS})
-    counters["survivors"] = len(loop_read(pdir, "survivors.jsonl"))
-    counters["dead"] = len(loop_read(pdir, "dead.jsonl"))
-    counters["parked"] = sum(1 for p in loop_read(pdir, "parked.jsonl") if p.get("resolved") is None)
-
-
-def _loop_json_arg(raw, flag: str, cmd: str, want_object: bool = False):
-    if raw is None:
-        return None
-    try:
-        value = json.loads(raw)
-    except ValueError as exc:
-        raise SystemExit(f"{cmd}: {flag} is not valid JSON ({exc}); refused, nothing was written")
-    if want_object and not isinstance(value, dict):
-        raise SystemExit(f"{cmd}: {flag} must be a JSON object; refused, nothing was written")
-    return value
-
-
-def _loop_text_arg(raw, flag: str, cmd: str) -> str:
-    text = _one_line(raw or "")
-    if not text:
-        raise SystemExit(f"{cmd}: {flag} must not be empty; refused, nothing was written")
-    return text
-
-
-def _loop_drop_queued(pdir: Path, key: str) -> None:
-    """A key that goes dead leaves the queue in the same call, so the queue head is never a dead key."""
-    queue = loop_read(pdir, "queue.jsonl")
-    kept = [q for q in queue if q.get("key") != key]
-    if len(kept) != len(queue):
-        loop_rewrite(pdir, "queue.jsonl", kept)
-
-
-def loop_init_problems(pdir: Path, data: dict) -> list:
-    """Why `loop-init` must refuse this phase (empty: it may proceed)."""
-    problems = []
-    pid = data.get("id", pdir.name)
-    if phase_loop(data) is not None:
-        problems.append("it is already a loop phase")
-    if explain_phase(pdir):
-        problems.append("it is an explain phase (## Explain in intent.md), which never loops")
-    status = data.get("status")
-    if status not in ("planned", "in_progress"):
-        problems.append(f"it is {status}; a phase becomes a loop while planned, or in progress with nothing past its DECOMP started")
-    else:  # a slice can start while its phase still reads planned: either way, nothing past the DECOMP may have
-        started = [s.get("id") for s in (read_json(d / "slice.json") for d in slice_dirs(pdir))
-                   if s.get("id") != f"{pid}.DECOMP" and (s.get("status") not in ("todo", "ready") or s.get("started_at"))]
-        if started:
-            problems.append(f"slices past its DECOMP have started ({', '.join(started)})")
-    if not (WORKS / "templates" / CHARTER_TEMPLATE).is_file():
-        problems.append(f"the charter template {shown(WORKS / 'templates' / CHARTER_TEMPLATE)} is missing (update the workspace)")
-    if (pdir / charter_rel(1)).exists():
-        problems.append(f"{shown(pdir / charter_rel(1))} already exists")
-    return problems
-
-
-def _loop_init(pdir: Path) -> Path:
-    """Make `pdir` a loop phase: the block, charter v1 from the template, REVIEW moved past every cycle. Refuses,
-    writing nothing, when loop_init_problems names anything. Returns the charter path; the caller rebuilds."""
-    data = read_json(pdir / "phase.json")
-    problems = loop_init_problems(pdir, data)
-    if problems:
-        raise SystemExit(f"loop-init {pdir.name}: refused, nothing was written -- {'; '.join(problems)}")
-    pid = data.get("id", pdir.name)
-    charter = render_template(load_template(CHARTER_TEMPLATE), PHASE_ID=pid, NAME=str(data.get("name", "")))
-    write_loop_block(pdir, new_loop_block(), data)
-    path = pdir / charter_rel(1)
-    write_text(path, charter)
-    review = pdir / "slices" / f"{pid}.REVIEW" / "slice.json"
-    if review.exists():
-        sdata = read_json(review)
-        sdata["order"] = LOOP_REVIEW_ORDER
-        write_json(review, sdata)
-    append_event("loop_initialized", phase=pid, charter=charter_rel(1))
-    return path
-
-
-def _loop_init_lines(pdir: Path, path: Path) -> list:
-    return [f"loop={pdir.name} status=drafting (a loop phase: cycles {pdir.name}.C<k>; its REVIEW runs after the loop stops)",
-            f"charter={shown(path)}",
-            f"next: fill every {LOOP_UNFILLED} line of the charter, then sign it on the operator's literal words: "
-            f"{WORKFLOW_CMD} loop-sign {pdir.name} --words \"<the operator's words>\""]
-
-
-def loop_init(args: argparse.Namespace) -> None:
-    pdir = _loop_require_phase(args.phase)
-    _loop_own_stream_refuse(pdir, f"loop-init {pdir.name}")
-    path = _loop_init(pdir)
-    rebuild_index_and_state()
-    for line in _loop_init_lines(pdir, path):
-        print(line)
-
-
-def loop_sign(args: argparse.Namespace) -> None:
-    """Sign a charter version on the operator's literal words: pin its sha256, record it, and turn a drafting loop
-    signed. The orchestrator runs it only after those words; an executor never does."""
-    pdir = _loop_require_phase(args.phase)
-    loop = require_loop(pdir, "loop-sign")
-    cmd = f"loop-sign {pdir.name}"
-    _loop_own_stream_refuse(pdir, cmd)
-    words = (args.words or "").strip()
-    if not words:
-        raise SystemExit(f"{cmd}: --words must carry the operator's literal words; refused, nothing was written")
-    versions = charter_versions(pdir)
-    version = args.version if args.version is not None else (versions[-1] if versions else None)
-    if version is None:
-        raise SystemExit(f"{cmd}: no charter on disk ({shown(pdir / 'loop' / 'charter')}); refused, nothing was written")
-    path = pdir / charter_rel(version)
-    if not path.is_file():
-        raise SystemExit(f"{cmd}: {shown(path)} does not exist; refused, nothing was written")
-    text = path.read_text(encoding="utf-8")
-    _bounds, bad = _charter_bounds_problems(text)
-    problems = [f"invalid bounds: {'; '.join(bad)}"] if bad else []
-    unfilled = charter_unfilled(text)
-    if unfilled:
-        problems.append(f"{LOOP_UNFILLED} placeholders are left in: {', '.join(unfilled)}")
-    signed = {c.get("version") for c in loop.get("charters") or [] if isinstance(c, dict)}
-    current = (loop.get("charter") or {}).get("version")
-    if version in signed:
-        problems.append(f"v{version} is already signed (a change of charter is a new version: write {charter_rel(max(versions) + 1)})")
-    elif _is_int(current) and version <= current:
-        problems.append(f"v{version} is not past the signed v{current}")
-    if problems:
-        raise SystemExit(f"{cmd} --version {version}: refused, nothing was written -- {'; '.join(problems)}")
-    record = {"version": version, "path": charter_rel(version), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-              "words": words, "signed_at": now_iso()}
-    data = read_json(pdir / "phase.json")
-    loop["charter"] = record
-    loop["charters"] = list(loop.get("charters") or []) + [record]
-    if loop.get("status") == "drafting":
-        loop["status"] = "signed"
-    lifted = _loop_sign_lift(pdir, data, loop, _bounds)
-    write_loop_block(pdir, loop, data)
-    append_event("loop_charter_signed", phase=pdir.name, version=version, sha256=record["sha256"])
-    rebuild_index_and_state()
-    print(f"signed {pdir.name} charter v{version}: {shown(path)}")
-    print(f"sha256={record['sha256']}")
-    print(f"loop_status={loop['status']}")
-    if lifted:
-        print(lifted)
-
-
-def loop_queue(args: argparse.Namespace) -> None:
-    """`add`: queue one item (refused for a dead key, one tried or queued at that stage, or a stage the charter
-    does not name); `list`: the queue in take order."""
-    pdir = _loop_require_phase(args.phase)
-    require_loop(pdir, f"loop-queue {args.action}")
-    home = loop_home(pdir)
-    live = pdir if home.own or home.pdir is None else home.pdir  # P50-fr.F4: off-stream, list the live loop's queue
-    stages = loop_stages(live)
-    queue = loop_read(live, "queue.jsonl")
-    if args.action == "list":
-        order = loop_take_order(queue, stages)
-        print(f"queue={pdir.name} items={len(order)} stages={','.join(stages)}")
-        if not home.own:
-            print(f"source={home.where}" if home.pdir is not None else f"source=local copy (stale: {home.where})")
-        for n, item in enumerate(order, start=1):
-            print(f"{n}. key={item.get('key')} stage={item.get('stage')} priority={item.get('priority')} "
-                  f"errors={item.get('errors', 0)} source={item.get('source')} title={_one_line(item.get('title') or '')}")
-        return
-    cmd = f"loop-queue {pdir.name} add"
-    _loop_own_stream_refuse(pdir, cmd, home=home)
-    key = _loop_text_arg(args.key, "--key", cmd)
-    title = _loop_text_arg(args.title, "--title", cmd)
-    payload = _loop_json_arg(args.payload, "--payload", cmd)
-    signed = isinstance((loop_block(pdir) or {}).get("charter"), dict)
-    stage = args.stage or (next(iter(stages)) if signed else "screen")
-    reason = loop_key_refusal(key, stage, stages, queue, loop_read(pdir, "ledger.jsonl"), loop_read(pdir, "dead.jsonl"))
-    if reason:
-        raise SystemExit(f"{cmd}: {reason}; refused, nothing was written")
-    item = loop_queue_item(key, title, stage, payload, args.priority, args.source)
-    loop_append(pdir, "queue.jsonl", item)
-    append_event("loop_item_queued", phase=pdir.name, key=key, stage=stage, source=args.source)
-    rebuild_index_and_state()
-    print(f"queued key={key} stage={stage} priority={args.priority} (queue: {len(queue) + 1} item(s))")
-
-
-def loop_cycle_start(args: argparse.Namespace) -> None:
-    """Start the next cycle `<P>.C<k>` under the lease: the queue head, or a new item the orchestrator authors with
-    --key/--title. Writes no plan.md; the orchestrator does."""
-    pdir = _loop_require_phase(args.phase)
-    pid = pdir.name
-    cmd = f"loop-cycle-start {pid}"
-    data = read_json(pdir / "phase.json")
-    loop = phase_loop(data)
-    if loop is None:
-        raise SystemExit(f"{cmd}: {pid} is not a loop phase; refused, nothing was written")
-    _loop_own_stream_refuse(pdir, cmd, data)
-    _driver_refuse(loop, cmd, pid)
-    ok, why = loop_charter_ok(pdir)
-    if not ok:
-        raise SystemExit(f"{cmd}: {why}; refused, nothing was written")
-    if loop.get("status") not in ("signed", "running"):
-        raise SystemExit(f"{cmd}: the loop is {loop.get('status')}; a cycle starts only on a signed or running loop; refused, nothing was written")
-    if data.get("status") in ("pending", "blocked", "done"):
-        raise SystemExit(f"{cmd}: phase {pid} is {data.get('status')}, and nothing starts past a stop; refused, nothing was written")
-    inflight = loop.get("inflight")
-    if inflight:
-        if isinstance(inflight, dict) and inflight.get("kind") == "checkpoint":
-            raise SystemExit(f"{cmd}: checkpoint {inflight.get('cycle')} is open (no cycle starts while it is: record its verdict "
-                             f"with {WORKFLOW_CMD} loop-checkpoint {pid} --verdict ...); refused, nothing was written")
-        raise SystemExit(f"{cmd}: cycle {inflight.get('cycle') if isinstance(inflight, dict) else inflight} is in flight "
-                         "(one cycle at a time: close it with loop-cycle-close first); refused, nothing was written")
-    setup = [s for s in (read_json(d / "slice.json") for d in slice_dirs(pdir)) if loop_setup_slice(s, pid)]
-    if setup:
-        named = ", ".join(f"{s.get('id')} ({s.get('status')})" for s in setup)
-        raise SystemExit(f"{cmd}: {named} must finish first (the DECOMP and the setup slices run before any cycle); "
-                         "refused, nothing was written")
-    stages = loop_stages(pdir)
-    first = next(iter(stages))
-    queue, ledger, dead = loop_read(pdir, "queue.jsonl"), loop_read(pdir, "ledger.jsonl"), loop_read(pdir, "dead.jsonl")
-    if args.key is not None:
-        key = _loop_text_arg(args.key, "--key", cmd)
-        title = _loop_text_arg(args.title, "--title", cmd)
-        payload = _loop_json_arg(args.payload, "--payload", cmd)
-        stage = first
-        reason = loop_key_refusal(key, stage, stages, queue, ledger, dead, check_queued=False)
-        taken = next((q for q in queue if q.get("key") == key and q.get("stage") == stage), None)
-        item = {"key": key, "title": title, "stage": stage,
-                "payload": payload if args.payload is not None else (taken or {}).get("payload"),
-                "priority": (taken or {}).get("priority", 0), "errors": (taken or {}).get("errors", 0),
-                "source": (taken or {}).get("source", "orchestrator"), "footprint": (taken or {}).get("footprint")}
-    else:
-        if args.title is not None or args.payload is not None:
-            raise SystemExit(f"{cmd}: --title/--payload author a new item and need --key; refused, nothing was written")
-        order = loop_take_order(queue, stages)
-        if not order:
-            raise SystemExit(f"{cmd}: the queue is empty -- author a new item: {WORKFLOW_CMD} {cmd} --key K --title T "
-                             "[--payload JSON]; refused, nothing was written")
-        taken = order[0]
-        key, stage = str(taken.get("key")), taken.get("stage")
-        reason = loop_key_refusal(key, stage, stages, queue, ledger, dead, check_queued=False,
-                                  check_tried=not taken.get("unparked_from"))
-        item = {"key": key, "title": taken.get("title") or key, "stage": stage, "payload": taken.get("payload"),
-                "priority": taken.get("priority", 0), "errors": taken.get("errors", 0), "source": taken.get("source"),
-                "footprint": taken.get("footprint")}
-    if reason:
-        raise SystemExit(f"{cmd}: {reason}; refused, nothing was written")
-    k = loop.get("next_cycle") if _is_int(loop.get("next_cycle")) else 1
-    sid = f"{pid}.C{k}"
-    if (pdir / "slices" / sid).exists():
-        raise SystemExit(f"{cmd}: slice {sid} already exists while next_cycle is {k}; repair loop.next_cycle; refused, nothing was written")
-    signed_version = loop["charter"]["version"]
-    started = now_iso()
-    # -- writes, after every refusal --
-    if taken is not None:
-        loop_rewrite(pdir, "queue.jsonl", [q for q in queue if q is not taken])
-    sdir = create_slice(pid, sid, f"cycle {k}: {item['title']}", "cycle", LOOP_CYCLE_ORDER_BASE + 2 * k, "low",
-                        source={"type": "loop", "id": pid})
-    append_event("slice_created", phase=pid, slice=sid)
-    sdata = read_json(sdir / "slice.json")
-    sdata["loop"] = {"k": k, "stage": stage, "key": key, "title": item["title"], "payload": item["payload"],
-                     "charter": signed_version, "attempt": 1, "priority": item["priority"], "errors": item["errors"],
-                     "source": item["source"]}
-    if item.get("footprint"):
-        sdata["loop"]["footprint"] = item["footprint"]
-    write_json(sdir / "slice.json", sdata)
-    old = _set_slice_status(sdir, "in_progress")
-    append_event("slice_status_changed", slice=sid, old_status=old, new_status="in_progress")
-    data = read_json(pdir / "phase.json")
-    if data.get("status") != "in_progress":
-        old_phase = data.get("status")
-        data["status"] = "in_progress"
-        if not data.get("started_at"):
-            data["started_at"] = started
-        append_event("phase_status_changed", _loop_slice=sid, phase=pid, old_status=old_phase, new_status="in_progress")
-    loop = data["loop"]
-    loop["inflight"] = {"cycle": sid, "started_at": started, "attempt": 1}
-    loop["status"] = "running"
-    loop["next_cycle"] = k + 1
-    write_loop_block(pdir, loop, data)
-    append_event("loop_cycle_started", phase=pid, slice=sid, key=key, stage=stage, charter=signed_version)
-    rebuild_index_and_state()
-    print(f"cycle={sid}")
-    print(f"stage={stage}")
-    print(f"key={key}")
-    print(f"slice_path={shown(sdir)}")
-    if item.get("footprint"):
-        print(f"footprint={_loop_footprint_text(item['footprint'])} (reconcile first: run-loop reference/cycle-plan.md)")
-
-
-def loop_ledger_line(pdir: Path, sdata: dict, inflight: dict, verdict: str, metrics: dict, summary: str,
-                     route: str, closed_at: str, loop=None, transcripts=None, stage_route=None, dirty=None) -> dict:
-    """The one ledger line of a closed cycle, metered (`loop_meter_cycle`): `usd` is the main thread's share plus
-    every span's cost, `minutes` the wall clock from start to close, `span_minutes` the spans' own; an `assumed`
-    cycle (nothing priced found) is charged its full per_cycle_usd, so the budget stays enforceable. `route` is the
-    row the closing attempt ran on, `stage_route` the stage's charter row, `dispatches` each recorded dispatch's
-    attempt, row and time (the meter labels a rolled cycle's spans from them), `dirty_outputs` what an error close
-    left uncommitted on the charter's outputs."""
-    info = sdata.get("loop") or {}
-    started = (inflight or {}).get("started_at") or sdata.get("started_at")
-    meter = loop_meter_part(pdir, sdata.get("id"), started, closed_at, loop, transcripts)
-    line = {"cycle": sdata.get("id"), "k": info.get("k"), "key": info.get("key"), "title": info.get("title"),
-            "stage": info.get("stage"), "verdict": verdict, "metrics": metrics, "summary": summary, "route": route,
-            "stage_route": stage_route, "attempt": (inflight or {}).get("attempt", info.get("attempt", 1)),
-            "charter": info.get("charter"), "started_at": started, "closed_at": closed_at, **meter,
-            "dispatches": [h for h in ((inflight or {}).get("history") or []) if isinstance(h, dict)]}
-    if dirty:
-        line["dirty_outputs"] = list(dirty)
-    return line
-
-
-def loop_meter_part(pdir: Path, sid: str, started, closed_at: str, loop=None, transcripts=None) -> dict:
-    """The meter half of a ledger line, shared by a cycle's close and a checkpoint's verdict: `usd` (an assumed
-    span is charged per_cycle_usd), `minutes` (wall clock, start to close), `span_minutes`, `usd_source`, `model`."""
-    loop = loop if loop is not None else (loop_block(pdir) or {})
-    driver = loop.get("driver") if isinstance(loop.get("driver"), dict) else {}
-    try:
-        meter = loop_meter_cycle(sid, started, driver.get("session"), transcripts)
-    except Exception:  # noqa: BLE001 - a close never fails on the meter: an unreadable read is an assumed cycle
-        meter = {"usd": None, "usd_source": "assumed", "span_minutes": None, "model": None, "spans": 0}
-    t0, t1 = _meter_ts(started), _meter_ts(closed_at)
-    usd = meter["usd"]
-    if meter["usd_source"] == "assumed":
-        usd = loop_bounds_of(LoopSource(pdir.name, pdir), loop)["budget"]["per_cycle_usd"]
-    return {"usd": usd, "minutes": round((t1 - t0) / 60, 1) if t0 is not None and t1 is not None else None,
-            "span_minutes": meter["span_minutes"], "usd_source": meter["usd_source"], "model": meter["model"]}
-
-
-def loop_after_close(pdir: Path, notes=None):
-    """After a cycle closes (its ledger line, lists, counters and slice are on disk): halt the loop when
-    max_consecutive_failures is reached (`failures`), this cycle cost over per_cycle_usd (`cycle-over-budget`),
-    the total spend (cycles and checkpoints) reached total_usd (`budget-total`) or the cycles max_cycles
-    (`max-cycles`); then roll up the closed folders past keep_cycles (`loop_rollup`, its lines appended to
-    `notes`). Returns the halt record, else None. A checkpoint falls due by count, read by the tick."""
-    data = read_json(pdir / "phase.json")
-    loop = phase_loop(data) or {}
-    halt = None
-    if loop.get("status") != "halted":
-        bounds = loop_bounds_of(LoopSource(pdir.name, pdir), loop)
-        budget = bounds["budget"]
-        ledger = loop_read(pdir, "ledger.jsonl")
-        last = ledger[-1] if ledger else {}
-        counters = loop.get("counters") or {}
-        spent = sum(l.get("usd") for l in ledger + loop_read(pdir, "checkpoints.jsonl") if _is_number(l.get("usd")))
-        usd = last.get("usd") if _is_number(last.get("usd")) else 0.0
-        checks = [
-            ("failures", counters.get("consecutive_failures", 0) >= bounds["stops"]["max_consecutive_failures"],
-             f"{counters.get('consecutive_failures', 0)} failed cycles in a row (max_consecutive_failures {bounds['stops']['max_consecutive_failures']})"),
-            ("cycle-over-budget", usd > budget["per_cycle_usd"],
-             f"{last.get('cycle')} cost {_usd(usd)} ({last.get('usd_source')}), over per_cycle_usd {_usd(budget['per_cycle_usd'])}"),
-            ("budget-total", spent >= budget["total_usd"], f"spent {_usd(spent)} of total_usd {_usd(budget['total_usd'])}"),
-            ("max-cycles", _is_int(budget.get("max_cycles")) and counters.get("cycles", 0) >= budget["max_cycles"],
-             f"{counters.get('cycles', 0)} of max_cycles {budget.get('max_cycles')} cycles"),
-        ]
-        reason = next(((r, d) for r, hit, d in checks if hit), None)
-        if reason:
-            halt = loop_halt(pdir, reason[0], reason[1], data)
-    lines = loop_rollup(pdir)
-    if notes is not None:
-        notes.extend(lines)
-    return halt
-
-
-def loop_cycle_close(args: argparse.Namespace) -> None:
-    """Close the cycle in flight with its item verdict: one ledger line, the list effects, the counters, then
-    finish-slice semantics. Every refusal comes before the first write."""
-    sid = args.slice
-    cmd = f"loop-cycle-close {sid}"
-    sdir = _loop_require_slice(sid, cmd)
-    sdata = read_json(sdir / "slice.json")
-    if sdata.get("kind") != "cycle":
-        if loop_checkpoint_slice(sdata):
-            raise SystemExit(f"{cmd}: a loop checkpoint closes with {WORKFLOW_CMD} loop-checkpoint {sdir.parents[1].name} "
-                             "--verdict pass|changes_requested|blocked --summary \"...\"; refused, nothing was written")
-        raise SystemExit(f"{cmd}: kind {sdata.get('kind')}, not a loop cycle (finish it with finish-slice); refused, nothing was written")
-    pdir = sdir.parents[1]
-    data = read_json(pdir / "phase.json")
-    loop = phase_loop(data)
-    if loop is not None:  # P50-fr.F4: before any read of this checkout's copy, which off the loop's stream is stale
-        _loop_own_stream_refuse(pdir, cmd, data)
-    inflight = (loop or {}).get("inflight")
-    if loop is None or not isinstance(inflight, dict) or inflight.get("cycle") != sid:
-        held = inflight.get("cycle") if isinstance(inflight, dict) else "none"
-        raise SystemExit(f"{cmd}: it is not the cycle in flight (in flight: {held}); refused, nothing was written")
-    _driver_refuse(loop, cmd, pdir.name)
-    verdict = args.verdict
-    question = _one_line(args.question) if args.question is not None else None
-    on_words = _one_line(args.on_words) if args.on_words is not None else None
-    if verdict == "parked" and not (question and on_words):
-        raise SystemExit(f"{cmd}: a parked item needs --question \"<what the operator must decide>\" and --on-words "
-                         "\"<what their words will do>\"; refused, nothing was written")
-    if verdict != "parked" and (question is not None or on_words is not None):
-        raise SystemExit(f"{cmd}: --question/--on-words belong to --verdict parked; refused, nothing was written")
-    result = sdir / "result.md"
-    if verdict != "error" and not (result.is_file() and result.read_text(encoding="utf-8").strip()):
-        raise SystemExit(f"{cmd}: {shown(result)} is missing; only --verdict error closes a cycle without one; refused, nothing was written")
-    metrics = _loop_json_arg(args.metrics, "--metrics", cmd, want_object=True)
-    metrics = {} if metrics is None else metrics
-    summary = _one_line(args.summary or "")
-    info = sdata.get("loop") if isinstance(sdata.get("loop"), dict) else {}
-    key, stage, title = str(info.get("key")), info.get("stage"), info.get("title") or str(info.get("key"))
-    stages = loop_stages(pdir, info.get("charter"))
-    names = list(stages)
-    attempt = inflight.get("attempt") if _is_int(inflight.get("attempt")) else 1
-    stage_row = stages.get(stage)
-    route = loop_attempt_row(stage, stage_row, attempt)[0]  # the closing attempt's row: a retry ran on high
-    dirty = loop_dirty_outputs(loop_bounds_of(LoopSource(pdir.name, pdir), loop).get("outputs")) if verdict == "error" else []
-    closed_at = now_iso()
-    line = loop_ledger_line(pdir, sdata, inflight, verdict, metrics, summary, route, closed_at, loop,
-                            getattr(args, "transcripts", None), stage_route=stage_row, dirty=dirty)
-    queue = loop_read(pdir, "queue.jsonl")
-    for name in ("ledger.jsonl", "dead.jsonl", "survivors.jsonl", "parked.jsonl"):
-        loop_read(pdir, name)  # refuse now, before any write, on a list that cannot be read
-    survivor = {"key": key, "title": title, "cycle": sid, "stage": stage, "metrics": metrics, "at": closed_at}
-    if verdict == "pass":
-        nxt = names[names.index(stage) + 1] if stage in names and names.index(stage) + 1 < len(names) else None
-        if nxt:
-            effect = ("queue", loop_queue_item(key, title, nxt, info.get("payload"), info.get("priority", 0), "engine"))
-        else:
-            effect = ("survivors.jsonl", survivor)
-    elif verdict == "survivor":
-        effect = ("survivors.jsonl", survivor)
-    elif verdict == "fail":
-        effect = ("dead.jsonl", {"key": key, "cycle": sid, "stage": stage, "reason": summary or "failed"})
-    elif verdict == "parked":
-        effect = ("parked.jsonl", {"key": key, "title": title, "cycle": sid, "stage": stage, "payload": info.get("payload"),
-                                   "question": question, "on_words": on_words, "parked_at": closed_at, "resolved": None})
-    else:  # error: back in the queue, or dead at the second error
-        errors = (info.get("errors") if _is_int(info.get("errors")) else 0) + 1
-        if errors >= LOOP_ERROR_LIMIT:
-            effect = ("dead.jsonl", {"key": key, "cycle": sid, "stage": stage, "reason": f"errors x{errors}"})
-        else:
-            effect = ("queue", loop_queue_item(key, title, stage, info.get("payload"), info.get("priority", 0),
-                                               info.get("source") if info.get("source") in LOOP_ITEM_SOURCES else "engine", errors,
-                                               footprint={"cycle": sid, "paths": dirty} if dirty else None))
-    # -- writes: the ledger line first, the counters in this same call --
-    loop_append(pdir, "ledger.jsonl", line)
-    where, record = effect
-    if where == "queue":
-        loop_rewrite(pdir, "queue.jsonl", [record] + queue)  # at the head
-    else:
-        loop_append(pdir, where, record)
-        if where == "dead.jsonl":
-            _loop_drop_queued(pdir, key)
-    counters = loop.setdefault("counters", {k: 0 for k in LOOP_COUNTERS})
-    for k in LOOP_COUNTERS:
-        counters.setdefault(k, 0)
-    counters["cycles"] += 1
-    counters["attempts"] += 1
-    if names and stage == names[0] and verdict != "error":
-        counters["trials"] += 1
-    counters["consecutive_failures"] = counters["consecutive_failures"] + 1 if verdict == "error" else 0
-    loop_recount(pdir, loop)
-    outcome = f"{verdict} {key}: {summary}" if summary else f"{verdict} {key}"
-    sdata = read_json(sdir / "slice.json")
-    sdata["outcome"] = outcome
-    write_json(sdir / "slice.json", sdata)
-    old = _set_slice_status(sdir, "done")
-    append_event("slice_status_changed", slice=sid, old_status=old, new_status="done")
-    loop["inflight"] = None
-    loop["last_cycle"] = {"cycle": sid, "verdict": verdict, "closed_at": closed_at}
-    write_loop_block(pdir, loop, data)
-    append_event("loop_cycle_closed", phase=pdir.name, slice=sid, key=key, stage=stage, verdict=verdict,
-                 usd=line["usd"], usd_source=line["usd_source"])
-    notes: list = []
-    halt = loop_after_close(pdir, notes)
-    rebuild_index_and_state()
-    print(f"closed {sid}: {outcome}")
-    print(f"metered usd={line['usd']} usd_source={line['usd_source']} minutes={line['minutes']} "
-          f"span_minutes={line['span_minutes']} model={line['model']}")
-    if where == "queue":
-        print(f"queued key={key} stage={record['stage']}" + (f" errors={record['errors']}" if verdict == "error" else " (next stage, at the head)"))
-    else:
-        print(f"{where.split('.')[0]}: key={key}" + (f" ({record.get('reason')})" if where == "dead.jsonl" else ""))
-    print("counters=" + " ".join(f"{k}:{counters[k]}" for k in LOOP_COUNTERS))
-    if dirty:
-        print(f"dirty_outputs={_loop_dirty_text(dirty)}")
-        print("settle: these are the dead attempt's writes on the charter's outputs; commit them with this close, never "
-              "revert them (it may have acted outside the repo), and the item's next cycle reconciles them first "
-              + ("(footprint= on its start)" if where == "queue" else "(the key is dead: none follows)"))
-    if halt:
-        print(f"halted reason={halt['reason']} stop_kind={halt['stop_kind']} detail={halt['detail']}")
-        print(f"on_words={halt['on_words']}")
-    for line in notes:
-        print(line)
-
-
-def loop_unpark(args: argparse.Namespace) -> None:
-    """Resolve an open parked item on the operator's literal words: back in the queue (exempt from the tried rule:
-    the operator asked), a survivor, or dead; or route it to a deferred job already filed (`--to deferred
-    --pointer <DID>`, a review's or checkpoint's routing: words optional), which carries the question on."""
-    pdir = _loop_require_phase(args.phase)
-    loop = require_loop(pdir, "loop-unpark")
-    cmd = f"loop-unpark {pdir.name} {args.key}"
-    _loop_own_stream_refuse(pdir, cmd)
-    words = (args.words or "").strip()
-    pointer = None
-    if args.to == "deferred":
-        if not (args.pointer or "").strip():
-            raise SystemExit(f"{cmd} --to deferred: --pointer <DID> names the deferred job that carries the question (file it "
-                             f"first: {WORKFLOW_CMD} defer-job ...); refused, nothing was written")
-        pointer = resolve_id_ref("D", args.pointer.strip())
-        if pointer not in deferred_folder_ids():
-            raise SystemExit(f"{cmd} --to deferred: no deferred job {pointer} in this checkout (file it first: {WORKFLOW_CMD} "
-                             "defer-job ...); refused, nothing was written")
-    elif args.pointer is not None:
-        raise SystemExit(f"{cmd}: --pointer belongs to --to deferred; refused, nothing was written")
-    elif not words:
-        raise SystemExit(f"{cmd}: --words must carry the operator's literal words; refused, nothing was written")
-    parked = loop_read(pdir, "parked.jsonl")
-    mine = [p for p in parked if p.get("key") == args.key]
-    entry = next((p for p in mine if p.get("resolved") is None), None)
-    if entry is None:
-        why = "its parked entry is already resolved" if mine else "no parked entry holds that key"
-        raise SystemExit(f"{cmd}: {why}; refused, nothing was written")
-    stage = entry.get("stage")
-    queue = loop_read(pdir, "queue.jsonl")
-    if args.to == "queue":
-        stages = loop_stages(pdir)
-        reason = loop_key_refusal(args.key, stage, stages, queue, loop_read(pdir, "ledger.jsonl"),
-                                  loop_read(pdir, "dead.jsonl"), check_tried=False)
-        if reason:
-            raise SystemExit(f"{cmd}: {reason}; refused, nothing was written")
-    at = now_iso()
-    entry["resolved"] = {"to": args.to, "words": words or None, "at": at, **({"pointer": pointer} if pointer else {})}
-    loop_rewrite(pdir, "parked.jsonl", parked)
-    if args.to == "deferred":
-        pass  # the deferred job carries the question; the key stays tried (the job, once promoted, decides it)
-    elif args.to == "queue":
-        item = loop_queue_item(args.key, entry.get("title") or args.key, stage, entry.get("payload"), 0, "operator")
-        item["unparked_from"] = entry.get("cycle")
-        loop_append(pdir, "queue.jsonl", item)
-    elif args.to == "survivor":
-        cycle_line = next((l for l in loop_read(pdir, "ledger.jsonl") if l.get("cycle") == entry.get("cycle")), {})
-        loop_append(pdir, "survivors.jsonl", {"key": args.key, "title": entry.get("title"), "cycle": entry.get("cycle"),
-                                              "stage": stage, "metrics": cycle_line.get("metrics") or {}, "at": at})
-    else:
-        loop_append(pdir, "dead.jsonl", {"key": args.key, "cycle": entry.get("cycle"), "stage": stage,
-                                         "reason": f"unparked to dead: {_one_line(words)}"})
-        _loop_drop_queued(pdir, args.key)
-    loop_recount(pdir, loop)
-    write_loop_block(pdir, loop)
-    append_event("loop_item_unparked", phase=pdir.name, key=args.key, to=args.to, **({"pointer": pointer} if pointer else {}))
-    rebuild_index_and_state()
-    print(f"unparked key={args.key} -> {args.to}" + (f" {pointer}" if pointer else "") + f" (from {entry.get('cycle')}, stage {stage})")
-
-
-def loop_validate(p: dict, errors: list, warnings: list) -> None:
-    """validate's checks of one phase's loop block and loop/ files; a cycle slice outside a loop phase warns.
-    Silent for an ordinary phase with no cycle slice."""
-    pid = p["id"]
-    if "loop" not in p:
-        stray = [s["id"] for s in p.get("slices", []) if s.get("kind") == "cycle"]
-        if stray:
-            warnings.append(f"phase {pid} has cycle slices ({', '.join(stray)}) but no loop block; cycles belong to a loop phase")
-        return
-    loop = p.get("loop")
-    if not isinstance(loop, dict):
-        errors.append(f"phase {pid} has a non-object loop block: {loop!r}")
-        return
-    pdir = ACTIVE / pid
-    status = loop.get("status")
-    if status not in LOOP_STATUSES:
-        errors.append(f"phase {pid} has invalid loop.status {status!r}; expected one of {', '.join(LOOP_STATUSES)}")
-
-    def charter_problems(record, label):
-        if not isinstance(record, dict):
-            return [f"{label} is not an object"]
-        out = []
-        if not (_is_int(record.get("version")) and record["version"] >= 1):
-            out.append(f"{label}.version {record.get('version')!r} is not an integer >= 1")
-        if not (isinstance(record.get("sha256"), str) and re.fullmatch(r"[0-9a-f]{64}", record["sha256"])):
-            out.append(f"{label}.sha256 is not a sha256")
-        for field in ("path", "words", "signed_at"):
-            if not (isinstance(record.get(field), str) and record[field].strip()):
-                out.append(f"{label}.{field} is missing")
-        return out
-
-    charter = loop.get("charter")
-    if charter is not None:
-        errors.extend(f"phase {pid}: {x}" for x in charter_problems(charter, "loop.charter"))
-    elif status in ("signed", "running"):
-        errors.append(f"phase {pid}: loop.status is {status} but no charter is signed")
-    charters = loop.get("charters")
-    if not isinstance(charters, list):
-        errors.append(f"phase {pid}: loop.charters is not a list")
-    else:
-        for i, record in enumerate(charters):
-            errors.extend(f"phase {pid}: {x}" for x in charter_problems(record, f"loop.charters[{i}]"))
-    if not (_is_int(loop.get("next_cycle")) and loop["next_cycle"] >= 1):
-        errors.append(f"phase {pid}: loop.next_cycle {loop.get('next_cycle')!r} is not an integer >= 1")
-    counters = loop.get("counters")
-    if not isinstance(counters, dict) or any(not (_is_int(counters.get(k)) and counters[k] >= 0) for k in LOOP_COUNTERS):
-        errors.append(f"phase {pid}: loop.counters must hold {', '.join(LOOP_COUNTERS)}, each an integer >= 0")
-    inflight = loop.get("inflight")
-    if inflight is not None:
-        by_id = {s["id"]: s for s in p.get("slices", [])}
-        held = by_id.get(inflight.get("cycle")) if isinstance(inflight, dict) else None
-        checkpoint = isinstance(inflight, dict) and inflight.get("kind") == "checkpoint"
-        if held is None or held.get("status") == "done" or not (loop_checkpoint_slice(held) if checkpoint else held.get("kind") == "cycle"):
-            errors.append(f"phase {pid}: loop.inflight {inflight!r} names no open {'checkpoint' if checkpoint else 'cycle'} slice of the phase")
-    last = loop.get("last_cycle")
-    if last is not None and not (isinstance(last, dict) and last.get("verdict") in LOOP_VERDICTS):
-        errors.append(f"phase {pid}: loop.last_cycle {last!r} is not {{cycle, verdict, closed_at}}")
-    halt = loop.get("halt")
-    if status == "halted" and not (isinstance(halt, dict) and halt.get("reason") in LOOP_HALT_REASONS):
-        errors.append(f"phase {pid}: loop.status is halted but loop.halt {halt!r} names no reason ({', '.join(LOOP_HALT_REASONS)})")
-    elif halt is not None and status != "halted":
-        warnings.append(f"phase {pid}: loop.halt is set but loop.status is {status}")
-    rolled = loop.get("rolled")  # P50.S3: the gaps a rollup leaves in the cycle numbers are expected
-    if rolled is not None and not (isinstance(rolled, dict) and all(_is_int(rolled.get(k)) and rolled[k] >= 0
-                                                                    for k in ("through_k", "cycles", "checkpoints"))
-                                   and isinstance(rolled.get("commit"), str)):
-        errors.append(f"phase {pid}: loop.rolled {rolled!r} is not {{through_k, cycles, checkpoints, commit, at}}")
-    record = loop.get("checkpoint")
-    if record is not None and not (isinstance(record, dict) and _is_int(record.get("j"))
-                                   and record.get("verdict") in LOOP_CHECKPOINT_VERDICTS):
-        errors.append(f"phase {pid}: loop.checkpoint {record!r} is not {{j, verdict, at, commit, window}}")
-    if loop.get("paused_by") is not None and status != "paused":
-        warnings.append(f"phase {pid}: loop.paused_by is {loop.get('paused_by')!r} but loop.status is {status}")
-    driver = loop.get("driver")
-    if driver is not None and not (isinstance(driver, dict) and "session" in driver and "claimed_at" in driver):
-        errors.append(f"phase {pid}: loop.driver {driver!r} is not {{session, pid, proc_start, claimed_at}}")
-    control = pdir / "loop" / LOOP_CONTROL_FILE
-    if control.exists():
-        try:
-            parsed = json.loads(control.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            parsed = None
-        if not (isinstance(parsed, dict) and isinstance(parsed.get("requests"), list)):
-            errors.append(f"phase {pid}: {shown(control)} is not {{\"requests\": [...]}}")
-    for name in LOOP_FILES:
-        try:
-            loop_read(pdir, name)
-        except SystemExit as exc:
-            errors.append(f"phase {pid}: {exc}")
-    if p.get("status") == "done":  # P50-fr.F2: a done loop never keeps an open question (the final review's guard)
-        try:
-            still = [str(e.get("key")) for e in loop_read(pdir, "parked.jsonl") if e.get("resolved") is None]
-        except SystemExit:
-            still = []
-        if still:
-            warnings.append(f"phase {pid} is done with open parked item(s) {', '.join(still)}: resolve each "
-                            f"({WORKFLOW_CMD} loop-unpark {pid} <key> --to queue|survivor|dead|deferred) before it archives")
-    if isinstance(charter, dict):
-        ok, why = loop_charter_ok(pdir)
-        if not ok:
-            warnings.append(f"phase {pid}: {why} (the loop halts until it is resolved)")
-
-
-# ---- Loop phases: the driver, the tick, budgets, halts, control and the operator view (P50.S2) ----------
-# One loop is driven by one Claude Code session at a time (`loop.driver`, `loop-claim`): the first guard against
-# a double dispatch. The second is `loop-cycle-dispatch`, run right before each Agent dispatch, which refuses
-# while a live span of the cycle exists. `loop-tick` is read-only: it prints the one next action and when to wake.
-# Spend is the ledger's metered list-price `usd` (an `assumed` cycle is charged its full per_cycle_usd); the
-# in-flight cycle is reserved at per_cycle_usd until it closes. Only the charter's stops halt the loop
-# (`loop.halt`, the phase `pending`); control words from another stream queue in the live loop's
-# `loop/control.json` (the loop worktree's, or the default checkout's for a loop on the default stream: `loop_home`)
-# and apply at its next tick.
-LOOP_HALT_REASONS = ("failures", "cycle-over-budget", "budget-total", "max-cycles", "limit", "spend", "charter", "checkpoint", "other")
-LOOP_HALT_NEEDS_CHARTER = ("budget-total", "max-cycles")  # resume refuses these: a new charter version lifts them
-LOOP_TICK_HALT_REASONS = ("charter", "budget-total", "max-cycles", "limit")  # every reason `loop-tick` prints with action=halt
-LOOP_CONTROL_HALT_REASONS = LOOP_TICK_HALT_REASONS + ("spend", "other")  # what `loop-control halt` records, verbatim (P50.S5)
-assert set(LOOP_CONTROL_HALT_REASONS) <= set(LOOP_HALT_REASONS)  # validate, next, loop-status and loop-sign read one set
-LOOP_CONTROL_ACTIONS = ("pause", "resume", "stop", "halt", "apply")
-LOOP_CONTROL_QUEUEABLE = ("pause", "resume", "stop")  # the operator's words that cross streams
-LOOP_CONTROL_FILE = "control.json"
-LOOP_HEARTBEAT = 1800        # s: the wake of a tick that can only look again (a wait's notification is the real wake)
-LOOP_LIMIT_WAKE = 1800       # s: a reset time the tick could not parse
-LOOP_DISPATCH_GRACE = 300    # s after loop-cycle-dispatch in which a span not yet on disk counts as starting
-# The attempt protocol (P50-fr.F1). The engine numbers a cycle's attempts and picks each one's row: attempt 1 runs on
-# the stage's charter row, attempt 2 (the one retry: a dead span, a failed or empty return, an `escalate`) on high.
-# A dispatch that left no span (no executor ever ran) re-dispatches at the same attempt on the same row; a usage
-# limit resumes the same attempt. Attempt 2 dying too closes the cycle `error` (a checkpoint `blocked`).
-LOOP_MAX_ATTEMPTS = 2
-LOOP_NONTERMINAL_STATUSES = ("escalate",)  # a result.md status that is no verdict: the next attempt runs instead
-LOOP_DISPATCH_HISTORY = 8     # dispatch records kept per in-flight cycle (and copied onto its ledger line)
-LOOP_DIRTY_MAX = 20           # dirty_outputs= entries printed before `+N more`
-LOOP_DIGEST_MAX = 1500
-LOOP_CARD_LINE = 200
-LOOP_LSTART_RE = re.compile(r"[A-Z][a-z]{2} [A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4}")
-_LOOP_MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
-
-
-def _claude_config_dir() -> Path:
-    return Path(os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude").expanduser()
-
-
-def loop_attempt_row(stage, stage_row, attempt) -> tuple:
-    """(row, reason) of one attempt of a cycle: attempt 2 and later on high (the retry), attempt 1 on the stage's
-    charter row (high when the charter names none). The one rule executor-route, loop-cycle-dispatch, the ledger
-    line and the meter all read, so the row a retry ran on is never a matter of memory."""
-    if _is_int(attempt) and attempt >= 2:
-        return "high", f"kind cycle, stage {stage or 'unknown'}, attempt {attempt} (the retry: high)"
-    if stage_row not in LOOP_STAGE_ROWS:
-        return "high", f"kind cycle, stage {stage or 'unknown'} (no charter row: high)"
-    return stage_row, f"kind cycle, stage {stage}"
-
-
-def _loop_result_status(text):
-    """The `status:` (else `verdict:`) value of a result.md, lowercased, else None."""
-    found: dict = {}
-    for key, value in METER_VERDICT_RE.findall(text or ""):
-        found.setdefault(key.lower(), value.lower())
-    return found.get("status") or found.get("verdict")
-
-
-def _loop_sha(text) -> "str | None":
-    return hashlib.sha256(text.encode("utf-8")).hexdigest() if isinstance(text, str) else None
-
-
-def loop_dirty_outputs(outputs) -> list:
-    """`git status --porcelain` of the charter's `outputs` (repo-relative; the host's in a nested install), one
-    `<XY> <path>` entry each, untracked files listed one by one: what an attempt left uncommitted on the product
-    paths. [] with no outputs or no git (it never fails a tick)."""
-    specs = [str(o).strip() for o in (outputs or []) if isinstance(o, str) and str(o).strip()]
-    if not specs:
-        return []
-    cwd = HOST_ROOT
-    if cwd is None:
-        top = _git(["rev-parse", "--show-toplevel"], check=False)
-        if top.returncode != 0 or not top.stdout.strip():
-            return []
-        cwd = Path(top.stdout.strip())
-    try:
-        proc = _git(["status", "--porcelain", "-z", "--untracked-files=all", "--", *specs], cwd=cwd, check=False)
-    except SystemExit:
-        return []
-    if proc.returncode != 0:
-        return []
-    out, parts, i = [], proc.stdout.split("\0"), 0
-    while i < len(parts):
-        entry = parts[i]
-        i += 1
-        if len(entry) < 4:
-            continue
-        code, path = entry[:2], entry[3:]
-        if code[0] in "RC":
-            i += 1  # the rename's source path follows
-        out.append(f"{code.strip() or code} {path}")
-    return out
-
-
-def _loop_dirty_text(dirty: list) -> str:
-    shown_ = dirty[:LOOP_DIRTY_MAX]
-    more = len(dirty) - len(shown_)
-    return ", ".join(shown_) + (f", +{more} more" if more > 0 else "")
-
-
-def _ps_field(pid: int, field: str):
-    """One `ps -o <field>=` value of a pid (C locale, UTC: the form Claude Code's registry writes), else None."""
-    try:
-        proc = subprocess.run(["ps", "-o", f"{field}=", "-p", str(int(pid))], capture_output=True, text=True, timeout=5,
-                              env={**os.environ, "LC_ALL": "C", "LANG": "C", "TZ": "UTC"})
-    except Exception:  # noqa: BLE001 - liveness degrades, never fails
-        return None
-    out = " ".join(proc.stdout.split())
-    return out if proc.returncode == 0 and out else None
-
-
-def _session_file(pid):
-    """Claude Code's registry entry `sessions/<pid>.json`, read defensively (never written), or None."""
-    try:
-        data = json.loads((_claude_config_dir() / "sessions" / f"{int(pid)}.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError):
-        return None
-    if not (isinstance(data, dict) and isinstance(data.get("sessionId"), str) and data["sessionId"]):
-        return None
-    if not _is_int(data.get("pid")):
-        data["pid"] = int(pid)
-    return data
-
-
-def _session_registry() -> dict:
-    """{sessionId: {session, pid, proc_start, cwd}} over the registry, a live entry preferred when two files share
-    a session; {} when the registry is missing or unreadable (the callers then fall back to the time rules)."""
-    out: dict = {}
-    try:
-        files = sorted((_claude_config_dir() / "sessions").glob("*.json"))
-    except OSError:
-        return out
-    for f in files:
-        if not f.stem.isdigit():
-            continue
-        rec = _session_file(f.stem)
-        if rec is None:
-            continue
-        entry = {"session": rec["sessionId"], "pid": rec["pid"], "proc_start": rec.get("procStart"), "cwd": rec.get("cwd")}
-        prev = out.get(entry["session"])
-        if prev is None or (not session_alive(prev) and session_alive(entry)):
-            out[entry["session"]] = entry
-    return out
-
-
-_SESSION_ME: list = []
-
-
-def session_identity():
-    """The calling Claude Code session, `{session, pid, proc_start, cwd}`: the first pid up the parent chain that
-    has a registry entry. None from a plain shell or CI (two None callers are the same driver). Cached per run."""
-    if _SESSION_ME:
-        return _SESSION_ME[0]
-    found = None
-    if (_claude_config_dir() / "sessions").is_dir():
-        pid, seen = os.getppid(), {os.getpid()}
-        while _is_int(pid) and pid > 1 and pid not in seen and len(seen) < 64:
-            seen.add(pid)
-            rec = _session_file(pid)
-            if rec is not None:
-                found = {"session": rec["sessionId"], "pid": pid,
-                         "proc_start": rec.get("procStart") if isinstance(rec.get("procStart"), str) else None,
-                         "cwd": rec.get("cwd") if isinstance(rec.get("cwd"), str) else None}
-                break
-            parent = _ps_field(pid, "ppid")
-            pid = int(parent) if parent and parent.isdigit() else None
-    _SESSION_ME.append(found)
-    return found
-
-
-def session_alive(record) -> bool:
-    """True when a session record's pid answers `os.kill(pid, 0)`, the registry does not now give that pid to
-    another session, and (where both exist) its start time still matches: a reused pid is a dead session."""
-    if not isinstance(record, dict) or not _is_int(record.get("pid")) or record["pid"] <= 0:
-        return False
-    pid = record["pid"]
-    try:
-        os.kill(pid, 0)
-    except PermissionError:
-        pass  # alive, another user's
-    except OSError:
-        return False
-    reg = _session_file(pid)
-    if reg is not None and record.get("session") and reg.get("sessionId") != record.get("session"):
-        return False
-    want = record.get("proc_start") or (reg or {}).get("procStart")
-    if isinstance(want, str) and LOOP_LSTART_RE.fullmatch(" ".join(want.split())):
-        now = _ps_field(pid, "lstart")
-        if now and LOOP_LSTART_RE.fullmatch(now) and now != " ".join(want.split()):
-            return False
-    return True
-
-
-def _same_driver(driver, me) -> bool:
-    session = driver.get("session") if isinstance(driver, dict) else None
-    return (me is None and session is None) or (me is not None and session == me.get("session"))
-
-
-def _driver_alive(driver) -> bool:
-    """The claim's process is alive, or the registry shows its session alive in another process (a session resumed
-    after a restart keeps its id). A claim with no session (a plain shell's) proves nothing: any session replaces it."""
-    if not isinstance(driver, dict) or driver.get("session") is None:
-        return False
-    if session_alive(driver):
-        return True
-    rec = _session_registry().get(driver["session"])
-    return rec is not None and session_alive(rec)
-
-
-def _driver_label(driver) -> str:
-    pid = driver.get("pid")
-    if not session_alive(driver):  # the session lives on in another process: name that one
-        rec = _session_registry().get(driver.get("session")) or {}
-        pid = rec.get("pid", pid)
-    reg = _session_file(pid) if _is_int(pid) else None
-    cwd = (reg or {}).get("cwd") or driver.get("cwd") or "?"
-    return f"session {driver.get('session')} (pid {pid}, cwd {cwd})"
-
-
-def loop_driver_refusal(loop: dict):
-    """Why the caller may not drive this loop (another live session holds the claim), else None."""
-    driver = loop.get("driver")
-    if not isinstance(driver, dict):
-        return None
-    if _same_driver(driver, session_identity()) or not _driver_alive(driver):
-        return None
-    return (f"{_driver_label(driver)} drives this loop and is alive; drive it from that session, or claim it "
-            f"once that session has ended ({WORKFLOW_CMD} loop-claim {{pid}})")
-
-
-def _driver_refuse(loop: dict, cmd: str, pid: str) -> None:
-    why = loop_driver_refusal(loop)
-    if why:
-        raise SystemExit(f"{cmd}: {why.replace('{pid}', pid)}; refused, nothing was written")
-
-
-def loop_claim(args: argparse.Namespace) -> None:
-    """Record the calling session as the loop's one driver; refused while another live session holds it."""
-    pdir = _loop_require_phase(args.phase)
-    pid = pdir.name
-    data = read_json(pdir / "phase.json")
-    loop = phase_loop(data)
-    if loop is None:
-        raise SystemExit(f"loop-claim {pid}: {pid} is not a loop phase; refused, nothing was written")
-    _loop_own_stream_refuse(pdir, f"loop-claim {pid}", data)
-    _driver_refuse(loop, f"loop-claim {pid}", pid)
-    me = session_identity()
-    old = loop.get("driver") if isinstance(loop.get("driver"), dict) else None
-    loop["driver"] = {"session": (me or {}).get("session"), "pid": (me or {}).get("pid"),
-                      "proc_start": (me or {}).get("proc_start"), "cwd": (me or {}).get("cwd") or str(Path.cwd()),
-                      "claimed_at": now_iso()}
-    write_loop_block(pdir, loop, data)
-    replaced = old.get("session") if old and not _same_driver(old, me) else None
-    append_event("loop_claimed", phase=pid, session=loop["driver"]["session"], replaced=replaced)
-    rebuild_index_and_state()
-    print(f"claimed {pid}: driver={loop['driver']['session'] or 'none (no Claude Code session: a plain shell)'}"
-          + (f" (replaced {replaced}, no longer alive)" if replaced else ""))
-
-
-class LoopSource:
-    """Where a loop's files are read: a phase folder on disk (this checkout's, or the loop worktree's from another
-    stream, its uncommitted progress included), or a git ref (`git show <branch>:...`) when that worktree is not
-    on disk. Read-only."""
-
-    def __init__(self, pid: str, base=None, ref=None, where: str = "local"):
-        self.pid, self.base, self.ref, self.where = pid, base, ref, where
-        self._cache: dict = {}
-
-    @property
-    def local(self) -> bool:
-        return self.base is not None and self.where == "local"
-
-    def text(self, rel: str):
-        if self.base is not None:
-            try:
-                return (self.base / rel).read_text(encoding="utf-8")
-            except OSError:
-                return None
-        if rel not in self._cache:
-            proc = _git(["show", f"{self.ref}:{_repo_prefix()}works/phases/active/{self.pid}/{rel}"], check=False)
-            self._cache[rel] = proc.stdout if proc.returncode == 0 else None
-        return self._cache[rel]
-
-    def is_file(self, rel: str) -> bool:
-        return (self.base / rel).is_file() if self.base is not None else self.text(rel) is not None
-
-    def json(self, rel: str):
-        raw = self.text(rel)
-        try:
-            value = json.loads(raw) if raw is not None else None
-        except ValueError:
-            return None
-        return value if isinstance(value, dict) else None
-
-    def jsonl(self, name: str) -> list:
-        """A loop/ JSONL list: strict in this checkout (loop_read refuses an unreadable line), lenient elsewhere."""
-        if self.local:
-            return loop_read(self.base, name)
-        out = []
-        for raw in (self.text(f"loop/{name}") or "").split("\n"):
-            try:
-                record = json.loads(raw) if raw.strip() else None
-            except ValueError:
-                record = None
-            if isinstance(record, dict):
-                out.append(record)
-        return out
-
-    def phase(self) -> dict:
-        return self.json("phase.json") or {}
-
-
-class LoopHome:
-    """Where a loop lives, as seen from this checkout (P50-fr.F4): the one answer every loop command routes through.
-
-    `own` is True when this checkout is the loop's own stream. A loop's placement is `default` (no
-    `execution.branch`: it runs in the default checkout) or `worktree` (its own worktree on `execution.branch`).
-    From any other checkout `pdir` is the live loop folder on disk (the default checkout's for a default-stream
-    loop, the loop worktree's for a worktree loop), `ref` the loop branch when only git can read it, and both
-    None when the live loop cannot be reached from here; `data` is the placement-authoritative phase.json."""
-
-    def __init__(self, pid: str, own: bool, placement: str, data: dict, pdir=None, ref=None, where: str = "local"):
-        self.pid, self.own, self.placement, self.data = pid, own, placement, data
-        self.pdir, self.ref, self.where = pdir, ref, where
-
-    @property
-    def branch(self):
-        return (phase_execution(self.data) or {}).get("branch")
-
-    def label(self) -> str:
-        """The loop's own stream, as the refusals name it."""
-        if self.placement == "worktree":
-            return f"branch {self.branch}, worktree {(phase_execution(self.data) or {}).get('worktree')}"
-        root = self.pdir.parents[3] if self.pdir is not None else None
-        return f"the default stream, in the default checkout {root if root is not None else '(not on disk here)'}"
-
-    def control_text(self) -> str:
-        return ("queued in the loop worktree's loop/control.json" if self.placement == "worktree"
-                else "queued in the default checkout's loop/control.json")
-
-
-def _loop_default_pdir(pid: str):
-    """This phase's folder in the repo's default checkout when this checkout is one of its linked worktrees and that
-    folder is on disk, else None (`_default_checkout_root`, the path v67's refresh already uses)."""
-    root = _default_checkout_root()
-    pdir = root / "works" / "phases" / "active" / pid if root is not None else None
-    return pdir if pdir is not None and (pdir / "phase.json").is_file() else None
-
-
-def loop_home(pdir: Path, data=None, stream="unset") -> LoopHome:
-    """Is this checkout the loop's own stream, and if not, where does the live loop live? The one stream predicate
-    for every loop command (P50-fr.F4), from the loop's placement and the caller's:
-    - the default checkout (stream None): its own stream for a default-stream loop; a worktree loop lives in its
-      worktree (its live files on disk, else its branch through git);
-    - a phase worktree (stream = its branch): the loop's own stream only when the loop is stamped with that branch;
-      otherwise the default checkout's copy is the authority on where the loop lives (parallel-start stamps the
-      placement there before it cuts a worktree, so this checkout's copy may predate the stamp): a default-stream
-      loop lives in the default checkout, a worktree loop in its worktree. A nested pair resolves the same way: the
-      stream is the nested repo's branch, and both paths are the nested repo's checkouts.
-    A folder that is not this checkout's (the default checkout's copy of a loop absent here) is never own."""
-    pid = pdir.name
-    data = read_json(pdir / "phase.json") if data is None else data
-    if stream == "unset":
-        stream = current_stream(all_active_phases())
-    here = pdir.resolve().parent == ACTIVE.resolve()
-    branch = (phase_execution(data) or {}).get("branch")
-    if here and branch == stream:  # the default checkout and a default-stream loop, or the loop's own worktree
-        return LoopHome(pid, True, "worktree" if branch else "default", data, pdir=pdir)
-    if stream is not None or not here:
-        default = pdir if not here else _loop_default_pdir(pid)
-        if default is not None:
-            try:
-                authority = read_json(default / "phase.json")
-            except (OSError, ValueError):
-                authority = None
-            if isinstance(authority, dict):
-                data, branch = authority, (phase_execution(authority) or {}).get("branch")
-                if not branch:
-                    return LoopHome(pid, False, "default", data, pdir=default, where=f"default checkout {default}")
-                if here and branch == stream:  # cannot happen: a worktree is cut after its stamp; never misread it
-                    return LoopHome(pid, True, "worktree", read_json(pdir / "phase.json"), pdir=pdir)
-        if not branch:
-            return LoopHome(pid, False, "default", data,
-                            where="local copy (stale: the loop runs on the default stream, whose checkout is not on disk here)")
-    other = _loop_worktree_pdir(data)
-    if other is not None:
-        return LoopHome(pid, False, "worktree", data, pdir=other, where=f"worktree {other}")
-    if _git_available() and _json_at_ref(branch, f"works/phases/active/{pid}/phase.json") is not None:
-        return LoopHome(pid, False, "worktree", data, ref=branch, where=f"branch {branch}")
-    return LoopHome(pid, False, "worktree", data, where="local copy (the loop's worktree and branch could not be read)")
-
-
-def _loop_own_stream_refuse(pdir: Path, cmd: str, data=None, home=None) -> None:
-    """P50-fr.F2/F4: a loop writer runs only on the loop's own stream (`loop_home`). From another checkout it would
-    write that checkout's stale copy of the loop folder (and regenerate its works/ files), which diverges from the
-    live loop and blocks the merge; only the queued words cross (loop-control pause|resume|stop, loop-checkpoint
-    --now), and they write only the live loop's control.json."""
-    home = home or loop_home(pdir, data)
-    if home.own:
-        return
-    raise SystemExit(f"{cmd}: runs only on the loop's own stream ({home.label()}); from here only loop-control "
-                     f"pause|resume|stop and loop-checkpoint --now cross, {home.control_text()}; refused, nothing was written")
-
-
-LOOP_PHASE_COMMANDS = frozenset({"loop-init", "loop-sign", "loop-queue", "loop-cycle-start", "loop-claim", "loop-tick",
-                                 "loop-control", "loop-status", "loop-checkpoint", "loop-unpark"})
-
-
-def _loop_default_phase_id(raw):
-    """The stored id `raw` names in the default checkout's active phases (a loop command typed in a phase worktree
-    that has no folder for it), else None. Only ever consulted after this checkout's own lookup found nothing."""
-    root = _default_checkout_root()
-    active = root / "works" / "phases" / "active" if root is not None else None
-    if active is None or not active.is_dir():
-        return None
-    ids = {d.name for d in active.iterdir() if (d / "phase.json").is_file()}
-    text = str(raw).strip()
-    number = re.fullmatch(r"[Pp]?([0-9]+)", text)
-    if number:
-        found, _ = lookup_id_number("P", int(number.group(1)), ids)
-        return found
-    stored = brief_id("P", text) or text
-    return stored if stored in ids else None
-
-
-def _loop_require_phase(phase_id: str) -> Path:
-    """A loop command's phase folder: this checkout's, else (a phase worktree cut before the loop phase existed) the
-    default checkout's copy, which `loop_home` reads as another stream's loop, never this checkout's own."""
-    if not (ACTIVE / phase_id / "phase.json").exists():
-        other = _loop_default_pdir(phase_id)
-        if other is not None:
-            return other
-    return require_phase(phase_id)
-
-
-def _loop_require_slice(slice_id: str, cmd: str) -> Path:
-    """A loop slice's folder (a cycle or a checkpoint). When this checkout has none, and its loop phase (this
-    checkout's copy, else the default checkout's) runs on another stream, the own-stream refusal names where the
-    slice lives, rather than a bare "slice not found"."""
-    pid = slice_id.split(".", 1)[0]
-    if not (ACTIVE / pid / "slices" / slice_id / "slice.json").exists():
-        pdir = ACTIVE / pid if (ACTIVE / pid / "phase.json").is_file() else _loop_default_pdir(pid)
-        try:
-            data = read_json(pdir / "phase.json") if pdir is not None else None
-        except (OSError, ValueError):
-            data = None
-        if phase_loop(data) is not None:
-            _loop_own_stream_refuse(pdir, cmd, data)
-    return require_slice(slice_id)
-
-
-def _loop_worktree_pdir(data: dict):
-    """The loop phase's folder in its own worktree (a nested pair's `execution.worktree` is already the nested
-    worktree), or None when that folder is not on disk."""
-    worktree = (phase_execution(data) or {}).get("worktree")
-    if not isinstance(worktree, str) or not worktree:
-        return None
-    pdir = Path(worktree) / _repo_prefix() / "works" / "phases" / "active" / data.get("id", "")
-    return pdir if (pdir / "phase.json").is_file() else None
-
-
-def loop_source(pdir: Path, stream="unset", home=None) -> LoopSource:
-    """The source a view of this loop reads (`loop_home`): this checkout on the loop's own stream; from another
-    checkout the live loop folder when it is on disk (the default checkout's, or the loop worktree's), else the
-    loop branch through git, else the local copy, labelled stale."""
-    home = home or loop_home(pdir, stream=stream)
-    if home.own:
-        return LoopSource(home.pid, pdir)
-    if home.pdir is not None:
-        return LoopSource(home.pid, home.pdir, where=home.where)
-    if home.ref is not None:
-        return LoopSource(home.pid, ref=home.ref, where=home.where)
-    return LoopSource(home.pid, pdir, where=home.where)
-
-
-def loop_bounds_of(src: LoopSource, loop: dict) -> dict:
-    """The signed charter's bounds (every absent key at its default); the defaults when it cannot be read."""
-    charter = loop.get("charter") if isinstance(loop.get("charter"), dict) else {}
-    version = charter.get("version")
-    text = src.text(str(charter.get("path") or charter_rel(version))) if _is_int(version) else None
-    if text is not None:
-        bounds, problems = _charter_bounds_problems(text)
-        if not problems:
-            return bounds
-    return json.loads(json.dumps(CHARTER_BOUNDS_DEFAULTS))
-
-
-def _loop_charter_ok_src(src: LoopSource, loop: dict) -> tuple:
-    if src.base is not None:
-        return loop_charter_ok(src.base)
-    charter = loop.get("charter")
-    if not isinstance(charter, dict):
-        return False, "no signed charter"
-    text = src.text(str(charter.get("path") or charter_rel(charter.get("version"))))
-    if text is None:
-        return False, f"the signed charter v{charter.get('version')} is missing on {src.where}"
-    if hashlib.sha256(text.encode("utf-8")).hexdigest() != charter.get("sha256"):
-        return False, f"the signed charter v{charter.get('version')} has changed since it was signed (on {src.where})"
-    return True, f"charter v{charter.get('version')} signed, pin holds"
-
-
-def _loop_local_day(iso):
-    t = _meter_ts(iso)
-    return datetime.fromtimestamp(t).astimezone().date() if t is not None else None
-
-
-def loop_spend(ledger: list, loop: dict, bounds: dict, since=None) -> dict:
-    """Spend from the ledger's `usd` fields: today (the local calendar day of `closed_at`) and in total, each with
-    the in-flight cycle reserved at per_cycle_usd; `window` is the spend closed after `since` (an ISO time)."""
-    budget = bounds["budget"]
-    today = datetime.now().astimezone().date()
-    since_t = _meter_ts(since) if since else None
-    total = day = window = 0.0
-    assumed = 0
-    for line in ledger:
-        usd = line.get("usd") if _is_number(line.get("usd")) else 0.0
-        total += usd
-        assumed += 1 if line.get("usd_source") == "assumed" else 0
-        if _loop_local_day(line.get("closed_at")) == today:
-            day += usd
-        closed = _meter_ts(line.get("closed_at"))
-        if since_t is None or (closed is not None and closed > since_t):
-            window += usd
-    reserved = float(budget["per_cycle_usd"]) if isinstance(loop.get("inflight"), dict) else 0.0
-    return {"today": round(day + reserved, 4), "total": round(total + reserved, 4), "reserved": reserved,
-            "window": round(window, 4), "assumed": assumed, "per_cycle": budget["per_cycle_usd"],
-            "per_day": budget["per_day_usd"], "total_cap": budget["total_usd"], "max_cycles": budget.get("max_cycles")}
-
-
-def _usd(x) -> str:
-    return f"${x:.2f}"
-
-
-def _loop_first_line(path: Path):
-    """The first JSON entry of a transcript (one line read), else None."""
-    try:
-        with path.open(encoding="utf-8", errors="replace") as fh:
-            entry = json.loads(fh.readline() or "null")
-    except (OSError, ValueError):
-        return None
-    return entry if isinstance(entry, dict) else None
-
-
-def _loop_span_cycle(path: Path):
-    """The `slice: <id>` a span's first prompt names, from its first entry only, else None."""
-    entry = _loop_first_line(path)
-    msg = entry.get("message") if entry and isinstance(entry.get("message"), dict) else {}
-    found = METER_SLICE_LINE_RE.search(_meter_text(msg.get("content")))
-    return found.group(1) if found else None
-
-
-def loop_cycle_spans(sid: str, driver_session, since: float, transcripts=None) -> list:
-    """The cycle's spans, oldest first: `subagents/agent-*.jsonl` whose first prompt names `slice: <sid>`, in the
-    driver's session folder (every session folder touched since the cycle started when that is unknown). Reads
-    directory listings, each candidate's first line and its .meta.json -- never a whole transcript."""
-    dirs = [d for d in _meter_project_dirs(transcripts)[0] if d.is_dir()]
-    folders = []
-    if driver_session:
-        folders = [d / driver_session for d in dirs if (d / driver_session / "subagents").is_dir()]
-        if not folders and not transcripts:  # a session started elsewhere (EnterWorktree): its folder by id
-            base = _claude_config_dir() / "projects"
-            try:
-                folders = [p for p in base.glob(f"*/{driver_session}") if (p / "subagents").is_dir()]
-            except OSError:
-                folders = []
-    if not folders:
-        for d in dirs:
-            try:
-                kids = list(d.iterdir())
-            except OSError:
-                continue
-            for sd in kids:
-                sub = sd / "subagents"
-                try:
-                    if sub.is_dir() and sub.stat().st_mtime >= since - 60:
-                        folders.append(sd)
-                except OSError:
-                    continue
-    spans = []
-    for sd in folders:
-        for jl in (sd / "subagents").glob("agent-*.jsonl"):
-            try:
-                mtime = jl.stat().st_mtime
-            except OSError:
-                continue
-            if mtime < since - 60 or _loop_span_cycle(jl) != sid:
-                continue
-            meta = {}
-            mp = jl.with_name(jl.name[:-len(".jsonl")] + ".meta.json")
-            try:
-                meta = json.loads(mp.read_text(encoding="utf-8")) if mp.exists() else {}
-            except (OSError, ValueError):
-                meta = {}
-            first = _meter_ts((_loop_first_line(jl) or {}).get("timestamp"))
-            spans.append({"id": jl.stem[len("agent-"):], "path": jl, "session": sd.name,
-                          "finished": isinstance(meta, dict) and meta.get("finished") is True,
-                          "mtime": mtime, "first": first if first is not None else mtime})
-    return sorted(spans, key=lambda s: (s["first"], s["mtime"]))
-
-
-def _loop_reset_epoch(text: str, hit: float):
-    """The next moment after `hit` that a limit's reset text names (`3pm`, `2:30pm (Asia/Seoul)`, `Nov 3, 9am`),
-    as epoch seconds, else None."""
-    t = (text or "").strip()
-    tz = None
-    m = re.search(r"\(([^()]+)\)\s*$", t)
-    if m:
-        try:
-            from zoneinfo import ZoneInfo
-            tz = ZoneInfo(m.group(1).strip())
-        except Exception:  # noqa: BLE001 - an unknown zone reads as local time
-            tz = None
-        t = t[:m.start()].strip()
-    base = datetime.fromtimestamp(hit, tz) if tz is not None else datetime.fromtimestamp(hit).astimezone()
-    tm = re.search(r"(\d{1,2})(?::(\d{2}))?\s*([ap])\.?\s*m\.?\s*$|(\d{1,2}):(\d{2})\s*$", t, re.I)
-    if not tm:
-        return None
-    if tm.group(1):
-        hour, minute = int(tm.group(1)) % 12 + (12 if tm.group(3).lower() == "p" else 0), int(tm.group(2) or 0)
-    else:
-        hour, minute = int(tm.group(4)), int(tm.group(5))
-    if hour > 23 or minute > 59:
-        return None
-    rest = re.sub(r"\s+at$", "", t[:tm.start()].strip(" ,")).strip(" ,")  # `Oct 26 at 5am`
-    day = base.date()
-    if rest:
-        dm = re.fullmatch(r"(?:[A-Za-z]+,?\s+)?([A-Za-z]{3})[A-Za-z]*\.?\s+(\d{1,2})", rest)
-        if not dm or dm.group(1).lower() not in _LOOP_MONTHS:
-            return None
-        try:
-            day = day.replace(month=_LOOP_MONTHS.index(dm.group(1).lower()) + 1, day=int(dm.group(2)))
-        except ValueError:
-            return None
-        if day < base.date() - timedelta(days=1):
-            day = day.replace(year=day.year + 1)
-    cand = datetime(day.year, day.month, day.day, hour, minute, tzinfo=base.tzinfo)
-    if not rest and cand.timestamp() <= hit:
-        cand += timedelta(days=1)
-    return cand.timestamp()
-
-
-def loop_inflight_state(pdir: Path, src=None, loop=None, bounds=None, transcripts=None) -> dict:
-    """The in-flight cycle's state, from small files (never a whole-transcript parse, bar one span on a limit):
-    `{state, cycle, attempt, ...}` with state one of none | close | plan | wait | overdue | resume-limit | halt |
-    dispatch. `attempt` is the one the next dispatch records (`loop_attempt_row` gives its row). The first rule that
-    holds wins: a verdict on disk -> close; no plan.md -> plan; a live span (alive session, or no registry and a fresh
-    transcript) -> wait, or overdue past cycle_timeout_minutes; the attempt's executor returned `escalate` -> the next
-    attempt; the current attempt's last span ended on a usage limit -> resume-limit (until=) or halt (no reset); a dead
-    span -> the next attempt; no span yet -> dispatch at the same attempt (or wait, within LOOP_DISPATCH_GRACE of
-    loop-cycle-dispatch while the session that recorded it lives). "The next attempt" past LOOP_MAX_ATTEMPTS is a
-    close with `verdict=error` (a checkpoint's `blocked`). A result.md the last dispatch already saw (its sha256 is
-    `inflight.prior_result_sha256`) belongs to an earlier attempt and is no verdict. On a local source, `dirty_outputs`
-    lists the charter's outputs left uncommitted, on every dispatch, overdue and close-as-error."""
-    src = src or LoopSource(pdir.name, pdir)
-    loop = loop if loop is not None else (phase_loop(src.phase()) or {})
-    inflight = loop.get("inflight")
-    if not isinstance(inflight, dict) or not inflight.get("cycle"):
-        return {"state": "none"}
-    sid = inflight["cycle"]
-    n = inflight.get("attempt") if _is_int(inflight.get("attempt")) else 1
-    out = {"cycle": sid, "attempt": n}
-    checkpoint = inflight.get("kind") == "checkpoint"
-    bounds = bounds or loop_bounds_of(src, loop)
-
-    def dirty(st: dict) -> dict:
-        if src.local and not checkpoint:
-            found = loop_dirty_outputs(bounds.get("outputs"))
-            if found:
-                st["dirty_outputs"] = found
-        return st
-
-    def next_attempt(why: str, **extra) -> dict:
-        if n + 1 > LOOP_MAX_ATTEMPTS:
-            return dirty({**out, "state": "close", "verdict": "blocked" if checkpoint else "error", **extra,
-                          "reason": f"{why}; attempt {n} was the last (a cycle runs at most {LOOP_MAX_ATTEMPTS} attempts)"})
-        return dirty({**out, "state": "dispatch", "attempt": n + 1, **extra, "reason": f"{why}: re-dispatch from disk"})
-
-    result = src.text(f"slices/{sid}/result.md")
-    fresh = result if result and _loop_sha(result) != inflight.get("prior_result_sha256") else None
-    status = _loop_result_status(fresh)
-    if status and status not in LOOP_NONTERMINAL_STATUSES:
-        return {**out, "state": "close"}
-    if not src.is_file(f"slices/{sid}/plan.md"):
-        info = (src.json(f"slices/{sid}/slice.json") or {}).get("loop")
-        foot = info.get("footprint") if isinstance(info, dict) else None
-        return {**out, "state": "plan", **({"footprint": foot} if foot else {})}
-    timeout = bounds["cycle_timeout_minutes"] * 60
-    now = time.time()
-    started = _meter_ts(inflight.get("started_at")) or now
-    dispatched = _meter_ts(inflight.get("dispatched_at"))
-    driver = loop.get("driver") if isinstance(loop.get("driver"), dict) else {}
-    spans = loop_cycle_spans(sid, driver.get("session"), started, transcripts)
-    registry = _session_registry()
-    live = []
-    for s in spans:
-        if s["finished"]:
-            continue
-        rec = registry.get(s["session"])
-        if rec is not None:
-            s["alive"] = session_alive(rec)
-        elif registry:
-            s["alive"] = False  # the registry is readable and no longer lists the session: it has ended
-        else:
-            s["alive"] = now - s["mtime"] <= timeout  # no registry: the time rule
-        if s["alive"]:
-            live.append(s)
-    if live:
-        state = "overdue" if now - started > timeout else "wait"
-        st = {**out, "state": state, "span": live[-1]["id"], "age_minutes": round((now - started) / 60, 1)}
-        return dirty(st) if state == "overdue" else st
-    if status in LOOP_NONTERMINAL_STATUSES:
-        return next_attempt(f"the attempt-{n} executor returned {status}")
-    # the current dispatch's spans: started at or after it (dispatched_at carries milliseconds since F1, and an older
-    # record's whole second is never later than the span it precedes; a slack would let a quick-dying earlier
-    # attempt's span count as this one's and close the cycle as error)
-    current = [s for s in spans if dispatched is None or s["first"] >= dispatched]
-    if current:
-        last = current[-1]
-        scan = _meter_scan(last["path"], span=True)
-        cleared = _meter_ts(inflight.get("limit_cleared_at"))
-        hit = scan["limits"][-1][0] if scan["limits"] else None
-        if scan["last_limit"] is not None and not (cleared is not None and (hit is None or hit <= cleared)):
-            reset = scan["last_limit"]
-            if not reset:
-                return {**out, "state": "halt", "reason": "limit", "span": last["id"],
-                        "detail": f"span {last['id']} stopped on a usage limit with no reset time"}
-            at = _loop_reset_epoch(reset, hit or now)
-            wake = max(0, int(at - now) + 60) if at is not None else LOOP_LIMIT_WAKE
-            until = datetime.fromtimestamp(at).astimezone().replace(microsecond=0).isoformat() if at is not None else reset
-            return {**out, "state": "resume-limit", "span": last["id"], "until": until, "wake_in": wake}
-        return next_attempt("dead-span (finished with no verdict on disk, or its session ended)", span=last["id"])
-    gone = None
-    if dispatched is not None and now - dispatched < LOOP_DISPATCH_GRACE:
-        disp = inflight.get("dispatcher")
-        if not (isinstance(disp, dict) and disp.get("session") and not _driver_alive(disp)):
-            return {**out, "state": "wait", "reason": "dispatching", "wake_in": int(LOOP_DISPATCH_GRACE - (now - dispatched)) + 5}
-        gone = disp.get("session")
-    if dispatched is not None:
-        why = (f"session {gone}, which recorded the dispatch, ended before its span started" if gone
-               else "the last dispatch left no span")
-        return dirty({**out, "state": "dispatch", "attempt": n,
-                      "reason": f"{why} (no executor ran: the same attempt, on its row)"})
-    return dirty({**out, "state": "dispatch", "attempt": n})
-
-
-def _loop_cycle_stage_src(src: LoopSource, sid: str) -> tuple:
-    """(stage, stage row) of a cycle read through a LoopSource: its charter version's map on disk, else the bounds'."""
-    sdata = src.json(f"slices/{sid}/slice.json") or {}
-    info = sdata.get("loop") if isinstance(sdata.get("loop"), dict) else {}
-    stage = info.get("stage")
-    if src.base is not None:
-        return stage, loop_stages(src.base, info.get("charter")).get(stage)
-    return stage, loop_bounds_of(src, phase_loop(src.phase()) or {})["stages"].get(stage)
-
-
-def loop_cycle_attempt(pdir: Path, sdata: dict) -> int:
-    """The attempt a cycle's next (or current) dispatch runs: in flight, the one the tick names (a dispatch state's
-    `attempt`, else the recorded one); closed or not yet in flight, its slice.json `loop.attempt`."""
-    loop = loop_block(pdir) or {}
-    inflight = loop.get("inflight") if isinstance(loop.get("inflight"), dict) else None
-    info = sdata.get("loop") if isinstance(sdata.get("loop"), dict) else {}
-    if inflight and inflight.get("cycle") == sdata.get("id"):
-        st = loop_inflight_state(pdir, loop=loop)
-        n = st.get("attempt") if st.get("state") == "dispatch" else inflight.get("attempt")
-        return n if _is_int(n) else 1
-    return info.get("attempt") if _is_int(info.get("attempt")) else 1
-
-
-def _loop_inflight_row(src: LoopSource, st: dict):
-    """The row the attempt a `dispatch` state names runs on (`loop_attempt_row`)."""
-    stage, stage_row = _loop_cycle_stage_src(src, st.get("cycle"))
-    return loop_attempt_row(stage, stage_row, st.get("attempt"))[0]
-
-
-def _loop_footprint_text(foot) -> str:
-    if not isinstance(foot, dict):
-        return _one_line(str(foot))
-    return f"{foot.get('cycle')} left " + _loop_dirty_text([str(x) for x in foot.get("paths") or []])
-
-
-def _loop_control_requests(src: LoopSource) -> list:
-    data = src.json(f"loop/{LOOP_CONTROL_FILE}")
-    requests = (data or {}).get("requests")
-    return [r for r in requests if isinstance(r, dict)] if isinstance(requests, list) else []
-
-
-def _loop_next_midnight() -> datetime:
-    now = datetime.now().astimezone()
-    return (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-
-
-def loop_view(src: LoopSource, me="unset", transcripts=None, as_driver: bool = False) -> dict:
-    """The loop's whole state and its tick: what `loop-tick`, `loop-status`, `next` and the resume card print.
-    `as_driver` computes the next action as the driver would see it (a view from any stream)."""
-    data = src.phase()
-    loop = phase_loop(data) or {}
-    pid = data.get("id", src.pid)
-    bounds = loop_bounds_of(src, loop)
-    ledger, queue = src.jsonl("ledger.jsonl"), src.jsonl("queue.jsonl")
-    parked = [p for p in src.jsonl("parked.jsonl") if p.get("resolved") is None]
-    survivors = src.jsonl("survivors.jsonl")
-    spend = loop_spend(ledger + src.jsonl("checkpoints.jsonl"), loop, bounds, loop.get("digest_at"))
-    counters = loop.get("counters") if isinstance(loop.get("counters"), dict) else {}
-    driver = loop.get("driver") if isinstance(loop.get("driver"), dict) else None
-    me = session_identity() if me == "unset" else me
-    if driver is not None and _same_driver(driver, me):
-        driver_cell = "me"
-    elif driver is not None and _driver_alive(driver):
-        driver_cell = str(driver.get("session"))
-    else:
-        driver_cell = "none"
-    status = loop.get("status")
-    inflight = loop.get("inflight") if isinstance(loop.get("inflight"), dict) else None
-    ok, why = _loop_charter_ok_src(src, loop)
-    charter = loop.get("charter") if isinstance(loop.get("charter"), dict) else None
-    stages = bounds["stages"]
-    order = loop_take_order(queue, stages)
-    cycle = (loop.get("next_cycle") - 1) if _is_int(loop.get("next_cycle")) else 0
-    view = {"loop": pid, "source": src.where, "status": status, "phase_status": data.get("status"),
-            "driver": {"cell": driver_cell, **(driver or {})} if driver else {"cell": "none"},
-            "charter": {"version": (charter or {}).get("version"), "signed_at": (charter or {}).get("signed_at"),
-                        "ok": ok, "why": why},
-            "cycle": cycle, "counters": counters, "inflight": None, "spend": spend,
-            "parked": [{"key": p.get("key"), "cycle": p.get("cycle"), "question": p.get("question"),
-                        "on_words": p.get("on_words")} for p in parked],
-            "survivors": [{"key": s.get("key"), "cycle": s.get("cycle"), "metrics": s.get("metrics")} for s in survivors[-5:]],
-            "survivors_count": len(survivors), "queue": [{"key": q.get("key"), "stage": q.get("stage"),
-                                                         "priority": q.get("priority")} for q in order[:5]],
-            "queue_count": len(queue), "halt": loop.get("halt"), "last_cycle": loop.get("last_cycle"),
-            "digest_at": loop.get("digest_at"), "bounds": bounds, "checkpoint": loop.get("checkpoint"),
-            "checkpoint_requested": loop.get("checkpoint_requested"), "paused_by": loop.get("paused_by"),
-            "rolled": loop.get("rolled"), "next": {}}
-    st = {"state": "none"}
-    if inflight:
-        st = loop_inflight_state(src.base or ACTIVE / pid, src, loop, bounds, transcripts)
-        view["inflight"] = {**inflight, **{k: v for k, v in st.items() if k not in ("cycle", "attempt")},
-                            "next_attempt": st.get("attempt")}
-
-    def act(action: str, wake_in: int, **extra):
-        view["next"] = {"action": action, "wake_in": max(0, int(wake_in)), **extra}
-        return view
-
-    if not as_driver and driver_cell not in ("me", "none"):
-        return act("not-driver", LOOP_HEARTBEAT, detail=f"session {driver_cell} drives this loop; this session does nothing")
-    if _loop_control_requests(src):
-        return act("apply-control", 0, requests=len(_loop_control_requests(src)))
-    if not as_driver and driver_cell == "none":
-        return act("claim", 0)
-    if inflight:
-        s = st["state"]
-        if not (status == "halted" and s in ("plan", "dispatch", "resume-limit", "halt")):
-            extra = {k: v for k, v in st.items() if k in ("attempt", "verdict", "span", "until", "reason", "detail", "age_minutes")}
-            if st.get("state") == "dispatch":
-                row = "high" if inflight.get("kind") == "checkpoint" else _loop_inflight_row(src, st)
-                if row:
-                    extra["route"] = row
-            if st.get("footprint"):
-                extra["footprint"] = _loop_footprint_text(st["footprint"])
-            if st.get("dirty_outputs"):
-                extra["dirty_outputs"] = _loop_dirty_text(st["dirty_outputs"])
-            if inflight.get("kind") == "checkpoint":  # P50.S3: the lease holds a checkpoint; close = loop-checkpoint --verdict
-                extra["kind"] = "checkpoint"
-            wake = st.get("wake_in", LOOP_HEARTBEAT if s == "wait" else 0)
-            return act(s, wake if s in ("wait", "resume-limit") else 0, cycle=st.get("cycle"), **extra)
-    if status == "drafting":
-        return act("sign", LOOP_HEARTBEAT, detail="the charter is not signed: the operator signs it (loop-sign)")
-    if status == "halted":
-        halt = loop.get("halt") if isinstance(loop.get("halt"), dict) else {}
-        return act("halted", LOOP_HEARTBEAT, reason=halt.get("reason"), on_words=halt.get("on_words"))
-    if status == "paused" and loop.get("paused_by") == "checkpoint":  # P50.S3: fix slices on the loop stream, then resume
-        open_setup, fixes = _loop_fix_state(loop, [src.json(f"slices/{sid}/slice.json") for sid in _loop_slice_ids(src)], pid)
-        record = loop.get("checkpoint") if isinstance(loop.get("checkpoint"), dict) else {}
-        if open_setup is not None:
-            return act("setup", 0, slice=open_setup.get("id"), reason="checkpoint",
-                       detail=f"a fix slice of {record.get('slice')}: run it the ordinary way")
-        if fixes:
-            return act("resume", 0, reason="checkpoint",
-                       detail=f"the fix slices of {record.get('slice')} are done: loop-control {pid} resume")
-        return act("fix", LOOP_HEARTBEAT, reason="checkpoint", slice=record.get("slice"),
-                   detail=f"{record.get('slice')} requested changes: cut fix slices from its result.md (new-slice --kind fix), "
-                          "or the operator resumes it in words")
-    if status == "paused":
-        return act("paused", LOOP_HEARTBEAT, on_words="the operator's \"resume\"")
-    if status == "stopped":
-        return act("review", 0, slice=f"{pid}.REVIEW")
-    if data.get("status") in ("pending", "blocked", "done"):
-        return act("wait", LOOP_HEARTBEAT, reason=f"phase-{data.get('status')}")
-    if not ok:
-        return act("halt", 0, reason="charter", detail=why)
-    if spend["total"] >= spend["total_cap"]:
-        return act("halt", 0, reason="budget-total", detail=f"spent {_usd(spend['total'])} of {_usd(spend['total_cap'])}")
-    if _is_int(spend["max_cycles"]) and counters.get("cycles", 0) >= spend["max_cycles"]:
-        return act("halt", 0, reason="max-cycles", detail=f"{counters.get('cycles', 0)} of {spend['max_cycles']} cycles")
-    if spend["today"] + spend["per_cycle"] > spend["per_day"]:
-        midnight = _loop_next_midnight()
-        return act("wait", midnight.timestamp() - time.time() + 5, reason="budget-day", until=midnight.isoformat())
-    since = _meter_ts(loop.get("digest_at")) or (_meter_ts(ledger[0].get("started_at")) if ledger else None)
-    if since is not None and time.time() - since >= bounds["digest_every_hours"] * 3600:
-        return act("digest", 0)
-    due = loop_checkpoint_due_reason(loop, bounds)
-    if due:
-        return act("checkpoint", 0, reason=due, j=loop.get("next_checkpoint") or ((loop.get("checkpoint") or {}).get("j") or 0) + 1)
-    last_close = _meter_ts((loop.get("last_cycle") or {}).get("closed_at")) if isinstance(loop.get("last_cycle"), dict) else None
-    gap = bounds["cadence"]["min_gap_minutes"] * 60
-    if last_close is not None and time.time() - last_close < gap:
-        return act("wait", gap - (time.time() - last_close) + 1, reason="cadence")
-    setup = next((s for s in (src.json(f"slices/{sid}/slice.json") for sid in _loop_slice_ids(src)) if loop_setup_slice(s, pid)), None)
-    if setup is not None:
-        return act("setup", 0, slice=setup.get("id"), detail="run the open setup slice the ordinary way first")
-    head = order[0] if order else None
-    return act("start", 0, stage=head.get("stage") if head else next(iter(stages)), item=head.get("key") if head else "author")
-
-
-def _loop_slice_ids(src: LoopSource) -> list:
-    if src.base is not None:
-        sdir = src.base / "slices"
-        return sorted(p.name for p in sdir.iterdir() if (p / "slice.json").is_file()) if sdir.is_dir() else []
-    proc = _ls_tree(src.ref, f"works/phases/active/{src.pid}/slices/")
-    return [line.strip().rstrip("/").rsplit("/", 1)[-1] for line in proc.stdout.splitlines() if line.strip()] if proc.returncode == 0 else []
-
-
-def _loop_context_lines(view: dict) -> list:
-    sp = view["spend"]
-    inflight = view["inflight"]
-    return [f"loop={view['loop']}", f"status={view['status']}", f"driver={view['driver']['cell']}",
-            f"charter={'v' + str(view['charter']['version']) if view['charter']['version'] else 'none'}",
-            f"cycle={view['cycle']}",
-            f"inflight={inflight['cycle'] + ':' + str(inflight.get('state')) if inflight else 'none'}",
-            f"spend_today={_usd(sp['today'])}/{_usd(sp['per_day'])}", f"spend_total={_usd(sp['total'])}/{_usd(sp['total_cap'])}",
-            f"parked={len(view['parked'])}", f"survivors={view['survivors_count']}", f"queue={view['queue_count']}"]
-
-
-def _loop_next_lines(nxt: dict) -> list:
-    lines = [f"action={nxt.get('action')}", f"wake_in={nxt.get('wake_in')}"]
-    for k, v in nxt.items():
-        if k not in ("action", "wake_in") and v is not None:
-            lines.append(f"{k}={_one_line(str(v))}")
-    return lines
-
-
-def loop_tick(args: argparse.Namespace) -> None:
-    """Read-only: the loop's context, then exactly one action= and wake_in=, then the action's own lines."""
-    pdir = _loop_require_phase(args.phase)
-    require_loop(pdir, "loop-tick")
-    view = loop_view(loop_source(pdir), transcripts=args.transcripts)
-    for line in _loop_context_lines(view) + _loop_next_lines(view["next"]):
-        print(line)
-
-
-def loop_cycle_dispatch(args: argparse.Namespace) -> None:
-    """Record the dispatch the orchestrator makes next: dispatched_at, the attempt the engine numbers
-    (`loop_inflight_state`: a retry after a dead span or an `escalate` is n+1, a dispatch that left no span and a
-    limit re-dispatch keep n), its row (`loop_attempt_row`), the recording session (the hold-off ends when it does)
-    and the result.md it saw. Refused while a live span of the cycle exists (the second double-dispatch guard), for a
-    caller that is not the driver, while loop/control.json holds requests (the tick applies them first), on a halted
-    loop, and when the cycle needs a close or a plan instead."""
-    sid = args.slice
-    cmd = f"loop-cycle-dispatch {sid}"
-    sdir = _loop_require_slice(sid, cmd)
-    sdata = read_json(sdir / "slice.json")
-    if sdata.get("kind") != "cycle" and not loop_checkpoint_slice(sdata):
-        raise SystemExit(f"{cmd}: kind {sdata.get('kind')}, not a loop cycle or checkpoint; refused, nothing was written")
-    pdir = sdir.parents[1]
-    data = read_json(pdir / "phase.json")
-    loop = phase_loop(data) or {}
-    if phase_loop(data) is not None:  # P50-fr.F4: before any read of this checkout's copy, stale off the loop's stream
-        _loop_own_stream_refuse(pdir, cmd, data)
-    inflight = loop.get("inflight")
-    if not isinstance(inflight, dict) or inflight.get("cycle") != sid:
-        held = inflight.get("cycle") if isinstance(inflight, dict) else "none"
-        raise SystemExit(f"{cmd}: it is not the cycle in flight (in flight: {held}); refused, nothing was written")
-    _driver_refuse(loop, cmd, pdir.name)
-    queued = _loop_control_requests(LoopSource(pdir.name, pdir))
-    if queued:
-        what = ", ".join(str(r.get("action")) for r in queued)
-        raise SystemExit(f"{cmd}: loop/{LOOP_CONTROL_FILE} holds {len(queued)} unapplied control request(s) ({what}); the tick "
-                         f"applies them first ({WORKFLOW_CMD} loop-control {pdir.name} apply, then loop-tick); refused, nothing was written")
-    if loop.get("status") == "halted":
-        raise SystemExit(f"{cmd}: the loop is halted ({(loop.get('halt') or {}).get('reason')}); nothing advances past a stop "
-                         f"({WORKFLOW_CMD} loop-control {pdir.name} resume --words \"...\" first); refused, nothing was written")
-    st = loop_inflight_state(pdir, loop=loop, transcripts=args.transcripts)
-    state = st["state"]
-    checkpoint = loop_checkpoint_slice(sdata)
-    if state in ("wait", "overdue"):
-        why = f"span {st['span']} of it is live" if st.get("span") else "a dispatch was recorded moments ago and its span is starting"
-        raise SystemExit(f"{cmd}: {why} -- one dispatch at a time: wait for its notification; refused, nothing was written")
-    if state == "close" and st.get("verdict"):
-        how = (f"{WORKFLOW_CMD} loop-checkpoint {pdir.name} --verdict blocked --summary \"...\"" if checkpoint
-               else f"{WORKFLOW_CMD} loop-cycle-close {sid} --verdict error --summary \"...\"")
-        raise SystemExit(f"{cmd}: {st.get('reason')} -- close it: {how}; refused, nothing was written")
-    if state == "close":
-        raise SystemExit(f"{cmd}: its result.md holds a verdict -- close it ({WORKFLOW_CMD} loop-cycle-close {sid} --verdict ...); refused, nothing was written")
-    if state == "plan":
-        raise SystemExit(f"{cmd}: {shown(sdir / 'plan.md')} does not exist -- write the plan first; refused, nothing was written")
-    if state == "halt":
-        raise SystemExit(f"{cmd}: {st.get('detail')} -- record the halt ({WORKFLOW_CMD} loop-control {pdir.name} halt --reason limit); "
-                         "refused, nothing was written")
-    previous = inflight.get("attempt") if _is_int(inflight.get("attempt")) else 1
-    attempt = st.get("attempt") if state == "dispatch" else previous  # a limit re-dispatch is no new attempt
-    info = sdata.get("loop") if isinstance(sdata.get("loop"), dict) else {}
-    if checkpoint:
-        row, stage_row = "high", "high"
-    else:
-        stage = info.get("stage")
-        stage_row = loop_stages(pdir, info.get("charter")).get(stage)
-        row = loop_attempt_row(stage, stage_row, attempt)[0]
-    at = datetime.now().astimezone().isoformat(timespec="milliseconds")  # sub-second: a span belongs to the dispatch it follows
-    me = session_identity()
-    result = sdir / "result.md"
-    seen = result.read_text(encoding="utf-8") if result.is_file() else None
-    inflight["dispatched_at"] = at
-    inflight["attempt"] = attempt
-    inflight["route"] = row
-    inflight["dispatcher"] = ({"session": me.get("session"), "pid": me.get("pid"), "proc_start": me.get("proc_start")}
-                              if isinstance(me, dict) else None)
-    inflight["prior_result_sha256"] = _loop_sha(seen)
-    inflight["dispatches"] = (inflight.get("dispatches") if _is_int(inflight.get("dispatches")) else 0) + 1
-    history = [h for h in (inflight.get("history") or []) if isinstance(h, dict)]
-    history.append({"attempt": attempt, "route": row, "at": at})
-    inflight["history"] = history[-LOOP_DISPATCH_HISTORY:]
-    info["attempt"] = attempt
-    sdata["loop"] = info
-    write_json(sdir / "slice.json", sdata)
-    write_loop_block(pdir, loop, data)
-    append_event("loop_cycle_dispatched", phase=pdir.name, slice=sid, attempt=attempt, route=row, state=state)
-    rebuild_index_and_state()
-    print(f"dispatch recorded: {sid} attempt={attempt} at={at}")
-    print(f"route={row}" + ("" if checkpoint else f" stage_route={stage_row or 'none'}"))
-    if attempt > previous:
-        print(f"retry: attempt {attempt} on the high row ({st.get('reason')}); re-pin ## Dispatch and add ## Retry to "
-              "plan.md (run-loop reference/cycle-plan.md)")
-    if st.get("dirty_outputs"):
-        print(f"dirty_outputs={_loop_dirty_text(st['dirty_outputs'])}")
-    print(f"route: {WORKFLOW_CMD} executor-route {sid} (the engine's attempt picks the row; the prompt's first line: slice: {sid})")
-
-
-def _loop_on_words(reason: str, version, pid: str) -> str:
-    if reason in LOOP_HALT_NEEDS_CHARTER:
-        nxt = (version if _is_int(version) else 0) + 1
-        return (f"sign charter v{nxt} with a higher bound ({WORKFLOW_CMD} loop-sign {pid} --version {nxt} --words \"...\"); "
-                "resume refuses this halt")
-    words = f"the operator's \"resume\" ({WORKFLOW_CMD} loop-control {pid} resume --words \"...\")"
-    if reason == "charter":
-        words += ", once the signed charter file is restored from git or a new version is signed"
-    return words
-
-
-def _loop_halt_record(loop: dict, pid: str, reason: str, detail: str) -> dict:
-    version = (loop.get("charter") or {}).get("version") if isinstance(loop.get("charter"), dict) else None
-    return {"reason": reason, "detail": _one_line(detail or reason), "at": now_iso(),
-            "stop_kind": "limit" if reason == "limit" else "decision", "on_words": _loop_on_words(reason, version, pid)}
-
-
-def loop_standing_stop(pdir: Path, loop: dict, bounds=None):
-    """The charter-level stop that holds right now, whatever halt is recorded: (reason, detail) for a changed
-    signed charter (`charter`), the total spend at total_usd (`budget-total`) or the closed cycles at max_cycles
-    (`max-cycles`), else None. These are the tick's stops before any start, and no "resume" lifts them: every way
-    a halt is lifted (resume, a checkpoint pause's resume, loop-sign of a new version) checks them first and
-    halts on the one that holds instead (P50-fr.F2). `bounds`: a version being signed (its pin is fresh)."""
-    if bounds is None:
-        ok, why = loop_charter_ok(pdir)
-        if not ok:
-            return ("charter", why)
-        bounds = loop_bounds_of(LoopSource(pdir.name, pdir), loop)
-    budget = bounds["budget"]
-    spent = sum(l.get("usd") for l in loop_spend_lines(pdir) if _is_number(l.get("usd")))
-    if spent >= budget["total_usd"]:
-        return ("budget-total", f"spent {_usd(spent)} of total_usd {_usd(budget['total_usd'])}")
-    cycles = (loop.get("counters") or {}).get("cycles", 0) if isinstance(loop.get("counters"), dict) else 0
-    if _is_int(budget.get("max_cycles")) and cycles >= budget["max_cycles"]:
-        return ("max-cycles", f"{cycles} of max_cycles {budget['max_cycles']} cycles")
-    return None
-
-
-def _loop_convert_halt(loop: dict, data: dict, pid: str, standing: tuple, lifted_by: dict) -> dict:
-    """A lifted halt whose loop still meets a charter-level stop becomes that stop's halt (the loop stays halted,
-    the phase pending): the old one kept as `last_halt`, the new one carrying `converted_from`. Returns it."""
-    old = loop.get("halt") if isinstance(loop.get("halt"), dict) else {}
-    loop["last_halt"] = {**old, "lifted_at": now_iso(), "lifted_by": lifted_by}
-    halt = _loop_halt_record(loop, pid, standing[0], standing[1])
-    halt["converted_from"] = {"reason": old.get("reason"), "detail": old.get("detail"), "at": old.get("at")}
-    loop["halt"] = halt
-    loop["status"] = "halted"
-    append_event("loop_halt_converted", phase=pid, old_reason=old.get("reason"), reason=halt["reason"],
-                 detail=halt["detail"], source=lifted_by.get("from"))
-    return halt
-
-
-def _loop_standing_line(pid: str, lifted: str, halt: dict) -> str:
-    return (f"not resumed {pid}: {lifted}, but a charter-level stop holds -- halted reason={halt['reason']} "
-            f"detail={halt['detail']}; on_words={halt['on_words']}")
-
-
-def loop_halt(pdir: Path, reason: str, detail: str, data=None, extra=None) -> dict:
-    """Halt the loop: `loop.halt`, status halted, the phase pending, event loop_halted. Returns the halt record."""
-    data = read_json(pdir / "phase.json") if data is None else data
-    loop = data["loop"]
-    pid = data.get("id", pdir.name)
-    halt = {**_loop_halt_record(loop, pid, reason, detail), **(extra or {})}
-    loop["halt"] = halt
-    loop["status"] = "halted"
-    old = data.get("status")
-    if old != "pending":
-        data["status"] = "pending"
-        append_event("phase_status_changed", phase=pid, old_status=old, new_status="pending")
-    write_loop_block(pdir, loop, data)
-    append_event("loop_halted", phase=pid, reason=reason, detail=halt["detail"])
-    return halt
-
-
-def _loop_unhalt(loop: dict, data: dict, pid: str) -> None:
-    """Lift a halt: keep it as `last_halt`, and return a phase the halt made pending to in_progress."""
-    if isinstance(loop.get("halt"), dict):
-        loop["last_halt"] = {**loop["halt"], "lifted_at": now_iso()}
-    loop["halt"] = None
-    if data.get("status") == "pending":
-        data["status"] = "in_progress"
-        append_event("phase_status_changed", phase=pid, old_status="pending", new_status="in_progress")
-
-
-def _loop_control_apply(pdir: Path, action: str, words=None, reason=None, detail=None, source=None, queued_at=None) -> str:
-    """Apply one control action in this checkout; SystemExit (nothing written) on a refusal. Returns its line."""
-    data = read_json(pdir / "phase.json")
-    loop = data["loop"]
-    pid = data.get("id", pdir.name)
-    status = loop.get("status")
-    cmd = f"loop-control {pid} {action}"
-    at = now_iso()
-    record = {"words": words, "at": at, "from": source or "this stream", "from_status": status}
-    if queued_at:  # another stream's words: the queue time rides on the record (the queue wrote nothing there)
-        record["queued_at"] = queued_at
-    if action == "pause":
-        if status not in ("running", "signed"):
-            raise SystemExit(f"{cmd}: the loop is {status}; pause applies to a running or signed loop; refused, nothing was written")
-        loop["status"] = "paused"
-        loop["paused"] = record
-        write_loop_block(pdir, loop, data)
-        append_event("loop_paused", phase=pid, words=words, source=record["from"])
-        return f"paused {pid} (was {status}): no new cycle starts; the cycle in flight may still close"
-    if action == "checkpoint":  # P50.S3: the operator's ask (loop-checkpoint --now), queued or applied
-        if status in ("drafting", "stopped"):
-            raise SystemExit(f"{cmd}: the loop is {status}; a checkpoint is asked of a signed, running, paused or halted loop; "
-                             "refused, nothing was written")
-        loop["checkpoint_requested"] = record
-        write_loop_block(pdir, loop, data)
-        return (f"checkpoint requested for {pid}: it runs at the next cycle boundary"
-                + (" (after the cycle in flight closes)" if isinstance(loop.get("inflight"), dict) else ""))
-    if action == "resume":
-        if status not in ("paused", "halted"):
-            raise SystemExit(f"{cmd}: the loop is {status}; resume applies to a paused or halted loop; refused, nothing was written")
-        if status == "paused" and loop.get("paused_by") == "checkpoint" and not words:
-            open_setup, fixes = _loop_fix_state(loop, [read_json(d / "slice.json") for d in slice_dirs(pdir)], pid)
-            if open_setup is not None or not fixes:
-                why = (f"{open_setup.get('id')} is still {open_setup.get('status')}" if open_setup is not None
-                       else "no fix slice was cut since the checkpoint")
-                raise SystemExit(f"{cmd}: a checkpoint's pause resumes without words only once its fix slices are done ({why}); "
-                                 "the operator's words resume it anyway (--words \"...\"); refused, nothing was written")
-        if status == "halted":
-            halt = loop.get("halt") if isinstance(loop.get("halt"), dict) else {}
-            if not words:
-                raise SystemExit(f"{cmd}: a halted loop resumes only on the operator's literal words (--words \"...\"); refused, nothing was written")
-            if halt.get("reason") in LOOP_HALT_NEEDS_CHARTER:
-                raise SystemExit(f"{cmd}: a {halt.get('reason')} halt is lifted only by a new charter: {halt.get('on_words')}; refused, nothing was written")
-            if halt.get("reason") == "charter":
-                ok, why = loop_charter_ok(pdir)
-                if not ok:
-                    raise SystemExit(f"{cmd}: {why}; refused, nothing was written")
-            if halt.get("reason") == "failures":
-                loop.setdefault("counters", {})["consecutive_failures"] = 0
-            if halt.get("reason") == "limit" and isinstance(loop.get("inflight"), dict):
-                loop["inflight"]["limit_cleared_at"] = at
-        # P50-fr.F2: the words lift every resumable stop (a failures count reached under another halt included);
-        # a charter-level stop that holds is never resumed past: the loop halts on it, as the next tick would.
-        bounds = loop_bounds_of(LoopSource(pid, pdir), loop)
-        if not isinstance(loop.get("counters"), dict):
-            loop["counters"] = {}
-        counters = loop["counters"]
-        reset = ""
-        if counters.get("consecutive_failures", 0) >= bounds["stops"]["max_consecutive_failures"]:
-            reset = f"; consecutive_failures {counters['consecutive_failures']} reset to 0"
-            counters["consecutive_failures"] = 0
-        standing = loop_standing_stop(pdir, loop)
-        if standing is not None:
-            lifted_by = {"words": words, "from": record["from"], "action": "resume"}
-            if status == "halted":
-                old = loop["halt"].get("reason") if isinstance(loop.get("halt"), dict) else None
-                halt = _loop_convert_halt(loop, data, pid, standing, lifted_by)
-                write_loop_block(pdir, loop, data)
-                return _loop_standing_line(pid, f"your words lift the {old} halt{reset}", halt)
-            loop["paused"] = None
-            loop["paused_by"] = None
-            halt = loop_halt(pdir, standing[0], standing[1], data,
-                             extra={"converted_from": {"status": status, "at": at}, "lifted_by": lifted_by})
-            return _loop_standing_line(pid, f"the loop was {status}{reset}", halt)
-        if status == "halted":
-            _loop_unhalt(loop, data, pid)
-        counters = loop.get("counters") if isinstance(loop.get("counters"), dict) else {}
-        ran = counters.get("cycles", 0) or loop.get("inflight") or (_is_int(loop.get("next_cycle")) and loop["next_cycle"] > 1)
-        loop["status"] = "running" if ran else "signed"
-        loop["paused"] = None
-        loop["paused_by"] = None
-        loop["resumed"] = record
-        write_loop_block(pdir, loop, data)
-        append_event("loop_resumed", phase=pid, words=words, source=record["from"], was=status)
-        return f"resumed {pid}: {status} -> {loop['status']}{reset}"
-    if action == "stop":
-        if not words:
-            raise SystemExit(f"{cmd}: stop needs the operator's literal words (--words \"...\"); refused, nothing was written")
-        if status == "stopped":
-            raise SystemExit(f"{cmd}: the loop is already stopped; refused, nothing was written")
-        if status == "halted":
-            _loop_unhalt(loop, data, pid)
-        loop["status"] = "stopped"
-        loop["stopped"] = record
-        write_loop_block(pdir, loop, data)
-        append_event("loop_stopped", phase=pid, words=words, source=record["from"], was=status)
-        tail = "; the cycle in flight may still close, then" if isinstance(loop.get("inflight"), dict) else ";"
-        return f"stopped {pid} (was {status}){tail} {pid}.REVIEW is selectable"
-    if action == "halt":
-        if reason not in LOOP_CONTROL_HALT_REASONS:
-            raise SystemExit(f"{cmd}: --reason must be one of {', '.join(LOOP_CONTROL_HALT_REASONS)}; refused, nothing was written")
-        if status == "halted":
-            raise SystemExit(f"{cmd}: the loop is already halted ({(loop.get('halt') or {}).get('reason')}); refused, nothing was written")
-        if status in ("drafting", "stopped"):
-            raise SystemExit(f"{cmd}: the loop is {status}; refused, nothing was written")
-        halt = loop_halt(pdir, reason, detail or reason, data)
-        return f"halted {pid}: reason={reason} stop_kind={halt['stop_kind']} on_words={halt['on_words']}"
-    raise SystemExit(f"{cmd}: unknown action; refused, nothing was written")
-
-
-def loop_control(args: argparse.Namespace) -> None:
-    """pause | resume | stop | halt | apply. In the loop's own stream every action applies at once; from another
-    stream pause, resume and stop queue in the live loop's loop/control.json for its next tick (`loop_home`)."""
-    pdir = _loop_require_phase(args.phase)
-    pid = pdir.name
-    action = args.action
-    cmd = f"loop-control {pid} {action}"
-    data = read_json(pdir / "phase.json")
-    loop = phase_loop(data)
-    if loop is None:
-        raise SystemExit(f"{cmd}: {pid} is not a loop phase; refused, nothing was written")
-    words = _one_line(args.words) if args.words is not None and _one_line(args.words) else None
-    if action != "halt" and (args.reason is not None or args.detail is not None):
-        raise SystemExit(f"{cmd}: --reason/--detail belong to halt; refused, nothing was written")
-    home = loop_home(pdir, data)
-    if not home.own:
-        where = f"branch {home.branch}" if home.placement == "worktree" else home.label()
-        if action not in LOOP_CONTROL_QUEUEABLE:
-            raise SystemExit(f"{cmd}: {action} runs only on the loop's own stream ({where}); from here only "
-                             f"{', '.join(LOOP_CONTROL_QUEUEABLE)} queue; refused, nothing was written")
-        if action in ("resume", "stop") and not words:
-            raise SystemExit(f"{cmd}: {action} needs the operator's literal words (--words \"...\"); refused, nothing was written")
-        return _loop_queue_control(pdir, data, action, words, cmd, home)
-    if action not in ("stop", "pause"):
-        _driver_refuse(loop, cmd, pid)
-    if action == "apply":
-        requests = _loop_control_requests(LoopSource(pid, pdir))
-        applied = []
-        for req in requests:
-            try:
-                applied.append("applied: " + _loop_control_apply(pdir, str(req.get("action")), req.get("words"),
-                                                                  source=req.get("from"), queued_at=req.get("at")))
-            except SystemExit as exc:
-                applied.append(f"skipped {req.get('action')} from {req.get('from')}: {exc}")
-        write_json(loop_path(pdir, LOOP_CONTROL_FILE), {"requests": []})
-        append_event("loop_control_applied", phase=pid, requests=len(requests))
-        rebuild_index_and_state()
-        for line in applied or ["no queued control requests"]:
-            print(line)
-        return
-    line = _loop_control_apply(pdir, action, words, args.reason, args.detail)
-    rebuild_index_and_state()
-    print(line)
-
-
-def _loop_sign_lift(pdir: Path, data: dict, loop: dict, bounds: dict) -> str:
-    """loop-sign of a new version lifts a budget-total or max-cycles halt when the new bounds clear it (the
-    operator's word is the signature). Mutates `loop`/`data` (the caller writes); returns a line, or ''."""
-    halt = loop.get("halt") if isinstance(loop.get("halt"), dict) else None
-    if loop.get("status") != "halted" or not halt or halt.get("reason") not in LOOP_HALT_NEEDS_CHARTER:
-        return ""
-    cycles = (loop.get("counters") or {}).get("cycles", 0)
-    spent = sum(l.get("usd") for l in loop_spend_lines(pdir) if _is_number(l.get("usd")))
-    cap = bounds["budget"]
-    clears = (spent < cap["total_usd"]) if halt["reason"] == "budget-total" else (cap.get("max_cycles") is None or cycles < cap["max_cycles"])
-    if not clears:
-        halt["on_words"] = _loop_on_words(halt["reason"], (loop.get("charter") or {}).get("version"), data.get("id", pdir.name))
-        return f"halt={halt['reason']} stands: the new bounds do not clear it (on_words={halt['on_words']})"
-    # P50-fr.F2: the new bounds clear this halt; another charter-level stop they do not clear becomes the halt
-    standing = loop_standing_stop(pdir, loop, bounds)
-    if standing is not None:
-        version = (loop.get("charter") or {}).get("version")
-        new = _loop_convert_halt(loop, data, data.get("id", pdir.name), standing,
-                                 {"words": None, "from": f"loop-sign v{version}", "action": "loop-sign"})
-        return (f"the new bounds clear the {halt['reason']} halt, but not {new['reason']} -- halted reason={new['reason']} "
-                f"detail={new['detail']}; on_words={new['on_words']}")
-    _loop_unhalt(loop, data, data.get("id", pdir.name))
-    loop["status"] = "running" if cycles else "signed"
-    append_event("loop_resumed", phase=data.get("id", pdir.name), words=None, source="loop-sign", was="halted")
-    return f"lifted the {halt['reason']} halt: the new bounds clear it (loop_status={loop['status']})"
-
-
-def _loop_text_cut(text, limit: int) -> str:
-    text = _one_line(text or "")
-    return text if len(text) <= limit else text[: max(1, limit - 3)].rstrip() + "..."
-
-
-def loop_digest(src: LoopSource, view: dict) -> str:
-    """At most LOOP_DIGEST_MAX characters over the window since loop.digest_at: cycles and trials, verdict counts,
-    new survivors, every open parked question, spend against budget, any halt, the next action."""
-    since = view.get("digest_at")
-    since_t = _meter_ts(since)
-    ledger = [l for l in src.jsonl("ledger.jsonl") if since_t is None or (_meter_ts(l.get("closed_at")) or 0) > since_t]
-    stages = list(view["bounds"]["stages"])
-    trials = sum(1 for l in ledger if stages and l.get("stage") == stages[0] and l.get("verdict") != "error")
-    verdicts: dict = {}
-    for l in ledger:
-        verdicts[l.get("verdict")] = verdicts.get(l.get("verdict"), 0) + 1
-    fresh = [s for s in src.jsonl("survivors.jsonl") if since_t is None or (_meter_ts(s.get("at")) or 0) > since_t]
-    sp = view["spend"]
-    halt = view.get("halt") if isinstance(view.get("halt"), dict) else None
-    nxt = view["next"]
-    head = [f"digest {view['loop']} since {since or 'the start'} (status {view['status']})",
-            f"cycles {len(ledger)}, trials {trials}; verdicts " + (" ".join(f"{k}={v}" for k, v in sorted(verdicts.items())) or "none"),
-            f"spend: window {_usd(sp['window'])}; today {_usd(sp['today'])}/{_usd(sp['per_day'])}; "
-            f"total {_usd(sp['total'])}/{_usd(sp['total_cap'])}" + (f"; assumed cycles {sp['assumed']}" if sp["assumed"] else ""),
-            f"halt: {halt['reason']} -- {halt.get('on_words')}" if halt else "halt: none",
-            f"next: {nxt.get('action')}" + "".join(f" {k}={v}" for k, v in nxt.items() if k in ("reason", "stage", "item", "until"))]
-    names = [s.get("key") for s in fresh]
-    surv = f"new survivors ({len(names)}): " + (", ".join(str(n) for n in names) if names else "none")
-    parked = view["parked"]
-    room = LOOP_DIGEST_MAX - sum(len(l) + 1 for l in head) - min(len(surv), 200) - 40
-    each = room // max(1, len(parked)) - 3 if parked else 0
-    if not parked:
-        plines = []
-    elif each >= 40:  # every open question, each cut to its share
-        plines = ["- " + _loop_text_cut(f"{p.get('key')}: {p.get('question')} -> {p.get('on_words')}", each) for p in parked]
-    else:  # too many to quote: every key still named, the questions one command away
-        plines = [_loop_text_cut("keys: " + ", ".join(str(p.get("key")) for p in parked)
-                                 + f" (each question: loop-status {view['loop']})", max(40, room))]
-    body = head[:2] + [_loop_text_cut(surv, 200), f"parked open ({len(parked)}):" if parked else "parked open: none"] + plines + head[2:]
-    text = "\n".join(body)
-    return text if len(text) <= LOOP_DIGEST_MAX else text[: LOOP_DIGEST_MAX - 4].rstrip() + "\n..."
-
-
-def loop_status(args: argparse.Namespace) -> None:
-    """The operator's view of one loop, from any stream (cross-stream, `loop_home`: the live loop's files -- the loop
-    worktree's or the default checkout's -- else its branch, else the local copy labelled stale): plain, --json, or
-    --digest [--write]."""
-    pdir = _loop_require_phase(args.phase)
-    pid = pdir.name
-    data = read_json(pdir / "phase.json")
-    if phase_loop(data) is None:
-        raise SystemExit(f"loop-status {pid}: {pid} is not a loop phase")
-    if args.write and not args.digest:
-        raise SystemExit(f"loop-status {pid}: --write belongs to --digest; refused, nothing was written")
-    home = loop_home(pdir, data)
-    src = loop_source(pdir, home=home)
-    view = loop_view(src, transcripts=args.transcripts, as_driver=True)
-    if args.digest:
-        text = loop_digest(src, view)
-        if args.write:
-            if not home.own:
-                raise SystemExit(f"loop-status {pid} --digest --write: writes only on the loop's own stream ({src.where}); refused, nothing was written")
-            _driver_refuse(data["loop"], f"loop-status {pid} --digest --write", pid)
-            text = _loop_write_digest(pdir, args.transcripts)
-            rebuild_index_and_state()
-        print(text)
-        if args.write:
-            print(f"wrote {shown(loop_path(pdir, 'digest.md'))} ({len(text)} chars); digest_at={read_json(pdir / 'phase.json')['loop']['digest_at']}")
-        return
-    if args.json:
-        print(json.dumps(view, ensure_ascii=False, indent=2, default=str))
-        return
-    sp, inflight, ch = view["spend"], view["inflight"], view["charter"]
-    driver = view["driver"]
-    print(f"loop={pid} status={view['status']} phase={view['phase_status']} source={view['source']}")
-    print(f"driver={driver['cell']}" + (f" (session {driver.get('session')}, pid {driver.get('pid')}, claimed {driver.get('claimed_at')})"
-                                         if driver.get("claimed_at") else ""))
-    print(f"charter=" + (f"v{ch['version']} signed {ch['signed_at']} ({ch['why']})" if ch["version"] else f"none ({ch['why']})"))
-    print("counters: " + " ".join(f"{k}={view['counters'].get(k, 0)}" for k in LOOP_COUNTERS))
-    if inflight:
-        print(f"inflight: {inflight.get('cycle')} state={inflight.get('state')} attempt={inflight.get('attempt')} "
-              f"started={inflight.get('started_at')}" + (f" dispatched={inflight['dispatched_at']}" if inflight.get("dispatched_at") else ""))
-    else:
-        print("inflight: none")
-    print(f"spend: today {_usd(sp['today'])}/{_usd(sp['per_day'])}  total {_usd(sp['total'])}/{_usd(sp['total_cap'])}  "
-          f"per_cycle {_usd(sp['per_cycle'])}" + (f"  reserved {_usd(sp['reserved'])}" if sp["reserved"] else "")
-          + f"  assumed_cycles={sp['assumed']}" + (f"  max_cycles={sp['max_cycles']}" if sp["max_cycles"] else ""))
-    print(f"parked ({len(view['parked'])} open):" + ("" if view["parked"] else " none"))
-    for p in view["parked"]:
-        print(f"  - key={p['key']} ({p['cycle']}) question={_one_line(p.get('question') or '')} on_words={_one_line(p.get('on_words') or '')}")
-    print(f"survivors ({view['survivors_count']}; last 5): " + (", ".join(f"{s['key']} ({s['cycle']})" for s in view["survivors"]) or "none"))
-    print(f"queue ({view['queue_count']}; head 5): " + (", ".join(f"{q['key']}@{q['stage']}" for q in view["queue"]) or "empty"))
-    halt = view.get("halt") if isinstance(view.get("halt"), dict) else None
-    print(f"halt: reason={halt['reason']} detail={halt.get('detail')} stop_kind={halt.get('stop_kind')} on_words={halt.get('on_words')}"
-          if halt else "halt: none")
-    ck = view.get("checkpoint") if isinstance(view.get("checkpoint"), dict) else None
-    print("checkpoint: " + (f"{ck.get('slice')} {ck.get('verdict')} at {ck.get('at')}; landed "
-                             + (f"{str(ck.get('commit'))[:12]}" if ck.get("commit") else "no") if ck else "none")
-          + ("; requested" if view.get("checkpoint_requested") else "")
-          + (f"; every {view['bounds']['checkpoint_every']} cycles"))
-    rolled = view.get("rolled") if isinstance(view.get("rolled"), dict) else None
-    if rolled and loop_rolled_text(rolled):
-        rel = f"works/phases/active/{pid}/slices/{pid}.C<k>"
-        base = f"{_repo_prefix() if _git_available() else ''}{rel}"  # `<rev>:<path>` reads from the repo's top
-        print(f"rolled={loop_rolled_text(rolled).replace(' rolled up', '')} \u2192 git show {str(rolled.get('commit'))[:12]}:{base}/result.md "
-              f"(a folder rolled at an earlier close: git show $(git log -1 --format=%h --diff-filter=D -- {rel})^:{base}/result.md)")  # a pathspec is cwd-relative
-    nxt = view["next"]
-    print("next: " + " ".join(f"{k}={_one_line(str(v))}" for k, v in nxt.items() if v is not None))
-
-
-def loop_next_lines(stream, index: dict) -> list:
-    """`next`'s loop lines: one `loop=` line per loop phase whose own stream this checkout is; one `loops_elsewhere=`
-    line naming each live loop phase whose own stream it is not (`loop_home`: a worktree loop seen from the default
-    checkout or another worktree, a default-stream loop seen from a phase worktree, read from its live files). In a
-    phase worktree the default checkout's loop phases absent from this checkout count too. Small-file reads only."""
-    own, elsewhere = [], []
-    seen, dirs = set(), []
-    for entry in index.get("active_phases", []):
-        if entry.get("status") != "done":
-            seen.add(entry["id"])
-            dirs.append(ACTIVE / entry["id"])
-    if stream is not None:  # a phase worktree may predate a loop phase created on the default stream
-        root = _default_checkout_root()
-        active = root / "works" / "phases" / "active" if root is not None else None
-        if active is not None and active.is_dir():
-            dirs.extend(d for d in sorted(active.iterdir()) if d.name not in seen and (d / "phase.json").is_file())
-    for pdir in dirs:
-        try:
-            data = read_json(pdir / "phase.json")
-        except (OSError, ValueError):
-            continue
-        if phase_loop(data) is None:
-            continue
-        try:
-            home = loop_home(pdir, data, stream)
-            if home.own:
-                view = loop_view(LoopSource(pdir.name, pdir))
-                sp = view["spend"]
-                own.append(f"loop={view['loop']} status={view['status']} cycle={view['cycle']} "
-                           f"inflight={(view['inflight'] or {}).get('cycle') or 'none'} "
-                           f"spend_today={_usd(sp['today'])}/{_usd(sp['per_day'])} spend_total={_usd(sp['total'])}/{_usd(sp['total_cap'])} "
-                           f"parked={len(view['parked'])} survivors={view['survivors_count']} queue={view['queue_count']} "
-                           f"action={view['next'].get('action')}")
-                continue
-            if home.placement == "worktree" and not phase_in_flight(home.data):
-                continue
-            src = loop_source(pdir, home=home)
-            live = src.phase()
-            if home.placement == "default" and live.get("status") == "done":
-                continue
-            loop = phase_loop(live) or {}
-            parked = sum(1 for p in src.jsonl("parked.jsonl") if p.get("resolved") is None)
-            cycle = (loop.get("next_cycle") - 1) if _is_int(loop.get("next_cycle")) else 0
-            elsewhere.append(f"{pdir.name}:{loop.get('status')}:{cycle}:parked={parked}")
-        except (SystemExit, OSError, ValueError) as exc:
-            own.append(f"loop={pdir.name} error={_one_line(str(exc))}")
-    if elsewhere:
-        own.append(f"loops_elsewhere={','.join(elsewhere)}")
-    return own
-
-
-def loop_card_line(phase: dict):
-    """The resume card's one loop line (at most LOOP_CARD_LINE bytes), or None for an ordinary phase."""
-    if phase_loop(phase) is None:
-        return None
-    try:
-        view = loop_view(LoopSource(phase["id"], ACTIVE / phase["id"]))
-    except (SystemExit, OSError, ValueError) as exc:
-        return _card_cut(f"loop: {phase['id']} unreadable ({exc})", LOOP_CARD_LINE)
-    last = view.get("last_cycle") if isinstance(view.get("last_cycle"), dict) else None
-    inflight = view["inflight"]
-    nxt = view["next"]
-    text = (f"loop: {view['loop']} {view['status']}; last {last['cycle'].rsplit('.', 1)[-1] + ' ' + str(last.get('verdict')) if last else 'none'}; "
-            f"inflight {inflight['cycle'].rsplit('.', 1)[-1] + ' ' + str(inflight.get('state')) if inflight else 'none'}; "
-            f"next {nxt.get('action')}" + (f" ({nxt['reason']})" if nxt.get("reason") else "") + f" (loop-tick {view['loop']})")
-    return _card_cut(text, LOOP_CARD_LINE)
-
-
-def _meter_events(counts=None) -> list:
-    """Every event the meter reads, as dispatch-summary reads them: `all_events()` (the global log and every
-    loop's own file), plus the window of each closed cycle or checkpoint whose events were pruned by its
-    rollup, rebuilt from its ledger / checkpoints line (`_loop_ledger_windows`). No loop: the global file."""
-    events = all_events(counts)
-    synth = _loop_ledger_windows(events)
-    return list(heapq.merge(events, synth, key=_event_ts)) if synth else events
-
-
-def _loop_ledger_windows(events: list) -> list:
-    """Synthetic `slice_status_changed` pairs (in_progress at started_at, done at closed_at, `kind` and
-    `source: ledger`) for every loop/ledger.jsonl and loop/checkpoints.jsonl line whose slice has no
-    status event left -- a rolled-up cycle keeps its meter window and its kind. Lenient reads; sorted by ts."""
-    seen = {ev.get("slice") for ev in events if ev.get("type") == "slice_status_changed"}
-    out = []
-    for root in (ACTIVE, ARCHIVED):
-        if not root.is_dir():
-            continue
-        for name, kind in (("ledger.jsonl", "cycle"), ("checkpoints.jsonl", "review")):
-            for path in sorted(root.glob(f"*/loop/{name}")):
-                for line in _read_events(path)[0]:
-                    sid = line.get("cycle") if kind == "cycle" else line.get("slice")
-                    if not isinstance(sid, str) or sid in seen or not line.get("closed_at"):
-                        continue
-                    seen.add(sid)
-                    base = {"type": "slice_status_changed", "slice": sid, "kind": kind, "source": "ledger"}
-                    if line.get("started_at"):
-                        out.append({"ts": line["started_at"], **base, "old_status": "todo", "new_status": "in_progress"})
-                    out.append({"ts": line["closed_at"], **base, "old_status": "in_progress", "new_status": "done"})
-    out.sort(key=_event_ts)
-    return out
-
-
-def loop_meter_cycle(sid: str, started_at, driver_session=None, transcripts=None) -> dict:
-    """Meter one cycle at its close: the main thread's share plus every span's cost over [start, now], read from
-    the driver's session only (every session overlapping the window when it is unknown), each span filtered by
-    its first line before its full read. `usd_source` is metered, metered-floor (some output is a floor) or
-    assumed (nothing priced found: the caller charges per_cycle_usd)."""
-    out = {"usd": None, "usd_source": "assumed", "span_minutes": None, "model": None, "spans": 0}
-    dirs = [d for d in _meter_project_dirs(transcripts)[0] if d.is_dir()]
-    if not dirs:
-        return out
-    events = _meter_events()
-    windows = _MeterWindows(events)
-    known = _meter_known_slices(events)
-    lo = _meter_ts(started_at)
-    hi = time.time()
-    only = {driver_session} if driver_session and any((d / f"{driver_session}.jsonl").is_file() for d in dirs) else None
-
-    def span_filter(jl: Path) -> bool:
-        try:
-            if lo is not None and jl.stat().st_mtime < lo - 60:
-                return False
-        except OSError:
-            return False
-        return _loop_span_cycle(jl) == sid
-
-    res = _meter_collect(dirs, known, windows, lambda s: s == sid, lo, hi, only_sessions=only, span_filter=span_filter)
-    row = _meter_report(res, [sid])["slices"][sid]
-    agg = _meter_add(_meter_new(), row["main"])
-    for s in row["spans"]:
-        _meter_add(agg, s["usage"])
-    out["spans"] = len(row["spans"])
-    out["span_minutes"] = round(sum(s["minutes"] or 0.0 for s in row["spans"]), 1)
-    spans = sorted(row["spans"], key=lambda s: s["start"] if s.get("start") is not None else 0.0)
-    # the verdict span's model: the last span that returned a verdict (an `escalate` is none: the retry's is), else the last
-    done = [s for s in spans if s["outcome"] not in ("running", "limit", "?") + LOOP_NONTERMINAL_STATUSES] or spans
-    out["model"] = done[-1]["model"] if done else None
-    if agg["requests"] - agg["unpriced"] <= 0:
-        return out
-    out["usd"] = round(agg["cost"], 4)
-    out["usd_source"] = "metered-floor" if agg["no_final"] else "metered"
-    return out
-
-
-# ---- Loop phases: bounded state, checkpoints and landing (P50.S3) -------------------------------------
-# Rollup: after each close only the cycle in flight, the last `keep_cycles` closed cycles and the latest
-# checkpoint keep their folders; every older closed one leaves the tree once git holds it unchanged (the
-# orchestrator's next commit records the deletion). `loop.rolled` names the count and the works repo's HEAD
-# that still holds the folders; the ledger keeps each outcome. Checkpoints `<P>.K<j>` (kind review, order
-# after their cycle) review a window of cycles every `checkpoint_every` closes or on the operator's ask; a
-# pass makes the loop merge-ready at the commit `--landed` records, which the default stream merges past
-# `parallel-gate` (a busy main admits it when the diff stays inside the phase folder, works/ and `outputs`).
-LOOP_CHECKPOINT_VERDICTS = ("pass", "changes_requested", "blocked")
-LOOP_CHECKPOINT_ACTIONS = ("now", "start", "verdict", "landed")
-
-
-def loop_checkpoint_slice(s) -> bool:
-    """True for a loop checkpoint `<P>.K<j>`: kind review, created by loop-checkpoint --start (source loop)."""
-    if not isinstance(s, dict) or s.get("kind") != "review" or (s.get("source") or {}).get("type") != "loop":
-        return False
-    found = LOOP_SLICE_ID_RE.fullmatch(str(s.get("id") or ""))
-    return bool(found and found.group(2) == "K")
-
-
-def loop_setup_slice(s, pid: str) -> bool:
-    """An open slice the loop runs the ordinary way before its next cycle: not a cycle, not a checkpoint, not
-    the phase's own REVIEW (a DECOMP, a setup slice, a checkpoint's fix slice)."""
-    return (isinstance(s, dict) and s.get("kind") != "cycle" and not loop_checkpoint_slice(s)
-            and s.get("id") != f"{pid}.REVIEW" and s.get("status") != "done")
-
-
-def loop_spend_lines(src) -> list:
-    """Every spend record of a loop: its ledger (one line per closed cycle) and its checkpoints, the lines
-    `loop_spend`, the halts and the status all sum."""
-    if isinstance(src, Path):
-        return loop_read(src, "ledger.jsonl") + loop_read(src, "checkpoints.jsonl")
-    return src.jsonl("ledger.jsonl") + src.jsonl("checkpoints.jsonl")
-
-
-def _loop_cycle_k(record) -> int:
-    found = LOOP_SLICE_ID_RE.fullmatch(str((record or {}).get("cycle") or "")) if isinstance(record, dict) else None
-    return int(found.group(3)) if found and found.group(2) == "C" else 0
-
-
-def loop_checkpoint_due_reason(loop: dict, bounds: dict):
-    """Why a checkpoint is due (`requested` | `every`), else None: nothing in flight, no checkpoint open, and the
-    operator's ask, or `checkpoint_every` cycles closed since the last checkpoint."""
-    if not isinstance(loop, dict) or loop.get("inflight"):
-        return None
-    if loop.get("checkpoint_requested"):
-        return "requested"
-    record = loop.get("checkpoint") if isinstance(loop.get("checkpoint"), dict) else {}
-    since = record.get("cycles_at") if _is_int(record.get("cycles_at")) else 0
-    cycles = (loop.get("counters") or {}).get("cycles", 0)
-    return "every" if _is_int(cycles) and cycles - since >= bounds["checkpoint_every"] else None
-
-
-def loop_checkpoint_due(pdir) -> bool:
-    """True when a checkpoint is due (`loop_checkpoint_due_reason`); the tick's checkpoint rule reads it."""
-    loop = loop_block(Path(pdir)) or {}
-    return loop_checkpoint_due_reason(loop, loop_bounds_of(LoopSource(Path(pdir).name, Path(pdir)), loop)) is not None
-
-
-def _loop_rel(path: Path) -> str:
-    return path.resolve().relative_to(ROOT.resolve()).as_posix()
-
-
-def _loop_folder_clean(sdir: Path, tracked: set, changed: set) -> bool:
-    """Every file under the folder is tracked and unchanged against HEAD (nothing untracked, ignored, staged,
-    modified or deleted)."""
-    rel = _loop_rel(sdir)
-    on_disk = {f"{rel}/{p.relative_to(sdir).as_posix()}" for p in sdir.rglob("*") if p.is_file()}
-    mine = {t for t in tracked if t.startswith(rel + "/")}
-    return bool(on_disk) and on_disk <= tracked and not any(c.startswith(rel + "/") for c in changed) and mine <= on_disk
-
-
-def loop_rollup(pdir: Path) -> list:
-    """Remove the closed cycle and checkpoint folders past the keep set from the tree, only where git holds them
-    unchanged; record `loop.rolled`; prune their events from loop/events.jsonl. Returns its lines (a `rolled`
-    line, a `warning:` per folder skipped); no git, or no commit yet, removes nothing."""
-    data = read_json(pdir / "phase.json")
-    loop = phase_loop(data)
-    if loop is None:
-        return []
-    pid = data.get("id", pdir.name)
-    keep = loop_bounds_of(LoopSource(pid, pdir), loop)["keep_cycles"]
-    held = (loop.get("inflight") or {}).get("cycle") if isinstance(loop.get("inflight"), dict) else None
-    cycles, checks = [], []
-    for sdir in slice_dirs(pdir):
-        try:
-            sdata = read_json(sdir / "slice.json")
-        except (OSError, ValueError):
-            continue
-        found = LOOP_SLICE_ID_RE.fullmatch(str(sdata.get("id") or ""))
-        if not found or sdata.get("id") == held or sdata.get("status") != "done":
-            continue
-        if sdata.get("kind") == "cycle" and found.group(2) == "C":
-            cycles.append((int(found.group(3)), sdir))
-        elif loop_checkpoint_slice(sdata):
-            checks.append((int(found.group(3)), sdir))
-    cycles.sort()
-    checks.sort()
-    all_k = [j for j, _ in checks] + ([int(LOOP_SLICE_ID_RE.fullmatch(held).group(3))] if held and ".K" in held else [])
-    latest_j = max(all_k) if all_k else None
-    candidates = [("C", k, d) for k, d in cycles[:max(0, len(cycles) - keep)]]
-    candidates += [("K", j, d) for j, d in checks if j != latest_j]
-    if not candidates:
-        return []
-    if cloud_link_file().exists():
-        # A linked checkout never commits workflow state, so "git holds it unchanged" never holds here, and a
-        # removed folder could only be read back from hi2vi's revisions, which no engine command reads yet: keep them.
-        return [f"rollup of {pid}: skipped in a linked checkout ({len(candidates)} closed folder(s) past keep_cycles {keep} "
-                "stay in the tree; hi2vi holds them, and no command reads a removed folder back from it yet)"]
-    if not _git_available():
-        return [f"warning: rollup of {pid}: git is not available here, so no closed folder leaves the tree "
-                f"({len(candidates)} past keep_cycles {keep})"]
-    head = _rev_parse("HEAD")
-    if not head:
-        return [f"warning: rollup of {pid}: the works repo has no commit yet, so no closed folder leaves the tree"]
-    rels = [_loop_rel(d) for _t, _n, d in candidates]
-    listed = _git(["ls-files", "-z", "--full-name", "--", *rels], check=False)
-    diffed = _git(["diff", "--name-only", "-z", "HEAD", "--", *rels], check=False)  # repo-relative paths
-    if listed.returncode != 0 or diffed.returncode != 0:  # git could not answer: nothing leaves the tree
-        return [f"warning: rollup of {pid}: git could not say which closed folders it holds unchanged "
-                f"({(listed.stderr or diffed.stderr).strip()[:120]}); nothing was removed"]
-    tracked = set(listed.stdout.split("\0")) - {""}
-    changed = set(diffed.stdout.split("\0")) - {""}
-    prefix = _git(["rev-parse", "--show-prefix"], check=False).stdout.strip()
-    if prefix:  # --full-name paths are repo-relative; ours are workspace-relative
-        tracked = {t[len(prefix):] for t in tracked if t.startswith(prefix)}
-        changed = {c[len(prefix):] for c in changed if c.startswith(prefix)}
-    lines, removed = [], []
-    for tag, n, sdir in candidates:
-        if _loop_folder_clean(sdir, tracked, changed):
-            shutil.rmtree(sdir)
-            removed.append((tag, n, sdir.name))
-        else:
-            lines.append(f"warning: rollup kept {shown(sdir)}: not every file in it is committed and unchanged against HEAD "
-                         "(commit it; the next close retries)")
-    if not removed:
-        return lines
-    rolled = loop.get("rolled") if isinstance(loop.get("rolled"), dict) else {"through_k": 0, "cycles": 0, "checkpoints": 0}
-    ks = [n for t, n, _ in removed if t == "C"]
-    js = [n for t, n, _ in removed if t == "K"]
-    rolled = {"through_k": max([rolled.get("through_k", 0)] + ks), "cycles": rolled.get("cycles", 0) + len(ks),
-              "checkpoints": rolled.get("checkpoints", 0) + len(js), "through_j": max([rolled.get("through_j", 0) or 0] + js),
-              "commit": head, "at": now_iso()}
-    data = read_json(pdir / "phase.json")
-    data["loop"]["rolled"] = rolled
-    write_loop_block(pdir, data["loop"], data)
-    ids = {name for _t, _n, name in removed}
-    closes = [l.get("closed_at") for l in loop_read(pdir, "ledger.jsonl") if l.get("cycle") in ids]
-    closes += [c.get("closed_at") for c in loop_read(pdir, "checkpoints.jsonl") if c.get("slice") in ids]
-    pruned = loop_prune_events(pdir, ids, max((_meter_ts(c) or 0.0 for c in closes), default=None))
-    append_event("loop_rolled_up", phase=pid, cycles=len(ks), checkpoints=len(js), commit=head)
-    names = ", ".join(name.rsplit(".", 1)[-1] for _t, _n, name in removed)
-    lines.insert(0, f"rolled {names} ({len(removed)} folder(s)) -> loop/ledger.jsonl; folders at git {head[:7]}; "
-                    f"{pruned} event(s) pruned; {loop_rolled_text(rolled)}")
-    return lines
-
-
-def loop_prune_events(pdir: Path, ids: set, cutoff) -> int:
-    """Rewrite loop/events.jsonl without the rolled slices' events and without the slice-less loop events at or
-    before the newest rolled close. Returns how many lines left."""
-    path = loop_path(pdir, LOOP_EVENTS_FILE)
-    if not path.exists():
-        return 0
-    kept, dropped = [], 0
-    for raw in path.read_text(encoding="utf-8", errors="replace").split("\n"):
-        if not raw.strip():
-            continue
-        try:
-            ev = json.loads(raw)
-        except ValueError:
-            kept.append(raw)
-            continue
-        sid = ev.get("slice") if isinstance(ev, dict) else None
-        old = (isinstance(ev, dict) and not sid and cutoff is not None and _event_ts(ev) and _event_ts(ev) <= cutoff)
-        if sid in ids or old:
-            dropped += 1
-            continue
-        kept.append(raw)
-    if dropped:
-        write_text(path, "".join(line + "\n" for line in kept))
-    return dropped
-
-
-def loop_rolled_text(rolled) -> str:
-    """`C1–C<n> rolled up (<count>)[, K… (<m>)]`, or '' when nothing is rolled."""
-    if not isinstance(rolled, dict) or not (rolled.get("cycles") or rolled.get("checkpoints")):
-        return ""
-    text = f"C1–C{rolled.get('through_k', 0)} rolled up ({rolled.get('cycles', 0)})"
-    if rolled.get("checkpoints"):
-        text += f", K1–K{rolled.get('through_j', 0)} ({rolled.get('checkpoints')})"
-    return text
-
-
-def _loop_rolled_count(phase) -> int:
-    """How many cycle and checkpoint folders a loop phase has rolled out of the tree (0 for any other phase)."""
-    rolled = (phase_loop(phase) or {}).get("rolled")
-    return (rolled.get("cycles", 0) + rolled.get("checkpoints", 0)) if isinstance(rolled, dict) else 0
-
-
-def loop_rollup_row(phase: dict, cells: int):
-    """The one table row a loop's rolled-up folders collapse into (`## Slices` has 6 cells, backlog.md 5),
-    or None when nothing is rolled."""
-    loop = phase_loop(phase)
-    rolled = (loop or {}).get("rolled")
-    text = loop_rolled_text(rolled)
-    if not text:
-        return None
-    span = text.split(" rolled up", 1)[0]
-    desc = (f"rolled up ({rolled.get('cycles', 0)}{', ' + str(rolled['checkpoints']) + ' checkpoint(s)' if rolled.get('checkpoints') else ''}) "
-            f"→ `loop/ledger.jsonl`; folders at git `{str(rolled.get('commit'))[:7]}`")
-    if cells == 6:
-        return f"| `{span}` | {desc} | `cycle / -` | `rolled` | — | — |"
-    return f"| [x] `{span}` | `rolled` | {desc} | `cycle` | `{phase.get('path', '')}/loop/ledger.jsonl` |"
-
-
-def _with_rollup_row(phase: dict, rows: list, orders: list, cells: int) -> list:
-    """`rows` (one per slice, `orders` theirs) with the rollup row placed before the first cycle row."""
-    row = loop_rollup_row(phase, cells)
-    if row is None:
-        return rows
-    at = next((i for i, o in enumerate(orders) if isinstance(o, (int, float)) and o >= LOOP_CYCLE_ORDER_BASE), len(rows))
-    return rows[:at] + [row] + rows[at:]
-
-
-def _loop_write_digest(pdir: Path, transcripts=None) -> str:
-    """Write loop/digest.md and stamp loop.digest_at, exactly as `loop-status --digest --write`; returns the text."""
-    pid = pdir.name
-    src = LoopSource(pid, pdir)
-    text = loop_digest(src, loop_view(src, transcripts=transcripts, as_driver=True))
-    write_text(loop_path(pdir, "digest.md"), text + "\n")
-    data = read_json(pdir / "phase.json")
-    data["loop"]["digest_at"] = now_iso()
-    write_loop_block(pdir, data["loop"], data)
-    append_event("loop_digest_written", phase=pid, chars=len(text))
-    return text
-
-
-def _loop_fix_state(loop: dict, slices: list, pid: str) -> tuple:
-    """(open fix slice or None, fix slices cut since the last checkpoint) for a loop paused by a checkpoint's
-    changes_requested: every setup slice created after the checkpoint's verdict."""
-    record = loop.get("checkpoint") if isinstance(loop.get("checkpoint"), dict) else {}
-    since = _meter_ts(record.get("at"))
-    fixes = [s for s in slices if isinstance(s, dict) and s.get("kind") != "cycle" and not loop_checkpoint_slice(s)
-             and s.get("id") != f"{pid}.REVIEW" and since is not None and (_meter_ts(s.get("created_at")) or 0) >= since]
-    open_setup = next((s for s in slices if loop_setup_slice(s, pid)), None)
-    return open_setup, fixes
-
-
-def _loop_anchor(pdir: Path, data: dict) -> dict:
-    """The commit a window's diff starts from: the last landed checkpoint's, else the phase branch's base, else
-    the phase's creation commit; plus the host's in a nested pair."""
-    loop = phase_loop(data) or {}
-    record = loop.get("checkpoint") if isinstance(loop.get("checkpoint"), dict) else {}
-    execution = phase_execution(data) or {}
-    out = {"from_commit": record.get("commit") or execution.get("base_sha")}
-    if not out["from_commit"] and _git_available():
-        out["from_commit"] = _phase_creation_commit(data.get("id", pdir.name), pdir, False)
-    if NESTED is not None:
-        out["from_host_commit"] = (record.get("host_commit") or execution.get("host_base_sha")
-                                   or (data.get("host_anchors") or {}).get("created"))
-    return out
-
-
-def _loop_queue_control(pdir: Path, data: dict, action: str, words, cmd: str, home=None) -> None:
-    """Queue one control request in the live loop's loop/control.json (another stream's words: the loop worktree's
-    for a worktree loop, the default checkout's for a default-stream loop), print it. Writes nothing here."""
-    home = home or loop_home(pdir, data)
-    pid = home.pid
-    stream = current_stream(all_active_phases())
-    target = home.pdir
-    if target is None and home.placement == "worktree":
-        raise SystemExit(f"{cmd}: the loop's worktree ({(phase_execution(home.data) or {}).get('worktree')}) is not on disk here; run it "
-                         "from the loop's checkout; refused, nothing was written")
-    if target is None:
-        raise SystemExit(f"{cmd}: the loop runs on the default stream, and the default checkout is not on disk here; run it "
-                         "from the default checkout; refused, nothing was written")
-    path = target / "loop" / LOOP_CONTROL_FILE
-    try:
-        current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    except (OSError, ValueError):
-        raise SystemExit(f"{cmd}: {path} is not readable JSON; fix it first; refused, nothing was written")
-    requests = current.get("requests") if isinstance(current, dict) and isinstance(current.get("requests"), list) else []
-    me = session_identity()
-    source = f"stream {stream or 'default'}" + (f", session {me['session']}" if me else "")
-    requests.append({"action": action, "words": words, "at": now_iso(), "from": source})
-    write_json(path, {"requests": requests})
-    # P50-fr.F2: nothing in this checkout is written -- no event, no regenerated works/ file -- so a queued word
-    # never dirties the default checkout ahead of a checkpoint merge; the loop records it when it applies it
-    print(f"queued {action} for {pid} in {path} ({len(requests)} request(s)): the loop applies it at its next tick")
-    if home.placement != "worktree":
-        print("this checkout: nothing written here (the request lives in the default checkout, the loop's own; its apply records it)")
-        return
-    print("this checkout: nothing written here (the request lives in the loop worktree; its apply records it)")
-    if stream is not None:  # the checkpoint merge lands in the default checkout, never in another phase's worktree
-        return
-    dirty = _git(["status", "--porcelain", "--", str(WORKS)], check=False) if _git_available() else None
-    if dirty is not None and dirty.returncode == 0 and dirty.stdout.strip():
-        # the loop worktree refreshes this checkout's generated works/ files as it runs (v67); git refuses a
-        # merge over them, so they are committed before the checkpoint merge (parallel-phase skill)
-        print(f"before the checkpoint merge: commit this checkout's works/ first ({len(dirty.stdout.splitlines())} uncommitted "
-              f"path(s), regenerated here by the loop's worktree as it runs): git add {shown(WORKS)} && git commit")
-
-
-def loop_checkpoint(args: argparse.Namespace) -> None:
-    """--now (the operator's ask: a checkpoint at the next boundary; queued from another stream) | --start (on
-    action=checkpoint: create <P>.K<j> and hold the lease) | --verdict pass|changes_requested|blocked (close
-    it: meter, record, then continue, pause for fixes, or halt) | --landed (after the passing checkpoint's
-    commit: record that commit as the merge point)."""
-    pdir = _loop_require_phase(args.phase)
-    pid = pdir.name
-    chosen = [a for a in LOOP_CHECKPOINT_ACTIONS if getattr(args, a, None)]
-    if len(chosen) != 1:
-        raise SystemExit(f"loop-checkpoint {pid}: give exactly one of --now, --start, --verdict, --landed; refused, nothing was written")
-    action = chosen[0]
-    cmd = f"loop-checkpoint {pid} --{action}"
-    data = read_json(pdir / "phase.json")
-    loop = phase_loop(data)
-    if loop is None:
-        raise SystemExit(f"{cmd}: {pid} is not a loop phase; refused, nothing was written")
-    if action != "verdict" and args.summary is not None:
-        raise SystemExit(f"{cmd}: --summary belongs to --verdict; refused, nothing was written")
-    if action == "now":
-        words = _one_line(args.words) if args.words and _one_line(args.words) else None
-        home = loop_home(pdir, data)
-        if not home.own:
-            return _loop_queue_control(pdir, data, "checkpoint", words, cmd, home)
-        line = _loop_control_apply(pdir, "checkpoint", words)
-        rebuild_index_and_state()
-        print(line)
-        return
-    if args.words is not None:
-        raise SystemExit(f"{cmd}: --words belongs to --now; refused, nothing was written")
-    home = loop_home(pdir, data)
-    if not home.own:
-        where = f"branch {home.branch}" if home.placement == "worktree" else home.label()
-        raise SystemExit(f"{cmd}: runs only on the loop's own stream ({where}); refused, nothing was written")
-    _driver_refuse(loop, cmd, pid)
-    if action == "start":
-        return _loop_checkpoint_start(pdir, data, loop, cmd)
-    if action == "verdict":
-        return _loop_checkpoint_verdict(pdir, data, loop, cmd, args.verdict, args.summary, args.transcripts)
-    return _loop_checkpoint_landed(pdir, data, loop, cmd)
-
-
-def _loop_checkpoint_start(pdir: Path, data: dict, loop: dict, cmd: str) -> None:
-    pid = data.get("id", pdir.name)
-    bounds = loop_bounds_of(LoopSource(pid, pdir), loop)
-    inflight = loop.get("inflight")
-    if isinstance(inflight, dict) and inflight.get("cycle"):
-        what = "checkpoint" if inflight.get("kind") == "checkpoint" else "cycle"
-        raise SystemExit(f"{cmd}: {what} {inflight['cycle']} is in flight (close it first); refused, nothing was written")
-    if loop.get("status") not in ("signed", "running"):
-        raise SystemExit(f"{cmd}: the loop is {loop.get('status')}; a checkpoint starts on a signed or running loop; refused, nothing was written")
-    if data.get("status") in ("pending", "blocked", "done"):
-        raise SystemExit(f"{cmd}: phase {pid} is {data.get('status')}, and nothing starts past a stop; refused, nothing was written")
-    reason = loop_checkpoint_due_reason(loop, bounds)
-    if reason is None:
-        record = loop.get("checkpoint") if isinstance(loop.get("checkpoint"), dict) else {}
-        since = (loop.get("counters") or {}).get("cycles", 0) - (record.get("cycles_at") or 0)
-        raise SystemExit(f"{cmd}: no checkpoint is due ({since} of checkpoint_every {bounds['checkpoint_every']} cycles since the last; "
-                         f"the operator asks for one with {WORKFLOW_CMD} loop-checkpoint {pid} --now); refused, nothing was written")
-    setup = [s for s in (read_json(d / "slice.json") for d in slice_dirs(pdir)) if loop_setup_slice(s, pid)]
-    if setup:
-        raise SystemExit(f"{cmd}: {', '.join(str(s.get('id')) for s in setup)} must finish first; refused, nothing was written")
-    record = loop.get("checkpoint") if isinstance(loop.get("checkpoint"), dict) else {}
-    j = loop.get("next_checkpoint") if _is_int(loop.get("next_checkpoint")) else (record.get("j") or 0) + 1
-    sid = f"{pid}.K{j}"
-    if (pdir / "slices" / sid).exists():
-        raise SystemExit(f"{cmd}: slice {sid} already exists while next_checkpoint is {j}; refused, nothing was written")
-    to_k = _loop_cycle_k(loop.get("last_cycle"))
-    window = {"from_k": ((record.get("window") or {}).get("to_k") or 0) + 1, "to_k": to_k}
-    anchor = _loop_anchor(pdir, data)
-    started = now_iso()
-    sdir = create_slice(pid, sid, f"checkpoint {j}: cycles C{window['from_k']}–C{to_k}", "review",
-                        LOOP_CYCLE_ORDER_BASE + 2 * to_k + 1, "high", source={"type": "loop", "id": pid})
-    append_event("slice_created", phase=pid, slice=sid)
-    sdata = read_json(sdir / "slice.json")
-    sdata["loop"] = {"j": j, "window": window, **anchor, "reason": reason}
-    write_json(sdir / "slice.json", sdata)
-    old = _set_slice_status(sdir, "in_progress")
-    append_event("slice_status_changed", slice=sid, old_status=old, new_status="in_progress")
-    data = read_json(pdir / "phase.json")
-    loop = data["loop"]
-    loop["inflight"] = {"cycle": sid, "kind": "checkpoint", "started_at": started, "attempt": 1}
-    loop["next_checkpoint"] = j + 1
-    write_loop_block(pdir, loop, data)
-    append_event("loop_checkpoint_started", phase=pid, slice=sid, window=window, reason=reason)
-    rebuild_index_and_state()
-    print(f"checkpoint={sid}")
-    print(f"window=C{window['from_k']}–C{to_k}")
-    print(f"reason={reason}")
-    for key, value in anchor.items():
-        print(f"{key}={value or 'none'}")
-    print(f"slice_path={shown(sdir)}")
-    print(f"next: write {shown(sdir / 'plan.md')} (the window's ledger lines, spend, failures, parked items and survivors; "
-          f"the diff from from_commit against the charter's outputs and its forbidden list; charter fit), then "
-          f"{WORKFLOW_CMD} loop-cycle-dispatch {sid} and dispatch it ({WORKFLOW_CMD} executor-route {sid})")
-
-
-def _loop_checkpoint_verdict(pdir: Path, data: dict, loop: dict, cmd: str, verdict: str, summary, transcripts) -> None:
-    pid = data.get("id", pdir.name)
-    inflight = loop.get("inflight")
-    if not (isinstance(inflight, dict) and inflight.get("kind") == "checkpoint" and inflight.get("cycle")):
-        raise SystemExit(f"{cmd}: no checkpoint is open (in flight: {(inflight or {}).get('cycle') if isinstance(inflight, dict) else 'none'}); "
-                         "refused, nothing was written")
-    sid = inflight["cycle"]
-    sdir = pdir / "slices" / sid
-    summary = _one_line(summary or "")
-    if not summary:
-        raise SystemExit(f"{cmd}: --summary \"<one line: what the checkpoint found>\" is required; refused, nothing was written")
-    result = sdir / "result.md"
-    if verdict != "blocked" and not (result.is_file() and result.read_text(encoding="utf-8").strip()):
-        raise SystemExit(f"{cmd}: {shown(result)} is missing; only --verdict blocked records a checkpoint without one; "
-                         "refused, nothing was written")
-    loop_read(pdir, "checkpoints.jsonl")  # refuse now, before any write, on a list that cannot be read
-    sdata = read_json(sdir / "slice.json")
-    info = sdata.get("loop") if isinstance(sdata.get("loop"), dict) else {}
-    j = info.get("j")
-    closed_at = now_iso()
-    meter = loop_meter_part(pdir, sid, inflight.get("started_at"), closed_at, loop, transcripts)
-    line = {"j": j, "slice": sid, "window": info.get("window"), "verdict": verdict, "summary": summary,
-            "started_at": inflight.get("started_at"), "closed_at": closed_at, "at": closed_at, **meter}
-    # -- writes, after every refusal --
-    loop_append(pdir, "checkpoints.jsonl", line)
-    sdata["outcome"] = f"{verdict}: {summary}"
-    write_json(sdir / "slice.json", sdata)
-    old = _set_slice_status(sdir, "done")
-    append_event("slice_status_changed", slice=sid, old_status=old, new_status="done")
-    data = read_json(pdir / "phase.json")
-    loop = data["loop"]
-    counters = loop.get("counters") or {}
-    loop["checkpoint"] = {"j": j, "slice": sid, "verdict": verdict, "at": closed_at, "commit": None,
-                          "window": info.get("window"), "cycles_at": counters.get("cycles", 0)}
-    loop["inflight"] = None
-    loop["checkpoint_requested"] = None
-    lines = [f"recorded {sid}: {verdict} -- {summary}",
-             f"metered usd={meter['usd']} usd_source={meter['usd_source']} minutes={meter['minutes']} model={meter['model']}"]
-    if verdict == "pass":
-        lines.append(f"next: commit this checkpoint, then {WORKFLOW_CMD} loop-checkpoint {pid} --landed (records the merge point)")
-    elif verdict == "changes_requested":
-        loop["paused"] = {"words": None, "at": closed_at, "from": f"checkpoint {sid}", "from_status": loop.get("status")}
-        loop["status"] = "paused"
-        loop["paused_by"] = "checkpoint"
-        lines.append(f"paused {pid} by the checkpoint: cut fix slices from {shown(result)} ({WORKFLOW_CMD} new-slice --phase {pid} "
-                     f"--slice {pid}.F<n> --kind fix --name \"...\"), run them, then {WORKFLOW_CMD} loop-control {pid} resume")
-    write_loop_block(pdir, loop, data)
-    append_event("loop_checkpoint_recorded", phase=pid, slice=sid, verdict=verdict, usd=meter["usd"])
-    if verdict == "changes_requested":
-        append_event("loop_paused", phase=pid, words=None, source=f"checkpoint {sid}")
-    if verdict == "blocked":
-        halt = loop_halt(pdir, "checkpoint", f"{sid} blocked: {summary}")
-        lines.append(f"halted reason=checkpoint stop_kind={halt['stop_kind']} on_words={halt['on_words']}")
-    if verdict == "pass":
-        text = _loop_write_digest(pdir, transcripts)
-        lines.append(f"wrote {shown(loop_path(pdir, 'digest.md'))} ({len(text)} chars)")
-    rebuild_index_and_state()
-    for out in lines:
-        print(out)
-
-
-def _loop_checkpoint_landed(pdir: Path, data: dict, loop: dict, cmd: str) -> None:
-    pid = data.get("id", pdir.name)
-    record = loop.get("checkpoint") if isinstance(loop.get("checkpoint"), dict) else None
-    if not record or record.get("verdict") != "pass":
-        raise SystemExit(f"{cmd}: the last checkpoint {'did not pass (' + str(record.get('verdict')) + ')' if record else 'does not exist'}; "
-                         "only a passing checkpoint lands; refused, nothing was written")
-    if record.get("commit"):
-        raise SystemExit(f"{cmd}: {record.get('slice')} already landed at {record['commit'][:12]}; refused, nothing was written")
-    if not _git_available():
-        raise SystemExit(f"{cmd}: git is not available, so there is no commit to land; refused, nothing was written")
-    dirty = _git(["status", "--porcelain", "--untracked-files=all", "--", _loop_rel(pdir)], check=False).stdout.strip()
-    if dirty:
-        raise SystemExit(f"{cmd}: the phase folder holds uncommitted changes ({len(dirty.splitlines())} path(s)): commit the "
-                         "checkpoint first; refused, nothing was written")
-    head = _rev_parse("HEAD")
-    if not head:
-        raise SystemExit(f"{cmd}: the works repo has no commit; refused, nothing was written")
-    record["commit"] = head
-    record["landed_at"] = now_iso()
-    if NESTED is not None:
-        record["host_commit"] = head_commit() or None
-    write_loop_block(pdir, loop, data)
-    append_event("loop_checkpoint_landed", phase=pid, slice=record.get("slice"), commit=head, host_commit=record.get("host_commit"))
-    rebuild_index_and_state()
-    print(f"landed {record.get('slice')} at {head}" + (f" (host {record['host_commit']})" if record.get("host_commit") else ""))
-    print("this record rides in the next commit; once it is committed the default stream sees "
-          f"merge_ready={pid}:{head[:7]} and merges that commit at a slice boundary, past {WORKFLOW_CMD} parallel-gate {pid}"
-          if phase_execution(data) else "the loop runs on the default stream: its outputs are already on it")
-
-
-def _loop_outputs_at(commit: str, phase_id: str):
-    """The signed charter's `outputs` as recorded at a commit, or None when it cannot be read."""
-    data = _json_at_ref(commit, f"works/phases/active/{phase_id}/phase.json")
-    charter = ((phase_loop(data) or {}).get("charter") or {}) if isinstance(data, dict) else {}
-    if not _is_int(charter.get("version")):
-        return None
-    proc = _git(["show", f"{commit}:{_repo_prefix()}works/phases/active/{phase_id}/{charter.get('path') or charter_rel(charter['version'])}"],
-                check=False)
-    if proc.returncode != 0:
-        return None
-    bounds, problems = _charter_bounds_problems(proc.stdout)
-    return None if problems else list(bounds.get("outputs") or [])
-
-
-def _path_in_outputs(path: str, outputs) -> bool:
-    import fnmatch
-    for out in outputs or []:
-        out = out.strip().rstrip("/")
-        if not out:
-            continue
-        if any(ch in out for ch in "*?["):
-            if fnmatch.fnmatchcase(path, out) or fnmatch.fnmatchcase(path, out + "/*"):
-                return True
-        elif path == out or path.startswith(out + "/"):
-            return True
-    return False
-
-
-def _loop_host_exemption(execution: dict, host_commit, outputs) -> tuple:
-    """(exempt, detail) for a nested loop's host side: every host path its checkpoint brings is under `outputs`."""
-    if HOST_ROOT is None or not host_commit:
-        return True, "no host commit recorded"
-    base_ref = execution.get("host_base") or "HEAD"
-    base = _git(["merge-base", base_ref, host_commit], cwd=HOST_ROOT, check=False).stdout.strip()
-    if not base:
-        return False, f"(no host merge-base between {base_ref} and {host_commit[:12]})"
-    proc = _git(["diff", "--name-only", "-z", "--no-renames", base, host_commit], cwd=HOST_ROOT, check=False)
-    if proc.returncode != 0:
-        return False, f"(host git diff {base[:12]}..{host_commit[:12]} failed)"
-    paths = [p for p in proc.stdout.split("\0") if p]
-    bad = next((p for p in paths if not _path_in_outputs(p, outputs)), None)
-    return (False, f"host {bad}") if bad else (True, f"{len(paths)} host path(s) inside outputs")
-
-
-def loop_branch_checkpoint(branch_data):
-    """The loop block's last checkpoint record from a branch copy of phase.json, or None."""
-    loop = phase_loop(branch_data) if isinstance(branch_data, dict) else None
-    record = (loop or {}).get("checkpoint")
-    return record if isinstance(record, dict) else None
-
-
-def _ref_is_ancestor(commit: str, ref: str) -> bool:
-    """`commit` is an ancestor of `ref` in this workspace's own repo (ROOT). Named apart from P40's
-    `_is_ancestor(path, older, newer)`: sharing that name shadowed it, and broke the nested base rule
-    (`resolve_repo_base`) for every phase whose host branch had left the default branch (P51.S6)."""
-    return _git(["merge-base", "--is-ancestor", commit, ref], check=False).returncode == 0
-
-
 # ---------------------------------------------------------------------------
 # Cloud mode: hi2vi holds this workspace's truth and the disk is its copy. A checkout is linked exactly
 # when `<ROOT>/.hi2vi/link.json` exists ({schema, server, org_id, project_id, linked_at}; no key). Without
@@ -20074,7 +16652,7 @@ CLOUD_SEND_PIECE = 65536  # bytes offered to one send (the kernel takes what fit
 CLOUD_TLS_PIECE = 16384  # plaintext encrypted at a time (one TLS record), so an upload is never held twice in memory
 CLOUD_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 # The append-only files (the union files of .gitattributes): synced as appended lines, never as revisions.
-CLOUD_APPEND_RE = re.compile(r"works/events\.jsonl|works/phases/.+/loop/(?:ledger|events|dead|survivors|checkpoints)\.jsonl")
+CLOUD_APPEND_RE = re.compile(r"works/events\.jsonl")
 CLOUD_DERIVED = ("works/state.json", "works/index.json")  # sent with every batch as the latest projection only
 CLOUD_RACY_NS = 2_000_000_000  # a stat-cache entry this close to the clock is hashed again next time
 CLOUD_BATCH_MAX = 8_000_000  # bytes per batch as sent: hi2vi answers 413 above 8 MiB, so a bigger change splits
@@ -21284,7 +17862,7 @@ def cloud_commit_step(session: CloudSession):
 CLOUD_OWN = ("link", "unlink", "sync")
 CLOUD_KEY_PROMPT = "Paste a workspace key for this project (make one under Keys on the project's page): "
 # Refused in cloud mode with one line each, before anything is read or written: a linked checkout runs every
-# phase here, with no worktree streams (and so no loop on a stream of its own, and no reopened pair).
+# phase here, with no worktree streams (and so no reopened pair).
 CLOUD_STREAM_REFUSED = ("parallel-start", "parallel-add-repo", "parallel-gate", "parallel-merge-finish",
                         "parallel-teardown", "reopen-phase")
 # An unused install's truth set: only what a fresh install seeds (the five plain docs; an older install's
@@ -21300,9 +17878,6 @@ def cloud_refusal(args: argparse.Namespace):
         what = "it cuts a worktree pair for the phase" if args.cmd == "reopen-phase" else "it runs a phase on a worktree stream"
         return (f"{args.cmd} is refused in cloud mode: {what}, and a linked checkout runs every phase here, "
                 "with no streams (nothing was changed)")
-    if args.cmd == "loop-checkpoint" and getattr(args, "landed", False):
-        return ("loop-checkpoint --landed is refused in cloud mode: it records a loop stream's commit for a merge, "
-                "and a linked checkout runs no streams; hi2vi's revisions are the record (nothing was changed)")
     return None
 
 
@@ -22135,9 +18710,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--check", action="store_true", help="Report drift without writing; exit 1 if out of sync")
     p.set_defaults(func=sync_agents)
 
-    p = sub.add_parser("executor-route", help="Print the executor routing decision, one key=value per line, writing nothing: bare, the resolved route table (high, research, design, critic, judge, reader, code, mid, screen, explore), the agent files' sync state and an override= line per row executors.toml sets (its value against the default); with a slice id, the route, subagent_type (slice-executor for every slice row), model, effort and attribution its dispatch uses (kind first, then risk, then attempt; a loop's cycle routes by its charter stage and prints stage=); --drafter / --critic / --judge / --reader / --code / --explore, a non-slice agent's dispatch; plus fallback=, skip= and warning= lines for the environment. The critic and the judge may share the design row's model (v75)")
+    p = sub.add_parser("executor-route", help="Print the executor routing decision, one key=value per line, writing nothing: bare, the resolved route table (high, research, design, critic, judge, reader, code, mid, explore), the agent files' sync state and an override= line per row executors.toml sets (its value against the default); with a slice id, the route, subagent_type (slice-executor for every slice row), model, effort and attribution its dispatch uses (kind first, then risk, then attempt); --drafter / --critic / --judge / --reader / --code / --explore, a non-slice agent's dispatch; plus fallback=, skip= and warning= lines for the environment. The critic and the judge may share the design row's model (v75)")
     p.add_argument("slice", nargs="?", help="the slice to route; omit for the table")
-    p.add_argument("--retry", action="store_true", help="the slice's second attempt (an escalation, a failed or empty return, a fix of mid-row work): always the high row. A loop cycle needs none: the engine's attempt picks its row (attempt 2 is high), and --retry on a cycle's attempt 1 is refused")
+    p.add_argument("--retry", action="store_true", help="the slice's second attempt (an escalation, a failed or empty return, a fix of mid-row work): always the high row")
     p.add_argument("--drafter", action="store_true", help="the design-drafter's dispatch (its own design row, [claude.design]; not a slice route)")
     p.add_argument("--phase", help="with --drafter: the phase whose intent.md `## Design Style` may name the drafter's model (`Drafter: fable`); its effort stays the design row's, and an absent line is the design row. Behind a loopback proxy (no Fable) a Fable drafter falls back to opus")
     p.add_argument("--critic", action="store_true", help="the design-critic's dispatch in critic mode (the critic row, [claude.critic]); it may share the drafter's model")
@@ -22163,7 +18738,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--transcripts", action="append", metavar="DIR", help="read this projects/<slug> directory instead of discovering the session root's (repeatable)")
     p.set_defaults(func=cmd_dispatch_summary)
 
-    p = sub.add_parser("next", help="Print the current phase/slice selection (plus explain_unit=<document|book|chapter> on an explain phase, and on the default stream merge_ready=<P>:<branch> for a parallel phase done with a passing review on its branch but not merged yet, and merge_ready=<P>:<commit7> for a loop whose passing, landed checkpoint is not merged yet); when the phase's notebook is over 40,960 B, also notebook_over_budget= with up to 3 notebook_move= commands to run before the next dispatch (required form), or none when nothing can move (advisory form); for a phase with a pr block, one pr_branch=<repo|host|root>:<branch> base=<base> url=<url|none> per recorded branch, pr_waived=<note> when waived, and pr_draft=due while the phase is at its review (its REVIEW slice in_progress, in_review or pending, the phase in_review, or its acceptance gate open) with a branch unopened: the drafts open when the review would pass. In a linked checkout it first applies the web's pending agenda changes (one inbox <entry>: line each) and prints store=cloud server=<server> project=<id> after the nested lines, then commits_waiting=<ids|none>: the done slices whose commit mark-committed has not recorded, in finish order")
+    p = sub.add_parser("next", help="Print the current phase/slice selection (plus explain_unit=<document|book|chapter> on an explain phase, and on the default stream merge_ready=<P>:<branch> for a parallel phase done with a passing review on its branch but not merged yet); when the phase's notebook is over 40,960 B, also notebook_over_budget= with up to 3 notebook_move= commands to run before the next dispatch (required form), or none when nothing can move (advisory form); for a phase with a pr block, one pr_branch=<repo|host|root>:<branch> base=<base> url=<url|none> per recorded branch, pr_waived=<note> when waived, and pr_draft=due while the phase is at its review (its REVIEW slice in_progress, in_review or pending, the phase in_review, or its acceptance gate open) with a branch unopened: the drafts open when the review would pass. In a linked checkout it first applies the web's pending agenda changes (one inbox <entry>: line each) and prints store=cloud server=<server> project=<id> after the nested lines, then commits_waiting=<ids|none>: the done slices whose commit mark-committed has not recorded, in finish order")
     p.add_argument("--card", action="store_true", help="print the resume card instead: the pointer, the next action or the typed stop, the open gates, the running spans (from the newest session's subagents/*.meta.json) and the slice's file paths, computed from state, at most 2,048 bytes -- what compact-resume prints after a compaction")
     p.set_defaults(func=cmd_next)
 
@@ -22181,8 +18756,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--order", type=float, help="sort position among phases; a fractional value (e.g. 4.5) inserts between two neighbors without renumbering")
     p.add_argument("--on-main", action="store_true", dest="on_main",
                    help="no-op since v43 (the default stream is the default); accepted so v42 habits and scripts keep working")
-    p.add_argument("--loop", action="store_true",
-                   help="make it a loop phase at once: new-phase followed by loop-init (the loop block, loop/charter/v1.md from the charter template, REVIEW ordered after every cycle))")
     p.add_argument("--agenda", metavar="ITEM", help="link the new phase to this agenda item (" + AGENDA_ID_HELP + "); stored as `agenda` in phase.json; refused, nothing written, when it names no item")
     p.set_defaults(func=new_phase)
 
@@ -22231,7 +18804,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("status")
     p.set_defaults(func=set_phase_status)
 
-    p = sub.add_parser("review-phase", help="Record a phase review verdict (pass/changes_requested/blocked). A loop phase's pass is refused (nothing written) until the loop is stopped, nothing is in flight and no parked item is open (loop-unpark); set-phase-status <loop P> done is held to the same guard. A pass is also refused, beside the acceptance gate's refusal and naming only itself, while the phase's pr block records a branch with no draft PR URL, or records none while phase-scope lists product files, unless the PR is waived (pr-record --url / --waive); a phase with no pr block is never refused")
+    p = sub.add_parser("review-phase", help="Record a phase review verdict (pass/changes_requested/blocked). A pass is refused, beside the acceptance gate's refusal and naming only itself, while the phase's pr block records a branch with no draft PR URL, or records none while phase-scope lists product files, unless the PR is waived (pr-record --url / --waive); a phase with no pr block is never refused")
     p.add_argument("phase", help=PHASE_ARG_HELP)
     p.add_argument("--verdict", required=True, choices=sorted(REVIEW_VERDICTS))
     p.add_argument("--reviewer", default=None)
@@ -22599,93 +19172,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--deferred", dest="deferred_id", metavar="JOB", help="the deferred job, in any brief form (92, D92 or 92-x4; D12; m3xa or D-m3xa)")
     _one_line_usage_errors(p)
     p.set_defaults(func=agenda_unlink)
-
-    p = sub.add_parser("loop-init", help="Make a phase a loop phase (P50): write its loop block, seed loop/charter/v1.md from the charter template and order its REVIEW after every cycle; refused (nothing written) unless the phase is planned, or in progress with nothing past its DECOMP started, and on a loop, docs or explain phase")
-    p.add_argument("phase", help=PHASE_ARG_HELP)
-    p.set_defaults(func=loop_init)
-
-    p = sub.add_parser("loop-sign", help="Sign a loop charter version on the operator's literal words: pin its sha256 and record it (a drafting loop becomes signed); refused (nothing written) for empty words, a missing file, invalid bounds, an UNFILLED placeholder left, or a version already signed or not past the signed one. A budget-total or max-cycles halt the new bounds clear is lifted; one they clear while the other still holds becomes that halt. The loop's own stream only. The orchestrator runs it only after the operator's words")
-    p.add_argument("phase", help=PHASE_ARG_HELP)
-    p.add_argument("--words", required=True, help="the operator's literal words, verbatim")
-    p.add_argument("--version", type=int, help="the charter version N (loop/charter/vN.md); default the highest on disk")
-    p.set_defaults(func=loop_sign)
-
-    p = sub.add_parser("loop-queue", help="A loop's item queue: add one item (refused for a dead key, a key already tried or queued at that stage, or a stage the charter does not name), or list it in take order (later stages first, then priority descending, then first in, first out)")
-    p.add_argument("phase", help=PHASE_ARG_HELP)
-    p.add_argument("action", choices=("add", "list"))
-    p.add_argument("--key", help="add: the item's unique key")
-    p.add_argument("--title", help="add: one line naming the item")
-    p.add_argument("--stage", help="add: the stage (default the charter's first stage; before signing, screen)")
-    p.add_argument("--payload", help="add: the item's product-owned specification, a JSON string")
-    p.add_argument("--priority", type=int, default=0, help="add: higher is taken first within a stage (default 0)")
-    p.add_argument("--source", choices=("operator", "orchestrator"), default="operator", help="add: who authored it (default operator)")
-    p.set_defaults(func=loop_queue)
-
-    p = sub.add_parser("loop-cycle-start", help="Start a loop's next cycle <P>.C<k> (kind cycle, in_progress) under the lease: the queue head, or a new item with --key/--title; prints cycle=, stage=, key= and slice_path=. Refused (nothing written) on a non-loop phase, an unsigned or changed charter, a loop not signed or running, a cycle in flight, an open setup slice, or a dead or tried key")
-    p.add_argument("phase", help=PHASE_ARG_HELP)
-    p.add_argument("--key", help="author a new item instead of taking the queue head")
-    p.add_argument("--title", help="the new item's one-line title (with --key)")
-    p.add_argument("--payload", help="the new item's product-owned specification, a JSON string (with --key)")
-    p.set_defaults(func=loop_cycle_start)
-
-    p = sub.add_parser("loop-cycle-close", help="Close the cycle in flight with its item verdict: one ledger line, the list effects (a pass queues the next stage or makes a survivor; fail -> dead; parked -> the parked list; error -> back in the queue, dead at the second), the counters, then finish-slice. Refused (nothing written) for a non-cycle or a cycle not in flight, parked without --question/--on-words, or a missing result.md (except --verdict error)")
-    p.add_argument("slice", help="the cycle slice (<P>.C<k>)")
-    p.add_argument("--verdict", required=True, choices=LOOP_VERDICTS)
-    p.add_argument("--summary", help="one line: the outcome and, for fail, the reason")
-    p.add_argument("--metrics", help="the product's metrics, a JSON object")
-    p.add_argument("--question", help="parked only: what the operator must decide")
-    p.add_argument("--on-words", dest="on_words", help="parked only: what the operator's words will do")
-    p.add_argument("--transcripts", action="append", metavar="DIR", help="meter from this projects/<slug> directory instead of discovering the session root's (repeatable)")
-    p.set_defaults(func=loop_cycle_close)
-
-    p = sub.add_parser("loop-claim", help="Record the calling Claude Code session (found up the parent-process chain in ${CLAUDE_CONFIG_DIR:-~/.claude}/sessions/<pid>.json; none from a plain shell) as the loop's one driver: loop.driver = {session, pid, proc_start, cwd, claimed_at}. Refused (nothing written) while a different live session holds the claim, naming it and its cwd; an absent or dead holder is replaced. loop-cycle-start, -dispatch, -close and loop-control (bar stop and pause) refuse for a caller that is not the driver")
-    p.add_argument("phase", help=PHASE_ARG_HELP)
-    p.set_defaults(func=loop_claim)
-
-    p = sub.add_parser("loop-tick", help="Read-only, writes nothing: the loop's context (loop, status, driver me|<session>|none, charter, cycle, inflight, spend_today, spend_total, parked, survivors, queue), then exactly one action= and wake_in=<seconds>, then the action's own lines. First rule wins: apply-control; claim | not-driver; the cycle in flight (close, close verdict=error once attempt 2 left no verdict, plan, dispatch attempt= route=, wait, resume-limit until=, overdue, halt reason=limit; dirty_outputs= and footprint= when the charter outputs carry an earlier attempt's writes); the status (halted, paused, stopped -> review; drafting -> sign); halt reason=charter | budget-total | max-cycles; wait reason=budget-day until=<local midnight>; digest; checkpoint reason=every|requested j=; wait reason=cadence; setup; start stage= item=<queue head key | author>. A checkpoint in flight prints kind=checkpoint beside its state (close = loop-checkpoint --verdict); a loop paused by a checkpoint prints setup slice= reason=checkpoint, then resume reason=checkpoint, or fix while no fix slice is cut. On action=halt the orchestrator records it with loop-control <P> halt --reason <r>")
-    p.add_argument("phase", help=PHASE_ARG_HELP)
-    p.add_argument("--transcripts", action="append", metavar="DIR", help="read spans from this projects/<slug> directory instead of discovering the session root's (repeatable)")
-    p.set_defaults(func=loop_tick)
-
-    p = sub.add_parser("loop-cycle-dispatch", help="Run immediately before each Agent dispatch of a cycle: records inflight.dispatched_at, the attempt the engine numbers (a re-dispatch after a dead span, a failed or empty return or an escalate is attempt n+1, mirrored in slice.json loop.attempt; a dispatch that left no span and a usage-limit re-dispatch keep n), its row (route=, attempt 2 high; stage_route=), the recording session and the result.md it saw; prints dirty_outputs= (the charter outputs left uncommitted) and, on a retry, the ## Retry hint. Refused (nothing written) while a live span of the cycle exists or a dispatch was recorded moments ago by a session still alive (the second double-dispatch guard), for a caller that is not the driver, while loop/control.json holds requests, on a halted loop, and when the cycle needs a plan.md or a close instead (attempt 2 left no verdict: close it as error)")
-    p.add_argument("slice", help="the cycle in flight (<P>.C<k>)")
-    p.add_argument("--transcripts", action="append", metavar="DIR", help="read spans from this projects/<slug> directory (repeatable)")
-    p.set_defaults(func=loop_cycle_dispatch)
-
-    p = sub.add_parser("loop-control", help="The operator's words to a loop: pause (running|signed -> paused: no new start, the cycle in flight may close), resume (paused|halted -> running, or signed before any cycle; --words required from halted; refused for a budget-total or max-cycles halt, which a new charter version lifts; clears the halt, resets consecutive_failures once it reached max_consecutive_failures, the phase back to in_progress; when a charter-level stop holds -- a changed signed charter, the total spend at total_usd, the cycles at max_cycles -- it never resumes past it: the loop halts on that stop instead and prints 'not resumed' with its on_words), stop (--words required: any status -> stopped, after which the REVIEW is selectable), halt (the orchestrator records a tick halt verbatim or an uncovered spend: --reason charter|budget-total|max-cycles|limit|spend|other [--detail D]; the one halt writer a close uses: the phase goes pending, stop_kind limit for limit, budget-total and max-cycles lifted only by loop-sign of a new version), apply (applies loop/control.json's queued requests in order, then empties it). From another stream pause, resume and stop queue in the live loop's loop/control.json (the loop worktree's, or the default checkout's for a loop on the default stream) for its next tick, and write nothing in this checkout; every other action refuses there. Every action but stop and pause refuses a caller that is not the driver")
-    p.add_argument("phase", help=PHASE_ARG_HELP)
-    p.add_argument("action", choices=LOOP_CONTROL_ACTIONS)
-    p.add_argument("--words", help="the operator's literal words, verbatim (stop; resume from halted; recorded for pause)")
-    p.add_argument("--reason", help="halt only: the tick's reason verbatim (charter | budget-total | max-cycles | limit), or spend | other")
-    p.add_argument("--detail", help="halt only: one line saying what happened")
-    p.set_defaults(func=loop_control)
-
-    p = sub.add_parser("loop-status", help="The operator's view of one loop, from any stream (another stream's loop is read from its live files when on disk -- its worktree's, or the default checkout's for a loop on the default stream -- else git show <branch>:..., else the local copy, labelled stale; source= names which): status, driver, charter, counters, the cycle in flight and its state, spend today and in total against each budget (with the assumed-cycle count), every open parked item, the last 5 survivors, the queue head, the halt and the next action (the tick's, as the driver sees it). --json: the same view as one object; --digest: at most 1,500 characters over the window since loop.digest_at; --digest --write also writes loop/digest.md and stamps loop.digest_at (own stream, driver only)")
-    p.add_argument("phase", help=PHASE_ARG_HELP)
-    p.add_argument("--json", action="store_true")
-    p.add_argument("--digest", action="store_true")
-    p.add_argument("--write", action="store_true", help="with --digest: write loop/digest.md and stamp loop.digest_at")
-    p.add_argument("--transcripts", action="append", metavar="DIR", help="read spans from this projects/<slug> directory (repeatable)")
-    p.set_defaults(func=loop_status)
-
-    p = sub.add_parser("loop-checkpoint", help="A loop's checkpoint <P>.K<j> (kind review), which reviews its window of cycles. --now: the operator's ask, a checkpoint at the next cycle boundary (from another stream it queues in the live loop's loop/control.json: the loop worktree's, or the default checkout's for a loop on the default stream). --start (on the tick's action=checkpoint; driver only): create <P>.K<j> in_progress, ordered after its last cycle, and hold the lease (loop.inflight kind checkpoint: no cycle starts while it is open; loop-cycle-dispatch and the tick's in-flight rules apply); refused when none is due. --verdict pass|changes_requested|blocked --summary S: meter it like a cycle, append loop/checkpoints.jsonl, finish it and free the lease; pass writes the digest; changes_requested pauses the loop (paused_by checkpoint: fix slices run on the loop stream, then resume); blocked halts it (reason checkpoint). Refused with no checkpoint open, or no result.md (bar blocked). --landed (after committing a passing checkpoint): record the works repo's HEAD (and the host's in a nested pair) as the commit the default stream merges; refused unless the last checkpoint passed and the phase folder is fully committed")
-    p.add_argument("phase", help=PHASE_ARG_HELP)
-    p.add_argument("--now", action="store_true", help="the operator's ask: a checkpoint at the next cycle boundary")
-    p.add_argument("--start", action="store_true", help="on action=checkpoint: create <P>.K<j> and hold the lease")
-    p.add_argument("--verdict", choices=LOOP_CHECKPOINT_VERDICTS, help="close the open checkpoint with its verdict")
-    p.add_argument("--summary", help="--verdict: one line, what the checkpoint found")
-    p.add_argument("--landed", action="store_true", help="after the passing checkpoint is committed: record that commit as the merge point")
-    p.add_argument("--words", help="--now: the operator's literal words, recorded with the ask")
-    p.add_argument("--transcripts", action="append", metavar="DIR", help="--verdict: meter from this projects/<slug> directory (repeatable)")
-    p.set_defaults(func=loop_checkpoint)
-
-    p = sub.add_parser("loop-unpark", help="Resolve a loop's open parked item on the operator's literal words: back in the queue at its stage (exempt from the tried rule), a survivor, or dead; or --to deferred --pointer <DID>: routed to a deferred job already filed (defer-job), which carries the question (words optional). Refused for an unknown or already-resolved key; the loop's own stream only. The final review cannot pass while one is open")
-    p.add_argument("phase", help=PHASE_ARG_HELP)
-    p.add_argument("key")
-    p.add_argument("--to", required=True, choices=("queue", "survivor", "dead", "deferred"))
-    p.add_argument("--words", help="the operator's literal words, verbatim (required but for --to deferred)")
-    p.add_argument("--pointer", help="--to deferred only: the deferred job's id (D<n>, D-<token>)")
-    p.set_defaults(func=loop_unpark)
 
     p = sub.add_parser("archive-phase", help="Archive a single review-passed phase (first-class; use when only some phases are done)")
     p.add_argument("phase", help=PHASE_ARG_HELP)

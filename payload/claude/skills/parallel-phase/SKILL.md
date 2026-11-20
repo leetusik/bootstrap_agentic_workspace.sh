@@ -58,16 +58,6 @@ By the close (`.claude/skills/pr/reference/close.md`). This skill carries no sec
 
 Right after its pass, with no stop: `parallel-gate <P>` (a busy stream does not close it under `exemption=phase-folder-only (<n> paths)`), the close's merge steps (no host side for a detached host worktree), then `parallel-teardown <P> --discard-ignored` nested (it deletes the `pages/` cache) or plain at root, then commit. **When it cannot merge** (a closed gate, something staged, a conflict outside the generated files): leave the branch `done` and unmerged, say so, and never unstage or discard; `next` on the default stream then prints `merge_ready=<P>:<branch>`, and whoever drives that stream integrates it at its next slice boundary.
 
-### A loop phase lands at its checkpoints
-
-A loop phase (`run-loop`) reaches the default branch at each **passing checkpoint**, never only at the end:
-
-1. `next` on the default stream prints `merge_ready=<P>:<sha7>` (nested: `host=<sha7>` too): the checkpoint's commit, **not the branch tip**.
-2. At a slice boundary, `parallel-gate <P>`: it prints `merge_commit=<sha>`, and its exemption also covers the charter's `outputs` (nested: the host diff must stay in them; merge the named host commit first, in the host's conventions).
-3. Commit this checkout's `works/` first, then `git merge <merge_commit>` (take a side of a generated conflict, regenerate), and `parallel-merge-finish`. From here the loop words only queue in the loop's `loop/control.json`.
-4. The loop worktree takes the default branch back at its next cycle boundary: `git merge --no-ff <default>`, `parallel-merge-finish`.
-5. `parallel-teardown <P>` only after the loop's final REVIEW passes.
-
 ### A reopened phase — a change request on its open PR
 
 On the operator's word (also the worktree word), by `.claude/skills/pr/reference/reopen.md`: `reopen-phase <P> --note "team-reported: <what>"` or `--note "operator-reported: <what>"`. **Nested:** `git -C <host> switch <default>`, `pr-sync <P>`, `reopen-phase` (a pair on the existing PR branch); run the fix round and re-review there; the teardown keeps the host branch for its open PR. **At root:** in place, on the PR branch (stay, `git switch <branch>` at a slice boundary, or `git worktree add <sibling> <branch>`). Then `pr-sync <P>` there (the default branch's record is stale), then `reopen-phase`: no worktree, nothing to integrate; commit the reopen with the fix round's first commit.

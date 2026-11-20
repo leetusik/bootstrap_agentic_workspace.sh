@@ -26,12 +26,11 @@ You work this workspace for its operator. Four invariants always hold; everythin
 | Rule | Enforced by |
 |---|---|
 | A phase the operator can see passes after they walk it | `review-phase --verdict pass` refuses until `accept-gate <P> --clear` |
-| Sign-offs carry literal words | `design-close`, `design-sign`, `loop-sign`, `loop-unpark` refuse an empty `--words` |
+| Sign-offs carry literal words | `design-close`, `design-sign` refuse an empty `--words` |
 | A pending stop halts the run | `next` prints `WAITING ON OPERATOR`; `set-slice-status` refuses a stop without `--stop-kind` and `--on-words` |
 | No force-push, no `rm -rf` | `settings.json` deny rules; its one allowed push deletes a merged branch |
 | A product phase passes with its draft PR open | `review-phase --verdict pass` refuses a PR branch with no draft PR (`pr-record --url` or `--waive`) |
 | A branch switch never carries the operator's edits | `pr-branch` refuses uncommitted tracked changes |
-| A loop spends within its signed budget | `loop-tick` halts at the charter's `total_usd` |
 | Slice kinds are a closed set | `new-slice` refuses an invalid slice kind |
 | A decomposition declares its slices' dependencies | `finish-slice` refuses an undeclared middle slice |
 | Operator questions are never dropped | `phase-section` refuses `--replace` on an append-only section |

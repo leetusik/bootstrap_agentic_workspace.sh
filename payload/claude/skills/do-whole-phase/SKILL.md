@@ -39,7 +39,6 @@ While an executor runs you may prepare the **next** slice only, read-only (an `E
 - decomposition → `reference/decomposition.md` (the gate, the PR branches); the review → `reference/review.md` and the `review-phase` skill; co-work → `reference/co-work.md`.
 - an explain phase (`## Explain` in `intent.md`): `reference/explain-decomposition.md`, `reference/explain-chapter.md`, `reference/explain-review.md`.
 - a worktree: only on the operator's word (an explain: its confirmation asked), or when the phase already runs in one or `next` prints `merge_ready=`: `reference/worktree.md`.
-- a loop phase (`loop=` in `next`): only its `DECOMP` and setup slices; the cycles are `/run-loop <P>`'s.
 
 **After a compaction** continue from the resume card's next action (`next --card`); an executor dispatched before it is still running: wait for it, never re-dispatch. The mode word and any open gate are kept facts; `intent.md` and `next` are the record.
 

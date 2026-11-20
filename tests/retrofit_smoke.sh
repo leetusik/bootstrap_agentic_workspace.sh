@@ -56,8 +56,7 @@
 # invariants (a bare install nests and git-inits a new dir, --update detects the layout, --at-root
 # keeps the at-root path, a bare install over an at-root workspace refuses), the multi-repo host
 # invariants (a fresh install over a folder of repos, per-repo phase-scope, a worktree set's start and
-# safe teardown, the lossless --to-multi-repo conversion), the P50 loop phases (the charter gate, the
-# budget stop, park don't halt, the bounded rollup, the tick's resume states), the v61 skill
+# safe teardown, the lossless --to-multi-repo conversion), the v61 skill
 # directories (cores of 8 KB or less plus their reference files, on fresh, retrofit, --update and
 # nested installs, a renamed skill included), the P51 PR rule v1 invariants (the pr block, pr-branch / pr-record /
 # pr-check and the pass guard, validate and next, the drafts opening with no stop (no park rule: a REVIEW stop halts a run), the pr skill and
@@ -146,7 +145,7 @@ import sys
 
 root = Path(sys.argv[1])
 skills = {p.parent.name for p in (root / "payload/claude/skills").glob("*/SKILL.md")}
-assert len(skills) == 20, len(skills)
+assert len(skills) == 19, len(skills)
 
 # P37.S1 (v61): a skill ships as its whole directory, a core SKILL.md plus reference/*.md, and the
 # do-* shared references fan out at build. Prose pins read the BUILT directory (core first, then its
@@ -857,11 +856,12 @@ assert "permissionMode: bypassPermissions\n" in fm, fm
 # The browser is playwright-cli over Bash, so the executor carries no Chrome tools; Agent stays (the review's code reader).
 assert "tools: Read, Edit, Write, Glob, Grep, Bash, WebSearch, WebFetch, Agent\n" in fm, fm
 assert len(body.encode("utf-8")) <= 3072, f"the executor card is {len(body.encode('utf-8'))} B, over its 3,072 B cap"
-for gone in ("Codex", ".agents/", ".codex/", "AGENTS.md", "## Doc impact", "docs phase", "slice-executor-mid", "- `tier`"):
+for gone in ("Codex", ".agents/", ".codex/", "AGENTS.md", "## Doc impact", "docs phase", "slice-executor-mid", "- `tier`",
+             "cycle.md", "screen row"):
     assert gone not in body, gone
 for required in ("The contract's four invariants hold", "You never commit or push",
                  "`done` | `escalate` | `needs_operator`", "`blocked`", "- `route`, `model`, `effort`:",
-                 "Only the mid and screen rows escalate", "Stop the servers, containers and browsers you started",
+                 "Only the mid row escalates", "Stop the servers, containers and browsers you started",
                  "`playwright-cli`", "leave it when the slice needs to", "`## Wave`", "`phase-section`"):
     assert required in body, required
 # Every playbook the card's map names exists and is 1-3 KB, every kind of the engine's closed set has
@@ -889,7 +889,6 @@ for _stem, _required in (
     ("decompose", ("**Finish line first:**", "no QA slice by default", "`new-slice", "parallel-plan <P>", "`spends money: no`",
                    "each co-work slice's one job with its critique level", "A fractional `--order`")),
     ("wave", ("**Write no `phase.md`.**", "**Run no engine command that writes**", "`deferred: whole-tree`")),
-    ("cycle", ("binds **absolutely**", "`need_scope: spend`", "`item_verdict: fail`", "never repeat a filing")),
     ("explain", ("**The explain carve-out.**", "and dispatch no agent, `Explore` included")),
 ):
     for _r in _required:
@@ -924,10 +923,10 @@ for _n in _caps:
     _txt = "\n".join(v for k, v in LIVE.items() if k.startswith(f".claude/skills/{_n}/") and "/explain-" not in k)
     for _gone in ("docs phase", "docs-phase", "docs-debt", "doc_impact", "doc_versions", "Doc impact list"):
         assert _gone not in _txt, (_n, _gone)
-# lighter-rules: the PR, parallel, loop and housekeeping skills are short playbooks. Their set stays under
+# lighter-rules: the PR, parallel and housekeeping skills are short playbooks. Their set stays under
 # 70,000 B (explain references aside), no one of them asks for a docs phase or a Doc impact note, and the close
 # is stated once: its ordered steps live only in pr/reference/close.md, and the worktree skills point at it.
-_s6 = ("parallel-phase", "pr", "run-loop", "update-workspace", "rotate-backlog", "archive-phase", "retrofit", "agenda",
+_s6 = ("parallel-phase", "pr", "update-workspace", "rotate-backlog", "archive-phase", "retrofit", "agenda",
        "promote-deferred", "defer-job", "deferred", "rebuild-workflow")
 assert sum(_size(_n) for _n in _s6) <= 70000, sum(_size(_n) for _n in _s6)
 for _n in _s6:
@@ -1069,6 +1068,9 @@ assert len(claude.splitlines()) <= 60, "the contract is over 60 lines"
 # Doc consolidation is retired: the contract asks for no Doc impact note and no docs phase.
 for gone in ("## Doc impact", "docs phase", "Docs are versioned durable truth", "doc-new-version"):
     assert gone not in claude, gone
+# Loop phases are retired: the contract names no loop command and no loop budget.
+for gone in ("loop-sign", "loop-unpark", "loop-tick", "total_usd"):
+    assert gone not in claude, gone
 # Every rule-table row names its enforcer: a cited engine command, settings rule, CI step or smoke check.
 _rows = [ln for ln in claude.splitlines() if ln.startswith("| ") and not ln.startswith("| Rule")]
 assert len(_rows) >= 10 and all(ln.count(" | ") == 1 and ln.split(" | ")[1].strip(" |") for ln in _rows), _rows
@@ -1076,15 +1078,14 @@ assert len(_rows) >= 10 and all(ln.count(" | ") == 1 and ln.split(" | ")[1].stri
 # and the stream and agenda skills say what a linked checkout does.
 cloud_skip = ("In a linked checkout (`next` prints `store=cloud`), skip this commit: hi2vi's revisions"
               " are the workflow's history. Product commits are unchanged.")
-for rel in ("commit/SKILL.md", "create-phase/SKILL.md", "run-loop/SKILL.md", "rotate-backlog/SKILL.md",
+for rel in ("commit/SKILL.md", "create-phase/SKILL.md", "rotate-backlog/SKILL.md",
             "do-whole-phase/reference/verdicts.md", "do-whole-phase/reference/wave.md"):
     assert cloud_skip in (root / "payload/claude/skills" / rel).read_text(), f"{rel}: the cloud-mode commit skip"
 # A linked checkout's waiting-commit record: every place that defines "a done slice whose slice.json is
 # uncommitted is a commit that waits" (and every commit step that closes one) names its linked form.
 cloud_waits = ("In a linked checkout, a done slice whose commit waits is one `next` lists in `commits_waiting=`;"
                " run `mark-committed <slice>` after its product commit (with no product change, right after its finish).")
-for rel, n in (("commit/SKILL.md", 1), ("run-loop/SKILL.md", 1), ("run-loop/reference/checkpoint.md", 1),
-               ("rotate-backlog/SKILL.md", 1),
+for rel, n in (("commit/SKILL.md", 1), ("rotate-backlog/SKILL.md", 1),
                ("do-whole-phase/reference/verdicts.md", 1), ("do-whole-phase/reference/wave.md", 1)):
     assert (root / "payload/claude/skills" / rel).read_text().count(cloud_waits) == n, f"{rel}: the linked waiting-commit sentence x{n}"
 # update-workspace never stages the truth set of a linked checkout: its clean check and its commit name the update's own paths.
@@ -1133,7 +1134,7 @@ compact = claude.split("## Compact Instructions", 1)[1]
 assert "resume card" in compact and "never re-dispatch a running executor" in compact
 assert "re-read" not in compact, "Compact Instructions carry a re-read instruction"
 PY
-then ok "20 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with one connected canvas per round and opt-in critique, mockups on request, the playwright-cli instrument), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v71 wave protocol (do-whole-phase's reference/wave.md, DECOMP's disjoint-sets rule, the executor's wave section, the contract's reversal of "never fan out slices"); the one-screen contract (at most 4,096 B and 60 lines: the four invariants once each, the named principles, the correction ladder, a rule table whose every row names its enforcer, the playwright-cli line with Claude in Chrome named once, no doc-consolidation duty); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a one-screen contract pin, a seed-doc invariant, or a Codex-removal negative failed"; fi
+then ok "19 Claude skills and their invocation metadata; the v61 skill directories (cores of 8,192 B or less, every reference a core names shipped and none orphaned, the shared do-* reference one source); the prose invariants of the do-*, create-phase, design-cowork (the one drafter tool and its legacy rule, styles, the schema-2 canvas loop with one connected canvas per round and opt-in critique, mockups on request, the playwright-cli instrument), parallel-phase (worktree only when asked, hints relayed) and review-phase skills and of both executor bodies; the v71 wave protocol (do-whole-phase's reference/wave.md, DECOMP's disjoint-sets rule, the executor's wave section, the contract's reversal of "never fan out slices"); the one-screen contract (at most 4,096 B and 60 lines: the four invariants once each, the named principles, the correction ladder, a rule table whose every row names its enforcer, the playwright-cli line with Claude in Chrome named once, no doc-consolidation duty); the seed docs; and the v31 Codex-removal negatives"; else bad "Claude skill inventory or metadata, a do-*/create-phase/design-cowork/parallel-phase/review-phase prose invariant, an executor-body invariant, a one-screen contract pin, a seed-doc invariant, or a Codex-removal negative failed"; fi
 
 # ---------------------------------------------------------------------------
 echo "== Test 1: retrofit into a representative existing repo (non-destructive) =="
@@ -1218,8 +1219,8 @@ cp_state=$(python3 -c "import json;print(json.load(open('$R/works/state.json'))[
   && ok "retrofit installs no Codex trees (.agents/, .codex/)" || bad "retrofit created a Codex tree"
 [ ! -f "$R/AGENTS.workspace.md" ] \
   && ok "retrofit writes no AGENTS.workspace.md sidecar" || bad "retrofit wrote an AGENTS.workspace.md sidecar"
-[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "20" ] \
-  && ok "retrofit installs the 20-skill Claude inventory" || bad "retrofit skill inventory incomplete"
+[ "$(find "$R/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "19" ] \
+  && ok "retrofit installs the 19-skill Claude inventory" || bad "retrofit skill inventory incomplete"
 skill_tree_ok "$R/.claude/skills" exact \
   && ok "retrofit installs every skill as its whole directory: each core's reference files, none orphaned, the shared do-* copy identical" || bad "retrofit skill directories incomplete (core + reference/)"
 grep -qF "Nothing is pushed, merged or paid for without the operator's word." "$R/CLAUDE.workspace.md" && grep -qF '| Rule | Enforced by |' "$R/CLAUDE.workspace.md" \
@@ -1334,8 +1335,8 @@ then ok "every changelog release section carries a Migration notes line"; else b
 [ -f "$F/.claude/skills/retrofit/SKILL.md" ] && ok "fresh install ships the retrofit skill" || bad "fresh install missing retrofit skill"
 [ -f "$F/.claude/skills/read-code/SKILL.md" ] && [ -f "$F/.claude/agents/code-reader.md" ] && grep -q '`code-reader`' "$F/CLAUDE.md" \
   && ok "fresh install ships the read-code skill and the code-reader agent, and its contract points at the code-reader" || bad "fresh install missing the read-code skill, the code-reader agent or the contract's pointer to it"
-[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "20" ] \
-  && ok "fresh install has the 20 Claude skills" || bad "fresh skill inventory incomplete"
+[ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "19" ] \
+  && ok "fresh install has the 19 Claude skills" || bad "fresh skill inventory incomplete"
 skill_tree_ok "$F/.claude/skills" exact \
   && ok "fresh install ships every skill as its whole directory: each core's reference files, none orphaned" || bad "fresh install skill directories incomplete (core + reference/)"
 [ ! -f "$F/AGENTS.md" ] && [ ! -d "$F/.agents" ] && [ ! -d "$F/.codex" ] \
@@ -2133,7 +2134,7 @@ diff -q "$SRC/scripts/workflow.py" "$F/scripts/workflow.py" >/dev/null \
   || bad "DRIFT: scripts/workflow.py differs from the bootstrap-embedded copy"
 skill_rels=$(cd "$SRC" && find claude/skills -type f -name SKILL.md | sed 's|^|.|' | LC_ALL=C sort)
 nskill=$(printf '%s\n' "$skill_rels" | grep -c .)
-[ "$nskill" -eq 20 ] && ok "dual-apply covers all 20 skill bodies" || bad "expected 20 SKILL.md files to diff, found $nskill"
+[ "$nskill" -eq 19 ] && ok "dual-apply covers all 19 skill bodies" || bad "expected 19 SKILL.md files to diff, found $nskill"
 for rel in $skill_rels; do
   diff -q "$SRC/${rel#.}" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
@@ -2150,7 +2151,6 @@ executors.toml
 works/templates/deferred_brief.md
 works/templates/intent.md
 works/templates/phase.md
-works/templates/charter.md
 .github/workflows/workspace-ci.yml
 .gitattributes"
 for rel in $DUAL_FIXED CLAUDE.md; do
@@ -4216,167 +4216,6 @@ printf '%s\n' "$t_s" | grep -q "^pr_team=S recorded=none " && printf '%s\n' "$t_
   || bad "--to-multi-repo let R's solo record answer for S -- S: $t_s / R: $t_r"
 
 # ---------------------------------------------------------------------------
-echo "== Test 18: P50 loop phases -- the charter gate, the budget stop, park don't halt, the bounded rollup, the tick's resume states, the run-loop core cap =="
-# Tiny and core only (the operator's five); the rest is proven live. A fresh --at-root install in git, a
-# fake CLAUDE_CONFIG_DIR inside the test's tmp dir (never the real one), no transcripts, so every cycle
-# meters `assumed` at per_cycle_usd.
-lp_t0=$(date +%s)
-newtmp LPW; LP="$LPW/ws"; LPCC="$LPW/cc"; LPX="$LPCC/projects/fixture"; mkdir -p "$LPCC/sessions" "$LPX"
-sh "$BOOT" "$LP" --at-root --name "Loop" --summary "loop" >/dev/null 2>&1 || bad "loop probe: the fresh install failed"
-lw() { ( cd "$LP" && CLAUDE_CONFIG_DIR="$LPCC" python3 scripts/workflow.py "$@" ); }
-lgc() { ( cd "$LP" && git add -A && git commit -qm "$1" ) >/dev/null 2>&1 || bad "loop probe: commit $1 failed"; }
-# The identity lives in the repo's config, not on lgc's commits alone: the engine commits too (parallel-start's
-# stamp in (h)), and a CI runner has no global identity to fall back on.
-( cd "$LP" && git init -q . && git config user.email smoke@example.invalid && git config user.name smoke ) >/dev/null 2>&1; lgc baseline
-LPP="$LP/works/phases/active/P1"; LPC="$LPP/loop/charter"
-# lp_fill <src> <dst> <total_usd>: fill every UNFILLED section of the charter and set the bounds.
-lp_fill() { python3 - "$1" "$2" "$3" <<'PY'
-import json, sys
-src, dst, total = sys.argv[1], sys.argv[2], float(sys.argv[3])
-text = "\n".join(l for l in open(src).read().split("\n") if "UNFILLED" not in l)
-text = text.replace("## Objective\n", "## Objective\n\nScore toy items.\n").replace("## One cycle\n", "## One cycle\n\nRun the toy scorer.\n")
-bounds = {"cadence": {"min_gap_minutes": 0}, "budget": {"per_cycle_usd": 1.0, "per_day_usd": 1000.0, "total_usd": total, "max_cycles": None},
-          "stops": {"max_consecutive_failures": 2}, "spend_covered": [], "stages": {"screen": "screen"}, "checkpoint_every": 1000,
-          "digest_every_hours": 100000, "keep_cycles": 2, "cycle_timeout_minutes": 120, "outputs": []}
-i = text.index("```json"); j = text.index("```", i + 7)
-open(dst, "w").write(text[:i] + "```json\n" + json.dumps(bounds, indent=2) + "\n" + text[j:])
-PY
-}
-# lp_cycle <key> <verdict> [close args]: start -> plan -> result -> close, one cycle.
-lp_cycle() { local k=$1 v=$2 out sid; shift 2
-  out=$(lw loop-cycle-start P1 --key "$k" --title "item $k" 2>&1) || { printf 'start refused: %s\n' "$out"; return 1; }
-  sid=$(printf '%s\n' "$out" | sed -n 's/^cycle=//p')
-  printf 'plan\n' > "$LPP/slices/$sid/plan.md"; printf -- '- status: done\n- item_verdict: %s\n' "$v" > "$LPP/slices/$sid/result.md"
-  lw loop-cycle-close "$sid" --verdict "$v" --summary "toy $v" --transcripts "$LPX" "$@" 2>&1; }
-lp_tick() { lw loop-tick P1 --transcripts "$LPX" 2>&1; }
-lp_field() { python3 -c 'import json,sys
-d = json.load(open(sys.argv[1]))
-for k in sys.argv[2].split("."): d = (d or {}).get(k) if isinstance(d, dict) else None
-print(d)' "$LPP/phase.json" "$1"; }
-lw new-phase --phase P1 --name "Toy loop" --objective "score toy items" --loop >/dev/null 2>&1 || bad "loop probe: new-phase --loop failed"
-lw start-slice P1.DECOMP >/dev/null 2>&1 && lw finish-slice P1.DECOMP --outcome "cut" >/dev/null 2>&1 || bad "loop probe: DECOMP did not finish"
-# (a) the charter gate: no cycle before a signature, no signature over an UNFILLED line, no cycle once the signed file changed.
-s_out=$(lw loop-cycle-start P1 --key a --title A 2>&1); s_rc=$?
-g_out=$(lw loop-sign P1 --words "sign it" 2>&1); g_rc=$?
-lp_fill "$LPC/v1.md" "$LPC/v1.md" 2.0; cp "$LPC/v1.md" "$LPW/v1.signed"
-lw loop-sign P1 --words "sign it" >/dev/null 2>&1 || bad "loop probe: loop-sign of a filled charter failed"
-printf '\nedited after signing\n' >> "$LPC/v1.md"
-e_out=$(lw loop-cycle-start P1 --key a --title A 2>&1); e_rc=$?
-cp "$LPW/v1.signed" "$LPC/v1.md"
-[ "$s_rc" -ne 0 ] && printf '%s\n' "$s_out" | grep -q 'no signed charter' && [ "$g_rc" -ne 0 ] && printf '%s\n' "$g_out" | grep -q 'UNFILLED' \
-  && [ "$e_rc" -ne 0 ] && printf '%s\n' "$e_out" | grep -q 'has changed since it was signed' && [ ! -d "$LPP/slices/P1.C1" ] \
-  && ok "the charter gate: loop-cycle-start refuses an unsigned charter, loop-sign refuses one with UNFILLED left, and loop-cycle-start refuses again once the signed file is edited (no cycle folder made)" \
-  || bad "the charter gate leaked (start rc=$s_rc, sign rc=$g_rc, edited rc=$e_rc) -- $s_out | $g_out | $e_out"
-lgc signed; lw loop-claim P1 >/dev/null 2>&1 || bad "loop probe: loop-claim failed"
-# (b) the budget stop: total_usd 2 at 1 per assumed cycle -- the second close halts budget-total, the phase goes pending,
-# next waits on it, resume is refused, and signing v2 with a higher total lifts it.
-lp_cycle a fail >/dev/null || bad "loop probe: cycle a failed"
-c_out=$(lp_cycle b fail); w_out=$(lw next 2>&1)
-r_out=$(lw loop-control P1 resume --words "go on" 2>&1); r_rc=$?
-lp_fill "$LPC/v1.md" "$LPC/v2.md" 50.0; v_out=$(lw loop-sign P1 --version 2 --words "raise it" 2>&1); v_rc=$?
-if printf '%s\n' "$c_out" | grep -q '^halted reason=budget-total ' && printf '%s\n' "$c_out" | grep -q 'usd_source=assumed' \
-    && printf '%s\n' "$w_out" | grep -q '^WAITING ON OPERATOR: phase P1 is pending' && printf '%s\n' "$w_out" | grep -q '^on_words=sign charter v2 with a higher bound' \
-    && [ "$r_rc" -ne 0 ] && printf '%s\n' "$r_out" | grep -q 'lifted only by a new charter' \
-    && [ "$v_rc" -eq 0 ] && printf '%s\n' "$v_out" | grep -q 'lifted the budget-total halt' \
-    && [ "$(lp_field status)" = in_progress ] && [ "$(lp_field loop.status)" = running ] && lp_tick | grep -qx 'action=start'; then
-  ok "the budget stop: the close that reaches total_usd (assumed cycles) halts budget-total and the phase goes pending, next prints the WAITING block with its on_words, loop-control resume is refused, and loop-sign of v2 with a higher total lifts it (phase in_progress, tick start)"
-else bad "the budget stop went wrong (resume rc=$r_rc, sign v2 rc=$v_rc) -- $c_out | $w_out | $r_out | $v_out"; fi
-# (c) park, don't halt: a parked close leaves the loop running and the tick starts the next; two error closes in a row halt it.
-p_out=$(lp_cycle c parked --question "keep c?" --on-words "requeue c"); p_tick=$(lp_tick)
-lp_cycle d error >/dev/null; f_out=$(lp_cycle e error)
-if printf '%s\n' "$p_out" | grep -q '^parked: key=c' && ! printf '%s\n' "$p_out" | grep -q '^halted' && printf '%s\n' "$p_tick" | grep -qx 'status=running' \
-    && printf '%s\n' "$p_tick" | grep -qx 'action=start' && printf '%s\n' "$f_out" | grep -q '^halted reason=failures ' && [ "$(lp_field loop.halt.reason)" = failures ]; then
-  ok "park, don't halt: a parked close leaves the loop running and the tick says start; max_consecutive_failures (2) error closes in a row halt it with failures"
-else bad "park/failures wrong -- $p_out | $p_tick | $f_out"; fi
-lw loop-control P1 resume --words "go on" >/dev/null 2>&1 || bad "loop probe: resume after failures was refused"
-# (d) the bounded rollup: keep_cycles + 3 cycles, each committed, leave keep_cycles closed folders; the global
-# works/events.jsonl stays flat over the last 3; ## Slices shows the rollup row.
-lgc resumed
-for k in f g; do lp_cycle "$k" fail >/dev/null; lgc "$k"; done
-ev_before=$(wc -l < "$LP/works/events.jsonl" | tr -d ' ')
-for k in h i j; do lp_cycle "$k" fail >/dev/null; lgc "$k"; done
-ev_after=$(wc -l < "$LP/works/events.jsonl" | tr -d ' '); left=$(ls -d "$LPP"/slices/P1.C* 2>/dev/null | wc -l | tr -d ' ')
-if [ "$left" = 2 ] && [ "$ev_before" = "$ev_after" ] && grep -q '^| `C1–C8` | rolled up (8) → `loop/ledger.jsonl`' "$LPP/phase.md" \
-    && [ -d "$LPP/slices/P1.C9" ] && [ -d "$LPP/slices/P1.C10" ]; then
-  ok "the bounded rollup: after keep_cycles + 3 committed cycles exactly keep_cycles (2) closed cycle folders remain, the global events.jsonl line count is flat over the last 3 cycles ($ev_after), and ## Slices shows the C1–C8 rollup row"
-else bad "the rollup did not bound the state (folders=$left, events $ev_before -> $ev_after) -- $(grep -n 'rolled' "$LPP/phase.md")"; fi
-# (e) the tick's resume states with a cycle in flight: a verdict on disk -> close; a plan with no span -> dispatch;
-# a span whose session is a live process in the registry -> wait; the same once it is dead -> dispatch attempt=2.
-k_out=$(lw loop-cycle-start P1 --key k --title "item k" 2>&1); ksid=$(printf '%s\n' "$k_out" | sed -n 's/^cycle=//p')
-t_plan=$(lp_tick); printf 'plan\n' > "$LPP/slices/$ksid/plan.md"; t_disp=$(lp_tick)
-sleep 300 & lp_pid=$!
-python3 - "$LPCC" "$LPX" "$lp_pid" "$ksid" "$LP" <<'PY'
-import json, os, subprocess, sys, time
-cc, proj, pid, sid, root = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], sys.argv[5]
-start = " ".join(subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True,
-                                env={**os.environ, "LC_ALL": "C", "TZ": "UTC"}).stdout.split())
-json.dump({"pid": pid, "sessionId": "sess-live", "cwd": root, "procStart": start}, open(f"{cc}/sessions/{pid}.json", "w"))
-d = f"{proj}/sess-live/subagents"; os.makedirs(d, exist_ok=True)
-t = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
-open(f"{d}/agent-a1.jsonl", "w").write(json.dumps({"type": "user", "isSidechain": True, "timestamp": t,
-    "message": {"role": "user", "content": f"slice: {sid}\nslice folder: x\n"}}) + "\n")
-json.dump({"agentType": "slice-executor", "description": sid}, open(f"{d}/agent-a1.meta.json", "w"))
-PY
-t_wait=$(lp_tick); kill "$lp_pid" 2>/dev/null; wait "$lp_pid" 2>/dev/null; t_dead=$(lp_tick)
-printf -- '- status: done\n- item_verdict: fail\n' > "$LPP/slices/$ksid/result.md"; t_close=$(lp_tick)
-if [ -n "$ksid" ] && printf '%s\n' "$t_plan" | grep -qx 'action=plan' && printf '%s\n' "$t_disp" | grep -qx 'action=dispatch' \
-    && printf '%s\n' "$t_disp" | grep -qx 'attempt=1' && printf '%s\n' "$t_wait" | grep -qx 'action=wait' && printf '%s\n' "$t_wait" | grep -qx 'span=a1' \
-    && printf '%s\n' "$t_dead" | grep -qx 'action=dispatch' && printf '%s\n' "$t_dead" | grep -qx 'attempt=2' && printf '%s\n' "$t_close" | grep -qx 'action=close'; then
-  ok "the tick resumes from disk with a cycle in flight: no plan.md -> plan, a plan with no span -> dispatch attempt=1, a span whose session is a live process -> wait, the same once it is killed -> dispatch attempt=2, a verdict in result.md -> close"
-else bad "the tick's resume states are wrong -- plan: $t_plan | dispatch: $t_disp | wait: $t_wait | dead: $t_dead | close: $t_close"; fi
-# (f) P50-fr.F1: the engine numbers the retry and routes it -- the dead span's re-dispatch records attempt 2 on high,
-# executor-route prints high with no --retry, and the close's ledger line reads the closing attempt's row.
-rm -f "$LPP/slices/$ksid/result.md"; r_disp=$(lw loop-cycle-dispatch "$ksid" --transcripts "$LPX" 2>&1); r_route=$(lw executor-route "$ksid" 2>&1)
-printf -- '- status: done\n- item_verdict: fail\n' > "$LPP/slices/$ksid/result.md"; lw loop-cycle-close "$ksid" --verdict fail --summary "toy fail" --transcripts "$LPX" >/dev/null 2>&1
-r_line=$(tail -1 "$LPP/loop/ledger.jsonl")
-if printf '%s\n' "$r_disp" | grep -q "attempt=2 " && printf '%s\n' "$r_disp" | grep -qx 'route=high stage_route=screen' \
-    && printf '%s\n' "$r_route" | grep -qx 'route=high' && printf '%s\n' "$r_route" | grep -qx 'attempt=2' \
-    && printf '%s\n' "$r_line" | grep -q '"route": "high", "stage_route": "screen", "attempt": 2'; then
-  ok "a retry after a dead span: loop-cycle-dispatch records attempt 2 on the high row, executor-route prints high with no --retry, and the close's ledger line reads route=high stage_route=screen"
-else bad "the retry's attempt or row is wrong -- dispatch: $r_disp | route: $r_route | ledger: $r_line"; fi
-# (g) P50-fr.F2: no resume runs past a charter-level stop (here the signed charter edited under a pause: the
-# resume halts on charter instead), and the final review refuses a pass while a parked item (c) is open.
-lw loop-control P1 pause >/dev/null 2>&1; cp "$LPC/v2.md" "$LPW/v2.signed"; printf '\nedited\n' >> "$LPC/v2.md"
-g_res=$(lw loop-control P1 resume 2>&1); g_tick=$(lp_tick); cp "$LPW/v2.signed" "$LPC/v2.md"
-g_ok=$(lw loop-control P1 resume --words "go on" 2>&1); lw loop-control P1 stop --words "stop" >/dev/null 2>&1
-g_rev=$(lw review-phase P1 --verdict pass 2>&1); g_rc=$?
-if printf '%s\n' "$g_res" | grep -q '^not resumed P1: the loop was paused, but a charter-level stop holds -- halted reason=charter ' \
-    && printf '%s\n' "$g_tick" | grep -qx 'reason=charter' && printf '%s\n' "$g_ok" | grep -q '^resumed P1: halted -> running' \
-    && [ "$g_rc" -ne 0 ] && printf '%s\n' "$g_rev" | grep -q 'parked item(s) still open: c .*loop-unpark' && [ "$(lp_field status)" != done ]; then
-  ok "no resume past a charter-level stop: a paused loop whose signed charter changed halts on charter (not resumed), resumes once restored, and review-phase refuses the pass while parked key c is open"
-else bad "a resume ran past a charter-level stop or the review passed over an open parked item -- $g_res | $g_tick | $g_ok | $g_rev"; fi
-# (h) P50-fr.F4: one stream predicate. P1 runs on the default stream; from another phase's worktree the operator's
-# words queue in the default checkout's control.json and write nothing there, every other loop writer refuses,
-# and the reads name the live loop.
-lw new-phase --phase P2 --name "Side" --objective "side work" >/dev/null 2>&1; lgc "loop probe: P2"
-lw parallel-start P2 >/dev/null 2>&1 || bad "loop probe: parallel-start P2 failed"
-LPWT=$(ls -d "$LP"/.claude/worktrees/P2-* 2>/dev/null | head -1)
-hw() { ( cd "$LPWT" && CLAUDE_CONFIG_DIR="$LPCC" python3 scripts/workflow.py "$@" ) 2>&1; }
-h_next=$(hw next); h_stat=$(hw loop-status P1 | head -1)
-h_mid=$(git -C "$LPWT" status --porcelain)
-h_pause=$(hw loop-control P1 pause); h_add=$(hw loop-queue P1 add --key z --title Z); h_add_rc=$?
-h_after=$(git -C "$LPWT" status --porcelain)
-h_req=$(python3 -c 'import json,sys; print(",".join(r["action"] for r in json.load(open(sys.argv[1]))["requests"]))' "$LPP/loop/control.json" 2>&1)
-lw loop-control P1 apply >/dev/null 2>&1
-if [ -n "$LPWT" ] && printf '%s\n' "$h_pause" | grep -q "^queued pause for P1 in .*/ws/works/phases/active/P1/loop/control.json " && [ "$h_req" = pause ] \
-    && [ "$h_add_rc" -ne 0 ] && printf '%s\n' "$h_add" | grep -q "runs only on the loop's own stream (the default stream" \
-    && [ "$h_mid" = "$h_after" ] \
-    && printf '%s\n' "$h_stat" | grep -q "source=default checkout .*/ws/works/phases/active/P1$" && printf '%s\n' "$h_next" | grep -q '^loops_elsewhere=P1:stopped:'; then
-  ok "a default-stream loop from another phase's worktree: pause queues in the default checkout's control.json writing nothing there, loop-queue add refuses, loop-status reads the live loop and next lists it as loops_elsewhere"
-else bad "a default-stream loop addressed from a worktree wrote the stale copy or read it -- pause: $h_pause | add: $h_add | requests: $h_req | status: $h_stat | next: $(printf '%s\n' "$h_next" | grep loops_) | worktree: [$h_mid] -> [$h_after]"; fi
-lw validate >/dev/null 2>&1 && ok "validate passes on the loop install after every probe" || bad "validate failed on the loop install -- $(lw validate 2>&1 | tail -5)"
-# the run-loop core stays a do-* sized core: <= 16 KB, its resume line inside the first 16 KB.
-python3 - "$REPO_ROOT/payload/claude/skills/run-loop/SKILL.md" <<'PY' && ok "run-loop/SKILL.md stays <= 16 KB with its resume line inside the first 16 KB" || bad "run-loop/SKILL.md is over 16 KB or its resume line moved past the first 16 KB"
-import sys
-raw = open(sys.argv[1], "rb").read()
-assert len(raw) <= 16384, len(raw)
-line = "**Resume (after a compaction or a restart):**".encode()
-i = raw.find(line)
-assert i >= 0 and raw.find(b"\n", i) <= 16384, i
-PY
-echo "loop test runtime: $(( $(date +%s) - lp_t0 ))s"
-
-# ---------------------------------------------------------------------------
 echo "== Test 19: P51 PR rule v1 -- the pr block and its commands, pr-check's size/budgets/leaks/headings, the pass guard, validate and next, the drafts opening with no stop (a REVIEW stop halts a run), the pr skill and pr-reader, the team-rule banner, the symlinked skills exclude, the root linguist lines, the _is_ancestor regression; zero GitHub writes =="
 # Tiny and core only. Every remote is local (a bare origin) and gh is a stub on PATH: nothing reaches GitHub.
 pr_t0=$(date +%s)
@@ -5209,7 +5048,7 @@ kill "$CL_PID" 2>/dev/null; wait "$CL_PID" 2>/dev/null
 echo "cloud mode test runtime: $(( $(date +%s) - cl_t0 ))s"
 
 # ---------------------------------------------------------------------------
-echo "== Test 22: cloud mode's safety half, against the local fake hi2vi -- offline a command is refused with the one P8 line and the tree unchanged, and compact-resume fails open; a lost commit answer is resent with the same batch_id and lands once; a batch never sent goes at the next command; a command that dies midway leaves the journal running and the next command refuses naming sync; a pull killed at any step of an append-only file's merge (the event log, a loop's ledger and checkpoints, a local order of its own) leaves each line in hi2vi once; a stale write (409) keeps the disk, writes nothing in hi2vi and exits 1, then the mismatch refuses with nothing changed; two engine processes in one checkout are serialized by .hi2vi/lock; a change over 8,000,000 B goes as several batches, and one file too big for any batch is refused; every failure inside the boundary is one line, never a traceback (a cut or malformed answer, a commit answer cut mid-body, a fetch that does not decode, a write error during a pull), and the hook's note; compact-resume stays inside the hook's 15 s on a slow, dripping or slow-but-moving server; a request fails only when it stalls: a slow but moving pull, push and pushing resend each finish past 10 s, a stalled or dripping server ends an ordinary command in one line in bounded time, a 409 whose body stalls keeps its batch (never 0 conflicts), and no late timer turns a whole answer into a failure; every wait is judged, the set-up included: behind an HTTPS proxy that answers its CONNECT late or drips it, the hook keeps its 9 s and an ordinary command ends in one line; over TLS a byte counts as it crosses the socket and the handshake still verifies; a key holding a control character is refused unquoted =="
+echo "== Test 22: cloud mode's safety half, against the local fake hi2vi -- offline a command is refused with the one P8 line and the tree unchanged, and compact-resume fails open; a lost commit answer is resent with the same batch_id and lands once; a batch never sent goes at the next command; a command that dies midway leaves the journal running and the next command refuses naming sync; a pull killed at any step of an append-only file's merge (the event log, a local order of its own) leaves each line in hi2vi once; a stale write (409) keeps the disk, writes nothing in hi2vi and exits 1, then the mismatch refuses with nothing changed; two engine processes in one checkout are serialized by .hi2vi/lock; a change over 8,000,000 B goes as several batches, and one file too big for any batch is refused; every failure inside the boundary is one line, never a traceback (a cut or malformed answer, a commit answer cut mid-body, a fetch that does not decode, a write error during a pull), and the hook's note; compact-resume stays inside the hook's 15 s on a slow, dripping or slow-but-moving server; a request fails only when it stalls: a slow but moving pull, push and pushing resend each finish past 10 s, a stalled or dripping server ends an ordinary command in one line in bounded time, a 409 whose body stalls keeps its batch (never 0 conflicts), and no late timer turns a whole answer into a failure; every wait is judged, the set-up included: behind an HTTPS proxy that answers its CONNECT late or drips it, the hook keeps its 9 s and an ordinary command ends in one line; over TLS a byte counts as it crosses the socket and the handshake still verifies; a key holding a control character is refused unquoted =="
 sf_t0=$(date +%s)
 newtmp SFW; SF="$SFW/host"; SFX="$SFW/xdg"; SF_OUT="$SFW/out.txt"; : > "$SF_OUT"
 sf() { ( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 workflow/scripts/workflow.py "$@" ) 2>&1 | tee -a "$SF_OUT"; return "${PIPESTATUS[0]}"; }
@@ -5371,10 +5210,10 @@ elif check == "toobig":
     need(journal is None, f"the journal is left: {journal}")
 elif check == "synced":
     synced()
-elif check == "once":  # extra: the append-only paths (comma-separated), their usd total or -, then marks each once in hi2vi
+elif check == "once":  # extra: the append-only paths (comma-separated), then marks each once in hi2vi
     import collections
     need(journal is None and base.get("head") == S["head"], f"not settled: journal {journal}, base head {base.get('head')} vs {S['head']}")
-    cloud_lines, usd = [], 0.0
+    cloud_lines = []
     for p in extra[0].split(","):
         c = base64.b64decode(get("/_fake/file?path=" + quote(p))[1]["content"]).decode().splitlines()
         d = (root / p).read_text().splitlines()
@@ -5382,11 +5221,9 @@ elif check == "once":  # extra: the append-only paths (comma-separated), their u
         need(not twice, f"{p}: hi2vi holds {len(twice)} line(s) twice, first {twice[:1]}")
         need(collections.Counter(c) == collections.Counter(d), f"{p}: the disk's lines and hi2vi's differ")
         cloud_lines += c
-        usd += sum(json.loads(l).get("usd", 0) for l in c if p.endswith(("/ledger.jsonl", "/checkpoints.jsonl")))
-    for mark in extra[2:]:
+    for mark in extra[1:]:
         n = sum(mark in l for l in cloud_lines)
         need(n == 1, f"{mark}: {n} line(s) in hi2vi, not 1")
-    need(extra[1] == "-" or abs(usd - float(extra[1])) < 1e-9, f"hi2vi's loop spend is {usd}, not {extra[1]}")
 print("ok")
 PY
 }
@@ -5456,10 +5293,10 @@ sf_m=$(sf_mark); sf next > "$SFW/d3.txt"; sf_rc2=$?; sf_r=$(sf_check "$sf_m" syn
 [ "$sf_rc" = 9 ] && [ "$sf_w" = 0 ] && [ "$sf_rc2" = 0 ] && [ "$sf_r" = ok ] \
   && ok "a pull killed after its write and before base.json: the next command reads the file as the same (no mismatch) and the base catches up" \
   || bad "the pull-crash row wrong -- rc=$sf_rc/$sf_rc2 written=$sf_w $sf_r / $(tail -1 "$SFW/d3.txt")"
-# The crash table's append rows. A pull merges another checkout's new lines into an append-only file (the event log, a
-# loop's ledger and checkpoints) around the lines this checkout has not sent yet, so the merged file differs from
+# The crash table's append rows. A pull merges another checkout's new lines into an append-only file (the event log)
+# around the lines this checkout has not sent yet, so the merged file differs from
 # hi2vi's and never reads as the same. Killed at any step of that pull, the next command sends only this checkout's own
-# lines: hi2vi holds each line exactly once, and a loop's spend is counted once.
+# lines: hi2vi holds each line exactly once.
 # sf_kill fetch|write|wrote|base <path> <args>: the command, killed (os._exit) once the pull has fetched <path>, just
 # before or just after the pull writes it, or once base.json is saved (before the generated files are rebuilt).
 sf_kill() { _s=$1; _f=$2; shift 2; ( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 - "$_s" "$_f" "$@" <<'PY'
@@ -5503,7 +5340,7 @@ for sf_step in fetch write wrote base; do
   printf '{"type": "smoke_local", "mark": "local-%s"}\n' "$sf_step" >> "$SF/workflow/$sf_ev"
   sf_add "$sf_ev" "{\"type\": \"agenda_added\", \"agenda\": \"cloud-$sf_step\"}"
   sf_kill "$sf_step" "$sf_ev" next; sf_rc=$?
-  sf_m=$(sf_mark); sf next >/dev/null; sf_rc2=$?; sf_r=$(sf_check "$sf_m" once "$sf_ev" - "\"local-$sf_step\"" "\"cloud-$sf_step\"")
+  sf_m=$(sf_mark); sf next >/dev/null; sf_rc2=$?; sf_r=$(sf_check "$sf_m" once "$sf_ev" "\"local-$sf_step\"" "\"cloud-$sf_step\"")
   { [ "$sf_rc" = 9 ] && [ "$sf_rc2" = 0 ] && [ "$sf_r" = ok ]; } || sf_bad="$sf_bad [$sf_step: rc=$sf_rc/$sf_rc2 $sf_r]"
 done
 [ -z "$sf_bad" ] \
@@ -5511,30 +5348,10 @@ done
   || bad "an append pull killed midway re-sent hi2vi's own lines --$sf_bad"
 sf_add "$sf_ev" '{"type": "agenda_added", "agenda": "cloud-alone"}'
 sf_kill wrote "$sf_ev" next; sf_rc=$?
-sf_m=$(sf_mark); sf next >/dev/null; sf_rc2=$?; sf_r=$(sf_check "$sf_m" once "$sf_ev" - '"cloud-alone"'); sf_r2=$(sf_check "$sf_m" synced)
+sf_m=$(sf_mark); sf next >/dev/null; sf_rc2=$?; sf_r=$(sf_check "$sf_m" once "$sf_ev" '"cloud-alone"'); sf_r2=$(sf_check "$sf_m" synced)
 [ "$sf_rc" = 9 ] && [ "$sf_rc2" = 0 ] && [ "$sf_r" = ok ] && [ "$sf_r2" = ok ] \
   && ok "an append pull with nothing local past the offset, killed after its write: the file equals hi2vi's, reads as the same, and the base catches up" \
   || bad "the plain append pull-crash row wrong -- rc=$sf_rc/$sf_rc2 $sf_r / $sf_r2"
-# A loop's ledger and checkpoints, pulled together (checkpoints.jsonl is written first): killed once both are written,
-# then once only the first is, the loop spend summed from hi2vi's lines stays the sum of each line once.
-sf_lp=works/phases/active/P1/loop; mkdir -p "$SF/workflow/$sf_lp"
-printf '{"cycle": "C1", "usd": 1.5}\n' > "$SF/workflow/$sf_lp/ledger.jsonl"
-printf '{"slice": "P1.K1", "usd": 0.25}\n' > "$SF/workflow/$sf_lp/checkpoints.jsonl"
-sf next >/dev/null; sf_bad=""
-for sf_row in "ledger:C2:2:C3:4:K2:0.5:8.25" "checkpoints:K3:0.125:C4:8:K4:1:17.375"; do
-  IFS=: read -r sf_t sf_l sf_lu sf_c sf_cu sf_k sf_ku sf_sum <<< "$sf_row"
-  if [ "$sf_t" = ledger ]; then printf '{"cycle": "%s", "usd": %s}\n' "$sf_l" "$sf_lu" >> "$SF/workflow/$sf_lp/ledger.jsonl"
-  else printf '{"slice": "P1.%s", "usd": %s}\n' "$sf_l" "$sf_lu" >> "$SF/workflow/$sf_lp/checkpoints.jsonl"; fi
-  sf_add "$sf_lp/ledger.jsonl" "{\"cycle\": \"$sf_c\", \"usd\": $sf_cu}"
-  sf_add "$sf_lp/checkpoints.jsonl" "{\"slice\": \"P1.$sf_k\", \"usd\": $sf_ku}"
-  sf_kill wrote "$sf_lp/$sf_t.jsonl" next; sf_rc=$?
-  sf_m=$(sf_mark); sf next >/dev/null; sf_rc2=$?
-  sf_r=$(sf_check "$sf_m" once "$sf_lp/ledger.jsonl,$sf_lp/checkpoints.jsonl" "$sf_sum" "$sf_l" "$sf_c" "P1.$sf_k")
-  { [ "$sf_rc" = 9 ] && [ "$sf_rc2" = 0 ] && [ "$sf_r" = ok ]; } || sf_bad="$sf_bad [$sf_t: rc=$sf_rc/$sf_rc2 $sf_r]"
-done
-[ -z "$sf_bad" ] \
-  && ok "a loop's ledger and checkpoints pulled with a local line past the offset, killed after both writes or after the first: hi2vi holds each line once and the loop spend is unchanged by the crash" \
-  || bad "an append pull killed midway double-counted a loop's lines --$sf_bad"
 # A local order that already differs from hi2vi's (another checkout's line landed between this checkout's pull and its
 # push): the file never equals hi2vi's again, so a pull killed after its write must still send nothing of hi2vi's.
 printf '{"type": "smoke_local", "mark": "local-race"}\n' >> "$SF/workflow/$sf_ev"
@@ -5554,7 +5371,7 @@ PY
 )
 sf_add "$sf_ev" '{"type": "agenda_added", "agenda": "cloud-order"}'
 sf_kill wrote "$sf_ev" next; sf_rc=$?
-sf_m=$(sf_mark); sf next >/dev/null; sf_rc2=$?; sf_r=$(sf_check "$sf_m" once "$sf_ev" - '"cloud-order"' '"cloud-race"' '"local-race"')
+sf_m=$(sf_mark); sf next >/dev/null; sf_rc2=$?; sf_r=$(sf_check "$sf_m" once "$sf_ev" '"cloud-order"' '"cloud-race"' '"local-race"')
 [ "$sf_ord" = differs ] && [ "$sf_rc" = 9 ] && [ "$sf_rc2" = 0 ] && [ "$sf_r" = ok ] \
   && ok "an event log whose order already differs from hi2vi's, its pull killed after the write: the next command sends nothing of hi2vi's, each line once" \
   || bad "the differing-order append pull-crash row wrong -- order=$sf_ord rc=$sf_rc/$sf_rc2 $sf_r"
@@ -6253,14 +6070,14 @@ lk_t1=$(lk_tree "$LKA/workflow"); lk_m=$(lk_mark); lk_nosock "$LKA/workflow/scri
   && ok "parallel-start in a linked checkout is refused with one line, no request, no branch and nothing written" \
   || bad "parallel-start was not refused in cloud mode -- rc=$lk_rc $(head -2 "$LKW/f.txt")"
 lk_bad=""; lk_t1=$(lk_tree "$LKA/workflow"); lk_m=$(lk_mark)
-for c in "parallel-gate P1" "parallel-teardown P1" "parallel-merge-finish" "reopen-phase P1 --note x" "loop-checkpoint P1 --landed"; do
+for c in "parallel-gate P1" "parallel-teardown P1" "parallel-merge-finish" "reopen-phase P1 --note x"; do
   # shellcheck disable=SC2086
   lk_nosock "$LKA/workflow/scripts/workflow.py" $c > "$LKW/f2.txt"; lk_rc=$?
-  { [ "$lk_rc" = 1 ] && [ "$(grep -c '' "$LKW/f2.txt")" = 1 ] && grep -q "^${c%% *}\( --landed\)\? is refused in cloud mode: " "$LKW/f2.txt"; } || lk_bad="$lk_bad [$c: rc=$lk_rc $(head -1 "$LKW/f2.txt")]"
+  { [ "$lk_rc" = 1 ] && [ "$(grep -c '' "$LKW/f2.txt")" = 1 ] && grep -q "^${c%% *} is refused in cloud mode: " "$LKW/f2.txt"; } || lk_bad="$lk_bad [$c: rc=$lk_rc $(head -1 "$LKW/f2.txt")]"
 done
 lk_t2=$(lk_tree "$LKA/workflow")
 [ -z "$lk_bad" ] && [ "$lk_t1" = "$lk_t2" ] && [ "$(lk_check "$LKA/workflow" "$lk_m" nothing)" = ok ] \
-  && ok "the other stream commands (parallel-gate, -teardown, -merge-finish, reopen-phase, loop-checkpoint --landed) are refused in cloud mode with one line each, nothing written" \
+  && ok "the other stream commands (parallel-gate, -teardown, -merge-finish, reopen-phase) are refused in cloud mode with one line each, nothing written" \
   || bad "a stream command ran in cloud mode --$lk_bad"
 # (c) a second checkout: an unused install joins (the fetch paged, following rest); a used one is refused with the list.
 lk_ctl '{"fetch_page": 4000}'; lk_m=$(lk_mark); printf '%s\n' "$LKK" | lk "$LKB" link "$LKU" > "$LKW/c.txt"; lk_rc=$?; lk_r=$(lk_check "$LKB/workflow" "$lk_m" join)
