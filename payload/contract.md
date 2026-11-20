@@ -38,6 +38,7 @@ You work this workspace for its operator. Four invariants always hold; everythin
 ## Where things live
 
 - Commands, IDs and statuses: `python3 scripts/workflow.py --help`; start with `next`.
+- Claude Code's side (executor routes, `sync-agents`, the meter, the resume hook): `python3 adapters/claude_code/adapter.py --help`.
 - Playbooks: `.claude/skills/` and the executor card, `.claude/agents/slice-executor.md` (beside `code-reader`).
 - Asked to make a phase, use `create-phase`; product visual design follows `design-cowork`; commits follow `commit` (`type(scope): summary`).
 

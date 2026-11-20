@@ -179,7 +179,7 @@ route table and no file in this workspace. The plugin ships it, and you apply th
 
 ## Records, limits and the commit
 
-- `record-dispatch` once, after the last span, with its verdict; span 1's `done` is not a slice verdict.
+- The slice's verdict is the last span's `result.md`; span 1's `done` is not a slice verdict.
   The critic's span is metered from the transcripts, attributed by its `slice:` line, never recorded.
 - A usage limit in any span is resumed or re-dispatched per `reference/dispatch.md` (5); it is never a
   verdict. Span 1 re-dispatched from disk goes on from the record (§3.3 *The record, and resuming a run*).

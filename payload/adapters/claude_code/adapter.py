@@ -1,5 +1,17 @@
-"""The Claude Code side of the engine: executor routes and sync-agents, record-dispatch and the dispatch meter
-(dispatch-summary), and the compaction hook with its resume card (compact-resume, next --card)."""
+#!/usr/bin/env python3
+"""The Claude Code adapter: `python3 <this file> <route|sync-agents|meter|compact-resume> ...`.
+
+- route: the executor route table (the engine defaults overlaid by the workspace's executors.toml) and one
+  dispatch's row, model, effort and agent file;
+- sync-agents: writes the rows that own an agent file into its frontmatter;
+- meter: what a phase cost, metered from Claude Code's transcripts, and each slice's verdict read from its
+  result.md (its `status:` line) or slice.json;
+- compact-resume: the SessionStart hook (matcher compact), which prints the engine's resume card with the
+  session's running spans.
+
+It reads the workspace through the engine beside it (../../scripts/: workflow.py and its modules), imported
+in-process, and runs every command through workflow.run (the id normalising and, in a linked checkout, the
+cloud boundary). The engine never imports this folder."""
 from __future__ import annotations
 
 import argparse
@@ -13,20 +25,40 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
+sys.dont_write_bytecode = True  # never a __pycache__/ beside the engine or here
+ADAPTER = Path(__file__).resolve()
+sys.path.insert(0, str(ADAPTER.parents[2] / "scripts"))
+import workflow  # noqa: E402 -- the engine: it finds the workspace (or exits 2 with one line) and binds its seams
 from wf_store import (  # noqa: E402
-    _card_cut, _meter_ts, _one_line, _slice_ids, _walk_to_state, acceptance_gate_is_open, ACTIVE,
-    all_active_phases, all_events, append_event, ARCHIVED, archived_phase_ids, CLAUDE_AGENTS, cmd_next,
-    current_stream, ENGINE, HOST_ROOT, id_sort_key, NESTED, notebook_step, phase_acceptance, phase_declared,
-    phase_execution, PHASE_ID_PATTERN, PHASE_ID_RE, PHASE_MD_BUDGET, read_json, ready_set, require_phase,
-    require_slice, resolve_current, ROOT, shown, SLICE_SUFFIX_PATTERN, sort_phase_ids, STOP_STATUSES,
-    stream_phases, wave_held, WORKFLOW_CMD, write_text,
-)
-from wf_git import (  # noqa: E402
-    _pr_label, _pr_open_hint, pr_lines, pr_open_items, pr_stack_items,
+    _meter_ts, _one_line, _walk_to_state, ACTIVE, all_events, append_event, ARCHIVED,
+    archived_phase_ids, cmd_next, ENGINE, HOST_ROOT, id_sort_key, MAIN_HOST, NESTED, PHASE_ID_PATTERN,
+    PHASE_ID_RE, read_json, require_phase, require_slice, resume_card, ROOT, shown, SLICE_SUFFIX_PATTERN,
+    write_text,
 )
 from wf_design import (  # noqa: E402
     DESIGN_ROOT_REL,
 )
+
+ADAPTER_REL = "adapters/claude_code/adapter.py"  # where the installer emits this file, under the workspace
+# The executor agent files Claude Code loads: the main host checkout's `.claude/agents` when nested (Claude Code
+# finds agents walking up from the session's cwd, the host root; a phase worktree pair has none of its own), the
+# workspace's otherwise. executors.toml stays at ROOT either way.
+CLAUDE_AGENTS = (MAIN_HOST or HOST_ROOT or ROOT) / ".claude" / "agents"
+
+
+def _adapter_cmd() -> str:
+    """The command this adapter's printed hints use: `python3 <this file>` relative to the host (nested) or the
+    workspace, as the engine's WORKFLOW_CMD is; absolute when this file sits outside both."""
+    for base in (HOST_ROOT, ROOT):
+        if base is not None:
+            try:
+                return f"python3 {ADAPTER.relative_to(Path(base).resolve()).as_posix()}"
+            except ValueError:
+                continue
+    return f"python3 {ADAPTER}"
+
+
+ADAPTER_CMD = _adapter_cmd()
 
 
 RETIRED_EXECUTOR_TIERS = ("low",)  # [claude.low]: dropped in workspace v23, still refused with its migration
@@ -34,25 +66,25 @@ RETIRED_EXECUTOR_TIERS = ("low",)  # [claude.low]: dropped in workspace v23, sti
 # refused with its migration. The meter still reads old spans as `cheap` (METER_ROUTES).
 RETIRED_ROUTES = ("cheap",)
 # The executor route table (workspace v53): ONE table, owned here, that the orchestrator dispatches
-# from. A row is a (model, effort) pair the dispatch passes per call; `executor-route` prints the
+# from. A row is a (model, effort) pair the dispatch passes per call; `route` prints the
 # resolved row for a slice and `sync-agents` writes the rows that own an agent file into that
 # file's frontmatter, which is only the fallback. Each row is overridable, key by key, under
 # [claude.<row>] in the repo-root executors.toml. There is no Haiku slice row: v83 retired `cheap`
 # (docs and qa rated low ran on Haiku); every slice rated low runs on the mid row.
 # `explore` is the read-only lookup agent (.claude/agents/Explore.md), not a slice route.
 # `design` is the design subagent's own row (.claude/agents/design-drafter.md, workspace v60): never
-# a slice's route -- only `executor-route --drafter` dispatches on it.
+# a slice's route -- only `route --drafter` dispatches on it.
 # `critic` and `judge` (workspace v60) are the design critic's two modes: `critic` owns
 # .claude/agents/design-critic.md and judges each drafted round; `judge` runs that same file in judge
 # mode, with its model passed per call, and rules only on the items the critic escalated. Neither is a
-# slice route; `executor-route --critic` / `--judge` dispatch them. Either may run on the drafter's model:
+# slice route; `route --critic` / `--judge` dispatch them. Either may run on the drafter's model:
 # the operator dropped the different-model rule for the judge in workspace v66 and for the critic in v75.
 # `reader` (P51) owns .claude/agents/pr-reader.md, the fresh-eyes PR reader: it reads a PR as a
 # teammate would (the product diff, the body and details files, the team-rule files, the size count)
-# and writes one findings file. Not a slice route; `executor-route --reader` dispatches it.
+# and writes one findings file. Not a slice route; `route --reader` dispatches it.
 # `code` owns .claude/agents/code-reader.md, the blind code reader: it reads one code change cold (the
 # diff over the product pathspec and the files at head, never the workspace's records), reproduces each
-# suspicion with a throwaway script and writes one findings file. Not a slice route; `executor-route --code`
+# suspicion with a throwaway script and writes one findings file. Not a slice route; `route --code`
 # dispatches it. Its own row, so the operator can repoint it without moving the reader row.
 # One executor (workspace v66): the three slice rows -- high, research and mid -- all run the
 # one `slice-executor` file, whose frontmatter carries the mid row (the default route). The two
@@ -71,7 +103,7 @@ RETIRED_ROUTES = ("cheap",)
 EXECUTOR_ROUTES = ("high", "research", "design", "critic", "judge", "reader", "code", "mid", "explore")  # print order
 # v88 (P47-p5.S4): a per-page design round's spans carry `pass: frame | page <slug> | join` (drafter) or
 # `scope: page | cross` (critic) in their prompt; the meter labels them apart so the means estimate a round.
-# They run the design / critic rows: no executor-route row of their own.
+# They run the design / critic rows: no route row of their own.
 METER_PASS_ROUTES = ("design-frame", "design-page", "design-join", "critic-page", "critic-cross")
 METER_ROUTES = EXECUTOR_ROUTES + METER_PASS_ROUTES + RETIRED_ROUTES  # the meter's order: history still holds cheap spans
 ROUTE_DEFAULTS = {
@@ -116,13 +148,13 @@ MODEL_ATTRIBUTION = {"opus": "Claude Opus 5.5", "sonnet": "Claude Sonnet 5.5",
                      "haiku": "Claude Haiku 5.5", "fable": "Claude Fable 5.2"}
 # A loopback ANTHROPIC_BASE_URL is a local proxy (ocx's Kiro sidecar listens on 127.0.0.1:10100)
 # that serves no Haiku 5.5: there the explore row falls back to EXPLORE_PROXY_MODEL, printed as a
-# `fallback=` line by executor-route.
+# `fallback=` line by route.
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 EXPLORE_PROXY_MODEL = "sonnet"
 # The same proxy serves no Fable either. The judge row (Opus @ high by default, so this never fires
 # at the default) does NOT fall back: a judge is the stronger second opinion, so a substitute would be
 # a weaker one. Only when an operator overrides the judge row to Fable and runs behind a loopback proxy
-# does `executor-route --judge` print a `skip=yes` line instead: the orchestrator dispatches no judge
+# does `route --judge` print a `skip=yes` line instead: the orchestrator dispatches no judge
 # and the escalated items reach the operator marked low confidence.
 JUDGE_PROXY_SKIP_FAMILY = "fable"
 # The drafter must run, so a Fable design dispatch behind that proxy falls back to DESIGN_PROXY_MODEL
@@ -130,7 +162,7 @@ JUDGE_PROXY_SKIP_FAMILY = "fable"
 DESIGN_PROXY_MODEL = "opus"
 # The phase's drafter (v96): a `Drafter: <alias>` line under intent.md's `## Design Style`, recorded at
 # /create-phase (or with DECOMP's style question) from the orchestrator's suggestion and the operator's
-# answer. `executor-route --drafter --phase <P>` dispatches every drafter pass of that phase's jobs on it,
+# answer. `route --drafter --phase <P>` dispatches every drafter pass of that phase's jobs on it,
 # the effort staying the design row's; no line is the design row. `opus` or `fable` only (passed per dispatch as
 # an Agent-tool alias, and the two a design drafter is offered). The engine reads no markdown structure (headings
 # and fences take too many forms to read safely): a line anywhere in intent.md that STARTS with the label counts,
@@ -162,7 +194,7 @@ def read_executors_toml() -> dict:
             raise SystemExit(
                 f"executors.toml line {n}: the economy/flex presets were retired in workspace v53 — delete this line; "
                 "the route table replaces them (flex was xhigh on both executor rows: set effort = \"xhigh\" under [claude.mid] "
-                f"and [claude.high] to keep it); run: {WORKFLOW_CMD} executor-route"
+                f"and [claude.high] to keep it); run: {ADAPTER_CMD} route"
             )
         if re.match(r"^\[\s*codex\s*\.\s*[^\]]*\]\s*(?:#.*)?$", line):
             raise SystemExit(
@@ -421,10 +453,10 @@ def phase_drafter(pdir: Path):
             continue
         value = m.group(1).strip().rstrip("|").strip().lower()
         if value not in DRAFTER_CHOICES:
-            raise SystemExit(f"executor-route: {pdir.name}'s intent.md names the drafter {m.group(1).strip()!r}{hint}")
+            raise SystemExit(f"route: {pdir.name}'s intent.md names the drafter {m.group(1).strip()!r}{hint}")
         found.append(value)
     if len(set(found)) > 1:
-        raise SystemExit(f"executor-route: {pdir.name}'s intent.md names two drafters ({', '.join(found)}){hint}")
+        raise SystemExit(f"route: {pdir.name}'s intent.md names two drafters ({', '.join(found)}){hint}")
     return found[0] if found else None
 
 
@@ -501,11 +533,11 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
                              ("--judge", args.judge), ("--reader", args.reader), ("--code", args.code),
                              ("--explore", args.explore)) if on]
     if len(forms) > 1:
-        raise SystemExit(f"executor-route: {' and '.join(forms)} are mutually exclusive; give at most one")
+        raise SystemExit(f"route: {' and '.join(forms)} are mutually exclusive; give at most one")
     if args.retry and args.slice is None:
-        raise SystemExit("executor-route: --retry needs a <slice_id> (a second attempt is a slice's)")
+        raise SystemExit("route: --retry needs a <slice_id> (a second attempt is a slice's)")
     if args.phase and not args.drafter:
-        raise SystemExit("executor-route: --phase reads the phase's drafter and goes with --drafter only")
+        raise SystemExit("route: --phase reads the phase's drafter and goes with --drafter only")
     routes = resolve_routes()
     drafter = phase_drafter(require_phase(args.phase)) if args.phase else None
     if drafter:
@@ -554,7 +586,7 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
         drift, missing = executor_agent_drift(routes)
         stale = [shown(path) for path, _ in drift] + [f"{shown(path)} (missing)" for path in missing]
         if stale:
-            print(f"agent files: out of sync: {', '.join(stale)} (run: {WORKFLOW_CMD} sync-agents)")
+            print(f"agent files: out of sync: {', '.join(stale)} (run: {ADAPTER_CMD} sync-agents)")
         else:
             print("agent files: in sync")
         extra = route_overrides(routes) + [f for f in (_route_fallback(row, routes, proxy)[2] for row in EXECUTOR_ROUTES) if f]
@@ -569,66 +601,45 @@ def cmd_executor_route(args: argparse.Namespace) -> None:
         print(line)
 
 
-def cmd_record_dispatch(args: argparse.Namespace) -> None:
-    """Append one `executor_dispatched` event to works/events.jsonl: the verdict a slice dispatch
-    returned (v61). What a span ran on and what it cost is metered from Claude Code's transcripts by
-    `dispatch-summary`, so the pre-v61 flags (route, model, effort, tier, agent and the notification's
-    numbers) still parse and are ignored, named on one line. A record, nothing else: no state changes."""
-    sdata = read_json(require_slice(args.slice) / "slice.json")
-    ignored = [flag for flag, dest in _RECORD_DISPATCH_RETIRED if getattr(args, dest, None) is not None]
-    if ignored:
-        print(f"ignored: {' '.join(ignored)} (v61 meters spans from transcripts)")
-    rec = {
-        "slice": args.slice, "phase": sdata.get("phase_id") or args.slice.split(".", 1)[0],
-        "kind": sdata.get("kind"), "risk": sdata.get("risk"),
-        "attempt": args.attempt, "verdict": args.verdict, "note": args.note,
-    }
-    append_event("executor_dispatched", **rec)
-    print("recorded=executor_dispatched")
-    for key in ("slice", "attempt", "verdict"):
-        print(f"{key}={rec[key]}")
+_VERDICTS = ("done", "escalate", "needs_operator", "blocked")  # the verdict table's columns; anything else is `other`
 
 
-_DISPATCH_VERDICTS = ("done", "escalate", "needs_operator", "blocked", "failed")
-# The pre-v61 record-dispatch flags: still parsed (an old prompt or script keeps working), never stored.
-_RECORD_DISPATCH_RETIRED = (("--route", "route"), ("--tier", "tier"), ("--agent", "agent"), ("--model", "model"),
-                            ("--effort", "effort"), ("--duration-ms", "duration_ms"), ("--tokens", "tokens"),
-                            ("--tool-uses", "tool_uses"))
+def _slice_verdicts(phase=None, slice_id=None) -> dict:
+    """{slice id: (kind, verdict, source)} of every active and archived slice (one phase's, or one slice): the
+    verdict is the `status:` line of its result.md (the executor's verdict block), else its slice.json status."""
+    out = {}
+    for root in (ACTIVE, ARCHIVED):
+        for sj in (sorted(root.glob("*/slices/*/slice.json")) if root.is_dir() else []):
+            try:
+                data = read_json(sj)
+            except (OSError, ValueError):
+                continue
+            sid = data.get("id") if isinstance(data, dict) else None
+            if not isinstance(sid, str) or (slice_id and sid != slice_id) or (phase and sid.split(".", 1)[0] != phase):
+                continue
+            verdict, source = None, "slice.json"
+            result = sj.parent / "result.md"
+            if result.is_file():
+                found = [v.lower() for k, v in METER_VERDICT_RE.findall(result.read_text(encoding="utf-8", errors="replace"))
+                         if k.lower() == "status"]
+                if found:
+                    verdict, source = found[0], "result.md"
+            out[sid] = (data.get("kind") or "unset", verdict or str(data.get("status") or "?"), source)
+    return out
 
 
-def _dispatch_agg(records: list) -> dict:
-    """Counts and sums over a group of executor_dispatched records. `tokens` is what pre-v61 records
-    stored: the span's final context from the completion notification, not the volume it processed."""
-    durs = [r["duration_ms"] for r in records if isinstance(r.get("duration_ms"), (int, float))]
-    toks = [r["tokens"] for r in records if isinstance(r.get("tokens"), (int, float))]
-    agg = {"n": len(records)}
-    for v in _DISPATCH_VERDICTS:
-        agg[v] = sum(1 for r in records if r.get("verdict") == v)
-    agg["retries"] = sum(1 for r in records if isinstance(r.get("attempt"), int) and r["attempt"] >= 2)
-    agg["mean_min"] = round(sum(durs) / len(durs) / 60000, 1) if durs else None
-    agg["total_min"] = round(sum(durs) / 60000, 1) if durs else None
-    agg["tokens"] = sum(toks) if toks else None
-    return agg
-
-
-def _dispatch_groups(records: list, keyfn, order=None) -> dict:
-    groups: dict = {}
-    for r in records:
-        groups.setdefault(keyfn(r), []).append(r)
-    keys = [k for k in order if k in groups] if order else sorted(groups, key=lambda k: (-len(groups[k]), str(k)))
-    return {k: _dispatch_agg(groups[k]) for k in keys}
-
-
-def _dispatch_table(title: str, groups: dict, cols: list) -> list:
-    header = [title] + [c[0] for c in cols]
-    rows = [header]
-    for key, agg in groups.items():
-        rows.append([str(key)] + [("-" if agg[c[1]] is None else str(agg[c[1]])) for c in cols])
-    return _meter_columns(rows)
+def _verdict_table(verdicts: dict) -> dict:
+    """{kind: {n, done, escalate, needs_operator, blocked, other}} over _slice_verdicts' values."""
+    table: dict = {}
+    for kind, verdict, _source in verdicts.values():
+        row = table.setdefault(kind, {"n": 0, **{v: 0 for v in _VERDICTS}, "other": 0})
+        row["n"] += 1
+        row[verdict if verdict in _VERDICTS else "other"] += 1
+    return dict(sorted(table.items()))
 
 
 # ---------------------------------------------------------------------------------------------------
-# The transcript meter (workspace v61). `dispatch-summary` -- and nothing else: no hook, no other
+# The transcript meter (workspace v61). `meter` -- and nothing else: no hook, no other
 # command -- reads Claude Code's own session transcripts, `<config>/projects/<slug>/<session>.jsonl`
 # (the main thread) and `<session>/subagents/agent-*.jsonl` + `.meta.json` (one file per span), and
 # meters what each actually processed:
@@ -1334,24 +1345,17 @@ _METER_NOTES = (
 )
 
 
-def cmd_dispatch_summary(args: argparse.Namespace) -> None:
+def cmd_meter(args: argparse.Namespace) -> None:
     """What a phase really cost: the main thread beside its subagent spans, metered from Claude Code's
-    transcripts (deduplicated, attributed to slices, priced at list price), then the recorded
-    executor_dispatched verdicts. Read-only; no transcripts found is one line, never a failure."""
-    counts: dict = {}
-    events = all_events(counts)
-    records = [obj for obj in events if obj.get("type") == "executor_dispatched"]
-    skipped = counts.get("skipped", 0)
-    if args.phase is not None:
-        known = (ACTIVE / args.phase).is_dir() or any(r.get("phase") == args.phase for r in records) \
-            or args.phase in archived_phase_ids()  # an archived folder is `<stamp>_<id>_<slug>`: the old glob never matched it
-        if not known:
-            raise SystemExit(f"dispatch-summary: no such phase: {args.phase}")
-        records = [r for r in records if r.get("phase") == args.phase]
-    if args.slice is not None:
-        if not any(r.get("slice") == args.slice for r in records) and not (ACTIVE / args.slice.split(".", 1)[0] / "slices" / args.slice).is_dir():
-            raise SystemExit(f"dispatch-summary: no such slice: {args.slice}")
-        records = [r for r in records if r.get("slice") == args.slice]
+    transcripts (deduplicated, attributed to slices, priced at list price), then each slice's verdict read
+    from its result.md or slice.json. Read-only; no transcripts found is one line, never a failure."""
+    events = all_events()
+    if args.phase is not None and not ((ACTIVE / args.phase).is_dir() or args.phase in archived_phase_ids()):
+        raise SystemExit(f"meter: no such phase: {args.phase}")
+    if args.slice is not None and not (ACTIVE / args.slice.split(".", 1)[0] / "slices" / args.slice).is_dir() \
+            and not _slice_verdicts(slice_id=args.slice):
+        raise SystemExit(f"meter: no such slice: {args.slice}")
+    verdicts = _slice_verdicts(args.phase, args.slice)
 
     # --- metered, from the transcripts ---
     dirs, where = _meter_project_dirs(args.transcripts)
@@ -1379,8 +1383,9 @@ def cmd_dispatch_summary(args: argparse.Namespace) -> None:
                             key=_meter_slice_order(windows))
         rep = _meter_report(res, slices)
         metered = (res, rep)
+    table = _verdict_table(verdicts)
     if args.json:
-        body = {"records": len(records)}
+        body = {}
         if metered:
             res, rep = metered
             body["metered"] = {
@@ -1399,53 +1404,26 @@ def cmd_dispatch_summary(args: argparse.Namespace) -> None:
         else:
             body["metered"] = None
             body["transcripts"] = f"none found under {where}"
-    else:
-        if metered:
-            _meter_print(metered[0], metered[1], dirs)
-        else:
-            print(f"transcripts=none found under {where} (pass --transcripts <projects/slug dir>); recorded verdicts only")
-        print()
-        print("[recorded verdicts] (executor_dispatched; tokens = a pre-v61 record's final context, not volume)")
-
-    # --- recorded verdicts (executor_dispatched) ---
-    legacy = [r for r in records if r.get("route")]
-    by_route = _dispatch_groups(legacy, lambda r: r.get("route") or "?", order=METER_ROUTES)
-    by_model = _dispatch_groups(legacy, lambda r: f"{r.get('model') or '?'} @ {r.get('effort') or '(none)'}")
-    by_kind = _dispatch_groups(records, lambda r: r.get("kind") or "unset")
-    if args.json:
-        body.update({"by_route": by_route, "by_model_effort": by_model, "by_kind": by_kind, "skipped_lines": skipped})
+        body["verdicts"] = {"by_kind": table, "slices": {sid: {"kind": k, "verdict": v, "source": src}
+                                                         for sid, (k, v, src) in sorted(verdicts.items())}}
         print(json.dumps(body, ensure_ascii=False, indent=2))
         return
-    phases = sort_phase_ids({r.get("phase") for r in records if r.get("phase")}, _phase_created_records())
-    stamps = [r.get("ts") for r in records if r.get("ts")]
-    print(f"records={len(records)}")
-    if not records:
-        if skipped:
-            print(f"skipped_lines={skipped}")
-        print(f"hint=record a slice dispatch's verdict with: {WORKFLOW_CMD} record-dispatch <slice_id> --verdict …")
-        return
-    print(f"phases={','.join(phases)}")
-    print(f"since={stamps[0] if stamps else '-'}")
-    print(f"until={stamps[-1] if stamps else '-'}")
-    if skipped:
-        print(f"skipped_lines={skipped}")
+    if metered:
+        _meter_print(metered[0], metered[1], dirs)
+    else:
+        print(f"transcripts=none found under {where} (pass --transcripts <projects/slug dir>); verdicts only")
+    print()
+    print("[verdicts] (each slice's result.md status: line, else its slice.json status)")
     if args.slice is not None:
-        for r in records:
-            print(f"attempt={r.get('attempt')} verdict={r.get('verdict')} route={r.get('route') or '-'} model={r.get('model') or '-'} "
-                  f"effort={r.get('effort') or '(none)'} duration_ms={r.get('duration_ms')} tokens={r.get('tokens')} ts={r.get('ts')}")
+        for sid, (kind, verdict, source) in sorted(verdicts.items()):
+            print(f"slice={sid} kind={kind} verdict={verdict} source={source}")
         return
-    full = [("n", "n"), ("done", "done"), ("escalate", "escalate"), ("needs_op", "needs_operator"), ("blocked", "blocked"),
-            ("failed", "failed"), ("retries", "retries"), ("mean_min", "mean_min"), ("total_min", "total_min"), ("final_ctx", "tokens")]
-    short = [("n", "n"), ("done", "done"), ("escalate", "escalate"), ("needs_op", "needs_operator"), ("blocked", "blocked"),
-             ("failed", "failed"), ("retries", "retries")]
-    tables = [("by kind", "kind", by_kind, short)]
-    if legacy:
-        tables = [("by route, pre-v61 records", "route", by_route, full),
-                  ("by model @ effort, pre-v61 records", "model @ effort", by_model, full)] + tables
-    for label, title, groups, cols in tables:
-        print()
-        print(f"[{label}]")
-        print("\n".join(_dispatch_table(title, groups, cols)))
+    print(f"slices={len(verdicts)}")
+    if table:
+        cols = ["n", *_VERDICTS, "other"]
+        rows = [["kind", *("needs_op" if c == "needs_operator" else c for c in cols)]]
+        rows += [[kind, *(str(row[c]) for c in cols)] for kind, row in table.items()]
+        print("\n".join(_meter_columns(rows)))
 
 
 def _phase_created_records() -> list:
@@ -1477,75 +1455,19 @@ def _meter_slice_order(windows: "_MeterWindows"):
     return key
 
 
-def wave_card_lines(phase: dict, sid) -> list:
-    """The resume card's wave lines for a declared phase, none otherwise: a sibling's stop that the pointer's
-    lines do not show, then one `wave:` line -- the running wave slices, those of them whose result.md exists
-    (returned), the ready set and the stops -- with the wave's next action. A barrier is never running or
-    returned there, and while one holds the phase alone the card has no `wave:` line (P42.F1)."""
-    if not phase_declared(phase):
-        return []
-    wave, lines = ready_set(phase), []
-    shown_stop = phase.get("status") in STOP_STATUSES or any(s["id"] == sid for s in wave["stops"])
-    hidden = None if shown_stop else next(iter(wave["stops"]), None)
-    if hidden is not None:
-        hid, record = hidden["id"], hidden.get("pending")
-        if hidden.get("status") == "blocked":
-            lines.append(f"stop: slice {hid} blocked -- report the blocker (its result.md) to the operator")
-        elif isinstance(record, dict):
-            lines.append(f"stop: slice {hid} {record.get('kind')} (since {record.get('since')}) -- the operator's words will: "
-                         f"{_card_cut(record.get('on_words'))}; they clear it with slice status {hid} in_progress")
-        else:
-            lines.append(f"stop: slice {hid} untyped pending -- say what you need; the operator's words clear it with slice status {hid} in_progress")
-    if wave_held(wave):
-        return lines
-    returned = [s for s in wave["running"] if (ACTIVE / phase["id"] / "slices" / s["id"] / "result.md").is_file()]
-    stops = ([phase["id"]] if phase.get("status") in STOP_STATUSES else []) + [s["id"] for s in wave["stops"]]
-    then = "start nothing new: a stop is on disk" if stops else "start the ready set only while no stop is on disk"
-    lines.append(f"wave: running={_slice_ids(wave['running'])}; returned={_slice_ids(returned)}; ready={_slice_ids(wave['ready'])}; "
-                 f"stops={','.join(stops) or 'none'} -- in a /do-whole-phase run, wait for every running span (never re-dispatch one), "
-                 f"finish each returned slice, and {then}")
-    return lines
-
-
-def pr_open_card_line(phases: list):
-    """The resume card's one compact `pr_open:` line (the first open PR and `+N more`), or None."""
-    items = pr_open_items(phases)
-    if not items:
-        return None
-    pid, ph, e = items[0]
-    more = f" +{len(items) - 1} more (`next` lists them)" if len(items) > 1 else ""
-    return f"pr_open: {pid} {_pr_label(e)} state={e.get('state') or 'unsynced'} ({_pr_open_hint(pid, ph, e, short=True)}){more}"
-
-
-def pr_stack_card_line(phases: list):
-    """The resume card's compact `pr_stack:` line (the first stacked PR needing action and `+N more`), or None."""
-    items = pr_stack_items(phases)
-    if not items:
-        return None
-    pid, e, base, lower, _steps = items[0]
-    more = f" +{len(items) - 1} more" if len(items) > 1 else ""
-    return f"pr_stack: {pid} {_pr_label(e)} base={base} lower={lower}{more} (`next` prints the steps)"
-
-
-# Pure compaction (P37, v61). Compaction is Claude Code's own: the workspace ships no PreCompact hook (the
-# v55-v60 `compact-gate` boundary veto is retired). After a compaction the SessionStart hook (matcher
-# `compact`) runs `compact-resume`, which prints the resume card -- computed here from state at print time,
-# never stored -- and `next --card` prints the same card on demand. The card names files, never their
-# contents, and is at most RESUME_CARD_MAX bytes.
-RESUME_CARD_MAX = 2048
-RESUME_CARD_SPANS = 4      # running spans listed by name; the rest are `+N more`
-# The hooks follow the session (P35): `$CLAUDE_PROJECT_DIR` stays at the main checkout after EnterWorktree,
-# but the hook's stdin `cwd` follows the session into the worktree. So each hook first walks up from that
-# `cwd` to the workspace that owns it, by the state finder's walk (`_walk_to_state`), and, when that is not this
-# engine's workspace, re-runs its engine (its own installed copy, or this one pointed at it) with the same stdin
-# and relays its output. The env var is the recursion guard; every failure falls back to today.
+# The hook follows the session (P35): `$CLAUDE_PROJECT_DIR` stays at the main checkout after EnterWorktree, but
+# the hook's stdin `cwd` follows the session into the worktree. So the hook first walks up from that `cwd` to the
+# workspace that owns it, by the engine's state finder (`_walk_to_state`), and, when that is not this adapter's
+# workspace, re-runs that workspace's own adapter (or this one pointed at it, when this one's engine is not pinned
+# to its own workspace) with the same stdin and relays its output. The env var is the recursion guard; every
+# failure falls back to answering here.
 HOOK_REDIRECT_ENV = "AGENTIC_HOOK_REDIRECTED"
-HOOK_REDIRECT_TIMEOUT = 12  # the hooks' own timeout is 15 s
+HOOK_REDIRECT_TIMEOUT = 12  # the hook's own timeout is 15 s
 
 
-def _hook_owning_engine(cwd: str):
-    """(engine, run_dir, state) for the workspace that owns `cwd` (itself included), found by the state finder's
-    walk: its own installed engine, else this one when this one is not pinned to its own workspace -- or None."""
+def _hook_owning_adapter(cwd: str):
+    """(adapter, run_dir, state) for the workspace that owns `cwd` (itself included), found by the state finder's
+    walk: its own installed adapter, else this one when its engine is not pinned to its own workspace -- or None."""
     start = Path(cwd).resolve()
     if not start.is_dir():
         return None
@@ -1553,22 +1475,22 @@ def _hook_owning_engine(cwd: str):
     if found is None:
         return None
     state, run_dir = found
-    engine = state / "scripts" / "workflow.py"
-    if not engine.is_file():
+    adapter = state / ADAPTER_REL
+    if not adapter.is_file():
         if ENGINE.parent.parent == ROOT:  # an installed engine reads only its own workspace: it cannot answer there
             return None
-        engine = ENGINE
-    return engine, run_dir, state
+        adapter = ADAPTER
+    return adapter, run_dir, state
 
 
 def _hook_stdin_or_redirect(subcommand: str):
-    """Read the hook's stdin once. Return its text for this engine to handle, or None when the engine that
-    owns the hook's `cwd` is another copy and already answered (its stdout/stderr relayed unchanged). Never
-    raises: a missing or bad `cwd`, no engine, this engine, the guard set, a timeout, an error or a
-    non-zero exit all return the text, and the caller carries on as before."""
+    """Read the hook's stdin once. Return its text for this adapter to handle, or None when the adapter of the
+    workspace that owns the hook's `cwd` is another copy and already answered (its stdout/stderr relayed
+    unchanged). Never raises: a missing or bad `cwd`, no adapter, this workspace, the guard set, a timeout, an
+    error or a non-zero exit all return the text, and the caller carries on as before."""
     try:
         raw = sys.stdin.read()
-    except Exception:  # noqa: BLE001 - the hooks never fail
+    except Exception:  # noqa: BLE001 - the hook never fails
         return ""
     try:
         if os.environ.get(HOOK_REDIRECT_ENV):
@@ -1577,11 +1499,11 @@ def _hook_stdin_or_redirect(subcommand: str):
         cwd = hook.get("cwd") if isinstance(hook, dict) else None
         if not isinstance(cwd, str) or not cwd.strip():
             return raw
-        found = _hook_owning_engine(cwd)
+        found = _hook_owning_adapter(cwd)
         if found is None or found[2].resolve() == ROOT.resolve():
             return raw
-        engine, run_dir, state = found
-        proc = subprocess.run([sys.executable, str(engine), subcommand], input=raw, capture_output=True, text=True,
+        adapter, run_dir, state = found
+        proc = subprocess.run([sys.executable, str(adapter), subcommand], input=raw, capture_output=True, text=True,
                               cwd=str(run_dir), env={**os.environ, HOOK_REDIRECT_ENV: "1", "WORKFLOW_ROOT": str(state)},
                               timeout=HOOK_REDIRECT_TIMEOUT)
         if proc.returncode != 0:
@@ -1591,7 +1513,7 @@ def _hook_stdin_or_redirect(subcommand: str):
         sys.stdout.flush()
         sys.stderr.flush()
         return None
-    except Exception:  # noqa: BLE001 - fail open: this engine answers instead
+    except Exception:  # noqa: BLE001 - fail open: this adapter answers instead
         return raw
 
 
@@ -1616,7 +1538,7 @@ def _card_session_dir(transcript_path=None):
 
 def _card_running_spans(session_dir):
     """['agentType: description', ...] for the session's spans whose `.meta.json` lacks `finished: true`,
-    oldest first -- from those small files only, never a transcript read (that is `dispatch-summary`'s).
+    oldest first -- from those small files only, never a transcript read (that is `meter`'s).
     None when no session folder was found."""
     if session_dir is None:
         return None
@@ -1632,142 +1554,11 @@ def _card_running_spans(session_dir):
     return [name for _t, name in sorted(metas)]
 
 
-def _card_next_action(sid: str, sdata: dict, sdir: Path, spans) -> str:
-    """The slice's next action, derived from its status and which of plan.md / result.md exist."""
-    status, kind = sdata.get("status"), sdata.get("kind")
-    start = f"slice start {sid}, then " if status in ("todo", "ready") else ""
-    if status == "blocked":
-        return "blocked: report the blocker (result.md) to the operator; nothing advances until it clears"
-    if (sdir / "result.md").is_file():
-        return f"read result.md's verdict head, then slice finish {sid} --outcome \"<its summary>\", validate, commit"
-    if not (sdir / "plan.md").is_file():
-        return f"{start}plan it: write plan.md" + ("" if kind == "co-work" else f" and pin `executor-route {sid}` as its ## Dispatch")
-    if kind == "co-work":
-        return f"{start}continue the design-cowork loop inline from the round on disk; a running span below is its drafter, critic or mockup -- wait for it"
-    if spans:
-        return "an executor is running (see spans): wait for its notification, never re-dispatch"
-    if spans is None:
-        return (f"{start}dispatch from plan.md's ## Dispatch -- unless an executor dispatched before the compaction "
-                "is still running: then wait for its notification, never re-dispatch")
-    return f"{start}dispatch from plan.md's ## Dispatch (the prompt's first line: slice: {sid})"
-
-
-def resume_card(transcript_path=None) -> str:
-    """The resume card: the pointer, the next action (or the typed stop), the open gates, the running spans
-    and the slice's file paths -- computed from state now, read-only, at most RESUME_CARD_MAX bytes."""
-    phases = all_active_phases()
-    stream = current_stream(phases)
-    phase_id, sid, _next = resolve_current(stream_phases(phases, stream))
-    lines = [f"resume card (computed from state; files are named, not quoted; commands run as `{WORKFLOW_CMD} <command>`)"]
-    if stream:
-        lines.append(f"stream={stream}")
-    try:  # P52: a done phase's open PR (the close, a team's merge, an archive hold); never the network
-        pr_open = pr_open_card_line(phases)
-    except Exception:  # noqa: BLE001 - the card always prints
-        pr_open = None
-    try:  # P52: a stacked PR needing a merge and a retarget; never the network
-        pr_stack = pr_stack_card_line(phases)
-    except Exception:  # noqa: BLE001 - the card always prints
-        pr_stack = None
-    if not phase_id:
-        lines.append("pointer: no active phase")
-        lines.append("next action: create a phase (/create-phase) or promote deferred work")
-        if pr_open:
-            lines.append(pr_open)
-        if pr_stack:
-            lines.append(pr_stack)
-        return _card_fit(lines)
-    phase = next(p for p in phases if p["id"] == phase_id)
-    pdir = ACTIVE / phase_id
-    sdata = next((s for s in phase["slices"] if s.get("id") == sid), None) if sid else None
-    sdir = ACTIVE / phase_id / "slices" / sid if sid else None
-    pointer = f"pointer: phase {phase_id} {phase.get('status')}"
-    if sdata:
-        pointer += f"; slice {sid} {sdata.get('status')} ({sdata.get('kind') or '?'}/{sdata.get('risk') or '?'})"
-    lines.append(pointer)
-    try:
-        spans = _card_running_spans(_card_session_dir(transcript_path))
-    except Exception:  # noqa: BLE001 - spans are best-effort; the rest of the card still prints
-        spans = None
-    acceptance = phase_acceptance(phase)
-    gate_open = acceptance_gate_is_open(phase)
-    record = sdata.get("pending") if sdata and sdata.get("status") == "pending" else None
-    if gate_open:
-        lines.append(f"stop: phase {phase_id} acceptance gate open -- relay the walkthrough (`gate {phase_id}` prints it); "
-                     f"the operator's words clear it with gate {phase_id} clear --words \"<their words>\"")
-    elif phase.get("status") == "pending":
-        lines.append(f"stop: phase {phase_id} pending -- report what you need; the operator's words clear it with phase status {phase_id} in_progress")
-    elif phase.get("status") == "blocked":
-        lines.append(f"stop: phase {phase_id} blocked -- report the blocker to the operator")
-    elif sdata and sdata.get("status") == "pending":
-        if isinstance(record, dict):
-            lines.append(f"stop: {record.get('kind')} (since {record.get('since')}) -- the operator's words will: {_card_cut(record.get('on_words'))}")
-        else:
-            lines.append("stop: untyped pending -- say what you need and what the operator's words will do")
-        lines.append(f"next action: wait for the operator; their words clear it with slice status {sid} in_progress")
-    elif sdata:
-        lines.append(f"next action: {_card_next_action(sid, sdata, sdir, spans)}")
-    else:
-        lines.append("next action: no open slice -- review or archive the phase")
-    lines.extend(wave_card_lines(phase, sid))  # P42: declared phases only
-    gates = []
-    if acceptance is None:
-        gates.append("acceptance=legacy (no gate)")
-    else:
-        required = acceptance.get("required")
-        state = ("open" if gate_open else "cleared" if acceptance.get("cleared_at") else "not opened") if required is True else None
-        gates.append(f"acceptance={'required, ' + state if required is True else 'waived' if required is False else 'UNDECLARED'}")
-    execution = phase_execution(phase)
-    if execution:
-        gates.append(f"parallel={execution.get('branch')} (merge only past worktree gate {phase_id})")
-    lines.append("gates: " + "; ".join(gates))
-    if pr_open:
-        lines.append(pr_open)
-    if pr_stack:
-        lines.append(pr_stack)
-    pr = pr_lines(phase)  # P51: silent for a phase without a pr block or with no branch recorded
-    if pr:
-        lines.append("pr: " + "; ".join(ln.replace("pr_branch=", "", 1) for ln in pr))
-    step = notebook_step(phase_id) if phase.get("status") != "done" else None  # §6: silent under budget
-    if step:
-        lines.append(f"notebook: over budget ({step['bytes']}/{PHASE_MD_BUDGET} B) -- "
-                     + ("run the notebook_move lines `next` prints before the next dispatch" if step["form"] == "moves"
-                        else "advisory: nothing left to move (`next` names what remains)"))
-        notebook_at = len(lines) - 1
-    else:
-        notebook_at = None
-    if spans is None:
-        lines.append("running spans: unknown (no session transcript found)")
-    elif not spans:
-        lines.append("running spans: none")
-    else:
-        shown_spans = [_card_cut(s, 80) for s in spans[:RESUME_CARD_SPANS]]
-        more = f" +{len(spans) - RESUME_CARD_SPANS} more" if len(spans) > RESUME_CARD_SPANS else ""
-        lines.append("running spans: " + "; ".join(shown_spans) + more)
-    if sdir is not None:
-        result = sdir / "result.md"
-        lines.append(f"plan: {shown(sdir / 'plan.md')}" + ("" if (sdir / "plan.md").is_file() else " (not yet)"))
-        lines.append(f"result: {shown(result) if result.is_file() else 'not yet'}")
-    lines.append(f"phase: {shown(pdir / 'phase.md')}")
-    lines.append(f"intent: {shown(pdir / 'intent.md')}")
-    if notebook_at is not None and len("\n".join(lines).encode("utf-8")) > RESUME_CARD_MAX:
-        del lines[notebook_at]  # optional: it yields before the card's own lines are cut
-    return _card_fit(lines)
-
-
-def _card_fit(lines: list) -> str:
-    """Join the card and hold it to RESUME_CARD_MAX bytes (UTF-8): a card over the cap loses its tail."""
-    text = "\n".join(lines)
-    data = text.encode("utf-8")
-    if len(data) <= RESUME_CARD_MAX:
-        return text
-    return data[: RESUME_CARD_MAX - 4].decode("utf-8", "ignore").rstrip() + "\n..."
-
-
 def cmd_compact_resume(args: argparse.Namespace) -> None:
-    """SessionStart hook (source `compact`): print the resume card; on any error, the plain pointer. Exit 0."""
+    """SessionStart hook (source `compact`): print the engine's resume card with the session's running spans; on
+    any error, the plain pointer. Exit 0."""
     raw = _hook_stdin_or_redirect("compact-resume")
-    if raw is None:  # the engine that owns the session's cwd answered
+    if raw is None:  # the adapter of the workspace that owns the session's cwd answered
         return
     print("compaction=done source=compact")
     try:
@@ -1776,7 +1567,11 @@ def cmd_compact_resume(args: argparse.Namespace) -> None:
         except ValueError:
             hook = None
         transcript = hook.get("transcript_path") if isinstance(hook, dict) else None
-        print(resume_card(transcript if isinstance(transcript, str) and transcript.strip() else None))
+        try:
+            spans = _card_running_spans(_card_session_dir(transcript if isinstance(transcript, str) and transcript.strip() else None))
+        except Exception:  # noqa: BLE001 - spans are best-effort; the rest of the card still prints
+            spans = None
+        print(resume_card(spans, read_spans=True))
         return
     except BaseException:  # noqa: BLE001 - SystemExit included: fall back to the plain pointer
         pass
@@ -1786,13 +1581,15 @@ def cmd_compact_resume(args: argparse.Namespace) -> None:
         print(f"pointer unavailable: {_one_line(str(exc)) or type(exc).__name__}")
 
 
-def add_adapter_parsers(sub) -> None:
-    """Sync-agents, executor-route, record-dispatch, dispatch-summary: this part's commands, registered by the entry's build_parser in their place."""
+def build_parser() -> argparse.ArgumentParser:
+    """The adapter's four commands."""
+    parser = argparse.ArgumentParser(prog="adapter.py", description="The Claude Code adapter of the workflow engine.")
+    sub = parser.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("sync-agents", help="Write the route table's rows (engine defaults overlaid by the repo-root executors.toml) into the model/effort frontmatter of the six managed agent files: slice-executor (the mid row; high and research run it with their model and effort passed per dispatch), design-drafter (its own design row), design-critic (the critic row; the judge row runs it with its model passed per call), pr-reader (the reader row), code-reader (the code row) and Explore (the explore row)")
     p.add_argument("--check", action="store_true", help="Report drift without writing; exit 1 if out of sync")
     p.set_defaults(func=sync_agents)
 
-    p = sub.add_parser("executor-route", help="Print the executor routing decision, one key=value per line, writing nothing: bare, the resolved route table (high, research, design, critic, judge, reader, code, mid, explore), the agent files' sync state and an override= line per row executors.toml sets (its value against the default); with a slice id, the route, subagent_type (slice-executor for every slice row), model, effort and attribution its dispatch uses (kind first, then risk, then attempt); --drafter / --critic / --judge / --reader / --code / --explore, a non-slice agent's dispatch; plus fallback=, skip= and warning= lines for the environment. The critic and the judge may share the design row's model (v75)")
+    p = sub.add_parser("route", help="Print the executor routing decision, one key=value per line, writing nothing: bare, the resolved route table (high, research, design, critic, judge, reader, code, mid, explore), the agent files' sync state and an override= line per row executors.toml sets (its value against the default); with a slice id, the route, subagent_type (slice-executor for every slice row), model, effort and attribution its dispatch uses (kind first, then risk, then attempt); --drafter / --critic / --judge / --reader / --code / --explore, a non-slice agent's dispatch; plus fallback=, skip= and warning= lines for the environment. The critic and the judge may share the design row's model (v75)")
     p.add_argument("slice", nargs="?", help="the slice to route; omit for the table")
     p.add_argument("--retry", action="store_true", help="the slice's second attempt (an escalation, a failed or empty return, a fix of mid-row work): always the high row")
     p.add_argument("--drafter", action="store_true", help="the design-drafter's dispatch (its own design row, [claude.design]; not a slice route)")
@@ -1804,18 +1601,22 @@ def add_adapter_parsers(sub) -> None:
     p.add_argument("--explore", action="store_true", help="the read-only Explore lookup agent's dispatch (the explore row)")
     p.set_defaults(func=cmd_executor_route)
 
-    p = sub.add_parser("record-dispatch", help="Append one executor_dispatched record to works/events.jsonl: the verdict a slice dispatch returned (slice, phase, kind, risk, attempt, verdict, note). What it ran on and cost is metered from the transcripts by dispatch-summary; the pre-v61 flags (--route --model --effort --tier --agent --duration-ms --tokens --tool-uses) still parse and are ignored; writes nothing else")
-    p.add_argument("slice", help="the slice that was dispatched")
-    p.add_argument("--verdict", required=True, choices=_DISPATCH_VERDICTS, help="how the executor returned; failed = an empty or failed return")
-    p.add_argument("--attempt", type=int, default=1, help="1 for the first dispatch, 2 for the retry (default 1)")
-    p.add_argument("--note", help="free text")
-    for flag, dest in _RECORD_DISPATCH_RETIRED:
-        p.add_argument(flag, dest=dest, help=argparse.SUPPRESS)
-    p.set_defaults(func=cmd_record_dispatch)
-
-    p = sub.add_parser("dispatch-summary", help="Read-only: what a phase really cost -- the main thread beside its subagent spans per slice and per phase (requests, context, output, list-price $, minutes, limit hits, verdicts) metered from Claude Code's transcripts, the means a DECOMP estimates time from, then the recorded verdicts; no transcripts found prints one line and the recorded tables")
+    p = sub.add_parser("meter", help="Read-only: what a phase really cost -- the main thread beside its subagent spans per slice and per phase (requests, context, output, list-price $, minutes, limit hits, verdicts) metered from Claude Code's transcripts, the means a DECOMP estimates time from, then each slice's verdict from its result.md (status:) or slice.json; no transcripts found prints one line and the verdicts")
     p.add_argument("--phase", help="one phase (a brief id: 46, P46 or 46-k2; P12; 7kq2 or P-7kq2): its slices, read from the sessions overlapping its slice windows")
-    p.add_argument("--slice", help="one slice: its metered rows and its recorded attempts, one per line")
+    p.add_argument("--slice", help="one slice: its metered rows and its verdict")
     p.add_argument("--json", action="store_true", help="print everything as one JSON object")
     p.add_argument("--transcripts", action="append", metavar="DIR", help="read this projects/<slug> directory instead of discovering the session root's (repeatable)")
-    p.set_defaults(func=cmd_dispatch_summary)
+    p.set_defaults(func=cmd_meter)
+
+    p = sub.add_parser("compact-resume", help="The SessionStart hook (matcher compact): after a compaction, print compaction=done source=compact and the engine's resume card with the running spans of the hook's transcript_path session, falling back to the plain pointer on any error; never fails, always exits 0")
+    p.set_defaults(func=cmd_compact_resume)
+    return parser
+
+
+def main(argv=None) -> int:
+    tokens = sys.argv[1:] if argv is None else list(argv)
+    return workflow.run(build_parser().parse_args(tokens), tokens)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

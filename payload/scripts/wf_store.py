@@ -24,14 +24,12 @@ SEAMS = {
         '_phase_repo_path', '_pr_label', '_pr_next_lines', '_pr_open_entries', '_pr_registry_names',
         '_repo_anchor_problems', '_repo_current_branch', '_pr_draft_advice', '_unstamped_set_warning',
         'explain_unit_lines', 'merge_ready_line', 'nested_next_lines', 'nested_repo_checks', 'new_pr_block',
-        'parallel_start_hint', 'pr_block_problems', 'pr_open_lines', 'pr_rules_validate', 'pr_stack_lines',
+        'parallel_start_hint', 'pr_block_problems', 'pr_lines', 'pr_open_items', 'pr_open_lines', '_pr_open_hint',
+        'pr_rules_validate', 'pr_stack_items', 'pr_stack_lines',
     ),
     "wf_agenda": (
         'agenda_index', 'agenda_links', 'agenda_read_all', 'agenda_require_item', 'rebuild_agenda_dashboard',
         'rebuild_deferred_dashboard', 'validate_agenda',
-    ),
-    "wf_adapter": (
-        '_patched_agent_md', 'executor_agent_files', 'resolve_routes', 'resume_card',
     ),
     "wf_cloud": (
         'cloud_commits_waiting_line', 'cloud_link_file', 'cloud_store_line', 'COMMITTED_AT',
@@ -541,9 +539,6 @@ EXPLAIN_UNIT_DEFAULT = "book"
 # Regenerated from works/phases/** by `worktree merge-finish`; never merged by hand (see .gitattributes).
 # docs/current/*.md are plain files agents edit, so they are not among them.
 GENERATED_FILES = ("works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/agenda.md")
-# The executor agent files Claude Code loads: the host's `.claude/agents` when nested (Claude Code
-# finds agents walking up from the session's cwd, the host root), the workspace's otherwise.
-# executors.toml and .env stay at ROOT either way.
 
 
 def _main_host_checkout(host: Path) -> Path:
@@ -567,7 +562,6 @@ def _main_host_checkout(host: Path) -> Path:
 # of its own, so `<host-wt>/.claude/agents` never exists), and the multi-repo registry's paths
 # resolve against it (`nested_repo_path`, P40), never against HOST_ROOT.
 MAIN_HOST = _main_host_checkout(HOST_ROOT) if HOST_ROOT is not None else None
-CLAUDE_AGENTS = MAIN_HOST / ".claude" / "agents" if MAIN_HOST is not None else (HOST_ROOT or ROOT) / ".claude" / "agents"
 
 
 def nested_repos() -> list:
@@ -696,7 +690,7 @@ def append_event(event_type: str, **payload: object) -> None:
 
 def _read_events(path: Path) -> tuple:
     """(events, skipped) of one JSONL event file: a line that is not JSON counts as skipped, a JSON value that
-    is not an object is dropped silently (dispatch-summary's long-standing reading)."""
+    is not an object is dropped silently (the meter's long-standing reading)."""
     events, skipped = [], 0
     if not path.exists():
         return events, skipped
@@ -3152,21 +3146,6 @@ def validate() -> int:
             if data.get("status") not in allowed:
                 errors.append(f"deferred job in wrong folder: {data.get('id')} status {data.get('status')} under {shown(base)}")
     validate_agenda(errors, warnings)
-    # Agent-file drift is advisory only: warn (never error, never crash) when the six managed agent
-    # files disagree with the route table (executors.toml/defaults), so a foreign or partial
-    # workspace still validates. Skipped when a broken nested marker names no host: the agent files
-    # live there, not under ROOT.
-    try:
-        for _label, path, model, effort in ([] if NESTED is not None and HOST_ROOT is None else executor_agent_files(resolve_routes())):
-            if not path.exists():
-                warnings.append(f"missing executor agent file: {shown(path)} (run: {WORKFLOW_CMD} sync-agents)")
-                continue
-            current = path.read_text(encoding="utf-8")
-            desired = _patched_agent_md(current, model, effort)
-            if desired != current:
-                warnings.append(f"executor agent file out of sync with executors.toml/defaults: {shown(path)} (run: {WORKFLOW_CMD} sync-agents)")
-    except (SystemExit, Exception) as exc:  # noqa: BLE001 - advisory check must not fail validate
-        warnings.append(f"executor agent config check failed: {exc}")
     # Nested personal install (P28): a malformed marker is an ERROR, so a broken nested install is
     # never mistaken for at-root mode; the host must be a git work tree (phase scope and the
     # product commits read it). Silent at root -- no marker, nothing checked.
@@ -4047,7 +4026,7 @@ def cmd_next(args: argparse.Namespace) -> None:
     none, the advisory form) follows the pointer and wave lines, and in the WAITING block precedes its
     `After the operator approves` line: run the moves before the next dispatch. Silent under budget."""
     rebuild_index_and_state()
-    if getattr(args, "card", False):  # the resume card alone: what compact-resume prints after a compaction
+    if getattr(args, "card", False):  # the resume card alone (the adapter's hook adds the running spans)
         print(resume_card())
         return
     state = read_json(WORKS / "state.json")
@@ -4160,6 +4139,194 @@ RESUME_CARD_FIELD = 160    # a free-text field (a span description, the operator
 def _card_cut(text, limit: int = RESUME_CARD_FIELD) -> str:
     text = _one_line(text or "")
     return text if len(text) <= limit else text[: limit - 3].rstrip() + "..."
+
+
+
+def wave_card_lines(phase: dict, sid) -> list:
+    """The resume card's wave lines for a declared phase, none otherwise: a sibling's stop that the pointer's
+    lines do not show, then one `wave:` line -- the running wave slices, those of them whose result.md exists
+    (returned), the ready set and the stops -- with the wave's next action. A barrier is never running or
+    returned there, and while one holds the phase alone the card has no `wave:` line (P42.F1)."""
+    if not phase_declared(phase):
+        return []
+    wave, lines = ready_set(phase), []
+    shown_stop = phase.get("status") in STOP_STATUSES or any(s["id"] == sid for s in wave["stops"])
+    hidden = None if shown_stop else next(iter(wave["stops"]), None)
+    if hidden is not None:
+        hid, record = hidden["id"], hidden.get("pending")
+        if hidden.get("status") == "blocked":
+            lines.append(f"stop: slice {hid} blocked -- report the blocker (its result.md) to the operator")
+        elif isinstance(record, dict):
+            lines.append(f"stop: slice {hid} {record.get('kind')} (since {record.get('since')}) -- the operator's words will: "
+                         f"{_card_cut(record.get('on_words'))}; they clear it with slice status {hid} in_progress")
+        else:
+            lines.append(f"stop: slice {hid} untyped pending -- say what you need; the operator's words clear it with slice status {hid} in_progress")
+    if wave_held(wave):
+        return lines
+    returned = [s for s in wave["running"] if (ACTIVE / phase["id"] / "slices" / s["id"] / "result.md").is_file()]
+    stops = ([phase["id"]] if phase.get("status") in STOP_STATUSES else []) + [s["id"] for s in wave["stops"]]
+    then = "start nothing new: a stop is on disk" if stops else "start the ready set only while no stop is on disk"
+    lines.append(f"wave: running={_slice_ids(wave['running'])}; returned={_slice_ids(returned)}; ready={_slice_ids(wave['ready'])}; "
+                 f"stops={','.join(stops) or 'none'} -- in a /do-whole-phase run, wait for every running span (never re-dispatch one), "
+                 f"finish each returned slice, and {then}")
+    return lines
+
+
+def pr_open_card_line(phases: list):
+    """The resume card's one compact `pr_open:` line (the first open PR and `+N more`), or None."""
+    items = pr_open_items(phases)
+    if not items:
+        return None
+    pid, ph, e = items[0]
+    more = f" +{len(items) - 1} more (`next` lists them)" if len(items) > 1 else ""
+    return f"pr_open: {pid} {_pr_label(e)} state={e.get('state') or 'unsynced'} ({_pr_open_hint(pid, ph, e, short=True)}){more}"
+
+
+def pr_stack_card_line(phases: list):
+    """The resume card's compact `pr_stack:` line (the first stacked PR needing action and `+N more`), or None."""
+    items = pr_stack_items(phases)
+    if not items:
+        return None
+    pid, e, base, lower, _steps = items[0]
+    more = f" +{len(items) - 1} more" if len(items) > 1 else ""
+    return f"pr_stack: {pid} {_pr_label(e)} base={base} lower={lower}{more} (`next` prints the steps)"
+
+
+# The resume card (P37, v61): computed from state at print time, never stored; `next --card` prints it. After a
+# compaction the Claude Code adapter's SessionStart hook prints the same card with the running spans it reads
+# from the session (`spans`); the engine itself never reads a transcript. The card names files, never their
+# contents, and is at most RESUME_CARD_MAX bytes.
+RESUME_CARD_MAX = 2048
+RESUME_CARD_SPANS = 4      # running spans listed by name; the rest are `+N more`
+
+
+def _card_next_action(sid: str, sdata: dict, sdir: Path, spans) -> str:
+    """The slice's next action, derived from its status and which of plan.md / result.md exist."""
+    status, kind = sdata.get("status"), sdata.get("kind")
+    start = f"slice start {sid}, then " if status in ("todo", "ready") else ""
+    if status == "blocked":
+        return "blocked: report the blocker (result.md) to the operator; nothing advances until it clears"
+    if (sdir / "result.md").is_file():
+        return f"read result.md's verdict head, then slice finish {sid} --outcome \"<its summary>\", check, commit"
+    if not (sdir / "plan.md").is_file():
+        return f"{start}plan it: write plan.md" + ("" if kind == "co-work" else f" and pin its route (the adapter's `route {sid}`) as its ## Dispatch")
+    if kind == "co-work":
+        return f"{start}continue the design-cowork loop inline from the round on disk; a running span below is its drafter, critic or mockup -- wait for it"
+    if spans:
+        return "an executor is running (see spans): wait for its notification, never re-dispatch"
+    if spans is None:
+        return (f"{start}dispatch from plan.md's ## Dispatch -- unless an executor dispatched before the compaction "
+                "is still running: then wait for its notification, never re-dispatch")
+    return f"{start}dispatch from plan.md's ## Dispatch (the prompt's first line: slice: {sid})"
+
+
+def resume_card(spans=None, read_spans: bool = False) -> str:
+    """The resume card: the pointer, the next action (or the typed stop), the open gates, the slice's file
+    paths and, when the caller read them (`read_spans`: the adapter's hook), the running spans (None: no
+    session found) -- computed from state now, read-only, at most RESUME_CARD_MAX bytes."""
+    phases = all_active_phases()
+    stream = current_stream(phases)
+    phase_id, sid, _next = resolve_current(stream_phases(phases, stream))
+    lines = [f"resume card (computed from state; files are named, not quoted; commands run as `{WORKFLOW_CMD} <command>`)"]
+    if stream:
+        lines.append(f"stream={stream}")
+    try:  # P52: a done phase's open PR (the close, a team's merge, an archive hold); never the network
+        pr_open = pr_open_card_line(phases)
+    except Exception:  # noqa: BLE001 - the card always prints
+        pr_open = None
+    try:  # P52: a stacked PR needing a merge and a retarget; never the network
+        pr_stack = pr_stack_card_line(phases)
+    except Exception:  # noqa: BLE001 - the card always prints
+        pr_stack = None
+    if not phase_id:
+        lines.append("pointer: no active phase")
+        lines.append("next action: create a phase (/create-phase) or promote deferred work")
+        if pr_open:
+            lines.append(pr_open)
+        if pr_stack:
+            lines.append(pr_stack)
+        return _card_fit(lines)
+    phase = next(p for p in phases if p["id"] == phase_id)
+    pdir = ACTIVE / phase_id
+    sdata = next((s for s in phase["slices"] if s.get("id") == sid), None) if sid else None
+    sdir = ACTIVE / phase_id / "slices" / sid if sid else None
+    pointer = f"pointer: phase {phase_id} {phase.get('status')}"
+    if sdata:
+        pointer += f"; slice {sid} {sdata.get('status')} ({sdata.get('kind') or '?'}/{sdata.get('risk') or '?'})"
+    lines.append(pointer)
+    acceptance = phase_acceptance(phase)
+    gate_open = acceptance_gate_is_open(phase)
+    record = sdata.get("pending") if sdata and sdata.get("status") == "pending" else None
+    if gate_open:
+        lines.append(f"stop: phase {phase_id} acceptance gate open -- relay the walkthrough (`gate {phase_id}` prints it); "
+                     f"the operator's words clear it with gate {phase_id} clear --words \"<their words>\"")
+    elif phase.get("status") == "pending":
+        lines.append(f"stop: phase {phase_id} pending -- report what you need; the operator's words clear it with phase status {phase_id} in_progress")
+    elif phase.get("status") == "blocked":
+        lines.append(f"stop: phase {phase_id} blocked -- report the blocker to the operator")
+    elif sdata and sdata.get("status") == "pending":
+        if isinstance(record, dict):
+            lines.append(f"stop: {record.get('kind')} (since {record.get('since')}) -- the operator's words will: {_card_cut(record.get('on_words'))}")
+        else:
+            lines.append("stop: untyped pending -- say what you need and what the operator's words will do")
+        lines.append(f"next action: wait for the operator; their words clear it with slice status {sid} in_progress")
+    elif sdata:
+        lines.append(f"next action: {_card_next_action(sid, sdata, sdir, spans)}")
+    else:
+        lines.append("next action: no open slice -- review or archive the phase")
+    lines.extend(wave_card_lines(phase, sid))  # P42: declared phases only
+    gates = []
+    if acceptance is None:
+        gates.append("acceptance=legacy (no gate)")
+    else:
+        required = acceptance.get("required")
+        state = ("open" if gate_open else "cleared" if acceptance.get("cleared_at") else "not opened") if required is True else None
+        gates.append(f"acceptance={'required, ' + state if required is True else 'waived' if required is False else 'UNDECLARED'}")
+    execution = phase_execution(phase)
+    if execution:
+        gates.append(f"parallel={execution.get('branch')} (merge only past worktree gate {phase_id})")
+    lines.append("gates: " + "; ".join(gates))
+    if pr_open:
+        lines.append(pr_open)
+    if pr_stack:
+        lines.append(pr_stack)
+    pr = pr_lines(phase)  # P51: silent for a phase without a pr block or with no branch recorded
+    if pr:
+        lines.append("pr: " + "; ".join(ln.replace("pr_branch=", "", 1) for ln in pr))
+    step = notebook_step(phase_id) if phase.get("status") != "done" else None  # §6: silent under budget
+    if step:
+        lines.append(f"notebook: over budget ({step['bytes']}/{PHASE_MD_BUDGET} B) -- "
+                     + ("run the notebook_move lines `next` prints before the next dispatch" if step["form"] == "moves"
+                        else "advisory: nothing left to move (`next` names what remains)"))
+        notebook_at = len(lines) - 1
+    else:
+        notebook_at = None
+    if read_spans and spans is None:
+        lines.append("running spans: unknown (no session transcript found)")
+    elif read_spans and not spans:
+        lines.append("running spans: none")
+    elif read_spans:
+        shown_spans = [_card_cut(s, 80) for s in spans[:RESUME_CARD_SPANS]]
+        more = f" +{len(spans) - RESUME_CARD_SPANS} more" if len(spans) > RESUME_CARD_SPANS else ""
+        lines.append("running spans: " + "; ".join(shown_spans) + more)
+    if sdir is not None:
+        result = sdir / "result.md"
+        lines.append(f"plan: {shown(sdir / 'plan.md')}" + ("" if (sdir / "plan.md").is_file() else " (not yet)"))
+        lines.append(f"result: {shown(result) if result.is_file() else 'not yet'}")
+    lines.append(f"phase: {shown(pdir / 'phase.md')}")
+    lines.append(f"intent: {shown(pdir / 'intent.md')}")
+    if notebook_at is not None and len("\n".join(lines).encode("utf-8")) > RESUME_CARD_MAX:
+        del lines[notebook_at]  # optional: it yields before the card's own lines are cut
+    return _card_fit(lines)
+
+
+def _card_fit(lines: list) -> str:
+    """Join the card and hold it to RESUME_CARD_MAX bytes (UTF-8): a card over the cap loses its tail."""
+    text = "\n".join(lines)
+    data = text.encode("utf-8")
+    if len(data) <= RESUME_CARD_MAX:
+        return text
+    return data[: RESUME_CARD_MAX - 4].decode("utf-8", "ignore").rstrip() + "\n..."
 
 
 def full_slice_id(phase_id: str, raw: str) -> str:

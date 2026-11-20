@@ -96,6 +96,9 @@ sha() {
 # The engine is flat modules: <dir>/scripts/workflow.py (the entry) and the wf_*.py beside it. engine_src prints
 # them all, so a check on the engine's source reads every module (Test 0's python has its own engine_src()).
 engine_src() { cat "$1"/scripts/*.py; }
+# The Claude Code adapter (adapters/claude_code/adapter.py) owns route, sync-agents, meter and compact-resume; a
+# wrapper that runs both picks the entry by the command's first word.
+wf_entry() { case "$1" in route|sync-agents|meter|compact-resume) printf 'adapters/claude_code/adapter.py' ;; *) printf 'scripts/workflow.py' ;; esac; }
 # /explain is the knowledge plugin's: no install path touches or reports a path with an `explain` component.
 # plant_old_explain writes the last shipped explain skill (1c5ea0e) when this clone has that history, else a
 # marker copy; explain_sig is every such file under a tree with its hash (.git and workflow/ skipped).
@@ -703,11 +706,11 @@ for required in ("`new visual direction: yes` in the handoff licenses setting a 
     assert required in drafter, required
 assert "the shared fixture (every entity a page shows, lists or links to, with its figures)" in design, "drafting.md frame pass: fixture coverage"
 # P47-p5.F2: drafting.md states the shipped critique default and the one measured round, defers the
-# critic row's effort to executor-route, and no shipped file names a phase-internal round or an
+# critic row's effort to the adapter's route, and no shipped file names a phase-internal round or an
 # xhigh critic row (D-q0ba).
 for required in ("**The level is `off` unless the operator asks for a critic**",
                  "**One measured round, not a norm**", "16 spans, $71.50, 3 h 43 min wall clock",
-                 "cost $19.90, 28 % of the round", "cost $28.60", "`executor-route --critic` and `--judge` print"):
+                 "cost $19.90, 28 % of the round", "cost $28.60", "`adapter.py route --critic` and `--judge` print"):
     assert required in design, ("drafting.md critique default / cost", required)
 for _f in sorted((root / "payload").rglob("*")):
     if _f.is_file() and _f.suffix in (".md", ".py", ".toml", ".json", ".yml"):
@@ -851,7 +854,7 @@ assert "phase scope <P>" in qa and "re-runs the whole list" not in qa
 # lighter-rules: the executor is a card of at most 3,072 B (the floor, the playbook map, done means
 # proven, the notebook, the verdict); how each kind of work goes lives in one playbook per kind under
 # .claude/skills/do-whole-phase/playbooks/ (1-3 KB each), opened only for that kind. The engine reads
-# the card's frontmatter (sync-agents, executor-route), so that stays pinned.
+# the card's frontmatter (the adapter's sync-agents and route), so that stays pinned.
 assert not (root / "payload/claude/agents/slice-executor-mid.md").exists()
 assert not (root / "payload/claude/agents/slice-executor-high.md").exists()
 body = (root / "payload/claude/agents/slice-executor.md").read_text(encoding="utf-8")
@@ -921,7 +924,7 @@ for _r in ("**The code reader is yours to dispatch**", "`subagent_type: code-rea
            "**Nothing the phase started is left running.**", "**One review per phase**", "Run the walkthrough"):
     assert _r in _rv, _r
 assert "dispatched by the review executor itself" in _ro and "`review-phase` skill" in _ro
-for _gone in ("## The code reader, before the review", "executor-route --code"):
+for _gone in ("## The code reader, before the review", "route --code"):
     assert _gone not in _ro, _gone
 # Doc consolidation is retired: no phase-flow skill asks for a Doc impact note or a docs phase.
 for _n in _caps:
@@ -1064,11 +1067,21 @@ for required in (
     "Claude in Chrome is used only when the operator asks an agent to use their own browser.",
     "install it yourself, `npm install -g @playwright/cli@0.1.25`", "it writes `.playwright-cli/` there",
     # The pointers: commands, playbooks, the code reader among the agents, the three skills named.
-    "`python3 scripts/workflow.py --help`", "`.claude/skills/`", "`.claude/agents/slice-executor.md`", "`code-reader`",
+    "`python3 scripts/workflow.py --help`", "`python3 adapters/claude_code/adapter.py --help`", "`.claude/skills/`", "`.claude/agents/slice-executor.md`", "`code-reader`",
     "`create-phase`", "`design-cowork`", "`type(scope): summary`",
 ):
     assert claude.count(required) == 1, required
 assert "never fan out slices" not in claude, "the contract still forbids fanning out slices"
+# The thin engine (W9): the Claude Code side is the adapter folder. No engine module imports it (or the
+# retired wf_adapter), and the adapter reaches the engine only through its own import of workflow.
+import ast as _ast
+for _f in sorted((root / "payload/scripts").glob("*.py")):
+    for _n in _ast.walk(_ast.parse(_f.read_text(encoding="utf-8"))):
+        _mods = [a.name for a in _n.names] if isinstance(_n, _ast.Import) else [_n.module or ""] if isinstance(_n, _ast.ImportFrom) else []
+        assert not [m for m in _mods if m.split(".")[0] in ("adapter", "wf_adapter", "adapters")], (_f.name, _mods)
+assert not (root / "payload/scripts/wf_adapter.py").exists() and not (root / "payload/executors.toml").exists()
+assert (root / "payload/adapters/claude_code/adapter.py").is_file() and (root / "payload/adapters/claude_code/executors.toml").is_file()
+assert "adapters/claude_code/executors.toml" not in LIVE and "adapters/claude_code/adapter.py" in LIVE and "executors.toml" in LIVE
 # Subtract before you add: the shipped CLAUDE.md is this file byte for byte, and it stays on one screen.
 assert len((root / "payload/contract.md").read_bytes()) <= 4096, "the contract is over its 4,096 B cap"
 assert len(claude.splitlines()) <= 60, "the contract is over 60 lines"
@@ -1204,7 +1217,7 @@ then ok "settings.json additively merged (custom perm + env survive; the playwri
 if python3 - "$R/.claude/settings.json" <<'PY'
 import json, sys
 h = json.load(open(sys.argv[1]))["hooks"]
-resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-resume || true'
+resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 adapters/claude_code/adapter.py compact-resume || true'
 assert h["PreCompact"] == [{"matcher": "auto", "hooks": [{"type": "command", "command": "echo foreign-precompact"}]}], h["PreCompact"]
 assert h["PostToolUse"] == [{"matcher": "Edit", "hooks": [{"type": "command", "command": "echo foreign-post"}]}], h["PostToolUse"]
 assert h["SessionStart"] == [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}], h["SessionStart"]
@@ -1291,10 +1304,14 @@ out=$(sh "$BOOT" "$F" --at-root --name "Fresh" --summary "fresh" 2>&1); rc=$?
 if python3 - "$F/.claude/settings.json" <<'PY'
 import json, sys
 h = json.load(open(sys.argv[1]))["hooks"]
-resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-resume || true'
+resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 adapters/claude_code/adapter.py compact-resume || true'
 assert h == {"SessionStart": [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}]}, h
 PY
-then ok "a fresh at-root install ships only the resume hook (SessionStart compact -> compact-resume, timeout 15) and no PreCompact (v61: compaction is Claude Code's own)"; else bad "fresh install settings.json hooks wrong"; fi
+then ok "a fresh at-root install ships only the resume hook (SessionStart compact -> the adapter's compact-resume, timeout 15) and no PreCompact (v61: compaction is Claude Code's own)"; else bad "fresh install settings.json hooks wrong"; fi
+python3 -c 'import json,sys; a=json.load(open(sys.argv[1]))["permissions"]["allow"]; assert "Bash(python3 adapters/claude_code/adapter.py:*)" in a and "Bash(python3 scripts/workflow.py:*)" in a, a' "$F/.claude/settings.json" \
+  && [ -x "$F/adapters/claude_code/adapter.py" ] && [ ! -e "$F/adapters/claude_code/executors.toml" ] && [ ! -e "$F/scripts/wf_adapter.py" ] \
+  && ok "a fresh at-root install ships the adapter folder (adapter.py only; the executors.toml seed sits at the root) and allows its command" \
+  || bad "a fresh at-root install's adapter folder or its allow rule is wrong"
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 500000' "$F/.claude/settings.json" \
   && ok "a fresh at-root install ships autoCompactWindow=500000 in project settings" || bad "fresh install settings.json lacks autoCompactWindow=500000"
 # lighter-rules: the agent's browser runs with no prompt -- the CLI and its self-install are allowed.
@@ -1434,13 +1451,13 @@ D="$F/.claude/agents/design-drafter.md"; C="$F/.claude/agents/design-critic.md"
 [ -f "$F/.github/workflows/workspace-ci.yml" ] && ok "fresh install seeds the CI workflow" || bad "fresh install missing .github/workflows/workspace-ci.yml"
 grep -q '^works/events\.jsonl merge=union$' "$F/.gitattributes" && ok "fresh install seeds .gitattributes with the union rule" || bad "fresh install missing the .gitattributes union rule"
 [ ! -f "$F/.env.example" ] && [ ! -f "$F/executors.toml.example" ] && ok "legacy .env.example / executors.toml.example retired (absent on fresh install)" || bad "a legacy tier-config example should be retired but is present"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && ok "sync-agents --check: seeded route config matches live agents" || bad "sync-agents --check failed on a fresh install"
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check >/dev/null 2>&1 ) && ok "sync-agents --check: seeded route config matches live agents" || bad "sync-agents --check failed on a fresh install"
 # v80: the seed executors.toml ships verbatim with every row commented out at its default (the cheap-route
 # block and its derived seed are gone), so a fresh install runs the engine table; v83 retired the cheap row.
-diff -q "$F/executors.toml" "$SRC/executors.toml" >/dev/null && ! grep -q '^\[claude\.' "$F/executors.toml" \
+diff -q "$F/executors.toml" "$SRC/adapters/claude_code/executors.toml" >/dev/null && ! grep -q '^\[claude\.' "$F/executors.toml" \
   && grep -qx '# \[claude\.explore\]' "$F/executors.toml" && grep -qx '# effort = "medium"' "$F/executors.toml" && ! grep -q 'claude\.cheap\]$' "$F/executors.toml" \
   && ok "the fresh install's executors.toml is the source verbatim, every row commented out at its default" || bad "the seeded executors.toml is not the verbatim all-commented source"
-seed_er=$(cd "$F" && python3 scripts/workflow.py executor-route 2>&1)
+seed_er=$(cd "$F" && python3 adapters/claude_code/adapter.py route 2>&1)
 printf '%s\n' "$seed_er" | grep -qE '^mid +slice-executor +opus +medium +default$' && ! printf '%s\n' "$seed_er" | grep -q '^cheap ' \
   && ! printf '%s\n' "$seed_er" | grep -q '^override=' \
   && ok "a fresh install has no cheap row (v83) and its mid row is opus@medium, with no override= line" || bad "a fresh install's route table or override lines wrong: $seed_er"
@@ -1525,13 +1542,13 @@ d = json.load(open(p)); d["kind"] = "co-work"
 json.dump(d, open(p, "w"), indent=2)
 PY2
 # v53 route table (P32.S1): executors.toml overrides the engine's rows key by key, sync-agents
-# writes the four managed agent files from them (v66: one slice-executor, carrying the mid row), and executor-route prints the routing decision,
+# writes the four managed agent files from them (v66: one slice-executor, carrying the mid row), and route prints the routing decision,
 # writing nothing. Its probes unset the environment variables it reads, so a run inside an ocx
 # session (a loopback ANTHROPIC_BASE_URL) or on Bedrock still sees the plain table.
 erenv() { env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE -u CLAUDE_CODE_USE_BEDROCK -u CLAUDE_CODE_USE_VERTEX -u CLAUDE_CODE_USE_FOUNDRY -u ANTHROPIC_DEFAULT_HAIKU_MODEL "$@"; }
-er() { ( cd "$F" && erenv python3 scripts/workflow.py executor-route "$@" 2>&1 ); }
+er() { ( cd "$F" && erenv python3 adapters/claude_code/adapter.py route "$@" 2>&1 ); }
 rm -f "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents >/dev/null 2>&1 ) \
   && grep -q '^model: opus$' "$F/.claude/agents/slice-executor.md" && grep -q '^effort: medium$' "$F/.claude/agents/slice-executor.md" \
   && grep -q '^model: fable$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: high$' "$F/.claude/agents/design-drafter.md" \
   && grep -q '^model: haiku$' "$F/.claude/agents/Explore.md" && grep -q '^effort: xhigh$' "$F/.claude/agents/Explore.md" \
@@ -1539,45 +1556,45 @@ rm -f "$F/executors.toml"
   && ok "no executors.toml: sync-agents writes the route defaults (slice-executor mid opus@medium, design-drafter fable@high, design-critic opus@high, Explore haiku@xhigh)" \
   || bad "the route defaults matrix is wrong"
 printf '[claude.high]\nmodel = "fable"\n' > "$F/executors.toml"
-sa_out=$( cd "$F" && python3 scripts/workflow.py sync-agents 2>&1 ); er_out=$(er P1.DECOMP)
+sa_out=$( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents 2>&1 ); er_out=$(er P1.DECOMP)
 printf '%s\n' "$sa_out" | grep -q 'already in sync; nothing written' && grep -q '^model: opus$' "$F/.claude/agents/slice-executor.md" \
   && grep -q '^model: fable$' "$F/.claude/agents/design-drafter.md" \
   && printf '%s\n' "$er_out" | grep -qx 'model=fable' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' \
-  && ok "a [claude.high] alias override writes no agent file (v66: high is passed per dispatch) and shows in executor-route; design-drafter keeps its own row" \
-  || bad "a [claude.high] override wrote a file, reached design-drafter, or is missing from executor-route: $sa_out / $er_out"
+  && ok "a [claude.high] alias override writes no agent file (v66: high is passed per dispatch) and shows in route; design-drafter keeps its own row" \
+  || bad "a [claude.high] override wrote a file, reached design-drafter, or is missing from route: $sa_out / $er_out"
 printf '[claude.high]\nmodel = "claude-opus-5-5"\n' > "$F/executors.toml"
-hi_out=$( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 ); hi_rc=$?
+hi_out=$( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check 2>&1 ); hi_rc=$?
 [ "$hi_rc" -ne 0 ] && printf '%s\n' "$hi_out" | grep -q 'since v66 one executor file carries the mid row' \
   && ok "a full model id on [claude.high] is refused with the v66 migration line" || bad "[claude.high] full id not refused (rc=$hi_rc): $hi_out"
 printf '[claude.mid]\nmodel = "claude-sonnet-5-5"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: claude-sonnet-5-5$' "$F/.claude/agents/slice-executor.md" \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: claude-sonnet-5-5$' "$F/.claude/agents/slice-executor.md" \
   && ok "a full model id on [claude.mid] is accepted and written into slice-executor.md" || bad "[claude.mid] full id was refused or not written to slice-executor.md"
 printf '[claude.design]\nmodel = "fable"\neffort = "max"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: fable$' "$F/.claude/agents/design-drafter.md" \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents >/dev/null 2>&1 ) && grep -q '^model: fable$' "$F/.claude/agents/design-drafter.md" \
   && grep -q '^effort: max$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: medium$' "$F/.claude/agents/slice-executor.md" \
   && ok "a [claude.design] override patches design-drafter alone" || bad "a [claude.design] override did not reach design-drafter, or reached slice-executor"
 printf 'mode = "flex"\n' > "$F/executors.toml"
-mode_out=$( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 ); mode_rc=$?
+mode_out=$( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check 2>&1 ); mode_rc=$?
 [ "$mode_rc" -ne 0 ] && printf '%s\n' "$mode_out" | grep -q 'retired in workspace v53' \
   && ok "a leftover mode = line is refused with the v53 migration message" || bad "mode = \"flex\" was not refused with the v53 migration (rc=$mode_rc): $mode_out"
 printf '[claude.low]\nmodel = "sonnet"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 | grep -q 'retired in workspace v23' ) && ok "retired [claude.low] section rejected with a migration message" || bad "[claude.low] should be rejected as a retired tier"
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check 2>&1 | grep -q 'retired in workspace v23' ) && ok "retired [claude.low] section rejected with a migration message" || bad "[claude.low] should be rejected as a retired tier"
 printf '[codex.high]\nmodel = "gpt-5.6-sol"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 | grep -q 'removed in workspace v31' ) && ok "leftover [codex.*] section rejected with the v31 migration message" || bad "[codex.*] should be rejected as removed support"
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check 2>&1 | grep -q 'removed in workspace v31' ) && ok "leftover [codex.*] section rejected with the v31 migration message" || bad "[codex.*] should be rejected as removed support"
 printf '[claude.cheap]\nmodel = "haiku"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 | grep -q 'the cheap row was retired in workspace v83' ) \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check 2>&1 | grep -q 'the cheap row was retired in workspace v83' ) \
   && ok "a leftover [claude.cheap] is refused with the v83 migration message" || bad "[claude.cheap] should be rejected as a retired row"
 printf '[claude.research]\nmodel = "claude-opus-5-5"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 | grep -q 'must be an Agent-tool alias' ) \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check 2>&1 | grep -q 'must be an Agent-tool alias' ) \
   && ok "a full model id on the research row is refused (it runs a file the mid row owns, so an alias only)" || bad "[claude.research] accepted a full model id"
 printf '[claude.research]\neffort = "hgih"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 | grep -q 'effort must be one of' ) \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check 2>&1 | grep -q 'effort must be one of' ) \
   && ok "an effort outside the Agent tool's levels is refused" || bad "[claude.research] accepted an unknown effort"
 printf '[claude.nope]\nmodel = "opus"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check 2>&1 | grep -q 'unknown route' ) \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check 2>&1 | grep -q 'unknown route' ) \
   && ok "an unknown [claude.<row>] is refused" || bad "[claude.nope] was accepted"
 rm -f "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed restoring the route defaults"
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed restoring the route defaults"
 er_out=$(er)
 [ "$(printf '%s\n' "$er_out" | grep -cE '^(high|research|design|critic|judge|mid|explore) ')" = "7" ] && ! printf '%s\n' "$er_out" | grep -q '^cheap ' && printf '%s\n' "$er_out" | grep -qx 'proxy=none' \
   && printf '%s\n' "$er_out" | grep -qE '^route +agent +model +effort +source$' \
@@ -1587,88 +1604,88 @@ er_out=$(er)
   && printf '%s\n' "$er_out" | grep -qE '^mid +slice-executor +opus +medium +default$' \
   && printf '%s\n' "$er_out" | grep -qE '^explore +Explore +haiku +xhigh +default$' \
   && ! printf '%s\n' "$er_out" | grep -q '^warning=fairness' && ! printf '%s\n' "$er_out" | grep -q 'tier' && ! printf '%s\n' "$er_out" | grep -q '^fallback=' \
-  && ok "executor-route (bare) prints the seven-row route table with its agent column, no tier and no cheap row (v80 defaults: every opus row @high, mid opus@medium, explore haiku@xhigh; v83) and proxy=none" || bad "executor-route bare table wrong: $er_out"
+  && ok "route (bare) prints the seven-row route table with its agent column, no tier and no cheap row (v80 defaults: every opus row @high, mid opus@medium, explore haiku@xhigh; v83) and proxy=none" || bad "route bare table wrong: $er_out"
 er_out=$(er P1.DECOMP)
 printf '%s\n' "$er_out" | grep -qx 'route=high' && ! printf '%s\n' "$er_out" | grep -q '^tier=' \
   && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
   && printf '%s\n' "$er_out" | grep -qx 'effort=high' && printf '%s\n' "$er_out" | grep -qx 'attribution=Claude Opus 5.5' \
-  && ok "executor-route sends a decomposition slice to the high row (slice-executor, opus@high, Claude Opus 5.5, no tier= line)" || bad "executor-route P1.DECOMP wrong: $er_out"
+  && ok "route sends a decomposition slice to the high row (slice-executor, opus@high, Claude Opus 5.5, no tier= line)" || bad "route P1.DECOMP wrong: $er_out"
 er_out=$(er P1.S2)
 printf '%s\n' "$er_out" | grep -qx 'route=research' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \
   && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' \
-  && ok "executor-route sends a research slice to the research row (slice-executor, opus@high)" || bad "executor-route research slice wrong: $er_out"
+  && ok "route sends a research slice to the research row (slice-executor, opus@high)" || bad "route research slice wrong: $er_out"
 ( cd "$F" && python3 scripts/workflow.py slice new --phase P1 --slice P1.S9 --name "docs probe" --kind docs --risk low >/dev/null 2>&1 ) \
   || bad "route probe: slice new P1.S9 (docs, low) failed"
 er_out=$(er P1.S9)
 printf '%s\n' "$er_out" | grep -qx 'route=mid' && printf '%s\n' "$er_out" | grep -qx 'reason=kind docs rated low' && ! printf '%s\n' "$er_out" | grep -q '^tier=' \
   && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
   && printf '%s\n' "$er_out" | grep -qx 'effort=medium' && printf '%s\n' "$er_out" | grep -qx 'attribution=Claude Opus 5.5' && ! printf '%s\n' "$er_out" | grep -q '^fallback=' \
-  && ok "a low docs slice runs on the mid row, opus@medium (v83: no Haiku slice row)" || bad "executor-route low docs slice wrong: $er_out"
-er_out=$( cd "$F" && erenv CLAUDE_CODE_USE_BEDROCK=1 python3 scripts/workflow.py executor-route P1.S9 2>&1 )
-er_x=$( cd "$F" && erenv CLAUDE_CODE_USE_FOUNDRY=1 python3 scripts/workflow.py executor-route --explore 2>&1 )
+  && ok "a low docs slice runs on the mid row, opus@medium (v83: no Haiku slice row)" || bad "route low docs slice wrong: $er_out"
+er_out=$( cd "$F" && erenv CLAUDE_CODE_USE_BEDROCK=1 python3 adapters/claude_code/adapter.py route P1.S9 2>&1 )
+er_x=$( cd "$F" && erenv CLAUDE_CODE_USE_FOUNDRY=1 python3 adapters/claude_code/adapter.py route --explore 2>&1 )
 printf '%s\n' "$er_out" | grep -qx 'model=opus' && ! printf '%s\n' "$er_out" | grep -q '^fallback=' \
   && printf '%s\n' "$er_x" | grep -qx 'model=haiku' && ! printf '%s\n' "$er_x" | grep -q '^fallback=' \
   && ok "on Bedrock and Foundry nothing falls back: a low docs slice stays on the mid row and explore keeps haiku" || bad "platform fallback wrong: $er_out / $er_x"
 er_out=$(er P1.S9 --retry)
 printf '%s\n' "$er_out" | grep -qx 'route=high' && printf '%s\n' "$er_out" | grep -qx 'attempt=2' && printf '%s\n' "$er_out" | grep -qx 'reason=second attempt' \
   && printf '%s\n' "$er_out" | grep -qx 'subagent_type=slice-executor' && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
-  && ok "executor-route --retry sends a second attempt to the high row (the same slice-executor, on opus)" || bad "executor-route --retry wrong: $er_out"
+  && ok "route --retry sends a second attempt to the high row (the same slice-executor, on opus)" || bad "route --retry wrong: $er_out"
 printf '[claude.mid]\nmodel = "sonnet"\neffort = "high"\n' > "$F/executors.toml"
 er_out=$(er P1.S9)
 printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && printf '%s\n' "$er_out" | grep -qx 'attribution=Claude Sonnet 5.5' \
-  && ok "a [claude.mid] override carries a low docs slice with it (sonnet, attributed to Claude Sonnet 5.5)" || bad "executor-route mid override on a docs slice wrong: $er_out"
-er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 scripts/workflow.py executor-route P1.S9 2>&1 )
+  && ok "a [claude.mid] override carries a low docs slice with it (sonnet, attributed to Claude Sonnet 5.5)" || bad "route mid override on a docs slice wrong: $er_out"
+er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 adapters/claude_code/adapter.py route P1.S9 2>&1 )
 printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && ! printf '%s\n' "$er_out" | grep -q '^fallback=' \
-  && ok "behind a loopback ANTHROPIC_BASE_URL (ocx/Kiro) a slice row never falls back" || bad "executor-route proxy moved a slice row: $er_out"
+  && ok "behind a loopback ANTHROPIC_BASE_URL (ocx/Kiro) a slice row never falls back" || bad "route proxy moved a slice row: $er_out"
 er_out=$(er)
 printf '%s\n' "$er_out" | grep -qx 'override=mid sonnet@high (default opus@medium)' && [ "$(printf '%s\n' "$er_out" | grep -c '^override=')" = "1" ] \
-  && ok "the bare table prints an override= line for the row executors.toml pins, beside its default" || bad "executor-route override= line wrong: $er_out"
+  && ok "the bare table prints an override= line for the row executors.toml pins, beside its default" || bad "route override= line wrong: $er_out"
 printf '[claude.mid]\nmodel = "opus"\neffort = "medium"\n' > "$F/executors.toml"
 er_out=$(er)
 printf '%s\n' "$er_out" | grep -q '^override=mid opus@medium same as the default ' \
-  && ok "a row set to its default prints override=... same as the default" || bad "executor-route same-as-default override wrong: $er_out"
-er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 scripts/workflow.py executor-route --explore 2>&1 )
+  && ok "a row set to its default prints override=... same as the default" || bad "route same-as-default override wrong: $er_out"
+er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 adapters/claude_code/adapter.py route --explore 2>&1 )
 printf '%s\n' "$er_out" | grep -qx 'model=sonnet' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=Explore' \
-  && ok "behind the same proxy executor-route --explore falls back to sonnet" || bad "executor-route --explore proxy fallback wrong: $er_out"
+  && ok "behind the same proxy route --explore falls back to sonnet" || bad "route --explore proxy fallback wrong: $er_out"
 er_out=$(er --drafter)
 printf '%s\n' "$er_out" | grep -qx 'agent=design-drafter' && printf '%s\n' "$er_out" | grep -qx 'route=design' \
   && ! printf '%s\n' "$er_out" | grep -q '^tier=' && printf '%s\n' "$er_out" | grep -qx 'subagent_type=design-drafter' \
   && printf '%s\n' "$er_out" | grep -qx 'model=fable' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \
-  && ok "executor-route --drafter names design-drafter on its own design row (no tier= line, fable@high)" || bad "executor-route --drafter wrong: $er_out"
+  && ok "route --drafter names design-drafter on its own design row (no tier= line, fable@high)" || bad "route --drafter wrong: $er_out"
 # v96: a phase's `Drafter:` line under intent.md's ## Design Style picks the drafter's model at the design row's
 # effort; no line is the design row; behind a loopback proxy (no Fable) a Fable drafter falls back to opus.
 cp "$F/works/phases/active/P1/intent.md" "$F/intent.bak"
 er_out=$(er --drafter --phase P1)
 printf '%s\n' "$er_out" | grep -qx 'model=fable' && printf '%s\n' "$er_out" | grep -qx 'drafter_source=design row' \
-  && ok "executor-route --drafter --phase on a phase naming no drafter is the design row (fable)" || bad "executor-route --drafter --phase default wrong: $er_out"
+  && ok "route --drafter --phase on a phase naming no drafter is the design row (fable)" || bad "route --drafter --phase default wrong: $er_out"
 printf '\n## Design Style\n\nbuild-after: one flow.\nMockup: on request\nDrafter: opus\n' >> "$F/works/phases/active/P1/intent.md"
 er_out=$(er --drafter --phase P1)
 printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'drafter_source=phase P1 Drafter: opus' \
-  && ok "a phase's Drafter: opus keeps Opus against the Fable default" || bad "executor-route --drafter --phase opus wrong: $er_out"
+  && ok "a phase's Drafter: opus keeps Opus against the Fable default" || bad "route --drafter --phase opus wrong: $er_out"
 cp "$F/intent.bak" "$F/works/phases/active/P1/intent.md"
 printf '\n## Design Style\n\nbuild-after: one flow.\nMockup: on request\nDrafter: fable\n' >> "$F/works/phases/active/P1/intent.md"
 er_out=$(er --drafter --phase P1)
 printf '%s\n' "$er_out" | grep -qx 'model=fable' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \
   && printf '%s\n' "$er_out" | grep -qx 'attribution=Claude Fable 5.2' && printf '%s\n' "$er_out" | grep -qx 'drafter_source=phase P1 Drafter: fable' \
-  && ok "a phase's Drafter: fable dispatches the drafter on fable at the design row's effort" || bad "executor-route --drafter --phase fable wrong: $er_out"
-er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 scripts/workflow.py executor-route --drafter --phase P1 2>&1 )
+  && ok "a phase's Drafter: fable dispatches the drafter on fable at the design row's effort" || bad "route --drafter --phase fable wrong: $er_out"
+er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 adapters/claude_code/adapter.py route --drafter --phase P1 2>&1 )
 printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -q '^fallback=design model fable -> opus ' \
-  && ok "behind a loopback proxy a Fable drafter falls back to opus" || bad "executor-route --drafter proxy fallback wrong: $er_out"
+  && ok "behind a loopback proxy a Fable drafter falls back to opus" || bad "route --drafter proxy fallback wrong: $er_out"
 er_c=$(er --critic --phase P1); er_crc=$?
 [ "$er_crc" -ne 0 ] && printf '%s\n' "$er_c" | grep -q 'goes with --drafter only' \
-  && ok "--phase without --drafter is refused" || bad "executor-route --critic --phase not refused (rc=$er_crc): $er_c"
+  && ok "--phase without --drafter is refused" || bad "route --critic --phase not refused (rc=$er_crc): $er_c"
 sed 's/^Drafter: fable$/**Drafter:** fable/' "$F/works/phases/active/P1/intent.md" > "$F/intent.tmp" && mv "$F/intent.tmp" "$F/works/phases/active/P1/intent.md"
 er_out=$(er --drafter --phase P1)
 printf '%s\n' "$er_out" | grep -qx 'model=fable' \
-  && ok "a bold **Drafter:** label is read, never dropped for its form" || bad "executor-route --drafter dropped a bold Drafter: line: $er_out"
+  && ok "a bold **Drafter:** label is read, never dropped for its form" || bad "route --drafter dropped a bold Drafter: line: $er_out"
 sed 's/^\*\*Drafter:\*\* fable$/Drafter: haiku/' "$F/works/phases/active/P1/intent.md" > "$F/intent.tmp" && mv "$F/intent.tmp" "$F/works/phases/active/P1/intent.md"
 er_out=$(er --drafter --phase P1); er_rc=$?
 [ "$er_rc" -ne 0 ] && printf '%s\n' "$er_out" | grep -q "names the drafter 'haiku'" \
-  && ok "a Drafter: other than fable or opus is refused" || bad "executor-route --drafter accepted Drafter: haiku (rc=$er_rc): $er_out"
+  && ok "a Drafter: other than fable or opus is refused" || bad "route --drafter accepted Drafter: haiku (rc=$er_rc): $er_out"
 { cat "$F/intent.bak"; printf '\n### Design style notes\n\nfrom the brief.\n\n## Design Style\n\nDrafter: fable\n'; } > "$F/works/phases/active/P1/intent.md"
 er_out=$(er --drafter --phase P1)
 printf '%s\n' "$er_out" | grep -qx 'model=fable' \
-  && ok "an earlier '### Design style' subsection never hides the real section's Drafter: line" || bad "executor-route --drafter lost the real Design Style section: $er_out"
+  && ok "an earlier '### Design style' subsection never hides the real section's Drafter: line" || bad "route --drafter lost the real Design Style section: $er_out"
 mv "$F/intent.bak" "$F/works/phases/active/P1/intent.md"
 # P36.S5B, P39.S1, v75: the critic and the judge both run design-critic; either may share the drafter's model.
 er_out=$(er --critic); er_j=$(er --judge)
@@ -1676,58 +1693,53 @@ printf '%s\n' "$er_out" | grep -qx 'route=critic' && printf '%s\n' "$er_out" | g
   && printf '%s\n' "$er_out" | grep -qx 'model=opus' && printf '%s\n' "$er_out" | grep -qx 'effort=high' \
   && printf '%s\n' "$er_j" | grep -qx 'route=judge' && printf '%s\n' "$er_j" | grep -qx 'subagent_type=design-critic' \
   && printf '%s\n' "$er_j" | grep -qx 'model=opus' && printf '%s\n' "$er_j" | grep -qx 'effort=high' && ! printf '%s\n' "$er_j" | grep -q '^tier=' \
-  && ok "executor-route --critic (opus@high) and --judge (opus@high) both dispatch design-critic" || bad "executor-route --critic/--judge wrong: $er_out / $er_j"
+  && ok "route --critic (opus@high) and --judge (opus@high) both dispatch design-critic" || bad "route --critic/--judge wrong: $er_out / $er_j"
 printf '[claude.critic]\nmodel = "opus"\neffort = "xhigh"\n' > "$F/executors.toml"
-er_out=$( cd "$F" && env -u ANTHROPIC_BASE_URL python3 scripts/workflow.py executor-route --critic 2>&1 ); er_rc=$?
+er_out=$( cd "$F" && env -u ANTHROPIC_BASE_URL python3 adapters/claude_code/adapter.py route --critic 2>&1 ); er_rc=$?
 [ "$er_rc" -eq 0 ] && printf '%s\n' "$er_out" | grep -qx 'model=opus' \
   && ! printf '%s\n' "$(er)" | grep -q '^warning=fairness' \
   && ok "a critic on the drafter's model is accepted (exit 0, model=opus) and the bare table does not warn (v75)" || bad "the critic on the drafter's model was refused or warned (rc=$er_rc): $er_out"
 rm -f "$F/executors.toml"
 # P39.S1: the judge is exempt from the critic-vs-drafter rule -- at the defaults it is Opus over the Opus drafter.
-er_out=$( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE python3 scripts/workflow.py executor-route --judge 2>&1 ); er_rc=$?
+er_out=$( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE python3 adapters/claude_code/adapter.py route --judge 2>&1 ); er_rc=$?
 [ "$er_rc" -eq 0 ] && printf '%s\n' "$er_out" | grep -qx 'model=opus' && ! printf '%s\n' "$er_out" | grep -q 'warning=fairness' \
   && ! printf '%s\n' "$er_out" | grep -q '^skip=' \
-  && ok "the judge on the drafter's model (opus over opus) is allowed: executor-route --judge exits 0 with no fairness warning" || bad "executor-route --judge refused or warned at the defaults (rc=$er_rc): $er_out"
+  && ok "the judge on the drafter's model (opus over opus) is allowed: route --judge exits 0 with no fairness warning" || bad "route --judge refused or warned at the defaults (rc=$er_rc): $er_out"
 # The loopback-proxy skip needs a Fable judge: it never fires at the default (Opus), only on a Fable override.
-er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 scripts/workflow.py executor-route --judge 2>&1 ); er_rc=$?
+er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 adapters/claude_code/adapter.py route --judge 2>&1 ); er_rc=$?
 [ "$er_rc" -eq 0 ] && ! printf '%s\n' "$er_out" | grep -q '^skip=' \
-  && ok "behind a loopback proxy the default (opus) judge prints no skip= and exits 0" || bad "executor-route --judge proxy at the default wrong (rc=$er_rc): $er_out"
+  && ok "behind a loopback proxy the default (opus) judge prints no skip= and exits 0" || bad "route --judge proxy at the default wrong (rc=$er_rc): $er_out"
 printf '[claude.judge]\nmodel = "fable"\n' > "$F/executors.toml"
-er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 scripts/workflow.py executor-route --judge 2>&1 ); er_rc=$?
+er_out=$( cd "$F" && env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE ANTHROPIC_BASE_URL=http://127.0.0.1:10100 python3 adapters/claude_code/adapter.py route --judge 2>&1 ); er_rc=$?
 [ "$er_rc" -eq 0 ] && printf '%s\n' "$er_out" | grep -q '^skip=yes reason=loopback ' \
-  && ok "behind a loopback proxy (no Fable) a Fable-overridden judge prints skip=yes and exits 0" || bad "executor-route --judge proxy skip wrong (rc=$er_rc): $er_out"
+  && ok "behind a loopback proxy (no Fable) a Fable-overridden judge prints skip=yes and exits 0" || bad "route --judge proxy skip wrong (rc=$er_rc): $er_out"
 rm -f "$F/executors.toml"
-( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE CLAUDE_CODE_EFFORT_LEVEL=high python3 scripts/workflow.py executor-route P1.DECOMP 2>&1 | grep -q '^warning=CLAUDE_CODE_EFFORT_LEVEL' ) \
-  && ok "executor-route warns that CLAUDE_CODE_EFFORT_LEVEL outranks every per-dispatch effort" || bad "executor-route did not warn on CLAUDE_CODE_EFFORT_LEVEL"
-cp "$SRC/executors.toml" "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed on the repo's own executors.toml"
+( cd "$F" && env -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_SUBAGENT_MODEL_FORCE CLAUDE_CODE_EFFORT_LEVEL=high python3 adapters/claude_code/adapter.py route P1.DECOMP 2>&1 | grep -q '^warning=CLAUDE_CODE_EFFORT_LEVEL' ) \
+  && ok "route warns that CLAUDE_CODE_EFFORT_LEVEL outranks every per-dispatch effort" || bad "route did not warn on CLAUDE_CODE_EFFORT_LEVEL"
+cp "$SRC/adapters/claude_code/executors.toml" "$F/executors.toml"
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents >/dev/null 2>&1 ) || bad "sync-agents failed on the repo's own executors.toml"
 er_out=$(er)
 printf '%s\n' "$er_out" | grep -qE '^mid +slice-executor +opus +medium +default$' && printf '%s\n' "$er_out" | grep -qx 'agent files: in sync' \
   && ! printf '%s\n' "$er_out" | grep -q '^override=' \
-  && ok "the shipped executors.toml sets no row: the engine defaults, no override= line, agent files in sync" || bad "executor-route on the shipped executors.toml wrong: $er_out"
+  && ok "the shipped executors.toml sets no row: the engine defaults, no override= line, agent files in sync" || bad "route on the shipped executors.toml wrong: $er_out"
 ( cd "$F" && python3 scripts/workflow.py executor-mode 2>&1 | grep -q 'invalid choice' ) \
-  && ok "executor-mode is gone from the engine (v53: executor-route replaces it)" || bad "the engine still accepts executor-mode"
-# v61 dispatch record + transcript meter (P37.S2): record-dispatch keeps only the verdict (the pre-v61
-# flags parse and are named as ignored); dispatch-summary meters the main thread and the spans from
-# Claude Code's transcripts -- one request per message id with its largest output, spans attributed by
-# their `slice:` line, list-priced (an unknown model never guessed), a span ending on a usage limit is
-# `limit` -- and with no transcripts prints one line plus the recorded tables (old records stay readable).
-rd() { ( cd "$F" && CLAUDE_CONFIG_DIR="$F/.no-claude-config" python3 scripts/workflow.py "$@" 2>&1 ); }
-rd_out=$(rd record-dispatch P1.DECOMP --verdict done --tokens 5 --route high); rd_rc=$?; rd_last=$(tail -1 "$F/works/events.jsonl")
-[ "$rd_rc" -eq 0 ] && printf '%s\n' "$rd_out" | grep -qx 'recorded=executor_dispatched' \
-  && printf '%s\n' "$rd_out" | grep -qx 'ignored: --route --tokens (v61 meters spans from transcripts)' \
-  && printf '%s\n' "$rd_last" | grep -q '"verdict": "done"' && ! printf '%s\n' "$rd_last" | grep -q '"tokens"' \
-  && ok "record-dispatch --verdict done --tokens 5 records the verdict only and names the old flags ignored" || bad "record-dispatch wrong (rc=$rd_rc): $rd_out / $rd_last"
-rd record-dispatch P9.S1 --verdict done >/dev/null; rc1=$?
-[ "$rc1" -ne 0 ] && ok "record-dispatch refuses an unknown slice" || bad "record-dispatch accepted an unknown slice"
-printf '%s\n' '{"ts": "2026-01-01T00:00:00+00:00", "type": "executor_dispatched", "slice": "P1.S9", "phase": "P1", "kind": "docs", "route": "cheap", "model": "haiku", "effort": "high", "attempt": 1, "verdict": "escalate", "tokens": 900}' >> "$F/works/events.jsonl"
-printf 'not json\n' >> "$F/works/events.jsonl"
-ds_out=$(rd dispatch-summary); ds_rc=$?
-[ "$ds_rc" -eq 0 ] && printf '%s\n' "$ds_out" | grep -q '^transcripts=none found under ' && printf '%s\n' "$ds_out" | grep -qx 'records=2' \
-  && printf '%s\n' "$ds_out" | grep -qE '^cheap +1 +0 +1 ' && printf '%s\n' "$ds_out" | grep -qx 'skipped_lines=1' \
-  && ok "dispatch-summary with no transcripts: one line, the recorded tables, an old record readable, a malformed line skipped" || bad "dispatch-summary without transcripts wrong (rc=$ds_rc): $ds_out"
-rd dispatch-summary --phase P7 >/dev/null; rc1=$?
-[ "$rc1" -eq 1 ] && ok "dispatch-summary --phase: an unknown phase exits 1" || bad "dispatch-summary --phase P7 rc=$rc1"
+  && ok "executor-mode is gone from the engine (v53: route replaces it)" || bad "the engine still accepts executor-mode"
+# v61 transcript meter (P37.S2), the adapter's `meter` since the thin engine: it meters the main thread and the
+# spans from Claude Code's transcripts -- one request per message id with its largest output, spans attributed by
+# their `slice:` line, list-priced (an unknown model never guessed), a span ending on a usage limit is `limit` --
+# and reads each slice's verdict from its result.md (the status: line) or slice.json. record-dispatch is retired.
+rd() { ( cd "$F" && CLAUDE_CONFIG_DIR="$F/.no-claude-config" python3 "$(wf_entry "$1")" "$@" 2>&1 ); }
+( cd "$F" && python3 adapters/claude_code/adapter.py record-dispatch P1.DECOMP --verdict done >/dev/null 2>&1 ); rc1=$?
+( cd "$F" && python3 scripts/workflow.py record-dispatch P1.DECOMP --verdict done >/dev/null 2>&1 ); rc2=$?
+[ "$rc1" -eq 2 ] && [ "$rc2" -eq 2 ] && ok "record-dispatch is retired: the adapter and the engine both exit 2" || bad "record-dispatch still runs (adapter rc=$rc1, engine rc=$rc2)"
+printf -- '- status: escalate\n- summary: probe\n' > "$F/works/phases/active/P1/slices/P1.DECOMP/result.md"
+ds_out=$(rd meter --phase P1); ds_rc=$?; ds_one=$(rd meter --slice P1.DECOMP)
+rm -f "$F/works/phases/active/P1/slices/P1.DECOMP/result.md"
+[ "$ds_rc" -eq 0 ] && printf '%s\n' "$ds_out" | grep -q '^transcripts=none found under ' && printf '%s\n' "$ds_out" | grep -qE '^decomposition +1 +0 +1 +0 +0 +0$' \
+  && printf '%s\n' "$ds_one" | grep -qx 'slice=P1.DECOMP kind=decomposition verdict=escalate source=result.md' \
+  && ok "meter with no transcripts: one line, then each slice's verdict read from its result.md status: line" || bad "meter without transcripts wrong (rc=$ds_rc): $ds_out / $ds_one"
+rd meter --phase P7 >/dev/null; rc1=$?
+[ "$rc1" -eq 1 ] && ok "meter --phase: an unknown phase exits 1" || bad "meter --phase P7 rc=$rc1"
 newtmp MT
 cp -R "$F" "$MT/ws"
 ( cd "$MT/ws" && python3 scripts/workflow.py slice new --phase P1 --slice P1.S7 --name "meter probe" --kind implementation --risk low >/dev/null 2>&1 )
@@ -1767,8 +1779,9 @@ write(os.path.join(sub, "agent-bbb.jsonl"), [
      "message": {"id": "syn1", "model": "<synthetic>", "content": [{"type": "text", "text": "You've hit your session limit · resets 3:10am (Asia/Seoul)"}],
                  "usage": {"input_tokens": 0, "output_tokens": 0}}}])
 json.dump({"agentType": "design-drafter", "model": "opus", "effort": "xhigh", "finished": True}, open(os.path.join(sub, "agent-bbb.meta.json"), "w"))
+open(os.path.join(mt, "ws", "works", "phases", "active", "P1", "slices", "P1.S7", "result.md"), "w").write("# P1.S7\n\n- status: done\n- summary: probe\n")
 PY
-mt_json=$( cd "$MT/ws" && python3 scripts/workflow.py dispatch-summary --phase P1 --json --transcripts "$MT/projects/-fixture" 2>&1 )
+mt_json=$( cd "$MT/ws" && python3 adapters/claude_code/adapter.py meter --phase P1 --json --transcripts "$MT/projects/-fixture" 2>&1 )
 printf '%s\n' "$mt_json" | python3 -c '
 import json, sys
 d = json.load(sys.stdin)["metered"]["slices"]["P1.S7"]
@@ -1782,17 +1795,22 @@ assert spans["design-drafter"]["usage"]["requests"] == 1 and spans["design-draft
 u = spans["slice-executor-high"]["usage"]
 assert u["requests"] == 2 and u["no_final"] == 1 and u["output_floor"] is True and spans["design-drafter"]["usage"]["output_floor"] is False, u
 assert m["output_floor"] is False, m
-' && ok "the meter: two main-thread ids from three entries keep the largest output, spans attributed by their slice: line, a span ending on a usage limit is limit with its reset" || bad "the transcript meter miscounted: $mt_json"
-mt_out=$( cd "$MT/ws" && python3 scripts/workflow.py dispatch-summary --phase P1 --transcripts "$MT/projects/-fixture" 2>&1 )
+' && printf '%s\n' "$mt_json" | python3 -c '
+import json, sys
+v = json.load(sys.stdin)["verdicts"]
+assert v["slices"]["P1.S7"] == {"kind": "implementation", "verdict": "done", "source": "result.md"}, v["slices"]
+assert v["by_kind"]["implementation"]["done"] >= 1, v["by_kind"]
+' && ok "the meter: two main-thread ids from three entries keep the largest output, spans attributed by their slice: line, a span ending on a usage limit is limit with its reset; a finished slice's result.md reads done" || bad "the transcript meter miscounted: $mt_json"
+mt_out=$( cd "$MT/ws" && python3 adapters/claude_code/adapter.py meter --phase P1 --transcripts "$MT/projects/-fixture" 2>&1 )
 printf '%s\n' "$mt_out" | grep -qE '^main +- +2 +1\.10M +600 +1\.02 ' && printf '%s\n' "$mt_out" | grep -qE '^design-drafter +1 +1 +100 +10 +\? ' \
-  && ok "dispatch-summary prices the main thread at list price (\$1.02) and leaves an unknown model unpriced (?)" || bad "dispatch-summary pricing wrong: $mt_out"
+  && ok "meter prices the main thread at list price (\$1.02) and leaves an unknown model unpriced (?)" || bad "meter pricing wrong: $mt_out"
 printf '%s\n' "$mt_out" | grep -qE '^note=output_floor spans=1/3 \(33%\) main=0/2 ' && printf '%s\n' "$mt_out" | grep -qE '^slice-executor-high +1 +2 +[^ ]+ +≥53 +≥[0-9.]+ ' \
   && ! printf '%s\n' "$mt_out" | grep -E '^(main|design-drafter) ' | grep -q '≥' \
-  && ok "dispatch-summary flags a span request that never logged a final usage: the note= count and the ≥ floor on that group only" || bad "dispatch-summary floor note/mark wrong: $mt_out"
+  && ok "meter flags a span request that never logged a final usage: the note= count and the ≥ floor on that group only" || bad "meter floor note/mark wrong: $mt_out"
 # v66: a DECOMP estimates time, not session-$, and writes a `spends money:` line per slice; the [means] header says so.
 grep -q 'never a session-\$ figure' "$SRC/claude/skills/do-whole-phase/reference/decomposition.md" \
   && grep -q 'spends money:' "$SRC/claude/skills/do-whole-phase/playbooks/decompose.md" && ! grep -q '\$ per span' "$SRC/claude/skills/do-whole-phase/playbooks/decompose.md" \
-  && engine_src "$SRC" | grep -q 'a DECOMP estimates time from these' \
+  && grep -q 'a DECOMP estimates time from these' "$SRC/adapters/claude_code/adapter.py" \
   && ok "a DECOMP estimates time only and writes a per-slice spends-money line (the orchestrator reference, the decompose playbook, the [means] header)" || bad "the DECOMP time-only / spends-money wording is missing or a session-\$ estimate remains"
 # v66: one slice-executor runs every slice row, so the meter reads its route from the kind and the model
 # (research by kind, haiku as cheap, the high row's family as high, else mid); an old slice-executor-high
@@ -1816,7 +1834,7 @@ for n, (agent, model, sid, effort) in enumerate((("slice-executor", "claude-opus
                                       "usage": {"input_tokens": 10, "output_tokens": 5}}))
     json.dump({"agentType": agent, "finished": True, **({"effort": effort} if effort else {})}, open(os.path.join(sub, f"agent-x{n}.meta.json"), "w"))
 PY
-mt2=$( cd "$MT/ws" && python3 scripts/workflow.py dispatch-summary --phase P1 --json --transcripts "$MT/projects/-fixture2" 2>&1 )
+mt2=$( cd "$MT/ws" && python3 adapters/claude_code/adapter.py meter --phase P1 --json --transcripts "$MT/projects/-fixture2" 2>&1 )
 printf '%s\n' "$mt2" | python3 -c '
 import json, sys
 slices = json.load(sys.stdin)["metered"]["slices"]
@@ -1825,7 +1843,7 @@ assert routes == {"x0": ("slice-executor", "high"), "x1": ("slice-executor", "mi
                   "x3": ("slice-executor", "research"), "x4": ("slice-executor-high", "high"), "x5": ("slice-executor", "mid")}, routes
 ' && ok "the meter reads slice-executor spans by kind, model and effort (opus@high high, opus@medium mid, haiku cheap, sonnet mid, a research slice research) and still reads an old slice-executor-high span" \
   || bad "the meter misread slice-executor routes: $mt2"
-# A minted, tailed slice id (P<n>-<tail>.S1) attributes by its `slice:` line, and dispatch-summary --phase takes the
+# A minted, tailed slice id (P<n>-<tail>.S1) attributes by its `slice:` line, and meter --phase takes the
 # brief name (the bare number, while one phase holds it).
 mt_tok=$( cd "$MT/ws" && python3 scripts/workflow.py phase new --name "Meter token" --objective probe 2>&1 | sed -n 's/^created phase \(P[^:]*\):.*/\1/p' )
 mt_num=$(printf '%s\n' "$mt_tok" | sed -nE 's/^P([0-9]+)-[0-9a-z]{2}$/\1/p')
@@ -1842,15 +1860,15 @@ with open(os.path.join(sub, "agent-t0.jsonl"), "w") as f:
                                                                                               "stop_reason": "end_turn", "usage": {"input_tokens": 10, "output_tokens": 5}}}) + "\n")
 json.dump({"agentType": "slice-executor", "finished": True}, open(os.path.join(sub, "agent-t0.meta.json"), "w"))
 PY
-mt3=$( cd "$MT/ws" && python3 scripts/workflow.py dispatch-summary --phase "$mt_num" --json --transcripts "$MT/projects/-fixture2" 2>&1 )
+mt3=$( cd "$MT/ws" && python3 adapters/claude_code/adapter.py meter --phase "$mt_num" --json --transcripts "$MT/projects/-fixture2" 2>&1 )
 printf '%s\n' "$mt3" | python3 -c '
 import json, sys
 spans = [s for d in json.load(sys.stdin)["metered"]["slices"].values() for s in d["spans"]]
 assert [(s["slice"], s["attributed_by"]) for s in spans] == [(sys.argv[1] + ".S1", "slice-line")], spans
-' "$mt_tok" && [ -n "$mt_num" ] && ok "the meter attributes a minted, tailed slice id ($mt_tok.S1) by its slice: line, and dispatch-summary --phase takes the bare number" \
+' "$mt_tok" && [ -n "$mt_num" ] && ok "the meter attributes a minted, tailed slice id ($mt_tok.S1) by its slice: line, and meter --phase takes the bare number" \
   || bad "the meter did not attribute a minted slice id: $mt3"
 # v61 pure compaction (P37.S3): compaction is Claude Code's own -- no PreCompact hook, no compact-gate. After
-# a compaction the SessionStart hook runs compact-resume, which prints the resume card (also `next --card`):
+# a compaction the SessionStart hook runs the adapter's compact-resume, which prints the engine's resume card (`next --card`) with the running spans:
 # computed from state, at most 2,048 B, naming files and never asking for a re-read. A pending stop is typed
 # (slice status ... pending --stop-kind --on-words), printed by next and the card, cleared on leaving pending.
 newtmp CGT
@@ -1860,7 +1878,7 @@ sh "$BOOT" "$CG" --at-root --name "Card" --summary "card probe" >/dev/null 2>&1 
   || bad "resume card: could not build the fixture"
 cg_help=$( cd "$CG" && python3 scripts/workflow.py --help 2>&1 ); cg_help_rc=$?
 ( cd "$CG" && python3 scripts/workflow.py compact-gate </dev/null >/dev/null 2>&1 ); cg_rc=$?
-[ "$cg_help_rc" -eq 0 ] && printf '%s\n' "$cg_help" | grep -q 'dispatch-summary' && [ "$cg_rc" -ne 0 ] && ! printf '%s\n' "$cg_help" | grep -q 'compact-gate' && ! engine_src "$CG" | grep -qE 'cmd_compact_gate|AGENTIC_COMPACT_|COMPACT_RESUME_LINE' \
+[ "$cg_help_rc" -eq 0 ] && printf '%s\n' "$cg_help" | grep -q 'next' && [ "$cg_rc" -ne 0 ] && ! printf '%s\n' "$cg_help" | grep -q 'compact-gate' && ! engine_src "$CG" | grep -qE 'cmd_compact_gate|AGENTIC_COMPACT_|COMPACT_RESUME_LINE' \
   && ok "compact-gate is gone from the engine (no subcommand, no knobs, no resume line)" || bad "compact-gate still present (rc=$cg_rc)"
 # every subcommand's --help exits 0 (a crash in an argparse help string once hid behind a green suite);
 # the list is the engine's own, read from the top-level help
@@ -1870,6 +1888,20 @@ names = re.search(r"\{([^}]+)\}", " ".join(sys.stdin.read().split())).group(1).s
 bad = [n for n in names if subprocess.run([sys.executable, "scripts/workflow.py", n, "--help"], capture_output=True).returncode != 0]
 assert len(names) > 20 and not bad, bad
 ' ) && ok "every subcommand's --help exits 0 (the list read from the engine's own top-level help)" || bad "a subcommand's --help fails"
+# W1: the engine's --help lists the eleven verbs and the three named parts' own commands, 41 in all, and no
+# command of the Claude Code adapter (route, sync-agents, meter, compact-resume, nor their old names).
+( printf '%s\n' "$cg_help" | python3 -c '
+import re, sys
+names = re.search(r"\{([^}]+)\}", " ".join(sys.stdin.read().split())).group(1).split(",")
+verbs = {"next", "phase", "slice", "section", "review", "gate", "pr", "worktree", "repo", "close", "check"}
+design = {"design-init", "design-system", "design-open", "design-check", "design-canvas", "design-publish-plan", "design-preview",
+          "design-readback", "design-sign", "design-close", "design-migrate"}
+agenda = {"deferred", "defer-job", "promote-deferred", "drop-deferred", "agenda", "agenda-add", "agenda-edit", "agenda-move",
+          "agenda-defer", "agenda-solve", "agenda-drop", "agenda-reopen", "agenda-delete", "agenda-link", "agenda-unlink"}
+cloud = {"link", "unlink", "sync", "mark-committed"}
+assert len(names) == 41 and set(names) == verbs | design | agenda | cloud, sorted(set(names) ^ (verbs | design | agenda | cloud))
+' ) && ok "the engine's --help lists 41 commands: the eleven verbs plus the design, agenda and cloud parts' own, no adapter command" \
+  || bad "the engine's command list moved -- $(printf '%s\n' "$cg_help" | sed -n 2p)"
 card_ok() { # card_ok <text>: at most 2,048 bytes, no re-read, the pointer, the next action and the file paths
   [ "$(printf '%s' "$1" | wc -c | tr -d ' ')" -le 2048 ] && ! printf '%s\n' "$1" | grep -qi 're-read' \
     && printf '%s\n' "$1" | grep -q '^pointer: phase P1 ' && printf '%s\n' "$1" | grep -q '^next action: ' \
@@ -1878,18 +1910,19 @@ card_ok() { # card_ok <text>: at most 2,048 bytes, no re-read, the pointer, the 
 }
 card=$( cd "$CG" && python3 scripts/workflow.py next --card 2>&1 ); cr_rc=$?
 [ "$cr_rc" -eq 0 ] && card_ok "$card" && printf '%s\n' "$card" | grep -q '^next action: slice start P1.DECOMP, then plan it' \
-  && ok "next --card prints the resume card: <= 2,048 B, the pointer, the next action (plan it), the file paths, no re-read" || bad "next --card wrong (rc=$cr_rc): $card"
+  && ! printf '%s\n' "$card" | grep -q '^running spans' && printf '%s\n' "$card" | grep -qF "pin its route (the adapter's \`route P1.DECOMP\`)" \
+  && ok "next --card prints the resume card: <= 2,048 B, the pointer, the next action (plan it), the file paths, no re-read, no spans (the engine reads no transcript)" || bad "next --card wrong (rc=$cr_rc): $card"
 ( cd "$CG" && python3 scripts/workflow.py slice start P1.DECOMP >/dev/null 2>&1 && printf 'the plan\n' > works/phases/active/P1/slices/P1.DECOMP/plan.md ) || bad "resume card: slice start failed"
 mkdir -p "$CGT/proj/s1/subagents" && printf '{}\n' > "$CGT/proj/s1.jsonl"
 printf '{"agentType":"slice-executor-high","description":"P1.DECOMP decomposition executor"}' > "$CGT/proj/s1/subagents/agent-a.meta.json"
 printf '{"agentType":"Explore","description":"an old lookup","finished":true}' > "$CGT/proj/s1/subagents/agent-b.meta.json"
-cr_out=$( cd "$CG" && printf '{"source":"compact","transcript_path":"%s","cwd":"%s"}' "$CGT/proj/s1.jsonl" "$CG" | python3 scripts/workflow.py compact-resume 2>&1 ); cr_rc=$?
+cr_out=$( cd "$CG" && printf '{"source":"compact","transcript_path":"%s","cwd":"%s"}' "$CGT/proj/s1.jsonl" "$CG" | python3 adapters/claude_code/adapter.py compact-resume 2>&1 ); cr_rc=$?
 cr_card=$(printf '%s\n' "$cr_out" | sed 1d)
 [ "$cr_rc" -eq 0 ] && [ "$(printf '%s\n' "$cr_out" | head -1)" = "compaction=done source=compact" ] && card_ok "$cr_card" \
   && printf '%s\n' "$cr_card" | grep -qx 'running spans: slice-executor-high: P1.DECOMP decomposition executor' \
   && printf '%s\n' "$cr_card" | grep -q '^next action: an executor is running (see spans): wait for its notification, never re-dispatch' \
   && ok "compact-resume (fake hook stdin) prints the card: running spans from the session's unfinished .meta.json only, wait -- never re-dispatch" || bad "compact-resume card wrong (rc=$cr_rc): $cr_out"
-cr_out=$( cd "$CG" && printf 'not json' | python3 scripts/workflow.py compact-resume 2>&1 ); cr_rc=$?
+cr_out=$( cd "$CG" && printf 'not json' | python3 adapters/claude_code/adapter.py compact-resume 2>&1 ); cr_rc=$?
 [ "$cr_rc" -eq 0 ] && printf '%s\n' "$cr_out" | head -1 | grep -qx 'compaction=done source=compact' && printf '%s\n' "$cr_out" | grep -q '^pointer: phase P1 ' \
   && ok "compact-resume on garbage stdin still prints the card and exits 0" || bad "compact-resume garbage stdin wrong (rc=$cr_rc): $cr_out"
 ( cd "$CG" && python3 scripts/workflow.py slice status P1.DECOMP in_progress --stop-kind decision --on-words x >/dev/null 2>&1 ); tp_rc=$?
@@ -1910,9 +1943,9 @@ tp_val=$( cd "$CG" && python3 scripts/workflow.py check --no-rebuild 2>&1 ); tp_
 [ "$tp_rc" -ne 0 ] && printf '%s\n' "$tp_val" | grep -q 'carries a pending record' \
   && ok "validate rejects a pending record on a slice that is not pending" || bad "validate missed a stray pending record: $tp_val"
 # v66: the high row owns no file (passed per dispatch), so the fable override lives only in executors.toml
-# and executor-route; the [claude.mid] effort override is the one sync-agents writes into slice-executor.md.
+# and route; the [claude.mid] effort override is the one sync-agents writes into slice-executor.md.
 printf '[claude.high]\nmodel = "fable"\n\n[claude.mid]\neffort = "high"\n' > "$F/executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) && grep -q '^effort: high$' "$F/.claude/agents/slice-executor.md" \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents >/dev/null 2>&1 ) && grep -q '^effort: high$' "$F/.claude/agents/slice-executor.md" \
   || bad "sync-agents failed applying the fable + mid-effort overrides"
 rm -rf "$F/.claude/skills/do-whole-phase"
 # v61 (P37.S1): a v60-shaped install has no reference/ files; one in our skill dir that we do not ship is the operator's.
@@ -2013,20 +2046,20 @@ else bad "--update listed a directory -- $update_out"; fi
   && [ -f "$F/AGENTS.md" ] && [ -f "$F/AGENTS.workspace.md" ] && [ -f "$F/.claude/skills/executor-mode/SKILL.md" ] \
   && ok "--update never deletes a file it lists (stale or kept)" || bad "--update deleted a file it only lists"
 rm -rf "$F/.agents" "$F/.codex" "$F/AGENTS.md" "$F/AGENTS.workspace.md" "$F/.claude/skills/explain"
-printf '%s\n' "$update_out" | grep -q 'python3 scripts/workflow.py sync-agents' \
+printf '%s\n' "$update_out" | grep -q 'python3 adapters/claude_code/adapter.py sync-agents' \
   && ok "--update instructs the adopter to re-run sync-agents" || bad "--update omitted the sync-agents migration step"
 grep -q '^effort: medium$' "$F/.claude/agents/slice-executor.md" \
   && ok "--update resets agent files to upstream defaults (re-run sync-agents after updates)" || bad "--update did not reset the agent files"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check >/dev/null 2>&1 ) \
   && bad "preserved executor override should require re-sync after update" || ok "--update leaves a detectable executor drift until sync-agents"
-( cd "$F" && python3 scripts/workflow.py sync-agents >/dev/null 2>&1 ) \
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents >/dev/null 2>&1 ) \
   && grep -q '^effort: high$' "$F/.claude/agents/slice-executor.md" \
-  && ( cd "$F" && env -u ANTHROPIC_BASE_URL python3 scripts/workflow.py executor-route P1.DECOMP 2>&1 | grep -qx 'model=fable' ) \
-  && ok "sync-agents re-applies the preserved executor override (mid effort in slice-executor.md; the high row's fable in executor-route)" || bad "sync-agents did not restore the preserved override"
+  && ( cd "$F" && env -u ANTHROPIC_BASE_URL python3 adapters/claude_code/adapter.py route P1.DECOMP 2>&1 | grep -qx 'model=fable' ) \
+  && ok "sync-agents re-applies the preserved executor override (mid effort in slice-executor.md; the high row's fable in route)" || bad "sync-agents did not restore the preserved override"
 rm -f "$F/executors.toml"
 sh "$BOOT" "$F" --update >/dev/null 2>&1 && [ -f "$F/executors.toml" ] \
   && ok "--update seeds a missing executors.toml (pre-v9 workspace)" || bad "--update did not seed a missing executors.toml"
-( cd "$F" && python3 scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) && ok "re-seeded executors.toml restores the tracked route selection" || bad "re-seeded executors.toml drifts from the tracked route selection"
+( cd "$F" && python3 adapters/claude_code/adapter.py sync-agents --check >/dev/null 2>&1 ) && ok "re-seeded executors.toml restores the tracked route selection" || bad "re-seeded executors.toml drifts from the tracked route selection"
 # v66: the v65 executor pair is retired by content. A v65-shaped at-root install (the two files exactly as
 # v65 shipped them, from tests/fixtures/v65 -- the suite never reads git history): --update lists both stale,
 # a copy sync-agents patched (model/effort lines only) too, and installs the one slice-executor.md.
@@ -2075,7 +2108,7 @@ import json, sys
 d = json.load(open(sys.argv[1]))
 h = d["hooks"]
 assert h["PreCompact"] == [{"matcher": "auto", "hooks": [{"type": "command", "command": "echo foreign"}]}], h["PreCompact"]
-assert [x["command"] for g in h["SessionStart"] for x in g["hooks"]] == ['cd "$CLAUDE_PROJECT_DIR" && python3 scripts/workflow.py compact-resume || true']
+assert [x["command"] for g in h["SessionStart"] for x in g["hooks"]] == ['cd "$CLAUDE_PROJECT_DIR" && python3 adapters/claude_code/adapter.py compact-resume || true']
 assert d["autoCompactWindow"] == 500000, d
 PY
 then printf '%s\n' "$upd_out" | grep -q '^  removed: .claude/settings.json hooks.PreCompact compact-gate (retired in v61)$' \
@@ -2089,6 +2122,11 @@ python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["autoCompactWindo
 upd_out=$(sh "$BOOT" "$F" --update 2>&1)
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["autoCompactWindow"] == 700000' "$F/.claude/settings.json" && ! printf '%s\n' "$upd_out" | grep -q '^  changed: .*autoCompactWindow' \
   && ok "--update keeps an autoCompactWindow the adopter chose (700000), reporting no change" || bad "--update moved an adopter's 700000 window -- $upd_out"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["SessionStart"][0]["hooks"][0]["command"]="cd \"$CLAUDE_PROJECT_DIR\" && python3 scripts/workflow.py compact-resume || true"; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$F/.claude/settings.json"
+upd_out=$(sh "$BOOT" "$F" --update 2>&1)
+python3 -c 'import json,sys; h=json.load(open(sys.argv[1]))["hooks"]["SessionStart"]; assert [x["command"] for g in h for x in g["hooks"]] == ["cd \"$CLAUDE_PROJECT_DIR\" && python3 adapters/claude_code/adapter.py compact-resume || true"], h' "$F/.claude/settings.json" \
+  && printf '%s\n' "$upd_out" | grep -qx '  removed: .claude/settings.json hooks.SessionStart compact-resume (moved to the adapter: adapters/claude_code/adapter.py compact-resume)' \
+  && ok "--update swaps a v101 resume hook (workflow.py compact-resume) for the adapter's, and reports the removal" || bad "--update did not swap the v101 resume hook -- $upd_out"
 set_b=$(sha "$F/.claude/settings.json")
 sh "$BOOT" "$F" --update >/dev/null 2>&1
 [ "$(sha "$F/.claude/settings.json")" = "$set_b" ] \
@@ -2132,6 +2170,9 @@ echo "== Test 6: dual-apply -- live files match the bootstrap-embedded copies ==
 [ -x "$F/scripts/workflow.py" ] && [ "$(ls "$SRC/scripts" | grep -c '\.py$')" -ge 2 ] && diff -r -q "$SRC/scripts" "$F/scripts" >/dev/null \
   && ok "scripts/*.py (the engine's entry and its $(ls "$SRC/scripts" | grep -c '\.py$') modules in all) == the bootstrap-embedded copies, none extra" \
   || bad "DRIFT: scripts/ differs from the bootstrap-embedded engine modules"
+[ -x "$F/adapters/claude_code/adapter.py" ] && diff -q "$SRC/adapters/claude_code/adapter.py" "$F/adapters/claude_code/adapter.py" >/dev/null \
+  && [ "$(cd "$F/adapters" && find . -type f | LC_ALL=C sort)" = "./claude_code/adapter.py" ] \
+  && ok "adapters/claude_code/adapter.py == the bootstrap-embedded copy, none extra" || bad "DRIFT: adapters/ differs from the bootstrap-embedded adapter"
 skill_rels=$(cd "$SRC" && find claude/skills -type f -name SKILL.md | sed 's|^|.|' | LC_ALL=C sort)
 nskill=$(printf '%s\n' "$skill_rels" | grep -c .)
 [ "$nskill" -eq 18 ] && ok "dual-apply covers all 18 skill bodies" || bad "expected 18 SKILL.md files to diff, found $nskill"
@@ -2154,7 +2195,7 @@ works/templates/phase.md
 .github/workflows/workspace-ci.yml
 .gitattributes"
 for rel in $DUAL_FIXED CLAUDE.md; do
-  src="$SRC/${rel#.}"; [ "$rel" = "CLAUDE.md" ] && src="$SRC/contract.md"
+  src="$SRC/${rel#.}"; [ "$rel" = "CLAUDE.md" ] && src="$SRC/contract.md"; [ "$rel" = "executors.toml" ] && src="$SRC/adapters/claude_code/executors.toml"
   diff -q "$src" "$F/$rel" >/dev/null \
     && ok "dual-apply: $rel" \
     || bad "DRIFT: $rel differs from the bootstrap-embedded copy"
@@ -3664,6 +3705,7 @@ mkdir -p "$NH/src" "$NH/workflow/scripts" "$NH/workflow/works" \
        && git config user.name smoke && printf 'print("host")\n' > src/app.py && git add -A >/dev/null 2>&1 \
        && git commit -qm "host baseline" >/dev/null 2>&1 ) \
   && cp "$SRC"/scripts/*.py "$NH/workflow/scripts/" && cp -R "$SRC/works/templates" "$NH/workflow/works/" \
+  && mkdir -p "$NH/workflow/adapters/claude_code" && cp "$SRC/adapters/claude_code/adapter.py" "$NH/workflow/adapters/claude_code/" \
   && cp -R "$NS/seed/docs" "$NH/workflow/" && ( cd "$NH/workflow" && git init -q . ) \
   || bad "nested probe: could not build the host + workflow/ fixture"
 cat > "$NH/workflow/.agentic-nested.json" <<'NESTED'
@@ -3671,7 +3713,7 @@ cat > "$NH/workflow/.agentic-nested.json" <<'NESTED'
  "commit_convention": {"inferred": "type(scope): summary", "confirmed": false, "text": null, "coauthor_trailers": "unknown"},
  "renames": {"skills": {}, "agents": {"design-drafter": "wf-design-drafter"}}}
 NESTED
-nw() { ( cd "$NH" && python3 workflow/scripts/workflow.py "$@" ); }
+nw() { ( cd "$NH" && python3 "workflow/$(wf_entry "$1")" "$@" ); }
 { nw check && nw phase new --phase P1 --name "Nested probe" --objective "probe the host"; } >/dev/null 2>&1 \
   || bad "nested probe: rebuild / phase new failed"
 host_head=$( cd "$NH" && git rev-parse HEAD )
@@ -3730,7 +3772,7 @@ val_out=$(nw check --no-rebuild 2>&1); val_rc=$?; nx_out=$(nw next 2>&1); nx_rc=
   || bad "a malformed .agentic-nested.json passed validate or ran next (rc=$val_rc/$nx_rc) -- $val_out $nx_out"
 cr_out=$(printf '{}' | nw compact-resume 2>&1); cr_rc=$?
 [ "$cr_rc" -eq 0 ] && [ "$(printf '%s\n' "$cr_out" | head -1)" = "compaction=done source=compact" ] \
-  && ok "a malformed marker never stops the resume hook: compact-resume still runs and exits 0" \
+  && ok "a malformed marker never stops the resume hook: the adapter's compact-resume still runs and exits 0" \
   || bad "the resume hook refused on a malformed marker (rc=$cr_rc): $cr_out"
 # The paired worktree lifecycle (P35): a nested phase runs in a host worktree with the nested worktree inside,
 # claims its own stream, shows in the main backlog's Streams view, resumes through the compaction hook's cwd, is
@@ -3764,7 +3806,7 @@ else bad "stream claim or Streams row wrong -- worktree: $wt_next -- main: $main
 grep -F '`P1.DECOMP`' "$NW/works/backlog.md" | grep -qF '`in_progress`' && grep -qF '_Read live from its worktree `' "$NW/works/backlog.md" \
   && ok "a slice status changed in the worktree shows in the main checkout's backlog, with nothing run there" \
   || bad "the main backlog did not follow the worktree -- $(grep -F 'P1.' "$NW/works/backlog.md")"
-hook_out=$(printf '{"session_id":"t","source":"compact","cwd":"%s"}' "$HWT" | python3 "$NH/workflow/scripts/workflow.py" compact-resume 2>&1)
+hook_out=$(printf '{"session_id":"t","source":"compact","cwd":"%s"}' "$HWT" | python3 "$NH/workflow/adapters/claude_code/adapter.py" compact-resume 2>&1)
 printf '%s\n' "$hook_out" | grep -q "^stream=phase/P1-" && printf '%s\n' "$hook_out" | grep -q "^pointer: phase P1 " \
   && ok "compact-resume replayed from the main checkout with the worktree's cwd redirects to the worktree's own stream" \
   || bad "the compaction hook did not follow the worktree cwd -- $hook_out"
@@ -3888,13 +3930,14 @@ else bad "--update --nested lost state or left a footprint (rc=$rc) -- $out"; fi
 if python3 - "$IH/.claude/settings.local.json" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
-resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 workflow/scripts/workflow.py compact-resume || true'
+resume = 'cd "$CLAUDE_PROJECT_DIR" && python3 workflow/adapters/claude_code/adapter.py compact-resume || true'
 assert d["hooks"] == {"SessionStart": [{"matcher": "compact", "hooks": [{"type": "command", "command": resume, "timeout": 15}]}]}, d["hooks"]
 assert d["autoCompactWindow"] == 500000, d
 a = d["permissions"]["allow"]
+assert "Bash(python3 workflow/adapters/claude_code/adapter.py:*)" in a and "Bash(python3 workflow/scripts/workflow.py:*)" in a, a
 assert all(r in a for r in ("Bash(playwright-cli:*)", "Bash(npm install -g @playwright/cli@0.1.25)", "Bash(npm i -g @playwright/cli@0.1.25)", "Bash(docker rm -fv:*)", "Bash(docker volume rm:*)", "Bash(lsof -ti:*)", "Bash(kill:*)", "Bash(git branch -d:*)", "Bash(git push origin --delete:*)")), a
 PY
-then ok "nested: settings.local.json carries only the resume hook with the workflow/scripts/workflow.py command path and window 500000, allows playwright-cli, its npm install and the cleanup rules, and --update --nested kept exactly one"; else bad "nested settings.local.json hooks wrong"; fi
+then ok "nested: settings.local.json carries only the resume hook with the workflow/adapters/claude_code/adapter.py command path (and its allow rule) and window 500000, allows playwright-cli, its npm install and the cleanup rules, and --update --nested kept exactly one"; else bad "nested settings.local.json hooks wrong"; fi
 # v61 (P37.S1): --update --nested on a v60-shaped host (no reference/ files) adds them in the renamed dir, host clean.
 rm -rf "$IH/.claude/skills/wf-design-cowork/reference" "$IH/.claude/skills/do-whole-phase/reference"
 out=$(sh "$BOOT" "$IH" --update --nested 2>&1); rc=$?
@@ -3905,6 +3948,13 @@ lset_a=$(sha "$IH/.claude/settings.local.json")
 sh "$BOOT" "$IH" --update --nested >/dev/null 2>&1
 [ "$(sha "$IH/.claude/settings.local.json")" = "$lset_a" ] && ih_clean \
   && ok "nested: a second --update --nested leaves settings.local.json byte-identical" || bad "nested --update rewrote settings.local.json"
+# The thin engine: a v101 settings.local.json (the resume hook on workflow/scripts/workflow.py) gets the adapter's hook.
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["SessionStart"][0]["hooks"][0]["command"]="cd \"$CLAUDE_PROJECT_DIR\" && python3 workflow/scripts/workflow.py compact-resume || true"; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$IH/.claude/settings.local.json"
+out=$(sh "$BOOT" "$IH" --update --nested 2>&1)
+python3 -c 'import json,sys; h=json.load(open(sys.argv[1]))["hooks"]["SessionStart"]; assert [x["command"] for g in h for x in g["hooks"]] == ["cd \"$CLAUDE_PROJECT_DIR\" && python3 workflow/adapters/claude_code/adapter.py compact-resume || true"], h' "$IH/.claude/settings.local.json" \
+  && printf '%s\n' "$out" | grep -qx '  removed: .claude/settings.local.json hooks.SessionStart compact-resume (moved to the adapter: adapters/claude_code/adapter.py compact-resume)' && ih_clean \
+  && ok "nested: --update --nested swaps a v101 resume hook for the adapter's (workflow/adapters/claude_code/adapter.py), reports it, host clean" \
+  || bad "nested --update did not swap the v101 resume hook -- $out"
 # v61: a v60-shaped settings.local.json (our compact-gate beside a foreign PreCompact handler, window 450000 (v66-v81),
 # our resume handler removed) loses exactly ours, keeps theirs, regains the resume hook, moves to 500000, lists both.
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["hooks"]["PreCompact"]=[{"matcher":"auto","hooks":[{"type":"command","command":"echo foreign-nested"},{"type":"command","command":"cd \"$CLAUDE_PROJECT_DIR\" && python3 workflow/scripts/workflow.py compact-gate || true","timeout":15}]}]; d["hooks"]["Stop"]=[{"hooks":[{"type":"command","command":"echo stop"}]}]; d["hooks"]["SessionStart"][0]["hooks"]=[]; d["autoCompactWindow"]=450000; json.dump(d,open(sys.argv[1],"w"),indent=2)' "$IH/.claude/settings.local.json"
@@ -3914,7 +3964,7 @@ import json, sys
 d = json.load(open(sys.argv[1]))
 h = d["hooks"]
 assert h["PreCompact"] == [{"matcher": "auto", "hooks": [{"type": "command", "command": "echo foreign-nested"}]}], h["PreCompact"]
-assert [x["command"] for g in h["SessionStart"] for x in g["hooks"]] == ['cd "$CLAUDE_PROJECT_DIR" && python3 workflow/scripts/workflow.py compact-resume || true'], h["SessionStart"]
+assert [x["command"] for g in h["SessionStart"] for x in g["hooks"]] == ['cd "$CLAUDE_PROJECT_DIR" && python3 workflow/adapters/claude_code/adapter.py compact-resume || true'], h["SessionStart"]
 assert h["Stop"] == [{"hooks": [{"type": "command", "command": "echo stop"}]}]
 assert d["autoCompactWindow"] == 500000, d
 PY
@@ -3944,7 +3994,7 @@ ix_explore=$(sha "$IX/.claude/agents/Explore.md"); out=$(sh "$BOOT" "$IX" --nest
 python3 -c 'import json,sys; r=json.load(open(sys.argv[1]))["renames"]["agents"]; assert r.get("Explore") == "wf-Explore", r' "$IX/workflow/.agentic-nested.json" >/dev/null 2>&1 \
   && [ "$rc" -eq 0 ] && grep -qx "name: wf-Explore" "$IX/.claude/agents/wf-Explore.md" && [ "$(sha "$IX/.claude/agents/Explore.md")" = "$ix_explore" ] \
   && grep -rq 'subagent_type: wf-Explore' "$IX/.claude/skills/do-whole-phase" "$IX/.claude/agents/slice-executor.md" \
-  && ( cd "$IX" && python3 workflow/scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) \
+  && ( cd "$IX" && python3 workflow/adapters/claude_code/adapter.py sync-agents --check >/dev/null 2>&1 ) \
   && ok "a host with its own Explore.md: ours installs as wf-Explore (marker rename + name:), the host's is byte-identical, the executors and skill call wf-Explore" \
   || bad "the Explore clash was not renamed cleanly (rc=$rc) -- $out"
 echo "NOTE: wf-Explore occurrences: slice-executor=$(grep -o 'wf-Explore' "$IX/.claude/agents/slice-executor.md" | wc -l | tr -d ' ')"
@@ -4220,7 +4270,7 @@ pr_t0=$(date +%s)
 newtmp PRW; PRR="$PRW/ws"
 sh "$BOOT" "$PRR" --at-root --name "PR" --summary "pr" > "$PRW/install.txt" 2>&1 || bad "pr probe: the fresh install failed"
 PRG="$PRW/gh"; mkdir -p "$PRG"; printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s/gh.log"\necho "stub: no such PR" >&2; exit 1\n' "$PRG" > "$PRG/gh"; chmod +x "$PRG/gh"
-pw() { ( cd "$PRR" && PATH="$PRG:$PATH" python3 scripts/workflow.py "$@" ); }
+pw() { ( cd "$PRR" && PATH="$PRG:$PATH" python3 "$(wf_entry "$1")" "$@" ); }
 pgit() { git -C "$PRR" "$@"; }
 pj() { python3 -c 'import json,sys
 d = json.load(open(sys.argv[1]))
@@ -4459,15 +4509,15 @@ assert set(re.findall(r"`reference/([\w.-]+\.md)`", text)) == {"body.md", "close
 assert len(core) <= 8192, len(core)
 PY
 # (S8) pr-reader: the reader row's dispatch lines; the agent installs fresh and comes back on --update.
-r_out=$(pw executor-route --reader 2>&1)
+r_out=$(pw route --reader 2>&1)
 printf '%s\n' "$r_out" | grep -qx 'subagent_type=pr-reader' && printf '%s\n' "$r_out" | grep -qx 'model=opus' && printf '%s\n' "$r_out" | grep -qx 'effort=high' \
   && [ -f "$PRR/.claude/agents/pr-reader.md" ] && grep -qx 'name: pr-reader' "$PRR/.claude/agents/pr-reader.md" \
-  && ok "executor-route --reader prints subagent_type=pr-reader, model=opus and effort=high, and a fresh install ships .claude/agents/pr-reader.md" || bad "pr-reader route or fresh install wrong -- $r_out"
+  && ok "route --reader prints subagent_type=pr-reader, model=opus and effort=high, and a fresh install ships .claude/agents/pr-reader.md" || bad "pr-reader route or fresh install wrong -- $r_out"
 # code-reader: the code row's dispatch lines; the agent installs fresh.
-c_out=$(pw executor-route --code 2>&1)
+c_out=$(pw route --code 2>&1)
 printf '%s\n' "$c_out" | grep -qx 'route=code' && printf '%s\n' "$c_out" | grep -qx 'subagent_type=code-reader' && printf '%s\n' "$c_out" | grep -qx 'model=opus' && printf '%s\n' "$c_out" | grep -qx 'effort=high' \
   && [ -f "$PRR/.claude/agents/code-reader.md" ] && grep -qx 'name: code-reader' "$PRR/.claude/agents/code-reader.md" \
-  && ok "executor-route --code prints route=code, subagent_type=code-reader, model=opus and effort=high, and a fresh install ships .claude/agents/code-reader.md" || bad "code-reader route or fresh install wrong -- $c_out"
+  && ok "route --code prints route=code, subagent_type=code-reader, model=opus and effort=high, and a fresh install ships .claude/agents/code-reader.md" || bad "code-reader route or fresh install wrong -- $c_out"
 # (S11) at-root --update appends the linguist lines once, then counts .gitattributes unchanged; it restores pr-reader.md.
 grep -v 'linguist-generated=true' "$PRR/.gitattributes" > "$PRW/ga" && cp "$PRW/ga" "$PRR/.gitattributes" && rm -f "$PRR/.claude/agents/pr-reader.md"
 ( cd "$PRR" && git add -A && git commit -qm "strip" ) >/dev/null 2>&1
@@ -4556,7 +4606,7 @@ checks = [
      ["| A product phase passes with its draft PR open |", "Create no branch unless asked", "Never push unasked", "push only on the operator's word", "Ready and merge are the operator's"] + push_stop),
     ([sk("review-phase")], ["## The PR step — one body per recorded branch", "**Writing the body is a review lens.**", "**Return `pr_bodies`**"], push_stop),
     (both("review.md"), ["open the drafts by the `pr` skill's *Open the drafts*", "with no stop and no word", "read each PR's CI before the gate",
-                         "`executor-route --reader`", "--stop-kind operator-action --on-words \"<what fixing it resumes>\"",
+                         "`adapter.py route --reader`", "--stop-kind operator-action --on-words \"<what fixing it resumes>\"",
                          "a refused draft is never retried as a plain PR", "A pass with a recorded branch still unopened prints `advice: pr_draft=due`"],
      push_stop + ["push opens the draft PR(s); the pass is recorded after"]),
     (both("verdicts.md"), ["**The only pushes are the draft opening when the review passes**", "**the close's solo landing, and a fix round's or a stack merge's `git push` to an open PR's branch**"],
@@ -4586,7 +4636,7 @@ checks = [
     (both("decomposition.md"), ["**Record the phase's PR branches** (PR rule v1)", "**Size never splits a phase:**"], []),
     ([sk("create-phase")], ["`Branches:` line", "Never split a phase for size"], push_stop),
     ([(root / "payload/claude/skills/do-whole-phase/playbooks/review.md").read_text()], ["`pr_bodies`", "Never run `review`, `gate` or `defer-job`, and never push."], push_stop),
-    ([flat(sk("parallel-phase"))], ["This skill carries no second PR procedure."], ["1. **Push the branch.**", "**Open the PR.**"] + push_stop),
+    ([flat(sk("parallel-phase"))], ["By the close alone: `close <P>`'s `merge` and `teardown` steps (`.claude/skills/pr/reference/close.md`)."], ["1. **Push the branch.**", "**Open the PR.**"] + push_stop),
     # lighter-rules: update-workspace acts on the CHANGELOG's Migration notes instead of restating each old version's.
     ([sk("update-workspace")], ["**Act on each Migration notes line**"], ["push → PR → CI is the remote variant"] + push_stop),
     ([sk("pr")], ["## Open the drafts, when the review passes", "opened as drafts when the review passes, closed on the operator's accept.\"", "`git push -u origin <b>`, never `--force`."], push_stop),
@@ -5056,7 +5106,7 @@ echo "cloud mode test runtime: $(( $(date +%s) - cl_t0 ))s"
 echo "== Test 22: cloud mode's safety half, against the local fake hi2vi -- offline a command is refused with the one P8 line and the tree unchanged, and compact-resume fails open; a lost commit answer is resent with the same batch_id and lands once; a batch never sent goes at the next command; a command that dies midway leaves the journal running and the next command refuses naming sync; a pull killed at any step of an append-only file's merge (the event log, a local order of its own) leaves each line in hi2vi once; a stale write (409) keeps the disk, writes nothing in hi2vi and exits 1, then the mismatch refuses with nothing changed; two engine processes in one checkout are serialized by .hi2vi/lock; a change over 8,000,000 B goes as several batches, and one file too big for any batch is refused; every failure inside the boundary is one line, never a traceback (a cut or malformed answer, a commit answer cut mid-body, a fetch that does not decode, a write error during a pull), and the hook's note; compact-resume stays inside the hook's 15 s on a slow, dripping or slow-but-moving server; a request fails only when it stalls: a slow but moving pull, push and pushing resend each finish past 10 s, a stalled or dripping server ends an ordinary command in one line in bounded time, a 409 whose body stalls keeps its batch (never 0 conflicts), and no late timer turns a whole answer into a failure; every wait is judged, the set-up included: behind an HTTPS proxy that answers its CONNECT late or drips it, the hook keeps its 9 s and an ordinary command ends in one line; over TLS a byte counts as it crosses the socket and the handshake still verifies; a key holding a control character is refused unquoted =="
 sf_t0=$(date +%s)
 newtmp SFW; SF="$SFW/host"; SFX="$SFW/xdg"; SF_OUT="$SFW/out.txt"; : > "$SF_OUT"
-sf() { ( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 workflow/scripts/workflow.py "$@" ) 2>&1 | tee -a "$SF_OUT"; return "${PIPESTATUS[0]}"; }
+sf() { ( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 "workflow/$(wf_entry "$1")" "$@" ) 2>&1 | tee -a "$SF_OUT"; return "${PIPESTATUS[0]}"; }
 # sf_crash kill|raise|pull <args>: the command, with defer-job made to die after it wrote its files (os._exit, or a
 # raise), or (pull) the process killed when a pull has written its files but not yet base.json.
 sf_crash() { _m=$1; shift; ( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 - "$_m" "$@" <<'PY'
@@ -5656,7 +5706,8 @@ env = dict(os.environ, HTTPS_PROXY=proxy, https_proxy=proxy)
 for k in ("NO_PROXY", "no_proxy", "ALL_PROXY", "all_proxy"):
     env.pop(k, None)
 t = time.monotonic()
-p = subprocess.Popen([sys.executable, "workflow/scripts/workflow.py"] + args, env=env, stdin=subprocess.PIPE,
+entry = "workflow/adapters/claude_code/adapter.py" if args[:1] == ["compact-resume"] else "workflow/scripts/workflow.py"
+p = subprocess.Popen([sys.executable, entry] + args, env=env, stdin=subprocess.PIPE,
                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 try:
     data, _ = p.communicate(b"{}" if args[:1] == ["compact-resume"] else b"", timeout=40)
@@ -5813,9 +5864,10 @@ fi
 # journal stays running and names the failure, and the next command refuses naming sync.
 sf_boom() { _s=$1; shift; ( cd "$SF" && XDG_CONFIG_HOME="$SFX" python3 - "$_s" "$@" <<'PY'
 import importlib.util, sys
-spec = importlib.util.spec_from_file_location("workflow_engine", "workflow/scripts/workflow.py")
+entry = "workflow/adapters/claude_code/adapter.py" if sys.argv[2:3] == ["compact-resume"] else "workflow/scripts/workflow.py"
+spec = importlib.util.spec_from_file_location("workflow_entry", entry)
 mod = importlib.util.module_from_spec(spec)
-sys.modules["workflow_engine"] = mod
+sys.modules["workflow_entry"] = mod
 spec.loader.exec_module(mod)
 def boom(self, *a, **k):
     raise RuntimeError("a failure inside the step")
@@ -5860,7 +5912,7 @@ lk_t0=$(date +%s)
 newtmp LKW; LKX="$LKW/xdg"; LK_OUT="$LKW/out.txt"; : > "$LK_OUT"
 LKA="$LKW/a"; LKB="$LKW/b"; LKC="$LKW/c"; LKR="$LKW/root"
 # lk <host> <args>: one engine command in that host's nested workspace, with the scratch XDG; stdin passes through.
-lk() { _h=$1; shift; ( cd "$_h" && XDG_CONFIG_HOME="$LKX" python3 workflow/scripts/workflow.py "$@" ) 2>&1 | tee -a "$LK_OUT"; return "${PIPESTATUS[0]}"; }
+lk() { _h=$1; shift; ( cd "$_h" && XDG_CONFIG_HOME="$LKX" python3 "workflow/$(wf_entry "$1")" "$@" ) 2>&1 | tee -a "$LK_OUT"; return "${PIPESTATUS[0]}"; }
 # lk_nosock <engine> <args>: the same under a socket guard (any connect or urlopen ends the process with 97).
 lk_nosock() { _e=$1; shift; ( cd "$(dirname "$(dirname "$_e")")" && XDG_CONFIG_HOME="$LKX" python3 - "$_e" "$@" <<'PY'
 import os, runpy, socket, sys, urllib.request
@@ -6121,18 +6173,18 @@ lk_brief() {  # lk_brief <A's command> <B's command> <B's expected line ERE>
   { [ "$_rc" = 0 ] && grep -qE "$_x" "$LKW/br-b.txt"; } || lk_bad="$lk_bad [B: $_b: rc=$_rc $(head -1 "$LKW/br-b.txt")]"
 }
 lk_brief "phase new --phase 7-ab --name Brief --objective toy" "section 7" '^ +[0-9]+  Objective$'
-lk_brief "slice new --phase P7-ab --slice P7-ab.S1 --name s" "executor-route 7.S1" '^slice=P7-ab\.S1$'
+lk_brief "slice new --phase P7-ab --slice P7-ab.S1 --name s" "route 7.S1" '^slice=P7-ab\.S1$'
 lk_brief "defer-job --id 7-cd --title brief --reason r --trigger t --source manual" "drop-deferred 7 --reason r" '^dropped D7-cd: '
 lk_brief "agenda-add --id 7-ef --title brief" "agenda-solve 7 --outcome done" '^solved A7-ef'
 [ -z "$lk_bad" ] \
-  && ok "in a linked checkout a brief id names what another checkout made since the last pull, on the first try: a phase number (section 7), a slice's brief phase part (executor-route 7.S1), a deferred job's number (drop-deferred 7) and an agenda item's (agenda-solve 7)" \
+  && ok "in a linked checkout a brief id names what another checkout made since the last pull, on the first try: a phase number (section 7), a slice's brief phase part (route 7.S1), a deferred job's number (drop-deferred 7) and an agenda item's (agenda-solve 7)" \
   || bad "a brief id was resolved against the stale disk, before the pull --$lk_bad"
 # A number unique on B's stale disk but shared once the pull lands is refused with the list, one line; the
 # refusal still runs the commit step (no journal left, the pull recorded, nothing sent), and the full id runs.
 ( lk "$LKA" phase new --phase 7-zz --name Twin --objective toy >/dev/null )
 lk_m=$(lk_mark); lk "$LKB" section 7 > "$LKW/br-c.txt"; lk_rc=$?; lk_r=$(lk_check "$LKB/workflow" "$lk_m" quiet)
 lk_m=$(lk_mark); lk "$LKB" section 7-zz > "$LKW/br-d.txt"; lk_rc2=$?; lk_r2=$(lk_check "$LKB/workflow" "$lk_m" quiet)
-lk "$LKA" executor-route 7-ab.S1 > "$LKW/br-e.txt"; lk_rc3=$?
+lk "$LKA" route 7-ab.S1 > "$LKW/br-e.txt"; lk_rc3=$?
 [ "$lk_rc" = 1 ] && [ "$(grep -c '' "$LKW/br-c.txt")" = 1 ] && grep -qx "'7' names 2 phases numbered 7: P7-ab, P7-zz -- type the tail (e.g. P7-ab or 7-ab)" "$LKW/br-c.txt" \
   && [ "$lk_r" = ok ] && [ "$lk_rc2" = 0 ] && grep -qE '^ +[0-9]+  Objective$' "$LKW/br-d.txt" && [ "$lk_r2" = ok ] \
   && [ "$lk_rc3" = 0 ] && grep -qx 'slice=P7-ab.S1' "$LKW/br-e.txt" \
@@ -6663,7 +6715,7 @@ c28=$(wf_check); c28_rc=$?
 # ---------------------------------------------------------------------------
 echo "== Test 27: the engine finds its workspace from anywhere (the plugin path) -- copied to a folder outside any repo, it reads a nested host from the host and from a repo's subfolder, takes the workspace WORKFLOW_ROOT names, writes nothing into its own folder (no works/, no __pycache__), and with no workspace above exits 2 with one line =="
 newtmp PLW; PLE="$PLW/plugin/scripts"; PLH="$PLW/host"; PLA="$PLH/app/sub"
-{ mkdir -p "$PLE" && cp "$SRC"/scripts/*.py "$PLE/" \
+{ mkdir -p "$PLE" "$PLW/plugin/adapters/claude_code" && cp "$SRC"/scripts/*.py "$PLE/" && cp "$SRC/adapters/claude_code/adapter.py" "$PLW/plugin/adapters/claude_code/" \
   && env GIT_AUTHOR_NAME=smoke GIT_AUTHOR_EMAIL=smoke@example.invalid GIT_COMMITTER_NAME=smoke GIT_COMMITTER_EMAIL=smoke@example.invalid sh "$BOOT" "$PLH" \
   && mkdir -p "$PLA" && git -C "$PLH/app" init -q; } > "$PLW/setup.txt" 2>&1 || bad "plugin path: the fixture failed -- $(tail -3 "$PLW/setup.txt")"
 # pl <cwd> <args>: the copied engine under a python that would write bytecode beside it (no opt-out, no prefix).
@@ -6676,6 +6728,10 @@ pl2=$(pl "$PLA" phase new --phase P1 --name Plugin --objective "made from a repo
 pl3=$(pl "$PLA" next); pl3_rc=$?
 pl4=$(plr "$PLH" "$PLW" next); pl4_rc=$?
 pl5=$(pl "$PLW" next); pl5_rc=$?
+pl6=$( cd "$PLA" && env -u PYTHONDONTWRITEBYTECODE -u WORKFLOW_ROOT -u WORKFLOW_CMD -u ANTHROPIC_BASE_URL PYTHONPYCACHEPREFIX= python3 -X pycache_prefix= "$PLW/plugin/adapters/claude_code/adapter.py" route P1.DECOMP 2>&1 ); pl6_rc=$?
+[ "$pl6_rc" = 0 ] && printf '%s\n' "$pl6" | grep -qx 'route=high' && printf '%s\n' "$pl6" | grep -qx 'subagent_type=slice-executor' \
+  && ok "plugin path: the adapter beside the copied engine routes a slice of the nested host from a repo's subfolder" \
+  || bad "plugin path: the adapter did not route from the plugin folder (rc $pl6_rc) -- $pl6"
 [ "$pl1_rc$pl2_rc$pl3_rc$pl4_rc" = 0000 ] && [ "$(printf '%s\n' "$pl1" | head -1)" = "nested_host=$pl_h" ] \
   && [ -f "$PLH/workflow/works/phases/active/P1/phase.json" ] && printf '%s\n' "$pl3" | grep -q 'P1' && [ "$pl4" = "$pl3" ] \
   && printf '%s\n' "$pl1" | grep -q 'read it with: python3 \.\./plugin/scripts/workflow\.py repo convention$' \

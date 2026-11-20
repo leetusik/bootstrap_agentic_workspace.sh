@@ -5,7 +5,7 @@
 - `done` → `slice finish <slice_id> --outcome "<summary>"`, `check`, commit.
 - `needs_operator` → `slice status <slice_id> pending --stop-kind decision|operator-action --on-words "<its operator_need>"`, report, STOP.
 - `blocked` → record the blocker, report, STOP.
-- `escalate`, or a failed or empty return from the mid row → append `## Escalation: mid → high` to `plan.md` with its findings, `executor-route <slice_id> --retry`, pin, re-dispatch, `record-dispatch … --attempt 2`. Once per slice; in `gate` mode the revised plan is approved first.
+- `escalate`, or a failed or empty return from the mid row → append `## Escalation: mid → high` to `plan.md` with its findings, `adapter.py route <slice_id> --retry`, pin, re-dispatch. Once per slice; in `gate` mode the revised plan is approved first.
 - a failed or empty return from the high row → the slice is not done: STOP.
 
 **An over-budget notebook** (`next` prints `notebook_over_budget=`): run each `notebook_move=` line under it, prefixed `python3 scripts/workflow.py`, between dispatches (in a wave, at a return), then re-run `next`. The advisory form only names a remedy. Executors never act on it.

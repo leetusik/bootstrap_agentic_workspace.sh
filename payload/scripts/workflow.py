@@ -5,9 +5,10 @@ The engine is flat modules beside this file, each importing only the ones listed
 - wf_store.py: where the state is (the finder), paths, ids, events, phases, slices, the notebook, next, review,
   the acceptance gate, check and archive;
 - wf_git.py: pull requests, the parallel worktrees, the repo registry and phase scope;
-- wf_design.py, wf_agenda.py (agenda and deferred jobs), wf_cloud.py: the named parts, each its own file;
-- wf_adapter.py: the Claude Code side (executor routes, sync-agents, the dispatch meter, the compaction hook).
-wf_store imports none of the others: it calls them through its SEAMS, bound at the end of this file."""
+- wf_design.py, wf_agenda.py (agenda and deferred jobs), wf_cloud.py: the named parts, each its own file.
+wf_store imports none of the others: it calls them through its SEAMS, bound at the end of this file. The Claude
+Code side (executor routes, sync-agents, the meter, the compaction hook) is not here: it is the adapter folder,
+adapters/claude_code/, which imports this file and calls run(); nothing here imports it."""
 from __future__ import annotations
 
 import argparse
@@ -25,7 +26,6 @@ import wf_store  # noqa: E402 -- first: it finds the workspace, or exits 2 with 
 import wf_git  # noqa: E402
 import wf_design  # noqa: E402
 import wf_agenda  # noqa: E402
-import wf_adapter  # noqa: E402
 import wf_cloud  # noqa: E402
 from wf_store import (  # noqa: E402
     cmd_check, cmd_gate, cmd_next, cmd_parallel_plan, cmd_phase_archive, cmd_set_slice_status, DEPENDS_ON_HELP,
@@ -45,9 +45,6 @@ from wf_agenda import (  # noqa: E402
 from wf_design import (  # noqa: E402
     add_design_parsers,
 )
-from wf_adapter import (  # noqa: E402
-    add_adapter_parsers, cmd_compact_resume,
-)
 from wf_cloud import (  # noqa: E402
     add_cloud_parsers, cloud_link_file, CLOUD_OWN, cloud_refusal, cloud_run, mark_committed,
 )
@@ -66,14 +63,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-rebuild", action="store_true", dest="no_rebuild", help="validate only: write nothing")
     p.set_defaults(func=cmd_check)
 
-    add_adapter_parsers(sub)  # sync-agents, executor-route, record-dispatch, dispatch-summary
-
     p = sub.add_parser("next", help="Print the current phase/slice selection (plus explain_unit=<document|book|chapter> on an explain phase, and on the default stream merge_ready=<P>:<branch> for a parallel phase done with a passing review on its branch but not merged yet); when the phase's notebook is over 40,960 B, also notebook_over_budget= with up to 3 notebook_move= commands to run before the next dispatch (required form), or none when nothing can move (advisory form); for a phase with a pr block, one pr_branch=<repo|host|root>:<branch> base=<base> url=<url|none> per recorded branch, pr_waived=<note> when waived, and pr_draft=due while the phase is at its review (its REVIEW slice in_progress, in_review or pending, the phase in_review, or its acceptance gate open) with a branch unopened: the drafts open when the review would pass. In a linked checkout it first applies the web's pending agenda changes (one inbox <entry>: line each) and prints store=cloud server=<server> project=<id> after the nested lines, then commits_waiting=<ids|none>: the done slices whose commit mark-committed has not recorded, in finish order")
-    p.add_argument("--card", action="store_true", help="print the resume card instead: the pointer, the next action or the typed stop, the open gates, the running spans (from the newest session's subagents/*.meta.json) and the slice's file paths, computed from state, at most 2,048 bytes -- what compact-resume prints after a compaction")
+    p.add_argument("--card", action="store_true", help="print the resume card instead: the pointer, the next action or the typed stop, the open gates and the slice's file paths, computed from state, at most 2,048 bytes (after a compaction, Claude Code's hook prints it with the running spans)")
     p.set_defaults(func=cmd_next)
-
-    p = sub.add_parser("compact-resume", help="The SessionStart hook (matcher compact): after a compaction, print compaction=done source=compact and the resume card (next --card; the running spans from the hook's transcript_path session), falling back to the plain pointer on any error; never fails, always exits 0")
-    p.set_defaults(func=cmd_compact_resume)
 
     p = sub.add_parser("deferred", help="Rebuild and print deferred jobs dashboard summary")
     p.set_defaults(func=cmd_deferred)
@@ -328,6 +320,13 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     if getattr(args, "verb", None):  # `phase new`, `slice status`: the name every check below reads
         args.cmd = f"{args.cmd} {args.verb}"
+    return run(args, tokens)
+
+
+def run(args: argparse.Namespace, tokens: list) -> int:
+    """Run one parsed command (`args.cmd`, `args.func`): the boundary every command crosses, the engine's own
+    and the adapter's (adapters/claude_code/adapter.py calls this, in-process). In a linked checkout the cloud
+    boundary wraps it; the adapter's hook, `compact-resume`, fails open there (wf_cloud.CLOUD_FAIL_OPEN)."""
     if NESTED is not None and NESTED_PROBLEMS and args.cmd not in ("check", "compact-resume"):  # the hook fails open
         # Never fall back to at-root mode on a broken marker: refuse, and let check list it all.
         raise SystemExit(f"{shown(ROOT / NESTED_MARKER)} is malformed, so this nested install cannot run {args.cmd}: "
@@ -351,7 +350,7 @@ def main(argv=None) -> int:
 
 # The seams: each module's SEAMS names what it calls in a module above it; bound here, once every module and the
 # parser exist, before any command runs.
-for _module in (wf_store, wf_git, wf_design, wf_agenda, wf_adapter, wf_cloud):
+for _module in (wf_store, wf_git, wf_design, wf_agenda, wf_cloud):
     for _owner, _names in getattr(_module, "SEAMS", {}).items():
         for _name in _names:
             setattr(_module, _name, globals()[_name] if _owner == "workflow" else getattr(sys.modules[_owner], _name))

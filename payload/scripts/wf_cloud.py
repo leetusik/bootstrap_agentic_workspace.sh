@@ -78,7 +78,8 @@ CLOUD_HOOK_LOCK_WAIT = 5.0  # the session hook's wait: it never holds a session 
 # The session hook's whole cloud time: the lock wait and every request of its boundary, against the hook's 15 s
 # timeout in settings.json; the interpreter's start, the disk scan and the resume card fit in the 6 s left.
 CLOUD_HOOK_BUDGET = 9.0
-CLOUD_FAIL_OPEN = ("compact-resume",)  # the SessionStart hook: a cloud stop is a note, the command runs on the disk
+CLOUD_FAIL_OPEN = ("compact-resume",)  # the adapter's SessionStart hook (adapters/claude_code/adapter.py compact-resume, through
+# workflow.run): a cloud stop is a note, the command runs on the disk
 CLOUD_FETCH_PATHS = 5000  # paths per P3 request (hi2vi takes at most 20,000 and pages its answer by bytes)
 # The safety half. One engine process per checkout: `fcntl.flock` on `.hi2vi/lock` around the whole boundary
 # (begin, command, commit). A journal, `.hi2vi/journal.json`, names every interrupted state: `running` from the

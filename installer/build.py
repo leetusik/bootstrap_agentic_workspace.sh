@@ -16,9 +16,11 @@ Source of truth:
     git would apply a nested .gitattributes, as this repo's own (the workspace that drives
     it is a private host in the folder above it):
       payload/scripts/*.py (the engine: its entry workflow.py and its wf_*.py modules),
+      payload/adapters/** (the Claude Code adapter folder, emitted as is; its executors.toml is the
+      seed emitted at the workspace root, never inside the folder),
       payload/claude/skills/*/** (each skill's whole directory,
       plus any SHARED_SKILL_FILES copies), the payload/claude
-      subagents, payload/claude/settings.json, payload/executors.toml,
+      subagents, payload/claude/settings.json,
       payload/works/templates/*, payload/github/workflows/workspace-ci.yml,
       payload/gitattributes, and the payload/contract.md contract body (header
       stripped, embedded once).
@@ -74,7 +76,9 @@ MIGRATION_MARK = "**Migration notes.**"
 # source lives under payload/ at src_rel(emit): payload/ keeps it off the root paths Claude Code
 # and GitHub read (.claude/, .github/, CLAUDE.md), and the undotted first path component keeps
 # Claude Code and git from treating it as this repo's own inside payload/. The engine is every
-# payload/scripts/*.py, discovered from disk (ENGINE_FILES), so adding a module needs no code change.
+# payload/scripts/*.py, discovered from disk (ENGINE_FILES), so adding a module needs no code change; the
+# adapter folder is every file under payload/adapters/ (adapter_files()). SOURCE_OF names the one shipped
+# file whose source sits elsewhere: the executors.toml seed lives with the adapter that reads it.
 FIXED_LIVE_FILES = [
     ".claude/settings.json",
     ".claude/agents/slice-executor.md",
@@ -99,6 +103,7 @@ FIXED_LIVE_FILES = [
 # Empty since lighter-rules: do-next-slice reads do-whole-phase's references by path, so no
 # reference ships twice.
 SHARED_SKILL_FILES: dict = {}
+SOURCE_OF = {"executors.toml": "adapters/claude_code/executors.toml"}
 
 CLAUDE_HDR = "# CLAUDE.md\n\n"
 
@@ -110,6 +115,8 @@ def die(msg: str) -> "None":
 
 def src_rel(emit: str) -> str:
     """payload/-relative source of an emit path: .claude/x -> claude/x, .gitattributes -> gitattributes."""
+    if emit in SOURCE_OF:
+        return SOURCE_OF[emit]
     return emit[1:] if emit.startswith(".") else emit
 
 
@@ -128,10 +135,17 @@ def engine_files() -> "list":
     return files
 
 
+def adapter_files() -> "list":
+    """The adapter folders' emit paths: every file under payload/adapters/ but the executors.toml seed (SOURCE_OF)."""
+    return sorted(f.relative_to(SRC).as_posix() for f in (SRC / "adapters").rglob("*")
+                  if f.is_file() and f.relative_to(SRC).as_posix() not in SOURCE_OF.values()
+                  and not any(part.startswith(".") or part == "__pycache__" for part in f.relative_to(SRC).parts))
+
+
 def collect_live_payloads() -> "dict":
     """emit-path -> content for every shipped file (deterministic ordering), verbatim."""
     payloads: dict = {}
-    for rel in engine_files() + FIXED_LIVE_FILES:
+    for rel in engine_files() + adapter_files() + FIXED_LIVE_FILES:
         payloads[rel] = read(src_rel(rel))
     # Skills are discovered from disk (sorted) so adding/removing a skill needs no code change.
     # A skill ships as its whole directory: SKILL.md (the core) plus every other file under it

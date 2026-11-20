@@ -19,7 +19,7 @@ old double-maintenance (edit a skill *and* mirror it into a heredoc) is gone.
 
 **Release rule (version + changelog).** When the edit ships a machinery change to
 targets — anything an adopting repo receives via `curl … | sh` or `/update-workspace`
-(a skill, agent def, `scripts/workflow.py`, the contract, settings, templates, …;
+(a skill, agent def, the engine `scripts/*.py`, the adapter folder, the contract, settings, templates, …;
 their sources are under `payload/`) —
 bump `WORKSPACE_VERSION` in `installer/main.py` **and** add the matching
 `## v<N> — <date>` entry to the root `CHANGELOG.md`, in the **same commit** as the
@@ -81,7 +81,7 @@ layout of a run, and the wrapper rejects contradictory flags first:
   holds only git repos at depth 1 (a single repo counts; the harmless files a new target may hold,
   such as `.DS_Store` or a README, are ignored) is installed as a host that tracks nothing and
   carries several product repos. The installer `git init`s the folder and makes its one empty
-  commit, `chore: start the host history` (the base `phase new` and `parallel-start` need),
+  commit, `chore: start the host history` (the base `phase new` and `worktree start` need),
   writes a `/<repo>/` line per repo inside the managed `info/exclude` block, and seeds the
   registry, an optional `repos` list in `workflow/.agentic-nested.json` (name, path, default
   branch, rules files and convention per repo, each repo's convention inferred from its own history
@@ -104,7 +104,7 @@ layout of a run, and the wrapper rejects contradictory flags first:
   `--nested` or `--at-root` picks one; a flag that contradicts the layout found refuses. On a
   host that tracks nothing and has no registry yet, the first `--update` seeds one from the depth-1
   repos; once `repos` exists, `--update` only prints (a drift line per unregistered child repo,
-  `nested-repos --add <path>`, and a `nested-repos --map-anchors <repo>` note) and never
+  `repo add <path>`, and a `repo map-anchors <repo>` note) and never
   re-detects.
 - **`--to-multi-repo REPO [--dry-run]`**: converts the per-repo nested install at `REPO/workflow/`
   into a multi-repo host at `REPO`'s parent folder. It takes the repo and no target, and does not
@@ -119,7 +119,7 @@ layout of a run, and the wrapper rejects contradictory flags first:
   nothing keeps its history), moves `REPO/workflow` to the parent, runs the plain `--update` there,
   moves the old repo's convention into the registry as that repo's (every other repo inferred and
   unconfirmed, the host-level convention unconfirmed), records `converted_from` in the marker,
-  runs `nested-repos --map-anchors REPO` so each phase's `host_anchors` become
+  runs `repo map-anchors REPO` so each phase's `host_anchors` become
   `repo_anchors.REPO`, and cleans the old repo: only workspace files byte-identical to what this
   installer writes are deleted, edited ones stay and are listed, and its leftover worktrees are
   listed, never deleted. The closing block names the nested commit to make
@@ -151,9 +151,12 @@ drives this repo is a private host in the folder above it, with its own installe
 add a dotted name or a `CLAUDE.md` under `payload/`.
 Below, each entry is the source, then the emit path where it differs:
 
-- `payload/scripts/workflow.py`
+- `payload/scripts/*.py` → `scripts/…` (the engine: its entry `workflow.py` and the `wf_*.py` modules beside it)
+- `payload/adapters/claude_code/**` → `adapters/claude_code/…` (the Claude Code adapter: `adapter.py` with `route`,
+  `sync-agents`, `meter` and the `compact-resume` hook; it imports the engine, never the other way; machinery like the engine,
+  `workflow/adapters/claude_code/` in a nested install)
 - `payload/claude/skills/<name>/**` → `.claude/skills/<name>/…` (skills are discovered from disk by their
-  `SKILL.md`; the build asserts the release inventory is exactly 17 packages — `EXPECTED_SKILL_COUNT` in
+  `SKILL.md`; the build asserts the release inventory is exactly 18 packages — `EXPECTED_SKILL_COUNT` in
   both `build.py` and `main.py`, so adding or removing a skill means moving both). A skill ships as its
   **whole directory**: `SKILL.md` plus every other file under it (dotfiles and `__pycache__` excepted),
   written on fresh install, retrofit, `--update` and the nested install (rewritten and renamed with
@@ -174,15 +177,14 @@ Below, each entry is the source, then the emit path where it differs:
   Knowledge block in [README.en.md](../README.en.md)). The updater never creates, edits, removes or
   reports a path with an `explain` component, and `RETIRED_FILES` never lists one.
 - `payload/claude/agents/slice-executor.md`, `payload/claude/agents/design-drafter.md`,
-  `payload/claude/agents/design-critic.md`, `payload/claude/agents/Explore.md` → `.claude/agents/…` (the design subagent and the design critic; `sync-agents` keeps each on its own row, `design` and `critic`)
-- `payload/executors.toml` → `executors.toml` (seed-once executor-route config — created if absent,
-  never overwritten on update; every row commented out at its engine default)
-- `payload/claude/settings.json` → `.claude/settings.json` (the project `autoCompactWindow` ships at 500000; Claude Code also compacts an idle session by itself, on by default, and `idleCompaction: false` in your user settings turns that off; a 200k-context model compacts at its own limit, since the window is capped at the model's context. No compaction hook and no `idleCompaction` key ships; the `SessionStart` `compact` hook only prints the resume card)
+  `payload/claude/agents/design-critic.md`, `payload/claude/agents/Explore.md` → `.claude/agents/…` (the design subagent and the design critic; the adapter's `sync-agents` keeps each on its own row, `design` and `critic`)
+- `payload/adapters/claude_code/executors.toml` → `executors.toml` at the root, never inside the adapter folder (seed-once route
+  config — created if absent, never overwritten on update; every row commented out at its default)
+- `payload/claude/settings.json` → `.claude/settings.json` (the project `autoCompactWindow` ships at 500000; Claude Code also compacts an idle session by itself, on by default, and `idleCompaction: false` in your user settings turns that off; a 200k-context model compacts at its own limit, since the window is capped at the model's context. No compaction hook and no `idleCompaction` key ships; the `SessionStart` `compact` hook, the adapter's `compact-resume`, only prints the resume card)
 - `payload/works/templates/{deferred_brief,intent,phase}.md` → `works/templates/…`
 - `payload/github/workflows/workspace-ci.yml` → `.github/workflows/workspace-ci.yml` (**seed-once** repo policy file — created when
   absent, never overwritten, on install/retrofit/update alike; one workflow
-  that runs `check --no-rebuild` on pull requests and on pushes to `main`/`master`, plus a `parallel-gate` job on `phase/*` pull
-  requests; this repo's own CI is `.github/workflows/upstream-ci.yml`)
+  that runs `check --no-rebuild` on pull requests and on pushes to `main`/`master`; this repo's own CI is `.github/workflows/upstream-ci.yml`)
 - `payload/gitattributes` → `.gitattributes` (**line-merged** repo policy file — the
   `works/events.jsonl merge=union` rule is appended when missing and existing content
   is never rewritten; skipping a repo's existing `.gitattributes` would silently drop

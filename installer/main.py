@@ -216,13 +216,17 @@ if len(CLAUDE_SKILLS) != EXPECTED_SKILL_COUNT:
 SKILL_FILES = {name: sorted(k for k in PAYLOADS if k.startswith(f".claude/skills/{name}/")) for name in CLAUDE_SKILLS}
 # The engine ships as flat modules: its entry scripts/workflow.py and every scripts/wf_*.py beside it.
 ENGINE_FILES = sorted(k for k in PAYLOADS if k.startswith("scripts/") and k.endswith(".py"))
+# The Claude Code adapter: one folder beside the engine (adapters/claude_code/adapter.py and its files), machinery
+# like the engine. It imports the engine; the engine never imports it.
+ADAPTER_FILES = sorted(k for k in PAYLOADS if k.startswith("adapters/"))
+ADAPTER_ENTRY = "adapters/claude_code/adapter.py"
 
 MANAGED_DIRS = [
     "docs", "docs/current",
     "works", "works/phases", "works/phases/active", "works/phases/archived",
     "works/deferred", "works/deferred/open", "works/deferred/promoted", "works/deferred/dropped",
     "works/agenda",
-    "works/templates", "scripts",
+    "works/templates", "scripts", *sorted({str(Path(f).parent) for f in ADAPTER_FILES} | {"adapters"}),
     ".claude", ".claude/skills", ".claude/agents",
 ]
 
@@ -233,6 +237,7 @@ MANAGED_FILES = [
     "works/state.json", "works/index.json", "works/backlog.md", "works/deferred.md", "works/agenda.md", "works/events.jsonl",
     *[f"works/templates/{n}" for n in ("deferred_brief.md", "intent.md", "phase.md")],
     *ENGINE_FILES,
+    *ADAPTER_FILES,
     ".claude/agents/slice-executor.md", ".claude/agents/design-drafter.md",
     ".claude/agents/design-critic.md", ".claude/agents/pr-reader.md", ".claude/agents/code-reader.md",
     ".claude/agents/Explore.md",
@@ -412,6 +417,8 @@ RETIRED_MECHANISMS = [
 # _merge_settings_dict) removes exactly our retired hook handlers -- matched by command -- and moves a window
 # still at a value we shipped to today's; it reports both through SETTINGS_CHANGES.
 RETIRED_HOOK_COMMANDS = {m["hook"]: f"retired in v{m['retired']}" for m in RETIRED_MECHANISMS if m.get("hook")}
+# The resume hook moved into the Claude Code adapter (thin engine): the old handler goes, the adapter's is added.
+RETIRED_HOOK_COMMANDS["workflow.py compact-resume"] = f"moved to the adapter: {ADAPTER_ENTRY} compact-resume"
 SHIPPED_COMPACT_WINDOWS = {300000, 450000}  # 300000: v56 and v61-v65; 450000: v66-v81; today's value is 500000 (v57-v60, again since v82)
 SETTINGS_CHANGES = {"removed": [], "changed": []}
 
@@ -596,7 +603,7 @@ def _retrofit_handle(path: str, text: str) -> bool:
 # .gitattributes line-merged) bypass this dispatch entirely — see emit_policy_files().
 # In --dry-run nothing is written; changes are only recorded for the report.
 def _is_machinery(path: str) -> bool:
-    if path in ENGINE_FILES:
+    if path in ENGINE_FILES or path in ADAPTER_FILES:
         return True
     if NESTED and path == NESTED_CONTRACT:
         return True  # the nested install's contract (rewritten) is machinery, refreshed like the skills
@@ -720,6 +727,7 @@ NESTED_SKILL_ONLY = {n for n in CLAUDE_SKILLS if "-" in n and n not in _ENGINE_S
 # Token-bounded: never preceded by a word character, `.`, `/` or `-`, so `workflow/works/`, a URL,
 # `<repo>/scripts/...` and words such as `networks/` are left alone (and a second pass is a no-op).
 NESTED_ENGINE_RE = re.compile(r"(?<![\w./-])scripts/workflow\.py(?![\w-])")
+NESTED_ADAPTER_RE = re.compile(r"(?<![\w./-])adapters/claude_code/")  # the adapter folder's paths
 NESTED_PATH_RE = re.compile(
     r"(?<![\w./-])(?:works/|docs/(?:current|versions|reference)(?![\w-])|docs/index\.json(?![\w-]|\.\w)"
     r"|docs/README\.md(?![\w-]|\.\w)|executors\.toml(?![\w-]|\.\w)|\.env(?![\w-]|\.\w))")
@@ -729,7 +737,7 @@ NESTED_PATH_RE = re.compile(
 NESTED_CONTRACT_REF_RE = re.compile(
     r"(?:(?<=\bread )|(?<=\bRead )|(?<=\bsee )|(?<=\bSee )|(?<=contract \()|(?<=contract — )|(?<=^- ))`CLAUDE\.md`", re.M)
 # A `workflow.py ...` command, up to its closing backtick or the end of the line: renames never touch it.
-NESTED_PROTECT_RE = re.compile(r"(workflow\.py[^`\n]*)")
+NESTED_PROTECT_RE = re.compile(r"((?:workflow|adapter)\.py[^`\n]*)")
 
 
 def nested_rewrite(text: str, renames: dict) -> str:
@@ -738,7 +746,8 @@ def nested_rewrite(text: str, renames: dict) -> str:
     change nothing anyway: every prefixed token is preceded by `/`).
 
     1. Engine paths: `scripts/workflow.py` -> `workflow/scripts/workflow.py` -- so `python3
-       scripts/workflow.py`, the skills' allowed-tools and the settings allowlist too.
+       scripts/workflow.py`, the skills' allowed-tools and the settings allowlist too; the adapter folder's
+       `adapters/claude_code/` -> `workflow/adapters/claude_code/` (its hook command and allow rule).
     2. Workspace paths -> under `workflow/`: works/, docs/current, docs/versions, docs/reference,
        docs/index.json, docs/README.md, executors.toml, .env.
     3. The contract named as `CLAUDE.md` (NESTED_CONTRACT_REF_RE) -> `workflow/CLAUDE.workspace.md`.
@@ -748,6 +757,7 @@ def nested_rewrite(text: str, renames: dict) -> str:
        (always hyphenated, never a subcommand) name appears as a token: `name:`, `subagent_type: X`,
        `.claude/agents/X.md`, prose."""
     text = NESTED_ENGINE_RE.sub(f"{NESTED_DIR}/scripts/workflow.py", text)
+    text = NESTED_ADAPTER_RE.sub(f"{NESTED_DIR}/adapters/claude_code/", text)
     text = NESTED_PATH_RE.sub(lambda m: f"{NESTED_DIR}/{m.group(0)}", text)
     text = NESTED_CONTRACT_REF_RE.sub(f"`{NESTED_DIR}/{NESTED_CONTRACT}`", text)
     skills, agents = renames.get("skills") or {}, renames.get("agents") or {}
@@ -1582,6 +1592,8 @@ def nested_plan() -> dict:
     for label, text in sorted(checked.items()):
         if "python3 scripts/workflow.py" in text or NESTED_ENGINE_RE.search(text):
             problems.append(f"{label}: an unprefixed scripts/workflow.py")
+        if NESTED_ADAPTER_RE.search(text):
+            problems.append(f"{label}: an unprefixed adapters/claude_code/")
         m = NESTED_PATH_RE.search(text)
         if m:
             problems.append(f"{label}: an unprefixed workspace path {m.group(0)!r}")
@@ -1780,6 +1792,7 @@ def _nested_renames_line(plan: dict) -> str:
 
 def print_nested_banner(plan: dict) -> None:
     cmd = f"python3 {NESTED_DIR}/scripts/workflow.py"
+    adapter = f"python3 {NESTED_DIR}/{ADAPTER_ENTRY}"
     if DRY_RUN or UPDATE:
         print(f"{'DRY RUN (--update --dry-run)' if DRY_RUN else 'Update complete (--update)'} at {HOST} (nested, detected)"
               f"{' -- nothing written.' if DRY_RUN else ''}")
@@ -1876,10 +1889,10 @@ def print_nested_banner(plan: dict) -> None:
         print(f"  1. Commit the refresh in the nested repo, its own paths only -- this checkout is linked to hi2vi, which holds works/ and docs/ "
               f"(they stay uncommitted; never git -C {NESTED_DIR} add -A): {LINKED_UPDATE_ADD} && git -C {NESTED_DIR} commit -m "
               f"\"chore: update agentic workspace to v{WORKSPACE_VERSION} (nested)\"")
-        print(f"  2. Re-apply your executors.toml route overrides: {cmd} sync-agents; {cmd} executor-route prints an override= line for each row it pins")
+        print(f"  2. Re-apply your executors.toml route overrides: {adapter} sync-agents; {adapter} route prints an override= line for each row it pins")
     elif UPDATE:
         print(f"  1. Commit the refresh in the nested repo (/update-workspace does this itself): git -C {NESTED_DIR} status, then git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: update agentic workspace to v{WORKSPACE_VERSION} (nested)\"")
-        print(f"  2. Re-apply your executors.toml route overrides: {cmd} sync-agents; {cmd} executor-route prints an override= line for each row it pins")
+        print(f"  2. Re-apply your executors.toml route overrides: {adapter} sync-agents; {adapter} route prints an override= line for each row it pins")
     else:
         print(f"  1. First commit in the nested repo: git -C {NESTED_DIR} add -A && git -C {NESTED_DIR} commit -m \"chore: install agentic workspace (nested)\"")
         print(f"  2. Start Claude Code at the host root and accept the trust dialog on the first run, then: /{plan['renames']['skills'].get('create-phase', 'create-phase')} for the first phase ({cmd} next shows the state)")
@@ -2898,7 +2911,7 @@ def convert_finish() -> None:
             print(f"       {r.get('name')}: UNCONFIRMED -- {engine} repo convention --confirm --repo {r.get('name')} --text \"<conventions>\" "
                   "--trailers allowed|forbidden")
     step += 1
-    print(f"  {step}. Re-apply your executors.toml route overrides to the new agent files: {engine} sync-agents")
+    print(f"  {step}. Re-apply your executors.toml route overrides to the new agent files: python3 {NESTED_DIR}/{ADAPTER_ENTRY} sync-agents")
     print("Rollback (the nested repo's history is the backup; the installer deletes none of this):")
     for line in _convert_rollback_lines():
         print(line)
@@ -2964,7 +2977,7 @@ elif RETROFIT:
         sys.exit(0)
     # A foreign scripts/workflow.py (or a file named like one of its modules) would break the runtime
     # (retrofit keeps theirs) — abort before writing.
-    foreign = [rel for rel in ENGINE_FILES if (ROOT / rel).exists()]
+    foreign = [rel for rel in ENGINE_FILES + ADAPTER_FILES if (ROOT / rel).exists()]
     if foreign:
         print(f"Error: target already has {foreign[-1]}.", file=sys.stderr)
         print("The workspace runtime shells out to it, so it cannot be installed over a", file=sys.stderr)
@@ -3080,6 +3093,9 @@ write_text("works/events.jsonl", json.dumps({"ts": created_at, "type": "bootstra
 # ---- Workflow engine (scripts/workflow.py and its wf_*.py modules) -------------
 for rel in ENGINE_FILES:
     write_text(rel, PAYLOADS[rel], executable=rel == "scripts/workflow.py")
+# ---- The Claude Code adapter folder (adapters/claude_code/: routes, sync-agents, the meter, the resume hook) ----
+for rel in ADAPTER_FILES:
+    write_text(rel, PAYLOADS[rel], executable=rel == ADAPTER_ENTRY)
 
 # ---- Agent surfaces: Claude Code skills -------------------------------------
 # (Nested: none under workflow/ -- the host-side copies are written by nested_apply below.)
@@ -3336,8 +3352,8 @@ elif UPDATE:
     for line in nested_team_pr_rules(ROOT):
         print(f"  {line}")
     print("The installer made no git changes. Review the diff (git status); commit once the operator approves.")
-    print("Next: python3 scripts/workflow.py sync-agents  # re-apply your preserved executors.toml")
-    print("      python3 scripts/workflow.py executor-route  # an override= line for each row it pins against the defaults")
+    print(f"Next: python3 {ADAPTER_ENTRY} sync-agents  # re-apply your preserved executors.toml")
+    print(f"      python3 {ADAPTER_ENTRY} route  # an override= line for each row it pins against the defaults")
     print("Then: python3 scripts/workflow.py next")
 elif RETROFIT:
     created, skipped, merged = (RETROFIT_SUMMARY["created"], RETROFIT_SUMMARY["skipped"], RETROFIT_SUMMARY["merged"])
@@ -3359,7 +3375,7 @@ else:
     print("Contract: CLAUDE.md")
     print("Claude Code: 18 skills in .claude/skills/ (e.g. /do-next-slice), slice executor .claude/agents/slice-executor.md, design subagent .claude/agents/design-drafter.md, design critic .claude/agents/design-critic.md, fresh-eyes PR reader .claude/agents/pr-reader.md, blind code reader .claude/agents/code-reader.md, read-only lookup agent .claude/agents/Explore.md, settings .claude/settings.json")
     print("Visual design: design-cowork fires automatically; the design-drafter subagent drafts each design slice's surfaces as one working canvas under docs/reference/design/jobs/ (a frame of shared choices, its pages at once, then a join into clickable Pages, a board per component), the design-critic judges each page and the joined canvas when the job's critique is on, the orchestrator publishes each round to one Design canvas Artifact in the Claude app, and the operator decides: picks a style (build-after / design-only / paired) and signs each design in their own words, or on an in-product mockup they ask for, before separate implementation and browser fidelity")
-    print("One executor, routed per dispatch by kind, then risk, then attempt (mid is the default row, real code included; high for decomposition, research, review, named triggers and retries), through one route table whose rows set each dispatch's model and effort; python3 scripts/workflow.py executor-route shows it (and executor-route <slice> the decision for one slice); override a row in executors.toml, then run sync-agents")
+    print("One executor, routed per dispatch by kind, then risk, then attempt (mid is the default row, real code included; high for decomposition, research, review, named triggers and retries), through one route table whose rows set each dispatch's model and effort; python3 adapters/claude_code/adapter.py route shows it (and route <slice> the decision for one slice); override a row in executors.toml, then run the adapter's sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
     print("CI: .github/workflows/workspace-ci.yml runs check --no-rebuild on each PR and default-branch push (seeded once — yours to edit); .gitattributes carries the merge rules for machine-written files")
     print("Canonical state: phase.json / slice.json / deferred.json / agenda.json; generated: works/backlog.md, works/deferred.md, works/agenda.md")

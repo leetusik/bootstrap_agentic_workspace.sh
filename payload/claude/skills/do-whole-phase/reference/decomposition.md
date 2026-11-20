@@ -2,7 +2,7 @@
 
 The executor's side (the walkthrough first, few big slices, `slice new`, the breakdown in `topics/breakdown.md`, the sets) is `playbooks/decompose.md`. Yours:
 
-- **Plan it at the gate** unless the operator said `auto`: it fixes the shape, risk and cost of everything after it. Dispatch it on the high row. Its plan names what a throwaway run should settle before the cut; the estimate's time comes from `dispatch-summary`'s `means` block, never a session-$ figure.
+- **Plan it at the gate** unless the operator said `auto`: it fixes the shape, risk and cost of everything after it. Dispatch it on the high row. Its plan names what a throwaway run should settle before the cut; the estimate's time comes from the adapter's `meter` `means` block, never a session-$ figure.
 - **A visual phase with no `## Design Style` in `intent.md`:** the plan asks the operator first: suggest `build-after` or `paired` with a reason, the mockup question and the drafter (`fable` or `opus`); set the slice `pending --stop-kind decision --on-words "<their answer records the style and DECOMP cuts the slices>"` and stop. `design-only` cannot be chosen here (its apply phase needs `phase new`): that answer goes to `/create-phase`.
 - **At its end**, `slice finish <P>.DECOMP` prints an `advice:` line for each middle slice left undeclared, which then runs alone (`slice deps <slice> --depends-on …` declares one). Relay the executor's `parallel:` rounds in a line of your next report and run the phase as drawn.
 

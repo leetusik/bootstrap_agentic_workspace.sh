@@ -29,6 +29,6 @@ A phase that changes product files ships as **one branch per repo it changed, on
 - **Ready runs at the close**, on the operator's `accept` (or `close`), never before. A draft's names are plain text, never `@`.
 - **If GitHub refuses the draft** (a private repo on a free plan), never retry it as a plain PR, which notifies people: stop for the operator's `plain` or `waive` (`reference/open.md`).
 - **Never merge a team repo's PR.** A solo repo merges by its own custom; one that lands locally never uses GitHub's merge button.
-- The `pr-reader` runs only when the operator asks, or for a team repo with PR rules (`executor-route --reader`); `pr check` checks every body.
+- The `pr-reader` runs only when the operator asks, or for a team repo with PR rules (`adapter.py route --reader`); `pr check` checks every body.
 - **A phase stacked on an open PR:** `reference/stack.md`. **Changes after the phase is done**: `reference/reopen.md`.
 - **Review replies** stay at most five lines and link the fixing commit.

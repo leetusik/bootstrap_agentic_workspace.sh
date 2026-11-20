@@ -16,7 +16,7 @@ A playbook: how a phase usually runs. Leave a step when the work needs it and sa
 ## The loop, slice by slice
 
 1. **Plan** the slice into its own `plan.md`, free-form: the goal, what to read, the claims to prove, how to validate. Pull context through `section`; never pre-fill another slice's `plan.md`. An `implementation` or `fix` plan carries `## Claims and contracts`: each behaviour claim a check can fail, each external contract with its source (URL and date, or the file read), `unread` if nobody has read it, or `none — <why>`.
-2. **Dispatch** one executor in the background: `slice start`, `executor-route <slice>`, pin `## Dispatch`, dispatch, `record-dispatch` (`reference/dispatch.md`).
+2. **Dispatch** one executor in the background: `slice start`, the adapter's `route <slice>`, pin `## Dispatch`, dispatch (`reference/dispatch.md`).
 3. **Read the verdict** and the head of `result.md`, then act on it (`reference/verdicts.md`): `done` → `slice finish <slice_id> --outcome "<its summary>"`, `check`, commit; `needs_operator` → a typed `pending` stop; `blocked` → STOP; a mid `escalate` or a failed mid return → once more on the high row; a failed high return → STOP.
 4. Then `section <P> Now` and only the sections the next plan needs.
 

@@ -8,7 +8,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 셸 스크립트 하나를 실행하면 에이전트용 워크스페이스가 만들어집니다. 에이전트가 따르는
-작업 규칙, 파일로 저장되는 작업 상태, 버전으로 쌓이는 문서가 함께 설치됩니다.
+작업 규칙, 파일로 저장되는 작업 상태, 코드가 말해 주지 못하는 것을 적는 문서가 함께 설치됩니다.
 명령은 Claude Code 스킬로 제공되고, 똑같은 동작을 `python3 scripts/workflow.py …`로도
 실행할 수 있어 셸이 있는 곳이면(다른 에이전트, 스크립트, CI) 어디서든 같은 워크스페이스를
 움직일 수 있습니다.
@@ -104,7 +104,7 @@ nested 설치는 `--to-multi-repo <repo>`로 저장소 여러 개를 맡는 멀�
 
 에이전트에게는 `/update-workspace`라고 입력하면 됩니다.
 업데이트는 기존 `executors.toml`을 보존하지만 생성된 `slice-executor` 에이전트 파일은 최신
-기본값으로 바꾸므로, 적용 뒤 `python3 scripts/workflow.py sync-agents`를 실행해 선택한
+기본값으로 바꾸므로, 적용 뒤 `python3 adapters/claude_code/adapter.py sync-agents`를 실행해 선택한
 프리셋과 오버라이드를 다시 반영하세요.
 
 ### 2. 에이전트에게 맡기기
@@ -154,7 +154,7 @@ nested 설치의 `workflow/` 디렉터리 자체에서 옵션 없는 설치나 `
 
 - `workflow/`: 엔진, `works/`, `docs/`, `executors.toml`, 규칙 문서(`CLAUDE.workspace.md`)가
   들어가는 **중첩 git 저장소**입니다. 호스트와 따로 버전 관리됩니다.
-- 호스트의 `.claude/skills/`, `.claude/agents/`에 들어가는 스킬 21개와 에이전트 6개. 경로는
+- 호스트의 `.claude/skills/`, `.claude/agents/`에 들어가는 스킬 18개와 에이전트 6개. 경로는
   `workflow/`를 가리키도록 바뀌어 있습니다(`python3 workflow/scripts/workflow.py …`).
 - 각 스킬 디렉터리 안의 `.gitignore`(내용은 `*`). 호스트의 `.gitignore`가 `.claude/skills/`를
   다시 포함시키더라도 스킬 디렉터리가 스스로를 가립니다.
@@ -188,8 +188,8 @@ git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하�
    추정해 "미확인"으로 기록해 둡니다. (설치 프로그램이 `git init`한 새 호스트는 이 워크스페이스의
    컨벤션으로 이미 확정되어 있고 트레일러는 허용으로 기록되므로 `next`가 `UNCONFIRMED`를 보여
    주지 않습니다. 바꾸고 싶을 때만 아래 명령을 쓰세요.)
-   `python3 workflow/scripts/workflow.py nested-convention`으로 보고,
-   `nested-convention --confirm --text "<컨벤션>" --trailers allowed|forbidden`으로 확정하세요.
+   `python3 workflow/scripts/workflow.py repo convention`으로 보고,
+   `repo convention --confirm --text "<컨벤션>" --trailers allowed|forbidden`으로 확정하세요.
    호스트 커밋에 Claude `Co-Authored-By` 트레일러를 넣어도 되는지도 함께 기록합니다. 확정
    전에는 `next`가 `host_commit_convention=UNCONFIRMED`를 보여 주고, 에이전트는 첫 제품 커밋 전에
    먼저 물어봅니다.
@@ -201,12 +201,12 @@ git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하�
 3. `/do-whole-phase`: slice마다 **커밋이 두 개**입니다. 제품 코드는 호스트에 호스트의 컨벤션대로
    (메시지에 phase나 slice ID 없이), 워크플로우 상태는 `workflow/`에 이 워크스페이스의
    컨벤션대로 들어갑니다.
-4. `/review-phase`: `phase-scope`가 기록해 둔 기준점부터 **호스트** diff를 읽습니다(`workflow/`는
+4. `/review-phase`: `phase scope`가 기록해 둔 기준점부터 **호스트** diff를 읽습니다(`workflow/`는
    보지 않습니다). 리뷰는 먼저 `code-reader` 에이전트가 기록 없이 diff만 읽은 결과를 받아 각 발견을 판정합니다.
 5. 리뷰가 통과하면 `pr` 스킬이 phase의 draft PR을 바로 엽니다(멈춤도, 따로 할 말도 없습니다). 게이트가 필요한 phase라면 GitHub에서 draft를 읽고 `accept` 한 마디로 마칩니다. 그러면 PR을 Ready로 바꾸고, 혼자 쓰는 repo라면 merge까지 합니다(팀 repo의 merge는 팀이 합니다). PR에는 제품 커밋만 들어가고, 워크플로우 경로나 phase/slice
    ID는 없습니다.
 6. phase가 끝난 뒤 수정 요청이 오면(팀 리뷰든 내 요청이든) 같은 phase를 열린 PR 위에서 다시 엽니다
-   (`reopen-phase`). 3번부터 다시 진행하고, 수정은 같은 PR에 push합니다. 두 번째 PR이나 force-push는 없습니다.
+   (`phase reopen`). 3번부터 다시 진행하고, 수정은 같은 PR에 push합니다. 두 번째 PR이나 force-push는 없습니다.
 
 **업데이트.** `/update-workspace`, 또는
 `sh /path/to/bootstrap_agentic_workspace.sh /path/to/host-repo --update`(먼저
@@ -222,7 +222,7 @@ git에서 무시될지 확인합니다. 호스트의 `.gitignore`가 그중 하�
 - 회사가 관리하는 Claude Code 정책이 `bypassPermissions`를 막을 수 있습니다. 여섯 에이전트 중 다섯이 이
   모드를 쓰므로(`Explore`는 쓰지 않습니다), `/do-whole-phase`처럼 사람 없이 도는 실행을 믿기 전에 확인하세요.
 - 이름이 바뀐 스킬을 엔진 메시지가 원래 이름으로 부를 수 있습니다(예: `wf-create-phase`로
-  설치됐는데 `validate`가 "create-phase 스킬"이라고 안내).
+  설치됐는데 `check`가 "create-phase 스킬"이라고 안내).
 - `workflow/docs/`에 미리 들어 있는 문서 글은 `workflow/` 기준 경로로 적혀 있습니다.
 - `workflow/`에 remote를 붙인다면 **회사 조직 안**에 두세요. phase와 slice 파일에는 회사 코드에
   대한 내용이 들어 있습니다.
@@ -240,9 +240,9 @@ sh /path/to/bootstrap_agentic_workspace.sh /path/to/저장소들이-든-폴더
 
 git 저장소가 아니면서 바로 아래에 git 저장소만 들어 있는 폴더(저장소 하나뿐이어도 됩니다)는
 **멀티 저장소 호스트**로 설치됩니다. 설치 프로그램이 그 폴더를 `git init`하고 빈 커밋 하나,
-`chore: start the host history`를 만듭니다(`new-phase`와 `parallel-start`가 기준으로 삼는
+`chore: start the host history`를 만듭니다(`phase new`와 `worktree start`가 기준으로 삼는
 커밋입니다). 저장소마다 호스트의 `.git/info/exclude`에 `/<저장소>/` 줄을 넣어 가리고 저장소
-목록(registry)에 기록합니다. `python3 workflow/scripts/workflow.py nested-repos`로 볼 수 있고,
+목록(registry)에 기록합니다. `python3 workflow/scripts/workflow.py repo list`로 볼 수 있고,
 저장소별 규칙 파일(`AGENTS.md` 등)도 함께 나옵니다. 어느 저장소에도 아무것도 쓰지 않으며, 호스트
 폴더는 tracked 파일을 하나도 두지 않습니다. git에 사용자 정보가 없으면 `git init`은 그대로 두고
 커밋은 만들지 않은 채 종료 코드 0으로 끝나며, 대신 실행할 명령 두 개를 알려 줍니다.
@@ -250,11 +250,11 @@ git 저장소가 아니면서 바로 아래에 git 저장소만 들어 있는 �
 `git -C <폴더> commit --allow-empty -m "chore: start the host history"`입니다.
 
 저장소마다 커밋, branch, PR 컨벤션이 **따로** 있습니다. 하나씩 확정하세요:
-`nested-convention --confirm --repo <이름> --text "<컨벤션>" --trailers allowed|forbidden`
+`repo convention --confirm --repo <이름> --text "<컨벤션>" --trailers allowed|forbidden`
 (`--repo`를 빼면 모든 저장소에 적용되는 규칙을 기록합니다). 확정하기 전에는 `next`가
 `repo_conventions=` 줄에 아직 UNCONFIRMED인 저장소를 보여 줍니다. 그 뒤 slice는 바뀐 저장소마다
 커밋을 하나씩(`git -C <저장소> ...`, 그 저장소의 컨벤션대로), 그리고 `workflow/`에 하나 만듭니다.
-`phase-scope`와 리뷰는 저장소별 범위를 읽고, 리뷰는 저장소마다 커밋, branch, PR을 읽기만 하는
+`phase scope`와 리뷰는 저장소별 범위를 읽고, 리뷰는 저장소마다 커밋, branch, PR을 읽기만 하는
 팀 규칙 점검(team-rules check)도 합니다. phase worktree는 **세트**가 됩니다. 호스트 worktree,
 `workflow/` worktree, 그 phase가 바꾸는 저장소마다 worktree 하나입니다
 ([phase별 worktree](#phase별-worktree-요청할-때만) 참고).
@@ -270,7 +270,7 @@ sh /path/to/bootstrap_agentic_workspace.sh --to-multi-repo /path/to/repo
 됩니다. 폴더 안의 다른 저장소들도 목록에 들어갑니다. 아무것도 쓰기 전에 다음을 거부합니다. 이
 버전이 아닌 설치, 커밋하지 않은 변경이 있는 중첩 저장소, 진행 중인 phase worktree, 깨끗하지 않은
 부모 폴더입니다. `--dry-run`을 먼저 실행하면 거부 사유를 한 번에 볼 수 있습니다. 옛 저장소의
-컨벤션은 그 저장소 몫이 되고, phase에 기록된 기준 커밋은 그 저장소로 옮겨져 `phase-scope`가
+컨벤션은 그 저장소 몫이 되고, phase에 기록된 기준 커밋은 그 저장소로 옮겨져 `phase scope`가
 이전과 같은 범위를 읽습니다. 옛 저장소에서는 설치 프로그램이 쓰는 내용과 바이트까지 같은
 워크스페이스 파일만 지우고, 직접 고친 파일은 남겨 두고 목록으로 알려 줍니다. 실행이 끝나면 만들어야
 할 nested 커밋, 확정할 컨벤션, 정확한 롤백 방법(그 커밋 revert, `workflow/`를 되돌려 옮기기,
@@ -348,15 +348,15 @@ checkout에서 한꺼번에 실행합니다. 선언이 없는 phase는 지금처
 - **다음 할 일이 항상 명확합니다.** "다음에 뭘 하지?"의 답이
   `works/state.json` 파일에 기록되어 있어서, 어느 세션에서 열어도
   같은 답이 나옵니다.
-- **배운 것이 남습니다.** 각 단계에서 알게 된 내용을 노트(`phase.md`)와 버전 문서에
+- **배운 것이 남습니다.** 각 단계에서 알게 된 내용을 노트(`phase.md`)와 문서에
   기록해서, 다음 단계가 이어받습니다. 이 노트는 계속 덧붙이기만 하는 기록이 아니라 40KB 안에서
-  섹션 단위로 읽고 고쳐 쓰는(`phase-section`) phase의 **현재 상태 목차**이고, 긴 계약이나
+  섹션 단위로 읽고 고쳐 쓰는(`section`) phase의 **현재 상태 목차**이고, 긴 계약이나
   설계 요약은 `topics/`에, 자세한 기록은 각 slice의 `result.md`에 남습니다. 대화가 압축돼도, 세션이 바뀌어도 지식이 사라지지 않습니다.
 - **검증을 통과해야 끝납니다.** phase는 리뷰를 통과해야 완료 처리됩니다. 리뷰는 깨끗한
   새 컨텍스트에서 실행되어 목표와 결과를 대조합니다. 사용자 눈에 보이는 화면이 바뀐
   phase라면 리뷰가 한 단계 앞에서 멈춥니다. phase가 `pending`이 되고 무엇을 어떻게
   확인하면 되는지 적힌 안내가 나오며, 여러분이 직접 실행 중인 제품을 둘러보고 게이트를
-  해제해야(`accept-gate <P> --clear`) 통과가 기록됩니다.
+  해제해야(`gate <P> clear --words "…"`) 통과가 기록됩니다.
 
 핵심 명령은 Claude Code 스킬로 제공되고, 똑같은 동작을 어디서든(CI 포함) 쓸 수 있는
 `python3 scripts/workflow.py …` 명령으로도 실행할 수 있습니다.
@@ -374,7 +374,7 @@ checkout에서 한꺼번에 실행합니다. 선언이 없는 phase는 지금처
   쓰고, 끝나면 판정 요약으로 시작하는 결과(`result.md`)를 남깁니다.
 - **보류 작업** (deferred job, `D92-x4` — 마찬가지로 엔진이 만듭니다. 이전에는 `D1`, … 와 `D-m3xa`) — 나중에 하기로 미뤄 둔 아이디어입니다. 명시적으로
   꺼내기 전에는 작업 순서에 영향을 주지 않습니다.
-- **안건** (agenda item, `A7-m3` — 별도 번호로 엔진이 만듭니다) — 논의하거나 정할 거리를 내가 정한 순서로 모아 둔 목록입니다. 상태는 Open, Deferred, Solved, Dropped이고, Open 상태인 안건만 연결된 phase(`new-phase --agenda`)가 끝나지 않았을 때 In progress로 보입니다. 작업 순서에는 영향을 주지 않습니다.
+- **안건** (agenda item, `A7-m3` — 별도 번호로 엔진이 만듭니다) — 논의하거나 정할 거리를 내가 정한 순서로 모아 둔 목록입니다. 상태는 Open, Deferred, Solved, Dropped이고, Open 상태인 안건만 연결된 phase(`phase new --agenda`)가 끝나지 않았을 때 In progress로 보입니다. 작업 순서에는 영향을 주지 않습니다.
 
 규칙 문서([`CLAUDE.md`](payload/contract.md))는 한 화면입니다. 언제나 지키는 네 가지 불변식이 있습니다.
 
@@ -403,13 +403,12 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 |---|---|---|---|
 | `high` | Opus@high | `slice-executor` | 일 나누기(`DECOMP`), 최종 리뷰(`REVIEW`), 이유를 적어 `risk: high`로 매긴 slice, 그리고 두 번째 시도(에스컬레이션, `mid`가 한 번 실패한 일). |
 | `research` | Opus@high | `slice-executor` | 조사(`research`) slice |
-| `design` | Fable@high | `design-drafter` | 디자인 하위 에이전트의 라운드 초안(`executor-route --drafter --phase <P>`). slice 행이 아니며 `high` 행을 따르지 않음. phase의 `## Design Style`에 `Drafter: opus`가 있으면 그 phase만 Opus(effort는 이 행의 값)로 초안을 씀 |
-| `critic` | Opus@high | `design-critic` | 초안 라운드를 새 눈으로 평가하는 디자인 비평가(`executor-route --critic`). `design` 행과 같은 모델이어도 됨 |
-| `judge` | Opus@high | `design-critic` | 비평가가 확신하지 못한 항목만 판정하는 판정 모드(`executor-route --judge`, 별칭만). `design` 행과 같은 모델이어도 됨. Fable로 바꾼 경우 루프백 프록시에서는 건너뜀 |
-| `reader` | Opus@high | `pr-reader` | PR을 diff와 본문, 팀 규칙만 보고 새 눈으로 읽는 리더(`executor-route --reader`). 여러분이 요청하거나 PR 규칙이 있는 팀 repo에서만 씀. slice 행이 아님 |
-| `code` | Opus@high | `code-reader` | 코드 변경을 워크스페이스 기록 없이 diff와 head의 파일만 보고 읽고, 의심 가는 점을 재현해 보는 리더(`executor-route --code`). phase 리뷰의 실행자가 직접 부르고, `/read-code`에서도 씀. slice 행이 아님 |
+| `design` | Fable@high | `design-drafter` | 디자인 하위 에이전트의 라운드 초안(어댑터의 `route --drafter --phase <P>`). slice 행이 아니며 `high` 행을 따르지 않음. phase의 `## Design Style`에 `Drafter: opus`가 있으면 그 phase만 Opus(effort는 이 행의 값)로 초안을 씀 |
+| `critic` | Opus@high | `design-critic` | 초안 라운드를 새 눈으로 평가하는 디자인 비평가(어댑터의 `route --critic`). `design` 행과 같은 모델이어도 됨 |
+| `judge` | Opus@high | `design-critic` | 비평가가 확신하지 못한 항목만 판정하는 판정 모드(어댑터의 `route --judge`, 별칭만). `design` 행과 같은 모델이어도 됨. Fable로 바꾼 경우 루프백 프록시에서는 건너뜀 |
+| `reader` | Opus@high | `pr-reader` | PR을 diff와 본문, 팀 규칙만 보고 새 눈으로 읽는 리더(어댑터의 `route --reader`). 여러분이 요청하거나 PR 규칙이 있는 팀 repo에서만 씀. slice 행이 아님 |
+| `code` | Opus@high | `code-reader` | 코드 변경을 워크스페이스 기록 없이 diff와 head의 파일만 보고 읽고, 의심 가는 점을 재현해 보는 리더(어댑터의 `route --code`). phase 리뷰의 실행자가 직접 부르고, `/read-code`에서도 씀. slice 행이 아님 |
 | `mid` | Opus@medium | `slice-executor` | 기본 — `risk: low`인 구현·수정(`fix`)·문서(`docs`)·QA slice. 실제 코드 작성과 여러 파일에 걸친 변경도 포함 |
-| `screen` | Opus@medium | `slice-executor` | loop phase의 첫 단계 cycle(charter의 `stages`). 기본값은 `mid`와 같고, `executors.toml`의 `[claude.screen]`으로 더 싸게 설정 가능 |
 | `explore` | Haiku@xhigh | `Explore` | 읽기 전용 조회(계획 조사, 실행자의 큰 읽기). slice 라우트는 아님 |
 
 `high`는 네 가지 이유 중 하나가 있을 때만 붙습니다: **열린 설계**(계획이 접근법을 정해 둘 수
@@ -429,12 +428,13 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 이렇게 나누는 이유는 두 가지입니다. 오케스트레이터의 컨텍스트가 구현 세부사항으로 채워지지
 않아 긴 phase도 끝까지 안정적으로 진행되고, slice마다 새 컨텍스트에서 시작하니 앞 작업의
 잔상이 다음 작업을 오염시키지 않습니다. 행별 모델과 노력 수준은 저장소 루트의
-[`executors.toml`](payload/executors.toml)에서 `[claude.<row>]` 표로 행마다 덮어쓸 수 있습니다 — 에이전트에게
-말하면 수정하고 `sync-agents`로 에이전트 파일에 적용해 줍니다. 프리셋(`economy`/`flex`)은 v53에서
+[`executors.toml`](payload/adapters/claude_code/executors.toml)에서 `[claude.<row>]` 표로 행마다 덮어쓸 수 있습니다 — 에이전트에게
+말하면 수정하고 어댑터의 `sync-agents`로 에이전트 파일에 적용해 줍니다. 프리셋(`economy`/`flex`)은 v53에서
 없어졌고, 남아 있는 `mode = "..."` 줄은 삭제 안내와 함께 거부됩니다.
-`python3 scripts/workflow.py executor-route`(또는 `/executor-route`)는 현재 라우트 표를,
-`executor-route <slice_id>`는 그 slice의 dispatch 결정(행·모델·노력 수준·에이전트)을 보여 줍니다. 모든
-slice dispatch의 판정은 `record-dispatch`로 `works/events.jsonl`에 기록되고, `dispatch-summary`는
+라우트 표와 계량기는 엔진 밖의 폴더, Claude Code 어댑터(`adapters/claude_code/`)에 있습니다.
+`python3 adapters/claude_code/adapter.py route`(또는 `/executor-route`)는 현재 라우트 표를,
+`route <slice_id>`는 그 slice의 dispatch 결정(행·모델·노력 수준·에이전트)을 보여 줍니다. 각
+slice의 판정은 그 slice의 `result.md`(`status:` 줄)에 남고, 어댑터의 `meter`는 그 판정과 함께
 Claude Code의 트랜스크립트에서 메인 스레드와 각 하위 에이전트가 실제로 처리한 토큰과 정가 기준 비용을
 slice별로 계량해 나란히 보여 줍니다 — 라우트 표는 이 워크스페이스 자신의 실행 기록으로 조정합니다. v83부터 Haiku로 도는 slice는
 없습니다(문서·QA slice도 `mid`). 실행자는 큰 읽기 전용 조회를 `Explore`(Haiku)
@@ -443,9 +443,8 @@ slice별로 계량해 나란히 보여 줍니다 — 라우트 표는 이 워크
 ## 문서: 바꾼 slice가 직접 고칩니다
 
 문서에는 코드가 말해 주지 못하는 것만 담습니다. 어떤 문서를 사실과 다르게 만든 slice가
-`doc-new-version`으로 새 버전을 만들어 직접 고칩니다(기존 파일은 고치지 않음). 문서 버전은 기본
-stream에서만 만들 수 있으므로, worktree phase는 그 내용을 리뷰의 `result.md`에 적어 두었다가 merge할 때
-씁니다. 예전의 문서 통합(`## Doc impact` 노트와 그것을 갚던 docs phase)은 없어졌습니다. 자세한 내용은
+직접 고칩니다: `docs/current/*.md`는 그 자리에서 고치는 평범한 파일입니다. 예전 설치의 `docs/index.json`과
+`docs/versions/`는 디스크에 남지만 읽지 않습니다. 예전의 문서 통합(`## Doc impact` 노트와 그것을 갚던 docs phase)은 없어졌습니다. 자세한 내용은
 [English README](README.en.md#durable-docs-written-by-the-slice-that-changes-them)에 있습니다.
 
 ## 자주 쓰는 명령
@@ -457,17 +456,16 @@ Claude Code에서 `/이름`으로 입력합니다.
 | `create-phase` | 요청을 확인받은 뒤 phase 생성. 일을 나누기 전에 멈춤 |
 | `do-next-slice` | slice 하나만 완료하고 멈춤 |
 | `do-whole-phase` | phase를 리뷰까지 끝까지 실행 |
-| `run-loop` | loop phase를 서명된 charter 아래에서 cycle 단위로 계속 실행 (`/loop /run-loop <P>`). 판단이 필요한 항목은 보류 목록에 두고 계속하며, charter가 정한 멈춤에서만 멈춤 |
 | `review-phase` | phase를 리뷰하고 `pass` / `changes_requested` / `blocked` 기록 |
 | `pr` | phase의 draft PR 본문을 쓰고 검사하고, 순서가 정해진 하나의 체크리스트(`reference/close.md`)로 phase를 닫음: 리뷰가 통과하면 draft PR을 열고 CI를 읽음(게이트가 있으면 GitHub에서 읽고 `accept`), 바뀐 것만 다시 읽기, Ready와 merge, worktree 통합, phase가 띄운 것 정리와 merge된 branch 삭제 |
 | `read-code` | phase 밖에서 만든 제품 변경을 push 전에 `code-reader`로 읽고 발견을 보고(기본 범위: HEAD에 더 가까운 분기점부터의 변경과 커밋 안 된 변경. 읽기 전에 base와 커밋을 보여 주고, 다른 작성자의 커밋이 있으면 물음) |
 | `parallel-phase` | 요청했을 때 phase를 자기 worktree에서 실행(시작, repo 추가, 상태 보기). 통합은 `pr` 스킬의 close 체크리스트대로 |
-| `executor-route` | 라우트 표와 dispatch 요약 확인; `/executor-route <slice_id>`로 한 slice의 dispatch 결정 확인 |
+| `executor-route` | 어댑터의 라우트 표와 계량(`meter`) 확인; `/executor-route <slice_id>`로 한 slice의 dispatch 결정 확인 |
 | `retrofit` | 기존 저장소에 워크스페이스 추가 |
 | `update-workspace` | 설치된 워크스페이스의 시스템 파일만 최신으로 교체 |
 | `agenda` | 안건 목록 보기, 또는 안건 명령 하나 실행 (`/agenda add …`, `/agenda solve A7`) |
 
-스킬은 모두 21개입니다. 전체 목록과 설치 옵션은 [English README](README.en.md)에 있고,
+스킬은 모두 18개입니다. 전체 목록과 설치 옵션은 [English README](README.en.md)에 있고,
 CLI 명령 전체는 `python3 scripts/workflow.py --help`로 확인할 수 있습니다.
 
 ## phase별 worktree (요청할 때만)
@@ -479,7 +477,7 @@ worktree로 옮겨갑니다. (at-root 설치와 nested 설치 모두에서 됩�
 
 - `/do-whole-phase worktree` 또는 `/do-next-slice worktree`처럼 **`worktree`라는 말을 붙여**
   실행하기 (같은 뜻의 다른 표현도 됩니다 — "worktree에서", "병렬로", "자기 branch에서")
-- `python3 scripts/workflow.py parallel-start <P>`를 **직접** 실행하기
+- `python3 scripts/workflow.py worktree start <P>`를 **직접** 실행하기
 
 그러면 에이전트가 `phase/P<N>-<slug>` branch와 `.claude/worktrees/P<N>-<slug>` worktree를 만들고,
 **같은 세션 안에서** 그 worktree로 들어가 phase를 끝까지 진행합니다. `main`은 그동안 원래 하던
@@ -494,42 +492,40 @@ phase입니다(한 phase 안에서는 DECOMP가 독립이라고 선언한 slice�
 그 커밋(최신 커밋)에서 시작합니다. `.claude/worktrees/`는 저장소의 `.git/info/exclude`에
 기록되므로 `main`에서 untracked로 보이지 않습니다(`.gitignore`는 건드리지 않습니다).
 
-`main`에 남기려고 따로 할 일은 없습니다 — 그게 기본값입니다. 문서 버전은 문서 전체를 복사하고
-하나의 `docs/index.json`을 쓰기 때문에, 두 branch가 동시에 버전을 만들면 갈라집니다. 그래서
-`doc-new-version`은 기본 stream에서만 동작합니다. (v42에서 쓰던 `parallel-skip <P>`와 `new-phase --on-main`은 이제
+`main`에 남기려고 따로 할 일은 없습니다 — 그게 기본값입니다. (v42에서 쓰던 `phase new --on-main`은 이제
 아무것도 하지 않는 no-op으로 남아 있습니다.)
 
 worktree에서 진행한 phase의 리뷰가 통과하면 에이전트가 `pr` 스킬의 close 체크리스트대로 통합까지
-직접 진행합니다: `parallel-gate <P>`(조용한 시점인지 확인) → worktree에서 나와 `main`으로 → 로컬 merge
-→ `parallel-merge-finish` → 리뷰가 `result.md`에 남긴 게이트 섹션의 문서 버전 →
-`parallel-teardown <P>`. phase가 끝나기 전에 close는 그 phase가 띄운 서버와 컨테이너(볼륨까지)를
+`close <P>`로 직접 진행합니다: `worktree gate <P>`(조용한 시점인지 알려 줌) → worktree에서 나와 `main`으로 → 로컬 merge
+→ `worktree merge-finish` → 리뷰가 `result.md`에 남긴 게이트 섹션 →
+`worktree teardown <P>`. phase가 끝나기 전에 close는 그 phase가 띄운 서버와 컨테이너(볼륨까지)를
 멈추고, merge된 head branch를 로컬과 원격에서 지웁니다. phase마다 리뷰가 통과하면
 draft PR이 열리고, 여러분이 `accept`하면 close가 그 PR을 Ready로 바꿉니다(혼자 쓰는 repo는 그 repo의 landing 관례대로 merge까지 하고, 팀 repo의 merge는 팀 몫입니다), 그 PR을 GitHub에서 merge하는 것이 원격 변형입니다.
-어느 checkout에서든 `parallel-status`로 모든 stream의 진행 상황을 볼 수 있고, `works/backlog.md`의
+어느 checkout에서든 `worktree status`로 모든 stream의 진행 상황을 볼 수 있고, `works/backlog.md`의
 `## Streams` 표에는 기본 stream과 진행 중인 모든 worktree phase가 각자의 branch에서 바로 읽은
 상태로 나열됩니다(nested에서는 호스트 branch 열이 함께 나옵니다). 그 phase의 `## Active Phases`
 행과 slice 표도 같은 branch에서 읽으므로, merge 전에도 나눈 slice가 그대로 보입니다.
 
-**nested 설치에서는.** `parallel-start <P> --host-branch <이름> [--host-base <ref>]`가 한 쌍을
+**nested 설치에서는.** `worktree start <P> --host-branch <이름> [--host-base <ref>]`가 한 쌍을
 만듭니다. `.claude/worktrees/` 아래의 호스트 worktree(여러분의 호스트 branch)와, 그 안의
-`workflow/` worktree(`phase/P<N>-<slug>`)입니다. `--host-branch`의 이름은 `nested-convention`에
+`workflow/` worktree(`phase/P<N>-<slug>`)입니다. `--host-branch`의 이름은 `repo convention`에
 기록해 둔 여러분 팀의 관례로 에이전트가 제안하고, 확정은 여러분이 합니다. base는 기본적으로 호스트의
 기본 branch이고(`--host-base`로 바꿀 수 있습니다), 관례가 "최신 main에서 시작"이라면 에이전트가
 먼저 `git fetch`를 합니다. 호스트 쪽 통합(티켓당 PR 하나, 또는 한 티켓의 phase들을 rebase로 한
 branch에 합치기)은 기록해 둔 관례를 따르며, 엔진은 push도, 호스트 기본 branch로의
-merge도 하지 않습니다. phase의 draft PR은 리뷰가 통과할 때 `pr` 스킬이 엽니다. 정리(`parallel-teardown`)는 호스트 branch를 남겨 둡니다(엔진이 만든 빈
+merge도 하지 않습니다. phase의 draft PR은 리뷰가 통과할 때 `pr` 스킬이 엽니다. 정리(`worktree teardown`)는 호스트 branch를 남겨 둡니다(엔진이 만든 빈
 branch만 지웁니다). worktree는 파일만 격리하므로 docker 컨테이너, 포트, 로컬 DB와 캐시는 stream끼리
 공유된다는 점은 직접 조율하세요.
 
 **멀티 저장소 호스트에서는**([한 호스트에 저장소 여러 개](#한-호스트에-저장소-여러-개)) 한 쌍이
 **세트**가 됩니다. 같은 worktree 두 개에 더해, 그 phase가 바꾸는 저장소마다 `<호스트 worktree>/<저장소>/`에
-worktree가 하나씩 생깁니다. `parallel-start <P> --host-branch <이름> --repo <이름>=<branch>`가
+worktree가 하나씩 생깁니다. `worktree start <P> --host-branch <이름> --repo <이름>=<branch>`가
 만들고(반복할 수 있으며, 저장소의 branch를 다른 branch 위에 쌓으려면 `--repo-base <이름>=<ref>`),
-세트 안에서 실행하는 `parallel-add-repo <P> --repo <이름>=<branch>`가 진행 중에 하나를 더합니다.
-저장소별 branch 이름은 그 저장소의 관례를 따르고 확정은 여러분이 합니다. `parallel-teardown`은
+세트 안에서 실행하는 `worktree add-repo <P> --repo <이름>=<branch>`가 진행 중에 하나를 더합니다.
+저장소별 branch 이름은 그 저장소의 관례를 따르고 확정은 여러분이 합니다. `worktree teardown`은
 저장소 worktree를 먼저, 그다음 `workflow/`, 마지막에 호스트 worktree를 지웁니다. 스탬프를 찍지
 않은 git worktree가 호스트 worktree 안에 있으면 `--discard-ignored`를 붙여도 항상 거부하므로,
-branch를 통합한 뒤 직접 지우거나 `parallel-add-repo ... --adopt`로 세트에 편입하세요. 워크스페이스는
+branch를 통합한 뒤 직접 지우거나 `worktree add-repo ... --adopt`로 세트에 편입하세요. 워크스페이스는
 어떤 저장소의 기본 branch에도 fetch, push, merge를 하지 않습니다. 저장소마다의 draft PR은 리뷰가
 통과할 때 열립니다.
 
@@ -542,14 +538,14 @@ branch를 통합한 뒤 직접 지우거나 `parallel-add-repo ... --adopt`로 �
 
 1. **만들기 전에 나눕니다.** 모든 phase의 첫걸음은 코드가 아니라 일을 나누는 것입니다.
    나눌 수 없는 일은 아직 이해하지 못한 일입니다.
-2. **기억을 파일로 남깁니다.** 중요한 내용을 채팅에만 두지 않습니다. 노트와 버전 문서에
+2. **기억을 파일로 남깁니다.** 중요한 내용을 채팅에만 두지 않습니다. 노트와 문서에
    기록해서 다음 작업이, 또는 다음 세션이 이어받게 합니다.
 3. **모든 작업이 스스로 증명합니다.** 계획을 먼저 쓰고, 결과를 남기고, 새 컨텍스트의
    리뷰를 통과해야 끝입니다. "돌아간다"가 아니라 "검증됐다"가 기준입니다. 사용자 눈에
    보이는 화면이 바뀌었다면 마지막 확인은 여러분 몫입니다. 직접 제품을 열어 보고
    승인해야 phase가 닫힙니다.
-4. **결정은 버전으로 쌓습니다.** 문서를 고쳐 쓰지 않고 새 버전을 추가합니다. 무엇을 왜
-   결정했는지의 역사가 항상 남습니다.
+4. **코드가 말해 주지 못하는 것을 적습니다.** 문서에는 그것만 담고, 문서를 사실과 다르게 만든
+   slice가 같은 커밋에서 고칩니다. 무엇을 왜 결정했는지의 역사는 git에 남습니다.
 5. **딴생각은 보류함에 넣습니다.** 작업 중 떠오른 아이디어는 보류 작업으로 적어 두고
    하던 일을 계속합니다. 집중이 의지가 아니라 시스템이 됩니다.
 6. **작업 하나마다 커밋 하나.** slice 하나가 끝날 때마다 커밋합니다. 작고 읽기 쉬운
@@ -557,7 +553,7 @@ branch를 통합한 뒤 직접 지우거나 `parallel-add-repo ... --adopt`로 �
 
 ## 더 알아보기
 
-- 전체 문서 (설치 옵션, CLI 명령 전체, 프로젝트 구조, 스킬 21종): [English README](README.en.md)
+- 전체 문서 (설치 옵션, CLI 명령 전체, 프로젝트 구조, 스킬 18종): [English README](README.en.md)
 - 에이전트 규칙 문서: [CLAUDE.md](payload/contract.md)
 - 기존 저장소에 추가하는 절차: [Retrofit Guide](docs/retrofit-guide.md)
 - 기여하기: 기여할 때는 클론에 비공개 워크스페이스를 설치해 같은 방식으로 작업합니다. phase를 열고 slice 단위로 기여해
