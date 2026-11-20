@@ -6,7 +6,7 @@ __PROJECT_NAME__ is newly bootstrapped. This document should describe stable sys
 
 ## Current Repo Shape
 
-- `CLAUDE.md`: the compact routing contract
+- `CLAUDE.md`: the contract on one screen (four invariants, named principles, a rule table naming each enforcer)
 - `docs/current/`: generated latest doc snapshots
 - `docs/versions/`: immutable durable doc versions by category
 - `docs/index.json`: latest-version map

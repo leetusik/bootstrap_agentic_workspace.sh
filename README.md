@@ -376,10 +376,11 @@ checkout에서 한꺼번에 실행합니다. 선언이 없는 phase는 지금처
   꺼내기 전에는 작업 순서에 영향을 주지 않습니다.
 - **안건** (agenda item, `A7-m3` — 별도 번호로 엔진이 만듭니다) — 논의하거나 정할 거리를 내가 정한 순서로 모아 둔 목록입니다. 상태는 Open, Deferred, Solved, Dropped이고, Open 상태인 안건만 연결된 phase(`new-phase --agenda`)가 끝나지 않았을 때 In progress로 보입니다. 작업 순서에는 영향을 주지 않습니다.
 
-규칙 전체는 한 줄로 요약됩니다.
+규칙 문서([`CLAUDE.md`](payload/contract.md))는 한 화면입니다. 언제나 지키는 네 가지 불변식이 있습니다.
 
-> **Backlog routes. Slice folder explains. Result summarizes. Docs are versioned durable truth.**
-> 백로그가 순서를 정하고, slice 폴더가 맥락을 담고, result가 결과를 남기고, 문서는 버전으로 쌓인다.
+> 여러분의 말 없이는 아무것도 push, merge, 결제하지 않는다. 승인은 여러분이 한 말 그대로다. 여러분의 작업은 건드리지 않는다. 보고는 사실대로다.
+
+나머지는 이름으로 부를 수 있는 원칙("prove it works", "subtract before you add" 등)과, 남은 규칙마다 그것을 강제하는 엔진 거부·검사·테스트를 적은 표입니다. 일하는 순서는 스킬과 실행 에이전트 카드가 담습니다.
 
 ## 두 종류의 에이전트: 계획과 실행
 
@@ -540,7 +541,7 @@ branch를 통합한 뒤 직접 지우거나 `parallel-add-repo ... --adopt`로 �
 
 ## ⭐ 에이전트와 일하는 6가지 습관
 
-이 워크스페이스를 만든 이유이자, 규칙 문서([`CLAUDE.md`](payload/contract.md))가 강제하는 것들입니다.
+이 워크스페이스를 만든 이유입니다. 스킬이 그 순서를 담고, 규칙 문서([`CLAUDE.md`](payload/contract.md))의 표가 무엇이 각 규칙을 강제하는지 적습니다.
 
 1. **만들기 전에 나눕니다.** 모든 phase의 첫걸음은 코드가 아니라 일을 나누는 것입니다.
    나눌 수 없는 일은 아직 이해하지 못한 일입니다.

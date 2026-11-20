@@ -28,8 +28,9 @@ One shell script scaffolds a complete workspace: a compact agent **contract**, a
 
 `bootstrap_agentic_workspace.sh` is a single, dependency-light script that turns any empty
 directory into a structured home for agent-driven work. Inside, a coding agent doesn't just get a
-prompt and improvise — it works under a compact contract ([`CLAUDE.md`](payload/contract.md)) that says how to
-break work down, where to write things, and what "done" means.
+prompt and improvise — it works under a one-screen contract ([`CLAUDE.md`](payload/contract.md)) of four invariants and
+the rules the engine enforces, with short playbooks that say how to break work down, where to write
+things, and what "done" means.
 
 **The problem it solves.** Coding agents are capable but forgetful. Across a long task they lose
 context when the conversation compacts, redo work they already did, silently overwrite earlier
@@ -467,9 +468,11 @@ Everything is organized as **phases** made of **slices**, driven by one script.
   changes what runs next until you explicitly promote it.
 - **Agenda item** (`A7-m3`, minted on its own sequence) — something you want to discuss or decide, kept in your own order: Open, Deferred, Solved or Dropped; an Open item reads In progress while a phase linked to it (`new-phase --agenda`) is not done. It never changes what runs next.
 
-The contract boils down to one line:
+The contract ([`CLAUDE.md`](payload/contract.md)) fits one screen. Four invariants always hold:
 
-> **Backlog routes. Slice folder explains. Result summarizes. Docs are versioned durable truth.**
+> Nothing is pushed, merged or paid for without your word. A sign-off is your literal words. Your own work is never touched. Reports are truthful.
+
+The rest is a few principles you can steer with by name ("prove it works", "subtract before you add", …) and a table of the rules that stay, each beside the engine refusal, check or test that enforces it. How the work usually goes lives in the skills and the executor card.
 
 ### One manager
 
@@ -702,7 +705,7 @@ parallelism it never used. The mechanism itself is unchanged.)
 
 ```
 .
-├── CLAUDE.md                      # the compact routing contract (~12 KB)
+├── CLAUDE.md                      # the contract on one screen (~4 KB)
 ├── bootstrap_agentic_workspace.sh # the scaffolding script (self-contained)
 ├── scripts/
 │   └── workflow.py                # the one manager that drives all state
@@ -731,7 +734,7 @@ parallelism it never used. The mechanism itself is unchanged.)
 
 I don't hand an agent a vague task and hope. The whole reason this workspace exists is to force a
 few habits that make agents reliable on long, real work — not just impressive in a demo. These are
-the ones I lean on; the [contract in `CLAUDE.md`](payload/contract.md) is how they're actually enforced.
+the ones I lean on; the skills carry them, and the rule table in the [contract in `CLAUDE.md`](payload/contract.md) names what enforces each rule.
 
 1. **Decompose before you build.** The first move on any phase is a decomposition slice, not code.
    I make the agent break the work into small, ordered slices and write the plan down — planning is

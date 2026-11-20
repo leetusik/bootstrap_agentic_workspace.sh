@@ -1368,8 +1368,8 @@ def _renames_line(renames: dict):
 def _multi_repo_local_block(renames: dict, repos: list, converted=()) -> list:
     """The managed CLAUDE.local.md block of a multi-repo host (P40; S1 §6 with S2 §21's parallel line):
     the single-repo block's shape, with one line per registered repo (path, default branch, rules files),
-    "this repo" meaning the repo the change lives in, one commit per repo a slice changed, and a parallel
-    line naming `--repo` and `parallel-add-repo`. Emitted only when `repos` is non-empty; the renames
+    "this repo" meaning the repo the change lives in, one commit per repo a slice changed, a line pointing a bare host
+    session at each repo's verification skill, and a pointer to the parallel-phase skill. Emitted only when `repos` is non-empty; the renames
     line is appended exactly as the single-repo block does. `converted` (the marker's `converted_from`,
     S10) adds one line per converted per-repo install after the repo list; without it the block is S9's."""
     cmd = f"python3 {NESTED_DIR}/scripts/workflow.py"
@@ -1393,11 +1393,10 @@ def _multi_repo_local_block(renames: dict, repos: list, converted=()) -> list:
         f"- The product repos (`{cmd} nested-repos` lists them, with each repo's rules files):",
         *repo_lines,
         "- \"This repo\" in any rule means the repo the change lives in. Before changing a repo, read its rules files; they win over this block for that repo.",
-        "- Commits per slice: one in each repo the slice changed, plus one for the workflow state:",
-        f"  - product code goes to its own repo with `git -C <repo> ...`, on the phase's branch there (one per repo, recorded with `{cmd} pr-branch --repo <name>`), in that repo's conventions for commits, branches and pull requests, which `{cmd} nested-convention --repo <name>` prints. Add Claude `Co-Authored-By` trailers only when it says `allowed`. The host folder itself never gets a commit;",
-        f"  - workflow state goes to the nested repo (`git -C {NESTED_DIR} ...`) in the contract's Commit Convention.",
-        f"- If `next` shows `host_commit_convention=UNCONFIRMED` or an UNCONFIRMED repo in `repo_conventions=`, confirm those conventions with the operator before that repo's first product commit, then record them: `{cmd} nested-convention --confirm [--repo <name>] --text \"<conventions>\" --trailers allowed|forbidden` (no `--repo`: the rules for every repo).",
-        f"- **Parallel phases, only on the operator's word:** `{cmd} parallel-start <P> --host-branch <name> [--host-base <ref>] [--repo <name>=<branch> ...] [--repo-base <name>=<ref> ...]` cuts a set: a host worktree under `.claude/worktrees/`, the nested worktree at its `{NESTED_DIR}/`, and one worktree per named repo at its `<repo>/`; add a repo mid-phase from inside the set with `parallel-add-repo <P> --repo <name>=<branch>`. Propose each branch name from that repo's recorded custom (`nested-convention --repo <name>`) and let the operator confirm it. Each repo's side follows its own custom; the engine never fetches, pushes or merges into any repo's default branch; the `pr` skill opens the phase's draft PR(s) when its review passes.",
+        "- To verify a change in a repo, use that repo's verification skill under `<repo>/.claude/skills/` (its run script), after reading the repo's rules files.",
+        f"- Commits per slice: one in each repo the slice changed (`git -C <repo> ...`, on the phase's branch there, recorded with `{cmd} pr-branch --repo <name>`, in the conventions `{cmd} nested-convention --repo <name>` prints; Claude `Co-Authored-By` trailers only when it says `allowed`), plus one for the workflow state (`git -C {NESTED_DIR} ...`, `type(scope): summary`). The host folder itself never gets a commit.",
+        f"- An UNCONFIRMED convention in `next` (`host_commit_convention=` or `repo_conventions=`) is confirmed with the operator before that repo's first product commit: `{cmd} nested-convention --confirm [--repo <name>] --text \"<conventions>\" --trailers allowed|forbidden` (no `--repo`: the rules for every repo).",
+        "- Worktree phases run only on the operator's word: the `parallel-phase` skill (`parallel-start ... --repo <name>=<branch>`).",
         f"- A pull request's title, body and commits (and every product commit, in every repo) carry no phase or slice IDs, no `{NESTED_DIR}/` paths and no workspace files.",
         f"- Never stage `{NESTED_DIR}/`, `CLAUDE.local.md`, `.claude/settings.local.json` or the workspace's skills and agents into any repo or the host (the exclude block lists them).",
     ]
@@ -1423,11 +1422,9 @@ def _nested_local_block(renames: dict, repos=(), converted=()) -> list:
         "",
         "Nested-install rules (they win over the contract above where the two differ):",
         f"- Start Claude Code at this repo's root, never inside `{NESTED_DIR}/`. Run the engine from here: `{cmd} <command>`.",
-        "- Two commits per slice, in two repos:",
-        f"  - product code goes to this repo, on the phase's branch (one per repo, recorded with `{cmd} pr-branch`), in the host's conventions for commits, branches and pull requests, which `{cmd} nested-convention` prints. Add Claude `Co-Authored-By` trailers only when it says `allowed`;",
-        f"  - workflow state goes to the nested repo (`git -C {NESTED_DIR} ...`) in the contract's Commit Convention.",
-        f"- If `next` shows `host_commit_convention=UNCONFIRMED`, confirm the host's conventions (commits, branches and pull requests) with the operator before the first product commit, then record them: `{cmd} nested-convention --confirm --text \"<conventions>\" --trailers allowed|forbidden`.",
-        f"- **Parallel phases, only on the operator's word:** `{cmd} parallel-start <P> --host-branch <name> [--host-base <ref>]` cuts a pair: a host worktree under `.claude/worktrees/` on the host branch, with the nested worktree at its `{NESTED_DIR}/`. Propose the branch name from the host's recorded custom and let the operator confirm it. The host side follows that custom; the engine never pushes or merges into the host's default branch; the `pr` skill opens the phase's draft PR(s) when its review passes.",
+        f"- Two commits per slice: product code to this repo (on the phase's branch, recorded with `{cmd} pr-branch`, in the conventions `{cmd} nested-convention` prints; Claude `Co-Authored-By` trailers only when it says `allowed`), and the workflow state to the nested repo (`git -C {NESTED_DIR} ...`, `type(scope): summary`).",
+        f"- If `next` shows `host_commit_convention=UNCONFIRMED`, confirm the host's conventions with the operator before the first product commit: `{cmd} nested-convention --confirm --text \"<conventions>\" --trailers allowed|forbidden`.",
+        "- Worktree phases run only on the operator's word: the `parallel-phase` skill (`parallel-start`).",
         f"- A pull request's title, body and commits (and every product commit) carry no phase or slice IDs, no `{NESTED_DIR}/` paths and no workspace files.",
         f"- Never stage `{NESTED_DIR}/`, `CLAUDE.local.md`, `.claude/settings.local.json` or the workspace's skills and agents into this repo (the exclude block lists them).",
     ]
