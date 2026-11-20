@@ -1967,6 +1967,18 @@ RETIRED_FILES = {
     '.claude/agents/slice-executor-low.md': (22, ('3d798df8b1170cf3aff4bbf10fbe83e6f7d8a8721a990a8d74333b7c08c731df',)),  # 097041d
     '.claude/agents/slice-executor-mid.md': (65, ('3c74ce9945cae627de3588f3ea01533cb8990a48e0b12d813af61d0ba04ded8a', 'faaa25e5cdc62e625d3720030f24e94388ec1cbeb5e80de6deafc39820f2654b')),  # d0759a4, route lines dropped
     '.claude/agents/slice-planner.md': (19, ('7c8fa4c4824f276ec5e79292826dfb58a41ed4078682175faae2e119d36c51d6',)),  # c94f6e4
+    '.claude/skills/do-next-slice/reference/co-work.md': (100, ('d1f95f46870af0e37afa6bffab061b497fa88bdebac7e65f41d84982eac4054e', '393076060e070e9a7e59fcf7521d903f5d03a04d44310a416411893f0453a833')),  # 807bb0e
+    '.claude/skills/do-next-slice/reference/decomposition.md': (100, ('862ed2b230f3e064fc1ab9341fe9ed42a7f76cdf2f0f25895261aefc4c4d1f78', 'a2ac31769d9bd761cfaeeb71f5b6e8d297c7831ea1025ac323afcfd4692af8a7')),  # 807bb0e
+    '.claude/skills/do-next-slice/reference/dispatch.md': (100, ('db218a9d067638e1ddb6a71dc32ca53735973e5301990a41369d9c20036c3ab8', 'b75f959d7166ed2783cb322bc0ff0eb599383ef95fe2e117a48a0175715a4057')),  # 807bb0e
+    '.claude/skills/do-next-slice/reference/explain-chapter.md': (100, ('5ebff891c6ff4f454ecf736de96a352e09a1d54b47a56ee1b14dfbf42de619af', 'c72dff69c46580f0ce7098cdc6b48b3094c432d0dacff5922e3dc6f237015569')),  # 807bb0e
+    '.claude/skills/do-next-slice/reference/explain-decomposition.md': (100, ('2d614b17173b4f4e7ba10c73fa4545e2784951cd12e13e18e7ea24c76345ae6d', '25985b57799dfaf9fe757529ecc20b19ed2abd950e039f3b15dbc9244245154b')),  # 807bb0e
+    '.claude/skills/do-next-slice/reference/explain-review.md': (100, ('aecd791057551bcfcd719ac39372bbeee1d83299dc67d4546b4391143ef8ef9b', '16788e9388ad030b262987349f96e937ddb1143bc23f5b32b45d5ff0fd3bcf35')),  # 807bb0e
+    '.claude/skills/do-next-slice/reference/modes.md': (100, ('3eb0e1eab3dc7f5406681a7129519d6571e3172136ec7f7290a7549e2f40074b',)),  # 807bb0e
+    '.claude/skills/do-next-slice/reference/review.md': (100, ('850c377ac604046e45d99d711a11a11ce8df29b8690036c86443dc17849fbbce', 'a0954620101f81ffe796aad23c7623aa6b63faae1c18b86b52131e5378cb9c01')),  # 807bb0e
+    '.claude/skills/do-next-slice/reference/verdicts.md': (100, ('ddbf954d125b9e44dcc0c524c092ed432a208f6f8584ea03cb5e3a687e5c3583', 'e00360155496a89c7c10e9a6877864f12726669ba915d70c82c70eb09abad2c7')),  # 807bb0e
+    '.claude/skills/do-next-slice/reference/worktree.md': (100, ('41cfc38cd1d56716720a2de3912896d49f777f2a310584e3460a9ebd47a69ba9', '2984673a4bbdbc1de7fdba3bab8d9113a23508a2a197ca4a950e591550fdceaf')),  # 807bb0e
+    '.claude/skills/do-whole-phase/reference/modes.md': (100, ('c2d8f13365d2401d82401b513306cde900a16a115cfb9c71d77f81686c030b1e', '5b7346f395d83a7888bf0cd374841f6e8759b6c5f1614a0ff038a1b553ade7e2')),  # 807bb0e
+    '.claude/skills/do-whole-phase/reference/prep.md': (100, ('aabba508d031ada11f72b0de3c1b55e27939bd5bc484325c4dafa7020b73cbfc',)),  # 807bb0e
     '.claude/skills/do-whole-phases/SKILL.md': (98, ('7a84c83f9938d32af5ba9dd6729b310623303fc2ddcb68accbe08e704f2e829c', 'daa211d71e169a19268e7ae515ab0cbc489225a1f8671b0bacd60e30c39a757a')),  # 47436bc
     '.claude/skills/executor-mode/SKILL.md': (52, ('382fe9e6644c15c46d49ab0b481c8cec0b6722f20816d3fca48a60ba61826d43', 'cef5b8fbf576e83fd6048ceb652e05ddcd7cbcded6a4168efb5c834f32c16970')),  # 7c874c3
     '.codex/agents/slice-executor-high.toml': (30, ('217fcafcd0449db43fd1e25b4a0a13cc918ee2ab46d4980a8544b098ed31ec2d',)),  # 4ee5c22

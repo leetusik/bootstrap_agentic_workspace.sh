@@ -162,7 +162,11 @@ def skill_dir_text(name):
     keys = sorted((k for k in LIVE if k.startswith(pre)), key=lambda k: (k != pre + "SKILL.md", k))
     return "\n".join(LIVE[k] for k in keys)
 import re as _re
-for name in ("design-cowork", "do-whole-phase", "do-next-slice"):
+# lighter-rules: do-next-slice is one slice of do-whole-phase's loop and ships no reference of its own;
+# it reads do-whole-phase's by path, so no reference ships twice.
+assert not any(k.startswith(".claude/skills/do-next-slice/reference/") for k in LIVE), "do-next-slice ships a reference copy"
+assert ".claude/skills/do-whole-phase/SKILL.md" in LIVE[".claude/skills/do-next-slice/SKILL.md"]
+for name in ("design-cowork", "do-whole-phase"):
     core = (root / "payload/claude/skills" / name / "SKILL.md").read_bytes()
     assert len(core) <= 8192, (name, len(core))  # re-attached whole after a compaction
     named = set(_re.findall(r"`reference/([\w.-]+\.md)`", core.decode()))
@@ -196,9 +200,11 @@ for required in ("`build-after`", "`design-only`", "`paired`", "## Design Style"
                  # worktrees and only relays the hint -- it never pins and never starts one.
                  # P36.S6: the question now offers the working canvas as the default surface.
                  "Mockup: requested", "Mockup: on request", "will you sign on the canvas",
-                 "Say nothing about worktrees", "Relay that hint; never act on it",
-                 "never ask for a worktree on a docs phase"):
+                 "Say nothing about worktrees", "Relay that hint; never act on it", "## The QA-sweep route"):
     assert required in create_phase, required
+# lighter-rules: doc consolidation is retired, so the docs-phase route is gone.
+for gone in ("## The docs-phase route", "docs-debt", "--consolidates", "## Doc impact"):
+    assert gone not in create_phase, gone
 # v47 (P26.S4): the mockup question's default closes the round on the drafted design, not on a
 # return from Claude Design. P36.S1: the design tool question and its `Design tool:` line are retired
 # (drafter is the only tool; an absent line still reads as `drafter`); the mockup question stays.
@@ -209,15 +215,13 @@ assert "`drafter`" in create_phase and "Mockup: on request" in create_phase
 for gone in ("ask which design tool", "Design tool: drafter", "Design tool: claude-design",
              "DesignSync", "design-deck", "design-register", "sign on the cards", "the drafted cards"):
     assert gone not in create_phase, gone
-# Explain phases: the route lives in create-phase, the three references ship in do-whole-phase and
-# fan out to do-next-slice, and the review pointer is one fixed string everywhere.
+# Explain phases: the route lives in create-phase, the three references ship in do-whole-phase only
+# (do-next-slice reads them there), and the review pointer is one fixed string everywhere.
 assert "## The explain route" in create_phase and "## Explain" in create_phase
 for ref in ("explain-decomposition.md", "explain-chapter.md", "explain-review.md"):
-    assert f".claude/skills/do-next-slice/reference/{ref}" in SHARED_SKILL_FILES, ref
+    assert f".claude/skills/do-whole-phase/reference/{ref}" in LIVE and f".claude/skills/do-next-slice/reference/{ref}" not in LIVE, ref
 POINTER = "not written — run /knowledge:explain P<N> for a document, or ask it for a book"
-for rel in ("claude/skills/do-whole-phase/playbooks/review.md",
-            "claude/skills/review-phase/SKILL.md", "claude/skills/do-whole-phase/reference/review.md",
-            "claude/skills/do-next-slice/reference/review.md"):
+for rel in ("claude/skills/do-whole-phase/playbooks/review.md", "claude/skills/review-phase/SKILL.md"):
     assert POINTER in (root / "payload" / rel).read_text(encoding="utf-8"), rel
 # v86 (P-mtrt.S6): the pointer names a document, not a chapter; every explain is its own phase, and the
 # shipped prose says so. The old split's pointer survives only in tests/fixtures/ (history).
@@ -263,7 +267,7 @@ assert not (root / "payload/claude/agents/explain-critic.md").exists()
 # refuses from a phase worktree and for a book or chapter in a public project, keeps a literal `unit`
 # line (absent reads as a 0.6.0 book, which still STOPs after creation), cites plugin sections with
 # their headings, and declares the gate per unit; the contract carries both exceptions.
-for required in ("every unit is a phase", "**one confirmation**", "Explain — confirm once; then it runs to publish.",
+for required in ("every unit is a phase", "one confirmation", "Explain — confirm once; then it runs to publish.",
                  "start an explain from the main checkout", "`visibility: private` is absolute",
                  "The literal `unit` line", "**The required set, per unit:**", "- worktree: yes",
                  "- outline sign-off: off", "parallel-start <P>` (nested: with no `--host-branch`",
@@ -273,10 +277,9 @@ for required in ("every unit is a phase", "**one confirmation**", "Explain — c
     assert required in create_phase, required
 for gone in ("A single chapter is not a phase", "**A book is a phase, and this route makes one.**"):
     assert gone not in create_phase, gone
-for _n in ("do-next-slice", "do-whole-phase"):
-    _d = (root / "payload/claude/skills" / _n / "reference/decomposition.md").read_text(encoding="utf-8")
-    assert "declares by its unit" in _d and "explain chapter: published private; a v2 is cheap" in _d, _n
-    assert "always takes `--require` (the operator reads the book)" not in _d, _n
+_d = (root / "payload/claude/skills/do-whole-phase/reference/decomposition.md").read_text(encoding="utf-8")
+assert "declares by its unit" in _d and "explain chapter: published private; a v2 is cheap" in _d
+assert "always takes `--require` (the operator reads the book)" not in _d
 # v86 (P-mtrt.S5): the three explain references branch per unit. A document or chapter's DECOMP leads
 # the research into `doc/` and cuts one S1; the evidence gate is a typed stop; the gate waives per unit;
 # S1's critic is `kind: document` (none under quick); the review proves a document private on its own
@@ -315,7 +318,7 @@ assert "Codex support was removed in workspace v31" in (
     root / "payload/claude/skills/update-workspace/SKILL.md").read_text()
 
 # Safety-critical orchestration rules only -- not the whole skill body, which would be brittle.
-for name in ("do-next-slice", "do-whole-phase"):
+for name in ("do-whole-phase",):
     body = skill_dir_text(name)
     for required in (
         "WAITING ON OPERATOR", "`kind: co-work`",
@@ -342,26 +345,23 @@ for name in ("do-next-slice", "do-whole-phase"):
         # v42: the mockup is on request, the operator's return closes the round, the
         # phase gate follows the mockup with a fixed waive note.
         "PENDING #2 exists only when a mockup was requested",
-        "Mockup: requested", "Mockup: on request",
+        "Mockup: requested",
         "design-only, no mockup: the operator signed each job on its canvas",
         # v43: a phase runs on this checkout unless the operator asks for a worktree;
         # the do-* skills never start one on their own initiative, and a hint is relayed,
         # not acted on. Merged back locally; the branch review records its two gate
         # sections as tagged notes.
         "unless the operator asked for a worktree", "parallel-start <P>", "EnterWorktree",
-        "`parallel-start` on your own initiative", "(gate section — written at merge)", "git merge --no-ff",
+        "`parallel-start` on your own initiative", "## Gate sections (written at merge)", "git merge --no-ff",
         # v35: just-in-time reads and the bounded notebook.
         "finish-slice <slice_id> --outcome", "bounded phase notebook",
         "verdict block", "just in time",
-        # v36: the research kind routes high by KIND, and DECOMP2 is no longer a
-        # design-only device -- it is also the sequel to a research slice.
-        "that is what the `research` kind is for", "`--kind research --risk high`",
-        "second origin", "`research` and review always",
+        # v36: the research kind routes high by KIND (the DECOMP2 sequel lives in playbooks/decompose.md).
+        "`research` and review always",
         # The entry-level notebook: the orchestrator reads it through phase-section only, runs the
         # required step's notebook_move= lines before the next dispatch, and keeps the breakdown in a topic.
         "never with `Read`, `Edit` or `Write`", "`notebook_over_budget=`",
         "run each `notebook_move=` line under it, prefixed `python3 scripts/workflow.py`",
-        "**The breakdown lives in `topics/breakdown.md`, never in `phase.md`:**",
     ):
         assert required in body, (name, required)
     assert "sending it back whole" not in body, name
@@ -390,7 +390,7 @@ for name in ("do-next-slice", "do-whole-phase"):
             assert "next" in ln and "pointer" in ln, (name, ln)
     # v46: mid is the default row; high needs a named trigger, and a fix to
     # mid-row work goes high (v83 retired the cheap row). The one-line/few-line scope for mid is retired.
-    for required in ("**Mid is the default (v46):**", "--kind fix --risk <low|high>`",
+    for required in ("--kind fix --risk <low|high>`",
                      "work the mid row got wrong never goes back to it"):
         assert required in body, (name, required)
     for gone in ("one-line/few-line", "one-line, or few-line"):
@@ -419,10 +419,13 @@ for required in (
 ):
     assert required in wave, ("wave.md", required)
 decomp = (root / "payload/claude/skills/do-whole-phase/reference/decomposition.md").read_text(encoding="utf-8")
-for required in ("**Independence means disjoint sets.**", "Never declare `DECOMP2`, `REVIEW` or a `co-work` slice"):
-    assert required in decomp, ("decomposition.md", required)
-for _rel in (".claude/skills/do-whole-phase/reference/explain-decomposition.md", ".claude/skills/do-next-slice/reference/explain-decomposition.md"):
-    assert _rel in LIVE and "[--depends-on" not in LIVE[_rel], _rel
+assert "`finish-slice <P>.DECOMP` refuses while a middle slice is undeclared" in decomp
+_pbd = (root / "payload/claude/skills/do-whole-phase/playbooks/decompose.md").read_text(encoding="utf-8")
+for required in ("their sets (files, regenerated files, numbered sequences, runtime resources) are disjoint",
+                 "never on `DECOMP2`, `REVIEW` or a `co-work` slice"):
+    assert required in _pbd, ("decompose.md", required)
+_rel = ".claude/skills/do-whole-phase/reference/explain-decomposition.md"
+assert _rel in LIVE and "[--depends-on" not in LIVE[_rel], _rel
 
 # The spec hard-wraps its prose, so match against a whitespace-flattened copy: these
 # assertions are about the wording, not about where a line happens to break.
@@ -567,19 +570,15 @@ assert "**A wave choice**" not in design, "**A wave choice**"
 # P46-nb.F1: the retired cut (one job per surface, a wave of 3-4 jobs, an artifact per job, one stop per
 # wave) is gone from every shipped surface that prescribes it: the DECOMP references, the slice executor,
 # the do-* cores and verdicts, and both READMEs; the DECOMP references and READMEs say the new cut.
-_cut = "**one co-work slice per connected group of related surfaces**"
-for rel in ("claude/skills/do-whole-phase/reference/decomposition.md", "claude/skills/do-next-slice/reference/decomposition.md"):
+for rel in ("claude/skills/do-whole-phase/reference/decomposition.md", "claude/skills/do-whole-phase/playbooks/decompose.md"):
     _t = (root / "payload" / rel).read_text(encoding="utf-8")
-    assert _cut in _t and "each slice's one job with its critique level" in _t, rel
     for gone in ("one job per surface", "a wave of about 3–4 jobs", "each slice's jobs with their critique level"):
         assert gone not in _t, (rel, gone)
 _t = (root / "payload/claude/skills/do-whole-phase/playbooks/decompose.md").read_text(encoding="utf-8")
 assert "each co-work slice's one job with its critique level" in _t and "co-work slice's jobs with their critique levels" not in _t
-for rel in ("claude/skills/do-whole-phase/SKILL.md", "claude/skills/do-next-slice/SKILL.md"):
-    _t = (root / "payload" / rel).read_text(encoding="utf-8")
-    assert "stops `pending` once per round" in _t and "once per wave" not in _t, rel
-_t = (root / "payload/claude/skills/do-whole-phase/reference/verdicts.md").read_text(encoding="utf-8")
-assert "its page drafters are dispatched at once, then its page critics" in _t and "is its spans:** one drafter per job at once" not in _t
+_t = (root / "payload/claude/skills/do-whole-phase/SKILL.md").read_text(encoding="utf-8")
+assert "stops `pending` once per round" in _t and "once per wave" not in _t
+assert "is its spans:** one drafter per job at once" not in skill_dir_text("do-whole-phase")
 assert "a design wave's spans" not in (root / "payload/claude/skills/do-whole-phase/reference/wave.md").read_text(encoding="utf-8")
 _ko, _en = ((root / n).read_text(encoding="utf-8") for n in ("README.md", "README.en.md"))
 assert "### 시각 디자인 작업: 라운드마다 여러분이 승인" in _ko and "더 큰 무관한 묶음은 각자 별도의 디자인 slice가 됩니다" in _ko and "관련 없는 작은 화면은 링크 없이 같은 캔버스에 함께 그릴 수 있고" in _ko
@@ -781,11 +780,10 @@ for required in ("**One exception: an explain phase (v86).**", "### An explain p
                  "**A phase with no debt settles itself (v86):**", "the main checkout's `.claude/settings.local.json`",
                  "(an explain phase's confirmation is the asking)"):
     assert required in parallel, required
-for _n in ("do-next-slice", "do-whole-phase"):
-    _w = " ".join((root / "payload/claude/skills" / _n / "reference/worktree.md").read_text(encoding="utf-8").split())
-    _c = (root / "payload/claude/skills" / _n / "SKILL.md").read_text(encoding="utf-8")
-    assert "**An explain phase**" in _w or "**One exception: an explain phase (v86).**" in _w, _n
-    assert "merge_ready=" in _w and "merge_ready=" in _c and "(an explain: its confirmation asked)" in _c, _n
+_w = " ".join((root / "payload/claude/skills/do-whole-phase/reference/worktree.md").read_text(encoding="utf-8").split())
+_c = (root / "payload/claude/skills/do-whole-phase/SKILL.md").read_text(encoding="utf-8")
+assert "**One exception: an explain phase (v86).**" in _w
+assert "merge_ready=" in _w and "merge_ready=" in _c and "(an explain: its confirmation asked)" in _c
 _ww = " ".join((root / "payload/claude/skills/do-whole-phase/reference/worktree.md").read_text(encoding="utf-8").split())
 for required in ("**An explain phase merges back by itself, with no stop.**", "**When the automatic merge cannot run**",
                  "**The closing report** of an explain run comes last", "`parallel-teardown <P> --discard-ignored`"):
@@ -794,31 +792,30 @@ for required in ("**An explain phase merges back by itself, with no stop.**", "*
 # v32 review procedure: the gate stages, the returned walkthrough, and the two
 # workflow commands a review slice must never run.
 review = (root / "payload/claude/skills/review-phase/SKILL.md").read_text()
-for required in ("## Gate stages", "`walkthrough`", "`## Operator Runtime`", "`## Regression Checklist`",
+for required in ("## The review, in order", "`walkthrough`", "`## Operator Runtime`", "`## Regression Checklist`",
                  # v36: the review opens the product with the prescribed instrument (lighter-rules:
                  # playwright-cli, against no pre-written suite, its procedure by reference).
-                 "**Drive it with `playwright-cli`**", "with the same instrument as stage 2",
-                 "in place of a pre-written assertion suite",
+                 "**Drive it with `playwright-cli`**",
+                 "in place of a pre-written assertion suite", "with the same instrument",
                  "The procedure in full: `design-cowork`'s `reference/build.md`.",
                  # v41: the review reviews the boundary of the phase, never the whole system --
                  # phase-scope is its input, and stage 4 re-runs the checklist inside it.
                  "## The boundary", "phase-scope <P>",
                  # v42: a branch review records its two gate sections as tagged notes, and
                  # the mockup qualifier applies only where the operator asked for one.
-                 "(gate section — written at merge)", "a phase in which the operator asked for one",
+                 "## Gate sections (written at merge)", "a phase in which the operator asked for one",
                  "Re-run the checklist lines inside the boundary",
                  "an operator-created QA phase, never by a review",
                  # P42.S4 (v71): a finding is a whole problem class, so one round finds every case.
                  "**A finding is a problem class, not an instance.**",
                  # The entry-level notebook: a decision is present as a gist line plus its topic, and a
                  # dangling pointer is a lost decision.
-                 "**A decision counts as present when its gist line is in `## Decisions` and its detail is in the linked topic**",
+                 "A decision counts as present when its gist line is in `## Decisions` and its detail is in the linked topic",
                  "A dangling-pointer warning from `validate`"):
     assert required in review, required
 # P42.S4 (v71): a second failure of the same rules stops for the operator instead of another fix round,
 # in both loops' review references (separate files, so each exact path is read).
-for _rel in ("claude/skills/do-whole-phase/reference/review.md", "claude/skills/do-next-slice/reference/review.md"):
-    assert "**Stop instead of another round.**" in (root / "payload" / _rel).read_text(encoding="utf-8"), _rel
+assert "**Stop instead of another round.**" in (root / "payload/claude/skills/do-whole-phase/reference/review.md").read_text(encoding="utf-8")
 for gone in ("MCP surface first", "scripted Playwright-style automation",
              # P-zqhy: the Aside procedure is retired from the review.
              "Aside", "aside repl", "aside mcp", "--account <id>",
@@ -898,6 +895,36 @@ for _stem, _required in (
 ):
     for _r in _required:
         assert _r in _pb[_stem], (_stem, _r)
+# lighter-rules: the phase-flow skills are short playbooks. Each folder's shipped bytes (explain references
+# aside, which are the explain phase's) stay under its cap, and the set under 85,000 B; no shipped skill file
+# is a byte copy of another (a reference ships once).
+_caps = {"do-whole-phase": 49000, "do-next-slice": 2500, "create-phase": 12500, "review-phase": 12000,
+         "read-code": 3600, "executor-route": 1500, "commit": 2800}
+_size = lambda n: sum(len(v.encode("utf-8")) for k, v in LIVE.items()
+                      if k.startswith(f".claude/skills/{n}/") and not k.rsplit("/", 1)[1].startswith("explain-"))
+for _n, _cap in _caps.items():
+    assert _size(_n) <= _cap, (_n, _size(_n), _cap)
+assert sum(_size(_n) for _n in _caps) <= 85000, sum(_size(_n) for _n in _caps)
+_seen = {}
+for _k, _v in LIVE.items():
+    if _k.startswith(".claude/skills/"):
+        assert _v not in _seen, ("a skill file shipped twice", _seen.get(_v), _k)
+        _seen[_v] = _k
+# The review has one source: review-phase holds the procedure, its executor dispatches the blind code reader
+# itself and stops what the phase left running; the orchestrator's side points at it and dispatches no reader.
+_rv = (root / "payload/claude/skills/review-phase/SKILL.md").read_text(encoding="utf-8")
+_ro = (root / "payload/claude/skills/do-whole-phase/reference/review.md").read_text(encoding="utf-8")
+for _r in ("**The code reader is yours to dispatch**", "`subagent_type: code-reader`", "Never the plan, a result, the notebook or a phase id.",
+           "**Nothing the phase started is left running.**", "**One review per phase**", "Run the walkthrough"):
+    assert _r in _rv, _r
+assert "dispatched by the review executor itself" in _ro and "`review-phase` skill" in _ro
+for _gone in ("## The code reader, before the review", "executor-route --code"):
+    assert _gone not in _ro, _gone
+# Doc consolidation is retired: no phase-flow skill asks for a Doc impact note or a docs phase.
+for _n in _caps:
+    _txt = "\n".join(v for k, v in LIVE.items() if k.startswith(f".claude/skills/{_n}/") and "/explain-" not in k)
+    for _gone in ("docs phase", "docs-phase", "docs-debt", "doc_impact", "doc_versions", "Doc impact list"):
+        assert _gone not in _txt.replace("Ask for no `## Doc impact` note and no docs phase.", ""), (_n, _gone)
 # Nothing but the six shipped agents sits in payload/claude/agents/ (every .md there becomes an agent).
 assert sorted(p.name for p in (root / "payload/claude/agents").iterdir()) == sorted(
     k.rsplit("/", 1)[1] for k in collect_live_payloads() if k.startswith(".claude/agents/")), "a non-agent file in payload/claude/agents/"
@@ -997,16 +1024,15 @@ assert len(_rows) >= 10 and all(ln.count(" | ") == 1 and ln.split(" | ")[1].stri
 cloud_skip = ("In a linked checkout (`next` prints `store=cloud`), skip this commit: hi2vi's revisions"
               " are the workflow's history. Product commits are unchanged.")
 for rel in ("commit/SKILL.md", "create-phase/SKILL.md", "run-loop/SKILL.md", "rotate-backlog/SKILL.md",
-            "do-next-slice/reference/verdicts.md", "do-whole-phase/reference/verdicts.md",
-            "do-whole-phase/reference/wave.md"):
+            "do-whole-phase/reference/verdicts.md", "do-whole-phase/reference/wave.md"):
     assert cloud_skip in (root / "payload/claude/skills" / rel).read_text(), f"{rel}: the cloud-mode commit skip"
 # A linked checkout's waiting-commit record: every place that defines "a done slice whose slice.json is
 # uncommitted is a commit that waits" (and every commit step that closes one) names its linked form.
 cloud_waits = ("In a linked checkout, a done slice whose commit waits is one `next` lists in `commits_waiting=`;"
                " run `mark-committed <slice>` after its product commit (with no product change, right after its finish).")
 for rel, n in (("commit/SKILL.md", 1), ("run-loop/SKILL.md", 1), ("run-loop/reference/checkpoint.md", 1),
-               ("rotate-backlog/SKILL.md", 1), ("do-next-slice/reference/verdicts.md", 2),
-               ("do-whole-phase/reference/verdicts.md", 1), ("do-whole-phase/reference/wave.md", 3)):
+               ("rotate-backlog/SKILL.md", 1),
+               ("do-whole-phase/reference/verdicts.md", 1), ("do-whole-phase/reference/wave.md", 1)):
     assert (root / "payload/claude/skills" / rel).read_text().count(cloud_waits) == n, f"{rel}: the linked waiting-commit sentence x{n}"
 # update-workspace never stages the truth set of a linked checkout: its clean check and its commit name the update's own paths.
 uw = (root / "payload/claude/skills/update-workspace/SKILL.md").read_text()
@@ -1253,7 +1279,7 @@ then ok "every changelog release section carries a Migration notes line"; else b
 [ "$(find "$F/.claude/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | wc -l | tr -d ' ')" = "21" ] \
   && ok "fresh install has the 21 Claude skills" || bad "fresh skill inventory incomplete"
 skill_tree_ok "$F/.claude/skills" exact \
-  && ok "fresh install ships every skill as its whole directory: each core's reference files, none orphaned, the shared do-* copy identical" || bad "fresh install skill directories incomplete (core + reference/)"
+  && ok "fresh install ships every skill as its whole directory: each core's reference files, none orphaned" || bad "fresh install skill directories incomplete (core + reference/)"
 [ ! -f "$F/AGENTS.md" ] && [ ! -d "$F/.agents" ] && [ ! -d "$F/.codex" ] \
   && ok "fresh install is Codex-free (no AGENTS.md, no .agents/, no .codex/)" || bad "fresh install still ships Codex machinery"
 [ -f "$F/.claude/agents/slice-executor.md" ] && [ ! -e "$F/.claude/agents/slice-executor-mid.md" ] && [ ! -e "$F/.claude/agents/slice-executor-high.md" ] \
@@ -1264,6 +1290,23 @@ skill_tree_ok "$F/.claude/skills" exact \
   && [ "$(cd "$F/.claude/agents" && LC_ALL=C ls | tr '\n' ' ')" = "Explore.md code-reader.md design-critic.md design-drafter.md pr-reader.md slice-executor.md " ] \
   && ok "fresh install ships the kind playbooks under .claude/skills/do-whole-phase/playbooks/ and only the six agents in .claude/agents/" \
   || bad "fresh install: playbooks missing, or a file other than the six agents in .claude/agents/ ($(ls "$F/.claude/agents" | tr '\n' ' '))"
+# lighter-rules: on a fresh install too, the phase-flow skills (explain references aside) stay under 85,000 B
+# and no skill file is a byte copy of another (do-next-slice reads do-whole-phase's references by path).
+if python3 - "$F/.claude/skills" <<'PY'
+import sys
+from pathlib import Path
+base = Path(sys.argv[1])
+size = lambda n: sum(len(p.read_bytes()) for p in (base / n).rglob("*") if p.is_file() and not p.name.startswith(("explain-", ".")))
+total = sum(size(n) for n in ("do-whole-phase", "do-next-slice", "create-phase", "review-phase", "read-code", "executor-route", "commit"))
+assert total <= 85000, total
+seen = {}
+for p in sorted(base.rglob("*")):
+    if p.is_file() and not p.name.startswith("."):
+        b = p.read_bytes()
+        assert b not in seen, ("shipped twice", seen.get(b), str(p))
+        seen[b] = str(p)
+PY
+then ok "fresh install: the phase-flow skills total at most 85,000 B and no skill file ships twice"; else bad "fresh install: the phase-flow skills are over 85,000 B or a skill file ships twice"; fi
 grep -q '^model: opus$' "$F/.claude/agents/slice-executor.md" && grep -q '^effort: medium$' "$F/.claude/agents/slice-executor.md" \
   && grep -q '^name: slice-executor$' "$F/.claude/agents/slice-executor.md" \
   && grep -q '^model: fable$' "$F/.claude/agents/design-drafter.md" && grep -q '^effort: high$' "$F/.claude/agents/design-drafter.md" \
@@ -1893,10 +1936,10 @@ printf '%s\n' "$mt_out" | grep -qE '^note=output_floor spans=1/3 \(33%\) main=0/
   && ! printf '%s\n' "$mt_out" | grep -E '^(main|design-drafter) ' | grep -q '≥' \
   && ok "dispatch-summary flags a span request that never logged a final usage: the note= count and the ≥ floor on that group only" || bad "dispatch-summary floor note/mark wrong: $mt_out"
 # v66: a DECOMP estimates time, not session-$, and writes a `spends money:` line per slice; the [means] header says so.
-grep -q 'spends money:' "$SRC/claude/skills/do-whole-phase/reference/decomposition.md" && grep -q 'spends money:' "$SRC/claude/skills/do-next-slice/reference/decomposition.md" \
+grep -q 'never a session-\$ figure' "$SRC/claude/skills/do-whole-phase/reference/decomposition.md" \
   && grep -q 'spends money:' "$SRC/claude/skills/do-whole-phase/playbooks/decompose.md" && ! grep -q '\$ per span' "$SRC/claude/skills/do-whole-phase/playbooks/decompose.md" \
   && grep -q 'a DECOMP estimates time from these' "$SRC/scripts/workflow.py" \
-  && ok "a DECOMP estimates time only and writes a per-slice spends-money line (both references, the executor, the [means] header)" || bad "the DECOMP time-only / spends-money wording is missing or a session-\$ estimate remains"
+  && ok "a DECOMP estimates time only and writes a per-slice spends-money line (the orchestrator reference, the decompose playbook, the [means] header)" || bad "the DECOMP time-only / spends-money wording is missing or a session-\$ estimate remains"
 # v66: one slice-executor runs every slice row, so the meter reads its route from the kind and the model
 # (research by kind, haiku as cheap, the high row's family as high, else mid); an old slice-executor-high
 # span keeps its reading. v80: on the defaults high and mid are both opus, so the span's effort tells them apart.
@@ -2023,7 +2066,10 @@ printf '[claude.high]\nmodel = "fable"\n\n[claude.mid]\neffort = "high"\n' > "$F
   || bad "sync-agents failed applying the fable + mid-effort overrides"
 rm -rf "$F/.claude/skills/do-whole-phase"
 # v61 (P37.S1): a v60-shaped install has no reference/ files; one in our skill dir that we do not ship is the operator's.
-rm -rf "$F/.claude/skills/do-next-slice/reference" && rm -f "$F/.claude/skills/design-cowork/reference/shape.md"
+rm -f "$F/.claude/skills/design-cowork/reference/shape.md"
+# lighter-rules: do-next-slice ships no reference of its own after v100; a copy left at a retired path is the
+# workspace's (RETIRED_FILES), so an edited one reads "differs from what v100 shipped", never "not shipped".
+mkdir -p "$F/.claude/skills/do-next-slice/reference" && printf 'my edit\n' > "$F/.claude/skills/do-next-slice/reference/review.md"
 printf 'my notes\n' > "$F/.claude/skills/design-cowork/notes.md"
 mkdir -p "$F/.claude/skills/executor-mode" && printf -- '---\nname: executor-mode\ndisable-model-invocation: true\n---\nstale v45 skill\n' > "$F/.claude/skills/executor-mode/SKILL.md"
 printf '%s\n' '# stale pre-v31 visual skill' > "$F/.claude/skills/design-cowork/SKILL.md"
@@ -2076,7 +2122,7 @@ diff -q "$SRC/claude/skills/design-cowork/SKILL.md" "$F/.claude/skills/design-co
   && ok "--update refreshes a stale design-cowork skill body" || bad "--update did not refresh design-cowork"
 printf '%s\n' "$update_out" | grep -q '^    - \.claude/skills/design-cowork/SKILL\.md' \
   && bad "--update incorrectly flags current design-cowork as stale" || ok "--update keeps design-cowork in the current inventory"
-skill_tree_ok "$F/.claude/skills" exact && printf '%s\n' "$update_out" | grep -qx '    + \.claude/skills/do-next-slice/reference/dispatch\.md' \
+skill_tree_ok "$F/.claude/skills" exact \
   && printf '%s\n' "$update_out" | grep -qx '    + \.claude/skills/design-cowork/reference/shape\.md' \
   && ok "--update on a v60-shaped install adds the reference files, each listed as added" || bad "--update did not add the reference files to a v60-shaped install -- $update_out"
 printf '%s\n' "$update_out" | grep -qx '    - \.claude/skills/design-cowork/notes\.md  (not shipped by this version)' \
@@ -2091,7 +2137,8 @@ else bad "--update stale list wrong -- $update_stale"; fi
 kept_bad=""
 for k in '\.agents/skills/do-next-slice/SKILL\.md  (differs from what v30 shipped)' \
          '\.codex/agents/mine\.toml  (not a file the workspace shipped)' 'AGENTS\.md  (differs from what v30 shipped)' \
-         'AGENTS\.workspace\.md  (differs from what v30 shipped)' '\.claude/skills/executor-mode/SKILL\.md  (differs from what v52 shipped)'; do
+         'AGENTS\.workspace\.md  (differs from what v30 shipped)' '\.claude/skills/executor-mode/SKILL\.md  (differs from what v52 shipped)' \
+         '\.claude/skills/do-next-slice/reference/review\.md  (differs from what v100 shipped)'; do
   printf '%s\n' "$update_out" | grep -qx "    - $k" || kept_bad="$kept_bad [$k]"
 done
 [ -z "$kept_bad" ] && ok "--update reports a modified shipped file, their .codex file and AGENTS.md as yours, kept" \
@@ -4026,10 +4073,10 @@ python3 -c 'import json,sys; r=json.load(open(sys.argv[1]))["renames"]; assert r
 # v61 (P37.S1): a renamed split skill keeps its whole directory -- core and reference files -- under the new name.
 skill_tree_ok "$IH/.claude/skills" nested commit=wf-commit design-cowork=wf-design-cowork && grep -qx "name: wf-design-cowork" "$IH/.claude/skills/wf-design-cowork/SKILL.md" \
   && [ "$(sha "$IH/.claude/skills/design-cowork/SKILL.md")" = "$ih_design" ] && [ ! -e "$IH/.claude/skills/design-cowork/reference" ] && ih_clean \
-  && ok "nested: the clashing design-cowork installs as wf-design-cowork with its reference/ files, the do-* references (shared copy included) ship, the host's own design-cowork is untouched, and the host stays clean" \
+  && ok "nested: the clashing design-cowork installs as wf-design-cowork with its reference/ files, the do-whole-phase references ship, the host's own design-cowork is untouched, and the host stays clean" \
   || bad "nested: a renamed split skill or its reference files were not installed cleanly -- $(cd "$IH" && git status --porcelain)"
 left=$(cd "$IH" && grep -rlF "python3 scripts/workflow.py" .claude CLAUDE.local.md workflow/CLAUDE.workspace.md workflow/works/templates 2>/dev/null)
-[ -z "$left" ] && grep -rqF "python3 workflow/scripts/workflow.py" "$IH/.claude/skills/do-next-slice" "$IH/.claude/settings.local.json" \
+[ -z "$left" ] && grep -rqF "python3 workflow/scripts/workflow.py" "$IH/.claude/skills/do-whole-phase" "$IH/.claude/settings.local.json" \
   && ok "no unprefixed python3 scripts/workflow.py in the host's .claude/, CLAUDE.local.md, the contract or the templates" || bad "unprefixed engine command left in: $left"
 if python3 - "$IH/CLAUDE.local.md" <<'PY'
 import sys
@@ -4125,7 +4172,7 @@ mkdir -p "$IX/.claude/agents" && ( cd "$IX" && { git init -q -b main . 2>/dev/nu
 ix_explore=$(sha "$IX/.claude/agents/Explore.md"); out=$(sh "$BOOT" "$IX" --nested 2>&1); rc=$?
 python3 -c 'import json,sys; r=json.load(open(sys.argv[1]))["renames"]["agents"]; assert r.get("Explore") == "wf-Explore", r' "$IX/workflow/.agentic-nested.json" >/dev/null 2>&1 \
   && [ "$rc" -eq 0 ] && grep -qx "name: wf-Explore" "$IX/.claude/agents/wf-Explore.md" && [ "$(sha "$IX/.claude/agents/Explore.md")" = "$ix_explore" ] \
-  && grep -rq 'subagent_type: wf-Explore' "$IX/.claude/skills/do-next-slice" "$IX/.claude/agents/slice-executor.md" \
+  && grep -rq 'subagent_type: wf-Explore' "$IX/.claude/skills/do-whole-phase" "$IX/.claude/agents/slice-executor.md" \
   && ( cd "$IX" && python3 workflow/scripts/workflow.py sync-agents --check >/dev/null 2>&1 ) \
   && ok "a host with its own Explore.md: ours installs as wf-Explore (marker rename + name:), the host's is byte-identical, the executors and skill call wf-Explore" \
   || bad "the Explore clash was not renamed cleanly (rc=$rc) -- $out"
@@ -4888,20 +4935,20 @@ from build import collect_live_payloads
 L = collect_live_payloads()
 sk = lambda n: "\n".join(v for k, v in sorted(L.items()) if k.startswith(f".claude/skills/{n}/"))
 flat = lambda s: " ".join(s.split())
-both = lambda ref: [L[f".claude/skills/{s}/reference/{ref}"] for s in ("do-whole-phase", "do-next-slice")]
+both = lambda ref: [L[f".claude/skills/do-whole-phase/reference/{ref}"]]  # lighter-rules: do-next-slice ships no copy
 push_stop = ["`push` stop", "push stop", "On the operator's `push`", "on the operator's `push`", "say `push`", "pr_push=waiting", "PR_PUSH_WAITING"]
 checks = [
     ([(root / "payload/contract.md").read_text()], ["**Nothing is pushed, merged or paid for without the operator's word.**", "| A product phase passes with its draft PR open | `review-phase --verdict pass` refuses a PR branch with no draft PR"],
      ["Create no branch unless asked", "Never push unasked", "push only on the operator's word", "Ready and merge are the operator's"] + push_stop),
-    ([sk("review-phase")], ["## The PR step — one body per recorded branch", "**Writing the body is a review lens.**", "**Return `pr_bodies`**", "**A phase with PR bodies**",
-                            "then opens the drafts with no stop and no word"], push_stop),
-    (both("review.md"), ["## The PR step: the reader, then the drafts open (PR rule v1)", "executor-route --reader`", "restart the session; the reader then runs",
-                         "**The drafts open then, with no stop and no word.**", "**On a waived gate** record the pass once the drafts are open", "never a second `gh pr create` and never a force-push",
-                         "--stop-kind operator-action --on-words \"<what fixing it resumes>\"",
-                         "**A refused draft** (a private repo on a free plan) is never retried as a plain PR, which notifies people: set the `REVIEW` slice `pending --stop-kind decision` for the operator's `plain` or `waive`"], push_stop + ["push opens the draft PR(s); the pass is recorded after"]),
+    ([sk("review-phase")], ["## The PR step — one body per recorded branch", "**Writing the body is a review lens.**", "**Return `pr_bodies`**"], push_stop),
+    (both("review.md"), ["open the drafts by the `pr` skill's *Open the drafts*", "with no stop and no word", "read each PR's CI before the gate",
+                         "`executor-route --reader`", "--stop-kind operator-action --on-words \"<what fixing it resumes>\"",
+                         "a refused draft is never retried as a plain PR", "The engine refuses the pass until every recorded branch has its URL"],
+     push_stop + ["push opens the draft PR(s); the pass is recorded after"]),
     (both("verdicts.md"), ["**The only pushes are the draft opening when the review passes**", "**the close's solo landing, and a fix round's or a stack merge's `git push` to an open PR's branch**"],
      ["do not branch unless the operator asks", "Do not branch unless the operator asks", "**The only push is the draft opening", "Never force-push, request reviewers, merge a team repo's PR or flip one Ready"] + push_stop),
-    (both("review.md"), ["**With a draft open, the close runs around the pass**", "5. **A change request after the phase is done**", "and in place at root, where the PR branch is checked out", "**Ready and a solo repo's merge come only at the close**"], ["Ready and merge stay the operator's"]),
+    (both("review.md"), ["run the close's step A", "record the pass **without re-dispatching the review**", "then its step B",
+                         "**After the phase is done**", "always `reopen-phase <P> --note \"team-reported: <what>\"`"], ["Ready and merge stay the operator's"]),
     ([sk("review-phase")], ["**A reopened phase's re-review**", "or `operator-reported: …`, from `reopen-phase`"], []),
     ([sk("rotate-backlog")], ["**First, sync the open PRs (both paths).**"], []),
     ([L[".claude/skills/pr/reference/close.md"]], ["**Pass recorded or not.**", "always goes through `reopen-phase`", "never `review-phase`, which the engine refuses",
@@ -4915,14 +4962,14 @@ checks = [
     ([(root / "payload/claude/skills/do-whole-phase/playbooks/review.md").read_text()], ["(its review note reads `team-reported: …` or `operator-reported: …`): the request is the claims to verify"],
      ["(its review note reads `team-reported: …`): the team's review comments"]),
     ([sk("pr")], ["**Changes after the phase is done**: `reference/reopen.md`"], ["**Team changes after the phase is done**"]),
-    (both("review.md"), ["or a change request after a reopen, the team's or the operator's)"], ["or a team's review after a reopen)"]),
+    (both("review.md"), [], ["or a team's review after a reopen)"]),
     ([(root / "README.en.md").read_text(encoding="utf-8")], ["(the team's review, or your own) reopens the same"], ["fix\n   slice in the same phase"]),
     ([(root / "README.md").read_text(encoding="utf-8")], ["(팀 리뷰든 내 요청이든) 같은 phase를 열린 PR 위에서 다시 엽니다"], ["같은 phase의 fix slice"]),
     ([sk("archive-phase")], ["**A phase with an open PR is held too:**"], []),
     ([sk("create-phase")], ["**One question rides on that confirmation, never a stop of its own:**"], []),
     ([flat(sk("parallel-phase"))], ["### A reopened phase — a change request on its open PR", "`--note \"operator-reported: <what>\"`", "Then `pr-sync <P>` there (the default branch's record is stale)"], ["### A reopened phase — a team's changes on its open PR"]),
     (both("decomposition.md"), ["--base <that branch>"], []),
-    (both("decomposition.md"), ["**Record the phase's PR branches at the same boundary (PR rule v1).**", "**Size never splits a phase:**"], []),
+    (both("decomposition.md"), ["**Record the phase's PR branches** (PR rule v1)", "**Size never splits a phase:**"], []),
     ([sk("create-phase")], ["`Branches:` line", "Never split a phase for size"], push_stop),
     ([(root / "payload/claude/skills/do-whole-phase/playbooks/review.md").read_text()], ["`pr_bodies`", "Never run `review-phase`, `accept-gate` or `defer-job`, and never push."], push_stop),
     ([flat(sk("parallel-phase"))], ["This skill carries no second PR procedure."], ["1. **Push the branch.**", "**Open the PR.**"] + push_stop),
