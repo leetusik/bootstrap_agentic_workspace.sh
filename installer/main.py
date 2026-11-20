@@ -59,7 +59,7 @@ UPSTREAM_URL = "https://github.com/leetusik/bootstrap_agentic_workspace.sh"
 # Integer workspace version. Bumped (with a matching CHANGELOG.md entry) whenever a
 # machinery change ships to targets. Rides inside this built artifact, so adopting
 # repos — which have no installer/ — still get it stamped into their marker below.
-WORKSPACE_VERSION = 100
+WORKSPACE_VERSION = 101
 ROOT = TARGET.resolve()
 # Nested personal install (P28; the default layout since P29): TARGET is a HOST git repo -- one the
 # operator may not own, or a new/empty dir this run `git init`s. The engine and all workflow state go
@@ -1368,8 +1368,8 @@ def _renames_line(renames: dict):
 def _multi_repo_local_block(renames: dict, repos: list, converted=()) -> list:
     """The managed CLAUDE.local.md block of a multi-repo host (P40; S1 §6 with S2 §21's parallel line):
     the single-repo block's shape, with one line per registered repo (path, default branch, rules files),
-    "this repo" meaning the repo the change lives in, one commit per repo a slice changed, and a parallel
-    line naming `--repo` and `parallel-add-repo`. Emitted only when `repos` is non-empty; the renames
+    "this repo" meaning the repo the change lives in, one commit per repo a slice changed, a line pointing a bare host
+    session at each repo's verification skill, and a pointer to the parallel-phase skill. Emitted only when `repos` is non-empty; the renames
     line is appended exactly as the single-repo block does. `converted` (the marker's `converted_from`,
     S10) adds one line per converted per-repo install after the repo list; without it the block is S9's."""
     cmd = f"python3 {NESTED_DIR}/scripts/workflow.py"
@@ -1393,11 +1393,10 @@ def _multi_repo_local_block(renames: dict, repos: list, converted=()) -> list:
         f"- The product repos (`{cmd} nested-repos` lists them, with each repo's rules files):",
         *repo_lines,
         "- \"This repo\" in any rule means the repo the change lives in. Before changing a repo, read its rules files; they win over this block for that repo.",
-        "- Commits per slice: one in each repo the slice changed, plus one for the workflow state:",
-        f"  - product code goes to its own repo with `git -C <repo> ...`, on the phase's branch there (one per repo, recorded with `{cmd} pr-branch --repo <name>`), in that repo's conventions for commits, branches and pull requests, which `{cmd} nested-convention --repo <name>` prints. Add Claude `Co-Authored-By` trailers only when it says `allowed`. The host folder itself never gets a commit;",
-        f"  - workflow state goes to the nested repo (`git -C {NESTED_DIR} ...`) in the contract's Commit Convention.",
-        f"- If `next` shows `host_commit_convention=UNCONFIRMED` or an UNCONFIRMED repo in `repo_conventions=`, confirm those conventions with the operator before that repo's first product commit, then record them: `{cmd} nested-convention --confirm [--repo <name>] --text \"<conventions>\" --trailers allowed|forbidden` (no `--repo`: the rules for every repo).",
-        f"- **Parallel phases, only on the operator's word:** `{cmd} parallel-start <P> --host-branch <name> [--host-base <ref>] [--repo <name>=<branch> ...] [--repo-base <name>=<ref> ...]` cuts a set: a host worktree under `.claude/worktrees/`, the nested worktree at its `{NESTED_DIR}/`, and one worktree per named repo at its `<repo>/`; add a repo mid-phase from inside the set with `parallel-add-repo <P> --repo <name>=<branch>`. Propose each branch name from that repo's recorded custom (`nested-convention --repo <name>`) and let the operator confirm it. Each repo's side follows its own custom; the engine never fetches, pushes or merges into any repo's default branch; the `pr` skill opens the phase's draft PR(s) when its review passes.",
+        "- To verify a change in a repo, use that repo's verification skill under `<repo>/.claude/skills/` (its run script), after reading the repo's rules files.",
+        f"- Commits per slice: one in each repo the slice changed (`git -C <repo> ...`, on the phase's branch there, recorded with `{cmd} pr-branch --repo <name>`, in the conventions `{cmd} nested-convention --repo <name>` prints; Claude `Co-Authored-By` trailers only when it says `allowed`), plus one for the workflow state (`git -C {NESTED_DIR} ...`, `type(scope): summary`). The host folder itself never gets a commit.",
+        f"- An UNCONFIRMED convention in `next` (`host_commit_convention=` or `repo_conventions=`) is confirmed with the operator before that repo's first product commit: `{cmd} nested-convention --confirm [--repo <name>] --text \"<conventions>\" --trailers allowed|forbidden` (no `--repo`: the rules for every repo).",
+        "- Worktree phases run only on the operator's word: the `parallel-phase` skill (`parallel-start ... --repo <name>=<branch>`).",
         f"- A pull request's title, body and commits (and every product commit, in every repo) carry no phase or slice IDs, no `{NESTED_DIR}/` paths and no workspace files.",
         f"- Never stage `{NESTED_DIR}/`, `CLAUDE.local.md`, `.claude/settings.local.json` or the workspace's skills and agents into any repo or the host (the exclude block lists them).",
     ]
@@ -1423,11 +1422,9 @@ def _nested_local_block(renames: dict, repos=(), converted=()) -> list:
         "",
         "Nested-install rules (they win over the contract above where the two differ):",
         f"- Start Claude Code at this repo's root, never inside `{NESTED_DIR}/`. Run the engine from here: `{cmd} <command>`.",
-        "- Two commits per slice, in two repos:",
-        f"  - product code goes to this repo, on the phase's branch (one per repo, recorded with `{cmd} pr-branch`), in the host's conventions for commits, branches and pull requests, which `{cmd} nested-convention` prints. Add Claude `Co-Authored-By` trailers only when it says `allowed`;",
-        f"  - workflow state goes to the nested repo (`git -C {NESTED_DIR} ...`) in the contract's Commit Convention.",
-        f"- If `next` shows `host_commit_convention=UNCONFIRMED`, confirm the host's conventions (commits, branches and pull requests) with the operator before the first product commit, then record them: `{cmd} nested-convention --confirm --text \"<conventions>\" --trailers allowed|forbidden`.",
-        f"- **Parallel phases, only on the operator's word:** `{cmd} parallel-start <P> --host-branch <name> [--host-base <ref>]` cuts a pair: a host worktree under `.claude/worktrees/` on the host branch, with the nested worktree at its `{NESTED_DIR}/`. Propose the branch name from the host's recorded custom and let the operator confirm it. The host side follows that custom; the engine never pushes or merges into the host's default branch; the `pr` skill opens the phase's draft PR(s) when its review passes.",
+        f"- Two commits per slice: product code to this repo (on the phase's branch, recorded with `{cmd} pr-branch`, in the conventions `{cmd} nested-convention` prints; Claude `Co-Authored-By` trailers only when it says `allowed`), and the workflow state to the nested repo (`git -C {NESTED_DIR} ...`, `type(scope): summary`).",
+        f"- If `next` shows `host_commit_convention=UNCONFIRMED`, confirm the host's conventions with the operator before the first product commit: `{cmd} nested-convention --confirm --text \"<conventions>\" --trailers allowed|forbidden`.",
+        "- Worktree phases run only on the operator's word: the `parallel-phase` skill (`parallel-start`).",
         f"- A pull request's title, body and commits (and every product commit) carry no phase or slice IDs, no `{NESTED_DIR}/` paths and no workspace files.",
         f"- Never stage `{NESTED_DIR}/`, `CLAUDE.local.md`, `.claude/settings.local.json` or the workspace's skills and agents into this repo (the exclude block lists them).",
     ]
@@ -1970,6 +1967,18 @@ RETIRED_FILES = {
     '.claude/agents/slice-executor-low.md': (22, ('3d798df8b1170cf3aff4bbf10fbe83e6f7d8a8721a990a8d74333b7c08c731df',)),  # 097041d
     '.claude/agents/slice-executor-mid.md': (65, ('3c74ce9945cae627de3588f3ea01533cb8990a48e0b12d813af61d0ba04ded8a', 'faaa25e5cdc62e625d3720030f24e94388ec1cbeb5e80de6deafc39820f2654b')),  # d0759a4, route lines dropped
     '.claude/agents/slice-planner.md': (19, ('7c8fa4c4824f276ec5e79292826dfb58a41ed4078682175faae2e119d36c51d6',)),  # c94f6e4
+    '.claude/skills/do-next-slice/reference/co-work.md': (100, ('d1f95f46870af0e37afa6bffab061b497fa88bdebac7e65f41d84982eac4054e', '393076060e070e9a7e59fcf7521d903f5d03a04d44310a416411893f0453a833')),  # 807bb0e
+    '.claude/skills/do-next-slice/reference/decomposition.md': (100, ('862ed2b230f3e064fc1ab9341fe9ed42a7f76cdf2f0f25895261aefc4c4d1f78', 'a2ac31769d9bd761cfaeeb71f5b6e8d297c7831ea1025ac323afcfd4692af8a7')),  # 807bb0e
+    '.claude/skills/do-next-slice/reference/dispatch.md': (100, ('db218a9d067638e1ddb6a71dc32ca53735973e5301990a41369d9c20036c3ab8', 'b75f959d7166ed2783cb322bc0ff0eb599383ef95fe2e117a48a0175715a4057')),  # 807bb0e
+    '.claude/skills/do-next-slice/reference/explain-chapter.md': (100, ('5ebff891c6ff4f454ecf736de96a352e09a1d54b47a56ee1b14dfbf42de619af', 'c72dff69c46580f0ce7098cdc6b48b3094c432d0dacff5922e3dc6f237015569')),  # 807bb0e
+    '.claude/skills/do-next-slice/reference/explain-decomposition.md': (100, ('2d614b17173b4f4e7ba10c73fa4545e2784951cd12e13e18e7ea24c76345ae6d', '25985b57799dfaf9fe757529ecc20b19ed2abd950e039f3b15dbc9244245154b')),  # 807bb0e
+    '.claude/skills/do-next-slice/reference/explain-review.md': (100, ('aecd791057551bcfcd719ac39372bbeee1d83299dc67d4546b4391143ef8ef9b', '16788e9388ad030b262987349f96e937ddb1143bc23f5b32b45d5ff0fd3bcf35')),  # 807bb0e
+    '.claude/skills/do-next-slice/reference/modes.md': (100, ('3eb0e1eab3dc7f5406681a7129519d6571e3172136ec7f7290a7549e2f40074b',)),  # 807bb0e
+    '.claude/skills/do-next-slice/reference/review.md': (100, ('850c377ac604046e45d99d711a11a11ce8df29b8690036c86443dc17849fbbce', 'a0954620101f81ffe796aad23c7623aa6b63faae1c18b86b52131e5378cb9c01')),  # 807bb0e
+    '.claude/skills/do-next-slice/reference/verdicts.md': (100, ('ddbf954d125b9e44dcc0c524c092ed432a208f6f8584ea03cb5e3a687e5c3583', 'e00360155496a89c7c10e9a6877864f12726669ba915d70c82c70eb09abad2c7')),  # 807bb0e
+    '.claude/skills/do-next-slice/reference/worktree.md': (100, ('41cfc38cd1d56716720a2de3912896d49f777f2a310584e3460a9ebd47a69ba9', '2984673a4bbdbc1de7fdba3bab8d9113a23508a2a197ca4a950e591550fdceaf')),  # 807bb0e
+    '.claude/skills/do-whole-phase/reference/modes.md': (100, ('c2d8f13365d2401d82401b513306cde900a16a115cfb9c71d77f81686c030b1e', '5b7346f395d83a7888bf0cd374841f6e8759b6c5f1614a0ff038a1b553ade7e2')),  # 807bb0e
+    '.claude/skills/do-whole-phase/reference/prep.md': (100, ('aabba508d031ada11f72b0de3c1b55e27939bd5bc484325c4dafa7020b73cbfc',)),  # 807bb0e
     '.claude/skills/do-whole-phases/SKILL.md': (98, ('7a84c83f9938d32af5ba9dd6729b310623303fc2ddcb68accbe08e704f2e829c', 'daa211d71e169a19268e7ae515ab0cbc489225a1f8671b0bacd60e30c39a757a')),  # 47436bc
     '.claude/skills/executor-mode/SKILL.md': (52, ('382fe9e6644c15c46d49ab0b481c8cec0b6722f20816d3fca48a60ba61826d43', 'cef5b8fbf576e83fd6048ceb652e05ddcd7cbcded6a4168efb5c834f32c16970')),  # 7c874c3
     '.codex/agents/slice-executor-high.toml': (30, ('217fcafcd0449db43fd1e25b4a0a13cc918ee2ab46d4980a8544b098ed31ec2d',)),  # 4ee5c22
@@ -3394,7 +3403,7 @@ else:
     print("Visual design: design-cowork fires automatically; the design-drafter subagent drafts each design slice's surfaces as one working canvas under docs/reference/design/jobs/ (a frame of shared choices, its pages at once, then a join into clickable Pages, a board per component), the design-critic judges each page and the joined canvas when the job's critique is on, the orchestrator publishes each round to one Design canvas Artifact in the Claude app, and the operator decides: picks a style (build-after / design-only / paired) and signs each design in their own words, or on an in-product mockup they ask for, before separate implementation and browser fidelity")
     print("One executor, routed per dispatch by kind, then risk, then attempt (mid is the default row, real code included; high for decomposition, research, review, named triggers and retries), through one route table whose rows set each dispatch's model and effort; python3 scripts/workflow.py executor-route shows it (and executor-route <slice> the decision for one slice); override a row in executors.toml, then run sync-agents")
     print("Any agent / CI: python3 scripts/workflow.py <command>")
-    print("CI: .github/workflows/workspace-ci.yml runs validate on every push/PR (seeded once — yours to edit); .gitattributes carries the merge rules for machine-written files")
+    print("CI: .github/workflows/workspace-ci.yml runs validate on each PR and default-branch push (seeded once — yours to edit); .gitattributes carries the merge rules for machine-written files")
     print("Canonical state: phase.json / slice.json / deferred.json / agenda.json; generated: works/backlog.md, works/deferred.md, works/agenda.md")
     print("Versioned docs: docs/versions/<doc>/v<yyMMddHHmm>_*.md (a new version is named by its UTC minute; v0001_bootstrap.md is the first) with generated docs/current/*.md")
     print("Knowledge: /explain is the knowledge plugin's, not this workspace's (plugin 0.10.0+): /plugin marketplace add leetusik/knowledge, then /plugin install knowledge@knowledge; run /knowledge:setup once, then /knowledge:explain <topic>")

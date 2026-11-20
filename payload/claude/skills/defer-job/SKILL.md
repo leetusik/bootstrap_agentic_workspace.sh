@@ -7,10 +7,4 @@ disable-model-invocation: true
 
 # defer-job
 
-Run `python3 scripts/workflow.py defer-job $ARGUMENTS` (for example `--title "..." --reason "..." --trigger "..." --source P46-k2.S1`).
-
-Leave out `--id`: the engine mints the job's id (`D92-x4`: the next number and a random tail) and prints it on the `created deferred job` line; never pick a number. An id you give is any shape (`D92-x4`, `D12`, `D-m3xa`) and is refused when any deferred folder holds it.
-
-`--agenda <AID>` links the job to an agenda item (`A7-m3`); an id that names no item is refused.
-
-Deferred jobs are stored under `works/deferred/open/<DID>/` and never affect next-slice selection until promoted.
+Run `python3 scripts/workflow.py defer-job $ARGUMENTS` (`--title "…" --reason "…" --trigger "…" --source <slice>`, optionally `--agenda <AID>`). Leave out `--id`: the engine mints `D92-x4` and prints it. A deferred job never affects `next` until promoted.

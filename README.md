@@ -329,7 +329,7 @@ checkout에서 한꺼번에 실행합니다. 선언이 없는 phase는 지금처
 적어 — 그 job의 다음 라운드가 되고, 같은 캔버스의 새 버전으로 올라옵니다. **목업은 요청할 때만 만듭니다** — `Mockup: requested`로 정하거나
 말로 요청하면, 캔버스에 더해 프로젝트의 프런트엔드로 만든 임시 목업을 띄우고 한 번 더 멈춥니다.
 (디자인 방식은 `build-after` / `design-only` / `paired` 중에서 여러분이 고릅니다.)
-구현은 언제나 별도 slice에서 승인된 디자인을 그대로 따라 진행하고 실제 브라우저로 결과를 확인하며,
+구현은 언제나 별도 slice에서 승인된 디자인을 그대로 따라 진행하고 실제 브라우저(에이전트 자신의 `playwright-cli`)로 결과를 확인하며,
 구현이 끝난 캔버스는 phase 리뷰 때 삭제할지 여쭙니다. 디자인 도구는 `drafter` 하나뿐이며, 예전의
 `claude-design` 도구와 그 뷰어는 없어졌습니다. 예전 기록은 이력으로 남습니다: v47 카드 기록은
 `python3 scripts/workflow.py design-migrate --to 2`로 `schema1/` 아래로, v47 이전 Claude Design 구조는
@@ -376,10 +376,11 @@ checkout에서 한꺼번에 실행합니다. 선언이 없는 phase는 지금처
   꺼내기 전에는 작업 순서에 영향을 주지 않습니다.
 - **안건** (agenda item, `A7-m3` — 별도 번호로 엔진이 만듭니다) — 논의하거나 정할 거리를 내가 정한 순서로 모아 둔 목록입니다. 상태는 Open, Deferred, Solved, Dropped이고, Open 상태인 안건만 연결된 phase(`new-phase --agenda`)가 끝나지 않았을 때 In progress로 보입니다. 작업 순서에는 영향을 주지 않습니다.
 
-규칙 전체는 한 줄로 요약됩니다.
+규칙 문서([`CLAUDE.md`](payload/contract.md))는 한 화면입니다. 언제나 지키는 네 가지 불변식이 있습니다.
 
-> **Backlog routes. Slice folder explains. Result summarizes. Docs are versioned durable truth.**
-> 백로그가 순서를 정하고, slice 폴더가 맥락을 담고, result가 결과를 남기고, 문서는 버전으로 쌓인다.
+> 여러분의 말 없이는 아무것도 push, merge, 결제하지 않는다. 승인은 여러분이 한 말 그대로다. 여러분의 작업은 건드리지 않는다. 보고는 사실대로다.
+
+나머지는 이름으로 부를 수 있는 원칙("prove it works", "subtract before you add" 등)과, 남은 규칙마다 그것을 강제하는 엔진 거부·검사·테스트를 적은 표입니다. 일하는 순서는 스킬과 실행 에이전트 카드가 담습니다.
 
 ## 두 종류의 에이전트: 계획과 실행
 
@@ -405,8 +406,8 @@ slice가 실행될 때, 안에서는 에이전트 둘이 역할을 나눠 일합
 | `design` | Fable@high | `design-drafter` | 디자인 하위 에이전트의 라운드 초안(`executor-route --drafter --phase <P>`). slice 행이 아니며 `high` 행을 따르지 않음. phase의 `## Design Style`에 `Drafter: opus`가 있으면 그 phase만 Opus(effort는 이 행의 값)로 초안을 씀 |
 | `critic` | Opus@high | `design-critic` | 초안 라운드를 새 눈으로 평가하는 디자인 비평가(`executor-route --critic`). `design` 행과 같은 모델이어도 됨 |
 | `judge` | Opus@high | `design-critic` | 비평가가 확신하지 못한 항목만 판정하는 판정 모드(`executor-route --judge`, 별칭만). `design` 행과 같은 모델이어도 됨. Fable로 바꾼 경우 루프백 프록시에서는 건너뜀 |
-| `reader` | Opus@high | `pr-reader` | phase의 PR을 diff와 본문, 팀 규칙만 보고 새 눈으로 읽는 리더(`executor-route --reader`). slice 행이 아님 |
-| `code` | Opus@high | `code-reader` | 코드 변경을 워크스페이스 기록 없이 diff와 head의 파일만 보고 읽고, 의심 가는 점을 재현해 보는 리더(`executor-route --code`). phase 리뷰 전과 `/read-code`에서 씀. slice 행이 아님 |
+| `reader` | Opus@high | `pr-reader` | PR을 diff와 본문, 팀 규칙만 보고 새 눈으로 읽는 리더(`executor-route --reader`). 여러분이 요청하거나 PR 규칙이 있는 팀 repo에서만 씀. slice 행이 아님 |
+| `code` | Opus@high | `code-reader` | 코드 변경을 워크스페이스 기록 없이 diff와 head의 파일만 보고 읽고, 의심 가는 점을 재현해 보는 리더(`executor-route --code`). phase 리뷰의 실행자가 직접 부르고, `/read-code`에서도 씀. slice 행이 아님 |
 | `mid` | Opus@medium | `slice-executor` | 기본 — `risk: low`인 구현·수정(`fix`)·문서(`docs`)·QA slice. 실제 코드 작성과 여러 파일에 걸친 변경도 포함 |
 | `screen` | Opus@medium | `slice-executor` | loop phase의 첫 단계 cycle(charter의 `stages`). 기본값은 `mid`와 같고, `executors.toml`의 `[claude.screen]`으로 더 싸게 설정 가능 |
 | `explore` | Haiku@xhigh | `Explore` | 읽기 전용 조회(계획 조사, 실행자의 큰 읽기). slice 라우트는 아님 |
@@ -439,17 +440,13 @@ slice별로 계량해 나란히 보여 줍니다 — 라우트 표는 이 워크
 없습니다(문서·QA slice도 `mid`). 실행자는 큰 읽기 전용 조회를 `Explore`(Haiku)
 하위 에이전트에 맡길 수 있지만, `result.md`·`phase.md`·코드·검증·판정은 절대 맡기지 않습니다.
 
-## 문서 통합: docs phase
+## 문서: 바꾼 slice가 직접 고칩니다
 
-일반 slice는 일하는 도중에 문서 버전을 만들지 않습니다. 오래 남을 사실을 바꾼 slice는 `phase.md`의
-`## Doc impact` 목록에 한 줄 노트를 남기고, 리뷰는 그 목록이 빠짐없는지 확인할 뿐 문서를 통합하지
-않습니다. 통과한 phase에는 문서 통합 **빚**이 남고, 빚을 갚기 전까지는 보관(archive)되지 않습니다.
-`next`는 `consolidation_owed=<phases>`로 빚을 알려 주고, `python3 scripts/workflow.py docs`는
-노트보다 뒤처진 문서를 **STALE**로 표시합니다. 원할 때 "문서 통합해 줘"라고 하거나
-`/create-phase 문서 통합`을 입력하면, 에이전트가 `docs-debt`의 작업 목록으로 docs phase를 만들어
-문서마다 새 버전을 하나씩 추가하고 `docs-consolidated <P>`로 빚을 갚았다고 기록합니다.
-docs phase는 항상 기본 stream(`main`)에서 진행합니다. 자세한 내용은
-[English README](README.en.md#durable-docs-a-docs-phase-you-start)에 있습니다.
+문서에는 코드가 말해 주지 못하는 것만 담습니다. 어떤 문서를 사실과 다르게 만든 slice가
+`doc-new-version`으로 새 버전을 만들어 직접 고칩니다(기존 파일은 고치지 않음). 문서 버전은 기본
+stream에서만 만들 수 있으므로, worktree phase는 그 내용을 리뷰의 `result.md`에 적어 두었다가 merge할 때
+씁니다. 예전의 문서 통합(`## Doc impact` 노트와 그것을 갚던 docs phase)은 없어졌습니다. 자세한 내용은
+[English README](README.en.md#durable-docs-written-by-the-slice-that-changes-them)에 있습니다.
 
 ## 자주 쓰는 명령
 
@@ -462,9 +459,9 @@ Claude Code에서 `/이름`으로 입력합니다.
 | `do-whole-phase` | phase를 리뷰까지 끝까지 실행 |
 | `run-loop` | loop phase를 서명된 charter 아래에서 cycle 단위로 계속 실행 (`/loop /run-loop <P>`). 판단이 필요한 항목은 보류 목록에 두고 계속하며, charter가 정한 멈춤에서만 멈춤 |
 | `review-phase` | phase를 리뷰하고 `pass` / `changes_requested` / `blocked` 기록 |
-| `pr` | phase의 draft PR 본문을 쓰고 검사한 뒤(`pr-reader` 에이전트가 새 눈으로 먼저 읽음), 리뷰가 통과하면 draft PR을 엶(게이트가 있으면 GitHub에서 읽고 `accept`) |
+| `pr` | phase의 draft PR 본문을 쓰고 검사하고, 순서가 정해진 하나의 체크리스트(`reference/close.md`)로 phase를 닫음: 리뷰가 통과하면 draft PR을 열고 CI를 읽음(게이트가 있으면 GitHub에서 읽고 `accept`), 바뀐 것만 다시 읽기, Ready와 merge, worktree 통합, phase가 띄운 것 정리와 merge된 branch 삭제 |
 | `read-code` | phase 밖에서 만든 제품 변경을 push 전에 `code-reader`로 읽고 발견을 보고(기본 범위: HEAD에 더 가까운 분기점부터의 변경과 커밋 안 된 변경. 읽기 전에 base와 커밋을 보여 주고, 다른 작성자의 커밋이 있으면 물음) |
-| `parallel-phase` | 요청했을 때 phase를 자기 worktree에서 실행하고 로컬 merge로 다시 합치기 |
+| `parallel-phase` | 요청했을 때 phase를 자기 worktree에서 실행(시작, repo 추가, 상태 보기). 통합은 `pr` 스킬의 close 체크리스트대로 |
 | `executor-route` | 라우트 표와 dispatch 요약 확인; `/executor-route <slice_id>`로 한 slice의 dispatch 결정 확인 |
 | `retrofit` | 기존 저장소에 워크스페이스 추가 |
 | `update-workspace` | 설치된 워크스페이스의 시스템 파일만 최신으로 교체 |
@@ -497,16 +494,17 @@ phase입니다(한 phase 안에서는 DECOMP가 독립이라고 선언한 slice�
 그 커밋(최신 커밋)에서 시작합니다. `.claude/worktrees/`는 저장소의 `.git/info/exclude`에
 기록되므로 `main`에서 untracked로 보이지 않습니다(`.gitignore`는 건드리지 않습니다).
 
-`main`에 남기려고 따로 할 일은 없습니다 — 그게 기본값입니다. 문서 통합(docs) phase만은
-**worktree를 요청하지 마세요**: 문서 버전은 문서 전체를 복사하고 하나의 `docs/index.json`을 쓰기 때문에, 두 branch가 동시에
-버전을 만들면 갈라집니다. 그래서 `doc-new-version`은 기본 stream에서만 동작합니다. (v42에서 쓰던 `parallel-skip <P>`와 `new-phase --on-main`은 이제
+`main`에 남기려고 따로 할 일은 없습니다 — 그게 기본값입니다. 문서 버전은 문서 전체를 복사하고
+하나의 `docs/index.json`을 쓰기 때문에, 두 branch가 동시에 버전을 만들면 갈라집니다. 그래서
+`doc-new-version`은 기본 stream에서만 동작합니다. (v42에서 쓰던 `parallel-skip <P>`와 `new-phase --on-main`은 이제
 아무것도 하지 않는 no-op으로 남아 있습니다.)
 
-worktree에서 진행한 phase의 리뷰가 통과하면 에이전트가 통합까지 직접 진행합니다:
-`parallel-gate <P>`(조용한 시점인지 확인) → worktree에서 나와 `main`으로 → `git merge --no-ff`
-(로컬 merge) → `parallel-merge-finish` → 리뷰가 남긴 두 게이트 섹션의 문서 버전 →
-`parallel-teardown <P>`. phase마다 리뷰가 통과하면
-draft PR이 열리고, 여러분이 `accept`하면 close가 그 PR을 Ready로 바꿉니다(혼자 쓰는 repo는 그 repo의 landing 관례대로 merge까지 하고, 팀 repo의 merge는 팀 몫입니다), 그 PR을 GitHub에서 merge하는 것이 원격 변형입니다(push → PR → CI → merge). 나머지 문서 버전 작업은 평소처럼 나중에 docs phase에서 한 번에 처리합니다.
+worktree에서 진행한 phase의 리뷰가 통과하면 에이전트가 `pr` 스킬의 close 체크리스트대로 통합까지
+직접 진행합니다: `parallel-gate <P>`(조용한 시점인지 확인) → worktree에서 나와 `main`으로 → 로컬 merge
+→ `parallel-merge-finish` → 리뷰가 `result.md`에 남긴 게이트 섹션의 문서 버전 →
+`parallel-teardown <P>`. phase가 끝나기 전에 close는 그 phase가 띄운 서버와 컨테이너(볼륨까지)를
+멈추고, merge된 head branch를 로컬과 원격에서 지웁니다. phase마다 리뷰가 통과하면
+draft PR이 열리고, 여러분이 `accept`하면 close가 그 PR을 Ready로 바꿉니다(혼자 쓰는 repo는 그 repo의 landing 관례대로 merge까지 하고, 팀 repo의 merge는 팀 몫입니다), 그 PR을 GitHub에서 merge하는 것이 원격 변형입니다.
 어느 checkout에서든 `parallel-status`로 모든 stream의 진행 상황을 볼 수 있고, `works/backlog.md`의
 `## Streams` 표에는 기본 stream과 진행 중인 모든 worktree phase가 각자의 branch에서 바로 읽은
 상태로 나열됩니다(nested에서는 호스트 branch 열이 함께 나옵니다). 그 phase의 `## Active Phases`
@@ -540,7 +538,7 @@ branch를 통합한 뒤 직접 지우거나 `parallel-add-repo ... --adopt`로 �
 
 ## ⭐ 에이전트와 일하는 6가지 습관
 
-이 워크스페이스를 만든 이유이자, 규칙 문서([`CLAUDE.md`](payload/contract.md))가 강제하는 것들입니다.
+이 워크스페이스를 만든 이유입니다. 스킬이 그 순서를 담고, 규칙 문서([`CLAUDE.md`](payload/contract.md))의 표가 무엇이 각 규칙을 강제하는지 적습니다.
 
 1. **만들기 전에 나눕니다.** 모든 phase의 첫걸음은 코드가 아니라 일을 나누는 것입니다.
    나눌 수 없는 일은 아직 이해하지 못한 일입니다.

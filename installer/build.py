@@ -16,7 +16,7 @@ Source of truth:
     git would apply a nested .gitattributes, as this repo's own (the workspace that drives
     it is a private host in the folder above it):
       payload/scripts/workflow.py, payload/claude/skills/*/** (each skill's whole directory,
-      plus the SHARED_SKILL_FILES copies), the payload/claude
+      plus any SHARED_SKILL_FILES copies), the payload/claude
       subagents, payload/claude/settings.json, payload/executors.toml,
       payload/works/templates/*, payload/github/workflows/workspace-ci.yml,
       payload/gitattributes, and the payload/contract.md contract body (header
@@ -94,16 +94,11 @@ FIXED_LIVE_FILES = [
     ".gitattributes",
 ]
 
-# Skill reference files the do-* twins share. Each one has ONE source (the value, under
-# payload/claude/skills/do-whole-phase/reference/); the build emits a byte-identical copy at the
-# key, so every installed skill directory is self-contained. A key must not also exist as a
-# source file under payload/ (that would be a second copy to keep in step).
-SHARED_SKILL_FILES = {
-    ".claude/skills/do-next-slice/reference/dispatch.md": ".claude/skills/do-whole-phase/reference/dispatch.md",
-    ".claude/skills/do-next-slice/reference/explain-chapter.md": ".claude/skills/do-whole-phase/reference/explain-chapter.md",
-    ".claude/skills/do-next-slice/reference/explain-decomposition.md": ".claude/skills/do-whole-phase/reference/explain-decomposition.md",
-    ".claude/skills/do-next-slice/reference/explain-review.md": ".claude/skills/do-whole-phase/reference/explain-review.md",
-}
+# Skill reference files shared between skills: copy key -> its ONE source under payload/; the build
+# emits a byte-identical copy at the key. A key must not also exist as a source file under payload/.
+# Empty since lighter-rules: do-next-slice reads do-whole-phase's references by path, so no
+# reference ships twice.
+SHARED_SKILL_FILES: dict = {}
 
 CLAUDE_HDR = "# CLAUDE.md\n\n"
 

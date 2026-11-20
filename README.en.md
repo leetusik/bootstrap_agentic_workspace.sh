@@ -28,8 +28,9 @@ One shell script scaffolds a complete workspace: a compact agent **contract**, a
 
 `bootstrap_agentic_workspace.sh` is a single, dependency-light script that turns any empty
 directory into a structured home for agent-driven work. Inside, a coding agent doesn't just get a
-prompt and improvise — it works under a compact contract ([`CLAUDE.md`](payload/contract.md)) that says how to
-break work down, where to write things, and what "done" means.
+prompt and improvise — it works under a one-screen contract ([`CLAUDE.md`](payload/contract.md)) of four invariants and
+the rules the engine enforces, with short playbooks that say how to break work down, where to write
+things, and what "done" means.
 
 **The problem it solves.** Coding agents are capable but forgetful. Across a long task they lose
 context when the conversation compacts, redo work they already did, silently overwrite earlier
@@ -43,10 +44,9 @@ three sessions of the same agent) at one repo and you get three different conven
 - **Durable, shared memory** — a per-phase notebook plus append-only versioned docs carry what each
   step learned forward to the next, so knowledge survives compaction and hand-offs between sessions.
 - **Review gates** — work isn't "done" until a phase review (run by the executor in a fresh,
-  isolated context that never edits source) checks it against the phase's objective and verifies
-  its list of doc changes; the docs themselves are consolidated later, in a
-  [docs phase you start](#durable-docs-a-docs-phase-you-start). A verdict short of `pass` stops
-  there and hands its findings back.
+  isolated context that never edits source) checks it against the phase's objective and runs the
+  walkthrough the phase was cut against. A verdict short of `pass` stops there and hands its
+  findings back.
 
 **One command surface.** The workflows ship as native Claude Code skills, and the exact same
 operations are always reachable as plain `python3 scripts/workflow.py …` commands — so anything that
@@ -215,7 +215,7 @@ under `workflow/` instead and the skills and agents untracked in the host's `.cl
 
 - [`CLAUDE.md`](payload/contract.md) — the compact routing contract every agent session works under.
 - [`scripts/workflow.py`](payload/scripts/workflow.py) — the one manager that drives all state.
-- `.claude/` — the 21 Agent Skills (`/slash` commands), the risk-routed `slice-executor` subagent (`.claude/agents/slice-executor.md`, one file dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied to the agent files by `sync-agents`), the `design-drafter` design subagent (on its own `design` row, opus @ high), the `design-critic` that judges each draft (the `critic` row, opus @ high; in judge mode the `judge` row, opus @ high), the `pr-reader` that reads each phase's draft PR with fresh eyes (the `reader` row, opus @ high), the `code-reader` that reads a code change blind, from the diff and the files at head alone, before each phase review and in `/read-code` (the `code` row, opus @ high), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script.
+- `.claude/` — the 21 Agent Skills (`/slash` commands), the `slice-executor` subagent (`.claude/agents/slice-executor.md`, a short card that points each slice at the playbook for its kind of work in `.claude/skills/do-whole-phase/playbooks/`, dispatched on the model and effort the engine's route table resolves per slice — `executor-route` — with per-row overrides in `executors.toml` applied by `sync-agents`), the `design-drafter` design subagent (on its own `design` row), the `design-critic` that judges each draft (the `critic` row; in judge mode the `judge` row), the `code-reader` that reads a phase's code change blind, from the diff and the files at head alone, dispatched by the review's own executor and by `/read-code` (the `code` row), the `pr-reader` that reads a draft PR with fresh eyes only when you ask, or for a team repo with PR rules (the `reader` row), the read-only `Explore` lookup agent on Haiku, and a `settings.json` that pre-approves the workflow script, `playwright-cli` and the close's cleanup commands (`docker rm -fv`, `docker volume rm`, `lsof -ti`, `kill`, `git branch -d`, `git push origin --delete`).
 - `docs/` — a versioned, fullstack documentation set (11 categories) with generated
   `current/` snapshots.
 - `works/` — the state machine, starting with **no phases**: a `deferred/` area, an `agenda/` area,
@@ -317,7 +317,7 @@ file is left byte for byte as it was.
 3. `/do-whole-phase`. **Two commits per slice**: product code goes to the host in its own
    convention, with no phase or slice IDs in the message, and the workflow state goes to
    `workflow/` in this workspace's convention.
-4. `/review-phase`. `phase-scope` reads the **host** diff from the recorded base, never `workflow/`. The review first takes the `code-reader` agent's blind read of that diff (no workspace records) and rules on each finding.
+4. `/review-phase`. `phase-scope` reads the **host** diff from the recorded base, never `workflow/`. The review's executor dispatches the `code-reader` agent's blind read of that diff (no workspace records) and rules on each finding.
 5. When the review passes, the `pr` skill opens the phase's draft PR, with no stop and no word to say; on a gated phase you read the draft on GitHub and one `accept` clears the gate and closes the PR: Ready, then the merge in a repo that is yours alone (a team repo's merge stays the team's). It carries only product commits: no workflow paths and no
    phase or slice IDs.
 6. A change request after the phase is done (the team's review, or your own) reopens the same
@@ -444,7 +444,7 @@ approval — including comments you send to Claude and edits you make in the can
 word — becomes the next round of that job, a new version of the same canvas. If you want to see it running inside your product first, ask
 for a mockup: the agent builds a throwaway, stubbed route in the project's own frontend and stops
 again. Implementation is always a separate slice that follows the signed design faithfully and checks
-the running result in a real browser; built canvases are offered for deletion at the phase review.
+the running result in a real browser (the agent's own `playwright-cli`); built canvases are offered for deletion at the phase review.
 The `drafter` is the only design tool; the earlier `claude-design` tool and its viewer are retired.
 Older records stay readable as history: a v47 card record moves under `schema1/` with
 `python3 scripts/workflow.py design-migrate --to 2`, and a pre-v47 Claude Design layout under
@@ -467,9 +467,11 @@ Everything is organized as **phases** made of **slices**, driven by one script.
   changes what runs next until you explicitly promote it.
 - **Agenda item** (`A7-m3`, minted on its own sequence) — something you want to discuss or decide, kept in your own order: Open, Deferred, Solved or Dropped; an Open item reads In progress while a phase linked to it (`new-phase --agenda`) is not done. It never changes what runs next.
 
-The contract boils down to one line:
+The contract ([`CLAUDE.md`](payload/contract.md)) fits one screen. Four invariants always hold:
 
-> **Backlog routes. Slice folder explains. Result summarizes. Docs are versioned durable truth.**
+> Nothing is pushed, merged or paid for without your word. A sign-off is your literal words. Your own work is never touched. Reports are truthful.
+
+The rest is a few principles you can steer with by name ("prove it works", "subtract before you add", …) and a table of the rules that stay, each beside the engine refusal, check or test that enforces it. How the work usually goes lives in the skills and the executor card.
 
 ### One manager
 
@@ -486,9 +488,7 @@ another agent, CI — drives the workspace with the exact same commands:
 | `review-phase 46 --verdict pass` | Record a phase review |
 | `accept-gate 46 --require` / `--open --walkthrough …` / `--clear` | Declare, open, and clear a phase's operator acceptance gate |
 | `docs` | List each doc's latest version with its last-updated marker, flagging **STALE** docs |
-| `doc-new-version --doc backend --summary … --source P46-k2.REVIEW` | Cut a new durable doc version, named by its UTC minute (in a docs phase) |
-| `docs-debt` | Print a docs phase's worklist: the phases that owe consolidation, their notes, the docs they touch |
-| `docs-consolidated 46` | Record that a phase's doc debt is paid |
+| `doc-new-version --doc product --summary … --source P46-k2.S2` | Cut a new durable doc version, named by its UTC minute (by the slice whose change the code cannot say) |
 | `defer-job --title … --reason … --trigger …` | Park a deferred job; the engine mints its id, e.g. `D92-x4` |
 | `agenda` / `agenda-add --title …` / `agenda-solve A7 …` | List the agenda, add an item (the engine mints its id, e.g. `A7-m3`), or move items through their statuses (`agenda-edit`, `-move`, `-defer`, `-drop`, `-reopen`, `-delete`, `-link`, `-unlink`) |
 | `promote-deferred 92 --phase 46 --slice S2` | Promote a deferred job into a slice (`--create-phase` without `--phase` mints the phase) |
@@ -524,16 +524,16 @@ commands in Claude Code:
 | `do-whole-phase` | Finish the active phase end-to-end, including its review |
 | `run-loop` | Drive a loop phase's bounded cycles under its signed charter (`/loop /run-loop <P>`, one tick per wake): items that need you are parked and the loop goes on; only the charter's stops halt it |
 | `review-phase` | Review a phase and record a `pass` / `changes_requested` / `blocked` verdict |
-| `pr` | Write and check a phase's draft PR bodies (read first with fresh eyes by the `pr-reader` agent), and open the drafts when the review passes (on a gated phase you read them on GitHub, then `accept`) |
+| `pr` | Write and check a phase's draft PR bodies, and close the phase by one ordered checklist (`reference/close.md`): open the drafts when the review passes and read their CI (on a gated phase you read them on GitHub, then `accept`), re-read only what changed, Ready and the landing, a worktree's integration, then clean up what the phase started and its merged branches |
 | `read-code` | Blind-read a product change made outside a phase before it is pushed: dispatch the `code-reader` on the range the skill's step 1 resolves, or a named one, and report its findings |
-| `parallel-phase` | Run a phase in its own branch + worktree when you ask for one, and integrate it back: quiet-point gate, local merge by default, the review's gate sections, teardown |
+| `parallel-phase` | Run a phase in its own branch + worktree when you ask for one: start it, add a repo, see every stream; it integrates back by the `pr` skill's close checklist |
 | `doc-new-version` | Create a new versioned durable doc instead of patching the current one |
 | `defer-job` | Park work as a deferred job, outside active selection |
 | `deferred` | Rebuild and show the deferred-jobs dashboard |
 | `promote-deferred` | Promote a deferred job into an active phase or slice |
 | `agenda` | Show the agenda, or run one agenda command (`/agenda add …`, `/agenda solve A7`) |
-| `archive-phase` | Archive review-passed phases whose doc debt is paid (normally batched via `archive-all`) |
-| `rotate-backlog` | One invocation cleans up every done phase: it archives the clean ones at once, pays all the doc debt by resuming, widening or creating the docs phase and running it (the invocation is the yes; `gate` restores the approval loop), goes around parked work, and archives every paid phase; it stops only for running work or for uncommitted edits beside parked work; `archive-only` keeps the plain archive-and-report sweep |
+| `archive-phase` | Archive review-passed phases (normally batched via `archive-all`) |
+| `rotate-backlog` | Sync the open PRs, then archive every done phase that owes nothing and report the rest; it creates and runs no phase |
 | `rebuild-workflow` | Rebuild generated dashboards, indexes, and doc snapshots, then validate |
 | `executor-route` | Show the route table and the dispatch summary, or one slice's dispatch decision (`/executor-route 46.S2`) |
 | `commit` | Group pending changes into focused conventional commits |
@@ -566,9 +566,9 @@ The orchestrator delegates the heavy lifting to a **`slice-executor`** subagent,
 picked by each slice's risk. The mid row is the default (since v46):
 implementation, `fix`, `docs` and `qa` slices rated `risk: low`, real code writing and multi-file
 changes included. The high row takes decomposition, `research`, the phase review (which it
-runs in a fresh context that never edits source, validating the phase and — only on a pass —
-verifying its doc-impact list and writing its two gate sections, leaving the docs themselves to a
-docs phase; a `changes_requested` or `blocked` verdict stops there and hands the findings back), a
+runs in a fresh context that never edits source, validating the phase, running its walkthrough
+and — only on a pass — updating the two gate sections the phase made untrue; a `changes_requested`
+or `blocked` verdict stops there and hands the findings back), a
 slice rated `risk: high` for a named trigger (open design, a core invariant, an unlocated root
 cause, a wide blast radius), and every second attempt after mid. Risk is two values, `low` and `high`, defaulting to `high` — only an exact `low` routes down, so an
 unset or unrecognized value always lands on the high row, and the decomposition rates every
@@ -579,7 +579,7 @@ slice), and a review finding against mid-row work gets a `high` fix slice — so
 the mid row's lower effort while the high row takes what is genuinely hard or has already failed once. Model and effort come from one engine-owned **route table**, resolved per slice at dispatch time:
 `high` (opus @ high — review, decomposition, the mockup span, any risk but `low`, every second
 attempt), `research` (opus @ high), `mid` (opus @ medium — implementation, fix, docs and qa rated `low`), `screen` (a loop phase's first-stage cycles; the mid row's values unless `[claude.screen]` sets it cheaper) and
-`explore` (haiku @ xhigh, the read-only `Explore` lookup agent; no slice runs on haiku since v83). Three rows serve design, never a slice: `design` (fable @ high, `design-drafter`), `critic` (opus @ high, `design-critic`) and `judge` (opus @ high, alias only, the same critic file in judge mode); the critic and the judge may share the drafter's model. Two more serve no slice: `reader` (opus @ high, `pr-reader`) reads a phase's draft PR, and `code` (opus @ high, `code-reader`, `executor-route --code`) reads a code change blind before each phase review and in `/read-code`. The repo-root
+`explore` (haiku @ xhigh, the read-only `Explore` lookup agent; no slice runs on haiku since v83). Three rows serve design, never a slice: `design` (fable @ high, `design-drafter`), `critic` (opus @ high, `design-critic`) and `judge` (opus @ high, alias only, the same critic file in judge mode); the critic and the judge may share the drafter's model. Two more serve no slice: `reader` (opus @ high, `pr-reader`) reads a draft PR only when you ask, or for a team repo with PR rules, and `code` (opus @ high, `code-reader`, `executor-route --code`) reads a code change blind, dispatched by the review's own executor and by `/read-code`. The repo-root
 `executors.toml` overrides rows one by one (`[claude.<row>]`, seed-once — updates never overwrite it),
 applied to the agent files with `python3 scripts/workflow.py sync-agents`; the presets are gone, and a
 leftover `mode = "…"` line is refused with the migration step. `python3 scripts/workflow.py
@@ -604,20 +604,13 @@ When an agent picks up work, it reads just in time, in this order — and no fur
 
 Archived phases and old doc versions are history; they're not read by default.
 
-### Durable docs: a docs phase you start
+### Durable docs: written by the slice that changes them
 
-Ordinary slices don't version docs as they go. A slice that changes durable truth leaves a one-line
-note on its phase's `## Doc impact` list, and a passing review only **verifies** that list — beyond
-its two gate sections (`## Regression Checklist`, `## Operator Runtime`) it writes no doc. The phase
-then **owes** consolidation: it stays in `works/phases/active/` and can't be archived until the debt is
-paid. The debt is visible — `next` prints `consolidation_owed=<phases>`, `validate` warns
-(`consolidation_owed=`, `stale_docs=`, any doc section past 10 KB) and still exits 0, and
-`workflow.py docs` shows each doc's last-updated marker (date, source, commit) and flags a doc an
-owed note has outrun as **STALE**. When you choose, say *"consolidate the docs"*
-(`/create-phase consolidate the docs`): the agent scopes the phase from `docs-debt`, cuts one slice
-per doc so each doc gets exactly one new version, and records `docs-consolidated <P>` for every
-phase it pays. A docs phase always runs on the default stream,
-[never in a worktree](#phase-worktrees-on-request).
+The docs hold only what the code cannot say. A slice whose change makes one of them untrue updates
+it itself, with `doc-new-version` (a new version, never an edit in place), on the default stream; a
+phase in its own worktree records the text in its review's `result.md` and writes it at the merge.
+`workflow.py docs` shows each doc's last-updated marker (date, source, commit). Doc consolidation
+— the `## Doc impact` notes and the docs phase that paid them — is retired.
 
 ### Phase worktrees (on request)
 
@@ -647,8 +640,7 @@ and the worktree starts from that commit. `.claude/worktrees/` is written to the
 What still refuses: a phase that is not `planned` or is already stamped, a merge or rebase in
 progress, a taken branch or path.
 
-**Staying on `main` takes nothing** — it is the default. The one thing to know: **never ask for a
-worktree on a docs phase**, because `doc-new-version` and `docs-consolidated` only work on the
+**Staying on `main` takes nothing** — it is the default. `doc-new-version` runs only on the
 default stream (a doc version copies the doc's whole body and writes the one shared
 `docs/index.json`, so two branches versioning at once would fork it). `parallel-skip <P>` and `new-phase
 --on-main`, which pinned a phase back when v42 made the worktree the default, are now no-ops kept
@@ -680,17 +672,17 @@ worktree that it did not stamp, even with `--discard-ignored`: remove it by hand
 its branch, or adopt it with `parallel-add-repo ... --adopt`. The workspace never fetches, pushes
 or merges into any repo's default branch; each repo's draft PR opens when the review passes.
 
-**Integrating back.** Once the branch review passes, the agent runs the integration itself:
-`parallel-gate <P>` checks the quiet point (the branch's phase done + `main` between phases), then it
-exits the worktree and, on `main`, runs `git merge --no-ff phase/P<N>-<slug>` — a **local merge**
-— followed by `parallel-merge-finish` (regenerates the shared dashboards), the doc versions for the
-two gate sections the branch review recorded, and `parallel-teardown <P>`, which retires the
-worktree and branch. Everything else on the phase's "Doc impact" list waits for a docs phase, as on
-`main`. **Every phase opens a draft PR when its review passes**, and your `accept` closes it (Ready, then a solo repo's merge by its landing custom; a team repo's merge is the team's) — merging it on GitHub
-(push → PR → CI → merge) is the remote variant, and
-CI (`.github/workflows/workspace-ci.yml`) runs `validate` on every push and PR plus a
-`parallel-gate` check on `phase/*` pull requests for it. A closed gate stops the sequence with a
-report instead of merging.
+**Integrating back.** Once the branch review passes, the agent runs the integration itself, by the
+`pr` skill's close checklist: `parallel-gate <P>` checks the quiet point (the branch's phase done +
+`main` between phases), then it exits the worktree and, on `main`, makes a **local merge**, runs
+`parallel-merge-finish` (regenerates the shared dashboards), writes the gate sections the branch
+review recorded in its `result.md`, and runs `parallel-teardown <P>`. **Every phase opens a draft PR
+when its review passes**, and your `accept` closes it (Ready, then a solo repo's merge by its landing custom; a team repo's merge is the team's) — merging it on GitHub
+is the remote variant. CI (`.github/workflows/workspace-ci.yml`) runs `validate` on each pull request
+and each push to the default branch, plus a `parallel-gate` check on `phase/*` pull requests. A
+closed gate stops the sequence with a report instead of merging. Before the phase finishes, the close
+also stops what the phase started (its servers, its containers with their volumes) and deletes its
+merged head branches, local and remote.
 
 See the [`parallel-phase`](payload/claude/skills/parallel-phase/SKILL.md) skill (`/parallel-phase`) for the
 eight worktree rules and the full lifecycle, and `python3 scripts/workflow.py --help` for the command reference.
@@ -702,7 +694,7 @@ parallelism it never used. The mechanism itself is unchanged.)
 
 ```
 .
-├── CLAUDE.md                      # the compact routing contract (~12 KB)
+├── CLAUDE.md                      # the contract on one screen (~4 KB)
 ├── bootstrap_agentic_workspace.sh # the scaffolding script (self-contained)
 ├── scripts/
 │   └── workflow.py                # the one manager that drives all state
@@ -731,7 +723,7 @@ parallelism it never used. The mechanism itself is unchanged.)
 
 I don't hand an agent a vague task and hope. The whole reason this workspace exists is to force a
 few habits that make agents reliable on long, real work — not just impressive in a demo. These are
-the ones I lean on; the [contract in `CLAUDE.md`](payload/contract.md) is how they're actually enforced.
+the ones I lean on; the skills carry them, and the rule table in the [contract in `CLAUDE.md`](payload/contract.md) names what enforces each rule.
 
 1. **Decompose before you build.** The first move on any phase is a decomposition slice, not code.
    I make the agent break the work into small, ordered slices and write the plan down — planning is
@@ -740,8 +732,8 @@ the ones I lean on; the [contract in `CLAUDE.md`](payload/contract.md) is how th
 2. **Give agents durable, shared memory.** Conversations compact and agents forget, so I never keep
    important context only in the chat. Every phase has a notebook (`phase.md`) that each slice reads
    on the way in and rewrites — under a size budget — on the way out, so it stays the *state* of the
-   phase rather than its log; the log is each slice's own `result.md`, and decisions land in
-   versioned docs when I consolidate them in a docs phase. The next slice — or the next *session* —
+   phase rather than its log; the log is each slice's own `result.md`, and what the code cannot
+   say lands in versioned docs, written by the slice that changed it. The next slice — or the next *session* —
    starts from what the last one learned.
 
 3. **Make every slice prove itself.** A slice writes its `plan.md` before it touches anything and a
@@ -750,7 +742,7 @@ the ones I lean on; the [contract in `CLAUDE.md`](payload/contract.md) is how th
    do" is.
 
 4. **Version decisions; never overwrite them.** Docs are append-only versions, not files you edit in
-   place — each new version records its source (the phase reviews whose notes it consolidates) and
+   place — each new version records its source (the slice that wrote it) and
    the commit it was cut at. So the history of *what we decided and why* is always recoverable, and
    the generated snapshots stay read-only on purpose.
 
@@ -809,9 +801,8 @@ installed copies; see the root [`CLAUDE.md`](CLAUDE.md)).
    On a phase that changes what you can see, the review stops one step earlier: it ends with the
    phase `pending` and a concrete walkthrough, and the pass is recorded only after you have walked
    the running product yourself and cleared the gate (`accept-gate 46 --clear`).
-4. Consolidate the docs when you choose: a passing phase leaves its doc changes as notes it owes,
-   and a docs phase you start — *"consolidate the docs"* — versions each touched doc once and pays
-   the debt (see [Durable docs](#durable-docs-a-docs-phase-you-start)).
+4. Accept it: your `accept` closes the phase — its draft PR goes Ready (and merges in a solo repo),
+   and what the phase started is stopped and its merged branches deleted.
 
 A few house rules:
 
@@ -830,7 +821,7 @@ A few house rules:
   your own install the `.claude/skills`, `.claude/agents` and `workflow/` are installed copies
   too: never edit them; see the root [`CLAUDE.md`](CLAUDE.md) for the dev loop.
 - **Never hand-edit `docs/current/*.md`** (they're generated) and never patch old files under
-  `docs/versions/`. Create a new version with `doc-new-version` instead, in a docs phase.
+  `docs/versions/`. Create a new version with `doc-new-version` instead.
 
 The contract in [`CLAUDE.md`](payload/contract.md) (installed as `CLAUDE.md`) is the source of truth; this README only points at it.
 

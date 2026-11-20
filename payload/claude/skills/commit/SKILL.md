@@ -7,15 +7,15 @@ disable-model-invocation: true
 
 # commit
 
-Inspect pending changes, group them by logical topic, and create one focused commit per group using `type(scope): summary` (imperative, no trailing period).
+Inspect pending changes, group them by topic, and make one focused commit per group.
+
+**The convention:** `type(scope): summary`, imperative, no trailing period; the types are `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `build`, `perf`, `revert`. A phase branch merges as `merge(P<N>): <phase name>`. Attribute each commit to the model that did the work: `Co-Authored-By: <its name> <noreply@anthropic.com>`, never another session's trailer.
 
 Never push, force-push, use `git add -A`, or skip hooks unless explicitly asked. A phase's pushes are the `pr` skill's, never this skill's: the draft opening when its review passes, the close's solo landing, and a fix round's or a stack merge's push to an open PR's branch.
 
-**Product files committed outside a phase** (no slice is active): end the report with a line saying they have not been read, and that `/read-code` reads them before a push. This skill still never pushes and dispatches nothing.
+**Product files committed outside a phase** (no slice is active): end the report with a line saying they have not been read, and that `/read-code` reads them before a push.
 
-**Nested personal install** (`workflow/.agentic-nested.json` exists). The host and `workflow/` are two separate git repos, so a slice is two commits:
-- product changes go to the host, on the phase's branch (`pr-branch`, recorded at `DECOMP`'s end; before that, or outside a phase, the current branch), in the host's conventions (commits, branches and pull requests) that `python3 scripts/workflow.py nested-convention` prints. Add Claude `Co-Authored-By` trailers only when it says `allowed`, and put no phase or slice IDs, `workflow/` paths or workspace files in the message;
-- state changes go to the nested repo with `git -C workflow ...`, in this workspace's convention. In a linked checkout (`next` prints `store=cloud`), skip this commit: hi2vi's revisions are the workflow's history. Product commits are unchanged. In a linked checkout, a done slice whose commit waits is one `next` lists in `commits_waiting=`; run `mark-committed <slice>` after its product commit (with no product change, right after its finish).
-- never stage `workflow/`, `CLAUDE.local.md` or the workspace's `.claude/` files into the host.
-
-**Multi-repo host** (`python3 scripts/workflow.py nested-repos` lists repos). The host folder tracks nothing and gets no product commit (only the installer's empty first commit); "this repo" in any rule means the repo the change lives in. Run `git -C <repo> status --porcelain` for every listed repo and make one product commit in each repo that changed, with `git -C <repo> ...`, on the phase's branch there (`pr-branch --repo <name>`), in that repo's own conventions for commits, branches and pull requests (`python3 scripts/workflow.py nested-convention --repo <name>`). Add Claude `Co-Authored-By` trailers only where that repo's convention says `allowed`, and put no phase or slice IDs, `workflow/` paths or workspace files in any message. Then the state commit: `git -C workflow ...`, as above. Never stage `workflow/`, `CLAUDE.local.md` or the workspace's `.claude/` files into any repo.
+**A nested host** (`workflow/.agentic-nested.json` exists): commit the product repo first, then the workflow state.
+- product changes go to their repo on the phase's branch (`pr-branch`; before `DECOMP`'s end or outside a phase, the current branch), in that repo's conventions (`python3 scripts/workflow.py nested-convention [--repo <name>]`): `Co-Authored-By` only where it says `allowed`, and no phase or slice IDs, `workflow/` paths or workspace files in the message. On a multi-repo host (`nested-repos` lists repos) the host folder gets no commit: check `git -C <repo> status --porcelain` for each repo and commit each one that changed with `git -C <repo> …`;
+- state changes go to `git -C workflow …`, in the convention above. In a linked checkout (`next` prints `store=cloud`), skip this commit: hi2vi's revisions are the workflow's history. Product commits are unchanged. In a linked checkout, a done slice whose commit waits is one `next` lists in `commits_waiting=`; run `mark-committed <slice>` after its product commit (with no product change, right after its finish).
+- never stage `workflow/`, `CLAUDE.local.md` or the workspace's `.claude/` files into any repo.

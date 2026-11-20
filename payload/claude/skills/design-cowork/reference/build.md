@@ -51,73 +51,51 @@ bug classes live in the gap: dev-only behaviour (StrictMode double-effects, Fast
 wipe in-progress typing) and access-path differences (a LAN or tunnel origin, a small viewport
 rendering a different product). Verify at **every viewport the manifest names**. If the section is
 **absent, or still carries its `UNFILLED` marker**, the slice returns `needs_operator` (the
-orchestrator sets it `pending`). Never assume localhost, the production build or headless.
+orchestrator sets it `pending`). Never assume localhost or the production build.
 
-**With what — the instrument.** Drive that browser with **Claude in Chrome**, the workspace's
-default instrument for every check in this section, **in place of a pre-written assertion suite**.
-Its tools are `mcp__claude-in-chrome__*` (navigate, read the page, find, click and type through
-`computer` and `form_input`, run page JS, read the console and network, resize, screenshot), and the
-executor **picks each next action itself**. `slice-executor` lists the wildcard last in its `tools:`,
-so whoever runs a check (that executor, or the main thread, which inherits every tool the session
-has) can drive it; `design-drafter`, `design-critic` and `Explore` carry none (`design-preview` is a
-headless render self-check, not verification). **Nothing ships, nothing registers in settings:** a
-project cannot enable Chrome, and the extension owns site permissions.
+**With what — the instrument.** Drive that browser with **`playwright-cli`** (`@playwright/cli`),
+the agent's own browser driven from Bash, for every check in this section, **in place of a
+pre-written assertion suite**. It runs headless on a throwaway profile (the machine's Chrome by
+default, or the Chrome for Testing it installs), never the operator's profile, so an agent can never
+read their mail, spend from saved cards or authenticate as them. The executor **picks each next
+action itself**: `open <url>`, `snapshot` (an accessibility tree with `e<n>` refs, written to a file;
+read only what you need, or `find "<text>"`), `click e5`, `fill e4 "text"`, `press`, `resize`,
+`screenshot --filename=<abs path>`, `console`, `close`. `design-drafter`, `design-critic` and
+`Explore` drive no browser (`design-preview` is a headless render self-check, not verification).
 
-**Setup (the operator, once).**
+**The browser is never a blocker: the agent runs it whole.** No operator step and no permission
+prompt for any of it (the shipped settings allow `Bash(playwright-cli:*)` and exactly the pinned
+install, `Bash(npm install -g @playwright/cli@0.1.25)` and `Bash(npm i -g @playwright/cli@0.1.25)`;
+another version or a second package on the same line asks):
 
-- **Chrome on in the session:** start with `claude --chrome`, or run `/chrome` and pick "Enabled by
-  default". It needs a direct Anthropic plan signed in with `/login` (no API key, `setup-token`,
-  Bedrock, Vertex or Foundry), a visible Chrome window (no headless), and not WSL.
-- **A separate Chrome profile for the agent**, signed into **none** of the operator's accounts
-  (mail, banking, Google), with the Claude in Chrome extension installed and signed in to the
-  **same claude.ai account and organization** as Claude Code (the connection requires it), its site
-  permissions allowing the manifest's origin(s).
-- **Record its `deviceId`** in `## Operator Runtime` as `Agent's Chrome deviceId:`. Never a name:
-  `list_connected_browsers` hides the names you give and labels browsers by position ("Browser 1",
-  "Browser 2"), a label can move to another browser between connections, and the `deviceId` stays.
-  To read it, connect **only** the agent profile (close the other profiles' Chrome windows for the
-  moment), ask Claude in a Chrome-on Claude Code session to call `list_connected_browsers`, and copy
-  the one entry's `deviceId`. Reinstalling the extension or signing it out gives the profile a new
-  id: the run then halts (below) until you record the new one.
+- **Missing CLI:** `npm install -g @playwright/cli@0.1.25`, typed exactly so.
+- **No browser found** (the error names `install-browser`): `playwright-cli install-browser
+  chrome-for-testing` (about 100 MB, once per machine).
+- **Stuck or stale:** `playwright-cli kill-all`, then open again. Close what you opened when done
+  (`close`; `list` then prints `(no browsers)`). Use a named session (`-s=<name>`) when another run
+  may share the machine, and never `kill-all` or `close-all` while another agent's session runs.
+- **A saved sign-in:** the operator signs in once and saves it (`playwright-cli state-save <file>`,
+  the file's path in `## Operator Runtime`'s `Saved sign-in:`); the agent `open`s, `state-load`s that
+  file, then `goto`s the page. It also spares a login rate limit.
 
-**Whose browser — the agent's profile, selected first, on every run.** With one browser connected
-the tools act on it unasked, and that one may be the operator's, where an agent could read their
-mail, spend from saved cards and authenticate as them. So **before any other browser tool**:
+Only what the agent cannot have stops a run: a credential, a sign-in, a paid account. That is
+**`needs_operator`** (the orchestrator sets the slice `pending`), naming exactly what is missing. It
+is not the runtime halt: the runtime halt fires on an absent or `UNFILLED` manifest.
 
-1. `list_connected_browsers` (it returns `deviceId`, `name`, `osPlatform`, `connectedAt`, `isLocal`,
-   `inUse` for every browser on this claude.ai account);
-2. find the entry whose `deviceId` equals the recorded `Agent's Chrome deviceId:`. Never match on
-   `name`: it is a position label that another browser, the operator's included, can hold next time;
-3. `select_browser` with that `deviceId`. The choice holds for the session even when another browser
-   connects. Never pick a browser by guess, never act before selecting. The tool's own description
-   says to ask the user when several browsers are connected: the recorded `deviceId` **is** the
-   operator's answer, given ahead of time in the manifest, so selecting it is not a pick.
-
-**The halt.** No Chrome tools in the session, no recorded `deviceId`, or no connected browser with
-that `deviceId` returns **`needs_operator`** (the orchestrator sets the slice `pending`), naming the
-fix: Chrome enabled in the session (`/chrome` → "Enabled by default", or `claude --chrome`), the
-agent's profile connected, or its `deviceId` re-recorded after an extension reinstall or sign-out.
-Never fall back to a label, never borrow another connected browser, and never create a profile on
-the operator's behalf. That is a **third** halt condition and it is not the runtime one: the
-runtime halt fires on an absent or `UNFILLED` manifest. A manifest that still names an older
-instrument counts as unfilled here, so the first real-browser slice stops once to ask for the
-`deviceId`.
+**How to call it.** Call it plainly — `playwright-cli <command>`, no leading environment variable,
+no `cd … &&` chain and no pipe into another tool — so the allow rule matches (Claude Code's permission rules, read 2026-11-20:
+an allow rule matches no command past an unknown leading variable assignment, and every part of a
+compound command must be allowed on its own). Output files (snapshots, logs, default screenshots) go
+to `.playwright-cli/` in the current directory: keep them out of product trees (run from a scratch
+or evidence folder, or set `outputDir` in a `.playwright/cli.config.json` there). Every command
+echoes what it ran, filled text included: send a password's `fill` output to `/dev/null`.
 
 **Why the executor drives, and not a pre-written suite.** What the doctrine rejects is **deciding
 every check in advance**. "Type into it and wait", "watch a timer tick", "the browser defaults the
 record never drew" pass only when something looks at the page and chooses the next action (the qa
 doc's *Verification doctrine* has the story).
 
-**The fallback — chosen by the manifest, never by the agent mid-run; the doctrine's demands bind,
-the instrument does not.** `## Operator Runtime`'s `Browser instrument for the agent:` names Claude
-in Chrome (a blank field means it) or, where the platform rules Chrome out (WSL, CI, a
-Bedrock/Vertex/Foundry or API-key session), another real browser: the agent drives it step by step
-from Bash on a throwaway profile (e.g. the project's own Playwright), picking each next action, never
-a pre-written suite. Same sweep, same viewports, same manifest runtime, and never a profile signed
-into the operator's accounts, whichever browser it is. **Chrome missing from a session whose manifest
-names it is the halt above, never a silent fallback**: a fallback picked mid-run would hide a
-misconfigured session. Name the instrument you used in `result.md`, and never report a browser run
-you did not make.
+Name the instrument you used in `result.md`, and never report a browser run you did not make.
 
 **Re-run the lines inside the boundary.** A fidelity slice re-runs the `## Regression Checklist`
 lines inside its phase's boundary: this phase's surfaces plus every earlier line whose surface a file
@@ -155,6 +133,6 @@ slice, never something to argue away with the record.
 
 - Verify only against the record, or only in whichever runtime is convenient. The manifest's runtime
   is mandatory **everywhere, a requested mockup included**; the functional sweep is mandatory on
-  every slice that ships real wiring; **Claude in Chrome** is the instrument, on the agent's own
-  profile selected first, and a manifest that names another real browser owes the same checks there.
+  every slice that ships real wiring; **`playwright-cli`** is the instrument, the agent's own
+  browser, never the operator's.
 - Fix a design gap silently, or "improve" it: catalogue it on `## Operator Questions`.

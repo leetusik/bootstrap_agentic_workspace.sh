@@ -7,28 +7,10 @@ disable-model-invocation: true
 
 # archive-phase
 
-Archiving is **manual and explicit** — never automatic. A passing review marks a phase `done` but leaves it in `active/`; the **operator** decides when to archive (invoking this skill is that decision — never archive unasked). Archive whole phases only, never individual slices. Three first-class options:
+Archiving is manual: a pass leaves a phase `done` in `active/`, and invoking this skill is the operator's decision to move it. Whole phases only.
 
-**Archive everything — end-of-batch sweep.** When every active phase is done (the last review slice across all phases is complete), sweep them all to archived at once:
+- **Everything done:** `python3 scripts/workflow.py archive-all` (refuses unless every active phase is `done` with a passing review).
+- **The done ones:** `python3 scripts/workflow.py rotate-backlog` (the `/rotate-backlog` skill; `--archive-only` for the plain sweep).
+- **One phase:** `python3 scripts/workflow.py archive-phase <P>`.
 
-```sh
-python3 scripts/workflow.py archive-all
-```
-
-`archive-all` refuses unless every active phase is `done` with a passing review — and, for any phase still owing its deferred doc consolidation, unless that has landed too.
-
-**Rotate the done phases — partial sweep.** When only some phases are done, archive exactly those and leave the in-progress ones active. The default is one step of a chain (the `/rotate-backlog` skill runs it, looping until nothing owes): it archives every phase that owes nothing first, never one that still owes docs, and goes around parked work (a `pending` or `blocked` phase or slice, a slice with `changes_requested`), stopping only for running work or for uncommitted product edits beside parked work. When a phase owes consolidation it prints the docs phase to create (or resumes the live one, widening an undecomposed, engine-named one to the new debt); the skill creates a printed one on the invocation alone, through `create-phase`'s docs-phase route, runs either one through `do-whole-phase`, and once the docs phase is `done` the next step archives every phase it paid, the docs phase included. When nothing owes, it archives the done phases right away:
-
-```sh
-python3 scripts/workflow.py rotate-backlog
-```
-
-Add `--archive-only` to skip the chain and keep the plain archive-and-report sweep, which creates and runs nothing: `python3 scripts/workflow.py rotate-backlog --archive-only`.
-
-**Archive one phase.** Archive a single review-passed phase by id:
-
-```sh
-python3 scripts/workflow.py archive-phase <P>
-```
-
-All three gate on the same rule: a phase must be `done` with a passing review to archive. **A phase owing docs has one more gate:** the engine blocks it while `consolidation` is still `"pending"` (`archive-phase` refuses, `archive-all` lists it, `rotate-backlog` leaves it active, and the default run creates and runs the docs phase that pays it before archiving) — that debt is stamped by a passing review whose phase left "Doc impact" notes, and archiving is exactly what would move those notes out of `active/`. Run the docs phase (`docs-debt` for the worklist, `doc-new-version` per note), then `python3 scripts/workflow.py docs-consolidated <P>`; a phase the operator ran in its own worktree merges first and uses `parallel-consolidated <P>` (see the `parallel-phase` skill). **A phase with an open PR is held too:** a done phase whose recorded, unwaived PR has not merged stays out of archiving until `python3 scripts/workflow.py pr-sync <P>` reads it `state=merged` (`archive-phase` refuses naming the PR, `archive-all` lists it, `rotate-backlog` leaves it active and syncs it first; `next`'s `pr_open=` line says what is due). A PR closed without merging keeps the hold: reopen it on GitHub and `pr-sync` again, or archive with `archive-phase <P> --force`. The hold never hides the phase's doc debt from `rotate-backlog`'s docs-phase route. Use `--force` (on `archive-all`/`archive-phase`) only for exceptional cleanup of an unfinished phase or a closed, unmerged PR.
+All three need `done` with a passing review. A phase still carrying old doc debt (`consolidation: "pending"`) is refused until the engine stops counting it. **A phase with an open PR is held too:** until `pr-sync <P>` reads it `state=merged` (`next`'s `pr_open=` says what is due); a PR closed unmerged keeps the hold: reopen it on GitHub and sync, or archive with `--force`. `--force` (on `archive-all` / `archive-phase`) is for exceptional cleanup only, on the operator's word.
