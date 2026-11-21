@@ -1,5 +1,9 @@
 # bootstrap_agentic_workspace.sh
 
+> **This project moved to sikstack.** The workflow engine now ships as the sikstack plugin for Claude Code,
+> developed at <https://github.com/leetusik/sikstack>. This repository is no longer updated; install from
+> sikstack instead (`/plugin marketplace add leetusik/sikstack`).
+
 **English** | [한국어](README.md)
 
 > An opinionated, portable workspace that makes Claude Code work like a disciplined team:
