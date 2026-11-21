@@ -14,6 +14,14 @@ Everything before v1 is **pre-versioning**: those workspaces carry no
 `workspace_version` in `works/.workspace-version.json`; consult `git log` for that
 history.
 
+## v103 — 2026-11-21
+
+- **The workspace moved to sikstack.** The engine now ships as the `sikstack` plugin for Claude Code, developed at
+  <https://github.com/leetusik/sikstack> with this repository's history; both READMEs open with that pointer. This
+  repository gets no further releases.
+- **Migration notes.** None for this release. To move an install to the plugin, install `sikstack@sikstack` and run
+  `sikstack migrate` from the install's root.
+
 ## v102 — 2026-11-20
 
 - **The core flow is pinned.** A new smoke test drives a toy phase through the commands that stay (the phase and slice lifecycle, a section read and append, a typed stop, the acceptance gate, `pr branch`'s dirty-tree refusal, `check --no-rebuild` on a broken slice, the pass and the archive), so the renames that follow keep that behaviour.

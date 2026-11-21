@@ -1,5 +1,11 @@
 # bootstrap_agentic_workspace.sh
 
+> **이 프로젝트는 sikstack으로 옮겨졌습니다.** 워크플로 엔진은 이제 Claude Code용 sikstack 플러그인으로 배포되며,
+> <https://github.com/leetusik/sikstack>에서 개발됩니다. 이 저장소는 더 이상 업데이트되지 않습니다. sikstack에서
+> 설치하세요 (`/plugin marketplace add leetusik/sikstack`).
+>
+> **This project moved to sikstack:** <https://github.com/leetusik/sikstack>.
+
 [English](README.en.md) | **한국어**
 
 > Claude Code를 체계적으로 일하게 만드는 워크스페이스입니다.
